@@ -376,6 +376,39 @@ wrong viewer, it looks like a wrong format, which is the direction you are alrea
 when reverse-engineering. Master caught it four times from the picture while each internal check
 kept passing.
 
+## The bundle, labelled — and what the flags might mean
+
+`monkey.mps` (Crazy Ape) in full, which is what a `.mps` actually is: **an asset bundle the game
+picks from**, not one model.
+
+| idx | name | flags | verts | tris | parent |
+|---:|---|---|---:|---:|---|
+| 0 | `m_base` | `0x000001` | 111 | 62 | root |
+| 1 | `m_boxes` | `0x000f01` | 258 | 132 | `m_base` |
+| 2 | `m_sign` | `0x000f01` | 8 | 4 | `m_base` |
+| 3 | `m_sign2` | `0x000a01` | 16 | 8 | `m_sign` |
+| 4 | `m_body` | `0x000301` | 257 | 148 | `m_base` |
+| 5 | `m_arm` | `0x000321` | 103 | 70 | `Dummy01` |
+| 6 | `m_arm1` | `0x000321` | 104 | 70 | `Dummy01` |
+| 7 | `m_crate` | `0x000f01` | 186 | 108 | `m_base` |
+| 8 | `m_shards` | `0x000f01` | 36 | 12 | `m_base` |
+
+Helper nodes carry **bit 31** in their flags (`0x80000050`, `0x80000250`) and are not drawable:
+`Head1`, `Head09`, `nose03`, `Dummy01`.
+
+⚠ **Do not read the names as descriptions.** Rendering with pieces removed shows `m_shards` is the
+**lightning-bolt sign topper**, not crate debris, and `m_boxes` is the **whole platform and fence
+structure**. Both of those were guessed wrong here from the name alone.
+
+**GUESS, untested**: the low flag bits select what is drawn when. `m_base` alone is `0x001`; the arms
+are `0x321` = the body's `0x301` plus `0x20`, and the arms are exactly the two parts hanging off the
+`Dummy01` pivot; `0xf01` covers boxes/sign/crate/shards and `0xa01` the sub-sign. There is structure
+there, and which bit means "not at rest" is **not established** — waiting on someone who can see the
+real ride to say which parts are extra.
+
+⚠ **Backface culling is wrong for these models** — master, comparing renders: no-cull is closest.
+They are open single-sided pieces; there is nothing to cull correctly.
+
 ⚠ **Remaining: strip restarts.** Each batch is treated as one continuous strip, which leaves a few
 long spurious triangles spanning a model where a strip really restarts inside a batch. Degenerate
 triangles are already dropped; the restart convention is not yet established. The UV stream is decoded (above). The THIRD
