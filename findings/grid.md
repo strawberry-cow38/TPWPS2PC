@@ -56,16 +56,25 @@ of almost every model carries a uniform 0.1 scale**. Measured over every `.mps` 
 |---|---:|---|
 | **exactly 0.100** | **464 of 496** | rides, props, scenery |
 | ~0.00003 | 24 | **characters** — `/Chars/*`, roots named `Bip01`, `pickup`, `neck pivot box` |
-| ~0.004 | 7 | |
-| ~0.02 | 1 | |
+| **0.00390625 = exactly 1/256** | 7 | the **sideshow minigames** — `sgpuzzle`, `sgshy`, `sgrace`, roots `puzzlefloor` / `Box01` |
+| **0.02 = exactly 1/50** | 1 | `/Generic/Advisor/advisor.mps`, root `Position Dummy` |
 
 `monkey.mps` root `m_base` is 0.1000/0.1000/0.1000; `4x4rock` and `bigpalm` roots likewise. So the
 tenth is an authoring convention across the fleet, and it is the second, independent route to the
 same constant as the units-per-cell identity above.
 
-⚠ **Rides are authored at 0.1 and skinned characters at ~3e-5 — about 3,000x apart.** Any code that
-assumes one root convention is wrong by three orders of magnitude the moment a guest stands next to
-a ride, and at that size it does not render as "slightly off", it renders as nothing visible.
+⭐ There are **four** conventions, not two, and the minority ones are exact — 1/256 and 1/50 to
+float precision (×256 and ×50 both return 1.0000), so they are deliberate rather than drift. That
+the 1/256 set is exactly the **sideshows** is the same boundary the `.gin` scene format falls on:
+different subsystem, different pipeline, different root scale.
+
+⚠ **And "character scale" is not a constant the way 0.1 is** — each character is authored at its own
+size, roughly 2e-5 to 4.5e-5. There is nothing to hard-code there either.
+
+⚠⚠ **The full span is 0.02 down to ~2e-5, a factor of a thousand.** Any code that assumes one root
+convention is wrong by three orders of magnitude the moment a guest stands next to a ride, and at
+that size it does not render as "slightly off" — it renders as **nothing visible**. The only safe
+rule is to restore whatever the bind carried and never substitute a number.
 
 ⚠ And a caution about how that was nearly mis-reported: a histogram rounded to three places printed
 those 24 as **`0.000`**, which reads as degenerate matrices, and the first draft of this section
