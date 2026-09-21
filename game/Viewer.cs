@@ -198,7 +198,9 @@ public partial class Viewer : Node3D
             _current.SetFrame(0);
             FrameCamera(model);
             _info.Text = $"{_ride.Name}\n{_current.Summary}\n" +
-                         $"{_records.Count} animations  |  SPACE play/pause  |  drag to orbit, wheel to zoom";
+                         $"{_records.Count} animations\n" +
+                         "left-drag orbit  |  right-drag pan  |  wheel zoom\n" +
+                         "SPACE play/pause  |  arrows step a frame  |  R re-frame";
         }
         catch (Exception ex) { _info.Text = $"{_ride?.Name}\nfailed: {ex.Message}"; }
     }
@@ -270,16 +272,54 @@ public partial class Viewer : Node3D
 
     public override void _UnhandledInput(InputEvent e)
     {
-        if (e is InputEventMouseMotion mm && (mm.ButtonMask & MouseButtonMask.Left) != 0)
+        if (e is InputEventMouseMotion mm)
         {
-            _yaw -= mm.Relative.X * 0.01f;
-            _pitch = Mathf.Clamp(_pitch + mm.Relative.Y * 0.01f, -1.5f, 1.5f);
+            // LEFT drag orbits.
+            if ((mm.ButtonMask & MouseButtonMask.Left) != 0)
+            {
+                _yaw -= mm.Relative.X * 0.01f;
+                _pitch = Mathf.Clamp(_pitch + mm.Relative.Y * 0.01f, -1.5f, 1.5f);
+            }
+            // RIGHT or MIDDLE drag pans, in the camera's own plane so it moves with the view
+            // rather than along world axes. Scaled by distance so it feels the same when zoomed in.
+            else if ((mm.ButtonMask & (MouseButtonMask.Right | MouseButtonMask.Middle)) != 0)
+            {
+                var b = _cam.GlobalTransform.Basis;
+                float k = _dist * 0.0016f;
+                _focus += b.X * -mm.Relative.X * k + b.Y * mm.Relative.Y * k;
+            }
         }
         if (e is InputEventMouseButton mb && mb.Pressed)
         {
-            if (mb.ButtonIndex == MouseButton.WheelUp) _dist *= 0.9f;
+            if (mb.ButtonIndex == MouseButton.WheelUp) _dist = Mathf.Max(_dist * 0.9f, 0.05f);
             if (mb.ButtonIndex == MouseButton.WheelDown) _dist *= 1.1f;
         }
-        if (e is InputEventKey k && k.Pressed && k.Keycode == Key.Space) _playing = !_playing;
+        if (e is InputEventKey k2 && k2.Pressed)
+        {
+            switch (k2.Keycode)
+            {
+                case Key.Space: _playing = !_playing; break;
+                // ⚠ Panning can lose the model off-screen with no way back. R re-frames it.
+                case Key.R: ReFrame(); break;
+                case Key.Left: StepFrame(-1); break;
+                case Key.Right: StepFrame(1); break;
+            }
+        }
     }
+
+    void StepFrame(int d)
+    {
+        if (_current == null) return;
+        _playing = false;
+        _time = Mathf.PosMod(_time + d, Mathf.Max(_current.Frames, 1));
+        _current.SetFrame(_time);
+        _scrub.SetValueNoSignal(_time / Mathf.Max(_current.Frames, 1));
+    }
+
+    void ReFrame()
+    {
+        if (_ride?.Model == null) return;
+        try { FrameCamera(new Model(_lib.Read(_ride.Model))); } catch { }
+    }
+
 }

@@ -23,6 +23,7 @@ public sealed class AnimatedModel
         public int NodeOffset;
         public List<System.Numerics.Vector3> BindPos;
         public List<Godot.Vector2> Uv;
+        public List<Godot.Vector3> Normal;
         public List<Model.Triangle> Tris;
         public int[] AnimMap;
         public List<(int[] Times, System.Numerics.Vector3[] Keys)> Morph;
@@ -61,13 +62,14 @@ public sealed class AnimatedModel
         {
             var tris = _model.Triangles(mesh);
             if (tris.Count == 0) continue;
-            var (pos, uv, _) = _model.Vertices(mesh);
+            var (pos, uv, nor) = _model.Vertices(mesh);
             var p = new Part
             {
                 Mesh = mesh,
                 NodeOffset = mesh.Offset,
                 BindPos = pos,
                 Uv = uv.Select(v => new Godot.Vector2(v.X, v.Y)).ToList(),
+                Normal = nor.Select(v => new Godot.Vector3(v.X, v.Y, v.Z)).ToList(),
                 Tris = tris,
                 AnimMap = _model.AnimVertexMap(mesh),
             };
@@ -84,7 +86,7 @@ public sealed class AnimatedModel
     }
 
     static BaseMaterial3D.CullModeEnum CullFromEnv() =>
-        (OS.GetEnvironment("TPW_PS2_CULL") ?? "back").ToLowerInvariant() switch
+        (OS.GetEnvironment("TPW_PS2_CULL") ?? "off").ToLowerInvariant() switch
         {
             "front" => BaseMaterial3D.CullModeEnum.Front,
             "off" or "none" or "disabled" => BaseMaterial3D.CullModeEnum.Disabled,
@@ -104,12 +106,13 @@ public sealed class AnimatedModel
                 // ⚠ 32-bit TGAs here are alpha CUTOUTS (leaves, foliage), not merely wider pixels.
                 Transparency = BaseMaterial3D.TransparencyEnum.AlphaScissor,
                 AlphaScissorThreshold = 0.5f,
-                // ⭐ M3D2 FRONT FACES ARE CLOCKWISE, the opposite of Godot's convention, so the
-                // triangles are emitted reversed below and ordinary BACK-face culling is correct.
-                // ⚠ Do not "fix" this by disabling culling: that hides the question instead of
-                // answering it AND flips the generated normals. Measured -- cull back on the unre-
-                // versed winding renders the ape hollow, with his own back visible through his
-                // chest. TPW_PS2_CULL=back|front|off remains, to re-check rather than to trust.
+                // ⭐ NO CULLING BY DEFAULT -- the owner's call, and it is safe here because the
+                // normals do NOT come from the winding: they are the model's own third per-vertex
+                // stream (3 x int8 over 127), set explicitly below. The usual objection to
+                // disabling culling is that a generator derives normals from triangle order and
+                // they come out inward; that cannot happen when the file supplies them.
+                // (For the record, measured: M3D2 front faces are CLOCKWISE, so the triangles are
+                // still emitted reversed and TPW_PS2_CULL=back is correct if you want culling.)
                 CullMode = CullFromEnv(),
                 TextureFilter = BaseMaterial3D.TextureFilterEnum.NearestWithMipmaps,
             };
@@ -142,10 +145,12 @@ public sealed class AnimatedModel
                 foreach (var idx in new[] { t.A, t.C, t.B })
                 {
                     st.SetUV(p.Uv[idx]);
+                    // ⭐ The model's OWN normal, not one derived from triangle order. This is what
+                    // makes culling a free choice rather than a lighting decision.
+                    st.SetNormal(p.Normal[idx]);
                     var v = pos[idx];
                     st.AddVertex(new Godot.Vector3(v.X, v.Y, v.Z));
                 }
-            st.GenerateNormals();
             p.Surfaces[si++].Mesh = st.Commit();
         }
     }
