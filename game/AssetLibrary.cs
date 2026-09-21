@@ -74,14 +74,42 @@ public sealed class AssetLibrary : IDisposable
                 f[key] = e;
                 continue;
             }
-            if (ext == ".mps") Get(dir).Model = e;
-            else if (ext == ".aps") Get(dir).Animation = e;
+            // ⚠⚠ ONE ENTRY PER MODEL, NOT PER FOLDER. 33 folders on the disc hold more than one
+            // .mps -- /Rides/gokarts has TWELVE (the track pieces, the karts, the pylons) and
+            // /Rides/wateride thirteen. Keying on the folder kept whichever came last and hid the
+            // other 160 models on the disc, which reads as a ride with most of its geometry
+            // missing rather than as a viewer that is only showing you one piece.
+            if (ext == ".mps") Get(e.Path).Model = e;
         }
 
-        RideAssets Get(string dir)
+        // The animation beside a model: its OWN stem first, then the folder's only .aps. A folder
+        // with several models and one animation still pairs them; one with a .aps per model pairs
+        // them by name.
+        var apsByPath = new Dictionary<string, WadArchive.Entry>(StringComparer.OrdinalIgnoreCase);
+        var apsByDir = new Dictionary<string, List<WadArchive.Entry>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var e in Wad.Entries)
         {
-            if (!byDir.TryGetValue(dir, out var r))
-                byDir[dir] = r = new RideAssets { Name = dir.TrimStart('/') };
+            if (!Path.GetExtension(e.Path).Equals(".aps", StringComparison.OrdinalIgnoreCase)) continue;
+            var d2 = e.Path[..Math.Max(e.Path.LastIndexOf('/'), 0)];
+            apsByPath[Path.ChangeExtension(e.Path, null)] = e;
+            if (!apsByDir.TryGetValue(d2, out var l)) apsByDir[d2] = l = new();
+            l.Add(e);
+        }
+        foreach (var r in byDir.Values)
+        {
+            var stem = Path.ChangeExtension("/" + r.Name, null);
+            if (apsByPath.TryGetValue(stem, out var a)) r.Animation = a;
+            else
+            {
+                var d2 = ("/" + r.Name)[..Math.Max(("/" + r.Name).LastIndexOf('/'), 0)];
+                if (apsByDir.TryGetValue(d2, out var l) && l.Count == 1) r.Animation = l[0];
+            }
+        }
+
+        RideAssets Get(string key)
+        {
+            if (!byDir.TryGetValue(key, out var r))
+                byDir[key] = r = new RideAssets { Name = key.TrimStart('/') };
             return r;
         }
 
@@ -99,7 +127,10 @@ public sealed class AssetLibrary : IDisposable
     {
         var stem = Path.GetFileNameWithoutExtension(materialName);   // "m_back.ssh" -> "m_back"
         WadArchive.Entry e = null;
-        for (var d = "/" + ride.Name; e == null && d.Length > 0; d = d[..Math.Max(d.LastIndexOf('/'), 0)])
+        // ⚠ Name is the MODEL'S PATH now, so start the walk at its folder, not at the file.
+        var start = "/" + ride.Name;
+        start = start[..Math.Max(start.LastIndexOf('/'), 0)];
+        for (var d = start; e == null && d.Length > 0; d = d[..Math.Max(d.LastIndexOf('/'), 0)])
             if (_folders.TryGetValue(d, out var f)) f.TryGetValue(stem, out e);
         if (e == null) SharedTextures.TryGetValue(stem, out e);
         if (e == null) return null;

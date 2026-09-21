@@ -25,11 +25,23 @@ def meshes(m):
 
 def batches(m, mesh):
     """The mesh's batches, using the COUNT AT mesh+0x66 rather than walking until a record stops
-    looking valid. The heuristic walk stopped early on 13 meshes and over-ran on others."""
+    looking valid. The heuristic walk stopped early on 13 meshes and over-ran on others.
+
+    ⚠⚠ THE FOURTH WORD IS `u16 vertexCount, u16 ceil(vertexCount/3)`, NOT A PLAIN u32. 563 batch
+    records on the disc carry a non-zero high half, and the ratio holds on every one of them. An
+    earlier "0 < a < b < c and n <= 4096" sanity filter read those as counts near a million,
+    rejected the FIRST batch and `break`ed -- so the whole mesh came back with no geometry at all
+    and looked like missing artwork. A silent reject reads exactly like missing data; that filter
+    is where the bug was, which is the one thing I had already written down.
+    ⚠ 483 more records, all in the older file versions 0x13b/0x13c, carry a high half that is NOT
+    ceil/3 and are still unexplained -- they are reported, not filtered."""
     out = []
     for j in range(mesh['nbatches']):
-        a, b, c, n = struct.unpack_from('<4I', m, mesh['batchTable'] + j*16)
-        if not (0 < a < b < c <= len(m)) or n == 0 or n > 4096: break
+        o = mesh['batchTable'] + j*16
+        if o + 16 > len(m): break
+        a, b, c, n = struct.unpack_from('<4I', m, o)
+        n &= 0xFFFF
+        if n == 0 or max(a, b, c) >= len(m): break
         out.append((a, b, c, n))
     return out
 

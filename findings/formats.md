@@ -1035,3 +1035,37 @@ padding frames).
 bank was built from.
 
 Reader: `tools/sfxmap.py` — `parse(d)` returns the tree and the byte count it consumed.
+
+
+## ⚠⚠ TWO BUGS THAT READ AS "MISSING GEOMETRY" (2026-09-21, found from the owner's screenshots)
+
+### 1. The batch record's fourth word is `u16 count, u16 ceil(count/3)`
+
+Not a plain u32. **563 batch records on the disc carry a non-zero high half and the ratio holds on
+every one of them.** The reader carried a sanity filter — `0 < a < b < c <= len` and `n <= 4096` —
+which read those counts as near a million, rejected the **first** batch and stopped, so the whole
+mesh came back with no geometry. The go-karts' `TRACK` declares 692 faces and produced **0**.
+
+Measured over every `.mps` in every WAD, against the face count each mesh declares at `+0x62`:
+
+| | meshes correct | wrong |
+|---|---|---|
+| with the filter | 3,736 | **198** |
+| with the low half as the count | **3,934** | **0** |
+
+496 models, 3,934 meshes, 16 WADs, all five file versions (0x13b, 0x13c, 0x13d, 0x13e, 0x140).
+
+⚠ **The earlier "935/935, 100%" in this file was measured on a SMALLER SET** — JUNGLE.WAD alone,
+where the same filter had already emptied the meshes that would have failed. It counted 935 meshes
+where the archive holds 965. The number above is the whole disc with nothing excluded.
+
+⚠ 483 further records, all in versions 0x13b/0x13c, have a high half that is **not** `ceil(count/3)`
+and is unexplained. They are reported here rather than filtered out; their meshes read correctly.
+
+### 2. The viewer listed one model per FOLDER
+
+33 folders hold more than one `.mps` — `/Rides/gokarts` has **twelve** (track pieces, karts,
+pylons), `/Rides/wateride` thirteen, `/Generic/MiscMesh` nine. Keying the library on the folder kept
+whichever came last and **hid the other 160 models on the disc**, which looks exactly like a ride
+missing most of its geometry. One entry per model now; the animation beside it is matched by its own
+stem first, then by the folder's single `.aps`.

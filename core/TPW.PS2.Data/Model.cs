@@ -78,15 +78,29 @@ public sealed class Model
     public record Batch(int PosOffset, int UvOffset, int NormalOffset, int Count);
 
     /// <summary>⚠ The batch COUNT comes from <c>mesh+0x66</c>, never from walking until a record
-    /// stops looking valid -- that heuristic under-ran on 13 meshes.</summary>
+    /// stops looking valid -- that heuristic under-ran on 13 meshes.
+    ///
+    /// ⚠⚠ THE FOURTH WORD IS <c>u16 vertexCount, u16 ceil(vertexCount/3)</c>, NOT A PLAIN u32.
+    /// 563 batch records on the disc carry a non-zero high half and the ratio holds on every one.
+    /// This used to carry an "a &lt; b &lt; c and n &lt;= 4096" sanity filter, which read those as
+    /// counts near a million, rejected the FIRST batch and broke out -- so the whole mesh came back
+    /// with NO GEOMETRY and read as missing artwork. 198 of 3,934 meshes on the disc were empty
+    /// because of it, including the go-karts' TRACK: 692 faces declared, 0 produced.
+    ///
+    /// With the low half taken as the count, every mesh on the disc now matches the face count the
+    /// file itself declares: 3,934 / 3,934 across 496 models, all 16 WADs, all five file versions.
+    /// ⚠ 483 further records, all in the older versions 0x13b/0x13c, have a high half that is not
+    /// ceil/3 and are unexplained -- reported, not filtered.</summary>
     public List<Batch> Batches(Mesh m)
     {
         var outList = new List<Batch>();
         for (int j = 0; j < m.BatchCount; j++)
         {
             int r = (int)m.BatchTable + j * 16;
-            int a = (int)U32(r), b = (int)U32(r + 4), c = (int)U32(r + 8), n = (int)U32(r + 12);
-            if (!(a > 0 && a < b && b < c && c <= D.Length) || n == 0 || n > 4096) break;
+            if (r + 16 > D.Length) break;
+            int a = (int)U32(r), b = (int)U32(r + 4), c = (int)U32(r + 8);
+            int n = (int)(U32(r + 12) & 0xFFFF);
+            if (n == 0 || a >= D.Length || b >= D.Length || c >= D.Length) break;
             outList.Add(new Batch(a, b, c, n));
         }
         return outList;
