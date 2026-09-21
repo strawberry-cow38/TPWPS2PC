@@ -197,10 +197,44 @@ flagpole, its flag, the platform and the trackside barrier, and `1x1east.mps` is
 a small Easter Island statue. That is the only test that matters for a vertex layout: a wrong stride
 gives confetti.
 
+## ⭐⭐⭐ UVs — DECODED, and the models texture
+
+The batch's second stream is **UV, 2 × int16, fixed point ÷4096**, one pair per vertex.
+
+The padding rule that proves it, checked on **560 of 560 batches, no exceptions**:
+
+```
+lenPositions == align16(n * 12) + 16
+lenUV        == align16(n *  4) + 16
+```
+
+Both streams are the vertex data, padded to a 16-byte boundary, plus one trailing quadword (zeros
+here). That trailing quadword is why dividing a stream length by a stride never gave an integer.
+
+Sample values land in [0,1] as UVs should — (0.961, 0.934), (0.199, 0.999), (0.995, 0.199) — and a
+repeated pair (0.399, 0.399) recurs at exactly the vertices whose positions repeat. Two independent
+streams agreeing on which vertices are the same point.
+
+**Texture lookup**: material table at header `0x40`, count at `0x22`, 16-byte records whose fourth
+word is the offset of a `.ssh` name; a mesh's `texIdx` indexes that table. The `.ssh` has a `.tga`
+of the same stem beside it, so the source art can be used directly without decoding SHPS.
+
+**And it renders.** `tools/render.py` rasterises the decoded triangles with the real textures:
+`monkey.mps` comes out as a gold gorilla on a sand base with stacked wooden crates and grass edging,
+`gokarts.mps` as a planked track platform. Wood grain runs along the planks and the gorilla's face
+lands on the gorilla. A wrong UV interpretation smears; this does not.
+
+⚠ **Grey patches are MISSING TEXTURES, not bad UVs** — 16/25, 8/20 and 11/21 texture names resolved.
+The rest live in the shared texture folder (the binary's `%s\sharetex\` path), which this reader
+does not search yet.
+
 ⚠ **Remaining: strip restarts.** Each batch is treated as one continuous strip, which leaves a few
 long spurious triangles spanning a model where a strip really restarts inside a batch. Degenerate
-triangles are already dropped; the restart convention is not yet established. The two side streams
-(5 and 8 bytes per vertex) are unread — UVs and normals, by size and by the values, but not proven.
+triangles are already dropped; the restart convention is not yet established. The UV stream is decoded (above). The THIRD
+stream is still unread: its stride does not resolve cleanly, and the probe I tried — using a
+repeated position as a control — turned out to be **vacuous**, because only one vertex actually
+shares that position and the others merely print the same to three decimals. It compared a row with
+itself and said "identical". No conclusion drawn from it.
 
 ⚠ ~~**STILL MISSING: the per-mesh vertex and face data.**~~ *(superseded — see above)* The PC member of the family puts
 vertex/material/face counts at entry +0x58..+0x5E; on PS2 those words read zero, so the geometry is
