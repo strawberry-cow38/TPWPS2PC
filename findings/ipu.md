@@ -229,3 +229,21 @@ Final synthetic validation passes **2,163 of 2,163 assertions**. This adds a ver
 AC golden vector, linear palette/CSM1 boundary and alpha checks, malformed palette
 headers and truncated data, and rejection of palettes overlapping the next SHPS
 entry. All synthetic data is generated from source; no game fixture is committed.
+
+## Portability: what is untested, and what cannot vary
+
+Runtime validation ran on Linux arm64 only, so x86 and Windows are **unexecuted**. That is worth
+separating from "unverified", because the decoder has no surface on which they could differ:
+
+* `core/TPW.PS2.Data/IpuDecoder.cs` + `IpuTables.cs` are **270 lines of plain managed C#**.
+* No `System.Runtime.Intrinsics`, no `Vector`, no `Unsafe`, no `Marshal`, no `unsafe` block, no
+  `DllImport`, no `Process.Start`, no `RuntimeIdentifier`, no `AllowUnsafeBlocks`.
+* The three `stackalloc`s are `Span`-typed and need no unsafe context.
+* **It never reads a multi-byte integer from the stream** — there is not one `BinaryPrimitives`
+  call in either file, so there is no endianness assumption to get wrong on a different host.
+* Integer arithmetic in C# has defined width and defined shift semantics, and the decoder is
+  deterministic by construction: same bytes in, same bytes out.
+
+So the honest claim is: **executed on Linux arm64 and byte-identical there across 5,687 images; on
+x86 or Windows it is untested but there is no platform-dependent construct for it to trip over.**
+The way to close it is to run the differential on one of those hosts, not to reason further.
