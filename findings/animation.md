@@ -290,3 +290,30 @@ files I sampled.
 **I had the R5900 disassembler working before I started guessing.** Asked what was stopping me from
 cracking it, the honest answer was: nothing — I was reading the data instead of the code that reads
 the data.
+
+
+## The streams, same way — and it is now mechanical
+
+Each of a track's eight pointers is handled by a small function that states its own sub-structure.
+Two read so far:
+
+```c
+FUN_001675d8(p, base):          // the +0x1C stream
+    if (*p) *p += base;         // relocates one pointer. that is all it does.
+
+FUN_001675f0(p, base):          // the +0x20 stream
+    relocate pointers at +0x08, +0x24, +0x28
+    if ((u16 at +0x00) & 8) ... else
+        for (i = 0; i < u16 at +0x02; i++)
+            FUN_00167708(*(int*)(p+0x08) + i*0x0C, base)    // ⭐ 12-BYTE records
+```
+
+So the `+0x20` stream is a **count at `+0x02` and an array of 12-byte records** — and 12 bytes is
+three floats, the size of a position key. A flag bit (`& 8`) switches to a different arm, exactly as
+`rec[0] & 0x20` and `track[1] & 0x40000` do higher up. **This format switches layout on flags at
+every level**, which is precisely what byte-inference cannot see and why the statistical model
+plateaued.
+
+**What remains is no longer guesswork, it is a list**: `FUN_00167708` (the 12-byte record),
+`FUN_00168728`, `FUN_001676d8`, `FUN_00167720`, and the 20-byte-track arm `FUN_00167758`. Each is
+tens of lines and each states its own layout the way these did.
