@@ -337,15 +337,19 @@ public partial class Viewer : Node3D
             {
                 var raw = new byte[s.End - s.Start];
                 Array.Copy(_bank.Data, s.Start, raw, 0, raw.Length);
-                var st = new AudioStreamMP3 { Data = raw };
-                _player.Stream = st;
-                // ⚠ Report what the engine made of it. Godot's decoder is built for Layer III and
-                // may refuse Layer II outright -- a length of zero says so, where a silent Play()
-                // would not.
-                double got = st.GetLength();
-                _info.Text += got > 0
-                    ? "\nengine decoded it: " + got.ToString("0.00") + " s"
-                    : "\n⚠ the engine's MPEG decoder returned nothing for this Layer II stream";
+                // ⚠⚠ NOT AudioStreamMP3. The engine's decoder is built for Layer III and returns a
+                // zero-length stream for the Layer II the disc uses -- 1,849 of its 2,220 sounds.
+                // Decoded here to PCM instead, which also means one code path for every sound.
+                var dec = Mpeg.DecodeToPcm16(raw);
+                if (dec == null) { _info.Text += "\nthe Layer II decoder returned nothing"; return; }
+                var (pcm2, rate2, ch2) = dec.Value;
+                _player.Stream = new AudioStreamWav
+                {
+                    Format = AudioStreamWav.FormatEnum.Format16Bits,
+                    MixRate = rate2, Stereo = ch2 == 2, Data = pcm2,
+                };
+                _info.Text += "\nplaying: " + (pcm2.Length / 2 / ch2) + " samples at "
+                            + rate2 + " Hz, " + (ch2 == 2 ? "stereo" : "mono");
             }
             _player.Play();
             GD.Print("[snd] " + s.Name + " -> " + _info.Text.Replace("\n", " | "));
