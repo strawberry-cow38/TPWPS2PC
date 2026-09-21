@@ -150,3 +150,60 @@ Compiled, 107 bytes:
 four have the top bit set. That is as far as it goes: the opcode mapping is **not decoded**, and one
 sample is not enough to claim opcode 8 is `NAME`. With 90 matched pairs it would not hold out long
 if anyone wanted it.
+
+
+## ⭐⭐⭐ THE RIDE SCRIPTS SHIP AS SOURCE — and they are where particles come from
+
+This file already noted that JUNGLE.WAD carries 90 `.rss` files "shipped as source". Measured
+properly, that is an understatement:
+
+| | |
+|---|---:|
+| `.rss` files with developer comments | **90 / 90** |
+| `.rss` files with `#include` directives | **89 / 90** |
+| `.rss` files naming a particle effect | 47 |
+| `.rse` (the compiled form) | 91 |
+
+They are un-stripped developer source with original comments and include paths like
+`\source\game\particle\code\par_lib.h` and `\source\game\soundint\ThemedEvents\JungleEvent.h`.
+
+### ⭐ The particle link is the SCRIPT, not the `.aps`
+
+```
+EVENT    OBJ_PTCL  VAR_RAND  P_EFFECT_MumboPuff      ; <Type><Node><Param>
+ADDOBJ   OBJ_PTCL  1         P_EFFECT_IncaGodFlame  1
+```
+
+An effect is attached to a **node** with `OBJ_PTCL` and a `P_EFFECT_<name>` constant — and those
+constants are exactly the names in `Tp2.plb`, supplied by `par_lib.h`. **32 distinct effects** are
+referenced across the scripts:
+
+```
+AirLeak ApeSnot BigSmokePuff BigSparks BrewUp Bubbles CUSTOM1 CUSTOM2 Explode2 Firework1
+Firework2 Flies GoldSparkles GreenFumes IncaGodFlame MudJet MumboPuff Notes SideShowWin
+SmallAirLeak Smoke Smoke2 SmokeTrailB SmokeTrailR SmokeTrailW Sparks Spray Steam TorchSmoke
+Volcano WaterJet Zzzz
+```
+
+⚠⚠ **This means my `+0x24` = particles hypothesis is probably WRONG.** The owner's instinct that
+there is a *global particle emitter* was right; my attribution of the wiring to a `.aps` field was
+the wrong half. The evidence that convinced me — the carrier list being all lava, water and
+vehicles — is explained just as well by those being the rides with scripted effects. `+0x24`'s
+meaning is open again, and this is the fifth time today a well-supported reading did not survive
+contact with a better source. [[feedback_validate_before_claiming]]
+
+### The script VM's vocabulary
+
+```
+COPY 289   BRANCH_NZ 271   TEST 225   BRANCH_Z 222   BRANCH 211   WAIT 206   EVENT 183
+ADDOBJ 164 ADD 153         WAITANIM 128  KILLOBJ 72  GETTIME 45   REPAIREFFECT 42
+FADEOBJ 41 LOOPANIM 37     CRIT_LOCK 34  COAST 33    TRIGWAITANIM 32  BRANCH_PV 32
+CRIT_UNLOCK 29  BUMP 28    STOPSCREAM 24
+```
+
+Variables, comparisons, branches, RNG (`RAND`), timers, animation waits (`WAITANIM`, `LOOPANIM`,
+`TRIGWAITANIM`), object spawn/kill and critical sections. **The rides are programs**, and for a port
+this is the single most valuable thing on the disc — the ride logic in readable form rather than
+recovered from a binary.
+
+⚠ The scripts themselves are EA source and stay out of this repo, as everything else does.
