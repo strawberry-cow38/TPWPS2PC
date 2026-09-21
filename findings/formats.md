@@ -290,20 +290,30 @@ Those wedges appeared in the renders at exactly the moment 32-bit loading was sw
 briefly mistaken for a geometry bug. With an alpha cutout at 16, monkey's rope fence resolves into
 posts and swags and the sign backings disappear.
 
-## Winding: tested, and NOT the explanation
+## Winding: front faces are CLOCKWISE
 
-A triangle strip alternates winding, so the obvious guess is that odd triangles need their first two
-vertices swapped and that backface culling then cleans up the remaining oddities. **Tried it: it is
-worse.** With alternating winding and culling, 465 of mumbo's 904 triangles and 493 of monkey's 964
-are culled — about half — and the render loses its grass base and gains holes in the platform.
+⚠⚠ **AND I REJECTED THIS HYPOTHESIS AFTER TESTING HALF OF IT.** Master suggested bad winding; I
+implemented alternating strip winding with culling, saw the render get worse, and wrote it up as
+"tested and rejected". I had tested **one cull parity**. The other is right.
 
-Half the triangles disappearing means either the parity is inverted or, more likely, **these models
-are not closed**: leaves, signs and fences are single flat quads that must be drawn from both sides.
-Either way the hypothesis is not supported, and it is recorded as tested-and-rejected rather than
-left as a plausible-sounding maybe.
+With alternating winding and **clockwise** front faces:
 
-⚠ **Still unexplained**: mumbo's ride sign renders mirrored, in both the culled and unculled
-versions, while volcano's and monkey's read correctly. Not a facing artefact, then. Unresolved.
+| | kept of mumbo's 904 |
+|---|---|
+| no culling | 904 |
+| cull clockwise (keep CCW) | 438 |
+| **cull counter-clockwise (keep CW)** | **466** |
+
+Keeping CW renders a complete-looking model *and* removes the artefacts: the stray triangle across
+the leaves disappears, and so does the mirrored `MUMBO` sign — because that sign was a **back face**
+all along. Its front points away from this camera, which is exactly master's "it feels inside out".
+
+That also settles the last open oddity: mumbo's sign read backwards while volcano's and monkey's
+read correctly because the first was being seen from behind and the others from the front. Nothing
+was mirrored; the renderer simply had no notion of facing.
+
+⚠ A global handedness flip was tested too and is **not** it — negating X or Z in world space pulls
+the model apart, separating the plant from its base. The parts are assembled correctly as they are.
 
 **And it renders.** `tools/render.py` rasterises the decoded triangles with the real textures:
 `monkey.mps` comes out as a gold gorilla on a sand base with stacked wooden crates and grass edging,
