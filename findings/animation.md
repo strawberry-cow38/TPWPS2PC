@@ -1022,3 +1022,42 @@ its 90th percentile.** Most keys are an unscaled axis. Nothing but a scale track
 
 **Five of eight decoded, one shape-only, two unknown** — and rotation, scale, spline path and
 vertex morph together are the whole of what a node can be animated by.
+
+
+## `track+0x24` — shape exact, meaning open (130 tracks)
+
+Gate is **track flag `0x10000`**, and that is a *biconditional*: across all **1,229 tracks**, the
+flag is set exactly when the pointer is non-null. 1229/1229.
+
+The object matches `FUN_00167720`, which relocates `+0x08`, `+0x10` and `+0x14`:
+
+```
++0x00 u32 (always 0 in the archive)
++0x04 u32 count1     +0x08 -> count1 entries of 4 bytes
++0x0C u32 count2     +0x10 -> count2 entries of 2 bytes
++0x14 -> a third array
+```
+
+| check | result |
+|---|---:|
+| flag `0x10000` present exactly when `+0x24` is | **1229 / 1229** |
+| `(+0x10) - (+0x08)` == count1 × 4 | **130 / 130** |
+| `(+0x14) - (+0x10)` == count2 × 2 | **130 / 130** |
+| ~~count2 == 2 × count1~~ | 88 / 130 — **rejected** |
+
+⭐ That last row is why the test was worth writing. Both files I eyeballed first (`Fountain`,
+`LavSpurt`) had `count2 == 2 * count1`, and I was about to write it down as part of the layout.
+Across all 130 it holds two thirds of the time — a coincidence in a sample of two. The strides are
+real; the ratio was me pattern-matching on n=2. [[feedback_test_must_reject_the_bug]]
+
+**Meaning still open.** The rides that carry it are suggestive — `Fountain` and `LavSpurt` are the
+first two — but "suggestive" is how the last four wrong turns in this file started, so it stays
+unnamed until a consumer is read.
+
+## Bonus from the player: track flag `0x400` is ORIENT-ALONG-PATH
+
+`FUN_001a7f48` samples the spline **slightly ahead** (`t + 0.1`), normalises the resulting vector,
+and hands it to `FUN_001a6508` with the node's matrix — pointing the node down its own direction of
+travel. When flag `0x08` is clear it first forces an up-vector of `(0, 1, 0)`.
+
+That is how a ride vehicle faces the way it is going.
