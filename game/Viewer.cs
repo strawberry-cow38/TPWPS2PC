@@ -111,17 +111,17 @@ public partial class Viewer : Node3D
         _park = new Park();
         AddChild(_park.Root);
         _park.Root.Visible = false;
+        // ⚠ Only DATA.WAD is read up front, for the text. The ride definitions come from whichever
+        // archive is open, added by OpenWad -- loading all sixteen here cost minutes of sector reads
+        // for fifteen archives the viewer was not showing.
         try
         {
-            using var d = new Disc(disc);
-            _cat = RideCatalogue.Load(d);
-            foreach (var w in d.Files())
-                if (w.Path.EndsWith("/DATA.WAD", StringComparison.OrdinalIgnoreCase))
-                    _text = TextDatabase.Load(new WadArchive(d.Read(w.Extent, w.Size)), "eur");
-            GD.Print($"[park] {_cat.All.Count} rides, {_cat.ById.Count} ids, " +
-                     $"text {(_text == null ? "MISSING" : _text.Keys.Length + " rows")}");
+            foreach (var f in _lib.WadFiles())
+                if (f.Path.EndsWith("/DATA.WAD", StringComparison.OrdinalIgnoreCase))
+                    _text = TextDatabase.Load(new WadArchive(_lib.ReadDisc(f)), "eur");
+            GD.Print($"[park] text {(_text == null ? "MISSING" : _text.Keys.Length + " rows")}");
         }
-        catch (Exception ex) { GD.PrintErr($"[park] catalogue failed: {ex}"); }
+        catch (Exception ex) { GD.PrintErr($"[park] text failed: {ex}"); }
         var wads = _lib.Wads(); GD.Print($"[v] {wads.Count} wads"); foreach (var w in wads) _wadPick.AddItem(w);
         if (_wadPick.ItemCount > 0)
         {
@@ -516,10 +516,25 @@ public partial class Viewer : Node3D
         catch (Exception ex) { _info.Text = e.Path + "\ndid not decode: " + ex.Message; }
     }
 
+    /// <summary>Ride definitions for the archive now open. Per-WAD on purpose: the viewer shows
+    /// one at a time, and loading all sixteen cost minutes of sector reads at startup.</summary>
+    void IndexRides()
+    {
+        try
+        {
+            _cat = new RideCatalogue();
+            _cat.AddWad(_lib.Wad, _lib.WadName);
+            GD.Print($"[park] {_lib.WadName}: {_cat.All.Count} rides, {_cat.ById.Count} ids, "
+                     + $"{_cat.All.Count(d => d.ModelPath != null)} with a model");
+        }
+        catch (Exception ex) { GD.PrintErr($"[park] catalogue failed: {ex}"); _cat = null; }
+    }
+
     void OpenWad(int i)
     {
         GD.Print($"[v] opening {_wadPick.GetItemText(i)}"); _lib.OpenWad(_wadPick.GetItemText(i)); GD.Print($"[v] indexed {_lib.Rides.Count} rides");
         _texCache.Clear();
+        IndexRides();
         FillList();
     }
 
@@ -565,7 +580,6 @@ public partial class Viewer : Node3D
         var dir = model.Path[..(slash + 1)];
         foreach (var d in _cat.All)
         {
-            if (!d.Source.Contains("/" + _lib.WadName, StringComparison.OrdinalIgnoreCase)) continue;
             int s2 = d.Source.LastIndexOf('/');
             if (s2 < 0) continue;
             if (d.Source[..(s2 + 1)].EndsWith(dir, StringComparison.OrdinalIgnoreCase)) return d;

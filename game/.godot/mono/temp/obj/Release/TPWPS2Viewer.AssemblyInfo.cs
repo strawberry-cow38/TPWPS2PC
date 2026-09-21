@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("TPWPS2Viewer")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+a4a1e29a8b7bc8b534a573892be501600e8e9256")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+4f8a6f6c49c2295f17c89beb7f3650c3c9c144eb")]
 [assembly: System.Reflection.AssemblyProductAttribute("TPWPS2Viewer")]
 [assembly: System.Reflection.AssemblyTitleAttribute("TPWPS2Viewer")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("tpwps2check")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+0703e17020301443d55afd7888216e2b4a4f2742")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+4f8a6f6c49c2295f17c89beb7f3650c3c9c144eb")]
 [assembly: System.Reflection.AssemblyProductAttribute("tpwps2check")]
 [assembly: System.Reflection.AssemblyTitleAttribute("tpwps2check")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

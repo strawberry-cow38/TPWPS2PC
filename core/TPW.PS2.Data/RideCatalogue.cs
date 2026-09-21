@@ -148,6 +148,9 @@ public sealed class RideCatalogue
     /// the numbered count -- exactly the kind of quiet shortfall worth printing.</summary>
     public readonly List<RideDefinition> IdCollisions = new();
 
+    /// <summary>Every ride on the disc. ⚠ This reads all 16 WADs -- roughly 600 MB of sector
+    /// reads -- so a caller that only needs one archive should use <see cref="AddWad"/> against a
+    /// <see cref="WadArchive"/> it already has open instead of paying for the other fifteen.</summary>
     public static RideCatalogue Load(Disc disc)
     {
         var cat = new RideCatalogue();
@@ -156,21 +159,40 @@ public sealed class RideCatalogue
             if (w.IsDirectory || !w.Path.EndsWith(".WAD", StringComparison.OrdinalIgnoreCase)) continue;
             WadArchive wad;
             try { wad = new WadArchive(disc.Read(w.Extent, w.Size)); } catch { continue; }
-            foreach (var e in wad.Entries)
-            {
-                if (WadArchive.IsAlias(e)) continue;
-                if (!e.Path.EndsWith(".sam", StringComparison.OrdinalIgnoreCase)) continue;
-                byte[] data;
-                try { data = wad.Read(e); } catch { continue; }
-                var def = RideDefinition.Parse(System.Text.Encoding.Latin1.GetString(data), w.Path + e.Path);
-                Resolve(def, wad, e.Path);
-                cat.All.Add(def);
-                if (def.Id is not int id) { cat.Unnumbered.Add(def); continue; }
-                if (cat.ById.ContainsKey(id)) cat.IdCollisions.Add(def);
-                cat.ById[id] = def;
-            }
+            cat.AddWad(wad, w.Path);
         }
         return cat;
+    }
+
+    /// <summary>Add one already-open archive's rides. The index it builds is per-WAD, which is why
+    /// <see cref="Resolve"/> can look models up without rescanning every entry per ride.</summary>
+    public void AddWad(WadArchive wad, string wadPath)
+    {
+        // ⚠ Built once per archive. Resolving each ride by scanning wad.Entries was 321 rides x 2
+        // lookups x ~14,675 entries, which is why opening the viewer took minutes rather than
+        // seconds -- an O(rides x entries) walk hidden behind a method that reads like a lookup.
+        var byDir = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var e in wad.Entries)
+        {
+            if (WadArchive.IsAlias(e)) continue;
+            int slash = e.Path.LastIndexOf('/');
+            var dir = slash < 0 ? "" : e.Path[..(slash + 1)];
+            if (!byDir.TryGetValue(dir, out var list)) byDir[dir] = list = new List<string>();
+            list.Add(e.Path);
+        }
+        foreach (var e in wad.Entries)
+        {
+            if (WadArchive.IsAlias(e)) continue;
+            if (!e.Path.EndsWith(".sam", StringComparison.OrdinalIgnoreCase)) continue;
+            byte[] data;
+            try { data = wad.Read(e); } catch { continue; }
+            var def = RideDefinition.Parse(System.Text.Encoding.Latin1.GetString(data), wadPath + e.Path);
+            Resolve(def, byDir, e.Path);
+            All.Add(def);
+            if (def.Id is not int id) { Unnumbered.Add(def); continue; }
+            if (ById.ContainsKey(id)) IdCollisions.Add(def);
+            ById[id] = def;
+        }
     }
 
     /// <summary>Find a ride's model and animation, which sit beside its `.sam` rather than being
@@ -186,19 +208,18 @@ public sealed class RideCatalogue
     /// </list>
     /// ⚠ Directory case is not reliable: the same bundle appears as `/Features/bus` and
     /// `/features/bus`. Compare paths case-insensitively or you will find one of the two.</summary>
-    static void Resolve(RideDefinition def, WadArchive wad, string samPath)
+    static void Resolve(RideDefinition def, Dictionary<string, List<string>> byDir, string samPath)
     {
         int slash = samPath.LastIndexOf('/');
         var dir = slash < 0 ? "" : samPath[..(slash + 1)];
         var stem = Path.GetFileNameWithoutExtension(samPath);
 
+        if (!byDir.TryGetValue(dir, out var siblings)) siblings = new List<string>();
+
         string? Pick(string ext)
         {
-            var inDir = wad.Entries
-                .Select(x => x.Path)
-                .Where(p => p.StartsWith(dir, StringComparison.OrdinalIgnoreCase)
-                            && p.IndexOf('/', dir.Length) < 0
-                            && p.EndsWith(ext, StringComparison.OrdinalIgnoreCase))
+            var inDir = siblings
+                .Where(p => p.EndsWith(ext, StringComparison.OrdinalIgnoreCase))
                 .ToList();
             var exact = inDir.FirstOrDefault(
                 p => string.Equals(Path.GetFileNameWithoutExtension(p), stem, StringComparison.OrdinalIgnoreCase));

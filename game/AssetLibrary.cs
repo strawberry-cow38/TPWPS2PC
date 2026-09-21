@@ -36,9 +36,12 @@ public sealed class AssetLibrary : IDisposable
 
     public byte[] ReadDisc(Disc.Entry f) => _disc.Read(f.Extent, f.Size);
 
-    public List<string> Wads() => _disc.Files()
+    public List<string> Wads() => WadFiles().Select(f => f.Path).ToList();
+
+    /// <summary>The archives as disc entries, for a caller that wants to read one itself.</summary>
+    public List<Disc.Entry> WadFiles() => _disc.Files()
         .Where(f => !f.IsDirectory && f.Path.EndsWith(".WAD", StringComparison.OrdinalIgnoreCase))
-        .Select(f => f.Path).ToList();
+        .ToList();
 
     public void OpenWad(string path)
     {
