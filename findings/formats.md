@@ -1336,6 +1336,53 @@ skipped case was the only interesting one — as it usually is.
 Playing the cache back confirms the decode end to end: `racer0` is 513 frames of a closed lap, `y`
 pinned at 151.17 throughout, finishing 8.8 units from where it began.
 
+### `PART` is a per-frame scalar track — 14/14
+
+```
+u32 count, u32 ?, u32 F, then F x f32        (count 0 -> the chunk is just that one word)
+```
+
+`size == 12 + F*4` on every non-empty one, **`F` equals the file's frame count every time**, and
+every value is `1.0`. Present but empty in the 8 `sgsquark` files; real only in `sgrace`. A
+visibility or opacity track — the same idea as `.aps`'s `track+0x28` appear-frame, which gates
+drawing on the rides.
+
+### `KEY4` is sparse TRS keyframes — 38 of 43
+
+```
+16-byte header (an empty KEY4 is exactly that header: u32 kind, 0, 0, 0)
+then, repeatedly:  u32 nkeys, nkeys x (u32 frame, 56-byte TRS)
+```
+
+The TRS is the same record as everywhere else. **526 quaternions, zero non-unit**, and every frame
+index lands inside the file's frame count. `0xFFFFFFFF` appears as a frame and is a sentinel — the
+same `-1` that cost me the `.aps` bind-pose test when I read an `0xffff` ease field as a quaternion
+component.
+
+⚠ **Five chunks do not parse** and I am not going to keep tuning the walk until they do — the first
+version of this hypothesis fitted 2 of 43 and happened to succeed on the one file I had read by eye,
+which is what overfitting looks like. Four of the five stop dead within the first 44 bytes, so it is
+a layout variant, not a bad stride:
+
+| file | size | consumed |
+|---|---|---|
+| `sgsquark_base` | 4280 | 44 |
+| `sgsquark_egg` | 560 | 44 |
+| `sgsquark_hamhit` | 796 | 24 |
+| `sgsquark_hamstart` | 6284 | 24 |
+| `sgsquark_scorebar` | 6440 | 6440, frame out of range |
+
+### `BONE` — shape only, not decoded
+
+12 chunks, **only in the three bird files**, four each — one per model (`sq_body`, `sq_head`,
+`sq_neck`, `sq_feat`). Each holds 43–86 strings of which 24–28 are `TREE` node names, interleaved
+with floats around 0.99 and positions. It reads like a skin-weight table binding the bird's four
+meshes to the striker's `Box01..Box22` node chain. **That is a description, not a decode.**
+
+⚠ The right next step for both `BONE` and the five `KEY4` variants is **the PS2 executable's own
+loader in Ghidra, not more inference.** Inference gets the shape; it does not get a
+layout-switching flag, which is exactly what the five failures are.
+
 ### The rest
 
 `GIN4` magic; `VERS` = 120 on all 14; `TEX4` texture paths — `..\..\sharedtx\+nest1.bmp`, the
@@ -1346,6 +1393,7 @@ count their second word decodes to ASCII.
 
 ⚠ Every file ends in **8 zero bytes** after the last chunk — a null terminator, not unread data.
 
-**Bytes accounted for: 98.5%.** Still open: `KEY4` (0.8%), `BONE` (0.4%), `PART` (0.3%).
+**Bytes accounted for: 99.1%.** The remaining 0.9% is `BONE` and those five `KEY4` chunks.
 
-Reader: `tools/gin.py` — `chunks`, `records`, `key`, `nodes`, `anim`, `translation`, `name`.
+Reader: `tools/gin.py` — `chunks`, `records`, `key`, `nodes`, `anim`, `part`, `keys`,
+`translation`, `name`.

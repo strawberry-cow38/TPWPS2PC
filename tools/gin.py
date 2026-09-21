@@ -14,7 +14,14 @@ minigames, as full 3D scenes with bones and animation. See findings/formats.md f
     VECT  12 B  3 x f32   OBJECT-space vertex position
     NORM  12 B  3 x f32   per-vertex unit normal
 
-    GIN4 magic   VERS 120   MESH   MAT4   KEY4 / BONE / PART (open, together 1.5% of bytes)
+    GIN4 magic   VERS 120   MESH   MAT4
+    PART  u32 count, u32 ?, u32 F, then F x f32 -- one scalar per frame, F == the file's frame
+          count on 14/14. count 0 means the chunk is that single word. Visibility/opacity.
+    KEY4  16 B header, then repeatedly: u32 nkeys, nkeys x (u32 frame, 56 B TRS). Sparse
+          keyframes. 38 of 43 chunks parse; 0xFFFFFFFF is a sentinel frame.
+          ⚠ 5 chunks use a layout variant this does not cover -- read the PS2 loader, don't guess.
+    BONE  NOT DECODED. 12 chunks, only the 3 bird files, 4 each = one per model. TREE node names
+          interleaved with ~0.99 floats; reads like a skin-weight table. Shape only.
     ANIM  95% OF THE FILE. First word is a kind; ONE frame count F explains every ANIM in a file:
       kind 1  u32 1, u32 0, u32 F, then F x nverts x 3 f32   per-vertex WORLD position cache
       kind 6  u32 6, u32 0, u32 F, then F x 56               one node's TRS per frame
@@ -137,3 +144,34 @@ def anim(d, off, size, nverts=None, nnodes=None):
         f = (size - 4) // (n * 56)
         return kind, [[trs(off + 4 + (i * n + j) * 56) for j in range(n)] for i in range(f)]
     raise ValueError('unknown ANIM kind %d' % kind)
+
+def part(d, off, size):
+    """PART's per-frame scalar track. Empty -> []."""
+    if size <= 4 or U32(d, off) == 0: return []
+    n = U32(d, off + 8)
+    return [struct.unpack_from('<f', d, off + 12 + i * 4)[0] for i in range(n)]
+
+SENTINEL = 0xFFFFFFFF
+
+def keys(d, off, size):
+    """KEY4's sparse TRS keyframes, as a list of tracks, each a list of (frame, trs).
+
+    Raises on the five chunks that use the layout variant this does not cover, rather than
+    returning a half-walked result -- see findings/formats.md.
+    """
+    out, p, end = [], off + 16, off + size
+    while p < end:
+        if p + 4 > end: raise ValueError('KEY4: %d bytes left, need 4' % (end - p))
+        n = U32(d, p); p += 4
+        if n * 60 > end - p: raise ValueError('KEY4: track of %d keys overruns' % n)
+        track = []
+        for i in range(n):
+            b = p + i * 60
+            track.append((U32(d, b), {
+                'pos':   struct.unpack_from('<3f', d, b + 4),
+                'rot':   struct.unpack_from('<4f', d, b + 16),
+                'scale': struct.unpack_from('<3f', d, b + 32),
+                'axis':  struct.unpack_from('<4f', d, b + 44)}))
+        out.append(track); p += n * 60
+    if p != end: raise ValueError('KEY4: walk ended at %d, chunk ends at %d' % (p, end))
+    return out
