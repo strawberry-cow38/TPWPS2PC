@@ -56,3 +56,34 @@ All read a Mode 2/2352 track directly. Nothing copies a disc image.
 - `MOVIES/*.MPC` — ~285 MB, codec unidentified
 - `AUDIO/**/*.MAP` + `*.SDT` bank pairs
 - `ILINK.IRX` / `ILSOCK.IRX` — the online features
+
+## What this repo has that OpenTPW does not
+
+[OpenTPW](https://github.com/OpenTPW/OpenTPW) re-implements the **PC** release. Comparing format
+coverage only — their status table and repo against this one, 2026-09-21:
+
+**Only here:**
+
+| | |
+|---|---|
+| `.aps` animation | no handler in their repo, and **no animation format on their table at all** — not ✅, ⚠️ or ❌ |
+| `.plb` particles | **zero hits repo-wide**; no particle format listed |
+| `FKNL` archive | their archive magics are `BFMU` `BFST` `BILZ` `DWFB`. **The PS2 `.WAD` is a different container from the PC one despite the shared extension.** |
+
+**Both, with the PS2 side possibly further along:**
+
+* `.rse` ride scripts — listed there as ⚠️ in progress; here the container plus six opcodes
+  confirmed against matched `.rss` source.
+* Models — theirs is `.MD2` at ⚠️, and their documentation link is `formats/m3d2.html`: the same
+  format family under a different extension. Whether the ADC bit, the `mesh+0x66` batch count and
+  the per-group material linkage hold on the PC variant is unchecked.
+* EA RefPack — both, no divergence.
+
+**Only there** (PC-side, or simply not needed yet): `.WCT` textures, `.SAM`, `.SDT`/`.MP2` audio,
+`.BFMU`/`.BFST`/`.BFUM` strings, `.MAP`, `.TPWS`/`.INTS`/`.LAYS` saves, `.BF4` fonts, `.LIPS`,
+`.MTR` materials, `.TQI` video.
+
+⚠ **This is a comparison of format LISTS, deliberately not of implementations.** Their docs site may
+carry more than the repo does, and a ⚠️ can mean anything from a stub to nearly finished. The point
+of the exercise was to find what is genuinely unexplored, not to grade anyone's work — and the
+answer is that **animation and particles appear to be undocumented for this game anywhere.**
