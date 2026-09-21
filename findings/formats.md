@@ -1542,3 +1542,35 @@ sitting.
 `.sam` + `.rss` + `.scc` = **993 entries resolved or written off in three commands**, none of which
 needed a decoder. `.rse` has its own answer key sitting beside it. The honest remaining unknowns in
 this group are `.rse`'s opcodes and `.lip`'s record meaning.
+
+
+## ⭐⭐ `.sam` cross-checked against the PSX port — and where the two versions diverge
+
+`TPW-PSXPC` reads its ride capacities out of the PSX executable. The PS2 disc ships the same table
+as text. Comparing the 20 rides the PSX port prints against `Upgrades[0..2].InitCapacity` in `.sam`:
+
+**11 agree to the digit, 5 differ, 4 are absent from the PS2 disc.** Three independent numbers
+matching exactly on 11 rides across two platforms and two extraction routes is not coincidence —
+**`.sam` is the same ride table, and it is validated.**
+
+⭐ **The split is perfectly clean on ride type.** The PSX port labels each ride with a type:
+
+| | rides | PSX type |
+|---|---|---|
+| **agree** | Crazy Ape, Sun God, Mayan Spinner, Eruption, Tom Tom Twister, Rocky Racers, The Hot Pot, Belly Bounce, Mumbo, Inca Totem, Aztec Mayhem | **all 11 are type 3** |
+| **differ** | Chac Atak, Gorilla Thrilla, Dino Karts, Splish Splash, Jurassic Tours | **none is type 3** (1, 1, 6, 6, 7) |
+
+11 of 11 and 5 of 5. The flat rides carried their numbers between versions unchanged; the tracked
+rides — coasters, karts, tours — were **rebalanced for PS2**. `Jurassic Tours` went 8/8/8 to 9/18/27,
+`Chac Atak` 18/24/30 to 6/6/6.
+
+⚠ So the data transfers, but **not blindly**: copying PS2 capacities onto a PSX-accurate port would
+silently rebalance every tracked ride. The type-3 set is safe; the rest is a deliberate divergence
+and a decision, not a lookup.
+
+### What `.sam` has that a binary-extracted table does not
+
+211 uniquely-named rides. Beyond capacity: `CostOfUpgrade` and `CostOfResearch` for **three upgrade
+tiers**, `RedLineCapacity`, `ExcitementLevel`, `InitPricePerUse`, `InitCostOfGoods`,
+`InitChanceOfLoosing`, `Research.Group`, `IsChoosable`, `OverwritePriority`, the entry/exit stand
+positions, and the footprint and hoarding as ASCII art.
