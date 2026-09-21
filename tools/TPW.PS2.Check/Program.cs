@@ -1,80 +1,113 @@
 using TPW.PS2.Data;
-using TPW.PS2.Launcher;
 
-// A self-test that runs the readers against a real disc and reports numbers that can FAIL.
-// Every figure it prints was validated in Python first; this proves the C# port agrees.
+// A self-test that runs the readers against a real disc and reports numbers that CAN FAIL.
+//
+// ⚠⚠ IT COVERS EVERY WAD, AND IT EXCLUDES NOTHING. The previous version tested JUNGLE.WAD alone
+// and skipped meshes with no batches, and reported "935 / 935, 100.00%" while 198 meshes on the
+// disc were coming back with no geometry at all. A self-test that filters its own input is how a
+// broken reader keeps its perfect score.
 if (args.Length < 1) { Console.WriteLine("usage: tpwps2check <disc.bin>"); return 1; }
 
 using var disc = new Disc(args[0]);
 var files = disc.Files();
 Console.WriteLine($"disc: {files.Count} entries");
 
-var wadEntry = files.First(f => f.Path.EndsWith("JUNGLE.WAD", StringComparison.OrdinalIgnoreCase));
-var wad = new WadArchive(disc.Read(wadEntry.Extent, wadEntry.Size));
-Console.WriteLine($"JUNGLE.WAD: {wad.Entries.Count} entries, {wad.Entries.Count(e => e.IsRaw)} stored raw");
+var wads = files.Where(f => !f.IsDirectory && f.Path.EndsWith(".WAD", StringComparison.OrdinalIgnoreCase))
+                .ToList();
 
-int ok = 0, bad = 0;
-foreach (var e in wad.Entries)
-{
-    try { if (wad.Read(e).Length == e.DecompressedSize) ok++; else bad++; }
-    catch { bad++; }
-}
-Console.WriteLine($"  decompress: {ok} to their declared size, {bad} failed");
+int entries = 0, decOk = 0, decBad = 0;
+int meshes = 0, faceOk = 0, faceBad = 0, noBatches = 0, models = 0, modelBad = 0;
+int tga = 0, tgaOk = 0, tgaBad = 0, tga24 = 0, tga32 = 0, tgaRle = 0, tgaPal = 0;
+int withPartial = 0, withCutout = 0;
+int aps = 0, apsOk = 0, apsRecords = 0, apsSkeletal = 0, apsShared = 0;
+var firstFails = new List<string>();
 
-// ⭐ The format's own checksum on a geometry reader: mesh+0x62 is a face count.
-int meshes = 0, faceOk = 0, animated = 0;
-foreach (var e in wad.Entries.Where(x => x.Path.EndsWith(".mps", StringComparison.OrdinalIgnoreCase)))
+foreach (var w in wads)
 {
-    Model m;
-    try { m = new Model(wad.Read(e)); } catch { continue; }
-    foreach (var mesh in m.Meshes)
+    WadArchive wad;
+    try { wad = new WadArchive(disc.Read(w.Extent, w.Size)); }
+    catch (Exception ex) { Console.WriteLine($"  {w.Path}: not a WAD ({ex.Message})"); continue; }
+    foreach (var e in wad.Entries)
     {
-        if (mesh.BatchCount == 0) continue;
-        meshes++;
-        if (m.Triangles(mesh).Count == mesh.FaceCount) faceOk++;
-        if (mesh.AnimVertexList != 0) animated++;
-    }
-}
-Console.WriteLine($"models: {meshes} meshes, {faceOk} matching their own face count " +
-                  $"({100.0 * faceOk / Math.Max(meshes, 1):F2}%), {animated} animated");
+        entries++;
+        byte[] data;
+        try { data = wad.Read(e); } catch { decBad++; continue; }
+        if (data.Length == e.DecompressedSize) decOk++; else { decBad++; continue; }
 
-int aps = 0, apsOk = 0, rot = 0, scale = 0, spline = 0, morph = 0;
-foreach (var e in wad.Entries.Where(x => x.Path.EndsWith(".aps", StringComparison.OrdinalIgnoreCase)))
-{
-    aps++;
-    try
-    {
-        var a = new Animation(wad.Read(e));
-        foreach (var rec in a.Records())
+        var ext = Path.GetExtension(e.Path).ToLowerInvariant();
+        if (ext == ".mps")
         {
-            if (rec.Skeletal) continue;
-            for (int i = 0; i < rec.TrackCount; i++)
+            models++;
+            Model m;
+            try { m = new Model(data); } catch { modelBad++; continue; }
+            foreach (var mesh in m.Meshes)
             {
-                int t = a.TrackAt(rec, i);
-                if (a.Rotation(t) != null) rot++;
-                if (a.Scale(t) != null) scale++;
-                if (a.SplinePath(t) != null) spline++;
-                if (a.Morph(t) != null) morph++;
+                meshes++;
+                if (mesh.BatchCount == 0) { noBatches++; continue; }
+                int t;
+                try { t = m.Triangles(mesh).Count; } catch { t = -1; }
+                if (t == mesh.FaceCount) faceOk++;
+                else
+                {
+                    faceBad++;
+                    if (firstFails.Count < 10)
+                        firstFails.Add($"{w.Path}{e.Path} [{mesh.Name}] {t} tris vs {mesh.FaceCount} declared");
+                }
             }
         }
-        apsOk++;
+        else if (ext == ".tga")
+        {
+            tga++;
+            int kind = data.Length > 2 ? data[2] : 0, bpp = data.Length > 16 ? data[16] : 0;
+            if ((kind & 8) != 0) tgaRle++;
+            if ((kind & 7) == 1) tgaPal++;
+            if (bpp == 24) tga24++; else if (bpp == 32) tga32++;
+            try
+            {
+                var t = new Targa(data);
+                tgaOk++;
+                if (t.PartialAlpha > 0) withPartial++;
+                if (t.ClearTexels > 0) withCutout++;
+            }
+            catch
+            {
+                tgaBad++;
+                if (firstFails.Count < 10) firstFails.Add($"{w.Path}{e.Path} kind {kind} {bpp}bpp did not decode");
+            }
+        }
+        else if (ext == ".aps")
+        {
+            aps++;
+            try
+            {
+                var a = new Animation(data);
+                foreach (var rec in a.Records())
+                {
+                    apsRecords++;
+                    if (rec.Skeletal) apsSkeletal++;
+                    if (rec.Shared) apsShared++;
+                    a.Length(rec);                  // must not throw on either track format
+                }
+                apsOk++;
+            }
+            catch { if (firstFails.Count < 10) firstFails.Add($"{w.Path}{e.Path} animation threw"); }
+        }
     }
-    catch (Exception ex) { Console.WriteLine($"  FAILED {e.Path}: {ex.Message}"); }
 }
-Console.WriteLine($"animation: {apsOk}/{aps} parsed; channels -- rotation {rot}, scale {scale}, " +
-                  $"spline {spline}, morph {morph}");
 
-// The launcher's own rules, exercised against the same disc. These decide what the user sees
-// before anything renders, so a wrong answer here is the first thing they meet.
-Console.WriteLine();
-var real = DiscLocator.Identify(args[0]);
-Console.WriteLine($"locator, the real disc      : {real.Status} -- {real.Message}");
-var dir = DiscLocator.Identify(Path.GetDirectoryName(args[0]));
-Console.WriteLine($"locator, its folder         : {dir.Status} -- {dir.Message}");
-var missing = DiscLocator.Identify(@"Z:\nope\nothing.bin");
-Console.WriteLine($"locator, a path that is not : {missing.Status} -- {missing.Message}");
-var notdisc = DiscLocator.Identify(System.Reflection.Assembly.GetEntryAssembly().Location);
-Console.WriteLine($"locator, a file that is not : {notdisc.Status} -- {notdisc.Message}");
-var g = GodotLocator.Find(console: true);
-Console.WriteLine($"godot                       : found={g.Found} satisfied={g.Satisfied} {g.Path}");
-return 0;
+Console.WriteLine($"archives: {wads.Count} WADs, {entries} entries");
+Console.WriteLine($"  decompress: {decOk} to their declared size, {decBad} failed");
+Console.WriteLine($"models: {models} files ({modelBad} unreadable), {meshes} meshes");
+Console.WriteLine($"  face count: {faceOk} match, {faceBad} DO NOT, {noBatches} have no batches " +
+                  $"({100.0 * faceOk / Math.Max(faceOk + faceBad, 1):F2}% of those with geometry)");
+Console.WriteLine($"textures: {tga} TGAs, {tgaOk} decoded, {tgaBad} REJECTED " +
+                  $"({tga24} 24bpp, {tga32} 32bpp, {tgaRle} RLE, {tgaPal} paletted)");
+Console.WriteLine($"  alpha: {withCutout} have clear texels, {withPartial} have PARTIAL alpha");
+Console.WriteLine($"animation: {aps} .aps files, {apsOk} read, {apsRecords} records " +
+                  $"({apsSkeletal} skeletal, {apsShared} whose tracks live in another file)");
+if (firstFails.Count > 0)
+{
+    Console.WriteLine("first failures:");
+    foreach (var f in firstFails) Console.WriteLine("   " + f);
+}
+return faceBad == 0 && tgaBad == 0 && decBad == 0 ? 0 : 2;

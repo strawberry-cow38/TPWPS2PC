@@ -13,7 +13,7 @@ public partial class Viewer : Node3D
 {
     AssetLibrary _lib;
     AnimatedModel _current;
-    readonly Dictionary<string, ImageTexture> _texCache = new();
+    readonly Dictionary<string, (ImageTexture Tex, bool Soft)> _texCache = new();
     AssetLibrary.RideAssets _ride;
     Aps _anim;
     List<Aps.Record> _records = new();
@@ -218,7 +218,7 @@ public partial class Viewer : Node3D
             foreach (var mat in model.Materials)
             {
                 if (mat == null) continue;
-                if (TextureFor(mat) != null) got++;
+                if (TextureFor(mat).Tex != null) got++;
                 else { missed++; if (misses.Count < 8) misses.Add(mat); }
             }
             GD.Print($"[tex] {got} resolved, {missed} missing" +
@@ -242,22 +242,29 @@ public partial class Viewer : Node3D
         }
     }
 
-    ImageTexture TextureFor(string material)
+    /// <summary>A material's texture, and whether it needs BLENDING rather than a cutout.
+    ///
+    /// ⭐ Soft means more than one per cent of its texels sit at an alpha that is neither clear nor
+    /// solid. Measured across the disc that is 1,532 of the 1,710 32-bit TGAs, and the distribution
+    /// is flat rather than clustered near zero -- these are real translucency (`Scifi_Glass` 63%,
+    /// `Research_Hair` 39%), not resampling fuzz on a cutout edge.</summary>
+    (ImageTexture Tex, bool Soft) TextureFor(string material)
     {
         // ⚠ The toggle must be checked HERE, not at build time, or turning textures off would
         // still hand the material a texture it had already cached.
-        if (material == null || _texOn?.ButtonPressed == false) return null;
+        if (material == null || _texOn?.ButtonPressed == false) return (null, false);
         if (_texCache.TryGetValue(material, out var t)) return t;
         var tga = _lib.Texture(_ride, material);
-        ImageTexture tex = null;
+        (ImageTexture, bool) made = (null, false);
         if (tga != null)
         {
             var img = Image.CreateFromData(tga.Width, tga.Height, false, Image.Format.Rgba8, tga.Pixels);
             img.GenerateMipmaps();
-            tex = ImageTexture.CreateFromImage(img);
+            made = (ImageTexture.CreateFromImage(img),
+                    tga.PartialAlpha * 100 > tga.Width * tga.Height);
         }
-        _texCache[material] = tex;
-        return tex;
+        _texCache[material] = made;
+        return made;
     }
 
     /// <summary>Frame the model on its ACTUAL geometry, not on `mesh+0x70/+0x80`.

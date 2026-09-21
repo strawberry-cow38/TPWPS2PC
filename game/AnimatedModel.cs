@@ -55,7 +55,7 @@ public sealed class AnimatedModel
     public string Summary { get; private set; }
 
     public AnimatedModel(Model model, Aps anim, Aps.Record rec,
-                         Func<string, ImageTexture> texture)
+                         Func<string, (ImageTexture Tex, bool Soft)> texture)
     {
         _model = model; _anim = anim;
         // ⚠ THE TWO TRACK FORMATS ARE NOT INTERCHANGEABLE. A skeletal record's tracks are 20 bytes,
@@ -134,7 +134,51 @@ public sealed class AnimatedModel
     /// It also carries the two settings this data actually needs: repeat, because `m_boxes` UVs run
     /// u 0..4, and a cutout threshold of 16/255 rather than the engine default of 0.5, which would
     /// discard the ~50% of texels at or below alpha 128.</summary>
-    static Shader _shader;
+    static Shader _shader, _blendShader;
+
+    /// <summary>The blended twin of the viewer shader, for textures with SOFT alpha.
+    ///
+    /// ⚠⚠ CUTOUT THROWS AWAY EVERY INTERMEDIATE TEXEL. 1,532 of the disc's 32-bit TGAs have more
+    /// than one per cent of their texels at an alpha that is neither clear nor solid --
+    /// `Scifi_Glass.tga` is 63% of them, `Research_Hair.tga` 39% -- and a shader that only
+    /// discards below a threshold and then writes an opaque ALBEDO renders all of it solid. The
+    /// owner saw it straight away: "some textures are missing alpha".</summary>
+    static Shader BlendShader => _blendShader ??= new Shader
+    {
+        // ⚠ Written out rather than string-replaced off the cutout shader: a Replace that stopped
+        // matching would silently hand back the cutout shader and the bug would come straight back
+        // with nothing to notice.
+        Code = @"
+shader_type spatial;
+render_mode cull_disabled, diffuse_lambert, specular_disabled;
+
+uniform sampler2D albedo_tex : source_color, filter_nearest_mipmap, repeat_enable;
+uniform float cutout = 0.0627;      // 16/255
+uniform bool has_tex = true;
+uniform bool affine = true;
+varying vec3 uvw;
+
+void vertex() {
+    vec4 vpos = MODELVIEW_MATRIX * vec4(VERTEX, 1.0);
+    float w = max(-vpos.z, 0.0001);
+    uvw = vec3(UV * w, w);
+}
+
+void fragment() {
+    vec2 uv = affine ? (uvw.xy / uvw.z) : UV;
+    if (has_tex) {
+        vec4 c = texture(albedo_tex, uv);
+        if (c.a < cutout) discard;   // still drop the fully clear texels
+        ALBEDO = c.rgb;
+        ALPHA = c.a;                 // ⭐ and KEEP the soft ones -- this is the whole difference
+    } else {
+        ALBEDO = vec3(0.72);
+    }
+    if (!FRONT_FACING) { NORMAL = -NORMAL; }
+}
+"
+    };
+
     static Shader ViewerShader => _shader ??= new Shader
     {
         Code = @"
@@ -178,7 +222,7 @@ void fragment() {
 "
     };
 
-    void BuildSurfaces(Part p, Func<string, ImageTexture> texture)
+    void BuildSurfaces(Part p, Func<string, (ImageTexture Tex, bool Soft)> texture)
     {
         var byMat = p.Tris.GroupBy(t => t.Material).ToList();
         p.Surfaces = new MeshInstance3D[byMat.Count];
@@ -186,9 +230,10 @@ void fragment() {
         for (int i = 0; i < byMat.Count; i++)
         {
             var mi = new MeshInstance3D();
-            var mat = new ShaderMaterial { Shader = ViewerShader };
             int m = byMat[i].Key;
-            var tex = (m >= 0 && m < _model.Materials.Count) ? texture(_model.Materials[m]) : null;
+            var (tex, soft) = (m >= 0 && m < _model.Materials.Count)
+                              ? texture(_model.Materials[m]) : (null, false);
+            var mat = new ShaderMaterial { Shader = soft ? BlendShader : ViewerShader };
             mat.SetShaderParameter("albedo_tex", tex);
             mat.SetShaderParameter("has_tex", tex != null);
             // ⚠ Vertex snapping is deliberately NOT wired yet -- the owner asked for affine only.
