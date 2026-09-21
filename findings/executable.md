@@ -47,13 +47,49 @@ that density:
 dies part-way through. 8.4% of the instructions blocking 66% of the binary is exactly the shape the
 measurements show.
 
+## ⭐⭐ Fixed: the community R5900 extension
+
+[`chaoticgd/ghidra-emotionengine-reloaded`](https://github.com/chaoticgd/ghidra-emotionengine-reloaded)
+v2.1.37 ships a build for exactly Ghidra 12.1.2. Installed into
+`Ghidra/Extensions/`, it adds the language `r5900:LE:32:default`. Same binary, same machine, one
+import later:
+
+| | stock `MIPS:LE:64:64-32addr` + aggressive | `r5900:LE:32:default` |
+|---|---:|---:|
+| Pcode errors | 1,692 | **0** |
+| instructions | 145,879 | **408,031** |
+| functions | 6,496 | **7,298** |
+| named functions | 1 | **54** |
+| `.text` decoded | 33.8% | **94.8%** |
+
+**Zero decode errors and 94.8% of `.text`.** The diagnosis above was right: it was the R5900
+instructions and nothing else.
+
+⚠ **AND THE OLD COVERAGE FIGURE STOPPED MEANING WHAT IT SAID.** The extension maps the PS2's real
+address space — `vu0.code`, `vu1.code`, a 32 MB `iop_ram` — and marks those blocks executable, so a
+single "% of executable bytes" number collapsed to 4.6% while the disassembly got three times
+better. The figures here are now **per block**, because one number over a denominator that changes
+between imports is not a measurement.
+
+| block | size | instructions | decoded |
+|---|---:|---:|---:|
+| `.text` | 1,720,844 | 408,031 | **94.8%** |
+| `.vutext` | 7,104 | 0 | 0% |
+| `vu0.code` | 4,096 | 0 | 0% |
+| `vu1.code` | 16,384 | 0 | 0% |
+| `iop_ram` | 33,554,432 | 0 | 0% |
+
+**The VU microcode is still undisassembled**, but no longer unreachable: the extension has VU0/VU1
+support and creates the blocks for it. `.vutext`'s 7,104 bytes have to be mapped into `vu1.code`
+and disassembled there. That is the route to the `.mps` vertex layout — the VU1 program is the code
+that consumes those buffers.
+
 ## What that means
 
-Reverse-engineering this executable is **blocked on tooling, not on difficulty** — and the fix is
-bounded and known: extend the MIPS SLEIGH spec with `LQ`, `SQ` and the MMI set, or apply one of the
-community R5900 definitions. Until then any function count or coverage figure taken from a stock
-Ghidra import of a PS2 game understates it by roughly threefold, and *which* functions are missing is
-not random — it is the ones doing vector maths, which is to say the interesting ones.
+It was **blocked on tooling, not on difficulty**, and the community extension unblocked it in one
+import. Any function count or coverage figure taken from a *stock* Ghidra import of a PS2 game
+understates it by roughly threefold, and which functions are missing is not random — it is the ones
+doing vector maths, which is to say the interesting ones. Never quote a stock number.
 
 ⭐ **This is the real difference in difficulty between the two versions**, and it is not the one
 anyone expects. The PSX overlay needed a base address established by experiment and then read
