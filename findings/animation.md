@@ -469,3 +469,105 @@ tracks, which is exactly the indirection `FUN_001675f0` and `FUN_00167708` exist
 the sampler), and the mapping between them and the on-disc layout is the one remaining link.** The
 next move is the function that consumes the `+0x20` stream at playback rather than at load — the
 same approach that has produced every correct thing in this file.
+
+
+---
+
+# ⭐⭐⭐ SOLVED — and the "runtime structure" above was WRONG
+
+**Correction first.** The section immediately above concludes that the sampler walks a structure
+built at load from the `+0x20` stream, because the fields it reads held `0, 2, 0` in the file. That
+is not what is happening. There is no runtime expansion. **There are two track formats in this
+file, chosen by a flag**, and I was reading one format's field list against the other format's
+bytes.
+
+`FUN_00167358` picks them, and it says so in one line:
+
+```c
+if ((*param_1 & 0x20) == 0)  FUN_001674b0(tracks + i*0x30, base);   // 48-byte tracks
+else                         FUN_00167758(tracks + i*0x14, base);   // 20-byte tracks
+```
+
+`FUN_001a8da8` branches on **the same bit** to sample them. The `+0x08/+0x09` counts and
+`+0x0C/+0x10` key pointers I documented belong to the **20-byte** track. `monkey.aps` uses the
+**48-byte** one. Both readings were of real code; I joined them to the wrong file.
+
+⭐ The tell was available and ignored: `FUN_001674b0` relocates `+0x10 … +0x2C` and **not `+0x0C`**,
+so `+0x0C` could never have been a file pointer in a 48-byte track. A pointer field that the
+relocator does not touch is not a pointer. See [[feedback_read_the_parser_not_the_bytes]] — this is
+exactly its "layout-switching flags" case.
+
+## The 20-byte track — keys inline (`FUN_00167758`, `FUN_001a8da8`)
+
+```
++0x00 u16  node index          +0x08 u8 rotation key count   +0x09 u8 position key count
++0x0C u32 -> rotation keys     10 B: u16 time, int16 x,y,z,w   (/32768, SLERP)
++0x10 u32 -> position keys      8 B: u16 time, int16 x,y,z     (linear)
+```
+
+`FUN_00167758` relocates `+0x0C` and `+0x10` and nothing else, which is the whole confirmation.
+The sampler's other half skins meshes with these, so this is the **skeletal** path.
+⚠ **Zero of JUNGLE.WAD's 89 `.aps` files use it** — all 1,229 tracks are the 48-byte kind.
+
+## The 48-byte track — VERTEX MORPH ANIMATION (`FUN_001674b0`, `FUN_001a6d68`)
+
+```
++0x00 u16  node index (mesh when < mesh count, else helper)
++0x04 u32  flags   0x1000 = has a vertex stream    0x40000 = alternate player (FUN_001a7e18)
++0x10 +0x14 +0x18 +0x1C +0x20 +0x24 +0x28 +0x2C    eight relocated pointers; +0x20 is the stream
+```
+
+### The vertex stream (`FUN_001675f0` relocates it, `FUN_001a6d68` plays it)
+
+```
++0x00 u16 flags      ⭐ bit 0x08 = key times are 1 BYTE; clear = u16
++0x02 u16 group-record count       +0x04 u16 group count      +0x06 u16 total vertices
++0x08 u32 -> group records, 12 B each
++0x0C f32 offset.x   +0x10 offset.y   +0x14 offset.z
++0x18 f32 scale.x    +0x1C scale.y    +0x20 scale.z
++0x24 u32 -> group list, u16 each (group -> group record)
++0x28 u32 -> packed vertex data
+
+group record (12 B):
+  +0x00 u16 vertex count (the stride through the packed data is count*4 bytes)
+  +0x02 u16 cursor index      +0x04 u32 -> key times      +0x08 f32 t (runtime scratch)
+```
+
+### ⭐ The packing, from the dequantiser
+
+```c
+X = (float)((v << 0x16) >> 0x16) * scale.x + offset.x    // bits  0..9,  SIGNED 10-bit
+Y = (float)((v << 0x0c) >> 0x16) * scale.y + offset.y    // bits 10..19, SIGNED 10-bit
+Z = (float)((v << 0x02) >> 0x16) * scale.z + offset.z    // bits 20..29, SIGNED 10-bit
+```
+
+**One 32-bit word is a whole vertex.** The game proves the field width itself: it builds the node's
+bounds as `offset - 512*scale  ..  offset + 511*scale`, which is exactly the range of an int10.
+
+### Playback
+
+```c
+while (times[cursor + 1] < now) cursor++;
+t = (now - times[cursor]) / (times[cursor + 1] - times[cursor]);
+vertex = lerp(dequant(keyA), dequant(keyB), t);      // 30 fps
+```
+
+## Validation — three independent checks, with controls
+
+| check | result |
+|---|---|
+| All 89 `.aps` in JUNGLE.WAD parse to their own declared shape | **89 / 89**, 0 failures |
+| Key-time lists ascending from 0, read at the width flag `0x08` selects | **1,699 / 1,699** |
+| ⭐ the same lists read at the *wrong* width (the CONTROL) | **132 / 1,699** — and those 132 are exactly the bit-clear ones |
+| `sum(groupRecord.count over the group list) == header+0x06` | **290 / 290** streams |
+
+The control is the part that matters: a byte/u16 mix-up cannot hide, because reading 1,567 byte
+lists as u16 produces garbage and reading 132 u16 lists as bytes produces garbage, and the flag
+partitions them with **no overlap and no remainder**.
+
+Animation lengths come out as authored round numbers — 100, 150, 120, 140, 200, 80, 125, 50 frames
+(3.3 s … 6.7 s at 30 fps), which is the sanity check no format guess survives by accident.
+
+⚠ And the byte runs this file dismissed earlier — *"`0, 34, 37, 39 …` ending in `0xD7`, at
+single-byte spacing and so cannot be keys"* — **were the key times.** They were found, measured,
+and argued away because they did not fit the stride of the format I had wrongly assumed.
