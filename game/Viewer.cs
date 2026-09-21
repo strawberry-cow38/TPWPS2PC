@@ -617,6 +617,10 @@ public partial class Viewer : Node3D
 
         _park.Build(fp);
         _park.Place(_current.Root, mesh, fp);
+        // ⚠ AFTER the placement, never before. Rebuild frames the camera on the model in its own
+        // space and Place then MOVES it onto the footprint, so framing first aims the shot at where
+        // the ride used to be -- which photographs empty grass and looks like the ride failed to load.
+        FrameParkCamera(fp, mesh);
 
         // ⚠ Report the model against its cells rather than assuming it fits. A ride overflowing
         // its footprint is a real thing here -- the cell size itself was measured, not given.
@@ -702,6 +706,20 @@ public partial class Viewer : Node3D
     /// that the model occupies a couple of hundred pixels no matter the window size, and thin
     /// geometry (chains, the sign, banana shapes) falls below one pixel and simply vanishes. That
     /// is what made the viewer look like it was missing artwork the Python renderer had.</summary>
+    /// <summary>Aim at the park rather than the ride: the footprint's centre, pulled back far
+    /// enough to hold the laid ground as well as whatever is standing on it.</summary>
+    void FrameParkCamera(Park.Footprint fp, Model mesh)
+    {
+        var (min, max) = Park.Bounds(mesh);
+        float w = Math.Max(fp.Width, 1) * Park.CellSize, h = Math.Max(fp.Height, 1) * Park.CellSize;
+        _focus = new Vector3(w * 0.5f, (max.Y - min.Y) * 0.35f, h * 0.5f);
+        // The ground is laid with six cells of padding on every side; frame a little of it rather
+        // than the ride alone, so the footprint reads against the grass around it.
+        float span = Math.Max(w, h) + Park.CellSize * 6f;
+        _dist = Math.Max(span * 0.9f, 1e-3f);
+        _pitch = -0.55f;
+    }
+
     void FrameCamera(Model model)
     {
         var world = model.WorldTransforms();

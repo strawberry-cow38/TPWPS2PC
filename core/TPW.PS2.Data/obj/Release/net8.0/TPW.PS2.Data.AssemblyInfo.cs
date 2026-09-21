@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("TPW.PS2.Data")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+4f8a6f6c49c2295f17c89beb7f3650c3c9c144eb")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+580ed9cfe02ff7a83dcdf7cbca92394ad398b3c4")]
 [assembly: System.Reflection.AssemblyProductAttribute("TPW.PS2.Data")]
 [assembly: System.Reflection.AssemblyTitleAttribute("TPW.PS2.Data")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
