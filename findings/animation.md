@@ -157,3 +157,34 @@ next step is a second and third file read cold — `bouncy.aps` (5 tracks), `bum
 which of the monkey-derived fields are real and which are coincidence, and the PSX side's 88-byte
 descriptors and logical phase map (`TPW-PSXPC` `findings/animation-phases.md`) remain the closest
 known relative to check shapes against.
+
+
+## Inside a track block — suggestive, and NOT established
+
+`monkey.aps` track 0 (node 2), block `0x284..0x370`, 236 bytes, read by eye:
+
+```
++0x00  0x00010009            u16 9, u16 1
++0x04  0x00280004            u16 4, u16 40
++0x08  0x2B0                 an offset inside this block
++0x0C  f32  -4.1931,  2.4086,  -3.5531     ← the magnitude of a position
++0x18  f32   0.0148,  0.0128,   0.0031     ← small; scale or part of a rotation
++0x24  0x2C8, +0x28  0x2D0    two more in-block offsets
++0x2C  10
++0x30  0x2BC                 → bytes 00 22 25 27 28 29 2A 2D
+                               = 0, 34, 37, 39, 40, 41, 42, 45
+```
+
+⭐ That byte run is **ascending, starts at 0, and ends at exactly 45 — the file's `0x1E`**, which is
+the strongest hint yet that `0x1E` is a frame count and these are keyframe numbers. At `0x2D0` sit
+repeated 32-bit values (`0x0981339E`, `0x07809BC2`, …) of the shape packed rotations take.
+
+⚠⚠ **AND THE GENERALISATION FAILS: 0 of 204 track blocks.** Testing "the u32 at +0x2C is a keyframe
+count and the u32 at +0x30 points at that many ascending bytes, starting at 0 and ending no later
+than the frame count" passes **zero** blocks — including, on inspection, monkey's own: `+0x2C` is 10
+but only 8 bytes ascend before the run breaks (`… 45, 49, 215`).
+
+So the eight bytes ending exactly on 45 are **suggestive and unexplained**, the six floats are
+**unassigned**, and the field offsets above are **one file read by eye, not a layout**. Written down
+at that strength deliberately: the same "read one example, generalise, tune until it passes" loop has
+already cost this format three wrong structural claims today.
