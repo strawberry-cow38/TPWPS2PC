@@ -28,6 +28,7 @@ public partial class Viewer : Node3D
     // quits, so a render can be checked over ssh without a display.
     string _shotPath; int _shotFrame = -1, _shotWait;
     string _wantRide, _wantAnim, _wantWad, _wantMode, _wantImage, _wantSound, _wantPlay;
+    string _discPath;
 
     ItemList _rideList;
     CheckBox _texOn;
@@ -37,13 +38,15 @@ public partial class Viewer : Node3D
 
     /// <summary>What the left-hand list is showing. The archive is the same either way; only what
     /// the viewer does with an entry changes.</summary>
-    enum Mode { Models, Textures, Sounds }
+    enum Mode { Models, Textures, Sounds, Movies }
     Mode _mode = Mode.Models;
     TextureRect _imageView;
     ColorRect _imageBack;
     List<WadArchive.Entry> _images = new();
 
     List<Disc.Entry> _banks = new();
+    VideoStreamPlayer _video;
+    List<string> _movies = new();
     SoundBank _bank;
     AudioStreamPlayer _player;
     Button _playBtn;
@@ -98,6 +101,7 @@ public partial class Viewer : Node3D
             GD.Print("[v] " + msg);
             return;
         }
+        _discPath = disc;
         GD.Print("[v] opening disc"); _lib = new AssetLibrary(disc);
         var wads = _lib.Wads(); GD.Print($"[v] {wads.Count} wads"); foreach (var w in wads) _wadPick.AddItem(w);
         if (_wadPick.ItemCount > 0)
@@ -117,7 +121,11 @@ public partial class Viewer : Node3D
         { _animPick.Select(ai); _recordIndex = ai; Rebuild(); }
         // ⚠ Every switch has an environment fallback, because arguments after `--` do not survive
         // cmd's quoting and a silent empty argument presents as a hang rather than an error.
-        if (_wantMode != null && _wantMode.StartsWith("sou", StringComparison.OrdinalIgnoreCase))
+        if (_wantMode != null && _wantMode.StartsWith("mov", StringComparison.OrdinalIgnoreCase))
+        {
+            _modePick.Select(3); SetMode(Mode.Movies);
+        }
+        else if (_wantMode != null && _wantMode.StartsWith("sou", StringComparison.OrdinalIgnoreCase))
         {
             _modePick.Select(2); SetMode(Mode.Sounds);
             if (_wantSound != null)
@@ -199,7 +207,8 @@ public partial class Viewer : Node3D
         ui.AddChild(_imageView);
 
         _modePick = new OptionButton();
-        _modePick.AddItem("Models"); _modePick.AddItem("Textures"); _modePick.AddItem("Sounds");
+        _modePick.AddItem("Models"); _modePick.AddItem("Textures");
+        _modePick.AddItem("Sounds"); _modePick.AddItem("Movies");
         _modePick.ItemSelected += i => SetMode((Mode)(int)i);
         col.AddChild(_modePick);
 
@@ -212,6 +221,7 @@ public partial class Viewer : Node3D
         {
             if (_mode == Mode.Models) ShowRide((int)i);
             else if (_mode == Mode.Textures) ShowImage((int)i);
+            else if (_mode == Mode.Movies) ShowMovie((int)i);
             else ShowSound((int)i);
         };
         col.AddChild(_rideList);
@@ -239,6 +249,15 @@ public partial class Viewer : Node3D
 
         _player = new AudioStreamPlayer();
         AddChild(_player);
+
+        // ⭐ Godot plays Ogg Theora with no plugin and no native build, which is why the movies are
+        // converted once rather than decoded at runtime: the eleven .MPC files are MPEG-2
+        // elementary streams inside EA's own container, and nothing off the shelf opens that.
+        _video = new VideoStreamPlayer { Visible = false, Expand = true, OffsetLeft = 280,
+                                         MouseFilter = Control.MouseFilterEnum.Ignore };
+        _video.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+        ui.AddChild(_video);
+        ui.MoveChild(_video, 0);
     }
 
     void SetMode(Mode m)
@@ -246,10 +265,14 @@ public partial class Viewer : Node3D
         _mode = m;
         _imageView.Visible = _imageBack.Visible = m == Mode.Textures;
         _animPick.Visible = _texOn.Visible = _scrub.Visible = m == Mode.Models;
-        _playBtn.Visible = m == Mode.Sounds;
+        _playBtn.Visible = m == Mode.Sounds || m == Mode.Movies;
+        _video.Visible = m == Mode.Movies;
+        if (m != Mode.Movies) _video.Stop();
         // ⚠ Hide the model too. A transparent image pane over a lit 3D scene reads as a bug.
         if (_current != null) _current.Root.Visible = m == Mode.Models;
-        if (m == Mode.Sounds) FillBankPicker(); else FillWadPicker();
+        if (m == Mode.Sounds) FillBankPicker();
+        else if (m == Mode.Movies) FillMovieList();
+        else FillWadPicker();
     }
 
     void FillWadPicker()
@@ -266,6 +289,42 @@ public partial class Viewer : Node3D
         foreach (var b in _banks) _wadPick.AddItem(b.Path);
         if (_banks.Count > 0) { _wadPick.Select(0); OpenBank(0); }
         else _info.Text = "no sound banks on this disc";
+    }
+
+    /// <summary>The converted movies. They are GAME DATA, so they never live in the repo -- the
+    /// folder is given by TPW_PS2_MOVIES, or found beside the disc as `movies/`.</summary>
+    void FillMovieList()
+    {
+        _wadPick.Clear(); _rideList.Clear(); _movies.Clear();
+        var dir = OS.GetEnvironment("TPW_PS2_MOVIES");
+        if (string.IsNullOrWhiteSpace(dir) && !string.IsNullOrEmpty(_discPath))
+            dir = Path.Combine(Path.GetDirectoryName(_discPath) ?? ".", "movies");
+        _wadPick.AddItem(dir ?? "(no movie folder)");
+        if (dir == null || !Directory.Exists(dir))
+        {
+            _info.Text = "No converted movies.\n\nThe disc's 11 .MPC files are MPEG-2 elementary\n"
+                       + "streams in EA's own container, which nothing off\nthe shelf opens. "
+                       + "Convert them once with ffmpeg and\npoint TPW_PS2_MOVIES at the folder.\n\n"
+                       + "looked in: " + (dir ?? "nowhere");
+            return;
+        }
+        foreach (var f in Directory.GetFiles(dir, "*.ogv").OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
+        { _movies.Add(f); _rideList.AddItem(Path.GetFileNameWithoutExtension(f)); }
+        _info.Text = _movies.Count + " movies in " + dir;
+        if (_movies.Count > 0) { _rideList.Select(0); ShowMovie(0); }
+    }
+
+    void ShowMovie(int i)
+    {
+        if (i < 0 || i >= _movies.Count) return;
+        var path = _movies[i];
+        _video.Stop();
+        var st = new VideoStreamTheora();
+        st.File = path;
+        _video.Stream = st;
+        var len = new FileInfo(path).Length;
+        _info.Text = Path.GetFileName(path) + "\n" + (len / 1024 / 1024.0).ToString("0.0") + " MB\n"
+                   + "Ogg Theora, converted from MPEG-2\n⚠ silent: the EA audio codec is unidentified";
     }
 
     /// <summary>Open one `.SDT` and list what is in it.</summary>
@@ -310,6 +369,7 @@ public partial class Viewer : Node3D
     void PlaySelected()
     {
         int i = _rideList.GetSelectedItems().Length > 0 ? _rideList.GetSelectedItems()[0] : -1;
+        if (_mode == Mode.Movies) { _video.Play(); return; }
         if (_bank == null || i < 0 || i >= _bank.Sounds.Count) return;
         var s = _bank.Sounds[i];
         if (s.IsEmpty) return;
