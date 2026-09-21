@@ -53,7 +53,26 @@ that the count-7 section holds variable-length records with internal offsets.
 here maps to a `.mps` mesh (there are no readable node-name strings — the ~129 printable runs in the
 file are compressed-looking noise, so nodes are almost certainly referenced by index).
 
-**Next**: the 27 KB section at `0x88` is the largest and the natural place for keyframe data; and
-the PSX side's 88-byte descriptors with a logical phase map (`TPW-PSXPC` `findings/animation-phases.md`)
-are the closest known relative, so comparing shapes against that is likely cheaper than reading this
-cold.
+## It is NOT compressed, and the payload is integers not floats
+
+The section at `0x88` holds no plausible float data — a float-plausibility sweep across all 27 KB
+comes back almost empty. Its own sub-header reads `0x41, 0xD7, 9, 0x18` then `0xD4, 0, 0xA4`,
+followed at `0xA4` by an ascending u16 list `9, 10, 11 … 32` — **24 entries, and `0x18` = 24 sits in
+that sub-header**. After it come 48-byte records carrying an incrementing counter (2, 3, 4 …). So
+this section is a sub-header, an index list, and a record array: ordinary nested structure.
+
+⚠ **AND I ALMOST FILED IT AS COMPRESSED.** `monkey.aps`'s sections measure 7.1–7.6 bits/byte against
+the model's 6.09, which is close to a RefPacked blob (7.51) — a tidy story for "no floats anywhere".
+Checked it two ways instead:
+
+- **No nested RefPack.** Zero `10 FB` occurrences in the whole file, where chance alone predicts ~1.
+- **Entropy over 25 files of each kind**: `.aps` mean **5.41**, `.mps` mean **5.27**. They are the
+  same. `monkey.aps` is simply a large dense one, not a representative one.
+
+So the data is **packed integers/quantised keyframes, not a compressed blob** — readable, just not as
+plain float matrices.
+
+**Next**: follow the sub-header at `0x88` properly (index list, then the 48-byte records) rather than
+probing offsets; and compare shapes against the PSX side's 88-byte descriptors and logical phase map
+(`TPW-PSXPC` `findings/animation-phases.md`), which is the closest known relative and a real
+cross-check rather than pattern-matching alone.
