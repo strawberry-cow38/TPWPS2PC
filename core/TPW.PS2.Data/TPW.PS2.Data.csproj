@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>TPW.PS2.Data</AssemblyName>
+    <!-- Readers only. Nothing here opens a window or knows about Godot, so the format work stays
+         testable without either. -->
+  </PropertyGroup>
+</Project>
