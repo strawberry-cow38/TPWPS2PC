@@ -143,11 +143,30 @@ header 0x30  u16  MESH COUNT
 header 0x48  u32  MESH TABLE offset
 
 mesh entry, 160 bytes:
-   +0x00  16 bytes  scene-graph / hierarchy
-   +0x10  f32[16]   4x4 transform, column-major (translation at +0x40..0x4B)
-   +0x50  u32       texture index
+   +0x00  u32       flags
+   +0x04  u32       PARENT node        \
+   +0x08  u32       NEXT SIBLING node   > a scene graph, all three are file offsets
+   +0x0C  u32       FIRST CHILD node   /
+   +0x10  f32[16]   4x4 transform, column-major — ⚠ RELATIVE TO THE PARENT
+   +0x50  u32       the mesh's own ordinal (NOT a texture index)
    +0x54  u32       offset of this mesh's name (NUL-terminated, near end of file)
 ```
+
+⚠⚠ **THE TRANSFORM IS RELATIVE TO THE PARENT, AND APPLYING IT AS ABSOLUTE DETACHES LIMBS.** That is
+what "it's still broken" was: `m_arm` sits at (-12.92, 2.45, -0.10) *relative to its parent*, and
+drawn absolutely it floats away from a body that is at (19.67, 25.28, 20.32). World transform is the
+product down the chain from the root.
+
+⭐ **The hierarchy contains nodes that are not meshes.** `monkey.mps`'s parent/child pointers reach
+`0x9F0`, `0xDB0`, `0x11D0` and `0x12F0`, which lie past the end of the mesh table — and they carry
+names at `+0x54` like any node: **`Head1`, `Head09`, `nose03`, `Dummy01`.** Those are 3ds Max helper
+objects, kept as animation pivots. `m_body`'s first child is `Dummy01`, and both arms hang off it.
+
+So the scene graph is: `m_base` → { `m_boxes`, `m_sign` → `m_sign2`, `m_body` → `Dummy01` →
+{ `m_arm`, `m_arm1` }, `m_crate`, `m_shards` }.
+
+**Composing the chain fixes mumbo's sign**: it renders as `MUMBO`, left to right, on a signboard —
+where flat transforms had put it at the wrong place and angle.
 
 **Validated, not guessed: in all 113 `.mps` in JUNGLE.WAD, every entry `[0 .. header[0x30]-1]` has a
 name offset landing on a printable NUL-terminated string.** 113/113. A wrong table base or stride
