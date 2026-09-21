@@ -162,3 +162,71 @@ Synthetic streams are generated from DC syntax in memory, not copied from the ga
 
 Research sources and decoded buffers stayed under `/home/ec2-user/tpw-ps2/ssh-research/`.
 Full per-image reports can be regenerated from the standalone scorer and the external fixtures.
+
+## Real-disc validation: the 400-image fixture set was not representative
+
+Run on 2026-09-21 against the retail disc (`Theme Park World (Europe) (En,Fr,De)`, 621,734,736 B),
+every `.ssh` and `.tga` extracted from all 16 WADs by an independent Python walker, no exclusions.
+This is the "larger/multiple-entry files need real-disc validation" item above, now done.
+
+| population | within tolerance | decoded | mean RGB error |
+|---|---|---|---|
+| 400-image fixture set | **322 of 400  (80.5%)** | 400 of 400 | 3.741870 |
+| whole disc | **3,538 of 5,695  (62.1%)** | 5,687 of 5,695 | 4.793167 |
+
+**The fixture set flattered the decoder by 18 points.** Nothing about the decoder changed between
+those two rows; only the population did. Quote the disc number, and state the denominator with it.
+
+Denominators, since three different ones are in play: the disc holds **5,764 `.ssh`** and **5,695
+`.tga`**. Every `.tga` has an `.ssh` partner -- **zero orphans in that direction** -- and **69 `.ssh`
+have no `.tga`**, so they are unscoreable and are not the 5,695. Extension case: 4,563 `.tga` against
+1,132 `.TGA`, so a case-SENSITIVE match silently drops **19.9%** of the disc, the same trap the
+fixture set carried at 23.5%.
+
+### The 8 decode failures are one thing, and it is not this decoder
+
+| | |
+|---|---|
+| `FANTASY/Sky/Fantasy_back`, `Fantasy_front2` | SHPS type **0x02**, not 0x84/0x85 |
+| `HALLOW/Sky/Hallow_back`, `Hallow_front2` | same |
+| `JUNGLE/Sky/Jungle_back`, `jungle_front2` | same |
+| `SPACE/Sky/Space_back`, `space_front2` | same |
+
+All 8 are sky textures and all 8 are SHPS type 0x02 -- an uncompressed/paletted type this reader
+correctly refuses rather than guessing at. **The `.tga` side agrees independently**: those same 8
+stems are the only paletted TGAs on the disc. The four `*_back.tga` are correctly declared paletted
+(cmaptype 1); the four `*_front2.tga` declare **cmaptype 0, imgtype 2 (true-colour) at 8bpp**, which
+cannot exist, and then carry 1,024 bytes of 32-bit palette + 65,536 indices + 2 trailing bytes. A
+standards-compliant reader (PIL 11.3) refuses all four; a reader that switches on bpp gets them right.
+
+Also confirmed from the disc: `/DATA/UI.WAD/UltimateC/Star.tga` opens `89 50 4E 47 0D 0A 1A 0A`
+`IHDR` -- it is a **PNG** under a `.tga` name, 32x32 RGBA. `ReferenceImage` already sniffs the
+signature rather than the extension, which is why it stays in the scored population.
+
+### Failure is systemic, not one world's art
+
+Pass rate by WAD: FRONTEND 90%, PARTICLE 93%, HALLOW 73%, LOBBY 67%, DATA 60%, SPACE 59%,
+JUNGLE 55%, UI 54%, FANTASY 50%. Spread but nowhere near clean anywhere, so the residual is the
+codec's own colour/quantisation behaviour and not a per-world asset pipeline.
+
+Flat-colour exactness on the disc: **19 of 117** RGB-exact (the fixture set's 2 of 63 was the
+small-sample version of the same defect). A flat source that decodes to a constant which is off by
+one or two is a colour-conversion or DC-quantisation question, and it is the sharpest remaining
+lead -- a flat block should round-trip, so the residual there is not "lossy compression".
+
+### Teeth-check on the scorer
+
+The scorer was verified to be capable of failing before its pass was believed. Reverting the single
+placement line to raster order -- `mb = (y/16)*(codedWidth/16) + x/16` -- and rebuilding drops the
+fixture score from **322 to 215** and the mean error from **3.741870 to 9.384956**, independently
+reproducing the **214 / 9.640308** this document already records for that hypothesis. The pass is
+therefore a measurement and not a rubber stamp.
+
+### Standing caveat on the dependency
+
+`Ssh` starts one **`ffmpeg` child process per image** through `Process.Start`. That is an external
+executable on PATH, not a shipped library: a player without FFmpeg, or with a build lacking the
+`ipu` demuxer/parser/decoder, gets no textures at all. 5,695 textures is 5,695 process spawns. The
+format finding (GM is an IPU macroblock stream in MPEG-1 coefficient syntax, macroblocks in column
+order, alpha a separate linear 0..128 plane) is the durable part and is what a managed decoder would
+be written from; the FFmpeg adapter is scaffolding that proves it, not a shipping path.
