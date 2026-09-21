@@ -207,3 +207,55 @@ this is the single most valuable thing on the disc — the ride logic in readabl
 recovered from a binary.
 
 ⚠ The scripts themselves are EA source and stay out of this repo, as everything else does.
+
+
+## ⭐⭐⭐ `.rse` — the compiled script format, cracked against its own source
+
+Because the disc ships **both** forms, the `.rss`/`.rse` pairs are a Rosetta Stone. `tools/rse.py`
+reads it.
+
+```
++0x00  "RSSEQ"
++0x08  u32 / +0x0C u32 / +0x10 u32      (16, 20, 50 in Monkey.rse)
++0x20  "Pad Pad Pad Pad "               literal filler
++0x30  code
+```
+
+Code is a stream of **u32 words**. ⭐ **A word with the high bit set is an OPCODE** (low 31 bits =
+the opcode number); every other word is an operand of the opcode before it.
+
+### Confirmed opcodes — bytecode decoded beside its own source
+
+`Rides_Monkey_Monkey`, the `.init` of Crazy Ape:
+
+| source line | bytecode |
+|---|---|
+| `NAME "Ape Ride"` | `OP 0x25` `[0x10000000]` |
+| `TRIGANIM ANIM_Create 0 0` | `OP 0x10` `[0, 0, 0]` |
+| `WAIT 1700` | `OP 0x2c` `[1700]` |
+| `EVENT OBJ_SOUND_LOC_RID -1 EVT_APE_THUMP` | `OP 0x0d` `[3, 0xffff, 0xdc]` |
+| `WAIT 500` | `OP 0x2c` `[500]` |
+| `EVENT OBJ_SOUND_LOC_RID -1 EVT_APE_THUMP` | `OP 0x0d` `[3, 0xffff, 0xdc]` |
+| `WAIT 750` | `OP 0x2c` `[750]` |
+| `EVENT OBJ_SOUND_LOC_RID -1 EVT_APE_CRUNCH` | `OP 0x0d` `[3, 0xffff, 0xdb]` |
+| `WAIT4ANIM` | `OP 0x2e` `[]` |
+| `ENDSLICE` | `OP 0x06` `[]` |
+
+⭐ **The `WAIT` literals are the proof.** Three different delays in one script — 1700, 500, 750 —
+each appears in the bytecode as itself. And the two `THUMP` events share id `0xdc` while `CRUNCH`
+is `0xdb`: **the same where it should be the same and different where it should differ.** No
+alignment or stride guess survives that by accident.
+
+`OBJ_SOUND_LOC_RID` = 3 and `-1` encodes as `0xffff`.
+
+⚠ **Operand counts are inferred from the gap to the next opcode word.** That is correct for a
+linear stream and would break if any opcode can take an operand with bit 31 set. Two opcodes
+already seen carrying such operands (`OP 0x26 [0x40000006]`, `OP 0x21 [0x20000019]`) suggest
+tagged operand *types* rather than raw ints, so this needs establishing before the walker is
+trusted past the confirmed set.
+
+### Why this matters for a port
+
+There are **91 `.rse`** on the disc and **90 `.rss`** beside them. The ride behaviour does not have
+to be reverse-engineered from a binary at all — it is readable, and now the compiled form can be
+checked against it.
