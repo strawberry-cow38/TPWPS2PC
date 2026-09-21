@@ -199,10 +199,13 @@ def rotation_track(d, off, count):
 
     So a key is 12 bytes: u16 time, u16 (unknown), then int16 x, y, z, w.
 
-    ⚠ `count` is NOT in the array -- the sampler reads it from a global the caller primes
-    (site 0x001a8214, unread). You do not need it: `array_end` derives the count from pointer
-    contiguity, and that is validated 548/548 on three independent checks (span divisible by 12,
-    every quaternion unit, times strictly ascending) where guessing the end scored 94.3%/80.1%.
+    ⭐ `count` IS in the file: the u16 at **track+0x08**, and the gate is **track flag 0x08**.
+    Both from `FUN_001a7f48`, which primes the sampler's global from that same field. The count
+    agrees with `array_end`'s pointer-contiguity bound on **548/548** tracks -- two independent
+    derivations, no disagreement -- and every track with a `+0x14` has flag 0x08 (548/548).
+
+    ⚠ The `u16` at key+0x02 is an INDEX into the track's `+0x2c` array (8-byte entries), with
+    `0xffff` meaning none.
 
     Validated: reading the quaternion at +0x04 with a 12-byte stride gives |q| == 32767 for
     94.3% of 2,190 sampled keys, against 7.1% for the same stride read at +0x00."""

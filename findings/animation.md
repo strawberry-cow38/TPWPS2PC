@@ -853,3 +853,52 @@ past the end — is now exactly two: identity, then 90° about Y.
 are real data, not an artefact of the guessed end — a genuine open question rather than noise I
 created. An instrument fix that changes every number equally is suspicious; this one changed three
 and left the fourth alone, which is what a real fix looks like.
+
+
+## ⭐⭐ `FUN_001a7f48` — the track player, and four more fields at once
+
+Chasing where the rotation sampler's key count comes from landed on the real per-track player, and
+it names several things this file had open:
+
+```c
+if ((track_flags & 0x08) &&                                     // <- ROTATION gate
+    FUN_001a6a48(t, track+0x14, u16 @ track+0x08, 0x0C, &i, &f)) // count, 12-byte stride
+{
+    DAT_002e71c4 = u16 @ track+0x08;                            // the "missing" global, primed here
+    u16 k = *(u16 *)(track+0x14 + i*0x0C + 2);                  // key+0x02 ...
+    if (k != 0xffff) ... = k * 8 + *(int *)(track+0x2c);        // ... INDEXES track+0x2c, 8 B entries
+    FUN_001a9e50(f, track+0x14, i, out);                        // the SLERP sampler
+}
+if ((track_flags & 0x80) &&                                     // <- the +0x18 track
+    FUN_001a6a48(t, track+0x18, u16 @ track+0x0A, 0x10, &i, &f)) // count, 16-BYTE stride
+{
+    FUN_001a6808(f, track+0x18, i, i+1, out); FUN_001a4410(...);
+}
+```
+
+So:
+
+```
+track +0x04 flags   bit 0x08 -> rotation keys at +0x14      bit 0x80 -> 16-byte keys at +0x18
+                    bit 0x1000 -> vertex stream at +0x20    bit 0x40000 -> alternate player
+      +0x08 u16  rotation key count        +0x0A u16  +0x18 key count
+      +0x2c -> 8-byte entries, indexed by the u16 at rotation-key +0x02 (0xffff = none)
+```
+
+| check | result |
+|---|---:|
+| tracks with `+0x14` that have flag `0x08` | **548 / 548** |
+| tracks with `+0x18` that have flag `0x80` | **143 / 143** |
+| `u16 @ track+0x08` == the contiguity-derived key count | **548 / 548** |
+
+⭐ That last row is the good one: **the real count field and tinyclaw's pointer-contiguity trick are
+two completely independent derivations and they agree on every single track.** The workaround was
+right, and now it is also unnecessary — but it stays in `tools/aps.py`, because it is the check
+that proves the field.
+
+## Rotation, rendered
+
+`Gates.aps` drives nodes 1 and 2 — `door01` and `door02` — with two keys each, identity to 90°
+about Y over 50 frames. Rendered, the park gateway's two doors swing open. The animated rotation
+**post-multiplies the bind rotation** rather than replacing it: both doors have non-identity bind
+matrices, and key 0 being identity is what keeps the rest pose intact at frame 0.
