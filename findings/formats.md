@@ -911,8 +911,24 @@ do the work.
   confirms the `640x352` read out of the sequence header.
 * `0xB5` extension codes are present, so this is MPEG-2 and not MPEG-1.
 
-⚠ **NOT verified**: the audio `codec` field reads **7** and what 7 means has not been proved.
-Stereo and 48 kHz are certain; the codec is not.
+⭐⭐ **THE AUDIO CODEC IS `adpcm_ea` — EA ADPCM.** The `SCHl` header's compression field reads **7**,
+and this file recorded that as unproven for a day. It took one command to settle:
+
+```
+$ ffprobe BFLOGO.MPC
+Input #0, ea, from 'BFLOGO.MPC':
+  Stream #0:0: Video: mpeg2video (Main), yuv420p, 640x352 [SAR 11:15 DAR 4:3], 30 fps
+  Stream #0:1: Audio: adpcm_ea, 48000 Hz, 2 channels, s16, 384 kb/s
+```
+
+48000 Hz and 2 channels are exactly what the `SCHl` element stream declares, so the header reading
+and the codec identification confirm each other.
+
+⚠⚠ **AND FFMPEG OPENS THIS CONTAINER NATIVELY.** It has an `ea` demuxer that takes a raw `.MPC` and
+finds both streams — no chunk walking, no wrapper, no elementary-stream extraction. Walking the
+10,101 `MPCh` chunks by hand is what PROVED the format, and it is genuinely how the layout above was
+established; it is not how the files get converted. **"Is this already handled somewhere?" is a
+cheaper question than "what is this?", and it is worth asking first.**
 
 Reader: `tools/mpc.py` — `disc_file(bin, extent, size)`, `chunks(data)`, `audio_header(d, off, n)`.
 
