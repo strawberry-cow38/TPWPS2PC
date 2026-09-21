@@ -228,3 +228,65 @@ So the word is two u16s and calling it a count was, again, one example generalis
 **Still not decoded**: what any stream contains, what the six floats are, and what A's two u16s mean.
 The keyframe run (`0, 34, 37, 39, 40, 41, 42, 45`, ending exactly on the frame count) is real and
 lives in A's sub-stream, and nothing yet explains its length.
+
+
+## ⭐⭐⭐ THE SPEC, READ OUT OF THE EXECUTABLE
+
+Everything above was inferred from bytes. The parser states it. `SLES_500.32` validates the file at
+`0x00167194` (magic `0x185AA030`, then `sltiu v0,v1,0x148` / `sltiu v0,v1,0x149` — **version must be
+exactly 0x148**) and on success calls the loader at `0x00167250`. That loader is thirty lines:
+
+```c
+FUN_00167250(base):                             // the file loader
+    if (base+0x20) *(int*)(base+0x20) += base;  // relocate
+    if (base+0x24) *(int*)(base+0x24) += base;
+    for (i = 0; i < *(char*)(base+0x1C); i++)   // ⚠ a BYTE count
+        FUN_001672d8(*(int*)(base+0x20) + i*8, base);
+    FUN_00168020(base);
+
+FUN_001672d8(sec, base):                        // one 8-byte section entry
+    if (sec[1]) sec[1] += base;
+    for (i = 0; i < sec[0]; i++)
+        FUN_00167358(sec[1] + i*0x1C, base);    // 28-byte records
+
+FUN_00167358(rec, base):                        // one 28-byte record
+    relocate rec[4], rec[5], rec[6]
+    for (i = 0; i < u16 at rec+0x08; i++)
+        if (rec[0] & 0x20) FUN_00167758(rec[4] + i*0x14)   // 20-byte tracks
+        else               FUN_001674b0(rec[4] + i*0x30)   // 48-byte tracks
+    for (i = 0; i < u16 at rec+0x0A; i++)
+        FUN_00167780 / FUN_00167798 (rec[5] + i*8)         // 8-byte records
+
+FUN_001674b0(track, base):                      // one 48-byte track
+    relocate EIGHT pointers: +0x10 +0x14 +0x18 +0x1C +0x20 +0x24 +0x28 +0x2C
+    if (+0x10) FUN_00168728(+0x10)
+    if (+0x1C) FUN_001675d8(+0x1C)
+    if (+0x20) (track[1] & 0x40000) ? FUN_001676d8(+0x20) : FUN_001675f0(+0x20)
+    if (+0x24) FUN_00167720(+0x24)
+```
+
+### What this corrects
+
+- **`+0x1C` is a BYTE**, not the u16 this file called a constant 12. It is the section count, and
+  12 × 8 bytes from `0x28` ends at `0x88` — exactly where section 0 begins. **My scan of
+  `0x28..0x80` only ever covered 10 of the 12 sections.**
+- **A 28-byte record holds TWO counts** — u16 at `+0x08` and u16 at `+0x0A` — and two arrays, not
+  the "track count + index length" I inferred.
+- **`rec[0] & 0x20` selects 20-byte tracks instead of 48-byte ones.** That is why one fixed stride
+  could never read every file, and it is the real reason six files failed.
+- **A track has EIGHT relocated pointers at `+0x10`…`+0x2C`**, not the "data start / data end" pair
+  I inferred. Those two were simply two of the eight, and their "ascending and tiling" was an
+  artefact of relocated offsets ascending.
+- `track[1] & 0x40000` picks between two different decoders for the `+0x20` stream.
+
+### The lesson, plainly
+
+Hours of statistical inference produced a model that was **right about shape and wrong about
+meaning**, and every wrong part was stated with a validation score attached. One decompile of a
+30-line function gave the exact layout, including two things inference could never have found: a
+flag that switches record size, and four sibling pointers that are simply never populated in the
+files I sampled.
+
+**I had the R5900 disassembler working before I started guessing.** Asked what was stopping me from
+cracking it, the honest answer was: nothing — I was reading the data instead of the code that reads
+the data.
