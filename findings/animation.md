@@ -72,7 +72,38 @@ Checked it two ways instead:
 So the data is **packed integers/quantised keyframes, not a compressed blob** — readable, just not as
 plain float matrices.
 
-**Next**: follow the sub-header at `0x88` properly (index list, then the 48-byte records) rather than
-probing offsets; and compare shapes against the PSX side's 88-byte descriptors and logical phase map
-(`TPW-PSXPC` `findings/animation-phases.md`), which is the closest known relative and a real
-cross-check rather than pattern-matching alone.
+## The track table — reads perfectly on one file, does NOT generalise
+
+Following the sub-header at `0x88` gives a clean, self-checking structure in `monkey.aps`:
+
+```
+sub-header  +0x08  u32  9      track count
+            +0x0C  u32  0x18   index-list length (24)
+            +0x10  u32  0xD4   offset of the track records
+            +0x18  u32  0xA4   offset of the index list
+index list @0xA4: u16 9, 10, 11 … 32   — 24 entries, and 0xA4 + 24*2 = 0xD4 exactly
+track record, 48 bytes:  +0x00 node id | +0x04 flags | +0x20 data start | +0x28 data end
+```
+
+Nine records, ids `2, 3, 4, 33, 5, 6, 7, 8, 1`, and their data blocks **chain and tile the section**:
+`0x284→0x370`, `0x378→0x253C`, `0x2544→0x2FEC`, `0x2FF0→0x3E24`, `0x3E28→0x52AC`, `0x52B4→0x58F0`,
+`0x58F8→0x6C90` — ending 4 bytes before the next section at `0x6C94`. Nine tracks against
+`monkey.mps`'s nine meshes.
+
+⚠⚠ **AND IT DOES NOT HOLD ACROSS THE ARCHIVE.** Applied to all 89 `.aps`:
+
+| test | files passing |
+|---|---:|
+| blocks ascend and fit, table assumed in section 0 | 28 / 89 |
+| plus "index list abuts the records", table searched for in any section | **10 / 89** |
+
+The stricter, more obviously-correct test passes **fewer** files. That is the signature of a layout
+inferred from one example: every constraint that is true of `monkey.aps` in particular removes more
+files than it keeps.
+
+**This is recorded as not general rather than tuned until it passes.** Loosening constraints until a
+number looks acceptable would produce a reader that "works" on 89 files and is right about one. The
+next step is a second and third file read cold — `bouncy.aps` (5 tracks), `bumper.aps` (21) — to see
+which of the monkey-derived fields are real and which are coincidence, and the PSX side's 88-byte
+descriptors and logical phase map (`TPW-PSXPC` `findings/animation-phases.md`) remain the closest
+known relative to check shapes against.
