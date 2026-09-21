@@ -1421,3 +1421,28 @@ Replaced, the sign stands up and spins.
 the Super Bog's sign stands up and the Inca God's headdress pulls into a crown. The previous attempt
 at this bug was justified with an asset that rendered 0 pixels different either way — see the
 revert note above.
+
+
+## ⭐ `track+0x1c` IS A SECOND KIND OF PATH, AND IT IS THE ONE `OrientAlongPath` RIDES ON
+
+Flag `0x200` gates `+0x1c` (biconditional, 6,155/6,155). Its structure is still unread, but three
+measurements narrow it hard:
+
+| | |
+|---|---|
+| tracks with `0x200` | **96** |
+| of those, also `0x400` (OrientAlongPath) | **89** — and **every** 0x400 track has 0x200 |
+| tracks with both `0x200` and `0x001` (the Catmull-Rom path at `+0x10`) | **0** |
+
+So `0x200`/`+0x1c` and `0x001`/`+0x10` are **mutually exclusive ways of saying "this thing travels"**,
+and orient-along-travel is only ever attached to the `+0x1c` one. The carriers say the same thing:
+`haunt` (24), `seaplane` (12), `bus1`/`bus2` (12 each), `bellt` (10), `ferry` (9), `gokarts` (6) —
+vehicles, every one.
+
+⚠⚠ **WHICH MEANS THE ORIENT-ALONG-PATH CODE IN THE VIEWER IS DEAD.** It only arms itself for a node
+that has a `+0x10` spline, and no `0x400` track has one. It has never run.
+
+⚠ `+0x1c`'s own layout is NOT read: bounding it with the next-pointer rule gives spans of 1–2.4 KB
+whose contents make no sense at a stride of 8, 12 or 16 (key times like 63,347 that do not ascend),
+so either the bound is wrong or it is not a key array at all. The track's three count fields
+(`+0x08`, `+0x0A`, `+0x0C`) are all zero on these tracks, so the count is somewhere else.
