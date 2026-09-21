@@ -30,6 +30,16 @@ public sealed class RideDefinition
 
     public string Source = "";
 
+    /// <summary>The ride's model inside its WAD, or null when it has none. A ride is a DIRECTORY
+    /// BUNDLE -- `bfbin/` holds `bfbin.sam`, `bfbin.mps`, `bfbin.aps` and `bfbin.rse` -- so the
+    /// model is found beside the definition rather than named by it.</summary>
+    public string? ModelPath;
+    /// <summary>The ride's animation, same rule.</summary>
+    public string? AnimationPath;
+    /// <summary>Several `.mps` sat in the directory and none matched the stem, so no single model
+    /// is the ride's. 12 of 321 -- kept as a stated ambiguity rather than resolved by picking one.</summary>
+    public bool ModelAmbiguous;
+
     public string? Name => Fields.TryGetValue("Info.Name", out var v) ? v : null;
     public string[]? Shape => Blocks.TryGetValue("Info.Shape", out var v) ? v : null;
     public string[]? Hoarding => Blocks.TryGetValue("Info.Hoarding", out var v) ? v : null;
@@ -153,6 +163,7 @@ public sealed class RideCatalogue
                 byte[] data;
                 try { data = wad.Read(e); } catch { continue; }
                 var def = RideDefinition.Parse(System.Text.Encoding.Latin1.GetString(data), w.Path + e.Path);
+                Resolve(def, wad, e.Path);
                 cat.All.Add(def);
                 if (def.Id is not int id) { cat.Unnumbered.Add(def); continue; }
                 if (cat.ById.ContainsKey(id)) cat.IdCollisions.Add(def);
@@ -160,5 +171,44 @@ public sealed class RideCatalogue
             }
         }
         return cat;
+    }
+
+    /// <summary>Find a ride's model and animation, which sit beside its `.sam` rather than being
+    /// named by it. Measured over all 321 definitions:
+    /// <list type="bullet">
+    /// <item><b>287</b> have a `.mps` whose stem matches the `.sam` exactly.</item>
+    /// <item><b>1</b> has a single `.mps` under a different stem, taken as the ride's.</item>
+    /// <item><b>12</b> have several and no stem match -- left ambiguous on purpose. Picking the
+    /// first would give a ride the wrong body and nothing would say so.</item>
+    /// <item><b>21</b> have no model at all. These are script-only entities -- `bus`, `end`,
+    /// `sign1`, `firepit` -- carrying an `.rse` and no geometry, so a missing model is a kind of
+    /// ride rather than a failure to find one.</item>
+    /// </list>
+    /// ⚠ Directory case is not reliable: the same bundle appears as `/Features/bus` and
+    /// `/features/bus`. Compare paths case-insensitively or you will find one of the two.</summary>
+    static void Resolve(RideDefinition def, WadArchive wad, string samPath)
+    {
+        int slash = samPath.LastIndexOf('/');
+        var dir = slash < 0 ? "" : samPath[..(slash + 1)];
+        var stem = Path.GetFileNameWithoutExtension(samPath);
+
+        string? Pick(string ext)
+        {
+            var inDir = wad.Entries
+                .Select(x => x.Path)
+                .Where(p => p.StartsWith(dir, StringComparison.OrdinalIgnoreCase)
+                            && p.IndexOf('/', dir.Length) < 0
+                            && p.EndsWith(ext, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            var exact = inDir.FirstOrDefault(
+                p => string.Equals(Path.GetFileNameWithoutExtension(p), stem, StringComparison.OrdinalIgnoreCase));
+            if (exact != null) return exact;
+            if (inDir.Count == 1) return inDir[0];
+            if (inDir.Count > 1 && ext == ".mps") def.ModelAmbiguous = true;
+            return null;
+        }
+
+        def.ModelPath = Pick(".mps");
+        def.AnimationPath = Pick(".aps");
     }
 }

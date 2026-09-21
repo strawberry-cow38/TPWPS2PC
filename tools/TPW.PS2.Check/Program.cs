@@ -209,6 +209,9 @@ Console.WriteLine($"  known-answer controls: {samControlOk} of {samChecked} repr
     int pure = bands.Count(kv => kv.Key != 5 && kv.Value.Count == 1);
     Console.WriteLine($"  catalogue: {cat.All.Count} rides, {cat.ById.Count} distinct ids, "
                       + $"{cat.Unnumbered.Count} unnumbered, {cat.IdCollisions.Count} id collisions; "
+                      + $"{cat.All.Count(d => d.ModelPath != null)} with a model, "
+                      + $"{cat.All.Count(d => d.ModelAmbiguous)} ambiguous, "
+                      + $"{cat.All.Count(d => d.ModelPath == null && !d.ModelAmbiguous)} script-only; "
                       + $"id bands 1-4 pure in {pure} of 4, "
                       + $"band 5 (sideshows) spans {(bands.TryGetValue(5, out var s5) ? s5.Count : 0)} worlds");
 }

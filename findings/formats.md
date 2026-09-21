@@ -1652,3 +1652,37 @@ catalogue: 321 rides, 300 distinct ids, 16 unnumbered, 5 id collisions
 ```
 
 300 + 16 + 5 = 321.
+
+
+### ⭐ A ride is a directory bundle
+
+The `.sam` does not name its model. The ride's folder holds everything it needs:
+
+```
+/DATA/FANTASY.WAD/Features/bfbin/
+    bfbin.sam      the definition
+    bfbin.mps      the model
+    bfbin.aps      its animation
+    bfbin.RSE      the compiled script      BfBin.rss   its source
+    vssver.scc     SourceSafe droppings
+```
+
+Resolution measured over all 321 definitions:
+
+| | |
+|---|---|
+| `.mps` whose stem matches the `.sam` exactly | **287** |
+| a single `.mps` under a different stem | 1 |
+| several `.mps` and no stem match — **left ambiguous** | 12 |
+| no model at all | 21 |
+
+288 + 12 + 21 = 321. The 12 are not resolved by taking the first: a ride would get the wrong body
+and nothing would say so.
+
+⭐ The 21 without a model are **script-only entities** — `bus`, `end`, `sign1`, `firepit`,
+`shooter` — carrying an `.rse` and no geometry. A missing model there is a *kind of ride*, not a
+failure to find one.
+
+⚠ **Directory case is not reliable.** The same bundle appears as `/Features/bus` and
+`/features/bus`. Compare paths case-insensitively or you will find exactly one of the two — the
+same trap that had 710 `.RSE` hiding behind 8 `.rse`.
