@@ -84,9 +84,32 @@ entrance marked — the same footprint data the PSX port reads out of a binary t
 ```
 
 Geometry is further in: two dense float regions holding values in ±4.14 for a 1×1-tile model, which
-is the right magnitude for tile-space coordinates. Vertex/face layout **not yet established** — the
-counts near 0x28 do not yet divide those regions cleanly, and nothing here should be read as if they
-did.
+is the right magnitude for tile-space coordinates. **Vertex/face layout NOT established.**
+
+Four things were tried and are recorded because each one saves the next person the same afternoon:
+
+1. **The first word is NOT a format magic.** `0x183076E4` is identical in all 113 `.mps` in this
+   archive, which is what a magic looks like — but it **does not appear anywhere in `SLES_500.32`**,
+   neither as a literal nor as the `lui 0x1830` half of a MIPS constant load. The loader never
+   compares against it, so it is a build stamp from the exporter, not a signature. `.MD2` files carry
+   the same shape of stamp (`0x1CD15D46`) rather than Quake's `IDP2`, so they are this same container
+   under another extension, not id Software's format.
+2. **Header words that scale with file size**, over all 113 models: 0x40, 0x44, 0x48, 0x4C, 0x70,
+   0x74 (r > 0.95 against size). Sorted, they form an ascending chain of in-file offsets, so they are
+   section boundaries — but not all of them, because:
+3. **No consistent record stride.** Testing every count field against every section length over all
+   113 models, the best pairing (count@0x30, stride 160) divides exactly in only 64 of them and the
+   rest scatter. A real layout would be 113 of 113. So at least one section boundary above is wrong
+   or missing.
+4. The counts at 0x22/0x28 do track complexity, and 0x22 equals the texture count on the models
+   checked, but that is not enough to place the vertices.
+
+**The two principled routes left**, either of which gives the layout outright rather than by
+divination:
+- the EE code that parses `.mps` — Ghidra on `SLES_500.32`, which needs no base-address work
+- the **VU1 microcode**, which is the code that actually consumes the vertex buffers, and is only
+  6,944 bytes across five overlays (`.DVP.ovlytab`). Its VIF unpack and addressing state the layout
+  directly. Needs a VU disassembler.
 
 ## Not yet looked at
 
