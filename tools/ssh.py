@@ -16,9 +16,25 @@
     +0x0C u16 posX,    u16 posY
     +0x10 the payload
 
-⚠⚠ **THE PIXELS ARE NOT DECODED.** Every entry seen is type 0x84 = compressed type 4. The payload
-opens `47 4d 04 04` and is high-entropy throughout -- no runs, no palette, nothing readable -- and
-it is NOT RefPack, which would announce itself with `10 FB`.
+⭐ TYPE CENSUS over all 5,764 `.ssh` on the disc (2026-09-21):
+
+    type 4, compressed   3,933 entries
+    type 5, compressed   1,823 entries
+    type 2, RAW              8 entries
+
+⚠ An earlier note here said "every entry seen is type 0x84 = compressed type 4". There are also
+1,823 type-5 entries, and eight that are not compressed at all.
+
+⭐⭐ **THE EIGHT TYPE-2 ENTRIES ARE THE ONLY UNCOMPRESSED ONES, AND THEY ARE THE SKIES** --
+`{FANTASY,HALLOW,JUNGLE,SPACE}/Sky/*_{back,front2}.ssh`, every one 256x256. They are not a gap in a
+decoder for the compressed types; they were never compressed. Point a palette reader at them.
+
+⭐ Two independent routes land on exactly these eight files: they are also **the only paletted TGAs
+on the disc** (see findings/formats.md), four of which declare true-colour at 8bpp. The skies are a
+different animal in both formats.
+
+The compressed payload opens `47 4d 04 04`, is high-entropy throughout, and is NOT RefPack, which
+would announce itself with `10 FB`.
 
 ⭐ When it IS attacked, the test set is already there: **5,493 of the disc's 6,007 material
 references ship BOTH a `.ssh` and a `.tga` of the same stem**, so a candidate decoder can be scored
