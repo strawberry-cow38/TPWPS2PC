@@ -1069,3 +1069,47 @@ pylons), `/Rides/wateride` thirteen, `/Generic/MiscMesh` nine. Keying the librar
 whichever came last and **hid the other 160 models on the disc**, which looks exactly like a ride
 missing most of its geometry. One entry per model now; the animation beside it is matched by its own
 stem first, then by the folder's single `.aps`.
+
+
+## ⚠⚠ THE `.tga` DOES NOT ALWAYS EXIST — 473 MATERIALS NEED SHPS (2026-09-21)
+
+This file has claimed since the model format was cracked that "a `.tga` of the same stem sits beside
+each `.ssh`, so SHPS never needs decoding". **That was checked on JUNGLE.WAD and generalised.**
+Counted over every model on the disc:
+
+| | |
+|---|---|
+| material references | **6,007** |
+| resolved to a `.tga` | 5,493 |
+| **no `.tga` at all** | **514** |
+| ...of which a `.ssh` of that name DOES exist | **473** |
+
+`LOBBY.WAD` alone accounts for **448** of the 514 — the lobby is almost entirely `.ssh`-only, which
+is why it looks the most broken in a viewer.
+
+### The SHPS container — SOLVED. The pixels — NOT.
+
+```
+'SHPS' · u32 fileSize · u32 entryCount · char[4] platform ('GIMX')
+entryCount x { char[4] name, u32 offset }          (EA left "Buy ERTS" in the padding)
+
+entry header, 16 bytes:
+  +0x00 u8  type        ⚠ BIT 0x80 IS A COMPRESSION FLAG; the real type is the low 7 bits
+  +0x01 u24 blockSize   to the next block; 0 means to the end of the file
+  +0x04 u16 width  +0x06 u16 height
+  +0x08 centre (u16,u16)   +0x0C pos (u16,u16)
+  +0x10 payload
+```
+
+Verified on three files: `sign` 64x64, `cont` 32x32, `door` 16x16, sizes agree with the archive and
+the block chain tiles to the byte.
+
+⚠⚠ Every entry is type `0x84` = compressed type 4. The payload opens `47 4d 04 04`, is
+high-entropy throughout, and is **not RefPack** (`10 FB` would say so). Identifying EA's image codec
+and then the PS2 palette/swizzle on top is the job, and it has not been started.
+
+⭐ **The test set already exists**: the 5,493 materials that ship BOTH forms mean any candidate
+decoder can be scored against thousands of known-correct images instead of eyeballed.
+
+Reader: `tools/ssh.py` — `entries(d)` walks the container and reports each entry's type, size and
+payload extent.
