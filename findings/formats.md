@@ -215,18 +215,41 @@ Sample values land in [0,1] as UVs should — (0.961, 0.934), (0.199, 0.999), (0
 repeated pair (0.399, 0.399) recurs at exactly the vertices whose positions repeat. Two independent
 streams agreeing on which vertices are the same point.
 
-**Texture lookup**: material table at header `0x40`, count at `0x22`, 16-byte records whose fourth
-word is the offset of a `.ssh` name; a mesh's `texIdx` indexes that table. The `.ssh` has a `.tga`
-of the same stem beside it, so the source art can be used directly without decoding SHPS.
+**⚠ TEXTURES ARE PER BATCH, NOT PER MESH — I had this wrong and master caught it.** The giveaway is
+one number: `mumbo.mps` has **7 meshes and 25 materials**. You cannot assign 25 textures to 7 meshes
+one to one, and assigning `texture[i]` to `mesh[i]` gives every model its own correct *set* of
+textures with each one in the wrong place — which is exactly what it looked like.
+
+⚠ And `mesh entry +0x50`, which this file called `texIdx`, is **not a texture index**: it runs
+0, 1, 2 … n-1 in every model. It is the mesh's own ordinal.
+
+The real chain:
+
+```
+mesh entry +0x68   ->  a 32-byte-per-BATCH table, immediately before the batch list at +0x6C
+   batch record +0x00  u32  pointer into an 8-byte-per-material table
+                +0x04  u32  pointer to this batch's entry in the batch list
+                +0x0C  u16  vertex count
+the 8-byte table ends exactly where the 16-byte material table (header 0x40) begins, so it starts
+at  matTab - 8*materialCount,  and  materialIndex = (pointer - that base) / 8
+material record, 16 B: +0x0C is the offset of a `.ssh` name
+```
+
+**539 of 539 batches resolve through it.** The names confirm themselves semantically: `jm_head` uses
+`mb_fang`, `mb_pl4a` and `mb_tong`; `jm_body` uses `mb_stem2b`; `jm_leaf` uses `mb_leaf`. Mumbo is a
+carnivorous plant, which is why it renders purple and fleshy rather than mossy.
+
+A `.tga` of the same stem sits beside each `.ssh`, so the source art is usable without decoding SHPS.
 
 **And it renders.** `tools/render.py` rasterises the decoded triangles with the real textures:
 `monkey.mps` comes out as a gold gorilla on a sand base with stacked wooden crates and grass edging,
 `gokarts.mps` as a planked track platform. Wood grain runs along the planks and the gorilla's face
 lands on the gorilla. A wrong UV interpretation smears; this does not.
 
-⚠ **Grey patches are MISSING TEXTURES, not bad UVs** — 16/25, 8/20 and 11/21 texture names resolved.
-The rest live in the shared texture folder (the binary's `%s\sharetex\` path), which this reader
-does not search yet.
+⚠ **Grey patches are now batches the walker DROPS.** With per-batch materials all textures resolve
+(25/25, 21/21, 20/20), but iterating batches through the new 32-byte table lost geometry: mumbo fell
+from 902 triangles to 479. The indexing between the two tables is not fully right yet, and the
+remaining grey is missing *triangles*, not missing textures.
 
 ⚠ **Remaining: strip restarts.** Each batch is treated as one continuous strip, which leaves a few
 long spurious triangles spanning a model where a strip really restarts inside a batch. Degenerate
