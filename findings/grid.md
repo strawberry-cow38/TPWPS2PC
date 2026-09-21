@@ -46,3 +46,28 @@ statistic, it was a different transform. See the same trap in `rse.md` (a cohere
 The tell was available before the fix, too: a park built on a 10-unit cell rendered a 2x2 tree at
 **10% x 10%** of its plot. A viewer that frames each model on its own can never show that, because
 the camera simply pulls in — the error only becomes visible once models stand on a shared thing.
+
+## Where the factor of ten lives: a 0.1 root scale, on almost everything
+
+The composed extents come out at exactly one tenth of the own-matrix ones because **the root node
+of almost every model carries a uniform 0.1 scale**. Measured over every `.mps` on the disc:
+
+| root basis scale | roots | what they are |
+|---|---:|---|
+| **exactly 0.100** | **464 of 496** | rides, props, scenery |
+| ~0.00003 | 24 | **characters** — `/Chars/*`, roots named `Bip01`, `pickup`, `neck pivot box` |
+| ~0.004 | 7 | |
+| ~0.02 | 1 | |
+
+`monkey.mps` root `m_base` is 0.1000/0.1000/0.1000; `4x4rock` and `bigpalm` roots likewise. So the
+tenth is an authoring convention across the fleet, and it is the second, independent route to the
+same constant as the units-per-cell identity above.
+
+⚠ **Rides are authored at 0.1 and skinned characters at ~3e-5 — about 3,000x apart.** Any code that
+assumes one root convention is wrong by three orders of magnitude the moment a guest stands next to
+a ride, and at that size it does not render as "slightly off", it renders as nothing visible.
+
+⚠ And a caution about how that was nearly mis-reported: a histogram rounded to three places printed
+those 24 as **`0.000`**, which reads as degenerate matrices, and the first draft of this section
+said so. At full precision they are a different convention, not a broken one. `0.000` in a rounded
+table is not a measurement of zero.
