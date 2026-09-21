@@ -14,13 +14,20 @@ minigames, as full 3D scenes with bones and animation. See findings/formats.md f
     VECT  12 B  3 x f32   OBJECT-space vertex position
     NORM  12 B  3 x f32   per-vertex unit normal
 
-    GIN4 magic   VERS 120   TREE node tree, opens with "Scene Root"   MESH  MAT4  ANIM/KEY4  BONE
+    GIN4 magic   VERS 120   MESH   MAT4   ANIM / KEY4   BONE   PART (open)
+    TREE  the scene graph: N x 92 B nodes, NO count header. name at +0, pos +32, rot quat +44,
+          scale +60, scale-axis quat +72 -- a 3ds Max node TRS. Both quats unit on every node.
     MOD4  64 B, name at +4, WORLD TRANSLATION at +52 (3 x f32)
-    OBJ4  36 B, UPPERCASE name, purpose open       TEX4  texture paths, .bmp
-    PART  open
+    OBJ4  36 B, the UPPERCASE name of a TREE node = the DRAW LIST. Zero orphans across all 14;
+          only `Scene Root`, `Dummy01` and `KID01` never get one.
+    TEX4  texture paths, .bmp
 
-⭐ `PTS4 = M * VECT + t` to 3e-5 on all 14 files, and `t` is the float triple at `MOD4+52` on 28 of
-28 models. Draw straight from PTS4 for a static scene; drive VECT through the transform to animate.
+⭐ `PTS4 = M * VECT + t` to 3e-5 on all 14 files. `t` is the float triple at `MOD4+52` (28 of 28
+models); `M` is the TREE node's rotation x scale. Draw straight from PTS4 for a static scene, or
+drive VECT through the transform to animate.
+
+⚠ A node record holds `0x00a5xxxx` / `0x1108e6fe` words -- PS2 main-RAM addresses left in the file,
+runtime fixup slots. Not floats, not data.
 
 ⚠ The leading u32 of a counted geometry chunk is a KEY, not flags: `low16` = model index (into the
 MOD4 / PTS4 / VECT / NORM records in order), `high16` = submesh within that model. Reading it as a
@@ -77,3 +84,17 @@ def translation(d, off):
 def name(d, off):
     """A MOD4 record's model name."""
     return bytes(d[off+4:off+52]).split(b'\0')[0].decode('latin-1')
+
+def nodes(d, off, size):
+    """TREE's scene graph: one dict per node. No count header -- size is always a multiple of 92."""
+    out = []
+    for i in range(size // 92):
+        b = off + i * 92
+        out.append({
+            'name':  bytes(d[b:b+24]).split(b'\0')[0].decode('latin-1'),
+            'pos':   struct.unpack_from('<3f', d, b + 32),
+            'rot':   struct.unpack_from('<4f', d, b + 44),
+            'scale': struct.unpack_from('<3f', d, b + 60),
+            'axis':  struct.unpack_from('<4f', d, b + 72),
+        })
+    return out

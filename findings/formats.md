@@ -1242,17 +1242,68 @@ Verified on **14/14 files, zero failures**: the low words are non-decreasing and
 total number of `POLY` groups, and the `PTS4` count equals the `MOD4` count. `sgrace/base` is 4
 models with 1, 1, 4, 1 submeshes; `birdwait` is 4 with 5, 2, 2, 1.
 
+### ⭐ `TREE` is the scene graph: N × 92-byte nodes, 3ds Max TRS
+
+No count header — the payload is exactly `payloadSize / 92` node records, and **92 divides every
+TREE in all 14 files**. Each record:
+
+```
++0   name, NUL-terminated ASCII      ("Scene Root", "sq_hammer", "New05", "Box17")
++32  position   3 × f32
++44  rotation   4 × f32  quaternion
++60  scale      3 × f32
++72  scale-axis 4 × f32  quaternion     <- the 3ds Max ScaleValue, so this came out of Max
++88  u32
+```
+
+Both quaternions are unit-length on **every node of every file** — the check that makes the offsets
+real rather than plausible.
+
+⭐ **This is the rotation/scale half of `M`.** The fit gave racer0 `diag(0.5927)` with no rotation;
+`TREE` lists `New05` with scale `(0.5927, 0.5927, 0.5927)` and an identity quaternion. So the whole
+transform is now accounted for: **`M` from `TREE`'s rotation × scale, `t` from `MOD4+52`.**
+
+`TREE`'s position is the node's own position and is *not* `MOD4+52` — `New05` sits at
+`(375.692, 152.769, 418.256)` in `TREE` against `(329.142, 150.686, 537.460)` in `MOD4`. They are
+different quantities, node placement versus the affine offset that lands object verts in world
+space. **`MOD4+52` is the one a renderer wants**, and it is the one proven 28/28.
+
+⚠ Some words in a node record are `0x00a5xxxx` and `0x1108e6fe` — PS2 main-RAM addresses left in the
+file. Runtime fixup slots, not data. Do not read them as floats.
+
+### `OBJ4` = the drawable nodes
+
+Every `OBJ4` is the **UPPERCASE** form of a `TREE` node name, with **zero orphans across all 14
+files**. The nodes that never get one are exactly the non-renderable kinds:
+
+| node | files |
+|---|---|
+| `Scene Root` | 14 / 14 |
+| `Dummy01` | 10 / 14 |
+| `KID01` | 1 / 14 |
+
+The root, a Max dummy helper, and a character placeholder. So `OBJ4` is the render list, which is
+why its count (1..31) tracks neither the model count nor the submesh count.
+
+### What the node names say the games are
+
+`sgsquark` is not whack-a-mole. Its nodes are `sq_post`, `sq_hammer`, `sq_arrow`, `sq_fence`,
+`Box01..Box22` and a bird built from `sq_body`, `sq_head`, `sq_neck`, `sq_feat` — a **high striker**,
+with the 22 boxes as the score ladder and the bird at the top. `hamstart`/`hamhit` are the hammer
+before and after the swing, `birdwait`/`birdwin`/`birdlose` the bird's three reactions, `egg` two
+spheres. `sgrace` is five racers and a `Spray01`.
+
 ### The rest
 
-`GIN4` magic; `VERS` = 120 on all 14; `TREE` a named node tree opening with the ASCII `Scene Root`;
-`TEX4` texture paths — `..\..\sharedtx\+nest1.bmp`, the artists' own tree again, and **BMP**, where
-the rides use TGA and SSH; `MAT4` material floats; `ANIM`/`KEY4` animation; `BONE`; `PART`.
+`GIN4` magic; `VERS` = 120 on all 14; `TEX4` texture paths — `..\..\sharedtx\+nest1.bmp`, the
+artists' own tree again, and **BMP**, where the rides use TGA and SSH; `MAT4` material floats;
+`ANIM`/`KEY4` animation; `BONE`; `PART`.
 
 ⚠ `TREE`, `OBJ4`, `MOD4` and `TEX4` do **not** share the `u32 key, u32 count` opening — read as a
-count their second word decodes to ASCII. `OBJ4` is a 36-byte record with an UPPERCASE name
-(`SPRAY01`, `NEW02`) and its count per file (1..31) tracks nothing else in the file; it is not the
-model list and is still open, as are `PART` and the rotation/scale part of `M`.
+count their second word decodes to ASCII.
 
 ⚠ Every file ends in **8 zero bytes** after the last chunk — a null terminator, not unread data.
 
-Reader: `tools/gin.py` — `chunks(d)`, `records(d, tag, off, size)`, `key(d, off)`, `strings(...)`.
+Still open: `PART`, and the internals of `ANIM`/`KEY4`/`BONE`.
+
+Reader: `tools/gin.py` — `chunks`, `records`, `key`, `nodes`, `translation`, `name`.
