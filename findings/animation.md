@@ -955,3 +955,26 @@ bounce.** Same class of check as the gate's exact 90°.
 | `+0x24` | 130 | unknown; three sub-pointers via `FUN_00167720` |
 | `+0x28` | 392 | ✅ appear frame |
 | `+0x2c` | 302 | shape only — 8-byte entries, indexed by the u16 at rotation-key `+0x02` |
+
+
+## The `+0x28` object also carries the DISAPPEAR frame
+
+It is **4 bytes for a part that only appears and 8 for one that also goes away**. In the 8-byte
+form the int16 at `+0x04` is NEGATIVE and its magnitude is the frame the part vanishes.
+
+```
+m_crate    appear  28   disappear 100     <- the frame the ape bursts out and smashes it
+m_shards   appear 100   disappear 138     <- the debris flies for 38 frames, then is gone
+```
+
+| check, all 29 eight-byte objects | result |
+|---|---:|
+| the int16 at `+0x04` is negative | **29 / 29** |
+| its magnitude is strictly after the appear frame | **29 / 29** |
+| CONTROL — the u16 at `+0x06` is after the appear frame | 18 / 29 (62%) |
+
+⚠ My first run of this scored 3/29 and I nearly filed it as "not a disappear frame". The test was
+broken, not the idea: it required the frame to be `<= animation length`, and I was computing that
+length only from morph tracks, so it came out **0** for every record that animates by rotation.
+A condition against a zero bound rejects everything. **Look at the rows before believing the
+summary statistic** — the pattern (19→119, 28→100, 100→138, 320→326 …) was obvious on sight.

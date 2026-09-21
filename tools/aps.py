@@ -275,6 +275,32 @@ def appear_frames(d, recoff):
     return out
 
 
+def visibility(d, recoff, pointers=None):
+    """node -> (appear frame, disappear frame or None).
+
+    The `+0x28` object is 4 bytes for a part that only appears, and **8 for one that also goes
+    away**; in the 8-byte form the int16 at `+0x04` is NEGATIVE and its magnitude is the frame it
+    vanishes. Crazy Ape: the crate appears at 28 and disappears at 100 (the moment the ape bursts
+    out and smashes it); the shards appear at 100 and vanish at 138.
+
+    Validated on all 29 eight-byte objects in JUNGLE.WAD: **29/29** have that field negative and
+    its magnitude strictly after the appear frame. The control field at `+0x06` manages 62%."""
+    P = pointers if pointers is not None else _all_pointers(d)
+    rec = record(d, recoff)
+    out = {}
+    for i in range(rec['ntracks']):
+        t = rec['tracks'] + i*0x30
+        p28 = _u32(d, t + 0x28)
+        if not p28: continue
+        appear = _u16(d, p28 + 2)
+        gone = None
+        if array_end(d, p28, P) - p28 >= 8:
+            v = _i16(d, p28 + 4)
+            if v < 0: gone = -v
+        out[_u16(d, t)] = (appear, gone)
+    return out
+
+
 if __name__ == '__main__':
     import sys
     d = open(sys.argv[1], 'rb').read()

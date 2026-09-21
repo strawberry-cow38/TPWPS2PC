@@ -540,3 +540,44 @@ whether you are reading its geometry correctly. Every mesh in all 113 models agr
 
 `tools/m3d2.py` now exposes `triangles()` and `triangle_indices()`; `strips()` is kept but
 documented as not-for-rendering.
+
+
+## ⭐⭐ MATERIALS ARE PER-GROUP, AND THE INDEX IS THE POINTER'S POSITION
+
+A mesh is not one texture — it is split into **groups**, each covering a run of batches with one
+material. Group records are 32 bytes starting at `mesh+0x68`:
+
+```
++0x00 u32 -> material          +0x04 u32 -> batch table
++0x08 u8  BATCH COUNT          +0x09 u8 ?        +0x0A u16 vertex count
+```
+
+⚠ `+0x08` is a **byte**. Read as a u16 it makes `m_sign` claim 257 batches — the tell that it is
+not one.
+
+⭐ The material is never stored as an index. It is encoded by **where the group's pointer lands**
+in an 8-byte-per-material table sitting immediately before the material table:
+
+```
+base     = materialTable - 8 * (materialCount + 1)
+material = (group[0x00] - base) / 8 - 1
+```
+
+### It reads true on inspection
+
+```
+m_base   -> m_grass1, m_grass2, m_grass3, pp_grsph3
+m_body   -> m_back, m_ear, m_foot, m_limb, m_tit, mface1
+m_arm    -> m_hand, m_fing, m_banana, m_banseat, m_limb
+m_crate  -> m_box1              m_shards -> m_box4
+```
+
+A monkey's arm textured with hand, fingers, a banana and a banana seat. On a second model the park
+gate's `door01`/`door02` come out as `jgt_dor1`, and the gateway as walls, pillars and vines.
+
+**Structural check: the groups' batch counts sum to exactly `mesh+0x66` on 963 meshes, 0
+mismatched.**
+
+⚠ This is what "one texture per mesh" got wrong months of renders ago — `mesh+0x50` is the mesh's
+ORDINAL, not a material. The owner's report at the time was *"right texture for each model, just
+wrong places entirely"*, which is exactly what a per-mesh guess produces.

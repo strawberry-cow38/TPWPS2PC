@@ -18,8 +18,9 @@ def meshes(m):
         nverts, nfaces = struct.unpack_from('<2H', m, o+0x60)
         bt, btlen = struct.unpack_from('<I', m, o+0x6c)[0], struct.unpack_from('<I', m, o+0x94)[0]
         nbatches = struct.unpack_from('<H', m, o+0x66)[0]
+        groups_p = struct.unpack_from('<I', m, o+0x68)[0]
         yield dict(name=NAME.match(m, noff).group()[:-1].decode(), tex=tex, mat=mat,
-                   nverts=nverts, nfaces=nfaces, nbatches=nbatches,
+                   nverts=nverts, nfaces=nfaces, nbatches=nbatches, groups=groups_p,
                    batchTable=bt, batchTableEnd=bt+btlen)
 
 def batches(m, mesh):
@@ -96,3 +97,68 @@ def xform(mat, v):
     return (mat[0]*x + mat[4]*y + mat[8]*z  + mat[12],
             mat[1]*x + mat[5]*y + mat[9]*z  + mat[13],
             mat[2]*x + mat[6]*y + mat[10]*z + mat[14])
+
+
+def materials(m):
+    """The model's material names, in index order."""
+    ntex = struct.unpack_from('<H', m, 0x22)[0]
+    tab  = struct.unpack_from('<I', m, 0x40)[0]
+    out = []
+    for i in range(ntex):
+        no = struct.unpack_from('<I', m, tab + i*16 + 12)[0]
+        out.append(NAME.match(m, no).group()[:-1].decode() if 0 < no < len(m) else None)
+    return out
+
+
+def groups(m, mesh):
+    """⭐ A mesh is split into GROUPS, each covering a run of batches with ONE material.
+
+    The material is not stored as an index -- it is encoded by WHERE the group's pointer lands in
+    an 8-byte-per-material table that sits immediately before the material table:
+
+        base     = materialTable - 8 * (materialCount + 1)
+        material = (group[0x00] - base) / 8 - 1
+
+    Group records are 32 bytes, starting at mesh+0x68: +0x00 material pointer, +0x04 batch table,
+    **+0x08 u8 batch count** (a BYTE -- read as a u16 it makes `m_sign` claim 257 batches),
+    +0x09 u8 unknown, +0x0A u16 vertex count.
+
+    ⚠ This is why "one texture per mesh" was wrong: `mesh+0x50` is the mesh's ORDINAL, not a
+    material. Reads true on inspection -- Crazy Ape's arm comes out as hand, fingers, banana and
+    banana-seat, and the park gate's doors as `jgt_dor1`.
+
+    Yields (materialIndex, firstBatch, batchCount)."""
+    ntex = struct.unpack_from('<H', m, 0x22)[0]
+    base = struct.unpack_from('<I', m, 0x40)[0] - 8*(ntex + 1)
+    g = mesh['groups']
+    if not g: return
+    first, k = 0, 0
+    while first < mesh['nbatches'] and k < 64:
+        o = g + k*32
+        mptr = struct.unpack_from('<I', m, o)[0]
+        nb   = m[o + 8]                      # a BYTE, not a u16
+        if not nb: break
+        idx = (mptr - base)//8 - 1
+        yield (idx if 0 <= idx < ntex else None), first, nb
+        first += nb; k += 1
+
+
+def triangle_indices_mat(m, mesh):
+    """`triangle_indices` plus the material index and UVs: (i0, i1, i2, materialIndex).
+    UVs come back separately as a per-strip-slot list, int16 / 4096."""
+    batch_mat = {}
+    for mi, first, nb in groups(m, mesh):
+        for j in range(first, first + nb): batch_mat[j] = mi
+    tris, uvs, base = [], [], 0
+    for j, (a, b, c, n) in enumerate(batches(m, mesh)):
+        adc = [struct.unpack_from('<I', m, a + k*12)[0] & 1 for k in range(n)]
+        for k in range(n):
+            u, v = struct.unpack_from('<2h', m, b + k*4)
+            uvs.append((u/4096.0, v/4096.0))
+        for k in range(n - 2):
+            if adc[k+2]: continue
+            i0, i1, i2 = k, k+1, k+2
+            if k & 1: i1, i2 = i2, i1
+            tris.append((base+i0, base+i1, base+i2, batch_mat.get(j)))
+        base += n
+    return tris, uvs
