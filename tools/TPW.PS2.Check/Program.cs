@@ -22,6 +22,26 @@ int tgaPng = 0, tgaLies = 0;
 int withPartial = 0, withCutout = 0;
 int aps = 0, apsOk = 0, apsRecords = 0, apsSkeletal = 0, apsShared = 0;
 int apsPlain = 0, apsSkelOnly = 0, apsSharedOnly = 0, apsBoth = 0;
+int sam = 0, samNamed = 0, samPrintable = 0, samShape = 0, samHoarding = 0, samFields = 0;
+var samTiers = new int[3];
+int samChecked = 0, samControlOk = 0;
+// name -> { Info.Id, Upgrades[0..2].InitCapacity }, every value READ OFF THE DISC. The capacities
+// of the first five agree to the digit with what TPW-PSXPC reads out of the PSX executable; the
+// last two are PS2 rebalances that deliberately DISAGREE with it, so a parser cannot pass here by
+// returning PSX numbers.
+// ⚠ This table's first draft had five ids written from memory rather than read. The capacities were
+// measured and passed; the invented ids failed the moment the control ran. That is the whole reason
+// the id is in here next to the numbers it travels with.
+var RideControls = new Dictionary<string, int[]>
+{
+    ["Crazy Ape"]       = new[] { 1101,  8, 11, 14 },   // Monkey.sam
+    ["Sun God"]         = new[] { 1106, 16, 22, 28 },   // Incagod.sam
+    ["Mumbo"]           = new[] { 1109,  5,  5,  5 },   // Mumbo.sam
+    ["Tom Tom Twister"] = new[] { 1113, 20, 30, 40 },   // spider.sam
+    ["Aztec Mayhem"]    = new[] { 1104,  5,  8, 12 },   // TVSim.sam
+    ["Chac Atak"]       = new[] { 1185,  6,  6,  6 },   // coaster1.sam  -- PS2 rebalance
+    ["Jurassic Tours"]  = new[] { 1170,  9, 18, 27 },   // tourride.sam  -- PS2 rebalance
+};
 var extCount = new Dictionary<string, int>();
 var firstFails = new List<string>();
 
@@ -99,6 +119,30 @@ foreach (var w in wads)
                 if (firstFails.Count < 10) firstFails.Add($"{w.Path}{e.Path} kind {kind} {bpp}bpp did not decode");
             }
         }
+        else if (ext == ".sam")
+        {
+            sam++;
+            var txt = System.Text.Encoding.Latin1.GetString(data);
+            if (txt.All(c => c >= 32 && c < 127 || c is '\t' or '\r' or '\n')) samPrintable++;
+            var def = RideDefinition.Parse(txt, w.Path + e.Path);
+            samFields += def.Fields.Count;
+            if (def.Name != null) samNamed++;
+            if (def.Shape != null) samShape++;
+            if (def.Hoarding != null) samHoarding++;
+            for (int t = 0; t < 3; t++) if (def.UpgradeCapacity(t) is not null) samTiers[t]++;
+            // Known answers. These are not a budget that can drift green -- the disc is fixed, and
+            // every one of them was read independently: the capacities off the PSX executable by
+            // TPW-PSXPC, the ids off a second extraction of this disc by tinyclaw. If the parser
+            // ever stops reproducing them it has broken, and a silent reformat is the likely cause.
+            if (def.Name is string rn && RideControls.TryGetValue(rn, out var want))
+            {
+                samChecked++;
+                var got = new[] { def.Id, def.UpgradeCapacity(0), def.UpgradeCapacity(1), def.UpgradeCapacity(2) };
+                if (got.SequenceEqual(want.Select(x => (int?)x))) samControlOk++;
+                else if (firstFails.Count < 10)
+                    firstFails.Add($"ride control {rn}: got [{string.Join(",", got)}] want [{string.Join(",", want)}]");
+            }
+        }
         else if (ext == ".aps")
         {
             aps++;
@@ -144,9 +188,14 @@ Console.WriteLine($"  records partitioned: {apsPlain} plain + {apsSkelOnly} skel
                   $"{apsSharedOnly} shared-only + {apsBoth} both = " +
                   $"{apsPlain + apsSkelOnly + apsSharedOnly + apsBoth} of {apsRecords}");
 
+Console.WriteLine($"rides: {sam} .sam files, {samPrintable} fully printable, {samNamed} named, "
+                  + $"{samShape} with a footprint, {samHoarding} with a hoarding, {samFields} fields");
+Console.WriteLine($"  upgrade tiers carrying a capacity: {samTiers[0]} / {samTiers[1]} / {samTiers[2]}");
+Console.WriteLine($"  known-answer controls: {samControlOk} of {samChecked} reproduce (id + 3 capacities each)");
+
 // Every archive entry, named. The readers above cover three extensions; the rest are present and
 // unexamined, and saying so is the difference between a known gap and an invisible one.
-var examined = new[] { ".mps", ".tga", ".aps" };
+var examined = new[] { ".mps", ".tga", ".aps", ".sam" };
 int seen = extCount.Values.Sum();
 Console.WriteLine($"entry census: {seen} entries + {alias} aliases + {decBad} unreadable = " +
                   $"{seen + alias + decBad} of {entries}");
@@ -157,4 +206,4 @@ if (firstFails.Count > 0)
     Console.WriteLine("first failures:");
     foreach (var f in firstFails) Console.WriteLine("   " + f);
 }
-return faceBad == 0 && tgaBad == 0 && decBad == 0 ? 0 : 2;
+return faceBad == 0 && tgaBad == 0 && decBad == 0 && samControlOk == samChecked ? 0 : 2;

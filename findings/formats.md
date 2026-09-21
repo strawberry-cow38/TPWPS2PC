@@ -1574,3 +1574,43 @@ and a decision, not a lookup.
 tiers**, `RedLineCapacity`, `ExcitementLevel`, `InitPricePerUse`, `InitCostOfGoods`,
 `InitChanceOfLoosing`, `Research.Group`, `IsChoosable`, `OverwritePriority`, the entry/exit stand
 positions, and the footprint and hoarding as ASCII art.
+
+
+## `.sam` parser — the grammar, measured (2026-09-21)
+
+`RideDefinition.Parse` in `core/TPW.PS2.Data/RideCatalogue.cs`. Four rules, each one found by a
+control rather than assumed:
+
+1. `#` opens a comment line.
+2. `key` whitespace `value`, **and then optionally more text**. `UsageInfo.MinCapacity\t\t\t1\t\tper
+   car` is a real line — the value is the first token and the rest is the author talking to
+   themselves. Taking the whole remainder breaks 25 `InitCapacity` lines.
+3. A quoted value may contain spaces: `Info.Name  "Mole Whack"`.
+4. A bare key introduces a `---` fenced ASCII-art block — `Info.Shape` and `Info.Hoarding`.
+
+⚠ **A key can repeat inside one file.** 14 of the 321 do it; `ices.sam` gives all four stand
+positions twice. Last wins, which is what a line-ordered config means by an override — but nothing
+in the file says so, so it is a decision and is documented as one.
+
+⚠ A naive tab-split reports **463 distinct keys**; the whitespace grammar gives **434**. The
+difference is phantom keys like `Info.RideTypeStringIndex 22`, where the separator was spaces.
+
+⚠ There is no combined `MinCapacity / MaxCapacity` line. **Zero** lines on the disc carry a `/` in
+a value. I invented that form prettifying a chat message and it was very nearly designed around.
+
+### Known-answer controls
+
+The self-test now carries seven rides by name with their id and three upgrade capacities, and
+**returns non-zero if any of them stops reproducing**. Five agree to the digit with what TPW-PSXPC
+reads out of the PSX executable; two are PS2 rebalances that deliberately disagree, so a parser
+cannot pass by returning PSX numbers.
+
+⚠ The table's first draft had five ids written from memory instead of read off the disc. The
+capacities were measured and passed; the invented ids failed the instant the control ran.
+
+```
+rides: 321 .sam files, 321 fully printable, 309 named, 309 with a footprint,
+       163 with a hoarding, 7568 fields
+  upgrade tiers carrying a capacity: 151 / 86 / 86
+  known-answer controls: 7 of 7 reproduce (id + 3 capacities each)
+```
