@@ -625,3 +625,35 @@ first second and seeing a tiny ape is not a decoder bug; it is the ape hiding in
 
 ⭐ Worth keeping as a habit: the first render looked wrong, and the right move was to *measure the
 pose extent over time* rather than start adjusting the decoder. The data explained itself.
+
+
+## A file holds MANY animations, and only one of them breaks the crate
+
+`monkey.aps`'s 12 sections carry **14 records** — 14 separate animations, not one:
+
+```
+sec0   215f | m_sign, m_body, m_arm, m_arm1, m_crate, m_shards, m_boxes
+sec2   100f | m_body, m_arm, m_arm1          sec3  125f | m_body, m_arm, m_arm1
+sec4   335f | m_body                         sec5  60/40/60/60/40/60f | m_body  (x6)
+sec5   112f | m_body, m_arm, m_arm1          sec6   80f | m_body
+sec9   120f | m_body                         sec10  80f | m_body
+```
+
+⭐ **Only section 0 touches `m_crate` and `m_shards`** — it is the ride's show: the ape bursts out
+at frame 100 *and the crate smashes*. The shards are its debris.
+
+That answers a question left open days ago, when the static render showed stray shards and master
+said *"shards and crate arent meant to be there"*. They are not stray geometry and they are not a
+format bug — they are **debris that should not exist yet**. The game has a bit for exactly this:
+a track flag `0x1000` clears mesh bit `0x800000` (`FUN_001accc0`), which `FUN_001a6d68` sets back
+depending on its mode argument.
+
+⚠ **Not implemented here.** The renderer draws every part for the whole clip, so 36 shards are on
+screen from frame 0. Stated rather than filtered: a render that quietly drops the parts that do not
+fit is the thing this repo keeps catching itself doing.
+[[feedback_exclusions_hide_the_defect]]
+
+**Still open on `.aps`:** the per-track visibility bit above; the other seven track pointers
+(`+0x10`, `+0x14`, `+0x18`, `+0x1C`, `+0x24`, `+0x28`, `+0x2C` — `+0x28` is set on every monkey
+track and is only ~4 bytes); the 20-byte skeletal path has no file in JUNGLE.WAD to test against,
+so it is read but unexercised.
