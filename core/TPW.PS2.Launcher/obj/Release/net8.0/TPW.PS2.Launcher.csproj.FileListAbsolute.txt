@@ -1,0 +1,16 @@
+/home/cowtools/tpw-ps2pc/core/TPW.PS2.Launcher/bin/Release/net8.0/TPW.PS2.Launcher.deps.json
+/home/cowtools/tpw-ps2pc/core/TPW.PS2.Launcher/bin/Release/net8.0/TPW.PS2.Launcher.dll
+/home/cowtools/tpw-ps2pc/core/TPW.PS2.Launcher/bin/Release/net8.0/TPW.PS2.Launcher.pdb
+/home/cowtools/tpw-ps2pc/core/TPW.PS2.Launcher/bin/Release/net8.0/TPW.PS2.Data.dll
+/home/cowtools/tpw-ps2pc/core/TPW.PS2.Launcher/bin/Release/net8.0/TPW.PS2.Data.pdb
+/home/cowtools/tpw-ps2pc/core/TPW.PS2.Launcher/obj/Release/net8.0/TPW.PS2.Launcher.csproj.AssemblyReference.cache
+/home/cowtools/tpw-ps2pc/core/TPW.PS2.Launcher/obj/Release/net8.0/TPW.PS2.Launcher.GeneratedMSBuildEditorConfig.editorconfig
+/home/cowtools/tpw-ps2pc/core/TPW.PS2.Launcher/obj/Release/net8.0/TPW.PS2.Launcher.AssemblyInfoInputs.cache
+/home/cowtools/tpw-ps2pc/core/TPW.PS2.Launcher/obj/Release/net8.0/TPW.PS2.Launcher.AssemblyInfo.cs
+/home/cowtools/tpw-ps2pc/core/TPW.PS2.Launcher/obj/Release/net8.0/TPW.PS2.Launcher.csproj.CoreCompileInputs.cache
+/home/cowtools/tpw-ps2pc/core/TPW.PS2.Launcher/obj/Release/net8.0/TPW.PS2.Launcher.sourcelink.json
+/home/cowtools/tpw-ps2pc/core/TPW.PS2.Launcher/obj/Release/net8.0/TPW.PS2..B0FFB45B.Up2Date
+/home/cowtools/tpw-ps2pc/core/TPW.PS2.Launcher/obj/Release/net8.0/TPW.PS2.Launcher.dll
+/home/cowtools/tpw-ps2pc/core/TPW.PS2.Launcher/obj/Release/net8.0/refint/TPW.PS2.Launcher.dll
+/home/cowtools/tpw-ps2pc/core/TPW.PS2.Launcher/obj/Release/net8.0/TPW.PS2.Launcher.pdb
+/home/cowtools/tpw-ps2pc/core/TPW.PS2.Launcher/obj/Release/net8.0/ref/TPW.PS2.Launcher.dll

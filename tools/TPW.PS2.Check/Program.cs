@@ -17,7 +17,8 @@ var wads = files.Where(f => !f.IsDirectory && f.Path.EndsWith(".WAD", StringComp
 
 int entries = 0, decOk = 0, decBad = 0, alias = 0;
 int meshes = 0, faceOk = 0, faceBad = 0, noBatches = 0, models = 0, modelBad = 0;
-int tga = 0, tgaOk = 0, tgaBad = 0, tga24 = 0, tga32 = 0, tgaRle = 0, tgaPal = 0;
+int tga = 0, tgaOk = 0, tgaBad = 0, tga24 = 0, tga32 = 0, tga8 = 0, tgaRle = 0, tgaPal = 0;
+int tgaPng = 0, tgaLies = 0;
 int withPartial = 0, withCutout = 0;
 int aps = 0, apsOk = 0, apsRecords = 0, apsSkeletal = 0, apsShared = 0;
 var firstFails = new List<string>();
@@ -56,13 +57,29 @@ foreach (var w in wads)
                 }
             }
         }
+        // ⚠ /DATA/UI.WAD/UltimateC/Star.tga is a PNG wearing a .tga extension -- 89 50 4E 47, IHDR
+        // 32x32 RGBA. Counting it as a TGA that failed reports 5,694 of 5,695 and reads as a gap in
+        // the decoder, when a perfect TGA decoder scores 5,694 of 5,694 and this file is simply not
+        // one. Name it separately rather than letting it sit in the reject pile.
+        else if (ext == ".tga" && data.Length > 8 && data[0] == 0x89
+                 && data[1] == 'P' && data[2] == 'N' && data[3] == 'G')
+        {
+            tgaPng++;
+        }
         else if (ext == ".tga")
         {
             tga++;
             int kind = data.Length > 2 ? data[2] : 0, bpp = data.Length > 16 ? data[16] : 0;
+            int tw = data.Length > 13 ? BitConverter.ToUInt16(data, 12) : 0;
+            int th = data.Length > 15 ? BitConverter.ToUInt16(data, 14) : 0;
+            // Count by what the body IS, not by what the header claims -- see Targa.cs. Four files
+            // declare true-colour and are paletted, and a breakdown that believes them does not sum.
+            bool lies = bpp == 8 && data[1] == 0 && (kind & 7) == 2
+                        && data.Length - 18 - data[0] >= tw * th + 1024;
             if ((kind & 8) != 0) tgaRle++;
-            if ((kind & 7) == 1) tgaPal++;
-            if (bpp == 24) tga24++; else if (bpp == 32) tga32++;
+            if ((kind & 7) == 1 || lies) tgaPal++;
+            if (lies) tgaLies++;
+            if (bpp == 24) tga24++; else if (bpp == 32) tga32++; else if (bpp == 8) tga8++;
             try
             {
                 var t = new Targa(data);
@@ -103,7 +120,10 @@ Console.WriteLine($"models: {models} files ({modelBad} unreadable), {meshes} mes
 Console.WriteLine($"  face count: {faceOk} match, {faceBad} DO NOT, {noBatches} have no batches " +
                   $"({100.0 * faceOk / Math.Max(faceOk + faceBad, 1):F2}% of those with geometry)");
 Console.WriteLine($"textures: {tga} TGAs, {tgaOk} decoded, {tgaBad} REJECTED " +
-                  $"({tga24} 24bpp, {tga32} 32bpp, {tgaRle} RLE, {tgaPal} paletted)");
+                  $"({tga24} 24bpp + {tga32} 32bpp + {tga8} 8bpp = {tga24 + tga32 + tga8}; " +
+                  $"{tgaRle} RLE, {tgaPal} paletted of which {tgaLies} DECLARE true-colour)");
+if (tgaPng > 0)
+    Console.WriteLine($"  plus {tgaPng} PNG file(s) carrying a .tga extension -- not TGAs, not failures");
 Console.WriteLine($"  alpha: {withCutout} have clear texels, {withPartial} have PARTIAL alpha");
 Console.WriteLine($"animation: {aps} .aps files, {apsOk} read, {apsRecords} records " +
                   $"({apsSkeletal} skeletal, {apsShared} whose tracks live in another file)");

@@ -1397,3 +1397,44 @@ count their second word decodes to ASCII.
 
 Reader: `tools/gin.py` — `chunks`, `records`, `key`, `nodes`, `anim`, `part`, `keys`,
 `translation`, `name`.
+
+
+## ⚠⚠ TGA: two files on this disc lie about what they are (2026-09-21)
+
+Both found by tinyclaw running an independent reader over their own extraction, against my
+"5,694 of 5,695" headline. Both halves of that number were hiding something.
+
+### `/DATA/UI.WAD/UltimateC/Star.tga` is a PNG
+
+It opens `89 50 4E 47 0D 0A 1A 0A` and its IHDR reads 32x32, bitdepth 8, colourtype 6 (RGBA). It is
+not a TGA the decoder failed on. **A perfect TGA decoder scores 5,694 of 5,694**, and reporting
+5,694 of 5,695 invents a gap that does not exist. The checker now names it separately.
+
+### ⭐⭐ Four `Sky/*_front2.tga` declare true-colour and are paletted
+
+`FANTASY`, `HALLOW`, `JUNGLE`, `SPACE`. Each declares **cmapType 0 with kind 2 — true-colour, no
+colour map — at 8bpp**, which cannot exist. The body is `1024 + 65536 + 2`: a 256-entry 32-bit
+palette, then 256x256 indices.
+
+**My decoder did not reject these. It silently produced garbage, which is worse.** With
+`cmapType == 0` no palette is skipped, so the first 1,024 pixels *are the palette* and the stream
+runs 1,024 bytes short; 8bpp then falls into the greyscale branch, which sets alpha to 255. Proof:
+the decoder's first eight pixel values were byte-identical to the file's first eight palette bytes.
+
+⭐ **And the alpha was the entire point of the file.** Every palette entry is `(255, 255, 255, a)` —
+pure white, varying only in opacity. These four are the **cloud masks composited over
+`Sky/*_back.tga`**. Rendering them opaque grey turns a transparent cloud layer into a solid sheet.
+After the fix `jungle_front2` decodes as 65,536/65,536 pure white with **0 fully-opaque texels and
+117 distinct alpha values** — 45,481 partial, 20,055 clear. Its honest sibling `Jungle_back.tga` is
+unchanged at full colour, fully opaque, one alpha value, which is the control.
+
+`Targa.cs` now derives the palette from the body size rather than believing the declared type.
+
+⚠ **The lesson for `.ssh`.** A scorer that compares a candidate decode against one of these five
+references is comparing against a bad reference and will blame the decoder. Check the reference
+before trusting a score.
+
+⚠ The counting lesson: the old summary counted paletted by *declared* kind and bpp as 24-or-32, so
+its breakdown read `3897 + 1789 + 4 = 5690` against 5,694 decoded — **four files went down a path
+the summary never named.** A breakdown that does not sum is telling you something. It now prints
+the bpp split summing to the total and says how many of the paletted files declare otherwise.

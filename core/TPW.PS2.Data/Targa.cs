@@ -52,6 +52,19 @@ public sealed class Targa
         }
         int cmapOff = 18 + idlen;
 
+        // ⚠ Four Sky/*_front2.tga (FANTASY, HALLOW, JUNGLE, SPACE) declare cmapType 0 with kind 2 --
+        // true-colour, no colour map -- at 8bpp, which cannot exist. Their body is a 256-entry
+        // 32-bit palette followed by Width*Height indices. Believing the header skips no palette, so
+        // the first 1,024 pixels ARE the palette, the stream runs 1,024 bytes short, and 8bpp then
+        // falls into the greyscale branch below and throws the alpha away. That alpha is the whole
+        // point of these four: every palette entry is white and only its opacity varies, because
+        // they are the cloud masks composited over Sky/*_back.tga. Trust the body, not the header.
+        if (bpp == 8 && cmapType == 0 && baseKind == 2 && !rle
+            && buf.Length - cmapOff >= Width * Height + 1024)
+        {
+            baseKind = 1; cmapFirst = 0; cmapStride = 4; src = cmapOff + 1024;
+        }
+
         int n = (bpp + 7) / 8;
         int count = Width * Height;
         var raw = new byte[count * n];
