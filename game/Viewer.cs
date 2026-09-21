@@ -640,6 +640,10 @@ public partial class Viewer : Node3D
         // ⚠ Report the model against its cells rather than assuming it fits. A ride overflowing
         // its footprint is a real thing here -- the cell size itself was measured, not given.
         var (min, max) = Park.DrawnBounds(_current.Root);
+        GD.Print($"[park] drawn min {min} max {max}; placed at {_current.Root.Position}; "
+                 + $"visible={_current.Root.Visible} parent={_current.Root.GetParent()?.Name}; "
+                 + $"plot {fp.Width * Park.CellSize} x {fp.Height * Park.CellSize}; "
+                 + $"focus {_focus} dist {_dist}");
         var over = (max.X - min.X) / Math.Max(fp.Width, 1) / Park.CellSize;
         var overZ = (max.Z - min.Z) / Math.Max(fp.Height, 1) / Park.CellSize;
         _info.Text = Park.Describe(def, display, fp)
