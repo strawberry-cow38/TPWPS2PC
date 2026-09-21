@@ -29,6 +29,11 @@ public partial class Viewer : Node3D
     string _shotPath; int _shotFrame = -1, _shotWait;
     string _wantRide, _wantAnim, _wantWad, _wantMode, _wantImage, _wantSound, _wantPlay;
     string _discPath;
+    // The park, and the two tables it needs: every ride's design data, and the text the player
+    // is actually shown. Loaded once -- RideCatalogue walks every WAD.
+    Park _park;
+    RideCatalogue _cat;
+    TextDatabase _text;
 
     ItemList _rideList;
     CheckBox _texOn;
@@ -38,7 +43,7 @@ public partial class Viewer : Node3D
 
     /// <summary>What the left-hand list is showing. The archive is the same either way; only what
     /// the viewer does with an entry changes.</summary>
-    enum Mode { Models, Textures, Sounds, Movies }
+    enum Mode { Models, Textures, Sounds, Movies, Park }
     Mode _mode = Mode.Models;
     TextureRect _imageView;
     ColorRect _imageBack;
@@ -103,6 +108,20 @@ public partial class Viewer : Node3D
         }
         _discPath = disc;
         GD.Print("[v] opening disc"); _lib = new AssetLibrary(disc);
+        _park = new Park();
+        AddChild(_park.Root);
+        _park.Root.Visible = false;
+        try
+        {
+            using var d = new Disc(disc);
+            _cat = RideCatalogue.Load(d);
+            foreach (var w in d.Files())
+                if (w.Path.EndsWith("/DATA.WAD", StringComparison.OrdinalIgnoreCase))
+                    _text = TextDatabase.Load(new WadArchive(d.Read(w.Extent, w.Size)), "eur");
+            GD.Print($"[park] {_cat.All.Count} rides, {_cat.ById.Count} ids, " +
+                     $"text {(_text == null ? "MISSING" : _text.Keys.Length + " rows")}");
+        }
+        catch (Exception ex) { GD.PrintErr($"[park] catalogue failed: {ex}"); }
         var wads = _lib.Wads(); GD.Print($"[v] {wads.Count} wads"); foreach (var w in wads) _wadPick.AddItem(w);
         if (_wadPick.ItemCount > 0)
         {
@@ -146,6 +165,21 @@ public partial class Viewer : Node3D
                 for (int i = 0; i < _rideList.ItemCount; i++)
                     if (_rideList.GetItemText(i).Contains(_wantImage, StringComparison.OrdinalIgnoreCase))
                     { _rideList.Select(i); ShowImage(i); break; }
+        }
+        else if (_wantMode != null && _wantMode.StartsWith("par", StringComparison.OrdinalIgnoreCase))
+        {
+            _modePick.Select(4); SetMode(Mode.Park);
+            // ⚠ Re-select the ride AFTER the mode change. SetMode does not rebuild, so a --shot run
+            // that only set the mode photographed the model standing on no ground at all.
+            if (_rideList.ItemCount > 0)
+            {
+                int pick = 0;
+                if (_wantRide != null)
+                    for (int i = 0; i < _rideList.ItemCount; i++)
+                        if (_rideList.GetItemText(i).Contains(_wantRide, StringComparison.OrdinalIgnoreCase))
+                        { pick = i; break; }
+                _rideList.Select(pick); ShowRide(pick);
+            }
         }
     }
 
@@ -209,6 +243,7 @@ public partial class Viewer : Node3D
         _modePick = new OptionButton();
         _modePick.AddItem("Models"); _modePick.AddItem("Textures");
         _modePick.AddItem("Sounds"); _modePick.AddItem("Movies");
+        _modePick.AddItem("Park");
         _modePick.ItemSelected += i => SetMode((Mode)(int)i);
         col.AddChild(_modePick);
 
@@ -219,7 +254,7 @@ public partial class Viewer : Node3D
         _rideList = new ItemList { SizeFlagsVertical = Control.SizeFlags.ExpandFill };
         _rideList.ItemSelected += i =>
         {
-            if (_mode == Mode.Models) ShowRide((int)i);
+            if (_mode == Mode.Models || _mode == Mode.Park) ShowRide((int)i);
             else if (_mode == Mode.Textures) ShowImage((int)i);
             else if (_mode == Mode.Movies) ShowMovie((int)i);
             else ShowSound((int)i);
@@ -269,7 +304,8 @@ public partial class Viewer : Node3D
         _video.Visible = m == Mode.Movies;
         if (m != Mode.Movies) _video.Stop();
         // ⚠ Hide the model too. A transparent image pane over a lit 3D scene reads as a bug.
-        if (_current != null) _current.Root.Visible = m == Mode.Models;
+        if (_current != null) _current.Root.Visible = m == Mode.Models || m == Mode.Park;
+        if (_park != null) _park.Root.Visible = m == Mode.Park;
         if (m == Mode.Sounds) FillBankPicker();
         else if (m == Mode.Movies) FillMovieList();
         else FillWadPicker();
@@ -428,7 +464,7 @@ public partial class Viewer : Node3D
     {
         _rideList.Clear();
         if (_mode == Mode.Sounds) return;      // the bank picker fills this list instead
-        if (_mode == Mode.Models)
+        if (_mode == Mode.Models || _mode == Mode.Park)
         {
             foreach (var r in _lib.Rides) _rideList.AddItem(r.Name);
             if (_lib.Rides.Count > 0) { _rideList.Select(0); ShowRide(0); }
@@ -518,6 +554,67 @@ public partial class Viewer : Node3D
         Rebuild();
     }
 
+    /// <summary>The ride whose `.sam` sits in the same folder as the model being shown. A ride is
+    /// a directory bundle, so the definition is found by PATH rather than by name -- names repeat
+    /// across worlds and 32 of the 36 repeats carry a different id.</summary>
+    RideDefinition DefinitionFor(WadArchive.Entry model)
+    {
+        if (_cat == null || model == null) return null;
+        int slash = model.Path.LastIndexOf('/');
+        if (slash < 0) return null;
+        var dir = model.Path[..(slash + 1)];
+        foreach (var d in _cat.All)
+        {
+            if (!d.Source.Contains("/" + _lib.WadName, StringComparison.OrdinalIgnoreCase)) continue;
+            int s2 = d.Source.LastIndexOf('/');
+            if (s2 < 0) continue;
+            if (d.Source[..(s2 + 1)].EndsWith(dir, StringComparison.OrdinalIgnoreCase)) return d;
+        }
+        return null;
+    }
+
+    /// <summary>Stand the current ride on park ground at its own footprint, and say what the game
+    /// would say about it. ⚠ The headline is the TABLE's name, not `Info.Name`: those disagree on
+    /// 70 of the 273 rides that reach a row.</summary>
+    void BuildPark(Model mesh)
+    {
+        var def = DefinitionFor(_ride.Model);
+        if (def == null)
+        {
+            _park.Build(new Park.Footprint(1, 1, new bool[1, 1], -1, -1));
+            _info.Text = $"{_ride.Name}\nno .sam beside this model -- nothing to place it by";
+            return;
+        }
+        var fp = def.Shape != null ? Park.Footprint.From(def.Shape)
+                                   : new Park.Footprint(1, 1, new bool[1, 1], -1, -1);
+
+        string display = null;
+        if (_text != null)
+        {
+            var parts = def.Source.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            int wi = Array.FindIndex(parts, x => x.EndsWith(".WAD", StringComparison.OrdinalIgnoreCase));
+            if (wi >= 0)
+            {
+                int row = _text.IndexOf(TextDatabase.GraphicsKey(
+                    parts[wi][..^4], string.Join('/', parts.Skip(wi + 1))));
+                if (row >= 0) display = _text.Text("eng", row);
+            }
+        }
+
+        _park.Build(fp);
+        _park.Place(_current.Root, mesh, fp);
+
+        // ⚠ Report the model against its cells rather than assuming it fits. A ride overflowing
+        // its footprint is a real thing here -- the cell size itself was measured, not given.
+        var (min, max) = Park.Bounds(mesh);
+        var over = (max.X - min.X) / Math.Max(fp.Width, 1) / Park.CellSize;
+        var overZ = (max.Z - min.Z) / Math.Max(fp.Height, 1) / Park.CellSize;
+        _info.Text = Park.Describe(def, display, fp)
+                     + $"\n\nmodel fills {over:P0} x {overZ:P0} of its cells"
+                     + $"\n{_current.Summary}"
+                     + "\nleft-drag orbit | wheel zoom | R re-frame";
+    }
+
     void Rebuild()
     {
         if (_current != null) { _current.Root.QueueFree(); _current = null; }
@@ -538,15 +635,17 @@ public partial class Viewer : Node3D
             GD.Print($"[tex] {got} resolved, {missed} missing" +
                      (misses.Count > 0 ? ": " + string.Join(", ", misses) : ""));
             _current = new AnimatedModel(model, _anim, rec, TextureFor);
-            _current.Root.Visible = _mode == Mode.Models;
+            _current.Root.Visible = _mode == Mode.Models || _mode == Mode.Park;
             AddChild(_current.Root); GD.Print($"[v] built: {_current.Summary}");
             _time = 0;
             _current.SetFrame(0);
             FrameCamera(model);
-            _info.Text = $"{_ride.Name}\n{_current.Summary}\n" +
-                         $"{_records.Count} animations\n" +
-                         "left-drag orbit  |  right-drag or shift+drag or WASD to pan  |  wheel zoom\n" +
-                         "SPACE play/pause  |  arrows step a frame  |  R re-frame";
+            if (_mode == Mode.Park) BuildPark(model);
+            else
+                _info.Text = $"{_ride.Name}\n{_current.Summary}\n" +
+                             $"{_records.Count} animations\n" +
+                             "left-drag orbit  |  right-drag or shift+drag or WASD to pan  |  wheel zoom\n" +
+                             "SPACE play/pause  |  arrows step a frame  |  R re-frame";
         }
         catch (Exception ex)
         {
