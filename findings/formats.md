@@ -1175,3 +1175,55 @@ decoder can be scored against thousands of known-correct images instead of eyeba
 
 Reader: `tools/ssh.py` — `entries(d)` walks the container and reports each entry's type, size and
 payload extent.
+
+
+## ⭐⭐ `.gin` = GIN4, the SIDESHOW minigames as 3D scenes (2026-09-21)
+
+Listed in this file for months as *"14 files, 3,740,116 bytes, unknown, and the largest per-file --
+267 KB average"*. Nobody had opened one. The structure came out in about six commands.
+
+**All 14 are under `/Sideshow/` in JUNGLE.WAD**, and the filenames do most of the work:
+`sgrace/racer0..4` (five files of **identical** size, 508,696 bytes), `sgsquark/birdwait`,
+`birdwin`, `birdlose`, `hamstart`, `hamhit`, `egg`, `scorebar`, plus a `base` per game. These are
+the fairground minigames — and they are **full 3D scenes with bones and animation**, not the 2D
+sprite sheets the size and the subject might suggest.
+
+Chunked exactly like the rest of EA's work on this disc:
+
+```
+4cc, u32 0, u32 payloadSize, payload
+and each counted payload opens:  u32 ?, u32 count, then records
+
+GIN4  magic         VERS  version, 120 on all 14      TREE  named node tree, "Scene Root" first
+OBJ4  object, 36 B, UPPERCASE name   MOD4  model, 64 B, mixed-case name   MESH  mesh header
+POLY  count x 3 u32    triangle vertex indices
+MAP4  count x 6 f32    UVs, three pairs per triangle
+FNRM  count x 9 f32    three normals per triangle
+PTS4  count x 3 f32    vertex positions
+VECT  count x 3 f32    a second per-vertex vector, meaning not established
+NORM  count x 3 f32    per-vertex unit normals
+TEX4  texture paths    MAT4  material floats    ANIM / KEY4  animation    BONE   PART
+```
+
+⭐ **The strides are measured, not guessed.** `payloadSize - 8 == count * stride` holds on **every
+counted chunk in every file**:
+
+| chunk | stride | files |
+|---|---|---|
+| POLY | 12 | **78 / 78** |
+| MAP4 | 24 | **78 / 78** |
+| FNRM | 36 | **78 / 78** |
+| PTS4 | 12 | **29 / 29** |
+| VECT | 12 | **29 / 29** |
+| NORM | 12 | **29 / 29** |
+
+and the counts corroborate each other independently: **805** across all three per-face chunks and
+**622** across all three per-vertex ones.
+
+⭐ `TEX4` holds paths like `..\..\sharedtx\+nest1.bmp` — the artists' own tree again, and **BMP**,
+where the rides use TGA and SSH.
+
+⚠ Every file's walk stops **8 bytes short of the end**, consistently on all 14. There is a trailer
+and it is not read. `VECT`'s meaning and the `PART` chunk are also open.
+
+Reader: `tools/gin.py` — `chunks(d)`, `records(d, tag, off, size)`, `strings(d, off, size)`.
