@@ -28,6 +28,14 @@ public sealed class AssetLibrary : IDisposable
     public AssetLibrary(string discPath) { _disc = new Disc(discPath); }
     public void Dispose() => _disc.Dispose();
 
+    /// <summary>Every `.SDT` sound bank on the disc, in path order. These are loose files, not
+    /// archive members -- 41 of them, holding 2,220 sounds and just under four hours of audio.</summary>
+    public List<Disc.Entry> SoundBanks() => _disc.Files()
+        .Where(f => !f.IsDirectory && f.Path.EndsWith(".SDT", StringComparison.OrdinalIgnoreCase))
+        .OrderBy(f => f.Path, StringComparer.OrdinalIgnoreCase).ToList();
+
+    public byte[] ReadDisc(Disc.Entry f) => _disc.Read(f.Extent, f.Size);
+
     public List<string> Wads() => _disc.Files()
         .Where(f => !f.IsDirectory && f.Path.EndsWith(".WAD", StringComparison.OrdinalIgnoreCase))
         .Select(f => f.Path).ToList();

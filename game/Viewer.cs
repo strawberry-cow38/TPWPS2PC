@@ -27,7 +27,7 @@ public partial class Viewer : Node3D
     // Capture mode, the same shape the PSX port uses: --shot=<path>:<frame> renders one frame and
     // quits, so a render can be checked over ssh without a display.
     string _shotPath; int _shotFrame = -1, _shotWait;
-    string _wantRide, _wantAnim, _wantWad, _wantMode, _wantImage;
+    string _wantRide, _wantAnim, _wantWad, _wantMode, _wantImage, _wantSound, _wantPlay;
 
     ItemList _rideList;
     CheckBox _texOn;
@@ -37,11 +37,16 @@ public partial class Viewer : Node3D
 
     /// <summary>What the left-hand list is showing. The archive is the same either way; only what
     /// the viewer does with an entry changes.</summary>
-    enum Mode { Models, Textures }
+    enum Mode { Models, Textures, Sounds }
     Mode _mode = Mode.Models;
     TextureRect _imageView;
     ColorRect _imageBack;
     List<WadArchive.Entry> _images = new();
+
+    List<Disc.Entry> _banks = new();
+    SoundBank _bank;
+    AudioStreamPlayer _player;
+    Button _playBtn;
 
     public override void _Ready()
     {
@@ -68,6 +73,8 @@ public partial class Viewer : Node3D
         }
 
         _wantMode = Env("TPW_PS2_MODE");
+        _wantSound = Env("TPW_PS2_SOUND");
+        _wantPlay = Env("TPW_PS2_PLAY");
         _wantImage = Env("TPW_PS2_IMAGE");
         _wantRide ??= Env("TPW_PS2_RIDE");
         _wantAnim ??= Env("TPW_PS2_ANIM");
@@ -110,7 +117,21 @@ public partial class Viewer : Node3D
         { _animPick.Select(ai); _recordIndex = ai; Rebuild(); }
         // ⚠ Every switch has an environment fallback, because arguments after `--` do not survive
         // cmd's quoting and a silent empty argument presents as a hang rather than an error.
-        if (_wantMode != null && _wantMode.StartsWith("tex", StringComparison.OrdinalIgnoreCase))
+        if (_wantMode != null && _wantMode.StartsWith("sou", StringComparison.OrdinalIgnoreCase))
+        {
+            _modePick.Select(2); SetMode(Mode.Sounds);
+            if (_wantSound != null)
+            {
+                for (int b = 0; b < _wadPick.ItemCount; b++)
+                    if (_wadPick.GetItemText(b).Contains(_wantSound, StringComparison.OrdinalIgnoreCase))
+                    { _wadPick.Select(b); OpenBank(b); break; }
+            }
+            if (_wantPlay != null)
+                for (int k = 0; k < _rideList.ItemCount; k++)
+                    if (_rideList.GetItemText(k).Contains(_wantPlay, StringComparison.OrdinalIgnoreCase))
+                    { _rideList.Select(k); ShowSound(k); PlaySelected(); break; }
+        }
+        else if (_wantMode != null && _wantMode.StartsWith("tex", StringComparison.OrdinalIgnoreCase))
         {
             _modePick.Select(1); SetMode(Mode.Textures);
             if (_wantImage != null)
@@ -178,18 +199,20 @@ public partial class Viewer : Node3D
         ui.AddChild(_imageView);
 
         _modePick = new OptionButton();
-        _modePick.AddItem("Models"); _modePick.AddItem("Textures");
+        _modePick.AddItem("Models"); _modePick.AddItem("Textures"); _modePick.AddItem("Sounds");
         _modePick.ItemSelected += i => SetMode((Mode)(int)i);
         col.AddChild(_modePick);
 
         _wadPick = new OptionButton();
-        _wadPick.ItemSelected += i => OpenWad((int)i);
+        _wadPick.ItemSelected += i => { if (_mode == Mode.Sounds) OpenBank((int)i); else OpenWad((int)i); };
         col.AddChild(_wadPick);
 
         _rideList = new ItemList { SizeFlagsVertical = Control.SizeFlags.ExpandFill };
         _rideList.ItemSelected += i =>
         {
-            if (_mode == Mode.Models) ShowRide((int)i); else ShowImage((int)i);
+            if (_mode == Mode.Models) ShowRide((int)i);
+            else if (_mode == Mode.Textures) ShowImage((int)i);
+            else ShowSound((int)i);
         };
         col.AddChild(_rideList);
 
@@ -206,24 +229,138 @@ public partial class Viewer : Node3D
         _scrub.ValueChanged += v => { if (!_playing && _current != null) { _time = (float)v * _current.Frames; _current.SetFrame(_time); } };
         col.AddChild(_scrub);
 
+        _playBtn = new Button { Text = "Play", Visible = false };
+        _playBtn.Pressed += () => PlaySelected();
+        col.AddChild(_playBtn);
+
         _info = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart,
                             MouseFilter = Control.MouseFilterEnum.Ignore };
         col.AddChild(_info);
+
+        _player = new AudioStreamPlayer();
+        AddChild(_player);
     }
 
     void SetMode(Mode m)
     {
         _mode = m;
         _imageView.Visible = _imageBack.Visible = m == Mode.Textures;
+        _animPick.Visible = _texOn.Visible = _scrub.Visible = m == Mode.Models;
+        _playBtn.Visible = m == Mode.Sounds;
         // ⚠ Hide the model too. A transparent image pane over a lit 3D scene reads as a bug.
         if (_current != null) _current.Root.Visible = m == Mode.Models;
-        _animPick.Visible = _texOn.Visible = _scrub.Visible = m == Mode.Models;
-        FillList();
+        if (m == Mode.Sounds) FillBankPicker(); else FillWadPicker();
+    }
+
+    void FillWadPicker()
+    {
+        _wadPick.Clear();
+        foreach (var w in _lib.Wads()) _wadPick.AddItem(w);
+        if (_wadPick.ItemCount > 0) { _wadPick.Select(0); OpenWad(0); }
+    }
+
+    void FillBankPicker()
+    {
+        _banks = _lib.SoundBanks();
+        _wadPick.Clear();
+        foreach (var b in _banks) _wadPick.AddItem(b.Path);
+        if (_banks.Count > 0) { _wadPick.Select(0); OpenBank(0); }
+        else _info.Text = "no sound banks on this disc";
+    }
+
+    /// <summary>Open one `.SDT` and list what is in it.</summary>
+    void OpenBank(int i)
+    {
+        _rideList.Clear();
+        _bank = null;
+        if (i < 0 || i >= _banks.Count) return;
+        try { _bank = new SoundBank(_lib.ReadDisc(_banks[i])); }
+        catch (Exception ex) { _info.Text = _banks[i].Path + "\n" + ex.Message; return; }
+        foreach (var snd in _bank.Sounds)
+        {
+            string kind = snd.IsEmpty ? "empty" : snd.IsAdpcm ? "vag" : snd.Channels == 2 ? "stereo" : "mono";
+            _rideList.AddItem(snd.Name + "   " + kind + "  " + (snd.Milliseconds / 1000.0).ToString("0.0") + "s");
+        }
+        _info.Text = _banks[i].Path + "\n" + _bank.Sounds.Count + " sounds";
+        if (_bank.Sounds.Count > 0) { _rideList.Select(0); ShowSound(0); }
+    }
+
+    void ShowSound(int i)
+    {
+        if (_bank == null || i < 0 || i >= _bank.Sounds.Count) return;
+        var s = _bank.Sounds[i];
+        string what = s.IsEmpty ? "an empty slot"
+                    : s.IsAdpcm ? "Sony PS-ADPCM"
+                    : "MPEG-2 Layer II, " + (s.Channels == 2 ? "stereo" : "mono");
+        _info.Text = s.Name + "\n" + what + "\n"
+                   + (s.End - s.Start) + " bytes, " + (s.Milliseconds / 1000.0).ToString("0.00") + " s"
+                   + "\ntag 0x" + s.Tag.ToString("x2");
+        _playBtn.Disabled = s.IsEmpty;
+    }
+
+    /// <summary>Decode the selected sound and play it.
+    ///
+    /// ⭐ PS-ADPCM is decoded here and handed over as plain PCM, so it is exact. The sample RATE is
+    /// not in the bank, so it is DERIVED: the block count gives the sample count and the header's
+    /// own length in milliseconds gives the duration, and one divides into the other.
+    ///
+    /// ⚠ MPEG Layer II is handed to Godot's MP3 stream, which may or may not accept it -- the
+    /// engine's decoder is built for Layer III. If it refuses, the panel says so rather than
+    /// failing silently.</summary>
+    void PlaySelected()
+    {
+        int i = _rideList.GetSelectedItems().Length > 0 ? _rideList.GetSelectedItems()[0] : -1;
+        if (_bank == null || i < 0 || i >= _bank.Sounds.Count) return;
+        var s = _bank.Sounds[i];
+        if (s.IsEmpty) return;
+        _player.Stop();
+        try
+        {
+            if (s.IsAdpcm)
+            {
+                var pcm = Vag.Decode(_bank.Data, s.Start, s.End);
+                // ⭐ 22050 Hz, and it is MEASURED rather than assumed: decoding all 356 PS-ADPCM
+                // sounds and dividing each one's sample count by the duration its own header
+                // declares puts every single one between 22,050 and 22,700 Hz -- the spread is the
+                // millisecond field's rounding, not a spread of rates. Same rate as the MPEG side.
+                const int rate = 22050;
+                var bytes = new byte[pcm.Length * 2];
+                Buffer.BlockCopy(pcm, 0, bytes, 0, bytes.Length);
+                _player.Stream = new AudioStreamWav
+                {
+                    Format = AudioStreamWav.FormatEnum.Format16Bits,
+                    MixRate = rate, Stereo = false, Data = bytes,
+                };
+                _info.Text += "\nplaying: " + pcm.Length + " samples at " + rate + " Hz";
+            }
+            else
+            {
+                var raw = new byte[s.End - s.Start];
+                Array.Copy(_bank.Data, s.Start, raw, 0, raw.Length);
+                var st = new AudioStreamMP3 { Data = raw };
+                _player.Stream = st;
+                // ⚠ Report what the engine made of it. Godot's decoder is built for Layer III and
+                // may refuse Layer II outright -- a length of zero says so, where a silent Play()
+                // would not.
+                double got = st.GetLength();
+                _info.Text += got > 0
+                    ? "\nengine decoded it: " + got.ToString("0.00") + " s"
+                    : "\n⚠ the engine's MPEG decoder returned nothing for this Layer II stream";
+            }
+            _player.Play();
+            GD.Print("[snd] " + s.Name + " -> " + _info.Text.Replace("\n", " | "));
+        }
+        catch (Exception ex)
+        {
+            _info.Text += "\ncould not play: " + ex.Message;
+            GD.PrintErr("[snd] " + s.Name + " FAILED: " + ex);
+        }
     }
 
     void FillList()
     {
         _rideList.Clear();
+        if (_mode == Mode.Sounds) return;      // the bank picker fills this list instead
         if (_mode == Mode.Models)
         {
             foreach (var r in _lib.Rides) _rideList.AddItem(r.Name);
