@@ -38,7 +38,16 @@ public sealed class AnimatedModel
     readonly Dictionary<int, List<(int Time, System.Numerics.Vector3 S)>> _scale = new();
     Dictionary<int, (int Appear, int? Gone)> _vis = new();
 
-    public Node3D Root { get; } = new Node3D();
+    /// <summary>⚠⚠ THE GAME'S SPACE IS LEFT-HANDED AND GODOT'S IS RIGHT-HANDED. Everything under
+    /// this node is mirrored in Z to convert, which is why the viewer rendered a mirror image of
+    /// the Python reference until this was added. Applying it at the ROOT rather than per-vertex
+    /// conjugates the whole assembled scene -- vertices, node transforms and the hierarchy together
+    /// -- so nothing can be half-converted.
+    ///
+    /// ⚠ A mirror reverses triangle orientation, so front faces become back faces. That costs
+    /// nothing here because the shader lights both sides via FRONT_FACING; it would matter if
+    /// culling were ever re-enabled.</summary>
+    public Node3D Root { get; } = new Node3D { Scale = new Godot.Vector3(1, 1, -1) };
     public int Frames { get; private set; }
     public string Summary { get; private set; }
 

@@ -755,3 +755,26 @@ Now framed on the actual transformed vertices.
 
 ⚠ That defect made the comparison itself dishonest for a while: a 158 px crop upscaled beside a
 214 px one is not an A/B. Match the subject's on-screen SIZE before comparing two renderers.
+
+### ⚠⚠ And the game's space is LEFT-HANDED
+
+Spotted by the owner right after the lighting fix: the Godot render was a **mirror image** of the
+Python one. Theme Park World's coordinate space is left-handed and Godot's is right-handed.
+
+The conversion is applied as a **Z mirror on the scene root**, not per vertex:
+
+```csharp
+Root = new Node3D { Scale = new Vector3(1, 1, -1) };
+```
+
+⭐ At the root it conjugates the whole assembled scene at once — vertices, node transforms and the
+hierarchy together — so nothing can end up half-converted, which is the usual way a handedness fix
+goes wrong.
+
+⚠ A mirror reverses triangle orientation, so front faces become back faces. That costs nothing
+while the shader lights both sides via `FRONT_FACING`; it would matter immediately if culling were
+re-enabled. Noted next to the code rather than left as a trap.
+
+⚠ This was already known on the PSX side of the project ("left-handed → negate z") and it still
+took the owner pointing at a mirrored picture to apply it here. **A fact recorded about one build
+of a game is worth checking against every other build of it.**
