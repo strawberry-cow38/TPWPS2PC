@@ -485,3 +485,31 @@ addresses that same node as **33** = 9 meshes + helper 24, exactly the evaluator
 (`node < meshCount ? mesh[node] : helper[node - meshCount]`).
 
 A helper header is recognisable by bit `0x80000000` in its flags.
+
+
+## ⚠⚠ M3D2 STRIP RESTARTS — a batch is NOT always one strip (measured 2026-09-21)
+
+`tools/m3d2.py`'s `strips()` treats each batch as a single triangle strip. It is not, and the
+renders have been carrying the damage. Swept 60 models for triangles with an edge much longer than
+their own mesh's median:
+
+```
+239 stretched triangles across 60 models
+worst 70x the mesh median   (Features_Sign1, mesh "Cylinder25")
+and they arrive in CONSECUTIVE RUNS -- tris 14,15,16,17,18,19 of 30 in one batch
+```
+
+⭐ **A run of stretched triangles in the middle of a batch is the signature of two separate strips
+concatenated into one.** The bad triangles are exactly the ones bridging the end of strip A to the
+start of strip B. A single over-long triangle could be sloppy modelling; a consecutive run at one
+place in the index order cannot be.
+
+⚠ **`Gates.mps` and `monkey.mps` have ZERO stretched triangles**, which is why this was invisible
+for days — the two models used for every render happen not to have the problem. Reported by the
+owner looking at a *third* model.
+[[feedback_exclusions_hide_the_defect]]
+
+**Where to look:** the PS2 convention is the **ADC bit** — a per-vertex "do not draw" flag that
+breaks the strip. There is already a hint in the animation player: `FUN_001a6d68` writes vertex X
+as `(uint)value & 0xfffffffe | old & 1`, deliberately **preserving bit 0** of the word. A kick/skip
+flag is exactly what lives in a low bit that a position write is careful not to clobber.
