@@ -402,3 +402,43 @@ FUN_001a8d08(rec, model):
   mesh as it plays.
 - `rec+0x04` is a **float**, the animation's length — the first field in this format known to be a
   float rather than guessed to be one.
+
+
+## ⭐⭐⭐ THE KEYFRAME ENCODING, from the interpolators
+
+`FUN_001a8da8` samples a track each frame and calls one of two interpolators. Both are short enough
+to read whole, and between them they define the key formats exactly.
+
+**Position / scale — `FUN_00167d18`, linear:**
+
+```c
+FUN_00167d18(float t, keyA, keyB, out):
+    out[i] = (float)(short)keyA[2 + 2i] * (1-t) + (float)(short)keyB[2 + 2i] * t   // i = 0,1,2
+```
+
+→ **an 8-byte key: `u16 time, int16 x, int16 y, int16 z`**, linearly interpolated.
+
+**Rotation — `FUN_00167a48`, a SLERP:**
+
+```c
+q = (float)(short)key[n] * 3.051851e-05        // = 1/32768, so int16 normalised to [-1, 1]
+... acos / sin, with a 1.5707964 (pi/2) fallback for the degenerate case ...
+out[1..3] = sin((1-t)*w)/sin(w) * qA + sin(t*w)/sin(w) * qB
+```
+
+→ **a 10-byte key: `u16 time, int16 x, int16 y, int16 z, int16 w`** — a quaternion at 1/32768,
+**spherically** interpolated. Called as `FUN_00167a48(t, rec+2, rec+0xC, out)`: the two keys are ten
+bytes apart, which is the stride agreeing with the field list.
+
+**And the clock**: `FUN_001acfc0` computes `(time * 1000.0) / 30.0 / speed` — the animation runs at
+**30 fps**, and `rec+0x04` (the float established earlier) is its length in those units.
+
+⚠ **What is still missing is WHERE, not WHAT.** Scanning each track's eight pointers for 8- or
+10-byte keys with ascending times starting at zero finds none — the streams sit deeper, behind the
+`+0x20` stream's 12-byte records, and the byte runs this file got excited about earlier (`0, 34, 37,
+39 …` ending in `0xD7`) are at single-byte spacing and so cannot be 8- or 10-byte keys. They are a
+lookup or index of some kind, not the keys.
+
+So: **the encoding is known exactly and the addressing is not.** That is a much smaller gap than
+this file had an hour ago, and it is the *opposite* shape of the usual one — normally you can find
+the data and not read it.
