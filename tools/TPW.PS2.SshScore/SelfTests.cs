@@ -7,6 +7,7 @@ internal static class SelfTests
     public static int Run()
     {
         int checks = 0;
+        int skipped = 0;
         void Check(bool condition, string name)
         {
             checks++;
@@ -101,15 +102,23 @@ internal static class SelfTests
                 var pairs = Pairing.Find(temp);
                 Check(pairs.Count == 4 && pairs.Count(p => p.Error == null) == 2, "case folding, directory scope, missing pairs remain in denominator");
                 // A case-sensitive filesystem can also contain ambiguous names; never pick one.
+                // ⚠ This assertion CANNOT run on a case-insensitive filesystem: holding both
+                // spellings at once is the condition it tests. It is counted as skipped rather
+                // than silently dropped, because "2162 of 2162 passed" on Windows and "2163 of
+                // 2163 passed" on Linux both read as full coverage while differing by an
+                // assertion, and that difference then looks like a regression when the two
+                // counts are ever compared across hosts.
                 if (!File.Exists(Path.Combine(temp, "mixed.tga")))
                 {
                     File.WriteAllBytes(Path.Combine(temp, "mixed.tga"), []);
                     pairs = Pairing.Find(temp);
                     Check(pairs.Count == 4 && pairs.Count(p => p.Error == null) == 1, "ambiguous partners remain failures");
                 }
+                else skipped++;
             }
             finally { Directory.Delete(temp, true); }
-            Console.WriteLine($"Self-tests: {checks} of {checks} assertions passed (only synthetic data).");
+            Console.WriteLine($"Self-tests: {checks} of {checks} assertions passed (only synthetic data)"
+                + (skipped == 0 ? "." : $"; {skipped} skipped: needs a case-sensitive filesystem."));
             return 0;
         }
         catch (Exception ex) { Console.Error.WriteLine(ex); return 1; }
