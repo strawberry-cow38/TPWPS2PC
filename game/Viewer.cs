@@ -311,11 +311,26 @@ public partial class Viewer : Node3D
         else FillWadPicker();
     }
 
+    /// <summary>Refill the archive picker, KEEPING the archive already open.
+    ///
+    /// ⚠ This used to `Select(0); OpenWad(0)` unconditionally, so every mode change silently threw
+    /// the user back to DATA.WAD -- and DATA.WAD holds no rides at all, so switching to Park after
+    /// choosing JUNGLE landed on an empty catalogue and a character model, which reads as the park
+    /// being broken rather than as the archive having been changed underneath it.</summary>
     void FillWadPicker()
     {
+        var keep = _lib.WadName;
         _wadPick.Clear();
-        foreach (var w in _lib.Wads()) _wadPick.AddItem(w);
-        if (_wadPick.ItemCount > 0) { _wadPick.Select(0); OpenWad(0); }
+        var wads = _lib.Wads();
+        foreach (var w in wads) _wadPick.AddItem(w);
+        if (_wadPick.ItemCount == 0) return;
+        int at = keep == null ? 0 : wads.FindIndex(w => w.Equals(keep, StringComparison.OrdinalIgnoreCase));
+        if (at < 0) at = 0;
+        _wadPick.Select(at);
+        // Only re-read when it actually changed; re-opening costs a full archive decompress.
+        if (keep == null || at != wads.FindIndex(w => w.Equals(keep, StringComparison.OrdinalIgnoreCase)))
+            OpenWad(at);
+        else FillList();
     }
 
     void FillBankPicker()
