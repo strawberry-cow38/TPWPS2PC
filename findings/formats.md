@@ -226,10 +226,11 @@ textures with each one in the wrong place — which is exactly what it looked li
 The real chain:
 
 ```
-mesh entry +0x68   ->  a 32-byte-per-BATCH table, immediately before the batch list at +0x6C
-   batch record +0x00  u32  pointer into an 8-byte-per-material table
-                +0x04  u32  pointer to this batch's entry in the batch list
-                +0x0C  u16  vertex count
+mesh entry +0x68   ->  a 32-byte-per-MATERIAL-GROUP table, immediately before the batch list at +0x6C
+   group record +0x00  u32  pointer into an 8-byte-per-material table
+                +0x04  u32  pointer to this group's FIRST batch in the batch list
+                +0x08  u16  HOW MANY BATCHES the group covers
+                +0x0A  u16  total vertex count across them
 the 8-byte table ends exactly where the 16-byte material table (header 0x40) begins, so it starts
 at  matTab - 8*materialCount,  and  materialIndex = (pointer - that base) / 8
 material record, 16 B: +0x0C is the offset of a `.ssh` name
@@ -246,10 +247,16 @@ A `.tga` of the same stem sits beside each `.ssh`, so the source art is usable w
 `gokarts.mps` as a planked track platform. Wood grain runs along the planks and the gorilla's face
 lands on the gorilla. A wrong UV interpretation smears; this does not.
 
-⚠ **Grey patches are now batches the walker DROPS.** With per-batch materials all textures resolve
-(25/25, 21/21, 20/20), but iterating batches through the new 32-byte table lost geometry: mumbo fell
-from 902 triangles to 479. The indexing between the two tables is not fully right yet, and the
-remaining grey is missing *triangles*, not missing textures.
+⚠ **AND THE GROUP RECORD'S +0x08 IS A BATCH COUNT, NOT A CONSTANT.** I first read it as "always 1"
+because the meshes I happened to print all had one batch per group, and iterating one batch per
+group then lost two thirds of the geometry (mumbo 902 triangles down to 479). `jm_head` has a group
+of **2** batches (69 + 64 = its 133 vertices) and `jm_body` a group of **7** (summing to its 507).
+With the count honoured, mumbo is back to 904 triangles *and* correctly textured.
+
+**Validated across the whole archive: 859 of 965 meshes** have every group's batch-vertex sum equal
+its declared total, and the same 859 have their mesh totals match `vertexCount`. The remaining ~11%
+are not yet explained and are the grey left in the renders — **missing triangles, not missing
+textures**, since all textures now resolve (25/25, 21/21, 20/20).
 
 ⚠ **Remaining: strip restarts.** Each batch is treated as one continuous strip, which leaves a few
 long spurious triangles spanning a model where a strip really restarts inside a batch. Degenerate
