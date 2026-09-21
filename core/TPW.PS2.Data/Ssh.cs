@@ -24,6 +24,7 @@ public sealed class Ssh
         var entry = entries[entryIndex];
         Width = entry.Width;
         Height = entry.Height;
+        if (entry.Type == 0x02) { Pixels = ReadPaletted(data, entry); HasAlpha = true; return; }
         if (entry.Type is not (0x84 or 0x85))
             throw new NotSupportedException($"SHPS type 0x{entry.Type:X2}; only compressed types 4/5 are supported.");
 
@@ -151,6 +152,48 @@ public sealed class Ssh
             result.Add(new Entry(name, data[offset], width, height, offset, length));
         }
         return result.AsReadOnly();
+    }
+
+    /// <summary>SHPS type 0x02 -- UNCOMPRESSED, 8-bit palette indices. Solved 2026-09-21 against
+    /// the four <c>Sky/*_back</c> pairs, whose <c>.tga</c> partners are the disc's only declared
+    /// paletted TGAs and therefore a known answer: this returns **262,144 of 262,144 bytes exact
+    /// on all four**. Only 8 entries on the whole disc are this type and all 8 are skies.
+    ///
+    ///     entry+0x00  16-byte header (type, 24-bit length, u16 W, u16 H) -- as every SHPS entry
+    ///     entry+0x10  W*H bytes of 8-bit palette indices, top row first, NOT swizzled
+    ///     entry+len   16 bytes, then 256 x RGBA (1,024 bytes), then 32 trailing
+    ///
+    /// ⚠ **The palette is PS2 CSM1-swizzled and the alpha is 0..128.** Both matter and both have a
+    /// discriminator rather than a vibe: reading the palette straight through scores 55-64% instead
+    /// of 100%, and leaving alpha at 0..128 scores exactly 75% -- three bytes of four, RGB right and
+    /// alpha wrong, which is what a channel-shaped error looks like when you print it.</summary>
+    static byte[] ReadPaletted(byte[] data, Entry entry)
+    {
+        int count = checked(entry.Width * entry.Height);
+        if (entry.Length - 16 < count) throw new InvalidDataException("SHPS type 2 block is shorter than its pixels.");
+        int palette = entry.Offset + entry.Length + 16;
+        if (palette + 1024 > data.Length) throw new InvalidDataException("SHPS type 2 palette runs past the file.");
+
+        // CSM1: 8 blocks of 32 entries, and within each block entries 8..15 swap with 16..23.
+        var clut = new byte[1024];
+        Array.Copy(data, palette, clut, 0, 1024);
+        for (int block = 0; block < 8; block++)
+            for (int k = 0; k < 8; k++)
+            {
+                int a = (block * 32 + 8 + k) * 4, b = (block * 32 + 16 + k) * 4;
+                for (int c = 0; c < 4; c++) (clut[a + c], clut[b + c]) = (clut[b + c], clut[a + c]);
+            }
+
+        var pixels = new byte[count * 4];
+        for (int i = 0; i < count; i++)
+        {
+            int e = data[entry.Offset + 16 + i] * 4;
+            pixels[i * 4] = clut[e];
+            pixels[i * 4 + 1] = clut[e + 1];
+            pixels[i * 4 + 2] = clut[e + 2];
+            pixels[i * 4 + 3] = Clamp(clut[e + 3] * 2);      // 0..128 is the PS2's fully-opaque
+        }
+        return pixels;
     }
 
     static byte Clamp(int value) => (byte)Math.Clamp(value, 0, 255);

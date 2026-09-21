@@ -275,3 +275,45 @@ actually specify, and a fit that improves 19 to something higher on the data it 
 proven nothing. What the fit DOES establish is the shape of the remaining error and its size --
 max 5 today, and no linear model can do better than about 3 -- so whoever takes this has a bound to
 beat and a reason to look at the hardware documentation rather than at the residuals.
+
+## SHPS type 0x02 solved: the skies decode, and the last 8 failures are gone
+
+Eight entries on the whole disc are type **0x02**, uncompressed, and all eight are skies:
+`{FANTASY,HALLOW,JUNGLE,SPACE}/Sky/*_{back,front2}.ssh`, every one 256x256. Layout:
+
+    entry+0x00   16-byte header: type, 24-bit length, u16 W, u16 H   (as every SHPS entry)
+    entry+0x10   W*H bytes of 8-bit palette indices, top row first, NOT swizzled
+    entry+len    16 bytes, then 256 x RGBA (1,024 bytes), then 32 trailing
+
+⚠ **The PALETTE is PS2 CSM1-swizzled** -- 8 blocks of 32 entries, entries 8..15 swapped with 16..23
+within each block -- **and alpha is 0..128**, doubled on output. The index plane is NOT swizzled.
+
+Both of those have a discriminator rather than an argument, measured against the four `*_back.tga`
+partners, which are the disc's only *declared* paletted TGAs and therefore a known answer:
+
+| variant | bytes matching the reference |
+|---|---|
+| swizzled CLUT, alpha x2 | **262,144 of 262,144 -- exact, all four files** |
+| swizzled CLUT, alpha as stored | 196,608 of 262,144 = **exactly 75%** |
+| CLUT read straight through | 146,115 - 197,110 (55-75%) |
+
+The 75% row is the useful one: three bytes in four, RGB right and alpha wrong, which is what a
+single-channel error looks like when you print the number instead of eyeballing the picture.
+
+Through the real scorer, the four `*_back` pairs now read `RGB_MAE=0.000000 A_MAE=0.000000`, and
+the disc total goes **decoded 5,687 -> 5,695 of 5,695, RGBA exact 2 -> 6, within tolerance
+3,538 -> 3,542**. There are no undecodable images left on the disc.
+
+### The four `*_front2` pairs disagree on purpose, and that is a finding not a bug
+
+They now fail *enormously* -- RGB MAE 158 to 194 -- and that is correct. The `.ssh` palette is a
+**pure grey ramp** (R==G==B on all 256 entries) with alpha constant 128, i.e. fully opaque; the
+`.tga` palette is **pure white** (255,255,255) with 128 distinct alphas. They carry **the same cloud
+mask in different channels**: luminance on the PS2, alpha on the PC. Checked from the palettes
+alone, so it does not depend on either reader being right.
+
+They are also not the same picture texel-for-texel (best agreement 23%), and the `*_back` pairs
+matching at 100% through the identical code path is what rules out a layout error as the
+explanation -- the index plane is demonstrably correct, so the two cloud masks were simply authored
+differently. **A scorer will always fail these four**, and it should; they are not a decoder defect
+and tuning anything to make them pass would be fitting to a difference that is really there.
