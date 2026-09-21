@@ -15,7 +15,7 @@ Console.WriteLine($"disc: {files.Count} entries");
 var wads = files.Where(f => !f.IsDirectory && f.Path.EndsWith(".WAD", StringComparison.OrdinalIgnoreCase))
                 .ToList();
 
-int entries = 0, decOk = 0, decBad = 0;
+int entries = 0, decOk = 0, decBad = 0, alias = 0;
 int meshes = 0, faceOk = 0, faceBad = 0, noBatches = 0, models = 0, modelBad = 0;
 int tga = 0, tgaOk = 0, tgaBad = 0, tga24 = 0, tga32 = 0, tgaRle = 0, tgaPal = 0;
 int withPartial = 0, withCutout = 0;
@@ -30,6 +30,7 @@ foreach (var w in wads)
     foreach (var e in wad.Entries)
     {
         entries++;
+        if (WadArchive.IsAlias(e)) { alias++; continue; }
         byte[] data;
         try { data = wad.Read(e); } catch { decBad++; continue; }
         if (data.Length == e.DecompressedSize) decOk++; else { decBad++; continue; }
@@ -96,7 +97,8 @@ foreach (var w in wads)
 }
 
 Console.WriteLine($"archives: {wads.Count} WADs, {entries} entries");
-Console.WriteLine($"  decompress: {decOk} to their declared size, {decBad} failed");
+Console.WriteLine($"  decompress: {decOk} to their declared size, {decBad} failed, " +
+                  $"{alias} aliases holding no bytes of their own");
 Console.WriteLine($"models: {models} files ({modelBad} unreadable), {meshes} meshes");
 Console.WriteLine($"  face count: {faceOk} match, {faceBad} DO NOT, {noBatches} have no batches " +
                   $"({100.0 * faceOk / Math.Max(faceOk + faceBad, 1):F2}% of those with geometry)");

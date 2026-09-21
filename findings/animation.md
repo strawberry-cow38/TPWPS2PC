@@ -1312,7 +1312,29 @@ Eight bytes read as the interior of a ten-point ramp from 0 to 1 over nine equal
 `0xffff` means linear. Without it a spin is at the wrong ANGLE for the frame.
 
 
-## ⭐⭐⭐ A STORED QUATERNION IS `w, x, y, z` — NOT `x, y, z, w` (2026-09-21)
+## ⚠⚠⚠ REVERTED — "a stored quaternion is w,x,y,z" WAS WRONG, AND HOW IT PASSED (2026-09-21)
+
+**The order is `x, y, z, w`.** I switched it to `w,x,y,z` on the evidence below and the owner, who
+had the viewer open, came straight back: *"the super toilet sign rotates the wrong axis now... it
+broke pretty much every ride"*. Reverted; `TPW_PS2_QUAT=wxyz` still selects the other reading so the
+experiment can be repeated.
+
+⭐⭐ **The lesson is the control, not the conclusion.** I justified the switch with Crazy Ape
+rendering **0 of 518,400 pixels different either way** — and presented that as proof the change was
+safe. It is nothing of the kind. **An asset that is INSENSITIVE to a change cannot be evidence
+about it**; a null result only says *that* asset did not break. The right control was any of the
+hundreds of rides that visibly rotate, and I checked none of them. One fixed asset said "better",
+one insensitive asset said "no change", and I read the pair as agreement.
+
+⚠ **What still stands, and is still open:** the Super Bog's bind matrix really is a +90 pitch about
+X and its first rotation key really is a -90 pitch about X under `x,y,z,w`, so the two really do
+cancel and the sign really does lie flat where it should stand up. The resolution is somewhere else
+— most likely the rotation channel's mode bits `0x10` (2,185 tracks) and `0x40` (565), which gate no
+pointer and of which every rotation track carries exactly one and never both.
+
+### The original (wrong) writeup, kept for the reasoning
+
+
 
 ⚠⚠ **The component order had never been tested, and this file claimed it anyway.** Both checks the
 format carried — `|q| == 32767` on the 12-byte keys, and 49,839 unit quaternions on the 20-byte ones

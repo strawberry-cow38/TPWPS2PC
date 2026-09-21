@@ -143,7 +143,23 @@ public sealed class Animation
         return outList;
     }
 
-    /// <summary>⭐⭐ A STORED QUATERNION IS <b>w, x, y, z</b> — NOT x, y, z, w.
+    /// <summary>⚠⚠ REVERTED 2026-09-21: the order IS <b>x, y, z, w</b>. `TPW_PS2_QUAT=wxyz` selects
+    /// the other reading, which is kept only so the experiment can be repeated.
+    ///
+    /// ⚠⚠⚠ AND THE REASON I GOT IT WRONG IS THE PART WORTH KEEPING. I switched the default to
+    /// w,x,y,z on ONE fixed asset plus a control that could not move: Crazy Ape rendered 0 of
+    /// 518,400 pixels different either way. **An asset that is INSENSITIVE to a change cannot be
+    /// evidence FOR it.** It proves only that the change did not break that asset. The owner had
+    /// the viewer open: "it broke pretty much every ride". The right control was a ride that DOES
+    /// visibly rotate, and there are hundreds of them.
+    ///
+    /// The original finding still stands and is still unexplained: the Super Bog's bind matrix is a
+    /// +90 pitch about X and its first rotation key, read as x,y,z,w, is a -90 pitch about X, so the
+    /// two cancel and the sign lies flat. Something else resolves that -- most likely the rotation
+    /// channel's mode bits, 0x10 (2,185 tracks) and 0x40 (565), which gate no pointer and of which
+    /// every rotation track carries exactly one and never both.
+    ///
+    /// The old summary, for the record: both validations this format carried -- |q| == 32767 on the
     ///
     /// ⚠⚠ The order had never been tested. Both validations this format carried -- |q| == 32767 on
     /// the 12-byte keys, and 49,839 unit quaternions on the 20-byte ones -- are invariant under a
@@ -157,12 +173,12 @@ public sealed class Animation
     ///
     /// Control: Crazy Ape renders **pixel for pixel identical** under either order, so the change
     /// cannot have broken what was already right. `TPW_PS2_QUAT=xyzw` restores the old reading.</summary>
-    static readonly bool XyzwFirst =
-        (Environment.GetEnvironmentVariable("TPW_PS2_QUAT") ?? "").ToLowerInvariant() == "xyzw";
+    static readonly bool WFirst =
+        (Environment.GetEnvironmentVariable("TPW_PS2_QUAT") ?? "").ToLowerInvariant() == "wxyz";
 
-    Quaternion QuatAt(int o) => XyzwFirst
-        ? new Quaternion(I16(o) / 32768f, I16(o + 2) / 32768f, I16(o + 4) / 32768f, I16(o + 6) / 32768f)
-        : new Quaternion(I16(o + 2) / 32768f, I16(o + 4) / 32768f, I16(o + 6) / 32768f, I16(o) / 32768f);
+    Quaternion QuatAt(int o) => WFirst
+        ? new Quaternion(I16(o + 2) / 32768f, I16(o + 4) / 32768f, I16(o + 6) / 32768f, I16(o) / 32768f)
+        : new Quaternion(I16(o) / 32768f, I16(o + 2) / 32768f, I16(o + 4) / 32768f, I16(o + 6) / 32768f);
 
     public uint TrackFlags(int track) => U32(track + 4);
     public int TrackNode(int track) => U16(track);

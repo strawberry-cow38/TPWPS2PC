@@ -65,8 +65,18 @@ public sealed class WadArchive
     }
 
     /// <summary>One entry's bytes, decompressing only when it actually shrank.</summary>
+    /// <summary>True when the entry has NO bytes of its own: <c>StoredSize == 0</c>.
+    ///
+    /// ⚠ Three entries on the disc are like this and all three are named `.dup` --
+    /// `/Text/translations/eur/{final,fre,ger}.dup`, each declaring 1,189 bytes and storing none.
+    /// They are aliases, not corruption. Reading at their offset happily decompresses the NEXT
+    /// file (37,041 bytes) and reports a size mismatch, which is how they first showed up as
+    /// "3 failed to decompress".</summary>
+    public static bool IsAlias(Entry e) => e.StoredSize == 0;
+
     public byte[] Read(Entry e)
     {
+        if (IsAlias(e)) return Array.Empty<byte>();
         if (e.IsRaw) return _d.AsSpan(e.Offset, e.StoredSize).ToArray();
         var outBuf = RefPack.Decompress(_d, e.Offset, out int declared);
         if (declared != e.DecompressedSize)
