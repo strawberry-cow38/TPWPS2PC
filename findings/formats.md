@@ -695,3 +695,30 @@ to trust it.
 
 After reversing, the parities swap exactly as they should: cull-back renders solid, cull-front
 renders hollow. That symmetry is the confirmation — a one-sided test would not have been one.
+
+
+## ⚠ OPEN: the Godot viewer renders less than the Python reference
+
+Rendering the same ride, animation and frame in both, the Python renderer shows banana clusters in
+the crates and the CRAZY APE sign; the Godot viewer does not. **Unresolved.** Recorded with what
+has been ELIMINATED, so the next attempt does not repeat it:
+
+| ruled out | evidence |
+|---|---|
+| missing triangles | per-mesh counts are **identical** in both: 62/132/4/8/148/70/70/108/12 |
+| missing textures | all **21 materials resolve**, 0 missing |
+| texture tiling | `m_boxes` UVs run `u 0..4`; `TextureRepeat` was already on and setting it explicitly changed nothing |
+| the morph maths | `tools/aps.py` and the older `apsrender.py` agree to **0.0000** on every animated vertex of every node at frame 134 |
+| visibility gating | adding it to the Python renderer changed **0 pixels** — the only part it hides at 134 (`m_crate`) is already collapsed to a 0.03-unit sliver |
+| camera framing | ⭐ was a REAL defect and is fixed (below), but the artwork is still absent after fixing it |
+| the alpha cutout | disabling it makes things *worse* — the fence's cut-out quads become solid black rectangles — so `AlphaScissor` at 16/255 is right |
+
+### ⭐ Fixed on the way: frame on real geometry, not the declared bounds
+
+`FrameCamera` used `mesh+0x70`/`+0x80`. **Those bounds cover the whole MORPH RANGE** — every
+position a vertex reaches across the entire animation — so the camera sat far enough back that the
+model occupied ~212 px regardless of window size, even at 1600x1000. Thin geometry went sub-pixel.
+Now framed on the actual transformed vertices.
+
+⚠ That defect made the comparison itself dishonest for a while: a 158 px crop upscaled beside a
+214 px one is not an A/B. Match the subject's on-screen SIZE before comparing two renderers.

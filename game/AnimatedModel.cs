@@ -81,6 +81,10 @@ public sealed class AnimatedModel
                 }
             BuildSurfaces(p, texture);
             _parts.Add(p);
+            var vs = _vis.TryGetValue(mesh.Index, out var vv) ? $"appear {vv.Appear}" + (vv.Gone is int g2 ? $" gone {g2}" : "") : "always";
+            GD.Print($"[part] {mesh.Name,-10} tris={tris.Count,-5} verts={pos.Count,-5} " +
+                     $"morph={(p.Morph != null ? p.Morph.Count.ToString() : "-"),-5} " +
+                     $"map={(p.AnimMap != null ? "yes" : "NO "),-4} {vs}");
         }
         Summary = $"{_parts.Count} parts, {Frames} frames, {_model.Materials.Count} materials";
     }
@@ -124,7 +128,10 @@ public sealed class AnimatedModel
                 // **49.9% of texels sit at or below 128**, so scissoring at 0.5 deletes half the
                 // artwork and the models come out full of holes. The validated Python renderer
                 // discarded below 16; this matches it.
-                Transparency = BaseMaterial3D.TransparencyEnum.AlphaScissor,
+                // TPW_PS2_ALPHA=off disables the cutout entirely, as a diagnostic.
+                Transparency = (OS.GetEnvironment("TPW_PS2_ALPHA") ?? "") == "off"
+                    ? BaseMaterial3D.TransparencyEnum.Disabled
+                    : BaseMaterial3D.TransparencyEnum.AlphaScissor,
                 AlphaScissorThreshold = 16f / 255f,
                 // ⭐ NO CULLING BY DEFAULT. The owner checked it live, from every angle, once the
                 // alpha threshold below was fixed -- and it reads correctly. My argument against it
@@ -140,6 +147,11 @@ public sealed class AnimatedModel
                 // still emitted reversed and TPW_PS2_CULL=back is correct if you want culling.)
                 CullMode = CullFromEnv(),
                 TextureFilter = BaseMaterial3D.TextureFilterEnum.NearestWithMipmaps,
+                // ⚠⚠ UVs GO PAST 1.0 AND MUST WRAP. m_boxes runs u 0.00..4.00 -- the texture tiles
+                // four times across it. Without repeat the sampler clamps and everything past u=1
+                // smears the edge column, which is why the crates rendered as plain wood while the
+                // Python renderer (which sampled with a modulo) showed them full of bananas.
+                TextureRepeat = true,
             };
             int m = byMat[i].Key;
             if (m >= 0 && m < _model.Materials.Count)

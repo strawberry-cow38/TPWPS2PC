@@ -30,6 +30,7 @@ public partial class Viewer : Node3D
     string _wantRide, _wantAnim, _wantWad;
 
     ItemList _rideList;
+    CheckBox _texOn;
     OptionButton _wadPick, _animPick;
     Label _info;
     HSlider _scrub;
@@ -122,10 +123,16 @@ public partial class Viewer : Node3D
         };
         AddChild(env);
 
-        var ui = new Control { AnchorRight = 1, AnchorBottom = 1 };
+        // ⚠⚠ A full-screen Control swallows mouse events before _UnhandledInput ever sees them.
+        // Orbit appeared to work only because the left button is also used by the widgets; a
+        // right-drag over the empty area was consumed and the camera never heard about it.
+        // Ignore on the ROOT, Pass on the panel: the actual widgets still take their own clicks.
+        var ui = new Control { AnchorRight = 1, AnchorBottom = 1,
+                               MouseFilter = Control.MouseFilterEnum.Ignore };
         AddChild(ui);
 
-        var panel = new PanelContainer { CustomMinimumSize = new Vector2(280, 0) };
+        var panel = new PanelContainer { CustomMinimumSize = new Vector2(280, 0),
+                                         MouseFilter = Control.MouseFilterEnum.Pass };
         panel.SetAnchorsPreset(Control.LayoutPreset.LeftWide);
         ui.AddChild(panel);
         var col = new VBoxContainer();
@@ -143,12 +150,17 @@ public partial class Viewer : Node3D
         _animPick.ItemSelected += i => { _recordIndex = (int)i; Rebuild(); };
         col.AddChild(_animPick);
 
+        _texOn = new CheckBox { Text = "Textures", ButtonPressed = true };
+        _texOn.Toggled += _ => Rebuild();
+        col.AddChild(_texOn);
+
         _scrub = new HSlider { MinValue = 0, MaxValue = 1, Step = 0.001 };
         _scrub.DragStarted += () => _playing = false;
         _scrub.ValueChanged += v => { if (!_playing && _current != null) { _time = (float)v * _current.Frames; _current.SetFrame(_time); } };
         col.AddChild(_scrub);
 
-        _info = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart };
+        _info = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart,
+                            MouseFilter = Control.MouseFilterEnum.Ignore };
         col.AddChild(_info);
     }
 
@@ -192,6 +204,17 @@ public partial class Viewer : Node3D
         {
             GD.Print($"[v] building {_ride.Name}"); var model = new Model(_lib.Read(_ride.Model));
             var rec = _recordIndex < _records.Count ? _records[_recordIndex] : null;
+            // ⚠ Report which materials got a texture and which did not. A material that silently
+            // resolves to null renders flat-shaded and reads as missing geometry, not a missing file.
+            int got = 0, missed = 0; var misses = new List<string>();
+            foreach (var mat in model.Materials)
+            {
+                if (mat == null) continue;
+                if (TextureFor(mat) != null) got++;
+                else { missed++; if (misses.Count < 8) misses.Add(mat); }
+            }
+            GD.Print($"[tex] {got} resolved, {missed} missing" +
+                     (misses.Count > 0 ? ": " + string.Join(", ", misses) : ""));
             _current = new AnimatedModel(model, _anim, rec, TextureFor);
             AddChild(_current.Root); GD.Print($"[v] built: {_current.Summary}");
             _time = 0;
@@ -199,7 +222,7 @@ public partial class Viewer : Node3D
             FrameCamera(model);
             _info.Text = $"{_ride.Name}\n{_current.Summary}\n" +
                          $"{_records.Count} animations\n" +
-                         "left-drag orbit  |  right-drag pan  |  wheel zoom\n" +
+                         "left-drag orbit  |  right-drag or shift+drag or WASD to pan  |  wheel zoom\n" +
                          "SPACE play/pause  |  arrows step a frame  |  R re-frame";
         }
         catch (Exception ex) { _info.Text = $"{_ride?.Name}\nfailed: {ex.Message}"; }
@@ -207,7 +230,9 @@ public partial class Viewer : Node3D
 
     ImageTexture TextureFor(string material)
     {
-        if (material == null) return null;
+        // ⚠ The toggle must be checked HERE, not at build time, or turning textures off would
+        // still hand the material a texture it had already cached.
+        if (material == null || _texOn?.ButtonPressed == false) return null;
         if (_texCache.TryGetValue(material, out var t)) return t;
         var tga = _lib.Texture(_ride, material);
         ImageTexture tex = null;
@@ -221,6 +246,13 @@ public partial class Viewer : Node3D
         return tex;
     }
 
+    /// <summary>Frame the model on its ACTUAL geometry, not on `mesh+0x70/+0x80`.
+    ///
+    /// ⚠⚠ Those declared bounds cover the whole MORPH RANGE -- every position the vertices can
+    /// reach across the entire animation -- so framing on them pulls the camera far enough back
+    /// that the model occupies a couple of hundred pixels no matter the window size, and thin
+    /// geometry (chains, the sign, banana shapes) falls below one pixel and simply vanishes. That
+    /// is what made the viewer look like it was missing artwork the Python renderer had.</summary>
     void FrameCamera(Model model)
     {
         var world = model.WorldTransforms();
@@ -228,9 +260,10 @@ public partial class Viewer : Node3D
         foreach (var m in model.Meshes)
         {
             if (!world.TryGetValue(m.Offset, out var w)) continue;
-            foreach (var c in new[] { m.BoundsMin, m.BoundsMax })
+            var (pos, _, _) = model.Vertices(m);
+            foreach (var p in pos)
             {
-                var v = System.Numerics.Vector3.Transform(c, w);
+                var v = System.Numerics.Vector3.Transform(p, w);
                 pts.Add(new Vector3(v.X, v.Y, v.Z));
             }
         }
@@ -238,7 +271,7 @@ public partial class Viewer : Node3D
         var lo = pts.Aggregate((a, b) => new Vector3(Mathf.Min(a.X, b.X), Mathf.Min(a.Y, b.Y), Mathf.Min(a.Z, b.Z)));
         var hi = pts.Aggregate((a, b) => new Vector3(Mathf.Max(a.X, b.X), Mathf.Max(a.Y, b.Y), Mathf.Max(a.Z, b.Z)));
         _focus = (lo + hi) * 0.5f;
-        _dist = Mathf.Max((hi - lo).Length() * 1.6f, 4f);
+        _dist = Mathf.Max((hi - lo).Length() * 0.85f, 2f);
     }
 
     public override void _Process(double delta)
@@ -282,7 +315,8 @@ public partial class Viewer : Node3D
             }
             // RIGHT or MIDDLE drag pans, in the camera's own plane so it moves with the view
             // rather than along world axes. Scaled by distance so it feels the same when zoomed in.
-            else if ((mm.ButtonMask & (MouseButtonMask.Right | MouseButtonMask.Middle)) != 0)
+            else if ((mm.ButtonMask & (MouseButtonMask.Right | MouseButtonMask.Middle)) != 0
+                     || ((mm.ButtonMask & MouseButtonMask.Left) != 0 && Input.IsKeyPressed(Key.Shift)))
             {
                 var b = _cam.GlobalTransform.Basis;
                 float k = _dist * 0.0016f;
@@ -301,10 +335,22 @@ public partial class Viewer : Node3D
                 case Key.Space: _playing = !_playing; break;
                 // ⚠ Panning can lose the model off-screen with no way back. R re-frames it.
                 case Key.R: ReFrame(); break;
+                // Keyboard panning, because a right-drag is not delivered on every setup.
+                case Key.W: Pan(0, 1); break;
+                case Key.S: Pan(0, -1); break;
+                case Key.A: Pan(1, 0); break;
+                case Key.D: Pan(-1, 0); break;
                 case Key.Left: StepFrame(-1); break;
                 case Key.Right: StepFrame(1); break;
             }
         }
+    }
+
+    void Pan(float dx, float dy)
+    {
+        var b = _cam.GlobalTransform.Basis;
+        float k = _dist * 0.05f;
+        _focus += b.X * dx * k + b.Y * dy * k;
     }
 
     void StepFrame(int d)
