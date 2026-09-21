@@ -7,20 +7,23 @@ namespace TPWPS2Viewer;
 /// actually see. The first thing in this repo that is a game rather than a reader.</summary>
 public sealed class Park
 {
-    /// <summary>A grid cell in model units.
+    /// <summary>A grid cell in model units. **ONE.**
     ///
-    /// ⚠⚠ THIS WAS 14.42 AND IT WAS WRONG. That figure came from measuring vertex positions
-    /// WITHOUT the per-mesh matrix, which inflates every extent by about a third: `4x4rock` reads
-    /// 51.0 raw and **40.2** transformed. tinyclaw measured it independently, got different
-    /// extents for the same named models, and named the cause exactly.
+    /// ⭐⭐ This was never a measurement to make. Composed through the parent chain, a model named
+    /// after its own footprint spans EXACTLY its cell count -- `1x1east` 1.000000, `2x2rck`
+    /// 2.000000, `4x4rock` 4.000012, `5x5rck` 5.000009, `bigpalm` 2.000000. Over 562 extents the
+    /// median, p25 and p75 are all exactly 1.0000 and 479 are within 1% of it. That is an identity
+    /// with float noise on it, not a fit. **One model unit is one cell**, so the cell size is
+    /// whatever the park chooses and the only honest choice is 1.
     ///
-    /// ⭐ Settled by containment rather than by a median, because the ratio's tail is heavy and
-    /// one-sided -- coaster models span their whole layout, so a mean-like estimator reads 17.6.
-    /// Over all 287 rides with both a footprint and a model, at a cell of **10** the median model
-    /// fills **0.991** of its plot; at 9.6 it fills 1.032, i.e. they systematically overflow. Of
-    /// the 13 rides named after their own footprint, 22 of 26 extents sit inside a 10-unit cell and
-    /// the four that do not overhang by at most 8.7%, which is what a rock does.</summary>
-    public const float CellSize = 10.0f;
+    /// ⚠ It reached 14.42 and then 10 because both were derived from extents taken through each
+    /// mesh's OWN matrix, which runs about ten times the composed value. tinyclaw and I measured
+    /// that independently and agreed -- on the same shortcut. Two people agreeing is not
+    /// corroboration when they share a method. Found by tinyclaw composing the chain properly.
+    ///
+    /// The 83 extents that are not ~1.0 (p05 0.73, p95 2.0, max 7.4) are models genuinely
+    /// overhanging their plot -- coasters and signage -- which is real rather than noise.</summary>
+    public const float CellSize = 1.0f;
 
     public readonly Node3D Root = new() { Name = "Park" };
     Node3D _ground, _ride;
@@ -84,7 +87,7 @@ public sealed class Park
         var claimed = Flat(new Color(0.55f, 0.50f, 0.30f));
         var entry = Flat(new Color(0.85f, 0.65f, 0.20f));
 
-        var tile = new BoxMesh { Size = new Vector3(CellSize, 0.6f, CellSize) };
+        var tile = new BoxMesh { Size = new Vector3(CellSize, CellSize * 0.06f, CellSize) };
         for (int y = 0; y < h; y++)
             for (int x = 0; x < w; x++)
             {
@@ -96,7 +99,7 @@ public sealed class Park
                     Mesh = tile,
                     MaterialOverride = isEntry ? entry : inFoot ? claimed : ((x + y) % 2 == 0 ? grass : darker),
                     // The footprint's own tiles sit a hair proud so the edge reads at a glance.
-                    Position = new Vector3((fx + 0.5f) * CellSize, inFoot ? 0.15f : 0f, (fy + 0.5f) * CellSize),
+                    Position = new Vector3((fx + 0.5f) * CellSize, inFoot ? CellSize * 0.015f : 0f, (fy + 0.5f) * CellSize),
                 });
             }
     }

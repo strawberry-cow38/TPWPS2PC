@@ -399,6 +399,13 @@ void fragment() {
                     L.M11 = right.X; L.M12 = right.Y; L.M13 = right.Z;
                     L.M21 = realUp.X; L.M22 = realUp.Y; L.M23 = realUp.Z;
                     L.M31 = f.X; L.M32 = f.Y; L.M33 = f.Z;
+                    // ⚠⚠ THOSE THREE ARE UNIT VECTORS, so writing them straight WIPES THE BIND'S
+                    // SCALE. A node whose bind carries 0.1 -- which `monkey.mps`'s `m_base` does,
+                    // and every part under it inherits -- came out at 1.0 and the whole ride
+                    // rendered TEN TIMES too big. It never looked wrong in the viewer because the
+                    // camera frames whatever it is given; it only showed up once rides had to stand
+                    // on a shared grid, where one filled its plot and another filled a tenth of it.
+                    L = Renormalise(L, BasisScale(bind));
                 }
             }
             locals[off] = L;
@@ -414,15 +421,16 @@ void fragment() {
     /// translation. The basis LENGTHS are carried over so a scaled node stays scaled.</summary>
     static Matrix4x4 Replace(Matrix4x4 bind, System.Numerics.Quaternion q)
     {
-        var r = Matrix4x4.CreateFromQuaternion(q);
-        var s = new System.Numerics.Vector3(
-            MathF.Sqrt(bind.M11 * bind.M11 + bind.M12 * bind.M12 + bind.M13 * bind.M13),
-            MathF.Sqrt(bind.M21 * bind.M21 + bind.M22 * bind.M22 + bind.M23 * bind.M23),
-            MathF.Sqrt(bind.M31 * bind.M31 + bind.M32 * bind.M32 + bind.M33 * bind.M33));
-        r = Renormalise(r, s);
+        var r = Renormalise(Matrix4x4.CreateFromQuaternion(q), BasisScale(bind));
         r.M41 = bind.M41; r.M42 = bind.M42; r.M43 = bind.M43;
         return r;
     }
+
+    /// <summary>The lengths of a matrix's three basis rows -- its scale, however it got there.</summary>
+    static System.Numerics.Vector3 BasisScale(Matrix4x4 m) => new(
+        MathF.Sqrt(m.M11 * m.M11 + m.M12 * m.M12 + m.M13 * m.M13),
+        MathF.Sqrt(m.M21 * m.M21 + m.M22 * m.M22 + m.M23 * m.M23),
+        MathF.Sqrt(m.M31 * m.M31 + m.M32 * m.M32 + m.M33 * m.M33));
 
     static Matrix4x4 Renormalise(Matrix4x4 m, System.Numerics.Vector3 s)
     {

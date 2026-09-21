@@ -1867,3 +1867,47 @@ showed that **Crazy Ape at frame 0 is a flat base and two boxes**, the rest of i
 their visibility timelines. Nothing was missing. Its base is the size of its plot and nearly the
 colour of the claimed tiles, so it read as the footprint. The control took one run; the guessing
 took four.
+
+
+## ⭐⭐ One model unit IS one footprint cell — and the 10x was a real bug (2026-09-21)
+
+tinyclaw composed the parent chain properly and the answer stopped being a statistic. Models named
+after their own footprint span **exactly their cell count**:
+
+```
+1x1east  1x1 -> 1.000000 x 1.000000      4x4rock  4x4 -> 4.000012 x 4.000004
+2x2rck   2x2 -> 2.000000 x 2.000000      5x5rck   5x5 -> 5.000009 x 5.000575
+bigpalm  2x2 -> 2.000000 x 2.000000      monkey   4x4 -> 4.000000 x 4.000000
+```
+
+Over 562 extents the median, p25 and p75 are **all exactly 1.0000**, with 479 within 1%. That is an
+identity carrying float noise, not a fit. **The cell size was never a property of the data** — it is
+whatever scale the park picks, and the only honest choice is **1**.
+
+⚠ Both earlier answers, my 14.42 and tinyclaw's 9.82, came from extents taken through each mesh's
+OWN matrix, which runs ~10x the composed value. We measured independently and agreed — **on the
+same shortcut**. Agreement is not corroboration between people sharing a method.
+
+### ⭐ The discrepancy that was left over was a genuine defect
+
+`Crazy Ape` measured **106%** of its plot in the engine while `Large Tree` measured **10%**, and
+tinyclaw pointed out both cannot come from the composed path: monkey is 4.000 × 4.000 composed, so
+it should read 10% too. Chasing that found the bug.
+
+`AnimatedModel.WorldAt` orients a node along its travel path:
+
+```csharp
+L.M11 = right.X; L.M12 = right.Y; L.M13 = right.Z;
+L.M21 = realUp.X; ...
+L.M31 = f.X; ...
+```
+
+⚠⚠ **Those three are unit vectors, so writing them straight WIPES THE BIND'S SCALE.** `monkey.mps`'s
+root `m_base` carries a **0.1** scale that every part inherits; on a facing path it became 1.0 and
+the entire ride rendered **ten times too big**. Static props were never affected, which is why the
+two rides disagreed.
+
+⭐ **It never looked wrong in the viewer**, because a camera that frames whatever it is handed
+cannot show absolute scale. It only surfaced once rides had to stand on a shared grid and one
+filled its plot while another filled a tenth of it. The fix restores the bind's basis lengths after
+orienting.
