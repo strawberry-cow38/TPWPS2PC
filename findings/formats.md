@@ -697,7 +697,7 @@ After reversing, the parities swap exactly as they should: cull-back renders sol
 renders hollow. That symmetry is the confirmation — a one-sided test would not have been one.
 
 
-## ⚠ OPEN: the Godot viewer renders less than the Python reference
+## ⭐⭐ SOLVED: the Godot viewer was lighting back faces with inverted normals
 
 Rendering the same ride, animation and frame in both, the Python renderer shows banana clusters in
 the crates and the CRAZY APE sign; the Godot viewer does not. **Unresolved.** Recorded with what
@@ -712,6 +712,39 @@ has been ELIMINATED, so the next attempt does not repeat it:
 | visibility gating | adding it to the Python renderer changed **0 pixels** — the only part it hides at 134 (`m_crate`) is already collapsed to a 0.03-unit sliver |
 | camera framing | ⭐ was a REAL defect and is fixed (below), but the artwork is still absent after fixing it |
 | the alpha cutout | disabling it makes things *worse* — the fence's cut-out quads become solid black rectangles — so `AlphaScissor` at 16/255 is right |
+
+### ⭐ The answer, and it came from the owner describing the symptom precisely
+
+> *"all the faces are there, its like they are textured on the wrong side half of the time"*
+
+That is **two-sided lighting**. With culling disabled, Godot's `StandardMaterial3D` does **not**
+flip the normal on a back face, so every surface seen from behind is shaded by a normal pointing
+away from the light and comes out dark. Half the faces of any closed model are back faces from any
+given angle — hence "half the time". The banana clusters and the fence detail were never missing;
+they were unlit.
+
+`StandardMaterial3D` has no toggle for this, so the viewer now uses a small shader:
+
+```glsl
+shader_type spatial;
+render_mode cull_disabled, diffuse_lambert, specular_disabled;
+uniform sampler2D albedo_tex : source_color, filter_nearest_mipmap, repeat_enable;
+uniform float cutout = 0.0627;                 // 16/255, not the engine default 0.5
+void fragment() {
+    vec4 c = texture(albedo_tex, UV);
+    if (c.a < cutout) discard;
+    ALBEDO = c.rgb;
+    if (!FRONT_FACING) { NORMAL = -NORMAL; }   // ⭐ the fix
+}
+```
+
+It also carries the two settings this data needs and the engine defaults get wrong: `repeat_enable`
+because `m_boxes` UVs run `u 0..4`, and the 16/255 cutout.
+
+⚠ **Note which of my six eliminations was the near miss.** I had measured that disabling the alpha
+cutout made things worse and concluded the material was therefore correct. It was correct *about
+alpha* — and wrong about lighting. **Ruling out one property of a thing does not rule out the
+thing.**
 
 ### ⭐ Fixed on the way: frame on real geometry, not the declared bounds
 

@@ -89,28 +89,52 @@ public sealed class AnimatedModel
         Summary = $"{_parts.Count} parts, {Frames} frames, {_model.Materials.Count} materials";
     }
 
-    static BaseMaterial3D.CullModeEnum CullFromEnv() =>
-        (OS.GetEnvironment("TPW_PS2_CULL") ?? "off").ToLowerInvariant() switch
-        {
-            "front" => BaseMaterial3D.CullModeEnum.Front,
-            "off" or "none" or "disabled" => BaseMaterial3D.CullModeEnum.Disabled,
-            _ => BaseMaterial3D.CullModeEnum.Back,   // "back" and "two" both cull back
-        };
+    // ⚠ Culling is now owned by the shader's `render_mode cull_disabled`, not by a material
+    // property, so there is no CullFromEnv any more -- it would have been dead code that looked
+    // live. The measured fact it existed to record stays in findings/formats.md: M3D2 front faces
+    // are CLOCKWISE, which is why the triangles below are emitted reversed.
 
-    /// <summary>TWO-SIDED geometry: emit every triangle twice, the second reversed with a flipped
-    /// normal, and cull back faces.
-    ///
-    /// ⭐ This is what "no cull" actually wants. Plain `CullMode.Disabled` lets a model's BACK
-    /// faces draw over its FRONT ones -- measured on Crazy Ape, his own back covers his face and
-    /// the crates' far walls render over the near ones, which reads as holes in the model.
-    /// Duplicating instead means nothing is ever invisible (you can still see inside an open crate)
-    /// while the depth test keeps the nearer surface in front, because every triangle now has a
-    /// correctly-facing copy whichever side you view it from.</summary>
     /// ⚠ TRIED AND REJECTED, kept switchable so nobody re-tries it blind: duplicating every
     /// triangle puts two coincident faces at the SAME depth, which z-fights per pixel and looks
     /// worse than either plain mode. `TPW_PS2_CULL=two` still selects it; it is not the default.
     static bool TwoSided =>
         (OS.GetEnvironment("TPW_PS2_CULL") ?? "back").ToLowerInvariant() is "two" or "twosided";
+
+    /// <summary>The viewer's material, as a shader rather than a StandardMaterial3D.
+    ///
+    /// ⚠⚠ THE REASON IS TWO-SIDED LIGHTING. With culling disabled, Godot's StandardMaterial3D does
+    /// NOT flip the normal on back faces, so every surface you are seeing from behind is lit by a
+    /// normal pointing away from the light and comes out dark. The owner described it exactly:
+    /// "all the faces are there, its like they are textured on the wrong side half of the time."
+    /// `FRONT_FACING` is the only way to fix that, and it needs a shader.
+    ///
+    /// It also carries the two settings this data actually needs: repeat, because `m_boxes` UVs run
+    /// u 0..4, and a cutout threshold of 16/255 rather than the engine default of 0.5, which would
+    /// discard the ~50% of texels at or below alpha 128.</summary>
+    static Shader _shader;
+    static Shader ViewerShader => _shader ??= new Shader
+    {
+        Code = @"
+shader_type spatial;
+render_mode cull_disabled, diffuse_lambert, specular_disabled;
+
+uniform sampler2D albedo_tex : source_color, filter_nearest_mipmap, repeat_enable;
+uniform float cutout = 0.0627;      // 16/255
+uniform bool has_tex = true;
+
+void fragment() {
+    if (has_tex) {
+        vec4 c = texture(albedo_tex, UV);
+        if (c.a < cutout) discard;   // alpha CUTOUT, not blending
+        ALBEDO = c.rgb;
+    } else {
+        ALBEDO = vec3(0.72);
+    }
+    // ⭐ The whole point: light a back face by the normal it actually presents.
+    if (!FRONT_FACING) { NORMAL = -NORMAL; }
+}
+"
+    };
 
     void BuildSurfaces(Part p, Func<string, ImageTexture> texture)
     {
@@ -120,42 +144,11 @@ public sealed class AnimatedModel
         for (int i = 0; i < byMat.Count; i++)
         {
             var mi = new MeshInstance3D();
-            var mat = new StandardMaterial3D
-            {
-                // ⚠ 32-bit TGAs here are alpha CUTOUTS (leaves, foliage), not merely wider pixels.
-                // ⚠⚠ THE THRESHOLD IS 16/255, NOT THE DEFAULT 0.5. Measured across the archive's
-                // 261 32-bit TGAs: alpha 0 is the single commonest value (genuine cutout) but
-                // **49.9% of texels sit at or below 128**, so scissoring at 0.5 deletes half the
-                // artwork and the models come out full of holes. The validated Python renderer
-                // discarded below 16; this matches it.
-                // TPW_PS2_ALPHA=off disables the cutout entirely, as a diagnostic.
-                Transparency = (OS.GetEnvironment("TPW_PS2_ALPHA") ?? "") == "off"
-                    ? BaseMaterial3D.TransparencyEnum.Disabled
-                    : BaseMaterial3D.TransparencyEnum.AlphaScissor,
-                AlphaScissorThreshold = 16f / 255f,
-                // ⭐ NO CULLING BY DEFAULT. The owner checked it live, from every angle, once the
-                // alpha threshold below was fixed -- and it reads correctly. My argument against it
-                // came from ONE static frame at ONE camera angle, which made the far side of the
-                // model look like it was winning; orbiting shows it is not. An interactive look is
-                // a better instrument than a single render, and it outvoted me.
-                // It is also safe because the
-                // normals do NOT come from the winding: they are the model's own third per-vertex
-                // stream (3 x int8 over 127), set explicitly below. The usual objection to
-                // disabling culling is that a generator derives normals from triangle order and
-                // they come out inward; that cannot happen when the file supplies them.
-                // (For the record, measured: M3D2 front faces are CLOCKWISE, so the triangles are
-                // still emitted reversed and TPW_PS2_CULL=back is correct if you want culling.)
-                CullMode = CullFromEnv(),
-                TextureFilter = BaseMaterial3D.TextureFilterEnum.NearestWithMipmaps,
-                // ⚠⚠ UVs GO PAST 1.0 AND MUST WRAP. m_boxes runs u 0.00..4.00 -- the texture tiles
-                // four times across it. Without repeat the sampler clamps and everything past u=1
-                // smears the edge column, which is why the crates rendered as plain wood while the
-                // Python renderer (which sampled with a modulo) showed them full of bananas.
-                TextureRepeat = true,
-            };
+            var mat = new ShaderMaterial { Shader = ViewerShader };
             int m = byMat[i].Key;
-            if (m >= 0 && m < _model.Materials.Count)
-                mat.AlbedoTexture = texture(_model.Materials[m]);
+            var tex = (m >= 0 && m < _model.Materials.Count) ? texture(_model.Materials[m]) : null;
+            mat.SetShaderParameter("albedo_tex", tex);
+            mat.SetShaderParameter("has_tex", tex != null);
             mi.MaterialOverride = mat;
             p.SurfaceMaterial[i] = m;
             p.Surfaces[i] = mi;
