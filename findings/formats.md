@@ -88,12 +88,14 @@ is the right magnitude for tile-space coordinates. **Vertex/face layout NOT esta
 
 Four things were tried and are recorded because each one saves the next person the same afternoon:
 
-1. **The first word is NOT a format magic.** `0x183076E4` is identical in all 113 `.mps` in this
-   archive, which is what a magic looks like — but it **does not appear anywhere in `SLES_500.32`**,
-   neither as a literal nor as the `lui 0x1830` half of a MIPS constant load. The loader never
-   compares against it, so it is a build stamp from the exporter, not a signature. `.MD2` files carry
-   the same shape of stamp (`0x1CD15D46`) rather than Quake's `IDP2`, so they are this same container
-   under another extension, not id Software's format.
+1. ~~**The first word is NOT a format magic.**~~ **⚠ RETRACTED 2026-09-21 — IT IS A MAGIC, AND IT IS
+   CHECKED.** See "The validator" below. I reported a confident negative off a scan whose `lui` test
+   was `(word & 0xFFFF0000) == 0x3C000000`, which masks the *register field* into the comparison: a
+   real `lui v0,0x1830` is `0x3C021830`, so nothing ever matched and I concluded the loader never
+   looks at it. The correct test is `(word >> 26) == 0x0F`, and it finds three sites. The claim that
+   word 1 is a "header size" was wrong for the same reason — it is a **version**.
+   `.MD2` files carry a different stamp (`0x1CD15D46`) because they are a different member of the
+   same family, not Quake's `IDP2`.
 2. **Header words that scale with file size**, over all 113 models: 0x40, 0x44, 0x48, 0x4C, 0x70,
    0x74 (r > 0.95 against size). Sorted, they form an ascending chain of in-file offsets, so they are
    section boundaries — but not all of them, because:
@@ -103,6 +105,33 @@ Four things were tried and are recorded because each one saves the next person t
    or missing.
 4. The counts at 0x22/0x28 do track complexity, and 0x22 equals the texture count on the models
    checked, but that is not enough to place the vertices.
+
+## The validator (0x00169DD0), which settles the header
+
+```
+0x169dd0  lui   v0,0x1830
+0x169dd4  ori   v0,v0,0x76e4     ; v0 = 0x183076E4
+0x169dd8  lw    v1,0x0(s0)       ; header word 0
+0x169ddc  bne   v1,v0,error      ; MAGIC, and it is enforced
+0x169de4  lw    v1,0x4(s0)       ; header word 1
+0x169de8  sltiu v0,v1,0x13e      ; version < 0x13E -> "Mesh %s version check failed"
+0x169df4  sltiu v0,v1,0x141      ; version < 0x141 -> accepted
+```
+
+So `0x00` is a **magic**, enforced at three sites, and `0x04` is a **version** accepted in
+**0x13E..0x140**. `.aps` carrying `0x148` is the *anim* format's version, checked separately —
+"Anim %s version check failed" sits next to the mesh one in `.rodata`.
+
+⭐ **The format has a name: M3D2.** `Source/M3d2/Code/M3D2Manip.cpp` is in the binary (an assert
+path), alongside `Source/Core/Code/{TPMesh,TPRide,TPInstance,TPHoarding,TPHField,TPHMap,TPEmbed}.cpp`
+and `Source/Land/Land.cpp`. `.mps`, `.aps` and `.md2` are three members of one family, and the
+extension-dispatch strings `sam / mps / aps / md2 / hmp` sit together in `.rodata`.
+
+⭐⭐ **And the PC release uses the same family**, where it was already reverse-engineered (2026-05-06,
+from `demon.MD2`): a mesh table of **160-byte entries** holding a mat4 transform, texture index, name
+offset, vertex/material/face counts. That is the corroboration the stride test needed — the best
+pairing it found over the 113 PS2 models was **stride 160**, in 64 of them, and it was dismissed here
+as noise. It was not noise.
 
 **The two principled routes left**, either of which gives the layout outright rather than by
 divination:
