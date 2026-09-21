@@ -87,3 +87,37 @@ coverage only — their status table and repo against this one, 2026-09-21:
 carry more than the repo does, and a ⚠️ can mean anything from a stub to nearly finished. The point
 of the exercise was to find what is genuinely unexplored, not to grade anyone's work — and the
 answer is that **animation and particles appear to be undocumented for this game anywhere.**
+
+## What this is for next
+
+⭐ **1. The PS2 ride scripts are documentation for the PSX port.** The PSX work
+([TPW-PSXPC](https://github.com/strawberry-cow38/TPW-PSXPC)) carries ~100 findings files —
+`ride-classes.md`, `ride-phase-lengths.md`, `animation-phases.md`, `behaviour.md`, `coaster-track.md`
+— every one reverse-engineered from `TPW.BIN` by hand. The PS2 disc ships the same game's object
+behaviour as **90 commented source scripts**:
+
+```
+RIDES      Monkey Mumbo Volcano Wateride GoKarts Coaster1 Coaster3 Bumper Bouncy IncaGod
+           Spider TVSim Totem TourRide dizzyd king manic snake MineCart PorkPie Lookout
+SHOPS      Balloon Burger Coconut Fries GiftShop IceCream Steak
+SIDESHOWS  hyenas junspray pong sgpuzzle sgrace sgsquark sgwhack arc2x3
+FEATURES   fountains bins toilets speakers gates statues bushes lights staff ferry bus
+UPGRADES   lavajump mammtunn watertun
+```
+
+⚠ **As a cross-reference, never as a replacement.** The PSX binary remains ground truth for the PSX
+port — PS2 and PSX are different builds and this repo spent a day learning what happens when a
+plausible source is trusted over the authoritative one. The scripts confirm what was derived
+correctly, explain *why* a timing is what it is, and point at the gaps that resisted disassembly.
+
+**2. `DATA.WAD` — still never opened.** Guests, staff and the advisor live there, and it is the only
+place the **20-byte skeletal animation path** can be exercised: it is fully decoded from the parser
+and interpolators, and **zero files in JUNGLE.WAD use it**. Decoded-but-never-executed is the
+weakest claim in this repo.
+
+**3. Deliberately NOT next: finishing the `.rse` opcode table.** All 90 sources are on the disc, so
+reading the ride logic does not need the compiled form — that only matters for *running* scripts.
+Low value, feels productive.
+
+The remaining `.aps` pointers (`+0x24` at 130 tracks, `+0x1c` at 11) are polish; the four transform
+channels that matter are done.
