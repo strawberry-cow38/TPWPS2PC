@@ -1,3 +1,6 @@
+> Historical FFmpeg-adapter research. The shipping path is now managed; see
+> [the IPU differential report](ipu.md) for current API, requirements, and whole-disc results.
+
 # SHPS / GM texture decoder — 2026-09-21
 
 Implemented in `core/TPW.PS2.Data/Ssh.cs`, with no Godot dependency: SHPS directory validation,
@@ -210,7 +213,14 @@ JUNGLE 55%, UI 54%, FANTASY 50%. Spread but nowhere near clean anywhere, so the 
 codec's own colour/quantisation behaviour and not a per-world asset pipeline.
 
 Flat-colour exactness on the disc: **19 of 117** RGB-exact (the fixture set's 2 of 63 was the
-small-sample version of the same defect). A flat source that decodes to a constant which is off by
+small-sample version of the same defect).
+
+⚠ That denominator moved after this was written. Commit `15730ca` fixed the four cloud-mask TGAs,
+and a pure-white reference IS flat, so the flat population became **121** and the line now reads
+19 of 121. The numerator did not move -- no flat image became exact -- but a denominator that
+changes because a DIFFERENT bug was fixed is exactly the kind of drift that makes an old number
+look like a regression later. The 117-sample analysis below stands as measured: all 117 were
+type 0x84/0x85 and went through the YUV path, and the four newcomers are type 0x02 and do not. A flat source that decodes to a constant which is off by
 one or two is a colour-conversion or DC-quantisation question, and it is the sharpest remaining
 lead -- a flat block should round-trip, so the residual there is not "lossy compression".
 
@@ -283,7 +293,14 @@ Eight entries on the whole disc are type **0x02**, uncompressed, and all eight a
 
     entry+0x00   16-byte header: type, 24-bit length, u16 W, u16 H   (as every SHPS entry)
     entry+0x10   W*H bytes of 8-bit palette indices, top row first, NOT swizzled
-    entry+len    16 bytes, then 256 x RGBA (1,024 bytes), then 32 trailing
+    entry+len    a SECOND entry: type 0x21, length 1,040, dimensions 256x1 -- the palette
+
+⭐ Those 16 bytes are not padding to skip -- they are a real SHPS entry header, and every field in
+it validates: type 0x21, 24-bit length 1,040 (16 + 1,024), width 256, height 1. A CLUT stored as a
+256x1 image. The SHPS **directory lists only one entry**, so the palette is a trailing block the
+directory never names -- which is why it reads as "16 mystery bytes" until you parse them as what
+they are. Credit where due: this reading came from the managed-decoder run, and it is better than
+the offset-arithmetic version it replaced, because it explains the 16 rather than stepping over it.
 
 ⚠ **The PALETTE is PS2 CSM1-swizzled** -- 8 blocks of 32 entries, entries 8..15 swapped with 16..23
 within each block -- **and alpha is 0..128**, doubled on output. The index plane is NOT swizzled.

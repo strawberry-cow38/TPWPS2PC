@@ -21,6 +21,7 @@ internal static class SelfTests
         }
         try
         {
+            CodecTests.Run(Check);
             byte[] data = Synthetic(32, 32, [32, 64, 96, 128], true);
             var image = new Ssh(data);
             // Four independent constant macroblocks have unique luminance; a raster/column mixup
@@ -69,7 +70,7 @@ internal static class SelfTests
             byte[] bad = (byte[])data.Clone(); bad[20] = 255; bad[21] = 255;
             Reject(bad, "entry offset bounds");
             bad = (byte[])data.Clone(); bad[32] = 2;
-            Reject(bad, "unsupported type");
+            Reject(bad, "GM payload is not a valid type 2 image");
             bad = (byte[])data.Clone(); bad[55] |= 0x40;
             Reject(bad, "unknown GM flags");
             bad = (byte[])data.Clone(); bad[52] = 0;
@@ -80,7 +81,7 @@ internal static class SelfTests
             Reject(bad, "missing end marker");
             // Corrupt coefficients while retaining the container, marker and padding.
             bad = (byte[])data.Clone(); Array.Clear(bad, 56, marker - 56);
-            Reject(bad, "FFmpeg must reject invalid macroblocks, not return a placeholder frame");
+            Reject(bad, "managed decoder rejects invalid macroblocks instead of returning a placeholder frame");
             Check(Metrics.Compare(opaque.Pixels, opaque.Pixels) == (0.0, 0.0, 0, 0), "zero means exactly equal");
             byte[] changed = (byte[])opaque.Pixels.Clone(); changed[0] += 3; changed[3] = 0;
             var error = Metrics.Compare(changed, opaque.Pixels);
