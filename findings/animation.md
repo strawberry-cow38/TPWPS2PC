@@ -101,6 +101,30 @@ The stricter, more obviously-correct test passes **fewer** files. That is the si
 inferred from one example: every constraint that is true of `monkey.aps` in particular removes more
 files than it keeps.
 
+### Reading four files side by side found the real reason
+
+`monkey`, `bouncy`, `bumper` and `mumbo` together show what is fixed and what is not:
+
+| file | `0x1C` | sub-header `[2] [3] [4] [6]` | model meshes |
+|---|---|---|---:|
+| monkey | (12, 45) | 9, 0x18, 0xD4, 0xA4 | 9 |
+| bouncy | (12, 29) | 5, 0x13, 0xCC, 0xA4 | 8 |
+| bumper | (12, 31) | 21, 0x09, 0xB8, 0xA4 | 17 |
+| mumbo  | (12, 36) | 5, 0x0E, 0xC0, 0xA4 | 7 |
+
+- **`0x1C`'s first u16 is 12 in every file** — so it is a constant, not the node count this file
+  previously guessed. The second (45, 29, 31, 36) varies per ride and is plausibly frame count.
+- Section 0 is always `0x88` and the index list always `0xA4`.
+- **The index list is 4-BYTE ALIGNED before the records.** `0xA4 + 0x13*2 = 0xCA`, but bouncy's
+  records start at `0xCC`; bumper's `0xB6 → 0xB8`. My "must abut exactly" constraint was true of
+  monkey and mumbo by luck, because their lengths happened to land on 4.
+
+With alignment, 20 of 89 parse. **Every remaining failure is the same cause and it is not random**:
+they are simple scenery — `lights`, `camera`, `fountain`, `Gates`, `pelbin`, `s_plant`, `seaplane` —
+whose section 0 is not a track table at all. `lights.aps` is 216 bytes total and its section 0 reads
+`2, 0x0A, 0x10000, …`, a different record shape entirely. **There is more than one kind of section**,
+and the (count, offset) pair does not say which kind.
+
 **This is recorded as not general rather than tuned until it passes.** Loosening constraints until a
 number looks acceptable would produce a reader that "works" on 89 files and is right about one. The
 next step is a second and third file read cold — `bouncy.aps` (5 tracks), `bumper.aps` (21) — to see
