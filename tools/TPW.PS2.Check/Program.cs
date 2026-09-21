@@ -193,6 +193,48 @@ Console.WriteLine($"rides: {sam} .sam files, {samPrintable} fully printable, {sa
 Console.WriteLine($"  upgrade tiers carrying a capacity: {samTiers[0]} / {samTiers[1]} / {samTiers[2]}");
 Console.WriteLine($"  known-answer controls: {samControlOk} of {samChecked} reproduce (id + 3 capacities each)");
 
+// The localisation database, and the join that gives a ride its PLAYER-FACING name.
+{
+    WadArchive? dataWad = null;
+    foreach (var w in wads)
+        if (w.Path.EndsWith("/DATA.WAD", StringComparison.OrdinalIgnoreCase))
+            try { dataWad = new WadArchive(disc.Read(w.Extent, w.Size)); } catch { }
+    if (dataWad is not null)
+    {
+        foreach (var locale in new[] { "eur", "usa", "jap" })
+        {
+            var db = TextDatabase.Load(dataWad, locale);
+            if (db is null) { Console.WriteLine($"text: {locale} NOT FOUND"); continue; }
+            int withFmt = db.Formats.Count(x => !string.IsNullOrEmpty(x));
+            int hasField = db.Formats.Count(x => x is not null);
+            Console.WriteLine($"text: {locale} {db.Keys.Length} rows x {db.Languages.Count} languages "
+                              + $"({string.Join(",", db.Languages.Keys.OrderBy(x => x))}); "
+                              + $"{hasField} carry a format field ({withFmt} non-empty), {db.Formats.Length - hasField} none");
+        }
+        // The join, measured rather than assumed: Info.Name is not the displayed name.
+        var eur = TextDatabase.Load(dataWad, "eur");
+        if (eur is not null)
+        {
+            var cat2 = RideCatalogue.Load(disc);
+            int joined = 0, agree = 0;
+            foreach (var d in cat2.All)
+            {
+                var parts = d.Source.Split('/', StringSplitOptions.RemoveEmptyEntries);
+                int wi = Array.FindIndex(parts, x => x.EndsWith(".WAD", StringComparison.OrdinalIgnoreCase));
+                if (wi < 0 || d.Name is null) continue;
+                var world = parts[wi][..^4];
+                var rel = string.Join('/', parts.Skip(wi + 1));
+                int row = eur.IndexOf(TextDatabase.GraphicsKey(world, rel));
+                if (row < 0) continue;
+                joined++;
+                if (eur.Text("eng", row) == d.Name) agree++;
+            }
+            Console.WriteLine($"  ride name join: {joined} rides reach a STR_GRAPHICS row; "
+                              + $"{agree} match Info.Name, {joined - agree} DIFFER (the table wins)");
+        }
+    }
+}
+
 // The id is the identity, not the name -- and the thousands digit is the world for bands 1-4.
 // Band 5 is the sideshows and spans every world, so it is counted and excluded by NAME here
 // rather than being quietly dropped into the "impure" pile.

@@ -1686,3 +1686,61 @@ failure to find one.
 ⚠ **Directory case is not reliable.** The same bundle appears as `/Features/bus` and
 `/features/bus`. Compare paths case-insensitively or you will find exactly one of the two — the
 same trap that had 710 `.RSE` hiding behind 8 `.rse`.
+
+
+## ⭐⭐ The localisation database, and the name a player actually sees (2026-09-21)
+
+`DATA.WAD/Text/translations/`. Format found by tinyclaw; verified here independently off my own
+extraction, which turned up one thing their writeup did not.
+
+```
+u32 count, count x u32 absolute offset, then NUL-terminated strings
+```
+
+On every table: first offset is exactly `4 + count*4`, offsets monotonic, last string ending
+**exactly** at EOF, **1,087** rows in the same order. `id.dat` is not a language — it is the
+symbolic key per row, and `include/trans.h` ships the same list a third time as a C enum.
+
+⚠ **There are three regional trees, not one, and they hold different languages:**
+
+| tree | languages |
+|---|---|
+| `eur/` | ame, dut, **fre**, ger, ita, jap, spa, swe, eng — **9** |
+| `usa/` | ame, dut, ger, ita, jap, spa, swe, eng — 8, **no French** |
+| `jap/` | dut, **fre**, ger, ita, jap, spa, swe, eng — 8, **no American** |
+
+Reading "the" translations directory finds whichever one you happened to name.
+
+⚠ Every one of the 1,087 rows carries a format field after the first space; **21 are non-empty**
+and those are exactly the strings taking arguments. The other 1,066 end in a bare trailing space,
+which IS the empty spec. `Formats` keeps `null` (no field) apart from `""` (empty field) for that
+reason — collapsing them loses 1,066 rows' worth of "we looked and there is nothing".
+
+### ⭐⭐ `Info.Name` is NOT the displayed name
+
+The `STR_GRAPHICS_` keys encode the asset path, which joins the table to a ride:
+
+```
+STR_GRAPHICS_JUNGLE_RIDES_MONKEY_MONKEY -> JUNGLE.WAD/Rides/Monkey/Monkey.sam
+```
+
+**273 rides reach a row. 203 match that file's `Info.Name` and 70 DO NOT.**
+
+```
+sam 'Loudspeaker'    -> eng 'UFOs'          (SPACE/Features/spacspk4)
+sam 'Loudspeaker'    -> eng 'Furry Fiends'  (HALLOW/Features/horspek1)
+sam 'Garden Trowel'  -> eng 'Trowel'
+sam 'Medium Bush'    -> eng 'Small Bush'
+sam 'Chac Atak'      -> eng 'Chak Atak'
+sam 'Gift Shop'      -> eng 'Gift Shop '
+```
+
+`Info.Name` is the **designer's internal label**; the table is what the player reads. A port that
+displays `Info.Name` shows the wrong name on **roughly a quarter** of its rides.
+
+⭐ The join is sound: matching on the full path instead of just the stem moves only **2 of 260**, so
+the disagreements are a real difference between two fields rather than a mis-join.
+
+This is the **third** independent reason not to key a ride on its name, after the 32-of-36 repeated
+names carrying different ids and the 5 outright id collisions. `Info.Name` is also English-only by
+construction, while the real name exists in nine languages.
