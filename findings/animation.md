@@ -119,11 +119,37 @@ files than it keeps.
   records start at `0xCC`; bumper's `0xB6 → 0xB8`. My "must abut exactly" constraint was true of
   monkey and mumbo by luck, because their lengths happened to land on 4.
 
-With alignment, 20 of 89 parse. **Every remaining failure is the same cause and it is not random**:
-they are simple scenery — `lights`, `camera`, `fountain`, `Gates`, `pelbin`, `s_plant`, `seaplane` —
-whose section 0 is not a track table at all. `lights.aps` is 216 bytes total and its section 0 reads
-`2, 0x0A, 0x10000, …`, a different record shape entirely. **There is more than one kind of section**,
-and the (count, offset) pair does not say which kind.
+With alignment, 20 of 89 parsed — and the 69 failures were **my reader, not the format, for the
+third time in this file's history.**
+
+⚠ I was reading the section offset from `0x2C` unconditionally, i.e. always slot `0x28`. Simple
+objects like `lights.aps` and `camera.aps` have **`(0, 0)` in that slot** and put their sections
+elsewhere, so the reader took offset 0 and interpreted the file's own magic as a sub-header. I then
+looked at that garbage, saw `2, 0x0A, 0x10000, …`, and concluded **"there is more than one kind of
+section"** — an interesting structural claim invented entirely by my own indexing bug.
+
+## Where it actually lands
+
+Walking **every live (count, offset) slot**, and every 28-byte sub-header record within it:
+
+```
+section header record, 28 bytes:
+   +0x08  u32  track count
+   +0x0C  u32  index-list length
+   +0x10  u32  offset of the 48-byte track records
+   +0x18  u32  offset of the u16 index list   (records begin at align4(idxOff + len*2))
+
+track record, 48 bytes:
+   +0x00  node id      +0x04  flags
+   +0x20  data start   +0x28  data end        (blocks ascend and tile the section)
+```
+
+**83 of 89 files consistent, 647 tracks.** The six that fail — `dizzyd`, `gokarts`, `spider`,
+`wateride`, `pong`, `sgpuzzle` — all fail the same check, that data blocks ascend, which suggests
+several track tables whose blocks restart rather than a different format. Not yet confirmed.
+
+Also verified independently: **"a section is `count` records of 28 bytes, in bounds" holds for
+89 of 89.**
 
 **This is recorded as not general rather than tuned until it passes.** Loosening constraints until a
 number looks acceptable would produce a reader that "works" on 89 files and is right about one. The
