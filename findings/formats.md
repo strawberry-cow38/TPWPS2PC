@@ -669,3 +669,29 @@ would differ between a fountain and a volcano; a pair-count would not. So it is 
 
 Nothing yet read connects a `.aps` field to a `.plb` index. The library is cracked; the wiring is
 not.
+
+
+## ⭐ M3D2 FRONT FACES ARE CLOCKWISE — opposite to Godot's convention
+
+Asked directly whether the winding was right, the honest first answer was **no idea**, because the
+viewer had culling DISABLED. That does not answer the question, it hides it — and it is what let a
+wrong parity survive for days on the PSX side.
+
+Rendered all three parities of the same frame and compared:
+
+| cull mode | result |
+|---|---|
+| BACK, unreversed winding | **hollow** — the ape's own back is visible through his chest, the plinth has no top |
+| FRONT, unreversed winding | solid and correct |
+| disabled | looks nearly right, with interior faces bleeding through |
+
+So the file's front faces are **clockwise**. The fix is to emit the triangles reversed (`A, C, B`)
+so ordinary back-face culling is correct, rather than to leave the engine culling the front:
+
+⚠ **Do not "fix" winding by disabling culling.** It hides the question and it flips the normals a
+generator derives from the triangle order, so the lighting is then wrong in a way that looks like a
+material problem. `TPW_PS2_CULL=back|front|off` stays in the viewer to re-check this rather than
+to trust it.
+
+After reversing, the parities swap exactly as they should: cull-back renders solid, cull-front
+renders hollow. That symmetry is the confirmation — a one-sided test would not have been one.

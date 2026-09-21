@@ -83,6 +83,14 @@ public sealed class AnimatedModel
         Summary = $"{_parts.Count} parts, {Frames} frames, {_model.Materials.Count} materials";
     }
 
+    static BaseMaterial3D.CullModeEnum CullFromEnv() =>
+        (OS.GetEnvironment("TPW_PS2_CULL") ?? "back").ToLowerInvariant() switch
+        {
+            "front" => BaseMaterial3D.CullModeEnum.Front,
+            "off" or "none" or "disabled" => BaseMaterial3D.CullModeEnum.Disabled,
+            _ => BaseMaterial3D.CullModeEnum.Back,
+        };
+
     void BuildSurfaces(Part p, Func<string, ImageTexture> texture)
     {
         var byMat = p.Tris.GroupBy(t => t.Material).ToList();
@@ -96,7 +104,13 @@ public sealed class AnimatedModel
                 // ⚠ 32-bit TGAs here are alpha CUTOUTS (leaves, foliage), not merely wider pixels.
                 Transparency = BaseMaterial3D.TransparencyEnum.AlphaScissor,
                 AlphaScissorThreshold = 0.5f,
-                CullMode = BaseMaterial3D.CullModeEnum.Disabled,
+                // ⭐ M3D2 FRONT FACES ARE CLOCKWISE, the opposite of Godot's convention, so the
+                // triangles are emitted reversed below and ordinary BACK-face culling is correct.
+                // ⚠ Do not "fix" this by disabling culling: that hides the question instead of
+                // answering it AND flips the generated normals. Measured -- cull back on the unre-
+                // versed winding renders the ape hollow, with his own back visible through his
+                // chest. TPW_PS2_CULL=back|front|off remains, to re-check rather than to trust.
+                CullMode = CullFromEnv(),
                 TextureFilter = BaseMaterial3D.TextureFilterEnum.NearestWithMipmaps,
             };
             int m = byMat[i].Key;
@@ -124,7 +138,8 @@ public sealed class AnimatedModel
             var st = new SurfaceTool();
             st.Begin(Mesh.PrimitiveType.Triangles);
             foreach (var t in grp)
-                foreach (var idx in new[] { t.A, t.B, t.C })
+                // ⭐ REVERSED: A, C, B. See the CullMode note above.
+                foreach (var idx in new[] { t.A, t.C, t.B })
                 {
                     st.SetUV(p.Uv[idx]);
                     var v = pos[idx];
