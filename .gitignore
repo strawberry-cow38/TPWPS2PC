@@ -14,6 +14,7 @@ SCES_*
 *.tga
 *.TGA
 *.ssh
+*.SSH
 *.mpc
 *.MPC
 *.irx
@@ -33,3 +34,7 @@ dump/
 # Python bytecode
 __pycache__/
 *.pyc
+
+# .NET build products
+**/bin/
+**/obj/
