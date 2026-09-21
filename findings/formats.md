@@ -915,3 +915,74 @@ do the work.
 Stereo and 48 kHz are certain; the codec is not.
 
 Reader: `tools/mpc.py` — `disc_file(bin, extent, size)`, `chunks(data)`, `audio_header(d, off, n)`.
+
+
+## ⭐⭐ AUDIO/**/*.SDT — the sound banks, SOLVED (2026-09-21)
+
+154 files under `/AUDIO`, of which **41 are `.SDT`** and carry all the audio. Two variants, told
+apart by the u16 at `+0x02`:
+
+```
+VARIANT A  (version 0)      29 files -- banks of named sounds
+    u16 count, u16 0
+    u32 offset[count]                  absolute; offset[0] == 4 + 4*count
+    each offset points at a 40-byte HEADER followed immediately by that sound's data
+
+VARIANT B  (version 12345)  12 files -- the same headers, moved out of the data
+    u16 count, u16 12345
+    u32 offset[count]                  absolute, straight at the AUDIO
+    40-byte header[count]              the SAME layout
+    the audio, from offset[0] == 4 + 4*count + 40*count
+
+the 40-byte header:
+    +0x00 u32 headerSize   always 40
+    +0x04 u32 dataSize
+    +0x08 char[16] name    NUL-padded: "Crunch.mp2", "smTree1.vag", "Level2a.mp2"
+    +0x18 u32 tag          ⭐ THE TOP BYTE IS THE CODEC
+    +0x1C u32 0
+    +0x20 u32 ?            rises with length; not a sample count at any obvious rate
+    +0x24 u32              0 in variant A; in variant B, a copy of the stream's first word
+```
+
+**⭐ The tag byte is proved, not assumed.** Cross-tabulating it against what each bitstream's own
+header says, over every MPEG frame on the disc:
+
+| tag | frames that decode as mono | as stereo |
+|---|---|---|
+| **0x24** | **97,667** | 0 |
+| **0x25** | 0 | **169,211** |
+
+Nothing on either off-diagonal. `0x80` is Sony PS-ADPCM, `0x00` an empty slot.
+
+### The census — 41 files, 2,220 sounds, zero problems
+
+| | |
+|---|---|
+| files whose tables end exactly where the data begins | **41 / 41** |
+| MPEG streams | 1,849 |
+| bytes left after walking every MPEG frame to the declared end | **exactly 1, on all 1,849** |
+| `.vag` sounds | 356 |
+| ...opening on the customary silent 16-byte block | **356 / 356** |
+| ...whose length is a multiple of 16 | **356 / 356** |
+| empty slots (name "Blank", size 0) | 15 |
+| distinct sound names | 1,504 |
+| **total audio** | **232 min 23 s** |
+
+The one leftover byte per MPEG stream takes a single value across all 1,849 — it is structural
+padding, not a decode error.
+
+```
+MPEG-2 Layer II  112 kbps  22050 Hz  stereo   169,211 frames   (music)
+MPEG-2 Layer II   48 kbps  22050 Hz  mono      53,483 frames   (advisor speech)
+MPEG-2 Layer II   32 kbps  22050 Hz  mono      24,150 frames
+MPEG-2 Layer II   64 kbps  22050 Hz  mono      20,034 frames   (ride SFX)
+```
+
+So the PS2 build uses **MPEG audio for everything long and Sony ADPCM for short SPU one-shots** —
+the split any PS2 title makes, here confirmed file by file rather than assumed.
+
+Reader: `tools/sdt.py` — `offsets(d)`, `sounds(d)`, `frame_header(d, off)`.
+
+⚠ **Still open**: the `.MAP` files beside each bank. `*BANK.MAP` is ~55 bytes, a Microsoft GUID
+and a path string (`sound\Bumper`); `*SFX.MAP` is a table of u32s, a few hundred bytes to a few
+kilobytes. Together they are the ID-to-sound index — what the game asks for when it wants a noise.
