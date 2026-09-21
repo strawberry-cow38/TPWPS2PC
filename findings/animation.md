@@ -442,3 +442,30 @@ lookup or index of some kind, not the keys.
 So: **the encoding is known exactly and the addressing is not.** That is a much smaller gap than
 this file had an hour ago, and it is the *opposite* shape of the usual one — normally you can find
 the data and not read it.
+
+
+## The addressing: the sampler reads a RUNTIME structure, not the file one
+
+`FUN_001a8da8` takes its track array from `record[4]` (i.e. `rec+0x10`) and steps it by 48 bytes,
+then reads:
+
+```
+track +0x08  u8   rotation key count      +0x0C  u32 -> rotation keys (10 bytes each)
+      +0x09  u8   position key count      +0x10  u32 -> position keys (8 bytes each)
+count < 2  =>  constant: read the single key directly at +2, +4, +6, +8
+otherwise  =>  walk keys comparing the u16 time at +0 against the current frame,
+               then FUN_00167a48(t, key, key+10, out)   // the SLERP
+```
+
+⚠ **Those fields do not hold that in the file.** Reading `monkey.aps`'s 48-byte records at
+`rec+0x10` gives `+0x08 = 0`, `+0x0C = 2`, `+0x10 = 0` — while the only non-zero words are at
+`+0x20` and `+0x28`, which are the stream pointers this file mapped earlier.
+
+So the structure the sampler walks is **not** the structure on the disc: something between load and
+playback builds it — most likely the `+0x20` stream's 12-byte records being expanded into per-node
+tracks, which is exactly the indirection `FUN_001675f0` and `FUN_00167708` exist to relocate.
+
+**State: the key encoding is exact (from the interpolators), the runtime track layout is exact (from
+the sampler), and the mapping between them and the on-disc layout is the one remaining link.** The
+next move is the function that consumes the `+0x20` stream at playback rather than at load — the
+same approach that has produced every correct thing in this file.
