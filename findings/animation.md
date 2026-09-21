@@ -1103,3 +1103,49 @@ sequences (`PA1a0000..0015` is 16 frames, `Pa1b0000..0007` is 8). `Tp2.plb` open
 **Status: a well-supported hypothesis, still not a proof.** Nothing yet read links a `+0x24` field
 to a `.plb` index. Naming it "particles" now would be the same move that produced four wrong turns
 in this file today, so it keeps its shape and loses the name until a consumer is read.
+
+
+## The particle system, located — and one contradiction I could not resolve
+
+**The global emitter exists and I can point at it.** `FUN_001f6938` loads
+`"Data\Particle\Tp2.plb"` into the global buffer at **`0x2f0790`**, and in the same breath calls
+`FUN_001a6630(0x1000)` and `FUN_001a8c20(0)` — both in the **animation** address family
+(`0x1a6xxx`/`0x1a8xxx`), alongside the track players. The particle system is wired to the animation
+system, not bolted on beside it.
+
+⚠ Nothing in the binary indexes `0x2f0790` with an offset — the only other reference is
+`FUN_001f6c10`, a one-line unload. So the `.plb` is re-parsed into something else at load, and the
+link from a `+0x24` field to a definition index is **still not read**.
+
+### `record+0x14` (the "small" array) is a per-mesh ON/OFF timeline — mechanism clear, indexing not
+
+`FUN_001a8c30` consumes it, and the mechanism is unambiguous:
+
+```c
+list = entry[+0x04];                       // an array of int16
+if (|list[0]| > now)      mesh.flags &= ~0x10;
+else for k in 0..count-2:
+    if (|list[k+1]| > now) { if (list[k] > 0) mesh.flags &= ~0x10; else mesh.flags |= 0x10; break; }
+```
+
+**Signed frame markers again** — magnitude is the frame, sign is the state — the same encoding as
+`+0x28`'s appear/disappear. It toggles **mesh bit `0x10`**, the same bit the evaluator
+`FUN_001a8d08` sets from the record's index list.
+
+⚠⚠ **But the indexing does not add up, and I am leaving it broken rather than papering over it.**
+The loop runs **mesh-count** times, stepping the small array by 8 bytes and the mesh array by 160.
+Yet `TVSim` has **8 meshes and `nsmall` = 1**, and its single entry's marker list starts at `0xac`
+— *immediately after the entry itself*, so there is no room for seven more. Reading it as the code
+does would walk the marker data as entries.
+
+Three readings that did NOT validate, recorded so the next attempt does not repeat them:
+
+| tried | result |
+|---|---:|
+| `nsmall` == the model's mesh count | **0 / 37 records** |
+| marker magnitudes strictly ascending | **0 / 45 lists** |
+| markers as a flat int16 list | contradicted by the data, which reads as `(frame, value)` pairs — `[0,10, 4,11, 8,10, 12]`, `[0,0, 3,1, 6,2, 9,3]` |
+
+The 8-byte entry is `u16 count, u16 ? (120 for TVSim), u32 pointer`. Something about the call
+context is wrong in my reading — most likely which structure `param_2`/`param_3` actually are, since
+Ghidra's argument mapping on MIPS with a leading float argument is exactly where that goes wrong.
