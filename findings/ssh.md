@@ -230,3 +230,48 @@ executable on PATH, not a shipped library: a player without FFmpeg, or with a bu
 format finding (GM is an IPU macroblock stream in MPEG-1 coefficient syntax, macroblocks in column
 order, alpha a separate linear 0..128 plane) is the durable part and is what a managed decoder would
 be written from; the FFmpeg adapter is scaffolding that proves it, not a shipping path.
+
+## The flat-colour residual is a linear-model mismatch, NOT rounding
+
+117 flat-source pairs on the disc, 19 byte-exact. Every one of those 117 decodes to a **constant**
+Y/Cb/Cr -- checked, 117 of 117, zero non-constant -- so the encoder stored DC only and lost nothing
+that matters here. The entire residual is in the YUV->RGB step, which makes those 117 an exact
+(Y,Cb,Cr) -> (R,G,B) dataset rather than a guess. Measured independently in Python through the same
+FFmpeg IPU path, so it does not inherit the C# conversion.
+
+**Rounding is not the cause, which was the obvious hypothesis and it is dead:**
+
+| shift | final | exact of 117 |
+|---|---|---|
+| `>> 6` | `(v+1) >> 1` (current) | 19 |
+| `(v+32) >> 6` | `(v+1) >> 1` | 19 |
+| `>> 6` | `(v+1) / 2` | 19 |
+| either | `v >> 1` | 1 |
+
+Rounding the shifts changes nothing. Nor is it a flooring bias: G accumulates two floored shifts to
+R and B's one, so a flooring cause predicts G biased low -- and the commonest signed error is
+`(+1,+1,+1)` on **36 of 117**, uniform across all three channels, which is a LUMA offset and cannot
+come from the chroma shifts at all.
+
+**Exact float BT.601 nearly doubles it: 35 of 117** (studio-to-full swing; full-range scores 0, so
+the 16..235 convention is confirmed). The integer approximation is therefore costing real accuracy
+-- but 35 of 117 also says plain BT.601 is not the mapping either.
+
+Least squares over the 117 samples, fitting reference RGB from the decoded YUV:
+
+    R = 1.1702*(Y-16) + 1.6016*(Cr-128) + 0.0066*(Cb-128) - 1.801     max resid 2.46, mean 0.75
+    G = 1.1704*(Y-16) - 0.8232*(Cr-128) - 0.4039*(Cb-128) - 1.164     max resid 1.01, mean 0.18
+    B = 1.1709*(Y-16) - 0.0053*(Cr-128) + 2.0444*(Cb-128) - 1.906     max resid 3.07, mean 0.77
+
+The cross terms come out at 0.006 and -0.005, i.e. zero, which says the model shape is right. The
+luma coefficient is **1.170 on all three channels** against BT.601's 1.164, the chroma coefficients
+are each a little larger than BT.601's, and there is a **constant of about -1.5 on every channel** --
+which is precisely the `(+1,+1,+1)` mode seen directly. Equivalently the black level sits nearer
+17.3 than 16.
+
+⚠ **This is deliberately NOT implemented.** Fitting a coefficient to make a number go up is how you
+patch the wrong constant: the right form has to come from what the PS2's IPU and this encoder
+actually specify, and a fit that improves 19 to something higher on the data it was fitted to has
+proven nothing. What the fit DOES establish is the shape of the remaining error and its size --
+max 5 today, and no linear model can do better than about 3 -- so whoever takes this has a bound to
+beat and a reason to look at the hardware documentation rather than at the residuals.
