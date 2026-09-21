@@ -1293,17 +1293,59 @@ with the 22 boxes as the score ladder and the bird at the top. `hamstart`/`hamhi
 before and after the swing, `birdwait`/`birdwin`/`birdlose` the bird's three reactions, `egg` two
 spheres. `sgrace` is five racers and a `Spray01`.
 
+### ⭐⭐ `ANIM` is 95% of the bytes, and it is three streams
+
+I first wrote this format up as "solved" with every chunk tag identified. **That was 3.5% of the
+bytes.** `ANIM` alone is 95% and I had walked straight past it. Tag names recognised is not a
+decode; bytes accounted for is.
+
+`ANIM`'s first word is a kind. **One frame count `F` explains every `ANIM` chunk in a file — 14/14**:
+
+```
+kind 1   u32 1, u32 0, u32 F,  then F x nverts x 3 f32     per-vertex WORLD position cache
+kind 6   u32 6, u32 0, u32 F,  then F x 56                 one node's TRS per frame
+kind 7   u32 7,                then F x nnodes x 56        every node's TRS per frame
+```
+
+A TRS record is the same 56 bytes as a `TREE` node's transform block:
+`pos +0 (3 f32) · rotation quat +12 · scale +28 (3 f32) · scale-axis quat +40`.
+
+⭐ The control: **74,448 quaternions across all 14 files, zero non-unit, worst `|q|²-1` = 4.18e-07**,
+and no record has a non-positive scale. The frame counts are corroborated independently — kinds 1
+and 6 store `F` at `+8` and it matches the count the size implies, every time.
+
+⚠ Note kind 7's header is **4 bytes**, not 12. It stores no frame count; the size and the node count
+give it.
+
+### ⭐⭐ `PTS4` IS frame 0 of the vertex cache
+
+**On 29 of 29 models, `PTS4` equals frame 0 of that model's kind-1 `ANIM`, to an error of exactly
+0.000000** — bit-identical, not merely close.
+
+This is the format's real invariant and it is **stronger than the transform relation**, which holds
+on only 28 of 29. The exception is `scorebar`'s `sq_arrow`, the marker that flies up the striker: it
+misses `M · VECT + t` by 3.08 where every other model sits at 3e-5. Nothing is wrong with it —
+`PTS4` is a baked animation frame, and for 28 models frame 0 happens to also be the rest pose, so
+both relations hold. `sq_arrow`'s animation simply does not start at rest.
+
+⚠ **I previously reported that transform test as "28/28".** It was 28 of 29: `sq_arrow` has 3
+vertices, too few to fit a 12-parameter affine, and my harness skipped it and then printed the
+filtered count as if it were the population. tinyclaw caught it off an independent extraction. The
+skipped case was the only interesting one — as it usually is.
+
+Playing the cache back confirms the decode end to end: `racer0` is 513 frames of a closed lap, `y`
+pinned at 151.17 throughout, finishing 8.8 units from where it began.
+
 ### The rest
 
 `GIN4` magic; `VERS` = 120 on all 14; `TEX4` texture paths — `..\..\sharedtx\+nest1.bmp`, the
-artists' own tree again, and **BMP**, where the rides use TGA and SSH; `MAT4` material floats;
-`ANIM`/`KEY4` animation; `BONE`; `PART`.
+artists' own tree again, and **BMP**, where the rides use TGA and SSH; `MAT4` material floats.
 
 ⚠ `TREE`, `OBJ4`, `MOD4` and `TEX4` do **not** share the `u32 key, u32 count` opening — read as a
 count their second word decodes to ASCII.
 
 ⚠ Every file ends in **8 zero bytes** after the last chunk — a null terminator, not unread data.
 
-Still open: `PART`, and the internals of `ANIM`/`KEY4`/`BONE`.
+**Bytes accounted for: 98.5%.** Still open: `KEY4` (0.8%), `BONE` (0.4%), `PART` (0.3%).
 
-Reader: `tools/gin.py` — `chunks`, `records`, `key`, `nodes`, `translation`, `name`.
+Reader: `tools/gin.py` — `chunks`, `records`, `key`, `nodes`, `anim`, `translation`, `name`.
