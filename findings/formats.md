@@ -133,6 +133,48 @@ offset, vertex/material/face counts. That is the corroboration the stride test n
 pairing it found over the 113 PS2 models was **stride 160**, in 64 of them, and it was dismissed here
 as noise. It was not noise.
 
+## ⭐⭐ The mesh table — CRACKED, 113/113
+
+```
+header 0x00  u32  magic 0x183076E4        enforced at three sites
+header 0x04  u32  version                 mesh accepts 0x13E..0x140
+header 0x08  char[32]  the file's own name
+header 0x30  u16  MESH COUNT
+header 0x48  u32  MESH TABLE offset
+
+mesh entry, 160 bytes:
+   +0x00  16 bytes  scene-graph / hierarchy
+   +0x10  f32[16]   4x4 transform, column-major (translation at +0x40..0x4B)
+   +0x50  u32       texture index
+   +0x54  u32       offset of this mesh's name (NUL-terminated, near end of file)
+```
+
+**Validated, not guessed: in all 113 `.mps` in JUNGLE.WAD, every entry `[0 .. header[0x30]-1]` has a
+name offset landing on a printable NUL-terminated string.** 113/113. A wrong table base or stride
+gives arbitrary offsets, and arbitrary offsets essentially never land on clean strings — so the test
+fails loudly when it is wrong, which is the only kind worth running.
+
+What it reads out, with the artists' own names:
+
+```
+/Rides/Mumbo/mumbo.mps      7 meshes   jm_floor jm_sign jm_sign01 jm_head jm_leaf jm_grass jm_body
+/Rides/Monkey/monkey.mps    9 meshes   m_base m_boxes m_sign m_sign2 m_body m_arm m_arm1 m_crate m_shards
+/Rides/GoKarts/gokarts.mps 11 meshes   wr_base gk_finish gk_pole1 Newflag gk_pole2 Newflag01
+                                       gk_sign gk_sign1 pitsstopstuff gk_trcke gk_TRACK01
+```
+
+Texture indices run 0..n-1 and the transforms carry sensible positions — a gorilla ride with two
+arms and breakable crates, a go-kart track with two flagpoles and a finish line.
+
+⚠ **STILL MISSING: the per-mesh vertex and face data.** The PC member of the family puts
+vertex/material/face counts at entry +0x58..+0x5E; on PS2 those words read zero, so the geometry is
+reached some other way — most likely one of the other header offsets (0x40, 0x44, 0x4C, 0x70, 0x74),
+which sort into an ascending chain of section boundaries. The structure is open; the geometry is not.
+
+⚠ **AND THE PC LAYOUT IS NOT GROUND TRUTH.** Master: the PC `.MD2` work "was broken when rendering
+... we never fixed/finished it". It was a useful hint for the 160-byte stride and nothing more —
+every claim above is validated against the PS2 data itself.
+
 **The two principled routes left**, either of which gives the layout outright rather than by
 divination:
 - the EE code that parses `.mps` — Ghidra on `SLES_500.32`, which needs no base-address work
