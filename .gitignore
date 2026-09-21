@@ -29,3 +29,7 @@ SCES_*
 extracted/
 dump/
 *.raw
+
+# Python bytecode
+__pycache__/
+*.pyc
