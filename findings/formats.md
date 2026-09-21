@@ -1104,9 +1104,55 @@ entry header, 16 bytes:
 Verified on three files: `sign` 64x64, `cont` 32x32, `door` 16x16, sizes agree with the archive and
 the block chain tiles to the byte.
 
-⚠⚠ Every entry is type `0x84` = compressed type 4. The payload opens `47 4d 04 04`, is
-high-entropy throughout, and is **not RefPack** (`10 FB` would say so). Identifying EA's image codec
-and then the PS2 palette/swizzle on top is the job, and it has not been started.
+⚠⚠ Every entry is type `0x84` = compressed type 4. The payload opens `47 4d`, is high-entropy
+throughout, and is **not RefPack** (`10 FB` would say so).
+
+### The `GM` block, read out of the game's own loader (`FUN_00223fe0`)
+
+```
++0x00 u16 'GM' (0x4D47)     -- the loader compares exactly this
++0x02 u8  width  / 16       -- 16x16 -> 01, 32x32 -> 02, 64x64 -> 04
++0x03 u8  height / 16
++0x04 u32 bits 0..19 = LENGTH of the whole GM block, header included
++0x08 the payload
+```
+The length matches every file exactly (32 / 320 / 480 / 2224 on four checked), and the loader masks
+it with `0xFFFFF` before using it as a DMA length.
+
+### ⚠⚠ "IT IS MPEG" — TESTED AND NOT SUPPORTED BY THE DATA
+
+The same function ends by feeding the block to the **IPU**, the PS2's image-processing unit:
+
+```c
+REG_DMAC_4_IPU_TO_MADR = block & ~0xF;
+REG_DMAC_4_IPU_TO_QWC  = len >> 4;
+REG_IPU_CTRL = 0x1800000;
+REG_IPU_CMD  = ofm<<27 | dte<<26 | 0x10000000 | 0x20000;
+```
+
+Reading `0x10000000` as command 1 (IDEC, intra decode), `0x1800000` as MP1 + I-picture and
+`0x20000` as a quantiser scale of 2 gives "these are MPEG intra pictures". **That reading came from
+a register field map recalled, not read, and the data does not bear it out.**
+
+What was actually tried, and failed:
+
+* **504 elementary streams** built around the payloads -- MPEG-1 and MPEG-2, 13 byte offsets, both
+  slice alignments, every combination of intra DC precision, intra VLC format, alternate scan and
+  q-scale type -- decoded with ffmpeg and scored against the matching `.tga`. **Best mean error 79
+  per channel where random noise is ~85.** Every output was a single flat colour: the decoder found
+  a valid picture header and then zero macroblocks in it.
+* **The start-code census kills it outright.** Over all **5,756** GM payloads, `00 00 01 34` appears
+  almost exactly once each -- but the other `00 00 01 xx` hits are **not sequential slice numbers**.
+  4,366 payloads contain only the `0x34`, *whatever their height*: a 32-macroblock-row image cannot
+  be one MPEG slice. The rest give sequences like `[52, 0, 3, 1]` and `[52, 2, 2, 1, 1, 1, ...]`,
+  which is what `00 00 01` occurring by chance in compressed data looks like.
+
+⭐ **The test set is ready for whoever comes back to this**: 5,493 materials ship both a `.ssh` and
+a `.tga`, and several of the small ones are a single flat colour (`geen_base` is exactly
+`(28,142,27)` in all 256 pixels), so a correct decode is unmistakable -- error 0, not error 20.
+
+⚠ The next honest step is the IPU's own documentation for the IDEC command and the IPU_CTRL field
+map, not another sweep.
 
 ⭐ **The test set already exists**: the 5,493 materials that ship BOTH forms mean any candidate
 decoder can be scored against thousands of known-correct images instead of eyeballed.
