@@ -1146,6 +1146,17 @@ Three readings that did NOT validate, recorded so the next attempt does not repe
 | marker magnitudes strictly ascending | **0 / 45 lists** |
 | markers as a flat int16 list | contradicted by the data, which reads as `(frame, value)` pairs — `[0,10, 4,11, 8,10, 12]`, `[0,0, 3,1, 6,2, 9,3]` |
 
-The 8-byte entry is `u16 count, u16 ? (120 for TVSim), u32 pointer`. Something about the call
-context is wrong in my reading — most likely which structure `param_2`/`param_3` actually are, since
-Ghidra's argument mapping on MIPS with a leading float argument is exactly where that goes wrong.
+The 8-byte entry is `u16 count, u16 ? (120 for TVSim), u32 pointer` — and **the pointer at `+0x04`
+is confirmed**, because `FUN_00167780` relocates exactly that field and nothing else. So the entry
+layout is right and the array really is `nsmall` entries packed tight, with the marker list
+immediately after.
+
+⚠ **The contradiction is therefore specifically the LOOP BOUND, not my field reading.** I also
+checked my own guess about swapped arguments and it does not hold: `param_2+0x48`/`+0x30` are the
+model's mesh array and mesh count, `param_3+0x14` is the record's small array, and the call site in
+`FUN_001a8da8` passes exactly (model, record). Every individual read is right; the loop simply runs
+more times than TVSim's array has entries.
+
+The likeliest remaining explanation is that this record is not played against the 8-mesh model I
+compared it to — an `.aps` can target more than one model — which is a thing to check rather than
+a thing to assume. Recorded unresolved.
