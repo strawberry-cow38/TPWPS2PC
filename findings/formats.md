@@ -1180,50 +1180,79 @@ payload extent.
 ## ⭐⭐ `.gin` = GIN4, the SIDESHOW minigames as 3D scenes (2026-09-21)
 
 Listed in this file for months as *"14 files, 3,740,116 bytes, unknown, and the largest per-file --
-267 KB average"*. Nobody had opened one. The structure came out in about six commands.
+267 KB average"*. Nobody had opened one.
 
 **All 14 are under `/Sideshow/` in JUNGLE.WAD**, and the filenames do most of the work:
-`sgrace/racer0..4` (five files of **identical** size, 508,696 bytes), `sgsquark/birdwait`,
-`birdwin`, `birdlose`, `hamstart`, `hamhit`, `egg`, `scorebar`, plus a `base` per game. These are
-the fairground minigames — and they are **full 3D scenes with bones and animation**, not the 2D
-sprite sheets the size and the subject might suggest.
+`sgrace/racer0..4`, `sgsquark/birdwait`, `birdwin`, `birdlose`, `hamstart`, `hamhit`, `egg`,
+`scorebar`, plus a `base` per game. These are the fairground minigames — and they are **full 3D
+scenes with bones and animation**, not the 2D sprite sheets the subject might suggest.
 
-Chunked exactly like the rest of EA's work on this disc:
+Chunked like the rest of EA's work on this disc:
 
 ```
 4cc, u32 0, u32 payloadSize, payload
-and each counted payload opens:  u32 ?, u32 count, then records
-
-GIN4  magic         VERS  version, 120 on all 14      TREE  named node tree, "Scene Root" first
-OBJ4  object, 36 B, UPPERCASE name   MOD4  model, 64 B, mixed-case name   MESH  mesh header
-POLY  count x 3 u32    triangle vertex indices
-MAP4  count x 6 f32    UVs, three pairs per triangle
-FNRM  count x 9 f32    three normals per triangle
-PTS4  count x 3 f32    vertex positions
-VECT  count x 3 f32    a second per-vertex vector, meaning not established
-NORM  count x 3 f32    per-vertex unit normals
-TEX4  texture paths    MAT4  material floats    ANIM / KEY4  animation    BONE   PART
 ```
 
-⭐ **The strides are measured, not guessed.** `payloadSize - 8 == count * stride` holds on **every
-counted chunk in every file**:
+### Geometry — the six counted chunks
 
-| chunk | stride | files |
+Each opens `u32 key, u32 count` and then `count` fixed-width records:
+
+| chunk | stride | record |
 |---|---|---|
-| POLY | 12 | **78 / 78** |
-| MAP4 | 24 | **78 / 78** |
-| FNRM | 36 | **78 / 78** |
-| PTS4 | 12 | **29 / 29** |
-| VECT | 12 | **29 / 29** |
-| NORM | 12 | **29 / 29** |
+| `POLY` | 12 | 3 × u32, triangle vertex indices |
+| `MAP4` | 24 | 6 × f32, UVs, three pairs per triangle |
+| `FNRM` | 36 | 9 × f32, three normals per triangle |
+| `PTS4` | 12 | 3 × f32, **world-space** vertex position |
+| `VECT` | 12 | 3 × f32, **object-space** vertex position |
+| `NORM` | 12 | 3 × f32, per-vertex unit normal |
 
-and the counts corroborate each other independently: **805** across all three per-face chunks and
-**622** across all three per-vertex ones.
+⭐ The strides are measured, not guessed: `payloadSize - 8 == count * stride` holds on **every
+counted chunk in every file** — POLY/MAP4/FNRM 78/78 each, PTS4/VECT/NORM 29/29 each, **zero
+mismatches** — and the counts corroborate each other, 805 across the three per-face chunks and 622
+across the three per-vertex ones.
 
-⭐ `TEX4` holds paths like `..\..\sharedtx\+nest1.bmp` — the artists' own tree again, and **BMP**,
-where the rides use TGA and SSH.
+### ⭐ `PTS4` is `VECT` through the model's transform
 
-⚠ Every file's walk stops **8 bytes short of the end**, consistently on all 14. There is a trailer
-and it is not read. `VECT`'s meaning and the `PART` chunk are also open.
+`NORM` is unit-length (622/622); `PTS4` and `VECT` are not, and they are not equal. They are the
+same vertices in two spaces: **`PTS4 = M · VECT + t` fits with a max residual of 3e-5 on all 14
+files** — float32 exact. The exporter baked both, so a renderer can draw straight from `PTS4` with
+no scene graph at all, or drive `VECT` through the node transform to animate.
 
-Reader: `tools/gin.py` — `chunks(d)`, `records(d, tag, off, size)`, `strings(d, off, size)`.
+⭐ **And `t` is stored.** The three floats at **`MOD4+52`** are that translation, on **28 of 28
+models**, matching to every printed digit. Two independent sources: the fit never reads `MOD4`, and
+`MOD4` never reads a vertex. `MOD4` also carries the model's name at `+4` (`New05`, `sq_hammer`,
+`Cylinder04` — 3ds Max defaults and the artists' own tags).
+
+The five racers make the same point from the other end: `racer0..2` are one mesh at a **pure Z
+translation** apart (dx and dy exactly 0.0 on every vertex, dz a constant −36.75 then −36.45), and
+`MOD4+52`'s z runs 537.46, 500.71, 464.27, 356.23, 243.41. Five lanes of a race.
+
+### ⚠ The first u32 is a KEY, not flags
+
+I first read `POLY`'s leading word as a flag field and called `>> 16` a submesh index. **A control
+rejected that on 18 of 42 chunk sequences.** It is a packed pair:
+
+```
+low16  = model index   -> indexes the MOD4 / PTS4 / VECT / NORM records, in order
+high16 = submesh index within that model
+```
+
+Verified on **14/14 files, zero failures**: the low words are non-decreasing and cover
+`0..MOD4count-1` with no gaps, the high words restart at 0 for each model, `MESH`'s count equals the
+total number of `POLY` groups, and the `PTS4` count equals the `MOD4` count. `sgrace/base` is 4
+models with 1, 1, 4, 1 submeshes; `birdwait` is 4 with 5, 2, 2, 1.
+
+### The rest
+
+`GIN4` magic; `VERS` = 120 on all 14; `TREE` a named node tree opening with the ASCII `Scene Root`;
+`TEX4` texture paths — `..\..\sharedtx\+nest1.bmp`, the artists' own tree again, and **BMP**, where
+the rides use TGA and SSH; `MAT4` material floats; `ANIM`/`KEY4` animation; `BONE`; `PART`.
+
+⚠ `TREE`, `OBJ4`, `MOD4` and `TEX4` do **not** share the `u32 key, u32 count` opening — read as a
+count their second word decodes to ASCII. `OBJ4` is a 36-byte record with an UPPERCASE name
+(`SPRAY01`, `NEW02`) and its count per file (1..31) tracks nothing else in the file; it is not the
+model list and is still open, as are `PART` and the rotation/scale part of `M`.
+
+⚠ Every file ends in **8 zero bytes** after the last chunk — a null terminator, not unread data.
+
+Reader: `tools/gin.py` — `chunks(d)`, `records(d, tag, off, size)`, `key(d, off)`, `strings(...)`.
