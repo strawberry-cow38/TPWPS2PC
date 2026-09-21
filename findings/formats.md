@@ -242,6 +242,36 @@ carnivorous plant, which is why it renders purple and fleshy rather than mossy.
 
 A `.tga` of the same stem sits beside each `.ssh`, so the source art is usable without decoding SHPS.
 
+⚠ **AND THE 8-BYTE TABLE IS FLAGS, WHICH I USED AS AN INDEX WITHOUT EVER READING.** Entry `+0x00`
+is a bitfield, and **bit 1 set ⟺ the texture is not in the model's own folder** — it lives in
+`/Sharetex/` (309 entries, 152 TGAs, and the `%s\sharetex\` path in the binary). Perfect
+correlation across all 21 materials of `monkey.mps`. The format says where to look; I was not
+reading it.
+
+⚠ **261 of the archive's TGAs are 32-bit BGRA**, not 24-bit. A loader that accepts only
+`bpp == 24` silently returns nothing for them, which is what produced most of the untextured grey —
+not missing files and not animation-only geometry.
+
+## UV scale: confirmed right, mapping still wrong
+
+The per-mesh UV ranges under ÷4096 are self-evidently sane, which rules the *scaling* out:
+
+```
+Newflag   / gk_flag3     u[0.00, 1.00]  v[0.00, 1.00]   exactly one texture
+wr_base   / m_grass      u[0.00, 2.00]                  tiles twice — ground
+gk_pole1  / GK_side2     u[0.00, 0.17]  v[-2.00, 1.00]  narrow strip tiling up — a pole
+gk_finish / GK_top       u[0.17, 0.83]  v[0.17, 0.83]   centred cap — a pole top
+```
+
+You do not get "narrow strip that tiles vertically" on a pole by chance. Two rival scalings
+(texel ÷16÷size, with and without a V flip) were rendered and both were visibly worse.
+
+⚠ **BUT MASTER, WHO CAN SEE THE REAL GAME, SAYS THE MAPPING IS STILL WRONG.** Unresolved: the V
+direction, or the vertex↔UV pairing within a strip. An attempt to settle V on the flag mesh failed
+because that mesh is edge-on in a flat projection — the test could not have distinguished the two
+cases, so nothing is concluded from it. Waiting on a reference screenshot rather than rendering more
+variants.
+
 **And it renders.** `tools/render.py` rasterises the decoded triangles with the real textures:
 `monkey.mps` comes out as a gold gorilla on a sand base with stacked wooden crates and grass edging,
 `gokarts.mps` as a planked track platform. Wood grain runs along the planks and the gorilla's face
