@@ -130,16 +130,35 @@ render_mode cull_disabled, diffuse_lambert, specular_disabled;
 uniform sampler2D albedo_tex : source_color, filter_nearest_mipmap, repeat_enable;
 uniform float cutout = 0.0627;      // 16/255
 uniform bool has_tex = true;
+uniform bool affine = true;
+
+// ⭐ AFFINE TEXTURE MAPPING, as the PS2 does it.
+// The hardware interpolates a varying PERSPECTIVE-CORRECTLY: it gives the fragment
+//     P(v) = L(v/w) / L(1/w)          where L() is plain screen-space linear interpolation.
+// Godot's shading language has no `noperspective`, so the affine UV is recovered arithmetically:
+//     P(UV*w) / P(w) = [L(UV)/L(1/w)] * L(1/w) = L(UV)
+// i.e. pass UV premultiplied by view depth alongside that depth, and divide in the fragment.
+// ⚠ The PS2's affinity is much milder than the PS1's -- it subdivides more -- so this should read
+// as a slight swim on large near-camera polygons, not the violent warping of a PSX render.
+varying vec3 uvw;
+
+void vertex() {
+    vec4 vpos = MODELVIEW_MATRIX * vec4(VERTEX, 1.0);
+    float w = max(-vpos.z, 0.0001);          // view-space depth; the camera looks down -Z
+    uvw = vec3(UV * w, w);
+}
 
 void fragment() {
+    vec2 uv = affine ? (uvw.xy / uvw.z) : UV;
     if (has_tex) {
-        vec4 c = texture(albedo_tex, UV);
+        vec4 c = texture(albedo_tex, uv);
         if (c.a < cutout) discard;   // alpha CUTOUT, not blending
         ALBEDO = c.rgb;
     } else {
         ALBEDO = vec3(0.72);
     }
-    // ⭐ The whole point: light a back face by the normal it actually presents.
+    // ⭐ Light a back face by the normal it actually presents; without this half of every closed
+    // model renders dark and reads as missing artwork.
     if (!FRONT_FACING) { NORMAL = -NORMAL; }
 }
 "
@@ -158,6 +177,8 @@ void fragment() {
             var tex = (m >= 0 && m < _model.Materials.Count) ? texture(_model.Materials[m]) : null;
             mat.SetShaderParameter("albedo_tex", tex);
             mat.SetShaderParameter("has_tex", tex != null);
+            // ⚠ Vertex snapping is deliberately NOT wired yet -- the owner asked for affine only.
+            mat.SetShaderParameter("affine", (OS.GetEnvironment("TPW_PS2_AFFINE") ?? "on") != "off");
             mi.MaterialOverride = mat;
             p.SurfaceMaterial[i] = m;
             p.Surfaces[i] = mi;

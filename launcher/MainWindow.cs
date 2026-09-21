@@ -1,62 +1,72 @@
 using System.Diagnostics;
+using System.Net.Http;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
-using System.Net.Http;
 using TPW.PS2.Launcher;
 
-/// <summary>Locate the user's disc, then launch the viewer against it.
+/// <summary>Install, update and play, behind ONE button.
 ///
 /// ⚠ Every decision here is a call into core/TPW.PS2.Launcher. Nothing about what counts as a valid
 /// disc, or which Godot to run, is decided in this file -- a second copy of those rules inside the
 /// window is how a launcher comes to disagree with its own tests.</summary>
 public class MainWindow : Window
 {
+    // ---- what the one button is currently for ----
+    enum Mode { Busy, NeedDisc, Install, Update, Play, Broken }
+
+    const int LauncherVersion = 2;
+    const string RepoUrl = "https://github.com/strawberry-cow38/TPWPS2PC.git";
+    const string Branch = "main";
+    // ⭐ The launcher's own build lives on RELEASES, not in the repo: a ~9 MB exe per version would
+    // sit in git history forever and binaries do not delta-compress.
+    const string Rel = "https://github.com/strawberry-cow38/TPWPS2PC/releases/download/launcher";
+    const string VersionUrl = Rel + "/launcher.version";
+    const string ExeUrl = Rel + "/TPWPS2Launcher-win-x64.exe";
+    const string Sha256Url = Rel + "/launcher.sha256";
+    static readonly HttpClient Http = new() { Timeout = TimeSpan.FromMinutes(5) };
+
     static readonly IBrush Bg = new SolidColorBrush(Color.FromRgb(0x1a, 0x1a, 0x1f));
+    static readonly IBrush Card = new SolidColorBrush(Color.FromRgb(0x22, 0x22, 0x29));
     static readonly IBrush TextMain = new SolidColorBrush(Color.FromRgb(0xe8, 0xe8, 0xee));
     static readonly IBrush TextDim = new SolidColorBrush(Color.FromRgb(0x98, 0x98, 0xa6));
     static readonly IBrush Good = new SolidColorBrush(Color.FromRgb(0x7d, 0xd8, 0x7d));
     static readonly IBrush Bad = new SolidColorBrush(Color.FromRgb(0xe8, 0x8a, 0x7d));
 
+    readonly Button _action = new() { MinWidth = 190, MinHeight = 42, FontSize = 15, IsEnabled = false };
+    readonly TextBlock _status = new() { Foreground = TextDim, TextWrapping = TextWrapping.Wrap };
     readonly TextBlock _discStatus = new() { Foreground = TextDim, TextWrapping = TextWrapping.Wrap };
-    readonly TextBlock _godotStatus = new() { Foreground = TextDim, TextWrapping = TextWrapping.Wrap };
-    readonly Button _launch = new() { Content = "Launch viewer", MinWidth = 168, MinHeight = 40, IsEnabled = false };
-    readonly CheckBox _console = new() { Content = "Console window", Foreground = TextDim };
-    // ⚠ A fresh Avalonia TextBox has Text == null, not "". Appending to it without this default
+    readonly TextBlock _buildState = new() { Foreground = TextDim, FontSize = 12 };
+    // ⚠ A fresh Avalonia TextBox has Text == null, not "". Appending without this default
     // dereferences null on the very first line written.
     readonly TextBox _log = new()
     {
-        Text = "", IsReadOnly = true, AcceptsReturn = true, MinHeight = 120,
+        Text = "", IsReadOnly = true, AcceptsReturn = true, MinHeight = 150,
         Background = new SolidColorBrush(Color.FromRgb(0x12, 0x12, 0x16)), Foreground = TextDim,
         FontFamily = new FontFamily("Consolas,monospace"), FontSize = 12,
     };
 
+    Mode _mode = Mode.Busy;
     DiscResult _disc;
-    string _projectDir;
-
-    // The number is the release; bump it when publishing a new launcher exe.
-    const int LauncherVersion = 1;
-    const string Repo = "https://raw.githubusercontent.com/strawberry-cow38/TPWPS2PC/main/launcher/dist";
-    const string VersionUrl = Repo + "/version.txt";
-    const string ExeUrl = Repo + "/TPWPS2Launcher.exe";
-    const string Sha256Url = Repo + "/TPWPS2Launcher.exe.sha256";
-    static readonly HttpClient Http = new() { Timeout = TimeSpan.FromMinutes(5) };
+    GodotChoice _godot;
+    readonly string _baseDir;
+    readonly string _repoDir;
+    string ProjectDir => Path.Combine(_repoDir, "game");
+    string AssemblyPath => Path.Combine(ProjectDir, ".godot", "mono", "temp", "bin", "Debug", "TPWPS2Viewer.dll");
 
     public MainWindow()
     {
         Title = "Theme Park World (PS2) — asset viewer";
-        Width = 620; Height = 520; Background = Bg;
+        Width = 660; Height = 600; Background = Bg;
+        _baseDir = AppContext.BaseDirectory;
+        _repoDir = Path.Combine(_baseDir, "TPWPS2PC");
 
-        var update = new Button { Content = "Check for launcher update", MinWidth = 190 };
-        update.Click += async (_, _) => await CheckSelfUpdateAsync(manual: true);
-        var updView = new Button { Content = "Update viewer from main", MinWidth = 190 };
-        updView.Click += async (_, _) => await UpdateViewerAsync();
-        var locate = new Button { Content = "Locate…", MinWidth = 90 };
+        var locate = new Button { Content = "Locate disc…", MinWidth = 110 };
         locate.Click += async (_, _) => await LocateAsync();
-        _launch.Click += (_, _) => Launch();
+        _action.Click += async (_, _) => await OnActionAsync();
 
         Content = new ScrollViewer
         {
@@ -65,71 +75,180 @@ public class MainWindow : Window
                 Margin = new Thickness(20), Spacing = 12,
                 Children =
                 {
-                    new TextBlock { Text = "Theme Park World", Foreground = TextMain, FontSize = 16,
+                    new TextBlock { Text = "Theme Park World", Foreground = TextMain, FontSize = 17,
                                     FontWeight = FontWeight.SemiBold },
-                    new TextBlock { Text = "PlayStation 2 release — model and animation viewer",
+                    new TextBlock { Text = "PlayStation 2 — model and animation viewer",
                                     Foreground = TextDim, FontSize = 13 },
-                    new Border
-                    {
-                        Padding = new Thickness(12), CornerRadius = new CornerRadius(6),
-                        Background = new SolidColorBrush(Color.FromRgb(0x22, 0x22, 0x29)),
-                        Child = new StackPanel
-                        {
-                            Spacing = 6,
-                            Children =
-                            {
-                                new TextBlock { Text = "Your disc", Foreground = TextMain, FontSize = 13,
-                                                FontWeight = FontWeight.SemiBold },
-                                _discStatus,
-                                new TextBlock
-                                {
-                                    Text = "Bring your own disc: this reads an image you already have. " +
-                                           "Nothing is bundled and nothing is downloaded.",
-                                    Foreground = TextDim, FontSize = 11, TextWrapping = TextWrapping.Wrap,
-                                },
-                                locate,
-                            }
-                        }
-                    },
-                    new Border
-                    {
-                        Padding = new Thickness(12), CornerRadius = new CornerRadius(6),
-                        Background = new SolidColorBrush(Color.FromRgb(0x22, 0x22, 0x29)),
-                        Child = new StackPanel
-                        {
-                            Spacing = 6,
-                            Children =
-                            {
-                                new TextBlock { Text = "Godot", Foreground = TextMain, FontSize = 13,
-                                                FontWeight = FontWeight.SemiBold },
-                                _godotStatus, _console,
-                            }
-                        }
-                    },
-                    new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10,
-                                     Children = { _launch, update, updView } },
-                    new TextBlock { Text = $"launcher v{LauncherVersion}", Foreground = TextDim, FontSize = 11 },
+                    Box("Your disc", _discStatus,
+                        new TextBlock { Text = "Bring your own disc: this reads an image you already have. "
+                                             + "Nothing is bundled and nothing is downloaded from EA.",
+                                        Foreground = TextDim, FontSize = 11,
+                                        TextWrapping = TextWrapping.Wrap },
+                        locate),
+                    Box("Viewer", _buildState),
+                    new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12,
+                                     Children = { _action, _status } },
                     _log,
+                    new TextBlock { Text = $"launcher v{LauncherVersion}", Foreground = TextDim, FontSize = 11 },
                 }
             }
         };
-
-        _projectDir = FindProject();
-        Refresh(DiscLocator.Probe());
-        RefreshGodot();
+        _ = StartupAsync();
     }
 
-    /// <summary>The Godot project next to the launcher, or up the tree when running from a build dir.</summary>
-    static string FindProject()
+    static Control Box(string title, params Control[] rows)
     {
-        var d = new DirectoryInfo(AppContext.BaseDirectory);
-        for (int i = 0; i < 8 && d != null; i++, d = d.Parent)
-        {
-            var g = Path.Combine(d.FullName, "game", "project.godot");
-            if (File.Exists(g)) return Path.GetDirectoryName(g);
-        }
-        return null;
+        var col = new StackPanel { Spacing = 6 };
+        col.Children.Add(new TextBlock { Text = title, Foreground = TextMain, FontSize = 13,
+                                         FontWeight = FontWeight.SemiBold });
+        foreach (var r in rows) col.Children.Add(r);
+        return new Border { Padding = new Thickness(12), CornerRadius = new CornerRadius(6),
+                            Background = Card, Child = col };
     }
+
+    async Task StartupAsync()
+    {
+        SetMode(Mode.Busy, "…", "Looking for your disc…");
+        if (await CheckSelfUpdateAsync()) return;              // may close the window
+        Refresh(DiscLocator.Probe());
+        _godot = GodotLocator.Find(console: false);
+        await RefreshStateAsync();
+    }
+
+    // ------------------------------------------------------------------ state
+
+    /// <summary>Decide what the single button should do right now. ⚠ Order matters: a missing disc
+    /// beats a missing build, because installing without a disc leaves the user with a viewer that
+    /// still cannot open anything.</summary>
+    async Task RefreshStateAsync()
+    {
+        if (!_disc.CanLaunch) { SetMode(Mode.NeedDisc, "Locate disc…", _disc.Message); return; }
+        if (!_godot.Found)
+        {
+            SetMode(Mode.Broken, "—",
+                    $"Godot {GodotLocator.RequiredVersion} (mono) not found. Install it and reopen.");
+            return;
+        }
+        if (!Directory.Exists(Path.Combine(_repoDir, ".git")))
+        {
+            _buildState.Text = "Not installed yet.";
+            SetMode(Mode.Install, "Install and play", "Downloads the viewer, builds it, then opens it.");
+            return;
+        }
+        var (local, remote) = await HeadsAsync();
+        _buildState.Text = local == null ? "Installed: unknown"
+            : $"Installed: {Short(local)}" + (remote != null && remote != local
+                ? $"   →  {Short(remote)} available" : "   (up to date)");
+        if (remote != null && remote != local)
+            SetMode(Mode.Update, "Update and play", "A newer viewer is available.");
+        else if (!File.Exists(AssemblyPath))
+            SetMode(Mode.Update, "Build and play", "Installed but not built yet.");
+        else
+            SetMode(Mode.Play, "Play", "Ready.");
+    }
+
+    async Task OnActionAsync()
+    {
+        var was = _mode;
+        try
+        {
+            switch (was)
+            {
+                case Mode.NeedDisc: await LocateAsync(); return;
+                case Mode.Install:
+                case Mode.Update:
+                    SetMode(Mode.Busy, "…", "Working…");
+                    if (!await InstallOrUpdateAsync()) { await RefreshStateAsync(); return; }
+                    Play();
+                    break;
+                case Mode.Play: Play(); break;
+            }
+        }
+        catch (Exception e) { Log("ERROR: " + e.Message); SetMode(Mode.Broken, "Retry", e.Message); return; }
+        await RefreshStateAsync();
+    }
+
+    void SetMode(Mode m, string label, string status) => Dispatcher.UIThread.Post(() =>
+    {
+        _mode = m;
+        _action.Content = label;
+        _action.IsEnabled = m is not (Mode.Busy or Mode.Broken) || m == Mode.Broken && label == "Retry";
+        _status.Text = status;
+        _status.Foreground = m == Mode.Broken ? Bad : m == Mode.Play ? Good : TextDim;
+    });
+
+    // ------------------------------------------------------------------ install / update
+
+    /// <summary>Clone or hard-reset the repo, then build. Returns true only if the viewer assembly
+    /// actually exists afterwards.
+    ///
+    /// ⚠⚠ THIS IS WHY UPDATES DID NOT APPLY BEFORE. Copying files over an existing tree leaves
+    /// anything the new version deleted, and leaves a STALE COMPILED ASSEMBLY that Godot happily
+    /// keeps running -- so the update looks applied and nothing changes. `git reset --hard` makes
+    /// the tree match origin exactly, and the assembly is DELETED before rebuilding so a build
+    /// failure cannot masquerade as a successful update.</summary>
+    async Task<bool> InstallOrUpdateAsync()
+    {
+        string git = Which("git");
+        if (git == null) { Log("git not found on PATH — install Git for Windows."); return false; }
+
+        if (!Directory.Exists(Path.Combine(_repoDir, ".git")))
+        {
+            Log($"cloning {Branch}…");
+            if (!await RunAsync(git, new[] { "clone", "--branch", Branch, RepoUrl, _repoDir }, _baseDir))
+                return false;
+        }
+        else
+        {
+            Log("fetching…");
+            if (!await RunAsync(git, new[] { "fetch", "origin", $"+{Branch}:refs/remotes/origin/{Branch}" }, _repoDir))
+                return false;
+            // ⚠ reset --hard, not pull: a local edit or a half-applied previous update would make
+            // a merge fail and leave the tree in neither state.
+            if (!await RunAsync(git, new[] { "reset", "--hard", "origin/" + Branch }, _repoDir)) return false;
+            await RunAsync(git, new[] { "clean", "-fd", "-e", ".godot" }, _repoDir);
+        }
+
+        if (File.Exists(AssemblyPath)) File.Delete(AssemblyPath);
+        Log("building…");
+        if (!await RunAsync("dotnet", new[] { "build" }, ProjectDir)) { Log("build FAILED"); return false; }
+        if (!File.Exists(AssemblyPath))
+        {
+            // ⚠ A zero exit code is not proof. The assembly is the artifact; check for it.
+            Log("build reported success but produced no assembly — refusing to launch");
+            return false;
+        }
+        Log("ready");
+        return true;
+    }
+
+    async Task<(string local, string remote)> HeadsAsync()
+    {
+        string git = Which("git");
+        if (git == null) return (null, null);
+        string local = (await CaptureAsync(git, new[] { "-C", _repoDir, "rev-parse", "HEAD" }))?.Trim();
+        string remote = null;
+        var ls = await CaptureAsync(git, new[] { "ls-remote", RepoUrl, "refs/heads/" + Branch });
+        if (!string.IsNullOrWhiteSpace(ls)) remote = ls.Split('\t', ' ')[0].Trim();
+        return (string.IsNullOrWhiteSpace(local) ? null : local, string.IsNullOrWhiteSpace(remote) ? null : remote);
+    }
+
+    static string Short(string sha) => sha != null && sha.Length >= 7 ? sha[..7] : sha;
+
+    void Play()
+    {
+        var psi = new ProcessStartInfo(_godot.Path) { UseShellExecute = false };
+        psi.ArgumentList.Add("--path");
+        psi.ArgumentList.Add(ProjectDir);
+        // ⚠ The disc path travels by ENVIRONMENT, never argv: it routinely contains spaces and
+        // brackets, and an argument a shell mangles arrives EMPTY -- which presents as the viewer
+        // hanging rather than as a bad path.
+        psi.Environment["TPW_PS2_DISC"] = _disc.Path;
+        Log($"launching {Path.GetFileName(_godot.Path)}");
+        Process.Start(psi);
+    }
+
+    // ------------------------------------------------------------------ disc
 
     async Task LocateAsync()
     {
@@ -137,160 +256,64 @@ public class MainWindow : Window
         {
             Title = "Select your Theme Park World disc image",
             AllowMultiple = false,
-            FileTypeFilter = new[]
-            {
-                new FilePickerFileType("Disc image") { Patterns = new[] { "*.bin", "*.iso" } },
-            },
+            FileTypeFilter = new[] { new FilePickerFileType("Disc image")
+                                     { Patterns = new[] { "*.bin", "*.iso" } } },
         });
         var path = files.FirstOrDefault()?.TryGetLocalPath();
         if (path != null) Refresh(DiscLocator.Identify(path));
+        await RefreshStateAsync();
     }
 
     void Refresh(DiscResult r)
     {
         _disc = r;
-        _discStatus.Text = r.Message;
-        _discStatus.Foreground = r.CanLaunch ? Good : Bad;
-        UpdateLaunchable();
+        Dispatcher.UIThread.Post(() =>
+        {
+            _discStatus.Text = r.Message;
+            _discStatus.Foreground = r.CanLaunch ? Good : Bad;
+        });
         Log(r.CanLaunch ? $"disc ok: {r.Path}" : $"disc: {r.Message}");
     }
 
-    GodotChoice _godot;
-    void RefreshGodot()
-    {
-        _godot = GodotLocator.Find(_console.IsChecked == true);
-        if (!_godot.Found)
-        {
-            _godotStatus.Text = $"Godot {GodotLocator.RequiredVersion} (mono) not found. " +
-                                "Install it, or put it beside the launcher.";
-            _godotStatus.Foreground = Bad;
-        }
-        else
-        {
-            // ⚠ Say what we WILL do, not what was asked for.
-            _godotStatus.Text = _godot.Satisfied
-                ? _godot.Path
-                : $"{_godot.Path}\n(the other build; the one you ticked is not installed)";
-            _godotStatus.Foreground = Good;
-        }
-        UpdateLaunchable();
-    }
-
-    void UpdateLaunchable() =>
-        _launch.IsEnabled = _disc.CanLaunch && _godot.Found && _projectDir != null;
-
-    /// <summary>The viewer's C# assembly, which Godot needs before it can instantiate any script.
-    /// ⚠ Without it Godot reports "Cannot instantiate C# script ... class could not be found",
-    /// which reads as a broken script rather than an unbuilt project.</summary>
-    static string AssemblyPath(string projectDir) =>
-        Path.Combine(projectDir, ".godot", "mono", "temp", "bin", "Debug", "TPWPS2Viewer.dll");
-
-    bool EnsureBuilt()
-    {
-        if (File.Exists(AssemblyPath(_projectDir))) return true;
-        Log("viewer assembly not built yet -- running dotnet build (first run only)");
-        try
-        {
-            var psi = new ProcessStartInfo("dotnet")
-            {
-                WorkingDirectory = _projectDir,
-                UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true,
-            };
-            psi.ArgumentList.Add("build");
-            using var p = Process.Start(psi);
-            var stdout = p.StandardOutput.ReadToEnd();
-            var stderr = p.StandardError.ReadToEnd();
-            p.WaitForExit();
-            if (p.ExitCode != 0 || !File.Exists(AssemblyPath(_projectDir)))
-            {
-                foreach (var line in (stdout + stderr).Split('\n').Where(l => l.Contains("error")).Take(6))
-                    Log("  " + line.Trim());
-                Log("build failed -- is the .NET 8 SDK installed?");
-                return false;
-            }
-            Log("built ok");
-            return true;
-        }
-        catch (Exception e) { Log("could not run dotnet: " + e.Message); return false; }
-    }
-
-    void Launch()
-    {
-        if (_projectDir == null) { Log("no game/project.godot found next to the launcher"); return; }
-        if (!EnsureBuilt()) return;
-        RefreshGodot();
-        var psi = new ProcessStartInfo(_godot.Path) { UseShellExecute = false };
-        psi.ArgumentList.Add("--path");
-        psi.ArgumentList.Add(_projectDir);
-        // ⚠ The disc path goes through the ENVIRONMENT, not the command line. It routinely contains
-        // spaces and brackets, and an argument mangled by a shell arrives empty -- which presents as
-        // the viewer hanging rather than as a bad path.
-        psi.Environment["TPW_PS2_DISC"] = _disc.Path;
-        Log($"launching: {_godot.Path}");
-        Log($"  project: {_projectDir}");
-        Log($"  disc:    {_disc.Path}");
-        try { Process.Start(psi); }
-        catch (Exception e) { Log("failed: " + e.Message); }
-    }
+    // ------------------------------------------------------------------ self-update
 
     /// <summary>Replace this launcher with the published build, via a shim that runs after we exit.
     ///
-    /// ⚠⚠ A PROCESS CANNOT OVERWRITE ITS OWN RUNNING EXECUTABLE ON WINDOWS -- the file is locked
-    /// while it runs. So the new build is written BESIDE the old one, a tiny batch file is started
-    /// that WAITS for this PID to disappear, swaps the files, relaunches and deletes itself, and
-    /// only then do we close. The shim exists solely to be the thing still alive when the launcher
-    /// is not.</summary>
-    async Task<bool> CheckSelfUpdateAsync(bool manual = false)
+    /// ⚠⚠ A PROCESS CANNOT OVERWRITE ITS OWN RUNNING EXECUTABLE ON WINDOWS. The new build is written
+    /// BESIDE the old one, a batch file WAITS for this PID to disappear, swaps, relaunches and
+    /// deletes itself. The shim exists solely to be the thing still alive when the launcher is not.</summary>
+    async Task<bool> CheckSelfUpdateAsync()
     {
-        // Windows-only, because the shim is a .bat. Say so rather than silently never updating.
-        if (!OperatingSystem.IsWindows())
-        {
-            if (manual) Log("self-update is Windows-only (the swap shim is a .bat)");
-            return false;
-        }
+        if (!OperatingSystem.IsWindows()) return false;
         string exePath = Environment.ProcessPath;
         if (string.IsNullOrEmpty(exePath)) return false;
         try
         {
             string raw = await Http.GetStringAsync(VersionUrl);
-            if (!SelfUpdate.ShouldSelfUpdate(LauncherVersion, raw))
-            {
-                if (manual) Log($"launcher is up to date (v{LauncherVersion}; published '{raw.Trim()}')");
-                return false;
-            }
-            Log($"launcher update available: v{LauncherVersion} -> v{raw.Trim()}. Downloading…");
+            if (!SelfUpdate.ShouldSelfUpdate(LauncherVersion, raw)) return false;
+            Log($"launcher update: v{LauncherVersion} -> v{raw.Trim()}. Downloading…");
             byte[] bytes = await Http.GetByteArrayAsync(ExeUrl);
-
-            // ⚠ The published hash, if any. Its ABSENCE must not look like success -- Check()
-            // returns a reason either way and we log it, so a launcher that has stopped verifying
-            // says so out loud.
             string expected = null;
             try { expected = (await Http.GetStringAsync(Sha256Url)).Trim().Split(' ')[0]; } catch { }
-
             var verdict = SelfUpdate.Check(bytes, expected);
             Log("update check: " + verdict.Reason);
-            if (!verdict.Accept) { Log("update ABORTED — still running the current launcher."); return false; }
+            if (!verdict.Accept) { Log("update ABORTED — keeping the current launcher."); return false; }
 
             string newExe = exePath + ".new";
             await File.WriteAllBytesAsync(newExe, bytes);
-
             int pid = Environment.ProcessId;
             string bat = Path.Combine(Path.GetTempPath(), "tpwps2_selfupdate.bat");
             const string q = "\"";
-            // ⚠ WAIT ON THE PID, never just sleep. A fixed delay is a race: too short and the move
-            // fails against a locked file, too long and the user stares at nothing.
+            // ⚠ WAIT ON THE PID, never sleep: too short and the move hits a locked file, too long
+            // and the user stares at nothing.
             await File.WriteAllTextAsync(bat, string.Join("\r\n", new[]
             {
-                "@echo off",
-                ":wait",
+                "@echo off", ":wait",
                 $"tasklist /FI {q}PID eq {pid}{q} | find {q}{pid}{q} >nul && (ping -n 2 127.0.0.1 >nul & goto wait)",
                 $"move /y {q}{newExe}{q} {q}{exePath}{q} >nul",
                 $"start {q}{q} {q}{exePath}{q}",
-                // ⚠ The shim deletes itself LAST. Leaving it behind means the next update may find
-                // a stale file from a previous version and run that instead.
-                $"del {q}%~f0{q}",
+                $"del {q}%~f0{q}",     // ⚠ last: a leftover shim can run on the next update
             }) + "\r\n");
-
             Process.Start(new ProcessStartInfo("cmd.exe", $"/c {q}{bat}{q}")
             { UseShellExecute = false, CreateNoWindow = true });
             Log("restarting into the new launcher…");
@@ -299,90 +322,64 @@ public class MainWindow : Window
         }
         catch (HttpRequestException e) when (e.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
-            // ⚠ A 404 here is the NORMAL state until a build has been published. Say that rather
-            // than showing a raw HTTP error, which reads as "the updater is broken".
-            if (manual) Log("no published launcher build yet (nothing at " + VersionUrl + ")");
+            // Normal until a build has been published; not an error worth alarming anyone with.
             return false;
         }
-        catch (Exception e) { if (manual) Log("update check failed: " + e.Message); return false; }
+        catch (Exception e) { Log("launcher update check failed: " + e.Message); return false; }
     }
 
-    const string SourceZipUrl = "https://codeload.github.com/strawberry-cow38/TPWPS2PC/zip/refs/heads/main";
+    // ------------------------------------------------------------------ process plumbing
 
-    /// <summary>Replace the viewer's sources (game/ and core/) with main's, then rebuild.
-    ///
-    /// ⚠ Unlike the launcher's own update this is NOT irreversible -- it writes source files next to
-    /// the launcher rather than over the running exe -- so it does not need the self-update guards.
-    /// It does still refuse anything that is not a zip, because a 404 page is a successful HTTP
-    /// response and would otherwise be written to disk as "sources".</summary>
-    async Task UpdateViewerAsync()
+    static string Which(string exe)
     {
-        if (_projectDir == null) { Log("no game/ next to the launcher to update"); return; }
-        var root = Directory.GetParent(_projectDir)!.FullName;
+        foreach (var dir in (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator))
+        {
+            if (string.IsNullOrWhiteSpace(dir)) continue;
+            foreach (var cand in OperatingSystem.IsWindows()
+                     ? new[] { exe + ".exe", exe + ".cmd", exe } : new[] { exe })
+            {
+                try { var p = Path.Combine(dir, cand); if (File.Exists(p)) return p; } catch { }
+            }
+        }
+        return null;
+    }
+
+    async Task<bool> RunAsync(string exe, string[] args, string cwd)
+    {
+        var psi = new ProcessStartInfo(exe)
+        {
+            WorkingDirectory = cwd, UseShellExecute = false, CreateNoWindow = true,
+            RedirectStandardOutput = true, RedirectStandardError = true,
+        };
+        foreach (var a in args) psi.ArgumentList.Add(a);
+        using var p = Process.Start(psi);
+        var so = p.StandardOutput.ReadToEndAsync();
+        var se = p.StandardError.ReadToEndAsync();
+        await p.WaitForExitAsync();
+        var text = (await so) + (await se);
+        // ⚠ Surface the tool's OWN error lines. "build failed" with no reason sends people to the
+        // wrong place; the compiler already said what was wrong.
+        foreach (var line in text.Split('\n')
+                 .Where(l => l.Contains("error", StringComparison.OrdinalIgnoreCase)).Take(8))
+            Log("  " + line.Trim());
+        return p.ExitCode == 0;
+    }
+
+    async Task<string> CaptureAsync(string exe, string[] args)
+    {
         try
         {
-            Log("downloading main…");
-            var bytes = await Http.GetByteArrayAsync(SourceZipUrl);
-            // "PK" -- a zip. An error page is not one, and a successful 404 body would otherwise
-            // be unpacked as if it were source.
-            if (bytes.Length < 1000 || bytes[0] != (byte)'P' || bytes[1] != (byte)'K')
-            {
-                Log($"got {bytes.Length:n0} bytes and it is not a zip — keeping the current viewer");
-                return;
-            }
-            var tmp = Path.Combine(Path.GetTempPath(), "tpwps2_main");
-            if (Directory.Exists(tmp)) Directory.Delete(tmp, true);
-            Directory.CreateDirectory(tmp);
-            var zipPath = Path.Combine(tmp, "main.zip");
-            await File.WriteAllBytesAsync(zipPath, bytes);
-            System.IO.Compression.ZipFile.ExtractToDirectory(zipPath, tmp);
-            var inner = Directory.GetDirectories(tmp).FirstOrDefault(d => File.Exists(Path.Combine(d, "TPWPS2.sln")));
-            if (inner == null) { Log("that zip does not look like the repo — keeping the current viewer"); return; }
-
-            foreach (var part in new[] { "game", "core" })
-            {
-                var src = Path.Combine(inner, part);
-                var dst = Path.Combine(root, part);
-                if (!Directory.Exists(src)) continue;
-                CopyOver(src, dst);
-                Log($"updated {part}/");
-            }
-            // ⚠ Force a rebuild: the sources changed, so a stale assembly would silently keep
-            // running the OLD viewer and look like the update did nothing.
-            var asm = AssemblyPath(_projectDir);
-            if (File.Exists(asm)) File.Delete(asm);
-            if (EnsureBuilt()) Log("viewer updated and rebuilt — launch when ready");
+            var psi = new ProcessStartInfo(exe)
+            { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true };
+            foreach (var a in args) psi.ArgumentList.Add(a);
+            using var p = Process.Start(psi);
+            var s = await p.StandardOutput.ReadToEndAsync();
+            await p.WaitForExitAsync();
+            return p.ExitCode == 0 ? s : null;
         }
-        catch (HttpRequestException e) when (e.StatusCode == System.Net.HttpStatusCode.NotFound)
-        {
-            // ⚠ A 404 from codeload almost always means the repository is PRIVATE, not that the
-            // branch is missing -- GitHub returns 404 rather than 403 for repos you cannot see, so
-            // the status code alone is misleading. Say the likely cause instead of the raw error.
-            Log("404 from GitHub — the repository is private (GitHub returns 404, not 403, for");
-            Log("  repos you cannot see). Make TPWPS2PC public, or update the files by hand.");
-        }
-        catch (Exception e) { Log("viewer update failed: " + e.Message); }
-    }
-
-    static void CopyOver(string src, string dst)
-    {
-        Directory.CreateDirectory(dst);
-        foreach (var d in Directory.GetDirectories(src, "*", SearchOption.AllDirectories))
-        {
-            var rel = Path.GetRelativePath(src, d);
-            if (rel.Split(Path.DirectorySeparatorChar).Any(p => p is "bin" or "obj" or ".godot")) continue;
-            Directory.CreateDirectory(Path.Combine(dst, rel));
-        }
-        foreach (var f in Directory.GetFiles(src, "*", SearchOption.AllDirectories))
-        {
-            var rel = Path.GetRelativePath(src, f);
-            if (rel.Split(Path.DirectorySeparatorChar).Any(p => p is "bin" or "obj" or ".godot")) continue;
-            File.Copy(f, Path.Combine(dst, rel), overwrite: true);
-        }
+        catch { return null; }
     }
 
     void Log(string line) => Dispatcher.UIThread.Post(() =>
-    {
-        _log.Text += (_log.Text.Length > 0 ? "\n" : "") + line;
-    });
+        _log.Text += (_log.Text.Length > 0 ? "\n" : "") + line);
 }
