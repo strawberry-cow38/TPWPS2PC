@@ -9,6 +9,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="tpwps2sshscore" />
     <!-- ⭐ NLayer decodes MPEG Layer I/II/III in pure managed C#, which is the whole point: the
          engine's own decoder is built for Layer III and hands back nothing for the Layer II the
          disc actually uses, and a native plugin would have to be built per platform. 1,849 of the

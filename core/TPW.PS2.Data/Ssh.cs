@@ -1,12 +1,10 @@
 using System.Buffers.Binary;
-using System.Diagnostics;
 using System.Text;
 
 namespace TPW.PS2.Data;
 
-/// <summary>EA SHPS compressed types 4/5 (GM), decoded through FFmpeg's existing IPU codec.
-/// Returns straight RGBA8, top row first. Requires an FFmpeg executable with the ipu decoder,
-/// demuxer and parser; set TPW_FFMPEG or pass its path. No files are written by this reader.
+/// <summary>EA SHPS compressed types 4/5 (GM), decoded in managed code.
+/// Returns straight RGBA8, top row first. No files are written by this reader.
 /// This is lossy texture compression: see findings/ssh.md for measured source-image errors.</summary>
 public sealed class Ssh
 {
@@ -17,7 +15,7 @@ public sealed class Ssh
     public byte[] Pixels { get; }
     public bool HasAlpha { get; }
 
-    public Ssh(byte[] data, int entryIndex = 0, string ffmpegPath = null)
+    public Ssh(byte[] data, int entryIndex = 0)
     {
         var entries = ReadEntries(data);
         if ((uint)entryIndex >= entries.Count) throw new ArgumentOutOfRangeException(nameof(entryIndex));
@@ -67,20 +65,8 @@ public sealed class Ssh
         }
         if (end < 0) throw new InvalidDataException("GM end marker or alignment padding is missing.");
 
-        // Adapt GM to FFmpeg's IPUM transport. The compressed coefficients are unchanged.
-        // 0x80 selects MPEG-1 coefficient syntax in the IPU codec, with IDP/AS/IVF/QST/DTD zero.
-        // No MPEG picture/slice headers are present in GM (or invented here).
-        var ipu = new byte[16 + 1 + (end - 8) + 4];
-        "ipum"u8.CopyTo(ipu);
-        BinaryPrimitives.WriteInt32LittleEndian(ipu.AsSpan(4), ipu.Length);
-        BinaryPrimitives.WriteUInt16LittleEndian(ipu.AsSpan(8), (ushort)codedWidth);
-        BinaryPrimitives.WriteUInt16LittleEndian(ipu.AsSpan(10), (ushort)codedHeight);
-        BinaryPrimitives.WriteInt32LittleEndian(ipu.AsSpan(12), 1);
-        ipu[16] = 0x80;
-        gm[8..end].CopyTo(ipu.AsSpan(17));
-        ipu[^2] = 1;
-        ipu[^1] = 0xb0;
-        byte[] yuv = DecodeIpu(ipu, codedPixels * 3 / 2, ffmpegPath);
+        // GM carries MPEG-1 IPU coefficients directly, without transport/picture headers.
+        byte[] yuv = IpuDecoder.Decode(gm[8..end], codedWidth, codedHeight);
 
         Pixels = new byte[checked(Width * Height * 4)];
         for (int pixel = 0; pixel < Width * Height; pixel++)
@@ -94,7 +80,7 @@ public sealed class Ssh
             }
             else
             {
-                // FFmpeg lays stream macroblocks across rows; GM traverses image columns.
+                // The decoder lays stream macroblocks across rows; GM traverses image columns.
                 int mb = (x / 16) * (codedHeight / 16) + y / 16;
                 sx = (mb % (codedWidth / 16)) * 16 + x % 16;
                 sy = (mb / (codedWidth / 16)) * 16 + y % 16;
@@ -155,61 +141,4 @@ public sealed class Ssh
 
     static byte Clamp(int value) => (byte)Math.Clamp(value, 0, 255);
 
-    static byte[] DecodeIpu(byte[] input, int expectedLength, string executable)
-        => DecodeIpuAsync(input, expectedLength, executable).GetAwaiter().GetResult();
-
-    static async Task<byte[]> DecodeIpuAsync(byte[] input, int expectedLength, string executable)
-    {
-        var start = new ProcessStartInfo(executable ?? Environment.GetEnvironmentVariable("TPW_FFMPEG") ?? "ffmpeg")
-        {
-            UseShellExecute = false, CreateNoWindow = true,
-            RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true
-        };
-        foreach (var arg in new[] { "-hide_banner", "-loglevel", "error", "-xerror", "-threads", "1",
-            "-f", "ipu", "-i", "pipe:0", "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "yuv420p",
-            "-threads", "1", "pipe:1" }) start.ArgumentList.Add(arg);
-        using var process = new Process { StartInfo = start };
-        try { process.Start(); }
-        catch (System.ComponentModel.Win32Exception ex)
-        {
-            throw new InvalidOperationException("SHPS decoding requires FFmpeg with IPU support. " +
-                "Install FFmpeg and set TPW_FFMPEG to its executable if it is not on PATH.", ex);
-        }
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-        var token = timeout.Token;
-        // Drain both pipes while writing input; a large texture must not deadlock on a full pipe.
-        var output = new byte[expectedLength];
-        async Task ReadOutput()
-        {
-            await process.StandardOutput.BaseStream.ReadExactlyAsync(output, token).ConfigureAwait(false);
-            var extra = new byte[1];
-            if (await process.StandardOutput.BaseStream.ReadAsync(extra, token).ConfigureAwait(false) != 0)
-                throw new InvalidDataException("FFmpeg returned more than one expected IPU frame.");
-        }
-        async Task WriteInput()
-        {
-            await process.StandardInput.BaseStream.WriteAsync(input, token).ConfigureAwait(false);
-            process.StandardInput.Close();
-        }
-        var errorTask = process.StandardError.ReadToEndAsync(token);
-        try
-        {
-            await Task.WhenAll(ReadOutput(), WriteInput(), process.WaitForExitAsync(token)).ConfigureAwait(false);
-            string errors = await errorTask.ConfigureAwait(false);
-            if (process.ExitCode != 0 || !string.IsNullOrWhiteSpace(errors))
-                throw new InvalidDataException($"FFmpeg rejected the IPU stream: {errors.Trim()}");
-            return output;
-        }
-        catch (Exception ex) when (ex is IOException or OperationCanceledException)
-        {
-            if (!process.HasExited) process.Kill(entireProcessTree: true);
-            await process.WaitForExitAsync().ConfigureAwait(false);
-            string errors = errorTask.IsCompletedSuccessfully ? errorTask.Result.Trim() : "";
-            throw new InvalidDataException($"IPU decode failed or timed out. {errors}", ex);
-        }
-        finally
-        {
-            if (!process.HasExited) process.Kill(entireProcessTree: true);
-        }
-    }
 }

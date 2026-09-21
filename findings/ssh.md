@@ -1,3 +1,6 @@
+> Historical FFmpeg-adapter research. The shipping path is now managed; see
+> [the IPU differential report](ipu.md) for current API, requirements, and whole-disc results.
+
 # SHPS / GM texture decoder — 2026-09-21
 
 Implemented in `core/TPW.PS2.Data/Ssh.cs`, with no Godot dependency: SHPS directory validation,
