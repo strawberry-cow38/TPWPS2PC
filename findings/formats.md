@@ -840,6 +840,23 @@ Measured over every `.mps` in DATA.WAD:
 A weight sum of exactly 1.0 on every one of 4,382 vertices is not something a wrong field offset
 produces. `A` is the animated-vertex count, the same one `mesh+0x98` maps strip slots onto.
 
+### What the bind transform is NOT (measured, so nobody re-tries these blind)
+
+| tried | worst error / object span |
+|---|---|
+| bone's world matrix as composed, target = mesh-world vertices | 2.0 (median) |
+| same, with the ROOT's own matrix replaced by identity (it carries a global 2.8305e-05 scale) | 1.30 (median) |
+| the INVERSE of the bone's world matrix | 0.88 |
+| bone matrices rebuilt from the animation's frame-0 quaternion + position keys | 0.82 |
+| brute force over ALL 29 nodes, best one | 0.66 |
+
+**No node's matrix, in any of those spaces, reproduces the bind pose.** The next step is the
+evaluator itself -- the EE function that consumes `mesh+0x90` -- rather than another guess.
+
+⚠ One more oddity to explain first: the guard's 22 animation tracks address nodes
+`1,3,4,5,6,7,9,10,...,25`, skipping 0, 2, 8 and 26-28. Node 1 is the PLACKARD MESH, which the skin
+says is bound to bone 16. So the `.aps` node numbering may not be the model's node numbering.
+
 ⚠ **The float3 is the vertex position and it is NOT yet placed correctly.** Solving the least
 squares transform from those positions to the mesh's own vertices gives a **pure rotation** (basis
 lengths 1.0000, 1.0000, 1.0000) with a residual of 0.004 against a 29,408-unit object — so the data
