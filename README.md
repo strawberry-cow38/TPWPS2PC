@@ -121,3 +121,18 @@ Low value, feels productive.
 
 The remaining `.aps` pointers (`+0x24` at 130 tracks, `+0x1c` at 11) are polish; the four transform
 channels that matter are done.
+
+## Running it
+
+**[Download the launcher](https://github.com/strawberry-cow38/TPWPS2PC/releases/tag/launcher)**, run
+it, point it at your own Theme Park World (PS2) disc image, and press **Install and play**. It
+clones this repository, builds the viewer and opens it. After that the same button reads **Update
+and play** whenever `main` moves, and the launcher keeps *itself* up to date from that release — so
+that download is the only manual step.
+
+Needs the .NET 8 SDK, `git`, and **Godot 4.6.2 (mono)** — ⚠ that exact version: a 4.6 binary running
+a project built against `Godot.NET.Sdk 4.6.2` loads no C# at all and shows an empty window with no
+error.
+
+⚠ **Bring your own disc.** Nothing here is bundled and nothing is downloaded from EA; the viewer
+reads an image you already own.
