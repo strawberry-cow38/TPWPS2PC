@@ -58,6 +58,9 @@ public sealed class Park
         }
     }
 
+    /// <summary>Whether the node the ride is parented to is actually drawn.</summary>
+    public bool RideVisible => _ride.IsVisibleInTree();
+
     public Park()
     {
         _ground = new Node3D { Name = "Ground" };

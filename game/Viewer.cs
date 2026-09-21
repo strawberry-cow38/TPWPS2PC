@@ -640,10 +640,16 @@ public partial class Viewer : Node3D
         // ⚠ Report the model against its cells rather than assuming it fits. A ride overflowing
         // its footprint is a real thing here -- the cell size itself was measured, not given.
         var (min, max) = Park.DrawnBounds(_current.Root);
-        GD.Print($"[park] drawn min {min} max {max}; placed at {_current.Root.Position}; "
-                 + $"visible={_current.Root.Visible} parent={_current.Root.GetParent()?.Name}; "
-                 + $"plot {fp.Width * Park.CellSize} x {fp.Height * Park.CellSize}; "
-                 + $"focus {_focus} dist {_dist}");
+        // ⚠ `Visible` is a node's OWN flag. A hidden ancestor leaves it true and draws nothing,
+        // so the flag that matters is IsVisibleInTree.
+        int meshes = 0;
+        void Count(Node n) { if (n is MeshInstance3D) meshes++; foreach (var c in n.GetChildren()) Count(c); }
+        Count(_current.Root);
+        GD.Print($"[park] drawn {min}..{max} placed {_current.Root.Position} plot "
+                 + $"{fp.Width * Park.CellSize}x{fp.Height * Park.CellSize}");
+        GD.Print($"[park] meshes={meshes} modelInTree={_current.Root.IsVisibleInTree()} "
+                 + $"rideInTree={_park.RideVisible} parkInTree={_park.Root.IsVisibleInTree()} "
+                 + $"parkVisible={_park.Root.Visible} parkParent={_park.Root.GetParent()?.Name}");
         var over = (max.X - min.X) / Math.Max(fp.Width, 1) / Park.CellSize;
         var overZ = (max.Z - min.Z) / Math.Max(fp.Height, 1) / Park.CellSize;
         _info.Text = Park.Describe(def, display, fp)
