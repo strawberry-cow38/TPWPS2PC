@@ -1,5 +1,30 @@
 # The RSSE ride scripts
 
+## Across all six archives read
+
+| archive | files | `.rss` | `.rse` | compiled-only |
+|---|---:|---:|---:|---:|
+| JUNGLE | 2,545 | 90 | 91 | 1 |
+| HALLOW | 2,627 | 95 | 96 | 3 |
+| SPACE | 2,858 | 87 | 88 | 1 |
+| FANTASY | 2,184 | 82 | 84 | 2 |
+| LOBBY | 1,034 | 0 | 0 | — |
+| DATA | 1,737 | 0 | 0 | — |
+
+**354 sources, 359 compiled, 7 compiled-only.** The source shipped for 98% of every script in the
+game. Cracking the bytecode is easy — a known-plaintext attack with 354 matched pairs — and buys
+those 7 files; the better argument for doing it is that 354 pairs would catch any misreading of the
+language immediately. ⚠ The `#include` headers defining the symbolic constants (`ANIM_Create`,
+`EVT_APE_THUMP`) are **not on the disc**, so constants would decode as bare numbers either way.
+
+LOBBY and DATA carry no scripts at all: the hub and the shared data are not script-driven, it is a
+per-world mechanism.
+
+⭐ Reading those five archives also put **12,985 further files** through the `FKNL` reader, which was
+built against JUNGLE alone. All five parsed clean.
+
+---
+
 90 `.rss` files in `JUNGLE.WAD`, shipped as source. **39 of them are rides** — those declare the
 full twelve-variable ride ABI; the other 51 are scenery, shops and sideshows with simpler programs.
 

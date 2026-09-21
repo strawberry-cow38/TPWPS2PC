@@ -26,7 +26,9 @@ against the owner's own rip of their own copy.
 | Archives | `FKNL` container, a **tree** of blocks; entries RefPacked unless they did not shrink |
 | Compression | **EA RefPack (QFS)** |
 
-**JUNGLE.WAD reads 2,545 / 2,545 files to their exact declared size, 0 failures.**
+**JUNGLE.WAD reads 2,545 / 2,545 files to their exact declared size, 0 failures**, and five further
+archives (DATA, FANTASY, HALLOW, LOBBY, SPACE — **12,985 more files**) parse clean with the same
+reader, which was built against JUNGLE alone.
 
 ## The thing worth knowing
 
