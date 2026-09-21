@@ -21,6 +21,8 @@ int tga = 0, tgaOk = 0, tgaBad = 0, tga24 = 0, tga32 = 0, tga8 = 0, tgaRle = 0, 
 int tgaPng = 0, tgaLies = 0;
 int withPartial = 0, withCutout = 0;
 int aps = 0, apsOk = 0, apsRecords = 0, apsSkeletal = 0, apsShared = 0;
+int apsPlain = 0, apsSkelOnly = 0, apsSharedOnly = 0, apsBoth = 0;
+var extCount = new Dictionary<string, int>();
 var firstFails = new List<string>();
 
 foreach (var w in wads)
@@ -37,6 +39,10 @@ foreach (var w in wads)
         if (data.Length == e.DecompressedSize) decOk++; else { decBad++; continue; }
 
         var ext = Path.GetExtension(e.Path).ToLowerInvariant();
+        // Every entry gets counted by extension, examined or not. Three extensions are read below;
+        // the rest are reported as present-but-unexamined rather than silently vanishing from the
+        // totals -- a number that does not account for its whole population is not a measurement.
+        extCount[ext] = extCount.GetValueOrDefault(ext) + 1;
         if (ext == ".mps")
         {
             models++;
@@ -102,8 +108,15 @@ foreach (var w in wads)
                 foreach (var rec in a.Records())
                 {
                     apsRecords++;
+                    // Skeletal (0x20) and Shared (0x80) are independent bits, so counting each on
+                    // its own names 271 of 1,451 records and leaves 1,180 in no stated category.
+                    // Count the four combinations instead: they partition the population.
                     if (rec.Skeletal) apsSkeletal++;
                     if (rec.Shared) apsShared++;
+                    if (rec.Skeletal && rec.Shared) apsBoth++;
+                    else if (rec.Skeletal) apsSkelOnly++;
+                    else if (rec.Shared) apsSharedOnly++;
+                    else apsPlain++;
                     a.Length(rec);                  // must not throw on either track format
                 }
                 apsOk++;
@@ -127,6 +140,18 @@ if (tgaPng > 0)
 Console.WriteLine($"  alpha: {withCutout} have clear texels, {withPartial} have PARTIAL alpha");
 Console.WriteLine($"animation: {aps} .aps files, {apsOk} read, {apsRecords} records " +
                   $"({apsSkeletal} skeletal, {apsShared} whose tracks live in another file)");
+Console.WriteLine($"  records partitioned: {apsPlain} plain + {apsSkelOnly} skeletal-only + " +
+                  $"{apsSharedOnly} shared-only + {apsBoth} both = " +
+                  $"{apsPlain + apsSkelOnly + apsSharedOnly + apsBoth} of {apsRecords}");
+
+// Every archive entry, named. The readers above cover three extensions; the rest are present and
+// unexamined, and saying so is the difference between a known gap and an invisible one.
+var examined = new[] { ".mps", ".tga", ".aps" };
+int seen = extCount.Values.Sum();
+Console.WriteLine($"entry census: {seen} entries + {alias} aliases + {decBad} unreadable = " +
+                  $"{seen + alias + decBad} of {entries}");
+foreach (var kv in extCount.OrderByDescending(k => k.Value))
+    Console.WriteLine($"   {(examined.Contains(kv.Key) ? "read " : "     ")}{kv.Key,-8} {kv.Value,6}");
 if (firstFails.Count > 0)
 {
     Console.WriteLine("first failures:");

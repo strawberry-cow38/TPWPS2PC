@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("TPW.PS2.Launcher")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+4907f0add99c2486693ab504f43f7b9f2ce030b2")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+f83200361aa31c9b08982ad606ab84ff5da62482")]
 [assembly: System.Reflection.AssemblyProductAttribute("TPW.PS2.Launcher")]
 [assembly: System.Reflection.AssemblyTitleAttribute("TPW.PS2.Launcher")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

@@ -1438,3 +1438,44 @@ before trusting a score.
 its breakdown read `3897 + 1789 + 4 = 5690` against 5,694 decoded — **four files went down a path
 the summary never named.** A breakdown that does not sum is telling you something. It now prints
 the bpp split summing to the total and says how many of the paletted files declare otherwise.
+
+
+## ⭐ Make every breakdown SUM — two more gaps it found (2026-09-21)
+
+The four mislabelled sky TGAs were found because a breakdown read `3897 + 1789 + 4 = 5690` against
+5,694 decoded. Applying that as a rule to the rest of `tpwps2check` found two more.
+
+### `.aps` records: 1,180 of 1,451 were in no stated category
+
+The summary said *"1451 records (226 skeletal, 45 whose tracks live in another file)"*. `Skeletal`
+(0x20) and `Shared` (0x80) are independent bits, so counting each alone names 271 records and says
+nothing about the other 1,180 — **and it cannot tell you whether the 45 are inside the 226 or
+beside them.** Counting the four combinations partitions the population:
+
+```
+1225 plain + 181 skeletal-only + 0 shared-only + 45 both = 1451 of 1451
+```
+
+⭐ **Every `Shared` record is also `Skeletal`** — zero shared-only, and 226 = 181 + 45. A record
+whose tracks live in another file is always a skeletal one. That is a fact about the format, and
+the old pair of overlapping counts made it unreadable.
+
+### The checker read 6,565 of 14,675 entries and never said so
+
+It examines `.mps`, `.tga` and `.aps`. Everything else simply did not appear in any total. The
+census now names every entry by extension:
+
+| | | | |
+|---|---|---|---|
+| `.ssh` **5764** | `.tga` *5695* | `.rse` **718** | `.lip` **516** |
+| `.mps` *496* | `.aps` *374* | `.rss` **354** | `.sam` **321** |
+| `.scc` **318** | `.dat` 37 | `.sce` 29 | `.gin` *14* |
+| `.bff` 6 | `.pl` 4 | `.md2` 4 | `.mtr` 4 |
+| `.dba` 3 | `.lbmlist` 3 | `.table` 3 | `.h` 3 |
+| `.ico` 3 | `.ass` 2 | `.gay` 2 | `.bat` 1, `.plb` 1 |
+
+*italic* = read by the checker, **bold** = the large unexamined ones. **8,110 of 14,675 entries —
+more than half the disc — are not touched by any reader**, and the biggest single extension on the
+disc, `.ssh` at 5,764, is among them.
+
+`.rse` (718), `.lip` (516), `.rss` (354), `.sam` (321) and `.scc` (318) are the unexplored bulk.
