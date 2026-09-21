@@ -451,3 +451,37 @@ divination:
 
 `MOVIES/*.MPC` (~285 MB), `AUDIO/**/*.MAP` + `*.SDT` bank pairs, `.gin`, `.mtr`, `ILINK.IRX` /
 `ILSOCK.IRX`.
+
+
+## M3D2: the third per-vertex stream is VERTEX NORMALS
+
+The batch record's third pointer (`posOff, uvOff, **stream3Off**, vertexCount`) has been listed as
+unknown here. It is **3 bytes per vertex, signed, over 127** — a unit normal.
+
+`m_sign` is a flat sign of two quads, and its eight vertices read:
+
+```
+00 1d 85   x4      ->  (0,  29, -123)      29² + 123² = 15,970,  √ = 126.4 ≈ 127
+00 e3 7b   x4      ->  (0, -29,  123)      the opposite face
+```
+
+Two opposed unit normals on a two-sided flat sign. The stream is `vertexCount * 3` bytes, padded
+out to a 4-byte multiple.
+
+## M3D2 mesh entry — fields confirmed while chasing the animation link
+
+```
++0x00 u32 flags        +0x04 parent   +0x08 sibling   +0x0C child     ⚠ ABSOLUTE FILE OFFSETS
++0x10 mat4 (parent-relative)          +0x50 mesh ordinal   +0x54 name offset
++0x60 u16 vertCount, u16 faceCount    +0x68 group table    +0x6C batch table
++0x70 float4 bounds MIN               +0x80 float4 bounds MAX    (w = 1.0)
++0x94 u32 batch table length          +0x98 u32 -> ANIMATED-VERTEX LIST (0 when not animated)
+```
+
+⚠ **A parent link is an absolute offset and may point into EITHER table** — the mesh table at
+`+0x48` (160-byte entries) or the helper table at `+0x4C` (96-byte entries), which share this
+header layout. Crazy Ape's arms hang off `Dummy01`, **helper 24**, not off a mesh; and the animation
+addresses that same node as **33** = 9 meshes + helper 24, exactly the evaluator's rule
+(`node < meshCount ? mesh[node] : helper[node - meshCount]`).
+
+A helper header is recognisable by bit `0x80000000` in its flags.

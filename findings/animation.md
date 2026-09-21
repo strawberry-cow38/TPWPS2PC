@@ -571,3 +571,57 @@ Animation lengths come out as authored round numbers — 100, 150, 120, 140, 200
 ⚠ And the byte runs this file dismissed earlier — *"`0, 34, 37, 39 …` ending in `0xD7`, at
 single-byte spacing and so cannot be keys"* — **were the key times.** They were found, measured,
 and argued away because they did not fit the stride of the format I had wrongly assumed.
+
+
+## ⭐ The last link: which mesh vertex each animated one drives — `mesh+0x98`
+
+An `.aps` stream says *how* vertices move but never *which* vertices. That mapping is in the
+**model**, at `mesh+0x98` — a field inside the 160-byte mesh entry, so it ships in the file.
+
+`FUN_001a6d68` walks it while emitting each animated vertex:
+
+```c
+do { a = *p++; write(gsPacket + (a & 0xfffc)); } while (a & 2);
+```
+
+* one **run** of entries — continuing while bit 1 is set — is one animated vertex;
+* each entry's `a & 0xfffc` is a GS address;
+* addresses step **12 bytes**, three words, one vertex, so an address's **rank** among the sorted
+  unique addresses is its strip-vertex index.
+
+| mesh | strip verts | unique GS slots | runs | animated verts |
+|---|---:|---:|---:|---:|
+| m_boxes | 258 | 258 | 91 | 91 |
+| m_sign | 8 | 8 | 4 | 4 |
+| m_body | 257 | 257 | 74 | 74 |
+| m_arm | 103 | 103 | 37 | 37 |
+| m_arm1 | 104 | 104 | 37 | 37 |
+| m_crate | 186 | 186 | 56 | 56 |
+| m_shards | 36 | 36 | 18 | 18 |
+
+**7 of 7 on both columns.** `mesh+0x98` is **0** for exactly the meshes with no vertex stream
+(`m_base`, `m_sign2`), which is the negative control.
+
+⚠ **I nearly shipped a guess instead.** Before finding this I built the mapping by de-duplicating
+strip vertices by position: 5 of 7 meshes matched and two were off by one, which reads as a
+rounding problem rather than a wrong method. It was the wrong method — the ordering it produced was
+scrambled, the centroids matched while every individual vertex was ~12 units out, and the model
+rendered as a blob of the right size. **Guessing scored 71%. Reading the model scored 100%.**
+[[feedback_read_the_parser_not_the_bytes]].
+
+## What Crazy Ape actually does
+
+`monkey.aps` holds **12 sections** — a ride has several animations (215, 100, … frames). Section 0,
+the long one, is the ride's show, and the keyframes state the gag outright:
+
+```
+vertex 0 of m_body:  times [0, 62, 99, 100, 105, 117, 215]
+  key0..key2  (0.206, -0.837,  1.797)      the ape squashed inside the crate
+  key3        (0.169, -5.747,  9.950)      frame 100 -- it bursts out
+```
+
+The whole body goes from ~5 units tall to ~30 **between frame 99 and frame 100**. Rendering the
+first second and seeing a tiny ape is not a decoder bug; it is the ape hiding in the box.
+
+⭐ Worth keeping as a habit: the first render looked wrong, and the right move was to *measure the
+pose extent over time* rather than start adjusting the decoder. The data explained itself.
