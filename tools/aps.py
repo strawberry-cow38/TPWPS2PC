@@ -144,6 +144,25 @@ def vertex_map(m, mesh_offset, nverts):
     return None if any(v is None for v in idx) else idx
 
 
+def scale_track(d, off, count):
+    """The track's `+0x18` array: a NODE SCALE track. 143 of 1,229 tracks carry one.
+
+    Gate is **track flag 0x80**, count is the u16 at **track+0x0A** (`FUN_001a7f48`), and
+    `FUN_001a6808` interpolates it:
+
+        key  = base + index * 0x10          <- 16-byte stride
+        out  = key[+0x04, +0x08, +0x0C] as float3, LINEAR between two keys
+
+    `FUN_001a4410` then applies it by **renormalising each of the matrix's three basis vectors to
+    the interpolated length** -- it sets the axis scales and leaves the rotation alone.
+
+    Validated: times at key+0x00 ascend on **143/143** tracks (92.3% from zero), and the float3 at
+    +0x04 has a **median of exactly 1.0000** -- which is what a scale track looks like and what the
+    control offset (+0x00, 62.5% plausible vs 94.2%) does not."""
+    return [(_u16(d, off + k*16), [_f32(d, off + k*16 + 4 + 4*j) for j in range(3)])
+            for k in range(count)]
+
+
 def spline_path(d, off):
     """The track's `+0x10` object: a CATMULL-ROM SPLINE PATH -- how a ride moves a thing along a
     curve. 333 of 1,229 tracks in JUNGLE.WAD carry one.

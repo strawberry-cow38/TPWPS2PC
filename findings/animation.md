@@ -978,3 +978,47 @@ broken, not the idea: it required the frame to be `<= animation length`, and I w
 length only from morph tracks, so it came out **0** for every record that animates by rotation.
 A condition against a zero bound rejects everything. **Look at the rows before believing the
 summary statistic** — the pattern (19→119, 28→100, 100→138, 320→326 …) was obvious on sight.
+
+
+## ⭐ `track+0x18` — a NODE SCALE track (143 tracks)
+
+Gate is **track flag `0x80`**, count is the u16 at **`track+0x0A`**, and `FUN_001a6808` is a plain
+linear interpolator over **16-byte keys**:
+
+```
+key = base + index*0x10:   +0x00 u16 time   +0x04 float x, y, z
+out = a*(1-t) + b*t
+```
+
+`FUN_001a4410` applies it by **renormalising each of the node matrix's three basis vectors to the
+interpolated length** — it sets the axis scales and leaves the rotation untouched:
+
+```c
+f = sx / |row0|;  row0 *= f;      f = sy / |row1|;  row1 *= f;      f = sz / |row2|;  row2 *= f;
+```
+
+| check | result |
+|---|---:|
+| times at `key+0x00` strictly ascending | **143 / 143** |
+| ...starting at 0 | 132 / 143 (92.3%) |
+| float3 at `+0x04` in a plausible scale range | 94.2% |
+| **CONTROL** — same stride, read at `+0x00` | 62.5% |
+
+⭐ The decisive number is not the percentage: the float3's **median is exactly `1.0000`, and so is
+its 90th percentile.** Most keys are an unscaled axis. Nothing but a scale track looks like that.
+
+## Track pointer scoreboard
+
+| pointer | tracks | state |
+|---|---:|---|
+| `+0x10` | 333 | ✅ Catmull-Rom spline path |
+| `+0x14` | 548 | ✅ quaternion rotation keys |
+| `+0x18` | 143 | ✅ scale keys |
+| `+0x1c` | 11 | ✗ single pointer, via `FUN_001ae450` |
+| `+0x20` | 290 | ✅ vertex morph stream |
+| `+0x24` | 130 | ✗ three sub-pointers via `FUN_00167720` |
+| `+0x28` | 392 | ✅ appear / disappear frames |
+| `+0x2c` | 302 | ~ 8-byte entries, indexed from rotation keys |
+
+**Five of eight decoded, one shape-only, two unknown** — and rotation, scale, spline path and
+vertex morph together are the whole of what a node can be animated by.
