@@ -606,3 +606,66 @@ Both steps are needed: six of Crazy Ape's 21 materials (`m_grass1..3`, `m_fence`
 than failing.** It cost nothing to detect here only because the wrong texture had *words on it*.
 Scope every asset lookup to the directory the referencing file came from.
 [[feedback_exclusions_hide_the_defect]]
+
+
+## ⭐⭐ `.plb` — the particle effect library, cracked
+
+`/DATA/PARTICLE.WAD` (extent 36078, 301,952 B) holds **`Tp2.plb`** and **100 particle textures** in
+animated sequences (`PA1a0000..0015` is a 16-frame loop, `Pa1b0000..0007` an 8-frame one).
+`FUN_001f6938` loads it with
+`FUN_00220800(0x2f0790, "Data\Particle\Tp2.plb", 400, 0x400)`.
+
+```
++0x00 u32 record count   (105)
++0x04 u32 record size    (320)
+records start at 0x120, each beginning with a NUL-terminated name
+0x120 + 105*320 = 0x8460   (file is 35,704 bytes)
+```
+
+The record size is not inferred: the **names sit exactly 320 bytes apart**, matching the header's
+own second word.
+
+### 101 named effects
+
+```
+  0 NULL            1 Sparks          2 Smoke           3 Firework1       4 ExplodeFirey
+  5 Explode2        6 Firework2       7 Explode3        8 FirePuff        9 Flies
+ 10 ExhaustPuff    11 Fire           12 Splash         13 SmallSmoke     14 Explode
+ 15 BeamUpCar      16 Smoke2         17 Steam          18 IncaGodFlame   19 BeamUp
+ 20 WaterFall      21 BigGreenPuff   22 ApeSnot        23 ApeSmoke       24 LargeExplosion
+ 25 TorchSmoke     26 AirLeak        27 SmallAirLeak   28 Volcano        29 CoasterSparks
+ 30 BigSparks      31 MumboPuff      32 Zzzz           33 Spray          34 DemonBreath
+ 35 Button         36 Notes          37 WaterJet       38 GreenSmokePuff 39 FlySmoke
+ 40 FlyFire        41 BloodSpurt     42 SlimeJet       43 Cannon         44 GoldenTicket
+ 45 DemonFire      46 PinkPop        47 BrewUp         48 PlasmaSphere   49 GoldenTicket2
+ 50 YellowStink    51 Repair         52 GreenPuke      53 Avatar         54 RepairData
+ 55 Flames         56 feathers       57 OtherAvatar    58 Bubbles        59 BuyLand
+ 60 FW1explosion   61 FireworkLaser  62 LaserFWexplode 63 LaserRing      64 LaserLaunch
+ 65 GocartFireballs 66 BigSteamJet   67 GoldSparkles   68 SmallExplosion 69 GreenFumes
+ 70 SteamJet       71 Engine         72 QuickSteamJet  73 MudJet         74 SideShowWin
+ 75 Destroy1       76 Destroy2       77 Destroy3       78 Destroy4       79 Create1
+ 80 Create2        81 Create3        82 Create4        83 Twinkle        84 Twinkle2
+ 85 TwinkleSm      86 Twinkle2Sm     87 Key            88 Key2           89 Upgrade
+ 90 MessageTag1    91 EndOfMessage   92 BigSmokePuff   93 SmokeTrailR    94 SmokeTrailB
+ 95 SmokeTrailW    96 SmallSplash    97 KeySparkle     98 KeyPuff        99 CongratSparkle
+100 Test2D
+```
+
+⭐ The catalogue corroborates the `+0x24` carrier list independently: `ApeSnot`/`ApeSmoke` for Crazy
+Ape, `IncaGodFlame` for Inca God, `MumboPuff` for Mumbo, `ExhaustPuff`/`GocartFireballs` for the
+go-karts, `WaterFall`/`Splash`/`WaterJet` for the water ride, `Volcano`/`Flames`/`SteamJet` for the
+volcano, and `CoasterSparks` for the coasters — the same rides that carry the pointer.
+
+⚠ **Record fields are not decoded.** From about `+0x20` they are integers, not floats, and at least
+some are **16.16 fixed point** (`65536` appears as a value, `0xffffffff` as a sentinel). Naming them
+needs the particle system's own parser, which is not located.
+
+## ⚠ Still missing: the link from `+0x24` to an effect index
+
+The obvious candidate fails. `array1`'s entries are `(2k, 2)` and **that second field is a constant
+`2` on every ride tested** — Fountain, LavSpurt, Volcano and GoKarts all give `2`. An effect index
+would differ between a fountain and a volcano; a pair-count would not. So it is the count of
+`array2` entries for that item, not an effect id.
+
+Nothing yet read connects a `.aps` field to a `.plb` index. The library is cracked; the wiring is
+not.
