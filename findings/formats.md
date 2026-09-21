@@ -1911,3 +1911,32 @@ two rides disagreed.
 cannot show absolute scale. It only surfaced once rides had to stand on a shared grid and one
 filled its plot while another filled a tenth of it. The fix restores the bind's basis lengths after
 orienting.
+
+
+### ⭐ Root scale is a fleet-wide convention — and there are FOUR of them
+
+Every `.mps` on the disc, by the basis length of its root node (the one whose parent is not itself
+a node). 496 files, 496 roots:
+
+| roots | scale | exactly | what |
+|---|---|---|---|
+| **464** | 0.100000 | 1/10 | rides, props, scenery |
+| **24** | ~2.5e-5 | *varies* | **characters** — roots named `Bip01`, `pickup1`, `rotation box` |
+| **7** | 0.003906 | **1/256** | the sideshow minigames — `sgpuzzle`, `sgshy`, `sgrace` |
+| **1** | 0.020000 | **1/50** | `Generic/Advisor/advisor.mps` |
+
+⚠ Characters are **not** a constant the way the others are: `FantasyKid` is 2.095e-5, `Boy1a`
+2.596e-5, `Dino` 3.077e-5, `Franky` 4.486e-5. Each was authored at its own size, so there is no
+"character scale" to hard-code either.
+
+⭐ `Bip01` is the 3ds Max biped root, which is why the whole skinned set sits three orders of
+magnitude below the props: a biped is authored at real-world scale and shrunk to fit.
+
+⚠⚠ **The span is 0.02 to 2e-5 — a factor of a thousand.** Anything that assumes a single root
+convention is not slightly wrong; stand a guest next to a ride under one constant and the guest is
+invisible rather than misplaced. The only safe rule is the one the fix above implements: **restore
+whatever the bind carried, never substitute a number.**
+
+⚠ tinyclaw's histogram printed those 24 character roots as `0.000` and nearly reported degenerate
+matrices; at full precision they are a different convention rather than a broken one. A rounded
+histogram is a lossy instrument, which is the day's shape one more time.
