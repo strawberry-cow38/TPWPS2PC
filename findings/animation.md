@@ -735,3 +735,41 @@ decompiled so far is it. Recorded at the strength it has.
 
 ⭐ This also retro-answers the stray shards and crate from the static renders days ago. They were
 never stray geometry and never a format bug: **I was drawing parts the game had not turned on.**
+
+
+## ⚠⚠ SCOPE CHECK: "`.aps` is solved" was too strong — the morph stream is 24% of tracks
+
+Counted across all 89 files, 1,229 48-byte tracks, by which of the track's **eight** pointers is
+non-null:
+
+| pointer | tracks | status |
+|---|---:|---|
+| `+0x14` | **548** | **unexplored — the most-used field in the format** |
+| `+0x28` | 392 | appear frame ✅ |
+| `+0x10` | 333 | unexplored; its object has two sub-pointers (`+0x08`, `+0x0C`) via `FUN_00168728` |
+| `+0x2c` | 302 | unexplored; **no relocator dispatches into it** |
+| `+0x20` | 290 | the vertex morph stream ✅ |
+| `+0x18` | 143 | unexplored |
+| `+0x24` | 130 | unexplored; three sub-pointers via `FUN_00167720` |
+| `+0x1c` | 11 | unexplored; single pointer via `FUN_001675d8` |
+
+⭐ **The vertex morph stream covers 290 of 1,229 tracks — 24%.** Crazy Ape happens to be a morph
+ride. Three quarters of JUNGLE's tracks animate through a mechanism this file has not opened, and
+the most common pointer of all is one nothing is known about.
+
+**What is actually solved:** the container, the addressing, the model link, and the one animation
+type Crazy Ape uses. That is a real result and it is not "the format".
+
+### Remaining, smallest first
+
+- the **second half** of the 8-byte `+0x28` objects — presumably a disappear frame, untested
+- stream header flag **bit 0x02** (seen as flags `3` and `0x0b`), unaccounted for
+- record `small` array at `+0x14`: used by 37 of 279 records, unread
+- the **20-byte skeletal path**: decoded from the parser and interpolators, **exercised by zero
+  files in JUNGLE.WAD**. Read, not proven. Guests and staff are likely in `DATA.WAD`, unexamined
+- `FUN_001a7e18`, the alternate player selected by track flag `0x40000` — not decompiled
+- the instruction that READS `+0x28` — still not located, so the appear frame stays evidence
+- M3D2: mesh `+0x64`, `+0x68`, and helper entries past the shared header
+
+⚠ Recorded because the previous sections read as a finished format. They are not.
+[[feedback_flag_scope_gaps_loudly]]
