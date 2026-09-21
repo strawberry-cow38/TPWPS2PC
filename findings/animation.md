@@ -188,3 +188,35 @@ So the eight bytes ending exactly on 45 are **suggestive and unexplained**, the 
 **unassigned**, and the field offsets above are **one file read by eye, not a layout**. Written down
 at that strength deliberately: the same "read one example, generalise, tune until it passes" loop has
 already cost this format three wrong structural claims today.
+
+
+## The track block header — established across 94 blocks
+
+Classifying every word of every track block ≥64 bytes (is it an in-block offset? a plausible float?
+a small int? zero?) rather than reading one file by eye:
+
+```
+track block:
+  +0x00  u32              packed u16 pair
+  +0x04  u32              packed u16 pair
+  +0x08  u32  -> stream A   ALWAYS block+0x2C          94/94
+  +0x0C  f32 x3           position magnitude (float in 67-82% of blocks)
+  +0x18  f32 x3           float in 100% of blocks
+  +0x24  u32  -> stream B   in-block offset            94/94
+  +0x28  u32  -> stream C   in-block offset            94/94
+  +0x2C  stream A, itself a sub-header:
+           +0x00 u32 count   +0x04 u32 -> sub-stream   +0x08 u32 flag
+```
+
+Every check is 94 of 94: `+0x08`, `+0x24` and `+0x28` are in-block offsets in every block; `+0x18`,
+`+0x1C` and `+0x20` are plausible floats in every block; stream A sits at `+0x2C` in every block;
+and the offsets always order **A < A's sub-stream < B < C**, ascending and inside the block.
+
+⚠ **This corrects the reading two sections above.** What looked like a fourth header offset at
+`+0x30` is **stream A's own second word** — `+0x30` only reads as an offset because A begins at
+`+0x2C`. The header holds **three** pointers, not four, and "the byte run at +0x30" from the
+by-eye pass was A's sub-stream, not a header field.
+
+**Still not decoded**: what any of the four streams contains, and what the six floats are. The
+suggestive keyframe run (`0, 34, 37, 39, 40, 41, 42, 45`, ending exactly on the frame count) lives in
+A's sub-stream and remains unexplained — the count in A's first word disagrees with it.
