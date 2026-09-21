@@ -1,4 +1,5 @@
 using TPW.PS2.Data;
+using TPW.PS2.Launcher;
 
 // A self-test that runs the readers against a real disc and reports numbers that can FAIL.
 // Every figure it prints was validated in Python first; this proves the C# port agrees.
@@ -62,4 +63,18 @@ foreach (var e in wad.Entries.Where(x => x.Path.EndsWith(".aps", StringCompariso
 }
 Console.WriteLine($"animation: {apsOk}/{aps} parsed; channels -- rotation {rot}, scale {scale}, " +
                   $"spline {spline}, morph {morph}");
+
+// The launcher's own rules, exercised against the same disc. These decide what the user sees
+// before anything renders, so a wrong answer here is the first thing they meet.
+Console.WriteLine();
+var real = DiscLocator.Identify(args[0]);
+Console.WriteLine($"locator, the real disc      : {real.Status} -- {real.Message}");
+var dir = DiscLocator.Identify(Path.GetDirectoryName(args[0]));
+Console.WriteLine($"locator, its folder         : {dir.Status} -- {dir.Message}");
+var missing = DiscLocator.Identify(@"Z:\nope\nothing.bin");
+Console.WriteLine($"locator, a path that is not : {missing.Status} -- {missing.Message}");
+var notdisc = DiscLocator.Identify(System.Reflection.Assembly.GetEntryAssembly().Location);
+Console.WriteLine($"locator, a file that is not : {notdisc.Status} -- {notdisc.Message}");
+var g = GodotLocator.Find(console: true);
+Console.WriteLine($"godot                       : found={g.Found} satisfied={g.Satisfied} {g.Path}");
 return 0;

@@ -8,5 +8,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\core\TPW.PS2.Data\TPW.PS2.Data.csproj" />
+    <ProjectReference Include="..\..\core\TPW.PS2.Launcher\TPW.PS2.Launcher.csproj" />
   </ItemGroup>
 </Project>

@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>TPW.PS2.Launcher</AssemblyName>
+    <!-- The DECISIONS live here so a test can reach them without opening a window. -->
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\TPW.PS2.Data\TPW.PS2.Data.csproj" />
+  </ItemGroup>
+</Project>

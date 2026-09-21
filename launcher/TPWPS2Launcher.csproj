@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>TPWPS2Launcher</AssemblyName>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- Ships as ONE exe. A plain PublishSingleFile leaves the native libs (libSkiaSharp,
+         libHarfBuzzSharp, av_libglesv2) loose BESIDE it, so a standalone exe has no renderer and
+         dies on a SkiaSharp DllNotFoundException. Baked in here rather than passed as a flag, so
+         every publish is genuinely self-contained whether or not whoever runs it remembers. -->
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- The decisions live in core and are tested there. Referenced, not copied: a second copy of
+         the rules inside the window is how a launcher comes to disagree with its own test suite. -->
+    <ProjectReference Include="..\core\TPW.PS2.Launcher\TPW.PS2.Launcher.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.3.18" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.3.18" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.18" />
+  </ItemGroup>
+</Project>
