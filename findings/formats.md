@@ -266,11 +266,19 @@ gk_finish / GK_top       u[0.17, 0.83]  v[0.17, 0.83]   centred cap — a pole t
 You do not get "narrow strip that tiles vertically" on a pole by chance. Two rival scalings
 (texel ÷16÷size, with and without a V flip) were rendered and both were visibly worse.
 
-⚠ **BUT MASTER, WHO CAN SEE THE REAL GAME, SAYS THE MAPPING IS STILL WRONG.** Unresolved: the V
-direction, or the vertex↔UV pairing within a strip. An attempt to settle V on the flag mesh failed
-because that mesh is edge-on in a flat projection — the test could not have distinguished the two
-cases, so nothing is concluded from it. Waiting on a reference screenshot rather than rendering more
-variants.
+⭐ **AND THE SIGNS READ.** With the 32-bit loader fixed, `volcano.mps` renders its ride sign as
+**"ErUPtIo…"** and `monkey.mps` renders **"CrAzY"** — the PSX catalogue names those rides *Eruption*
+and *Crazy Ape*. Text is the most sensitive thing a texture mapping can carry: a V flip, an axis
+swap or an offset all make it unreadable. Legible left-to-right ride names are the strongest
+evidence available that the UV mapping is right.
+
+Untextured triangles after the fix: **0 of 953 (monkey), 0 of 797 (gokarts), 0 of 903 (mumbo), 0 of
+919 (volcano)**, with every material resolving (21/21, 20/20, 25/25, 19/19).
+
+⚠ Master's "still wrong" was reported against the *previous* render, where most surfaces were grey
+and only a subset were visible. Whether it is now correct is for someone who can see the real game
+to say — that has not been confirmed, and the reference screenshot is still the thing that settles
+it.
 
 **And it renders.** `tools/render.py` rasterises the decoded triangles with the real textures:
 `monkey.mps` comes out as a gold gorilla on a sand base with stacked wooden crates and grass edging,

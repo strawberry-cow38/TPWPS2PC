@@ -25,15 +25,22 @@ def textures(m):
     return names
 
 def load_tga(buf):
+    """Targa -> (w, h, rows of (r,g,b)), top row first.
+
+    ⚠ 32-BIT IS NOT OPTIONAL HERE. 261 of JUNGLE.WAD's 984 TGAs are 32-bit BGRA, and a loader that
+    tests `bpp != 24` returns None for every one of them -- silently, so the model renders untextured
+    and it looks like a missing file or missing geometry rather than a rejected format. That is
+    exactly what it did look like, for hours."""
     idlen, cmap, kind = buf[0], buf[1], buf[2]
     w, h = struct.unpack_from('<HH', buf, 12)
     bpp, desc = buf[16], buf[17]
     px = buf[18 + idlen:]
-    if bpp != 24 or kind != 2: return None
+    if kind != 2 or bpp not in (24, 32): return None
+    n = bpp // 8
     img = [[(0, 0, 0)] * w for _ in range(h)]
     for y in range(h):
         row = h - 1 - y if not (desc & 0x20) else y
         for x in range(w):
-            o = (y * w + x) * 3
+            o = (y * w + x) * n
             img[row][x] = (px[o+2], px[o+1], px[o])
     return w, h, img
