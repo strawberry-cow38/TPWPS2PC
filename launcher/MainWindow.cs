@@ -353,6 +353,14 @@ public class MainWindow : Window
             if (File.Exists(asm)) File.Delete(asm);
             if (EnsureBuilt()) Log("viewer updated and rebuilt — launch when ready");
         }
+        catch (HttpRequestException e) when (e.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            // ⚠ A 404 from codeload almost always means the repository is PRIVATE, not that the
+            // branch is missing -- GitHub returns 404 rather than 403 for repos you cannot see, so
+            // the status code alone is misleading. Say the likely cause instead of the raw error.
+            Log("404 from GitHub — the repository is private (GitHub returns 404, not 403, for");
+            Log("  repos you cannot see). Make TPWPS2PC public, or update the files by hand.");
+        }
         catch (Exception e) { Log("viewer update failed: " + e.Message); }
     }
 
