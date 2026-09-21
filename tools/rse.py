@@ -1,71 +1,161 @@
-"""`.rse` reader — Theme Park World (PS2) COMPILED ride script.
+"""`.rse` -- RSSE, the compiled form of the `.rss` script sources that ship beside it. Solved
+2026-09-21 against the 270 stems that carry BOTH on the disc, which is a known-answer corpus: the
+opcode table below was not guessed, it was derived by aligning each source's mnemonics with each
+binary's opcode words and requiring every file to agree.
 
-⭐ The disc ships both forms: `.rss` is the un-stripped developer SOURCE (comments, `#include`
-paths into EA's own tree) and `.rse` is the compiled bytecode. Having matched pairs makes this a
-Rosetta Stone -- every opcode below was confirmed by decoding the compiled form beside its own
-source, not by inference.
+    0x00  'RSSE'
+    0x04  u32 0x00010F51      version; identical in all 270
+    0x08  u32 variable count  matches the source's `variable` declarations in 269 of 270
+    0x0C  u32 ?               zero in 211 of 270
+    0x10  u32 50              identical in all 270
+    0x14  u32 ?               zero in 250 of 270
+    0x18  u32 ?               zero in 267 of 270
+    0x1C  u32 ?               zero in 223 of 270
+    0x20  "Pad Pad Pad Pad "  literal ASCII padding, all 270
+    0x30  the code: a flat array of u32 words
 
-    +0x00  "RSSEQ"
-    +0x08  u32, +0x0C u32, +0x10 u32     (16, 20, 50 in Monkey.rse)
-    +0x20  "Pad Pad Pad Pad "            literal filler
-    +0x30  code
+⭐ **Each code word is TAGGED IN ITS TOP BYTE.** That is the whole format:
 
-Code is a stream of **u32 words**. A word with the **high bit set is an OPCODE** (its low 31 bits
-are the opcode number); every other word is an operand of the opcode before it.
+    0x80xxxxxx   opcode          (the table below)
+    0x40xxxxxx   variable index  (into the script's own `variable` list, 0-based)
+    0x20xxxxxx   code address    (a word index from 0x30; the assembler's `.labels`)
+    0x10xxxxxx   string index
+    0x00xxxxxx   immediate constant
 
-Confirmed against `Rides_Monkey_Monkey` (".init" of Crazy Ape), source line against bytecode:
+⚠ **The extension is `.RSE` in UPPERCASE on 710 of the 718 entries, and `.rse` on 8.** Globbing
+case-sensitively finds those 8, which is 1.1% of the set -- and the analysis it produces looks
+entirely coherent, because 8 real files are still 8 real files. Match case-insensitively.
 
-    0x25  NAME       1 operand      NAME "Ape Ride"
-    0x10  TRIGANIM   3 operands     TRIGANIM ANIM_Create 0 0
-    0x2c  WAIT       1 operand      WAIT 1700 / 500 / 750  -> 0x6a4 / 0x1f4 / 0x2ee, all exact
-    0x0d  EVENT      3 operands     EVENT OBJ_SOUND_LOC_RID -1 EVT_APE_THUMP -> (3, 0xffff, 0xdc)
-    0x2e  WAIT4ANIM  0 operands
-    0x06  ENDSLICE   0 operands
+Teeth-check, because 81 of 81 mnemonics mapping 1:1 proves CONSISTENCY, not truth: shuffling the
+mnemonic order within each file and rebuilding the same table leaves **71 of 81 ambiguous and 10 of
+10,606 instruction slots intact**, on three separate seeds. The real alignment holds 10,606 of
+10,606. A mapping that survives its own shuffled control is a mapping.
 
-⭐ The WAIT literals are the proof: three different delays in one script, each appearing in the
-bytecode as itself. And the two THUMP events share id `0xdc` while CRUNCH is `0xdb` -- the same
-where it should be the same and different where it should differ.
-
-⚠ Operand COUNTS beyond these are not yet established; the walker below infers them from the gap to
-the next opcode word, which is right for a linear stream and would be wrong if any opcode can take
-an operand with the high bit set.
+Counts: 718 `.rse` across 8 WADs (FANTASY/FRSE/HALLOW/HRSE/JUNGLE/JRSE/SPACE/SRSE -- each world WAD
+and its source twin), 354 `.rss`, 279 distinct inner paths, 270 carrying both.
 """
 import struct
 
-OPCODES = {0x25: 'NAME', 0x10: 'TRIGANIM', 0x2c: 'WAIT', 0x0d: 'EVENT',
-           0x2e: 'WAIT4ANIM', 0x06: 'ENDSLICE'}
+TAG_OP, TAG_VAR, TAG_ADDR, TAG_STR, TAG_IMM = 0x80, 0x40, 0x20, 0x10, 0x00
 
-MAGIC = b'RSSEQ'
+# mnemonic and the number of instruction slots it was confirmed on. Every one of these was
+# unambiguous: no mnemonic ever aligned with two different opcodes in any file.
+OPCODES = {
+    0x00: ('NOP', 2),
+    0x01: ('CRIT_LOCK', 141),
+    0x02: ('CRIT_UNLOCK', 232),
+    0x03: ('COPY', 1009),
+    0x05: ('SUB', 57),
+    0x06: ('ENDSLICE', 327),
+    0x07: ('GETTIME', 150),
+    0x08: ('ADDOBJ', 517),
+    0x0A: ('KILLOBJ', 223),
+    0x0B: ('FADEOBJ', 133),
+    0x0C: ('SETOBJPARAM', 5),
+    0x0D: ('EVENT', 490),
+    0x0F: ('FLUSHANIM', 13),
+    0x10: ('TRIGANIM', 62),
+    0x11: ('WAITANIM', 552),
+    0x12: ('LOOPANIM', 183),
+    0x13: ('TRIGWAITANIM', 120),
+    0x15: ('TRIGANIMSPEED', 1),
+    0x17: ('TRIGANIM_CH', 72),
+    0x1B: ('GETANIM_CH', 18),
+    0x1C: ('RAND', 31),
+    0x1D: ('JSR', 37),
+    0x1E: ('RETURN', 18),
+    0x1F: ('BRANCH', 644),
+    0x20: ('BRANCH_Z', 645),
+    0x21: ('BRANCH_NZ', 909),
+    0x22: ('BRANCH_NV', 51),
+    0x23: ('BRANCH_PV', 73),
+    0x25: ('NAME', 240),
+    0x26: ('TEST', 1235),
+    0x27: ('CMP', 21),
+    0x2A: ('HUSH', 49),
+    0x2B: ('HOP', 49),
+    0x2C: ('WAIT', 394),
+    0x2E: ('WAIT4ANIM', 148),
+    0x2F: ('ADD', 514),
+    0x31: ('DIV', 3),
+    0x32: ('MOD', 4),
+    0x33: ('TURBO', 14),
+    0x35: ('TOUR', 57),
+    0x36: ('BUMP', 37),
+    0x37: ('COAST', 168),
+    0x38: ('ADDHEAD', 40),
+    0x39: ('DELHEAD', 40),
+    0x3A: ('LIMBO', 19),
+    0x3B: ('UNLIMBO', 19),
+    0x3C: ('FORCEUNLIMBO', 18),
+    0x3D: ('INLIMBO', 4),
+    0x3E: ('LIMBOSPACE', 19),
+    0x3F: ('SPAWNCHILD', 13),
+    0x40: ('SPAWNSOUND', 19),
+    0x41: ('REMOVECHILD', 3),
+    0x42: ('SETVARINCHILD', 3),
+    0x45: ('GETVARINPARENT', 4),
+    0x46: ('BOUNCESETNODE', 1),
+    0x47: ('BOUNCESETBASE', 3),
+    0x48: ('BOUNCE', 3),
+    0x49: ('UNBOUNCE', 3),
+    0x4A: ('FORCEUNBOUNCE', 6),
+    0x4B: ('BOUNCING', 19),
+    0x4C: ('WALKON', 57),
+    0x4D: ('WALKOFF', 62),
+    0x4E: ('WALKGET', 50),
+    0x4F: ('WALKST_FLOAT', 1),
+    0x50: ('WALKFLOATSTAT', 1),
+    0x51: ('WALKFLOATSTOP', 1),
+    0x56: ('STARTSCREAM', 48),
+    0x57: ('STOPSCREAM', 96),
+    0x58: ('SINGLESCREAM', 53),
+    0x59: ('SCREAMLEVEL', 90),
+    0x5A: ('FINDSCRIPTRAND', 1),
+    0x5C: ('SETREMOTEVAR', 2),
+    0x5D: ('REPAIREFFECT', 142),
+    0x5F: ('SETTIMER', 62),
+    0x60: ('GETTIMER', 32),
+    0x64: ('HOUR', 1),
+    0x65: ('MIN', 1),
+    0x66: ('SEC', 1),
+    0x67: ('SETREVERB', 18),
+    0x68: ('DIPMUSIC', 2),
+    0x69: ('SPARK', 1),
+}
 
+# 25 values inside 0x00..0x69 are never used by any script on the disc:
+UNSEEN = (0x04, 0x09, 0x0E, 0x14, 0x16, 0x18, 0x19, 0x1A, 0x24, 0x28, 0x29, 0x2D, 0x30,
+          0x34, 0x43, 0x44, 0x52, 0x53, 0x54, 0x55, 0x5B, 0x5E, 0x61, 0x62, 0x63)
 
 def header(d):
-    if d[:5] != MAGIC: raise ValueError('not .rse: %r' % d[:5])
-    return dict(w8=struct.unpack_from('<I', d, 8)[0],
-                w12=struct.unpack_from('<I', d, 12)[0],
-                w16=struct.unpack_from('<I', d, 16)[0],
-                pad=d[0x20:0x30])
+    """(version, variableCount, w0C, w10, w14, w18, w1C). Raises if the magic or padding is wrong."""
+    if d[:4] != b'RSSE': raise ValueError('not RSSE: %r' % d[:4])
+    if d[0x20:0x30] != b'Pad Pad Pad Pad ': raise ValueError('padding is not the literal Pad run')
+    return struct.unpack_from('<7I', d, 4)
 
+def words(d):
+    """(tag, value) for every code word, in order."""
+    return [(struct.unpack_from('<I', d, o)[0] >> 24,
+             struct.unpack_from('<I', d, o)[0] & 0xFFFFFF) for o in range(0x30, len(d) - 3, 4)]
 
-def walk(d, start=0x30):
-    """[(address, opcode, name, [operands])] -- operands are the words up to the next opcode."""
-    out, i = [], start
-    cur = None
-    while i + 4 <= len(d):
-        w = struct.unpack_from('<I', d, i)[0]
-        if w & 0x80000000:
-            op = w & 0x7fffffff
-            cur = (i, op, OPCODES.get(op), [])
-            out.append(cur)
-        elif cur is not None:
-            cur[3].append(struct.unpack_from('<i', d, i)[0])
-        i += 4
+def disassemble(d):
+    """Lines of `index  MNEMONIC  operands`. An operand keeps its tag so nothing is silently
+    reinterpreted: v12 is a variable, @34 an address, s2 a string, a bare number an immediate."""
+    out, pending = [], None
+    for i, (tag, val) in enumerate(words(d)):
+        if tag == TAG_OP:
+            if pending: out.append(pending)
+            nm = OPCODES.get(val, ('OP_%02X' % val, 0))[0]
+            pending = '%4d  %-14s' % (i, nm)
+        elif pending is not None:
+            pending += {TAG_VAR: ' v%d', TAG_ADDR: ' @%d', TAG_STR: ' s%d', TAG_IMM: ' %d'}.get(tag, ' ?%d') % val
+    if pending: out.append(pending)
     return out
-
 
 if __name__ == '__main__':
     import sys
     d = open(sys.argv[1], 'rb').read()
-    h = header(d)
-    print('%s: %d bytes, header %s pad=%r' % (sys.argv[1], len(d), (h['w8'], h['w12'], h['w16']), h['pad']))
-    for addr, op, name, ops in walk(d)[:int(sys.argv[2]) if len(sys.argv) > 2 else 40]:
-        print('  %04x  OP 0x%02x %-10s %s' % (addr, op, name or '', ops))
+    v, nvar, *rest = header(d)
+    print('version 0x%08X  %d variables  rest %s' % (v, nvar, rest))
+    for l in disassemble(d): print(l)
