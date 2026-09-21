@@ -5,6 +5,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
+using System.Net.Http;
 using TPW.PS2.Launcher;
 
 /// <summary>Locate the user's disc, then launch the viewer against it.
@@ -36,11 +37,21 @@ public class MainWindow : Window
     DiscResult _disc;
     string _projectDir;
 
+    // The number is the release; bump it when publishing a new launcher exe.
+    const int LauncherVersion = 1;
+    const string Repo = "https://raw.githubusercontent.com/strawberry-cow38/TPWPS2PC/main/launcher/dist";
+    const string VersionUrl = Repo + "/version.txt";
+    const string ExeUrl = Repo + "/TPWPS2Launcher.exe";
+    const string Sha256Url = Repo + "/TPWPS2Launcher.exe.sha256";
+    static readonly HttpClient Http = new() { Timeout = TimeSpan.FromMinutes(5) };
+
     public MainWindow()
     {
         Title = "Theme Park World (PS2) — asset viewer";
         Width = 620; Height = 520; Background = Bg;
 
+        var update = new Button { Content = "Check for launcher update", MinWidth = 190 };
+        update.Click += async (_, _) => await CheckSelfUpdateAsync(manual: true);
         var locate = new Button { Content = "Locate…", MinWidth = 90 };
         locate.Click += async (_, _) => await LocateAsync();
         _launch.Click += (_, _) => Launch();
@@ -94,7 +105,8 @@ public class MainWindow : Window
                         }
                     },
                     new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10,
-                                     Children = { _launch } },
+                                     Children = { _launch, update } },
+                    new TextBlock { Text = $"launcher v{LauncherVersion}", Foreground = TextDim, FontSize = 11 },
                     _log,
                 }
             }
@@ -165,9 +177,45 @@ public class MainWindow : Window
     void UpdateLaunchable() =>
         _launch.IsEnabled = _disc.CanLaunch && _godot.Found && _projectDir != null;
 
+    /// <summary>The viewer's C# assembly, which Godot needs before it can instantiate any script.
+    /// ⚠ Without it Godot reports "Cannot instantiate C# script ... class could not be found",
+    /// which reads as a broken script rather than an unbuilt project.</summary>
+    static string AssemblyPath(string projectDir) =>
+        Path.Combine(projectDir, ".godot", "mono", "temp", "bin", "Debug", "TPWPS2Viewer.dll");
+
+    bool EnsureBuilt()
+    {
+        if (File.Exists(AssemblyPath(_projectDir))) return true;
+        Log("viewer assembly not built yet -- running dotnet build (first run only)");
+        try
+        {
+            var psi = new ProcessStartInfo("dotnet")
+            {
+                WorkingDirectory = _projectDir,
+                UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true,
+            };
+            psi.ArgumentList.Add("build");
+            using var p = Process.Start(psi);
+            var stdout = p.StandardOutput.ReadToEnd();
+            var stderr = p.StandardError.ReadToEnd();
+            p.WaitForExit();
+            if (p.ExitCode != 0 || !File.Exists(AssemblyPath(_projectDir)))
+            {
+                foreach (var line in (stdout + stderr).Split('\n').Where(l => l.Contains("error")).Take(6))
+                    Log("  " + line.Trim());
+                Log("build failed -- is the .NET 8 SDK installed?");
+                return false;
+            }
+            Log("built ok");
+            return true;
+        }
+        catch (Exception e) { Log("could not run dotnet: " + e.Message); return false; }
+    }
+
     void Launch()
     {
         if (_projectDir == null) { Log("no game/project.godot found next to the launcher"); return; }
+        if (!EnsureBuilt()) return;
         RefreshGodot();
         var psi = new ProcessStartInfo(_godot.Path) { UseShellExecute = false };
         psi.ArgumentList.Add("--path");
@@ -181,6 +229,73 @@ public class MainWindow : Window
         Log($"  disc:    {_disc.Path}");
         try { Process.Start(psi); }
         catch (Exception e) { Log("failed: " + e.Message); }
+    }
+
+    /// <summary>Replace this launcher with the published build, via a shim that runs after we exit.
+    ///
+    /// ⚠⚠ A PROCESS CANNOT OVERWRITE ITS OWN RUNNING EXECUTABLE ON WINDOWS -- the file is locked
+    /// while it runs. So the new build is written BESIDE the old one, a tiny batch file is started
+    /// that WAITS for this PID to disappear, swaps the files, relaunches and deletes itself, and
+    /// only then do we close. The shim exists solely to be the thing still alive when the launcher
+    /// is not.</summary>
+    async Task<bool> CheckSelfUpdateAsync(bool manual = false)
+    {
+        // Windows-only, because the shim is a .bat. Say so rather than silently never updating.
+        if (!OperatingSystem.IsWindows())
+        {
+            if (manual) Log("self-update is Windows-only (the swap shim is a .bat)");
+            return false;
+        }
+        string exePath = Environment.ProcessPath;
+        if (string.IsNullOrEmpty(exePath)) return false;
+        try
+        {
+            string raw = await Http.GetStringAsync(VersionUrl);
+            if (!SelfUpdate.ShouldSelfUpdate(LauncherVersion, raw))
+            {
+                if (manual) Log($"launcher is up to date (v{LauncherVersion}; published '{raw.Trim()}')");
+                return false;
+            }
+            Log($"launcher update available: v{LauncherVersion} -> v{raw.Trim()}. Downloading…");
+            byte[] bytes = await Http.GetByteArrayAsync(ExeUrl);
+
+            // ⚠ The published hash, if any. Its ABSENCE must not look like success -- Check()
+            // returns a reason either way and we log it, so a launcher that has stopped verifying
+            // says so out loud.
+            string expected = null;
+            try { expected = (await Http.GetStringAsync(Sha256Url)).Trim().Split(' ')[0]; } catch { }
+
+            var verdict = SelfUpdate.Check(bytes, expected);
+            Log("update check: " + verdict.Reason);
+            if (!verdict.Accept) { Log("update ABORTED — still running the current launcher."); return false; }
+
+            string newExe = exePath + ".new";
+            await File.WriteAllBytesAsync(newExe, bytes);
+
+            int pid = Environment.ProcessId;
+            string bat = Path.Combine(Path.GetTempPath(), "tpwps2_selfupdate.bat");
+            const string q = "\"";
+            // ⚠ WAIT ON THE PID, never just sleep. A fixed delay is a race: too short and the move
+            // fails against a locked file, too long and the user stares at nothing.
+            await File.WriteAllTextAsync(bat, string.Join("\r\n", new[]
+            {
+                "@echo off",
+                ":wait",
+                $"tasklist /FI {q}PID eq {pid}{q} | find {q}{pid}{q} >nul && (ping -n 2 127.0.0.1 >nul & goto wait)",
+                $"move /y {q}{newExe}{q} {q}{exePath}{q} >nul",
+                $"start {q}{q} {q}{exePath}{q}",
+                // ⚠ The shim deletes itself LAST. Leaving it behind means the next update may find
+                // a stale file from a previous version and run that instead.
+                $"del {q}%~f0{q}",
+            }) + "\r\n");
+
+            Process.Start(new ProcessStartInfo("cmd.exe", $"/c {q}{bat}{q}")
+            { UseShellExecute = false, CreateNoWindow = true });
+            Log("restarting into the new launcher…");
+            Dispatcher.UIThread.Post(Close);
+            return true;
+        }
+        catch (Exception e) { if (manual) Log("update check failed: " + e.Message); return false; }
     }
 
     void Log(string line) => Dispatcher.UIThread.Post(() =>
