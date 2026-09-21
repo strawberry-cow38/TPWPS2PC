@@ -363,8 +363,16 @@ void fragment() {
             if (!locals.TryGetValue(off, out var bind)) continue;
             var L = bind;
             if (_rot.TryGetValue(node, out var rk))
-                L = Matrix4x4.CreateFromQuaternion(
-                        SampleRot(rk, now, _anim, _rotTrack.GetValueOrDefault(node, 0))) * L;  // bind first
+            {
+                var q = SampleRot(rk, now, _anim, _rotTrack.GetValueOrDefault(node, 0));
+                // ⭐ THE ROTATION CHANNEL IS ABSOLUTE, NOT A DELTA. Key 0 IS the node's own bind
+                // rotation on 1,745 of 2,185 tracks in one mode and 439 of 565 in the other -- ~80%
+                // either way -- which is what an animator authoring a rest pose as frame 0 produces.
+                // Composing it onto the bind applies the rest orientation TWICE; for the Super Bog's
+                // sign, whose bind is a +90 pitch and whose key 0 is a -90 pitch, the two cancelled
+                // and a sign that should stand up lay flat on the roof.
+                L = Compose ? Matrix4x4.CreateFromQuaternion(q) * L : Replace(L, q);
+            }
             if (_scale.TryGetValue(node, out var sk))
                 L = Renormalise(L, Sample(sk.Select(x => x.Time).ToArray(),
                                           sk.Select(x => x.S).ToArray(), now));
@@ -390,6 +398,24 @@ void fragment() {
             locals[off] = L;
         }
         return _model.WorldTransforms(locals);
+    }
+
+    /// <summary>`TPW_PS2_ROT=compose` restores the old behaviour for an A/B.</summary>
+    static bool Compose =>
+        (OS.GetEnvironment("TPW_PS2_ROT") ?? "").ToLowerInvariant() == "compose";
+
+    /// <summary>Swap the bind matrix's 3x3 for the animated rotation, keeping its scale and
+    /// translation. The basis LENGTHS are carried over so a scaled node stays scaled.</summary>
+    static Matrix4x4 Replace(Matrix4x4 bind, System.Numerics.Quaternion q)
+    {
+        var r = Matrix4x4.CreateFromQuaternion(q);
+        var s = new System.Numerics.Vector3(
+            MathF.Sqrt(bind.M11 * bind.M11 + bind.M12 * bind.M12 + bind.M13 * bind.M13),
+            MathF.Sqrt(bind.M21 * bind.M21 + bind.M22 * bind.M22 + bind.M23 * bind.M23),
+            MathF.Sqrt(bind.M31 * bind.M31 + bind.M32 * bind.M32 + bind.M33 * bind.M33));
+        r = Renormalise(r, s);
+        r.M41 = bind.M41; r.M42 = bind.M42; r.M43 = bind.M43;
+        return r;
     }
 
     static Matrix4x4 Renormalise(Matrix4x4 m, System.Numerics.Vector3 s)

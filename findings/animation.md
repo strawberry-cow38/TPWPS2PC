@@ -1373,3 +1373,51 @@ It reads true on the data: Crazy Ape's build animation is in slot **0 (Create)**
 — a portaloo, which does not build itself — has **nothing in slot 0** and its only animation in slot
 **5 (Main)**, which is exactly what `SupBog.rss` does (`WAITANIM ANIM_Create 0` completes at once,
 then `LOOPANIM ANIM_Main 0`). The viewer names them instead of numbering them.
+
+
+## ⭐⭐⭐ THE ROTATION CHANNEL IS ABSOLUTE — KEY 0 *IS* THE BIND ROTATION (2026-09-21)
+
+The viewer composed the animated quaternion onto the node's bind matrix. It should **replace** the
+bind's 3x3 outright.
+
+**Measured over every rotation track on the disc**, comparing key 0 against the quaternion of the
+node's own bind matrix:
+
+| mode | tracks | key 0 == the bind rotation |
+|---|---|---|
+| `0x10` | 2,185 | **1,745 (79.9%)** |
+| `0x40` | 565 | **439 (77.7%)** |
+| neither | 25 | **20 (80.0%)** |
+
+~80% in every mode, which is what an animator authoring the rest pose as frame 0 produces. Composing
+applies the rest orientation **twice**.
+
+⚠ **And the earlier run of this same test said 0 of 995 — because it read the quaternion at the
+wrong offsets.** A 12-byte key is `u16 time, u16 ease, int16 x, y, z, w`; that run started at `+0x02`
+and took the EASE FIELD as the first component. `0xffff` reads as `-1`, which is why "component 0 is
+always -1 or 0" looked like a fact about the format. A structural claim measured through a
+misaligned window is not a weak result, it is a result about a different thing.
+
+### The Super Bog, decoded by hand
+
+```
+t=0    ease=65535  q=(-23170,      0,      0,  23170)   |q| = 1.0000
+t=20   ease=65535  q=(-18774, -13579, -13578,  18774)
+t=40   ease=65535  q=( -5274, -22562, -22561,   5274)
+t=60   ease=0      q=( 11047, -20366, -20367, -11048)
+t=80   ease=65535  q=( 20048, -11614, -11615, -20049)
+t=100  ease=65535  q=( 23169,   -202,   -202, -23169)
+```
+
+Every key has **x == -w** and **y == z**, which is exactly the form of `Rx(-90) ⊗ Rz(θ)`: a fixed
+-90 pitch composed with a spin about Z. Reading θ out of key 2 gives 153.7 degrees and `sin(76.85)`
+= 0.9737 against a measured 0.9737 — so the keys are **one full turn over 100 frames**, and the
+node's bind is the matching +90 pitch. Composed, the two pitches cancel and the sign lies flat.
+Replaced, the sign stands up and spins.
+
+`TPW_PS2_ROT=compose` restores the old behaviour.
+
+⚠ **Controls that can actually move this time**: Mumbo (a rotating sign) and Crazy Ape are unchanged;
+the Super Bog's sign stands up and the Inca God's headdress pulls into a crown. The previous attempt
+at this bug was justified with an asset that rendered 0 pixels different either way — see the
+revert note above.
