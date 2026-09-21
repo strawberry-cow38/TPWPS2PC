@@ -9,7 +9,8 @@ VARIANT A (version 0) -- banks of named sounds:
        +0x08 char[16] name                   "Crunch.mp2", "smTree1.vag"
        +0x18 u32 tag                          TOP BYTE IS THE CODEC: 0x24 mp2, 0x80 vag, 0x00 empty
        +0x1C u32 0
-       +0x20 u32 ?                            large, rises with length
+       +0x20 u32 length       ⭐ MILLISECONDS x 44.1 x channels -- cross-checked against every
+                              *SFX.MAP entry (939/939); see tools/sfxmap.py
        +0x24 u32 0
 
 VARIANT B (version 12345 = 0x3039) -- the same headers, moved out of the data:

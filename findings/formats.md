@@ -986,3 +986,52 @@ Reader: `tools/sdt.py` — `offsets(d)`, `sounds(d)`, `frame_header(d, off)`.
 ⚠ **Still open**: the `.MAP` files beside each bank. `*BANK.MAP` is ~55 bytes, a Microsoft GUID
 and a path string (`sound\Bumper`); `*SFX.MAP` is a table of u32s, a few hundred bytes to a few
 kilobytes. Together they are the ID-to-sound index — what the game asks for when it wants a noise.
+
+
+## ⭐⭐ `*SFX.MAP` / `*BANK.MAP` — the sound index, READ FROM THE LOADER (2026-09-21)
+
+The `.MAP` files beside each bank are a **three-level tree with 24-, 20- and 42-byte records**, so
+nothing in them is 4-byte aligned and reading them as a u32 array produces convincing nonsense —
+which is exactly what a first pass produced. The layout below came out of the game's own loader
+(`FUN_00249d38` → `FUN_0024b770` → `FUN_0024b810` → `FUN_0024b8d0` → `FUN_0024a030`), not out of
+the bytes.
+
+```
+0x00  16-byte type GUID      00 2c61e9d0 31d211b4 0900b0c9 93f203   SFX.MAP
+                             01 2c61e9d0 31d211b4 0900a0c9 93f203   BANK.MAP
+      ⚠ the loader compares all four words and returns -1 on a mismatch; both constants sit in
+      SLES_500.32 at 0x371360 and 0x371370, and finding THEM is what found the parser
+0x10  u32 ?          0x14  u32 ?          0x18  u32 count
+0x1C  the tree, DEPTH FIRST -- each level's whole array, then each element's children in turn
+
+L1, 24 B:  +0x00 u32 childCount   +0x04 ptr->L2   +0x08 u16 flags (bit 2 cleared on load)
+L2, 20 B:  +0x04 u32 childCount   +0x08 ptr->L3   +0x10 u16 flags
+L3, 42 B:  +0x00 u16 n16          +0x04 u32 n8    +0x08 ptr->16B    +0x26 ptr->8B
+  16-byte entry:  +0x00 u32 SOUND INDEX, 1-BASED   +0x04 0xFFFF   +0x08 u32 length in ms
+                  +0x0C u16 bank, 1-based
+  8-byte entry:   first u32 is a ONE-BASED index into this L2's own L3 array
+                  (`*p = base + (*p-1)*0x2a`) -- the L3 records reference each other
+```
+
+### Verified
+
+| test | result |
+|---|---|
+| `.MAP` files whose tree consumes the file **exactly** | **42 / 42** |
+| sound indices inside their bank's range | **939 / 939** |
+| `ms == round(SDT[+0x20] / (44.1 × channels))` | **939 / 939** |
+
+The advisor's index is the cleanest single proof: `SPCHSFX.MAP` yields **170 entries whose sound
+index runs 1..170, strictly increasing, with 170 distinct values**, against a `SPCHHD.SDT` of
+**exactly 170 sounds**.
+
+⭐ **And this closes the `.SDT` header's last unknown.** `+0x20` was "large, rises with length";
+it is `milliseconds × 44.1 × channels`. Two files written by different tools agree to the
+millisecond on all 939 entries, and the value also matches the duration obtained by walking the
+MPEG frames (Level1-a: 41,730 ms declared against 41,848 ms decoded — the 0.28% is the encoder's
+padding frames).
+
+`*BANK.MAP` is a header and one length-prefixed path (`sound\Bumper`, `spch\spch`), the folder the
+bank was built from.
+
+Reader: `tools/sfxmap.py` — `parse(d)` returns the tree and the byte count it consumed.
