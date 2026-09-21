@@ -86,7 +86,7 @@ public sealed class AnimatedModel
     }
 
     static BaseMaterial3D.CullModeEnum CullFromEnv() =>
-        (OS.GetEnvironment("TPW_PS2_CULL") ?? "back").ToLowerInvariant() switch
+        (OS.GetEnvironment("TPW_PS2_CULL") ?? "off").ToLowerInvariant() switch
         {
             "front" => BaseMaterial3D.CullModeEnum.Front,
             "off" or "none" or "disabled" => BaseMaterial3D.CullModeEnum.Disabled,
@@ -126,7 +126,12 @@ public sealed class AnimatedModel
                 // discarded below 16; this matches it.
                 Transparency = BaseMaterial3D.TransparencyEnum.AlphaScissor,
                 AlphaScissorThreshold = 16f / 255f,
-                // ⭐ NO CULLING BY DEFAULT -- the owner's call, and it is safe here because the
+                // ⭐ NO CULLING BY DEFAULT. The owner checked it live, from every angle, once the
+                // alpha threshold below was fixed -- and it reads correctly. My argument against it
+                // came from ONE static frame at ONE camera angle, which made the far side of the
+                // model look like it was winning; orbiting shows it is not. An interactive look is
+                // a better instrument than a single render, and it outvoted me.
+                // It is also safe because the
                 // normals do NOT come from the winding: they are the model's own third per-vertex
                 // stream (3 x int8 over 127), set explicitly below. The usual objection to
                 // disabling culling is that a generator derives normals from triangle order and
