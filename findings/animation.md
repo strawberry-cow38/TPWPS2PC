@@ -644,9 +644,8 @@ at frame 100 *and the crate smashes*. The shards are its debris.
 
 That answers a question left open days ago, when the static render showed stray shards and master
 said *"shards and crate arent meant to be there"*. They are not stray geometry and they are not a
-format bug — they are **debris that should not exist yet**. The game has a bit for exactly this:
-a track flag `0x1000` clears mesh bit `0x800000` (`FUN_001accc0`), which `FUN_001a6d68` sets back
-depending on its mode argument.
+format bug — they are **debris that should not exist yet**. ⚠ **I first wrote that the game hides them with the track
+flag `0x1000` / mesh bit `0x800000`. That is wrong** -- see the retraction below.
 
 ⚠ **Not implemented here.** The renderer draws every part for the whole clip, so 36 shards are on
 screen from frame 0. Stated rather than filtered: a render that quietly drops the parts that do not
@@ -657,3 +656,44 @@ fit is the thing this repo keeps catching itself doing.
 (`+0x10`, `+0x14`, `+0x18`, `+0x1C`, `+0x24`, `+0x28`, `+0x2C` — `+0x28` is set on every monkey
 track and is only ~4 bytes); the 20-byte skeletal path has no file in JUNGLE.WAD to test against,
 so it is read but unexercised.
+
+
+## ⚠ RETRACTION: `0x800000` is not the show/hide bit, and nothing in the file hides the shards
+
+I claimed the shards are hidden by track flag `0x1000` clearing mesh bit `0x800000`. Reading the
+**caller** kills it. `FUN_001acfc0` runs, every frame:
+
+```c
+FUN_001a8d08(record, model);                     // evaluator
+if (track flags & 0x41000)
+    for each track:  if (flags & 0x1000)  mesh[0] &= ~0x800000;    // CLEARED here
+FUN_001a8da8(...);                               // sampler -> FUN_001a6d68 ... |= 0x800000  SET here
+```
+
+Cleared and set again on every frame of normal playback. That is **playback state, not an artistic
+show/hide.** `0x800000` also has 28 load sites across the binary, at least 12 of them tests, and
+`FUN_001aa460` uses it as one bit of a `0xf40000` clear-mask on a render path — a general-purpose
+flag, not a per-mesh visible bit.
+
+### What the data actually says
+
+The shards are at **full size and parked in mid-air** for the whole first half of section 0:
+
+| frame | m_shards world Y | m_crate size |
+|---|---|---|
+| 0 – 99 | **3.80 .. 5.93** | 0.24 x **0.03** x 0.24 |
+| 60 | 3.76 .. 5.91 | 1.40 x 1.57 x 1.41 |
+| 105 | 4.05 .. 6.32 | 0.24 x **0.03** x 0.24 |
+| 160 | **-0.46 .. 2.27** | 0.24 x 0.03 x 0.24 |
+
+The ape reaches Y 4.17 at full height, so the shards sit **above his head** until frame ~105, then
+fall onto the ride.
+
+⭐ **The crate hides itself geometrically** — squashed to a 0.03-unit-thin speck before it exists
+and again after it smashes, the same trick the ape uses to hide inside it. **That is the artists'
+convention for "not here yet", and the shards do not follow it.**
+
+So: the shards are plainly debris, they are plainly not meant to be on screen at frame 0, and
+**neither the animation data nor the flag I named hides them.** Either the in-game camera never
+frames that high, or there is a draw gate still unfound. Recorded as unresolved rather than
+papered over. [[feedback_validate_before_claiming]]
