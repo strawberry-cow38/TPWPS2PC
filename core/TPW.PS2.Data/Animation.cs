@@ -278,10 +278,30 @@ public sealed class Animation
         public uint Flags;
         public List<Vector3> Points;
         public int[] Times;
-        /// <summary>Flag 0x02: each key covers three control points rather than one.</summary>
-        public bool Tripled => (Flags & 2) != 0;
+        /// <summary>Flag 0x02: cubic BEZIER, each key covering three control points.</summary>
+        public bool Bezier => (Flags & 2) != 0;
+        /// <summary>Flag 0x08: straight LINES between the control points.</summary>
+        public bool Linear => (Flags & 8) != 0;
 
-        /// <summary>The point on the curve at a frame.</summary>
+        /// <summary>⭐⭐ THREE CURVE TYPES, NOT ONE, and the spline's own flags pick between them --
+        /// read out of the evaluator's dispatch at <c>FUN_001a7f48</c>:
+        ///
+        /// <code>
+        /// if (spline->flags &amp; 2)      FUN_001ad9a8   // cubic Bezier, index i*3 + 1
+        /// else if (spline->flags &amp; 8) FUN_001adda0   // straight LINE, idx -> idx+1
+        /// else                           FUN_001ade90   // Catmull-Rom
+        /// </code>
+        ///
+        /// ⚠⚠ Every path in the game was being sampled as Catmull-Rom. On the disc that is **855
+        /// Bezier paths and 613 linear ones, and 0 that actually want Catmull-Rom** -- so the curve
+        /// was wrong on all 1,468 of them, rounding off corners that should be square and bending
+        /// segments that should be straight.
+        ///
+        /// `FUN_001ad9a8` is the textbook Bernstein cubic, verbatim:
+        /// <c>(-p0+3p1-3p2+p3)t^3 + (3p0-6p1+3p2)t^2 + (-3p0+3p1)t + p0</c>, with every index taken
+        /// modulo the point count so the curve wraps -- and the caller's <c>i*3 + 1</c> makes
+        /// segment j use points 3j..3j+3, the classic chained-Bezier layout that
+        /// <c>points == (keys-1)*3 + 1</c> describes exactly.</summary>
         public Vector3 At(float frame)
         {
             int n = Times.Length;
@@ -291,11 +311,14 @@ public sealed class Animation
             int j = 0;
             while (j < n - 2 && f >= Times[j + 1]) j++;
             int span = Times[j + 1] - Times[j];
-            float u = span > 0 ? (f - Times[j]) / span : 0f;
-            int step = Tripled ? 3 : 1;
-            float sPos = j * step + u * step;
-            int i = (int)MathF.Floor(sPos);
-            return CatmullRom(Points, i, sPos - i);
+            float u = span > 0 ? Math.Clamp((f - Times[j]) / span, 0f, 1f) : 0f;
+            if (Bezier) return CubicBezier(Points, j * 3 + 1, u);
+            if (Linear)
+            {
+                int c = Points.Count;
+                return Vector3.Lerp(Points[((j % c) + c) % c], Points[(((j + 1) % c) + c) % c], u);
+            }
+            return CatmullRom(Points, j, u);
         }
 
         /// <summary>The direction of travel at a frame, for the orient-along-path channel.</summary>
@@ -321,6 +344,18 @@ public sealed class Animation
             p.Points.Add(new Vector3(F32(pts + k * 12), F32(pts + k * 12 + 4), F32(pts + k * 12 + 8)));
         for (int k = 0; k < nkeys; k++) p.Times[k] = (int)U32(keys + k * 4);
         return p;
+    }
+
+    /// <summary>The Bernstein cubic the game uses, with the same wrap. <c>i</c> is the caller's
+    /// already-scaled index, so the control points are <c>i-1, i, i+1, i+2</c>.</summary>
+    public static Vector3 CubicBezier(IReadOnlyList<Vector3> p, int i, float t)
+    {
+        int n = p.Count;
+        Vector3 At(int k) => p[((k % n) + n) % n];
+        Vector3 p0 = At(i - 1), p1 = At(i), p2 = At(i + 1), p3 = At(i + 2);
+        return (-p0 + 3 * p1 - 3 * p2 + p3) * t * t * t
+             + (3 * p0 - 6 * p1 + 3 * p2) * t * t
+             + (-3 * p0 + 3 * p1) * t + p0;
     }
 
     public static Vector3 CatmullRom(IReadOnlyList<Vector3> p, int i, float t)

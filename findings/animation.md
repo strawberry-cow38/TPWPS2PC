@@ -1446,3 +1446,45 @@ that has a `+0x10` spline, and no `0x400` track has one. It has never run.
 whose contents make no sense at a stride of 8, 12 or 16 (key times like 63,347 that do not ascend),
 so either the bound is wrong or it is not a key array at all. The track's three count fields
 (`+0x08`, `+0x0A`, `+0x0C`) are all zero on these tracks, so the count is somewhere else.
+
+
+## ⭐⭐⭐ THERE ARE THREE PATH CURVES, NOT ONE — AND NONE OF THEM IS CATMULL-ROM (2026-09-21)
+
+The evaluator's dispatch, `FUN_001a7f48`:
+
+```c
+if      (spline->flags & 2)  FUN_001ad9a8(frac, spline, 0, i*3 + 1, &out);   // cubic BEZIER
+else if (spline->flags & 8)  FUN_001adda0(frac, spline, 0, i, i+1, &out);    // straight LINE
+else                         FUN_001ade90(frac, spline, 0, i, &out);         // Catmull-Rom
+```
+
+`FUN_001ad9a8` is the textbook Bernstein cubic, verbatim —
+`(-p0+3p1-3p2+p3)t³ + (3p0-6p1+3p2)t² + (-3p0+3p1)t + p0` — with every index taken modulo the point
+count, and the caller's `i*3 + 1` makes segment *j* use points `3j..3j+3`. That is the classic
+chained-Bézier layout, and it is exactly what `points == (keys-1)*3 + 1` describes.
+
+`FUN_001adda0` is a plain lerp between two adjacent control points.
+
+⚠⚠ **On the disc: 855 Bézier paths, 613 linear, and ZERO that want Catmull-Rom** — and the viewer
+was sampling all 1,468 as Catmull-Rom. Corners that should be square were rounded and segments that
+should be straight were bent. The `.rss`-era comment in this file calling `FUN_001ade90` "a textbook
+Catmull-Rom, verbatim" was right about that function and wrong about which paths reach it.
+
+## ⚠⚠ THE `+0x1c` PATH IS NOT IN THE FILE AT ALL
+
+Branch B of the same dispatch:
+
+```c
+p = (uint*)(*(int*)(player + 0x78) + *(u16*)(node + 0x52) * 0x10);
+FUN_001ae450(**(void**)(track + 0x1c), now, &frac, *p & 1);
+```
+
+`track+0x1c` is a pointer **to a pointer**, and the curve itself comes out of a runtime table on the
+player object, indexed by a u16 stored on the NODE. These are the paths the **player lays down** —
+which is why every carrier is a vehicle: `haunt`, `seaplane`, `bus1`, `bus2`, `bellt`, `ferry`,
+`gokarts`. A model viewer has no park, so it has nothing to put them on. **Not a decode gap: there
+is nothing in the file to decode.**
+
+Same tail for both branches, and it confirms two things the viewer now does:
+`if ((state & 4) == 0) node.pos = sampled; else node.pos += sampled;` — the path REPLACES the node's
+translation by default — and the orient-along-path channel samples the curve again at `frac + 0.1`.
