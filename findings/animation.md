@@ -217,6 +217,14 @@ and the offsets always order **A < A's sub-stream < B < C**, ascending and insid
 `+0x2C`. The header holds **three** pointers, not four, and "the byte run at +0x30" from the
 by-eye pass was A's sub-stream, not a header field.
 
-**Still not decoded**: what any of the four streams contains, and what the six floats are. The
-suggestive keyframe run (`0, 34, 37, 39, 40, 41, 42, 45`, ending exactly on the frame count) lives in
-A's sub-stream and remains unexplained — the count in A's first word disagrees with it.
+⚠ **AND A's FIRST WORD IS NOT A COUNT.** Measuring it across all 94 blocks, most are values like
+196,616 / 1,507,330 / 1,703,942 / 1,835,015 — which are packed u16 pairs (`0x0003_0008`,
+`0x0017_0002`, `0x001A_0006`, `0x001C_0007`), not counts. Only a handful are the small numbers (7,
+5, 2) that made "count" look right on the file I happened to open. Testing "stream length equals
+A.count × some stride" scores **at most 2 of 94** for any stride, which is noise.
+
+So the word is two u16s and calling it a count was, again, one example generalised.
+
+**Still not decoded**: what any stream contains, what the six floats are, and what A's two u16s mean.
+The keyframe run (`0, 34, 37, 39, 40, 41, 42, 45`, ending exactly on the frame count) is real and
+lives in A's sub-stream, and nothing yet explains its length.
