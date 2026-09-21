@@ -323,8 +323,11 @@ public partial class Viewer : Node3D
         st.File = path;
         _video.Stream = st;
         var len = new FileInfo(path).Length;
+        // ⚠ This line used to say "silent: the EA audio codec is unidentified". It is identified --
+        // adpcm_ea, 48 kHz stereo -- and the movies carry sound. A stale note that ACCUSES the data
+        // of a gap that has been closed is worse than no note at all.
         _info.Text = Path.GetFileName(path) + "\n" + (len / 1024 / 1024.0).ToString("0.0") + " MB\n"
-                   + "Ogg Theora, converted from MPEG-2\n⚠ silent: the EA audio codec is unidentified";
+                   + "Ogg Theora + Vorbis\nconverted from MPEG-2 + EA ADPCM";
     }
 
     /// <summary>Open one `.SDT` and list what is in it.</summary>
