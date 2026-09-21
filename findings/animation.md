@@ -826,3 +826,30 @@ t=50   q = ( 0.0000, -0.7071, 0.0000, 0.7071)   exactly 90 degrees about Y
 
 **A gate swinging open a quarter turn over 50 frames** (1.67 s at 30 fps). Two keys, nothing else.
 That is the semantic check no wrong layout survives.
+
+
+### ⭐ The key count, without the global — arrays are contiguous
+
+`+0x14` carries no count and the sampler takes one from a global I have not read. It is not needed:
+**the arrays are laid out back to back, so the next pointer in the file is where this one ends**
+(tinyclaw's suggestion).
+
+⚠ It has to be the next pointer of **any** kind. A `+0x14` array can be followed by a vertex stream
+or an appear-frame object, so bounding only against other `+0x14` pointers would swallow them.
+`tools/aps.py` collects every pointer in the file — section, record, all eight per track, and the
+stream's internals — and bisects.
+
+| check, over all 548 arrays | guessed end | contiguity end |
+|---|---:|---:|
+| span is a whole number of 12-byte keys | — | **548 / 548** |
+| every quaternion in the span is unit | 94.3% | **548 / 548** |
+| times strictly ascending | 80.1% | **548 / 548** |
+| times start at 0 | 97.8% | 97.8% |
+
+Three independent checks go to 100%. The gate that read as three keys — the third being garbage
+past the end — is now exactly two: identity, then 90° about Y.
+
+⭐ Note what did *not* move: **97.8% both times.** The twelve arrays that do not start at frame 0
+are real data, not an artefact of the guessed end — a genuine open question rather than noise I
+created. An instrument fix that changes every number equally is suspicious; this one changed three
+and left the fourth alone, which is what a real fix looks like.

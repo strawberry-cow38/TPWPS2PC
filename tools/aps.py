@@ -144,6 +144,48 @@ def vertex_map(m, mesh_offset, nverts):
     return None if any(v is None for v in idx) else idx
 
 
+def _all_pointers(d):
+    """Every address anything in the file points at, sorted. Arrays are laid out contiguously, so
+    the next pointer above an array's start is where that array ENDS -- which is how you get a key
+    count for the arrays that do not carry one (tinyclaw's trick, 2026-09-21).
+
+    ⚠ It must be EVERY pointer, not just the ones of the kind you are bounding: a `+0x14` array can
+    be followed by a vertex stream or an appear-frame object, and bounding only against other
+    `+0x14` pointers would swallow them."""
+    P = set()
+    for sec in sections(d):
+        if not sec[0]: continue
+        P.add(sec[1])
+        for r in records(d, sec):
+            rec = record(d, r)
+            for k in ('tracks', 'small', 'index'):
+                if rec[k]: P.add(rec[k])
+            if rec['flags'] & 0x20: continue
+            for i in range(rec['ntracks']):
+                t = rec['tracks'] + i*0x30
+                for k in range(8):
+                    q = _u32(d, t + 0x10 + 4*k)
+                    if q: P.add(q)
+                h = _u32(d, t + 0x20)
+                if not h: continue
+                for o in (8, 0x24, 0x28):
+                    q = _u32(d, h + o)
+                    if q: P.add(q)
+                recs = _u32(d, h + 8)
+                for k in range(_u16(d, h + 2)):
+                    q = _u32(d, recs + k*12 + 4)
+                    if q: P.add(q)
+    return sorted(P)
+
+
+def array_end(d, off, pointers=None):
+    """Where the array starting at `off` stops: the next pointer in the file, or EOF."""
+    import bisect
+    P = pointers if pointers is not None else _all_pointers(d)
+    i = bisect.bisect_right(P, off)
+    return P[i] if i < len(P) else len(d)
+
+
 def rotation_track(d, off, count):
     """The track's `+0x14` array: NODE ROTATION, the most-used animation in the format
     (548 of 1,229 tracks in JUNGLE.WAD -- more than the vertex morph stream's 290).
@@ -158,7 +200,9 @@ def rotation_track(d, off, count):
     So a key is 12 bytes: u16 time, u16 (unknown), then int16 x, y, z, w.
 
     ⚠ `count` is NOT in the array -- the sampler reads it from a global the caller primes
-    (site 0x001a8214, one call site in the whole binary). Pass it in.
+    (site 0x001a8214, unread). You do not need it: `array_end` derives the count from pointer
+    contiguity, and that is validated 548/548 on three independent checks (span divisible by 12,
+    every quaternion unit, times strictly ascending) where guessing the end scored 94.3%/80.1%.
 
     Validated: reading the quaternion at +0x04 with a 12-byte stride gives |q| == 32767 for
     94.3% of 2,190 sampled keys, against 7.1% for the same stride read at +0x00."""
