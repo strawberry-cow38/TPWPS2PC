@@ -37,10 +37,15 @@ def load_tga(buf):
     px = buf[18 + idlen:]
     if kind != 2 or bpp not in (24, 32): return None
     n = bpp // 8
-    img = [[(0, 0, 0)] * w for _ in range(h)]
+    # ⚠ 32-BIT MEANS ALPHA CUTOUT, NOT JUST A WIDER PIXEL. 227 of the 261 32-bit TGAs have more than
+    # 2% fully transparent texels, and their names say what they are -- pl1_leaf, leaf1, Lure_Leaf.
+    # Foliage is a quad with the leaf shape cut out of it. Drop the alpha and you do not get a
+    # slightly-wrong colour, you get an opaque BLACK WEDGE where the cut-out should be, which reads
+    # as stray geometry or bad winding rather than as an ignored channel.
+    img = [[None] * w for _ in range(h)]
     for y in range(h):
         row = h - 1 - y if not (desc & 0x20) else y
         for x in range(w):
             o = (y * w + x) * n
-            img[row][x] = (px[o+2], px[o+1], px[o])
+            img[row][x] = None if (n == 4 and px[o+3] < 16) else (px[o+2], px[o+1], px[o])
     return w, h, img

@@ -275,10 +275,35 @@ evidence available that the UV mapping is right.
 Untextured triangles after the fix: **0 of 953 (monkey), 0 of 797 (gokarts), 0 of 903 (mumbo), 0 of
 919 (volcano)**, with every material resolving (21/21, 20/20, 25/25, 19/19).
 
-⚠ Master's "still wrong" was reported against the *previous* render, where most surfaces were grey
-and only a subset were visible. Whether it is now correct is for someone who can see the real game
-to say — that has not been confirmed, and the reference screenshot is still the thing that settles
-it.
+**Master, who can see the real game, confirmed the textures are right** once the 32-bit loader was
+fixed. The earlier "still wrong" was against a render where most surfaces were grey, so the textured
+minority was a biased sample of the formats the loader happened to support.
+
+## Alpha: 32-bit means cutout, not just a wider pixel
+
+**227 of the 261 32-bit TGAs have more than 2% fully transparent texels**, and their names say what
+they are — `pl1_leaf`, `leaf1`, `leaf2`, `Lure_Leaf`. Foliage is a quad with the leaf shape cut out.
+
+⚠ Discarding alpha does not give a slightly wrong colour, it gives an **opaque black wedge** where
+the cut-out should be — which reads as stray geometry or bad winding, not as an ignored channel.
+Those wedges appeared in the renders at exactly the moment 32-bit loading was switched on, and were
+briefly mistaken for a geometry bug. With an alpha cutout at 16, monkey's rope fence resolves into
+posts and swags and the sign backings disappear.
+
+## Winding: tested, and NOT the explanation
+
+A triangle strip alternates winding, so the obvious guess is that odd triangles need their first two
+vertices swapped and that backface culling then cleans up the remaining oddities. **Tried it: it is
+worse.** With alternating winding and culling, 465 of mumbo's 904 triangles and 493 of monkey's 964
+are culled — about half — and the render loses its grass base and gains holes in the platform.
+
+Half the triangles disappearing means either the parity is inverted or, more likely, **these models
+are not closed**: leaves, signs and fences are single flat quads that must be drawn from both sides.
+Either way the hypothesis is not supported, and it is recorded as tested-and-rejected rather than
+left as a plausible-sounding maybe.
+
+⚠ **Still unexplained**: mumbo's ride sign renders mirrored, in both the culled and unculled
+versions, while volcano's and monkey's read correctly. Not a facing artefact, then. Unresolved.
 
 **And it renders.** `tools/render.py` rasterises the decoded triangles with the real textures:
 `monkey.mps` comes out as a gold gorilla on a sand base with stacked wooden crates and grass edging,
