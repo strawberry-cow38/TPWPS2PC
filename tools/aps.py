@@ -144,6 +144,24 @@ def vertex_map(m, mesh_offset, nverts):
     return None if any(v is None for v in idx) else idx
 
 
+def appear_frames(d, recoff):
+    """node -> the frame it first appears. The track's `+0x28` object holds it as a u16 at +0x02.
+
+    ⚠ FOUND BY CORRELATION AND CONFIRMED BY PREDICTION, NOT BY DISASSEMBLY. The object is 8 bytes
+    for exactly `m_crate` and `m_shards` in monkey.aps section 0 and 4 for every other track, and
+    the values are crate 28 / shards 100 / body 100 -- 100 being the frame the crate bursts.
+    Gating drawing on them reproduces what the real game does (verified in-game by the owner:
+    a closed crate and nothing else until the burst, then ape + flying debris).
+    The consuming instruction has not been located; treat this as evidence, not proof."""
+    rec = record(d, recoff)
+    out = {}
+    for i in range(rec['ntracks']):
+        t = rec['tracks'] + i*0x30
+        p28 = _u32(d, t + 0x28)
+        if p28: out[_u16(d, t)] = _u16(d, p28 + 2)
+    return out
+
+
 if __name__ == '__main__':
     import sys
     d = open(sys.argv[1], 'rb').read()

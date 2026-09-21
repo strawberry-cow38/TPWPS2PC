@@ -697,3 +697,41 @@ So: the shards are plainly debris, they are plainly not meant to be on screen at
 **neither the animation data nor the flag I named hides them.** Either the in-game camera never
 frames that high, or there is a draw gate still unfound. Recorded as unresolved rather than
 papered over. [[feedback_validate_before_claiming]]
+
+
+## ⭐ The gate found — `track+0x28` is when the part first APPEARS (ground-truthed in game)
+
+The owner tested the real ride: *"the shards dont appear until after the crate bursts."* That is
+the observation the section above could not explain, and it points straight at the one per-track
+pointer this file had left as "unexplored".
+
+`track+0x28` is **4 bytes for every track in `monkey.aps` section 0 except `m_crate` and
+`m_shards`, which get 8** — exactly the two parts in question. The u16 at its `+0x02` reads:
+
+| node | frame | node | frame |
+|---|---:|---|---:|
+| m_boxes | 2 | m_crate | **28** |
+| m_sign | 38 | m_sign2 | 38 |
+| m_body | 100 | m_arm / m_arm1 / Dummy01 | 100 |
+| **m_shards** | **100** | | |
+
+**It is the frame the node first appears.** Gating the renderer on it reproduces the real ride:
+before frame 100 there is a closed crate on the plinth and nothing else; at 100 the crate vanishes,
+the ape is out, the shards fly. Three independent numbers — 28, 100, 100 — all land with nothing
+tuned.
+
+### ⚠ And it corrects the section above
+
+This file said the ape and the crate *"hide themselves geometrically"*, collapsing to a speck. They
+do not. **They are simply not drawn**, and the scrunched poses are vertex data for frames that are
+never displayed. I invented a mechanism to explain data I should not have been rendering — the
+second time in this decode that a wrong assumption produced a confident-sounding explanation for
+an artefact of my own making.
+
+⚠ **Status: evidence, not proof.** The field was found by correlation and then confirmed by
+*predicting* the real game's behaviour, which it matched. The instruction that reads `+0x28` has
+not been located — 22 loads of `+0x28` exist in the `0x1a0000-0x1b0000` range and none of the three
+decompiled so far is it. Recorded at the strength it has.
+
+⭐ This also retro-answers the stray shards and crate from the static renders days ago. They were
+never stray geometry and never a format bug: **I was drawing parts the game had not turned on.**
