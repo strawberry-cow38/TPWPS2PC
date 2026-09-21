@@ -39,6 +39,32 @@ internal static class SelfTests
             Check(opaque.Pixels.Chunk(4).All(p => p.SequenceEqual(new byte[] { 130, 130, 130, 255 })), "opaque exact synthetic flat");
             var small = new Ssh(Synthetic(8, 8, [128], false));
             Check(small.Pixels.Length == 8 * 8 * 4 && small.Pixels.Chunk(4).All(p => p[0] == 130), "sub-macroblock image size");
+            var smallAlpha = new Ssh(Synthetic(8, 8, [128], true));
+            Check(Enumerable.Range(0, 64).All(i => smallAlpha.Pixels[i * 4 + 3] == 128 + i / 8 * 4), "8x8 alpha retains coded stride");
+            foreach (var dimensions in new[] { (64, 32), (32, 64) })
+            {
+                int width = dimensions.Item1, height = dimensions.Item2;
+                int[] values = Enumerable.Range(0, 8).Select(i => 32 + i * 16).ToArray();
+                var rectangle = new Ssh(Synthetic(width, height, values, false));
+                for (int by = 0; by < height / 16; by++)
+                    for (int bx = 0; bx < width / 16; bx++)
+                    {
+                        int source = bx * (height / 16) + by;
+                        int expected = (((values[source] - 16) * 149 >> 6) + 1) >> 1;
+                        Check(rectangle.Pixels[(by * 16 * width + bx * 16) * 4] == expected, "rectangular macroblock order");
+                    }
+            }
+            // A reversed directory order must not change which data entryIndex selects.
+            byte[] first = Synthetic(16, 16, [32], false), second = Synthetic(16, 16, [128], false);
+            var multi = new byte[first.Length + second.Length - 32];
+            first.CopyTo(multi, 0); second.AsSpan(32).CopyTo(multi.AsSpan(first.Length));
+            BinaryPrimitives.WriteInt32LittleEndian(multi.AsSpan(4), multi.Length);
+            BinaryPrimitives.WriteInt32LittleEndian(multi.AsSpan(8), 2);
+            BinaryPrimitives.WriteInt32LittleEndian(multi.AsSpan(20), first.Length);
+            "NEXT"u8.CopyTo(multi.AsSpan(24));
+            BinaryPrimitives.WriteInt32LittleEndian(multi.AsSpan(28), 32);
+            Check(Ssh.ReadEntries(multi).Count == 2 && new Ssh(multi, 0).Pixels[0] == 130 && new Ssh(multi, 1).Pixels[0] == 19,
+                "multiple entries, directory order and zero-length block limits");
             Reject(data[..^1], "truncated file");
             byte[] bad = (byte[])data.Clone(); bad[20] = 255; bad[21] = 255;
             Reject(bad, "entry offset bounds");

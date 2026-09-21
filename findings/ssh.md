@@ -11,6 +11,15 @@ This includes RGB under transparent pixels. **400 of 400 decode; 2 of 400 are RG
 Image-weighted mean RGB error is **3.741870 over 400 of 400**. This is a working lossy decoder,
 not an assertion that every decoded texture equals its source TGA. See the remaining work below.
 
+| Population | Within RGB MAE 5 / alpha MAE 1 | Mean RGB error | Mean alpha error |
+| --- | ---: | ---: | ---: |
+| All pairs | 322 of 400 | 3.741870 over 400 | 0.028618 over 400 |
+| Lowercase `.tga` partners | 254 of 306 | 3.575180 over 306 | 0.031844 over 306 |
+| Uppercase `.TGA` partners | 68 of 94 | 4.284498 over 94 | 0.018118 over 94 |
+
+All **400 of 400** have alpha MAE <=1. At RGB MAE <=10, **376 of 400** pass; at RGB MAE <=20,
+**400 of 400** pass. These additional thresholds do not change the default 322-of-400 result.
+
 Failed approaches, with numbers: the earlier **504 ordinary MPEG elementary-stream wrappers**
 had best mean error **79/channel** (recorded in `formats.md`, not rerun). Feeding the correctly
 adapted IPU output into raster-order placement gave **214 of 400** at RGB MAE <=5, mean **9.640308**.
@@ -132,6 +141,12 @@ and errors. Summary means are image-weighted and always state the decoded popula
 The core API is `new Ssh(bytes, entryIndex: 0, ffmpegPath: null)`, exposing `Width`, `Height`,
 `Pixels` and `HasAlpha`; `Ssh.ReadEntries(bytes)` inspects the directory without starting FFmpeg.
 Only the selected base image is decoded; trailing metadata/mipmap blocks are not exported.
+
+Validation: the Release build completed with zero warnings/errors; **2,079 of 2,079 synthetic
+assertions** passed. The checks exercise rectangular macroblock placement, linear alpha, 8x8 alpha
+stride, reversed multi-entry directories, exact/error metric denominators, missing/ambiguous
+case-insensitive pairs, malformed containers, and rejection of invalid coefficient streams.
+Synthetic streams are generated from DC syntax in memory, not copied from the game.
 
 ## Remaining work
 

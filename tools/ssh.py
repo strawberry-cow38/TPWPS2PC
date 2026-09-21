@@ -1,4 +1,8 @@
-"""`.ssh` -- EA's SHPS image container, as the PS2 build ships it. Container SOLVED; pixels NOT.
+"""`.ssh` -- EA's SHPS image container, as the PS2 build ships it.
+
+Pixels are now decoded by core/TPW.PS2.Data/Ssh.cs using FFmpeg's existing IPU codec.
+See findings/ssh.md and tools/TPW.PS2.SshScore for the scored results and limitations.
+This Python module remains the lightweight container inspector.
 
     0x00  'SHPS'
     0x04  u32 fileSize          (matches the archive's declared size)
@@ -16,9 +20,9 @@
     +0x0C u16 posX,    u16 posY
     +0x10 the payload
 
-⚠⚠ **THE PIXELS ARE NOT DECODED.** Every entry seen is type 0x84 = compressed type 4. The payload
-opens `47 4d 04 04` and is high-entropy throughout -- no runs, no palette, nothing readable -- and
-it is NOT RefPack, which would announce itself with `10 FB`.
+The fixtures have 331 type 0x84 (RGB) and 69 type 0x85 (RGB + alpha) images, out of 400.
+The GM payload is an IPU macroblock stream, not an ordinary MPEG elementary stream or RefPack.
+The earlier 'every entry is 0x84' observation did not cover the alpha population.
 
 ⭐ When it IS attacked, the test set is already there: **5,493 of the disc's 6,007 material
 references ship BOTH a `.ssh` and a `.tga` of the same stem**, so a candidate decoder can be scored

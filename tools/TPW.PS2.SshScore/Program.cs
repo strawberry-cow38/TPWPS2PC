@@ -48,7 +48,7 @@ try
             (double rgb, double alpha, int maxRgb, int maxAlpha) = Metrics.Compare(image.Pixels, reference.Pixels);
             score.RgbMae = rgb; score.AlphaMae = alpha; score.MaxRgb = maxRgb; score.MaxAlpha = maxAlpha;
             score.Pass = rgb <= tolerance && alpha <= alphaTolerance;
-            Console.WriteLine($"{(score.Pass ? "PASS" : "FAIL")} {score.File} RGB_MAE={rgb:F6} RGB_MAX={maxRgb} A_MAE={alpha:F6} A_MAX={maxAlpha}{(score.Flat ? " FLAT" : "")}");
+            Console.WriteLine($"{(score.Pass ? "PASS" : "FAIL")} {score.File} RGB_MAE={rgb:F6} RGB_MAX={maxRgb} A_MAE={alpha:F6} A_MAX={maxAlpha}{(score.Flat ? (score.RgbExact ? " FLAT_EXACT_RGB" : " FLAT_NOT_EXACT_RGB") : "")}");
         }
         catch (Exception ex)
         {
@@ -58,8 +58,8 @@ try
         results.Add(score);
     }
     Summary("ALL", results);
-    Summary("lowercase .tga subset (brief's 306)", results.Where(s => Path.GetExtension(s.Reference) == ".tga").ToList());
-    Summary("uppercase .TGA subset (brief's 94)", results.Where(s => Path.GetExtension(s.Reference) == ".TGA").ToList());
+    Summary("lowercase .tga subset", results.Where(s => Path.GetExtension(s.Reference) == ".tga").ToList());
+    Summary("uppercase .TGA subset", results.Where(s => Path.GetExtension(s.Reference) == ".TGA").ToList());
     var flat = results.Where(s => s.Flat).ToList();
     Console.WriteLine($"FLAT: RGB exact {flat.Count(s => s.RgbMae == 0)} of {flat.Count}; RGBA exact {flat.Count(s => s.RgbMae == 0 && s.AlphaMae == 0)} of {flat.Count}.");
     if (report != null)
@@ -89,6 +89,8 @@ internal sealed class Score
     public int? MaxRgb { get; set; }
     public int? MaxAlpha { get; set; }
     public bool Pass { get; set; }
+    public bool RgbExact => RgbMae == 0;
+    public bool RgbaExact => RgbMae == 0 && AlphaMae == 0;
 }
 
 internal sealed record Pair(string Ssh, string? Tga, string? Error);
