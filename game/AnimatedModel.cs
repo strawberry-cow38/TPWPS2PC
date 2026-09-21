@@ -37,6 +37,8 @@ public sealed class AnimatedModel
     readonly Dictionary<int, List<(int Time, System.Numerics.Quaternion Q)>> _rot = new();
     readonly Dictionary<int, List<(int Time, System.Numerics.Vector3 S)>> _scale = new();
     Dictionary<int, (int Appear, int? Gone)> _vis = new();
+    readonly Dictionary<int, Aps.Path> _path = new();
+    readonly HashSet<int> _facing = new();
     List<Aps.SkeletalTrack> _skel;
     /// <summary>True when the selected record drives a biped rather than vertex morph.</summary>
     public bool Skeletal { get; private set; }
@@ -70,6 +72,16 @@ public sealed class AnimatedModel
                 int t = anim.TrackAt(rec, i), node = anim.TrackNode(t);
                 var r = anim.Rotation(t); if (r != null) _rot[node] = r;
                 var s = anim.Scale(t); if (s != null) _scale[node] = s;
+                // ⚠⚠ THE PATH CHANNEL WAS READ AND THEN NEVER APPLIED. 1,468 of the disc's 6,155
+                // morph-format tracks carry a Catmull-Rom path, and every car, train, boat and
+                // gondola on them was sitting at its rest position. That is what "sub parts are
+                // rotated or positioned wrong" looks like from the outside.
+                var sp = anim.SplineAt(t);
+                if (sp != null)
+                {
+                    _path[node] = sp;
+                    if ((anim.TrackFlags(t) & (uint)Aps.TrackFlag.OrientAlongPath) != 0) _facing.Add(node);
+                }
             }
             _vis = anim.Visibility(rec);
             Frames = Math.Max(anim.Length(rec), 1);
@@ -333,10 +345,10 @@ void fragment() {
     /// children with it.</summary>
     Dictionary<int, Matrix4x4> WorldAt(float now)
     {
-        if (_rot.Count == 0 && _scale.Count == 0) return _model.WorldTransforms();
+        if (_rot.Count == 0 && _scale.Count == 0 && _path.Count == 0) return _model.WorldTransforms();
 
         var locals = _model.LocalTransforms();
-        foreach (var node in _rot.Keys.Concat(_scale.Keys).Distinct())
+        foreach (var node in _rot.Keys.Concat(_scale.Keys).Concat(_path.Keys).Distinct())
         {
             int off = _model.NodeOffset(node);
             if (!locals.TryGetValue(off, out var bind)) continue;
@@ -347,6 +359,24 @@ void fragment() {
                 L = Renormalise(L, Sample(sk.Select(x => x.Time).ToArray(),
                                           sk.Select(x => x.S).ToArray(), now));
             L.M41 = bind.M41; L.M42 = bind.M42; L.M43 = bind.M43;   // translation stays put
+            if (_path.TryGetValue(node, out var path))
+            {
+                // The path REPLACES the bind translation: the curve is where the thing actually is.
+                var at = path.At(now);
+                L.M41 = at.X; L.M42 = at.Y; L.M43 = at.Z;
+                if (_facing.Contains(node))
+                {
+                    // Orient along travel: point the node's Z down the tangent and keep it upright.
+                    var f = path.Tangent(now);
+                    var up = System.Numerics.Vector3.UnitY;
+                    if (MathF.Abs(System.Numerics.Vector3.Dot(f, up)) > 0.999f) up = System.Numerics.Vector3.UnitX;
+                    var right = System.Numerics.Vector3.Normalize(System.Numerics.Vector3.Cross(up, f));
+                    var realUp = System.Numerics.Vector3.Cross(f, right);
+                    L.M11 = right.X; L.M12 = right.Y; L.M13 = right.Z;
+                    L.M21 = realUp.X; L.M22 = realUp.Y; L.M23 = realUp.Z;
+                    L.M31 = f.X; L.M32 = f.Y; L.M33 = f.Z;
+                }
+            }
             locals[off] = L;
         }
         return _model.WorldTransforms(locals);

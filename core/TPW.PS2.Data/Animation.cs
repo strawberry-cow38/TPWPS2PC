@@ -166,6 +166,67 @@ public sealed class Animation
         return outList;
     }
 
+    /// <summary>A spline path AND the times that drive it -- how a ride moves a car along a curve.
+    ///
+    /// ⭐ The key stream at <c>+0x0C</c> is plain u32 FRAME TIMES, and how many control points each
+    /// key covers is chosen by spline flag <c>0x02</c>. Measured over every path on the disc:
+    ///
+    /// * flags 0x12 (bit 0x02 SET): <c>points == (keys-1)*3 + 1</c> on <b>855 of 855</b> -- one key
+    ///   every THIRD control point.
+    /// * flags 0x18 (bit clear): <c>points == keys</c> on all <b>613</b> -- one key per point.
+    /// * all <b>1,468</b> paths have ascending key times.
+    ///
+    /// Nothing else appears, so the two modes are the whole story.</summary>
+    public sealed class Path
+    {
+        public uint Flags;
+        public List<Vector3> Points;
+        public int[] Times;
+        /// <summary>Flag 0x02: each key covers three control points rather than one.</summary>
+        public bool Tripled => (Flags & 2) != 0;
+
+        /// <summary>The point on the curve at a frame.</summary>
+        public Vector3 At(float frame)
+        {
+            int n = Times.Length;
+            if (n == 0 || Points.Count == 0) return Vector3.Zero;
+            if (n == 1) return Points[0];
+            float f = Math.Clamp(frame, Times[0], Times[n - 1]);
+            int j = 0;
+            while (j < n - 2 && f >= Times[j + 1]) j++;
+            int span = Times[j + 1] - Times[j];
+            float u = span > 0 ? (f - Times[j]) / span : 0f;
+            int step = Tripled ? 3 : 1;
+            float sPos = j * step + u * step;
+            int i = (int)MathF.Floor(sPos);
+            return CatmullRom(Points, i, sPos - i);
+        }
+
+        /// <summary>The direction of travel at a frame, for the orient-along-path channel.</summary>
+        public Vector3 Tangent(float frame)
+        {
+            var a = At(frame);
+            var b = At(frame + 0.1f);
+            var d = b - a;
+            if (d.LengthSquared() < 1e-12f) { d = At(frame) - At(frame - 0.1f); }
+            return d.LengthSquared() < 1e-12f ? Vector3.UnitZ : Vector3.Normalize(d);
+        }
+    }
+
+    public Path SplineAt(int track)
+    {
+        int o = (int)U32(track + 0x10);
+        if (o == 0) return null;
+        int npts = U16(o + 4), nkeys = U16(o + 6);
+        int pts = (int)U32(o + 8), keys = (int)U32(o + 0x0C);
+        if (pts == 0 || npts == 0 || keys == 0 || nkeys == 0) return null;
+        var p = new Path { Flags = U32(o), Points = new List<Vector3>(npts), Times = new int[nkeys] };
+        for (int k = 0; k < npts; k++)
+            p.Points.Add(new Vector3(F32(pts + k * 12), F32(pts + k * 12 + 4), F32(pts + k * 12 + 8)));
+        for (int k = 0; k < nkeys; k++) p.Times[k] = (int)U32(keys + k * 4);
+        return p;
+    }
+
     public static Vector3 CatmullRom(IReadOnlyList<Vector3> p, int i, float t)
     {
         int n = p.Count;

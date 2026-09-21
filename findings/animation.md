@@ -1215,3 +1215,35 @@ DATA.WAD    25 files   1 (x24), 4 (x5), 5 (x10), 0x25 (x181), 0xa5 (x45)
 
 Every character is `0x01` once (an `AlternatePlayer` record, not morph) plus 4-15 skeletal records.
 `/Generic/Advisor` has no 0x20 bit at all: the advisor is morph-animated, not skinned.
+
+
+## ⭐⭐ THE PATH CHANNEL WAS DECODED AND NEVER APPLIED (2026-09-21)
+
+`track+0x10` is a Catmull-Rom path and `Animation.SplinePath` had read it since the format was
+cracked — but `AnimatedModel` only ever applied rotation, scale and vertex morph. **1,468 of the
+disc's 6,155 morph-format tracks carry a path**, so every car, train, boat and gondola on them sat
+at its rest position. From outside that is exactly the owner's "sub parts are rotated or positioned
+wrong".
+
+### The key stream, and the flag that scales it
+
+`+0x0C` is plain **u32 frame times**, and spline flag `0x02` chooses how many control points each
+key covers. Measured over every path on the disc:
+
+| spline flags | paths | relation |
+|---|---|---|
+| `0x12` (bit 0x02 **set**) | **855** | `points == (keys-1)*3 + 1` on **855 of 855** — a key every THIRD point |
+| `0x18` (bit clear) | **613** | `points == keys` on all 613 — a key per point |
+| both | **1,468** | key times ascend on **all** of them |
+
+No other flag value appears, and neither relation has a single exception, so the two modes are the
+whole story.
+
+Sampling: find the key interval around the frame, take `u` across it, and advance the curve
+parameter by one step per key — three control points when the flag is set, one when it is not —
+then `CatmullRom(points, floor(s), frac(s))` with the indices taken modulo the point count.
+
+`TrackFlag.OrientAlongPath` (0x400, **89 tracks**) additionally points the node down its own
+tangent, sampled 0.1 frames ahead.
+
+⚠ Still not applied: `AlternatePlayer` (0x40000, 81 tracks).
