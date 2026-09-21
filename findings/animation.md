@@ -347,3 +347,58 @@ well past the `0x1E` value this file guessed was a frame count; and the byte pai
 not.** Finding the evaluator — the code that turns a track into a matrix, which is a different
 function from the loader and not reachable from it — is the next step, and is the same move that
 cracked the container.
+
+
+## ⭐⭐⭐ The evaluator — and a second node array nobody had seen
+
+`FUN_001accc0` starts an animation and `FUN_001a8d08` applies it. Both are short and both state
+things that inference had no way to reach.
+
+```c
+FUN_001accc0(obj, ride, sectionIdx, recordIdx, flags):
+    anim  = *(int*)(ride + 0x18);   model = *(int*)(*(int*)(ride+8) + 4);
+    if (sectionIdx < *(byte*)(anim+0x1C))                       // pick a SECTION
+        sec = *(int*)(anim+0x20) + sectionIdx*8
+        if (recordIdx < sec[0])                                 // pick a RECORD
+            rec = sec[1] + recordIdx*0x1C
+            length = *(float*)(rec + 0x04)                      // ⭐ rec+0x04 is a FLOAT: duration
+            FUN_001a8d08(rec, model)
+            tracks = *(u16**)(rec + 0x10)
+            for (n = *(u16*)(rec + 0x08); n; n--)               // rec+0x08 = track count
+                node = *(int*)(model+0x48) + tracks[0] * 0xA0   // ⭐ track+0x00 is a MESH INDEX
+                if (*(u32*)(track + 0x04) & 0x1000)
+                    *node &= 0xFF7FFFFF                          // ⭐⭐ clears bit 0x800000
+                tracks += 0x18 (u16) = 48 bytes                  // the 48-byte track stride
+
+FUN_001a8d08(rec, model):
+    for every mesh:  *flags &= ~0x10                             // clear "animated" on all
+    list = *(u16**)(rec + 0x18);                                 // the u16 INDEX LIST
+    for (n = *(u16*)(rec + 0x0C); n; n--) {                      // its length
+        id = *list++;
+        node = (id < meshCount) ? model[0x48] + id*0xA0          // a MESH, 160 bytes
+                                : model[0x4C] + (id-meshCount)*0x60;   // ⭐ a HELPER, 96 bytes
+        *node |= 0x10;                                           // mark "animated"
+    }
+```
+
+### What this settles
+
+- **`rec+0x0C` is the index-list length and `rec+0x18` is the list** — exactly what the statistical
+  pass had guessed, now confirmed from code rather than from a score.
+- **The index list is the set of nodes this animation drives.** Bit `0x10` on a node means "animated
+  by the current animation"; it is cleared on every mesh first, then set on the listed nodes.
+- **⭐ A model has TWO node arrays.** Meshes at `+0x48`, 160 bytes, count at `+0x30` — and
+  **helpers at `+0x4C`, 96 bytes each**, addressed by ids at or above the mesh count. Verified in
+  `monkey.mps`: `+0x4C` is `0x9F0`, exactly where the helper nodes sit, and they read out as
+  `Head1, Head02, Head06, Head03, Head07, Head04, Head08, Head05` — all children of mesh 5, `m_arm`.
+  This file had found those nodes by following parent pointers and called them "outside the mesh
+  table"; they are a first-class array with its own header field and its own stride.
+- **`monkey.aps`'s index list `[9 … 32]` is 24 helper ids and not one mesh.** The animation drives
+  the helper rig; the meshes follow through the scene graph — which is precisely the `Dummy01` →
+  `m_arm`/`m_arm1` behaviour already rendered.
+- **⭐⭐ Visibility is a runtime flag, set by the animation.** A track with bit `0x1000` clears bit
+  `0x800000` on its mesh. That closes the `m_crate` / `m_shards` question from `formats.md`: nothing
+  in the `.mps` says which pieces to draw because **the animation says it**, by clearing a bit on the
+  mesh as it plays.
+- `rec+0x04` is a **float**, the animation's length — the first field in this format known to be a
+  float rather than guessed to be one.
