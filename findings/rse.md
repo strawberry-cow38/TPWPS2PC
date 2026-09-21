@@ -42,4 +42,45 @@ count taken one way (718) disagreed with a count taken another (8), and only bec
 * 8 of the 270 pairs emit fewer opcodes than their source has instruction lines, by 1 to 7, all in
   the same direction — so the source-side line counter is over-counting something the assembler
   does not emit, rather than the binary being short. Unresolved, and named rather than rounded away.
-* The string table itself is not located: `NAME s0` is an index into something not yet found.
+* ~~The string table itself is not located.~~ **Found, and it was inside the file all along.**
+  See below.
+
+
+## The symbol table — and the bug this corrected
+
+`NAME s0` looked like an index into something external, and the first version of this document said
+so. It is not: **the code does not run to end of file.** After the last instruction sits a table of
+`u32 length` + that many bytes of NUL-terminated ASCII, ending exactly at EOF.
+
+`Toilet.rse` is 780 bytes; its code stops at word 122 with `BRANCH @8` — which is the source's
+closing `BRANCH load`, and `.load` is word 8, so the code terminates exactly where it should. The
+remaining 232 bytes are:
+
+    13 "Small Toilet\0"  12 "VAR_LETMEON\0"  13 "VAR_LETMEOFF\0"  ...
+
+⭐ **EA shipped the debug symbols.** The table is the script's NAME followed by the variable names
+in declaration order, so a port reads `VAR_PEEPID` rather than `v13`. All 14 of Toilet's come back
+in source order.
+
+⚠ **The first version of `tools/rse.py` read the whole file as code**, so it emitted 58 words of
+string bytes as instructions — `tag 0x6C val 6384979` is the ASCII of `loo` being disassembled. It
+did not error and the first hundred instructions were right, which is why it was publishable and
+wrong at the same time. The reader now locates the table by parsing length-prefixed printable
+strings from each word boundary and requiring the parse to land **exactly** on EOF; that exactness
+is the check, and it is why the earliest passing offset is the real one rather than a coincidence.
+
+**698 of 718** carry the table; 20 do not. Where it exists it holds `1 + variableCount` entries in
+560 of 698 and *fewer* in the rest, by 1 to 5, never more — so unnamed variables are dropped and
+the exact rule is not pinned.
+
+Accordingly the `0x10` tag is now called a **symbol** index, not a string index. 758 operands carry
+it across 17 distinct values, but **652 are `NAME` with value 0**, and `SPAWNCHILD` / `SPAWNSOUND`
+carry values up to 22 that exceed some tables outright. The tag is real and the table is located;
+how the two index each other is not established, and saying otherwise was the original error.
+
+## Where the user-visible text lives
+
+Searching the disc for `"Small Toilet"` and `"Crazy Ape"` also turned up
+**`/DATA.WAD/Text/translations/usa/finalame.dat`**, 118,738 bytes, containing both — a localisation
+table under a `Text/translations/<locale>/` tree. That is the UI text corpus, and it is not the
+script symbol table: the scripts carry developer identifiers, this carries the player-facing strings.

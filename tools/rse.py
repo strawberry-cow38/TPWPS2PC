@@ -19,8 +19,22 @@ binary's opcode words and requiring every file to agree.
     0x80xxxxxx   opcode          (the table below)
     0x40xxxxxx   variable index  (into the script's own `variable` list, 0-based)
     0x20xxxxxx   code address    (a word index from 0x30; the assembler's `.labels`)
-    0x10xxxxxx   string index
+    0x10xxxxxx   symbol index    (into the trailing table; see below -- NOT fully pinned)
     0x00xxxxxx   immediate constant
+
+⚠ **The code does NOT run to EOF.** After the last instruction sits a table of `u32 length` +
+that many bytes of NUL-terminated ASCII, ending exactly at end of file: the script's NAME first,
+then variable names. `Toilet.rse` is 780 bytes and its code stops at word 124 of 183 -- the rest
+is `13 "Small Toilet\0" 12 "VAR_LETMEON\0" ...`. **EA shipped the debug symbols**, so a port gets
+the original identifier names rather than bare indices. An earlier version of this file read the
+whole file as code and emitted 58 words of string bytes as instructions.
+
+698 of 718 carry that table; 20 do not. Where it exists it holds `1 + variableCount` entries in
+560 of 698 and FEWER in the rest (by 1 to 5), never more -- so unnamed variables are dropped and
+the exact rule is not pinned. Consequently the `0x10` tag is called a SYMBOL index rather than a
+string index: 758 operands carry it across 17 distinct values, but **652 of them are `NAME` with
+value 0**, and `SPAWNCHILD`/`SPAWNSOUND` carry values up to 22 that exceed some tables. The tag is
+real and located; its indexing is not established.
 
 ⚠ **The extension is `.RSE` in UPPERCASE on 710 of the 718 entries, and `.rse` on 8.** Globbing
 case-sensitively finds those 8, which is 1.1% of the set -- and the analysis it produces looks
@@ -134,10 +148,29 @@ def header(d):
     if d[0x20:0x30] != b'Pad Pad Pad Pad ': raise ValueError('padding is not the literal Pad run')
     return struct.unpack_from('<7I', d, 4)
 
+def symbols(d):
+    """(tableOffset, [names]) for the trailing symbol table, or (len(d), []) when there is none.
+
+    Found by parsing `u32 length` + that many bytes of printable NUL-terminated ASCII greedily from
+    each word boundary and requiring it to land EXACTLY on end of file. That exactness is the whole
+    check -- it is what makes the earliest passing offset the real start rather than a coincidence."""
+    for off in range(0x30, len(d) - 3, 4):
+        p, out = off, []
+        while p < len(d):
+            if p + 4 > len(d): break
+            ln = struct.unpack_from('<I', d, p)[0]; p += 4
+            if ln == 0 or ln > 256 or p + ln > len(d): break
+            s = d[p:p + ln]; p += ln
+            if s[-1] != 0 or any(b < 32 or b > 126 for b in s[:-1]): break
+            out.append(s[:-1].decode('latin-1'))
+        if p == len(d) and out: return off, out
+    return len(d), []
+
 def words(d):
-    """(tag, value) for every code word, in order."""
+    """(tag, value) for every CODE word, in order -- stopping before the symbol table."""
+    end = symbols(d)[0]
     return [(struct.unpack_from('<I', d, o)[0] >> 24,
-             struct.unpack_from('<I', d, o)[0] & 0xFFFFFF) for o in range(0x30, len(d) - 3, 4)]
+             struct.unpack_from('<I', d, o)[0] & 0xFFFFFF) for o in range(0x30, end - 3, 4)]
 
 def disassemble(d):
     """Lines of `index  MNEMONIC  operands`. An operand keeps its tag so nothing is silently
@@ -157,5 +190,7 @@ if __name__ == '__main__':
     import sys
     d = open(sys.argv[1], 'rb').read()
     v, nvar, *rest = header(d)
+    off, names = symbols(d)
     print('version 0x%08X  %d variables  rest %s' % (v, nvar, rest))
+    print('symbols at 0x%X: %s' % (off, names))
     for l in disassemble(d): print(l)
