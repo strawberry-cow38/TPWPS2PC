@@ -37,6 +37,9 @@ public sealed class AnimatedModel
     readonly Dictionary<int, List<(int Time, System.Numerics.Quaternion Q)>> _rot = new();
     readonly Dictionary<int, List<(int Time, System.Numerics.Vector3 S)>> _scale = new();
     Dictionary<int, (int Appear, int? Gone)> _vis = new();
+    List<Aps.SkeletalTrack> _skel;
+    /// <summary>True when the selected record drives a biped rather than vertex morph.</summary>
+    public bool Skeletal { get; private set; }
 
     /// <summary>⚠⚠ THE GAME'S SPACE IS LEFT-HANDED AND GODOT'S IS RIGHT-HANDED. Everything under
     /// this node is mirrored in Z to convert, which is why the viewer rendered a mirror image of
@@ -55,7 +58,12 @@ public sealed class AnimatedModel
                          Func<string, ImageTexture> texture)
     {
         _model = model; _anim = anim;
-        if (rec != null)
+        // ⚠ THE TWO TRACK FORMATS ARE NOT INTERCHANGEABLE. A skeletal record's tracks are 20 bytes,
+        // not 48, so none of the channel readers below may be pointed at one. The characters in
+        // DATA.WAD are skinned to a biped and are shown in their bind pose until the skin is wired;
+        // their morph record (there is exactly one per character) still animates.
+        Skeletal = rec != null && rec.Skeletal;
+        if (rec != null && !rec.Skeletal)
         {
             for (int i = 0; i < rec.TrackCount; i++)
             {
@@ -64,6 +72,11 @@ public sealed class AnimatedModel
                 var s = anim.Scale(t); if (s != null) _scale[node] = s;
             }
             _vis = anim.Visibility(rec);
+            Frames = Math.Max(anim.Length(rec), 1);
+        }
+        else if (rec != null)
+        {
+            _skel = anim.SkeletalTracks(rec);
             Frames = Math.Max(anim.Length(rec), 1);
         }
 
@@ -95,7 +108,8 @@ public sealed class AnimatedModel
                      $"morph={(p.Morph != null ? p.Morph.Count.ToString() : "-"),-5} " +
                      $"map={(p.AnimMap != null ? "yes" : "NO "),-4} {vs}");
         }
-        Summary = $"{_parts.Count} parts, {Frames} frames, {_model.Materials.Count} materials";
+        Summary = $"{_parts.Count} parts, {Frames} frames, {_model.Materials.Count} materials"
+                  + (Skeletal ? $", {_skel?.Count ?? 0} bone tracks (bind pose)" : "");
     }
 
     // ⚠ Culling is now owned by the shader's `render_mode cull_disabled`, not by a material

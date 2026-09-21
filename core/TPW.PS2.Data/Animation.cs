@@ -43,6 +43,11 @@ public sealed class Animation
         public int Tracks, Small, Index;
         /// <summary>Bit 0x20 selects 20-byte skeletal tracks over 48-byte ones.</summary>
         public bool Skeletal => (Flags & 0x20) != 0;
+        /// <summary>Bit 0x80: THE TRACKS ARE NOT IN THIS FILE. Boy2a/3a/4a each carry 15 records
+        /// that declare 22 tracks and a NULL track pointer, and reuse Boy1a's animation -- 15 KB
+        /// files against its 68 KB. Measured over all 265 records in DATA.WAD the split is exact:
+        /// 0x80 set if and only if <c>Tracks == 0</c>, with nothing on either off-diagonal.</summary>
+        public bool Shared => (Flags & 0x80) != 0;
     }
 
     public Record ReadRecord(int r) => new()
@@ -65,6 +70,51 @@ public sealed class Animation
     {
         Rotation = 0x08, Scale = 0x80, OrientAlongPath = 0x400,
         VertexMorph = 0x1000, Unknown0x24 = 0x10000, AlternatePlayer = 0x40000,
+    }
+
+    /// <summary>One 20-byte skeletal track: a node, quaternion keys and position keys.</summary>
+    public sealed class SkeletalTrack
+    {
+        public int Node;
+        public List<(int Time, Quaternion Q)> Rot = new();
+        public List<(int Time, Vector3 P)> Pos = new();
+    }
+
+    public int SkeletalTrackAt(Record rec, int i) => rec.Tracks + i * 0x14;
+
+    /// <summary>The 20-byte track form, used by every character in DATA.WAD and by nothing in
+    /// JUNGLE.WAD. Rotation keys are 10 bytes (u16 time, int16 x y z w at 1/32768) and position
+    /// keys are 8 (u16 time, int16 x y z); the counts are BYTES at +0x08 and +0x09.
+    ///
+    /// Measured over all 25 character `.aps`: 49,839 rotation keys, every one a unit quaternion
+    /// (|q| in 0.99995..1.00001), and all 81,287 key times non-decreasing.</summary>
+    public List<SkeletalTrack> SkeletalTracks(Record rec)
+    {
+        // ⚠ A record with Shared set points at nothing. Reading it walks off the end of the file.
+        if (!rec.Skeletal || rec.Tracks == 0) return null;
+        var outList = new List<SkeletalTrack>(rec.TrackCount);
+        for (int i = 0; i < rec.TrackCount; i++)
+        {
+            int t = SkeletalTrackAt(rec, i);
+            int nr = U8(t + 8), np = U8(t + 9);
+            int kr = (int)U32(t + 0x0C), kp = (int)U32(t + 0x10);
+            var st = new SkeletalTrack { Node = U16(t) };
+            if (kr != 0)
+                for (int k = 0; k < nr; k++)
+                {
+                    int b = kr + k * 10;
+                    st.Rot.Add((U16(b), new Quaternion(I16(b + 2) / 32768f, I16(b + 4) / 32768f,
+                                                       I16(b + 6) / 32768f, I16(b + 8) / 32768f)));
+                }
+            if (kp != 0)
+                for (int k = 0; k < np; k++)
+                {
+                    int b = kp + k * 8;
+                    st.Pos.Add((U16(b), new Vector3(I16(b + 2), I16(b + 4), I16(b + 6))));
+                }
+            outList.Add(st);
+        }
+        return outList;
     }
 
     public uint TrackFlags(int track) => U32(track + 4);
@@ -131,6 +181,12 @@ public sealed class Animation
     /// building the node's bounds as <c>offset - 512*scale .. offset + 511*scale</c>.</summary>
     public List<(int[] Times, Vector3[] Keys)> Morph(int track)
     {
+        // ⚠⚠ `track+0x20` IS A UNION AND THE FLAGS PICK THE MEANING, exactly like the record-level
+        // 0x20 bit. Gating on VertexMorph costs nothing in the rides -- across JUNGLE.WAD's 1,229
+        // tracks the flag is set if and only if the pointer is present, 290 and 939, nothing on
+        // either off-diagonal -- but 81 character tracks carry a pointer here under flag 0x40000
+        // (AlternatePlayer) and are NOT morph headers. Reading one walks off the end of the file.
+        if ((TrackFlags(track) & (uint)TrackFlag.VertexMorph) == 0) return null;
         int h = (int)U32(track + 0x20);
         if (h == 0) return null;
         bool byteTimes = (U16(h) & 8) != 0;                     // ⚠ flag bit 0x08 picks the key-time WIDTH
@@ -237,6 +293,18 @@ public sealed class Animation
     public int Length(Record rec)
     {
         int max = 0;
+        // ⚠ The 20-byte form must not be walked with the 48-byte stride. Branch FIRST: the old
+        // code read a skeletal record's tracks at +0x30 intervals, threw, and the caller's blanket
+        // catch turned that into a NullReferenceException three frames away.
+        if (rec.Skeletal)
+        {
+            foreach (var t in SkeletalTracks(rec) ?? new List<SkeletalTrack>())
+            {
+                if (t.Rot.Count > 0) max = Math.Max(max, t.Rot[^1].Time);
+                if (t.Pos.Count > 0) max = Math.Max(max, t.Pos[^1].Time);
+            }
+            return max;
+        }
         for (int i = 0; i < rec.TrackCount; i++)
         {
             int t = TrackAt(rec, i);

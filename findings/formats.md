@@ -778,3 +778,123 @@ re-enabled. Noted next to the code rather than left as a trap.
 ⚠ This was already known on the PSX side of the project ("left-handed → negate z") and it still
 took the owner pointing at a mirrored picture to apply it here. **A fact recorded about one build
 of a game is worth checking against every other build of it.**
+
+
+## ⭐⭐ DATA.WAD: the characters — SKINNED TO A 3DS MAX BIPED (2026-09-21)
+
+`DATA.WAD` (11.6 MB, extent 54) was the last unopened archive. 1,821 entries, 806 `.ssh`, 805
+`.tga`, 34 `.mps`, 25 `.aps`. `/Chars/` holds **24 characters** — alien, Boy1a-4a, Girl1a-4a, Dino,
+Fantasykid, FatMechanic, Flower, Franky, Gnome, Guard, hallowkid, Handyman, Hunter, junglekid,
+Researcher, spacekid, Spaceman, Vampire — each one a `.mps` + `.aps` pair. **No new container and no
+new file format**; the readers already written open them.
+
+First run on never-seen data, triangles emitted by the ADC rule against the header's own face count:
+
+```
+Alien.mps    plackard  22v  12 faces ->  12 tris     boy1a.mps  boy1head 122v  74 ->  74
+             alien1   567v 357 faces -> 357 tris                boy1legs 122v  80 ->  80
+                                                                boy1body 181v 106 -> 106
+```
+
+### The rig is in the file, with the artists' own names
+
+`/Chars/Boy1a` is 3 meshes and **26 helper nodes**, and the helpers are a 3ds Max biped:
+
+```
+Bip01 -> Bip01 Pelvis -> Bip01 Spine -> Bip01 Spine1 -> Bip01 Neck -> Bip01 Head
+                                                     +- Bip01 L Clavicle -> L UpperArm -> L Forearm -> L Hand
+                                                     +- Bip01 R Clavicle -> R UpperArm -> R Forearm -> R Hand
+                         Bip01 Spine -> Bip01 L Thigh -> L Calf -> L Foot -> L Toe0
+                                     -> Bip01 R Thigh -> R Calf -> R Foot -> R Toe0
+```
+
+The alien carries the same rig plus `Bip01 Ponytail1` / `Ponytail2`. The three meshes hang off
+`Bip01` itself, not off individual bones — so they are skinned, not rigidly attached.
+
+### ⭐⭐ The skin weights: `mesh+0x90`
+
+Found by diffing all 40 words of the 160-byte mesh entry, character against ride: `+0x90` is the
+only word that is **non-zero in every character mesh and zero in every ride mesh**.
+
+```
+mesh+0x90 -> +0x00 u16 A   vertices (the ANIMATED vertices, not the strip slots)
+             +0x02 u16 B   total influences
+             +0x04 u32 -> A x { u16 first, u8 count, u8 ? }
+             +0x08 u32 -> B x u8     bone index, into the node table (meshes then helpers)
+             +0x0C u32 -> B x f32    weight
+             +0x10 u32 -> B x f32[3] the vertex, in THAT BONE's space
+```
+
+**⚠ THE INFLUENCE COUNT IS A BYTE.** Read as a u16 the run table still tiles on 5 of 7 meshes and
+produces counts of 65,282 on the rest — the same trap `mesh+0x66` already carries a note about.
+
+Measured over every `.mps` in DATA.WAD:
+
+| test | result |
+|---|---|
+| run tables that tile `[0,B)` exactly | **81 / 81** |
+| per-vertex weight sums | **4,382 / 4,382** within 1e-4 of 1.0 (min 0.999999, max 1.000001) |
+| influences per vertex | 1 (1,874), 2 (1,979), 3 (328), 4 (201) — **never 5** |
+| bone indices | 38 distinct, 0..37 |
+
+A weight sum of exactly 1.0 on every one of 4,382 vertices is not something a wrong field offset
+produces. `A` is the animated-vertex count, the same one `mesh+0x98` maps strip slots onto.
+
+⚠ **The float3 is the vertex position and it is NOT yet placed correctly.** Solving the least
+squares transform from those positions to the mesh's own vertices gives a **pure rotation** (basis
+lengths 1.0000, 1.0000, 1.0000) with a residual of 0.004 against a 29,408-unit object — so the data
+is right — but that transform is **not** any node's world matrix as composed here. The node matrices
+are in world units (translations under 1) while vertices are in model units (tens of thousands), so
+a scale factor is missing somewhere in the chain. Open.
+
+### The 4th byte of the run record
+
+Zero on 3,973 of 4,152 vertices; elsewhere 32, 48, 49, 56..64. Unexplained.
+
+
+## ⭐ MOVIES/*.MPC — an EA chunk container around MPEG-2 (2026-09-21)
+
+Eleven files, 285 MB. A flat stream of EA chunks, `4cc + u32 LE size`, size INCLUDING the header:
+
+```
+SCHl  audio header: platform 'PT\0\0', then a tag stream; 0xFD opens a subheader, 0x8A closes it,
+      0xFF ends it. Each element is a tag byte, a length byte, then that many BIG-ENDIAN bytes.
+      0x82 channels, 0x83 codec, 0x84 sample rate, 0x85 sample count.
+SCCl  chunk count
+SCDl  audio data
+MPCh  ONE VIDEO FRAME of MPEG-2 video elementary stream
+SCEl  end
+```
+
+The PS2 decodes MPEG-2 in hardware (the IPU), so EA shipped elementary stream and let the console
+do the work.
+
+| movie | bytes | MPCh | pictures | rate | audio s | fps |
+|---|---|---|---|---|---|---|
+| ALIEN | 27,011,556 | 1218 | 1218 | 48000 | 40.57 | 30.02 |
+| BFLOGO | 6,346,344 | 286 | 286 | 48000 | 9.52 | 30.04 |
+| DINO | 26,678,236 | 1203 | 1203 | 48000 | 40.07 | 30.02 |
+| END_E | 7,027,700 | 319 | 319 | 48000 | 10.54 | 30.27 |
+| END_F | 6,964,568 | 316 | 316 | 48000 | 10.51 | 30.08 |
+| FLOWER | 31,590,596 | 1424 | 1424 | 48000 | 47.45 | 30.01 |
+| FRANK | 35,989,692 | 1622 | 1622 | 48000 | 54.02 | 30.03 |
+| SPACEMAN | 33,079,444 | 1491 | 1491 | 48000 | 49.68 | 30.01 |
+| FE125 | 33,926,000 | 896 | 896 | 48000 | 35.84 | **25.00** |
+| FE225 | 25,240,584 | 667 | 667 | 48000 | 26.68 | **25.00** |
+| FE325 | 24,937,208 | 659 | 659 | 48000 | 26.36 | **25.00** |
+
+* **All 11 tile to the last byte.** The walker raises on one trailing byte; none raised.
+* **`pictures == MPCh` on every file** — 10,101 chunks, 10,101 MPEG-2 `picture_start_code`s. One
+  chunk is one frame, measured, not assumed.
+* **The fps column was never fed a frame rate.** It is the audio sample count against the video
+  frame count, two independent numbers, and it separates the three `FE*` frontend movies at
+  **exactly 25.00** from the eight story cutscenes at 30. Three files agreeing to four significant
+  figures is not luck.
+* Slice start codes run `0x01`..`0x16` — 22 macroblock rows, **352 px**, which independently
+  confirms the `640x352` read out of the sequence header.
+* `0xB5` extension codes are present, so this is MPEG-2 and not MPEG-1.
+
+⚠ **NOT verified**: the audio `codec` field reads **7** and what 7 means has not been proved.
+Stereo and 48 kHz are certain; the codec is not.
+
+Reader: `tools/mpc.py` — `disc_file(bin, extent, size)`, `chunks(data)`, `audio_header(d, off, n)`.

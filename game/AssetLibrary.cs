@@ -13,15 +13,17 @@ public sealed class AssetLibrary : IDisposable
         public string Name;                       // "Rides/Monkey"
         public WadArchive.Entry Model;            // the .mps
         public WadArchive.Entry Animation;        // the .aps beside it
-        public readonly Dictionary<string, WadArchive.Entry> Textures = new(StringComparer.OrdinalIgnoreCase);
     }
 
     readonly Disc _disc;
     public WadArchive Wad { get; private set; }
     public string WadName { get; private set; }
     public List<RideAssets> Rides { get; } = new();
-    /// <summary>The shared texture set, used when a ride's own folder does not have one.</summary>
+    /// <summary>The shared texture set, used when nothing nearer to the model has one.</summary>
     public readonly Dictionary<string, WadArchive.Entry> SharedTextures = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Every folder's textures, keyed by the folder they belong TO. A `textures/`
+    /// subfolder is filed under its parent, so it sits beside the model it dresses.</summary>
+    readonly Dictionary<string, Dictionary<string, WadArchive.Entry>> _folders = new(StringComparer.OrdinalIgnoreCase);
 
     public AssetLibrary(string discPath) { _disc = new Disc(discPath); }
     public void Dispose() => _disc.Dispose();
@@ -42,7 +44,7 @@ public sealed class AssetLibrary : IDisposable
     /// beside it, and its own textures.</summary>
     void Index()
     {
-        Rides.Clear(); SharedTextures.Clear();
+        Rides.Clear(); SharedTextures.Clear(); _folders.Clear();
         var byDir = new Dictionary<string, RideAssets>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var e in Wad.Entries)
@@ -58,13 +60,18 @@ public sealed class AssetLibrary : IDisposable
             if (ext == ".tga")
             {
                 var key = Path.GetFileNameWithoutExtension(e.Path);
-                if (dir.Contains("Sharetex", StringComparison.OrdinalIgnoreCase))
-                    SharedTextures[key] = e;
-                else
-                {
-                    var owner = dir[..Math.Max(dir.LastIndexOf('/'), 0)];
-                    Get(owner).Textures[key] = e;
-                }
+                if (dir.Contains("Sharetex", StringComparison.OrdinalIgnoreCase)) { SharedTextures[key] = e; continue; }
+                // A `textures/` subfolder dresses the model in the folder above it; a .tga anywhere
+                // else belongs to its own folder. DATA.WAD needs both: the characters keep their
+                // models in /Chars/<name>/ and share ONE /Chars/Textures/ between all 24 of them,
+                // while /Chars/Dino keeps its texture beside the model.
+                var leaf = dir[(dir.LastIndexOf('/') + 1)..];
+                var owner = leaf.Equals("textures", StringComparison.OrdinalIgnoreCase)
+                            ? dir[..dir.LastIndexOf('/')]
+                            : dir;
+                if (!_folders.TryGetValue(owner, out var f))
+                    _folders[owner] = f = new Dictionary<string, WadArchive.Entry>(StringComparer.OrdinalIgnoreCase);
+                f[key] = e;
                 continue;
             }
             if (ext == ".mps") Get(dir).Model = e;
@@ -83,12 +90,18 @@ public sealed class AssetLibrary : IDisposable
 
     public byte[] Read(WadArchive.Entry e) => Wad.Read(e);
 
-    /// <summary>A material's texture: the ride's own folder FIRST, then the shared set.</summary>
+    /// <summary>A material's texture: the model's OWN folder first, then each folder above it, then
+    /// the archive-wide shared set.
+    ///
+    /// ⚠ The order is the whole point, not a detail. A flat by-name search over JUNGLE.WAD once put
+    /// Mumbo's sign on Crazy Ape, because 22 rides each ship a sign_eng.tga. Nearest wins.</summary>
     public Targa Texture(RideAssets ride, string materialName)
     {
         var stem = Path.GetFileNameWithoutExtension(materialName);   // "m_back.ssh" -> "m_back"
         WadArchive.Entry e = null;
-        if (!ride.Textures.TryGetValue(stem, out e)) SharedTextures.TryGetValue(stem, out e);
+        for (var d = "/" + ride.Name; e == null && d.Length > 0; d = d[..Math.Max(d.LastIndexOf('/'), 0)])
+            if (_folders.TryGetValue(d, out var f)) f.TryGetValue(stem, out e);
+        if (e == null) SharedTextures.TryGetValue(stem, out e);
         if (e == null) return null;
         try { return new Targa(Wad.Read(e)); } catch { return null; }
     }

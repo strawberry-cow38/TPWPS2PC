@@ -185,12 +185,20 @@ public partial class Viewer : Node3D
                 _anim = new Aps(_lib.Read(_ride.Animation));
                 foreach (var rec in _anim.Records())
                 {
-                    if (rec.Skeletal) continue;
                     _records.Add(rec);
-                    _animPick.AddItem($"#{_records.Count - 1}  {_anim.Length(rec)} frames");
+                    _animPick.AddItem($"#{_records.Count - 1}  {_anim.Length(rec)} frames"
+                                      + (rec.Skeletal ? "  skeletal" : "")
+                                      + (rec.Shared ? "  (shared)" : ""));
                 }
             }
-            catch { _anim = null; }
+            catch (Exception ex)
+            {
+                // ⚠ RESET EVERYTHING THE TRY TOUCHED. Leaving _records populated while _anim went
+                // null is what turned a parse error into a NullReferenceException three frames
+                // away, in a place that had nothing to do with the real fault.
+                GD.PrintErr($"[v] animation failed: {ex}");
+                _anim = null; _records.Clear(); _animPick.Clear();
+            }
         }
         if (_animPick.ItemCount > 0) _animPick.Select(0);
         Rebuild();
@@ -225,7 +233,13 @@ public partial class Viewer : Node3D
                          "left-drag orbit  |  right-drag or shift+drag or WASD to pan  |  wheel zoom\n" +
                          "SPACE play/pause  |  arrows step a frame  |  R re-frame";
         }
-        catch (Exception ex) { _info.Text = $"{_ride?.Name}\nfailed: {ex.Message}"; }
+        catch (Exception ex)
+        {
+            // ⚠ The STACK, not just the message. "Object reference not set" on its own
+            // names no line and sent me guessing at three different nulls.
+            GD.PrintErr($"[v] build failed: {ex}");
+            _info.Text = $"{_ride?.Name}\nfailed: {ex.Message}";
+        }
     }
 
     ImageTexture TextureFor(string material)
@@ -260,6 +274,9 @@ public partial class Viewer : Node3D
         foreach (var m in model.Meshes)
         {
             if (!world.TryGetValue(m.Offset, out var w)) continue;
+            // Frame what is actually DRAWN. A mesh with no triangles is skipped by the builder, so
+            // letting it into the bounds aims the camera at something invisible.
+            if (model.Triangles(m).Count == 0) continue;
             var (pos, _, _) = model.Vertices(m);
             foreach (var p in pos)
             {
@@ -271,7 +288,11 @@ public partial class Viewer : Node3D
         var lo = pts.Aggregate((a, b) => new Vector3(Mathf.Min(a.X, b.X), Mathf.Min(a.Y, b.Y), Mathf.Min(a.Z, b.Z)));
         var hi = pts.Aggregate((a, b) => new Vector3(Mathf.Max(a.X, b.X), Mathf.Max(a.Y, b.Y), Mathf.Max(a.Z, b.Z)));
         _focus = (lo + hi) * 0.5f;
-        _dist = Mathf.Max((hi - lo).Length() * 0.85f, 2f);
+        // ⚠ THE FLOOR WAS 2.0 AND IT SWALLOWED THE CHARACTERS. A ride is 10-30 units across, so the
+        // floor never bound; DATA.WAD's guests are UNDER ONE UNIT tall, so all of them clamped to
+        // the same distance and rendered at their true relative size -- Girl1a, a child, came out
+        // eight per cent of frame height. It is only there to survive a zero-size model.
+        _dist = Mathf.Max((hi - lo).Length() * 0.85f, 1e-3f);
     }
 
     public override void _Process(double delta)

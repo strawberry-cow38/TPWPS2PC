@@ -64,7 +64,14 @@ def position_keys(d, off, n):
 
 def skeletal_tracks(d, rec):
     """The 20-byte form (record flags & 0x20). Keys are inline, and the sampler skins with them.
-    ⚠ Unused by every one of JUNGLE.WAD's 89 files -- all 1,229 tracks there are the 48-byte kind."""
+    ⚠ Unused by every one of JUNGLE.WAD's 89 files -- all 1,229 tracks there are the 48-byte kind.
+    DATA.WAD's characters are where it is used: 226 records, 4,268 tracks.
+
+    ⚠⚠ FLAG 0x80 MEANS THE TRACKS ARE NOT IN THIS FILE. Boy2a/3a/4a carry 15 records each that
+    declare 22 tracks and a NULL track pointer; they reuse Boy1a's animation and ship at 15 KB
+    against its 68 KB. The split is exact over all 265 records: 0x80 set <=> tracks == 0, with no
+    record on either off-diagonal. Reading one as data walks off the end of the file."""
+    if not rec['tracks']: return []
     out = []
     for i in range(rec['ntracks']):
         t = rec['tracks'] + i*0x14

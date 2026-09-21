@@ -1160,3 +1160,58 @@ more times than TVSim's array has entries.
 The likeliest remaining explanation is that this record is not played against the 8-mesh model I
 compared it to — an `.aps` can target more than one model — which is a thing to check rather than
 a thing to assume. Recorded unresolved.
+
+
+## ⭐⭐ The 20-byte track form — DECODED ON REAL DATA (2026-09-21)
+
+The second track format (record `flags & 0x20`) had no test data: all 1,229 tracks in JUNGLE.WAD's
+89 files are the 48-byte kind. **DATA.WAD's characters are where it is used** — 25 `.aps`, 226
+skeletal records, 4,268 tracks.
+
+```
+track, 20 bytes:  +0x00 u16 node
+                  +0x08 u8  rotation key count      <- BYTES, not u16
+                  +0x09 u8  position key count
+                  +0x0C u32 -> rotation keys, 10 bytes: u16 time, int16 x y z w at 1/32768
+                  +0x10 u32 -> position keys,  8 bytes: u16 time, int16 x y z
+```
+
+The test that matters, over every character `.aps`:
+
+* **49,839 rotation keys, 100.000% of them unit quaternions** — |q| from 0.99995 to 1.00001.
+  Four int16 fields at a wrong offset or stride do not land on the unit hypersphere 49,839 times.
+* **81,287 key times, all non-decreasing.**
+
+### ⭐ Record flag 0x80 — THE TRACKS ARE NOT IN THIS FILE
+
+45 records declare a track count and a **NULL** track pointer. They are not corrupt: they carry
+flag `0x80`, and the three files holding them are `Boy2a`, `Boy3a` and `Boy4a` — **15 KB each
+against Boy1a's 68 KB**. The boys are one body in four shirts and reuse Boy1a's animation. The
+girls did not get the same treatment: Girl2a-4a each carry their own 72-95 KB.
+
+Over all 265 records the split is exact, with nothing on either off-diagonal:
+
+| | tracks present | tracks NULL |
+|---|---|---|
+| **0x80 clear** | 220 | 0 |
+| **0x80 set** | 0 | 45 |
+
+Reading one as data walks off the end of the file, which is how this was found.
+
+### ⚠⚠ `track+0x20` IS A UNION
+
+`Morph()` read `track+0x20` unconditionally while `Rotation()` and `Scale()` gate on their flags.
+That is safe in the rides by luck — across JUNGLE.WAD's 1,229 tracks the `VertexMorph` bit (0x1000)
+is set **if and only if** the pointer is present, 290 and 939, nothing on either off-diagonal — but
+**81 character tracks carry a pointer here under flag 0x40000** (`AlternatePlayer`) and it is not a
+morph header. The gate is now on the flag, like the other three channels.
+
+Record flag census, for comparison:
+
+```
+JUNGLE.WAD  89 files   0,1,2,3,4,5,6,7,16,17,20,21,22,65,67,68,69,70,71,81,84,85
+DATA.WAD    25 files   1 (x24), 4 (x5), 5 (x10), 0x25 (x181), 0xa5 (x45)
+```
+
+Every character is `0x01` once (an `AlternatePlayer` record, not morph) plus 4-15 skeletal records.
+`/Generic/Advisor` has no 0x20 bit at all: the advisor is morph-animated, not skinned.
