@@ -10,9 +10,15 @@ namespace TPW.PS2.Data;
 /// (`pl1_leaf`, `leaf1`). Discard the alpha and foliage becomes an opaque black wedge.
 ///
 /// ⚠⚠ **RLE AND PALETTED ARE ALSO ON THE DISC.** Counting every TGA in every WAD: 3,865 are
-/// kind 2 / 24bpp, 1,710 kind 2 / 32bpp, **111 are kind 10 (RLE)** and **8 are 8bpp** (kind 1
-/// colour-mapped and kind 2 greyscale). Throwing on those 119 is 119 textures that silently
-/// do not appear.
+/// kind 2 / 24bpp, 1,710 kind 2 / 32bpp, **111 are kind 10 (RLE)** and **8 are 8bpp**. Throwing
+/// on those 119 is 119 textures that silently do not appear.
+///
+/// ⚠⚠ **NONE OF THOSE 8 IS GREYSCALE** -- an earlier version of this comment said four of them
+/// were, and that sentence is what kept the bug below alive. All 8 are paletted: 4 declare it
+/// (`Sky/*_back`, cmapType 1) and 4 lie about it (`Sky/*_front2`, cmapType 0 / kind 2 at 8bpp,
+/// which is true-colour with no colour map and cannot exist). The liars are the CLOUD MASKS --
+/// every palette entry is (255,255,255,a), pure white with only opacity varying -- so believing
+/// the header renders each world's cloud layer as an opaque grey sheet that looks entirely fine.
 ///
 /// ⭐ <see cref="PartialAlpha"/> is the count of texels that are neither clear nor solid. **1,543
 /// of the 32-bit textures have some** -- soft edges, glass, smoke -- and a renderer that only
@@ -49,6 +55,22 @@ public sealed class Targa
         {
             cmapStride = (cmapBits + 7) / 8;
             src += cmapLen * cmapStride;     // the palette sits between the header and the pixels
+        }
+        else if (bpp == 8 && !rle && baseKind == 2 && buf.Length - 18 - idlen - Width * Height >= 256)
+        {
+            // ⚠⚠ The four sky cloud masks (`Sky/*_front2.tga`, one per world) declare cmapType 0
+            // and kind 2 -- true-colour, NO colour map -- at 8bpp, which cannot exist. They carry
+            // a 256-entry 32-bit palette regardless. Keying the skip on the DECLARED type means
+            // the first 1,024 pixels ARE the palette, the stream then runs 1,024 short, and 8bpp
+            // falls into the greyscale branch below which forces a = 255. The result is not a
+            // rejection -- it is a plausible grey pattern that renders happily, so every world's
+            // cloud layer becomes an OPAQUE SHEET and nothing ever points at the TGA reader.
+            // Derive the palette from the body size instead. Their honest siblings `Sky/*_back.tga`
+            // declare cmapType 1 and must go down the branch above untouched: that is the control.
+            cmapStride = Math.Clamp((buf.Length - 18 - idlen - Width * Height) / 256, 1, 4);
+            cmapFirst = 0;
+            baseKind = 1;
+            src += 256 * cmapStride;
         }
         int cmapOff = 18 + idlen;
 
