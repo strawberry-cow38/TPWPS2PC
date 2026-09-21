@@ -635,11 +635,11 @@ public partial class Viewer : Node3D
         // ⚠ AFTER the placement, never before. Rebuild frames the camera on the model in its own
         // space and Place then MOVES it onto the footprint, so framing first aims the shot at where
         // the ride used to be -- which photographs empty grass and looks like the ride failed to load.
-        FrameParkCamera(fp, mesh);
+        FrameParkCamera(fp, _current.Root);
 
         // ⚠ Report the model against its cells rather than assuming it fits. A ride overflowing
         // its footprint is a real thing here -- the cell size itself was measured, not given.
-        var (min, max) = Park.Bounds(mesh);
+        var (min, max) = Park.DrawnBounds(_current.Root);
         var over = (max.X - min.X) / Math.Max(fp.Width, 1) / Park.CellSize;
         var overZ = (max.Z - min.Z) / Math.Max(fp.Height, 1) / Park.CellSize;
         _info.Text = Park.Describe(def, display, fp)
@@ -723,9 +723,9 @@ public partial class Viewer : Node3D
     /// is what made the viewer look like it was missing artwork the Python renderer had.</summary>
     /// <summary>Aim at the park rather than the ride: the footprint's centre, pulled back far
     /// enough to hold the laid ground as well as whatever is standing on it.</summary>
-    void FrameParkCamera(Park.Footprint fp, Model mesh)
+    void FrameParkCamera(Park.Footprint fp, Node3D drawn)
     {
-        var (min, max) = Park.Bounds(mesh);
+        var (min, max) = Park.DrawnBounds(drawn);
         float w = Math.Max(fp.Width, 1) * Park.CellSize, h = Math.Max(fp.Height, 1) * Park.CellSize;
         _focus = new Vector3(w * 0.5f, (max.Y - min.Y) * 0.35f, h * 0.5f);
         // The ground is laid with six cells of padding on every side; frame a little of it rather

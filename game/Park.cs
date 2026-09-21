@@ -103,14 +103,55 @@ public sealed class Park
     /// to be authored about an origin -- measured per model, since they are not.</summary>
     public void Place(Node3D model, Model mesh, Footprint fp)
     {
-        foreach (var c in _ride.GetChildren()) c.QueueFree();
+        foreach (var c in _ride.GetChildren())
+            if (c != model) c.QueueFree();
         if (model == null) return;
+        // ⚠ The model is already a child of the viewer -- Rebuild adds it. AddChild on a node that
+        // has a parent is an ERROR in Godot, not a move: it printed "already has a parent" and left
+        // the ride where it was, which renders as the park having no ride in it.
+        model.GetParent()?.RemoveChild(model);
         _ride.AddChild(model);
 
-        var (min, max) = Bounds(mesh);
+        var (min, max) = DrawnBounds(model);
         var centre = (min + max) * 0.5f;
         var target = new Vector3(fp.Width * CellSize * 0.5f, 0, fp.Height * CellSize * 0.5f);
         model.Position = new Vector3(target.X - centre.X, -min.Y, target.Z - centre.Z);
+    }
+
+    /// <summary>The bounds of what is actually ON SCREEN: the union of every built mesh's AABB,
+    /// through its own transform inside the model.
+    ///
+    /// ⭐ This exists because deciding a ride's size from the reader turned out to be a choice
+    /// between answers that disagree -- per-mesh matrix alone gives `monkey.mps` 53.6 across, the
+    /// parent chain gives 33.4, and the two methods differ per model rather than by a constant. The
+    /// geometry the builder produced is not an opinion about which transform is right; it is the
+    /// thing the player sees, so it is what a footprint should be measured against.</summary>
+    public static (Vector3 Min, Vector3 Max) DrawnBounds(Node3D root)
+    {
+        var min = new Vector3(float.MaxValue, float.MaxValue, float.MaxValue);
+        var max = new Vector3(float.MinValue, float.MinValue, float.MinValue);
+        bool any = false;
+        void Walk(Node n, Transform3D acc)
+        {
+            var t = n is Node3D n3 && n != root ? acc * n3.Transform : acc;
+            if (n is MeshInstance3D mi && mi.Mesh != null)
+            {
+                var box = mi.GetAabb();
+                for (int i = 0; i < 8; i++)
+                {
+                    var corner = t * (box.Position + new Vector3(
+                        (i & 1) != 0 ? box.Size.X : 0,
+                        (i & 2) != 0 ? box.Size.Y : 0,
+                        (i & 4) != 0 ? box.Size.Z : 0));
+                    any = true;
+                    min = new Vector3(Math.Min(min.X, corner.X), Math.Min(min.Y, corner.Y), Math.Min(min.Z, corner.Z));
+                    max = new Vector3(Math.Max(max.X, corner.X), Math.Max(max.Y, corner.Y), Math.Max(max.Z, corner.Z));
+                }
+            }
+            foreach (var c in n.GetChildren()) Walk(c, t);
+        }
+        Walk(root, Transform3D.Identity);
+        return any ? (min, max) : (Vector3.Zero, Vector3.Zero);
     }
 
     /// <summary>A model's bounds, THROUGH ITS PER-MESH MATRIX.

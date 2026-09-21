@@ -174,3 +174,52 @@ def triangle_indices_mat(m, mesh):
             tris.append((base+i0, base+i1, base+i2, batch_mat.get(j)))
         base += n
     return tris, uvs
+
+
+def world_transforms(m):
+    """⭐⭐ Each mesh's WORLD matrix: its own matrix composed up the PARENT CHAIN.
+
+    ⚠⚠ `mesh['mat']` alone is NOT where a mesh ends up. Every node carries a parent at `+0x04` (an
+    absolute offset into the mesh table or the helper table at `header+0x4C`), and the renderer --
+    `Model.WorldTransforms`, which `AnimatedModel` uses to build the geometry you actually see --
+    walks that chain. Skipping it gave `monkey.mps` an extent of 53.6 where the drawn model is a
+    tenth of that, because its root `m_base` carries a 0.1 scale that every other part inherits.
+
+    Measuring a model without this does not look wrong: every ride comes out consistently too big,
+    the camera frames whatever it is handed, and two people using the same shortcut agree with each
+    other. Column-major, so the parent multiplies on the RIGHT.
+    """
+    HELPER = struct.unpack_from('<I', m, 0x4C)[0]
+    local, parent = {}, {}
+
+    def add(o):
+        local[o] = struct.unpack_from('<16f', m, o + 0x10)
+        parent[o] = struct.unpack_from('<I', m, o + 4)[0]
+
+    offs = []
+    tbl = struct.unpack_from('<I', m, 0x48)[0]
+    for i in range(struct.unpack_from('<H', m, 0x30)[0]):
+        o = tbl + i * 160
+        offs.append(o); add(o)
+    o = HELPER
+    while o + 0x60 <= len(m) and struct.unpack_from('<I', m, o)[0] & 0x80000000:
+        add(o); o += 0x60
+
+    def mul(a, b):
+        """a * b, column-major 4x4 as a flat 16-tuple."""
+        out = [0.0] * 16
+        for c in range(4):
+            for r in range(4):
+                out[c * 4 + r] = sum(a[k * 4 + r] * b[c * 4 + k] for k in range(4))
+        return tuple(out)
+
+    world = {}
+
+    def resolve(o, depth=0):
+        if o in world: return world[o]
+        p = parent.get(o, 0)
+        w = local[o] if (p == 0 or p not in local or depth > 32) else mul(local[o], resolve(p, depth + 1))
+        world[o] = w
+        return w
+
+    return {o: resolve(o) for o in offs}
