@@ -1744,3 +1744,36 @@ the disagreements are a real difference between two fields rather than a mis-joi
 This is the **third** independent reason not to key a ride on its name, after the 32-of-36 repeated
 names carrying different ids and the 5 outright id collisions. `Info.Name` is also English-only by
 construction, while the real name exists in nine languages.
+
+
+## ⭐⭐ `.lip` — the mark unit is MICROSECONDS, measured (2026-09-21)
+
+tinyclaw solved the structure (flat `u32` marks, `FFFFFFFF` terminator, odd count) and deliberately
+left the unit open, naming the division that would settle it: *"find the matching audio, read its
+duration, divide."* The audio is not missing — it is **not in the WADs at all**.
+
+⭐ The speech banks sit at **ISO level**: `/AUDIO/ADVISOR/{ENGLISH,FRENCH,GERMAN}/SPCHHD.SDT`,
+exactly the three languages the `.lip` files come in. Searching the WADs for a same-stem partner
+finds nothing because no `.sdt` is inside a WAD — `.lip` is the only audio-adjacent thing that is.
+
+**170 of the 172 stems per language match a sound name inside that language's bank**, in all three.
+`adds_01.lip` ↔ `Adds_01.mp2`. Clip duration comes from the `.SDT` header's `+0x20` word, which is
+milliseconds × 44.1 × channels.
+
+### The division, over all 510 pairs
+
+| unit | median `lastMark / duration` | pairs landing in 0.5–1.0 |
+|---|---|---|
+| **microseconds** | **0.9759** | **469 of 510** |
+| 100-nanoseconds | 0.0976 | **0** |
+| milliseconds | 975.8967 | **0** |
+| 44.1 kHz samples | 22.1292 | **0** |
+
+**Microseconds, and it is not a preference between plausible readings — the three rivals score
+zero.** 470 of 510 last marks land inside their clip (92.2%) at a median **97.6%** of its length,
+which is where a mouth stops moving relative to where a file ends.
+
+⚠ 40 pairs overrun the clip, and they are lopsided: **37 English against 1 French and 2 German**.
+The worst are tutorial lines — `tut_014` at 1.022, `tut_035` at 1.123 and 1.262. Either those
+English bank clips are trimmed shorter than the line they were marked against, or those stems are
+mis-paired. Not resolved, and the asymmetry is the clue.
