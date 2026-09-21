@@ -86,12 +86,27 @@ public sealed class AnimatedModel
     }
 
     static BaseMaterial3D.CullModeEnum CullFromEnv() =>
-        (OS.GetEnvironment("TPW_PS2_CULL") ?? "off").ToLowerInvariant() switch
+        (OS.GetEnvironment("TPW_PS2_CULL") ?? "back").ToLowerInvariant() switch
         {
             "front" => BaseMaterial3D.CullModeEnum.Front,
             "off" or "none" or "disabled" => BaseMaterial3D.CullModeEnum.Disabled,
-            _ => BaseMaterial3D.CullModeEnum.Back,
+            _ => BaseMaterial3D.CullModeEnum.Back,   // "back" and "two" both cull back
         };
+
+    /// <summary>TWO-SIDED geometry: emit every triangle twice, the second reversed with a flipped
+    /// normal, and cull back faces.
+    ///
+    /// ⭐ This is what "no cull" actually wants. Plain `CullMode.Disabled` lets a model's BACK
+    /// faces draw over its FRONT ones -- measured on Crazy Ape, his own back covers his face and
+    /// the crates' far walls render over the near ones, which reads as holes in the model.
+    /// Duplicating instead means nothing is ever invisible (you can still see inside an open crate)
+    /// while the depth test keeps the nearer surface in front, because every triangle now has a
+    /// correctly-facing copy whichever side you view it from.</summary>
+    /// ⚠ TRIED AND REJECTED, kept switchable so nobody re-tries it blind: duplicating every
+    /// triangle puts two coincident faces at the SAME depth, which z-fights per pixel and looks
+    /// worse than either plain mode. `TPW_PS2_CULL=two` still selects it; it is not the default.
+    static bool TwoSided =>
+        (OS.GetEnvironment("TPW_PS2_CULL") ?? "back").ToLowerInvariant() is "two" or "twosided";
 
     void BuildSurfaces(Part p, Func<string, ImageTexture> texture)
     {
@@ -104,8 +119,13 @@ public sealed class AnimatedModel
             var mat = new StandardMaterial3D
             {
                 // ⚠ 32-bit TGAs here are alpha CUTOUTS (leaves, foliage), not merely wider pixels.
+                // ⚠⚠ THE THRESHOLD IS 16/255, NOT THE DEFAULT 0.5. Measured across the archive's
+                // 261 32-bit TGAs: alpha 0 is the single commonest value (genuine cutout) but
+                // **49.9% of texels sit at or below 128**, so scissoring at 0.5 deletes half the
+                // artwork and the models come out full of holes. The validated Python renderer
+                // discarded below 16; this matches it.
                 Transparency = BaseMaterial3D.TransparencyEnum.AlphaScissor,
-                AlphaScissorThreshold = 0.5f,
+                AlphaScissorThreshold = 16f / 255f,
                 // ⭐ NO CULLING BY DEFAULT -- the owner's call, and it is safe here because the
                 // normals do NOT come from the winding: they are the model's own third per-vertex
                 // stream (3 x int8 over 127), set explicitly below. The usual objection to
@@ -140,17 +160,27 @@ public sealed class AnimatedModel
         {
             var st = new SurfaceTool();
             st.Begin(Mesh.PrimitiveType.Triangles);
+            bool two = TwoSided;
             foreach (var t in grp)
-                // ⭐ REVERSED: A, C, B. See the CullMode note above.
+            {
+                // ⭐ REVERSED: A, C, B -- M3D2 front faces are clockwise. See the CullMode note.
                 foreach (var idx in new[] { t.A, t.C, t.B })
                 {
                     st.SetUV(p.Uv[idx]);
-                    // ⭐ The model's OWN normal, not one derived from triangle order. This is what
-                    // makes culling a free choice rather than a lighting decision.
+                    // ⭐ The model's OWN normal, not one derived from triangle order.
                     st.SetNormal(p.Normal[idx]);
                     var v = pos[idx];
                     st.AddVertex(new Godot.Vector3(v.X, v.Y, v.Z));
                 }
+                if (!two) continue;
+                foreach (var idx in new[] { t.A, t.B, t.C })      // the back copy
+                {
+                    st.SetUV(p.Uv[idx]);
+                    st.SetNormal(-p.Normal[idx]);                 // ⚠ flipped, or it lights inside-out
+                    var v = pos[idx];
+                    st.AddVertex(new Godot.Vector3(v.X, v.Y, v.Z));
+                }
+            }
             p.Surfaces[si++].Mesh = st.Commit();
         }
     }

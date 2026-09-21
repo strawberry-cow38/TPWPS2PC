@@ -52,6 +52,8 @@ public class MainWindow : Window
 
         var update = new Button { Content = "Check for launcher update", MinWidth = 190 };
         update.Click += async (_, _) => await CheckSelfUpdateAsync(manual: true);
+        var updView = new Button { Content = "Update viewer from main", MinWidth = 190 };
+        updView.Click += async (_, _) => await UpdateViewerAsync();
         var locate = new Button { Content = "Locate…", MinWidth = 90 };
         locate.Click += async (_, _) => await LocateAsync();
         _launch.Click += (_, _) => Launch();
@@ -105,7 +107,7 @@ public class MainWindow : Window
                         }
                     },
                     new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10,
-                                     Children = { _launch, update } },
+                                     Children = { _launch, update, updView } },
                     new TextBlock { Text = $"launcher v{LauncherVersion}", Foreground = TextDim, FontSize = 11 },
                     _log,
                 }
@@ -295,7 +297,80 @@ public class MainWindow : Window
             Dispatcher.UIThread.Post(Close);
             return true;
         }
+        catch (HttpRequestException e) when (e.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            // ⚠ A 404 here is the NORMAL state until a build has been published. Say that rather
+            // than showing a raw HTTP error, which reads as "the updater is broken".
+            if (manual) Log("no published launcher build yet (nothing at " + VersionUrl + ")");
+            return false;
+        }
         catch (Exception e) { if (manual) Log("update check failed: " + e.Message); return false; }
+    }
+
+    const string SourceZipUrl = "https://codeload.github.com/strawberry-cow38/TPWPS2PC/zip/refs/heads/main";
+
+    /// <summary>Replace the viewer's sources (game/ and core/) with main's, then rebuild.
+    ///
+    /// ⚠ Unlike the launcher's own update this is NOT irreversible -- it writes source files next to
+    /// the launcher rather than over the running exe -- so it does not need the self-update guards.
+    /// It does still refuse anything that is not a zip, because a 404 page is a successful HTTP
+    /// response and would otherwise be written to disk as "sources".</summary>
+    async Task UpdateViewerAsync()
+    {
+        if (_projectDir == null) { Log("no game/ next to the launcher to update"); return; }
+        var root = Directory.GetParent(_projectDir)!.FullName;
+        try
+        {
+            Log("downloading main…");
+            var bytes = await Http.GetByteArrayAsync(SourceZipUrl);
+            // "PK" -- a zip. An error page is not one, and a successful 404 body would otherwise
+            // be unpacked as if it were source.
+            if (bytes.Length < 1000 || bytes[0] != (byte)'P' || bytes[1] != (byte)'K')
+            {
+                Log($"got {bytes.Length:n0} bytes and it is not a zip — keeping the current viewer");
+                return;
+            }
+            var tmp = Path.Combine(Path.GetTempPath(), "tpwps2_main");
+            if (Directory.Exists(tmp)) Directory.Delete(tmp, true);
+            Directory.CreateDirectory(tmp);
+            var zipPath = Path.Combine(tmp, "main.zip");
+            await File.WriteAllBytesAsync(zipPath, bytes);
+            System.IO.Compression.ZipFile.ExtractToDirectory(zipPath, tmp);
+            var inner = Directory.GetDirectories(tmp).FirstOrDefault(d => File.Exists(Path.Combine(d, "TPWPS2.sln")));
+            if (inner == null) { Log("that zip does not look like the repo — keeping the current viewer"); return; }
+
+            foreach (var part in new[] { "game", "core" })
+            {
+                var src = Path.Combine(inner, part);
+                var dst = Path.Combine(root, part);
+                if (!Directory.Exists(src)) continue;
+                CopyOver(src, dst);
+                Log($"updated {part}/");
+            }
+            // ⚠ Force a rebuild: the sources changed, so a stale assembly would silently keep
+            // running the OLD viewer and look like the update did nothing.
+            var asm = AssemblyPath(_projectDir);
+            if (File.Exists(asm)) File.Delete(asm);
+            if (EnsureBuilt()) Log("viewer updated and rebuilt — launch when ready");
+        }
+        catch (Exception e) { Log("viewer update failed: " + e.Message); }
+    }
+
+    static void CopyOver(string src, string dst)
+    {
+        Directory.CreateDirectory(dst);
+        foreach (var d in Directory.GetDirectories(src, "*", SearchOption.AllDirectories))
+        {
+            var rel = Path.GetRelativePath(src, d);
+            if (rel.Split(Path.DirectorySeparatorChar).Any(p => p is "bin" or "obj" or ".godot")) continue;
+            Directory.CreateDirectory(Path.Combine(dst, rel));
+        }
+        foreach (var f in Directory.GetFiles(src, "*", SearchOption.AllDirectories))
+        {
+            var rel = Path.GetRelativePath(src, f);
+            if (rel.Split(Path.DirectorySeparatorChar).Any(p => p is "bin" or "obj" or ".godot")) continue;
+            File.Copy(f, Path.Combine(dst, rel), overwrite: true);
+        }
     }
 
     void Log(string line) => Dispatcher.UIThread.Post(() =>
