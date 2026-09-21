@@ -1061,3 +1061,45 @@ and hands it to `FUN_001a6508` with the node's matrix — pointing the node down
 travel. When flag `0x08` is clear it first forces an up-vector of `(0, 1, 0)`.
 
 That is how a ride vehicle faces the way it is going.
+
+
+## `track+0x24` — the owner's particle hypothesis, tested and well supported (not yet proved)
+
+The owner suggested: *"there are particles emitted during some animations? maybe those are the
+missing things? but maybe handled in a global particle emitter."* Three checks, all consistent.
+
+**1. The carrier list is not random.** 130 tracks over 34 files:
+
+```
+CARRIES IT   Volcano 27, Wateride 12 + all 11 of its track pieces, terrain_1 11/11,
+             terrain_2 8/8, MamFount 10, LavSpurt 6, MineCart, GoKarts (all 4 colours),
+             watertun, Fountain, lavajump, Coaster stdpylons, Spider, TVSim
+CARRIES NONE Camera, Gates, PelBin, S_Plant, SeaPlane, Speaker1-4, SupBog, Toilet, bus1, bus2,
+             Bouncy
+```
+
+Lava, water, fountains and vehicles on one side; benches, speakers, toilets and gates on the other.
+
+**2. The contents are a SCHEDULE, not a description.**
+
+```
+array1[k] = (u16 offset into array2, u16 count)      -- (2k, 2) for 88 of the 130
+array2    = (u16 start, u16 end) frame ranges
+ptr3      = floats
+```
+
+⭐ **`array2`'s end frame equals the record's animation length in 86.8% of cases**, and the common
+pairs are `(0,100) x59, (0,50) x31, (0,125) x6, (0,160) x6` — the same authored durations the rest
+of the format uses. So each item gets *frame ranges during which it is active*.
+
+⚠ And what is **absent** is the tell: no lifetime, no velocity, no colour, no count. The `.aps`
+says **when** (and, via `ptr3`, probably where). It does not say what the effect looks like.
+
+**3. There is a global particle system, exactly as the owner guessed.** `/DATA/PARTICLE.WAD`
+(301,952 B) holds `Tp2.plb` — 35,704 B decompressed — plus **100 particle textures** in animated
+sequences (`PA1a0000..0015` is 16 frames, `Pa1b0000..0007` is 8). `Tp2.plb` opens with
+`105` and `320`: 105 × 320 = 33,600 of its 35,704 bytes, so ~105 definitions of 320 bytes.
+
+**Status: a well-supported hypothesis, still not a proof.** Nothing yet read links a `+0x24` field
+to a `.plb` index. Naming it "particles" now would be the same move that produced four wrong turns
+in this file today, so it keeps its shape and loses the name until a consumer is read.
