@@ -227,14 +227,20 @@ def _all_pointers(d):
             rec = record(d, r)
             for k in ('tracks', 'small', 'index'):
                 if rec[k]: P.add(rec[k])
-            if rec['flags'] & 0x20: continue
+            if rec['flags'] & 0x20 or not rec['tracks']: continue
             for i in range(rec['ntracks']):
                 t = rec['tracks'] + i*0x30
+                if t + 0x30 > len(d): break
                 for k in range(8):
                     q = _u32(d, t + 0x10 + 4*k)
                     if q: P.add(q)
+                # ⚠⚠ `track+0x20` IS A UNION and the flags pick the meaning. 81 character tracks
+                # carry a pointer there under flag 0x40000 (AlternatePlayer) and it is NOT a morph
+                # header; walking one as if it were reads a record count out of unrelated bytes and
+                # runs off the end of the file.
+                if not (_u32(d, t + 4) & 0x1000): continue
                 h = _u32(d, t + 0x20)
-                if not h: continue
+                if not h or h + 0x2C > len(d): continue
                 for o in (8, 0x24, 0x28):
                     q = _u32(d, h + o)
                     if q: P.add(q)

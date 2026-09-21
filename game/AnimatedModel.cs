@@ -29,14 +29,17 @@ public sealed class AnimatedModel
         public List<(int[] Times, System.Numerics.Vector3[] Keys)> Morph;
         public MeshInstance3D[] Surfaces;          // one per material
         public int[] SurfaceMaterial;
+        /// <summary>This mesh's node and every node above it, for inherited visibility.</summary>
+        public List<int> Ancestry;
     }
 
     readonly Model _model;
     readonly Aps _anim;
     readonly List<Part> _parts = new();
     readonly Dictionary<int, List<(int Time, System.Numerics.Quaternion Q)>> _rot = new();
+    readonly Dictionary<int, int> _rotTrack = new();   // node -> its track, for the easing curves
     readonly Dictionary<int, List<(int Time, System.Numerics.Vector3 S)>> _scale = new();
-    Dictionary<int, (int Appear, int? Gone)> _vis = new();
+    Dictionary<int, int[]> _vis = new();
     readonly Dictionary<int, Aps.Path> _path = new();
     readonly HashSet<int> _facing = new();
     List<Aps.SkeletalTrack> _skel;
@@ -70,7 +73,7 @@ public sealed class AnimatedModel
             for (int i = 0; i < rec.TrackCount; i++)
             {
                 int t = anim.TrackAt(rec, i), node = anim.TrackNode(t);
-                var r = anim.Rotation(t); if (r != null) _rot[node] = r;
+                var r = anim.Rotation(t); if (r != null) { _rot[node] = r; _rotTrack[node] = t; }
                 var s = anim.Scale(t); if (s != null) _scale[node] = s;
                 // ⚠⚠ THE PATH CHANNEL WAS READ AND THEN NEVER APPLIED. 1,468 of the disc's 6,155
                 // morph-format tracks carry a Catmull-Rom path, and every car, train, boat and
@@ -106,6 +109,7 @@ public sealed class AnimatedModel
                 Normal = nor.Select(v => new Godot.Vector3(v.X, v.Y, v.Z)).ToList(),
                 Tris = tris,
                 AnimMap = _model.AnimVertexMap(mesh),
+                Ancestry = _model.Ancestry(mesh.Index),
             };
             if (rec != null)
                 for (int i = 0; i < rec.TrackCount; i++)
@@ -115,7 +119,7 @@ public sealed class AnimatedModel
                 }
             BuildSurfaces(p, texture);
             _parts.Add(p);
-            var vs = _vis.TryGetValue(mesh.Index, out var vv) ? $"appear {vv.Appear}" + (vv.Gone is int g2 ? $" gone {g2}" : "") : "always";
+            var vs = _vis.TryGetValue(mesh.Index, out var vv) ? "vis[" + string.Join(",", vv) + "]" : "always";
             GD.Print($"[part] {mesh.Name,-10} tris={tris.Count,-5} verts={pos.Count,-5} " +
                      $"morph={(p.Morph != null ? p.Morph.Count.ToString() : "-"),-5} " +
                      $"map={(p.AnimMap != null ? "yes" : "NO "),-4} {vs}");
@@ -307,13 +311,15 @@ void fragment() {
     }
 
     static System.Numerics.Quaternion SampleRot(
-        List<(int Time, System.Numerics.Quaternion Q)> keys, float now)
+        List<(int Time, System.Numerics.Quaternion Q)> keys, float now, Aps anim = null, int track = 0)
     {
         if (keys.Count == 1) return keys[0].Q;
         int i = 0;
         while (i < keys.Count - 2 && keys[i + 1].Time < now) i++;
         float t0 = keys[i].Time, t1 = keys[i + 1].Time;
         float f = t1 == t0 ? 0f : Math.Clamp((now - t0) / (t1 - t0), 0f, 1f);
+        // ⭐ The key's own easing curve remaps the interpolation factor before the SLERP.
+        if (anim != null && track != 0) f = anim.Ease(track, i, f);
         return System.Numerics.Quaternion.Normalize(
             System.Numerics.Quaternion.Slerp(keys[i].Q, keys[i + 1].Q, f));
     }
@@ -323,9 +329,12 @@ void fragment() {
         var world = WorldAt(now);
         foreach (var p in _parts)
         {
+            // ⚠⚠ VISIBILITY IS INHERITED. 183 of the disc's 2,033 appear/disappear entries are
+            // keyed on a HELPER rather than a mesh -- the game hides `Dummy01` to take the arms
+            // off with it. Checking only the mesh's own entry left those parts on screen.
             bool shown = true;
-            if (_vis.TryGetValue(p.Mesh.Index, out var v))
-                shown = now >= v.Appear && (v.Gone == null || now < v.Gone);
+            foreach (var node in p.Ancestry ?? new List<int> { p.Mesh.Index })
+                if (_vis.TryGetValue(node, out var v) && !Aps.VisibleAt(v, now)) { shown = false; break; }
             foreach (var s in p.Surfaces) s.Visible = shown;
             if (!shown) continue;
             if (p.Morph != null && p.AnimMap != null) RebuildGeometry(p, now);
@@ -354,7 +363,8 @@ void fragment() {
             if (!locals.TryGetValue(off, out var bind)) continue;
             var L = bind;
             if (_rot.TryGetValue(node, out var rk))
-                L = Matrix4x4.CreateFromQuaternion(SampleRot(rk, now)) * L;   // bind first
+                L = Matrix4x4.CreateFromQuaternion(
+                        SampleRot(rk, now, _anim, _rotTrack.GetValueOrDefault(node, 0))) * L;  // bind first
             if (_scale.TryGetValue(node, out var sk))
                 L = Renormalise(L, Sample(sk.Select(x => x.Time).ToArray(),
                                           sk.Select(x => x.S).ToArray(), now));

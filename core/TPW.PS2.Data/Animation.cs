@@ -68,8 +68,9 @@ public sealed class Animation
     /// <summary>Track flag bits, from <c>FUN_001a7f48</c>.</summary>
     [Flags] public enum TrackFlag : uint
     {
-        Rotation = 0x08, Scale = 0x80, OrientAlongPath = 0x400,
-        VertexMorph = 0x1000, Unknown0x24 = 0x10000, AlternatePlayer = 0x40000,
+        SplinePath = 0x01, Rotation = 0x08, Scale = 0x80, OrientAlongPath = 0x400,
+        VertexMorph = 0x1000, Unknown0x24 = 0x10000, Visibility = 0x20000,
+        AlternatePlayer = 0x40000,
     }
 
     /// <summary>One 20-byte skeletal track: a node, quaternion keys and position keys.</summary>
@@ -136,6 +137,40 @@ public sealed class Animation
                                                 I16(b + 8) / 32768f, I16(b + 10) / 32768f)));
         }
         return outList;
+    }
+
+    /// <summary>⭐⭐ THE ROTATION KEY'S SECOND u16 IS AN EASING CURVE INDEX, and the curves live at
+    /// <c>track+0x2c</c> -- which this file has carried as "302 tracks, unexplored" since the format
+    /// was cracked. From the evaluator, <c>FUN_001a7f48</c>:
+    ///
+    /// <code>
+    /// e = *(u16*)(keys + i*0xc + 2);
+    /// if (e != 0xffff) {
+    ///     c = (byte*)track[0x2c] + e*8;      // EIGHT bytes
+    ///     x = t * 8.999995;  j = (int)x;  f = x - j;
+    ///     lo = j == 0 ? 0.0 : c[min(j,8)-1]/255.0;
+    ///     hi = j >= 8 ? 1.0 : c[j]/255.0;
+    ///     t  = (1-f)*lo + f*hi;              // and SLERP with THAT
+    /// }
+    /// </code>
+    ///
+    /// So a curve is eight bytes read as the interior of a ten-point ramp from 0 to 1 over nine
+    /// equal intervals. <c>0xffff</c> means linear. Without it a spin is at the wrong ANGLE for the
+    /// frame, which is what the owner saw as the super toilet's sign being placed wrong.</summary>
+    public float Ease(int track, int keyIndex, float t)
+    {
+        int keys = (int)U32(track + 0x14);
+        if (keys == 0) return t;
+        int e = U16(keys + keyIndex * 12 + 2);
+        int table = (int)U32(track + 0x2C);
+        if (e == 0xFFFF || table == 0 || table + e * 8 + 8 > D.Length) return t;
+        int c = table + e * 8;
+        float x = Math.Clamp(t, 0f, 1f) * 8.999995f;
+        int j = (int)x;
+        float f = x - j;
+        float lo = j == 0 ? 0f : D[c + Math.Min(j, 8) - 1] / 255f;
+        float hi = j >= 8 ? 1f : D[c + j] / 255f;
+        return (1f - f) * lo + f * hi;
     }
 
     /// <summary>Scale keys: 16 bytes, <c>u16 time</c> then a float3, LINEAR. Count at <c>track+0x0A</c>.
@@ -290,26 +325,49 @@ public sealed class Animation
         return x >> 22;
     }
 
-    /// <summary>node -> (appear frame, disappear frame or null), from <c>track+0x28</c>.
+    /// <summary>node -> its VISIBILITY TIMELINE, from <c>track+0x28</c>.
     ///
-    /// The object is 4 bytes for a part that only appears and **8 for one that also goes away**; in
-    /// the 8-byte form the int16 at +0x04 is NEGATIVE and its magnitude is the vanish frame. Crazy
-    /// Ape: the crate appears at 28 and disappears at 100 -- the frame the ape bursts out and smashes
-    /// it -- and the shards appear at 100 and vanish at 138. 29/29 across the archive.</summary>
-    public Dictionary<int, (int Appear, int? Gone)> Visibility(Record rec)
+    /// ⭐⭐ Read out of the evaluator, <c>FUN_001a7f48</c>: it is not an appear/disappear pair, it
+    /// is a LIST of <c>track+0x0C</c> signed int16 frame times. The game scans it BACKWARDS for the
+    /// last entry whose magnitude is at or before the current frame, then sets the node's hidden
+    /// bit if that entry is &lt;= 0 and clears it if it is positive:
+    ///
+    /// <code>
+    /// if ((short)*found &lt; 1) node->state |= 0x10; else node->state &amp;= ~0x10;
+    /// </code>
+    ///
+    /// Crazy Ape reads back exactly right: <c>m_crate [0, 28, -100]</c> and
+    /// <c>m_shards [0, 100, -138]</c> -- the crate arrives at 28 and is smashed at 100, the shards
+    /// fly at 100 and are gone by 138.
+    ///
+    /// ⚠⚠ Over the whole disc: 2,033 timelines, whose magnitudes ASCEND on all 2,033 and whose
+    /// signs ALTERNATE on all 2,033 -- so it really is a show/hide timeline. **157 of them have
+    /// more than three entries** (up to 25), and the old reader could only hold one appear and one
+    /// disappear, so every one of those parts blinked on and off at the wrong times.</summary>
+    public Dictionary<int, int[]> Visibility(Record rec)
     {
-        var ptrs = AllPointers();
-        var outMap = new Dictionary<int, (int, int?)>();
+        var outMap = new Dictionary<int, int[]>();
         for (int i = 0; i < rec.TrackCount; i++)
         {
-            int t = TrackAt(rec, i), p = (int)U32(t + 0x28);
-            if (p == 0) continue;
-            int appear = U16(p + 2);
-            int? gone = null;
-            if (ArrayEnd(p, ptrs) - p >= 8 && I16(p + 4) < 0) gone = -I16(p + 4);
-            outMap[TrackNode(t)] = (appear, gone);
+            int t = TrackAt(rec, i);
+            if ((TrackFlags(t) & (uint)TrackFlag.Visibility) == 0) continue;
+            int p = (int)U32(t + 0x28), n = U16(t + 0x0C);
+            if (p == 0 || n == 0 || p + n * 2 > D.Length) continue;
+            var list = new int[n];
+            for (int k = 0; k < n; k++) list[k] = I16(p + k * 2);
+            outMap[TrackNode(t)] = list;
         }
         return outMap;
+    }
+
+    /// <summary>Whether a timeline shows its node at a frame. Before the first entry applies, the
+    /// node holds the state that entry is about to change it OUT of.</summary>
+    public static bool VisibleAt(int[] timeline, float now)
+    {
+        if (timeline == null || timeline.Length == 0) return true;
+        for (int k = timeline.Length - 1; k >= 0; k--)
+            if (Math.Abs(timeline[k]) <= now) return timeline[k] > 0;
+        return timeline[0] <= 0;
     }
 
     /// <summary>Arrays are laid out contiguously, so the next pointer in the file ends this one.

@@ -273,6 +273,40 @@ public sealed class Model
         return local;
     }
 
+    /// <summary>A node's index from its file offset -- the inverse of <see cref="NodeOffset"/>.
+    /// Returns -1 for an offset that is in neither table.</summary>
+    public int NodeIndex(int offset)
+    {
+        if (offset >= MeshTable && offset < MeshTable + Meshes.Count * 160 &&
+            (offset - MeshTable) % 160 == 0)
+            return (offset - MeshTable) / 160;
+        if (offset >= HelperTable && (offset - HelperTable) % 0x60 == 0)
+            return Meshes.Count + (offset - HelperTable) / 0x60;
+        return -1;
+    }
+
+    /// <summary>A node's chain of indices from itself up to the root.
+    ///
+    /// ⚠ Needed because VISIBILITY IS PER NODE AND INHERITED. 183 of the disc's 2,033 appear /
+    /// disappear entries are keyed on a HELPER, not a mesh -- hiding `Dummy01` is how the game
+    /// hides the arms hanging off it. Checking only the mesh's own entry leaves those parts on
+    /// screen, which is the owner's "some aren't hiding parts properly".</summary>
+    public List<int> Ancestry(int node)
+    {
+        var chain = new List<int>();
+        int o = NodeOffset(node);
+        for (int guard = 0; guard < 64 && o > 0 && o + 8 <= D.Length; guard++)
+        {
+            int idx = NodeIndex(o);
+            if (idx < 0) break;
+            chain.Add(idx);
+            int parent = (int)U32(o + 4);
+            if (parent == 0 || parent == o) break;
+            o = parent;
+        }
+        return chain;
+    }
+
     public int NodeOffset(int node) =>
         node < Meshes.Count ? MeshTable + node * 160 : HelperTable + (node - Meshes.Count) * 0x60;
 }

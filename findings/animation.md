@@ -1247,3 +1247,66 @@ then `CatmullRom(points, floor(s), frac(s))` with the indices taken modulo the p
 tangent, sampled 0.1 frames ahead.
 
 ⚠ Still not applied: `AlternatePlayer` (0x40000, 81 tracks).
+
+
+## ⭐⭐⭐ THE TRACK FLAGS, MAPPED BY BICONDITIONAL (2026-09-21)
+
+For every flag bit and every pointer in the 48-byte track, counting how often "bit set" and
+"pointer non-zero" agree, over all **6,155** morph-format tracks on the disc. A bit that gates a
+pointer agrees on every single track; anything else does not.
+
+| flag | tracks | pointer | agreement |
+|---|---|---|---|
+| `0x00001` | 1,468 | `+0x10` spline path | **6,155 / 6,155** |
+| `0x00008` | 2,775 | `+0x14` rotation | **6,155 / 6,155** |
+| `0x00080` | 680 | `+0x18` scale | **6,155 / 6,155** |
+| `0x00100` | 680 | `+0x18` (always with 0x80) | **6,155 / 6,155** |
+| `0x00200` | 96 | `+0x1c` (contents still unknown) | **6,155 / 6,155** |
+| `0x10000` | 663 | `+0x24` (contents still unknown) | **6,155 / 6,155** |
+| `0x20000` | 2,033 | `+0x28` **visibility** | **6,155 / 6,155** |
+
+`0x10` (2,185) and `0x40` (565) gate nothing. They are **mutually exclusive modes of the rotation
+channel**: every rotation track has exactly one of them and never both, and 25 have neither.
+Meaning still unknown.
+
+## ⭐⭐ VISIBILITY IS A TIMELINE, NOT AN APPEAR/DISAPPEAR PAIR
+
+From the evaluator `FUN_001a7f48`: `track+0x28` is an array of `track+0x0C` **signed int16** frame
+times. The game scans it **backwards** for the last entry whose magnitude is at or before the
+current frame, then
+
+```c
+if ((short)*found < 1) node->state |= 0x10; else node->state &= ~0x10;
+```
+
+so a non-positive entry hides the node from then on and a positive one shows it.
+
+Crazy Ape reads back exactly as the game plays: `m_crate [0, 28, -100]`, `m_shards [0, 100, -138]`,
+`m_boxes [0, 2]`, `m_body [0, 100]`.
+
+Over the whole disc: **2,033 timelines, magnitudes ascending on all 2,033 and signs alternating on
+all 2,033.** **157 have more than three entries** — up to **25** — and the old reader held one
+appear and one disappear, so every one of those parts blinked at the wrong times.
+
+⚠ **AND VISIBILITY IS INHERITED.** 183 entries are keyed on a HELPER rather than a mesh; 19 of
+those have meshes beneath them, covering **56 mesh instances**. Hiding `Dummy01` is how the game
+takes the arms off with it, so a mesh is now hidden if any node above it is.
+
+## ⭐⭐⭐ `track+0x2c` — PER-KEY EASING CURVES FOR ROTATION
+
+Carried in this file as "302 tracks, unexplored" since the format was cracked. From the same
+evaluator, the rotation key's **second u16** is a curve index:
+
+```c
+e = *(u16*)(keys + i*0xc + 2);
+if (e != 0xffff) {
+    c = (byte*)track[0x2c] + e*8;          // EIGHT bytes
+    x = t * 8.999995;  j = (int)x;  f = x - j;
+    lo = j == 0 ? 0.0 : c[min(j,8)-1]/255.0;
+    hi = j >= 8 ? 1.0 : c[j]/255.0;
+    t  = (1-f)*lo + f*hi;                  // and SLERP with THAT
+}
+```
+
+Eight bytes read as the interior of a ten-point ramp from 0 to 1 over nine equal intervals;
+`0xffff` means linear. Without it a spin is at the wrong ANGLE for the frame.
