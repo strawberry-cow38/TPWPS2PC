@@ -1479,3 +1479,66 @@ more than half the disc — are not touched by any reader**, and the biggest sin
 disc, `.ssh` at 5,764, is among them.
 
 `.rse` (718), `.lip` (516), `.rss` (354), `.sam` (321) and `.scc` (318) are the unexplored bulk.
+
+
+## ⭐⭐ The five "unopened formats" — three of them were never locked (2026-09-21)
+
+The entry census turned up five extensions nobody had looked at: `.rse` 718, `.lip` 516, `.rss` 354,
+`.sam` 321, `.scc` 318. A recon pass over all five took about three commands, and the headline is
+that **three of them need no decoding at all**.
+
+### ⭐⭐ `.sam` (321) — the ride design data, in plain text
+
+`#\r\n#\tTheme Park 2 Ride Description File`. 100% printable, `key<TAB>value`, with ASCII-art blocks
+fenced by `---`. The whole economic and layout model for every ride, readable as-is:
+
+```
+Info.Id                        5308
+Info.Name                      "Mole Whack"
+Info.Shape          ---        Info.Hoarding    ---
+                    ***                         F^7
+                    ***                         [.]
+                    *2*                         L.J
+                    ---                         ---
+Info.RideTypeStringIndex       22
+UsageInfo.InitPricePerUse      10      UsageInfo.InitCostOfGoods      25
+UsageInfo.InitChanceOfLoosing  75      UsageInfo.ExcitementLevel      30
+UsageInfo.EntryCellStandPosX   0.5     UsageInfo.EntryCellStandPosY   0.3
+UsageInfo.ExitCellAppearPosX   0.5     UsageInfo.ExitCellAppearPosY   0.3
+UsageInfo.MinCapacity          1       UsageInfo.MaxCapacity          1
+Upgrades[0].CostOfUpgrade      2500    Upgrades[0].CostOfResearch     800
+Research.Group                 3
+```
+
+⭐ `Info.Shape` is the ride's **footprint as ASCII art**, `*` a cell and `2` the entrance; `Info.Hoarding`
+is its sign, also drawn. For a port this is the entire ride-tuning model handed over — prices, cost
+of goods, excitement, capacity, upgrade and research costs, entry/exit stand positions — with no
+reverse engineering required at all. (The developers' own typo, `InitChanceOfLoosing`, is in the
+retail data.)
+
+### ⭐ `.rss` (354) — the script SOURCE, and `.rse` (718) its compiled form
+
+`.rss` is 100% printable and opens `#include "\source\game\rsse\code\rsse_scriptdefs.h"` — EA's own
+build paths, shipped. `.rse` is the compiled output, magic `RSSE`, with `VAR_TRIGGER` / `VAR_STATUS`
+readable inside.
+
+⭐ **244 of 245 `.rss` stems have a compiled `.rse` partner, and only 5 `.rse` have no source.** That
+is a known-answer corpus for a script decompiler of exactly the shape that made `.ssh` tractable —
+a candidate disassembler can be scored against the source it should reproduce, not eyeballed.
+
+### `.scc` (318) — Visual SourceSafe droppings
+
+Every single one is named `vssver.scc` (318 of 318), magic `34 12 01 00`. EA shipped their
+source-control metadata on a retail disc. **No game value; discard them from any count.**
+
+### `.lip` (516) — lip sync, and small
+
+8 to 152 bytes, median **16**. u32 records terminated by `FF FF FF FF`. Under `LIPS.WAD`, one per
+language per line (`German/Tut_023.LIP`), so it pairs with the speech. Small enough to be a
+sitting.
+
+### What this does to the 8,110
+
+`.sam` + `.rss` + `.scc` = **993 entries resolved or written off in three commands**, none of which
+needed a decoder. `.rse` has its own answer key sitting beside it. The honest remaining unknowns in
+this group are `.rse`'s opcodes and `.lip`'s record meaning.
