@@ -1820,3 +1820,50 @@ without the fleet of them hanging over the edge.
 ⚠ The same missing-matrix bug was in `Park.Bounds`, which placed the model. `FrameCamera` had
 always applied `WorldTransforms` correctly, so the camera and the placement disagreed — the kind of
 defect that renders as "the ride is slightly off-centre" rather than as anything being wrong.
+
+
+## ⭐ The park runs — and the grid immediately found a scale bug (2026-09-21)
+
+A ride standing on ground, at its own footprint, under the name a player is shown. Rendered on the
+4080 through the existing `--shot` path.
+
+```
+Large Tree                        Crazy Ape
+id 1400  2x2, 4 cells, no entrance    id 1101  4x4, 16 cells, entrance at 1,3
+upgrades £150                         excitement 50
+research group 1                      capacity 8 / 11 / 14
+                                      upgrades £2000 / £300 / £300
+model fills 10% x 10% of its cells    model fills 106% x 116% of its cells
+```
+
+⭐ `Large Tree` is the localisation table's name; the file is `bigpalm.mps` and its `Info.Name` is
+`Large Tree` too, but `Crazy Ape`'s model is `monkey.mps`. The panel shows the table's name because
+`Info.Name` disagrees on 70 of 273 rides.
+
+### ⚠ Some models render at a tenth of their plot
+
+Crazy Ape fills **106%** of its 4×4. `Large Tree` fills **10%** of its 2×2 — it renders, it is just
+ten times too small. Both numbers come from the geometry the builder actually produced, so this is
+not a choice of matrix in the measuring code.
+
+⭐ **The grid is what made this visible.** A viewer that frames each model on its own can never show
+that one model is ten times smaller than another — the camera simply pulls in. Giving models a
+fixed reference surfaced it on the second ride tried.
+
+⚠ **Therefore the cell size of 10 is provisional.** It was derived from extents measured through
+each mesh's own matrix, and the engine composes a parent chain instead; the two disagree per model
+(`monkey` 53.6 against 33.4, `4x4rock` 35.0 against 67.1 in Z) and a Python composition of that
+same chain does not yet agree with the C# one either. Until they do, 10 is the number that made the
+props fill their plots under one reading, not a measurement anybody should build placement on.
+
+### Two things the renders cost, both worth writing down
+
+⚠ `Place` called `AddChild` on a node that already had a parent. In Godot that is an ERROR, not a
+move: it printed `already has a parent 'Viewer'` and left the ride where it was, so the park drew
+its ground and footprint with nothing on them.
+
+⚠ Four renders went by with "the ride is missing" before a control — the same ride in Models mode —
+showed that **Crazy Ape at frame 0 is a flat base and two boxes**, the rest of its parts hidden by
+their visibility timelines. Nothing was missing. Its base is the size of its plot and nearly the
+colour of the claimed tiles, so it read as the footprint. The control took one run; the guessing
+took four.
