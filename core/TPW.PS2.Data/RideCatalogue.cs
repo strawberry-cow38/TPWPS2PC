@@ -43,6 +43,18 @@ public sealed class RideDefinition
                        System.Globalization.CultureInfo.InvariantCulture, out var f) ? f : null;
 
     public int? Id => Int("Info.Id");
+
+    /// <summary>The world a ride belongs to, from the thousands digit of its id.
+    /// <c>1</c> JUNGLE, <c>2</c> HALLOW, <c>3</c> SPACE, <c>4</c> FANTASY. Measured over all 305
+    /// rides carrying a numeric id: bands 1-4 are **pure**, each appearing in exactly one WAD and
+    /// no other -- 69, 79, 72 and 70 rides respectively.
+    ///
+    /// ⚠ Band <c>5</c> is NOT a world. Its 15 rides are the sideshows and they appear in all four
+    /// WADs, so a 5xxx ride's world is the archive it was found in, not its id. `Gopher Whack` is
+    /// 5303 in JUNGLE and `Mole Whack` is 5308 in FANTASY: even the shared category gets a distinct
+    /// id and name per world.</summary>
+    public int? IdBand => Id / 1000;
+    public bool IsSideshow => IdBand == 5;
     public int? ExcitementLevel => Int("UsageInfo.ExcitementLevel");
     public int? MinCapacity => Int("UsageInfo.MinCapacity");
     public int? MaxCapacity => Int("UsageInfo.MaxCapacity");
@@ -102,5 +114,51 @@ public sealed class RideDefinition
             }
         }
         return r;
+    }
+}
+
+/// <summary>Every ride on a disc, keyed by `Info.Id`.
+///
+/// ⚠ **The id is the identity, not the name.** 309 of the 321 `.sam` files carry a name, and those
+/// 309 hold only **211 distinct names** but **301 distinct ids**. 36 names repeat across worlds and
+/// **32 of those 36 carry a different id in every copy** -- `Litter Bin` is 4413 in FANTASY, 2411
+/// in HALLOW, 1406 in JUNGLE and 3415 in SPACE. Keying a catalogue by name silently merges four
+/// differently-priced rides into one.</summary>
+public sealed class RideCatalogue
+{
+    public readonly List<RideDefinition> All = new();
+    public readonly Dictionary<int, RideDefinition> ById = new();
+
+    /// <summary>Rides that carry no `Info.Id`, kept rather than dropped. A catalogue that quietly
+    /// discards its awkward rows is how a count comes out looking clean.</summary>
+    public readonly List<RideDefinition> Unnumbered = new();
+
+    /// <summary>Rides whose id was already taken. `ById` keeps the last, so without this list the
+    /// dictionary would eat them and the only trace would be a distinct-id count a few short of
+    /// the numbered count -- exactly the kind of quiet shortfall worth printing.</summary>
+    public readonly List<RideDefinition> IdCollisions = new();
+
+    public static RideCatalogue Load(Disc disc)
+    {
+        var cat = new RideCatalogue();
+        foreach (var w in disc.Files())
+        {
+            if (w.IsDirectory || !w.Path.EndsWith(".WAD", StringComparison.OrdinalIgnoreCase)) continue;
+            WadArchive wad;
+            try { wad = new WadArchive(disc.Read(w.Extent, w.Size)); } catch { continue; }
+            foreach (var e in wad.Entries)
+            {
+                if (WadArchive.IsAlias(e)) continue;
+                if (!e.Path.EndsWith(".sam", StringComparison.OrdinalIgnoreCase)) continue;
+                byte[] data;
+                try { data = wad.Read(e); } catch { continue; }
+                var def = RideDefinition.Parse(System.Text.Encoding.Latin1.GetString(data), w.Path + e.Path);
+                cat.All.Add(def);
+                if (def.Id is not int id) { cat.Unnumbered.Add(def); continue; }
+                if (cat.ById.ContainsKey(id)) cat.IdCollisions.Add(def);
+                cat.ById[id] = def;
+            }
+        }
+        return cat;
     }
 }

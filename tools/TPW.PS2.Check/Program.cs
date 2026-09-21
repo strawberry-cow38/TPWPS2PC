@@ -193,6 +193,26 @@ Console.WriteLine($"rides: {sam} .sam files, {samPrintable} fully printable, {sa
 Console.WriteLine($"  upgrade tiers carrying a capacity: {samTiers[0]} / {samTiers[1]} / {samTiers[2]}");
 Console.WriteLine($"  known-answer controls: {samControlOk} of {samChecked} reproduce (id + 3 capacities each)");
 
+// The id is the identity, not the name -- and the thousands digit is the world for bands 1-4.
+// Band 5 is the sideshows and spans every world, so it is counted and excluded by NAME here
+// rather than being quietly dropped into the "impure" pile.
+{
+    var cat = RideCatalogue.Load(disc);
+    var bands = new Dictionary<int, HashSet<string>>();
+    foreach (var d in cat.All)
+    {
+        if (d.IdBand is not int b) continue;
+        var world = d.Source.Split('/').FirstOrDefault(x => x.EndsWith(".WAD", StringComparison.OrdinalIgnoreCase)) ?? "?";
+        if (!bands.TryGetValue(b, out var set)) bands[b] = set = new HashSet<string>();
+        set.Add(world);
+    }
+    int pure = bands.Count(kv => kv.Key != 5 && kv.Value.Count == 1);
+    Console.WriteLine($"  catalogue: {cat.All.Count} rides, {cat.ById.Count} distinct ids, "
+                      + $"{cat.Unnumbered.Count} unnumbered, {cat.IdCollisions.Count} id collisions; "
+                      + $"id bands 1-4 pure in {pure} of 4, "
+                      + $"band 5 (sideshows) spans {(bands.TryGetValue(5, out var s5) ? s5.Count : 0)} worlds");
+}
+
 // Every archive entry, named. The readers above cover three extensions; the rest are present and
 // unexamined, and saying so is the difference between a known gap and an invisible one.
 var examined = new[] { ".mps", ".tga", ".aps", ".sam" };

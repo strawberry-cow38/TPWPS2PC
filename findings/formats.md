@@ -1614,3 +1614,41 @@ rides: 321 .sam files, 321 fully printable, 309 named, 309 with a footprint,
   upgrade tiers carrying a capacity: 151 / 86 / 86
   known-answer controls: 7 of 7 reproduce (id + 3 capacities each)
 ```
+
+
+### ⭐ The id is the identity, and its leading digit is the world
+
+309 `.sam` files carry a name. Those 309 hold **211 distinct names but 301 distinct ids**. 36 names
+repeat across worlds and **32 of those 36 carry a different id in every copy**:
+
+```
+Litter Bin    FANTASY 4413   HALLOW 2411   JUNGLE 1406   SPACE 3415
+Bus           FANTASY 4600   HALLOW 2600   JUNGLE 1600   SPACE 3600
+End           FANTASY 4605   HALLOW 2605   JUNGLE 1605   SPACE 3605
+```
+
+Keying a catalogue by name merges four differently-priced rides into one. **`Info.Id` is the key.**
+
+⭐ And the thousands digit is the world. Over all 305 rides with a numeric id, bands 1–4 are
+**pure** — each appears in exactly one WAD and no other:
+
+| band | world | rides |
+|---|---|---|
+| 1xxx | JUNGLE | 69 |
+| 2xxx | HALLOW | 79 |
+| 3xxx | SPACE | 72 |
+| 4xxx | FANTASY | 70 |
+| 5xxx | *(not a world)* | 15, spread across all four |
+
+⚠ **Band 5 is a category, not a world.** Its 15 rides are the sideshows and every world ships its
+own: `Gopher Whack` is 5303 in JUNGLE, `Mole Whack` is 5308 in FANTASY. A 5xxx ride's world is the
+archive it came from, not its id.
+
+`RideCatalogue.Load` accounts for every file rather than letting a dictionary eat the awkward ones:
+
+```
+catalogue: 321 rides, 300 distinct ids, 16 unnumbered, 5 id collisions
+           id bands 1-4 pure in 4 of 4, band 5 (sideshows) spans 4 worlds
+```
+
+300 + 16 + 5 = 321.
