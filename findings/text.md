@@ -8,9 +8,25 @@ The whole tree came with it.
 
 ## What is there
 
+⚠⚠ **There are THREE regional trees and they ship DIFFERENT LANGUAGE SETS.** An earlier version of
+this document described `usa/` and wrote its contents as if they were the contents. They are not:
+
+| tree | binary tables | the difference |
+|---|---|---|
+| `eur/` | ame dut eng **fre** ger id ita jap spa swe | the superset, 10 |
+| `usa/` | ame dut eng ger id ita jap spa swe | **no French** |
+| `jap/` | dut eng **fre** ger id ita jap spa swe | **no American** |
+
+So "read `Text/translations/`" silently returns whichever tree you happened to name. Pin the tree.
+
+⭐ The reassuring half, measured rather than assumed: **all three `id.dat` are identical — 1,087 of
+1,087 keys at the same index.** The key-to-index mapping is shared, and every table in every tree
+holds exactly 1,087 rows. Only which LANGUAGES exist varies, never the indexing. `eur/` also ships
+`final.dup` / `fre.dup` / `ger.dup` and `showdups.pl`, EA's duplicate-string tooling.
+
 | file | what |
 |---|---|
-| `eng/ame/ger/ita/spa/dut/swe/jap .dat` | 8 language tables, **1,087 entries each** |
+| `<lang>.dat` | one table per language, **1,087 entries each** |
 | `id.dat` | the **symbolic keys**, same format, same count, same order |
 | `include/trans.h` | the same list a **third** time, as a C `enum` |
 | `final.dat`, `finalame.dat` | the plain-text masters, `[STR_KEY]` form, 338KB / 118KB |
