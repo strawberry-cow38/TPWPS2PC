@@ -317,3 +317,33 @@ plateaued.
 **What remains is no longer guesswork, it is a list**: `FUN_00167708` (the 12-byte record),
 `FUN_00168728`, `FUN_001676d8`, `FUN_00167720`, and the 20-byte-track arm `FUN_00167758`. Each is
 tens of lines and each states its own layout the way these did.
+
+
+## The rig poses — driven by hand, not yet by the file
+
+Rotating `Dummy01` and re-evaluating the scene graph swings **`m_arm` and `m_arm1` only**: the body,
+platform, rope fence and signs stay exactly where they are, because they are not children of that
+pivot. `m_crate` and `m_shards` are hidden, per master.
+
+That is worth having on its own — it proves the parent-relative transforms and the child propagation
+are right, and that a `.mps` bundle **can** be posed. It is the machinery the animation will drive.
+
+⚠⚠ **IT IS NOT THE GAME'S ANIMATION.** The angle is a number I chose. Nothing here reads a keyframe.
+Saying otherwise would be the easiest and worst lie available at this point in the work.
+
+## Where the keyframes actually stand
+
+The 12-byte record is `u16 count (+2 more), u32 -> data, u32 flag`, and the data is a run of bytes.
+`monkey.aps` gives clean ascending runs that start at 0 and end with **`0xD7`** — which is why an
+earlier "ascending" test here broke at 215: `0xD7` is a terminator, not a value, and the count
+includes it.
+
+⚠ Tested across the archive that pattern holds for only **45 of 1,731 runs (2.6%)**, so it is
+`monkey`'s shape and not the format's. Two further observations, unexplained: the runs reach 213,
+well past the `0x1E` value this file guessed was a frame count; and the byte pair `0x63 0x64`
+(99, 100) recurs inside many runs, which looks more like an opcode than a timestamp.
+
+**The honest state: the container is read from the parser and is exact; the keyframe payload is
+not.** Finding the evaluator — the code that turns a track into a matrix, which is a different
+function from the loader and not reachable from it — is the next step, and is the same move that
+cracked the container.
