@@ -25,6 +25,7 @@ against the owner's own rip of their own copy.
 | VU microcode | `.DVP.ovlytab`: five overlays, **6,944 bytes total**; three are one program in consecutive 2 KB banks |
 | Archives | `FKNL` container, a **tree** of blocks; entries RefPacked unless they did not shrink |
 | Compression | **EA RefPack (QFS)** |
+| Models | **M3D2** — mesh table decoded, positions decoded and drawing |
 
 **JUNGLE.WAD reads 2,545 / 2,545 files to their exact declared size, 0 failures**, and five further
 archives (DATA, FANTASY, HALLOW, LOBBY, SPACE — **12,985 more files**) parse clean with the same
