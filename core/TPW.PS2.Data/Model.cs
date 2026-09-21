@@ -202,7 +202,8 @@ public sealed class Model
     /// ⚠ A parent link is an ABSOLUTE FILE OFFSET and may point into either table -- Crazy Ape's
     /// arms hang off `Dummy01`, a HELPER, not a mesh. A helper header carries flag bit 0x80000000
     /// and its entries are 96 bytes against a mesh's 160.</summary>
-    public Dictionary<int, Matrix4x4> WorldTransforms()
+    public Dictionary<int, Matrix4x4> WorldTransforms(
+        IReadOnlyDictionary<int, Matrix4x4> localOverrides = null)
     {
         var local = new Dictionary<int, Matrix4x4>();
         var parent = new Dictionary<int, uint>();
@@ -220,6 +221,8 @@ public sealed class Model
             if ((U32(o) & 0x80000000) == 0) break;
             Add(o);
         }
+        if (localOverrides != null)
+            foreach (var kv in localOverrides) if (local.ContainsKey(kv.Key)) local[kv.Key] = kv.Value;
         var world = new Dictionary<int, Matrix4x4>();
         Matrix4x4 Resolve(int o, int depth)
         {
@@ -233,6 +236,27 @@ public sealed class Model
         }
         foreach (var o in local.Keys.ToList()) Resolve(o, 0);
         return world;
+    }
+
+    /// <summary>Every node's own parent-relative matrix, meshes and helpers alike, keyed by file
+    /// offset -- what a caller overrides to animate one and have its children follow.</summary>
+    public Dictionary<int, Matrix4x4> LocalTransforms()
+    {
+        var local = new Dictionary<int, Matrix4x4>();
+        void Add(int o)
+        {
+            var f = new float[16];
+            for (int k = 0; k < 16; k++) f[k] = F32(o + 0x10 + k * 4);
+            local[o] = new Matrix4x4(f[0], f[1], f[2], f[3], f[4], f[5], f[6], f[7],
+                                     f[8], f[9], f[10], f[11], f[12], f[13], f[14], f[15]);
+        }
+        foreach (var m in Meshes) Add(m.Offset);
+        for (int o = HelperTable; o + 0x60 <= D.Length; o += 0x60)
+        {
+            if ((U32(o) & 0x80000000) == 0) break;
+            Add(o);
+        }
+        return local;
     }
 
     public int NodeOffset(int node) =>

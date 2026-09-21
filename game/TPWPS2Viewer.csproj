@@ -1,0 +1,15 @@
+<Project Sdk="Godot.NET.Sdk/4.6.2">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>TPWPS2Viewer</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- ⚠ THE DEPENDENCY POINTS THIS WAY AND NEVER THE OTHER. The viewer may reference the readers;
+         the readers must never reference Godot, or the format work stops being testable on a machine
+         with no engine. -->
+    <ProjectReference Include="..\core\TPW.PS2.Data\TPW.PS2.Data.csproj" />
+  </ItemGroup>
+</Project>

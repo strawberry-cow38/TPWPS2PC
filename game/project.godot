@@ -1,0 +1,19 @@
+; Theme Park World (PS2) asset viewer. Everything that READS a format lives in
+; core/TPW.PS2.Data, which has no Godot reference and is tested without an engine.
+config_version=5
+
+[application]
+
+config/name="Theme Park World (PS2) Viewer"
+config/features=PackedStringArray("4.6", "C#", "Forward Plus")
+run/main_scene="res://Main.tscn"
+boot_splash/show_image=false
+boot_splash/bg_color=Color(0.11, 0.11, 0.13, 1)
+
+[dotnet]
+
+project/assembly_name="TPWPS2Viewer"
+
+[rendering]
+
+renderer/rendering_method="forward_plus"
