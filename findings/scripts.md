@@ -92,5 +92,36 @@ Verbs group into: flow, arithmetic (`ADD SUB DIV MOD CMP COPY RAND`), animation 
 `LIMBO`/`UNLIMBO`, `REMOVECHILD`), guest handling (`WALKON`, `WALKOFF`, `WALKGET`, `ADDHEAD`,
 `DELHEAD`, `HUSH`) and ride motion (`BOUNCE`, `COAST`, `HOP`, `BUMP`, `TURBO`, `TOUR`).
 
-`.rse` beside each `.rss` is the assembled form, magic `RSSEQ`. The pair is a free Rosetta stone for
-the bytecode encoding: same program, both representations, 90 times over. Not yet decoded.
+## `.rse` — the compiled form, and the one orphan
+
+`.rse` beside each `.rss` is the assembled form, magic `RSSEQ`. **Verified rather than assumed from
+the filenames**: 90 `.rss` and 91 `.rse`, all 90 pair, and pulling each source's `NAME "..."` string
+and searching for it inside the compiled blob gives **82 carrying it verbatim and 0 mismatches**
+(the remaining 8 declare no `NAME`).
+
+⭐ **`/Features/gidol/gidol.RSE` has no source.** 90 of the 91 shipped with their `.rss`; that one
+did not. It is the only script on the disc that actually requires the bytecode decoder to read.
+
+The smallest pair, whole. Source, comments stripped:
+
+```
+.start	NAME		"Small Rock Feature"
+	WAITANIM	ANIM_Create	0
+.null	ENDSLICE
+	BRANCH		null
+```
+
+Compiled, 107 bytes:
+
+```
+0x00  52 53 53 45 51 0f 01 00      "RSSEQ" + version
+0x10  32 00 00 00                  a size or count (0x32)
+0x20  "Pad Pad Pad Pad "           header padding, spelled out
+0x30  08 00 00 00  25 00 00 80
+      00 00 00 10  11 00 00 80     four words
+```
+
+**Four source statements, four 32-bit words**, with the strings appended after the code. Two of the
+four have the top bit set. That is as far as it goes: the opcode mapping is **not decoded**, and one
+sample is not enough to claim opcode 8 is `NAME`. With 90 matched pairs it would not hold out long
+if anyone wanted it.
