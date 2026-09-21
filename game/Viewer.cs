@@ -27,13 +27,21 @@ public partial class Viewer : Node3D
     // Capture mode, the same shape the PSX port uses: --shot=<path>:<frame> renders one frame and
     // quits, so a render can be checked over ssh without a display.
     string _shotPath; int _shotFrame = -1, _shotWait;
-    string _wantRide, _wantAnim, _wantWad;
+    string _wantRide, _wantAnim, _wantWad, _wantMode, _wantImage;
 
     ItemList _rideList;
     CheckBox _texOn;
-    OptionButton _wadPick, _animPick;
+    OptionButton _wadPick, _animPick, _modePick;
     Label _info;
     HSlider _scrub;
+
+    /// <summary>What the left-hand list is showing. The archive is the same either way; only what
+    /// the viewer does with an entry changes.</summary>
+    enum Mode { Models, Textures }
+    Mode _mode = Mode.Models;
+    TextureRect _imageView;
+    ColorRect _imageBack;
+    List<WadArchive.Entry> _images = new();
 
     public override void _Ready()
     {
@@ -59,6 +67,8 @@ public partial class Viewer : Node3D
             else if (a.StartsWith("--wad=")) _wantWad = a["--wad=".Length..];
         }
 
+        _wantMode = Env("TPW_PS2_MODE");
+        _wantImage = Env("TPW_PS2_IMAGE");
         _wantRide ??= Env("TPW_PS2_RIDE");
         _wantAnim ??= Env("TPW_PS2_ANIM");
         _wantWad ??= Env("TPW_PS2_WAD");
@@ -98,6 +108,16 @@ public partial class Viewer : Node3D
                 { _rideList.Select(i); ShowRide(i); break; }
         if (_wantAnim != null && int.TryParse(_wantAnim, out var ai) && ai < _animPick.ItemCount)
         { _animPick.Select(ai); _recordIndex = ai; Rebuild(); }
+        // ⚠ Every switch has an environment fallback, because arguments after `--` do not survive
+        // cmd's quoting and a silent empty argument presents as a hang rather than an error.
+        if (_wantMode != null && _wantMode.StartsWith("tex", StringComparison.OrdinalIgnoreCase))
+        {
+            _modePick.Select(1); SetMode(Mode.Textures);
+            if (_wantImage != null)
+                for (int i = 0; i < _rideList.ItemCount; i++)
+                    if (_rideList.GetItemText(i).Contains(_wantImage, StringComparison.OrdinalIgnoreCase))
+                    { _rideList.Select(i); ShowImage(i); break; }
+        }
     }
 
     void BuildUi()
@@ -138,12 +158,39 @@ public partial class Viewer : Node3D
         var col = new VBoxContainer();
         panel.AddChild(col);
 
+        // The image pane sits BEHIND the side panel and in front of the 3D view, so switching mode
+        // is just a visibility flip -- the models stay built and come back instantly.
+        // An opaque backdrop, or the 3D scene shows through the image pane.
+        _imageBack = new ColorRect { Visible = false, Color = new Color(0.07f, 0.07f, 0.09f),
+                                     MouseFilter = Control.MouseFilterEnum.Ignore, OffsetLeft = 280 };
+        _imageBack.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+        ui.AddChild(_imageBack);
+
+        _imageView = new TextureRect
+        {
+            Visible = false,
+            StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+            TextureFilter = CanvasItem.TextureFilterEnum.Nearest,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+            OffsetLeft = 280,
+        };
+        _imageView.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+        ui.AddChild(_imageView);
+
+        _modePick = new OptionButton();
+        _modePick.AddItem("Models"); _modePick.AddItem("Textures");
+        _modePick.ItemSelected += i => SetMode((Mode)(int)i);
+        col.AddChild(_modePick);
+
         _wadPick = new OptionButton();
         _wadPick.ItemSelected += i => OpenWad((int)i);
         col.AddChild(_wadPick);
 
         _rideList = new ItemList { SizeFlagsVertical = Control.SizeFlags.ExpandFill };
-        _rideList.ItemSelected += i => ShowRide((int)i);
+        _rideList.ItemSelected += i =>
+        {
+            if (_mode == Mode.Models) ShowRide((int)i); else ShowImage((int)i);
+        };
         col.AddChild(_rideList);
 
         _animPick = new OptionButton();
@@ -164,13 +211,76 @@ public partial class Viewer : Node3D
         col.AddChild(_info);
     }
 
+    void SetMode(Mode m)
+    {
+        _mode = m;
+        _imageView.Visible = _imageBack.Visible = m == Mode.Textures;
+        // ⚠ Hide the model too. A transparent image pane over a lit 3D scene reads as a bug.
+        if (_current != null) _current.Root.Visible = m == Mode.Models;
+        _animPick.Visible = _texOn.Visible = _scrub.Visible = m == Mode.Models;
+        FillList();
+    }
+
+    void FillList()
+    {
+        _rideList.Clear();
+        if (_mode == Mode.Models)
+        {
+            foreach (var r in _lib.Rides) _rideList.AddItem(r.Name);
+            if (_lib.Rides.Count > 0) { _rideList.Select(0); ShowRide(0); }
+        }
+        else
+        {
+            _images = _lib.Images();
+            foreach (var e in _images) _rideList.AddItem(e.Path.TrimStart('/'));
+            if (_images.Count > 0) { _rideList.Select(0); ShowImage(0); }
+            else _info.Text = "no images in this archive";
+        }
+    }
+
+    /// <summary>Show one image at its own size, or the reason it cannot be shown.</summary>
+    void ShowImage(int i)
+    {
+        if (i < 0 || i >= _images.Count) return;
+        var e = _images[i];
+        _imageView.Texture = null;
+        if (e.Path.EndsWith(".ssh", StringComparison.OrdinalIgnoreCase))
+        {
+            // ⚠ Listed deliberately. `.ssh` is an MPEG intra picture the PS2 hands to its IPU; the
+            // container is read (see tools/ssh.py) and the pixels are not decoded yet. Showing the
+            // entry with an honest reason beats leaving 806 images out of the list.
+            try
+            {
+                var raw = _lib.Read(e);
+                uint n = BitConverter.ToUInt32(raw, 8);
+                int off = (int)BitConverter.ToUInt32(raw, 0x14);
+                int w = BitConverter.ToUInt16(raw, off + 4), h = BitConverter.ToUInt16(raw, off + 6);
+                _info.Text = e.Path + "\n" + w + "x" + h + ", " + n + (n == 1 ? " entry, " : " entries, ")
+                           + raw.Length + " bytes\n"
+                           + "SHPS: an MPEG intra picture for the PS2's IPU.\n"
+                           + "Container read, pixels not decoded yet.";
+            }
+            catch (Exception ex) { _info.Text = e.Path + "\n" + ex.Message; }
+            return;
+        }
+        try
+        {
+            var tga = new Targa(_lib.Read(e));
+            var img = Image.CreateFromData(tga.Width, tga.Height, false, Image.Format.Rgba8, tga.Pixels);
+            _imageView.Texture = ImageTexture.CreateFromImage(img);
+            int texels = tga.Width * tga.Height;
+            _info.Text = e.Path + "\n" + tga.Width + "x" + tga.Height + "\n"
+                       + tga.ClearTexels + " clear, " + tga.PartialAlpha + " partly clear of " + texels + "\n"
+                       + (tga.PartialAlpha * 100 > texels ? "blended (soft alpha)" : "cutout");
+        }
+        catch (Exception ex) { _info.Text = e.Path + "\ndid not decode: " + ex.Message; }
+    }
+
     void OpenWad(int i)
     {
         GD.Print($"[v] opening {_wadPick.GetItemText(i)}"); _lib.OpenWad(_wadPick.GetItemText(i)); GD.Print($"[v] indexed {_lib.Rides.Count} rides");
         _texCache.Clear();
-        _rideList.Clear();
-        foreach (var r in _lib.Rides) _rideList.AddItem(r.Name);
-        if (_lib.Rides.Count > 0) { _rideList.Select(0); ShowRide(0); }
+        FillList();
     }
 
     void ShowRide(int i)
@@ -224,6 +334,7 @@ public partial class Viewer : Node3D
             GD.Print($"[tex] {got} resolved, {missed} missing" +
                      (misses.Count > 0 ? ": " + string.Join(", ", misses) : ""));
             _current = new AnimatedModel(model, _anim, rec, TextureFor);
+            _current.Root.Visible = _mode == Mode.Models;
             AddChild(_current.Root); GD.Print($"[v] built: {_current.Summary}");
             _time = 0;
             _current.SetFrame(0);

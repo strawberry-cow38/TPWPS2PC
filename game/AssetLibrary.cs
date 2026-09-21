@@ -118,6 +118,14 @@ public sealed class AssetLibrary : IDisposable
 
     public byte[] Read(WadArchive.Entry e) => Wad.Read(e);
 
+    /// <summary>Every image in the open archive, in path order -- the `.tga` the viewer can already
+    /// decode, and the `.ssh` beside it, which is an MPEG intra picture the IPU decodes on hardware
+    /// and this reader cannot yet. Both are listed so the gap is visible rather than silent.</summary>
+    public List<WadArchive.Entry> Images(bool includeSsh = true) => Wad.Entries
+        .Where(e => e.Path.EndsWith(".tga", StringComparison.OrdinalIgnoreCase)
+                 || (includeSsh && e.Path.EndsWith(".ssh", StringComparison.OrdinalIgnoreCase)))
+        .OrderBy(e => e.Path, StringComparer.OrdinalIgnoreCase).ToList();
+
     /// <summary>A material's texture: the model's OWN folder first, then each folder above it, then
     /// the archive-wide shared set.
     ///
