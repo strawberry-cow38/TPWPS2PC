@@ -39,6 +39,9 @@ public sealed class Animation
     public sealed class Record
     {
         public int Offset; public uint Flags;
+        /// <summary>Which SECTION this record came from -- the animation's named slot.</summary>
+        public int Slot = -1;
+        public string SlotName => SlotNames.TryGetValue(Slot, out var n) ? n : $"slot {Slot}";
         public int TrackCount, SmallCount, IndexCount;
         public int Tracks, Small, Index;
         /// <summary>Bit 0x20 selects 20-byte skeletal tracks over 48-byte ones.</summary>
@@ -57,10 +60,33 @@ public sealed class Animation
         Small = (int)U32(r + 0x14), Index = (int)U32(r + 0x18),
     };
 
+    /// <summary>⭐⭐ THE SECTION INDEX IS A NAMED ANIMATION SLOT, and the names come free from the
+    /// ride scripts the disc ships as source: `WAITANIM ANIM_Create 0` in the `.rss` sits against
+    /// the operand `0` in the matching `.rse`. Harvested over **352 script pairs, 928 observations,
+    /// every symbol resolving to exactly one slot with no disagreement**.
+    ///
+    /// It reads true on the data: Crazy Ape's build animation is in slot 0 (Create), and the Super
+    /// Bog -- a portaloo, which does not build itself -- has NOTHING in slot 0 and its only
+    /// animation in slot 5 (Main), which is exactly what its script does.</summary>
+    public static readonly Dictionary<int, string> SlotNames = new()
+    {
+        [0] = "Create", [2] = "Idle", [3] = "Load", [4] = "Start", [5] = "Main",
+        [6] = "End", [7] = "Unload", [9] = "Break", [10] = "Repair", [11] = "Other",
+    };
+
     public IEnumerable<Record> Records()
     {
+        int slot = 0;
         foreach (var (count, off) in Sections())
-            for (int i = 0; i < count; i++) yield return ReadRecord(off + i * 0x1C);
+        {
+            for (int i = 0; i < count; i++)
+            {
+                var r = ReadRecord(off + i * 0x1C);
+                r.Slot = slot;
+                yield return r;
+            }
+            slot++;
+        }
     }
 
     // ---- the four transform channels a node can be animated by ----
@@ -104,8 +130,7 @@ public sealed class Animation
                 for (int k = 0; k < nr; k++)
                 {
                     int b = kr + k * 10;
-                    st.Rot.Add((U16(b), new Quaternion(I16(b + 2) / 32768f, I16(b + 4) / 32768f,
-                                                       I16(b + 6) / 32768f, I16(b + 8) / 32768f)));
+                    st.Rot.Add((U16(b), QuatAt(b + 2)));
                 }
             if (kp != 0)
                 for (int k = 0; k < np; k++)
@@ -117,6 +142,27 @@ public sealed class Animation
         }
         return outList;
     }
+
+    /// <summary>⭐⭐ A STORED QUATERNION IS <b>w, x, y, z</b> — NOT x, y, z, w.
+    ///
+    /// ⚠⚠ The order had never been tested. Both validations this format carried -- |q| == 32767 on
+    /// the 12-byte keys, and 49,839 unit quaternions on the 20-byte ones -- are invariant under a
+    /// PERMUTATION of the four fields, so they proved where the components are and not which is
+    /// which. A test that cannot fail on the thing you are claiming is not evidence for it.
+    ///
+    /// The owner found it from a picture: the Super Bog's sign was "rotated -90 degrees pitch". Its
+    /// bind matrix is a +90 pitch about X and its first key read as x,y,z,w is a -90 pitch about X,
+    /// so the two cancelled and the sign lay flat. Read as w,x,y,z the same key is a rotation about
+    /// Z, the bind's pitch survives, and the sign stands up and spins -- which is what it does.
+    ///
+    /// Control: Crazy Ape renders **pixel for pixel identical** under either order, so the change
+    /// cannot have broken what was already right. `TPW_PS2_QUAT=xyzw` restores the old reading.</summary>
+    static readonly bool XyzwFirst =
+        (Environment.GetEnvironmentVariable("TPW_PS2_QUAT") ?? "").ToLowerInvariant() == "xyzw";
+
+    Quaternion QuatAt(int o) => XyzwFirst
+        ? new Quaternion(I16(o) / 32768f, I16(o + 2) / 32768f, I16(o + 4) / 32768f, I16(o + 6) / 32768f)
+        : new Quaternion(I16(o + 2) / 32768f, I16(o + 4) / 32768f, I16(o + 6) / 32768f, I16(o) / 32768f);
 
     public uint TrackFlags(int track) => U32(track + 4);
     public int TrackNode(int track) => U16(track);
@@ -133,8 +179,7 @@ public sealed class Animation
         for (int k = 0; k < n; k++)
         {
             int b = p + k * 12;
-            outList.Add((U16(b), new Quaternion(I16(b + 4) / 32768f, I16(b + 6) / 32768f,
-                                                I16(b + 8) / 32768f, I16(b + 10) / 32768f)));
+            outList.Add((U16(b), QuatAt(b + 4)));
         }
         return outList;
     }

@@ -186,7 +186,7 @@ public partial class Viewer : Node3D
                 foreach (var rec in _anim.Records())
                 {
                     _records.Add(rec);
-                    _animPick.AddItem($"#{_records.Count - 1}  {_anim.Length(rec)} frames"
+                    _animPick.AddItem($"{rec.SlotName}  {_anim.Length(rec)} frames"
                                       + (rec.Skeletal ? "  skeletal" : "")
                                       + (rec.Shared ? "  (shared)" : ""));
                 }

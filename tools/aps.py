@@ -52,8 +52,13 @@ def _sx10(v, shift):
 
 
 def rotation_keys(d, off, n):
-    """10 bytes: u16 time, int16 x, y, z, w -- a quaternion at 1/32768, SLERPed."""
-    return [(_u16(d, off+i*10), [_i16(d, off+i*10+2+2*k)/32768.0 for k in range(4)])
+    """10 bytes: u16 time, then a quaternion at 1/32768, SLERPed.
+
+    ⚠⚠ THE ORDER IS **w, x, y, z**, not x, y, z, w. Every check this format had -- |q| == 32767,
+    49,839 unit quaternions -- is invariant under permuting the four fields, so none of them tested
+    it. The Super Bog's sign lying flat instead of standing up is what found it."""
+    return [(_u16(d, off+i*10),
+             [_i16(d, off+i*10+4+2*k)/32768.0 for k in range(3)] + [_i16(d, off+i*10+2)/32768.0])
             for i in range(n)]
 
 

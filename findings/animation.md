@@ -1310,3 +1310,44 @@ if (e != 0xffff) {
 
 Eight bytes read as the interior of a ten-point ramp from 0 to 1 over nine equal intervals;
 `0xffff` means linear. Without it a spin is at the wrong ANGLE for the frame.
+
+
+## ⭐⭐⭐ A STORED QUATERNION IS `w, x, y, z` — NOT `x, y, z, w` (2026-09-21)
+
+⚠⚠ **The component order had never been tested, and this file claimed it anyway.** Both checks the
+format carried — `|q| == 32767` on the 12-byte keys, and 49,839 unit quaternions on the 20-byte ones
+— are **invariant under a permutation of the four fields**. They proved where the components are,
+not which is which. A test that cannot fail on the claim you are making is not evidence for it.
+
+The owner found it from a picture: the Super Bog's sign was *"rotated -90 degrees pitch"*.
+
+```
+jt_sign01 bind local      key 0 at t=0            as x,y,z,w        as w,x,y,z
+  1  0  0                 (-0.7071, 0, 0,         90 deg about      90 deg about
+  0  0 -1                  0.7071)                 -X  (pitch)       -Z  (spin)
+  0  1  0
+```
+
+The bind is a **+90 pitch about X**. Read as `x,y,z,w` the first key is a **-90 pitch about X**, the
+two cancel, and the sign lies flat on the roof. Read as `w,x,y,z` the same key is a rotation about
+**Z**, the bind's pitch survives, and the sign **stands up and spins** — which is what a signboard
+on a portaloo does.
+
+**Control: Crazy Ape renders PIXEL FOR PIXEL IDENTICAL under either order** (0 of 518,400 pixels
+differ, at two separate frames), so the change cannot have broken what was already right. SupBog
+moves 941 pixels and Mumbo 1,211. `TPW_PS2_QUAT=xyzw` restores the old reading.
+
+## ⭐⭐ THE SECTION INDEX IS A NAMED ANIMATION SLOT
+
+The ride scripts ship as source AND compiled, so the constants are free: `WAITANIM ANIM_Create 0`
+in a `.rss` sits against operand `0` in the matching `.rse`. Harvested over **352 script pairs and
+928 observations, every symbol resolving to exactly one slot with no disagreement**:
+
+```
+0 Create   2 Idle   3 Load   4 Start   5 Main   6 End   7 Unload   9 Break   10 Repair   11 Other
+```
+
+It reads true on the data: Crazy Ape's build animation is in slot **0 (Create)**, and the Super Bog
+— a portaloo, which does not build itself — has **nothing in slot 0** and its only animation in slot
+**5 (Main)**, which is exactly what `SupBog.rss` does (`WAITANIM ANIM_Create 0` completes at once,
+then `LOOPANIM ANIM_Main 0`). The viewer names them instead of numbering them.
