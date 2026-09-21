@@ -3,7 +3,7 @@ using System.Text;
 
 namespace TPW.PS2.Data;
 
-/// <summary>EA SHPS compressed types 4/5 (GM), decoded in managed code.
+/// <summary>EA SHPS compressed types 4/5 (GM) and paletted type 2, decoded in managed code.
 /// Returns straight RGBA8, top row first. No files are written by this reader.
 /// This is lossy texture compression: see findings/ssh.md for measured source-image errors.</summary>
 public sealed class Ssh
@@ -22,8 +22,14 @@ public sealed class Ssh
         var entry = entries[entryIndex];
         Width = entry.Width;
         Height = entry.Height;
+        if (entry.Type == 0x02)
+        {
+            Pixels = ReadPaletted(data, entry, entries);
+            HasAlpha = true; // the type 0x21 palette carries RGBA, even when all alpha is opaque
+            return;
+        }
         if (entry.Type is not (0x84 or 0x85))
-            throw new NotSupportedException($"SHPS type 0x{entry.Type:X2}; only compressed types 4/5 are supported.");
+            throw new NotSupportedException($"SHPS type 0x{entry.Type:X2}; only types 2 and compressed 4/5 are supported.");
 
         var gm = data.AsSpan(entry.Offset + 16, entry.Length - 16);
         if (gm.Length < 8 || gm[0] != 'G' || gm[1] != 'M')
@@ -137,6 +143,39 @@ public sealed class Ssh
             result.Add(new Entry(name, data[offset], width, height, offset, length));
         }
         return result.AsReadOnly();
+    }
+
+    // Derived from all eight type 0x02 entries and their case-insensitive TGA partners:
+    // linear top-origin indices, then a type 0x21 RGBA palette block. The four back-sky
+    // pairs are RGBA-exact with the palette's index bits 3/4 exchanged and alpha doubled.
+    // See findings/ipu.md for the alternative layouts measured and rejected.
+    static byte[] ReadPaletted(byte[] data, Entry entry, IReadOnlyList<Entry> entries)
+    {
+        int count = checked(entry.Width * entry.Height);
+        if (entry.Length != 16L + count)
+            throw new InvalidDataException("SHPS type 2 block must contain exactly one byte per pixel.");
+        int palette = entry.Offset + entry.Length;
+        int limit = entries.Where(e => e.Offset > entry.Offset).Select(e => e.Offset).DefaultIfEmpty(data.Length).Min();
+        if (limit - palette < 1040)
+            throw new InvalidDataException("SHPS type 2 palette overlaps another entry or ends outside the file.");
+        var header = data.AsSpan(palette, 16);
+        int length = header[1] | header[2] << 8 | header[3] << 16;
+        if (header[0] != 0x21 || length != 1040 ||
+            BinaryPrimitives.ReadUInt16LittleEndian(header[4..]) != 256 ||
+            BinaryPrimitives.ReadUInt16LittleEndian(header[6..]) != 1)
+            throw new NotSupportedException("Unverified SHPS type 2 palette layout.");
+        var clut = data.AsSpan(palette + 16, 1024);
+        var pixels = new byte[checked(count * 4)];
+        for (int i = 0; i < count; i++)
+        {
+            int index = data[entry.Offset + 16 + i];
+            int at = ((index & ~24) | ((index & 8) << 1) | ((index & 16) >> 1)) * 4;
+            pixels[i * 4] = clut[at];
+            pixels[i * 4 + 1] = clut[at + 1];
+            pixels[i * 4 + 2] = clut[at + 2];
+            pixels[i * 4 + 3] = Clamp(clut[at + 3] * 2);
+        }
+        return pixels;
     }
 
     static byte Clamp(int value) => (byte)Math.Clamp(value, 0, 255);

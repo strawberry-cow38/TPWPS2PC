@@ -67,7 +67,7 @@ internal static partial class IpuDecoder
                         if (symbol == 111)
                         {
                             run = bits.Read(6) + 1;
-                            level = (sbyte)bits.Read(8);
+                            level = unchecked((sbyte)bits.Read(8));
                             if (level == -128) level = bits.Read(8) - 256;
                             else if (level == 0) level = bits.Read(8);
                         }
@@ -105,6 +105,8 @@ internal static partial class IpuDecoder
         for (int y = 0; y < 8; y++)
         {
             var row = block.Slice(y * 8, 8);
+            // The reference NEON path multiplies even DC-only rows by 16383. Replacing
+            // that with the C/x86 shift shortcut changes rounding on real textures.
             Transform(row, 1, transformed, 11, false);
             transformed.CopyTo(row);
         }
@@ -118,7 +120,8 @@ internal static partial class IpuDecoder
     static void Transform(ReadOnlySpan<short> s, int stride, Span<short> d, int shift, bool column)
     {
         // Explicit unchecked arithmetic preserves the reference's 32-bit wrap, 16-bit
-        // column bias wrap, arithmetic shifts, and row narrowing on every platform. Saturation occurs at pixel output.
+        // column bias wrap, arithmetic shifts, and row narrowing on every platform.
+        // Saturation occurs at pixel output.
         unchecked
         {
             const int w1 = 22725, w2 = 21407, w3 = 19266, w4 = 16383,

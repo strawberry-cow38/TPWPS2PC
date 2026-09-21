@@ -17,6 +17,7 @@ internal static class CodecTests
             ("escape_zero", "0000010000000000000011001000", 31, "64B11751E24E4317B8F26990D848CF5874CBEFBD5BEEFD81B1369DFAD778F38F"),
             ("escape_128", "0000010000001000000000111000", 31, "0BF89F66FC96538A35AC2E5796CE8CFC8DF5F87F697868D4A734316943317503"),
             ("last_ac", "00000111111000000111", 17, "B4E94E9948F263A585DD613ECD9D56B8A500A227CAEDB7F5816FADD27ACACC2E"),
+            ("vertical_dc", "00000100000101100100", 31, "3A2F9BD35E60D1608C8D32B821F01421C63B798C1854F437955F1706AEB5693A"),
             ("mixed", "11001110100000000100001011111001", 9, "43EF3FF206986C9634692A4586163F32FE03C709B4908A4AA849652054FCCCEF"),
         ];
         foreach (var v in vectors)
@@ -46,6 +47,7 @@ internal static class CodecTests
             check(rejected, "invalid IPU stream rejected");
         }
         Png(check);
+        Paletted(check);
     }
 
     static byte[] Stream(string ac, int quantiser)
@@ -106,5 +108,55 @@ internal static class CodecTests
         try { ReferenceImage.Read(encoded); }
         catch (InvalidDataException) { rejected = true; }
         check(rejected, "PNG damaged CRC rejected");
+    }
+
+    static void Paletted(Action<bool, string> check)
+    {
+        const int entry = 32, count = 256, palette = entry + 16 + count;
+        byte[] data = new byte[palette + 1040];
+        "SHPS"u8.CopyTo(data);
+        BinaryPrimitives.WriteInt32LittleEndian(data.AsSpan(4), data.Length);
+        BinaryPrimitives.WriteInt32LittleEndian(data.AsSpan(8), 1);
+        BinaryPrimitives.WriteInt32LittleEndian(data.AsSpan(20), entry);
+        BinaryPrimitives.WriteInt32LittleEndian(data.AsSpan(entry), ((16 + count) << 8) | 2);
+        BinaryPrimitives.WriteUInt16LittleEndian(data.AsSpan(entry + 4), 16);
+        BinaryPrimitives.WriteUInt16LittleEndian(data.AsSpan(entry + 6), 16);
+        BinaryPrimitives.WriteInt32LittleEndian(data.AsSpan(palette), (1040 << 8) | 0x21);
+        BinaryPrimitives.WriteUInt16LittleEndian(data.AsSpan(palette + 4), 256);
+        BinaryPrimitives.WriteUInt16LittleEndian(data.AsSpan(palette + 6), 1);
+        for (int i = 0; i < count; i++)
+        {
+            data[entry + 16 + i] = (byte)i;
+            data[palette + 16 + i * 4] = (byte)i;
+            data[palette + 17 + i * 4] = (byte)(255 - i);
+            data[palette + 18 + i * 4] = (byte)(i ^ 0x55);
+            data[palette + 19 + i * 4] = (byte)i;
+        }
+        var decoded = new Ssh(data);
+        check(decoded.HasAlpha && decoded.Width == 16 && decoded.Height == 16, "paletted metadata");
+        foreach (var (index, stored) in new[] { (0, 0), (7, 7), (8, 16), (15, 23), (16, 8),
+            (23, 15), (24, 24), (31, 31), (32, 32), (255, 255) })
+            check(decoded.Pixels.AsSpan(index * 4, 4).SequenceEqual(new byte[]
+                { (byte)stored, (byte)(255 - stored), (byte)(stored ^ 0x55), (byte)Math.Min(255, stored * 2) }),
+                "linear palette indices, CSM1 block edges, RGBA channel order, alpha saturation");
+        void Reject(byte[] bad)
+        {
+            bool rejected = false;
+            try { _ = new Ssh(bad); }
+            catch (Exception ex) when (ex is InvalidDataException or NotSupportedException) { rejected = true; }
+            check(rejected, "invalid paletted image rejected");
+        }
+        byte[] bad = (byte[])data.Clone(); bad[palette] = 0x22; Reject(bad);
+        bad = (byte[])data.Clone(); bad[palette + 4] = 255; Reject(bad);
+        bad = data[..^1]; BinaryPrimitives.WriteInt32LittleEndian(bad.AsSpan(4), bad.Length); Reject(bad);
+        bad = (byte[])data.Clone(); bad[entry + 1]--; Reject(bad);
+        // A following directory entry is not allowed to supply this image's palette bytes.
+        bad = (byte[])data.Clone();
+        BinaryPrimitives.WriteInt32LittleEndian(bad.AsSpan(8), 2);
+        BinaryPrimitives.WriteInt32LittleEndian(bad.AsSpan(28), palette + 16);
+        BinaryPrimitives.WriteInt32LittleEndian(bad.AsSpan(palette + 16), (16 << 8) | 2);
+        BinaryPrimitives.WriteUInt16LittleEndian(bad.AsSpan(palette + 20), 1);
+        BinaryPrimitives.WriteUInt16LittleEndian(bad.AsSpan(palette + 22), 1);
+        Reject(bad);
     }
 }

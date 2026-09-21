@@ -26,7 +26,7 @@ against the owner's own rip of their own copy.
 | Archives | `FKNL` container, a **tree** of blocks; entries RefPacked unless they did not shrink |
 | Compression | **EA RefPack (QFS)** |
 | Models | **M3D2** — mesh table, scene graph, materials, positions, UVs and textures decoded |
-| Textures | **SHPS/GM** — managed IPU decoder; 5,687 of 5,687 compressed pairs byte-identical to the reference; [differential results](findings/ipu.md) |
+| Textures | **SHPS/GM** — managed IPU and type 0x02 palette decoders; 5,695 of 5,695 pairs byte-identical to the reference; [differential results](findings/ipu.md) |
 | Animation | `.aps`, magic `0x185AA030` — header and section table mapped, contents not |
 
 **JUNGLE.WAD reads 2,545 / 2,545 files to their exact declared size, 0 failures**, and five further

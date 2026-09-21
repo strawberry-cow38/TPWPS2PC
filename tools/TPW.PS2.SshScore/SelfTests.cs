@@ -70,7 +70,7 @@ internal static class SelfTests
             byte[] bad = (byte[])data.Clone(); bad[20] = 255; bad[21] = 255;
             Reject(bad, "entry offset bounds");
             bad = (byte[])data.Clone(); bad[32] = 2;
-            Reject(bad, "unsupported type");
+            Reject(bad, "GM payload is not a valid type 2 image");
             bad = (byte[])data.Clone(); bad[55] |= 0x40;
             Reject(bad, "unknown GM flags");
             bad = (byte[])data.Clone(); bad[52] = 0;
