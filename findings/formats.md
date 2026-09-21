@@ -581,3 +581,28 @@ mismatched.**
 ⚠ This is what "one texture per mesh" got wrong months of renders ago — `mesh+0x50` is the mesh's
 ORDINAL, not a material. The owner's report at the time was *"right texture for each model, just
 wrong places entirely"*, which is exactly what a per-mesh guess produces.
+
+
+## ⚠⚠ TEXTURE RESOLUTION: the ride's own folder FIRST, then `Sharetex/`
+
+A material name is **not unique in the archive**. JUNGLE.WAD holds **22 files called
+`sign_eng.tga`** — one per ride, each with that ride's name painted on it — plus `sign_ger`,
+`sign_fre`, `sign_jpn` and `sign_jap` for the other languages.
+
+A directory-wide search for `*_sign_eng.tga` returns whichever the filesystem hands back first.
+That is how a textured Crazy Ape shipped **wearing Mumbo's sign**, spotted by the owner reading it.
+
+```
+resolve(material, ride):
+    1. <ride>/textures/<name>.tga        the ride's own
+    2. Sharetex/<name>.tga               the shared set
+```
+
+Both steps are needed: six of Crazy Ape's 21 materials (`m_grass1..3`, `m_fence`, `m_box4`,
+`GK_trkunder2`) are not in its own folder at all, and `m_box4` exists in **both** `Sharetex/` and
+`Sideshow/sgsquark/textures/` — so ride-first-then-shared also picks the right one of those.
+
+⭐ The general trap: **a lookup by name across a flat extraction silently picks a wrong file rather
+than failing.** It cost nothing to detect here only because the wrong texture had *words on it*.
+Scope every asset lookup to the directory the referencing file came from.
+[[feedback_exclusions_hide_the_defect]]
