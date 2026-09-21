@@ -1,4 +1,4 @@
-"""`.LIP` -- the advisor lip-sync mark tracks. Structure solved 2026-09-21; the UNIT is not.
+"""`.LIP` -- the advisor lip-sync mark tracks. Solved 2026-09-21. Marks are MICROSECONDS.
 
     u32 mark, u32 mark, ... , 0xFFFFFFFF
 
@@ -13,24 +13,13 @@ open/close pairs. 83 files carry a single mark and one of those is the single va
 They are per-clip times, not offsets into a shared bank: several files start at **0**, and 151 of
 the 172 English files have value ranges that overlap another file's.
 
-⚠ **The unit is not established.** What can be said is what the readings imply:
+⭐ **The unit is MICROSECONDS, measured.** The advisor banks are not in any WAD -- they are at ISO
+level, `/AUDIO/ADVISOR/{ENGLISH,FRENCH,GERMAN}/SPCHHD.SDT`, exactly the three languages with tracks.
+170 of each language's 172 stems match a sound name in its own bank. Dividing each last mark by its
+clip's duration over 509 pairs gives a median ratio of **0.9759** with **469 of 509 inside the
+clip**; read as 100ns, milliseconds or 44.1kHz samples, **zero** pairs land in 0.5..1.0. See
+findings/lip.md, including why the 37 English overruns are a distribution shift and not bad joins.
 
-| read as | clip length: min / median / max |
-|---|---|
-| microseconds | 2.5 s / 6.3 s / 46.4 s |
-| 100 ns ticks | 0.25 s / 0.63 s / 4.6 s |
-| 44.1 kHz samples | 57 s / 142 s / 1052 s |
-
-The sample-rate readings are out by three orders of magnitude -- no advisor line is 17 minutes.
-Microseconds gives spoken-line lengths and a median gap between marks of 0.78 s, which is a
-mouth-movement cadence. 100 ns is not impossible but implies **no clip shorter than a quarter of a
-second**, which no spoken line is. That is an argument from plausibility, not a measurement, and it
-is written here as such.
-
-**What would settle it:** the matching audio, which is NOT on the disc under these names -- of 172
-stems, zero have a non-`.lip` file of the same stem anywhere in any WAD. The clips live in a sound
-bank indexed some other way. Find the bank entry for one stem, read its duration, and the unit
-falls out of one division.
 """
 import struct
 
