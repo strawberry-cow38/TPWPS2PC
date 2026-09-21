@@ -509,7 +509,34 @@ for days — the two models used for every render happen not to have the problem
 owner looking at a *third* model.
 [[feedback_exclusions_hide_the_defect]]
 
-**Where to look:** the PS2 convention is the **ADC bit** — a per-vertex "do not draw" flag that
-breaks the strip. There is already a hint in the animation player: `FUN_001a6d68` writes vertex X
-as `(uint)value & 0xfffffffe | old & 1`, deliberately **preserving bit 0** of the word. A kick/skip
-flag is exactly what lives in a low bit that a position write is careful not to clobber.
+### ⭐⭐ SOLVED — it is the ADC bit, in bit 0 of the X position word
+
+The hint was in the animation player all along: `FUN_001a6d68` writes a vertex's X as
+`(uint)value & 0xfffffffe | old & 1`, deliberately **preserving bit 0**. A position write that goes
+out of its way not to clobber one bit is carrying a flag in it.
+
+```
+A triangle spans vertices k, k+1, k+2 and is DRAWN only if bit 0 of vertex k+2's X word is CLEAR.
+```
+
+That single rule does both jobs: it restarts a strip inside a batch (the first two vertices of a new
+piece are suppressed, so no triangle bridges the gap) and it kills the degenerate triangles of a
+fan. The cost is one ulp on a float — invisible — which is why it can live there at all.
+
+**And the second bug, found with it: the batch count is `mesh+0x66`.** `strips()` walked the batch
+table until a record stopped looking valid, which under-ran on 13 meshes (`ENTRY_EXIT` yielded 39
+triangles against a header count of 152).
+
+### Validated against the mesh's own face count at `+0x62`
+
+| reading | meshes matching `+0x62` |
+|---|---:|
+| each batch as one plain strip | 77 / 948 — **8.1%** |
+| ADC-filtered, heuristic batch walk | 935 / 948 — 98.6% |
+| **ADC-filtered + batch count from `+0x66`** | **935 / 935 — 100.00%** |
+
+⭐ `+0x62` was never used for anything before this; it turns out to be the format's own checksum on
+whether you are reading its geometry correctly. Every mesh in all 113 models agrees.
+
+`tools/m3d2.py` now exposes `triangles()` and `triangle_indices()`; `strips()` is kept but
+documented as not-for-rendering.
