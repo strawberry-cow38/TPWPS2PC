@@ -902,3 +902,56 @@ that proves the field.
 about Y over 50 frames. Rendered, the park gateway's two doors swing open. The animated rotation
 **post-multiplies the bind rotation** rather than replacing it: both doors have non-identity bind
 matrices, and key 0 being identity is what keeps the rest pose intact at frame 0.
+
+
+## ⭐⭐ `track+0x10` — a CATMULL-ROM SPLINE PATH (333 tracks)
+
+The second-biggest unknown, and it is how a ride moves something along a curve.
+
+```
++0x00 u32 flags    bit 0x02 -> index scaled as i*3+1     bit 0x08 -> picks FUN_001adda0
++0x04 u16 POINT COUNT      (the modulo the interpolator wraps on)
++0x06 u16 key count        (fed to FUN_001a6878 at a 4-byte stride)
++0x08 u32 -> control points, float3, 12-byte stride
++0x0C u32 -> keys, 4-byte stride
+```
+
+`FUN_001ade90` is a textbook Catmull-Rom, verbatim from the decompile:
+
+```
+0.5 * ( (-p0 + 3*p1 - 3*p2 + p3)*t^3 + (2*p0 - 5*p1 + 4*p2 - p3)*t^2 + (-p0 + p2)*t + 2*p1 )
+```
+
+and **every index is taken modulo the point count**, so the neighbours wrap — the curve is handled
+as a loop.
+
+⚠ The 12-byte stride is read, not inferred: the code multiplies the index by `0xc` and reads
+`[0]`, `[1]`, `[2]` as floats. A smoothness check on the data agrees (mean step per extent 0.22 at
+stride 12 against 1.23 at stride 8) but it is **weak corroboration, not the evidence** — many paths
+are four points long, where that ratio is ~0.33 by construction. Saying so because the statistic
+looks stronger than it is.
+
+### It reads as what it animates
+
+`Rides_Bouncy_bouncy.aps`, 19 control points, X and Z constant throughout:
+
+```
+Y:  13.59  12.87  11.29  11.06  10.67  12.29  13.00  13.60  17.04  17.59
+    18.62  18.73  17.59  17.18  15.31  14.59  14.59  14.59  14.59
+```
+
+Down to 10.7, up to 18.7, settling at 14.6. **A ride called Bouncy whose spline is a vertical
+bounce.** Same class of check as the gate's exact 90°.
+
+## Track pointer scoreboard
+
+| pointer | tracks | state |
+|---|---:|---|
+| `+0x10` | 333 | ✅ Catmull-Rom spline path |
+| `+0x14` | 548 | ✅ quaternion rotation keys |
+| `+0x18` | 143 | shape only — 16-byte keys, count at `track+0x0A`, gate flag `0x80` |
+| `+0x1c` | 11 | unknown; single pointer, consumed via `FUN_001ae450` |
+| `+0x20` | 290 | ✅ vertex morph stream |
+| `+0x24` | 130 | unknown; three sub-pointers via `FUN_00167720` |
+| `+0x28` | 392 | ✅ appear frame |
+| `+0x2c` | 302 | shape only — 8-byte entries, indexed by the u16 at rotation-key `+0x02` |

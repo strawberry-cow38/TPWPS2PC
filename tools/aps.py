@@ -144,6 +144,47 @@ def vertex_map(m, mesh_offset, nverts):
     return None if any(v is None for v in idx) else idx
 
 
+def spline_path(d, off):
+    """The track's `+0x10` object: a CATMULL-ROM SPLINE PATH -- how a ride moves a thing along a
+    curve. 333 of 1,229 tracks in JUNGLE.WAD carry one.
+
+    Layout, from `FUN_001a7f48` and the interpolators it calls:
+
+        +0x00 u32 flags     bit 0x02 -> index scaled (i*3+1)   bit 0x08 -> picks FUN_001adda0
+        +0x04 u16 POINT COUNT   (the modulo the interpolator wraps on)
+        +0x06 u16 key count     (passed to FUN_001a6878 with a 4-byte stride)
+        +0x08 u32 -> control points, **float3, 12-byte stride**
+        +0x0C u32 -> keys, 4-byte stride
+
+    ⭐ `FUN_001ade90` is a textbook Catmull-Rom, verbatim:
+
+        0.5 * ( (-p0 + 3*p1 - 3*p2 + p3)*t^3 + (2*p0 - 5*p1 + 4*p2 - p3)*t^2 + (-p0 + p2)*t + 2*p1 )
+
+    and every index is taken **modulo the point count**, so the neighbours wrap -- the curve is
+    treated as a loop.
+
+    The 12-byte stride is not inferred: the decompiled code multiplies the index by `0xc` and reads
+    `[0]`, `[1]`, `[2]` as floats. (A smoothness check on the data agrees -- mean step per extent
+    0.22 at stride 12 against 1.23 at stride 8 -- but it is weak corroboration, not the evidence:
+    many paths are only four points long, where that ratio is ~0.33 by construction.)"""
+    flags = _u32(d, off)
+    npts, nkeys = _u16(d, off+4), _u16(d, off+6)
+    pts, keys = _u32(d, off+8), _u32(d, off+0x0C)
+    points = [tuple(_f32(d, pts + k*12 + 4*j) for j in range(3)) for k in range(npts)] if pts else []
+    return dict(flags=flags, npoints=npts, nkeys=nkeys, points=points, keys=keys)
+
+
+def catmull_rom(points, i, t):
+    """FUN_001ade90, with the same wrap."""
+    n = len(points)
+    p0, p1, p2, p3 = (points[(i-1) % n], points[i % n], points[(i+1) % n], points[(i+2) % n])
+    out = []
+    for j in range(3):
+        a, b, c, e = p0[j], p1[j], p2[j], p3[j]
+        out.append(0.5 * ((-a + 3*b - 3*c + e)*t*t*t + ((2*a - 5*b + 4*c) - e)*t*t + (-a + c)*t + 2*b))
+    return tuple(out)
+
+
 def _all_pointers(d):
     """Every address anything in the file points at, sorted. Arrays are laid out contiguously, so
     the next pointer above an array's start is where that array ENDS -- which is how you get a key
