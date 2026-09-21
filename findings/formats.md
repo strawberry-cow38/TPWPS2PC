@@ -350,6 +350,32 @@ its declared total, and the same 859 have their mesh totals match `vertexCount`.
 are not yet explained and are the grey left in the renders — **missing triangles, not missing
 textures**, since all textures now resolve (25/25, 21/21, 20/20).
 
+## ⚠⚠ THE RENDERER'S DEPTH TEST WAS INVERTED, AND IT FAKED THREE FORMAT BUGS
+
+Master, from the picture: *"it's like different pieces are rendering over other pieces. like the
+render order is broken."* It was. The projection returned a depth and the rasteriser kept the
+**smallest** value as nearest; after the yaw/pitch rotations the camera looks the other way down that
+axis, so the smallest was the **furthest**. Every far surface painted over every near one.
+
+**Three separate "findings" in this file were explanations of that one sign error**, and each was
+plausible enough to write down:
+
+1. **"Detached floating arms."** Never detached — the arms sit *behind* the body and drew on top of
+   it. Reported to master as "probably the swinging arms at rest"; tinyclaw then supplied a second
+   innocent explanation (an unposed animation bundle, true of the PSX side too). **Neither was
+   needed.**
+2. **"The mirrored MUMBO sign."** A back face winning the depth test over the front of the same
+   board. Explained here as a facing artefact — nearly right, wrong mechanism: culling did not fix
+   it, correct depth ordering does.
+3. **"Winding is not the explanation."** Culling appeared to make things worse partly because the
+   depth test was already scrambling which surface won.
+
+⭐ **The M3D2 decode was right the whole time; the renderer was lying about it.** A decoder validated
+only through a viewer inherits every bug the viewer has — and a wrong viewer does not look like a
+wrong viewer, it looks like a wrong format, which is the direction you are already primed to suspect
+when reverse-engineering. Master caught it four times from the picture while each internal check
+kept passing.
+
 ⚠ **Remaining: strip restarts.** Each batch is treated as one continuous strip, which leaves a few
 long spurious triangles spanning a model where a strip really restarts inside a batch. Degenerate
 triangles are already dropped; the restart convention is not yet established. The UV stream is decoded (above). The THIRD
