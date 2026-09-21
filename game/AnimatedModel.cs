@@ -166,7 +166,13 @@ public sealed class AnimatedModel
         // with nothing to notice.
         Code = @"
 shader_type spatial;
-render_mode cull_disabled, diffuse_lambert, specular_disabled;
+// ⚠⚠ `depth_draw_opaque` IS NOT OPTIONAL HERE. Writing ALPHA makes a Godot material TRANSPARENT,
+// and a transparent material does not write depth by default -- so every surface behind it shows
+// through and the model reads INSIDE OUT, with parts drawn in the wrong order. The owner saw it
+// within minutes of the soft-alpha change: ""theres actually the inside-out bug on some rides /
+// incorrect draw orders"". These models are solid geometry with soft EDGES, not stacked glass, so
+// writing depth is right and costs nothing the data actually needs.
+render_mode cull_disabled, diffuse_lambert, specular_disabled, depth_draw_opaque;
 
 uniform sampler2D albedo_tex : source_color, filter_nearest_mipmap, repeat_enable;
 uniform float cutout = 0.0627;      // 16/255
