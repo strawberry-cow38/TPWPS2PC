@@ -400,11 +400,25 @@ Helper nodes carry **bit 31** in their flags (`0x80000050`, `0x80000250`) and ar
 **lightning-bolt sign topper**, not crate debris, and `m_boxes` is the **whole platform and fence
 structure**. Both of those were guessed wrong here from the name alone.
 
-**GUESS, untested**: the low flag bits select what is drawn when. `m_base` alone is `0x001`; the arms
-are `0x321` = the body's `0x301` plus `0x20`, and the arms are exactly the two parts hanging off the
-`Dummy01` pivot; `0xf01` covers boxes/sign/crate/shards and `0xa01` the sub-sign. There is structure
-there, and which bit means "not at rest" is **not established** — waiting on someone who can see the
-real ride to say which parts are extra.
+### Which pieces are drawn at rest is NOT in the file
+
+Master, who can see the ride: **`m_crate` and `m_shards` should not be on screen; everything else
+can be.** With the answer in hand this became a diff rather than a guess — all 40 words of the
+160-byte entry, hidden pair against visible set:
+
+- **Flags do not separate them.** `m_crate` and `m_shards` are both `0x000f01` — the same value as
+  `m_boxes` and `m_sign`, which *are* drawn. My earlier guess that the low bits select visibility is
+  **wrong**.
+- Every other apparent separator is trivially per-mesh: data offsets, bounding boxes, vertex counts.
+  They differ because every mesh differs.
+- The only real distinction is `+0x50`: they are meshes **7 and 8 — the last two**. And there is no
+  "draw the first N" count anywhere in the header; nothing in it equals 7.
+
+⭐ **So the visibility decision is not in the `.mps` at all**, which is exactly what master said the
+format was: *"this is an asset BUNDLE. contains multiple pieces. game has to handle what to do w
+them."* An importer should surface every piece and let the consumer choose; deciding it needs the
+animation (`.aps`) or the game's own ride logic — the same shape as the PSX phase table in
+`TPW-PSXPC`'s `findings/animation-phases.md`.
 
 ⚠ **Backface culling is wrong for these models** — master, comparing renders: no-cull is closest.
 They are open single-sided pieces; there is nothing to cull correctly.
