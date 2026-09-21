@@ -166,7 +166,43 @@ What it reads out, with the artists' own names:
 Texture indices run 0..n-1 and the transforms carry sensible positions — a gorilla ride with two
 arms and breakable crates, a go-kart track with two flagpoles and a finish line.
 
-⚠ **STILL MISSING: the per-mesh vertex and face data.** The PC member of the family puts
+## ⭐⭐⭐ Geometry — DECODED
+
+```
+mesh entry +0x60  u16 vertexCount, u16 faceCount
+mesh entry +0x6C  u32 batch table offset
+mesh entry +0x94  u32 batch table length
+
+batch record, 16 bytes:
+   +0x00 u32  positions offset
+   +0x04 u32  second stream offset      (5 B/vertex: UV and/or packed normal)
+   +0x08 u32  third stream offset       (8 B/vertex)
+   +0x0C u32  vertex count for this batch
+```
+
+Positions are **plain xyz float32**, `count` of them, one batch per triangle strip. The stream is
+padded out past the last vertex, which is why dividing a section length by a stride never worked:
+there is no single array, it is a chain of strips.
+
+**Proof, per mesh, not per file:** decoded vertex count equals the declared `vertexCount` for every
+mesh of `mumbo.mps` — 175, 32, 8, 203, 65, 15, 507, all exact, 1,005 vertices in 33 strips. And
+`sum(batch counts) == vertexCount` holds across the meshes checked.
+
+The coordinates read as sense on sight: batch 0 of `jm_floor` is a 10×10 floor tile
+(`10.000 0.000 0.000`, `0.000 0.000 10.000`, …) with vertices 3, 5, 7, 9 and 11 all the same point —
+a fan hub.
+
+**And it draws.** `tools/m3d2.py` decodes to triangles; a wireframe of `gokarts.mps` shows the
+flagpole, its flag, the platform and the trackside barrier, and `1x1east.mps` is the faceted base of
+a small Easter Island statue. That is the only test that matters for a vertex layout: a wrong stride
+gives confetti.
+
+⚠ **Remaining: strip restarts.** Each batch is treated as one continuous strip, which leaves a few
+long spurious triangles spanning a model where a strip really restarts inside a batch. Degenerate
+triangles are already dropped; the restart convention is not yet established. The two side streams
+(5 and 8 bytes per vertex) are unread — UVs and normals, by size and by the values, but not proven.
+
+⚠ ~~**STILL MISSING: the per-mesh vertex and face data.**~~ *(superseded — see above)* The PC member of the family puts
 vertex/material/face counts at entry +0x58..+0x5E; on PS2 those words read zero, so the geometry is
 reached some other way — most likely one of the other header offsets (0x40, 0x44, 0x4C, 0x70, 0x74),
 which sort into an ascending chain of section boundaries. The structure is open; the geometry is not.
