@@ -1,0 +1,31 @@
+# ⚠⚠ NO GAME FILES. EVER. This repo carries findings, addresses and formats -- never EA's data.
+# Master's rule, 2026-09-21: "no gamefiles". The reader is BYO-disc: it runs against a copy the
+# user already owns and never ships one.
+*.bin
+*.cue
+*.iso
+*.img
+*.wad
+*.WAD
+*.elf
+SLES_*
+SLUS_*
+SCES_*
+*.tga
+*.TGA
+*.ssh
+*.mpc
+*.MPC
+*.irx
+*.IRX
+*.sdt
+*.map
+*.RSE
+*.rss
+*.sam
+*.mps
+*.aps
+# ...and anything extracted from one
+extracted/
+dump/
+*.raw
