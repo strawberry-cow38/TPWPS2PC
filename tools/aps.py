@@ -144,6 +144,31 @@ def vertex_map(m, mesh_offset, nverts):
     return None if any(v is None for v in idx) else idx
 
 
+def rotation_track(d, off, count):
+    """The track's `+0x14` array: NODE ROTATION, the most-used animation in the format
+    (548 of 1,229 tracks in JUNGLE.WAD -- more than the vertex morph stream's 290).
+
+    From `FUN_001a9e50(t, base, index, out)`, the only consumer:
+
+        key  = base + index * 0x0C                 <- 12-byte stride
+        next = index + (index < count - 1)          <- clamped, so the last key holds
+        components at key+4, +6, +8, +10, each * 3.051851e-05  (= 1/32768)
+        SLERP via FUN_00167a48, or a cheap per-component LERP when a global flag is set
+
+    So a key is 12 bytes: u16 time, u16 (unknown), then int16 x, y, z, w.
+
+    ⚠ `count` is NOT in the array -- the sampler reads it from a global the caller primes
+    (site 0x001a8214, one call site in the whole binary). Pass it in.
+
+    Validated: reading the quaternion at +0x04 with a 12-byte stride gives |q| == 32767 for
+    94.3% of 2,190 sampled keys, against 7.1% for the same stride read at +0x00."""
+    out = []
+    for k in range(count):
+        b = off + k*12
+        out.append((_u16(d, b), [_i16(d, b+4+2*j)/32768.0 for j in range(4)]))
+    return out
+
+
 def appear_frames(d, recoff):
     """node -> the frame it first appears. The track's `+0x28` object holds it as a u16 at +0x02.
 

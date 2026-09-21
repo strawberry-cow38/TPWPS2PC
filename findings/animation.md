@@ -773,3 +773,56 @@ type Crazy Ape uses. That is a real result and it is not "the format".
 
 ⚠ Recorded because the previous sections read as a finished format. They are not.
 [[feedback_flag_scope_gaps_loudly]]
+
+
+## ⭐⭐ `track+0x14` — NODE ROTATION, and it is the format's main animation
+
+The scope check above named `+0x14` as the most-used pointer (548 of 1,229 tracks) and a complete
+unknown. It is **quaternion rotation keys**, and it outnumbers the vertex morph stream nearly 2:1.
+
+⭐ **How it was found, in one step, after 44 candidate load sites went nowhere:** census the callers
+of the SLERP. `FUN_00167a48` has exactly **two** call sites in the whole binary — one inside
+`FUN_001a8da8` (the 20-byte path, already decoded) and one new: `FUN_001a9e50`.
+[[feedback_census_the_call_sites]]
+
+```c
+FUN_001a9e50(float t, int base, uint index, out):
+    next = index + (index < count - 1);                  // clamped: the last key holds
+    key  = base + index * 0x0C;                          // 12-byte stride
+    q[j] = (float)(short)*(key + 4 + 2*j) * 3.051851e-05 // = 1/32768
+    FUN_00167a48(...)                                    // SLERP
+    // ...or a per-component LERP when a global flag has bit 2
+```
+
+```
+rotation key, 12 bytes:   +0x00 u16 time   +0x02 u16 ?   +0x04 int16 x, y, z, w  (/32768)
+```
+
+⚠ **`count` is not in the array.** The sampler takes it from a global the caller primes; the one
+call site is `0x001a8214`. Still unread.
+
+### Validation, with a control that fails
+
+| | |
+|---|---:|
+| keys sampled | 2,190 |
+| quaternion at `+0x04`, 12-byte stride, `\|q\| == 32767 ± 64` | **94.3%** |
+| **CONTROL** — same stride, quaternion read at `+0x00` | **7.1%** |
+| arrays found by walking while `\|q\|` stays unit | **548** — exactly the 548 tracks that use `+0x14` |
+| `u16` at `+0x00` starts at 0 | 97.8% |
+
+The 5.7% and the 19.9% of non-ascending times are the same artefact: with no count field my walk
+runs past the end of an array into the next one. The counterexample says so outright —
+`[0, 25, 50, 0, 25, 50]` is two arrays of three keys, not one of six.
+
+### And it reads as the thing it animates
+
+`Gates.aps`, a park gate, node 1:
+
+```
+t=0    q = ( 0.0000,  0.0000, 0.0000, 1.0000)   identity
+t=50   q = ( 0.0000, -0.7071, 0.0000, 0.7071)   exactly 90 degrees about Y
+```
+
+**A gate swinging open a quarter turn over 50 frames** (1.67 s at 30 fps). Two keys, nothing else.
+That is the semantic check no wrong layout survives.
