@@ -7,15 +7,20 @@ namespace TPWPS2Viewer;
 /// actually see. The first thing in this repo that is a game rather than a reader.</summary>
 public sealed class Park
 {
-    /// <summary>⚠ A grid cell in model units, MEASURED, not chosen. The rides whose names encode
-    /// their own footprint give it directly: `4x4rock` spans 51.0 over four cells and `5x5rck`
-    /// 73.2 over five. Across all 287 rides carrying both a footprint and a model the implied cell
-    /// is a median **14.42** (p25 13.45, p75 14.91).
+    /// <summary>A grid cell in model units.
     ///
-    /// The spread is real and is not error: a rock does not fill its tile, so the ratio measures
-    /// "how much of its cell this model uses" as much as the cell itself. Treated as an estimate
-    /// with a stated spread rather than a constant anybody should trust to the decimal.</summary>
-    public const float CellSize = 14.42f;
+    /// ⚠⚠ THIS WAS 14.42 AND IT WAS WRONG. That figure came from measuring vertex positions
+    /// WITHOUT the per-mesh matrix, which inflates every extent by about a third: `4x4rock` reads
+    /// 51.0 raw and **40.2** transformed. tinyclaw measured it independently, got different
+    /// extents for the same named models, and named the cause exactly.
+    ///
+    /// ⭐ Settled by containment rather than by a median, because the ratio's tail is heavy and
+    /// one-sided -- coaster models span their whole layout, so a mean-like estimator reads 17.6.
+    /// Over all 287 rides with both a footprint and a model, at a cell of **10** the median model
+    /// fills **0.991** of its plot; at 9.6 it fills 1.032, i.e. they systematically overflow. Of
+    /// the 13 rides named after their own footprint, 22 of 26 extents sit inside a 10-unit cell and
+    /// the four that do not overhang by at most 8.7%, which is what a rock does.</summary>
+    public const float CellSize = 10.0f;
 
     public readonly Node3D Root = new() { Name = "Park" };
     Node3D _ground, _ride;
@@ -108,23 +113,31 @@ public sealed class Park
         model.Position = new Vector3(target.X - centre.X, -min.Y, target.Z - centre.Z);
     }
 
-    /// <summary>A model's bounds from its own vertices.
+    /// <summary>A model's bounds, THROUGH ITS PER-MESH MATRIX.
     ///
-    /// ⚠ Each mesh also DECLARES bounds at +0x70/+0x80, and `Declared` below compares the two.
-    /// Measuring is used rather than trusting, because a model standing in the wrong place is a
-    /// silent defect -- it looks like the ride was authored that way.</summary>
+    /// ⚠⚠ Reading `Vertices(mesh).Pos` straight is wrong and does not look wrong: a mesh sits in
+    /// its own space and the matrix places and scales it. Skipping it inflates extents by roughly
+    /// a third, which is how CellSize came out as 14.42 instead of 10. `FrameCamera` in the viewer
+    /// always did this correctly; this did not, so the camera and the placement disagreed.
+    ///
+    /// ⚠ Each mesh also DECLARES bounds at +0x70/+0x80, and `Declared` exposes them for comparison.
+    /// Measuring is used rather than trusting, because a model standing in the wrong place looks
+    /// like the ride was authored that way.</summary>
     public static (Vector3 Min, Vector3 Max) Bounds(Model m)
     {
         var min = new Vector3(float.MaxValue, float.MaxValue, float.MaxValue);
         var max = new Vector3(float.MinValue, float.MinValue, float.MinValue);
         bool any = false;
+        var world = m.WorldTransforms();
         foreach (var mesh in m.Meshes)
         {
             if (mesh.BatchCount == 0) continue;
+            if (!world.TryGetValue(mesh.Offset, out var w)) continue;
             List<System.Numerics.Vector3> pos;
             try { pos = m.Vertices(mesh).Pos; } catch { continue; }
-            foreach (var v in pos)
+            foreach (var p in pos)
             {
+                var v = System.Numerics.Vector3.Transform(p, w);
                 any = true;
                 min = new Vector3(Math.Min(min.X, v.X), Math.Min(min.Y, v.Y), Math.Min(min.Z, v.Z));
                 max = new Vector3(Math.Max(max.X, v.X), Math.Max(max.Y, v.Y), Math.Max(max.Z, v.Z));

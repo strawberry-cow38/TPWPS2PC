@@ -1777,3 +1777,46 @@ which is where a mouth stops moving relative to where a file ends.
 The worst are tutorial lines — `tut_014` at 1.022, `tut_035` at 1.123 and 1.262. Either those
 English bank clips are trimmed shorter than the line they were marked against, or those stems are
 mis-paired. Not resolved, and the asymmetry is the clue.
+
+
+## ⚠⚠ Grid cell size: 10, and how 14.42 happened (2026-09-21)
+
+The park needs to know how big a tile is in model units. Rides named after their own footprint give
+it directly -- `1x1east`, `2x2rck`, `4x4rock`, `5x5rck` are props built to fill a plot.
+
+**I measured 14.42 and it was wrong.** The extents came from `m3d2.triangles`, which returns
+positions in the mesh's OWN space; each mesh carries a matrix that places and scales it, and
+skipping it inflates every extent by about a third:
+
+| ride | raw | through the matrix |
+|---|---|---|
+| `4x4rock` | 51.0 × 50.9 | **40.2 × 39.8** |
+| `4x4rock` (2) | 63.2 × 76.9 | **38.7 × 35.0** |
+| `5x5rck` | 73.2 × 72.4 | **48.0 × 49.3** |
+
+tinyclaw measured independently, got different extents for the same named models, and named the
+cause precisely. Applying the matrix reproduces their figures **to the digit**.
+
+### The value is 10, settled by containment rather than a median
+
+⚠ The ratio's tail is heavy and one-sided — a coaster model spans its whole layout, so a mean-like
+estimator reads **17.6**. Medians are better but still disagree in the third digit (mine 9.91,
+tinyclaw's 9.82; on the named rocks 9.60 and 9.53). Asking instead *which cell actually holds its
+models* is decisive:
+
+| cell | named-footprint extents that fit | median fill | worst overhang |
+|---|---|---|---|
+| 9.6 | 12 / 26 | 1.000 | 1.133 |
+| **10.0** | **22 / 26** | **0.960** | 1.087 |
+| 11.0 | 26 / 26 | 0.873 | 0.989 |
+
+Over **all 287** rides with both a footprint and a model, a 10-unit cell gives a median fill of
+**0.991** — models filling their plots almost exactly — against 1.032 at 9.6, where they
+systematically overflow. 11 contains everything but leaves every prop visibly short of its tile.
+
+**10.** A round number a designer would pick, and the only one where the props fill their plots
+without the fleet of them hanging over the edge.
+
+⚠ The same missing-matrix bug was in `Park.Bounds`, which placed the model. `FrameCamera` had
+always applied `WorldTransforms` correctly, so the camera and the placement disagreed — the kind of
+defect that renders as "the ride is slightly off-centre" rather than as anything being wrong.
