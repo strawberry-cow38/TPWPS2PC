@@ -1,0 +1,612 @@
+[
+  {
+    "path": "Sideshow/sgrace/sgrace.MD2",
+    "mtrDecodedSha256": "4f665b2a614a7730f401251df11b74d990299c08db562a0e939553ba991cc066",
+    "nodes": [
+      "racetrack",
+      "startflag",
+      "startpost2",
+      "startpost1",
+      "shadow03",
+      "shadow01",
+      "new02",
+      "shadow02",
+      "new03",
+      "new04",
+      "new01",
+      "shadow04",
+      "new05",
+      "shadow05",
+      "Dummy01"
+    ],
+    "textures": [
+      [
+        "dinotrack2.tga"
+      ],
+      [
+        "dinotrackstart.tga"
+      ],
+      [
+        "d_voltop.TGA"
+      ],
+      [
+        "pp_rock1.TGA"
+      ],
+      [
+        "d_POOL3.TGA"
+      ],
+      [
+        "d_volinner.TGA"
+      ],
+      [
+        "GK_flag.tga"
+      ],
+      [
+        "bd_post.TGA"
+      ],
+      [
+        "dinoshadow.tga"
+      ],
+      [
+        "dinobody1.tga"
+      ],
+      [
+        "dinohead1.tga"
+      ],
+      [
+        "dinobody.tga"
+      ],
+      [
+        "dinohead.tga"
+      ],
+      [
+        "dinobody3.tga"
+      ],
+      [
+        "dinohead3.tga"
+      ],
+      [
+        "dinobody2.tga"
+      ],
+      [
+        "dinohead2.tga"
+      ],
+      [
+        "dinobody4.tga"
+      ],
+      [
+        "dinohead4.tga"
+      ]
+    ],
+    "meshes": [
+      {
+        "name": "racetrack",
+        "groups": [
+          {
+            "first": 0,
+            "count": 22,
+            "material": 0
+          },
+          {
+            "first": 22,
+            "count": 5,
+            "material": 1
+          },
+          {
+            "first": 27,
+            "count": 24,
+            "material": 3
+          },
+          {
+            "first": 51,
+            "count": 18,
+            "material": 5
+          },
+          {
+            "first": 69,
+            "count": 6,
+            "material": 4
+          },
+          {
+            "first": 75,
+            "count": 22,
+            "material": 2
+          }
+        ]
+      },
+      {
+        "name": "startflag",
+        "groups": [
+          {
+            "first": 0,
+            "count": 8,
+            "material": 6
+          }
+        ]
+      },
+      {
+        "name": "startpost2",
+        "groups": [
+          {
+            "first": 0,
+            "count": 10,
+            "material": 7
+          }
+        ]
+      },
+      {
+        "name": "startpost1",
+        "groups": [
+          {
+            "first": 0,
+            "count": 10,
+            "material": 7
+          }
+        ]
+      },
+      {
+        "name": "shadow03",
+        "groups": [
+          {
+            "first": 0,
+            "count": 2,
+            "material": 8
+          }
+        ]
+      },
+      {
+        "name": "shadow01",
+        "groups": [
+          {
+            "first": 0,
+            "count": 2,
+            "material": 8
+          }
+        ]
+      },
+      {
+        "name": "new02",
+        "groups": [
+          {
+            "first": 0,
+            "count": 56,
+            "material": 9
+          },
+          {
+            "first": 56,
+            "count": 12,
+            "material": 10
+          }
+        ]
+      },
+      {
+        "name": "shadow02",
+        "groups": [
+          {
+            "first": 0,
+            "count": 2,
+            "material": 8
+          }
+        ]
+      },
+      {
+        "name": "new03",
+        "groups": [
+          {
+            "first": 0,
+            "count": 56,
+            "material": 11
+          },
+          {
+            "first": 56,
+            "count": 12,
+            "material": 12
+          }
+        ]
+      },
+      {
+        "name": "new04",
+        "groups": [
+          {
+            "first": 0,
+            "count": 56,
+            "material": 13
+          },
+          {
+            "first": 56,
+            "count": 12,
+            "material": 14
+          }
+        ]
+      },
+      {
+        "name": "new01",
+        "groups": [
+          {
+            "first": 0,
+            "count": 56,
+            "material": 15
+          },
+          {
+            "first": 56,
+            "count": 12,
+            "material": 16
+          }
+        ]
+      },
+      {
+        "name": "shadow04",
+        "groups": [
+          {
+            "first": 0,
+            "count": 2,
+            "material": 8
+          }
+        ]
+      },
+      {
+        "name": "new05",
+        "groups": [
+          {
+            "first": 0,
+            "count": 56,
+            "material": 17
+          },
+          {
+            "first": 56,
+            "count": 12,
+            "material": 18
+          }
+        ]
+      },
+      {
+        "name": "shadow05",
+        "groups": [
+          {
+            "first": 0,
+            "count": 2,
+            "material": 8
+          }
+        ]
+      }
+    ],
+    "md2GeometrySha256": "c29e0ec3be76eba58781e3e4c7e3fa966ee9b7f6033d420284bab9c8899b8d21"
+  },
+  {
+    "path": "Sideshow/sgsquark/glove.MD2",
+    "mtrDecodedSha256": "59791193f3b7f1752f636a0858e243c41afffe43af32773f7f8d9ff3ec8989fb",
+    "nodes": [
+      "ears01",
+      "Dummy01",
+      "Camera01",
+      "Camera01.Target"
+    ],
+    "textures": [
+      [
+        "gloves.tga"
+      ]
+    ],
+    "meshes": [
+      {
+        "name": "ears01",
+        "groups": [
+          {
+            "first": 0,
+            "count": 150,
+            "material": 0
+          }
+        ]
+      }
+    ],
+    "md2GeometrySha256": "e7ad1a5bc2ead9d0f5422324938c4282b1ea123dbed4e28bbe18ee94f960be0e"
+  },
+  {
+    "path": "Sideshow/sgsquark/sgsquark.MD2",
+    "mtrDecodedSha256": "fe61569bef2b488aa8d64683e8ab1319971cd60320054d10e121cb9caccd2ed5",
+    "nodes": [
+      "sq_ground",
+      "perch",
+      "sq_body",
+      "sq_arrow",
+      "sq_fence",
+      "button",
+      "target",
+      "Head03",
+      "Head04",
+      "Head1",
+      "Head02",
+      "Head05",
+      "WIN"
+    ],
+    "textures": [
+      [
+        "m_grass1.TGA"
+      ],
+      [
+        "m_grass4.TGA"
+      ],
+      [
+        "m_grass2.TGA"
+      ],
+      [
+        "sq_foot3.TGA"
+      ],
+      [
+        "ss_plnk1.TGA"
+      ],
+      [
+        "sq_win1.TGA"
+      ],
+      [
+        "sq_body.TGA"
+      ],
+      [
+        "sq_tail.TGA"
+      ],
+      [
+        "sq_neck.tga"
+      ],
+      [
+        "sq_head2.tga",
+        "sq_head3.tga",
+        "sq_head4.tga",
+        "sq_eye.tga"
+      ],
+      [
+        "sq_mouth.TGA"
+      ],
+      [
+        "sq_feather.TGA"
+      ],
+      [
+        "arrow.tga"
+      ],
+      [
+        "m_box4.tga"
+      ],
+      [
+        "button.tga"
+      ],
+      [
+        "sq_target.tga"
+      ]
+    ],
+    "meshes": [
+      {
+        "name": "sq_ground",
+        "groups": [
+          {
+            "first": 0,
+            "count": 18,
+            "material": 0
+          },
+          {
+            "first": 18,
+            "count": 6,
+            "material": 1
+          },
+          {
+            "first": 24,
+            "count": 8,
+            "material": 2
+          }
+        ]
+      },
+      {
+        "name": "perch",
+        "groups": [
+          {
+            "first": 0,
+            "count": 6,
+            "material": 5
+          },
+          {
+            "first": 6,
+            "count": 4,
+            "material": 4
+          },
+          {
+            "first": 10,
+            "count": 30,
+            "material": 3
+          }
+        ]
+      },
+      {
+        "name": "sq_body",
+        "groups": [
+          {
+            "first": 0,
+            "count": 28,
+            "material": 6
+          },
+          {
+            "first": 28,
+            "count": 24,
+            "material": 9
+          },
+          {
+            "first": 52,
+            "count": 2,
+            "material": 11
+          },
+          {
+            "first": 54,
+            "count": 16,
+            "material": 8
+          },
+          {
+            "first": 70,
+            "count": 12,
+            "material": 7
+          },
+          {
+            "first": 82,
+            "count": 4,
+            "material": 10
+          }
+        ]
+      },
+      {
+        "name": "sq_arrow",
+        "groups": [
+          {
+            "first": 0,
+            "count": 2,
+            "material": 12
+          }
+        ]
+      },
+      {
+        "name": "sq_fence",
+        "groups": [
+          {
+            "first": 0,
+            "count": 20,
+            "material": 13
+          }
+        ]
+      },
+      {
+        "name": "button",
+        "groups": [
+          {
+            "first": 0,
+            "count": 10,
+            "material": 14
+          }
+        ]
+      },
+      {
+        "name": "target",
+        "groups": [
+          {
+            "first": 0,
+            "count": 4,
+            "material": 15
+          }
+        ]
+      }
+    ],
+    "md2GeometrySha256": "56892076437be638fb55522731ded008b16fb121042b870df0d0a233efb06774"
+  },
+  {
+    "path": "Sideshow/sgwhack/sgwhack.MD2",
+    "mtrDecodedSha256": "963dd6dee1f823b00aa28fb8c6a01bbaa90b44825949d81d36de10a65f26b575",
+    "nodes": [
+      "base",
+      "hammer",
+      "gopher",
+      "gb_plant2",
+      "gb_plant1",
+      "KID03",
+      "KID02",
+      "KID07",
+      "KID08",
+      "KID09",
+      "KID04",
+      "KID05",
+      "KID06",
+      "KID01"
+    ],
+    "textures": [
+      [
+        "gb_pit.tga"
+      ],
+      [
+        "gb_base2.tga"
+      ],
+      [
+        "gb_base1.tga"
+      ],
+      [
+        "gb_base3.tga"
+      ],
+      [
+        "gb_hammer1.tga"
+      ],
+      [
+        "gb_hammer2.tga"
+      ],
+      [
+        "gb_gopher.tga"
+      ],
+      [
+        "jtr_plm3.tga"
+      ]
+    ],
+    "meshes": [
+      {
+        "name": "base",
+        "groups": [
+          {
+            "first": 0,
+            "count": 40,
+            "material": 2
+          },
+          {
+            "first": 40,
+            "count": 40,
+            "material": 1
+          },
+          {
+            "first": 80,
+            "count": 10,
+            "material": 3
+          },
+          {
+            "first": 90,
+            "count": 74,
+            "material": 0
+          }
+        ]
+      },
+      {
+        "name": "hammer",
+        "groups": [
+          {
+            "first": 0,
+            "count": 16,
+            "material": 4
+          },
+          {
+            "first": 16,
+            "count": 6,
+            "material": 5
+          }
+        ]
+      },
+      {
+        "name": "gopher",
+        "groups": [
+          {
+            "first": 0,
+            "count": 40,
+            "material": 6
+          }
+        ]
+      },
+      {
+        "name": "gb_plant2",
+        "groups": [
+          {
+            "first": 0,
+            "count": 4,
+            "material": 7
+          }
+        ]
+      },
+      {
+        "name": "gb_plant1",
+        "groups": [
+          {
+            "first": 0,
+            "count": 4,
+            "material": 7
+          }
+        ]
+      }
+    ],
+    "md2GeometrySha256": "3347815c296e2686051af09cf06db9ce29696881ee7bc368c8f41b6f884b5cdb"
+  }
+]

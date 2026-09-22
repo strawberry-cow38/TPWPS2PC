@@ -68,6 +68,17 @@ currently **fails**. See [resolver results and all unresolved names](findings/te
 
 The disc tools below read a Mode 2/2352 track directly. Nothing copies a disc image.
 
+The four legacy sideshow `.MD2` models are selectable in the viewer, with their own texture
+tables and validated `.mtr` companions. MTR holds node matrices and topology remaps; several
+fields remain unknown. Three legacy texture choices are missing, and these models show their
+static pose. See [MTR evidence, corrections and limits](findings/mtr.md).
+
+```sh
+dotnet run --project tools/TPW.PS2.MtrAudit -- /path/to/disc.bin
+# Require complete texture availability (currently exits 2 for three missing choices):
+dotnet run --project tools/TPW.PS2.MtrAudit -- /path/to/disc.bin --require-all-textures
+```
+
 Model texture animation uses explicit MPS filename lists and APS material/index keyframes,
 at the existing 30-frame animation clock. See [animated texture evidence and limits](findings/animated-textures.md).
 Audit the full disc's authored lists and keys:
