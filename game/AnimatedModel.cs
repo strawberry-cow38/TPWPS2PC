@@ -182,104 +182,10 @@ public sealed class AnimatedModel
     static string CullRenderMode => CullMode is "off" or "disabled" or "none" or "two" or "twosided"
         ? "cull_disabled" : "cull_back";
 
-    /// <summary>The viewer's material, as a shader rather than a StandardMaterial3D.
-    ///
-    /// ⚠⚠ THE REASON WAS TWO-SIDED LIGHTING. With culling disabled, Godot's own side check lights
-    /// a back face by the NEGATED normal, so with the winding unknown half of every model was lit
-    /// from the wrong side -- the owner's "textured on the wrong side half of the time". The
-    /// `SideCheck` line below undoes that so both sides use the model's stored normal. Now that the
-    /// winding is read from the file, cull_back is the default and no face is ever lit from behind.
-    ///
-    /// It also carries the two settings this data actually needs: repeat, because `m_boxes` UVs run
-    /// u 0..4, and a cutout threshold of 16/255 rather than the engine default of 0.5, which would
-    /// discard the ~50% of texels at or below alpha 128.</summary>
-    static Shader _shader, _blendShader;
-
-    /// <summary>The blended twin of the viewer shader, for textures with SOFT alpha.
-    ///
-    /// ⚠⚠ CUTOUT THROWS AWAY EVERY INTERMEDIATE TEXEL. 1,532 of the disc's 32-bit TGAs have more
-    /// than one per cent of their texels at an alpha that is neither clear nor solid --
-    /// `Scifi_Glass.tga` is 63% of them, `Research_Hair.tga` 39% -- and a shader that only
-    /// discards below a threshold and then writes an opaque ALBEDO renders all of it solid. The
-    /// owner saw it straight away: "some textures are missing alpha".</summary>
-    static Shader BlendShader => _blendShader ??= new Shader
-    {
-        // ⚠ Written out rather than string-replaced off the cutout shader: a Replace that stopped
-        // matching would silently hand back the cutout shader and the bug would come straight back
-        // with nothing to notice.
-        Code = @"
-shader_type spatial;
-// ⚠⚠ `depth_prepass_alpha`, NOT `depth_draw_opaque`. Writing ALPHA makes a Godot material
-// TRANSPARENT, and transparent surfaces are sorted per-OBJECT by distance, so parts of one model
-// draw in the wrong order and it reads INSIDE OUT. `depth_draw_opaque` was meant to fix that and
-// CANNOT: for a transparent material it means ""only draw depth in the opaque pass"", which is
-// already the default -- it wrote no depth at all, which is why master kept seeing it.
-// `depth_prepass_alpha` runs a real depth pre-pass over the alpha geometry first, so the blend
-// pass is depth-tested against the whole model. These are solid shapes with soft EDGES, not
-// stacked glass, so a pre-pass is right and costs nothing the data actually needs.
-render_mode " + CullRenderMode + @", diffuse_lambert, specular_disabled, depth_prepass_alpha;
-
-uniform sampler2D albedo_tex : source_color, filter_nearest_mipmap, repeat_enable;
-uniform float cutout = 0.0627;      // 16/255
-uniform bool has_tex = true;
-
-void fragment() {
-    if (has_tex) {
-        vec4 c = texture(albedo_tex, UV);
-        if (c.a < cutout) discard;   // still drop the fully clear texels
-        ALBEDO = c.rgb;
-        ALPHA = c.a;                 // ⭐ and KEEP the soft ones -- this is the whole difference
-    } else {
-        ALBEDO = vec3(0.72);
-    }
-" + SideCheck + @"}
-"
-    };
-
-    static Shader ViewerShader => _shader ??= new Shader
-    {
-        Code = @"
-shader_type spatial;
-render_mode " + CullRenderMode + @", diffuse_lambert, specular_disabled;
-
-uniform sampler2D albedo_tex : source_color, filter_nearest_mipmap, repeat_enable;
-uniform float cutout = 0.0627;      // 16/255
-uniform bool has_tex = true;
-
-// ⚠ NO AFFINE TEXTURE MAPPING. It used to emulate the PS2's UV interpolation by passing UV
-// premultiplied by view depth and dividing in the fragment. Removed at master's call: the PS2
-// subdivides enough that the swim is barely there on real geometry, and it cost a varying, a
-// vertex stage and a per-material switch to reproduce an artefact nobody wants to look at.
-void fragment() {
-    if (has_tex) {
-        vec4 c = texture(albedo_tex, UV);
-        if (c.a < cutout) discard;   // alpha CUTOUT, not blending
-        ALBEDO = c.rgb;
-    } else {
-        ALBEDO = vec3(0.72);
-    }
-" + SideCheck + @"}
-"
-    };
-
-    /// <summary>The two-sided lighting line, and ⚠⚠ ONLY WHEN CULLING IS OFF.
-    ///
-    /// With `cull_disabled`, Godot's own two-sided lighting (its DO_SIDE_CHECK) negates the
-    /// interpolated normal of every back face BEFORE the fragment function runs. Negating it again
-    /// here lands both sides on the model's stored normal, which is the lighting this data was
-    /// authored for -- and is why reversing every triangle's order changes not one pixel of a
-    /// no-cull render.
-    ///
-    /// With `cull_back` there are no back faces to light, and the line is actively wrong: the scene
-    /// root is a mirror (Scale 1,1,-1), Godot draws a mirrored instance by swapping the pipeline's
-    /// cull mode, and FRONT_FACING then reports FALSE for every visible face. The first cull_back
-    /// render with the winding fixed had the whole terrain at ambient only -- the sea floor read
-    /// (0,19,28) against (1,56,69) with culling off, a 2.95x ratio that is exactly
-    /// (ambient + 0.8 x directional) / ambient -- because this line turned every normal away from
-    /// the light.</summary>
-    static string SideCheck => CullRenderMode == "cull_disabled"
-        ? "    if (!FRONT_FACING) { NORMAL = -NORMAL; }   // undo Godot's side check: stored normal both sides\n"
-        : "";
+    // Lighting is evaluated in the vertex stage from the stored signed-byte normals.
+    // FRONT_FACING never changes it, including beneath the mirrored root.
+    static Shader BlendShader => Ps2Materials.Shader(true, CullRenderMode);
+    static Shader ViewerShader => Ps2Materials.Shader(false, CullRenderMode);
 
     void SetTexture(ShaderMaterial material, int slot, int index)
     {
@@ -289,6 +195,7 @@ void fragment() {
         if (soft) BlendSurfaces++;
         material.SetShaderParameter("albedo_tex", tex);
         material.SetShaderParameter("has_tex", tex != null);
+        Ps2Materials.BindLight(material);
     }
 
     void BuildSurfaces(Part p)
@@ -329,6 +236,7 @@ void fragment() {
         {
             var st = new SurfaceTool();
             st.Begin(Mesh.PrimitiveType.Triangles);
+            st.SetCustomFormat(0, SurfaceTool.CustomFormat.RgbFloat);
             bool two = TwoSided;
             foreach (var t in grp)
             {
@@ -348,6 +256,8 @@ void fragment() {
                     st.SetUV(p.Uv[idx]);
                     // ⭐ The model's OWN normal, not one derived from triangle order.
                     st.SetNormal(p.Normal[idx]);
+                    var raw = p.Normal[idx] * 127f;
+                    st.SetCustom(0, new Color(Mathf.Round(raw.X), Mathf.Round(raw.Y), Mathf.Round(raw.Z), 0));
                     var v = pos[idx];
                     st.AddVertex(new Godot.Vector3(v.X, v.Y, v.Z));
                 }
@@ -355,6 +265,8 @@ void fragment() {
                 foreach (var idx in new[] { t.A, t.B, t.C })  // back copy
                 {
                     st.SetUV(p.Uv[idx]);
+                    var raw = -p.Normal[idx] * 127f;
+                    st.SetCustom(0, new Color(Mathf.Round(raw.X), Mathf.Round(raw.Y), Mathf.Round(raw.Z), 0));
                     st.SetNormal(-p.Normal[idx]);                 // ⚠ flipped, or it lights inside-out
                     var v = pos[idx];
                     st.AddVertex(new Godot.Vector3(v.X, v.Y, v.Z));

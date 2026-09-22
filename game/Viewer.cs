@@ -173,6 +173,8 @@ public partial class Viewer : Node3D
         }
         _discPath = disc;
         GD.Print("[v] opening disc"); _lib = new AssetLibrary(disc);
+        using (var lightingDisc = new Disc(disc)) Ps2Materials.Lighting = Lighting.Read(lightingDisc);
+        GD.Print($"[light] ELF clear weather: ambient={Ps2Materials.Lighting.Ambient}, directional={Ps2Materials.Lighting.Directional}, ray={Ps2Materials.Lighting.RayDirection}");
         _park = new Park();
         AddChild(_park.Root);
         _park.Root.Visible = false;
@@ -275,12 +277,6 @@ public partial class Viewer : Node3D
         if (float.TryParse(OS.GetEnvironment("TPW_PS2_NEAR"), out var n) && n > 0f) near = n;
         _cam = new Camera3D { Current = true, Near = near, Far = far };
         AddChild(_cam);
-        AddChild(new DirectionalLight3D
-        {
-            Transform = new Transform3D(Basis.LookingAt(new Vector3(-0.4f, -0.8f, -0.45f), Vector3.Up),
-                                        Vector3.Zero),
-            LightEnergy = 1.1f,
-        });
         // ⚠⚠ ONE WorldEnvironment, kept. Adding a second for the sky put two in the tree and
         // Godot simply used the other one -- the sky loaded, reported itself, and drew nothing.
         _flatEnv = new Godot.Environment
@@ -288,8 +284,9 @@ public partial class Viewer : Node3D
             BackgroundMode = Godot.Environment.BGMode.Color,
             BackgroundColor = new Color(0.10f, 0.10f, 0.13f),
             AmbientLightSource = Godot.Environment.AmbientSource.Color,
-            AmbientLightColor = new Color(0.45f, 0.45f, 0.5f),
-            AmbientLightEnergy = 1.0f,
+            AmbientLightColor = Colors.Black,
+            AmbientLightEnergy = 0f,
+            AmbientLightSkyContribution = 0f,
         };
         _sky = new WorldEnvironment { Environment = _flatEnv };
         AddChild(_sky);
@@ -996,13 +993,7 @@ public partial class Viewer : Node3D
                 {
                     var t = TextureNear(pick.Path, tm.Materials[idx]);
                     if (t.Tex != null)
-                        made = new StandardMaterial3D
-                        {
-                            AlbedoTexture = t.Tex,
-                            TextureFilter = BaseMaterial3D.TextureFilterEnum.LinearWithMipmaps,
-                            Roughness = 1f,
-                            SpecularMode = BaseMaterial3D.SpecularModeEnum.Disabled,
-                        };
+                        made = Ps2Materials.Ground(t.Tex);
                 }
                 matCache[idx] = made;
                 return made;
@@ -1012,13 +1003,7 @@ public partial class Viewer : Node3D
             var grass = tile != null ? TextureNear(pick.Path, tile + ".ssh") : (null, false);
             GD.Print($"[park] ground tile '{tile ?? "(none found)"}' -> {(grass.Tex != null ? "resolved" : "UNRESOLVED")}");
             if (grass.Tex != null)
-                _park.GroundMaterial = new StandardMaterial3D
-                {
-                    AlbedoTexture = grass.Tex,
-                    TextureFilter = BaseMaterial3D.TextureFilterEnum.LinearWithMipmaps,
-                    Roughness = 1f,
-                    SpecularMode = BaseMaterial3D.SpecularModeEnum.Disabled,
-                };
+                _park.GroundMaterial = Ps2Materials.Ground(grass.Tex);
             else GD.PrintErr("[park] no ground tile resolved -- falling back to flat colour");
 
             // ⭐⭐ Ask the disc where the park is before measuring anything.
@@ -1074,11 +1059,10 @@ public partial class Viewer : Node3D
         {
             BackgroundMode = Godot.Environment.BGMode.Sky,
             Sky = sky,
-            // ⚠ The sky must not light the scene. The terrain is lit by one directional light that
-            // was balanced against a flat background, and letting a bright sky contribute ambient
-            // washes the whole park out -- the models are already near-unlit artwork.
+            // Mesh lighting comes from the ELF through Ps2Materials; the sky is a backdrop.
             AmbientLightSource = Godot.Environment.AmbientSource.Color,
-            AmbientLightColor = new Color(0.45f, 0.45f, 0.45f),
+            AmbientLightColor = Colors.Black,
+            AmbientLightEnergy = 0f,
             AmbientLightSkyContribution = 0f,
         };
         _sky.Environment = _mode == Mode.Park && _skyEnv != null ? _skyEnv : _flatEnv;
