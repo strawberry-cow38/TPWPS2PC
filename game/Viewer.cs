@@ -793,14 +793,23 @@ public partial class Viewer : Node3D
         // the coordinates the code actually chose make the picture answer the question itself.
         if (System.Environment.GetEnvironmentVariable("TPW_HOLE_DEBUG") == "1" && _holeSize.X > 1f)
         {
-            var post = new BoxMesh { Size = new Vector3(2f, 40f, 2f) };
-            var red = new StandardMaterial3D { AlbedoColor = new Color(1f, 0f, 0.2f), ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded };
-            foreach (var (cx, cz) in new[] { (0f, 0f), (_holeSize.X, 0f), (0f, _holeSize.Y), (_holeSize.X, _holeSize.Y) })
+            var post = new BoxMesh { Size = new Vector3(2.5f, 40f, 2.5f) };
+            // ⚠ Posts at KNOWN, ASYMMETRIC world points, one colour each. Corner posts on the
+            // computed hole cannot say which screen axis is +X and which is +Z, so every reading
+            // of the picture needed a guess about the camera -- and the guesses disagreed. Three
+            // labelled points fix the projection outright.
+            void Post(float wx, float wz, Color c) =>
                 _park.Root.AddChild(new MeshInstance3D
                 {
-                    Mesh = post, MaterialOverride = red,
-                    Position = new Vector3(_holeOrigin.X + cx, _holeY + 20f, _holeOrigin.Y + cz),
+                    Mesh = post,
+                    MaterialOverride = new StandardMaterial3D { AlbedoColor = c, ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded },
+                    Position = new Vector3(wx, _holeY + 20f, wz),
                 });
+            Post(0f, 0f, new Color(1f, 0f, 0f));        // RED   = world origin
+            Post(50f, 0f, new Color(0f, 1f, 0f));       // GREEN = +50 along X
+            Post(0f, 50f, new Color(0f, 0.4f, 1f));     // BLUE  = +50 along Z
+            foreach (var (cx, cz) in new[] { (0f, 0f), (_holeSize.X, 0f), (0f, _holeSize.Y), (_holeSize.X, _holeSize.Y) })
+                Post(_holeOrigin.X + cx, _holeOrigin.Y + cz, new Color(1f, 1f, 1f));   // WHITE = computed hole
         }
 
         // Terrain alone, markers kept: the only way to see whether the marked region is the gap.
