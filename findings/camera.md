@@ -110,6 +110,26 @@ sight line and leaves the direction — and therefore the pitch — exactly as i
 world units, from 2048 back to 960 forward. ⚠ It can push the eye below the ground-plus-`0xA10`
 floor the easing above works so hard to hold.
 
+## Riding a ride, `0x137968`
+
+Nothing is eased and nothing is smoothed — this camera is bolted to the car.
+
+    eye    = ride position           (0x3924B8 / 0x3924BA / 0x3924BC, three shorts)
+    M      = rotation from the car's two angles   (0x3924C8, 0x3924CA)
+    offset = (M * VEC_0x2B6138) / 32              // (v << 7) >> 12
+    target = eye + offset, with the height also taking the ground under it
+             plus the two constants 0x2B6130 and 0x2B6178
+    up     = (0, 0x1000, 0)                       // written fresh EVERY frame
+
+⭐ **The ride camera never rolls.** `0x2B6140` is set to world up in the same 12-bit fixed point
+the rest of the camera uses, on every single frame, and handed to the same `0x115AE8` that the
+park camera passes its own computed up vector to. So on a loop or a banked turn the view pitches
+and yaws with the car and the horizon stays level. That is a deliberate choice, not an omission:
+the park camera two functions away goes to the trouble of leaning by a millionth.
+
+The look direction is a fixed offset vector rotated by the car — so where the rider looks is
+authored per vehicle in `0x2B6138`, not derived from the track.
+
 ## ⭐ The scale, proven rather than assumed: 256 world units to a tile
 
 The ground under the eye is looked up as
