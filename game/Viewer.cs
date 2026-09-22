@@ -970,7 +970,8 @@ public partial class Viewer : Node3D
                    + "Z/X dolly  |  Home reset  |  G free orbit\n"
                    + "[ / ] nudge the gate  |  V weather  |  B buildable  |  F3 hide this panel\n"
                    + "RMB path tool (shift+RMB queue)  |  LMB press: start a run, again to lay\n"
-                   + "O take it back  |  M straight/elbow segments  |  Esc close the tool";
+                   + "O take it back  |  M straight/elbow segments  |  Esc close the tool\n"
+                   + "(with the tool open the left button is the tool's, not the camera's)";
     }
 
     /// <summary>Show one image at its own size, or the reason it cannot be shown.</summary>
@@ -2314,7 +2315,11 @@ public partial class Viewer : Node3D
                 _left.Dragged = true;
             if (rDown && _right.Down && !_right.Dragged && mm.Position.DistanceTo(_right.At) > ClickSlop)
                 _right.Dragged = true;
-            bool orbiting = lDown && (_left.Dragged || !_left.Down);
+            // ⭐⭐ WITH THE TOOL OPEN THE LEFT BUTTON IS THE TOOL'S, not the camera's. Placing a
+            // segment means moving the pointer between presses, so any slop test on the left
+            // button is a test the player keeps failing by doing the thing the tool is for. There
+            // is nothing to tell apart once the left button cannot orbit: every press is a press.
+            bool orbiting = lDown && !_toolOpen && (_left.Dragged || !_left.Down);
             bool panning = (rDown && (_right.Dragged || !_right.Down)) || mDown
                         || (orbiting && Input.IsKeyPressed(Key.Shift));
             // LEFT drag orbits.
@@ -2354,10 +2359,13 @@ public partial class Viewer : Node3D
                 {
                     held.Down = false;
                     // A quick press counts however far it slid; a slow one still counts if it
-                    // barely moved.
-                    bool click = !held.Dragged
-                              && (Time.GetTicksMsec() - held.Ms <= ClickMs
-                                  || mb.Position.DistanceTo(held.At) <= ClickSlop);
+                    // barely moved. ⭐ And with the tool open the left button is not the camera's
+                    // at all, so it needs no test: it is always a press.
+                    bool toolsOwn = _toolOpen && mb.ButtonIndex == MouseButton.Left;
+                    bool click = toolsOwn
+                              || (!held.Dragged
+                                  && (Time.GetTicksMsec() - held.Ms <= ClickMs
+                                      || mb.Position.DistanceTo(held.At) <= ClickSlop));
                     if (click && _mode == Mode.Park)
                     {
                         if (mb.ButtonIndex == MouseButton.Right)
