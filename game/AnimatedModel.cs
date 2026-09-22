@@ -304,8 +304,15 @@ void fragment() {
                 // majority and breaking them. The check below caught it; the argument had sounded
                 // perfectly good.
                 //
-                // ⭐ Self-checking: the flip count is logged and compared against the 37% measured
-                // independently off the file. That check is what caught the sign being wrong.
+                // ⭐ Self-checking: the flip count is logged, and comparing it against ~37% caught
+                // the sign being wrong. ⚠ But that 37% is NOT an independent confirmation -- it is
+                // my own earlier measurement off the same model data through the same reader, i.e.
+                // one method twice. A view from underneath was tried as a real check and does not
+                // discriminate: the terrain reads solid from both sides, which could be mixed
+                // winding or the model shipping separate top and bottom shells. So this fix is
+                // PLAUSIBLE AND UNVERIFIED. A genuinely separate census is possible off the
+                // per-vertex normals already decoded in Model.Vertices (Batch.NormalOffset, three
+                // signed bytes over 127) and has not been done.
                 var na = p.Normal[t.A] + p.Normal[t.B] + p.Normal[t.C];
                 var pa = pos[t.A]; var pb = pos[t.B]; var pc = pos[t.C];
                 var g = System.Numerics.Vector3.Cross(pc - pa, pb - pa);      // normal of A,C,B
