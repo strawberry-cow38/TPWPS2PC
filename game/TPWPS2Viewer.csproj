@@ -11,5 +11,6 @@
          the readers must never reference Godot, or the format work stops being testable on a machine
          with no engine. -->
     <ProjectReference Include="..\core\TPW.PS2.Data\TPW.PS2.Data.csproj" />
+    <Compile Include="../tools/TPW.PS2.VisitorAudit/VisitorExpectations.cs" Link="tests/VisitorExpectations.cs" />
   </ItemGroup>
 </Project>

@@ -1,8 +1,8 @@
 # Visitors on the park grid
 
-2026-09-22. **Ada (guest 101) walks to the Orbiter, queues, is accepted by its real RSSE
-script, comes back through that script's unload mailbox, and walks out.** This works on
-SPACE `terrain_1.mps` and `terrain_2.mps`. The scene renders the disc's character meshes
+2026-09-22. **Ada (guest 101) walks to Orbiter or Bugs TV, queues, is accepted by the ride's real RSSE
+script, comes back through that script's unload mailbox, and walks out.** Both visitor audits
+cover SPACE and FANTASY `terrain_1.mps` and `terrain_2.mps`. The scene renders the disc's character meshes
 and the script-selected ride APS. Characters currently move in their bind pose and disappear
 while on the ride; seat/head attachments and walking gait are not implemented.
 
@@ -16,9 +16,9 @@ Requires the owner's disc and .NET 8. Simulation and pathfinding live entirely i
 with no Godot reference, subprocesses or native dependencies.
 
 ```sh
-export MSBUILDDISABLENODEREUSE=1
+export MSBUILDDISABLENODEREUSE=1 DOTNET_CLI_USE_MSBUILD_SERVER=0
 dotnet run --project tools/TPW.PS2.VisitorAudit -- /path/to/disc.bin
-(cd game && dotnet build)
+(cd game && dotnet build -m:1 -p:UseSharedCompilation=false)
 TPW_PS2_DISC=/path/to/disc.bin /path/to/godot-4.6.2-mono --path game res://VisitorDemo.tscn
 # Or choose “Visit the park” in the existing viewer.
 TPW_PS2_DISC=/path/to/disc.bin /path/to/godot-4.6.2-mono --headless --path game res://tests/VisitorAudit.tscn
@@ -29,7 +29,8 @@ The scene has SPACE park 1/2, pause, restart, speed, orbit and zoom. It opens at
 Ada/101, Ben/202, Cy/303 and Dee/404 request arrival at 0/1500/3000/4500ms. Actual spawn
 waits for a free entrance cell. Capacity **10** comes from Orbiter's `Upgrades[0].InitCapacity`
 in its own `.sam`, ID **3104**. Duration **1** is an explicit demo input. The last guest exits
-at 57 seconds; restart repeats the visit.
+at 57 seconds for Orbiter, 44.8 seconds for Bugs TV (SAM ID **4102**, capacity **4**). The
+interactive demo still offers SPACE 1/2; FANTASY is exercised by both audits.
 
 Reproducible graphical capture (requires a graphical session):
 
@@ -56,10 +57,39 @@ are not reconstructed. Index zero remains a sentinel, even when its palette name
 The grid's evidence comes from the existing reader and [heightfield investigation](heightfield.md):
 M3D2 `+0x44`, row-major `(z*NX+x)*2`, skip test on byte0 bit 0, and byte1's material-table
 lookup in `0x222fe8`. That consumer was revisited with `tools/r5900dis.py`; its R5900 SQ/LQ
-prologue is not valid input for an ordinary MIPS32-only linear walk. **A drawing skip test is
-not a full guest navigation consumer.** The new placement policy is deliberately narrower:
-only cells whose entire byte0 is zero, with no ride occupancy or fixed scenery, can be built
-on or walked through. This excludes raised/skip cells and every undecoded nonzero flag class.
+prologue is not valid input for an ordinary MIPS32-only linear walk. Construction uses byte0
+**bit 0 only**, as the runtime tile-map fill at `0x14E700` sets the no-build flags only for
+that bit (see `Model.HeightField.Buildable`). Occupancy and
+fixed scenery further restrict construction; walking additionally needs an actual path material.
+This remains a demo navigation policy, not a recovered guest navigation service.
+
+### 2026-09-22: correcting the whole-byte predicate
+
+The earlier claim that FANTASY was unsupported was wrong. `CanBuild` tested `Raw0 == 0`,
+which eliminated **all** FANTASY terrain-1 and terrain-2 cells. The bit-0 fix in `91fc774`
+is retained. The site search, its ranking and its scenery constraint are unchanged; no
+constraint was added to recover either old SPACE origin.
+
+`tools/TPW.PS2.VisitorAudit/VisitorExpectations.cs` is audit-only code linked into the Godot
+audit. Before constructing a scenario, it reads the original terrain and SAM, checks every
+cell against `(byte0 & 1) == 0` plus the existing scenery projection, and exhaustively fits
+the complete footprint/queue/public-path stencil. It ranks valid origins by integer squared
+distance of the footprint centre to the grid centre, then row and column. It never runs the
+scenario, routing or VM to get an expected answer. The material classifier and scenery
+projection are shared dependencies; this is an independent oracle for the changed predicate,
+layout and visitor timing, not another reconstruction of scenery collision.
+
+Every verdict includes the pre-placement bit-0 buildable count, actual/expected eligible count
+(after scenery), and complete-layout count. Empty eligibility fails before running any cycle.
+The production `CanBuild` mutation to `Raw0 == 0` fails first on FANTASY/1: **3928 buildable,
+0 actual eligible, 2487 expected eligible**. It cannot pass by iterating an empty set.
+
+| Terrain | Buildable (bit 0 clear) | Eligible after scenery | Complete layouts | Raw0 == 0 |
+|---|---:|---:|---:|---:|
+| SPACE 1 | 4068 | 2587 | 1302 | 2334 |
+| SPACE 2 | 3176 | 2084 | 915 | 1639 |
+| FANTASY 1 | 3928 | 2487 | 1207 | 0 |
+| FANTASY 2 | 3604 | 2498 | 725 | 0 |
 
 A graphical check found a real omission in the first version: grid-only placement put part
 of the public path through the fixed entrance scenery. The old terrain-1 site was `(41,19)`;
@@ -75,19 +105,38 @@ has holes and incomplete height rendering; this work does not close those gaps.
 
 | Terrain | Grid | Ride footprint origin | Spawn/departure | Queue front → tail | Exit portal |
 |---|---|---|---|---|---|
-| SPACE 1 | 96×54 | (83,15) | (81,24) | (85,18) → (85,21) | (86,18) |
-| SPACE 2 | 72×62 | (40,22) | (38,31) | (42,25) → (42,28) | (43,25) |
+| SPACE 1 | 96×54 | (37,19) | (35,28) | (39,22) → (39,25) | (40,22) |
+| SPACE 2 | 72×62 | (33,22) | (31,31) | (35,25) → (35,28) | (36,25) |
+| FANTASY 1 | 80×60 | (30,26) | (27,36) | (31,30) → (31,33) | (32,30) |
+| FANTASY 2 | 76×62 | (36,28) | (33,38) | (37,32) → (37,35) | (38,32) |
 
 The ride uses its own `Info.Shape`, with `2` on the last row. The queue front is immediately
 outside that row. The exit is an **explicit demo portal** one cell to its right. No claim is
 made that the `N` symbol or engine exit offsets have been decoded by this work. Spawn is a
 chosen endpoint of the constructed public path, not the original park-gate spawning service.
 
-FANTASY was attempted and **rejected**: its otherwise ordinary ground uses nonzero classes
-including `0x20` and `0x22`, so there is no eligible site under this policy. The audit requires
-that explicit failure. It does not relabel those flags as zero or silently change worlds to
-make a run pass. The visible scene offers only the two SPACE parks.
+Bugs TV's SAM footprint is 4×4, with entrance `2` at local `(1,3)`; Orbiter is 6×3,
+with `2` at `(2,2)`. FANTASY now completes real script-driven cycles on both terrains in
+both audits. Its nonzero flags are preserved, including on laid public and queue cells.
 
+### HALLOW feasibility
+
+HALLOW also has usable ground. Terrain 1 has **3906 buildable / 3298 eligible** cells
+(`Raw0 == 0`: **0**); terrain 2 has **3924 / 2426** (`Raw0 == 0`: **2518**).
+Hocus Pocus (`/rides/candle/Candle`, SAM **2100**, capacity **20**) has a 5×5 footprint,
+south entrance `(2,4)` and the supported HUSH/HOP mailbox protocol. The same complete
+layout has **1891** sites on terrain 1 (best origin `(45,23)`, queue front `(47,28)`,
+spawn `(43,34)`) and **1059** on terrain 2 (origin `(33,19)`, front `(35,24)`, spawn `(31,30)`).
+An external managed feasibility probe completed all four guests on both, without a script
+fault; this is not a committed rendered HALLOW audit.
+
+Supporting that ride in `VisitorScenario` needs a HALLOW stem mapping, an independent
+RSS/APS timeline derivation (its Start/Main/End waits and repeated sound-event waits differ),
+and the same rendered footprint/queue/visibility checks on both terrains. A demo world
+selector would make it accessible interactively. No broader terrain predicate is needed.
+This is ride-specific: Brain Buster requires the currently unsupported BOUNCE/BOUNCING/
+UNBOUNCE service and Pumpkin Castle uses WALKON/WALKOFF/WALKGET, so merely adding an
+arbitrary HALLOW ride name is insufficient.
 ## Movement and queue ownership
 
 `VisitorSimulation` owns registered guest identities and the states Outside, Walking, Queuing,
@@ -111,8 +160,9 @@ are scoped quantities, not an assertion that the original game's motion converge
 
 ## The script, not a host timer, boards and unloads Ada
 
-The matched source is `/DATA/SPACE.WAD/Rides/orbiter/orbiter.rss`. Its actual statements are
-checked before the audit runs. While loading it reads `LETMEON`, resets `STARTNOW` to the
+The matched sources are SPACE `/Rides/orbiter/orbiter.rss` and FANTASY
+`/Rides/bugstv/bugstv.rss`. Their relevant instruction sequences are checked before either
+audit runs. While loading, Orbiter reads `LETMEON`, resets `STARTNOW` to the
 current time plus 10000, executes `HUSH VAR_LETMEON` and `ADDHEAD`, clears `LETMEON`, increments
 `ONRIDE` and decrements `SPACELEFT`. The host offers only a guest standing at the queue front;
 a consumed mailbox is accepted only if that exact ID is present on the VM's guest stack.
@@ -134,19 +184,43 @@ then loops on `LETMEOFF` and decrements `ONRIDE` only after the AI clears it. Th
 holds that mailbox while the guest occupies or waits at the exit portal, then clears it only
 when the guest finishes the first outgoing edge. This exercises real backpressure.
 
-| Time | Ada / script observation (SPACE 1; same times on SPACE 2) |
-|---|---|
-| 100ms | Ada/101 spawns at (81,24), targets (82,24), progress **100** |
-| 7000ms | Ada reaches queue tail (85,21) |
-| 10000ms | Ada reaches front (85,18), offered ID **101** is consumed; HUSH stack contains **101**; `ONRIDE=1`, `SPACELEFT=9`, `STARTNOW=20000` |
-| 12000/14000/16000ms | Ben/202, Cy/303, Dee/404 board in order; final `ONRIDE=4`, `SPACELEFT=6`, `STARTNOW=26000` |
-| 26000ms | `TEMP=0`, `RUNNING=0`: timeout equality does not run |
-| 26100ms | `RUNNING=1`, `COUNT=1` |
-| 34000ms | `RUNNING=0`, HOP returns Dee/**404**; `ONRIDE=4` while her mailbox is held |
-| 35000/37000/39000ms | Subsequent HOP identities **303,202,101**; at 39000 Ada reappears at exit (86,18), `LETMEOFF=101`, `ONRIDE=1` |
-| 41000ms | Ada clears exit to (87,18); AI clears `LETMEOFF`; script decrements `ONRIDE` to **0** |
-| 57000ms | Ada finishes the public exit loop at (81,24), becomes Departed |
+The path derivation is the same on all four grids, translated from each SAM entrance.
+Ada walks four cells east from spawn, then six north to the queue front: **10 edges at
+1s/edge**, with the queue tail reached after seven. Reservations space followers by two
+seconds despite arrival requests every 1.5s. Boarding is therefore **10000,12000,14000,16000ms**.
+Orbiter remains below capacity and starts at `16000 + 10000 + 100 = 26100ms` (strict negative
+timeout). Bugs TV fills all four seats; its final `CRIT_UNLOCK` resumes at **16100ms**,
+sets RUNNING, then its explicit `WAIT 1000` puts Start at **17100ms**.
 
+APS variant-0 Start/Main/End lengths are **45/100/100** frames for Orbiter and **40/100/10**
+for Bugs TV, at 30fps. Each full animation end is `max(call, previous full end) +
+trunc(frames*1000/30)`. Script waits resume `max(300, remaining-300)` ms later, rounded up
+to the next 100ms tick. Start/Main/End resume at **27300/30700/34000ms** for Orbiter and
+**18200/21500/21800ms** for Bugs TV. Orbiter's Main uses TRIGWAITANIM + WAIT4ANIM; Bugs TV
+uses WAITANIM. This arithmetic derives RUNNING's falling edge, without reading a VM trace.
+
+| Event | SPACE (both terrains) | FANTASY (both terrains) |
+|---|---:|---:|
+| Ada spawn, visible, first edge progress 100 | 100ms | 100ms |
+| Ada stands on the queue tail | 7000ms | 7000ms |
+| Ada boards at front, hidden | 10000ms | 10000ms |
+| Last guest boards | 16000ms | 16000ms |
+| RUNNING rises | 26100ms | 16100ms |
+| RUNNING falls; Dee returned, mailbox held | 34000ms | 21800ms |
+| Cy returned | 35000ms | 23100ms |
+| Ben returned | 37000ms | 25100ms |
+| Ada returned at exit portal, visible | 39000ms | 27100ms |
+| Ada clears first exit edge, mailbox acknowledged | 41000ms | 28800ms |
+| Ada reaches spawn/departure, hidden | 57000ms | 44800ms |
+
+The first unloaded guest clears the portal after 1s; followers clear after 3/5/7s because
+both current and next cells are reserved. Bugs TV's `WAIT 300` after decrementing ONRIDE
+delays subsequent HOPs by 300ms, while reservations still determine the same clearance
+schedule. The exit loop is 17 edges: three east, six south, eight west. Ada departs 16s
+after her first-edge acknowledgement. The managed audit compares her expected state,
+cell, next cell and integer progress **at every 100ms tick**, as well as every waypoint
+and transition. The rendered audit uses that independent pose and checks both sides of
+boarding, alighting and departure visibility changes.
 All of Ada's intermediate waypoint identities are compared with the explicit inward L and
 outward loop, not merely the endpoints or number of steps. `ADDHEAD`/`DELHEAD` request IDs
 are compared with **101,202,303,404 / 404,303,202,101**. The host still records those head
@@ -161,13 +235,22 @@ corners, matching main's tiles. At the sim → world boundary, guest Z is
 coordinates and shared `Paths.Field` instance stay unchanged. The measured subtraction in
 `Park.TryPlace` from `c05af10` is unchanged, as are main's tile convention and `Viewer.cs`.
 
-The geometry audit checks positions on both SPACE terrains: at 7000ms Ada stands at the
-drawn queue tail (world Z ≈ **-21.5 / -28.5**), and the Orbiter's bind centre through its
-actual holder/model transform matches its drawn footprint (XZ ≈ **86,-16.5 / 43,-23.5**).
+The geometry audit checks positions on all four terrains: Ada's world queue-tail centres
+at 7000ms are approximately **(39.5,-25.5)** / **(35.5,-28.5)** for SPACE and
+**(31.5,-33.5)** / **(37.5,-35.5)** for FANTASY. Ride footprint centres are approximately
+**(40,-20.5)** / **(36,-23.5)** and **(32,-28)** / **(38,-30)** respectively.
 It reads floor triangles and footprint vertices, checks queue texture bytes, and exercises
 interpolated movement and facing. Node-position identity retains **1e-5** tolerance;
-comparisons to authored tiles allow **0.001** for exporter/bind-scale rounding (observed
-offsets below 0.0006), not whole-cell differences.
+comparisons to authored tiles allow **0.001** for exporter/bind-scale rounding.
+
+Bugs TV exposed another Orbiter-only assumption in the audit: `Park.Bounds` measures tight
+vertex bounds, while placement measures the union of transformed per-material surface AABBs.
+Rotated decorations make these centres differ (about **0.005 X / 0.0592 Z**). The audit now
+derives the placement envelope from the disc's indexed triangles grouped by material and
+transforms each local box corner through its full bind chain. It does not query the placed
+node for its expected centre, change placement, or widen tolerances. That independently
+derived bind centre must still land on the actual drawn footprint, which must land on the
+SAM cells. The protected placement sign and reversed-row presentation remain unchanged.
 
 `VisitorParkView` uses the existing `Park` ground builder and `RseModelPresenter`. Ride
 placement now measures bounds including the root transform, so both a mirrored model root
@@ -185,15 +268,27 @@ mesh/APS evaluators, not an independent PS2 framebuffer oracle.
 `teeth.sh` runs the unchanged managed audit, temporarily mutates production code, rebuilds,
 requires exit **1** and the specific failure, restores the files with an EXIT trap, then
 reruns the original audit. No fault switches live in simulation code. Optional Godot checks
-require exit **2** for a displaced rendered node and for reverting the view's production row
-conversion, then rebuild and rerun the restored view. All builds disable MSBuild node reuse.
+require exit **2** for a displaced rendered node. The current harness does not modify
+`VisitorParkView.cs`; the historical row-conversion mutation is recorded below. All builds
+disable MSBuild node reuse and the MSBuild server.
 
 | Deliberate mutation | Required failure |
 |---|---|
+| `CanBuild` bit-0 predicate → `Raw0 == 0` | `FANTASY/1 bit-0 eligibility is empty`; buildable **3928**, eligible **0**, expected **2487**, exit **1** |
 | Movement increment `100` → `0` in `VisitorSimulation.Move` | `Ada movement at 100ms: expected 100, got 0` |
 | HUSH stores offered ID **+1**, preserving stack occupancy | `Boarding identity lost: Ada (101) is absent from RSSE HUSH stack` |
 | Audit moves Ada's actual rendered node to the origin | `Ada rendered position identity at 100ms`, Godot exit **2** |
-| View reverts guest Z from `Height - p.Z` to `p.Z`, rebuilt against the unchanged audit | `Ada rendered position identity at 100ms`, Godot exit **2** |
+| Historical check: view reverts guest Z from `Height - p.Z` to `p.Z`, rebuilt against the unchanged audit | `Ada rendered position identity at 100ms`, Godot exit **2** |
+
+For `canbuild-bit0`, both visitor audits pass on all four terrains, before and after the
+mutations above. The whole-byte, frozen-movement and wrong-guest controls exit **1**;
+the displaced-node control exits **2**. `RseAnimationAudit` passes its exact Main:1 vertex
+checks at frames **4.02** and **19.02** and completes; `--mutate-freeze` exits **2**.
+All requested builds used both server-disabling environment variables, and the game was
+built before running scenes. Logs: `/tmp/tpw-visitor-teeth.nOIWCX/` and
+`/tmp/canbuild-probe/{rse-animation,rse-animation-freeze,hallow-sites}.log`.
+`Viewer.cs`, `Park.cs`, `VisitorParkView.cs`, the scenario's placement search and simulation
+were not changed. No original disc assets or generated binaries are committed.
 
 For `visitor-rows`, the entire `c05af10` version of `VisitorParkView.cs` was also restored
 temporarily and rebuilt against the updated audit: exit **2**, with the Orbiter bind centre
@@ -206,7 +301,7 @@ path cell, hold a closed queue and reopen it, preserve terrain flag/material ide
 construction through the fixed entrance scenery, enforce guest cell reservations, and compare
 identical final VM/guest state under different caller frame cadences.
 
-The existing `TPW.PS2.RseAudit` also passes after the integration, including its source/binary
+The earlier visitor integration also passed `TPW.PS2.RseAudit`, including its source/binary
 alignment, ride guest handshakes, timers and failure guards. Final mutation logs are outside
 the repository at `/tmp/tpw-visitor-teeth.NLTrFQ/`; trace logs and inspected captures are under
 `/tmp/visitor-probe/`. They contain no new repository fixtures. The graphical SPACE-2 capture
@@ -217,8 +312,7 @@ at 39000ms shows Ada at the exit and Ben, Cy and Dee already walking away.
 * Original guest navigation, spawn gates, decision-making, route costs, speeds, crowd rules,
   queue abandonment, needs, happiness, spending and ride selection. BFS, FIFO admission,
   cell reservations and clearance timing are explicit new simulation policies.
-* FANTASY navigation under its nonzero terrain flags. Raised paths, slopes, stairs, bridges,
-  corner heights and original terrain-cell-to-world orientation are not independently validated
+* Raised paths, slopes, stairs, bridges, corner heights and original terrain-cell-to-world orientation are not independently validated
   against PS2 execution. The scene uses the existing viewer's mirrored grid and flat Y=0 floor.
   Scenery projection is deliberately conservative; a tree canopy excludes the ground below it.
 * Walking gait/skinning, seat transforms and guest head attachments. `tools/skin.py` documents
@@ -235,5 +329,5 @@ at 39000ms shows Ada at the exit and Ben, Cy and Dee already walking away.
   particles and breakdown/repair paths. Existing VM boundaries in `rse-vm.md` remain in force.
 * Arbitrary ride scripts, dynamic ride/path editing, multi-ride scheduling, save/load and
   continuous population replenishment. Removing a path under a moving guest faults explicitly;
-  a disconnected route before walking remains blocked. Only the finite Orbiter cohort is shown
-  end to end. FANTASY rejection is a limitation check, not another successful visitor cycle.
+  a disconnected route before walking remains blocked. Finite Orbiter and Bugs TV cohorts are audited
+  end to end; HALLOW remains a feasibility result pending scenario and rendered audit integration.

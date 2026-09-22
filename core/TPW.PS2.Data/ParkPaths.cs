@@ -12,8 +12,9 @@ public readonly record struct ParkCell(int X, int Z)
 public enum ParkPathKind { None, Path, Queue }
 
 /// <summary>A mutable park grid copied from the terrain. Rendering and routing consume the same
-/// material bytes. The narrow flat-ground policy excludes every nonzero flag byte: the skip flag
-/// is not a complete walkability test, and slope/corner bits have no established walking consumer.</summary>
+/// material bytes. Construction uses the engine's byte0 bit-0 rule, plus ride occupancy and
+/// conservative fixed-scenery exclusion. Walking additionally requires a laid path material;
+/// this is a demo routing policy, not a recovered engine navigation service.</summary>
 public sealed class ParkPaths
 {
     public Model.HeightField Field { get; }
