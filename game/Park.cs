@@ -190,12 +190,24 @@ public sealed class Park
         var size = (bmax - bmin) / 1.004f;
         var min = bmin + size * 0.001f;
 
-        // the node's own matrix, then the scene root -- the same path a mesh vertex takes
-        var basis = new Basis(new Vector3(w.M11, w.M12, w.M13),
-                              new Vector3(w.M21, w.M22, w.M23),
-                              new Vector3(w.M31, w.M32, w.M33));
-        var node = new Transform3D(basis, new Vector3(w.M41, w.M42, w.M43));
-        return new Plot(root * node, min, size);
+        // ⚠⚠ THE NODE'S OWN TRANSFORM IS NOT APPLIED. The grid lives in the MODEL'S BASE
+        // coordinates, not in the heightfield node's local space -- proved by cross-correlating
+        // each park's skip map against its mesh coverage: with no node transform the best
+        // alignment is (0,0) for FANTASY, HALLOW and SPACE and within one cell for JUNGLE.
+        //
+        // Applying it is what broke three parks out of four, and JUNGLE hid it because its node is
+        // the identity: FANTASY carries T(0,0,-80) so its grid landed 8 cells out, SPACE T(0,0,-100)
+        // for 10 cells, and HALLOW T(0,0,-100) plus a 180-degree YAW, so it was offset AND rotated.
+        // Master described exactly that from the picture -- "all parks are just a wrong offset
+        // except jungle, and halloween is offset and 180 rotate" -- before this was measured.
+        //
+        // What IS needed is the model's uniform bind scale (0.1), which the node's world matrix
+        // carries in the length of its axes. Take the scale, drop the rotation and translation.
+        float bind = new Vector3(w.M11, w.M12, w.M13).Length();
+        if (bind <= 0f) bind = 0.1f;
+        var scaled = new Transform3D(new Basis(Vector3.Right * bind, Vector3.Up * bind,
+                                               Vector3.Back * bind), Vector3.Zero);
+        return new Plot(root * scaled, min, size);
     }
 
     public static (Vector2 Origin, Vector2 Size, float FloorY, bool[,] Cells) FindHole(
