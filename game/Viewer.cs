@@ -60,6 +60,16 @@ public partial class Viewer : Node3D
     /// <summary>Every park on the disc: which archive, which terrain file. Built once, lazily.</summary>
     readonly List<(string Wad, string Path, string Label)> _maps = new();
     bool _mapsBuilt;
+
+    /// <summary>The camera the console actually runs. ⭐ THE DEFAULT in park mode, at master's
+    /// call -- the orbit camera is the debug view, not the game's.</summary>
+    readonly GameCamera _game = new();
+    /// <summary>G swaps to the free orbit camera.</summary>
+    bool _freeCam;
+    /// <summary>Ground height per TILE in world units, the same lookup the game does. Baked when
+    /// the terrain loads: 0x14F820 asks for a tile's height, not for a ray hit.</summary>
+    int[,] _ground;
+    Vector2I _groundOrigin;
     /// <summary>A ride is standing in the park because one was asked for, not by default.</summary>
     bool _parkRide;
 
@@ -394,6 +404,18 @@ public partial class Viewer : Node3D
     {
         if (e is InputEventKey { Pressed: true, Keycode: Key.F3 } && _panel != null)
             _panel.Visible = !_panel.Visible;
+        if (e is not InputEventKey { Pressed: true } k) return;
+        if (k.Keycode == Key.G)
+        {
+            _freeCam = !_freeCam;
+            if (!_freeCam) StartGameCam();
+            GD.Print($"[cam] {(_freeCam ? "free orbit" : "the game's camera")}");
+        }
+        // ⚠ Turning is an EVENT, not a held key: the console adds a whole quarter turn per press
+        // and eases to it. Repeating it per frame would spin.
+        else if (GameCamActive && k.Keycode == Key.Q) _game.Turn(-1);
+        else if (GameCamActive && k.Keycode == Key.E) _game.Turn(1);
+        else if (GameCamActive && k.Keycode == Key.Home) StartGameCam();
     }
 
     void SetMode(Mode m)
@@ -880,10 +902,6 @@ public partial class Viewer : Node3D
                 if (mat == null) continue;
                 if (TextureNear(pick.Path, mat).Tex != null) got++; else missed++;
             }
-            var wf = AnimatedModel.WindingFixes;
-            GD.Print($"[winding] corrected {wf.Flipped} of {wf.Total} triangles "
-                   + $"({(wf.Total > 0 ? 100.0 * wf.Flipped / wf.Total : 0):F0}%) -- "
-                   + "expect ~37% from the file-side measurement; ~63% would mean the sign is backwards");
             GD.Print($"[terrain] {pick.Path}  {tm.Meshes.Count} meshes  "
                    + $"extent {hi.X - lo.X:F1} x {hi.Z - lo.Z:F1}  height {hi.Y - lo.Y:F1}  "
                    + $"textures {got} resolved, {missed} MISSING");
@@ -975,6 +993,7 @@ public partial class Viewer : Node3D
                 GD.Print($"[field] authored grid {tm.Field.Width} x {tm.Field.Height} = {tm.Field.Count} cells "
                        + $"from the terrain file (runtime copies this verbatim)");
 
+            BakeGround();
             var (ho, hs, hy, hc) = Park.FindHole(_terrain.Root, 160, apO, apS);
             _holeOrigin = ho; _holeSize = hs; _holeCells = hc;
             // ⚠⚠ The floor goes at the height of the ground AROUND the hole, NOT at the terrain's
@@ -989,6 +1008,90 @@ public partial class Viewer : Node3D
                    + $"floor y={hy:F2} (terrain base {lo.Y:F2}, top {hi.Y:F2})");
         }
         catch (Exception ex) { GD.PrintErr($"[terrain] {pick.Path}: {ex.Message}"); }
+    }
+
+    /// <summary>Sample the terrain's surface once per tile, because that is the shape of the
+    /// question the game asks: `0x14F820` looks the ground up by TILE INDEX
+    /// (`eyeX * 0x10000 >> 0x18`), never by a ray. One Godot unit is one tile here.</summary>
+    void BakeGround()
+    {
+        if (_terrain == null) { _ground = null; return; }
+        var (lo, hi) = Park.DrawnBounds(_terrain.Root, inParent: true);
+        _groundOrigin = new Vector2I(Mathf.FloorToInt(lo.X), Mathf.FloorToInt(lo.Z));
+        int w = Mathf.CeilToInt(hi.X) - _groundOrigin.X + 1;
+        int h = Mathf.CeilToInt(hi.Z) - _groundOrigin.Y + 1;
+        if (w <= 0 || h <= 0 || w > 4096 || h > 4096) { _ground = null; return; }
+        var t0 = Time.GetTicksMsec();
+        var top = Park.SurfaceHeights(_terrain.Root, _groundOrigin, w, h, 1f);
+        _ground = new int[w, h];
+        int got = 0;
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++)
+                if (top[x, y].HasValue)
+                { _ground[x, y] = (int)(top[x, y].Value * GameCamera.TileUnits); got++; }
+        GD.Print($"[ground] {w} x {h} tiles, {got} with terrain under them, "
+               + $"in {Time.GetTicksMsec() - t0} ms");
+    }
+
+    /// <summary>The ground under a tile in world units. ⚠ Off the baked grid returns the last
+    /// known floor rather than zero: zero is the sea bed here, and dropping the camera to it on
+    /// the first tile past the edge reads as the camera falling through the world.</summary>
+    int GroundAt(int tx, int tz)
+    {
+        if (_ground == null) return 0;
+        int x = Mathf.Clamp(tx - _groundOrigin.X, 0, _ground.GetLength(0) - 1);
+        int y = Mathf.Clamp(tz - _groundOrigin.Y, 0, _ground.GetLength(1) - 1);
+        return _ground[x, y];
+    }
+
+    /// <summary>Is the game's own camera driving? Only in park mode, and only until G.</summary>
+    bool GameCamActive => _mode == Mode.Park && !_freeCam && _ground != null;
+
+    /// <summary>Drop the game camera onto the middle of the plot.</summary>
+    void StartGameCam()
+    {
+        // ⚠ Reset FIRST: it clears the started flag, so placing after it is what stops the
+        // height easing in from wherever the last park left the camera.
+        _game.Reset();
+        if (_holeSize.X > 1f)
+            _game.PlaceAt(_holeOrigin.X + _holeSize.X * 0.5f, _holeOrigin.Y + _holeSize.Y * 0.5f);
+        else _game.PlaceAt(_focus.X, _focus.Z);
+        // ⭐ A shot run cannot hold a key, so the three axes are settable for renders. This is
+        // what makes "the zoom is the pitch" checkable in a picture instead of in a paragraph.
+        var set = System.Environment.GetEnvironmentVariable("TPW_CAM");
+        if (!string.IsNullOrWhiteSpace(set))
+        {
+            var f = set.Split(',');
+            if (f.Length > 0 && int.TryParse(f[0], out var b) && b > 0)
+                _game.Behind = Mathf.Clamp(b, GameCamera.MinBehind, GameCamera.MaxBehind);
+            if (f.Length > 1 && int.TryParse(f[1], out var q)) { _game.Turn(q); _game.Yaw = _game.TargetYaw; }
+            if (f.Length > 2 && int.TryParse(f[2], out var d))
+                _game.Dolly = Mathf.Clamp(d, GameCamera.MinDolly, GameCamera.MaxDolly);
+        }
+        GD.Print($"[cam] game camera at the plot centre, {_game.Behind} behind and "
+               + $"{_game.Above} up -- {_game.PitchDegrees:F1} degrees down");
+    }
+
+    /// <summary>One frame of the game's camera, and the keys that drive it. ⚠ Held keys, not
+    /// events: the zoom and the pan are per-frame accumulations on the console too.</summary>
+    void StepGameCam(double delta)
+    {
+        int pan = (int)(6 * GameCamera.TileUnits * delta);
+        int a = _game.Yaw & 0xFFF;
+        // Pan along the way the camera faces, which is what the cursor does on the console.
+        float s = Mathf.Sin(a * Mathf.Tau / GameCamera.TurnUnits);
+        float c = Mathf.Cos(a * Mathf.Tau / GameCamera.TurnUnits);
+        int fwd = (Input.IsKeyPressed(Key.W) ? 1 : 0) - (Input.IsKeyPressed(Key.S) ? 1 : 0);
+        int side = (Input.IsKeyPressed(Key.D) ? 1 : 0) - (Input.IsKeyPressed(Key.A) ? 1 : 0);
+        _game.CursorX += (int)((fwd * s + side * c) * pan);
+        _game.CursorZ += (int)((fwd * c - side * s) * pan);
+        if (Input.IsKeyPressed(Key.R)) _game.Zoom(-1);
+        if (Input.IsKeyPressed(Key.F)) _game.Zoom(1);
+        if (Input.IsKeyPressed(Key.Z)) _game.Push(-1);
+        if (Input.IsKeyPressed(Key.X)) _game.Push(1);
+        _game.Step(GameCamera.FrameTime60, GroundAt);
+        _cam.Transform = new Transform3D(
+            Basis.LookingAt(_game.Look - _game.Eye, _game.Up), _game.Eye);
     }
 
     /// <summary>Point the camera at the surfaces whose mesh name contains TPW_PARK_MESH.
@@ -1102,6 +1205,7 @@ public partial class Viewer : Node3D
         ParkCameraOverrides();
         // ⚠ LAST. Everything above sets the camera, so aiming before them aims at nothing.
         AimAtMesh();
+        StartGameCam();
     }
 
     void BuildPark(Model mesh)
@@ -1397,9 +1501,13 @@ public partial class Viewer : Node3D
             _current.SetFrame(_time);
             _scrub.SetValueNoSignal(_time / Mathf.Max(_current.Frames, 1));
         }
-        var eye = _focus + new Vector3(
-            Mathf.Cos(_pitch) * Mathf.Sin(_yaw), Mathf.Sin(-_pitch), Mathf.Cos(_pitch) * Mathf.Cos(_yaw)) * _dist;
-        _cam.Transform = new Transform3D(Basis.LookingAt(_focus - eye, Vector3.Up), eye);
+        if (GameCamActive) StepGameCam(delta);
+        else
+        {
+            var eye = _focus + new Vector3(
+                Mathf.Cos(_pitch) * Mathf.Sin(_yaw), Mathf.Sin(-_pitch), Mathf.Cos(_pitch) * Mathf.Cos(_yaw)) * _dist;
+            _cam.Transform = new Transform3D(Basis.LookingAt(_focus - eye, Vector3.Up), eye);
+        }
 
         if (_shotPath != null)
         {
