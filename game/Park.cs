@@ -195,7 +195,13 @@ public sealed class Park
         void Walk(Node n, Transform3D acc)
         {
             var t = n is Node3D n3 && n != root ? acc * n3.Transform : acc;
-            if (n is MeshInstance3D mi && mi.Mesh != null)
+            // ⚠⚠ SKIP HIDDEN SURFACES. A ride's parts carry visibility timelines -- Crazy Ape has
+            // parts keyed vis[0,2], vis[0,38], vis[0,100] -- and a hidden part still has an AABB and
+            // a transform, often parked well away from the model until its moment. Counting those
+            // measured the whole animation's envelope rather than the ride, which is why the
+            // builder's extent came out 42 x 46 against the reader's 4 x 4: the X and Z ratios were
+            // 10.56 and 11.64, and a scale error cannot be non-uniform.
+            if (n is MeshInstance3D mi && mi.Mesh != null && mi.Visible)
             {
                 var box = mi.GetAabb();
                 for (int i = 0; i < 8; i++)
