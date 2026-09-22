@@ -37,6 +37,7 @@ public partial class Viewer : Node3D
     Park _park;
     AnimatedModel _terrain;
     string _terrainPath;
+    Vector2 _terrainSize;
     RideCatalogue _cat;
     TextDatabase _text;
 
@@ -635,8 +636,20 @@ public partial class Viewer : Node3D
             // ⚠ Hide the synthetic grass. Two floors at the same height read as z-fighting.
             _park.ShowGrass = false;
             var (lo, hi) = Park.DrawnBounds(_terrain.Root);
+            // ⚠ Say how many of its materials found a texture. A material that silently resolves to
+            // null renders flat white, which reads as "the terrain has no textures" rather than as
+            // "the lookup did not find them" -- and the first is a fact about the disc, the second
+            // a bug in here.
+            int got = 0, missed = 0;
+            foreach (var mat in tm.Materials)
+            {
+                if (mat == null) continue;
+                if (TextureFor(mat).Tex != null) got++; else missed++;
+            }
             GD.Print($"[terrain] {pick.Path}  {tm.Meshes.Count} meshes  "
-                   + $"extent {hi.X - lo.X:F1} x {hi.Z - lo.Z:F1}  height {hi.Y - lo.Y:F1}");
+                   + $"extent {hi.X - lo.X:F1} x {hi.Z - lo.Z:F1}  height {hi.Y - lo.Y:F1}  "
+                   + $"textures {got} resolved, {missed} MISSING");
+            _terrainSize = new Vector2(hi.X - lo.X, hi.Z - lo.Z);
         }
         catch (Exception ex) { GD.PrintErr($"[terrain] {pick.Path}: {ex.Message}"); _park.ShowGrass = true; }
     }
@@ -823,6 +836,15 @@ public partial class Viewer : Node3D
         // The ground is laid with six cells of padding on every side; frame a little of it rather
         // than the ride alone, so the footprint reads against the grass around it.
         float span = Math.Max(w, h) + Park.CellSize * 8f;
+        // ⚠ With real terrain loaded the subject is the PARK, not the ride standing in it. Framing
+        // 4 cells inside a 210-cell world puts the camera underground and looks like the terrain
+        // failed to load.
+        if (_terrain != null && _terrainSize.X > 1f)
+        {
+            var (lo, hi) = Park.DrawnBounds(_terrain.Root);
+            _focus = new Vector3((lo.X + hi.X) * 0.5f, lo.Y + (hi.Y - lo.Y) * 0.3f, (lo.Z + hi.Z) * 0.5f);
+            span = Math.Max(_terrainSize.X, _terrainSize.Y) * 1.1f;
+        }
         _dist = Math.Max(span * 0.9f, 1e-3f);
         _pitch = -0.55f;
     }
