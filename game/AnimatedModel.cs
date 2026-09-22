@@ -156,16 +156,32 @@ public sealed class AnimatedModel
                   + (Skeletal ? $", {_skel?.Count ?? 0} bone tracks (bind pose)" : "");
     }
 
-    // ⚠ Culling is now owned by the shader's `render_mode cull_disabled`, not by a material
-    // property, so there is no CullFromEnv any more -- it would have been dead code that looked
-    // live. The measured fact it existed to record stays in findings/formats.md: M3D2 front faces
-    // are CLOCKWISE, which is why the triangles below are emitted reversed.
+    // ⚠ Culling is owned by the shader's render_mode, not by a material property. It is built
+    // into the shader source from TPW_PS2_CULL rather than hardwired -- it used to say
+    // `cull_disabled` while the switch below claimed a default of `back`, so the switch was a
+    // fiction and nothing ever culled. The measured fact stays in findings/formats.md: M3D2 front
+    // faces are CLOCKWISE, which is why the triangles below are emitted reversed.
 
     /// ⚠ TRIED AND REJECTED, kept switchable so nobody re-tries it blind: duplicating every
     /// triangle puts two coincident faces at the SAME depth, which z-fights per pixel and looks
     /// worse than either plain mode. `TPW_PS2_CULL=two` still selects it; it is not the default.
-    static bool TwoSided =>
-        (OS.GetEnvironment("TPW_PS2_CULL") ?? "back").ToLowerInvariant() is "two" or "twosided";
+    /// <summary>⚠ DEFAULT IS `off` AND THAT IS A KNOWN DEFECT, NOT A CHOICE. `back` is the mode
+    /// this data was authored for -- M3D2 front faces are CLOCKWISE and the triangles are emitted
+    /// reversed for it -- and it visibly FIXES the bus stop canopies. It also deletes the terrain's
+    /// ground, because within ONE model the ground is wound the other way from the shelters. Until
+    /// the per-triangle winding is decoded, culling cannot be turned on globally.</summary>
+    static string CullMode => (OS.GetEnvironment("TPW_PS2_CULL") ?? "off").ToLowerInvariant();
+
+    static bool TwoSided => CullMode is "two" or "twosided";
+
+    /// <summary>The shader's cull render_mode. ⚠⚠ IT USED TO BE HARDWIRED TO `cull_disabled`
+    /// WHILE THE SWITCH ABOVE CLAIMED A DEFAULT OF `back` -- so the declared default was a
+    /// fiction and nothing ever culled. Drawing back faces means the INSIDE of a roof can win
+    /// over its outside wherever the two are near-coplanar, which is the flat slab across the bus
+    /// stop canopies. M3D2 front faces are CLOCKWISE and the triangles are emitted reversed for
+    /// it, so back culling is the mode this data was authored for.
+    /// TPW_PS2_CULL=off restores the old behaviour, which is the control.</summary>
+    static string CullRenderMode => CullMode is "back" ? "cull_back" : "cull_disabled";
 
     /// <summary>The viewer's material, as a shader rather than a StandardMaterial3D.
     ///
@@ -207,7 +223,7 @@ shader_type spatial;
 // `depth_prepass_alpha` runs a real depth pre-pass over the alpha geometry first, so the blend
 // pass is depth-tested against the whole model. These are solid shapes with soft EDGES, not
 // stacked glass, so a pre-pass is right and costs nothing the data actually needs.
-render_mode cull_disabled, diffuse_lambert, specular_disabled, depth_prepass_alpha;
+render_mode " + CullRenderMode + @", diffuse_lambert, specular_disabled, depth_prepass_alpha;
 
 uniform sampler2D albedo_tex : source_color, filter_nearest_mipmap, repeat_enable;
 uniform float cutout = 0.0627;      // 16/255
@@ -231,7 +247,7 @@ void fragment() {
     {
         Code = @"
 shader_type spatial;
-render_mode cull_disabled, diffuse_lambert, specular_disabled;
+render_mode " + CullRenderMode + @", diffuse_lambert, specular_disabled;
 
 uniform sampler2D albedo_tex : source_color, filter_nearest_mipmap, repeat_enable;
 uniform float cutout = 0.0627;      // 16/255
@@ -273,7 +289,10 @@ void fragment() {
         p.SurfaceMaterial = new int[byMat.Count];
         for (int i = 0; i < byMat.Count; i++)
         {
-            var mi = new MeshInstance3D();
+            // ⭐ Named after the mesh it came from, so a surface can be pointed at by name. The
+            // terrain is one model with dozens of meshes in it; without names the only way to aim
+            // at "the bus stop" is to guess coordinates.
+            var mi = new MeshInstance3D { Name = $"{p.Mesh.Name}#{i}" };
             int m = byMat[i].Key;
             if (!_materials.TryGetValue(m, out var mat))
             {

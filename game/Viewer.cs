@@ -946,6 +946,32 @@ public partial class Viewer : Node3D
         catch (Exception ex) { GD.PrintErr($"[terrain] {pick.Path}: {ex.Message}"); }
     }
 
+    /// <summary>Point the camera at the surfaces whose mesh name contains TPW_PARK_MESH.
+    /// ⭐ The terrain is ONE model holding dozens of meshes -- the bus stop, the gate, the
+    /// embankment -- so "look at the bus stop" is otherwise a coordinate guess.</summary>
+    void AimAtMesh()
+    {
+        var want = System.Environment.GetEnvironmentVariable("TPW_PARK_MESH");
+        if (string.IsNullOrWhiteSpace(want) || _terrain == null) return;
+        Aabb? box = null;
+        int hits = 0;
+        foreach (var child in _terrain.Root.GetChildren())
+        {
+            if (child is not MeshInstance3D mi || mi.Mesh == null) continue;
+            if (!mi.Name.ToString().Contains(want, StringComparison.OrdinalIgnoreCase)) continue;
+            hits++;
+            // In the terrain root's parent space, which is where the camera lives.
+            var b = _terrain.Root.Transform * mi.Transform * mi.Mesh.GetAabb();
+            box = box.HasValue ? box.Value.Merge(b) : b;
+        }
+        if (!box.HasValue) { GD.PrintErr($"[aim] no mesh matches '{want}'"); return; }
+        var a = box.Value;
+        _focus = a.Position + a.Size * 0.5f;
+        _dist = Mathf.Max(a.Size.Length() * 0.9f, 0.5f);
+        _pitch = -0.25f;
+        GD.Print($"[aim] '{want}': {hits} surfaces, centre {_focus}, size {a.Size}");
+    }
+
     /// <summary>The park debug viewpoints, shared by every path that frames the park. ⚠ They used
     /// to live only in FrameParkCamera, so opening a map without a ride silently ignored them.</summary>
     void ParkCameraOverrides()
@@ -1029,6 +1055,8 @@ public partial class Viewer : Node3D
         _dist = Mathf.Max(Mathf.Max(hi.X - lo.X, hi.Z - lo.Z) * 0.99f, 1e-3f);
         _pitch = -0.55f;
         ParkCameraOverrides();
+        // ⚠ LAST. Everything above sets the camera, so aiming before them aims at nothing.
+        AimAtMesh();
     }
 
     void BuildPark(Model mesh)
