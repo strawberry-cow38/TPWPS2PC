@@ -106,6 +106,7 @@ public partial class Viewer : Node3D
     Model _terrainModel;
     bool _pathTest;
     bool _ghostTest;
+    string _wantSegments;
     string _wantCam;
     /// <summary>Nudge on the gate's z, in units, starting at master's own correction.
     ///
@@ -180,6 +181,7 @@ public partial class Viewer : Node3D
             else if (a.StartsWith("--mode=")) _wantMode = a["--mode=".Length..];
             else if (a == "--path-test") _pathTest = true;
             else if (a == "--ghost-test") _ghostTest = true;
+            else if (a.StartsWith("--segments=")) _wantSegments = a["--segments=".Length..];
             else if (a.StartsWith("--cam=")) _wantCam = a["--cam=".Length..];
             else if (a.StartsWith("--ride=")) _wantRide = a["--ride=".Length..];
             else if (a.StartsWith("--anim=")) _wantAnim = a["--anim=".Length..];
@@ -532,6 +534,16 @@ public partial class Viewer : Node3D
             if (!_toolOpen || _toolKind != want) OpenTool(want); else PressTool();
         }
         else if (k.Keycode == Key.Escape && _toolOpen) { CloseTool(); GD.Print("[tool] closed"); }
+        // ⭐ M switches between a straight segment and an elbow. Both are kept: straight is what
+        // the game allows, the elbow is what the executable's own walker does, and which one the
+        // path tool really hands it is not settled.
+        else if (k.Keycode == Key.M && _mode == Mode.Park && _ghost != null)
+        {
+            _ghost.Shape = _ghost.Shape == PathGhost.Segment.Straight
+                ? PathGhost.Segment.Elbow : PathGhost.Segment.Straight;
+            _ghostAt = (-1, -1, -1, -1);
+            GD.Print($"[tool] segments: {_ghost.Shape}");
+        }
         else if (k.Keycode == Key.O && _mode == Mode.Park && _paths != null)
         {
             _paths.Undo();
@@ -926,7 +938,7 @@ public partial class Viewer : Node3D
                    + "Z/X dolly  |  Home reset  |  G free orbit\n"
                    + "[ / ] nudge the gate  |  V weather  |  B buildable  |  F3 hide this panel\n"
                    + "RMB path tool (shift+RMB queue)  |  LMB press: start a run, again to lay\n"
-                   + "O take it back  |  Esc close the tool";
+                   + "O take it back  |  M straight/elbow segments  |  Esc close the tool";
     }
 
     /// <summary>Show one image at its own size, or the reason it cannot be shown.</summary>
@@ -1233,6 +1245,9 @@ public partial class Viewer : Node3D
         if (_pieces == null) return;
         _paths = new PathTool(_terrainModel, _pieces);
         _ghost = new PathGhost(_paths);
+        if (_wantSegments != null)
+            _ghost.Shape = _wantSegments.StartsWith("elbow", StringComparison.OrdinalIgnoreCase)
+                ? PathGhost.Segment.Elbow : PathGhost.Segment.Straight;
         CloseTool();
         GD.Print($"[path] {_paths.Report}"
                + (_paths.Ready ? $"; {_pieces.Path.Count} path and {_pieces.Queue.Count} queue pieces" : ""));
@@ -1292,13 +1307,21 @@ public partial class Viewer : Node3D
         // ⭐ Put the camera's own cursor on the target cell, so the ghost the frame loop rebuilds
         // is the one printed below rather than a second, different run -- and so this also checks
         // that a world position round-trips back to the cell it came from.
-        var aim = _park.CellCentre(cx, cy);
+        // ⭐ The run ENDS ON the path just laid, so the picture must show a straight segment of
+        // plain markers with ONE connect symbol on its last tile. A string of symbols, or none,
+        // are both visible failures.
+        // ⚠ OFF-AXIS ON PURPOSE. A cursor square-on to the start draws the same picture in both
+        // shapes, so it would photograph a straight segment and say nothing about which one ran.
+        // From (cx-5, cy+3) to (cx, cy+1) the straight segment snaps to x and stops at (cx,cy+3);
+        // the elbow runs the same leg and then turns down two more.
+        int ex = cx, ey = cy + 1;
+        var aim = _park.CellCentre(ex, ey);
         _game.CursorX = (int)(aim.X * GameCamera.TileUnits);
         _game.CursorZ = (int)(aim.Z * GameCamera.TileUnits);
         _runX = cx - 5; _runY = cy + 3;
-        _ghost.Set(_runX, _runY, cx, cy, _toolKind);
+        _ghost.Set(_runX, _runY, ex, ey, _toolKind);
         _ghostView.Show(_ghost, _park);
-        GD.Print($"[ghost] run ({_runX},{_runY}) -> ({cx},{cy}), layable {_ghost.Layable}: "
+        GD.Print($"[ghost] run ({_runX},{_runY}) -> ({ex},{ey}), layable {_ghost.Layable}: "
                + string.Join(" ", _ghost.Tiles.Select(t => $"({t.X},{t.Y}){t.Verdict}")));
     }
 
@@ -1377,8 +1400,12 @@ public partial class Viewer : Node3D
         }
         int laid = _ghost.Lay(_toolKind);
         RebuildFloor();
-        _runX = x; _runY = y;
-        GD.Print($"[path] laid {laid} of {_ghost.Tiles.Count}; the run goes on from ({x},{y}); {_paths.Laid} total");
+        // ⚠ From the SEGMENT'S END, not from the cursor. The cursor is snapped to one axis, so
+        // carrying on from where the mouse was would put the next segment's start off the end of
+        // the one just laid -- by however far the cursor had drifted off the line.
+        (_runX, _runY) = _ghost.End;
+        _ghostAt = (-1, -1, -1, -1);
+        GD.Print($"[path] laid {laid} of {_ghost.Tiles.Count}; the run goes on from ({_runX},{_runY}); {_paths.Laid} total");
     }
 
     void BuildBuildableOverlay()

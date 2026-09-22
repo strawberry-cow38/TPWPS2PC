@@ -65,8 +65,8 @@ consumers.
 
 ## 3. The walk (READ, `FUN_001279C8`)
 
-The path tool's ghost is an **L-shaped, axis-snapped run** from the run's start to the cursor. It
-compares `|dx|` with `|dy|`, walks the longer axis first, then draws the corner tile last. Per tile:
+The walker takes a start and an end and covers them with an **L**: it compares `|dx|` with `|dy|`,
+walks the longer axis first, then the other, then draws the corner tile last. Per tile:
 
 ```c
 tile    = Tile(x, y);                                  // 0x14E138, the tile accessor
@@ -79,6 +79,13 @@ if (verdict == 1) refused_already = true;
 ⭐ **A refusal latches: after the first refused tile every later tile is drawn red**, whatever it
 would have said on its own. That is the PSX's rule ("after a 1, every tile is 1") in the PS2's own
 code — the same behaviour reached from two different disassemblies.
+
+⚠ **The path tool itself lays STRAIGHT SEGMENTS**, one per press, the run carrying on from each
+one's end — master, who plays it, says so, and the PSX report agrees from the other build, where
+the tool "lays from the last corner to the cursor (axis-snapped)" and counts the run in CORNERS.
+So the cursor is snapped to one axis before it ever reaches this walker, and the L is a shape the
+walker can cover rather than one the path tool asks it for. What feeds it an off-axis end has not
+been established.
 
 It returns 0 when any tile refused, which is the gate on the press: the run lays only if no tile of
 the ghost refuses. It also records the run's resolved end (`+0x24` x, `+0x28` y) and which leg ran

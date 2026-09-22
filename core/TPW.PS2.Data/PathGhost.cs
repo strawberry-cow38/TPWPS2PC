@@ -3,9 +3,18 @@ namespace TPW.PS2.Data;
 /// <summary>The build ghost: the run of tiles between where a path run started and where the
 /// cursor is, each carrying the verdict the game would give it.
 ///
-/// ⭐ The run is L-SHAPED AND AXIS-SNAPPED, not a line and not free-form: the game walks the
-/// LONGER axis first and draws the corner tile last (FUN_001279C8). A diagonal drag therefore
-/// lays two straight legs.
+/// ⭐⭐ A SEGMENT IS STRAIGHT. The cursor does not drag out a shape -- it is SNAPPED to whichever
+/// axis it has moved further along, and the segment runs along that one axis only. A press lays
+/// that segment and the run carries on from its end, so a corner is two presses, not one drag.
+/// Master, who plays the game, called this; the PSX report agrees independently, where the path
+/// tool "lays from the last corner to the cursor (axis-snapped)" and counts the run in CORNERS.
+///
+/// ⚠ The PS2 walker at FUN_001279C8 does walk an L -- longer axis, then the other, then the
+/// corner tile. That is read and it stands; what is NOT established is that the path tool ever
+/// hands it an off-axis end. BOTH ARE HERE, on <see cref="Shape"/>: straight is the default
+/// because it is what master says the game allows, and the elbow is kept because it is what the
+/// walker in the executable demonstrably does, and deleting it would throw away a reading to
+/// match a recollection.
 ///
 /// ⭐⭐ A REFUSAL LATCHES. Once a tile refuses, every later tile of the run is drawn refused too,
 /// whatever it would have said on its own, and the press lays nothing. That is the game's rule and
@@ -15,11 +24,23 @@ namespace TPW.PS2.Data;
 /// See findings/ghost-cursor.md.</summary>
 public sealed class PathGhost
 {
+    /// <summary>How a segment reaches the cursor. ⭐ STRAIGHT is one axis only, so a corner costs
+    /// two presses; ELBOW covers both axes in one, the way the executable's walker does.</summary>
+    public enum Segment { Straight, Elbow }
+
+    /// <summary>Which shape a segment takes. Straight by default.</summary>
+    public Segment Shape { get; set; } = Segment.Straight;
+
     /// <summary>The verdict codes the game's validator returns (FUN_001E81E0). They index the
     /// marker table at 0x35B5E0, which is why they are these numbers and not 0,1,2,3.</summary>
     public enum Verdict { Lay = 0, Refused = 1, Joins = 5, Already = 6 }
 
     public readonly record struct Cell(int X, int Y, Verdict Verdict);
+
+    /// <summary>Where the segment actually ends, once the cursor has been snapped to one axis.
+    /// ⚠ NOT the point passed in: a run must carry on from here, or the next segment starts off
+    /// the end of the one just laid.</summary>
+    public (int X, int Y) End { get; private set; }
 
     /// <summary>The tiles of the run, start first, with the latch already applied.</summary>
     public IReadOnlyList<Cell> Tiles => _tiles;
@@ -39,22 +60,33 @@ public sealed class PathGhost
         Layable = false;
         if (_tool == null || !_tool.Ready) return;
 
-        // ⭐ The longer axis first, exactly as the walker picks it.
         int dx = x1 - x0, dy = y1 - y0;
+        // ⭐ SNAP to the axis the cursor has moved further along, and keep the other one. The
+        // segment's end is then not the cursor: it is the cursor projected onto that axis, which
+        // is why End is published rather than the caller reusing the point it passed in.
+        if (Shape == Segment.Straight) { if (Math.Abs(dx) >= Math.Abs(dy)) y1 = y0; else x1 = x0; }
+        End = (x1, y1);
+
         var run = new List<(int X, int Y)>();
-        if (Math.Abs(dy) < Math.Abs(dx))
+        if (Shape == Segment.Straight || dx == 0 || dy == 0)
         {
-            int step = dx < 0 ? -1 : 1;
-            for (int x = x0; x != x1; x += step) run.Add((x, y0));
+            if (x1 != x0)
+                for (int x = x0; x != x1; x += x1 < x0 ? -1 : 1) run.Add((x, y0));
+            else
+                for (int y = y0; y != y1; y += y1 < y0 ? -1 : 1) run.Add((x0, y));
+        }
+        // ⭐ The elbow: the LONGER axis first, then the other, exactly as the walker picks them.
+        else if (Math.Abs(dy) < Math.Abs(dx))
+        {
+            for (int x = x0; x != x1; x += dx < 0 ? -1 : 1) run.Add((x, y0));
             for (int y = y0; y != y1; y += dy < 0 ? -1 : 1) run.Add((x1, y));
         }
         else
         {
-            int step = dy < 0 ? -1 : 1;
-            for (int y = y0; y != y1; y += step) run.Add((x0, y));
+            for (int y = y0; y != y1; y += dy < 0 ? -1 : 1) run.Add((x0, y));
             for (int x = x0; x != x1; x += dx < 0 ? -1 : 1) run.Add((x, y1));
         }
-        run.Add((x1, y1));   // ⚠ the corner -- the last tile is drawn on its own, after both legs
+        run.Add((x1, y1));   // ⚠ the end tile is judged last: only it may wear a connect symbol
 
         bool refused = false;
         for (int i = 0; i < run.Count; i++)
