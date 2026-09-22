@@ -225,3 +225,32 @@ were interrupted by a full `/tmp`; those incomplete runs were not counted. They
 were rerun successfully on the larger filesystem. No images, disc buffers, PCSX2
 source, or extracted colour tuples are committed. The only golden data in the
 tests is a hash of the entirely synthetic reference output.
+
+## Why 26 of them are unreachable: the conversion reaches 17.66% of the colour space
+
+The 26 unreachable flat references are not a curiosity about those 26. Brute-forcing the whole input
+space through `ConvertIpuRgb` — all 256³ (Y,Cb,Cr) triples, independently of the audit above — the
+conversion emits only
+
+    2,962,391 distinct RGB triples out of 16,777,216   =  17.66%
+
+The integer form is why: each chroma product loses six fractional bits to a `>> 6`, the sum keeps one
+and is rounded away by `+1 >> 1`, and all three channels share one luma term. The output is a sparse
+lattice, and **82.34% of RGB space cannot be produced by this conversion at all, for any input.**
+
+⚠ **That reframes "flat RGB exact 19 of 121" and it is worth stating plainly, because this document
+originally proposed that count as the ungameable acceptance gate.** It is ungameable — no coefficient
+fit can raise it dishonestly — but it is also **partly unattainable by construction**: a flat
+reference whose colour lies off the lattice can never be matched exactly, no matter how correct the
+decoder is. 26 of 117 measured here are in exactly that position. So the count is substantially a
+measure of how many reference colours happen to land on the lattice, not of decoder quality.
+
+A gate can be honest and still be measuring the wrong thing. The mistake was mine: I reasoned
+"flat source -> constant YUV -> nothing lost -> must be exactly recoverable", and the middle step
+does not follow. Constant YUV means the encoder kept DC only; it says nothing about whether the
+*quantisation* of that DC was lossless. It was not, for 26 of them.
+
+**Method, so it can be re-run:** enumerate Y in 0..255 and Cb, Cr in 0..255, push each through the
+same integer arithmetic the decoder uses, and collect the distinct packed RGB values. Then test each
+flat reference colour for membership. Independent of the PCSX2 harness above — it needs nothing but
+the conversion itself — and it returned the same 26, which is why both are recorded.
