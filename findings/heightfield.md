@@ -47,15 +47,31 @@ box is the plot.
 
 Verified independently against all eight files (`+0x70` min, `+0x80` max, each a `float[4]`):
 
-| world | X span | Z span | cells | Y span |
-|---|---:|---:|---|---:|
-| JUNGLE | −0.64 … 641.92 | −0.76 … 762.28 | **64 × 76** | −0.021042 … 20.061041 |
-| FANTASY | −0.80 … 802.40 | −0.60 … 601.80 | **80 × 60** | −0.021042 … 20.061041 |
-| HALLOW | −0.96 … 962.88 | −0.52 … 521.56 | **96 × 52** | −0.021042 … 20.061041 |
-| SPACE | −0.96 … 962.88 | −0.54 … 541.62 | **96 × 54** | −0.021042 … 20.061041 |
+| world | `terrain_1.mps` | `terrain_2.mps` | |
+|---|---:|---:|---|
+| JUNGLE | **64 × 76** | **64 × 76** | agree |
+| FANTASY | **80 × 60** | **76 × 62** | differ |
+| HALLOW | **96 × 52** | **88 × 56** | differ |
+| SPACE | **96 × 54** | **72 × 62** | differ |
 
 At the root scale of `0.100` established in `findings/grid.md`, and 1 model unit = 1 footprint cell,
-those are the grids. `terrain_1` and `terrain_2` agree exactly within each world.
+those are the grids.
+
+### ⚠ Correction 3 — the two terrain files are DIFFERENT PARKS, and I claimed otherwise
+
+An earlier version of this file said "`terrain_1` and `terrain_2` agree exactly within each world".
+**That is false in three worlds out of four**, and `cow tools` caught it.
+
+The mechanism is worth more than the fact. I compared the two files and got agreement — but the
+run that produced that comparison printed **only the Y fields**, because I had written it to test
+whether Y was constant. Y *is* constant, so the two files agreed trivially, and I read that
+agreement as a property of the files rather than of the field I happened to be looking at. The X
+and Z were never compared at all. **I generalised a constant's agreement into a claim about the
+data, in the same breath as correcting someone else for reading meaning into that same constant.**
+
+JUNGLE genuinely does agree, which is what made it look like a rule — and JUNGLE is the world both
+of us test on. **Plot size is a property of the terrain FILE, not of the world.** Two terrain files
+per world means two different parks, presumably the two difficulty or campaign variants.
 
 ### ⚠ Correction 1 — the box carries an exact 0.4% pad, so divide, don't round
 
