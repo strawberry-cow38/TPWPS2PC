@@ -513,7 +513,12 @@ public sealed class Park
                 // skips and the model's surface there is NOT level with this floor, leave a wall
                 // rather than an open seam. The height comes from the terrain mesh itself.
                 if (TerrainTop == null) continue;
-                foreach (var (dx, dy, e0, e1) in new[] { (0, -1, a, b), (1, 0, b, c), (0, 1, c, dd), (-1, 0, dd, a) })
+                // ⚠ Z PAIRS ARE SWAPPED relative to the naive reading, because the row order is
+                // reversed: cz = Origin.Y + (H - y - 0.5), so INCREASING y DECREASES world Z.
+                // Neighbour (x, y+1) is therefore the cz-half edge (a,b), not (c,dd). Getting this
+                // backwards put every step's wall on the side that did not need one and left the
+                // side that did open -- which is why raised squares rendered as holes.
+                foreach (var (dx, dy, e0, e1) in new[] { (0, 1, a, b), (1, 0, b, c), (0, -1, c, dd), (-1, 0, dd, a) })
                 {
                     int nx2 = x + dx, ny2 = y + dy;
                     if (nx2 < 0 || ny2 < 0 || nx2 >= width || ny2 >= height) continue;
