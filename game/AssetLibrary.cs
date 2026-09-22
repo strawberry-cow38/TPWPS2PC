@@ -166,31 +166,50 @@ public sealed class AssetLibrary : IDisposable
 
     /// <summary>The ground tile to floor the park with.
     ///
-    /// ⚠ THIS IS A CHOICE, NOT A FINDING. The park plot has no geometry on the disc -- the engine
-    /// draws its tiles at runtime -- so nothing here says which texture the empty park is floored
-    /// with. The rule: prefer the world's own `*_bas*` ("base") tile, else the shared `grd_top1`.
+    /// ⚠ WHICH tile floors an empty park is a CHOICE, not a finding -- the plot has no geometry on
+    /// the disc and terrain_2 is the same island rather than a tile set, so nothing states it. The
+    /// RULE is what is defensible, and it is: a 64x64 under `/terrain/` or `sharetex` whose stem is
+    /// `_bas` + A DIGIT, preferring the world's own initial, then `gr_bas` (ground) over `fl_bas`
+    /// (floor), then lowest-numbered.
     ///
-    /// ⚠ Case-insensitively, always. The disc mixes case inside one extension -- HALLOW ships
-    /// `Jpa_*` and `.TGA` where JUNGLE ships `jpa_*` and `.tga` -- so an ordinal match finds a
-    /// coherent subset and misses the rest.
+    /// ⚠⚠ `_bas` ALONE IS NOT THE TEST. It also matches ride and shop art -- `ab_base`,
+    /// `TV_BASE_C_0`, `PURPLE_BASE`, `CR_base1b` -- and SPACE has 165 such files against 6 real
+    /// ground tiles. The ground set spells it `_bas1`, the prop bases spell it `_base`.
     ///
-    /// Per world: JUNGLE and FANTASY both use `jgr_bas2..6`, SPACE uses `sfl_bas1..6`, and HALLOW
-    /// ships no `_bas` at all, which is what the fallback is for.</summary>
+    /// ⚠⚠ AND NOT ONLY UNDER `/terrain/`. Looking there alone found nothing for HALLOW and fell
+    /// back to a shared tile, when HALLOW's ground set (`hgr_bas2`, `hrk_bas1..7`) is in
+    /// `HALLOW.WAD/sharetex` -- the same global pool that had `jgr_bas1`. Thanks to tinyclaw.
+    ///
+    /// ⚠ The world's own prefix is a PREFERENCE, never a requirement: FANTASY ships JUNGLE's
+    /// `jgr_*` tiles and there is no `fgr_*` anywhere on the disc, so deriving the prefix from the
+    /// world name works for three worlds and silently finds nothing for the fourth. (Those files
+    /// are not copies -- FANTASY's `jgr_bas1` is a different image from JUNGLE's under the same
+    /// name, so it has to resolve inside the open archive.)
+    ///
+    /// ⚠ Folded case on the WHOLE PATH: the disc mixes case in the directory too, `Sharetex` in
+    /// JUNGLE against `sharetex` in HALLOW, and in the stem and the extension besides.</summary>
     public string GroundTileName()
     {
-        var names = Wad.Entries
-            .Where(e => !WadArchive.IsAlias(e)
-                     && e.Path.Contains("/terrain/", StringComparison.OrdinalIgnoreCase)
-                     && (e.Path.EndsWith(".tga", StringComparison.OrdinalIgnoreCase)
-                      || e.Path.EndsWith(".ssh", StringComparison.OrdinalIgnoreCase)))
+        char mine = char.ToLowerInvariant((WadName ?? "?").TrimStart('/').FirstOrDefault());
+        var hits = Wad.Entries
+            .Where(e => !WadArchive.IsAlias(e))
+            .Select(e => (Path: e.Path, Low: e.Path.ToLowerInvariant()))
+            .Where(e => (e.Low.EndsWith(".tga") || e.Low.EndsWith(".ssh"))
+                     && (e.Low.Contains("/terrain/") || e.Low.Contains("/sharetex/")))
             .Select(e => System.IO.Path.GetFileNameWithoutExtension(e.Path))
+            .Where(n => GroundTile.IsMatch(n))
             .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(n => char.ToLowerInvariant(n[0]) == mine ? 0 : 1)
+            .ThenBy(n => n.Contains("gr_bas", StringComparison.OrdinalIgnoreCase) ? 0
+                       : n.Contains("fl_bas", StringComparison.OrdinalIgnoreCase) ? 1 : 2)
+            .ThenBy(n => n, StringComparer.OrdinalIgnoreCase)
             .ToList();
-        return names.FirstOrDefault(n => n.Contains("_bas", StringComparison.OrdinalIgnoreCase))
-            ?? names.FirstOrDefault(n => n.Equals("grd_top1", StringComparison.OrdinalIgnoreCase))
-            ?? names.FirstOrDefault(n => n.StartsWith("grd_top", StringComparison.OrdinalIgnoreCase));
+        return hits.FirstOrDefault();
     }
+
+    /// <summary>`_bas` followed by a digit -- the ground set, as opposed to every `_base` prop.</summary>
+    static readonly System.Text.RegularExpressions.Regex GroundTile =
+        new("_bas[0-9]", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
     /// <summary>Every image in the open archive, in path order. Both TGA and SSH have managed
     /// decoders; material lookup prefers the pre-compression TGA source when available.</summary>
