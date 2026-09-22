@@ -295,16 +295,21 @@ void fragment() {
                 // whole meshes at 100% (`surface13/15/22/25/27`, every `HOARDING_*`, `RIVERBED_04`).
                 // A face wound backwards is culled, so it is simply absent.
                 //
-                // The stored per-vertex normal says which side is out. Pick the order that agrees
-                // with it -- OPPOSED in model space, because the scene root carries Scale (1,1,-1),
-                // a determinant of -1, which reverses orientation on the way to the screen.
+                // The stored per-vertex normal says which side is out. Pick the order whose
+                // geometric normal AGREES with it.
                 //
-                // ⭐ Self-checking: the flip count is logged. It should land near the 37% measured
-                // off the file. If it comes out near 63%, the sign here is backwards.
+                // ⚠ I first reasoned this the other way -- opposed, on the grounds that the scene
+                // root's Scale (1,1,-1) has determinant -1 and reverses orientation. That gave a
+                // 61% flip rate against the 37% measured off the file, i.e. it was correcting the
+                // majority and breaking them. The check below caught it; the argument had sounded
+                // perfectly good.
+                //
+                // ⭐ Self-checking: the flip count is logged and compared against the 37% measured
+                // independently off the file. That check is what caught the sign being wrong.
                 var na = p.Normal[t.A] + p.Normal[t.B] + p.Normal[t.C];
                 var pa = pos[t.A]; var pb = pos[t.B]; var pc = pos[t.C];
                 var g = System.Numerics.Vector3.Cross(pc - pa, pb - pa);      // normal of A,C,B
-                bool keep = g.X * na.X + g.Y * na.Y + g.Z * na.Z <= 0;
+                bool keep = g.X * na.X + g.Y * na.Y + g.Z * na.Z >= 0;
                 if (!keep) _wound++;
                 _woundTotal++;
                 foreach (var idx in keep ? new[] { t.A, t.C, t.B } : new[] { t.A, t.B, t.C })
