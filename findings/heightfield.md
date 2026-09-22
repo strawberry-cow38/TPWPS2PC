@@ -137,11 +137,26 @@ disassembly, so it is checkable without running anything.
   written by the setter at `0x1f6858` (called from `0x149a10`) and zeroed by `0x1f6868` (from
   `0x14ee00`).
 
-**⚠ Still unresolved, and it is the interesting part:** `<world>/terrain/` on this disc holds
-`terrain_1.mps` and `terrain_2.mps` and no `base`. Only `LOBBY.WAD` ships a `base.mps`. So either
-`0x147090` does not return the world directory, or the name resolution is not path-exact. That is
-the next thing to read, and it should be read rather than guessed — the last three things I asserted
-about this loader without following the code through were all wrong in some detail.
+### Both path builders, read rather than guessed
+
+* **`0x147090`** — the one actually used. Calls `0x14e170` for the current world index and returns
+  one of `"data\jungle\"`, `"data\hallow\"`, `"data\fantasy\"`, `"data\space\"`. So `%s`
+  **is** the live world directory, and the target is `data\<world>\Terrain\base.md2`.
+* **`0x146f80`** — the `$a0 != 0` branch, and unreachable, since the only caller passes 0. It
+  returns a hardcoded `"Data\Levels\Jungle\"`, with `"Jungle"` and `"Data\"` as its neighbours.
+  A development stub, and its path shape does not match this disc's layout at all.
+
+**So the loader's target resolves to `data\<world>\Terrain\base.md2`, and no world has one.** All
+four `/terrain/` directories hold `terrain_1.mps` and `terrain_2.mps` and nothing named `base`; the
+disc's only `base.mps` is at the root of `LOBBY.WAD`, which is not one of the four world dirs and
+has no `Terrain` subdirectory either. The stem fallbacks `Base` and `TestBase` resolve into the same
+missing directory.
+
+The precise statement, then — replacing both the "dead code" overstatement and the retraction that
+followed it — is: **the loader is reached, its target does not exist for any world, and so this path
+cannot be what populates a park's heightfield.** What does exist is the `heightfield` marker mesh
+inside `terrain_1.mps` / `terrain_2.mps`, which something else must be reading, because the loader
+above never opens those files.
 
 ### For a live-RAM session
 
