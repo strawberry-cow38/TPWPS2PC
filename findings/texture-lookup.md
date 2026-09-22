@@ -49,14 +49,21 @@ type 0x02 was implemented; and now the only eight the executable names as `.tga`
 
 ## Consequences for the port
 
-* **The SSH decoder is required for 5,999 of 6,007 materials**, not 24. It is not optional and not a
-  fallback — it is the path.
+* The engine's named material path uses SSH for **6,007 of 6,007 material references**. The eight
+  hardcoded skies are a separate population: **0 of 6,007 MPS material slots** name those skies.
+  The previous statement here subtracted the skies from the material count and said 5,999; that
+  subtraction was incorrect.
 * Preferring the `.tga` where one exists would make the port look **better than the PS2**, because
   the TGA is the pre-compression source. That is a legitimate choice and now an informed one, but it
   is a deviation from the hardware, not a fidelity fix.
 * The 2,153 pairs outside the scoring tolerance remain encoder loss, and now demonstrably so: the
   player never sees the TGA, so the difference between our decode and it is exactly what the encoder
   discarded.
+
+The port now implements its deliberate TGA-first policy with an SSH fallback. The audit compiles
+the actual viewer resolver and currently reports **5,940 of 6,007 TGA**, **24 of 6,007 SSH**, and
+**43 of 6,007 unresolved** (exit 2). The zero-unresolved gate remains unmet; see
+[the measured attempts, regression checks, and every unresolved name](texture-fallback.md).
 
 ⚠ **Scope of this claim.** This is read from the string table and the format strings — it shows what
 the binary contains and constructs, not the control flow that consumes them. A loader could in
