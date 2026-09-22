@@ -2,11 +2,9 @@ using System.Numerics;
 
 namespace TPW.PS2.Data;
 
-/// <summary>M3D2 (`.mps`) -- the PS2 mesh format.
-///
-/// The PC release's `.MD2` is the same family under another extension; whether the details below
-/// hold there is unchecked.</summary>
-public sealed class Model
+/// <summary>M3D2: PS2 `.mps` and the four legacy `.MD2` files on this disc.
+/// The layouts differ. Model.Md2.cs handles legacy indexed faces; the batch APIs below are MPS only.</summary>
+public sealed partial class Model
 {
     public const uint Magic = 0x183076E4;
 
@@ -29,7 +27,7 @@ public sealed class Model
     /// +0x0a counts 20-byte names at +0x0c (loader 0x227610–0x227664).
     /// These are explicit lists, not numbered-filename conventions.</summary>
     public List<string[]> MaterialTextures { get; } = new();
-    public int MeshTable { get; }
+    public int MeshTable { get; private set; }
     /// <summary>The park's terrain grid, authored in the terrain file.
     ///
     /// ⭐⭐ THE PER-CELL HEIGHTS ARE ON THE DISC. The runtime field is a verbatim memcpy of this
@@ -137,7 +135,7 @@ public sealed class Model
     /// and LOBBY's base.mps do).</summary>
     public HeightField Field { get; }
 
-    public int HelperTable { get; }
+    public int HelperTable { get; private set; }
 
     uint U32(int o) => BitConverter.ToUInt32(D, o);
     ushort U16(int o) => BitConverter.ToUInt16(D, o);
@@ -150,9 +148,19 @@ public sealed class Model
         return System.Text.Encoding.Latin1.GetString(D, o, e - o);
     }
 
-    public Model(byte[] data)
+    public Model(byte[] data, Mtr companion = null)
     {
-        D = data;
+        D = data ?? throw new ArgumentNullException(nameof(data));
+        if (D.Length < 4) throw new InvalidDataException("truncated model");
+        if (U32(0) == LegacyMd2Magic)
+        {
+            IsLegacyMd2 = true;
+            ReadMd2();
+            companion?.ValidateAgainst(this);
+            Companion = companion;
+            return;
+        }
+        if (companion != null) throw new InvalidDataException("MTR cannot be attached to an MPS model");
         if (U32(0) != Magic) throw new InvalidDataException($"not M3D2: {U32(0):X8}");
         MeshTable = (int)U32(0x48);
         HelperTable = (int)U32(0x4C);
@@ -239,6 +247,7 @@ public sealed class Model
     /// ceil/3 and are unexplained -- reported, not filtered.</summary>
     public List<Batch> Batches(Mesh m)
     {
+        if (IsLegacyMd2) throw new InvalidOperationException("legacy MD2 has indexed faces, not MPS batches");
         var outList = new List<Batch>();
         for (int j = 0; j < m.BatchCount; j++)
         {
@@ -260,6 +269,7 @@ public sealed class Model
     /// Verified: group batch counts sum to <c>mesh+0x66</c> on 963 meshes, 0 mismatched.</summary>
     public IEnumerable<(int Material, int FirstBatch, int Count)> Groups(Mesh m)
     {
+        if (IsLegacyMd2) throw new InvalidOperationException("legacy MD2 has face groups, not MPS batch groups");
         if (m.GroupTable == 0) yield break;
         int nmat = U16(0x22);
         int baseOff = (int)U32(0x40) - 8 * (nmat + 1);
@@ -310,6 +320,7 @@ public sealed class Model
     /// plain strip matches for 8.1% of meshes; honouring ADC matches for **935 / 935 = 100.00%**.</summary>
     public List<Triangle> Triangles(Mesh m)
     {
+        if (IsLegacyMd2) return _md2Triangles[m.Index];
         var batchMat = new Dictionary<int, int>();
         foreach (var (mat, first, n) in Groups(m))
             for (int j = first; j < first + n; j++) batchMat[j] = mat;
@@ -342,6 +353,7 @@ public sealed class Model
     /// Normals are the third per-vertex stream: 3 x int8 over 127.</summary>
     public (List<Vector3> Pos, List<Vector2> Uv, List<Vector3> Normal) Vertices(Mesh m)
     {
+        if (IsLegacyMd2) return _md2Vertices[m.Index];
         List<Vector3> pos = new(); List<Vector2> uv = new(); List<Vector3> nor = new();
         foreach (var b in Batches(m))
             for (int k = 0; k < b.Count; k++)
@@ -402,9 +414,8 @@ public sealed class Model
             parent[o] = U32(o + 4);
         }
         foreach (var m in Meshes) Add(m.Offset);
-        for (int o = HelperTable; o + 0x60 <= D.Length; o += 0x60)
+        foreach (int o in HelperOffsets())
         {
-            if ((U32(o) & 0x80000000) == 0) break;
             Add(o);
         }
         if (localOverrides != null)
@@ -437,9 +448,8 @@ public sealed class Model
                                      f[8], f[9], f[10], f[11], f[12], f[13], f[14], f[15]);
         }
         foreach (var m in Meshes) Add(m.Offset);
-        for (int o = HelperTable; o + 0x60 <= D.Length; o += 0x60)
+        foreach (int o in HelperOffsets())
         {
-            if ((U32(o) & 0x80000000) == 0) break;
             Add(o);
         }
         return local;
@@ -452,8 +462,10 @@ public sealed class Model
         if (offset >= MeshTable && offset < MeshTable + Meshes.Count * 160 &&
             (offset - MeshTable) % 160 == 0)
             return (offset - MeshTable) / 160;
-        if (offset >= HelperTable && (offset - HelperTable) % 0x60 == 0)
-            return Meshes.Count + (offset - HelperTable) / 0x60;
+        int stride = IsLegacyMd2 ? 0x58 : 0x60;
+        if (offset >= HelperTable && (offset - HelperTable) % stride == 0 &&
+            (!IsLegacyMd2 || (offset - HelperTable) / stride < _md2NodeCount - Meshes.Count))
+            return Meshes.Count + (offset - HelperTable) / stride;
         return -1;
     }
 
@@ -480,5 +492,16 @@ public sealed class Model
     }
 
     public int NodeOffset(int node) =>
-        node < Meshes.Count ? MeshTable + node * 160 : HelperTable + (node - Meshes.Count) * 0x60;
+        node < Meshes.Count ? MeshTable + node * 160 : HelperTable + (node - Meshes.Count) * (IsLegacyMd2 ? 0x58 : 0x60);
+
+    IEnumerable<int> HelperOffsets()
+    {
+        if (IsLegacyMd2)
+        {
+            for (int i = 0; i < _md2NodeCount - Meshes.Count; i++) yield return HelperTable + i * 0x58;
+            yield break;
+        }
+        for (int o = HelperTable; o + 0x60 <= D.Length && (U32(o) & 0x80000000) != 0; o += 0x60)
+            yield return o;
+    }
 }

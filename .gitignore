@@ -26,6 +26,9 @@ SCES_*
 *.sam
 *.mps
 *.aps
+*.[mM][dD]2
+*.[mM][tT][rR]
+*.[gG][iI][nN]
 # ...and anything extracted from one
 extracted/
 dump/

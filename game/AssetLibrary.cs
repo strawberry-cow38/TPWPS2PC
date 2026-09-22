@@ -41,8 +41,9 @@ public sealed class AssetLibrary : IDisposable
     public sealed class RideAssets
     {
         public string Name;                       // "Rides/Monkey"
-        public WadArchive.Entry Model;            // the .mps
+        public WadArchive.Entry Model;            // .mps, or a legacy .MD2
         public WadArchive.Entry Animation;        // the .aps beside it
+        public WadArchive.Entry Companion;        // .mtr for a legacy .MD2 only
     }
 
     readonly Disc _disc;
@@ -143,7 +144,7 @@ public sealed class AssetLibrary : IDisposable
             // /Rides/wateride thirteen. Keying on the folder kept whichever came last and hid the
             // other 160 models on the disc, which reads as a ride with most of its geometry
             // missing rather than as a viewer that is only showing you one piece.
-            if (ext == ".mps") Get(e.Path).Model = e;
+            if (ext is ".mps" or ".md2") Get(e.Path).Model = e;
         }
 
         // The animation beside a model: its OWN stem first, then the folder's only .aps. A folder
@@ -161,6 +162,13 @@ public sealed class AssetLibrary : IDisposable
         }
         foreach (var r in byDir.Values)
         {
+            if (r.Model.Path.EndsWith(".md2", StringComparison.OrdinalIgnoreCase))
+            {
+                string path = Path.ChangeExtension(r.Model.Path, ".mtr");
+                r.Companion = Wad.Entries.SingleOrDefault(e => e.Path.Equals(path, StringComparison.OrdinalIgnoreCase));
+                // The co-located APS belongs to MPS, whose node indices and geometry differ.
+                continue;
+            }
             var stem = Path.ChangeExtension("/" + r.Name, null);
             if (apsByPath.TryGetValue(stem, out var a)) r.Animation = a;
             else
@@ -181,6 +189,11 @@ public sealed class AssetLibrary : IDisposable
     }
 
     public byte[] Read(WadArchive.Entry e) => Wad.Read(e);
+
+    /// <summary>Load the selected model with its exact-stem legacy companion, when present.
+    /// MTR validates node/triangle identities; texture choices are authored inside the model.</summary>
+    public Model LoadModel(RideAssets ride) => new(Read(ride.Model),
+        ride.Companion == null ? null : new Mtr(Read(ride.Companion)));
 
     /// <summary>The open archive's terrain models, in path order. Every world WAD has a `terrain/`
     /// folder with two of them; DATA, UI and the rest have none.</summary>
