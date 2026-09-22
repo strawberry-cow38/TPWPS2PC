@@ -19,10 +19,16 @@ namespace TPWPS2Viewer;
 /// is almost entirely partial alpha (Jungle: 45,481 partly clear of 45,481 that are not clear at
 /// all), so it is the cloud sheet that composites over it.
 ///
-/// ⚠ NOT DONE: how fast the clouds move, and the per-world float the loader passes to the cloud
-/// routine right after (23.125 Jungle, 37.125 Hallow, 31.125 Fantasy, 29.125 Space, and a
-/// different value again for a second variant of three of them). It is read but not understood,
-/// so nothing here pretends to animate correctly.</summary>
+/// ⚠ NOT DONE: how fast the clouds move. Nothing here animates.
+///
+/// ⚠⚠ CORRECTION to what this comment first said. The call the loader makes right after the
+/// sky, `FUN_00220fa0(x, 2.2, 5.875, flag)` with a per-world x of 23.125 / 37.125 / 31.125 /
+/// 29.125, is NOT a cloud routine and those are not cloud parameters. It loads
+/// `data/generic/weather/raindrop.ssh` and `snowflake.ssh`, `data/generic/extra/justwater.ssh`
+/// and `logo.ssh` (or `logoam.ssh`), and lays them over a quad running x-6.125..x+18.875 and
+/// z-20.875..z+0.525 -- 25 by 21 units reaching back to z = -15.0, which is the ticket booths.
+/// It is the weather-and-extras setup at the park entrance, and the floats are a POSITION.
+/// I called it clouds because it sat next to the sky in the loader, which is not a reason.</summary>
 public static class SkyDome
 {
     /// <summary>`shader_type sky` so Godot draws it behind everything at no depth cost.</summary>
