@@ -22,6 +22,10 @@ public sealed class AssetLibrary : IDisposable
         public string SourceWad { get; }
         public string SourcePath { get; }
 
+        /// <summary>Blends rather than cuts out. Same rule as <see cref="Targa.IsTranslucent"/>,
+        /// because a texture must not change how it draws with which decoder read it.</summary>
+        public bool Translucent => Targa.IsTranslucent(Width, Height, ClearTexels, PartialAlpha);
+
         internal TextureImage(int width, int height, byte[] pixels, TextureFormat format,
                               string sourceWad, string sourcePath)
         {

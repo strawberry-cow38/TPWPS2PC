@@ -35,6 +35,24 @@ public sealed class Targa
     /// <summary>Texels with alpha below 16: the cutout holes.</summary>
     public int ClearTexels { get; }
 
+    /// <summary>Whether this texture should BLEND rather than cut out.
+    ///
+    /// ⚠⚠ ONE RULE, ONE PLACE. The old test was "more than 1% of texels are partly clear", and
+    /// that is true of any cutout with an anti-aliased edge -- a fence, a leaf, a railing. Those
+    /// all went down the transparent path, where surfaces sort per-object and so draw in the wrong
+    /// order against each other. What actually separates the two is WHAT SHARE OF WHAT IT DRAWS is
+    /// partly clear: a cutout's soft texels are a thin border around solid ones, glass and smoke
+    /// are partly clear nearly everywhere. Clear texels are excluded because they draw nothing, so
+    /// a mostly-empty sprite must not read as translucent just for being mostly hole.</summary>
+    public static bool IsTranslucent(int width, int height, int clearTexels, int partialAlpha)
+    {
+        int visible = width * height - clearTexels;
+        return visible > 0 && partialAlpha * 2 > visible;
+    }
+
+    /// <summary>This texture blends rather than cuts out. See <see cref="IsTranslucent"/>.</summary>
+    public bool Translucent => IsTranslucent(Width, Height, ClearTexels, PartialAlpha);
+
     public Targa(byte[] buf)
     {
         int idlen = buf[0], cmapType = buf[1], kind = buf[2];

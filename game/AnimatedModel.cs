@@ -73,6 +73,11 @@ public sealed class AnimatedModel
     public int Frames { get; private set; }
     public string Summary { get; private set; }
 
+    /// <summary>Surfaces on the blend shader, i.e. ones whose ordering depends on the depth
+    /// pre-pass. ⭐ Named so a transparency complaint can be checked against a NUMBER rather
+    /// than against whether a picture looks right.</summary>
+    public int BlendSurfaces { get; private set; }
+
     public AnimatedModel(Model model, Aps anim, Aps.Record rec,
                          Func<string, (ImageTexture Tex, bool Soft)> texture)
     {
@@ -194,30 +199,23 @@ public sealed class AnimatedModel
         // with nothing to notice.
         Code = @"
 shader_type spatial;
-// ⚠⚠ `depth_draw_opaque` IS NOT OPTIONAL HERE. Writing ALPHA makes a Godot material TRANSPARENT,
-// and a transparent material does not write depth by default -- so every surface behind it shows
-// through and the model reads INSIDE OUT, with parts drawn in the wrong order. The owner saw it
-// within minutes of the soft-alpha change: ""theres actually the inside-out bug on some rides /
-// incorrect draw orders"". These models are solid geometry with soft EDGES, not stacked glass, so
-// writing depth is right and costs nothing the data actually needs.
-render_mode cull_disabled, diffuse_lambert, specular_disabled, depth_draw_opaque;
+// ⚠⚠ `depth_prepass_alpha`, NOT `depth_draw_opaque`. Writing ALPHA makes a Godot material
+// TRANSPARENT, and transparent surfaces are sorted per-OBJECT by distance, so parts of one model
+// draw in the wrong order and it reads INSIDE OUT. `depth_draw_opaque` was meant to fix that and
+// CANNOT: for a transparent material it means ""only draw depth in the opaque pass"", which is
+// already the default -- it wrote no depth at all, which is why master kept seeing it.
+// `depth_prepass_alpha` runs a real depth pre-pass over the alpha geometry first, so the blend
+// pass is depth-tested against the whole model. These are solid shapes with soft EDGES, not
+// stacked glass, so a pre-pass is right and costs nothing the data actually needs.
+render_mode cull_disabled, diffuse_lambert, specular_disabled, depth_prepass_alpha;
 
 uniform sampler2D albedo_tex : source_color, filter_nearest_mipmap, repeat_enable;
 uniform float cutout = 0.0627;      // 16/255
 uniform bool has_tex = true;
-uniform bool affine = true;
-varying vec3 uvw;
-
-void vertex() {
-    vec4 vpos = MODELVIEW_MATRIX * vec4(VERTEX, 1.0);
-    float w = max(-vpos.z, 0.0001);
-    uvw = vec3(UV * w, w);
-}
 
 void fragment() {
-    vec2 uv = affine ? (uvw.xy / uvw.z) : UV;
     if (has_tex) {
-        vec4 c = texture(albedo_tex, uv);
+        vec4 c = texture(albedo_tex, UV);
         if (c.a < cutout) discard;   // still drop the fully clear texels
         ALBEDO = c.rgb;
         ALPHA = c.a;                 // ⭐ and KEEP the soft ones -- this is the whole difference
@@ -238,28 +236,14 @@ render_mode cull_disabled, diffuse_lambert, specular_disabled;
 uniform sampler2D albedo_tex : source_color, filter_nearest_mipmap, repeat_enable;
 uniform float cutout = 0.0627;      // 16/255
 uniform bool has_tex = true;
-uniform bool affine = true;
 
-// ⭐ AFFINE TEXTURE MAPPING, as the PS2 does it.
-// The hardware interpolates a varying PERSPECTIVE-CORRECTLY: it gives the fragment
-//     P(v) = L(v/w) / L(1/w)          where L() is plain screen-space linear interpolation.
-// Godot's shading language has no `noperspective`, so the affine UV is recovered arithmetically:
-//     P(UV*w) / P(w) = [L(UV)/L(1/w)] * L(1/w) = L(UV)
-// i.e. pass UV premultiplied by view depth alongside that depth, and divide in the fragment.
-// ⚠ The PS2's affinity is much milder than the PS1's -- it subdivides more -- so this should read
-// as a slight swim on large near-camera polygons, not the violent warping of a PSX render.
-varying vec3 uvw;
-
-void vertex() {
-    vec4 vpos = MODELVIEW_MATRIX * vec4(VERTEX, 1.0);
-    float w = max(-vpos.z, 0.0001);          // view-space depth; the camera looks down -Z
-    uvw = vec3(UV * w, w);
-}
-
+// ⚠ NO AFFINE TEXTURE MAPPING. It used to emulate the PS2's UV interpolation by passing UV
+// premultiplied by view depth and dividing in the fragment. Removed at master's call: the PS2
+// subdivides enough that the swim is barely there on real geometry, and it cost a varying, a
+// vertex stage and a per-material switch to reproduce an artefact nobody wants to look at.
 void fragment() {
-    vec2 uv = affine ? (uvw.xy / uvw.z) : UV;
     if (has_tex) {
-        vec4 c = texture(albedo_tex, uv);
+        vec4 c = texture(albedo_tex, UV);
         if (c.a < cutout) discard;   // alpha CUTOUT, not blending
         ALBEDO = c.rgb;
     } else {
@@ -277,9 +261,9 @@ void fragment() {
         var (tex, soft) = slot >= 0 && slot < _model.MaterialTextures.Count
             ? _texture(_model.MaterialTextures[slot][index]) : (null, false);
         material.Shader = soft ? BlendShader : ViewerShader;
+        if (soft) BlendSurfaces++;
         material.SetShaderParameter("albedo_tex", tex);
         material.SetShaderParameter("has_tex", tex != null);
-        material.SetShaderParameter("affine", (OS.GetEnvironment("TPW_PS2_AFFINE") ?? "on") != "off");
     }
 
     void BuildSurfaces(Part p)

@@ -60,6 +60,8 @@ public partial class Viewer : Node3D
     /// <summary>Every park on the disc: which archive, which terrain file. Built once, lazily.</summary>
     readonly List<(string Wad, string Path, string Label)> _maps = new();
     bool _mapsBuilt;
+    /// <summary>A ride is standing in the park because one was asked for, not by default.</summary>
+    bool _parkRide;
 
     /// <summary>The terrain file the park tab asked for, or null for the first one.</summary>
     string _wantTerrain;
@@ -158,10 +160,13 @@ public partial class Viewer : Node3D
                     if (_wadPick.GetItemText(i).Contains(wantWad, StringComparison.OrdinalIgnoreCase)) { w = i; break; }
             _wadPick.Select(w); OpenWad(w);
         }
+        // ⚠⚠ A ROW IS NOT A DATA INDEX. The lists carry category headings now, so every one of
+        // these selectors has to map the row back through _rows -- passing the row straight to
+        // ShowRide asked for 'bigpalm.mps' and got bus1, which reads as a model-loading bug.
         if (_wantRide != null)
             for (int i = 0; i < _rideList.ItemCount; i++)
-                if (_rideList.GetItemText(i).Contains(_wantRide, StringComparison.OrdinalIgnoreCase))
-                { _rideList.Select(i); ShowRide(i); break; }
+                if (Row(i) >= 0 && _rideList.GetItemText(i).Contains(_wantRide, StringComparison.OrdinalIgnoreCase))
+                { _rideList.Select(i); ShowRide(Row(i)); break; }
         if (_wantAnim != null && int.TryParse(_wantAnim, out var ai) && ai < _animPick.ItemCount)
         { _animPick.Select(ai); _recordIndex = ai; Rebuild(); }
         // ⚠ Every switch has an environment fallback, because arguments after `--` do not survive
@@ -182,7 +187,7 @@ public partial class Viewer : Node3D
             if (_wantPlay != null)
                 for (int k = 0; k < _rideList.ItemCount; k++)
                     if (_rideList.GetItemText(k).Contains(_wantPlay, StringComparison.OrdinalIgnoreCase))
-                    { _rideList.Select(k); ShowSound(k); PlaySelected(); break; }
+                    { _rideList.Select(k); ShowSound(Row(k)); PlaySelected(); break; }
         }
         else if (_wantMode != null && _wantMode.StartsWith("tex", StringComparison.OrdinalIgnoreCase))
         {
@@ -190,7 +195,7 @@ public partial class Viewer : Node3D
             if (_wantImage != null)
                 for (int i = 0; i < _rideList.ItemCount; i++)
                     if (_rideList.GetItemText(i).Contains(_wantImage, StringComparison.OrdinalIgnoreCase))
-                    { _rideList.Select(i); ShowImage(i); break; }
+                    { _rideList.Select(i); ShowImage(Row(i)); break; }
         }
         else if (_wantMode != null && _wantMode.StartsWith("par", StringComparison.OrdinalIgnoreCase))
         {
@@ -367,6 +372,10 @@ public partial class Viewer : Node3D
         _rows.Add(-1);
     }
 
+    /// <summary>Clear the list AND its row map together. ⚠ They are one thing: clearing only the
+    /// list leaves the map from the previous mode behind, and every row then shows the wrong item.</summary>
+    void ClearList() { _rideList.Clear(); _rows.Clear(); }
+
     void AddRow(string text, int index)
     {
         _rideList.AddItem(text);
@@ -389,7 +398,7 @@ public partial class Viewer : Node3D
         _video.Visible = m == Mode.Movies;
         if (m != Mode.Movies) _video.Stop();
         // ⚠ Hide the model too. A transparent image pane over a lit 3D scene reads as a bug.
-        if (_current != null) _current.Root.Visible = m == Mode.Models || m == Mode.Park;
+        if (_current != null) _current.Root.Visible = m == Mode.Models || (m == Mode.Park && _parkRide);
         if (_park != null) _park.Root.Visible = m == Mode.Park;
         if (m == Mode.Sounds) FillBankPicker();
         else if (m == Mode.Movies) FillMovieList();
@@ -431,7 +440,7 @@ public partial class Viewer : Node3D
     /// folder is given by TPW_PS2_MOVIES, or found beside the disc as `movies/`.</summary>
     void FillMovieList()
     {
-        _wadPick.Clear(); _rideList.Clear(); _movies.Clear();
+        _wadPick.Clear(); ClearList(); _movies.Clear();
         var dir = OS.GetEnvironment("TPW_PS2_MOVIES");
         if (string.IsNullOrWhiteSpace(dir) && !string.IsNullOrEmpty(_discPath))
             dir = Path.Combine(Path.GetDirectoryName(_discPath) ?? ".", "movies");
@@ -445,7 +454,7 @@ public partial class Viewer : Node3D
             return;
         }
         foreach (var f in Directory.GetFiles(dir, "*.ogv").OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
-        { _movies.Add(f); _rideList.AddItem(Path.GetFileNameWithoutExtension(f)); }
+        { AddRow(Path.GetFileNameWithoutExtension(f), _movies.Count); _movies.Add(f); }
         _info.Text = _movies.Count + " movies in " + dir;
         if (_movies.Count > 0) { _rideList.Select(0); ShowMovie(0); }
     }
@@ -469,15 +478,16 @@ public partial class Viewer : Node3D
     /// <summary>Open one `.SDT` and list what is in it.</summary>
     void OpenBank(int i)
     {
-        _rideList.Clear();
+        ClearList();
         _bank = null;
         if (i < 0 || i >= _banks.Count) return;
         try { _bank = new SoundBank(_lib.ReadDisc(_banks[i])); }
         catch (Exception ex) { _info.Text = _banks[i].Path + "\n" + ex.Message; return; }
-        foreach (var snd in _bank.Sounds)
+        for (int k = 0; k < _bank.Sounds.Count; k++)
         {
+            var snd = _bank.Sounds[k];
             string kind = snd.IsEmpty ? "empty" : snd.IsAdpcm ? "vag" : snd.Channels == 2 ? "stereo" : "mono";
-            _rideList.AddItem(snd.Name + "   " + kind + "  " + (snd.Milliseconds / 1000.0).ToString("0.0") + "s");
+            AddRow(snd.Name + "   " + kind + "  " + (snd.Milliseconds / 1000.0).ToString("0.0") + "s", k);
         }
         _info.Text = _banks[i].Path + "\n" + _bank.Sounds.Count + " sounds";
         if (_bank.Sounds.Count > 0) { _rideList.Select(0); ShowSound(0); }
@@ -562,7 +572,7 @@ public partial class Viewer : Node3D
 
     void FillList()
     {
-        _rideList.Clear(); _rows.Clear();
+        ClearList();
         if (_mode == Mode.Sounds) return;      // the bank picker fills this list instead
         if (_mode == Mode.Park) { FillMapList(); return; }
         if (_mode == Mode.Models)
@@ -660,7 +670,7 @@ public partial class Viewer : Node3D
         _terrain?.Root.QueueFree();
         _terrain = null;
         _park.Field = null;
-        if (_lib.Rides.Count > 0) ShowRide(0);
+        ShowParkOnly();
         _info.Text = m.Label;
     }
 
@@ -697,7 +707,7 @@ public partial class Viewer : Node3D
             int texels = tga.Width * tga.Height;
             _info.Text = e.Path + "\n" + tga.Width + "x" + tga.Height + "\n"
                        + tga.ClearTexels + " clear, " + tga.PartialAlpha + " partly clear of " + texels + "\n"
-                       + (tga.PartialAlpha * 100 > texels ? "blended (soft alpha)" : "cutout");
+                       + (tga.Translucent ? "blended (translucent)" : "cutout");
         }
         catch (Exception ex) { _info.Text = e.Path + "\ndid not decode: " + ex.Message; }
     }
@@ -929,6 +939,50 @@ public partial class Viewer : Node3D
         catch (Exception ex) { GD.PrintErr($"[terrain] {pick.Path}: {ex.Message}"); }
     }
 
+    /// <summary>Lay the playable plot on the loaded terrain. Shared by the park tab, which shows
+    /// the park alone, and by BuildPark, which then stands a ride in it.</summary>
+    void BuildPlot()
+    {
+        // ⚠ The terrain is loaded FIRST: the playable grid's position and size come off its own
+        // geometry, so building the park before it would place the grid at the origin and leave it
+        // sitting outside the island.
+        LoadTerrain();
+        if (_holeSize.X <= 1f) { _park.Build(ParkCells, ParkCells); return; }
+        _park.Origin = _holeOrigin;
+        _park.BaseY = _holeY;
+        // ⚠ The mesh-coverage mask is BACK, at master's call. I dropped it because it was
+        // deleting the cells I was extruding into blocks -- but those blocks were fabricated
+        // (a cell is three tile indices, not a height), so there is nothing left for the mask
+        // to destroy. What it does do is keep the park floor from being laid straight over
+        // terrain the mesh already draws: the embankment, the roads, the banks. Without it the
+        // plot is a slab covering real geometry, which is extra terrain we invented.
+        //
+        // ⚠ The grid still comes from the authored field; only which cells get a floor is
+        // masked. When the corner tables are decoded this stops being a mask and becomes the
+        // tile shapes.
+        // Sample the model's own surface height per cell so the floor's edge can close
+        // against it instead of leaving an open seam.
+        if (_terrain != null && _park.Field != null)
+            _park.TerrainTop = Park.SurfaceHeights(_terrain.Root, _holeOrigin,
+                _park.Field.Width, _park.Field.Height, Park.CellSize);
+        _park.Build(Mathf.RoundToInt(_holeSize.X), Mathf.RoundToInt(_holeSize.Y), _holeCells);
+    }
+
+    /// <summary>The park by itself. ⚠ NO RIDE: opening a map used to stand the archive's first
+    /// model in the dead centre of the plot, which reads as content rather than as the debug
+    /// default it was. A ride appears when one is asked for.</summary>
+    void ShowParkOnly()
+    {
+        _parkRide = false;
+        BuildPlot();
+        if (_current != null) _current.Root.Visible = false;
+        var (lo, hi) = Park.DrawnBounds(_terrain != null ? _terrain.Root : _park.Root,
+                                        inParent: _terrain != null);
+        _focus = new Vector3((lo.X + hi.X) * 0.5f, lo.Y + (hi.Y - lo.Y) * 0.3f, (lo.Z + hi.Z) * 0.5f);
+        _dist = Mathf.Max(Mathf.Max(hi.X - lo.X, hi.Z - lo.Z) * 0.99f, 1e-3f);
+        _pitch = -0.55f;
+    }
+
     void BuildPark(Model mesh)
     {
         var def = DefinitionFor(_ride.Model);
@@ -963,31 +1017,11 @@ public partial class Viewer : Node3D
         // ⚠ The terrain is loaded FIRST: the playable grid's position and size come off its own
         // geometry, so building the park before it would place the grid at the origin and leave it
         // sitting outside the island.
-        LoadTerrain();
-        if (_holeSize.X > 1f)
-        {
-            _park.Origin = _holeOrigin;
-            _park.BaseY = _holeY;
-            // ⚠ The mesh-coverage mask is BACK, at master's call. I dropped it because it was
-            // deleting the cells I was extruding into blocks -- but those blocks were fabricated
-            // (a cell is three tile indices, not a height), so there is nothing left for the mask
-            // to destroy. What it does do is keep the park floor from being laid straight over
-            // terrain the mesh already draws: the embankment, the roads, the banks. Without it the
-            // plot is a slab covering real geometry, which is extra terrain we invented.
-            //
-            // ⚠ The grid still comes from the authored field; only which cells get a floor is
-            // masked. When the corner tables are decoded this stops being a mask and becomes the
-            // tile shapes.
-            // Sample the model's own surface height per cell so the floor's edge can close
-            // against it instead of leaving an open seam.
-            if (_terrain != null && _park.Field != null)
-                _park.TerrainTop = Park.SurfaceHeights(_terrain.Root, _holeOrigin,
-                    _park.Field.Width, _park.Field.Height, Park.CellSize);
-            _park.Build(Mathf.RoundToInt(_holeSize.X), Mathf.RoundToInt(_holeSize.Y), _holeCells);
-        }
-        else _park.Build(ParkCells, ParkCells);
+        BuildPlot();
         // ⚠ Aim at the PARK's middle, not at ParkCells/2 -- that constant is the fallback size and
         // has nothing to do with the plot once the plot comes off the terrain.
+        _parkRide = true;
+        _current.Root.Visible = true;
         bool placed = _park.TryPlaceNear(_current.Root, fp, def.Id ?? 1, display ?? def.Name ?? "?");
         int px = _park.LastX, py = _park.LastY;
         // ⚠ AFTER the placement, never before. Rebuild frames the camera on the model in its own
@@ -1105,7 +1139,8 @@ public partial class Viewer : Node3D
                      (misses.Count > 0 ? ": " + string.Join(", ", misses) : ""));
             _current = new AnimatedModel(model, _anim, rec, TextureFor);
             _current.Root.Visible = _mode == Mode.Models || _mode == Mode.Park;
-            AddChild(_current.Root); GD.Print($"[v] built: {_current.Summary}");
+            AddChild(_current.Root); GD.Print($"[v] built: {_current.Summary}, "
+                                                   + $"{_current.BlendSurfaces} blended surfaces");
             _time = 0;
             _current.SetFrame(0);
             FrameCamera(model);
@@ -1157,8 +1192,7 @@ public partial class Viewer : Node3D
             {
                 var img = Image.CreateFromData(texture.Width, texture.Height, false, Image.Format.Rgba8, texture.Pixels);
                 img.GenerateMipmaps();
-                made = (ImageTexture.CreateFromImage(img),
-                        texture.PartialAlpha * 100 > texture.Width * texture.Height);
+                made = (ImageTexture.CreateFromImage(img), texture.Translucent);
                 GD.Print($"[tex] {_lib.WadName}{ownerPath} '{material}' -> {texture.SourceWad}{texture.SourcePath} ({texture.Format})");
             }
             else GD.PrintErr($"[tex] UNRESOLVED {_lib.WadName}{ownerPath} '{material}'");

@@ -43,7 +43,7 @@ public partial class TextureAnimationAudit : Node
             using var img = Image.CreateFromData(data.Width, data.Height, false, Image.Format.Rgba8, data.Pixels);
             var texture = ImageTexture.CreateFromImage(img);
             texture.ResourceName = System.IO.Path.GetFileNameWithoutExtension(data.SourcePath);
-            return cache[material] = (texture, data.PartialAlpha * 100 > data.Width * data.Height);
+            return cache[material] = (texture, data.Translucent);
         }
         var drawn = new AnimatedModel(model, anim, record, Texture);
         AddChild(drawn.Root);
