@@ -79,7 +79,13 @@ public sealed class PathGhost
         if (!_tool.CanLay(x, y)) return Verdict.Refused;
         var had = _tool.KindAt(x, y);
         if (had == PathTool.Kind.None) return Verdict.Lay;
-        if (had == kind) return Verdict.Already;
+        // ⭐⭐ ONLY THE RUN'S LAST TILE SAYS "already". The console gates that arm on its
+        // last-tile flag (`DAT_002B839C`, set once in the walker just before the corner tile is
+        // judged): every earlier tile that is already this kind falls through to the ordinary
+        // answer instead. So a run drawn along path you have already laid shows ONE connect
+        // symbol, at its end, not a string of them -- which is what master saw and what the
+        // validator says, and I had it wrong in both places.
+        if (had == kind) return last ? Verdict.Already : Verdict.Lay;
         // ⭐ A queue reaching a path may only join on the run's LAST tile. That tile becomes the
         // one that is both, and it is the only join between a queue and a path network -- so the
         // ghost marks it before the press rather than leaving it to be discovered.

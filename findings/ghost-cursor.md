@@ -114,7 +114,12 @@ integer tile-height path, not floating-point. Whatever the PS2 does or does not 
    queue and a path network, and the ghost marks it before you commit.
 8. Laying a **path onto a queue** (kind 2 or 0xD over type 4): **5** when the queue end accepts it,
    else refused.
-9. Same kind as the tile already is → **6**.
+9. Same kind as the tile already is → **6, BUT ONLY ON THE RUN'S LAST TILE**. That arm is gated on
+   `DAT_002B839C`, which `FUN_001279C8` sets once, just before it judges the corner tile; every
+   earlier tile of the run falls through to the general branch and answers **0**. ⚠ An earlier
+   draft of this file said plainly "same kind → 6", and the ghost built on it drew a connect symbol
+   on every tile of a run laid along existing path. Master saw the string of them. The flag was
+   already written down in §3 — it was read and then not used.
 
 ## 6. What is NOT established
 
