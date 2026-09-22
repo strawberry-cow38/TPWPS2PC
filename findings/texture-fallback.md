@@ -242,3 +242,39 @@ best possible implementation would score before adopting the number.
 ⚠ And a counting note, because it nearly went out wrong: the first split was reported as 13/30. The
 grep behind it matched `[a-z0-9_]+` and four of the stems are `Brain_Glow`, `Mutant_Eye`,
 `PURPLE_BASE`, `d_POOL3`. The real split is **14/29**.
+
+## The ground tiles, and why HALLOW looks like it has none (2026-09-22)
+
+Prompted by a report from `cow tools` while laying the park floor: *"HALLOW has no `*_bas*` tile at
+all where JUNGLE/FANTASY have `jgr_bas2..6`."* True as stated, and misleading as a conclusion — it
+is the same resolver-scope case as the rest of this file. Every `*_bas*` stem on the disc:
+
+| stem | lives in |
+|---|---|
+| `jgr_bas1` | `DATA.WAD/Ultimate/Sharetex`, `FANTASY.WAD/sharetex`, `HALLOW.WAD/sharetex`, `JUNGLE.WAD/Sharetex`, `LOBBY.WAD/Textures` |
+| `jgr_bas2..6` | `DATA.WAD/Ultimate/Sharetex`, `FANTASY.WAD/terrain/textures`, `JUNGLE.WAD/terrain/textures` |
+| `hrk_bas1..7` | **`HALLOW.WAD/sharetex`** (`hrk_bas1` also in `DATA.WAD/Ultimate/Sharetex`, `LOBBY.WAD/Textures`) |
+| `hgr_bas2` | `DATA.WAD/Ultimate/Sharetex`, `HALLOW.WAD/sharetex`, `LOBBY.WAD/Textures` |
+| `sfl_bas1..6` | `SPACE.WAD/terrain/textures` (`sfl_bas2` also `SPACE.WAD/sharetex`, `LOBBY.WAD/Textures`) |
+| `bmp_bas3` | `SPACE.WAD/Rides/bumper/textures` — a bumper-car texture that merely matches the pattern |
+
+**HALLOW's ground set is `hrk_bas1..7` plus `hgr_bas2`, and it is in `sharetex`, not `terrain`.**
+Nothing is missing. A walk rooted at `/terrain/` finds ground for three worlds and none for the
+fourth, which looks exactly like absent art.
+
+Three traps in here, all of them about names rather than pixels:
+
+1. **The world prefix does not follow the world.** `FANTASY.WAD/terrain/textures` ships `jgr_bas2..6`
+   — *jungle's* tiles, under a jungle prefix, with no `fgr_*` anywhere. Choosing a tile set by
+   deriving a prefix from the world name works for JUNGLE, HALLOW and SPACE and silently picks
+   nothing for FANTASY.
+2. **The directory name mixes case too**, not just the files: `JUNGLE.WAD/Sharetex` against
+   `HALLOW.WAD/sharetex` against `DATA.WAD/Ultimate/Sharetex`. Case-folding only the leaf is not
+   enough; fold the whole path.
+3. **The filename case mixing is not a HALLOW quirk.** Extensions mix inside every world —
+   `JUNGLE.WAD/terrain` alone holds `jpa_ctr1.TGA` next to `jpa_cnr1.tga`, 28 of its 159 terrain
+   files being upper-case. What *is* HALLOW-specific is a leading capital on the **stem**:
+   `Jpa_icn1`, `Jpa_squ1` and 8 others, against 0 such in JUNGLE and SPACE.
+
+`game/AssetLibrary.cs` is already `StringComparer.OrdinalIgnoreCase` on every dictionary and every
+path comparison, so none of this reaches our resolver. It reaches anything written beside it.
