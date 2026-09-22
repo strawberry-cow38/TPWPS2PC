@@ -110,6 +110,9 @@ public partial class Viewer : Node3D
     PathTool.Kind _toolKind = PathTool.Kind.Path;
     /// <summary>Where the current run started, or -1 when no run is going.</summary>
     int _runX = -1, _runY = -1;
+    /// <summary>Where the path out of a just-placed ride's EXIT should start, held while its queue
+    /// is being run. ⚠ Cleared once it has been handed over, or the next ride inherits it.</summary>
+    (int X, int Y)? _pathFrom;
     /// <summary>A cell to use instead of the mouse, for captures. Null in normal use.</summary>
     (int X, int Y)? _cursorOverride;
     bool _pickChecked;
@@ -1028,7 +1031,8 @@ public partial class Viewer : Node3D
                    + "[ / ] nudge the gate  |  V weather  |  B buildable  |  F3 hide this panel\n"
                    + "RMB path tool (shift+RMB queue)  |  LMB press: start a run, again to lay\n"
                    + "O take it back  |  M straight/elbow segments  |  Esc close the tool\n"
-                   + "LMB or RMB opens the path tool (shift for a queue); LMB works it, RMB shuts it\n"
+                   + "Tab build menu  |  LMB or RMB opens the path tool; RMB shuts it or drops\n"
+                   + "what you hold  |  . turns it  |  shift stamps  |  queues come with the ride\n"
                    + "in the park the mouse buttons are the TOOL'S -- pan with the middle drag";
     }
 
@@ -1641,13 +1645,36 @@ public partial class Viewer : Node3D
         Status($"{kind} tool open -- click to start a run");
     }
 
+    /// <summary>Hand the exit's path over: open the path tool with a run already begun outside
+    /// the exit, the way the console does when a queue is finished.</summary>
+    void StartExitPath((int X, int Y) from)
+    {
+        _pathFrom = null;
+        if (_paths == null || !_paths.CanLay(from.X, from.Y))
+        {
+            Status("no room for a path at the exit");
+            return;
+        }
+        OpenTool(PathTool.Kind.Path);
+        _runX = from.X; _runY = from.Y;
+        _ghostAt = (-1, -1, -1, -1);
+        Status($"now the path out -- run it from ({from.X},{from.Y})");
+        GD.Print($"[build] exit path mode from ({from.X},{from.Y})");
+    }
+
     void CloseTool()
     {
+        // ⭐ Leaving the QUEUE is what starts the exit path, whether the queue joined something or
+        // was simply abandoned -- master's call, and the console's: the run finishing hands over,
+        // and giving up on it should not leave the ride half-connected with no prompt.
+        bool wasQueue = _toolOpen && _toolKind == PathTool.Kind.Queue;
+        var handOver = wasQueue ? _pathFrom : null;
         _toolOpen = false;
         _runX = _runY = -1;
         _ghostAt = (-1, -1, -1, -1);
         _ghostView?.Clear();
-        Status("click to open the path tool, shift+click for a queue");
+        Status("click to open the path tool");
+        if (handOver is { } from) StartExitPath(from);
     }
 
     /// <summary>The ghost, every frame the tool is open: from the run's start to the cursor, or
@@ -1699,6 +1726,10 @@ public partial class Viewer : Node3D
         ShowBuildCategory("Rides");
         for (int row = 0; row < _buildRows.Count; row++)
         {
+            // ⚠ Judge the row BEFORE arming it. Arming says so in the log, and arming all
+            // fifty-six to find one drowns the check in its own noise.
+            var candidate = DefinitionFor(_lib.Rides[_buildRows[row]].Model);
+            if (!HasQueue(candidate) || candidate.Shape == null) continue;
             ArmFromList(row);
             if (!_place.Active || _place.Turned.Width < 2) continue;
             var f = _park.Field;
@@ -1714,6 +1745,19 @@ public partial class Viewer : Node3D
             GD.Print($"[build] after the press the park holds {_park.Placed.Count} things"
                    + $" (was {before}) -- {(_park.Placed.Count > before ? "it went down" : "NOTHING WAS PLACED")}");
             // ⚠ And a control that must REFUSE: the same thing hung off the edge of the plot.
+            // ⭐ The hand-over. Placing a queued ride must leave the QUEUE tool open on the tile
+            // outside its entrance; closing that must open the PATH tool outside its exit.
+            GD.Print($"[build] after placing: tool {(_toolOpen ? _toolKind.ToString() : "shut")}"
+                   + $" run from ({_runX},{_runY})"
+                   + $" -- {(_toolOpen && _toolKind == PathTool.Kind.Queue ? "queue mode, as it must be" : "NO QUEUE MODE")}");
+            CloseTool();
+            GD.Print($"[build] after leaving the queue: tool {(_toolOpen ? _toolKind.ToString() : "shut")}"
+                   + $" run from ({_runX},{_runY})"
+                   + $" -- {(_toolOpen && _toolKind == PathTool.Kind.Path ? "exit path, as it must be" : "no exit path")}");
+            CloseTool();
+
+            // ⚠ AND A CONTROL THAT MUST REFUSE: the same thing hung off the edge of the plot.
+            ArmFromList(row);
             _cursorOverride = (0, 0);
             int now = _park.Placed.Count;
             PlaceHeld();
@@ -1768,6 +1812,25 @@ public partial class Viewer : Node3D
         ShowBuildCategory(_buildCategory != null && groups.Any(g => g.Key.Equals(_buildCategory, StringComparison.OrdinalIgnoreCase))
             ? _buildCategory : groups.FirstOrDefault()?.Key);
     }
+
+    /// <summary>Whether a thing takes a queue.
+    ///
+    /// ⚠⚠ NOT `Info.HasQueue`. That key exists but it is 0 or absent on EVERY .sam in jungle --
+    /// seven zeroes and seventy absences, not one 1 -- so reading it would have meant no ride ever
+    /// queues. It says something, but not this.
+    ///
+    /// ⭐ The rule is the PSX's: placing a ride lays kind 4, a QUEUE, at its entrance for ride
+    /// types 1, 3, 6 and 7, and kind 2, a path, for everything else. I cannot resolve those type
+    /// numbers yet -- `Info.RideTypeStringIndex` indexes a table of names I have not found -- so
+    /// the stand-in is DECLARING a ride type at all, which only rides and sideshows do (jungle:
+    /// values 1..16 on Rides, 19/21/22 on Sideshow, none on Features, Shops or Upgrades). It also
+    /// has to have an entrance for a queue to start at, which a bin does not.
+    ///
+    /// ⚠ So this is narrower than the game's rule in one direction and wider in another, and it
+    /// is a stand-in until that table is read, not a reading.</summary>
+    static bool HasQueue(RideDefinition def)
+        => def?.Int("Info.RideTypeStringIndex") != null && def.Shape != null
+           && Park.Footprint.From(def.Shape).EntryX >= 0;
 
     static bool IsTerrain(string path) => path.Contains("/terrain/", StringComparison.OrdinalIgnoreCase);
 
@@ -1874,9 +1937,31 @@ public partial class Viewer : Node3D
             return;
         }
         string was = _place.Display;
+        bool queued = HasQueue(_place.Def);
+        var entrance = _place.DoorFor(x, y);
+        var exitDoor = _place.ExitFor(x, y);
+        var queueFrom = entrance is { } e ? _place.OutsideOf(e, x, y) : null;
+        _pathFrom = exitDoor is { } xd ? _place.OutsideOf(xd, x, y) : null;
         _place.Clear();
         _ghostView?.Clear();
         Status($"put {was} down at ({cx},{cy})");
+        // ⭐⭐ THE CONSOLE'S ORDER: a ride with a queue drops you straight into the queue tool with
+        // a run already started outside its entrance, and when that run finishes the tool hands
+        // over to the PATH tool starting outside the exit. Read from the PSX build, where the
+        // queue tool's press does exactly that on a ride just placed.
+        if (queued && queueFrom is { } q)
+        {
+            OpenTool(PathTool.Kind.Queue);
+            _runX = q.X; _runY = q.Y;
+            _ghostAt = (-1, -1, -1, -1);
+            Status($"{was} is in -- run its queue from ({q.X},{q.Y})");
+            GD.Print($"[build] queue mode from ({q.X},{q.Y}); the exit path will start at "
+                   + $"{(_pathFrom is { } pf ? $"({pf.X},{pf.Y})" : "nowhere -- no exit on this shape")}");
+        }
+        else if (_pathFrom is { } only)
+        {
+            StartExitPath(only);
+        }
     }
 
     /// <summary>The model for the held thing, built the same way the viewer builds any other.</summary>
@@ -2883,7 +2968,7 @@ public partial class Viewer : Node3D
                             // such duty, which makes it the way to open the tool while pointing
                             // at something that will one day answer a click.
                             if (_toolOpen) { CloseTool(); GD.Print("[tool] closed"); }
-                            else OpenTool(Input.IsKeyPressed(Key.Shift) ? PathTool.Kind.Queue : PathTool.Kind.Path);
+                            else OpenTool(PathTool.Kind.Path);
                         }
                         else if (_place.Active) PlaceHeld();
                         else if (_toolOpen) PressTool();
@@ -2892,7 +2977,11 @@ public partial class Viewer : Node3D
                             GD.Print($"[tool] not opening: {busy} is under the cursor");
                             Status($"{busy} under the cursor");
                         }
-                        else OpenTool(Input.IsKeyPressed(Key.Shift) ? PathTool.Kind.Queue : PathTool.Kind.Path);
+                        // ⚠ ALWAYS A PATH. A queue is not something you lay wherever you like:
+                        // it belongs to a ride, it starts at that ride's entrance, and the game
+                        // puts you in it when you place one. Offering it on a modifier let you
+                        // build a queue attached to nothing.
+                        else OpenTool(PathTool.Kind.Path);
                     }
                 }
             }

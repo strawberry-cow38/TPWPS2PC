@@ -82,6 +82,28 @@ public sealed class Placement
         return (cx + Turned.ExitX, cy + Turned.ExitY);
     }
 
+    /// <summary>The tile just OUTSIDE a door -- where a queue begins and where a path from the
+    /// exit begins, which is what the console starts its runs on.
+    ///
+    /// ⚠ Found by stepping off the footprint, NOT from the compass letter the exit carries. That
+    /// letter is read -- N, S, E or W -- but what it means is not established: `b_drip` puts its N
+    /// beside the entrance on the last row while `acorn` puts an S on the FIRST row, which no
+    /// single reading of "faces north" fits. Stepping out of the shape needs no such reading.</summary>
+    public (int X, int Y)? OutsideOf((int X, int Y) door, int cursorX, int cursorY)
+    {
+        if (!Active) return null;
+        var (cx, cy) = CornerFor(cursorX, cursorY);
+        int fx = door.X - cx, fy = door.Y - cy;
+        foreach (var (dx, dy) in new[] { (0, 1), (0, -1), (1, 0), (-1, 0) })
+        {
+            int nx = fx + dx, ny = fy + dy;
+            bool inside = nx >= 0 && ny >= 0 && nx < Turned.Width && ny < Turned.Height
+                       && Turned.Cells[nx, ny];
+            if (!inside) return (cx + nx, cy + ny);
+        }
+        return null;
+    }
+
     /// <summary>Turn a footprint a quarter at a time. ⭐ The ENTRY turns with it -- a ride rotated
     /// with its door left where it was would have visitors walking into a wall.</summary>
     static Park.Footprint Rotate(Park.Footprint fp, int turns)
