@@ -66,10 +66,38 @@ quarter turns — which is a separate thing from the smooth yaw the eye uses.
 So the player can pull in to 22% of the PSX distance or out to 178% of it, and the PSX camera
 sits exactly at the middle of that range. The reset also zeroes both yaws.
 
-**A second axis, `0x2B73D0`**, moves ±`0x20` on two more buttons and is clamped
-`[-0x800, 0x3C0]`, default 0. ⚠ NOT NAMED: it is adjusted in mode 0, but the only read of it I
-have found is in mode 3's function (`0x1502B8`, and as a float there). Calling it "pitch"
-because a camera ought to have one is the kind of guess this project keeps having to withdraw.
+**⭐ And the zoom IS the pitch control.** The eye's height is pinned to the ground under it plus
+`0x39539C` no matter what the distance is — `0x395394` appears only in the x and z of the eye,
+never in its height. So changing the distance changes the ANGLE you look down at:
+
+| distance | | look-down angle, `atan(0xA10 / d)` |
+|---|---|---:|
+| `0x180` = 384 | zoomed right in | **81.5°**, nearly overhead |
+| `0x6E0` = 1760 | the default, and the PSX camera | **55.7°** |
+| `0xC3C` = 3132 | zoomed right out | **39.4°**, low and long |
+
+The PSX camera is fixed at 55.7° (`atan(0xA10 / 0x6E0)`); the PS2 camera sweeps 39° to 82° about
+it. Master said "i believe it is the pitch" and that is right about the camera — it is the
+DISTANCE knob that tilts it, as a consequence of the height being pinned, not a pitch angle
+anyone stores.
+
+**The second axis, `0x2B73D0`**, moves ±`0x20` on its own two buttons, clamped `[-0x800, 0x3C0]`,
+default 0, and it is **not** a pitch. Read at the tail of `0x14F820`:
+
+    dir   = normalise(lookTarget - eye)          // 0x1AE7A8 is a normalise, 0x1AE830 a cross
+    eye  += dir * DAT_002B73D0
+
+It scales the UNIT VIEW DIRECTION and adds it to the eye, so it slides the camera along its own
+sight line and leaves the direction — and therefore the pitch — exactly as it was. A dolly, in
+world units, from 2048 back to 960 forward. ⚠ It can push the eye below the ground-plus-`0xA10`
+floor the easing above works so hard to hold.
+
+## A detail worth keeping
+
+The up vector is not straight up. After `up' = normalise(cross(dir, right))` the code adds the
+frame's focus-chase velocity divided by **a million** and re-normalises, so the camera leans very
+slightly into a pan. It is small enough to be felt rather than seen, and it is the sort of thing
+that is invisible until it is missing.
 
 ## The script interface
 
