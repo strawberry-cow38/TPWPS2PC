@@ -1058,9 +1058,20 @@ public partial class Viewer : Node3D
         // control -- if the authored position is the real one, those two must land correctly with
         // nothing moved at all.
         const float AuthoredX = 48f;
+        // ⚠ AND THE MODELS ARE AUTHORED FORWARD OF WHERE THEY STAND. Master, having walked up to
+        // them: "all gates are too far forward (towards the road)". Fantasy's gatebase01 pad says
+        // by how much -- the pad is centred at z -21.00 and Fantasy's gate is authored centred at
+        // z -18.71, so the authoring sits 2.29 toward the road of the pad it belongs on. Its front
+        // edge agrees to within a hundredth (-19.00 against -16.70 + 2.30), because that gate is
+        // exactly as deep as the pad.
+        //
+        // ⚠ IT IS STILL ONE PARK'S WORD. Fantasy is the only world that ships a pad, so where a
+        // pad exists its own z is used outright and elsewhere this offset stands in for it.
+        const float AuthoredZBias = -2.29f;
         if (!TerrainBounds("ticket_booths", out var booths))
         { GD.PrintErr("[gate] no ticket_booths -- cannot find this park's entrance axis"); return; }
         float shift = booths.Position.X + booths.Size.X * 0.5f - AuthoredX;
+        bool hasPad = TerrainBounds("gatebase01", out var pad);
 
         try
         {
@@ -1075,11 +1086,14 @@ public partial class Viewer : Node3D
             // ⚠ Seat it on the pad by its OWN base, not by its centre: the arch is tall and
             // centring it buries half of it.
             var (lo, hi) = Park.DrawnBounds(_gate.Root, inParent: true);
-            _gate.Root.Position += new Vector3(shift, 0f, 0f);
+            float dz = hasPad
+                ? pad.Position.Z + pad.Size.Z * 0.5f - (lo.Z + hi.Z) * 0.5f
+                : AuthoredZBias;
+            _gate.Root.Position += new Vector3(shift, 0f, dz);
             _gate.Root.Visible = _mode == Mode.Park;
             GD.Print($"[gate] {ride.Name}: authored x {lo.X:F2}..{hi.X:F2}  y {lo.Y:F2}..{hi.Y:F2}  "
-                   + $"z {lo.Z:F2}..{hi.Z:F2}; shifted {shift:+0.0;-0.0;0} in x onto this park's "
-                   + $"entrance");
+                   + $"z {lo.Z:F2}..{hi.Z:F2}; shifted {shift:+0.0;-0.0;0} x, {dz:+0.00;-0.00;0} z "
+                   + (hasPad ? "onto its own gatebase01 pad" : "by the offset Fantasy's pad states"));
         }
         catch (Exception ex) { GD.PrintErr($"[gate] {ride.Model.Path}: {ex.Message}"); }
     }
@@ -1157,8 +1171,11 @@ public partial class Viewer : Node3D
         float c = Mathf.Cos(a * Mathf.Tau / GameCamera.TurnUnits);
         int fwd = (Input.IsKeyPressed(Key.W) ? 1 : 0) - (Input.IsKeyPressed(Key.S) ? 1 : 0);
         int side = (Input.IsKeyPressed(Key.D) ? 1 : 0) - (Input.IsKeyPressed(Key.A) ? 1 : 0);
-        _game.CursorX += (int)((fwd * s + side * c) * pan);
-        _game.CursorZ += (int)((fwd * c - side * s) * pan);
+        // ⚠ The side term is NEGATED against the forward one. Taking right as (cos, -sin) of the
+        // same angle reads correct and drives A and D the wrong way round -- master hit it in the
+        // first minute. The camera looks along +(sin, cos), so its right is -(cos, -sin).
+        _game.CursorX += (int)((fwd * s - side * c) * pan);
+        _game.CursorZ += (int)((fwd * c + side * s) * pan);
         if (Input.IsKeyPressed(Key.R)) _game.Zoom(-1);
         if (Input.IsKeyPressed(Key.F)) _game.Zoom(1);
         if (Input.IsKeyPressed(Key.Z)) _game.Push(-1);
