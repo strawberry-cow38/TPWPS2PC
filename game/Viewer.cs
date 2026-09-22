@@ -669,8 +669,8 @@ public partial class Viewer : Node3D
                     {
                         var bx = mi.GetAabb();
                         var a = t * bx.Position; var b = t * (bx.Position + bx.Size);
-                        GD.Print($"[mesh] {n.Name,-16} X {Math.Min(a.X, b.X):8.2f}..{Math.Max(a.X, b.X):<8.2f} "
-                               + $"Z {Math.Min(a.Z, b.Z):8.2f}..{Math.Max(a.Z, b.Z):<8.2f}");
+                        GD.Print($"[mesh] {shown - 1,3}  X {Math.Min(a.X, b.X),9:F2} ..{Math.Max(a.X, b.X),9:F2}"
+                               + $"   Z {Math.Min(a.Z, b.Z),9:F2} ..{Math.Max(a.Z, b.Z),9:F2}");
                     }
                     foreach (var c in n.GetChildren()) Dump(c, t);
                 }
