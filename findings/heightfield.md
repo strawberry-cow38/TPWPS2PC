@@ -317,3 +317,63 @@ bytes is not.** Nor is `byte1`, which `cow tools` also left open.
 No emulator is needed to get the terrain. The savestate confirmed the runtime side and was worth
 doing — it is what pointed at `0x2ea83c`, one word off the global I had handed over — but the port
 can read all eight parks' heights straight off the disc with `m3d2` plus `+0x44`.
+
+## The cell encoding, from the engine's own accessor
+
+`0x166100` is the function that reads and repaints cells. It takes the same struct — `lw $t3,
+0x44($a0)` — so it is unambiguously about this data, and it settles three things by mask rather
+than by inference.
+
+**Indexing is row-major, two bytes per cell.**
+
+```
+mult  $ac2, $t5, $v1        z * NX
+addu  $a2,  $v0, $t6        + x
+sll   $a2,  $a2, 1          * 2
+lw    $a0,  0x24($t3)       + cells base
+```
+
+so `offset = (z * NX + x) * 2`, with the bounds checks right above it comparing `x` against
+`[+0x0c]` and `z` against `[+0x10]`. No guessing required.
+
+**`byte0`'s low two bits are the height; bits 2–5 are not.** The engine's own read-modify-write is:
+
+```
+andi  $v0, $v0, 0xc3        keep 0x80, 0x40, 0x02, 0x01 -- CLEAR bits 2..5
+andi  $v0, $v0, 0xfe        clear bit 0x01
+ori   $v0, $v0, 0x80        set   0x80
+ori   $v0, $v0, 0x81        set   0x80 and 0x01
+```
+
+`0xC3` is `11000011`. **The four bits of `0x3C` are wiped and repainted by the engine**, which is
+exactly why masking with `0x3F` produced those wild per-world histograms and why JUNGLE — where they
+happen to be clear — looked like a clean 0/1/2. Measured on the disc, `byte0 & 0x03` is `{0,1,2}` in
+seven parks and `{0,1,2,3}` in FANTASY `terrain_1`. `0x80` is a flag the engine sets in three
+separate places; `0x40` survives the mask and is unexplained.
+
+**`byte1` is written from a small table**, not read as one:
+
+```
+lw    $v1, 0x2c($t3)        table base
+addu  $v1, $t0, $v1
+lbu   $v0, -1($v1)          table[arg - 1]
+addu  $v0, $v0, $t1         + arg
+sb    $v0, 1($a0)           -> byte1
+```
+
+and `lbu $v0, 0x28($t3)` bounds that argument, so `+0x28` is the table's count. On disc `+0x28` is
+**2** in all eight files and `+0x2c` points at a 2-byte array that ends **exactly at EOF** in all
+eight — a clean structural check that the pointer is read right. `byte1`'s own meaning stays open;
+its distinct values per park are small sets (6–8 values, e.g. JUNGLE t1 `{0,24,55,56,57,58,59,60}`).
+
+### Status
+
+| | |
+|---|---|
+| location, extent, element size | **proven** — `model+0x44`, `NX`/`NZ` at `+0x0c`/`+0x10`, 2 bytes per cell |
+| indexing | **proven** — row-major, `(z*NX + x) * 2` |
+| height | **proven** — `byte0 & 0x03`, confirmed by the engine's `andi 0xc3` and by the disc histograms |
+| `byte0 & 0x3C` | engine-maintained, wiped and repainted; meaning open |
+| `byte0 & 0x80` | set by the engine in three places; meaning open |
+| `byte0 & 0x40` | survives the mask; unexplained |
+| `byte1` | written from the `+0x2c` table; meaning open |
