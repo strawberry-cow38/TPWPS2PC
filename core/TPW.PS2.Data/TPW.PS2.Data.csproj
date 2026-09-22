@@ -4,8 +4,8 @@
     <Nullable>disable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>TPW.PS2.Data</AssemblyName>
-    <!-- Readers only. Nothing here opens a window or knows about Godot, so the format work stays
-         testable without either. -->
+    <!-- Managed readers and script runtime. Nothing here opens a window or knows about Godot,
+         so data and behaviour stay testable without either. -->
   </PropertyGroup>
 
   <ItemGroup>

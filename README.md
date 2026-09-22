@@ -176,6 +176,14 @@ channels that matter are done.
 
 ## Running it
 
+The viewer's **Run ride scripts** button executes Crazy Ape, Spider, Bugs TV, Phantom and
+Orbiter from their compiled disc scripts and drives their APS animations through a two-guest
+cycle. [Runtime evidence, audit commands and explicit limits](findings/rse-vm.md).
+
+```sh
+dotnet run --project tools/TPW.PS2.RseAudit -- /path/to/disc.bin
+```
+
 **[Download the launcher](https://github.com/strawberry-cow38/TPWPS2PC/releases/tag/launcher)**, run
 it, point it at your own Theme Park World (PS2) disc image, and press **Install and play**. It
 clones this repository, builds the viewer and opens it. After that the same button reads **Update
