@@ -110,23 +110,32 @@ public sealed partial class Model
         /// across all eight parks.</summary>
         public bool Drawn(int x, int y) => (Cells[(y * Width + x) * 2] & 1) == 0;
 
-        /// <summary>⚠⚠ WITHDRAWN. There was a `Buildable(x, y)` here reading `byte0` bit 1, and
-        /// master called the map it drew "total nonsense" on sight. They were right, and the
-        /// reason is written three paragraphs above this one in the same file:
+        /// <summary>⭐⭐ Can anything be built here? IT IS THE SAME BIT AS <see cref="Drawn"/>,
+        /// and this is read out of the loader rather than guessed.
         ///
-        /// **BITS 0-3 OF `byte0` ARE ONE INDEX, NOT EIGHT FLAGS.** `0x222230` splits the cell into
-        /// bits 0-3, bits 4-7 and byte1 and scales each into a float array. Testing "bit 1" of an
-        /// index selects the values 2, 3, 6, 7, 10, 11, 14 and 15 -- an arbitrary subset of a
-        /// lookup, which is exactly why the overlay looked structured and meant nothing. It is the
-        /// same mistake as the withdrawn "`0x40` is a raised flag", which was the bits 4-7 nibble
-        /// holding the value 4. <see cref="Drawn"/> survives only because bit 0 is tested as a bit
-        /// by the engine itself, at `0x222FE8`, as `(byte0 ^ 1) &amp; 1`.
+        /// The PS2 builds its 8-byte runtime tile map from THIS grid at park load — there is no
+        /// map resource anywhere on the disc; I checked every non-asset file in both the world
+        /// archive and DATA.WAD. The fill loop is at `0x14E700`: it walks the authored cells two
+        /// bytes at a time and writes each tile, and the two branches that matter are
         ///
-        /// ⭐ What IS established, and is not this: the RUNTIME tile is 8 bytes (`0x14E138`), its
-        /// flags live at `+7`, and `+7 &amp; 0x02` is a real test at `0x191718`. But that byte is
-        /// runtime state -- `0x18E740` zeroes it, `0x18E6A4` ORs bits in, `0x18E6D8` clears them --
-        /// so it is BUILT during play, not read out of the authored cell. The authored map is not
-        /// its source and this file cannot answer the question yet.</summary>
+        ///     andi $v1, $t0, 0x40   → if set, tile[+1] (HEIGHT) = $s1
+        ///     andi $v0, $t0, 0x01   → if set, tile[+0] = $t6 and tile[+7] (FLAGS) = $t5
+        ///
+        /// with the constants loaded just above the loop: `$s1 = 2`, `$t6 = 1`, and
+        /// **`$t5 = 35 = 0x23`** — bits 0, 1 and 5. Bit 1 of that flags byte is the one
+        /// `0x18E278` tests to refuse a placement, and the PSX port documents independently as
+        /// "nothing may be built here".
+        ///
+        /// Every other cell gets flags 0. So a cell is unbuildable **exactly when** its authored
+        /// `byte0` bit 0 is set, which is the same bit that says the terrain draws no ground there.
+        /// One bit does both jobs, which is why looking for a separate no-build bit found nothing:
+        /// bit 1 of the AUTHORED byte was never it — bit 1 of the RUNTIME flags is, and bit 0 of
+        /// the authored byte is what puts it there.
+        ///
+        /// ⭐ A free check fell out of the same loop: `byte0 & 0x40` sets the tile's height byte to
+        /// 2, and the grid header's own step float at `+0x18` is 2.0. The raised-tile reading and
+        /// the step height reach the same number by different routes.</summary>
+        public bool Buildable(int x, int y) => Drawn(x, y);
         public byte Raw(int x, int y) => Cells[(y * Width + x) * 2];
         public byte Second(int x, int y) => Cells[(y * Width + x) * 2 + 1];
     }

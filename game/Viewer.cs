@@ -1156,20 +1156,10 @@ public partial class Viewer : Node3D
         var f = _park?.Field;
         if (f == null || _holeSize.X <= 1f) return;
 
-        // ⚠⚠ NO SOURCE YET, so nothing is drawn. The `byte0` bit 1 reading this used to run on
-        // is WITHDRAWN (see Model.HeightField): bits 0-3 are one INDEX, not eight flags, so
-        // testing a bit of it picked an arbitrary subset of a lookup -- structured-looking and
-        // meaningless, which is what master saw straight away. The runtime flags byte at tile +7
-        // IS real and IS tested as `& 0x02`, but it is built during play rather than read from the
-        // authored map, so this file cannot supply it.
-        //
-        // The machinery below is kept, wired to a predicate, for whoever finds the real flag.
-        Func<int, int, bool> unbuildable = null;
-        if (unbuildable == null)
-        {
-            GD.Print("[build] no buildability source -- the byte0 bit 1 reading is WITHDRAWN");
-            return;
-        }
+        // ⭐ The no-build cells are exactly the cells the terrain draws no ground on: the loader
+        // at 0x14E700 writes flags 0x23 (NoGround | Unbuildable | 0x20) for a cell whose authored
+        // byte0 bit 0 is set, and 0 for every other. See Model.HeightField.Buildable.
+        Func<int, int, bool> unbuildable = (x, y) => !f.Buildable(x, y);
 
         var st = new SurfaceTool();
         st.Begin(Mesh.PrimitiveType.Triangles);
@@ -1177,7 +1167,6 @@ public partial class Viewer : Node3D
         for (int y = 0; y < f.Height; y++)
             for (int x = 0; x < f.Width; x++)
             {
-                if (!f.Drawn(x, y)) continue;
                 if (!unbuildable(x, y)) { yes++; continue; }
                 no++;
                 var c = _park.CellCentre(x, y) + new Vector3(0f, Park.CellSize * 0.04f, 0f);
