@@ -881,15 +881,21 @@ public partial class Viewer : Node3D
         if (material == null || _texOn?.ButtonPressed == false) return (null, false);
         var key = ownerPath + "|" + material;
         if (_texCache.TryGetValue(key, out var t)) return t;
-        var tga = _lib.TextureNear(ownerPath, material);
         (ImageTexture, bool) made = (null, false);
-        if (tga != null)
+        try
         {
-            var img = Image.CreateFromData(tga.Width, tga.Height, false, Image.Format.Rgba8, tga.Pixels);
-            img.GenerateMipmaps();
-            made = (ImageTexture.CreateFromImage(img),
-                    tga.PartialAlpha * 100 > tga.Width * tga.Height);
+            var texture = _lib.TextureNear(ownerPath, material);
+            if (texture != null)
+            {
+                var img = Image.CreateFromData(texture.Width, texture.Height, false, Image.Format.Rgba8, texture.Pixels);
+                img.GenerateMipmaps();
+                made = (ImageTexture.CreateFromImage(img),
+                        texture.PartialAlpha * 100 > texture.Width * texture.Height);
+                GD.Print($"[tex] {_lib.WadName}{ownerPath} '{material}' -> {texture.SourceWad}{texture.SourcePath} ({texture.Format})");
+            }
+            else GD.PrintErr($"[tex] UNRESOLVED {_lib.WadName}{ownerPath} '{material}'");
         }
+        catch (Exception ex) { GD.PrintErr($"[tex] DECODE THREW: {ex.Message}"); }
         _texCache[key] = made;
         return made;
     }

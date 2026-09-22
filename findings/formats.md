@@ -1089,6 +1089,12 @@ stem first, then by the folder's single `.aps`.
 
 ## ⚠⚠ THE `.tga` DOES NOT ALWAYS EXIST — 473 MATERIALS NEED SHPS (2026-09-21)
 
+**Update 2026-09-22:** this historical availability survey did not use the production resolver.
+Its claim below that the lobby is almost entirely SSH-only was a lookup gap: the viewer skipped
+the archive root, where `/Textures/` is indexed. The real resolver audit now finds **447 of 448
+previously unresolved LOBBY references** through TGA after visiting that root. See
+[the complete material audit](texture-fallback.md); the full-disc zero-unresolved gate still fails.
+
 This file has claimed since the model format was cracked that "a `.tga` of the same stem sits beside
 each `.ssh`, so SHPS never needs decoding". **That was checked on JUNGLE.WAD and generalised.**
 Counted over every model on the disc:

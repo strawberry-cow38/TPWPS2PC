@@ -52,6 +52,20 @@ dotnet run --project tools/TPW.PS2.SshScore -c Release -- /path/to/pairs
 The decoder and scorer run without FFmpeg. See [managed IPU validation](findings/ipu.md) for
 the differential harness, synthetic checks, exact populations, and source-image tolerances.
 
+Audit every MPS material through the viewer's actual `AssetLibrary.TextureNear` resolver:
+
+```sh
+dotnet run --project tools/TPW.PS2.TextureAudit -c Release -- /path/to/disc.bin
+# Include each successful resolution's source WAD, entry path and format:
+dotnet run --project tools/TPW.PS2.TextureAudit -c Release -- /path/to/disc.bin --list
+```
+
+This requires .NET 8 and the owner's disc, without Godot or extracted fixtures. It checks the
+6,007-reference population and exits nonzero on missing entries, decode errors or unreadable
+archives/models. Every failed material is printed with its WAD, model and material slot.
+The current measured result is **5,964 of 6,007 resolved; 43 of 6,007 unresolved**, so the gate
+currently **fails**. See [resolver results and all unresolved names](findings/texture-fallback.md).
+
 The disc tools below read a Mode 2/2352 track directly. Nothing copies a disc image.
 
 | | |
