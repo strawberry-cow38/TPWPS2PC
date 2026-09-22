@@ -137,7 +137,16 @@ public sealed class Park
     /// that have geometry). The node named `heightfield` has NO geometry -- zero verts, zero faces
     /// -- and still carries one, and that AABB is the park:
     ///
-    ///   JUNGLE 64 x 76   FANTASY 80 x 60   HALLOW 96 x 52   SPACE 96 x 54, Y 0..2.01 in all four.
+    ///   JUNGLE 64 x 76   FANTASY 80 x 60   HALLOW 96 x 52   SPACE 96 x 54   (terrain_1)
+    ///
+    /// ⚠ Y IS NOT AN ELEVATION ENVELOPE. Its two floats are bit-identical in all eight terrain
+    /// files across all four worlds (`bcac6046` / `41a07d03`) -- a hardcoded two-cell ceiling
+    /// carrying no per-world information. Nothing about how tall jungle's volcano is survives in
+    /// it, and I briefly reported otherwise. (tinyclaw)
+    ///
+    /// ⚠ terrain_1 and terrain_2 are DIFFERENT PARKS everywhere except JUNGLE: FANTASY 80x60 vs
+    /// 76x62, HALLOW 96x52 vs 88x56, SPACE 96x54 vs 72x62. Only jungle's two agree, so "the plot
+    /// size" is a property of the terrain file, never of the world.
     ///
     /// Clean integers at one cell per unit, and jungle's matches its hoarding footprint to a
     /// decimal. Its node transform places it too: SPACE's carries a translation of (0,0,-100).
@@ -156,8 +165,17 @@ public sealed class Park
             new System.Numerics.Vector3(hf.BoundsMin.X, hf.BoundsMin.Y, hf.BoundsMin.Z), w);
         var hi = System.Numerics.Vector3.Transform(
             new System.Numerics.Vector3(hf.BoundsMax.X, hf.BoundsMax.Y, hf.BoundsMax.Z), w);
-        return (new Vector3(Math.Min(lo.X, hi.X), Math.Min(lo.Y, hi.Y), Math.Min(lo.Z, hi.Z)),
-                new Vector3(Math.Max(lo.X, hi.X), Math.Max(lo.Y, hi.Y), Math.Max(lo.Z, hi.Z)));
+        var min = new Vector3(Math.Min(lo.X, hi.X), Math.Min(lo.Y, hi.Y), Math.Min(lo.Z, hi.Z));
+        var max = new Vector3(Math.Max(lo.X, hi.X), Math.Max(lo.Y, hi.Y), Math.Max(lo.Z, hi.Z));
+
+        // ⭐ DIVIDE THE EXPORTER PAD OUT, do not round it off. The stored box is inflated by a
+        // fixed ratio -- min is -0.001x the true extent and max is 1.003x -- so (max-min)/1.004 is
+        // the real size and it comes out an exact integer on every axis of every world: 640, 760,
+        // 800, 600, 960, 520, 960, 540. Rounding instead happens to work on the maxima and breaks
+        // on the minima, where -0.064 floors to -1 rather than 0. (Same inflation as EMBANKMENT
+        // storing ±200.30 where its verts give ±199.50. Thanks tinyclaw.)
+        var size = (max - min) / 1.004f;
+        return (min + size * 0.001f, min + size * 0.001f + size);
     }
 
     public static (Vector2 Origin, Vector2 Size, float FloorY, bool[,] Cells) FindHole(
