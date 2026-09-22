@@ -140,6 +140,28 @@ than a quirk.
 ⚠ Not read on PS2. The PS2 validator's two joining answers (5 and 6) are read, and so is the marker
 they share, but the code that closes the tool after a press has not been followed here.
 
+### 5.2 The tool's sounds
+
+`/AUDIO/GLOBAL/UIHD.SDT` holds 26 sounds, and three of the four the path tool needs are named for
+the job in their own filename. A scan of **all 41 sound banks on the disc** finds `connectPath` and
+`rj_laypath_2` exactly once each, in this bank, so there is no second candidate:
+
+| event | sound | length | basis |
+|---|---|---|---|
+| a run starts | `Select3.vag` (12) | 43ms | ⚠ **inferred** — the only selection tick in the bank |
+| a run is laid | `rj_laypath_2.vag` (11) | 101ms | named |
+| the run connects | `connectPath.vag` (6) | 180ms | named |
+| refused | `blnl_error1.vag` (3) | 325ms | named |
+| taking it back | `tearup.vag` (13) | 192ms | ⚠ **a choice** — the bank's demolish sound |
+
+⭐ **The connect sound is layered ON the lay sound, not instead of it** — the PSX report has them
+on separate voices so neither cuts the other, because connecting is the success case of laying a
+run rather than a different event. Each cue therefore gets its own player.
+
+⚠ The PS2 code that plays them has not been located; the mapping is the names, the lengths and the
+PSX's four events. An index is checked against the NAME at that index when the bank loads, so a
+different disc build says the cue is missing instead of playing the wrong sound.
+
 ## 6. What is NOT established
 
 - **`m_nocash`, `m_nopath`, `m_erase`, `m_break`, `m_cross` are not in the verdict table.** They are

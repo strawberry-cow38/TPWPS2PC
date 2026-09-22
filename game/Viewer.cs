@@ -86,6 +86,7 @@ public partial class Viewer : Node3D
     Node3D _buildable;
     /// <summary>The path tool, the console tables behind it, and the terrain model it works on.</summary>
     PathTool _paths;
+    ToolSounds _toolSfx;
     PathGhost _ghost;
     GhostMarkers _ghostView;
     /// <summary>Whether the path tool is open. ⭐ On the console a build tool is a MODE you open
@@ -581,6 +582,7 @@ public partial class Viewer : Node3D
             _paths.Undo();
             _runX = _runY = -1;
             RebuildFloor();
+            _toolSfx?.Play(ToolSounds.Cue.Undo);
             GD.Print("[path] taken back");
         }
         else if (k.Keycode is Key.Bracketleft or Key.Bracketright && _mode == Mode.Park)
@@ -1278,6 +1280,9 @@ public partial class Viewer : Node3D
         if (_pieces == null) return;
         _paths = new PathTool(_terrainModel, _pieces);
         _ghost = new PathGhost(_paths);
+        // ⚠ Once, not per park: the UI bank is the same file whichever park is up, and decoding it
+        // again on every load would be four decodes for nothing.
+        if (_toolSfx == null) { _toolSfx = new ToolSounds(_lib, this); GD.Print($"[sfx] {_toolSfx.Report}"); }
         if (_wantSegments != null)
             _ghost.Shape = _wantSegments.StartsWith("elbow", StringComparison.OrdinalIgnoreCase)
                 ? PathGhost.Segment.Elbow : PathGhost.Segment.Straight;
@@ -1459,6 +1464,9 @@ public partial class Viewer : Node3D
         _toolKind = kind;
         _runX = _runY = -1;
         GD.Print($"[tool] {kind} open -- press to start a run, press again to lay it");
+        // The PSX tool plays its first-click sound when it OPENS as well, because opening a queue
+        // starts a run at the ride's door -- so opening and starting share a cue there too.
+        _toolSfx?.Play(ToolSounds.Cue.Start);
         Status($"{kind} tool open -- click to start a run");
     }
 
@@ -1509,6 +1517,7 @@ public partial class Viewer : Node3D
         {
             GD.Print("[path] the cursor is off the plot");
             Status("that click was not over the park");
+            _toolSfx?.Play(ToolSounds.Cue.Refused);
             return;
         }
         if (_runX < 0)
@@ -1517,6 +1526,7 @@ public partial class Viewer : Node3D
             _ghostAt = (-1, -1, -1, -1);
             GD.Print($"[path] run starts at ({x},{y})");
             Status($"run starts at ({x},{y}) -- click again to lay it");
+            _toolSfx?.Play(ToolSounds.Cue.Start);
             return;
         }
         _ghost.Set(_runX, _runY, x, y, _toolKind);
@@ -1527,6 +1537,7 @@ public partial class Viewer : Node3D
             var bad = _ghost.Tiles.FirstOrDefault(t => t.Verdict == PathGhost.Verdict.Refused);
             GD.Print($"[path] refused at ({bad.X},{bad.Y}): {_paths.Describe(bad.X, bad.Y)}");
             Status($"blocked at ({bad.X},{bad.Y}) -- nothing laid");
+            _toolSfx?.Play(ToolSounds.Cue.Refused);
             return;
         }
         // ⭐ Does this run END ON something it joins? Read BEFORE laying, while the verdicts
@@ -1545,6 +1556,11 @@ public partial class Viewer : Node3D
             GD.Print($"[path] laid {laid} of {_ghost.Tiles.Count}; joined at ({last.X},{last.Y}) "
                    + $"-- tool closed; {_paths.Laid} total");
             Status($"laid {laid}, joined at ({last.X},{last.Y}) -- tool closed");
+            // ⭐ BOTH. The connect sound is layered ON TOP of the lay sound in the game, on its own
+            // voice, so neither cuts the other -- it is the success case of laying a run, not a
+            // replacement for it.
+            _toolSfx?.Play(ToolSounds.Cue.Lay);
+            _toolSfx?.Play(ToolSounds.Cue.Connect);
             return;
         }
         // ⚠ From the SEGMENT'S END, not from the cursor. The cursor is snapped to one axis, so
@@ -1554,6 +1570,7 @@ public partial class Viewer : Node3D
         _ghostAt = (-1, -1, -1, -1);
         GD.Print($"[path] laid {laid} of {_ghost.Tiles.Count}; the run goes on from ({_runX},{_runY}); {_paths.Laid} total");
         Status($"laid {laid} -- the run goes on from ({_runX},{_runY})");
+        _toolSfx?.Play(ToolSounds.Cue.Lay);
     }
 
     void BuildBuildableOverlay()
