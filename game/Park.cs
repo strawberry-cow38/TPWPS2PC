@@ -842,16 +842,20 @@ public sealed class Park
         model.Position += new Vector3(
             Origin.X + (x + fp.Width * 0.5f) * CellSize - centre.X,
             BaseY - min.Y,
-            // ⚠⚠ MERGE NOTE, visitor-ai. That branch changed this same line the other way --
-            // `+ centre.Z` to `- centre.Z` -- for a holder whose children the live RSSE presenter
-            // replaces and which may be UNMIRRORED. Mine is kept because main's caller passes the
-            // mirrored AnimatedModel root and the row reversal below it was confirmed visually by
-            // master (the wooden bridge landing on the road). ⚠ The presenter's unmirrored case is
-            // therefore UNTESTED against this line and is tinyclaw's to re-check.
-            // ⚠ PLUS, not minus. The model root's Scale.Z is -1, so a local z maps to world -z:
-            // the offset that lands the model's own centre on the plot has to be added back. X and
-            // Y are unscaled and stay as they are.
-            Origin.Y + (Height - y - fp.Height * 0.5f) * CellSize + centre.Z);
+            // ⚠⚠ MINUS, because `centre` is measured IN THE PARENT'S SPACE. `DrawnBounds(model,
+            // inParent: true)` starts its walk from `model.Transform`, so the bounds already include
+            // the model's own position AND its Scale(1,1,-1). Adding a delta to `Position` shifts
+            // parent-space bounds by exactly that delta whatever the scale, so the delta that lands
+            // the drawn centre on the target is `target - centre` on every axis -- mirrored or not.
+            //
+            // History, because this line has flipped three times: main had `DrawnBounds(model)`
+            // (local space, excludes the mirror) with `+ centre.Z`, which was right for that frame.
+            // visitor-ai had `inParent: true` with `- centre.Z`, also right for ITS frame. The merge
+            // took visitor-ai's frame and main's sign -- two halves that are each correct and wrong
+            // together. Measured on SPACE t1 (Orbiter, model centre.Z = 1.5002): with `+`, the drawn
+            // centre landed 3.0005 off target -- exactly TWICE the centre, for every ride, in the
+            // ordinary viewer too. With `-` it lands on the target exactly.
+            Origin.Y + (Height - y - fp.Height * 0.5f) * CellSize - centre.Z);
         return true;
     }
 
