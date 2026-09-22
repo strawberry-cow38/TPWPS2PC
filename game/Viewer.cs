@@ -86,9 +86,26 @@ public partial class Viewer : Node3D
     Node3D _buildable;
     /// <summary>The path tool, the console tables behind it, and the terrain model it works on.</summary>
     PathTool _paths;
+    PathGhost _ghost;
+    GhostMarkers _ghostView;
+    /// <summary>Whether the path tool is open. ⭐ On the console a build tool is a MODE you open
+    /// and close, not a key you tap: while it is open the ghost follows the cursor and a press
+    /// lays a run.</summary>
+    bool _toolOpen;
+    PathTool.Kind _toolKind = PathTool.Kind.Path;
+    /// <summary>Where the current run started, or -1 when no run is going.</summary>
+    int _runX = -1, _runY = -1;
+    /// <summary>The run the ghost was last built for, so it is not rebuilt every frame.</summary>
+    (int Sx, int Sy, int X, int Y) _ghostAt = (-1, -1, -1, -1);
+    /// <summary>Where a mouse button went down, to tell a CLICK from a DRAG. ⚠ Both buttons
+    /// already drive the camera: right drags pan and left drags orbit, so acting on the press
+    /// would open the tool every time the view is moved.</summary>
+    Vector2 _downAt;
+    MouseButton _downButton = MouseButton.None;
     PathPieces _pieces;
     Model _terrainModel;
     bool _pathTest;
+    bool _ghostTest;
     string _wantCam;
     /// <summary>Nudge on the gate's z, in units, starting at master's own correction.
     ///
@@ -162,6 +179,7 @@ public partial class Viewer : Node3D
             else if (a.StartsWith("--map=")) _wantMap = a["--map=".Length..];
             else if (a.StartsWith("--mode=")) _wantMode = a["--mode=".Length..];
             else if (a == "--path-test") _pathTest = true;
+            else if (a == "--ghost-test") _ghostTest = true;
             else if (a.StartsWith("--cam=")) _wantCam = a["--cam=".Length..];
             else if (a.StartsWith("--ride=")) _wantRide = a["--ride=".Length..];
             else if (a.StartsWith("--anim=")) _wantAnim = a["--anim=".Length..];
@@ -315,6 +333,8 @@ public partial class Viewer : Node3D
         _sky = new WorldEnvironment { Environment = _flatEnv };
         AddChild(_sky);
         AddChild(_weather.Root);
+        _ghostView = new GhostMarkers(path => _lib?.ReadGeneric(path));
+        AddChild(_ghostView.Root);
 
         // ⚠⚠ A full-screen Control swallows mouse events before _UnhandledInput ever sees them.
         // Orbit appeared to work only because the left button is also used by the widgets; a
@@ -507,10 +527,15 @@ public partial class Viewer : Node3D
         // session laid. The cursor is the game camera's own, the one WASD already drives, because
         // on the console that IS the build cursor.
         else if (k.Keycode == Key.P && _mode == Mode.Park)
-            LayAtCursor(k.ShiftPressed ? PathTool.Kind.Queue : PathTool.Kind.Path);
+        {
+            var want = k.ShiftPressed ? PathTool.Kind.Queue : PathTool.Kind.Path;
+            if (!_toolOpen || _toolKind != want) OpenTool(want); else PressTool();
+        }
+        else if (k.Keycode == Key.Escape && _toolOpen) { CloseTool(); GD.Print("[tool] closed"); }
         else if (k.Keycode == Key.O && _mode == Mode.Park && _paths != null)
         {
             _paths.Undo();
+            _runX = _runY = -1;
             RebuildFloor();
             GD.Print("[path] taken back");
         }
@@ -899,7 +924,9 @@ public partial class Viewer : Node3D
         _info.Text = m.Label + "\n\nthe game's own camera\n"
                    + "WASD move  |  Q/E turn a quarter  |  R/F zoom\n"
                    + "Z/X dolly  |  Home reset  |  G free orbit\n"
-                   + "[ / ] nudge the gate  |  V weather  |  B buildable  |  F3 hide this panel";
+                   + "[ / ] nudge the gate  |  V weather  |  B buildable  |  F3 hide this panel\n"
+                   + "RMB path tool (shift+RMB queue)  |  LMB press: start a run, again to lay\n"
+                   + "O take it back  |  Esc close the tool";
     }
 
     /// <summary>Show one image at its own size, or the reason it cannot be shown.</summary>
@@ -1205,10 +1232,13 @@ public partial class Viewer : Node3D
         }
         if (_pieces == null) return;
         _paths = new PathTool(_terrainModel, _pieces);
+        _ghost = new PathGhost(_paths);
+        CloseTool();
         GD.Print($"[path] {_paths.Report}"
                + (_paths.Ready ? $"; {_pieces.Path.Count} path and {_pieces.Queue.Count} queue pieces" : ""));
         if (!_paths.Ready) { _paths = null; return; }
         if (_pathTest || System.Environment.GetEnvironmentVariable("TPW_PATH_TEST") == "1") LayTestPath();
+        if (_ghostTest || System.Environment.GetEnvironmentVariable("TPW_GHOST_TEST") == "1") ShowTestGhost();
     }
 
     /// <summary>⭐ A CONTROL RUN, not a feature. It lays a shape that MUST come out wearing one of
@@ -1245,6 +1275,33 @@ public partial class Viewer : Node3D
         RebuildFloor();
     }
 
+    /// <summary>⭐ A CONTROL FOR THE GHOST, not a feature. It lays a short run of real path, then
+    /// opens the tool and starts a run whose second leg walks straight along that path -- so the
+    /// picture MUST show two different markers, the plain one on the empty leg and the link rings
+    /// on the leg that is already path. One marker everywhere would mean the verdict never reached
+    /// the art, which is exactly the failure a screenshot of a single-colour ghost would hide.</summary>
+    void ShowTestGhost()
+    {
+        if (_paths == null || _ghost == null) return;
+        var f = _park.Field;
+        int cx = f.Width / 2, cy = f.Height / 2;
+        for (int r = 0; r < 12 && !_paths.CanLay(cx, cy); r++) { cx += 1; if (!_paths.CanLay(cx, cy)) cy += 1; }
+        for (int i = 0; i <= 3; i++) _paths.Lay(cx, cy + i);
+        RebuildFloor();
+        OpenTool(PathTool.Kind.Path);
+        // ⭐ Put the camera's own cursor on the target cell, so the ghost the frame loop rebuilds
+        // is the one printed below rather than a second, different run -- and so this also checks
+        // that a world position round-trips back to the cell it came from.
+        var aim = _park.CellCentre(cx, cy);
+        _game.CursorX = (int)(aim.X * GameCamera.TileUnits);
+        _game.CursorZ = (int)(aim.Z * GameCamera.TileUnits);
+        _runX = cx - 5; _runY = cy + 3;
+        _ghost.Set(_runX, _runY, cx, cy, _toolKind);
+        _ghostView.Show(_ghost, _park);
+        GD.Print($"[ghost] run ({_runX},{_runY}) -> ({cx},{cy}), layable {_ghost.Layable}: "
+               + string.Join(" ", _ghost.Tiles.Select(t => $"({t.X},{t.Y}){t.Verdict}")));
+    }
+
     /// <summary>The plot cell under the game camera's cursor. ⚠ Found by nearest centre rather
     /// than by inverting the plot's transform: the plot may sit under an authored node transform,
     /// and a wrong inverse would be a silent one-cell-off rather than a miss.</summary>
@@ -1266,14 +1323,62 @@ public partial class Viewer : Node3D
         return best <= Park.CellSize * Park.CellSize;
     }
 
-    /// <summary>Lay one cell under the cursor and redraw the floor.</summary>
-    void LayAtCursor(PathTool.Kind kind)
+    /// <summary>Open or close the path tool. ⭐ Closing ends the run and takes the ghost off the
+    /// ground: a ghost left behind reads as laid path.</summary>
+    void OpenTool(PathTool.Kind kind)
     {
         if (_paths == null) { GD.Print("[path] the tool is off for this park"); return; }
+        _toolOpen = true;
+        _toolKind = kind;
+        _runX = _runY = -1;
+        GD.Print($"[tool] {kind} open -- press to start a run, press again to lay it");
+    }
+
+    void CloseTool()
+    {
+        _toolOpen = false;
+        _runX = _runY = -1;
+        _ghostAt = (-1, -1, -1, -1);
+        _ghostView?.Clear();
+    }
+
+    /// <summary>The ghost, every frame the tool is open: from the run's start to the cursor, or
+    /// just the cursor tile when no run has been started.</summary>
+    void UpdateGhost()
+    {
+        if (_ghost == null || _paths == null) return;
+        if (!CursorCell(out int x, out int y)) { _ghostView.Clear(); _ghostAt = (-1, -1, -1, -1); return; }
+        int sx = _runX < 0 ? x : _runX, sy = _runY < 0 ? y : _runY;
+        // ⚠ Only when it MOVED. The ghost is rebuilt geometry, and rebuilding the same run every
+        // frame is a mesh churn that buys nothing -- the run only changes when a cell boundary is
+        // crossed or a run is started.
+        if (_ghostAt == (sx, sy, x, y)) return;
+        _ghostAt = (sx, sy, x, y);
+        _ghost.Set(sx, sy, x, y, _toolKind);
+        _ghostView.Show(_ghost, _park);
+    }
+
+    /// <summary>A press of the open tool. The first starts a run, the second lays it -- and ⭐ the
+    /// run CARRIES ON from where it ended, which is what makes a path drawn in legs rather than
+    /// one click per tile.</summary>
+    void PressTool()
+    {
+        if (!_toolOpen || _paths == null || _ghost == null) return;
         if (!CursorCell(out int x, out int y)) { GD.Print("[path] the cursor is off the plot"); return; }
-        if (!_paths.Lay(x, y, kind)) { GD.Print($"[path] nothing laid: {_paths.Describe(x, y)}"); return; }
+        if (_runX < 0) { _runX = x; _runY = y; GD.Print($"[path] run starts at ({x},{y})"); return; }
+        _ghost.Set(_runX, _runY, x, y, _toolKind);
+        if (!_ghost.Layable)
+        {
+            // ⚠ Refused is not an error to swallow: say WHICH tile stopped it, because the whole
+            // run goes red after the first one and the picture alone cannot tell you which.
+            var bad = _ghost.Tiles.FirstOrDefault(t => t.Verdict == PathGhost.Verdict.Refused);
+            GD.Print($"[path] refused at ({bad.X},{bad.Y}): {_paths.Describe(bad.X, bad.Y)}");
+            return;
+        }
+        int laid = _ghost.Lay(_toolKind);
         RebuildFloor();
-        GD.Print($"[path] {kind} {_paths.Describe(x, y)}; {_paths.Laid} laid");
+        _runX = x; _runY = y;
+        GD.Print($"[path] laid {laid} of {_ghost.Tiles.Count}; the run goes on from ({x},{y}); {_paths.Laid} total");
     }
 
     void BuildBuildableOverlay()
@@ -1997,6 +2102,7 @@ public partial class Viewer : Node3D
         }
         // ⚠ AFTER the camera is placed, both of them: the volume follows the eye, and a pending
         // build happens here rather than in the park load for the reason on _weatherWanted.
+        if (_toolOpen) UpdateGhost();
         _weather.Follow(_cam.GlobalPosition);
         if (_weatherWanted is { } wk)
         {
@@ -2037,10 +2143,31 @@ public partial class Viewer : Node3D
                 _focus += b.X * -mm.Relative.X * k + b.Y * mm.Relative.Y * k;
             }
         }
-        if (e is InputEventMouseButton mb && mb.Pressed)
+        if (e is InputEventMouseButton mb)
         {
-            if (mb.ButtonIndex == MouseButton.WheelUp) _dist = Mathf.Max(_dist * 0.9f, 0.05f);
-            if (mb.ButtonIndex == MouseButton.WheelDown) _dist *= 1.1f;
+            if (mb.Pressed && mb.ButtonIndex == MouseButton.WheelUp) _dist = Mathf.Max(_dist * 0.9f, 0.05f);
+            if (mb.Pressed && mb.ButtonIndex == MouseButton.WheelDown) _dist *= 1.1f;
+            // ⭐ RIGHT CLICK OPENS AND CLOSES THE TOOL, left click is the press -- but only a
+            // CLICK. A drag of either button is the camera's, so the button is judged on release
+            // by how far the mouse travelled since it went down.
+            if (mb.Pressed && mb.ButtonIndex is MouseButton.Right or MouseButton.Left)
+            {
+                _downAt = mb.Position;
+                _downButton = mb.ButtonIndex;
+            }
+            else if (!mb.Pressed && mb.ButtonIndex == _downButton && _mode == Mode.Park)
+            {
+                _downButton = MouseButton.None;
+                if (mb.Position.DistanceTo(_downAt) <= 4f)
+                {
+                    if (mb.ButtonIndex == MouseButton.Right)
+                    {
+                        if (_toolOpen) { CloseTool(); GD.Print("[tool] closed"); }
+                        else OpenTool(Input.IsKeyPressed(Key.Shift) ? PathTool.Kind.Queue : PathTool.Kind.Path);
+                    }
+                    else if (_toolOpen) PressTool();
+                }
+            }
         }
         if (e is InputEventKey k2 && k2.Pressed)
         {

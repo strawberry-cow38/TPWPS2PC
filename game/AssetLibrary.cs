@@ -102,8 +102,10 @@ public sealed class AssetLibrary : IDisposable
             if (f == null) return null;
             _generic = new WadArchive(_disc.Read(f.Extent, f.Size));
         }
+        // ⚠ Skip ALIAS entries: they carry a path but no bytes, so taking the first match by name
+        // can hand back an empty record while the real file sits later in the table.
         var e = _generic.Entries.FirstOrDefault(
-            x => x.Path.EndsWith(pathContains, StringComparison.OrdinalIgnoreCase));
+            x => !WadArchive.IsAlias(x) && x.Path.EndsWith(pathContains, StringComparison.OrdinalIgnoreCase));
         return e == null ? null : _generic.Read(e);
     }
 

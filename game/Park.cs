@@ -698,7 +698,7 @@ public sealed class Park
     static readonly bool RaiseEnabled =
         System.Environment.GetEnvironmentVariable("TPW_PARK_RAISE") != "0";
 
-    float CellY(int x, int y)
+    public float CellY(int x, int y)
     {
         if (!RaiseEnabled || Field == null || x >= Field.Width || y >= Field.Height) return BaseY;
         byte b = Field.Raw0(x, y);
