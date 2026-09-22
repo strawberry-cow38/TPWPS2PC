@@ -655,6 +655,16 @@ public partial class Viewer : Node3D
             ? $"{_park.OccupiedCells} cells claimed, matches"
             : $"⚠ {_park.OccupiedCells} claimed vs {want} expected -- OVERLAP";
 
+        // ⚠ Bisect reader against builder. Park.Bounds asks the READER (vertices through
+        // WorldTransforms); Park.DrawnBounds measures the GEOMETRY THE BUILDER ACTUALLY MADE. If
+        // those two disagree, the fault is in AnimatedModel, not in the transforms -- and if they
+        // agree, the model really is that size and my expectation is what is wrong.
+        var (rmin, rmax) = Park.Bounds(mesh);
+        GD.Print($"[bisect] reader {rmax.X - rmin.X:F3} x {rmax.Z - rmin.Z:F3}   "
+               + $"builder {Park.DrawnBounds(_current.Root).Max.X - Park.DrawnBounds(_current.Root).Min.X:F3} x "
+               + $"{Park.DrawnBounds(_current.Root).Max.Z - Park.DrawnBounds(_current.Root).Min.Z:F3}   "
+               + $"plot {fp.Width}x{fp.Height}");
+
         var (min, max) = Park.DrawnBounds(_current.Root);
         // ⚠ `Visible` is a node's OWN flag. A hidden ancestor leaves it true and draws nothing,
         // so the flag that matters is IsVisibleInTree.
