@@ -8,6 +8,32 @@ namespace TPWPS2Viewer;
 /// the archives in place.</summary>
 public sealed class AssetLibrary : IDisposable
 {
+    public enum TextureFormat { Tga, Ssh }
+
+    /// <summary>Decoded RGBA8, top row first, with the exact archive entry that supplied it.</summary>
+    public sealed class TextureImage
+    {
+        public int Width { get; }
+        public int Height { get; }
+        public byte[] Pixels { get; }
+        public int PartialAlpha { get; }
+        public int ClearTexels { get; }
+        public TextureFormat Format { get; }
+        public string SourceWad { get; }
+        public string SourcePath { get; }
+
+        internal TextureImage(int width, int height, byte[] pixels, TextureFormat format,
+                              string sourceWad, string sourcePath)
+        {
+            Width = width; Height = height; Pixels = pixels;
+            Format = format; SourceWad = sourceWad; SourcePath = sourcePath;
+            // Match Targa's alpha classification so both decoders render with the same rules.
+            for (int i = 3; i < pixels.Length; i += 4)
+                if (pixels[i] < 16) ClearTexels++;
+                else if (pixels[i] < 250) PartialAlpha++;
+        }
+    }
+
     public sealed class RideAssets
     {
         public string Name;                       // "Rides/Monkey"
@@ -19,7 +45,8 @@ public sealed class AssetLibrary : IDisposable
     public WadArchive Wad { get; private set; }
     public string WadName { get; private set; }
     public List<RideAssets> Rides { get; } = new();
-    /// <summary>The shared texture set, used when nothing nearer to the model has one.</summary>
+    /// <summary>The shared texture set, keyed by filename including extension, used when nothing
+    /// nearer to the model has one. TGA and SSH entries with the same stem remain separate.</summary>
     public readonly Dictionary<string, WadArchive.Entry> SharedTextures = new(StringComparer.OrdinalIgnoreCase);
     /// <summary>Every folder's textures, keyed by the folder they belong TO. A `textures/`
     /// subfolder is filed under its parent, so it sits beside the model it dresses.</summary>
@@ -68,11 +95,11 @@ public sealed class AssetLibrary : IDisposable
             // ⚠ TEXTURE LOOKUP MUST BE SCOPED. 22 files in JUNGLE.WAD are called sign_eng.tga, one
             // per ride with that ride's NAME painted on it. A flat by-name search picks whichever
             // comes first -- which is how a textured Crazy Ape once wore Mumbo's sign.
-            if (ext == ".tga")
+            if (ext is ".tga" or ".ssh")
             {
-                var key = Path.GetFileNameWithoutExtension(e.Path);
+                var key = Path.GetFileName(e.Path);
                 if (dir.Contains("Sharetex", StringComparison.OrdinalIgnoreCase)) { SharedTextures[key] = e; continue; }
-                // A `textures/` subfolder dresses the model in the folder above it; a .tga anywhere
+                // A `textures/` subfolder dresses the model in the folder above it; a texture anywhere
                 // else belongs to its own folder. DATA.WAD needs both: the characters keep their
                 // models in /Chars/<name>/ and share ONE /Chars/Textures/ between all 24 of them,
                 // while /Chars/Dino keeps its texture beside the model.
@@ -137,40 +164,69 @@ public sealed class AssetLibrary : IDisposable
                  && e.Path.Contains("/terrain/", StringComparison.OrdinalIgnoreCase))
         .OrderBy(e => e.Path, StringComparer.OrdinalIgnoreCase).ToList();
 
-    /// <summary>Every image in the open archive, in path order -- the `.tga` the viewer can already
-    /// decode, and the `.ssh` beside it, which is an MPEG intra picture the IPU decodes on hardware
-    /// and this reader cannot yet. Both are listed so the gap is visible rather than silent.</summary>
+    /// <summary>Every image in the open archive, in path order. Both TGA and SSH have managed
+    /// decoders; material lookup prefers the pre-compression TGA source when available.</summary>
     public List<WadArchive.Entry> Images(bool includeSsh = true) => Wad.Entries
         .Where(e => e.Path.EndsWith(".tga", StringComparison.OrdinalIgnoreCase)
                  || (includeSsh && e.Path.EndsWith(".ssh", StringComparison.OrdinalIgnoreCase)))
         .OrderBy(e => e.Path, StringComparer.OrdinalIgnoreCase).ToList();
 
-    /// <summary>A material's texture: the model's OWN folder first, then each folder above it, then
-    /// the archive-wide shared set.
+    /// <summary>A material's texture: prefer TGA, then SSH, walking the model's OWN folder first,
+    /// then each folder above it (including the archive root), then the archive-wide shared set.
     ///
     /// ⚠ The order is the whole point, not a detail. A flat by-name search over JUNGLE.WAD once put
-    /// Mumbo's sign on Crazy Ape, because 22 rides each ship a sign_eng.tga. Nearest wins.</summary>
-    public Targa Texture(RideAssets ride, string materialName) =>
+    /// Mumbo's sign on Crazy Ape, because 22 rides each ship a sign_eng.tga. Nearest of the preferred
+    /// format wins.</summary>
+    public TextureImage Texture(RideAssets ride, string materialName) =>
         TextureNear("/" + ride.Name, materialName);
 
     /// <summary>A texture for <paramref name="materialName"/>, looked up from
-    /// <paramref name="modelPath"/>'s own folder outwards, then the shared pool.
+    /// <paramref name="modelPath"/>'s own folder outwards, then the shared pool: the complete TGA
+    /// search before the SSH search. Null means no entry was found; decode failures throw with
+    /// source and material context instead of silently turning into an untextured surface.
     ///
     /// ⚠ The owner PATH is the argument, not a ride. Resolving the terrain's materials against
     /// whichever ride happened to be selected walked /Rides/Monkey and found nothing, so 62 of its
     /// 81 materials fell through to Sharetex and came back null -- it rendered flat white and read
     /// as "the terrain has no textures" rather than "the lookup was pointed at the wrong folder".
     /// 62 of them sit in /terrain/textures/ and the other 19 genuinely are shared.</summary>
-    public Targa TextureNear(string modelPath, string materialName)
+    public TextureImage TextureNear(string modelPath, string materialName)
     {
         var stem = Path.GetFileNameWithoutExtension(materialName);   // "m_back.ssh" -> "m_back"
+        // Finish the TGA walk before considering SSH. Choosing by format inside each
+        // folder would let a nearby SSH displace a TGA that the viewer already used farther out.
+        var e = FindTexture(modelPath, stem + ".tga") ?? FindTexture(modelPath, stem + ".ssh");
+        if (e == null) return null;
+        try
+        {
+            if (e.Path.EndsWith(".tga", StringComparison.OrdinalIgnoreCase))
+            {
+                var tga = new Targa(Wad.Read(e));
+                return new TextureImage(tga.Width, tga.Height, tga.Pixels, TextureFormat.Tga, WadName, e.Path);
+            }
+            var ssh = new Ssh(Wad.Read(e));
+            return new TextureImage(ssh.Width, ssh.Height, ssh.Pixels, TextureFormat.Ssh, WadName, e.Path);
+        }
+        catch (Exception ex)
+        {
+            // A decode failure is not a missing entry. Keep it observable to callers and the audit.
+            throw new InvalidDataException($"{WadName}{e.Path} for {modelPath} material '{materialName}': {ex.Message}", ex);
+        }
+    }
+
+    WadArchive.Entry FindTexture(string modelPath, string filename)
+    {
         WadArchive.Entry e = null;
         var start = modelPath;
         start = start[..Math.Max(start.LastIndexOf('/'), 0)];
-        for (var d = start; e == null && d.Length > 0; d = d[..Math.Max(d.LastIndexOf('/'), 0)])
-            if (_folders.TryGetValue(d, out var f)) f.TryGetValue(stem, out e);
-        if (e == null) SharedTextures.TryGetValue(stem, out e);
-        if (e == null) return null;
-        try { return new Targa(Wad.Read(e)); } catch { return null; }
+        for (var d = start; e == null; d = d[..Math.Max(d.LastIndexOf('/'), 0)])
+        {
+            if (_folders.TryGetValue(d, out var f)) f.TryGetValue(filename, out e);
+            // The empty string is the archive root, including the owner of /Textures/. Skipping
+            // it made every root-level LOBBY model miss its own textures (and affected /Backup/).
+            if (d.Length == 0) break;
+        }
+        if (e == null) SharedTextures.TryGetValue(filename, out e);
+        return e;
     }
 }
