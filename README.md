@@ -164,6 +164,15 @@ channels that matter are done.
 
 ## Running it
 
+The **Visit the park** button runs a small visitor simulation on either SPACE terrain. Follow
+Ada through paths, a queue, the Orbiter's real script and the exit. See [visitor mechanisms,
+identity audit and limitations](findings/visitors.md). Characters currently move in bind pose.
+
+```sh
+dotnet run --project tools/TPW.PS2.VisitorAudit -- /path/to/disc.bin
+tools/TPW.PS2.VisitorAudit/teeth.sh /path/to/disc.bin /path/to/godot-4.6.2-mono
+```
+
 The viewer's **Run ride scripts** button executes Crazy Ape, Spider, Bugs TV, Phantom and
 Orbiter from their compiled disc scripts and drives their APS animations through a two-guest
 cycle. [Runtime evidence, audit commands and explicit limits](findings/rse-vm.md).

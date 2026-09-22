@@ -267,6 +267,16 @@ public partial class Viewer : Node3D
         };
         col.AddChild(scripts);
 
+        var visitors = new Button { Text = "Visit the park" };
+        visitors.Pressed += () =>
+        {
+            if (string.IsNullOrWhiteSpace(_discPath)) return;
+            GetTree().SetMeta("tpw_disc", _discPath);
+            _lib?.Dispose();
+            GetTree().ChangeSceneToFile("res://VisitorDemo.tscn");
+        };
+        col.AddChild(visitors);
+
         _wadPick = new OptionButton();
         _wadPick.ItemSelected += i => { if (_mode == Mode.Sounds) OpenBank((int)i); else OpenWad((int)i); };
         col.AddChild(_wadPick);

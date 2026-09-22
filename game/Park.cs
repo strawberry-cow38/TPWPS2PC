@@ -26,6 +26,8 @@ public sealed class Park
     public const float CellSize = 1.0f;
 
     public readonly Node3D Root = new() { Name = "Park" };
+    public ParkPaths Paths { get; private set; }
+    public void SetPaths(ParkPaths paths) { Paths = paths; Field = paths.Field; }
     Node3D _ground, _ride;
 
     /// <summary>A ride's footprint as a grid. `*` is an occupied cell and `2` the entrance; rows
@@ -720,15 +722,14 @@ public sealed class Park
         // Godot, not a move, and leaves the ride where it was.
         model.GetParent()?.RemoveChild(model);
         _ride.AddChild(model);
-        var (min, max) = DrawnBounds(model);
+        var (min, max) = DrawnBounds(model, inParent: true);
         var centre = (min + max) * 0.5f;
-        model.Position = new Vector3(
+        model.Position += new Vector3(
             Origin.X + (x + fp.Width * 0.5f) * CellSize - centre.X,
             BaseY - min.Y,
-            // ⚠ PLUS, not minus. The model root's Scale.Z is -1, so a local z maps to world -z:
-            // the offset that lands the model's own centre on the plot has to be added back. X and
-            // Y are unscaled and stay as they are.
-            Origin.Y + (y + fp.Height * 0.5f) * CellSize + centre.Z);
+            // Bounds include the root transform, including AnimatedModel's Z mirror or an
+            // unmirrored holder whose children are replaced by the live RSSE presenter.
+            Origin.Y + (y + fp.Height * 0.5f) * CellSize - centre.Z);
         return true;
     }
 
