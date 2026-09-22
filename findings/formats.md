@@ -2081,3 +2081,33 @@ in those four hours.** It is now a committed gate rather than a thing to remembe
 ⚠ And the dependency was never questioned. The decoder was treated as ground truth while every
 piece of our own code was audited repeatedly. **A pinned version is a claim about the world, and it
 was four major versions stale.**
+
+
+## ⚠ `m3d2.world_transforms` was composing translation wrong (2026-09-22, fixed)
+
+It multiplied with **column-major indexing over row-major data** — these matrices keep translation
+in elements 12..14, the last *row*. The basis survived that, so every scale check passed:
+`1x1east` composed to exactly 0.1 in both this and the C# reader, and `terrain_1.mps` agreed on all
+145 meshes. **Only the translation was wrong**, and only where a scaled parent has children offset
+from it:
+
+```
+            C# reader (correct)        python (was)
+base        (0.000, 0.000, 0.000)      (0.000, 0.000, 0.000)
+head        (0.468, 0.200, 0.500)      (4.675, 2.000, 5.000)   <- 10x, the 0.1 root missing
+```
+
+That is why extents disagreed while scales agreed, and why the disagreement looked *random* across
+models — a model whose parts sit at the origin composes identically either way, which is exactly
+what `2x2rck` does, and it was the one that made the tool look inconsistent rather than broken.
+
+⚠ **Numbers in this session derived from it are suspect**: the per-model extents I quoted for
+`4x4rock`, `monkey` and `1x1east` before this fix. The conclusions built on them are not, because
+they were each independently confirmed — the cell identity by tinyclaw's own walk of the node table
+and by the engine, and the root-scale census by reading local matrices directly, which never went
+through this function.
+
+⭐ **I had proposed deleting the tool** on the grounds that I no longer believed it. tinyclaw's
+objection was the right one: *pulling a tool you have stopped believing, without knowing why,
+removes the evidence along with the doubt.* Finding out why took one diff against the reader and
+produced a one-line fix.

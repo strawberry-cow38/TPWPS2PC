@@ -206,11 +206,22 @@ def world_transforms(m):
         add(o); o += 0x60
 
     def mul(a, b):
-        """a * b, column-major 4x4 as a flat 16-tuple."""
+        """a * b for ROW-MAJOR 4x4 stored as a flat 16-tuple, translation in elements 12..14.
+
+        ⚠⚠ This was written with column-major indexing (`a[k*4+r] * b[c*4+k]`) over row-major data.
+        The basis came out right, so every scale check passed -- `1x1east` composed to 0.1 in both
+        implementations -- while the child's translation never picked up the parent's scale:
+        `head` landed at (4.675, 2.000, 5.000) against the C# reader's (0.468, 0.200, 0.500),
+        exactly 10x, because the 0.1 root was missing from it.
+
+        That is why extents disagreed while scales agreed, and why the disagreement looked random
+        across models: it only shows where a scaled parent has children offset from it. A model
+        whose parts sit at the origin composes identically either way.
+        """
         out = [0.0] * 16
-        for c in range(4):
-            for r in range(4):
-                out[c * 4 + r] = sum(a[k * 4 + r] * b[c * 4 + k] for k in range(4))
+        for r in range(4):
+            for c in range(4):
+                out[r * 4 + c] = sum(a[r * 4 + k] * b[k * 4 + c] for k in range(4))
         return tuple(out)
 
     world = {}
