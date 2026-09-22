@@ -75,53 +75,108 @@ public sealed class Park
     static StandardMaterial3D Flat(Color c) =>
         new() { AlbedoColor = c, Roughness = 1.0f, SpecularMode = BaseMaterial3D.SpecularModeEnum.Disabled };
 
-    /// <summary>Lay a grass grid, and the ride's own footprint on top of it so the tiles it claims
-    /// are visible against the ones it does not.</summary>
-    public void Build(Footprint fp, int pad = 6)
+    /// <summary>The park's own dimensions in cells. Fixed, because a park is a place rides are
+    /// put into -- ground sized to whichever ride was selected is a model viewer with grass.</summary>
+    public int Width { get; private set; }
+    public int Height { get; private set; }
+
+    /// <summary>Which ride id occupies each cell, or 0. This is the park's actual state; the
+    /// meshes are just what it looks like.</summary>
+    int[,] _occupied = new int[0, 0];
+
+    readonly List<(int Id, string Name, Footprint Fp, int X, int Y)> _placed = new();
+    public IReadOnlyList<(int Id, string Name, Footprint Fp, int X, int Y)> Placed => _placed;
+
+    /// <summary>Cells claimed by something. ⭐ The invariant a caller can check: this must equal
+    /// the summed `Occupied` of everything in <see cref="Placed"/>. If it does not, a placement
+    /// overlapped and was written anyway.</summary>
+    public int OccupiedCells
+    {
+        get
+        {
+            int n = 0;
+            for (int y = 0; y < Height; y++) for (int x = 0; x < Width; x++) if (_occupied[x, y] != 0) n++;
+            return n;
+        }
+    }
+
+    /// <summary>Lay the park. Empty grass, no ride in it -- rides arrive through TryPlace.</summary>
+    public void Build(int width, int height)
     {
         foreach (var c in _ground.GetChildren()) c.QueueFree();
+        foreach (var c in _ride.GetChildren()) c.QueueFree();
+        _placed.Clear();
+        Width = width; Height = height;
+        _occupied = new int[width, height];
 
-        int w = Math.Max(fp.Width, 1) + pad * 2, h = Math.Max(fp.Height, 1) + pad * 2;
         var grass = Flat(new Color(0.30f, 0.46f, 0.22f));
         var darker = Flat(new Color(0.26f, 0.41f, 0.19f));
-        var claimed = Flat(new Color(0.55f, 0.50f, 0.30f));
-        var entry = Flat(new Color(0.85f, 0.65f, 0.20f));
-
         var tile = new BoxMesh { Size = new Vector3(CellSize, CellSize * 0.06f, CellSize) };
-        for (int y = 0; y < h; y++)
-            for (int x = 0; x < w; x++)
-            {
-                int fx = x - pad, fy = y - pad;
-                bool inFoot = fx >= 0 && fy >= 0 && fx < fp.Width && fy < fp.Height && fp.Cells[fx, fy];
-                bool isEntry = inFoot && fx == fp.EntryX && fy == fp.EntryY;
+        for (int y = 0; y < height; y++)
+            for (int x = 0; x < width; x++)
                 _ground.AddChild(new MeshInstance3D
                 {
                     Mesh = tile,
-                    MaterialOverride = isEntry ? entry : inFoot ? claimed : ((x + y) % 2 == 0 ? grass : darker),
-                    // The footprint's own tiles sit a hair proud so the edge reads at a glance.
-                    Position = new Vector3((fx + 0.5f) * CellSize, inFoot ? CellSize * 0.015f : 0f, (fy + 0.5f) * CellSize),
+                    MaterialOverride = (x + y) % 2 == 0 ? grass : darker,
+                    Position = new Vector3((x + 0.5f) * CellSize, 0f, (y + 0.5f) * CellSize),
                 });
-            }
     }
 
-    /// <summary>Stand a built model on the footprint. The model is moved so its own XZ centre sits
-    /// over the footprint's centre and its base rests on the ground, rather than trusting the file
-    /// to be authored about an origin -- measured per model, since they are not.</summary>
-    public void Place(Node3D model, Model mesh, Footprint fp)
+    /// <summary>Can this footprint sit at (x, y)? Fails on the park edge and on any cell already
+    /// claimed. ⚠ Checked BEFORE anything is written, so a rejected placement leaves no trace --
+    /// a half-applied placement would corrupt the occupancy map and show up much later as a ride
+    /// that cannot be built somewhere for no visible reason.</summary>
+    public bool CanPlace(Footprint fp, int x, int y)
     {
-        foreach (var c in _ride.GetChildren())
-            if (c != model) c.QueueFree();
-        if (model == null) return;
-        // ⚠ The model is already a child of the viewer -- Rebuild adds it. AddChild on a node that
-        // has a parent is an ERROR in Godot, not a move: it printed "already has a parent" and left
-        // the ride where it was, which renders as the park having no ride in it.
+        if (x < 0 || y < 0 || x + fp.Width > Width || y + fp.Height > Height) return false;
+        for (int fy = 0; fy < fp.Height; fy++)
+            for (int fx = 0; fx < fp.Width; fx++)
+                if (fp.Cells[fx, fy] && _occupied[x + fx, y + fy] != 0) return false;
+        return true;
+    }
+
+    /// <summary>Put a ride in the park at cell (x, y). Returns false and changes nothing if it
+    /// does not fit. The model is moved so its own XZ centre sits over the footprint's centre and
+    /// its base rests on the ground, measured per model rather than trusting the file to be
+    /// authored about an origin.</summary>
+    public bool TryPlace(Node3D model, Footprint fp, int id, string name, int x, int y)
+    {
+        if (!CanPlace(fp, x, y)) return false;
+
+        for (int fy = 0; fy < fp.Height; fy++)
+            for (int fx = 0; fx < fp.Width; fx++)
+                if (fp.Cells[fx, fy]) _occupied[x + fx, y + fy] = id;
+        _placed.Add((id, name, fp, x, y));
+
+        // The claimed tiles, drawn over the grass so the plot reads at a glance.
+        var claimed = Flat(new Color(0.55f, 0.50f, 0.30f));
+        var entry = Flat(new Color(0.85f, 0.65f, 0.20f));
+        var tile = new BoxMesh { Size = new Vector3(CellSize, CellSize * 0.08f, CellSize) };
+        for (int fy = 0; fy < fp.Height; fy++)
+            for (int fx = 0; fx < fp.Width; fx++)
+            {
+                if (!fp.Cells[fx, fy]) continue;
+                bool isEntry = fx == fp.EntryX && fy == fp.EntryY;
+                _ground.AddChild(new MeshInstance3D
+                {
+                    Mesh = tile,
+                    MaterialOverride = isEntry ? entry : claimed,
+                    Position = new Vector3((x + fx + 0.5f) * CellSize, CellSize * 0.02f, (y + fy + 0.5f) * CellSize),
+                });
+            }
+
+        if (model == null) return true;
+        // ⚠ The model is already parented elsewhere -- AddChild on a parented node is an ERROR in
+        // Godot, not a move, and leaves the ride where it was.
         model.GetParent()?.RemoveChild(model);
         _ride.AddChild(model);
-
         var (min, max) = DrawnBounds(model);
         var centre = (min + max) * 0.5f;
-        var target = new Vector3(fp.Width * CellSize * 0.5f, 0, fp.Height * CellSize * 0.5f);
-        model.Position = new Vector3(target.X - centre.X, -min.Y, target.Z - centre.Z);
+        model.Position = new Vector3(
+            (x + fp.Width * 0.5f) * CellSize - centre.X,
+            -min.Y,
+            (y + fp.Height * 0.5f) * CellSize - centre.Z);
+        return true;
     }
 
     /// <summary>The bounds of what is actually ON SCREEN: the union of every built mesh's AABB,

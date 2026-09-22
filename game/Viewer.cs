@@ -31,6 +31,9 @@ public partial class Viewer : Node3D
     string _discPath;
     // The park, and the two tables it needs: every ride's design data, and the text the player
     // is actually shown. Loaded once -- RideCatalogue walks every WAD.
+    /// <summary>The park's size in cells. Big enough that a ride is in a place rather than on a
+    /// plinth, small enough to see the edges.</summary>
+    const int ParkCells = 24;
     Park _park;
     RideCatalogue _cat;
     TextDatabase _text;
@@ -610,7 +613,9 @@ public partial class Viewer : Node3D
         var def = DefinitionFor(_ride.Model);
         if (def == null)
         {
-            _park.Build(new Park.Footprint(1, 1, new bool[1, 1], -1, -1));
+            // Still lay the park. Empty grass says "this model has no ride definition"; no park
+            // at all reads as the park mode being broken.
+            _park.Build(ParkCells, ParkCells);
             _info.Text = $"{_ride.Name}\nno .sam beside this model -- nothing to place it by";
             return;
         }
@@ -630,15 +635,26 @@ public partial class Viewer : Node3D
             }
         }
 
-        _park.Build(fp);
-        _park.Place(_current.Root, mesh, fp);
+        // ⚠ A fixed park, not ground cut to whichever ride is selected. The ride is placed INTO
+        // it at a position, which is what makes the next class of bug -- overlap, edges, footprints
+        // that do not fit -- possible to have at all.
+        _park.Build(ParkCells, ParkCells);
+        int px = (ParkCells - fp.Width) / 2, py = (ParkCells - fp.Height) / 2;
+        bool placed = _park.TryPlace(_current.Root, fp, def.Id ?? 1, display ?? def.Name ?? "?", px, py);
         // ⚠ AFTER the placement, never before. Rebuild frames the camera on the model in its own
         // space and Place then MOVES it onto the footprint, so framing first aims the shot at where
         // the ride used to be -- which photographs empty grass and looks like the ride failed to load.
-        FrameParkCamera(fp, _current.Root);
+        FrameParkCamera(fp, _current.Root, px, py);
 
         // ⚠ Report the model against its cells rather than assuming it fits. A ride overflowing
         // its footprint is a real thing here -- the cell size itself was measured, not given.
+        // ⭐ The invariant: cells claimed must equal the footprints placed. If a placement
+        // overlapped and was written anyway, these diverge and the park is quietly corrupt.
+        int want = _park.Placed.Sum(r => r.Fp.Occupied);
+        string inv = _park.OccupiedCells == want
+            ? $"{_park.OccupiedCells} cells claimed, matches"
+            : $"⚠ {_park.OccupiedCells} claimed vs {want} expected -- OVERLAP";
+
         var (min, max) = Park.DrawnBounds(_current.Root);
         // ⚠ `Visible` is a node's OWN flag. A hidden ancestor leaves it true and draws nothing,
         // so the flag that matters is IsVisibleInTree.
@@ -653,7 +669,9 @@ public partial class Viewer : Node3D
         var over = (max.X - min.X) / Math.Max(fp.Width, 1) / Park.CellSize;
         var overZ = (max.Z - min.Z) / Math.Max(fp.Height, 1) / Park.CellSize;
         _info.Text = Park.Describe(def, display, fp)
-                     + $"\n\nmodel fills {over:P0} x {overZ:P0} of its cells"
+                     + $"\n\npark {ParkCells}x{ParkCells}: {(placed ? "placed" : "WOULD NOT FIT")} at {px},{py}"
+                     + $"\n{inv}"
+                     + $"\nmodel fills {over:P0} x {overZ:P0} of its cells"
                      + $"\n{_current.Summary}"
                      + "\nleft-drag orbit | wheel zoom | R re-frame";
     }
@@ -733,14 +751,17 @@ public partial class Viewer : Node3D
     /// is what made the viewer look like it was missing artwork the Python renderer had.</summary>
     /// <summary>Aim at the park rather than the ride: the footprint's centre, pulled back far
     /// enough to hold the laid ground as well as whatever is standing on it.</summary>
-    void FrameParkCamera(Park.Footprint fp, Node3D drawn)
+    void FrameParkCamera(Park.Footprint fp, Node3D drawn, int px, int py)
     {
         var (min, max) = Park.DrawnBounds(drawn);
         float w = Math.Max(fp.Width, 1) * Park.CellSize, h = Math.Max(fp.Height, 1) * Park.CellSize;
-        _focus = new Vector3(w * 0.5f, (max.Y - min.Y) * 0.35f, h * 0.5f);
+        // Aim at the ride where it now stands IN the park, not at a footprint sitting at the origin.
+        _focus = new Vector3((px + fp.Width * 0.5f) * Park.CellSize,
+                             (max.Y - min.Y) * 0.35f,
+                             (py + fp.Height * 0.5f) * Park.CellSize);
         // The ground is laid with six cells of padding on every side; frame a little of it rather
         // than the ride alone, so the footprint reads against the grass around it.
-        float span = Math.Max(w, h) + Park.CellSize * 6f;
+        float span = Math.Max(w, h) + Park.CellSize * 8f;
         _dist = Math.Max(span * 0.9f, 1e-3f);
         _pitch = -0.55f;
     }
