@@ -655,6 +655,27 @@ public partial class Viewer : Node3D
                    + $"extent {hi.X - lo.X:F1} x {hi.Z - lo.Z:F1}  height {hi.Y - lo.Y:F1}  "
                    + $"textures {got} resolved, {missed} MISSING");
             _terrainSize = new Vector2(hi.X - lo.X, hi.Z - lo.Z);
+            // ⚠ Bisect the renderer against the offline reader. The bbox from DrawnBounds matched
+            // python's to four decimals, yet the marked hole renders half a world from the gap the
+            // geometry has -- and a bounding box is invariant under exactly the transforms that
+            // would move the contents. Per-mesh centres are not.
+            if (System.Environment.GetEnvironmentVariable("TPW_HOLE_DEBUG") == "1")
+            {
+                var want = new[] { "EMBANKMENT", "VOLCANO", "LAND_00", "LAND_02", "A_ROAD", "heightfield" };
+                void Dump(Node n, Transform3D acc)
+                {
+                    var t = n is Node3D n3 && n != _terrain.Root ? acc * n3.Transform : acc;
+                    if (n is MeshInstance3D mi && mi.Mesh != null && want.Any(x => n.Name.ToString().Contains(x)))
+                    {
+                        var bx = mi.GetAabb();
+                        var a = t * bx.Position; var b = t * (bx.Position + bx.Size);
+                        GD.Print($"[mesh] {n.Name,-16} X {Math.Min(a.X, b.X):8.2f}..{Math.Max(a.X, b.X):<8.2f} "
+                               + $"Z {Math.Min(a.Z, b.Z):8.2f}..{Math.Max(a.Z, b.Z):<8.2f}");
+                    }
+                    foreach (var c in n.GetChildren()) Dump(c, t);
+                }
+                Dump(_terrain.Root, Transform3D.Identity);
+            }
             var (ho, hs, hy) = Park.FindHole(_terrain.Root);
             _holeOrigin = ho; _holeSize = hs;
             // ⚠⚠ The floor goes at the height of the ground AROUND the hole, NOT at the terrain's
