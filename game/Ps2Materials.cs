@@ -15,16 +15,22 @@ public static class Ps2Materials
     public const float DefaultWeatherAmount = 0; // no weather simulation connected yet
     static readonly Dictionary<string, Shader> Shaders = new();
 
-    public static Shader Shader(bool soft, string cull, bool rawNormals = true, bool linearFilter = false)
+    /// <param name="clamp">⭐ For a surface whose UVs map a texture ONCE, 0 to 1, with no tiling
+    /// inside the quad -- the park's ground tiles. With `repeat_enable` a linear sample at the very
+    /// edge of such a quad wraps and blends in the OPPOSITE edge of the tile, which on a path tile
+    /// means the grass baked down its sides bleeding into the dirt where two tiles meet. Repeat
+    /// buys such a surface nothing and costs it that seam.</param>
+    public static Shader Shader(bool soft, string cull, bool rawNormals = true, bool linearFilter = false,
+                                bool clamp = false)
     {
-        string key = $"{soft}/{cull}/{rawNormals}/{linearFilter}";
+        string key = $"{soft}/{cull}/{rawNormals}/{linearFilter}/{clamp}";
         if (Shaders.TryGetValue(key, out var found)) return found;
         return Shaders[key] = new Shader { Code = $$"""
 shader_type spatial;
 render_mode unshaded, {{cull}}{{(soft ? ", depth_prepass_alpha" : "")}};
 
 // Deliberately no source_color: GS modulates texture bytes, not linear-light RGB.
-uniform sampler2D albedo_tex : {{(linearFilter ? "filter_linear_mipmap" : "filter_nearest_mipmap")}}, repeat_enable;
+uniform sampler2D albedo_tex : {{(linearFilter ? "filter_linear_mipmap" : "filter_nearest_mipmap")}}, {{(clamp ? "repeat_disable" : "repeat_enable")}};
 uniform bool has_tex = true;
 uniform vec3 fallback_colour = vec3(0.72); // named viewer default for missing textures
 uniform float cutout = 0.0627;
@@ -83,7 +89,8 @@ void fragment() {
 
     public static ShaderMaterial Ground(ImageTexture texture, Color? fallback = null)
     {
-        var material = new ShaderMaterial { Shader = Shader(false, "cull_back", rawNormals: false, linearFilter: true) };
+        var material = new ShaderMaterial
+        { Shader = Shader(false, "cull_back", rawNormals: false, linearFilter: true, clamp: true) };
         material.SetShaderParameter("albedo_tex", texture);
         material.SetShaderParameter("has_tex", texture != null);
         if (fallback is { } colour) material.SetShaderParameter("fallback_colour", new Vector3(colour.R, colour.G, colour.B));

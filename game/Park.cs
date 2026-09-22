@@ -646,8 +646,19 @@ public sealed class Park
     /// texture's own orientation, which is what the authored ground wants.</summary>
     public Func<int, int, int> TurnsForCell { get; set; }
 
-    /// <summary>The quad's UV corners, in the order the floor emits its vertices.</summary>
-    static readonly Vector2[] UvCorners = { new(0, 0), new(1, 0), new(1, 1), new(0, 1) };
+    /// <summary>The quad's UV corners, in the order the floor emits its vertices.
+    ///
+    /// ⚠ INSET BY HALF A TEXEL of a 64x64 tile, not 0 and 1. A sample taken at exactly the edge of
+    /// a tile sits on the boundary between its outermost texel and whatever the sampler decides is
+    /// next, and a linear filter then mixes the two -- the 1-2 pixel line where two path tiles
+    /// meet. Clamping the sampler (see Ps2Materials.Ground) stops it wrapping; this stops it
+    /// landing on the boundary at all.</summary>
+    const float UvInset = 0.5f / 64f;
+    static readonly Vector2[] UvCorners =
+    {
+        new(UvInset, UvInset), new(1 - UvInset, UvInset),
+        new(1 - UvInset, 1 - UvInset), new(UvInset, 1 - UvInset),
+    };
 
     /// <summary>How many distinct ground materials the plot was laid with.</summary>
     public int MaterialCount { get; private set; }
