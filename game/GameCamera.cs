@@ -120,10 +120,18 @@ public sealed class GameCamera
     /// negative does after its `+ 7`.</summary>
     static int Eighth(int d) => (d < 0 ? d + 7 : d) >> 3;
 
+    /// <summary>Where the eye and the look were at the END of the previous tick, so a renderer
+    /// can draw between them and this one. ⭐ The SIMULATION stays on whole console frames; only
+    /// the picture moves in between.</summary>
+    public Vector3 PrevEye { get; private set; }
+    public Vector3 PrevLook { get; private set; }
+
     /// <summary>One frame. <paramref name="groundAt"/> takes a TILE index, as the game's does,
     /// and returns the ground there in world units.</summary>
     public void Step(int frameTime, Func<int, int, int> groundAt)
     {
+        PrevEye = Eye;
+        PrevLook = Look;
         frameTime = Math.Min(frameTime, 0x4000);
         TargetYaw = Wrap(TargetYaw);
 
@@ -138,25 +146,27 @@ public sealed class GameCamera
         else if (mid > 0x800) { Yaw += TurnUnits; mid -= TurnUnits; }
         int step = Eighth(mid) * frameTime >> 12;
         Yaw += step;
-        // ⚠⚠ THE INTEGER EASE STARVES ON A SHORT FRAME. Each step is an EIGHTH of what is left,
-        // floored -- so once the remainder is small the step rounds to nothing and the turn stops
-        // a few units SHORT of the quarter it was aiming for. On the console that never showed,
-        // because a frame was always a whole tick and the last step still carried; at 144Hz a
-        // frame is worth a fraction of one and the step reaches zero with the turn unfinished.
-        // Master saw it as Q and E no longer landing squarely on 90 degrees.
+        // ⚠⚠ THE INTEGER EASE STARVES AT THE TAIL. Each step is an EIGHTH of what is left,
+        // floored, so once under eight units remain the step rounds to nothing and the turn stops
+        // short of its quarter.
         //
-        // ⭐ Snap only when the step has ACTUALLY starved -- zero movement with distance left.
-        // While it is still moving, the curve is the console's and is left alone.
-        if (SnapWhenStarved && step == 0 && Yaw != TargetYaw) Yaw = TargetYaw;
+        // ⚠ It must not be finished with a JUMP. Closing the gap in one go is a teleport of
+        // however much was left, and master could see it -- "the snap is pretty obvious and not
+        // pleasant". It CREEPS instead: one unit a tick, 4096 to a turn, so the last fraction of a
+        // degree arrives over a few ticks and no frame moves more than the ease already would.
+        if (SnapWhenStarved && step == 0 && Yaw != TargetYaw) Yaw += Math.Sign(TargetYaw - Yaw);
 
         // The focus chases the cursor: eight times the distance, clamped, over 1024.
-        // Same starvation, same cure: a chase that can no longer move arrives.
+        // Same starvation, same cure, and the same refusal to jump: the focus creeps the last
+        // fraction of a tile rather than arriving in one frame.
         int dx = Math.Clamp(((FocusX >> 8) - CursorX) * 8, -0x3FFF, 0x3FFF) * frameTime >> 10;
         int dz = Math.Clamp(((FocusZ >> 8) - CursorZ) * 8, -0x3FFF, 0x3FFF) * frameTime >> 10;
         FocusX -= dx;
         FocusZ -= dz;
-        if (dx == 0 && (FocusX >> 8) != CursorX) FocusX = CursorX << 8;
-        if (dz == 0 && (FocusZ >> 8) != CursorZ) FocusZ = CursorZ << 8;
+        if (SnapWhenStarved && dx == 0 && (FocusX >> 8) != CursorX)
+            FocusX += Math.Sign((CursorX << 8) - FocusX);
+        if (SnapWhenStarved && dz == 0 && (FocusZ >> 8) != CursorZ)
+            FocusZ += Math.Sign((CursorZ << 8) - FocusZ);
 
         // The eye, pushed back along the yaw by the distance. ⚠ ONLY x and z -- the height below
         // comes off the ground, which is exactly why the distance doubles as the pitch control.

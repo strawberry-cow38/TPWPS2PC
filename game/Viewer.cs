@@ -85,6 +85,8 @@ public partial class Viewer : Node3D
     /// <summary>The buildable overlay, rebuilt with the park. B toggles it.</summary>
     Node3D _buildable;
     /// <summary>The path tool, the console tables behind it, and the terrain model it works on.</summary>
+    /// <summary>The console's clock. ⭐ EVERYTHING time-dependent belongs on it.</summary>
+    readonly ConsoleClock _clock = new();
     PathTool _paths;
     ToolSounds _toolSfx;
     PathGhost _ghost;
@@ -1472,23 +1474,34 @@ public partial class Viewer : Node3D
         // arrive at exactly a quarter, on its own instance so the live camera is untouched. The
         // integer ease steps by an EIGHTH of what is left, so on short frames it rounds to nothing
         // and stops short -- this is the check that says so in a number instead of by eye.
-        foreach (int hz in new[] { 50, 60, 144, 240 })
         {
-            int Land(bool snap)
+            // ⚠ ONE check, not one per refresh rate. It used to run at 50, 60, 144 and 240Hz and
+            // print four lines; now that the camera advances in WHOLE console frames the refresh
+            // rate cannot reach it, and four identical lines labelled by Hz would imply it still
+            // could. The clock is what makes them identical, and that is the point.
+            (int Yaw, int Last) Land(bool creep)
             {
-                var sim = new GameCamera { SnapWhenStarved = snap };
+                var sim = new GameCamera { SnapWhenStarved = creep };
                 sim.Turn(1);
+                int last = 0;
                 for (int i = 0; i < 4000 && sim.Yaw != sim.TargetYaw; i++)
-                    sim.Step(GameCamera.FrameTime(1.0 / hz), (_, _) => 0);
-                return sim.Yaw;
+                {
+                    int was = sim.Yaw;
+                    sim.Step(GameCamera.FrameTick, (_, _) => 0);
+                    if (sim.Yaw != was) last = Math.Abs(sim.Yaw - was);
+                }
+                return (sim.Yaw, last);
             }
-            // ⭐ BOTH WAYS. Without the snap the turn must fall SHORT on a frame shorter than a
-            // console tick -- if it did not, the snap would be guarding nothing and this check
-            // would pass whatever the code did.
-            int with = Land(true), without = Land(false);
-            GD.Print($"[cam] a quarter turn at {hz,3}Hz lands on {with} of {GameCamera.QuarterTurn}"
-                   + $" -- {(with == GameCamera.QuarterTurn ? "square" : "SHORT")};"
-                   + $" without the snap {without}"
+            // ⭐ BOTH WAYS, AND THE LAST STEP TOO. Without the creep the turn must fall SHORT --
+            // otherwise the creep guards nothing. And the step that ARRIVES has to be small: a
+            // turn that lands by closing the whole remaining gap in one frame is the pop master
+            // could see, and it would pass a test that only checked where it ended up.
+            var (with, lastStep) = Land(true);
+            var (without, _) = Land(false);
+            GD.Print($"[cam] a quarter turn lands on {with} of {GameCamera.QuarterTurn}"
+                   + $" -- {(with == GameCamera.QuarterTurn ? "square" : "SHORT")},"
+                   + $" arriving by {lastStep} {(lastStep <= 1 ? "-- a creep, no pop" : "-- A JUMP")};"
+                   + $" without it {without}"
                    + $" -- {(without == GameCamera.QuarterTurn ? "also square" : "short, which is the bug")}");
         }
     }
@@ -1875,27 +1888,45 @@ public partial class Viewer : Node3D
 
     /// <summary>One frame of the game's camera, and the keys that drive it. ⚠ Held keys, not
     /// events: the zoom and the pan are per-frame accumulations on the console too.</summary>
+    /// <summary>⭐⭐ WHOLE CONSOLE FRAMES, THEN DRAW IN BETWEEN. The camera advances in ticks of
+    /// <see cref="ConsoleClock.TicksPerSecond"/>, each one worth exactly one console frame, so its
+    /// integer ease gets the steps it was written for and the speed is the console's on any
+    /// machine. The picture is then drawn between the last tick and this one, which is where the
+    /// smoothness comes from -- not from stepping the simulation faster.
+    ///
+    /// ⚠ THE INPUT IS READ PER TICK, not per frame. Held keys that moved the cursor once a frame
+    /// panned faster on a faster machine, which is the same fault the ease had.</summary>
     void StepGameCam(double delta)
     {
-        int pan = (int)(6 * GameCamera.TileUnits * delta);
-        int a = _game.Yaw & 0xFFF;
-        // Pan along the way the camera faces, which is what the cursor does on the console.
-        float s = Mathf.Sin(a * Mathf.Tau / GameCamera.TurnUnits);
-        float c = Mathf.Cos(a * Mathf.Tau / GameCamera.TurnUnits);
-        int fwd = (Input.IsKeyPressed(Key.W) ? 1 : 0) - (Input.IsKeyPressed(Key.S) ? 1 : 0);
-        int side = (Input.IsKeyPressed(Key.D) ? 1 : 0) - (Input.IsKeyPressed(Key.A) ? 1 : 0);
-        // ⚠ The side term is NEGATED against the forward one. Taking right as (cos, -sin) of the
-        // same angle reads correct and drives A and D the wrong way round -- master hit it in the
-        // first minute. The camera looks along +(sin, cos), so its right is -(cos, -sin).
-        _game.CursorX += (int)((fwd * s - side * c) * pan);
-        _game.CursorZ += (int)((fwd * c + side * s) * pan);
-        if (Input.IsKeyPressed(Key.R)) _game.Zoom(-1);
-        if (Input.IsKeyPressed(Key.F)) _game.Zoom(1);
-        if (Input.IsKeyPressed(Key.Z)) _game.Push(-1);
-        if (Input.IsKeyPressed(Key.X)) _game.Push(1);
-        _game.Step(GameCamera.FrameTime(delta), GroundAt);
-        _cam.Transform = new Transform3D(
-            Basis.LookingAt(_game.Look - _game.Eye, _game.Up), _game.Eye);
+        int ticks = _clock.Advance(delta);
+        for (int i = 0; i < ticks; i++)
+        {
+            int pan = (int)(6 * GameCamera.TileUnits * ConsoleClock.TickSeconds);
+            int a = _game.Yaw & 0xFFF;
+            // Pan along the way the camera faces, which is what the cursor does on the console.
+            float s = Mathf.Sin(a * Mathf.Tau / GameCamera.TurnUnits);
+            float c = Mathf.Cos(a * Mathf.Tau / GameCamera.TurnUnits);
+            int fwd = (Input.IsKeyPressed(Key.W) ? 1 : 0) - (Input.IsKeyPressed(Key.S) ? 1 : 0);
+            int side = (Input.IsKeyPressed(Key.D) ? 1 : 0) - (Input.IsKeyPressed(Key.A) ? 1 : 0);
+            // ⚠ The side term is NEGATED against the forward one. Taking right as (cos, -sin) of
+            // the same angle reads correct and drives A and D the wrong way round -- master hit it
+            // in the first minute. The camera looks along +(sin, cos), so its right is -(cos, -sin).
+            _game.CursorX += (int)((fwd * s - side * c) * pan);
+            _game.CursorZ += (int)((fwd * c + side * s) * pan);
+            if (Input.IsKeyPressed(Key.R)) _game.Zoom(-1);
+            if (Input.IsKeyPressed(Key.F)) _game.Zoom(1);
+            if (Input.IsKeyPressed(Key.Z)) _game.Push(-1);
+            if (Input.IsKeyPressed(Key.X)) _game.Push(1);
+            // ⭐ A WHOLE console frame, every time. No fractions reach the console's own maths.
+            _game.Step(GameCamera.FrameTick, GroundAt);
+        }
+        // ⚠ A capture renders one frame and must not photograph a half-eased camera; it runs the
+        // tick and stands on it.
+        float alpha = _shotPath != null ? 1f : _clock.Alpha;
+        var eye = _game.PrevEye.Lerp(_game.Eye, alpha);
+        var look = _game.PrevLook.Lerp(_game.Look, alpha);
+        if ((look - eye).LengthSquared() < 1e-8f) { eye = _game.Eye; look = _game.Look; }
+        _cam.Transform = new Transform3D(Basis.LookingAt(look - eye, _game.Up), eye);
     }
 
     /// <summary>Point the camera at the surfaces whose mesh name contains TPW_PARK_MESH.
