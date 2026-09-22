@@ -1959,3 +1959,46 @@ whatever the bind carried, never substitute a number.**
 ⚠ tinyclaw's histogram printed those 24 character roots as `0.000` and nearly reported degenerate
 matrices; at full precision they are a different convention rather than a broken one. A rounded
 histogram is a lossy instrument, which is the day's shape one more time.
+
+
+## ⚠⚠⚠ NLayer CANNOT DECODE MPEG-2 LAYER II — every MP2 on the disc is wrong (2026-09-22)
+
+Master said the advisor *"sounds weird"* after confirming the **speed** was right. The rate had been
+verified four ways and every one of them was correct; the decoder was not.
+
+### The control: a known tone, encoded both ways
+
+ffmpeg encodes a 440 Hz sine as MPEG-1 Layer II and as MPEG-2 LSF Layer II. NLayer decodes each,
+fitted against ffmpeg's own decode of the same file:
+
+| | best-fit gain | residual vs signal |
+|---|---|---|
+| **MPEG-1 Layer II, 44100** | 32,767.9 | **0.19%** |
+| **MPEG-2 LSF Layer II, 22050** | 2,836.4 | **99.73%** |
+
+Same decoder, same encoder, same tone — the only variable is the low-sampling-frequency extension.
+**NLayer decodes MPEG-1 Layer II correctly and MPEG-2 Layer II to noise.** MPEG-2 LSF uses a
+different bit-allocation table, and a decoder applying the MPEG-1 one keeps the frame timing and the
+rough envelope while getting every coefficient wrong: recognisably the same line, audibly mangled.
+
+⚠⚠ **Every MP2 on this disc is MPEG-2 LSF** — 1,849 of its 2,220 sounds. Not just the advisor:
+every ride sound, ambience and music bank decoded through `Mpeg.cs` has been wrong from the start.
+
+### Two things the control settled for free
+
+⭐ The MPEG-1 row's gain fit of **32,767.9** proves NLayer's ±1.0 is exactly int16 full scale, so
+`* 32767f` in `Mpeg.cs` is the right convention. The ±2.13 overshoot is not a scale I misread — it
+is **the broken decode overshooting**.
+
+⚠ Which is why the clamp must NOT be "fixed" first. Scaling instead of clipping removes 560 rail
+samples, makes every waveform and every RMS number look better, and leaves the audio exactly as
+wrong. **A fix that shows progress on every instrument except the ears.**
+
+### How it survived
+
+The rate was checked four independent ways — frame headers, NLayer's own report, the `+0x20` field
+÷44.1, and the `.lip` marks landing at 97.6% of that duration — and two of us verified each other.
+**Every route we took was to the part that was already correct.** One listen found it.
+
+⭐ Two decoders on the same bitstream is the check that would have caught it at any point, and it
+cost one command.
