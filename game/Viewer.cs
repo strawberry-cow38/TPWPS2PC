@@ -66,6 +66,13 @@ public partial class Viewer : Node3D
     readonly GameCamera _game = new();
     /// <summary>The park's entrance arch, Features/Gates/Gates.mps, one per archive.</summary>
     AnimatedModel _gate;
+    /// <summary>The park's sky, rebuilt when the archive changes.</summary>
+    WorldEnvironment _sky;
+    /// <summary>Kept so the sky can be taken away outside park mode and put back without a rebuild.
+    /// ⚠ WorldEnvironment is a plain Node, so it has no Visible to toggle.</summary>
+    Godot.Environment _skyEnv;
+    /// <summary>The plain backdrop used everywhere that is not a park.</summary>
+    Godot.Environment _flatEnv;
     /// <summary>Nudge on the gate's z, in units, starting at master's own correction.
     ///
     /// ⭐ Fantasy's pad alone put the gate a quarter unit too far from the road, and master — who
@@ -268,18 +275,18 @@ public partial class Viewer : Node3D
                                         Vector3.Zero),
             LightEnergy = 1.1f,
         });
-        var env = new WorldEnvironment
+        // ⚠⚠ ONE WorldEnvironment, kept. Adding a second for the sky put two in the tree and
+        // Godot simply used the other one -- the sky loaded, reported itself, and drew nothing.
+        _flatEnv = new Godot.Environment
         {
-            Environment = new Godot.Environment
-            {
-                BackgroundMode = Godot.Environment.BGMode.Color,
-                BackgroundColor = new Color(0.10f, 0.10f, 0.13f),
-                AmbientLightSource = Godot.Environment.AmbientSource.Color,
-                AmbientLightColor = new Color(0.45f, 0.45f, 0.5f),
-                AmbientLightEnergy = 1.0f,
-            }
+            BackgroundMode = Godot.Environment.BGMode.Color,
+            BackgroundColor = new Color(0.10f, 0.10f, 0.13f),
+            AmbientLightSource = Godot.Environment.AmbientSource.Color,
+            AmbientLightColor = new Color(0.45f, 0.45f, 0.5f),
+            AmbientLightEnergy = 1.0f,
         };
-        AddChild(env);
+        _sky = new WorldEnvironment { Environment = _flatEnv };
+        AddChild(_sky);
 
         // ⚠⚠ A full-screen Control swallows mouse events before _UnhandledInput ever sees them.
         // Orbit appeared to work only because the left button is also used by the widgets; a
@@ -451,6 +458,7 @@ public partial class Viewer : Node3D
         if (_current != null) _current.Root.Visible = m == Mode.Models || (m == Mode.Park && _parkRide);
         if (_park != null) _park.Root.Visible = m == Mode.Park;
         if (_gate != null) _gate.Root.Visible = m == Mode.Park;
+        if (_sky != null) _sky.Environment = m == Mode.Park && _skyEnv != null ? _skyEnv : _flatEnv;
         if (m == Mode.Sounds) FillBankPicker();
         else if (m == Mode.Movies) FillMovieList();
         else FillWadPicker();
@@ -1037,6 +1045,27 @@ public partial class Viewer : Node3D
         catch (Exception ex) { GD.PrintErr($"[terrain] {pick.Path}: {ex.Message}"); }
     }
 
+    /// <summary>Put this world's own sky behind the park. ⚠ Only in park mode: a model on the
+    /// Models tab is being LOOKED AT, and a sky behind it is scenery competing with the subject.</summary>
+    void LoadSky()
+    {
+        var sky = SkyDome.Build(_lib, out var report);
+        GD.Print($"[sky] {report}");
+        if (sky == null) { _skyEnv = null; _sky.Environment = _flatEnv; return; }
+        _skyEnv = new Godot.Environment
+        {
+            BackgroundMode = Godot.Environment.BGMode.Sky,
+            Sky = sky,
+            // ⚠ The sky must not light the scene. The terrain is lit by one directional light that
+            // was balanced against a flat background, and letting a bright sky contribute ambient
+            // washes the whole park out -- the models are already near-unlit artwork.
+            AmbientLightSource = Godot.Environment.AmbientSource.Color,
+            AmbientLightColor = new Color(0.45f, 0.45f, 0.45f),
+            AmbientLightSkyContribution = 0f,
+        };
+        _sky.Environment = _mode == Mode.Park && _skyEnv != null ? _skyEnv : _flatEnv;
+    }
+
     /// <summary>The bounds of the terrain surfaces whose mesh name matches, in the terrain's
     /// parent space. Several surfaces share one mesh name, so they are merged.</summary>
     bool TerrainBounds(string name, out Aabb box)
@@ -1377,6 +1406,7 @@ public partial class Viewer : Node3D
         ParkCameraOverrides();
         // ⚠ LAST. Everything above sets the camera, so aiming before them aims at nothing.
         LoadGate();
+        LoadSky();
         if (System.Environment.GetEnvironmentVariable("TPW_PARK_SKIP") == "1") DumpEntranceSkip();
         AimAtMesh();
         StartGameCam();
