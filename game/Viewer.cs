@@ -13,7 +13,7 @@ public partial class Viewer : Node3D
 {
     AssetLibrary _lib;
     AnimatedModel _current;
-    readonly Dictionary<string, (ImageTexture Tex, bool Soft)> _texCache = new();
+    readonly Dictionary<string, (ImageTexture Tex, bool Soft)> _texCache = new(StringComparer.OrdinalIgnoreCase);
     AssetLibrary.RideAssets _ride;
     Aps _anim;
     List<Aps.Record> _records = new();
@@ -575,7 +575,7 @@ public partial class Viewer : Node3D
                 foreach (var rec in _anim.Records())
                 {
                     _records.Add(rec);
-                    _animPick.AddItem($"{rec.SlotName}  {_anim.Length(rec)} frames"
+                    _animPick.AddItem($"{rec.SlotName}  {rec.DurationFrames} frames"
                                       + (rec.Skeletal ? "  skeletal" : "")
                                       + (rec.Shared ? "  (shared)" : ""));
                 }
@@ -1096,7 +1096,7 @@ public partial class Viewer : Node3D
         if (_current != null && _playing && _shotPath == null)
         {
             _time += (float)delta * Aps.Fps;
-            if (_time >= _current.Frames) _time = 0;
+            if (_time >= _current.Frames) _time = _current.Frames > 0 ? _time % _current.Frames : 0;
             _current.SetFrame(_time);
             _scrub.SetValueNoSignal(_time / Mathf.Max(_current.Frames, 1));
         }

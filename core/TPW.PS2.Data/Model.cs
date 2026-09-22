@@ -25,6 +25,10 @@ public sealed class Model
     public readonly byte[] D;
     public List<Mesh> Meshes { get; } = new();
     public List<string> Materials { get; } = new();
+    /// <summary>Ordered texture choices per material. MPS +0x40, 16-byte descriptors:
+    /// +0x0a counts 20-byte names at +0x0c (loader 0x227610–0x227664).
+    /// These are explicit lists, not numbered-filename conventions.</summary>
+    public List<string[]> MaterialTextures { get; } = new();
     public int MeshTable { get; }
     /// <summary>The park's terrain grid, authored in the terrain file.
     ///
@@ -136,7 +140,23 @@ public sealed class Model
             }
         }
         int nmat = U16(0x22), matTable = (int)U32(0x40);
-        for (int i = 0; i < nmat; i++) Materials.Add(NameAt((int)U32(matTable + i * 16 + 12)));
+        for (int i = 0; i < nmat; i++)
+        {
+            int descriptor = checked(matTable + i * 16);
+            int count = U16(descriptor + 10), names = checked((int)U32(descriptor + 12));
+            if (count == 0 || names <= 0 || (long)names + count * 20L > D.Length)
+                throw new InvalidDataException($"MPS material {i}: invalid texture name table");
+            var textures = new string[count];
+            for (int j = 0; j < count; j++)
+            {
+                int start = names + j * 20;
+                int end = Array.IndexOf(D, (byte)0, start, 20);
+                if (end <= start) throw new InvalidDataException($"MPS material {i}, texture {j}: invalid name");
+                textures[j] = System.Text.Encoding.Latin1.GetString(D, start, end - start);
+            }
+            MaterialTextures.Add(textures);
+            Materials.Add(textures[0]);
+        }
 
         int nmesh = U16(0x30);
         for (int i = 0; i < nmesh; i++)

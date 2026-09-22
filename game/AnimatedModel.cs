@@ -35,6 +35,10 @@ public sealed class AnimatedModel
 
     readonly Model _model;
     readonly Aps _anim;
+    readonly Func<string, (ImageTexture Tex, bool Soft)> _texture;
+    readonly List<Aps.TextureTrack> _textureTracks;
+    readonly Dictionary<int, ShaderMaterial> _materials = new();
+    readonly int[] _textureIndices;
     readonly List<Part> _parts = new();
     readonly Dictionary<int, List<(int Time, System.Numerics.Quaternion Q)>> _rot = new();
     readonly Dictionary<int, int> _rotTrack = new();   // node -> its track, for the easing curves
@@ -62,7 +66,15 @@ public sealed class AnimatedModel
     public AnimatedModel(Model model, Aps anim, Aps.Record rec,
                          Func<string, (ImageTexture Tex, bool Soft)> texture)
     {
-        _model = model; _anim = anim;
+        _model = model; _anim = anim; _texture = texture;
+        _textureTracks = anim?.TextureTracks(rec) ?? new();
+        _textureIndices = new int[model.MaterialTextures.Count];
+        foreach (var track in _textureTracks)
+        {
+            if (track.Material >= model.MaterialTextures.Count ||
+                track.Keys.Any(k => k.TextureIndex >= model.MaterialTextures[track.Material].Length))
+                throw new InvalidDataException($"APS texture track targets invalid material/texture: slot {track.Material}");
+        }
         // ⚠ THE TWO TRACK FORMATS ARE NOT INTERCHANGEABLE. A skeletal record's tracks are 20 bytes,
         // not 48, so none of the channel readers below may be pointed at one. The characters in
         // DATA.WAD are skinned to a biped and are shown in their bind pose until the skin is wired;
@@ -87,12 +99,12 @@ public sealed class AnimatedModel
                 }
             }
             _vis = anim.Visibility(rec);
-            Frames = Math.Max(anim.Length(rec), 1);
+            Frames = Math.Max(rec.DurationFrames, 1);
         }
         else if (rec != null)
         {
             _skel = anim.SkeletalTracks(rec);
-            Frames = Math.Max(anim.Length(rec), 1);
+            Frames = Math.Max(rec.DurationFrames, 1);
         }
 
         foreach (var mesh in _model.Meshes)
@@ -117,7 +129,7 @@ public sealed class AnimatedModel
                     int t = anim.TrackAt(rec, i);
                     if (anim.TrackNode(t) == mesh.Index) { p.Morph = anim.Morph(t); break; }
                 }
-            BuildSurfaces(p, texture);
+            BuildSurfaces(p);
             _parts.Add(p);
             var vs = _vis.TryGetValue(mesh.Index, out var vv) ? "vis[" + string.Join(",", vv) + "]" : "always";
             GD.Print($"[part] {mesh.Name,-10} tris={tris.Count,-5} verts={pos.Count,-5} " +
@@ -125,6 +137,7 @@ public sealed class AnimatedModel
                      $"map={(p.AnimMap != null ? "yes" : "NO "),-4} {vs}");
         }
         Summary = $"{_parts.Count} parts, {Frames} frames, {_model.Materials.Count} materials"
+                  + $", {_textureTracks.Count} texture tracks"
                   + (Skeletal ? $", {_skel?.Count ?? 0} bone tracks (bind pose)" : "");
     }
 
@@ -249,7 +262,17 @@ void fragment() {
 "
     };
 
-    void BuildSurfaces(Part p, Func<string, (ImageTexture Tex, bool Soft)> texture)
+    void SetTexture(ShaderMaterial material, int slot, int index)
+    {
+        var (tex, soft) = slot >= 0 && slot < _model.MaterialTextures.Count
+            ? _texture(_model.MaterialTextures[slot][index]) : (null, false);
+        material.Shader = soft ? BlendShader : ViewerShader;
+        material.SetShaderParameter("albedo_tex", tex);
+        material.SetShaderParameter("has_tex", tex != null);
+        material.SetShaderParameter("affine", (OS.GetEnvironment("TPW_PS2_AFFINE") ?? "on") != "off");
+    }
+
+    void BuildSurfaces(Part p)
     {
         var byMat = p.Tris.GroupBy(t => t.Material).ToList();
         p.Surfaces = new MeshInstance3D[byMat.Count];
@@ -258,13 +281,11 @@ void fragment() {
         {
             var mi = new MeshInstance3D();
             int m = byMat[i].Key;
-            var (tex, soft) = (m >= 0 && m < _model.Materials.Count)
-                              ? texture(_model.Materials[m]) : (null, false);
-            var mat = new ShaderMaterial { Shader = soft ? BlendShader : ViewerShader };
-            mat.SetShaderParameter("albedo_tex", tex);
-            mat.SetShaderParameter("has_tex", tex != null);
-            // ⚠ Vertex snapping is deliberately NOT wired yet -- the owner asked for affine only.
-            mat.SetShaderParameter("affine", (OS.GetEnvironment("TPW_PS2_AFFINE") ?? "on") != "off");
+            if (!_materials.TryGetValue(m, out var mat))
+            {
+                _materials[m] = mat = new ShaderMaterial();
+                SetTexture(mat, m, 0);
+            }
             mi.MaterialOverride = mat;
             p.SurfaceMaterial[i] = m;
             p.Surfaces[i] = mi;
@@ -378,6 +399,15 @@ void fragment() {
 
     public void SetFrame(float now)
     {
+        // The APS clock drives texture choices too. Shared materials update every surface using
+        // the slot; image lookup still goes through the viewer's owner-scoped texture cache.
+        foreach (var track in _textureTracks)
+        {
+            int slot = track.Material, index = track.Sample(now, _textureIndices[slot]);
+            if (index == _textureIndices[slot]) continue;
+            if (_materials.TryGetValue(slot, out var material)) SetTexture(material, slot, index);
+            _textureIndices[slot] = index;
+        }
         var world = WorldAt(now);
         foreach (var p in _parts)
         {

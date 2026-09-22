@@ -1117,7 +1117,14 @@ system, not bolted on beside it.
 `FUN_001f6c10`, a one-line unload. So the `.plb` is re-parsed into something else at load, and the
 link from a `+0x24` field to a definition index is **still not read**.
 
-### `record+0x14` (the "small" array) is a per-mesh ON/OFF timeline — mechanism clear, indexing not
+### Historical `record+0x14` interpretation — retracted for flag-2 records
+
+**Correction, 2026-09-22:** the texture-channel call at `0x1a88dc` invokes `0x1a6b08`,
+which reads MPS +0x3c and consumes this array as `(u16 material, u16 keyCount, u32 keys)`.
+The keys are `(u16 frame, u16 textureIndex)`. Across all 374 APS files, 185 flag-2 records
+contain 287 such tracks; all indices fit their paired models. The interpretation below used
+a different consumer and is retained only as the history of the contradiction, not as the
+format specification. See [the consumer chain and port implementation](animated-textures.md).
 
 `FUN_001a8c30` consumes it, and the mechanism is unambiguous:
 

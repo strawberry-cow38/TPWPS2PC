@@ -1,21 +1,25 @@
 """`.plb` reader — Theme Park World (PS2) particle effect library.
 
-`/DATA/PARTICLE.WAD` holds `Tp2.plb` plus 100 particle textures in animated sequences
-(`PA1a0000..0015` is a 16-frame loop, `Pa1b0000..0007` an 8-frame one).
+`/DATA/PARTICLE.WAD` holds `Tp2.plb` and particle textures. Numbered files are NOT
+automatically loops: 0x189fdc selects a logical sprite by particle lifetime, and
+0x182680 halves that index into an executable-authored table of even-numbered SSHs.
 
 `FUN_001f6938` loads it: `FUN_00220800(0x2f0790, "Data\\Particle\\Tp2.plb", 400, 0x400)`.
 
-Layout, confirmed by the name spacing matching the header's own record size:
+Layout, confirmed by loader 0x1467b8 and cursor reader 0x1461c0:
 
     +0x00 u32 record count        (105 in Tp2.plb)
     +0x04 u32 record size         (320)
-    records start at 0x120; each begins with a NUL-terminated name
+    records start at 0x08; the NUL-terminated name is at record +0x118
+    +0x94 i16 sprite group, +0x96 i16 logical sprite count
 
-    0x120 + 105*320 = 0x8460, and the file is 35,704 bytes.
+    0x08 + 105*320 = 0x8348: next header is (20 records, 104 bytes).
+    0x8350 + 20*104 = 0x8b70: two trailing u32s; file length 35,704.
 
-⚠ The record's parameter fields (from about +0x20) are integers, not floats, and at least some are
-**16.16 fixed point** -- `65536` appears as a value and `0xffffffff` as a sentinel. Their meanings
-are NOT decoded; that needs the particle system's own parser, which is not located.
+The former 0x120 record origin was the first NAME, not the first record. It mixed one
+effect's name with the next effect's parameters. The two sprite fields are consumed
+by 0x14630c/0x146314, 0x14656c and 0x189fdc; other parameters remain undecoded here.
+See findings/animated-textures.md for the structure-to-consumer chain.
 """
 import struct
 
@@ -25,17 +29,23 @@ def effects(d):
     count, size = struct.unpack_from('<2I', d, 0)
     out = []
     for i in range(count):
-        o = 0x120 + i*size
+        o = 8 + i*size
         if o + size > len(d): break
-        out.append((i, d[o:o+32].split(b'\0')[0].decode('latin-1')))
+        out.append((i, d[o+0x118:o+size].split(b'\0')[0].decode('latin-1')))
     return out
 
 
 def record(d, i):
     """One raw record."""
     count, size = struct.unpack_from('<2I', d, 0)
-    o = 0x120 + i*size
+    if not 0 <= i < count: raise IndexError(i)
+    o = 8 + i*size
     return d[o:o+size]
+
+
+def sprite(d, i):
+    """(group, logical frame count), consumed by 0x146290 and 0x189e78."""
+    return struct.unpack_from('<hh', record(d, i), 0x94)
 
 
 if __name__ == '__main__':

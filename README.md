@@ -68,6 +68,21 @@ currently **fails**. See [resolver results and all unresolved names](findings/te
 
 The disc tools below read a Mode 2/2352 track directly. Nothing copies a disc image.
 
+Model texture animation uses explicit MPS filename lists and APS material/index keyframes,
+at the existing 30-frame animation clock. See [animated texture evidence and limits](findings/animated-textures.md).
+Audit the full disc's authored lists and keys:
+
+```sh
+dotnet run --project tools/TPW.PS2.TextureAnimationAudit -- /path/to/disc.bin
+dotnet build game/TPWPS2Viewer.csproj
+TPW_PS2_DISC=/path/to/disc.bin /path/to/godot --headless --path game res://tests/TextureAnimationAudit.tscn
+```
+
+The data audit currently exits 2: 408/418 multi-texture choices resolve, with ten missing
+names reported individually. All 13,588 distinct key boundaries pass. The Godot 4.6.2 mono
+audit passes 146 surface-binding checks, including the actual viewer's advance/pause/wrap
+path; it does not compare framebuffer pixels or emulate particles/loading screens.
+
 | | |
 |---|---|
 | `tools/iso2.py <bin>` | list the ISO9660 tree |

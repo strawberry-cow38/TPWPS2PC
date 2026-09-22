@@ -39,6 +39,9 @@ public sealed class Animation
     public sealed class Record
     {
         public int Offset; public uint Flags;
+        /// <summary>Authored playback duration at record +4; the clock consumes this at
+        /// 0x1a8938 and 0x1a8a18. Keys can extend beyond this duration.</summary>
+        public int DurationFrames;
         /// <summary>Which SECTION this record came from -- the animation's named slot.</summary>
         public int Slot = -1;
         public string SlotName => SlotNames.TryGetValue(Slot, out var n) ? n : $"slot {Slot}";
@@ -55,10 +58,49 @@ public sealed class Animation
 
     public Record ReadRecord(int r) => new()
     {
-        Offset = r, Flags = U32(r), TrackCount = U16(r + 8), SmallCount = U16(r + 0x0A),
+        Offset = r, Flags = U32(r), DurationFrames = checked((int)U32(r + 4)),
+        TrackCount = U16(r + 8), SmallCount = U16(r + 0x0A),
         IndexCount = (int)U32(r + 0x0C), Tracks = (int)U32(r + 0x10),
         Small = (int)U32(r + 0x14), Index = (int)U32(r + 0x18),
     };
+
+    public readonly record struct TextureKey(ushort Time, ushort TextureIndex);
+
+    /// <summary>APS record flag 2: material slot, key count, pointer to (u16 time, u16 index).
+    /// Consumer 0x1a6b08, dispatched by 0x1a88b8. The similarly placed skeletal/visibility
+    /// data is not this channel; a nonzero SmallCount alone is not a texture track.</summary>
+    public sealed record TextureTrack(int Material, TextureKey[] Keys)
+    {
+        /// <summary>Last stored key at or before the truncated nonnegative APS frame.
+        /// Before the first key, retain the previous choice (0x1a6b60–0x1a6bd4).</summary>
+        public int Sample(float frame, int previous)
+        {
+            if (!float.IsFinite(frame) || frame < 0) throw new ArgumentOutOfRangeException(nameof(frame));
+            for (int i = Keys.Length - 1; i >= 0; i--)
+                if (Keys[i].Time <= MathF.Truncate(frame)) return Keys[i].TextureIndex;
+            return previous;
+        }
+    }
+
+    public List<TextureTrack> TextureTracks(Record rec)
+    {
+        var tracks = new List<TextureTrack>();
+        if (rec == null || rec.Skeletal || (rec.Flags & 2) == 0) return tracks;
+        if (rec.SmallCount != 0 && (rec.Small <= 0 || (long)rec.Small + rec.SmallCount * 8L > D.Length))
+            throw new InvalidDataException($"APS record 0x{rec.Offset:x}: invalid texture track table");
+        for (int i = 0; i < rec.SmallCount; i++)
+        {
+            int entry = rec.Small + i * 8, count = U16(entry + 2);
+            int keys = checked((int)U32(entry + 4));
+            if (count != 0 && (keys <= 0 || (long)keys + count * 4L > D.Length))
+                throw new InvalidDataException($"APS record 0x{rec.Offset:x}, texture track {i}: invalid keys");
+            var values = new TextureKey[count];
+            for (int j = 0; j < count; j++)
+                values[j] = new TextureKey(U16(keys + j * 4), U16(keys + j * 4 + 2));
+            tracks.Add(new TextureTrack(U16(entry), values));
+        }
+        return tracks;
+    }
 
     /// <summary>⭐⭐ THE SECTION INDEX IS A NAMED ANIMATION SLOT, and the names come free from the
     /// ride scripts the disc ships as source: `WAITANIM ANIM_Create 0` in the `.rss` sits against
