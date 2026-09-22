@@ -68,6 +68,16 @@ public sealed class AssetLibrary : IDisposable
 
     public byte[] ReadDisc(Disc.Entry f) => _disc.Read(f.Extent, f.Size);
 
+    /// <summary>The console executable, for the tables that live in it. ⚠ Null when the disc is a
+    /// different build: nothing here is baked, so a table that cannot be read is a missing feature
+    /// rather than a wrong one.</summary>
+    public byte[] Executable()
+    {
+        var f = _disc.Files().FirstOrDefault(
+            x => !x.IsDirectory && x.Path.Equals("/SLES_500.32", StringComparison.OrdinalIgnoreCase));
+        return f == null ? null : _disc.Read(f.Extent, f.Size);
+    }
+
     public List<string> Wads() => WadFiles().Select(f => f.Path).ToList();
 
     /// <summary>The archives as disc entries, for a caller that wants to read one itself.</summary>

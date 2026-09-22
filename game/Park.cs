@@ -559,9 +559,20 @@ public sealed class Park
                 var b = new Vector3(cx + half, cy, cz - half);
                 var c = new Vector3(cx + half, cy, cz + half);
                 var dd = new Vector3(cx - half, cy, cz + half);
-                void V(Vector3 v, float u, float w2) { st.SetUV(new Vector2(u, w2)); st.SetNormal(Vector3.Up); st.AddVertex(v); }
-                V(a, 0, 0); V(b, 1, 0); V(c, 1, 1);
-                V(a, 0, 0); V(c, 1, 1); V(dd, 0, 1);
+                // ⭐ A GROUND TILE CAN BE TURNED. The game's path pieces name a tile AND a
+                // number of quarter turns -- one corner tile serves all four right angles -- so the
+                // turn has to reach the quad. It goes in the UVs rather than in the material,
+                // because the plot is grouped by material: a per-cell rotation on the material
+                // would mean a surface per cell.
+                int turn = (TurnsForCell?.Invoke(x, y) ?? 0) & 3;
+                void V(Vector3 v, int corner)
+                {
+                    st.SetUV(UvCorners[(corner + turn) & 3]);
+                    st.SetNormal(Vector3.Up);
+                    st.AddVertex(v);
+                }
+                V(a, 0); V(b, 1); V(c, 2);
+                V(a, 0); V(c, 2); V(dd, 3);
 
                 // ⚠⚠ VERTICAL FACES ARE AN INVENTION OF MINE AND ARE OFF BY DEFAULT.
                 //
@@ -630,6 +641,13 @@ public sealed class Park
     /// <summary>Resolves a cell's `byte1` to a material through the terrain model's material
     /// table. Returning null falls back to <see cref="GroundMaterial"/>.</summary>
     public Func<int, Material> MaterialForCell { get; set; }
+
+    /// <summary>Quarter turns for a cell's ground tile, clockwise. Null leaves every tile at the
+    /// texture's own orientation, which is what the authored ground wants.</summary>
+    public Func<int, int, int> TurnsForCell { get; set; }
+
+    /// <summary>The quad's UV corners, in the order the floor emits its vertices.</summary>
+    static readonly Vector2[] UvCorners = { new(0, 0), new(1, 0), new(1, 1), new(0, 1) };
 
     /// <summary>How many distinct ground materials the plot was laid with.</summary>
     public int MaterialCount { get; private set; }

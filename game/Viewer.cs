@@ -84,6 +84,11 @@ public partial class Viewer : Node3D
     Weather.Kind? _weatherWanted;
     /// <summary>The buildable overlay, rebuilt with the park. B toggles it.</summary>
     Node3D _buildable;
+    /// <summary>The path tool, the console tables behind it, and the terrain model it works on.</summary>
+    PathTool _paths;
+    PathPieces _pieces;
+    Model _terrainModel;
+    bool _pathTest;
     /// <summary>Nudge on the gate's z, in units, starting at master's own correction.
     ///
     /// ⭐ Fantasy's pad alone put the gate a quarter unit too far from the road, and master — who
@@ -127,8 +132,12 @@ public partial class Viewer : Node3D
 
     public override void _Ready()
     {
+        // ⚠⚠ BOTH LISTS. `OS.GetCmdlineArgs()` does NOT carry what follows `--` -- those go to
+        // `GetCmdlineUserArgs()` alone -- so reading only the first one makes every switch on a
+        // launch line vanish and the viewer reports "no disc path given" while staring at one.
+        var argv = OS.GetCmdlineArgs().Concat(OS.GetCmdlineUserArgs()).ToArray();
         string disc = null;
-        foreach (var a in OS.GetCmdlineArgs())
+        foreach (var a in argv)
             if (a.StartsWith("--disc=")) disc = a["--disc=".Length..];
         disc ??= OS.GetEnvironment("TPW_PS2_DISC");
         if (string.IsNullOrWhiteSpace(disc)) disc = GetTree().GetMeta("tpw_disc", "").AsString();
@@ -136,7 +145,7 @@ public partial class Viewer : Node3D
         // intact, and a disc path with spaces is the common case -- losing them silently is how this
         // looked like a hang rather than a missing argument.
         string Env(string k) { var v = OS.GetEnvironment(k); return string.IsNullOrWhiteSpace(v) ? null : v; }
-        foreach (var a in OS.GetCmdlineArgs())
+        foreach (var a in argv)
         {
             if (a.StartsWith("--shot="))
             {
@@ -145,13 +154,20 @@ public partial class Viewer : Node3D
                 if (c > 2) { _shotPath = v[..c]; int.TryParse(v[(c + 1)..], out _shotFrame); }
                 else _shotPath = v;
             }
+            // ⚠ ENV DOES NOT ALWAYS REACH THIS PROCESS. A capture is launched through
+            // Start-Process on the render box and the child did not inherit the switches, so
+            // everything a shot needs has a command-line form too. The env reads below are the
+            // fallback, not the other way round.
+            else if (a.StartsWith("--map=")) _wantMap = a["--map=".Length..];
+            else if (a.StartsWith("--mode=")) _wantMode = a["--mode=".Length..];
+            else if (a == "--path-test") _pathTest = true;
             else if (a.StartsWith("--ride=")) _wantRide = a["--ride=".Length..];
             else if (a.StartsWith("--anim=")) _wantAnim = a["--anim=".Length..];
             else if (a.StartsWith("--wad=")) _wantWad = a["--wad=".Length..];
         }
 
-        _wantMode = Env("TPW_PS2_MODE");
-        _wantMap = Env("TPW_PS2_MAP");
+        _wantMode ??= Env("TPW_PS2_MODE");
+        _wantMap ??= Env("TPW_PS2_MAP");
         _wantSound = Env("TPW_PS2_SOUND");
         _wantPlay = Env("TPW_PS2_PLAY");
         _wantImage = Env("TPW_PS2_IMAGE");
@@ -164,7 +180,7 @@ public partial class Viewer : Node3D
             int.TryParse(Env("TPW_PS2_FRAME") ?? "0", out _shotFrame);
         }
         BuildUi();
-        GD.Print($"[v] start; args={string.Join(" ", OS.GetCmdlineArgs())}");
+        GD.Print($"[v] start; args={string.Join(" ", argv)}");
         if (string.IsNullOrWhiteSpace(disc) || !File.Exists(disc))
         {
             // ⚠ Say WHICH path failed. "No disc" alone cannot tell a missing argument from a
@@ -485,6 +501,17 @@ public partial class Viewer : Node3D
         }
         // ⭐ [ and ] slide the gate along z and print where its front edge lands. Master can see
         // the park and I cannot, so this turns "not quite right" into a number.
+        // ⭐ P lays a path under the cursor, shift+P a queue, O takes back everything this
+        // session laid. The cursor is the game camera's own, the one WASD already drives, because
+        // on the console that IS the build cursor.
+        else if (k.Keycode == Key.P && _mode == Mode.Park)
+            LayAtCursor(k.ShiftPressed ? PathTool.Kind.Queue : PathTool.Kind.Path);
+        else if (k.Keycode == Key.O && _mode == Mode.Park && _paths != null)
+        {
+            _paths.Undo();
+            RebuildFloor();
+            GD.Print("[path] taken back");
+        }
         else if (k.Keycode is Key.Bracketleft or Key.Bracketright && _mode == Mode.Park)
         {
             _gateNudge += k.Keycode == Key.Bracketright ? 0.25f : -0.25f;
@@ -993,7 +1020,7 @@ public partial class Viewer : Node3D
         var models = _lib.TerrainModels();
         if (models.Count == 0)
         {
-            if (_terrain != null) { _park.SetTerrain(null); _terrain = null; _terrainPath = null; }
+            if (_terrain != null) { _park.SetTerrain(null); _terrain = null; _terrainPath = null; _terrainModel = null; }
             _park.ShowGrass = true;
             return;
         }
@@ -1006,6 +1033,10 @@ public partial class Viewer : Node3D
         try
         {
             var tm = new Model(_lib.Read(pick));
+            // ⚠ A new terrain is a NEW grid. The path tool holds the old one, and its cells are
+            // sized to it, so keeping it would write turns for a grid that is no longer drawn.
+            _terrainModel = tm;
+            _paths = null;
             _terrain = new AnimatedModel(tm, null, null, m => TextureNear(pick.Path, m));
             _terrain.SetFrame(0);
             AddChild(_terrain.Root);
@@ -1058,6 +1089,9 @@ public partial class Viewer : Node3D
             // ⭐ Each cell names its own ground tile: byte1 indexes THIS model's material table.
             // Resolved per index and cached, with the terrain's own path as the lookup owner so
             // the nearest-wins search starts in /terrain/ where the tiles live.
+            // ⭐ And the other half of a laid tile: which way round it faces. The authored ground
+            // has no rotation, so this is 0 everywhere until a path is laid.
+            _park.TurnsForCell = (x, y) => _paths?.Turns(x, y) ?? 0;
             var matCache = new Dictionary<int, Material>();
             _park.MaterialForCell = idx =>
             {
@@ -1149,6 +1183,86 @@ public partial class Viewer : Node3D
     /// ⚠ Only over cells the terrain DRAWS. A cell that is both undrawn and unbuildable is
     /// simply outside the park, and colouring those paints the whole surround red and says
     /// nothing.</summary>
+    /// <summary>Make the path tool for the park that has just loaded.
+    ///
+    /// ⚠ The tables are read from the owner's own executable, never baked here. A disc whose build
+    /// does not carry them leaves the tool off rather than laying guessed art.</summary>
+    void MakePathTool()
+    {
+        _paths = null;
+        if (_terrainModel?.Field == null) return;
+        if (_pieces == null)
+        {
+            try
+            {
+                var exe = _lib.Executable();
+                if (exe != null) _pieces = PathPieces.ReadExecutable(exe);
+                else GD.Print("[path] no SLES_500.32 on this disc -- path laying is off");
+            }
+            catch (Exception e) { GD.PrintErr($"[path] the piece tables would not read: {e.Message}"); }
+        }
+        if (_pieces == null) return;
+        _paths = new PathTool(_terrainModel, _pieces);
+        GD.Print($"[path] {_paths.Report}"
+               + (_paths.Ready ? $"; {_pieces.Path.Count} path and {_pieces.Queue.Count} queue pieces" : ""));
+        if (!_paths.Ready) { _paths = null; return; }
+        if (_pathTest || System.Environment.GetEnvironmentVariable("TPW_PATH_TEST") == "1") LayTestPath();
+    }
+
+    /// <summary>⭐ A CONTROL RUN, not a feature. It lays a shape that MUST come out wearing one of
+    /// every piece -- a crossroads at the middle, four straight arms, four ends, and an L off the
+    /// east arm for a corner and a T -- so a render says whether the table, the tile lists and the
+    /// rotation are all right, instead of only whether something appeared.</summary>
+    void LayTestPath()
+    {
+        var f = _park.Field;
+        int cx = f.Width / 2, cy = f.Height / 2;
+        // Walk out to a cell that can actually be built on, so the run is not silently refused.
+        for (int r = 0; r < 12 && !_paths.CanLay(cx, cy); r++) { cx += 1; if (!_paths.CanLay(cx, cy)) cy += 1; }
+        int laid = 0;
+        for (int i = -4; i <= 4; i++)
+        {
+            if (_paths.Lay(cx + i, cy)) laid++;
+            if (_paths.Lay(cx, cy + i)) laid++;
+        }
+        for (int i = 1; i <= 3; i++) if (_paths.Lay(cx + 4, cy + i)) laid++;   // the L: a corner, then a T
+        for (int i = 1; i <= 2; i++) if (_paths.Lay(cx + 4 + i, cy + 2)) laid++;
+        GD.Print($"[path] control run at ({cx},{cy}): {laid} cells laid; "
+               + $"centre {_paths.Describe(cx, cy)}, corner {_paths.Describe(cx + 4, cy)}");
+        RebuildFloor();
+    }
+
+    /// <summary>The plot cell under the game camera's cursor. ⚠ Found by nearest centre rather
+    /// than by inverting the plot's transform: the plot may sit under an authored node transform,
+    /// and a wrong inverse would be a silent one-cell-off rather than a miss.</summary>
+    bool CursorCell(out int bx, out int by)
+    {
+        bx = by = -1;
+        var f = _park?.Field;
+        if (f == null) return false;
+        var want = new Vector2(_game.CursorX / (float)GameCamera.TileUnits,
+                               _game.CursorZ / (float)GameCamera.TileUnits);
+        float best = float.MaxValue;
+        for (int y = 0; y < f.Height; y++)
+            for (int x = 0; x < f.Width; x++)
+            {
+                var c = _park.CellCentre(x, y);
+                float d = want.DistanceSquaredTo(new Vector2(c.X, c.Z));
+                if (d < best) { best = d; bx = x; by = y; }
+            }
+        return best <= Park.CellSize * Park.CellSize;
+    }
+
+    /// <summary>Lay one cell under the cursor and redraw the floor.</summary>
+    void LayAtCursor(PathTool.Kind kind)
+    {
+        if (_paths == null) { GD.Print("[path] the tool is off for this park"); return; }
+        if (!CursorCell(out int x, out int y)) { GD.Print("[path] the cursor is off the plot"); return; }
+        if (!_paths.Lay(x, y, kind)) { GD.Print($"[path] nothing laid: {_paths.Describe(x, y)}"); return; }
+        RebuildFloor();
+        GD.Print($"[path] {kind} {_paths.Describe(x, y)}; {_paths.Laid} laid");
+    }
+
     void BuildBuildableOverlay()
     {
         _buildable?.QueueFree();
@@ -1520,6 +1634,15 @@ public partial class Viewer : Node3D
         if (_terrain != null && _park.Field != null)
             _park.TerrainTop = Park.SurfaceHeights(_terrain.Root, _holeOrigin,
                 _park.Field.Width, _park.Field.Height, Park.CellSize);
+        RebuildFloor();
+    }
+
+    /// <summary>Lay the plot's floor again from the grid as it stands. ⭐ Cheap and complete: a
+    /// path tile changes the cell's ground byte and its neighbours', and the floor is built FROM
+    /// those bytes, so re-running it is how a laid tile appears -- no separate path geometry.</summary>
+    void RebuildFloor()
+    {
+        if (_holeSize.X <= 1f) { _park.Build(ParkCells, ParkCells); return; }
         _park.Build(Mathf.RoundToInt(_holeSize.X), Mathf.RoundToInt(_holeSize.Y), _holeCells);
     }
 
@@ -1548,6 +1671,7 @@ public partial class Viewer : Node3D
         // ⚠ LAST. Everything above sets the camera, so aiming before them aims at nothing.
         LoadGate();
         LoadSky();
+        MakePathTool();
         BuildBuildableOverlay();
         var want = (System.Environment.GetEnvironmentVariable("TPW_PS2_WEATHER") ?? "").ToLowerInvariant();
         var kind = want.StartsWith("rain") ? Weather.Kind.Rain
