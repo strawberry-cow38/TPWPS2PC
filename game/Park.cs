@@ -453,17 +453,29 @@ public sealed class Park
             ? playable : null;
         _occupied = new int[width, height];
 
-        // ⭐ ONE mesh for the whole plot, with the game's own ground texture and a fresh 0..1 UV
-        // per cell -- that is what a tile IS. The plot was 3,097 separate boxes with flat colours
-        // standing in for grass; `jgr_bas2..6` are the jungle ground tiles on the disc (64x64,
-        // green), and `jpa_*` are the paths, so the placeholder can go.
-        var st = new SurfaceTool();
-        st.Begin(Mesh.PrimitiveType.Triangles);
+        // ⭐ ONE SURFACE PER GROUND MATERIAL. The disc says which ground variant goes on each
+        // cell -- byte1 indexes the terrain model's OWN material table -- and laying a single
+        // texture over the whole plot throws all of it away. In jungle the values hit
+        // `jgr_bas1..6` and in space `sfl_bas1..6`: six of the top seven in each, at DIFFERENT
+        // indices per world (24/55-59 against 2/19/43-46), so it is a per-file index and not a
+        // fixed enum that could have matched by luck.
+        //
+        // ⚠ Index 0 is a SENTINEL, not a material. It resolves to `gte_wal1` in jungle and
+        // `sgr_tnk2` in space -- a wall and a tank, on about a quarter of all cells. Those get the
+        // default ground rather than a wall texture laid across the park.
         float half = CellSize * 0.5f;
+        var surfaces = new Dictionary<int, SurfaceTool>();
         for (int y = 0; y < height; y++)
             for (int x = 0; x < width; x++)
             {
                 if (!IsPlayable(x, y)) continue;
+                int mat = Field != null && x < Field.Width && y < Field.Height ? Field.ShapeC(x, y) : 0;
+                if (!surfaces.TryGetValue(mat, out var st))
+                {
+                    st = new SurfaceTool();
+                    st.Begin(Mesh.PrimitiveType.Triangles);
+                    surfaces[mat] = st;
+                }
                 float cx = Origin.X + (x + 0.5f) * CellSize, cz = Origin.Y + (y + 0.5f) * CellSize;
                 float cy = CellY(x, y);
                 var a = new Vector3(cx - half, cy, cz - half);
@@ -473,20 +485,31 @@ public sealed class Park
                 void V(Vector3 v, float u, float w2) { st.SetUV(new Vector2(u, w2)); st.SetNormal(Vector3.Up); st.AddVertex(v); }
                 V(a, 0, 0); V(b, 1, 0); V(c, 1, 1);
                 V(a, 0, 0); V(c, 1, 1); V(dd, 0, 1);
-                // (No skirts. With the plot flat there are no steps to close -- the sides
-                // went out with the boxes; see CellY.)
             }
-        var ground = st.Commit();
-        if (ground != null && ground.GetSurfaceCount() > 0)
+        var fallback = GroundMaterial ?? Flat(new Color(0.30f, 0.46f, 0.22f));
+        MaterialCount = 0;
+        foreach (var kv in surfaces)
+        {
+            var mesh = kv.Value.Commit();
+            if (mesh == null || mesh.GetSurfaceCount() == 0) continue;
+            MaterialCount++;
             _ground.AddChild(new MeshInstance3D
             {
-                Mesh = ground,
-                MaterialOverride = GroundMaterial ?? Flat(new Color(0.30f, 0.46f, 0.22f)),
+                Mesh = mesh,
+                MaterialOverride = MaterialForCell?.Invoke(kv.Key) ?? fallback,
             });
+        }
     }
 
     /// <summary>The plot's ground material -- the disc's own tile texture when one resolved.</summary>
     public Material GroundMaterial { get; set; }
+
+    /// <summary>Resolves a cell's `byte1` to a material through the terrain model's material
+    /// table. Returning null falls back to <see cref="GroundMaterial"/>.</summary>
+    public Func<int, Material> MaterialForCell { get; set; }
+
+    /// <summary>How many distinct ground materials the plot was laid with.</summary>
+    public int MaterialCount { get; private set; }
 
     /// <summary>The authored terrain grid, when the terrain file carries one. ⭐ The park floor is
     /// LOADED from this, not approximated from the mesh -- the runtime field is a verbatim copy of

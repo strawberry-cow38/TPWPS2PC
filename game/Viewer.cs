@@ -680,6 +680,31 @@ public partial class Viewer : Node3D
             // ⭐ The plot's ground comes off the disc, not out of a Color. `jgr_bas2..6` are the
             // jungle ground tiles (64x64, green); `jpa_*` are the paths. Named by the model's own
             // convention so the ordinary resolver finds them beside the terrain.
+            // ⭐ Each cell names its own ground tile: byte1 indexes THIS model's material table.
+            // Resolved per index and cached, with the terrain's own path as the lookup owner so
+            // the nearest-wins search starts in /terrain/ where the tiles live.
+            var matCache = new Dictionary<int, Material>();
+            _park.MaterialForCell = idx =>
+            {
+                if (matCache.TryGetValue(idx, out var got)) return got;
+                Material made = null;
+                // ⚠ 0 is a sentinel (gte_wal1 in jungle, sgr_tnk2 in space) -- not a ground tile.
+                if (idx > 0 && idx < tm.Materials.Count && tm.Materials[idx] != null)
+                {
+                    var t = TextureNear(pick.Path, tm.Materials[idx]);
+                    if (t.Tex != null)
+                        made = new StandardMaterial3D
+                        {
+                            AlbedoTexture = t.Tex,
+                            TextureFilter = BaseMaterial3D.TextureFilterEnum.LinearWithMipmaps,
+                            Roughness = 1f,
+                            SpecularMode = BaseMaterial3D.SpecularModeEnum.Disabled,
+                        };
+                }
+                matCache[idx] = made;
+                return made;
+            };
+
             var tile = _lib.GroundTileName();
             var grass = tile != null ? TextureNear(pick.Path, tile + ".ssh") : (null, false);
             GD.Print($"[park] ground tile '{tile ?? "(none found)"}' -> {(grass.Tex != null ? "resolved" : "UNRESOLVED")}");
@@ -875,6 +900,7 @@ public partial class Viewer : Node3D
         var overZ = (max.Z - min.Z) / Math.Max(fp.Height, 1) / Park.CellSize;
         _info.Text = Park.Describe(def, display, fp)
                      + $"\n\npark {_park.Width}x{_park.Height} box, {_park.PlayableCells} ground cells"
+                     + $", {_park.MaterialCount} ground materials"
                      + $"\n{(placed ? $"placed at {px},{py}" : "WOULD NOT FIT")}"
                      + $"\n{inv}"
                      + $"\nmodel fills {over:P0} x {overZ:P0} of its cells"
