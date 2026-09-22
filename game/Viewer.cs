@@ -1098,6 +1098,31 @@ public partial class Viewer : Node3D
         catch (Exception ex) { GD.PrintErr($"[gate] {ride.Model.Path}: {ex.Message}"); }
     }
 
+    /// <summary>Print the authored footprint around the park entrance as a map.
+    ///
+    /// ⭐ `byte0` bit 0 is the engine's own SKIP flag, so a block of skipped cells is a thing the
+    /// designers reserved -- tinyclaw measured the bus stop's 36 cells as 100% skipped. That makes
+    /// the skip map a PER-PARK measurement of where the gate stands, instead of one park's pad
+    /// offset applied to four.</summary>
+    void DumpEntranceSkip()
+    {
+        if (_park?.Field == null || _holeSize.X <= 1f) { GD.PrintErr("[skip] no authored field"); return; }
+        if (!TerrainBounds("ticket_booths", out var booths)) { GD.PrintErr("[skip] no booths"); return; }
+        var f = _park.Field;
+        int bx = Mathf.RoundToInt(booths.Position.X + booths.Size.X * 0.5f - _holeOrigin.X);
+        int bz = Mathf.RoundToInt(booths.Position.Z + booths.Size.Z * 0.5f - _holeOrigin.Y);
+        GD.Print($"[skip] booths at cell ({bx},{bz}) of {f.Width}x{f.Height}; "
+               + "'.' drawn, '#' skipped, rows are z increasing (into the park)");
+        for (int z = bz - 4; z <= bz + 12; z++)
+        {
+            if (z < 0 || z >= f.Height) continue;
+            var row = new System.Text.StringBuilder();
+            for (int x = bx - 8; x <= bx + 8; x++)
+                row.Append(x < 0 || x >= f.Width ? ' ' : f.Drawn(x, z) ? '.' : '#');
+            GD.Print($"[skip] z={z,3} (world {_holeOrigin.Y + z,7:F1})  {row}");
+        }
+    }
+
     /// <summary>Sample the terrain's surface once per tile, because that is the shape of the
     /// question the game asks: `0x14F820` looks the ground up by TILE INDEX
     /// (`eyeX * 0x10000 >> 0x18`), never by a ray. One Godot unit is one tile here.</summary>
@@ -1312,6 +1337,7 @@ public partial class Viewer : Node3D
         ParkCameraOverrides();
         // ⚠ LAST. Everything above sets the camera, so aiming before them aims at nothing.
         LoadGate();
+        if (System.Environment.GetEnvironmentVariable("TPW_PARK_SKIP") == "1") DumpEntranceSkip();
         AimAtMesh();
         StartGameCam();
     }
