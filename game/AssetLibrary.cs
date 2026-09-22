@@ -150,12 +150,22 @@ public sealed class AssetLibrary : IDisposable
     ///
     /// ⚠ The order is the whole point, not a detail. A flat by-name search over JUNGLE.WAD once put
     /// Mumbo's sign on Crazy Ape, because 22 rides each ship a sign_eng.tga. Nearest wins.</summary>
-    public Targa Texture(RideAssets ride, string materialName)
+    public Targa Texture(RideAssets ride, string materialName) =>
+        TextureNear("/" + ride.Name, materialName);
+
+    /// <summary>A texture for <paramref name="materialName"/>, looked up from
+    /// <paramref name="modelPath"/>'s own folder outwards, then the shared pool.
+    ///
+    /// ⚠ The owner PATH is the argument, not a ride. Resolving the terrain's materials against
+    /// whichever ride happened to be selected walked /Rides/Monkey and found nothing, so 62 of its
+    /// 81 materials fell through to Sharetex and came back null -- it rendered flat white and read
+    /// as "the terrain has no textures" rather than "the lookup was pointed at the wrong folder".
+    /// 62 of them sit in /terrain/textures/ and the other 19 genuinely are shared.</summary>
+    public Targa TextureNear(string modelPath, string materialName)
     {
         var stem = Path.GetFileNameWithoutExtension(materialName);   // "m_back.ssh" -> "m_back"
         WadArchive.Entry e = null;
-        // ⚠ Name is the MODEL'S PATH now, so start the walk at its folder, not at the file.
-        var start = "/" + ride.Name;
+        var start = modelPath;
         start = start[..Math.Max(start.LastIndexOf('/'), 0)];
         for (var d = start; e == null && d.Length > 0; d = d[..Math.Max(d.LastIndexOf('/'), 0)])
             if (_folders.TryGetValue(d, out var f)) f.TryGetValue(stem, out e);

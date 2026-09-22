@@ -628,7 +628,7 @@ public partial class Viewer : Node3D
         try
         {
             var tm = new Model(_lib.Read(pick));
-            _terrain = new AnimatedModel(tm, null, null, TextureFor);
+            _terrain = new AnimatedModel(tm, null, null, m => TextureNear(pick.Path, m));
             _terrain.SetFrame(0);
             AddChild(_terrain.Root);
             _park.SetTerrain(_terrain.Root);
@@ -644,7 +644,7 @@ public partial class Viewer : Node3D
             foreach (var mat in tm.Materials)
             {
                 if (mat == null) continue;
-                if (TextureFor(mat).Tex != null) got++; else missed++;
+                if (TextureNear(pick.Path, mat).Tex != null) got++; else missed++;
             }
             GD.Print($"[terrain] {pick.Path}  {tm.Meshes.Count} meshes  "
                    + $"extent {hi.X - lo.X:F1} x {hi.Z - lo.Z:F1}  height {hi.Y - lo.Y:F1}  "
@@ -802,8 +802,20 @@ public partial class Viewer : Node3D
         // ⚠ The toggle must be checked HERE, not at build time, or turning textures off would
         // still hand the material a texture it had already cached.
         if (material == null || _texOn?.ButtonPressed == false) return (null, false);
-        if (_texCache.TryGetValue(material, out var t)) return t;
-        var tga = _lib.Texture(_ride, material);
+        return TextureNear("/" + _ride.Name, material);
+    }
+
+    /// <summary>The same lookup, for a model that is not the selected ride.
+    ///
+    /// ⚠ The cache is keyed by OWNER AND MATERIAL. Keying on the material alone let the terrain and
+    /// a ride that share a material name -- and they do, both draw from Sharetex -- hand each other
+    /// the other's texture, whichever was built first.</summary>
+    (ImageTexture Tex, bool Soft) TextureNear(string ownerPath, string material)
+    {
+        if (material == null || _texOn?.ButtonPressed == false) return (null, false);
+        var key = ownerPath + "|" + material;
+        if (_texCache.TryGetValue(key, out var t)) return t;
+        var tga = _lib.TextureNear(ownerPath, material);
         (ImageTexture, bool) made = (null, false);
         if (tga != null)
         {
@@ -812,7 +824,7 @@ public partial class Viewer : Node3D
             made = (ImageTexture.CreateFromImage(img),
                     tga.PartialAlpha * 100 > tga.Width * tga.Height);
         }
-        _texCache[material] = made;
+        _texCache[key] = made;
         return made;
     }
 
