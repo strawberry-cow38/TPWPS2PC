@@ -177,3 +177,55 @@ no file on the disc obviously does. Two candidates remain, neither confirmed:
 
 `Load_ReadLand` / `Save_WriteLand()` confirm the field round-trips through saves, which settles how
 it persists and not where it starts.
+
+## The runtime structure is a NODE POOL, not a flat grid
+
+Found 2026-09-22 after the loader trace above, and it **supersedes my own advice to scan a savestate
+for a contiguous grid-shaped array.**
+
+The real heightfield module is not at `0x1f3xxx` at all — that was the model loader. It lives at
+**`0x222xxx`–`0x225xxx`**, and its own error strings describe the shape:
+
+```
+ *** FATAL ERROR heightfield::initnodespace - couldnt allocate memory %08x-%08x
+ *** FATAL ERROR heightfield:allocbuffer - out of nodebuffers
+ *** FATAL ERROR heightfield::updatenodes, too much data used by node %d
+ *** WARNING heightfield:init - more heightfield quadbuffers potentially needed (%d)
+ *** ERROR mesh passed to mapwho lacks a heightfield***
+ *** mapwho::renderheightfield failed
+```
+
+`heightfield::initnodespace` is **`0x222c90`**, and it is short enough to read whole:
+
+```
+lui/ori $a1 = 0x000B3C40          736,320 bytes
+jal 0x17a0e0                      one allocation of that size
+sw  $v0, 0x184($s0)               -> the pool pointer
+jal 0x298d88, $a0 = 0xf0          a second allocation, 240 bytes
+sw  $v0, 0x188($s0)               -> the node table
+loop i = 0..29:                   sltiu $a1, $a2, 0x1e
+    table[i] = pool + i*0x5FE0    8 bytes per table slot
+```
+
+**30 node buffers of `0x5FE0` = 24,544 bytes**, and 30 × 24,544 = 736,320 = `0x000B3C40` exactly,
+with the 240-byte table being 30 × 8. The arithmetic closes on itself, so the read is right.
+
+### What that means for a RAM search
+
+* The heightfield object carries **the pool at `+0x184` and the node table at `+0x188`**. Those are
+  better handles than any shape search.
+* 24,544 does not divide by any of the grid sizes (24,544 / 4,864 = 5.046), so **the buffers are a
+  generic pool, not one-buffer-per-row or one-per-park**. A contiguous run of exactly 4,864 values
+  may not exist anywhere.
+* ⚠ I told `cow tools` to scan a savestate for a buffer of 4,864 / 4,800 / … entries. **That advice
+  was given before reading this and should not be the primary plan.** It is still worth doing as a
+  cheap secondary — a grid may well sit inside one of the 30 buffers — but the first move is the
+  pointer at `0x2ea840`, then `+0x184` / `+0x188` off the object it points at.
+* The inference that this is a quadtree rather than a flat field rests on the words `nodespace`,
+  `nodebuffers`, `quadbuffers` and `updatenodes` in the engine's own errors. The allocation numbers
+  are read; the tree shape is inferred and should be confirmed against the live structure.
+
+`mapwho` at `0x225b70` is the other half — "mesh passed to mapwho lacks a heightfield" says the
+field hangs off a **mesh**, which is what ties it back to the `heightfield` marker inside
+`terrain_1.mps` / `terrain_2.mps`. **Confirmed by `strawberry_cow` from domain knowledge: the
+terrain files are one per park, two parks per theme** — which is exactly why their grids differ.
