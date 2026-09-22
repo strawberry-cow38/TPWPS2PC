@@ -557,10 +557,23 @@ public sealed class Park
                 V(a, 0, 0); V(b, 1, 0); V(c, 1, 1);
                 V(a, 0, 0); V(c, 1, 1); V(dd, 0, 1);
 
-                // ⭐ Close the edge against the model. Where a neighbouring cell is one the engine
-                // skips and the model's surface there is NOT level with this floor, leave a wall
-                // rather than an open seam. The height comes from the terrain mesh itself.
-                if (TerrainTop == null) continue;
+                // ⚠⚠ VERTICAL FACES ARE AN INVENTION OF MINE AND ARE OFF BY DEFAULT.
+                //
+                // This closes the floor's edge against the model where the two are at different
+                // heights. Nothing on the disc asks for it -- I added it so a step would not leave
+                // an open seam. Master, who has played the game, says terrain walls and slopes do
+                // not appear in it anywhere, so it does not run unless asked for.
+                //
+                // A face that looks plausible is worse than a visible gap: the gap makes someone
+                // ask what belongs there, the face quietly answers it wrong. The real transition
+                // is presumably an authored TILE SHAPE -- the 0x3C nibble tested in 0x222fe8 --
+                // and inventing geometry in its place hides the question.
+                //
+                // ⚠ The real terrain mesh DOES have genuine vertical geometry of its own
+                // (EMBANKMENT spans Y -0.04..18.28, newcliff12 -8.63..19.07, space's CLIFFS
+                // similar). Those are authored and are not this. Telling them apart: the real ones
+                // are tall and irregular, these are exactly one step high and perfectly square.
+                if (!WallsEnabled || TerrainTop == null) continue;
                 // ⚠ Z PAIRS ARE SWAPPED relative to the naive reading, because the row order is
                 // reversed: cz = Origin.Y + (H - y - 0.5), so INCREASING y DECREASES world Z.
                 // Neighbour (x, y+1) is therefore the cz-half edge (a,b), not (c,dd). Getting this
@@ -653,6 +666,11 @@ public sealed class Park
     ///
     /// ⚠ Drawn cells only: `0x41` and `0x42` carry 0x40 with the skip bit set and are not ground.
     /// ⚠ The step height is still one unit and still a guess; it is not in the files.</summary>
+    /// <summary>Vertical faces where the floor meets a different height. ⚠ INVENTED, not read
+    /// from the disc, and OFF unless TPW_PARK_WALLS=1 -- see the note in Build.</summary>
+    static readonly bool WallsEnabled =
+        System.Environment.GetEnvironmentVariable("TPW_PARK_WALLS") == "1";
+
     static readonly bool RaiseEnabled =
         System.Environment.GetEnvironmentVariable("TPW_PARK_RAISE") != "0";
 
