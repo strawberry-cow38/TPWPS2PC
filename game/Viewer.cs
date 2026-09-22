@@ -710,6 +710,13 @@ public partial class Viewer : Node3D
             }
             else GD.PrintErr("[plot] no heightfield node -- falling back to the measured hole");
 
+            // ⭐ The authored grid wins over anything measured: same numbers, but it carries the
+            // per-cell data too.
+            _park.Field = tm.Field;
+            if (tm.Field != null)
+                GD.Print($"[field] authored grid {tm.Field.Width} x {tm.Field.Height} = {tm.Field.Count} cells "
+                       + $"from the terrain file (runtime copies this verbatim)");
+
             var (ho, hs, hy, hc) = Park.FindHole(_terrain.Root, 160, apO, apS);
             _holeOrigin = ho; _holeSize = hs; _holeCells = hc;
             // ⚠⚠ The floor goes at the height of the ground AROUND the hole, NOT at the terrain's

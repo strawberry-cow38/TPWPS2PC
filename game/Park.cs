@@ -465,13 +465,29 @@ public sealed class Park
             {
                 if (!IsPlayable(x, y)) continue;
                 float cx = Origin.X + (x + 0.5f) * CellSize, cz = Origin.Y + (y + 0.5f) * CellSize;
-                var a = new Vector3(cx - half, BaseY, cz - half);
-                var b = new Vector3(cx + half, BaseY, cz - half);
-                var c = new Vector3(cx + half, BaseY, cz + half);
-                var dd = new Vector3(cx - half, BaseY, cz + half);
+                float cy = CellY(x, y);
+                var a = new Vector3(cx - half, cy, cz - half);
+                var b = new Vector3(cx + half, cy, cz - half);
+                var c = new Vector3(cx + half, cy, cz + half);
+                var dd = new Vector3(cx - half, cy, cz + half);
                 void V(Vector3 v, float u, float w2) { st.SetUV(new Vector2(u, w2)); st.SetNormal(Vector3.Up); st.AddVertex(v); }
                 V(a, 0, 0); V(b, 1, 0); V(c, 1, 1);
                 V(a, 0, 0); V(c, 1, 1); V(dd, 0, 1);
+                // ⚠ A raised cell needs SIDES. Without them a step is a slab hanging in the air
+                // with daylight under it, which reads as a hole in the floor rather than terrain.
+                if (Field == null) continue;
+                foreach (var (dx, dy, p0, p1) in new[] { (0, -1, a, b), (1, 0, b, c), (0, 1, c, dd), (-1, 0, dd, a) })
+                {
+                    int nx2 = x + dx, ny2 = y + dy;
+                    float ny = nx2 >= 0 && ny2 >= 0 && nx2 < width && ny2 < height && IsPlayable(nx2, ny2)
+                        ? CellY(nx2, ny2) : BaseY;
+                    if (ny >= cy - 0.01f) continue;
+                    var q0 = new Vector3(p0.X, ny, p0.Z);
+                    var q1 = new Vector3(p1.X, ny, p1.Z);
+                    void S(Vector3 v, float u, float w2) { st.SetUV(new Vector2(u, w2)); st.SetNormal(new Vector3(dx, 0, dy)); st.AddVertex(v); }
+                    S(p0, 0, 0); S(q0, 0, 1); S(q1, 1, 1);
+                    S(p0, 0, 0); S(q1, 1, 1); S(p1, 1, 0);
+                }
             }
         var ground = st.Commit();
         if (ground != null && ground.GetSurfaceCount() > 0)
@@ -484,6 +500,17 @@ public sealed class Park
 
     /// <summary>The plot's ground material -- the disc's own tile texture when one resolved.</summary>
     public Material GroundMaterial { get; set; }
+
+    /// <summary>The authored terrain grid, when the terrain file carries one. ⭐ The park floor is
+    /// LOADED from this, not approximated from the mesh -- the runtime field is a verbatim copy of
+    /// it, so reading the disc and reading RAM give the same thing.</summary>
+    public Model.HeightField Field { get; set; }
+
+    /// <summary>World Y of a cell. ⚠ One height step is one world unit: the marker AABB tops out
+    /// at Y 2.006 and the highest value in jungle is 2. Provisional beyond that, since the bit
+    /// layout outside jungle is unproven.</summary>
+    float CellY(int x, int y) =>
+        BaseY + (Field != null && x < Field.Width && y < Field.Height ? Field.HeightAt(x, y) : 0) * CellSize;
 
     /// <summary>Cells that are ground -- the plot's real size, as opposed to its bounding box.</summary>
     public int PlayableCells

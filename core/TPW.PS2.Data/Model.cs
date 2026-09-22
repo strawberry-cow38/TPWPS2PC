@@ -26,6 +26,40 @@ public sealed class Model
     public List<Mesh> Meshes { get; } = new();
     public List<string> Materials { get; } = new();
     public int MeshTable { get; }
+    /// <summary>The park's terrain grid, authored in the terrain file.
+    ///
+    /// ⭐⭐ THE PER-CELL HEIGHTS ARE ON THE DISC. The runtime field is a verbatim memcpy of this
+    /// block -- tinyclaw read the filler at 0x1f3418 and it computes nothing: it takes model+0x44,
+    /// allocates NX*NZ*2+0x30, copies the 0x30 header, then memcpys NX*NZ*2 cells. Nothing is
+    /// rasterised from the mesh. Present in all 8 terrain files, and every grid matches the size
+    /// independently predicted from the `heightfield` marker's AABB -- two unrelated routes, an
+    /// AABB on a zero-geometry mesh and a u32 pair nothing else references, agreeing 8 of 8.
+    ///
+    /// ⚠ THE BIT LAYOUT IS NOT PROVEN. `byte0 &amp; 0x3F` is only ever 0/1/2 in JUNGLE; FANTASY leans
+    /// on 0x20, HALLOW on 0x08, SPACE on 0x20 as well. Low bits look like height and the rest like
+    /// flags, and that is a guess -- jungle has now been the degenerate case that made a wrong rule
+    /// look right three times in one day. Tried to settle it by correlating against the mesh's own
+    /// elevation and could not: the plot is a HOLE in the mesh, so only ~1,700 of jungle's 4,864
+    /// cells have any surface to compare with, all of them at the edges.
+    ///
+    /// ⚠ `byte1` varies per cell and is likewise unidentified.</summary>
+    public sealed class HeightField
+    {
+        public int Width, Height;
+        /// <summary>NX*NZ pairs, row-major: [0] is the height-and-flags byte, [1] is unidentified.</summary>
+        public byte[] Cells;
+        public int Count => Width * Height;
+        /// <summary>Provisional height for a cell. ⚠ Low two bits only, because that is the part
+        /// that reads as a height in every world; anything wider is unproven.</summary>
+        public int HeightAt(int x, int y) => Cells[(y * Width + x) * 2] & 0x03;
+        public byte Raw(int x, int y) => Cells[(y * Width + x) * 2];
+        public byte Second(int x, int y) => Cells[(y * Width + x) * 2 + 1];
+    }
+
+    /// <summary>The terrain grid, or null for a model that carries none (only the 8 terrain files
+    /// and LOBBY's base.mps do).</summary>
+    public HeightField Field { get; }
+
     public int HelperTable { get; }
 
     uint U32(int o) => BitConverter.ToUInt32(D, o);
@@ -45,6 +79,20 @@ public sealed class Model
         if (U32(0) != Magic) throw new InvalidDataException($"not M3D2: {U32(0):X8}");
         MeshTable = (int)U32(0x48);
         HelperTable = (int)U32(0x4C);
+
+        // ⭐ The terrain grid hangs off header +0x44. Guarded: most models carry none, and the
+        // field must be inside the file with a sane grid before it is believed.
+        int fp = (int)U32(0x44);
+        if (fp > 0 && fp + 0x30 <= D.Length)
+        {
+            int nx = (int)U32(fp + 0x0c), nz = (int)U32(fp + 0x10);
+            if (nx > 0 && nz > 0 && nx <= 512 && nz <= 512 && fp + 0x30 + nx * nz * 2 <= D.Length)
+            {
+                var cells = new byte[nx * nz * 2];
+                Array.Copy(D, fp + 0x30, cells, 0, cells.Length);
+                Field = new HeightField { Width = nx, Height = nz, Cells = cells };
+            }
+        }
         int nmat = U16(0x22), matTable = (int)U32(0x40);
         for (int i = 0; i < nmat; i++) Materials.Add(NameAt((int)U32(matTable + i * 16 + 12)));
 
