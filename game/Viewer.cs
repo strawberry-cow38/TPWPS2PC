@@ -772,7 +772,21 @@ public partial class Viewer : Node3D
         {
             _park.Origin = _holeOrigin;
             _park.BaseY = _holeY;
-            _park.Build(Mathf.RoundToInt(_holeSize.X), Mathf.RoundToInt(_holeSize.Y), _holeCells);
+            // ⚠⚠ WITH AN AUTHORED FIELD, DRAW EVERY CELL. The mesh-coverage mask is left over from
+            // when the plot was being approximated -- "don't lay a floor where terrain already
+            // exists" -- and once the field is loaded it deletes the terrain the field describes:
+            // 1,475 of jungle's 1,477 height-1 cells are mesh-covered, so the mask dropped ~100%
+            // of them and the floor rendered flat. Master spotted it from a screenshot of the real
+            // game: a plain with raised blocks standing on it, where mine had no relief at all.
+            //
+            // ⭐ That same overlap is what PROVES `byte0 & 0x03` is elevation. The field's raised
+            // cells coincide with the mesh's own raised ground 1,475/1,477 -- an independent route
+            // to the same answer as the engine's andi 0xc3. (My earlier correlation attempt failed
+            // because I compared MEAN MESH HEIGHT per value; the right question was whether the
+            // mesh has a surface there at all.)
+            _park.Build(_park.Field?.Width ?? Mathf.RoundToInt(_holeSize.X),
+                        _park.Field?.Height ?? Mathf.RoundToInt(_holeSize.Y),
+                        _park.Field != null ? null : _holeCells);
         }
         else _park.Build(ParkCells, ParkCells);
         // ⚠ Aim at the PARK's middle, not at ParkCells/2 -- that constant is the fallback size and
