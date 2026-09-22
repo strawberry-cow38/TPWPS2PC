@@ -377,3 +377,39 @@ its distinct values per park are small sets (6–8 values, e.g. JUNGLE t1 `{0,24
 | `byte0 & 0x80` | set by the engine in three places; meaning open |
 | `byte0 & 0x40` | survives the mask; unexplained |
 | `byte1` | written from the `+0x2c` table; meaning open |
+
+## The struct header is almost all constant — so the step height is not in the file
+
+Surveyed across all eight files, distinct values per field:
+
+| field | distinct values in 8 files | value |
+|---|---:|---|
+| `+0x00` | 1 | `0` |
+| `+0x04` | 1 | `1.0f` |
+| `+0x08` | 1 | `1.0f` |
+| `+0x0c` / `+0x10` | — | `NX` / `NZ`, the only per-park numbers |
+| `+0x14` | 2 | `0x80000000` (−0.0f) in seven, `0` in JUNGLE `terrain_2` |
+| `+0x18` | 1 | `2.0f` |
+| `+0x1c` | 1 | `0.0f` |
+| `+0x20` | 1 | `0.0f` **on disc** — but `10.0f` in RAM |
+
+Three things follow.
+
+**⚠ `+0x18 = 2.0f` is the same trap as the marker AABB's Y, one struct further in.** It is identical
+in all eight files, so it states nothing about any park and cannot be a per-park height scale. The
+AABB version of this already cost one retraction today; this field is sitting right where somebody
+reaches next.
+
+**`+0x20` is written at load, not authored.** It is `0.0f` in every file on the disc and `10.0f` in
+the live object `cow tools` pulled out of the savestate. That is where the "10 model units per
+cell" came from — the engine, not the data.
+
+**So "how tall is a step" is not answerable from the file.** Every candidate scale field is constant
+across all eight parks; the only per-park numbers in the whole struct are `NX`, `NZ` and the cells.
+The step size is either a hardcoded engine constant or computed at load, and the `0.0 → 10.0`
+transition at `+0x20` proves the engine does write into this struct during load. That write is what
+to chase, and it is a code question rather than a data one.
+
+**Confirmed from `cow tools`, independently re-measured here: `byte0 & 0x80` is set on zero cells in
+all eight parks.** It is not an unknown flag, it is unused on this disc. `0x40` is set on 32–280
+cells per park (JUNGLE 67 and 59, SPACE 278 and 280) and remains unexplained.
