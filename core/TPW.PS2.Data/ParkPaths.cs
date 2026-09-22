@@ -63,7 +63,7 @@ public sealed class ParkPaths
     }
     public bool Contains(ParkCell c) => c.X >= 0 && c.Z >= 0 && c.X < Field.Width && c.Z < Field.Height;
     public bool SceneryBlocks(ParkCell c) => _scenery.Contains(c);
-    public bool CanBuild(ParkCell c) => Contains(c) && Field.Raw0(c.X, c.Z) == 0 && !_occupied.Contains(c) && !_scenery.Contains(c);
+    public bool CanBuild(ParkCell c) => Contains(c) && Field.Buildable(c.X, c.Z) && !_occupied.Contains(c) && !_scenery.Contains(c);
     static bool Intersects(Vector2 a, Vector2 b, Vector2 c, Vector2 centre)
     {
         var ab = b - a; var bc = c - b; var ca = a - c;
