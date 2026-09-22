@@ -46,3 +46,19 @@ __pycache__/
 *.pdb
 *.deps.json
 .godot/
+
+# The MP2 gate's fixtures. Synthetic, regenerable, ~1.35 MB of PCM -- and its generator once wrote
+# them into whatever directory it was run from. Ignored as a guard, not as a convention.
+mp2-fixtures/
+src44.wav
+src22.wav
+st44.wav
+st22.wav
+mpeg1.mp2
+mpeg2.mp2
+st_mpeg1.mp2
+st_mpeg2.mp2
+ref1.raw
+ref2.raw
+st_ref1.raw
+st_ref2.raw
