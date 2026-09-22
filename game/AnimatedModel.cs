@@ -424,10 +424,30 @@ void fragment() {
             }
             locals[off] = L;
         }
-        return _model.WorldTransforms(locals);
+        var world = _model.WorldTransforms(locals);
+        // One-shot diagnostic: which node's scale changes between bind and world, and by how much.
+        if (System.Environment.GetEnvironmentVariable("TPW_PS2_SCALEDUMP") == "1" && !_dumped)
+        {
+            _dumped = true;
+            var bindWorld = _model.WorldTransforms();
+            foreach (var m in _model.Meshes)
+            {
+                if (!world.TryGetValue(m.Offset, out var w)) continue;
+                bindWorld.TryGetValue(m.Offset, out var bw);
+                var a = BasisScale(bw); var b = BasisScale(w);
+                bool over = _rot.ContainsKey(_model.NodeIndex(m.Offset))
+                         || _scale.ContainsKey(_model.NodeIndex(m.Offset))
+                         || _path.ContainsKey(_model.NodeIndex(m.Offset));
+                GD.Print($"[scale] {m.Name,-10} bindWorld {a.X:F4}  animWorld {b.X:F4}  "
+                       + $"ratio {(a.X > 0 ? b.X / a.X : 0):F3}  overridden={over}");
+            }
+        }
+        return world;
     }
 
     /// <summary>`TPW_PS2_ROT=compose` restores the old behaviour for an A/B.</summary>
+    bool _dumped;
+
     static bool Compose =>
         (OS.GetEnvironment("TPW_PS2_ROT") ?? "").ToLowerInvariant() == "compose";
 
