@@ -63,13 +63,23 @@ public sealed class Placement
             }
     }
 
-    /// <summary>The door tile, turned with the shape. ⚠ Null when the shape does not declare one:
-    /// most scenery has no door, and drawing an entrance marker on a tree would be inventing one.</summary>
+    /// <summary>The entrance tile, turned with the shape. ⚠ Null when the shape does not declare
+    /// one: most scenery has no door, and drawing an entrance marker on a tree would be inventing
+    /// one.</summary>
     public (int X, int Y)? DoorFor(int cursorX, int cursorY)
     {
         if (!Active || Turned.EntryX < 0 || Turned.EntryY < 0) return null;
         var (cx, cy) = CornerFor(cursorX, cursorY);
         return (cx + Turned.EntryX, cy + Turned.EntryY);
+    }
+
+    /// <summary>The exit tile, the one the shape marks with a compass letter. ⚠ Rarer than the
+    /// entrance -- 86 of them against 171 entrances -- so most things have none and none is drawn.</summary>
+    public (int X, int Y)? ExitFor(int cursorX, int cursorY)
+    {
+        if (!Active || Turned.ExitX < 0 || Turned.ExitY < 0) return null;
+        var (cx, cy) = CornerFor(cursorX, cursorY);
+        return (cx + Turned.ExitX, cy + Turned.ExitY);
     }
 
     /// <summary>Turn a footprint a quarter at a time. ⭐ The ENTRY turns with it -- a ride rotated
@@ -78,6 +88,7 @@ public sealed class Placement
     {
         var cells = fp.Cells; int w = fp.Width, h = fp.Height;
         int ex = fp.EntryX, ey = fp.EntryY;
+        int xx = fp.ExitX, xy = fp.ExitY;
         for (int t = 0; t < (turns & 3); t++)
         {
             var next = new bool[h, w];
@@ -85,8 +96,9 @@ public sealed class Placement
                 for (int x = 0; x < w; x++)
                     next[h - 1 - y, x] = cells[x, y];
             if (ex >= 0 && ey >= 0) (ex, ey) = (h - 1 - ey, ex);
+            if (xx >= 0 && xy >= 0) (xx, xy) = (h - 1 - xy, xx);
             cells = next; (w, h) = (h, w);
         }
-        return new Park.Footprint(w, h, cells, ex, ey);
+        return new Park.Footprint(w, h, cells, ex, ey, xx, xy);
     }
 }

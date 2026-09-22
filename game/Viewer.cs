@@ -93,6 +93,7 @@ public partial class Viewer : Node3D
     /// <summary>What the build menu has handed the cursor, if anything.</summary>
     readonly Placement _place = new();
     Control _buildPanel;
+    Control _buildBox;
     ItemList _buildList;
     Button[] _buildTabs;
     string _buildCategory;
@@ -487,17 +488,29 @@ public partial class Viewer : Node3D
                             MouseFilter = Control.MouseFilterEnum.Ignore };
         col.AddChild(_info);
 
-        // ⭐⭐ THE BUILD MENU. Tab opens it. The categories are the ARCHIVE'S OWN FOLDERS --
-        // Rides, Shops, Sideshow, Features, Upgrades -- so the list is the game's grouping and not
-        // one I invented, and it is per park because the open WAD is the park.
-        _buildPanel = new VBoxContainer { Visible = false };
-        col.AddChild(_buildPanel);
+        // ⭐⭐ THE BUILD MENU, ITS OWN PANEL. ⚠ It used to live inside the F3 panel, so hiding the
+        // debug readout hid the way to build and showing it brought a wall of diagnostics back --
+        // two different jobs sharing one switch. It anchors down the RIGHT, opens on Tab and
+        // answers to nothing else.
+        //
+        // The categories are the ARCHIVE'S OWN FOLDERS -- Rides, Shops, Sideshow, Features,
+        // Upgrades -- so the grouping is the game's, and it is per park because the open WAD is
+        // the park.
+        var buildBox = new PanelContainer { Visible = false, MouseFilter = Control.MouseFilterEnum.Pass,
+                                            CustomMinimumSize = new Vector2(300, 0) };
+        buildBox.SetAnchorsPreset(Control.LayoutPreset.RightWide);
+        buildBox.OffsetLeft = -300;
+        ui.AddChild(buildBox);
+        _buildPanel = new VBoxContainer();
+        buildBox.AddChild(_buildPanel);
+        _buildPanel.AddChild(new Label { Text = "BUILD  (Tab)" });
         var tabs = new HBoxContainer();
         _buildPanel.AddChild(tabs);
         _buildTabs = Array.Empty<Button>();
-        _buildList = new ItemList { CustomMinimumSize = new Vector2(0, 260), AllowReselect = true };
+        _buildList = new ItemList { SizeFlagsVertical = Control.SizeFlags.ExpandFill, AllowReselect = true };
         _buildList.ItemSelected += i => ArmFromList((int)i);
         _buildPanel.AddChild(_buildList);
+        _buildBox = buildBox;
 
         // ⭐⭐ THE TOOL SAYS WHAT IT THINKS, ON SCREEN. Every refusal already printed a reason to
         // the console, which nobody playing the game can see -- so a click over the panel, or one
@@ -1674,7 +1687,7 @@ public partial class Viewer : Node3D
     {
         _buildChecked = true;
         ToggleBuildMenu();
-        var bar = _buildPanel.GetChild<HBoxContainer>(0);
+        var bar = _buildPanel.GetChildren().OfType<HBoxContainer>().First();
         GD.Print($"[build] {_buildTabs.Length} categories: "
                + string.Join(" ", bar.GetChildren().OfType<Button>().Select(b => b.Text)));
         foreach (var b in bar.GetChildren().OfType<Button>().ToList())
@@ -1694,6 +1707,8 @@ public partial class Viewer : Node3D
             int before = _park.Placed.Count;
             bool fits = _place.Cells(_park, cx, cy).All(c => c.Ok);
             GD.Print($"[build] holding {_place.Display} {_place.Turned.Width}x{_place.Turned.Height}"
+                   + $" entry {_place.DoorFor(cx, cy)?.ToString() ?? "none"}"
+                   + $" exit {_place.ExitFor(cx, cy)?.ToString() ?? "none"}"
                    + $" at ({cx},{cy}): {(fits ? "fits" : "blocked")}");
             PlaceHeld();
             GD.Print($"[build] after the press the park holds {_park.Placed.Count} things"
@@ -1717,9 +1732,9 @@ public partial class Viewer : Node3D
     /// following the cursor with no menu to explain it reads as the park being stuck.</summary>
     void ToggleBuildMenu()
     {
-        if (_buildPanel == null) return;
-        _buildPanel.Visible = !_buildPanel.Visible;
-        if (!_buildPanel.Visible) { _place.Clear(); _ghostView?.Clear(); Status("build menu closed"); return; }
+        if (_buildBox == null) return;
+        _buildBox.Visible = !_buildBox.Visible;
+        if (!_buildBox.Visible) { _place.Clear(); _ghostView?.Clear(); Status("build menu closed"); return; }
         if (_toolOpen) CloseTool();
         FillBuildCategories();
     }
@@ -1740,7 +1755,7 @@ public partial class Viewer : Node3D
             .GroupBy(r => Category(r.Name), StringComparer.OrdinalIgnoreCase)
             .OrderByDescending(g => g.Count())
             .ToList();
-        var bar = _buildPanel.GetChild<HBoxContainer>(0);
+        var bar = _buildPanel.GetChildren().OfType<HBoxContainer>().First();
         foreach (var c in bar.GetChildren()) c.QueueFree();
         _buildTabs = groups.Select(g =>
         {
@@ -1809,10 +1824,16 @@ public partial class Viewer : Node3D
         var cells = _place.Cells(_park, x, y)
                           .Select(c => (c.X, c.Y, c.Ok ? 24 : 175))
                           .ToList();
+        // ⭐ The two doors, with the console's own markers: 168 the entrance, 169 the exit.
         if (_place.DoorFor(x, y) is { } door)
         {
             cells.RemoveAll(c => c.Item1 == door.X && c.Item2 == door.Y);
             cells.Add((door.X, door.Y, 168));
+        }
+        if (_place.ExitFor(x, y) is { } exit)
+        {
+            cells.RemoveAll(c => c.Item1 == exit.X && c.Item2 == exit.Y);
+            cells.Add((exit.X, exit.Y, 169));
         }
         _ghostView.ShowCells(cells, _park);
         bool ok = _place.Cells(_park, x, y).All(c => c.Ok);
@@ -1842,9 +1863,20 @@ public partial class Viewer : Node3D
             return;
         }
         _toolSfx?.Play(ToolSounds.Cue.Lay);
-        Status($"put {_place.Display} down at ({cx},{cy})");
         GD.Print($"[build] placed {_place.Display} at ({cx},{cy}) turned {_place.Turns * 90}");
         _ghostAt = (-1, -1, -1, -1);
+        // ⭐ SHIFT STAMPS. Held, the blueprint stays on the cursor for the next one; let go, one
+        // press puts one thing down and the cursor comes away empty, which is what a build tool
+        // that is not being used to lay a row should do.
+        if (Input.IsKeyPressed(Key.Shift))
+        {
+            Status($"stamped {_place.Display} at ({cx},{cy}) -- still holding it");
+            return;
+        }
+        string was = _place.Display;
+        _place.Clear();
+        _ghostView?.Clear();
+        Status($"put {was} down at ({cx},{cy})");
     }
 
     /// <summary>The model for the held thing, built the same way the viewer builds any other.</summary>
@@ -2832,7 +2864,18 @@ public partial class Viewer : Node3D
                         // ⭐ LEFT OPENS AND WORKS IT, RIGHT ONLY SHUTS IT. Master's layout: the
                         // button you build with is the button you reach for, and the other one
                         // gets you out.
-                        if (mb.ButtonIndex == MouseButton.Right)
+                        if (mb.ButtonIndex == MouseButton.Right && _place.Active)
+                        {
+                            // ⭐ The right button puts the blueprint down before it touches the
+                            // path tool: holding something and reaching for cancel means cancel
+                            // THAT, not open a different tool underneath it.
+                            GD.Print($"[build] dropped {_place.Display}");
+                            Status("nothing held");
+                            _place.Clear();
+                            _ghostView?.Clear();
+                            _ghostAt = (-1, -1, -1, -1);
+                        }
+                        else if (mb.ButtonIndex == MouseButton.Right)
                         {
                             // ⭐ Right toggles, and it opens WITHOUT the under-the-cursor test
                             // that the left button gets. That test is there so a left click can

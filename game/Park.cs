@@ -37,7 +37,15 @@ public sealed class Park
 
     /// <summary>A ride's footprint as a grid. `*` is an occupied cell and `2` the entrance; rows
     /// are ragged in the file, so width is the longest row and short rows are padded empty.</summary>
-    public readonly record struct Footprint(int Width, int Height, bool[,] Cells, int EntryX, int EntryY)
+    /// <summary>A thing's footprint, and the two doors in it.
+    ///
+    /// ⭐⭐ THE SHAPE STRING IS A LEGEND, read off every .sam on the disc: `*` an ordinary cell,
+    /// `2` the ENTRANCE (171 of them, one in nearly everything placeable), and `N` `S` `E` `W` the
+    /// EXIT -- a cell marked with the way it faces (`b_drip` is `*2N*`, `acorn` has `**S**` at one
+    /// end and `**2**` at the other). `<` and `>` come in pairs on track rides and `+` and `.`
+    /// appear in a handful; none of those are doors and none are claimed to be.</summary>
+    public readonly record struct Footprint(int Width, int Height, bool[,] Cells, int EntryX, int EntryY,
+                                            int ExitX = -1, int ExitY = -1)
     {
         public static Footprint From(string[] shape)
         {
@@ -45,7 +53,7 @@ public sealed class Park
             if (rows.Length == 0) return new Footprint(0, 0, new bool[0, 0], -1, -1);
             int w = rows.Max(r => r.TrimEnd().Length), h = rows.Length;
             var cells = new bool[w, h];
-            int ex = -1, ey = -1;
+            int ex = -1, ey = -1, xx = -1, xy = -1;
             for (int y = 0; y < h; y++)
                 for (int x = 0; x < rows[y].TrimEnd().Length; x++)
                 {
@@ -53,8 +61,9 @@ public sealed class Park
                     if (c is ' ' or '\t') continue;
                     cells[x, y] = true;
                     if (c == '2') { ex = x; ey = y; }
+                    else if (c is 'N' or 'S' or 'E' or 'W') { xx = x; xy = y; }
                 }
-            return new Footprint(w, h, cells, ex, ey);
+            return new Footprint(w, h, cells, ex, ey, xx, xy);
         }
 
         public int Occupied
@@ -886,21 +895,10 @@ public sealed class Park
         _placed.Add((id, name, fp, x, y));
 
         // The claimed tiles, drawn over the grass so the plot reads at a glance.
-        var claimed = Flat(new Color(0.55f, 0.50f, 0.30f));
-        var entry = Flat(new Color(0.85f, 0.65f, 0.20f));
-        var tile = new BoxMesh { Size = new Vector3(CellSize, CellSize * 0.08f, CellSize) };
-        for (int fy = 0; fy < fp.Height; fy++)
-            for (int fx = 0; fx < fp.Width; fx++)
-            {
-                if (!fp.Cells[fx, fy]) continue;
-                bool isEntry = fx == fp.EntryX && fy == fp.EntryY;
-                _ground.AddChild(new MeshInstance3D
-                {
-                    Mesh = tile,
-                    MaterialOverride = isEntry ? entry : claimed,
-                    Position = CellCentre(x + fx, y + fy) + new Vector3(0f, CellSize * 0.02f, 0f),
-                });
-            }
+        // ⚠⚠ NO BASEPLATE. A slab was drawn under every claimed cell -- a grey box the size of the
+        // footprint, which is what master saw under everything they put down. It was a debug
+        // readout of "these cells are taken" from before the park had a ghost to say so, and the
+        // ghost says it now, before the press, where it is actually useful.
 
         if (model == null) return true;
         // ⚠ The model is already parented elsewhere -- AddChild on a parented node is an ERROR in
