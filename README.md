@@ -80,6 +80,23 @@ coverage. The audit fails on changes to ordered pixels, character mappings or me
 malformed input. It includes asymmetric shape checks; matching glyph totals is insufficient.
 See [BFF evidence, visual inspection and limitations](findings/bff-font.md).
 
+Audit the advisor rules and the executable's speech/text/lip catalogue across all regional text
+sets and speech languages:
+
+```sh
+dotnet run --project tools/TPW.PS2.AdvisorAudit -- /path/to/disc.bin
+# Print every decoded rule with its message identities:
+dotnet run --project tools/TPW.PS2.AdvisorAudit -- /path/to/disc.bin --list-rules
+```
+
+The audit exits nonzero on structural or identity failures and includes count-preserving negative
+controls. The sound browser displays advisor dialogue and lip associations; select an advisor
+bank normally, or use `TPW_PS2_MODE=sounds TPW_PS2_SOUND=ADVISOR/ENGLISH TPW_PS2_PLAY=sp_001`.
+`TPW_PS2_TEXT_REGION` selects `eur` (default), `usa`, or `jap`. See [advisor evidence and remaining
+unknowns](findings/advisor.md), including the retail missing-lip defect and why `.dba` is a park
+asset database rather than the speech table. The game-state producers and full advisor simulation
+remain unimplemented.
+
 Model texture animation uses explicit MPS filename lists and APS material/index keyframes,
 at the existing 30-frame animation clock. See [animated texture evidence and limits](findings/animated-textures.md).
 Audit the full disc's authored lists and keys:

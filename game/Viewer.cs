@@ -43,6 +43,9 @@ public partial class Viewer : Node3D
     float _holeY;
     RideCatalogue _cat;
     TextDatabase _text;
+    AdvisorCatalogue _advisor;
+    WadArchive _advisorLips;
+    string _advisorLanguage, _advisorError;
 
     ItemList _rideList;
     CheckBox _texOn;
@@ -186,7 +189,7 @@ public partial class Viewer : Node3D
         {
             foreach (var f in _lib.WadFiles())
                 if (f.Path.EndsWith("/DATA.WAD", StringComparison.OrdinalIgnoreCase))
-                    _text = TextDatabase.Load(new WadArchive(_lib.ReadDisc(f)), "eur");
+                    _text = TextDatabase.Load(new WadArchive(_lib.ReadDisc(f)), Env("TPW_PS2_TEXT_REGION") ?? "eur");
             GD.Print($"[park] text {(_text == null ? "MISSING" : _text.Keys.Length + " rows")}");
         }
         catch (Exception ex) { GD.PrintErr($"[park] text failed: {ex}"); }
@@ -576,9 +579,28 @@ public partial class Viewer : Node3D
     {
         ClearList();
         _bank = null;
+        _advisorLanguage = null;
+        _advisorError = null;
         if (i < 0 || i >= _banks.Count) return;
         try { _bank = new SoundBank(_lib.ReadDisc(_banks[i])); }
         catch (Exception ex) { _info.Text = _banks[i].Path + "\n" + ex.Message; return; }
+        if (_banks[i].Path.Contains("/ADVISOR/", StringComparison.OrdinalIgnoreCase))
+        {
+            _advisorLanguage = _banks[i].Path.Split('/')[3].ToUpperInvariant() switch
+            { "ENGLISH" => "English", "FRENCH" => "French", "GERMAN" => "German", _ => null };
+            try
+            {
+                using var disc = new Disc(_discPath);
+                _advisor ??= AdvisorCatalogue.Load(disc);
+                _advisor.ValidateText(_text);
+                if (_advisorLips == null)
+                {
+                    var file = disc.Files().Single(f => f.Path.Equals("/DATA/LIPS.WAD", StringComparison.OrdinalIgnoreCase));
+                    _advisorLips = new WadArchive(disc.Read(file.Extent, file.Size));
+                }
+            }
+            catch (Exception ex) { _advisorError = ex.Message; GD.PrintErr("[advisor] " + ex.Message); }
+        }
         for (int k = 0; k < _bank.Sounds.Count; k++)
         {
             var snd = _bank.Sounds[k];
@@ -599,6 +621,29 @@ public partial class Viewer : Node3D
         _info.Text = s.Name + "\n" + what + "\n"
                    + (s.End - s.Start) + " bytes, " + (s.Milliseconds / 1000.0).ToString("0.00") + " s"
                    + "\ntag 0x" + s.Tag.ToString("x2");
+        if (_advisorError != null) _info.Text += "\nAdvisor metadata unavailable: " + _advisorError;
+        else if (_advisorLanguage != null && _advisor != null)
+        {
+            string language = _advisorLanguage switch { "French" => "fre", "German" => "ger", _ => "eng" };
+            var descriptions = new List<string>();
+            foreach (var message in _advisor.Messages)
+                for (int v = 0; v < message.VariantCount; v++)
+                    if (message.Voices[v].SoundIndex == i)
+                    {
+                        try
+                        {
+                            var binding = _advisor.Bind(message.Id, v, _advisorLanguage, _bank, _advisorLips, _text, language);
+                            string dialogue = binding.Subtitle ?? (message.HasText
+                                ? $"No {language} text in {_text.Locale}." : "This message has no displayed text.");
+                            descriptions.Add(dialogue + "\n" + (binding.Lip == null ? "Lip sync unavailable."
+                                : $"Lip sync: {binding.Lip.Microseconds.Count} transitions.")
+                                + (binding.SoundStemMatches ? "" : "\nSound and lip names differ in the disc data."));
+                        }
+                        catch (Exception ex) { descriptions.Add("Advisor metadata unavailable: " + ex.Message); }
+                    }
+            _info.Text += "\n\n" + (descriptions.Count == 0 ? "No advisor message references this sound."
+                : string.Join("\n\n", descriptions.Distinct()));
+        }
         _playBtn.Disabled = s.IsEmpty;
     }
 
