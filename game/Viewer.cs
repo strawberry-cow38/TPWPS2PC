@@ -1105,6 +1105,21 @@ public partial class Viewer : Node3D
         var f = _park?.Field;
         if (f == null || _holeSize.X <= 1f) return;
 
+        // ⚠⚠ NO SOURCE YET, so nothing is drawn. The `byte0` bit 1 reading this used to run on
+        // is WITHDRAWN (see Model.HeightField): bits 0-3 are one INDEX, not eight flags, so
+        // testing a bit of it picked an arbitrary subset of a lookup -- structured-looking and
+        // meaningless, which is what master saw straight away. The runtime flags byte at tile +7
+        // IS real and IS tested as `& 0x02`, but it is built during play rather than read from the
+        // authored map, so this file cannot supply it.
+        //
+        // The machinery below is kept, wired to a predicate, for whoever finds the real flag.
+        Func<int, int, bool> unbuildable = null;
+        if (unbuildable == null)
+        {
+            GD.Print("[build] no buildability source -- the byte0 bit 1 reading is WITHDRAWN");
+            return;
+        }
+
         var st = new SurfaceTool();
         st.Begin(Mesh.PrimitiveType.Triangles);
         int no = 0, yes = 0;
@@ -1112,7 +1127,7 @@ public partial class Viewer : Node3D
             for (int x = 0; x < f.Width; x++)
             {
                 if (!f.Drawn(x, y)) continue;
-                if (f.Buildable(x, y)) { yes++; continue; }
+                if (!unbuildable(x, y)) { yes++; continue; }
                 no++;
                 var c = _park.CellCentre(x, y) + new Vector3(0f, Park.CellSize * 0.04f, 0f);
                 float h = Park.CellSize * 0.5f;
@@ -1120,12 +1135,10 @@ public partial class Viewer : Node3D
                 var d = c + new Vector3(h, 0, h);   var e = c + new Vector3(-h, 0, h);
                 foreach (var v in new[] { a, b, d, a, d, e }) st.AddVertex(v);
             }
-        if (no == 0) { GD.Print($"[build] every drawn cell is buildable ({yes})"); return; }
-        var mesh = st.Commit();
+        if (no == 0) { GD.Print($"[build] nothing marked of {yes} drawn cells"); return; }
         _buildable = new MeshInstance3D
         {
-            Mesh = mesh,
-            // ⭐ Visible from the start for a shot run, which cannot press a key.
+            Mesh = st.Commit(),
             Visible = System.Environment.GetEnvironmentVariable("TPW_PARK_BUILD") == "1",
             MaterialOverride = new StandardMaterial3D
             {
@@ -1136,8 +1149,7 @@ public partial class Viewer : Node3D
             },
         };
         AddChild(_buildable);
-        GD.Print($"[build] {no} of {no + yes} drawn cells are NOT buildable "
-               + $"({100.0 * no / (no + yes):F0}%) -- byte0 bit 1; B shows them");
+        GD.Print($"[build] {no} of {no + yes} drawn cells marked ({100.0 * no / (no + yes):F0}%)");
     }
 
     /// <summary>The bounds of the terrain surfaces whose mesh name matches, in the terrain's

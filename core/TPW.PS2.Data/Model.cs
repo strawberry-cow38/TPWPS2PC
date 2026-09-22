@@ -112,27 +112,23 @@ public sealed class Model
         /// across all eight parks.</summary>
         public bool Drawn(int x, int y) => (Cells[(y * Width + x) * 2] & 1) == 0;
 
-        /// <summary>⭐ Can anything be built on this cell? `byte0` BIT 1 CLEAR.
+        /// <summary>⚠⚠ WITHDRAWN. There was a `Buildable(x, y)` here reading `byte0` bit 1, and
+        /// master called the map it drew "total nonsense" on sight. They were right, and the
+        /// reason is written three paragraphs above this one in the same file:
         ///
-        /// Read out of the PS2 executable rather than inferred from the picture. `0x14E138` is the
-        /// map accessor and returns `base + (y * width + x) * 8` — **eight bytes per tile**, the
-        /// same record size the PSX port carries as `ParkMap.TileBytes`. Histogramming what the
-        /// engine actually loads out of those eight across all 132 of its call sites gives
-        /// `lbu +0`, `+1`, `+2`, `lhu +4` and `lbu +7`, which lands field for field on the PSX
-        /// layout (type, raw, links, a u16 ground, flags) — and byte `+2` is only ever masked with
-        /// 0xFE/0xFD/0xFB/0xF7/0xEF/0xDF/0xBF/0x7F, single-bit clears, so it is the eight path
-        /// links exactly as that port has it.
+        /// **BITS 0-3 OF `byte0` ARE ONE INDEX, NOT EIGHT FLAGS.** `0x222230` splits the cell into
+        /// bits 0-3, bits 4-7 and byte1 and scales each into a float array. Testing "bit 1" of an
+        /// index selects the values 2, 3, 6, 7, 10, 11, 14 and 15 -- an arbitrary subset of a
+        /// lookup, which is exactly why the overlay looked structured and meant nothing. It is the
+        /// same mistake as the withdrawn "`0x40` is a raised flag", which was the bits 4-7 nibble
+        /// holding the value 4. <see cref="Drawn"/> survives only because bit 0 is tested as a bit
+        /// by the engine itself, at `0x222FE8`, as `(byte0 ^ 1) &amp; 1`.
         ///
-        /// ⭐⭐ The test itself is `+7 &amp; 0x02`, and the PSX port documents bit 1 of the same flags
-        /// byte as "nothing may be built here", proven there from its own can-build routines. Two
-        /// binaries, same offset, same bit.
-        ///
-        /// ⚠ WHAT IS ASSUMED, and it is one step: that this 2-byte authored cell's `byte0` IS that
-        /// runtime flags byte. Bit 0 agrees — it means "no ground drawn here" in both, which is
-        /// what <see cref="Drawn"/> was decoded as independently — but the runtime record is built
-        /// at park load and I have not watched it being built. If the overlay ever disagrees with
-        /// the game, this is the join to doubt first.</summary>
-        public bool Buildable(int x, int y) => (Cells[(y * Width + x) * 2] & 0x02) == 0;
+        /// ⭐ What IS established, and is not this: the RUNTIME tile is 8 bytes (`0x14E138`), its
+        /// flags live at `+7`, and `+7 &amp; 0x02` is a real test at `0x191718`. But that byte is
+        /// runtime state -- `0x18E740` zeroes it, `0x18E6A4` ORs bits in, `0x18E6D8` clears them --
+        /// so it is BUILT during play, not read out of the authored cell. The authored map is not
+        /// its source and this file cannot answer the question yet.</summary>
         public byte Raw(int x, int y) => Cells[(y * Width + x) * 2];
         public byte Second(int x, int y) => Cells[(y * Width + x) * 2 + 1];
     }
