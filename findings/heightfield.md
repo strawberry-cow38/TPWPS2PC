@@ -548,3 +548,34 @@ because that was read from the cell, not from this function.
 `cow tools` declined to interpret the dumped triples and said so explicitly. That was the right call:
 the numbers are integral because they are grid coordinates, and every reading I would have put on
 them as "corner offsets" was wrong.
+
+### ⚠⚠ Correction 7 — the three-way split was read from a function that never touches the heightfield
+
+`cow tools` found `byte1` to be a **material index into the terrain model's own material table** —
+six of the top seven values in each world resolving to that world's six ground tiles (`jgr_bas1..6`
+in JUNGLE, `sfl_bas1..6` in SPACE), with the indices differing per world, which is a real control.
+They flagged that it collides with my reading of bits 8-15 as a float-table index, and asked to
+reconcile rather than assume theirs won.
+
+It does not need reconciling. **Mine is wrong.** Scanning the whole of `0x221e3c … 0x222568` for
+any access to `0x2ea83c` / `0x2ea840` / `0x2ea848` or any `lw +0x44` returns **nothing**. The `u16`
+it reads comes from `$t5 = $s2 + [sp+0x9c0]`, a caller-supplied buffer. **That function never reads
+a heightfield cell at all**, so the three-way split describes some other structure entirely.
+
+**What that retracts, and it matters because work was reverted over it:** my claim that "a
+flat-topped box per cell can never be right, whatever the mask" rested entirely on the three-way
+split. That argument is withdrawn. The render may still have been wrong for the reasons
+`cow tools` found independently, but my reason for it was not evidence.
+
+**What survives, checked the same way:**
+
+| function | heightfield evidence | status |
+|---|---|---|
+| `0x166100` | `lw +0x44`, reads `0x2ea83c`, indexes `+0x24` **15 times** | a genuine cell reader/writer; the `andi 0xc3` observation stands |
+| `0x222fe8` (holds `0x2233b0`) | `lw +0x24` twice | touches a cells pointer, so the `andi 0x3c` + byte-swap shape logic is plausible — but unverified |
+| `0x221e3c` | **none** | not about the heightfield; everything I derived from it is withdrawn |
+
+The lesson is the one already filed today in a different coat: I found a function whose arithmetic
+was legible and assumed it was operating on the data I was interested in. **Confirm the function
+touches your structure before reading meaning out of its instructions** — one scan for the
+structure's own pointers would have caught this before it reached anyone else.
