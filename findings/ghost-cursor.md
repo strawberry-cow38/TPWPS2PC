@@ -148,7 +148,7 @@ the job in their own filename. A scan of **all 41 sound banks on the disc** find
 
 | event | sound | length | basis |
 |---|---|---|---|
-| a run starts | `Select3.vag` (12) | 43ms | ⚠ **inferred** — the only selection tick in the bank |
+| a run starts | `BUTTON01.vag` (5) | 75ms | master's ear — see below |
 | a run is laid | `rj_laypath_2.vag` (11) | 101ms | named |
 | the run connects | `connectPath.vag` (6) | 180ms | named |
 | refused | `blnl_error1.vag` (3) | 325ms | named |
@@ -159,7 +159,13 @@ on separate voices so neither cuts the other, because connecting is the success 
 run rather than a different event. Each cue therefore gets its own player.
 
 ⚠ The PS2 code that plays them has not been located; the mapping is the names, the lengths and the
-PSX's four events. An index is checked against the NAME at that index when the bank loads, so a
+PSX's four events.
+
+⚠⚠ **The first click is the one nothing names, and I got it wrong.** I picked `Select3` off its
+43ms length and the word "select" in it; master, who can hear the console, says it is `BUTTON01`
+(75ms). A name that merely SUITS a job is not evidence for it, and the length argument fit both
+equally — the other three entries are named for the job itself, which is a different kind of claim
+and the only reason they stand. An index is checked against the NAME at that index when the bank loads, so a
 different disc build says the cue is missing instead of playing the wrong sound.
 
 ## 6. What is NOT established

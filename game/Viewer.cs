@@ -1373,6 +1373,20 @@ public partial class Viewer : Node3D
             GD.Print($"[ghost] after a run over clear ground the tool is "
                    + $"{(_toolOpen ? "open, as it must be" : "CLOSED, so it closes on any press")}");
 
+            // ⚠ AND A START THAT MUST BE REFUSED. Find a tile the engine marks no-build and try
+            // to begin a run on it: the run must not start, or "cannot start on red" is a claim
+            // about code nobody exercised.
+            if (!_toolOpen) OpenTool(PathTool.Kind.Path);
+            int nx = -1, ny = -1;
+            for (int yy = 0; yy < f.Height && ny < 0; yy++)
+                for (int xx = 0; xx < f.Width; xx++)
+                    if (!_paths.CanLay(xx, yy)) { nx = xx; ny = yy; break; }
+            _cursorOverride = (nx, ny);
+            _runX = _runY = -1;
+            PressTool();
+            GD.Print($"[ghost] starting on the no-build tile ({nx},{ny}) left the run "
+                   + $"{(_runX < 0 ? "unstarted, as it must be" : "STARTED")}");
+
             if (!_toolOpen) OpenTool(PathTool.Kind.Path);
             _cursorOverride = (ex, ey);
             _runX = cx - 5; _runY = cy + 3;
@@ -1522,6 +1536,17 @@ public partial class Viewer : Node3D
         }
         if (_runX < 0)
         {
+            // ⭐ A RUN CANNOT START ON A RED TILE. The ghost already says whether the cell under
+            // the pointer would be refused, so the start is judged by THAT rather than by a second
+            // rule written here -- one tile, one verdict, the same one the marker is drawn from.
+            _ghost.Set(x, y, x, y, _toolKind);
+            if (!_ghost.Layable)
+            {
+                GD.Print($"[path] cannot start at ({x},{y}): {_paths.Describe(x, y)}");
+                Status($"cannot start on ({x},{y}) -- that tile is blocked");
+                _toolSfx?.Play(ToolSounds.Cue.Refused);
+                return;
+            }
             _runX = x; _runY = y;
             _ghostAt = (-1, -1, -1, -1);
             GD.Print($"[path] run starts at ({x},{y})");

@@ -21,9 +21,10 @@ namespace TPWPS2Viewer;
 /// neither cuts the other -- the run connected. That layering is why every cue has a player of its
 /// own here rather than sharing one.
 ///
-/// ⚠ WHICH sound the first click makes is the one INFERRED rather than read: `Select3` is the only
-/// selection tick in the bank and it is 43ms, but nothing names it for this tool. The other three
-/// are named.</summary>
+/// ⚠ The first click's sound is the one nothing NAMES. I picked `Select3` off its 43ms length and
+/// the word "select"; master, who can hear the console, says it is `BUTTON01`. A name that merely
+/// suits a job is not evidence for it, and the length argument fit both -- so this one rests on an
+/// ear, and the other three on the filenames.</summary>
 public sealed class ToolSounds
 {
     public enum Cue { Start, Lay, Connect, Refused, Undo }
@@ -31,7 +32,7 @@ public sealed class ToolSounds
     /// <summary>Index into `/AUDIO/GLOBAL/UIHD.SDT`.</summary>
     static readonly (Cue Cue, int Index, string Name)[] Wanted =
     {
-        (Cue.Start, 12, "Select3.vag"),          // ⚠ inferred
+        (Cue.Start, 5, "BUTTON01.vag"),          // master's ear, not mine
         (Cue.Lay, 11, "rj_laypath_2.vag"),       // named
         (Cue.Connect, 6, "connectPath.vag"),     // named
         (Cue.Refused, 3, "blnl_error1.vag"),     // named
