@@ -296,19 +296,45 @@ public sealed class Park
         // jungle's 3,700 unshared edges border it -- because that seam is where the engine hangs
         // the park's own tiles. 1,652 of those 3,124 boundary vertices sit at exactly 0.0, and
         // EMBANKMENT's base is -0.004: the datum is authored, not inferred.
-        var seam = new List<float>();
+        // ⚠ Only edges ADJACENT TO THE PLOT, and the MODE of them, not the median. Taking the
+        // median over the plot's bounding box swept in seam edges from river banks and cliffs that
+        // happen to fall inside the box, and gave 0.60 / 0.20 / 0.25 in the other three worlds
+        // against jungle's clean 0.00 -- a wrong answer that still looked like a measurement.
+        // Dilate the plot by one cell and take the most common height: 0.00 wins in every world,
+        // by 82% of 817 edges in JUNGLE, 50% of 814 in FANTASY, 57% of 505 in HALLOW, 49% of 487
+        // in SPACE, each with the runner-up far behind. The park datum is y = 0 and it is a
+        // constant the artists authored, not a per-world measurement.
+        var near = new bool[res, res];
+        for (int z = 0; z < res; z++)
+            for (int x = 0; x < res; x++)
+            {
+                if (comp[z, x] != bestId) continue;
+                for (int dz = -1; dz <= 1; dz++)
+                    for (int dx = -1; dx <= 1; dx++)
+                    {
+                        int nz = z + dz, nx = x + dx;
+                        if (nz >= 0 && nx >= 0 && nz < res && nx < res) near[nz, nx] = true;
+                    }
+            }
+        var buckets = new Dictionary<int, (int Count, float Sum)>();
+        int seamCount = 0;
         foreach (var (k, e) in edges)
         {
             if (e.Count != 1 || !edgeAt.TryGetValue(k, out var mid)) continue;
             int gx = Mathf.Clamp((int)((mid.X - lo.X) / w * (res - 1)), 0, res - 1);
             int gz = Mathf.Clamp((int)((mid.Z - lo.Z) / h * (res - 1)), 0, res - 1);
-            if (gx < minX - 2 || gx > maxX + 2 || gz < minZ - 2 || gz > maxZ + 2) continue;
-            seam.Add(e.Y);
+            if (!near[gz, gx]) continue;
+            seamCount++;
+            int b = Mathf.RoundToInt(e.Y * 10f);
+            var cur = buckets.TryGetValue(b, out var v) ? v : (0, 0f);
+            buckets[b] = (cur.Item1 + 1, cur.Item2 + e.Y);
         }
-        seam.Sort();
-        float floorY = seam.Count > 0 ? seam[seam.Count / 2] : lo.Y;
-        GD.Print($"[floorY] {seam.Count} open seam edges border the plot -> y={floorY:F3}"
-               + (seam.Count > 0 ? $"  (min {seam[0]:F2}, max {seam[^1]:F2})" : ""));
+        float floorY = lo.Y;
+        int bestCount = 0;
+        foreach (var (_, v) in buckets)
+            if (v.Count > bestCount) { bestCount = v.Count; floorY = v.Sum / v.Count; }
+        GD.Print($"[floorY] {seamCount} seam edges border the plot -> y={floorY:F3} "
+               + $"({bestCount} of them, {100.0 * bestCount / Math.Max(1, seamCount):F0}%)");
 
         float ux = w / (res - 1), uz = h / (res - 1);
         var origin = new Vector2(lo.X + minX * ux, lo.Z + minZ * uz);
