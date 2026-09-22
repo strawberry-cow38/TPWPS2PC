@@ -61,7 +61,11 @@ public sealed class Weather
         bool rain = kind == Kind.Rain;
         _p = new CpuParticles3D
         {
-            Amount = rain ? 2200 : 800,
+            // ⭐ 1024 IS THE GAME'S OWN CEILING, not a taste. FUN_0023d190 clamps the weather
+            // intensity to [0, 0x400] before storing it. I had 2,200 drops, more than twice what
+            // the console will ever put on screen. Snow is given half, since it is the slower,
+            // sparser of the two and shares the same cap.
+            Amount = rain ? 1024 : 512,
             // Rain crosses the 13 units from the top of the volume to the ground in about this
             // long at the velocity below, so a drop is visible for all of its life and none of it.
             Lifetime = rain ? 0.95f : 9f,
