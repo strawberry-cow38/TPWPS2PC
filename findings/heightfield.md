@@ -704,3 +704,33 @@ surface — `cow tools` predicted that from `A_ROAD` and it holds for the river 
 
 **Falsifiable form:** seam risk should track `(1 − skip%) × cells`. Anything at 100% skip cannot
 show one. If a visible gap ever appears along `A_ROAD`, this explanation is wrong.
+
+## ⭐ The holes counted from the disc: 373, against 383 counted from the render
+
+`cow tools` killed my transition-cell explanation with a control I should have run myself — hide the
+tile floor and the plot interior goes black, so the model has nothing inside the plot. Testing that
+against the disc, per JUNGLE `terrain_1` cell, classifying by the lowest mesh surface over it:
+
+| | SKIP cells (1,477) | DRAW cells (3,387) |
+|---|---:|---:|
+| no mesh vertex at all | **373 (25%)** | 3,143 (93%) |
+| mesh surface near ground (−1 … 2) | 824 (56%) | 214 (6%) |
+| only below −1 | 31 (2%) | 6 (0%) |
+| only above 2 | 249 (17%) | 24 (1%) |
+
+**93% of drawn cells have no model geometry over them at all**, which is `cow tools`' control
+arriving from the other side: the tile grid is the only thing drawing the plot interior, so their
+render going black when it is hidden is exactly right and my "the mesh takes over" was wrong.
+
+For skipped cells the flag does mostly mean what it looked like — 56% have model surface at ground
+level, so those are genuinely handed to the model. **But 373 of them have no geometry from any
+source at ground level or otherwise.**
+
+⭐ **`cow tools` independently measured 383 background-showing skip cells by decoding the render and
+solving the projection. This count is 373, from the file.** Two instruments with nothing in common —
+a pixel classification through a solved camera, and a per-cell mesh census off the disc — landing
+within 3%. That is the convergence, and it puts a number on the missing path: **roughly 375 cells
+per park that nothing we have decoded draws.**
+
+Which supports their conclusion rather than mine: the remaining work is the **terrain tile mesher**,
+still unfound. My transition-cell account explained the 824 cells that were never the problem.
