@@ -614,3 +614,34 @@ established is narrower than "height": bit 0 is a skip flag, bits `0x3C` are wip
 `0x166100`, `0x80` is never set on disc, and `byte1` is the material. Whether a height lives in the
 remainder is open, and the honest position is that it should stay open rather than be argued from a
 function that has not been shown to read this data.
+
+## ⭐ What fills the gaps: nothing — the mesh does, and bit 0 says so
+
+`strawberry_cow`, on the holes left after the revert: *"so what do we think is meant to go in the
+gaps we have?"*
+
+Cross-tabulating `byte0` bit 0 (the skip flag) against `byte1 == 0` (the null material) per park:
+
+| world | cells | bit 0 set | `byte1 == 0` | both | bit 0 only |
+|---|---:|---:|---:|---:|---:|
+| JUNGLE | 4,864 | 1,477 | 1,476 | 1,476 | 1 |
+| FANTASY | 4,800 | 872 | 3,790 | 872 | 0 |
+| HALLOW | 4,992 | 1,086 | 1,085 | 1,085 | 1 |
+| SPACE | 5,184 | 1,116 | 1,115 | 1,115 | 1 |
+
+**`bit 0 set` implies `byte1 == 0` in every park** — the exception is a single cell in three of them
+and none in FANTASY. A skipped cell has no material, which is what a skipped cell should have.
+
+And the population is one `cow tools` already measured from the other side. Their "height 1" set in
+JUNGLE was **1,477 cells**, of which **1,475 were covered by the terrain mesh** — a fact they
+reported and then discounted as confounded by position. It was not a confound, it was the
+mechanism: `byte0 & 0x03 == 1` *is* `bit 0 set` *is* the skip flag, and those cells are skipped
+**because the model already draws ground there**.
+
+So the answer to the question is: **nothing goes in the gaps. The terrain mesh fills them, and the
+cell data marks them explicitly.** Where a gap still reads as a hole, the mesh's surface there is
+the volcano's flank or a bank rather than walkable ground — which is a question about drawing the
+model's own geometry properly, not about inventing terrain to cover it.
+
+⚠ This also retires "height 1" as a description of that population. Those 1,477 JUNGLE cells are not
+raised by one unit; they are cells the engine is told to leave alone.
