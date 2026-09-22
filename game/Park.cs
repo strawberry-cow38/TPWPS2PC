@@ -132,7 +132,7 @@ public sealed class Park
     /// the only one that leaks, rather than all of them.</summary>
     public static (Vector2 Origin, Vector2 Size, float FloorY, bool[,] Cells) FindHole(Node3D terrain, int res = 160)
     {
-        var (lo, hi) = DrawnBounds(terrain);
+        var (lo, hi) = DrawnBounds(terrain, inParent: true);
         float w = hi.X - lo.X, h = hi.Z - lo.Z;
         if (w <= 0 || h <= 0) return (Vector2.Zero, Vector2.Zero, 0f, null);
         var cov = new bool[res, res];
@@ -195,7 +195,7 @@ public sealed class Park
             }
             foreach (var c in n.GetChildren()) Mark(c, t);
         }
-        Mark(terrain, Transform3D.Identity);
+        Mark(terrain, terrain.Transform);
 
         if (System.Environment.GetEnvironmentVariable("TPW_HOLE_DEBUG") == "1")
         {
@@ -459,7 +459,10 @@ public sealed class Park
         model.Position = new Vector3(
             Origin.X + (x + fp.Width * 0.5f) * CellSize - centre.X,
             BaseY - min.Y,
-            Origin.Y + (y + fp.Height * 0.5f) * CellSize - centre.Z);
+            // ⚠ PLUS, not minus. The model root's Scale.Z is -1, so a local z maps to world -z:
+            // the offset that lands the model's own centre on the plot has to be added back. X and
+            // Y are unscaled and stay as they are.
+            Origin.Y + (y + fp.Height * 0.5f) * CellSize + centre.Z);
         return true;
     }
 
@@ -471,7 +474,13 @@ public sealed class Park
     /// parent chain gives 33.4, and the two methods differ per model rather than by a constant. The
     /// geometry the builder produced is not an opinion about which transform is right; it is the
     /// thing the player sees, so it is what a footprint should be measured against.</summary>
-    public static (Vector3 Min, Vector3 Max) DrawnBounds(Node3D root)
+    /// <param name="inParent">Measure in the root's PARENT space, applying the root's own
+    /// transform. ⚠⚠ THIS MATTERS: <see cref="AnimatedModel"/>'s root carries Scale (1,1,-1), so
+    /// local space is Z-MIRRORED against the world every other node lives in. Measuring the terrain
+    /// locally and then placing the park in world coordinates put the plot at +Z where the hole is
+    /// at -Z -- and a Z mirror leaves the bounding box, the extents and the X axis all correct, so
+    /// every number agreed while the picture did not.</param>
+    public static (Vector3 Min, Vector3 Max) DrawnBounds(Node3D root, bool inParent = false)
     {
         var min = new Vector3(float.MaxValue, float.MaxValue, float.MaxValue);
         var max = new Vector3(float.MinValue, float.MinValue, float.MinValue);
@@ -501,7 +510,7 @@ public sealed class Park
             }
             foreach (var c in n.GetChildren()) Walk(c, t);
         }
-        Walk(root, Transform3D.Identity);
+        Walk(root, inParent ? root.Transform : Transform3D.Identity);
         return any ? (min, max) : (Vector3.Zero, Vector3.Zero);
     }
 

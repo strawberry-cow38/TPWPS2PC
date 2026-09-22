@@ -641,7 +641,7 @@ public partial class Viewer : Node3D
             // was hidden on the assumption that any grass under real terrain is a second floor --
             // true when it spanned the whole world, wrong once it fills the hole the terrain
             // leaves for it.
-            var (lo, hi) = Park.DrawnBounds(_terrain.Root);
+            var (lo, hi) = Park.DrawnBounds(_terrain.Root, inParent: true);
             // ⚠ Say how many of its materials found a texture. A material that silently resolves to
             // null renders flat white, which reads as "the terrain has no textures" rather than as
             // "the lookup did not find them" -- and the first is a fact about the disc, the second
@@ -817,7 +817,7 @@ public partial class Viewer : Node3D
 
         var (gmin, gmax) = Park.DrawnBounds(_park.GroundRoot);
         GD.Print($"[floor] ground {gmin}..{gmax}  visible={_park.GroundRoot.IsVisibleInTree()} "
-               + $"tiles={_park.GroundRoot.GetChildCount()}  terrain {Park.DrawnBounds(_terrain?.Root ?? _park.Root)}");
+               + $"tiles={_park.GroundRoot.GetChildCount()}  terrain {Park.DrawnBounds(_terrain?.Root ?? _park.Root, inParent: true)}");
         GD.Print($"[park] meshes={meshes} modelInTree={_current.Root.IsVisibleInTree()} "
                  + $"rideInTree={_park.RideVisible} parkInTree={_park.Root.IsVisibleInTree()} "
                  + $"parkVisible={_park.Root.Visible} parkParent={_park.Root.GetParent()?.Name}");
@@ -941,7 +941,7 @@ public partial class Viewer : Node3D
         // failed to load.
         if (_terrain != null && _terrainSize.X > 1f)
         {
-            var (lo, hi) = Park.DrawnBounds(_terrain.Root);
+            var (lo, hi) = Park.DrawnBounds(_terrain.Root, inParent: true);
             _focus = new Vector3((lo.X + hi.X) * 0.5f, lo.Y + (hi.Y - lo.Y) * 0.3f, (lo.Z + hi.Z) * 0.5f);
             span = Math.Max(_terrainSize.X, _terrainSize.Y) * 1.1f;
         }
