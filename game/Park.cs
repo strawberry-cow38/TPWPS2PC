@@ -481,6 +481,28 @@ public sealed class Park
         return new Vector3(v.X, BaseY, v.Z);
     }
 
+    /// <summary>The world position of a grid CORNER -- the point where cells (x-1,y-1), (x,y-1),
+    /// (x-1,y) and (x,y) meet.
+    ///
+    /// ⭐⭐ THE FLOOR IS BUILT FROM THESE, NOT FROM A CENTRE PLUS A HALF. A quad whose corners are
+    /// `centre(x) + half` and whose neighbour's are `centre(x+1) - half` asks for the same point by
+    /// two different sums, and two different sums of floats are not the same float. The miss is
+    /// about one part in ten million -- invisible up close, and at a shallow angle far away it is
+    /// occasionally wide enough to swallow a pixel centre, so the background shows through the
+    /// ground in single bright dots along a cell row. Master saw them as seams to the sky.
+    ///
+    /// Asking for a CORNER by its own index gives both quads the identical expression and
+    /// therefore the identical float, and the crack cannot exist.</summary>
+    public Vector3 CellCorner(int x, int y)
+    {
+        if (PlotSpace is not { } p || Width <= 0 || Height <= 0)
+            return new Vector3(Origin.X + x * CellSize, BaseY, Origin.Y + y * CellSize);
+        var local = p.LocalMin + new Vector3((float)x / Width * p.LocalSize.X, 0f,
+                                             (float)y / Height * p.LocalSize.Z);
+        var v = p.ToWorld * local;
+        return new Vector3(v.X, BaseY, v.Z);
+    }
+
     /// <summary>Where the playable grid sits inside the world, in cells. Set from the terrain's
     /// own geometry before Build.</summary>
     public Vector2 Origin = Vector2.Zero;
@@ -526,7 +548,6 @@ public sealed class Park
         // ⚠ Index 0 is a SENTINEL, not a material. It resolves to `gte_wal1` in jungle and
         // `sgr_tnk2` in space -- a wall and a tank, on about a quarter of all cells. Those get the
         // default ground rather than a wall texture laid across the park.
-        float half = CellSize * 0.5f;
         var surfaces = new Dictionary<int, SurfaceTool>();
         for (int y = 0; y < height; y++)
             for (int x = 0; x < width; x++)
@@ -552,13 +573,27 @@ public sealed class Park
                 // ⭐ Not a mirror and not a rotation: tinyclaw scored the grid against the water
                 // under identity, 180, mirror-X and mirror-Z, and identity won outright (space
                 // 100%). The data was never wrong -- only my placement of it.
-                var centre = CellCentre(x, y);
-                float cx = centre.X, cz = centre.Z;
+                // ⭐ From the CORNERS, so a cell and its neighbour agree to the last bit.
+                //
+                // ⚠⚠ ORDERED BY WORLD POSITION, NOT BY GRID INDEX. The plot's transform MIRRORS,
+                // so walking the corners (x,y) (x+1,y) (x+1,y+1) (x,y+1) comes out wound the other
+                // way in world space and the whole floor is culled -- I shipped exactly that and
+                // the park vanished. Taking the min and the max of the four keeps the winding the
+                // quad has always had, and min and max of shared corners are still shared, so the
+                // crack the corners were for stays shut.
                 float cy = CellY(x, y);
-                var a = new Vector3(cx - half, cy, cz - half);
-                var b = new Vector3(cx + half, cy, cz - half);
-                var c = new Vector3(cx + half, cy, cz + half);
-                var dd = new Vector3(cx - half, cy, cz + half);
+                var c00 = CellCorner(x, y);
+                var c10 = CellCorner(x + 1, y);
+                var c11 = CellCorner(x + 1, y + 1);
+                var c01 = CellCorner(x, y + 1);
+                float x0 = Mathf.Min(Mathf.Min(c00.X, c10.X), Mathf.Min(c11.X, c01.X));
+                float x1 = Mathf.Max(Mathf.Max(c00.X, c10.X), Mathf.Max(c11.X, c01.X));
+                float z0 = Mathf.Min(Mathf.Min(c00.Z, c10.Z), Mathf.Min(c11.Z, c01.Z));
+                float z1 = Mathf.Max(Mathf.Max(c00.Z, c10.Z), Mathf.Max(c11.Z, c01.Z));
+                var a = new Vector3(x0, cy, z0);
+                var b = new Vector3(x1, cy, z0);
+                var c = new Vector3(x1, cy, z1);
+                var dd = new Vector3(x0, cy, z1);
                 // ⭐ A GROUND TILE CAN BE TURNED. The game's path pieces name a tile AND a
                 // number of quarter turns -- one corner tile serves all four right angles -- so the
                 // turn has to reach the quad. It goes in the UVs rather than in the material,
