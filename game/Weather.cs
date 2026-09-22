@@ -56,6 +56,18 @@ public sealed class Weather
         try { tga = new Targa(raw); }
         catch (Exception ex) { return $"{file}: {ex.Message}"; }
         var img = Image.CreateFromData(tga.Width, tga.Height, false, Image.Format.Rgba8, tga.Pixels);
+        // ⚠ ParticleFlagAlignY points the quad's +Y ALONG THE VELOCITY, and the velocity is DOWN,
+        // so the texture's TOP is aimed at the ground and the drop falls on its point. Master saw
+        // it at once; it is invisible in a still unless you know which end of a drop is which.
+        //
+        // ⭐ Measured rather than flipped-and-hoped. Raindrop.tga is 32x64, 32-bit, and its
+        // descriptor bit 5 is CLEAR -- a bottom-origin TGA, so the file stores the picture's
+        // bottom first. Counting opaque texels per stored row: row 0 is 15 wide, rows 9-21 are the
+        // full 32, and row 63 is 3. So the BULB is at the picture's bottom and the POINT at its
+        // top, which is a raindrop the right way up. Targa.cs already un-flips bottom-origin files
+        // (its origin-bit line), so by the time the pixels arrive here the point is at the top --
+        // exactly the end AlignY then aims downward. Hence the flip.
+        img.FlipY();
         var tex = ImageTexture.CreateFromImage(img);
 
         bool rain = kind == Kind.Rain;
