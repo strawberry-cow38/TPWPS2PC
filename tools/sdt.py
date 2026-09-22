@@ -7,7 +7,13 @@ VARIANT A (version 0) -- banks of named sounds:
        +0x00 u32 headerSize (always 40)      the payload starts at offset + headerSize
        +0x04 u32 dataSize                    headerSize + dataSize == the next offset
        +0x08 char[16] name                   "Crunch.mp2", "smTree1.vag"
-       +0x18 u32 tag                          TOP BYTE IS THE CODEC: 0x24 mp2, 0x80 vag, 0x00 empty
+       +0x18 u32 tag                          TOP BYTE IS THE CODEC: 0x24 MONO mpeg, 0x25 STEREO
+                              mpeg, 0x80 vag, 0x00 empty. ⚠ This line said "0x24 mp2" and stopped,
+                              which reads as if 0x24 were the only MPEG tag -- 0x25 is another 442
+                              sounds, every one of them the music. `SoundBank.cs` had it right all
+                              along (`IsMpeg => Tag == 0x24 || Tag == 0x25`); only this comment was
+                              short, and a reader who checks the tool rather than the code concludes
+                              the port ignores 442 sounds that it in fact handles.
        +0x1C u32 0
        +0x20 u32 length       ⭐ MILLISECONDS x 44.1 x channels -- cross-checked against every
                               *SFX.MAP entry (939/939); see tools/sfxmap.py
