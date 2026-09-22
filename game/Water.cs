@@ -33,11 +33,17 @@ public sealed class Water
     /// <summary>⚠ CHOSEN. Amplitude in world units, wavelength in world units, radians a second.</summary>
     static readonly Vector3 SeaWave = new(0.06f, 9f, 1.1f);
 
-    /// <summary>Which way the scroll runs, in degrees, where 0 is straight down the V axis -- the
-    /// direction a rolled sprite moves on the PSX. ⚠ 90 because master watched it: first a quarter
-    /// turn off the V axis, then a half turn back on that. The row roll fixes the SPEED, not which
-    /// way the surface is laid out under it, so the angle is somebody's eyes and not a reading.</summary>
-    const float ScrollDegrees = 90f;
+    /// <summary>Which way each scroll runs, in degrees, where 0 is straight down the V axis --
+    /// the direction a rolled sprite moves on the PSX.
+    ///
+    /// ⭐⭐ THE SEA AND THE RIVER DO NOT AGREE, and that is the point. One angle for both was the
+    /// mistake: turning the river turned the sea with it, and master had already said the sea was
+    /// right where it started. They are laid out differently, so they get an angle each.
+    ///
+    /// ⚠ Both are somebody's EYES, not a reading. The row roll settles the SPEED -- one texel a
+    /// console frame, measured on the PSX -- and nothing found so far states the direction.</summary>
+    const float SeaScrollDegrees = 0f;
+    const float RiverScrollDegrees = 90f;
 
     readonly List<ShaderMaterial> _moving = new();
     public int Surfaces => _moving.Count;
@@ -72,7 +78,9 @@ public sealed class Water
 
             float perSecond = Env("TPW_WATER_SCROLL",
                 ScrollTexelsPerTick * ConsoleClock.TicksPerSecond / AssumedTextureHeight);
-            float radians = Mathf.DegToRad(Env("TPW_WATER_ANGLE", ScrollDegrees));
+            float radians = Mathf.DegToRad(isSea
+                ? Env("TPW_SEA_ANGLE", SeaScrollDegrees)
+                : Env("TPW_WATER_ANGLE", RiverScrollDegrees));
             var scroll = new Vector2(Mathf.Sin(radians) * perSecond, Mathf.Cos(radians) * perSecond);
             var wave = isSea
                 ? new Vector3(Env("TPW_SEA_AMP", SeaWave.X), Env("TPW_SEA_LEN", SeaWave.Y), Env("TPW_SEA_SPEED", SeaWave.Z))
@@ -86,7 +94,8 @@ public sealed class Water
         }
         Report = _moving.Count == 0
             ? "no water surfaces in this terrain"
-            : $"{sea} sea surfaces on a sine, {flow} flowing at {ScrollDegrees:F0} degrees";
+            : $"{sea} sea surfaces on a sine scrolling at {SeaScrollDegrees:F0} degrees,"
+              + $" {flow} flowing at {RiverScrollDegrees:F0}";
     }
 
     /// <summary>The material a surface wears, by the index AnimatedModel put in its node name.
@@ -115,8 +124,13 @@ public sealed class Water
     public string State(Node3D terrain)
     {
         if (_moving.Count == 0) return "no water";
+        // ⚠ The surfaces no longer all share a scroll, so report the SPREAD rather than the
+        // first one -- quoting one material's vector as "the" scroll is how a sea and a river
+        // going different ways would read as a single number.
         float t = (float)_moving[0].GetShaderParameter("water_time");
-        var scroll = (Vector2)_moving[0].GetShaderParameter("water_scroll");
+        var vectors = _moving.Select(m => (Vector2)m.GetShaderParameter("water_scroll")).ToList();
+        var scroll = vectors[0];
+        string spread = string.Join(" ", vectors.Select(v => $"({v.X:F3},{v.Y:F3})").Distinct());
         var box = new Aabb();
         bool first = true;
         foreach (var mi in terrain.GetChildren().OfType<MeshInstance3D>())
@@ -129,7 +143,7 @@ public sealed class Water
         // ⚠ THE WHOLE VECTOR, not its V component. Reporting scroll.Y alone printed "-0.000/s"
         // the moment the direction turned ninety degrees into U, which reads exactly like a scroll
         // that has stopped -- an instrument that names the wrong axis is worse than none.
-        return $"time {t:F2}s, scroll ({scroll.X:F3},{scroll.Y:F3}) = {scroll.Length():F3}/s,"
+        return $"time {t:F2}s, scrolls {spread} at {scroll.Length():F3}/s,"
              + $" {_moving.Count} surfaces spanning "
              + $"x {box.Position.X:F0}..{box.End.X:F0} z {box.Position.Z:F0}..{box.End.Z:F0}";
     }
