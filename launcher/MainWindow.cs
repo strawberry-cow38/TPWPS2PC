@@ -245,7 +245,34 @@ public class MainWindow : Window
         // hanging rather than as a bad path.
         psi.Environment["TPW_PS2_DISC"] = _disc.Path;
         Log($"launching {Path.GetFileName(_godot.Path)}");
-        Process.Start(psi);
+        Process child;
+        try { child = Process.Start(psi); }
+        catch (Exception e)
+        {
+            // ⚠⚠ THE LAUNCHER MUST SURVIVE A FAILED START. It closes itself on a good hand-off
+            // below, so a start that throws would otherwise take the only window that could say
+            // what went wrong with it -- the game would not appear and neither would the reason.
+            Log($"could not start Godot: {e.Message}");
+            SetMode(Mode.Broken, "Play", $"Godot would not start: {e.Message}");
+            return;
+        }
+        if (child == null)
+        {
+            Log("Godot did not start");
+            SetMode(Mode.Broken, "Play", "Godot did not start.");
+            return;
+        }
+        // ⭐ Hand off and GO. The child was started with UseShellExecute = false and no job object,
+        // so it is its own process and outlives this one -- closing here leaves the game running
+        // and takes the launcher off the taskbar instead of leaving it behind the window.
+        Log("handed off -- closing the launcher");
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (Application.Current?.ApplicationLifetime is
+                Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop)
+                desktop.Shutdown();
+            else Close();
+        });
     }
 
     // ------------------------------------------------------------------ disc
