@@ -66,10 +66,18 @@ public partial class Viewer : Node3D
     readonly GameCamera _game = new();
     /// <summary>The park's entrance arch, Features/Gates/Gates.mps, one per archive.</summary>
     AnimatedModel _gate;
-    /// <summary>Live nudge on the gate's z, in units. ⭐ Here so the one quantity I cannot measure
-    /// can be MEASURED BY SOMEONE WHO CAN SEE IT: [ and ] move it and print the number, and that
-    /// number then gets checked against the anchors and baked in.</summary>
-    float _gateNudge;
+    /// <summary>Nudge on the gate's z, in units, starting at master's own correction.
+    ///
+    /// ⭐ Fantasy's pad alone put the gate a quarter unit too far from the road, and master — who
+    /// can see the park — fixed it with one press of `]`. So the shipped value is the pad's
+    /// reading plus 0.25, and `[` / `]` still move it from there.
+    ///
+    /// ⚠ THIS IS A JUDGEMENT, NOT AN ANCHOR, and the two numbers agreeing is NOT corroboration:
+    /// the nudge moves the pad path and the constant path by the SAME amount, so of course they
+    /// still agree. What it is: one calibration by the only pair of eyes on the real thing,
+    /// applied to all four parks because the entrance is one prefab (see the anchors in
+    /// findings/, where A_ROAD and ticket_booths are identical in every park).</summary>
+    float _gateNudge = 0.25f;
     /// <summary>G swaps to the free orbit camera.</summary>
     bool _freeCam;
     /// <summary>Ground height per TILE in world units, the same lookup the game does. Baked when
@@ -759,7 +767,12 @@ public partial class Viewer : Node3D
         _terrain = null;
         _park.Field = null;
         ShowParkOnly();
-        _info.Text = m.Label;
+        // ⭐ Park mode has its own camera and its own keys, and the help text left over from the
+        // orbit view describes none of them. Master was being told the controls over chat.
+        _info.Text = m.Label + "\n\nthe game's own camera\n"
+                   + "WASD move  |  Q/E turn a quarter  |  R/F zoom\n"
+                   + "Z/X dolly  |  Home reset  |  G free orbit\n"
+                   + "[ / ] nudge the gate  |  F3 hide this panel";
     }
 
     /// <summary>Show one image at its own size, or the reason it cannot be shown.</summary>
@@ -1522,7 +1535,7 @@ public partial class Viewer : Node3D
                 _info.Text = $"{_ride.Name}\n{_current.Summary}\n" +
                              $"{_records.Count} animations\n" +
                              "left-drag orbit  |  right-drag or shift+drag or WASD to pan  |  wheel zoom\n" +
-                             "SPACE play/pause  |  arrows step a frame  |  R re-frame";
+                             "SPACE play/pause  |  arrows step a frame  |  R re-frame  |  F3 panel";
         }
         catch (Exception ex)
         {
