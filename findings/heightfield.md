@@ -444,3 +444,50 @@ check at all, and I nearly had a second number to publish off it.
 plot-edge cells that do have mesh surface over them, transform properly, and correlate decoded
 height against surface Y for both candidate masks. If `& 0x03` tracks and `(>>2) & 0x0F` does not,
 it is settled; the same data then fits the step size, which is the other open question.
+
+## ⭐ The cell is three table indices, not a height — so it can never be a box per cell
+
+`strawberry_cow`, on seeing a render of extruded cuboids: *"its not meant to render the blocks."*
+Correct, and the code says why.
+
+**`0x222230`, inside the function at `0x221e3c` (2,688-byte frame), reads a cell as a `u16` and
+splits it three ways, each scaled by 4 and used as a float-array offset read with `lwc1`:**
+
+```
+andi $t2, $v0, 0xf      bits 0-3    -> sll 2 -> base $fp = sp+0x60
+srl  $v1, $v0, 2
+andi $a0, $v1, 0x3c     bits 4-7    -> base sp+0x30
+srl  $v0, $v0, 8
+sll  $v0, $v0, 2        bits 8-15   -> base sp+0x10        (this is byte1)
+```
+
+A second site at `0x2222e4` does the same through registers instead: `$s4 = sp+0x60`,
+`$s3 = sp+0x30`, `$s5 = sp+0x10`, with `$fp = $s4`.
+
+**`0x2233b0` is the shape logic.** It `lbu`s the cell and tests the same field:
+
+```
+andi $v0, $v1, 0x3c     if zero, skip the whole block
+andi $v0, $v1, 0x20     -> SWAPS two bytes on the stack (sp+0xa21 <-> sp+0xa23)
+andi $v0, $v0, 4        -> another branch
+```
+
+Swapping a pair of stack values on a bit is **rotating or mirroring a tile**, not raising a column.
+
+So a cell selects a tile whose corner values are looked up, and the tile is then oriented by those
+bits. **A flat-topped box per cell cannot be right under any mask** — the geometry is per-tile
+shape, not per-cell absolute height. That is the answer to why the render was wrong even after the
+dropped-cell bug was fixed.
+
+### What this settles, and what it does not
+
+* The `0x40` bit previously listed as unexplained is **not a flag**: it is bit 6, the `bits 4-7`
+  nibble holding the value 4. JUNGLE's 67 such cells are the 67 counted earlier.
+* Re-split with the builder's own masks, `bits 0-3` are `{0,1,2}` in JUNGLE and reach 10 in HALLOW,
+  and `bits 4-7` are `{0,4}` in JUNGLE against `{0,2,3,4,6}` in FANTASY. **JUNGLE is degenerate on
+  the second field too** — `cow tools` flagged exactly this before I could walk into it a fourth
+  time.
+* ⚠ **The three float arrays are stack buffers filled earlier in the same function**, not static
+  tables in the file or in `.rodata`. So the corner values are assembled at draw time from
+  something else, and dumping a table off the disc will not produce them. Where they are filled
+  from is the next read, and it is a read, not a guess.
