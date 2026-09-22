@@ -1018,6 +1018,16 @@ public partial class Viewer : Node3D
         // the floor was off the island when its coordinates said otherwise. Top-down makes screen
         // axes world axes, so the floor's position against the hole is a thing you can see.
         if (System.Environment.GetEnvironmentVariable("TPW_HOLE_DEBUG") == "1") _pitch = -1.5533f;
+
+        // A ground-level look along the plot, for comparing against a screenshot of the real game.
+        // The island-wide shot cannot show a one-unit step: it is about 1% of the frame.
+        if (System.Environment.GetEnvironmentVariable("TPW_PARK_CLOSEUP") == "1" && _holeSize.X > 1f)
+        {
+            _focus = new Vector3(_holeOrigin.X + _holeSize.X * 0.45f, _holeY + 2f,
+                                 _holeOrigin.Y + _holeSize.Y * 0.45f);
+            _dist = Math.Max(_holeSize.X, _holeSize.Y) * 0.42f;
+            _pitch = -0.30f;
+        }
     }
 
     void FrameCamera(Model model)
