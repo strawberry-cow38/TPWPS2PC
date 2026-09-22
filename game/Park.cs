@@ -154,21 +154,55 @@ public sealed class Park
         }
         Mark(terrain, Transform3D.Identity);
 
-        int minX = res, maxX = -1, minZ = res, maxZ = -1;
+        // Cells that are empty AND have terrain somewhere to their left and right on the same row,
+        // and likewise above and below on the same column. That excludes the sea outside the island
+        // without a flood fill, which the entrance gap would let escape.
+        var inside = new bool[res, res];
         for (int z = 0; z < res; z++)
         {
-            int first = -1, last = -1;
-            for (int x = 0; x < res; x++) if (cov[z, x]) { if (first < 0) first = x; last = x; }
-            if (first < 0) continue;
-            for (int x = first + 1; x < last; x++)
-            {
-                if (cov[z, x]) continue;
-                if (x < minX) minX = x;
-                if (x > maxX) maxX = x;
-                if (z < minZ) minZ = z;
-                if (z > maxZ) maxZ = z;
-            }
+            int f = -1, l = -1;
+            for (int x = 0; x < res; x++) if (cov[z, x]) { if (f < 0) f = x; l = x; }
+            if (f < 0) continue;
+            for (int x = f + 1; x < l; x++) if (!cov[z, x]) inside[z, x] = true;
         }
+        for (int x = 0; x < res; x++)
+        {
+            int f = -1, l = -1;
+            for (int z = 0; z < res; z++) if (cov[z, x]) { if (f < 0) f = z; l = z; }
+            for (int z = 0; z < res; z++)
+                if (inside[z, x] && (f < 0 || z <= f || z >= l)) inside[z, x] = false;
+        }
+
+        // ⚠ The LARGEST CONNECTED region of those, not their bounding box. A coastline notch is
+        // "internal" on its own row too, and one near the edge dragged the origin to the rim -- the
+        // park then rendered as a slab hanging off the island rather than sitting in its hole.
+        int minX = res, maxX = -1, minZ = res, maxZ = -1, bestArea = 0;
+        var seen = new bool[res, res];
+        var stack = new Stack<(int Z, int X)>();
+        for (int z0 = 0; z0 < res; z0++)
+            for (int x0 = 0; x0 < res; x0++)
+            {
+                if (!inside[z0, x0] || seen[z0, x0]) continue;
+                int aX = res, bX = -1, aZ = res, bZ = -1, area = 0;
+                seen[z0, x0] = true; stack.Push((z0, x0));
+                while (stack.Count > 0)
+                {
+                    var (z, x) = stack.Pop();
+                    area++;
+                    if (x < aX) aX = x;
+                    if (x > bX) bX = x;
+                    if (z < aZ) aZ = z;
+                    if (z > bZ) bZ = z;
+                    foreach (var (dz, dx) in new[] { (1, 0), (-1, 0), (0, 1), (0, -1) })
+                    {
+                        int nz = z + dz, nx = x + dx;
+                        if (nz < 0 || nx < 0 || nz >= res || nx >= res) continue;
+                        if (!inside[nz, nx] || seen[nz, nx]) continue;
+                        seen[nz, nx] = true; stack.Push((nz, nx));
+                    }
+                }
+                if (area > bestArea) { bestArea = area; minX = aX; maxX = bX; minZ = aZ; maxZ = bZ; }
+            }
         if (maxX < minX) return (Vector2.Zero, Vector2.Zero);
         float ux = w / (res - 1), uz = h / (res - 1);
         return (new Vector2(lo.X + minX * ux, lo.Z + minZ * uz),
