@@ -494,6 +494,26 @@ public sealed class Park
                 void V(Vector3 v, float u, float w2) { st.SetUV(new Vector2(u, w2)); st.SetNormal(Vector3.Up); st.AddVertex(v); }
                 V(a, 0, 0); V(b, 1, 0); V(c, 1, 1);
                 V(a, 0, 0); V(c, 1, 1); V(dd, 0, 1);
+
+                // ⭐ Close the edge against the model. Where a neighbouring cell is one the engine
+                // skips and the model's surface there is NOT level with this floor, leave a wall
+                // rather than an open seam. The height comes from the terrain mesh itself.
+                if (TerrainTop == null) continue;
+                foreach (var (dx, dy, e0, e1) in new[] { (0, -1, a, b), (1, 0, b, c), (0, 1, c, dd), (-1, 0, dd, a) })
+                {
+                    int nx2 = x + dx, ny2 = y + dy;
+                    if (nx2 < 0 || ny2 < 0 || nx2 >= width || ny2 >= height) continue;
+                    if (IsPlayable(nx2, ny2)) continue;
+                    if (nx2 >= TerrainTop.GetLength(0) || ny2 >= TerrainTop.GetLength(1)) continue;
+                    var nh = TerrainTop[nx2, ny2];
+                    if (nh == null || Math.Abs(nh.Value - cy) <= 0.15f) continue;
+                    var q0 = new Vector3(e0.X, nh.Value, e0.Z);
+                    var q1 = new Vector3(e1.X, nh.Value, e1.Z);
+                    var n = new Vector3(dx, 0, dy);
+                    void S(Vector3 v, float u, float w2) { st.SetUV(new Vector2(u, w2)); st.SetNormal(n); st.AddVertex(v); }
+                    if (nh.Value > cy) { S(e0, 0, 0); S(q0, 0, 1); S(q1, 1, 1); S(e0, 0, 0); S(q1, 1, 1); S(e1, 1, 0); }
+                    else               { S(e0, 0, 0); S(q1, 1, 1); S(q0, 0, 1); S(e0, 0, 0); S(e1, 1, 0); S(q1, 1, 1); }
+                }
             }
         var fallback = GroundMaterial ?? Flat(new Color(0.30f, 0.46f, 0.22f));
         MaterialCount = 0;
@@ -512,6 +532,14 @@ public sealed class Park
 
     /// <summary>The plot's ground material -- the disc's own tile texture when one resolved.</summary>
     public Material GroundMaterial { get; set; }
+
+    /// <summary>The terrain model's own surface height per plot cell, or null where the model has
+    /// nothing. ⭐ Used to CLOSE THE SEAM: the plot floor is flat (byte0 is undecoded), the model
+    /// around it is not, and 116 of the 305 cells where they meet sit at a different height -- 108
+    /// stepping up, 8 dropping. That discontinuity is the gap seen around the volcano and along
+    /// the river. The edge is closed against the MODEL'S OWN height, which is read, not invented;
+    /// it is not a guess at what the tile heights are.</summary>
+    public float?[,] TerrainTop { get; set; }
 
     /// <summary>Resolves a cell's `byte1` to a material through the terrain model's material
     /// table. Returning null falls back to <see cref="GroundMaterial"/>.</summary>
@@ -543,6 +571,58 @@ public sealed class Park
     /// Until those are decoded the plot stays flat. A flat plot is visibly unfinished; fabricated
     /// blocks look finished and are not.</summary>
     float CellY(int x, int y) => BaseY;
+
+    /// <summary>The terrain model's top surface height for each cell of a plot, sampled with a
+    /// real point-in-triangle test at the cell centre. ⚠ Not a bounding-box fill: filling each
+    /// triangle's box marks cells the triangle never reaches, and I reported a coverage figure off
+    /// exactly that mistake.</summary>
+    public static float?[,] SurfaceHeights(Node3D terrain, Vector2 origin, int w, int h, float cell)
+    {
+        var top = new float?[w, h];
+        void Walk(Node n, Transform3D acc)
+        {
+            var t = n is Node3D n3 && n != terrain ? acc * n3.Transform : acc;
+            if (n is MeshInstance3D mi && mi.Mesh != null && mi.Visible)
+                for (int surf = 0; surf < mi.Mesh.GetSurfaceCount(); surf++)
+                {
+                    var arr = mi.Mesh.SurfaceGetArrays(surf);
+                    var verts = arr[(int)Mesh.ArrayType.Vertex].AsVector3Array();
+                    if (verts.Length == 0) continue;
+                    var idx = arr[(int)Mesh.ArrayType.Index].AsInt32Array();
+                    int tris = (idx.Length > 0 ? idx.Length : verts.Length) / 3;
+                    for (int i = 0; i < tris; i++)
+                    {
+                        var p0 = t * verts[idx.Length > 0 ? idx[i * 3] : i * 3];
+                        var p1 = t * verts[idx.Length > 0 ? idx[i * 3 + 1] : i * 3 + 1];
+                        var p2 = t * verts[idx.Length > 0 ? idx[i * 3 + 2] : i * 3 + 2];
+                        var nrm = (p1 - p0).Cross(p2 - p0);
+                        if (nrm.Length() <= 0 || Math.Abs(nrm.Y) / nrm.Length() < 0.7f) continue;
+                        float ax = (p0.X - origin.X) / cell, az = (p0.Z - origin.Y) / cell;
+                        float bx = (p1.X - origin.X) / cell, bz = (p1.Z - origin.Y) / cell;
+                        float cx = (p2.X - origin.X) / cell, cz = (p2.Z - origin.Y) / cell;
+                        float det = (bz - cz) * (ax - cx) + (cx - bx) * (az - cz);
+                        if (Math.Abs(det) < 1e-9f) continue;
+                        int x0 = Math.Max(0, (int)Math.Floor(Math.Min(ax, Math.Min(bx, cx))));
+                        int x1 = Math.Min(w - 1, (int)Math.Ceiling(Math.Max(ax, Math.Max(bx, cx))));
+                        int z0 = Math.Max(0, (int)Math.Floor(Math.Min(az, Math.Min(bz, cz))));
+                        int z1 = Math.Min(h - 1, (int)Math.Ceiling(Math.Max(az, Math.Max(bz, cz))));
+                        for (int gz = z0; gz <= z1; gz++)
+                            for (int gx = x0; gx <= x1; gx++)
+                            {
+                                float px = gx + 0.5f, pz = gz + 0.5f;
+                                float l1 = ((bz - cz) * (px - cx) + (cx - bx) * (pz - cz)) / det;
+                                float l2 = ((cz - az) * (px - cx) + (ax - cx) * (pz - cz)) / det;
+                                if (l1 < -0.02f || l2 < -0.02f || l1 + l2 > 1.02f) continue;
+                                float y = l1 * p0.Y + l2 * p1.Y + (1 - l1 - l2) * p2.Y;
+                                if (top[gx, gz] == null || y > top[gx, gz].Value) top[gx, gz] = y;
+                            }
+                    }
+                }
+            foreach (var c in n.GetChildren()) Walk(c, t);
+        }
+        Walk(terrain, terrain.Transform);
+        return top;
+    }
 
     /// <summary>Cells that are ground -- the plot's real size, as opposed to its bounding box.</summary>
     public int PlayableCells

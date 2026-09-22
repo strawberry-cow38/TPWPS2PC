@@ -807,6 +807,11 @@ public partial class Viewer : Node3D
             // ⚠ The grid still comes from the authored field; only which cells get a floor is
             // masked. When the corner tables are decoded this stops being a mask and becomes the
             // tile shapes.
+            // Sample the model's own surface height per cell so the floor's edge can close
+            // against it instead of leaving an open seam.
+            if (_terrain != null && _park.Field != null)
+                _park.TerrainTop = Park.SurfaceHeights(_terrain.Root, _holeOrigin,
+                    _park.Field.Width, _park.Field.Height, Park.CellSize);
             _park.Build(Mathf.RoundToInt(_holeSize.X), Mathf.RoundToInt(_holeSize.Y), _holeCells);
         }
         else _park.Build(ParkCells, ParkCells);
