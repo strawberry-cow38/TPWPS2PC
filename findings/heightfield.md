@@ -229,3 +229,91 @@ with the 240-byte table being 30 × 8. The arithmetic closes on itself, so the r
 field hangs off a **mesh**, which is what ties it back to the `heightfield` marker inside
 `terrain_1.mps` / `terrain_2.mps`. **Confirmed by `strawberry_cow` from domain knowledge: the
 terrain files are one per park, two parks per theme** — which is exactly why their grids differ.
+
+---
+
+# ⭐⭐ SOLVED — the per-cell heightfield ships on the disc
+
+**2026-09-22.** `cow tools` found the live field in a savestate at the global `0x2ea83c`. Reading the
+code that fills it shows where it comes from: **it is a verbatim copy of a block inside
+`terrain_N.mps`.** The data was authored, on the disc, in every park, the whole time.
+
+## The builder — `0x1f3418(model, &globalSlot)`
+
+Called from the loader at `0x1f3384` with `$a0` = the loaded terrain model (`0x2ea840`) and `$a1` =
+`0x2ea83c`. It is short:
+
+```
+$s0 = model[0x44]                      the source heightfield struct
+if (!model || !$s0) { *global = 0; return; }
+$a0 = s0[0x0c]        NX
+$v0 = s0[0x10]        NZ
+mult $a0, $v0                          NX * NZ
+$a0 = (NX*NZ) << 1                     TWO BYTES PER CELL
+$a0 = $a0 + 0x30                       plus a 0x30 header
+$s1 = alloc($a0)                       tagged "TPHField.cpp", line 0x134 = 308
+   ldl/ldr + sdl/sdr x6                copy the 0x30 header s0 -> s1
+   $a0 = $s1 + 0x30                    the cell array
+   s1[0x24] = $a0                      header's own pointer to its cells
+   $a1 = s0[0x24]                      the SOURCE cell array
+   if ($a1) memcpy($a0, $a1, (NX*NZ)<<1)
+*global = $s1
+```
+
+Nothing is computed, rasterised or derived. **The runtime heightfield is `memcpy` of a block that
+ships in the model file**, with a 0x30-byte header copied in front of it.
+
+## Where it is in the file
+
+`M3D2 header +0x44` → a struct, laid out the same as the runtime header:
+
+| offset | meaning |
+|---|---|
+| `+0x0c` | `u32 NX` |
+| `+0x10` | `u32 NZ` |
+| `+0x18` | `f32` — 2.0 in every file |
+| `+0x24` | pointer to the cells, always `struct + 0x30` |
+| `+0x30` | `NX * NZ` cells, **2 bytes each** |
+
+Read out of all eight terrain files, and **every grid matches the one predicted independently from
+the `heightfield` marker's AABB — 8 of 8**:
+
+| world | file | `+0x44` | NX × NZ | cells | bytes |
+|---|---|---:|---|---:|---:|
+| JUNGLE | terrain_1 | `0xa9154` | 64 × 76 | 4,864 | 9,728 |
+| JUNGLE | terrain_2 | `0xafce4` | 64 × 76 | 4,864 | 9,728 |
+| FANTASY | terrain_1 | `0xb2a90` | 80 × 60 | 4,800 | 9,600 |
+| FANTASY | terrain_2 | `0xa3464` | 76 × 62 | 4,712 | 9,424 |
+| HALLOW | terrain_1 | `0x94924` | 96 × 52 | 4,992 | 9,984 |
+| HALLOW | terrain_2 | `0x8f130` | 88 × 56 | 4,928 | 9,856 |
+| SPACE | terrain_1 | `0x955f4` | 96 × 54 | 5,184 | 10,368 |
+| SPACE | terrain_2 | `0xa4400` | 72 × 62 | 4,464 | 8,928 |
+
+Two grids arrived at by different routes — an AABB on a zero-geometry marker mesh, and a `u32` pair
+in an unrelated struct — agreeing on all eight files. That is the check.
+
+## ⚠ The encoding is NOT settled, and JUNGLE is misleading about it
+
+`cow tools` reported `byte0 & 0x3F` taking only the values 0, 1 and 2. **That is true of JUNGLE and
+of no other world.** Histograms of `byte0 & 0x3F` across all eight:
+
+    JUNGLE  t1   {0:3104, 1:1477, 2:283}
+    JUNGLE  t2   {0:3090, 1:1550, 2:224}
+    FANTASY t1   {1:871, 32:2374, 34:1546, 35:1, 40:2, 42:5, 50:1}
+    HALLOW  t1   {1:1085, 2:2, 4:29, 6:9, 8:2441, 9:1, 10:1325, 16:16, 18:12, 32:18, ...}
+    SPACE   t1   {0:2405, 1:1116, 2:1381, 4:5, 6:1, 10:2, 16:5, 32:178, 34:89, 48:2}
+
+So `0x3F` is not a height field — bits `0x08`, `0x10`, `0x20` are in use, heavily in FANTASY and
+HALLOW. The low bits look like height and the rest like flags, but **that is a guess and it is
+exactly the guess JUNGLE invites**, because JUNGLE is the one park where every upper bit happens to
+be clear. It is the third time today that JUNGLE, the world we both test on, has been the degenerate
+case that made a wrong rule look right.
+
+The honest state: **location, extent and element size are proven; the bit layout inside the two
+bytes is not.** Nor is `byte1`, which `cow tools` also left open.
+
+## What this retires
+
+No emulator is needed to get the terrain. The savestate confirmed the runtime side and was worth
+doing — it is what pointed at `0x2ea83c`, one word off the global I had handed over — but the port
+can read all eight parks' heights straight off the disc with `m3d2` plus `+0x44`.
