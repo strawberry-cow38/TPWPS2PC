@@ -485,7 +485,21 @@ public sealed class Park
                     st.Begin(Mesh.PrimitiveType.Triangles);
                     surfaces[mat] = st;
                 }
-                float cx = Origin.X + (x + 0.5f) * CellSize, cz = Origin.Y + (y + 0.5f) * CellSize;
+                // ⚠⚠ ROW ORDER IS REVERSED IN Z. The scene root mirrors Z (Scale 1,1,-1), so a
+                // model Z of 0 -- the park's FRONT, where the bus stop, road and ticket booths sit
+                // -- lands at the HIGH end of the plot's world Z, not the low end. Laying row 0 at
+                // Origin.Y put the whole grid back to front, which is why tiles appeared over the
+                // river and out past the gates.
+                //
+                // Landmark check: jungle's ticket booths are at model Z 14.9..16.1, so world
+                // Z ~= -15.5, and the plot runs world Z -76.2..0. Row 15 therefore belongs at
+                // -15.5. Origin.Y + (y + 0.5) gave -60.7; Origin.Y + (H - y - 0.5) gives -15.5.
+                //
+                // ⭐ Not a mirror and not a rotation: tinyclaw scored the grid against the water
+                // under identity, 180, mirror-X and mirror-Z, and identity won outright (space
+                // 100%). The data was never wrong -- only my placement of it.
+                float cx = Origin.X + (x + 0.5f) * CellSize;
+                float cz = Origin.Y + (height - y - 0.5f) * CellSize;
                 float cy = CellY(x, y);
                 var a = new Vector3(cx - half, cy, cz - half);
                 var b = new Vector3(cx + half, cy, cz - half);
@@ -721,7 +735,7 @@ public sealed class Park
                     Mesh = tile,
                     MaterialOverride = isEntry ? entry : claimed,
                     Position = new Vector3(Origin.X + (x + fx + 0.5f) * CellSize, BaseY + CellSize * 0.02f,
-                                           Origin.Y + (y + fy + 0.5f) * CellSize),
+                                           Origin.Y + (Height - (y + fy) - 0.5f) * CellSize),
                 });
             }
 
@@ -738,7 +752,7 @@ public sealed class Park
             // ⚠ PLUS, not minus. The model root's Scale.Z is -1, so a local z maps to world -z:
             // the offset that lands the model's own centre on the plot has to be added back. X and
             // Y are unscaled and stay as they are.
-            Origin.Y + (y + fp.Height * 0.5f) * CellSize + centre.Z);
+            Origin.Y + (Height - y - fp.Height * 0.5f) * CellSize + centre.Z);
         return true;
     }
 
