@@ -758,6 +758,9 @@ public partial class Viewer : Node3D
         Count(_current.Root);
         GD.Print($"[park] drawn {min}..{max} placed {_current.Root.Position} plot "
                  + $"{fp.Width * Park.CellSize}x{fp.Height * Park.CellSize}");
+        var (gmin, gmax) = Park.DrawnBounds(_park.GroundRoot);
+        GD.Print($"[floor] ground {gmin}..{gmax}  visible={_park.GroundRoot.IsVisibleInTree()} "
+               + $"tiles={_park.GroundRoot.GetChildCount()}  terrain {Park.DrawnBounds(_terrain?.Root ?? _park.Root)}");
         GD.Print($"[park] meshes={meshes} modelInTree={_current.Root.IsVisibleInTree()} "
                  + $"rideInTree={_park.RideVisible} parkInTree={_park.Root.IsVisibleInTree()} "
                  + $"parkVisible={_park.Root.Visible} parkParent={_park.Root.GetParent()?.Name}");

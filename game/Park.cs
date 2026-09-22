@@ -222,6 +222,10 @@ public sealed class Park
                 new Vector2((maxX - minX + 1) * ux, (maxZ - minZ + 1) * uz));
     }
 
+    /// <summary>The node holding the playable floor tiles, so callers can measure where the
+    /// floor actually landed rather than trust the origin they asked for.</summary>
+    public Node3D GroundRoot => _ground;
+
     /// <summary>Where the playable grid sits inside the world, in cells. Set from the terrain's
     /// own geometry before Build.</summary>
     public Vector2 Origin = Vector2.Zero;
