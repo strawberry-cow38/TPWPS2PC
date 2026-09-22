@@ -68,6 +68,20 @@ currently **fails**. See [resolver results and all unresolved names](findings/te
 
 The disc tools below read a Mode 2/2352 track directly. Nothing copies a disc image.
 
+Read and audit the three kanji export tables and two ride engine sound files:
+
+```sh
+dotnet run --project tools/TPW.PS2.LastFiveAudit -c Release -- /path/to/disc.bin
+dotnet run --project tools/TPW.PS2.LastFiveAudit -c Release -- --self-test
+```
+
+The managed readers preserve regional character/image identities and the sound consumer's
+sampled volume arithmetic. The audit fails on changed mappings, ordered glyph pixels, parsed
+fields or evaluated curves; it includes malformed-input and count-preserving negative controls.
+See [kanji consumer and Unicode-purpose correction](findings/kanji-table.md) and
+[ride engine fields and unknown units](findings/ride-engine.md). The ledger retains three partly
+decoded `.dba` files; this does not claim that every disc field is now understood.
+
 Decode and audit all PS2 bitmap fonts, writing PGM text specimens and glyph atlases:
 
 ```sh

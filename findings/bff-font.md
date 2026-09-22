@@ -189,7 +189,8 @@ not the derivation of pixel order or flag semantics.
 The European fonts use Unicode values, including accented Latin, ligatures, Greek and
 math symbols. Console has a different repertoire: it includes `20ac` (euro), which the
 European Large/Small maps omit. Japanese Large/Small use packed Shift-JIS: `82a0`
-renders あ, `834a` renders カ, `93fa` renders 日 and `967b` renders 本. The reader
+renders あ, `834a` renders カ, `967b` renders 本. The `93fa` code identifies 日 in Shift-JIS,
+but its bitmap was later found anomalous; see the correction below. The reader
 accepts raw `ushort` codes; it does not guess an encoding from the directory name or
 convert a .NET Unicode string into Shift-JIS. In particular, `Jap/Console` must still be
 used as the European Console font. No claim is made here about the game's `kanji.table`
@@ -243,7 +244,8 @@ cells deliberately ignore bearings to expose the complete bitmap; specimens exer
 
 **Observed:** inspected the audit's six specimens as images, through lossless PNG views
 of the emitted PGM bytes. The `F` stems and `R` legs face correctly; `g/j/p/q` descend;
-the text is legible; Japanese kana and 日/本 have recognizable, correctly oriented shapes.
+the text is legible; Japanese kana and 本 have recognizable, correctly oriented shapes.
+The original assertion about 日 is withdrawn by the subsequent inspection below.
 The differently styled Japanese Latin alphabet and fractional antialiasing survive decoding.
 Inspected the European Large and Japanese Large full atlases as well. The extended European
 specimens exposed the delta anomaly above. This does **not** assert that every symbol or
@@ -277,3 +279,16 @@ unchanged. The mutation was removed; the normal audit exits **0** with no failur
 * Full localisation-to-glyph conversion, including `kanji.table`, fallback policy, text
   wrapping and UI integration. This delivers the font reader and evidence; it does not
   wire fonts into the viewer or assert that the Japanese game text path is complete.
+
+## Subsequent kanji-table identity inspection (2026-09-22)
+
+[The kanji-table investigation](kanji-table.md) independently followed Shift-JIS `82a0` and
+`967b` to あ and 本 and inspected the Large/Small pixels. It also re-examined `93fa`, which
+maps to descriptor 589: both sizes show a rounded outline with a short left inner stroke,
+rather than a clearly recognizable 日. The earlier claim that 日 was visually confirmed was
+too strong. Its lookup and pixel digest remain established, but its linguistic shape does not.
+The cause is unknown, like the European delta anomaly; no replacement bitmap is invented.
+
+`kanji.table` is an export-image ordinal map, not the Unicode bridge hypothesized in the
+initial inventory. It uses a different index namespace from BFF, has regional differences,
+and contains mapped codes absent from these fonts. Do not use its ordinal as a descriptor index.
