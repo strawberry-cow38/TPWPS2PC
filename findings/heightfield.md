@@ -491,3 +491,27 @@ dropped-cell bug was fixed.
   tables in the file or in `.rodata`. So the corner values are assembled at draw time from
   something else, and dumping a table off the disc will not produce them. Where they are filled
   from is the next read, and it is a read, not a guess.
+
+### Where the three float arrays come from
+
+The prologue of `0x221e3c` builds them. It reads **two global float triples** — `0x2f07e0` and
+`0x2f07f0` (each `+0`, `+4`, `+8`) plus `0x2f0c04` — and combines them with three literal constants:
+
+| literal | value |
+|---|---|
+| `0x3df5c28f` | `0.12f` |
+| `0x3f19999a` | `0.6f` |
+| `0x3f000000` | `0.5f` |
+
+The results are written to `sp+0x30 … sp+0x40` (that is table B) and then copied into the `sp+0x10`
+region with unaligned `ldl/ldr` + `sdl/sdr` pairs. So the corner tables are **recomputed per draw**
+from a handful of globals, which is why nothing resembling them exists in the file.
+
+⚠ **Those globals read as `0.0` in the executable image**, because they live in `.bss` and are
+written at runtime. That is the trap this repo already has a note about elsewhere — an image says 0
+and RAM says something else, and the zero looks like an answer.
+
+**So the geometry recipe is traced and its numeric inputs are runtime state.** The savestate
+`cow tools` already has is exactly the instrument for the remainder: read three floats at `0x2f07e0`
+and three at `0x2f07f0` (EE RAM indexes directly, no base subtraction) and the tables can be
+reconstructed and checked against the 0.12 / 0.6 / 0.5 arithmetic above.
