@@ -122,6 +122,63 @@ public sealed class Park
         }
     }
 
+    /// <summary>The enclosed empty region inside a terrain model -- the hole the playable tiles
+    /// fill. Returns (origin, size) in cells, or a zero size when there is no enclosed area.
+    ///
+    /// ⚠ NOT a flood fill. The park has an ENTRANCE, so the hole is connected to the outside and a
+    /// fill started in the middle escapes through the gap and returns the whole island surround --
+    /// which is what a first attempt did, reporting a corner of the bounding box as the hole.
+    /// Scanning instead for empty runs that have terrain on BOTH sides keeps the entrance row as
+    /// the only one that leaks, rather than all of them.</summary>
+    public static (Vector2 Origin, Vector2 Size) FindHole(Node3D terrain, int res = 160)
+    {
+        var (lo, hi) = DrawnBounds(terrain);
+        float w = hi.X - lo.X, h = hi.Z - lo.Z;
+        if (w <= 0 || h <= 0) return (Vector2.Zero, Vector2.Zero);
+        var cov = new bool[res, res];
+        void Mark(Node n, Transform3D acc)
+        {
+            var t = n is Node3D n3 && n != terrain ? acc * n3.Transform : acc;
+            if (n is MeshInstance3D mi && mi.Mesh != null && mi.Visible)
+            {
+                var box = mi.GetAabb();
+                var a = t * box.Position;
+                var b = t * (box.Position + box.Size);
+                int x0 = Mathf.Clamp((int)((Math.Min(a.X, b.X) - lo.X) / w * (res - 1)), 0, res - 1);
+                int x1 = Mathf.Clamp((int)((Math.Max(a.X, b.X) - lo.X) / w * (res - 1)), 0, res - 1);
+                int z0 = Mathf.Clamp((int)((Math.Min(a.Z, b.Z) - lo.Z) / h * (res - 1)), 0, res - 1);
+                int z1 = Mathf.Clamp((int)((Math.Max(a.Z, b.Z) - lo.Z) / h * (res - 1)), 0, res - 1);
+                for (int z = z0; z <= z1; z++) for (int x = x0; x <= x1; x++) cov[z, x] = true;
+            }
+            foreach (var c in n.GetChildren()) Mark(c, t);
+        }
+        Mark(terrain, Transform3D.Identity);
+
+        int minX = res, maxX = -1, minZ = res, maxZ = -1;
+        for (int z = 0; z < res; z++)
+        {
+            int first = -1, last = -1;
+            for (int x = 0; x < res; x++) if (cov[z, x]) { if (first < 0) first = x; last = x; }
+            if (first < 0) continue;
+            for (int x = first + 1; x < last; x++)
+            {
+                if (cov[z, x]) continue;
+                if (x < minX) minX = x;
+                if (x > maxX) maxX = x;
+                if (z < minZ) minZ = z;
+                if (z > maxZ) maxZ = z;
+            }
+        }
+        if (maxX < minX) return (Vector2.Zero, Vector2.Zero);
+        float ux = w / (res - 1), uz = h / (res - 1);
+        return (new Vector2(lo.X + minX * ux, lo.Z + minZ * uz),
+                new Vector2((maxX - minX + 1) * ux, (maxZ - minZ + 1) * uz));
+    }
+
+    /// <summary>Where the playable grid sits inside the world, in cells. Set from the terrain's
+    /// own geometry before Build.</summary>
+    public Vector2 Origin = Vector2.Zero;
+
     /// <summary>Lay the park. Empty grass, no ride in it -- rides arrive through TryPlace.</summary>
     public void Build(int width, int height)
     {
@@ -140,7 +197,7 @@ public sealed class Park
                 {
                     Mesh = tile,
                     MaterialOverride = (x + y) % 2 == 0 ? grass : darker,
-                    Position = new Vector3((x + 0.5f) * CellSize, 0f, (y + 0.5f) * CellSize),
+                    Position = new Vector3(Origin.X + (x + 0.5f) * CellSize, 0f, Origin.Y + (y + 0.5f) * CellSize),
                 });
     }
 
@@ -183,7 +240,8 @@ public sealed class Park
                 {
                     Mesh = tile,
                     MaterialOverride = isEntry ? entry : claimed,
-                    Position = new Vector3((x + fx + 0.5f) * CellSize, CellSize * 0.02f, (y + fy + 0.5f) * CellSize),
+                    Position = new Vector3(Origin.X + (x + fx + 0.5f) * CellSize, CellSize * 0.02f,
+                                           Origin.Y + (y + fy + 0.5f) * CellSize),
                 });
             }
 
@@ -195,9 +253,9 @@ public sealed class Park
         var (min, max) = DrawnBounds(model);
         var centre = (min + max) * 0.5f;
         model.Position = new Vector3(
-            (x + fp.Width * 0.5f) * CellSize - centre.X,
+            Origin.X + (x + fp.Width * 0.5f) * CellSize - centre.X,
             -min.Y,
-            (y + fp.Height * 0.5f) * CellSize - centre.Z);
+            Origin.Y + (y + fp.Height * 0.5f) * CellSize - centre.Z);
         return true;
     }
 

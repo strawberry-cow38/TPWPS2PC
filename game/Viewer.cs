@@ -38,6 +38,7 @@ public partial class Viewer : Node3D
     AnimatedModel _terrain;
     string _terrainPath;
     Vector2 _terrainSize;
+    Vector2 _holeOrigin, _holeSize;
     RideCatalogue _cat;
     TextDatabase _text;
 
@@ -650,6 +651,9 @@ public partial class Viewer : Node3D
                    + $"extent {hi.X - lo.X:F1} x {hi.Z - lo.Z:F1}  height {hi.Y - lo.Y:F1}  "
                    + $"textures {got} resolved, {missed} MISSING");
             _terrainSize = new Vector2(hi.X - lo.X, hi.Z - lo.Z);
+            var (ho, hs) = Park.FindHole(_terrain.Root);
+            _holeOrigin = ho; _holeSize = hs;
+            GD.Print($"[hole] origin {ho.X:F1},{ho.Y:F1}  size {hs.X:F1} x {hs.Y:F1} cells");
         }
         catch (Exception ex) { GD.PrintErr($"[terrain] {pick.Path}: {ex.Message}"); _park.ShowGrass = true; }
     }
@@ -661,6 +665,7 @@ public partial class Viewer : Node3D
         {
             // Still lay the park. Empty grass says "this model has no ride definition"; no park
             // at all reads as the park mode being broken.
+            LoadTerrain();
             _park.Build(ParkCells, ParkCells);
             _info.Text = $"{_ride.Name}\nno .sam beside this model -- nothing to place it by";
             return;
@@ -684,8 +689,16 @@ public partial class Viewer : Node3D
         // ⚠ A fixed park, not ground cut to whichever ride is selected. The ride is placed INTO
         // it at a position, which is what makes the next class of bug -- overlap, edges, footprints
         // that do not fit -- possible to have at all.
-        _park.Build(ParkCells, ParkCells);
+        // ⚠ The terrain is loaded FIRST: the playable grid's position and size come off its own
+        // geometry, so building the park before it would place the grid at the origin and leave it
+        // sitting outside the island.
         LoadTerrain();
+        if (_holeSize.X > 1f)
+        {
+            _park.Origin = _holeOrigin;
+            _park.Build(Mathf.RoundToInt(_holeSize.X), Mathf.RoundToInt(_holeSize.Y));
+        }
+        else _park.Build(ParkCells, ParkCells);
         int px = (ParkCells - fp.Width) / 2, py = (ParkCells - fp.Height) / 2;
         bool placed = _park.TryPlace(_current.Root, fp, def.Id ?? 1, display ?? def.Name ?? "?", px, py);
         // ⚠ AFTER the placement, never before. Rebuild frames the camera on the model in its own
