@@ -1047,16 +1047,20 @@ public partial class Viewer : Node3D
             r => r.Name.Contains("gates", StringComparison.OrdinalIgnoreCase) && r.Model != null);
         if (ride == null) { GD.PrintErr("[gate] no Gates model in this archive"); return; }
 
-        Vector3 at;
-        if (TerrainBounds("gatebase01", out var pad))
-        { at = pad.Position + pad.Size * 0.5f; GD.Print($"[gate] on its own gatebase01 pad at {at}"); }
-        else if (TerrainBounds("ticket_booths", out var booths))
-        {
-            var c = booths.Position + booths.Size * 0.5f;
-            at = new Vector3(c.X, booths.Position.Y, c.Z - 5.5f);
-            GD.Print($"[gate] no pad here; 5.5 past the ticket booths at {at}");
-        }
-        else { GD.PrintErr("[gate] no gatebase01 and no ticket_booths -- cannot place the gate"); return; }
+        // ⭐⭐ THE GATE MODEL CARRIES ITS OWN POSITION. Measured: all four are authored standing
+        // on the ground (y starts at 0) across x 45..51 -- centred on 48, which is the entrance X
+        // of the two parks that use 48. Their Z ranges DIFFER from each other, so they are NOT
+        // interchangeable and centring them on one point is wrong. Master asked "are you sure?"
+        // about exactly that, and was right.
+        //
+        // So: keep the authored transform and translate only by this park's entrance offset from
+        // the 48 the models are drawn at. ⚠ For HALLOW and SPACE that offset is ZERO, which is the
+        // control -- if the authored position is the real one, those two must land correctly with
+        // nothing moved at all.
+        const float AuthoredX = 48f;
+        if (!TerrainBounds("ticket_booths", out var booths))
+        { GD.PrintErr("[gate] no ticket_booths -- cannot find this park's entrance axis"); return; }
+        float shift = booths.Position.X + booths.Size.X * 0.5f - AuthoredX;
 
         try
         {
@@ -1071,11 +1075,11 @@ public partial class Viewer : Node3D
             // ⚠ Seat it on the pad by its OWN base, not by its centre: the arch is tall and
             // centring it buries half of it.
             var (lo, hi) = Park.DrawnBounds(_gate.Root, inParent: true);
-            var mid = (lo + hi) * 0.5f;
-            _gate.Root.Position += new Vector3(at.X - mid.X, at.Y - lo.Y, at.Z - mid.Z);
+            _gate.Root.Position += new Vector3(shift, 0f, 0f);
             _gate.Root.Visible = _mode == Mode.Park;
-            GD.Print($"[gate] {ride.Name}: {hi.X - lo.X:F1} x {hi.Y - lo.Y:F1} x {hi.Z - lo.Z:F1} units, "
-                   + $"seated at {at}");
+            GD.Print($"[gate] {ride.Name}: authored x {lo.X:F2}..{hi.X:F2}  y {lo.Y:F2}..{hi.Y:F2}  "
+                   + $"z {lo.Z:F2}..{hi.Z:F2}; shifted {shift:+0.0;-0.0;0} in x onto this park's "
+                   + $"entrance");
         }
         catch (Exception ex) { GD.PrintErr($"[gate] {ride.Model.Path}: {ex.Message}"); }
     }
