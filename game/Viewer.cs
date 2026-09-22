@@ -1097,6 +1097,19 @@ public partial class Viewer : Node3D
         float shift = booths.Position.X + booths.Size.X * 0.5f - AuthoredX;
         bool hasPad = TerrainBounds("gatebase01", out var pad);
 
+        // ⭐ "whys there no coord to read?" -- master, and a fair question. A feature is placed by
+        // the game, so a position ought to be DATA somewhere. Each WAD carries its own Gates.sam,
+        // so a per-park coordinate could be sitting in it. Print every key rather than guess which.
+        var def = DefinitionFor(ride.Model);
+        if (def != null)
+        {
+            GD.Print($"[gate.sam] {def.Source}  {def.Fields.Count} keys, {def.Blocks.Count} blocks");
+            foreach (var kv in def.Fields.OrderBy(k => k.Key, StringComparer.OrdinalIgnoreCase))
+                GD.Print($"[gate.sam]   {kv.Key} = {kv.Value}");
+            foreach (var b in def.Blocks)
+                GD.Print($"[gate.sam]   [{b.Key}] {string.Join(" / ", b.Value)}");
+        }
+        else GD.PrintErr("[gate.sam] no .sam beside the gate model");
         try
         {
             var gm = new Model(_lib.Read(ride.Model));
