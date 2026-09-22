@@ -95,6 +95,9 @@ public partial class Viewer : Node3D
     PathTool.Kind _toolKind = PathTool.Kind.Path;
     /// <summary>Where the current run started, or -1 when no run is going.</summary>
     int _runX = -1, _runY = -1;
+    /// <summary>A cell to use instead of the mouse, for captures. Null in normal use.</summary>
+    (int X, int Y)? _cursorOverride;
+    bool _pickChecked;
     /// <summary>The run the ghost was last built for, so it is not rebuilt every frame.</summary>
     (int Sx, int Sy, int X, int Y) _ghostAt = (-1, -1, -1, -1);
     /// <summary>Where a mouse button went down, to tell a CLICK from a DRAG. ⚠ Both buttons
@@ -1304,9 +1307,9 @@ public partial class Viewer : Node3D
         for (int i = 0; i <= 3; i++) _paths.Lay(cx, cy + i);
         RebuildFloor();
         OpenTool(PathTool.Kind.Path);
-        // ⭐ Put the camera's own cursor on the target cell, so the ghost the frame loop rebuilds
-        // is the one printed below rather than a second, different run -- and so this also checks
-        // that a world position round-trips back to the cell it came from.
+        // ⭐ Pin the build cursor to the target cell, so the ghost the frame loop rebuilds is the
+        // one printed below rather than a second, different run. A capture has no mouse to put it
+        // under, and a control that only exercised a separate code route would be worth nothing.
         // ⭐ The run ENDS ON the path just laid, so the picture must show a straight segment of
         // plain markers with ONE connect symbol on its last tile. A string of symbols, or none,
         // are both visible failures.
@@ -1315,9 +1318,7 @@ public partial class Viewer : Node3D
         // From (cx-5, cy+3) to (cx, cy+1) the straight segment snaps to x and stops at (cx,cy+3);
         // the elbow runs the same leg and then turns down two more.
         int ex = cx, ey = cy + 1;
-        var aim = _park.CellCentre(ex, ey);
-        _game.CursorX = (int)(aim.X * GameCamera.TileUnits);
-        _game.CursorZ = (int)(aim.Z * GameCamera.TileUnits);
+        _cursorOverride = (ex, ey);
         _runX = cx - 5; _runY = cy + 3;
         _ghost.Set(_runX, _runY, ex, ey, _toolKind);
         _ghostView.Show(_ghost, _park);
@@ -1333,8 +1334,39 @@ public partial class Viewer : Node3D
         bx = by = -1;
         var f = _park?.Field;
         if (f == null) return false;
-        var want = new Vector2(_game.CursorX / (float)GameCamera.TileUnits,
-                               _game.CursorZ / (float)GameCamera.TileUnits);
+        // ⭐ A capture has no mouse. The control run puts the cell it wants here so a headless
+        // render exercises the same path as a press does, rather than a second code route that
+        // could be right while the live one is wrong.
+        if (_cursorOverride is { } fixedCell) { bx = fixedCell.X; by = fixedCell.Y; return true; }
+
+        // ⭐⭐ THE BUILD CURSOR IS THE MOUSE, not the camera's pan cursor. The mouse ray is cast
+        // at the plot's own floor height and the cell is the one nearest where it lands.
+        // ⚠ Cast at the floor, NOT at y=0: the plot sits on the terrain, so a ray aimed at the
+        // world plane would land a cell or two off wherever the park is not at zero.
+        var mouse = GetViewport().GetMousePosition();
+        if (_panel != null && _panel.Visible && mouse.X < PanelW) return false;
+        return CellAtScreen(mouse, out bx, out by);
+    }
+
+    /// <summary>The plot cell a point on the screen picks out: cast the camera's ray at the plot's
+    /// floor height and take the cell nearest where it lands.
+    ///
+    /// ⚠ Nearest CENTRE rather than inverting the plot's transform -- the plot can sit under an
+    /// authored node transform, and a wrong inverse is a silent one-cell-off, not a miss.</summary>
+    bool CellAtScreen(Vector2 screen, out int bx, out int by)
+    {
+        bx = by = -1;
+        var f = _park?.Field;
+        if (f == null || _cam == null) return false;
+        var from = _cam.ProjectRayOrigin(screen);
+        var dir = _cam.ProjectRayNormal(screen);
+        if (Mathf.Abs(dir.Y) < 1e-5f) return false;
+        // ⚠ The plot's OWN floor height, not y=0: the park sits on the terrain, so aiming at the
+        // world plane lands a cell or two out wherever the floor is not at zero.
+        float t = (_park.BaseY - from.Y) / dir.Y;
+        if (t <= 0f) return false;                       // the floor is behind the camera
+        var hit = from + dir * t;
+        var want = new Vector2(hit.X, hit.Z);
         float best = float.MaxValue;
         for (int y = 0; y < f.Height; y++)
             for (int x = 0; x < f.Width; x++)
@@ -1344,6 +1376,27 @@ public partial class Viewer : Node3D
                 if (d < best) { best = d; bx = x; by = y; }
             }
         return best <= Park.CellSize * Park.CellSize;
+    }
+
+    /// <summary>⭐ A CONTROL FOR THE MOUSE PICKING that works without a mouse: put a known cell's
+    /// centre on the screen with the camera's own projection, then send that screen point back
+    /// through the picking. It must come back as the cell it started from. A capture cannot move
+    /// a pointer, and a control that skipped the ray would be testing the override instead.</summary>
+    void CheckMousePicking()
+    {
+        var f = _park?.Field;
+        if (f == null || _cursorOverride is not { } want) return;
+        _pickChecked = true;
+        var screen = _cam.UnprojectPosition(_park.CellCentre(want.X, want.Y));
+        bool got = CellAtScreen(screen, out int gx, out int gy);
+        GD.Print($"[pick] cell ({want.X},{want.Y}) projects to screen {screen.X:F0},{screen.Y:F0} "
+               + $"and picks back as ({gx},{gy}) -- {(got && gx == want.X && gy == want.Y ? "same" : "DIFFERENT")}");
+        // ⚠ AND A CONTROL THAT MUST DISAGREE. A round trip that only ever returns the cell it was
+        // given is also what a picking that ignores the screen entirely would print, so a second
+        // point well away from the first has to come back as a different cell.
+        bool off = CellAtScreen(screen + new Vector2(0f, 60f), out int ox, out int oy);
+        GD.Print($"[pick] 60px lower picks ({ox},{oy}) -- "
+               + $"{(off && (ox != want.X || oy != want.Y) ? "different, as it must be" : "SAME, so the pick ignores the screen")}");
     }
 
     /// <summary>Open or close the path tool. ⭐ Closing ends the run and takes the ghost off the
@@ -2130,6 +2183,9 @@ public partial class Viewer : Node3D
         // ⚠ AFTER the camera is placed, both of them: the volume follows the eye, and a pending
         // build happens here rather than in the park load for the reason on _weatherWanted.
         if (_toolOpen) UpdateGhost();
+        // ⚠ AFTER the camera has been placed for this frame, or the projection is a frame stale
+        // and the check is of the wrong camera.
+        if (_ghostTest && !_pickChecked && _mode == Mode.Park) CheckMousePicking();
         _weather.Follow(_cam.GlobalPosition);
         if (_weatherWanted is { } wk)
         {
