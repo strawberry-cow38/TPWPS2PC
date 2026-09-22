@@ -121,10 +121,11 @@ integer tile-height path, not floating-point. Whatever the PS2 does or does not 
 - **`m_nocash`, `m_nopath`, `m_erase`, `m_break`, `m_cross` are not in the verdict table.** They are
   loaded from the same folder and clearly belong to the build tools, but which code draws them, and
   whether the money refusal above shows `m_nocash` rather than plain red, has not been read.
-- **Whether the PS2 animates the markers.** The PSX rolls them on a pair of `rsin` waves. The PS2
-  draw function has no float maths and no sine call, so if there is a wave it is applied elsewhere
-  or not at all. Not read either way — and "the function I looked in has none" is not "the game has
-  none".
+- ~~Whether the PS2 animates the markers.~~ **SETTLED: it does not.** Master, who has the game in
+  front of them, says the PS2 markers do not ripple (2026-09-22). The PSX rolls its markers on a
+  pair of `rsin` waves; this build draws them still. That agrees with the draw function having no
+  float maths and no sine call — but the observation is what settles it, not the absence, because
+  "the function I looked in has none" is not "the game has none".
 - **`Selectbox`'s use.** It is loaded beside the markers and read at `0x2224D8` / `0x220F48`, but
   the code that places the bracket — and whether it is drawn four times for four corners — has not
   been followed.
