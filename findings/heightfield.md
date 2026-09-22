@@ -734,3 +734,25 @@ per park that nothing we have decoded draws.**
 
 Which supports their conclusion rather than mine: the remaining work is the **terrain tile mesher**,
 still unfound. My transition-cell account explained the 824 cells that were never the problem.
+
+### ⚠ Correction 8 — the hole count is 363, not 373
+
+The census above hand-rolled its batch walk with the filter
+`0 < a < b < c <= len(m) and n <= 4096`. **That is the exact heuristic `m3d2.batches`' own docstring
+warns about** — it reads a `u16 vertexCount, u16 ceil(count/3)` fourth word as a plain `u32`, sees a
+count near a million, rejects the batch and `break`s, taking the rest of the mesh with it.
+
+Re-run through `m3d2.batches`, which uses the count at `mesh+0x66`:
+
+| walk | vertices | cells covered | skip cells with no mesh |
+|---|---:|---:|---:|
+| the hand-rolled filter | 27,285 | 1,348 | **373** |
+| `m3d2.batches` | 29,808 | 1,402 | **363** |
+
+So 8.5% of the geometry was silently dropped, 54 cells were wrongly counted as uncovered, and the
+published figure was ten too high. **363 against `cow tools`' 383 from the render** — the
+convergence survives at 5%, but it was agreement between their measurement and a slightly broken
+one of mine, which is not what I said it was.
+
+The tool in this repo had the correct reader **and a docstring explaining this precise failure**,
+and I wrote my own loop anyway. Use `m3d2.batches`.
