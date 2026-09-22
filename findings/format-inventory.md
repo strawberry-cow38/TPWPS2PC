@@ -89,3 +89,77 @@ Extensions are folded to lowercase and the original spellings counted separately
 shows up instead of halving the corpus. Bucket membership was then summed back against the census
 total — 8,398 + 6,440 + 20 = 14,858 — because a breakdown that does not add up to its own total is
 hiding a path.
+
+---
+
+## Prior art: what the community already cracked (checked 2026-09-22)
+
+Theme Park World has an active reverse-engineering community around **OpenTPW**
+(`OpenTPW/OpenTPW`, `maexah/OpenTPW`, docs at `OpenTPW/opentpw-docs`), which targets the **PC**
+release. Their coverage was checked against the six formats above, plus the ones already done here.
+
+⚠ **PC ≠ PS2, and their own docs say so.** The PC archive is `BFWD`/`DWFB`; the docs state outright
+that the PS2's `FKNL` "is not compatible with DWFB". Treat every PC layout as a lead to test, never
+as a spec — the case below where it half-transfers is the normal outcome, not the exception.
+
+| ours | community status | use to us |
+|---|---|---|
+| `.bff` | **Cracked, and implemented well beyond their own docs.** `maexah/OpenTPW`'s `UI/BitmapFont.cs` carries a full `BF4` reader — glyph record, three pixel packings (raw nibbles / RLE / 1bpp), 4-bit coverage — derived from PC addresses `0x006b0680`, `0x006b4aa0`, `0x006b15f0`. The published doc page is only a partial header | **Large head start, not a drop-in.** PC magic is `"F4FB"`; ours is `"2FFB"` — a different version of the same family. See below |
+| `.mtr` | **Not cracked by anyone.** `opentpw-docs/src/formats/mtr.md` is the word `TODO` and nothing else. `Render/Assets/Material.cs` is a Veldrid render material, not a file parser | nothing to borrow |
+| `.table` | **Analogue documented**: `BFMU` / `BFUM` (Bullfrog Multibyte↔Unicode), the PC's `MBtoUni.dat`. Different file, same job — mapping multibyte to Unicode | a lead on what the table is *for*, not on its layout |
+| `.dba` | absent from their format list | nothing |
+| `.ass` | absent from their format list | nothing |
+| `.eng` | absent from their format list | nothing |
+
+### What `BF4` does and does not tell us about `BFF2`
+
+Measured across **all six** fonts on the disc (`DATA.WAD/Fonts/{European,Jap}/{Console,Large,Small}.bff`):
+
+```
++0x00  "2FFB"                   magic                       (PC: "F4FB")
++0x04  u8   1                   version, 1 in all six
++0x05  u8   line height         Console 9, EurLarge 22, EurSmall 15, JapLarge 23, JapSmall 16
++0x06  u8   ?                   3 / 8 / 6 / 2 / 1           scales with size, not monotonically
++0x07  u8   ?                   14 / 30 / 21 / 30 / 21
++0x08  cc f8 55 4c 47 55        SIX CONSTANT BYTES, identical in all six. No PC counterpart
++0x0e  u16  glyph count         132 / 294 / 294 / 2454 / 2454
++0x10  u16  256                 constant in all six
++0x12  u16  n                   22 / 49 / 49 / 409 / 409
++0x14  u16[n] character map     SORTED ASCENDING in all six
+       then the glyph records, the first beginning 0x0020 in all six -- space is glyph 0
+```
+
+The map is not one entry per glyph (22 entries against 132 glyphs), and it is sorted, so it indexes
+blocks rather than characters. What it does settle is **which encoding each font is in**:
+
+* **European** — Unicode. `007e 00a5 00ac 00b1 00b8 00bb 00cf 00d6 00dc 00ef 00fc 00ff 0131 0153
+  0178 0192 02c7 02c9 02dd 0394 03a9 03bc 03c0 2010 2014 201a 201e 2022 2026 2030 203a 2044 2122
+  2126 2202 2206 220f 2211 2219 221a …` — cp1252's extensions plus Greek (Δ Ω μ π) and the maths
+  set (∂ ∆ ∏ ∑ ∙ √), ending on `FFFF`.
+* **Japanese** — Shift-JIS. `0021 0026 0029 002b 0039 005a 007a 007c 8142 8146 8149 815c …`, with
+  **401 of 409** entries at or above `0x8140`, topping out at `0x9862`. Which is precisely what
+  `kanji.table` here, and `BFMU`/`BFUM` on PC, exist to bridge.
+
+So the PC work transfers as a **model** — glyphs carry width/height/bearings/advance, pixels are
+4-bit coverage, packing is chosen per glyph — and not as a **layout**: different magic, different
+header shape, a glyph count at a different offset, and six constant bytes at `+0x08` that `BF4` has
+no slot for. The glyph records themselves are unread. It stays in the "not done" bucket until a
+reader round-trips a real glyph to pixels.
+
+⚠ **Two corrections I had to make to my own first pass here**, both from flattening a tree:
+
+1. The first extraction wrote all six files into one directory **by basename**, so
+   `Fonts/Jap/{Large,Small}.bff` silently overwrote `Fonts/European/{Large,Small}.bff`. Two of the
+   three "European" fonts I first examined were Japanese. Same-named files in different directories
+   eat each other without a word when you flatten.
+2. I labelled European/Large as Shift-JIS off a one-line test — `any(v >= 0x8140)` — which fired on
+   the `FFFF` sentinel at the end of its own map. **A heuristic that a single sentinel value can
+   trip is not a classifier.** Counting how many entries land in the range (2 of 49 against 401 of
+   409) separates them immediately; asking whether *any* does, does not.
+
+### And one thing the community confirmed that we had already done
+
+`maexah/OpenTPW` derives the RSSE instruction set from the PC executable's dispatch table. **All 81
+opcodes derived here from the PS2's `.rss`/`.RSE` pairs agree with theirs by name at the same index,
+with zero disagreements**, and their remaining 25 are exactly the 25 this disc never exercises. Two
+derivations, two platforms, two methods, no shared upstream. See `findings/rse.md`.

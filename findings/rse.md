@@ -33,11 +33,44 @@ true. It is the same trap this repo's `.ssh` work already documents for `.tga`/`
 the disc, made worse by a smaller survivor set. **The tell was not in the analysis; it was that a
 count taken one way (718) disagreed with a count taken another (8), and only because both existed.**
 
+## ⭐ Independently corroborated against the PC release (2026-09-22)
+
+`maexah/OpenTPW` derives the same instruction set from the **PC** executable — `FUN_00551cb0`
+dispatching through the jump table at `0x5567d8` while `(word ^ 0x80000000) < 0x6a`, with names from
+the `{name*, operandCount*}` table at `0x765280`. Their bound `0x6a` and my range `0x00..0x69` are
+the same 106 slots.
+
+**All 81 opcodes I derived agree with their table, by name, at the same index. Zero disagreements.**
+
+This is worth more than the usual agreement between two readings, because the two have no shared
+upstream: mine comes from aligning mnemonics in the PS2 disc's `.rss` sources against `0x80`-tagged
+words in the `.RSE` binaries beside them; theirs comes from disassembling a different executable for
+a different platform. Neither could have inherited the other's mistake. (The failure mode this
+*doesn't* rule out is the two of us being wrong in the same way about what the PC and PS2 share —
+but 81 names landing on 81 indices is itself the evidence that the PS2 did not renumber.)
+
+**It also closes the `UNSEEN` item below.** The 25 values in `0x00..0x69` that no script on this
+disc uses are exactly the 25 their table names, and the two sets do not overlap anywhere:
+
+| | | | | |
+|---|---|---|---|---|
+| `0x04` SETLV | `0x09` ADDOBJ_EXT | `0x0e` EVENT_EXT | `0x14` GETANIM | `0x16` FLUSHANIM_CH |
+| `0x18` WAITANIM_CH | `0x19` LOOPANIM_CH | `0x1a` TRIGWAITANIM_CH | `0x24` DBGMSG | `0x28` PUSH |
+| `0x29` POP | `0x2d` WAITABS | `0x30` MULT | `0x34` END | `0x43` GETVARINCHILD |
+| `0x44` SETVARINPARENT | `0x52` ENABLELIGHT | `0x53` DISABLELIGHT | `0x54` SETLIGHT | `0x55` COLOURLIGHT |
+| `0x5b` GETREMOTEVAR | `0x5e` GETCUSTPTCLCODE | `0x61` YEAR | `0x62` MONTH | `0x63` DAY |
+
+⚠ These names are **borrowed, not derived here** — no script on this disc exercises any of them, so
+nothing local confirms them. They are a strong lead for a disassembler label, not a checked fact.
+`PUSH`/`POP` at `0x28`/`0x29` being unused is the one that should raise an eyebrow: either the PS2
+scripts genuinely never touch the stack, or they reach it some other way.
+
 ## Open
 
 * `hdr+0x0C`, `+0x14`, `+0x18`, `+0x1C` — mostly zero, meaning not yet established.
 * `hdr+0x08` matches the source variable count in 269 of 270; the one exception is unexamined.
-* **25 values inside 0x00..0x69 appear in no script on the disc** (listed as `UNSEEN` in the tool).
+* ~~25 values inside 0x00..0x69 appear in no script on the disc~~ — still unexercised here, but now
+  named from the PC table above. Operand counts for them are still unknown on this platform.
   They are gaps in the corpus, not evidence that the opcodes do not exist.
 * 8 of the 270 pairs emit fewer opcodes than their source has instruction lines, by 1 to 7, all in
   the same direction — so the source-side line counter is over-counting something the assembler
