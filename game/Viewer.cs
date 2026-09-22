@@ -655,12 +655,15 @@ public partial class Viewer : Node3D
                    + $"extent {hi.X - lo.X:F1} x {hi.Z - lo.Z:F1}  height {hi.Y - lo.Y:F1}  "
                    + $"textures {got} resolved, {missed} MISSING");
             _terrainSize = new Vector2(hi.X - lo.X, hi.Z - lo.Z);
-            var (ho, hs) = Park.FindHole(_terrain.Root);
+            var (ho, hs, hy) = Park.FindHole(_terrain.Root);
             _holeOrigin = ho; _holeSize = hs;
-            // ⚠ The floor goes at the terrain's own base, not at y=0. The terrain spans -12..99 in
-            // Y, so a grid at zero sits well above the ground it is meant to be part of.
-            _holeY = lo.Y;
-            GD.Print($"[hole] origin {ho.X:F1},{ho.Y:F1}  size {hs.X:F1} x {hs.Y:F1} cells");
+            // ⚠⚠ The floor goes at the height of the ground AROUND the hole, NOT at the terrain's
+            // minimum. The terrain spans only -1.3..9.9 in Y and that minimum is the sea floor, so
+            // `lo.Y` laid the grid UNDER the island: bounds said it was in the hole, the picture
+            // showed no grid, and I spent two renders reading the miss as a lateral placement bug.
+            _holeY = hy;
+            GD.Print($"[hole] origin {ho.X:F1},{ho.Y:F1}  size {hs.X:F1} x {hs.Y:F1} cells  "
+                   + $"floor y={hy:F2} (terrain base {lo.Y:F2}, top {hi.Y:F2})");
         }
         catch (Exception ex) { GD.PrintErr($"[terrain] {pick.Path}: {ex.Message}"); }
     }

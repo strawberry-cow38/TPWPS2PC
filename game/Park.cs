@@ -130,12 +130,17 @@ public sealed class Park
     /// which is what a first attempt did, reporting a corner of the bounding box as the hole.
     /// Scanning instead for empty runs that have terrain on BOTH sides keeps the entrance row as
     /// the only one that leaks, rather than all of them.</summary>
-    public static (Vector2 Origin, Vector2 Size) FindHole(Node3D terrain, int res = 160)
+    public static (Vector2 Origin, Vector2 Size, float FloorY) FindHole(Node3D terrain, int res = 160)
     {
         var (lo, hi) = DrawnBounds(terrain);
         float w = hi.X - lo.X, h = hi.Z - lo.Z;
-        if (w <= 0 || h <= 0) return (Vector2.Zero, Vector2.Zero);
+        if (w <= 0 || h <= 0) return (Vector2.Zero, Vector2.Zero, 0f);
         var cov = new bool[res, res];
+        // ⭐ The top of whatever covers each cell. The floor height has to come from the ground
+        // AROUND the hole; the terrain's global minimum is the sea floor, and a floor laid there
+        // is buried under the island and reads as "the grid never got built".
+        var topY = new float[res, res];
+        for (int z = 0; z < res; z++) for (int x = 0; x < res; x++) topY[z, x] = float.MinValue;
         void Mark(Node n, Transform3D acc)
         {
             var t = n is Node3D n3 && n != terrain ? acc * n3.Transform : acc;
@@ -148,7 +153,13 @@ public sealed class Park
                 int x1 = Mathf.Clamp((int)((Math.Max(a.X, b.X) - lo.X) / w * (res - 1)), 0, res - 1);
                 int z0 = Mathf.Clamp((int)((Math.Min(a.Z, b.Z) - lo.Z) / h * (res - 1)), 0, res - 1);
                 int z1 = Mathf.Clamp((int)((Math.Max(a.Z, b.Z) - lo.Z) / h * (res - 1)), 0, res - 1);
-                for (int z = z0; z <= z1; z++) for (int x = x0; x <= x1; x++) cov[z, x] = true;
+                float top = Math.Max(a.Y, b.Y);
+                for (int z = z0; z <= z1; z++)
+                    for (int x = x0; x <= x1; x++)
+                    {
+                        cov[z, x] = true;
+                        if (top > topY[z, x]) topY[z, x] = top;
+                    }
             }
             foreach (var c in n.GetChildren()) Mark(c, t);
         }
@@ -189,7 +200,8 @@ public sealed class Park
         // ⚠ The LARGEST CONNECTED region of those, not their bounding box. A coastline notch is
         // "internal" on its own row too, and one near the edge dragged the origin to the rim -- the
         // park then rendered as a slab hanging off the island rather than sitting in its hole.
-        int minX = res, maxX = -1, minZ = res, maxZ = -1, bestArea = 0;
+        int minX = res, maxX = -1, minZ = res, maxZ = -1, bestArea = 0, bestId = 0, id = 0;
+        var comp = new int[res, res];
         var seen = new bool[res, res];
         var stack = new Stack<(int Z, int X)>();
         for (int z0 = 0; z0 < res; z0++)
@@ -197,10 +209,12 @@ public sealed class Park
             {
                 if (!inside[z0, x0] || seen[z0, x0]) continue;
                 int aX = res, bX = -1, aZ = res, bZ = -1, area = 0;
+                id++;
                 seen[z0, x0] = true; stack.Push((z0, x0));
                 while (stack.Count > 0)
                 {
                     var (z, x) = stack.Pop();
+                    comp[z, x] = id;
                     area++;
                     if (x < aX) aX = x;
                     if (x > bX) bX = x;
@@ -214,12 +228,32 @@ public sealed class Park
                         seen[nz, nx] = true; stack.Push((nz, nx));
                     }
                 }
-                if (area > bestArea) { bestArea = area; minX = aX; maxX = bX; minZ = aZ; maxZ = bZ; }
+                if (area > bestArea) { bestArea = area; bestId = id; minX = aX; maxX = bX; minZ = aZ; maxZ = bZ; }
             }
-        if (maxX < minX) return (Vector2.Zero, Vector2.Zero);
+        if (maxX < minX) return (Vector2.Zero, Vector2.Zero, 0f);
+        // ⚠ The MEDIAN of the rim, not its min or max. The rim runs over a beach on one side and
+        // a cliff on another, so an extreme picks a floor that is under the ground at one edge or
+        // floating above it at the other; the median sits at the height most of the rim is at.
+        var rim = new List<float>();
+        for (int z = 0; z < res; z++)
+            for (int x = 0; x < res; x++)
+            {
+                if (!cov[z, x] || topY[z, x] == float.MinValue) continue;
+                bool touches = false;
+                foreach (var (dz, dx) in new[] { (1, 0), (-1, 0), (0, 1), (0, -1) })
+                {
+                    int nz = z + dz, nx = x + dx;
+                    if (nz < 0 || nx < 0 || nz >= res || nx >= res) continue;
+                    if (comp[nz, nx] == bestId) { touches = true; break; }
+                }
+                if (touches) rim.Add(topY[z, x]);
+            }
+        rim.Sort();
+        float floorY = rim.Count > 0 ? rim[rim.Count / 2] : lo.Y;
+
         float ux = w / (res - 1), uz = h / (res - 1);
         return (new Vector2(lo.X + minX * ux, lo.Z + minZ * uz),
-                new Vector2((maxX - minX + 1) * ux, (maxZ - minZ + 1) * uz));
+                new Vector2((maxX - minX + 1) * ux, (maxZ - minZ + 1) * uz), floorY);
     }
 
     /// <summary>The node holding the playable floor tiles, so callers can measure where the
