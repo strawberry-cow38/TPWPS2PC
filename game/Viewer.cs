@@ -1467,6 +1467,30 @@ public partial class Viewer : Node3D
         bool off = CellAtScreen(screen + new Vector2(0f, 60f), out int ox, out int oy);
         GD.Print($"[pick] 60px lower picks ({ox},{oy}) -- "
                + $"{(off && (ox != want.X || oy != want.Y) ? "different, as it must be" : "SAME, so the pick ignores the screen")}");
+
+        // ⭐ AND THE TURN MUST LAND SQUARELY. A quarter turn eased at a real refresh rate has to
+        // arrive at exactly a quarter, on its own instance so the live camera is untouched. The
+        // integer ease steps by an EIGHTH of what is left, so on short frames it rounds to nothing
+        // and stops short -- this is the check that says so in a number instead of by eye.
+        foreach (int hz in new[] { 50, 60, 144, 240 })
+        {
+            int Land(bool snap)
+            {
+                var sim = new GameCamera { SnapWhenStarved = snap };
+                sim.Turn(1);
+                for (int i = 0; i < 4000 && sim.Yaw != sim.TargetYaw; i++)
+                    sim.Step(GameCamera.FrameTime(1.0 / hz), (_, _) => 0);
+                return sim.Yaw;
+            }
+            // ⭐ BOTH WAYS. Without the snap the turn must fall SHORT on a frame shorter than a
+            // console tick -- if it did not, the snap would be guarding nothing and this check
+            // would pass whatever the code did.
+            int with = Land(true), without = Land(false);
+            GD.Print($"[cam] a quarter turn at {hz,3}Hz lands on {with} of {GameCamera.QuarterTurn}"
+                   + $" -- {(with == GameCamera.QuarterTurn ? "square" : "SHORT")};"
+                   + $" without the snap {without}"
+                   + $" -- {(without == GameCamera.QuarterTurn ? "also square" : "short, which is the bug")}");
+        }
     }
 
     /// <summary>Open or close the path tool. ⭐ Closing ends the run and takes the ghost off the
@@ -1575,7 +1599,10 @@ public partial class Viewer : Node3D
         // rule from the other build -- its path tool closes itself when a run finishes on existing
         // path, and gives that case its own sound and its own ghost marker. Finishing a path is a
         // finished job, so the tool does not sit open waiting for a press nobody meant.
-        if (joined)
+        // ⭐ SHIFT KEEPS IT OPEN. Finishing a path is normally a finished job, so the tool shuts
+        // -- but holding shift says "I am still building", and then the run simply carries on from
+        // the tile it joined.
+        if (joined && !Input.IsKeyPressed(Key.Shift))
         {
             CloseTool();
             GD.Print($"[path] laid {laid} of {_ghost.Tiles.Count}; joined at ({last.X},{last.Y}) "
@@ -1584,6 +1611,16 @@ public partial class Viewer : Node3D
             // ⭐ BOTH. The connect sound is layered ON TOP of the lay sound in the game, on its own
             // voice, so neither cuts the other -- it is the success case of laying a run, not a
             // replacement for it.
+            _toolSfx?.Play(ToolSounds.Cue.Lay);
+            _toolSfx?.Play(ToolSounds.Cue.Connect);
+            return;
+        }
+        if (joined)
+        {
+            (_runX, _runY) = _ghost.End;
+            _ghostAt = (-1, -1, -1, -1);
+            GD.Print($"[path] laid {laid}; joined at ({last.X},{last.Y}) -- shift held, still open");
+            Status($"joined at ({last.X},{last.Y}) -- shift held, the run goes on");
             _toolSfx?.Play(ToolSounds.Cue.Lay);
             _toolSfx?.Play(ToolSounds.Cue.Connect);
             return;

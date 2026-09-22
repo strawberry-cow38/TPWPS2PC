@@ -55,6 +55,10 @@ public sealed class GameCamera
     /// <summary>The old fixed step, kept for anything that wants exactly one console frame.</summary>
     public const int FrameTime60 = FrameTick;
 
+    /// <summary>⚠ OFF ONLY IN THE SELF-CHECK, to show the bug the snap exists for. A turn eased
+    /// without it stops SHORT of the quarter on any frame shorter than a console tick.</summary>
+    public bool SnapWhenStarved = true;
+
     public int TargetYaw, Yaw;                  // 0x395390, 0x39538C
     public int FocusX, FocusZ;                  // 0x395300, 0x395310 -- 24.8 fixed point
     public int CursorX, CursorZ;                // world units, what the focus chases
@@ -132,11 +136,27 @@ public sealed class GameCamera
         int mid = TargetYaw - (Yaw + half);
         if (mid < -0x800) { mid += TurnUnits; Yaw -= TurnUnits; }
         else if (mid > 0x800) { Yaw += TurnUnits; mid -= TurnUnits; }
-        Yaw += Eighth(mid) * frameTime >> 12;
+        int step = Eighth(mid) * frameTime >> 12;
+        Yaw += step;
+        // ⚠⚠ THE INTEGER EASE STARVES ON A SHORT FRAME. Each step is an EIGHTH of what is left,
+        // floored -- so once the remainder is small the step rounds to nothing and the turn stops
+        // a few units SHORT of the quarter it was aiming for. On the console that never showed,
+        // because a frame was always a whole tick and the last step still carried; at 144Hz a
+        // frame is worth a fraction of one and the step reaches zero with the turn unfinished.
+        // Master saw it as Q and E no longer landing squarely on 90 degrees.
+        //
+        // ⭐ Snap only when the step has ACTUALLY starved -- zero movement with distance left.
+        // While it is still moving, the curve is the console's and is left alone.
+        if (SnapWhenStarved && step == 0 && Yaw != TargetYaw) Yaw = TargetYaw;
 
         // The focus chases the cursor: eight times the distance, clamped, over 1024.
-        FocusX -= Math.Clamp(((FocusX >> 8) - CursorX) * 8, -0x3FFF, 0x3FFF) * frameTime >> 10;
-        FocusZ -= Math.Clamp(((FocusZ >> 8) - CursorZ) * 8, -0x3FFF, 0x3FFF) * frameTime >> 10;
+        // Same starvation, same cure: a chase that can no longer move arrives.
+        int dx = Math.Clamp(((FocusX >> 8) - CursorX) * 8, -0x3FFF, 0x3FFF) * frameTime >> 10;
+        int dz = Math.Clamp(((FocusZ >> 8) - CursorZ) * 8, -0x3FFF, 0x3FFF) * frameTime >> 10;
+        FocusX -= dx;
+        FocusZ -= dz;
+        if (dx == 0 && (FocusX >> 8) != CursorX) FocusX = CursorX << 8;
+        if (dz == 0 && (FocusZ >> 8) != CursorZ) FocusZ = CursorZ << 8;
 
         // The eye, pushed back along the yaw by the distance. ⚠ ONLY x and z -- the height below
         // comes off the ground, which is exactly why the distance doubles as the pitch control.
