@@ -971,7 +971,7 @@ public partial class Viewer : Node3D
                    + "[ / ] nudge the gate  |  V weather  |  B buildable  |  F3 hide this panel\n"
                    + "RMB path tool (shift+RMB queue)  |  LMB press: start a run, again to lay\n"
                    + "O take it back  |  M straight/elbow segments  |  Esc close the tool\n"
-                   + "(with the tool open the left button is the tool's, not the camera's)";
+                   + "in the park the mouse buttons are the TOOL'S -- pan with the middle drag";
     }
 
     /// <summary>Show one image at its own size, or the reason it cannot be shown.</summary>
@@ -2315,12 +2315,18 @@ public partial class Viewer : Node3D
                 _left.Dragged = true;
             if (rDown && _right.Down && !_right.Dragged && mm.Position.DistanceTo(_right.At) > ClickSlop)
                 _right.Dragged = true;
-            // ⭐⭐ WITH THE TOOL OPEN THE LEFT BUTTON IS THE TOOL'S, not the camera's. Placing a
-            // segment means moving the pointer between presses, so any slop test on the left
-            // button is a test the player keeps failing by doing the thing the tool is for. There
-            // is nothing to tell apart once the left button cannot orbit: every press is a press.
+            // ⭐⭐ IN THE PARK THE BUTTONS BELONG TO THE TOOL, not the camera. Building means the
+            // pointer is moving when you press -- to start a run, to lay it, to open or shut the
+            // tool -- so any slop test on a button the tool uses is a test the player keeps
+            // failing by doing the thing the tool is for. Once a button cannot move the camera
+            // there is nothing to tell apart, and every press of it is a press.
+            //
+            // The right button is the tool's whenever a park is up; the left is the tool's while
+            // the tool is open. Panning is the MIDDLE drag, and shift with the left button when
+            // the tool is shut. The camera's own keys -- WASD, Q/E, R/F -- are untouched.
+            bool tools = _mode == Mode.Park && _paths != null;
             bool orbiting = lDown && !_toolOpen && (_left.Dragged || !_left.Down);
-            bool panning = (rDown && (_right.Dragged || !_right.Down)) || mDown
+            bool panning = (rDown && !tools && (_right.Dragged || !_right.Down)) || mDown
                         || (orbiting && Input.IsKeyPressed(Key.Shift));
             // LEFT drag orbits.
             if (orbiting && !panning)
@@ -2359,9 +2365,11 @@ public partial class Viewer : Node3D
                 {
                     held.Down = false;
                     // A quick press counts however far it slid; a slow one still counts if it
-                    // barely moved. ⭐ And with the tool open the left button is not the camera's
-                    // at all, so it needs no test: it is always a press.
-                    bool toolsOwn = _toolOpen && mb.ButtonIndex == MouseButton.Left;
+                    // barely moved. ⭐ And a button the tool owns needs no test at all: the right
+                    // one whenever a park is up, the left one while the tool is open.
+                    bool toolsOwn = _mode == Mode.Park && _paths != null
+                                 && (mb.ButtonIndex == MouseButton.Right
+                                     || (_toolOpen && mb.ButtonIndex == MouseButton.Left));
                     bool click = toolsOwn
                               || (!held.Dragged
                                   && (Time.GetTicksMsec() - held.Ms <= ClickMs
