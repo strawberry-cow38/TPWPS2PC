@@ -141,25 +141,57 @@ public sealed class Park
         // is buried under the island and reads as "the grid never got built".
         var topY = new float[res, res];
         for (int z = 0; z < res; z++) for (int x = 0; x < res; x++) topY[z, x] = float.MinValue;
+        // ⚠⚠ TRIANGLES, NOT BOUNDING BOXES. Coverage taken from each mesh's AABB reported a hole
+        // that was not the hole: one mesh whose box spans the gap marks the whole gap covered,
+        // while a thin mesh near the shore leaves a box-shaped gap that is solid ground. The map
+        // then looked convincing and put the floor a good 80 units off, over the sea. A terrain's
+        // occupancy is where its triangles are.
         void Mark(Node n, Transform3D acc)
         {
             var t = n is Node3D n3 && n != terrain ? acc * n3.Transform : acc;
             if (n is MeshInstance3D mi && mi.Mesh != null && mi.Visible)
             {
-                var box = mi.GetAabb();
-                var a = t * box.Position;
-                var b = t * (box.Position + box.Size);
-                int x0 = Mathf.Clamp((int)((Math.Min(a.X, b.X) - lo.X) / w * (res - 1)), 0, res - 1);
-                int x1 = Mathf.Clamp((int)((Math.Max(a.X, b.X) - lo.X) / w * (res - 1)), 0, res - 1);
-                int z0 = Mathf.Clamp((int)((Math.Min(a.Z, b.Z) - lo.Z) / h * (res - 1)), 0, res - 1);
-                int z1 = Mathf.Clamp((int)((Math.Max(a.Z, b.Z) - lo.Z) / h * (res - 1)), 0, res - 1);
-                float top = Math.Max(a.Y, b.Y);
-                for (int z = z0; z <= z1; z++)
-                    for (int x = x0; x <= x1; x++)
+                for (int surf = 0; surf < mi.Mesh.GetSurfaceCount(); surf++)
+                {
+                    var arr = mi.Mesh.SurfaceGetArrays(surf);
+                    var verts = arr[(int)Mesh.ArrayType.Vertex].AsVector3Array();
+                    if (verts.Length == 0) continue;
+                    var idx = arr[(int)Mesh.ArrayType.Index].AsInt32Array();
+                    int tris = (idx.Length > 0 ? idx.Length : verts.Length) / 3;
+                    for (int i = 0; i < tris; i++)
                     {
-                        cov[z, x] = true;
-                        if (top > topY[z, x]) topY[z, x] = top;
+                        Vector3 p0 = t * verts[idx.Length > 0 ? idx[i * 3] : i * 3];
+                        Vector3 p1 = t * verts[idx.Length > 0 ? idx[i * 3 + 1] : i * 3 + 1];
+                        Vector3 p2 = t * verts[idx.Length > 0 ? idx[i * 3 + 2] : i * 3 + 2];
+                        float cx0 = (p0.X - lo.X) / w * (res - 1), cz0 = (p0.Z - lo.Z) / h * (res - 1);
+                        float cx1 = (p1.X - lo.X) / w * (res - 1), cz1 = (p1.Z - lo.Z) / h * (res - 1);
+                        float cx2 = (p2.X - lo.X) / w * (res - 1), cz2 = (p2.Z - lo.Z) / h * (res - 1);
+                        int x0 = Mathf.Clamp((int)Math.Floor(Math.Min(cx0, Math.Min(cx1, cx2))), 0, res - 1);
+                        int x1 = Mathf.Clamp((int)Math.Ceiling(Math.Max(cx0, Math.Max(cx1, cx2))), 0, res - 1);
+                        int z0 = Mathf.Clamp((int)Math.Floor(Math.Min(cz0, Math.Min(cz1, cz2))), 0, res - 1);
+                        int z1 = Mathf.Clamp((int)Math.Ceiling(Math.Max(cz0, Math.Max(cz1, cz2))), 0, res - 1);
+                        float top = Math.Max(p0.Y, Math.Max(p1.Y, p2.Y));
+                        // ⚠ A triangle smaller than a cell covers no cell centre. Mark its own
+                        // cells too, or dense fine geometry reads as empty ground.
+                        void Hit(int cz, int cx)
+                        {
+                            cov[cz, cx] = true;
+                            if (top > topY[cz, cx]) topY[cz, cx] = top;
+                        }
+                        Hit(Mathf.Clamp((int)cz0, 0, res - 1), Mathf.Clamp((int)cx0, 0, res - 1));
+                        Hit(Mathf.Clamp((int)cz1, 0, res - 1), Mathf.Clamp((int)cx1, 0, res - 1));
+                        Hit(Mathf.Clamp((int)cz2, 0, res - 1), Mathf.Clamp((int)cx2, 0, res - 1));
+                        float d = (cz1 - cz2) * (cx0 - cx2) + (cx2 - cx1) * (cz0 - cz2);
+                        if (Math.Abs(d) < 1e-9f) continue;
+                        for (int z = z0; z <= z1; z++)
+                            for (int x = x0; x <= x1; x++)
+                            {
+                                float a = ((cz1 - cz2) * (x - cx2) + (cx2 - cx1) * (z - cz2)) / d;
+                                float b = ((cz2 - cz0) * (x - cx2) + (cx0 - cx2) * (z - cz2)) / d;
+                                if (a >= 0 && b >= 0 && a + b <= 1) Hit(z, x);
+                            }
                     }
+                }
             }
             foreach (var c in n.GetChildren()) Mark(c, t);
         }
