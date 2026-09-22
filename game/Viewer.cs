@@ -90,6 +90,14 @@ public partial class Viewer : Node3D
     /// <summary>The path tool, the console tables behind it, and the terrain model it works on.</summary>
     /// <summary>The console's clock. ⭐ EVERYTHING time-dependent belongs on it.</summary>
     readonly ConsoleClock _clock = new();
+    /// <summary>What the build menu has handed the cursor, if anything.</summary>
+    readonly Placement _place = new();
+    Control _buildPanel;
+    ItemList _buildList;
+    Button[] _buildTabs;
+    string _buildCategory;
+    readonly List<int> _buildRows = new();
+    AssetLibrary.RideAssets _armedRide;
     PathTool _paths;
     ToolSounds _toolSfx;
     PathGhost _ghost;
@@ -137,6 +145,8 @@ public partial class Viewer : Node3D
     bool _ghostTest;
     bool _ghostPress;
     bool _animTest;
+    bool _buildTest;
+    bool _buildChecked;
     string _wantSegments;
     string _wantCam;
     /// <summary>Nudge on the gate's z, in units, starting at master's own correction.
@@ -215,6 +225,7 @@ public partial class Viewer : Node3D
             else if (a == "--ghost-test") _ghostTest = true;
             else if (a == "--ghost-press") { _ghostTest = true; _ghostPress = true; }
             else if (a == "--anim-test") _animTest = true;
+            else if (a == "--build-test") _buildTest = true;
             else if (a.StartsWith("--segments=")) _wantSegments = a["--segments=".Length..];
             else if (a.StartsWith("--cam=")) _wantCam = a["--cam=".Length..];
             else if (a.StartsWith("--ride=")) _wantRide = a["--ride=".Length..];
@@ -476,6 +487,18 @@ public partial class Viewer : Node3D
                             MouseFilter = Control.MouseFilterEnum.Ignore };
         col.AddChild(_info);
 
+        // ⭐⭐ THE BUILD MENU. Tab opens it. The categories are the ARCHIVE'S OWN FOLDERS --
+        // Rides, Shops, Sideshow, Features, Upgrades -- so the list is the game's grouping and not
+        // one I invented, and it is per park because the open WAD is the park.
+        _buildPanel = new VBoxContainer { Visible = false };
+        col.AddChild(_buildPanel);
+        var tabs = new HBoxContainer();
+        _buildPanel.AddChild(tabs);
+        _buildTabs = Array.Empty<Button>();
+        _buildList = new ItemList { CustomMinimumSize = new Vector2(0, 260), AllowReselect = true };
+        _buildList.ItemSelected += i => ArmFromList((int)i);
+        _buildPanel.AddChild(_buildList);
+
         // ⭐⭐ THE TOOL SAYS WHAT IT THINKS, ON SCREEN. Every refusal already printed a reason to
         // the console, which nobody playing the game can see -- so a click over the panel, or one
         // whose ray missed the plot, looked exactly like a click that was lost. Now the difference
@@ -575,6 +598,15 @@ public partial class Viewer : Node3D
         {
             var want = k.ShiftPressed ? PathTool.Kind.Queue : PathTool.Kind.Path;
             if (!_toolOpen || _toolKind != want) OpenTool(want); else PressTool();
+        }
+        else if (k.Keycode == Key.Tab && _mode == Mode.Park) ToggleBuildMenu();
+        // ⭐ A quarter turn, one way only -- the console has no anticlockwise button.
+        else if (k.Keycode == Key.Period && _place.Active) { _place.Turn(); _ghostAt = (-1, -1, -1, -1); }
+        else if (k.Keycode == Key.Escape && _place.Active)
+        {
+            _place.Clear();
+            _ghostView?.Clear();
+            Status("nothing held");
         }
         else if (k.Keycode == Key.Escape && _toolOpen) { CloseTool(); GD.Print("[tool] closed"); }
         // ⭐ M switches between a straight segment and an elbow. Both are kept: straight is what
@@ -1633,6 +1665,209 @@ public partial class Viewer : Node3D
 
     void Status(string text) { if (_toolStatus != null) _toolStatus.Text = text; }
 
+    /// <summary>⭐ A CONTROL FOR THE BUILD MENU that needs no mouse: open it, read back the
+    /// categories the archive gave it, take the first thing in each, and try to put one down.
+    ///
+    /// ⚠ It goes through the SAME calls the menu and the click do. A check that armed a placement
+    /// by hand would pass with the menu unwired, which is most of what there is to get wrong.</summary>
+    void CheckBuildMenu()
+    {
+        _buildChecked = true;
+        ToggleBuildMenu();
+        var bar = _buildPanel.GetChild<HBoxContainer>(0);
+        GD.Print($"[build] {_buildTabs.Length} categories: "
+               + string.Join(" ", bar.GetChildren().OfType<Button>().Select(b => b.Text)));
+        foreach (var b in bar.GetChildren().OfType<Button>().ToList())
+        {
+            b.EmitSignal(Button.SignalName.Pressed);
+            GD.Print($"[build]   {b.Text} -> {_buildRows.Count} listed, first \"{(_buildList.ItemCount > 0 ? _buildList.GetItemText(0) : "-")}\"");
+        }
+        // Arm something with a real footprint and try it on a cell the park will take.
+        ShowBuildCategory("Rides");
+        for (int row = 0; row < _buildRows.Count; row++)
+        {
+            ArmFromList(row);
+            if (!_place.Active || _place.Turned.Width < 2) continue;
+            var f = _park.Field;
+            int cx = f.Width / 2, cy = f.Height / 2;
+            _cursorOverride = (cx, cy);
+            int before = _park.Placed.Count;
+            bool fits = _place.Cells(_park, cx, cy).All(c => c.Ok);
+            GD.Print($"[build] holding {_place.Display} {_place.Turned.Width}x{_place.Turned.Height}"
+                   + $" at ({cx},{cy}): {(fits ? "fits" : "blocked")}");
+            PlaceHeld();
+            GD.Print($"[build] after the press the park holds {_park.Placed.Count} things"
+                   + $" (was {before}) -- {(_park.Placed.Count > before ? "it went down" : "NOTHING WAS PLACED")}");
+            // ⚠ And a control that must REFUSE: the same thing hung off the edge of the plot.
+            _cursorOverride = (0, 0);
+            int now = _park.Placed.Count;
+            PlaceHeld();
+            GD.Print($"[build] at the plot corner the park holds {_park.Placed.Count}"
+                   + $" -- {(_park.Placed.Count == now ? "refused, as it must be" : "IT WENT DOWN ANYWAY")}");
+            break;
+        }
+        _place.Clear();
+        _cursorOverride = null;
+        _ghostView?.Clear();
+    }
+
+    // ------------------------------------------------------------------ the build menu
+
+    /// <summary>Tab opens and shuts it. ⚠ Shutting it also drops whatever was held: a ghost left
+    /// following the cursor with no menu to explain it reads as the park being stuck.</summary>
+    void ToggleBuildMenu()
+    {
+        if (_buildPanel == null) return;
+        _buildPanel.Visible = !_buildPanel.Visible;
+        if (!_buildPanel.Visible) { _place.Clear(); _ghostView?.Clear(); Status("build menu closed"); return; }
+        if (_toolOpen) CloseTool();
+        FillBuildCategories();
+    }
+
+    /// <summary>⭐ The categories ARE THE ARCHIVE'S FOLDERS. Every .sam in a park sits under
+    /// Rides, Shops, Sideshow, Features or Upgrades, and the catalogue keeps that path in its
+    /// name, so the grouping is the game's own rather than a list I made up. Case differs between
+    /// worlds -- jungle has "Features", space "features" -- so they are folded.</summary>
+    void FillBuildCategories()
+    {
+        // ⚠ NOT THE TERRAIN. The catalogue carries the terrain files too, and they are the park
+        // itself rather than something to put in it -- without this the menu offers a category
+        // called Terrain holding terrain_1.mps. ⚠ Excluded by PATH, not by "has a definition":
+        // DefinitionFor matches a .sam by directory SUFFIX and hands the terrain one anyway, so
+        // that test looked like it would work and did not.
+        var groups = _lib.Rides
+            .Where(r => r.Model != null && !IsTerrain(r.Model.Path) && DefinitionFor(r.Model) != null)
+            .GroupBy(r => Category(r.Name), StringComparer.OrdinalIgnoreCase)
+            .OrderByDescending(g => g.Count())
+            .ToList();
+        var bar = _buildPanel.GetChild<HBoxContainer>(0);
+        foreach (var c in bar.GetChildren()) c.QueueFree();
+        _buildTabs = groups.Select(g =>
+        {
+            var b = new Button { Text = $"{Title(g.Key)} ({g.Count()})" };
+            string key = g.Key;
+            b.Pressed += () => ShowBuildCategory(key);
+            bar.AddChild(b);
+            return b;
+        }).ToArray();
+        ShowBuildCategory(_buildCategory != null && groups.Any(g => g.Key.Equals(_buildCategory, StringComparison.OrdinalIgnoreCase))
+            ? _buildCategory : groups.FirstOrDefault()?.Key);
+    }
+
+    static bool IsTerrain(string path) => path.Contains("/terrain/", StringComparison.OrdinalIgnoreCase);
+
+    static string Title(string s) => s.Length == 0 ? s : char.ToUpperInvariant(s[0]) + s[1..].ToLowerInvariant();
+
+    /// <summary>The items of one category, for THIS park -- the catalogue holds only the open
+    /// archive, so no filtering by world is needed or wanted.</summary>
+    void ShowBuildCategory(string category)
+    {
+        if (category == null) return;
+        _buildCategory = category;
+        _buildList.Clear();
+        _buildRows.Clear();
+        for (int i = 0; i < _lib.Rides.Count; i++)
+        {
+            var r = _lib.Rides[i];
+            if (r.Model == null || IsTerrain(r.Model.Path)
+                || !Category(r.Name).Equals(category, StringComparison.OrdinalIgnoreCase)) continue;
+            var def = DefinitionFor(r.Model);
+            if (def == null) continue;
+            string shown = Leaf(r.Name);
+            if (def?.Name is { Length: > 0 } named) shown = named;
+            _buildList.AddItem(shown);
+            _buildRows.Add(i);
+        }
+        Status($"{Title(category)}: {_buildRows.Count} things -- pick one, then click the park");
+    }
+
+    /// <summary>Take an item out of the menu and hold it over the park.</summary>
+    void ArmFromList(int row)
+    {
+        if (row < 0 || row >= _buildRows.Count) return;
+        var r = _lib.Rides[_buildRows[row]];
+        var def = DefinitionFor(r.Model);
+        if (def == null) { Status($"{Leaf(r.Name)} has no .sam beside it -- nothing to place it by"); return; }
+        var fp = def.Shape != null ? Park.Footprint.From(def.Shape)
+                                   : new Park.Footprint(1, 1, new[,] { { true } }, -1, -1);
+        _place.Arm(def, def.Name ?? Leaf(r.Name), def.Id ?? 1, fp);
+        _armedRide = r;
+        _ghostAt = (-1, -1, -1, -1);
+        Status($"holding {_place.Display} ({fp.Width}x{fp.Height}) -- click to put it down, . to turn");
+        GD.Print($"[build] holding {_place.Display} {fp.Width}x{fp.Height} entry {fp.EntryX},{fp.EntryY}");
+    }
+
+    /// <summary>Draw what is held, tile by tile. ⭐ Green where the park will take it, red where it
+    /// will not, and the door marker on the tile the shape declares as its entrance -- the same
+    /// markers the path ghost uses, which is what the console does too.</summary>
+    void UpdatePlacementGhost()
+    {
+        if (!_place.Active || _ghostView == null) return;
+        if (!CursorCell(out int x, out int y)) { _ghostView.Clear(); return; }
+        if (_ghostAt == (x, y, _place.Turns, 0)) return;
+        _ghostAt = (x, y, _place.Turns, 0);
+        var cells = _place.Cells(_park, x, y)
+                          .Select(c => (c.X, c.Y, c.Ok ? 24 : 175))
+                          .ToList();
+        if (_place.DoorFor(x, y) is { } door)
+        {
+            cells.RemoveAll(c => c.Item1 == door.X && c.Item2 == door.Y);
+            cells.Add((door.X, door.Y, 168));
+        }
+        _ghostView.ShowCells(cells, _park);
+        bool ok = _place.Cells(_park, x, y).All(c => c.Ok);
+        Status($"{_place.Display} at ({x},{y}) turned {_place.Turns * 90} degrees"
+             + (ok ? " -- click to put it down" : " -- BLOCKED"));
+    }
+
+    /// <summary>Put it down. ⚠ Only if EVERY tile agrees, which is the console's rule for a
+    /// placement press as much as for a path run.</summary>
+    void PlaceHeld()
+    {
+        if (!_place.Active) return;
+        if (!CursorCell(out int x, out int y)) { Status("that click was not over the park"); return; }
+        if (!_place.Cells(_park, x, y).All(c => c.Ok))
+        {
+            Status($"{_place.Display} does not fit there");
+            _toolSfx?.Play(ToolSounds.Cue.Refused);
+            return;
+        }
+        var (cx, cy) = _place.CornerFor(x, y);
+        var model = LoadPlaceable(_armedRide);
+        if (model == null) { Status($"{_place.Display} has no model to place"); return; }
+        if (!_park.TryPlace(model, _place.Turned, _place.Id, _place.Display, cx, cy))
+        {
+            Status($"{_place.Display} does not fit there");
+            _toolSfx?.Play(ToolSounds.Cue.Refused);
+            return;
+        }
+        _toolSfx?.Play(ToolSounds.Cue.Lay);
+        Status($"put {_place.Display} down at ({cx},{cy})");
+        GD.Print($"[build] placed {_place.Display} at ({cx},{cy}) turned {_place.Turns * 90}");
+        _ghostAt = (-1, -1, -1, -1);
+    }
+
+    /// <summary>The model for the held thing, built the same way the viewer builds any other.</summary>
+    Node3D LoadPlaceable(AssetLibrary.RideAssets ride)
+    {
+        if (ride?.Model == null) return null;
+        try
+        {
+            var mesh = new Model(_lib.Read(ride.Model));
+            Aps anim = null;
+            Aps.Record rec = default;
+            if (ride.Animation != null)
+            {
+                anim = new Aps(_lib.Read(ride.Animation));
+                rec = anim.Records().FirstOrDefault();
+            }
+            var drawn = new AnimatedModel(mesh, anim, rec, m => TextureNear(ride.Model.Path, m));
+            drawn.SetFrame(0);
+            return drawn.Root;
+        }
+        catch (Exception e) { GD.PrintErr($"[build] {Leaf(ride.Name)} would not load: {e.Message}"); return null; }
+    }
+
     /// <summary>What the pointer is over that would rather have the click than the path tool, or
     /// null for bare ground.
     ///
@@ -2489,11 +2724,13 @@ public partial class Viewer : Node3D
             _waterTime += (float)delta;
             _water.Advance(_waterTime);
         }
-        if (_toolOpen) UpdateGhost();
+        if (_place.Active) UpdatePlacementGhost();
+        else if (_toolOpen) UpdateGhost();
         // ⚠ AFTER the camera has been placed for this frame, or the projection is a frame stale
         // and the check is of the wrong camera.
         if (_ghostTest && !_pickChecked && _mode == Mode.Park) CheckMousePicking();
         if (_animTest && !_animChecked && _mode == Mode.Park) CheckParkAnimation();
+        if (_buildTest && !_buildChecked && _mode == Mode.Park) CheckBuildMenu();
         _weather.Follow(_cam.GlobalPosition);
         if (_weatherWanted is { } wk)
         {
@@ -2605,6 +2842,7 @@ public partial class Viewer : Node3D
                             if (_toolOpen) { CloseTool(); GD.Print("[tool] closed"); }
                             else OpenTool(Input.IsKeyPressed(Key.Shift) ? PathTool.Kind.Queue : PathTool.Kind.Path);
                         }
+                        else if (_place.Active) PlaceHeld();
                         else if (_toolOpen) PressTool();
                         else if (InteractiveUnderCursor() is { } busy)
                         {

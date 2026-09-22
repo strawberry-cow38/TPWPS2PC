@@ -70,15 +70,24 @@ public sealed class GhostMarkers
     /// <summary>Redraw the ghost for this run. An empty run clears it.</summary>
     public void Show(PathGhost ghost, Park park)
     {
+        if (ghost == null) { Clear(); return; }
+        ShowCells(ghost.Tiles.Select(t => (t.X, t.Y, PathGhost.Marker(t.Verdict))), park);
+    }
+
+    /// <summary>Draw any set of marked cells. ⭐ The same drawing for a path run and a thing being
+    /// put down: both are "these tiles, wearing these markers", and the console draws them with
+    /// the same call too.</summary>
+    public void ShowCells(IEnumerable<(int X, int Y, int Marker)> cells, Park park)
+    {
         foreach (var c in Root.GetChildren()) c.QueueFree();
-        if (ghost == null || park == null) return;
+        if (cells == null || park == null) return;
 
         // One surface per marker, the way the plot groups its floor: a run is mostly one verdict.
         var byMarker = new Dictionary<int, SurfaceTool>();
         float half = Park.CellSize * 0.5f;
-        foreach (var t in ghost.Tiles)
+        foreach (var t in cells)
         {
-            int id = PathGhost.Marker(t.Verdict);
+            int id = t.Marker;
             if (!byMarker.TryGetValue(id, out var st))
             {
                 st = new SurfaceTool();

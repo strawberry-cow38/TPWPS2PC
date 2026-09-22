@@ -520,6 +520,12 @@ public sealed class Park
     /// engine's own skip flag. That replaces the mesh-coverage mask, which was me inferring the
     /// footprint from where terrain geometry happened to be and dropping ~290 cells the game
     /// draws.</summary>
+    /// <summary>Whether nothing is standing on a cell. ⚠ Bounds-checked here rather than by the
+    /// caller: a placement ghost is routinely dragged off the edge of the plot, and that has to
+    /// read as "no" instead of throwing.</summary>
+    public bool Vacant(int x, int y)
+        => x >= 0 && y >= 0 && x < Width && y < Height && _occupied[x, y] == 0;
+
     public bool IsPlayable(int x, int y)
     {
         if (x < 0 || y < 0 || x >= Width || y >= Height) return false;
