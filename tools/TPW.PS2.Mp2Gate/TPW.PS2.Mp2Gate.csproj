@@ -6,5 +6,5 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>tpwps2mp2gate</AssemblyName>
   </PropertyGroup>
-  <ItemGroup><PackageReference Include="NLayer" Version="1.16.0" /></ItemGroup>
+  <ItemGroup><PackageReference Include="NLayer" Version="3.0.0" /></ItemGroup>
 </Project>

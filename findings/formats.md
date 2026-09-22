@@ -2028,3 +2028,56 @@ every music bank stayed broken. The stereo fixture is 440 Hz left against 660 Hz
 collapse or swap cannot hide in it either.
 
 ⭐ It exits non-zero on any failing row. A gate that always returns 0 gates nothing.
+
+
+## ✅ FIXED — the decoder was fine; the PACKAGE was four years stale (2026-09-22)
+
+The bug is real and the diagnosis of *where* it lived was wrong twice.
+
+1. First I said NLayer has no LSF path for Layer II, inferred from the assembly's symbol table.
+   **Wrong** — the symbol table was thinner than the code.
+2. Then, reading the source, its LSF handling looked correct — `_rateLookupTable[4]`, 30 subbands,
+   nbal 4/3/2 across subbands 0–3, 4–10, 11–29, matching ISO 13818-3 exactly. So the table was not
+   the fault either.
+
+⭐ **Building NLayer from source passed all four gate rows at 0.01%.** The algorithm was never
+broken. `TPW.PS2.Data.csproj` pinned **NLayer 1.16.0**; the source tree is **3.0.0**.
+
+| NLayer | gate |
+|---|---|
+| **1.16.0** | **2 of 4** — both MPEG-2 rows at ~99% residual |
+| 2.0.1 | 4 of 4 at 0.01% |
+| **3.0.0** | **4 of 4 at 0.01%** |
+
+The fix is one line: `Version="1.16.0"` → `Version="3.0.0"`.
+
+### Verified on real disc audio, not only the tone
+
+The gate is synthetic on purpose, so the end-to-end check is the actual advisor clip through the
+port's own `Mpeg.DecodeToPcm16`, against ffmpeg:
+
+| | before | after |
+|---|---|---|
+| samples identical to ffmpeg | 1.8% | **73.34%** |
+| max difference | **59,037** | **2** |
+| residual | ~99% | **0.011%** |
+
+A max difference of 2 in 32,768 is float rounding between two decoders. The remaining 26% differ by
+one or two LSB and are inaudible.
+
+⚠ `tpwps2check` against the real disc is byte-identical to its pre-bump output, so nothing else
+moved.
+
+### What this cost, and the cheap thing that would have caught it
+
+Four hours of verifying the **sample rate** — frame headers, NLayer's own report, the `+0x20` field
+÷44.1, and the `.lip` marks landing at 97.6% of it — with two of us cross-checking. Every route we
+took led to the part that was already right. Master said *"sounds weird"* and that was the whole
+diagnosis.
+
+⭐ **Decoding one file with a second decoder costs one command and would have found it at any point
+in those four hours.** It is now a committed gate rather than a thing to remember.
+
+⚠ And the dependency was never questioned. The decoder was treated as ground truth while every
+piece of our own code was audited repeatedly. **A pinned version is a claim about the world, and it
+was four major versions stale.**
