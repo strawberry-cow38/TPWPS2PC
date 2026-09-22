@@ -33,11 +33,27 @@ first quadword spill in the prologue):
 So the intended mechanism is: build `<world>\Terrain`, load `base.md2`, and pull a mesh named
 **`Base`**, or failing that **`TestBase`**, out of it.
 
-⚠ **None of `base.md2`, `Base` or `TestBase` exists anywhere on this disc.** No `.lnd` either — a
-raw scan of the whole 621,734,736-byte image finds the string `base.lnd` exactly once, as the
-format string inside `SLES_500.32` itself. Every mesh name in all eight `terrain_*.mps` files was
-checked: no `Base`, no `TestBase`. **This is the PC-era path, left in the PS2 build.** Anyone
-hunting for a `.lnd` heightfield file is hunting for something that was never shipped here.
+No `.lnd` ships: a raw scan of the whole 621,734,736-byte image finds the string `base.lnd` exactly
+once, as the format string inside `SLES_500.32` itself. And the call graph agrees — **the `.lnd`
+path-builder at `0x1f31f8` has zero callers.** That half is dead, proven two ways.
+
+### ⚠ Correction 4 — but the LOADER is not dead, and I said it was
+
+An earlier version of this file called the whole thing "the PC-era path, left in the PS2 build".
+**That overstated it.** `0x1f3248` has one caller, `0x1f66f4`, so it is reached. And a `base` model
+does ship: **`LOBBY.WAD/base.mps`**, whose 13 meshes include a `heightfield` marker — `base.md2` and
+`base.mps` are the same family under two extensions, which the engine's own dispatch strings
+(`sam / mps / aps / md2 / hmp`, adjacent in `.rodata`) already say.
+
+I reached "dead" from the absence of files named exactly `base.md2` / `Base` / `TestBase`, which is
+a search for spellings rather than for the thing. What remains genuinely unexplained is the mesh
+lookup: the loader asks for `Base` and then `TestBase`, and `LOBBY.WAD/base.mps` contains neither —
+its marker is named `heightfield`. Both lookups pass a constant `8` in `$a1`, which is not the
+length of `"Base"`, so that argument is a type or a cap rather than a string length and the lookup
+at `0x1f7ed8` has not been read yet.
+
+**The `heightfield` marker is a deliberate convention, not an artefact: it appears in exactly 10 of
+the disc's 496 `.mps` files** — the eight `terrain_*.mps`, plus `LOBBY.WAD/base.mps` and its backup.
 
 ## What IS authored: the `heightfield` marker mesh
 
