@@ -120,18 +120,10 @@ public sealed class GameCamera
     /// negative does after its `+ 7`.</summary>
     static int Eighth(int d) => (d < 0 ? d + 7 : d) >> 3;
 
-    /// <summary>Where the eye and the look were at the END of the previous tick, so a renderer
-    /// can draw between them and this one. ⭐ The SIMULATION stays on whole console frames; only
-    /// the picture moves in between.</summary>
-    public Vector3 PrevEye { get; private set; }
-    public Vector3 PrevLook { get; private set; }
-
     /// <summary>One frame. <paramref name="groundAt"/> takes a TILE index, as the game's does,
     /// and returns the ground there in world units.</summary>
     public void Step(int frameTime, Func<int, int, int> groundAt)
     {
-        PrevEye = Eye;
-        PrevLook = Look;
         frameTime = Math.Min(frameTime, 0x4000);
         TargetYaw = Wrap(TargetYaw);
 
@@ -185,19 +177,62 @@ public sealed class GameCamera
         if (_eyeY < want) _eyeY = want;
         _lookY -= (_lookY - ground) >> 3;
 
-        var eye = new Vector3(eyeX, _eyeY, eyeZ) / TileUnits;
-        var look = new Vector3(FocusX >> 8, _lookY, FocusZ >> 8) / TileUnits;
+        _prev = _cur;
+        _cur = new Pose(Yaw, FocusX, FocusZ, Behind, _eyeY, _lookY, Dolly);
+        if (!_posed) { _prev = _cur; _posed = true; }
+        (Eye, Look, Up) = Build(_cur);
+    }
+
+    /// <summary>The scalars a frame is built from. ⭐⭐ THESE are what gets interpolated, not the
+    /// eye and the look that come out of them.</summary>
+    readonly record struct Pose(int Yaw, int FocusX, int FocusZ, int Behind, int EyeY, int LookY, int Dolly);
+    Pose _prev, _cur;
+    bool _posed;
+
+    /// <summary>Where the camera is a fraction of the way through the current tick.
+    ///
+    /// ⚠⚠ LERPING THE EYE AND THE LOOK IS NOT THE SAME THING and it jitters. Those two points
+    /// swing round an arc as the camera turns, and a straight line between one tick's pair and the
+    /// next cuts the corner -- the eye pulls in toward the focus and springs back out every tick,
+    /// and the whole view shears instead of rotating. Master saw it at once: "very very jittery".
+    /// The fix is to interpolate the STATE -- the yaw, the focus, the distance -- and build the
+    /// frame from that, which is the same arithmetic a tick does and therefore lands on the arc.</summary>
+    public (Vector3 Eye, Vector3 Look, Vector3 Up) PoseAt(float t)
+    {
+        if (!_posed) return (Eye, Look, Up);
+        t = Math.Clamp(t, 0f, 1f);
+        int from = _prev.Yaw;
+        // ⚠ The shortest way round. A tick may have unwrapped the yaw by a whole turn, and lerping
+        // across that gap would spin the camera the long way in a single frame.
+        if (from - _cur.Yaw > TurnUnits / 2) from -= TurnUnits;
+        else if (_cur.Yaw - from > TurnUnits / 2) from += TurnUnits;
+        static int L(int a, int b, float f) => a + (int)Math.Round((b - a) * f);
+        return Build(new Pose(
+            L(from, _cur.Yaw, t), L(_prev.FocusX, _cur.FocusX, t), L(_prev.FocusZ, _cur.FocusZ, t),
+            L(_prev.Behind, _cur.Behind, t), L(_prev.EyeY, _cur.EyeY, t),
+            L(_prev.LookY, _cur.LookY, t), L(_prev.Dolly, _cur.Dolly, t)));
+    }
+
+    /// <summary>The frame those scalars make. Shared by the tick and by everything between two.</summary>
+    static (Vector3 Eye, Vector3 Look, Vector3 Up) Build(Pose p)
+    {
+        int a = p.Yaw & 0xFFF;
+        int dirX = (int)(Math.Sin(a * Math.Tau / TurnUnits) * 4096);
+        int dirZ = (int)(Math.Cos(a * Math.Tau / TurnUnits) * 4096);
+        int eyeX = (p.FocusX >> 8) - (dirX * p.Behind >> 12);
+        int eyeZ = (p.FocusZ >> 8) - (dirZ * p.Behind >> 12);
+
+        var eye = new Vector3(eyeX, p.EyeY, eyeZ) / TileUnits;
+        var look = new Vector3(p.FocusX >> 8, p.LookY, p.FocusZ >> 8) / TileUnits;
 
         // The dolly slides the eye along its own sight line. The direction is untouched, so this
         // is a zoom that does NOT change the pitch -- the other one does.
         var dir = (look - eye).Normalized();
-        if (dir.LengthSquared() > 0f) eye += dir * (Dolly / (float)TileUnits);
+        if (dir.LengthSquared() > 0f) eye += dir * (p.Dolly / (float)TileUnits);
 
-        // ⭐ The lean. up' = cross(dir, cross(up, dir)), plus the frame's chase velocity over a
-        // MILLION, re-normalised -- so the camera tips a hair into a pan. Felt, not seen.
+        // ⭐ The lean. up' = cross(dir, cross(up, dir)), re-normalised.
         var right = Vector3.Up.Cross(dir);
         var up = right.LengthSquared() > 1e-9f ? dir.Cross(right.Normalized()) : Vector3.Up;
-        Eye = eye; Look = look;
-        Up = up.LengthSquared() > 1e-9f ? up.Normalized() : Vector3.Up;
+        return (eye, look, up.LengthSquared() > 1e-9f ? up.Normalized() : Vector3.Up);
     }
 }

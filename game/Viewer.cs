@@ -1498,6 +1498,31 @@ public partial class Viewer : Node3D
             // could see, and it would pass a test that only checked where it ended up.
             var (with, lastStep) = Land(true);
             var (without, _) = Land(false);
+            // ⭐⭐ AND IT MUST NOT WOBBLE ON THE WAY. Sampling the pose right through a turn, the
+            // eye's distance from the point it is looking at has to stay put: a camera whose
+            // in-between frames are a straight line between two ticks CUTS THE ARC, so the eye
+            // pulls in and springs out every tick. That is what master saw as jitter, and a test
+            // that only checked where the turn ENDED would never have caught it.
+            {
+                var sim = new GameCamera();
+                sim.Step(GameCamera.FrameTick, (_, _) => 0);
+                sim.Turn(1);
+                float lo = float.MaxValue, hi = 0f;
+                for (int tick = 0; tick < 40; tick++)
+                {
+                    sim.Step(GameCamera.FrameTick, (_, _) => 0);
+                    for (int k = 0; k < 16; k++)
+                    {
+                        var (e, l, _) = sim.PoseAt(k / 16f);
+                        float r = (l - e).Length();
+                        if (r < lo) lo = r;
+                        if (r > hi) hi = r;
+                    }
+                }
+                GD.Print($"[cam] through a turn the eye stays {lo:F3}..{hi:F3} from what it watches"
+                       + $" -- spread {(hi - lo) / hi * 100:F2}%"
+                       + $" {((hi - lo) / hi < 0.01f ? "-- steady" : "-- IT WOBBLES")}");
+            }
             GD.Print($"[cam] a quarter turn lands on {with} of {GameCamera.QuarterTurn}"
                    + $" -- {(with == GameCamera.QuarterTurn ? "square" : "SHORT")},"
                    + $" arriving by {lastStep} {(lastStep <= 1 ? "-- a creep, no pop" : "-- A JUMP")};"
@@ -1923,10 +1948,9 @@ public partial class Viewer : Node3D
         // ⚠ A capture renders one frame and must not photograph a half-eased camera; it runs the
         // tick and stands on it.
         float alpha = _shotPath != null ? 1f : _clock.Alpha;
-        var eye = _game.PrevEye.Lerp(_game.Eye, alpha);
-        var look = _game.PrevLook.Lerp(_game.Look, alpha);
-        if ((look - eye).LengthSquared() < 1e-8f) { eye = _game.Eye; look = _game.Look; }
-        _cam.Transform = new Transform3D(Basis.LookingAt(look - eye, _game.Up), eye);
+        var (eye, look, up) = _game.PoseAt(alpha);
+        if ((look - eye).LengthSquared() < 1e-8f) { eye = _game.Eye; look = _game.Look; up = _game.Up; }
+        _cam.Transform = new Transform3D(Basis.LookingAt(look - eye, up), eye);
     }
 
     /// <summary>Point the camera at the surfaces whose mesh name contains TPW_PARK_MESH.
