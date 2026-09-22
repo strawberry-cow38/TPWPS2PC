@@ -92,18 +92,26 @@ public sealed class Ssh
                 sy = (mb / (codedWidth / 16)) * 16 + y % 16;
             }
             int chroma = (sy / 2) * (codedWidth / 2) + sx / 2;
-            int cb = yuv[codedPixels + chroma] - 128;
-            int cr = yuv[codedPixels * 5 / 4 + chroma] - 128;
-            int lum = (149 * Math.Max(0, yuv[sy * codedWidth + sx] - 16)) >> 6;
-            // Documented IPU integer BT.601 conversion; nearest 2x2 chroma replication.
-            // Arithmetic shifts and the separate term rounding matter.
-            Pixels[pixel * 4] = Clamp((lum + ((204 * cr) >> 6) + 1) >> 1);
-            Pixels[pixel * 4 + 1] = Clamp((lum + ((-104 * cr) >> 6) + ((-50 * cb) >> 6) + 1) >> 1);
-            Pixels[pixel * 4 + 2] = Clamp((lum + ((258 * cb) >> 6) + 1) >> 1);
+            // Nearest 2x2 chroma replication; alpha is handled independently below.
+            ConvertIpuRgb(yuv[sy * codedWidth + sx], yuv[codedPixels + chroma],
+                yuv[codedPixels * 5 / 4 + chroma], Pixels.AsSpan(pixel * 4, 3));
             // Alpha is an independent linear plane, not the IPU macroblock order.
             // Unlike RGB's packed 8x8 special case, alpha retains the coded row stride.
             Pixels[pixel * 4 + 3] = HasAlpha ? Clamp(gm[alphaOffset + y * codedWidth + x] * 2) : (byte)255;
         }
+    }
+
+    // PCSX2 yuv2rgb_reference, pinned and exhaustively checked in findings/ssh-colour.md.
+    // Coefficients have seven fractional bits. Each signed product loses six bits
+    // first; the sum retains one fractional bit, rounded by +1 then >>1.
+    // Keep the negation inside each green product: -((k*c)>>6) is not equivalent.
+    internal static void ConvertIpuRgb(byte y, byte cbByte, byte crByte, Span<byte> rgb)
+    {
+        int cb = cbByte - 128, cr = crByte - 128;
+        int lum = (149 * Math.Max(0, y - 16)) >> 6;
+        rgb[0] = Clamp((lum + ((204 * cr) >> 6) + 1) >> 1);
+        rgb[1] = Clamp((lum + ((-104 * cr) >> 6) + ((-50 * cb) >> 6) + 1) >> 1);
+        rgb[2] = Clamp((lum + ((258 * cb) >> 6) + 1) >> 1);
     }
 
     public static IReadOnlyList<Entry> ReadEntries(ReadOnlySpan<byte> data)

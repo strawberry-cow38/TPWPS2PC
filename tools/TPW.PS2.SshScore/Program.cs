@@ -5,9 +5,12 @@ using TPW.PS2.Data;
 // Every SSH remains in the denominator, including missing/ambiguous partners and decode errors.
 // Never infer a pass from a successful process exit or a plausible-looking preview.
 if (args.Length == 1 && args[0] == "--self-test") return SelfTests.Run();
+if (args.Length >= 1 && args[0] == "--check-colour") return ColourAudit.CheckReference(args[1..]);
+if (args.Length == 2 && args[0] == "--audit-flat") return ColourAudit.Flat(args[1]);
 if (args.Length < 1)
 {
     Console.Error.WriteLine("usage: tpwps2sshscore <pairs-directory> [--tolerance 5] [--alpha-tolerance 1] [--json report-path]");
+    Console.Error.WriteLine("       tpwps2sshscore --self-test | --audit-flat <pairs-directory> | --check-colour <external-pcsx2-rgb-table> [--perturb]");
     return 1;
 }
 CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
