@@ -129,6 +129,14 @@ public sealed class AssetLibrary : IDisposable
 
     public byte[] Read(WadArchive.Entry e) => Wad.Read(e);
 
+    /// <summary>The open archive's terrain models, in path order. Every world WAD has a `terrain/`
+    /// folder with two of them; DATA, UI and the rest have none.</summary>
+    public List<WadArchive.Entry> TerrainModels() => Wad.Entries
+        .Where(e => !WadArchive.IsAlias(e)
+                 && e.Path.EndsWith(".mps", StringComparison.OrdinalIgnoreCase)
+                 && e.Path.Contains("/terrain/", StringComparison.OrdinalIgnoreCase))
+        .OrderBy(e => e.Path, StringComparer.OrdinalIgnoreCase).ToList();
+
     /// <summary>Every image in the open archive, in path order -- the `.tga` the viewer can already
     /// decode, and the `.ssh` beside it, which is an MPEG intra picture the IPU decodes on hardware
     /// and this reader cannot yet. Both are listed so the gap is visible rather than silent.</summary>

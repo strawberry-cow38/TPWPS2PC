@@ -64,6 +64,28 @@ public sealed class Park
     /// <summary>Whether the node the ride is parented to is actually drawn.</summary>
     public bool RideVisible => _ride.IsVisibleInTree();
 
+    Node3D _terrain;
+
+    /// <summary>The park's real ground: `terrain_N.mps` out of the world's own `terrain/` folder.
+    ///
+    /// ⭐ There is no terrain FORMAT on this disc -- it is a model, which is why an extension census
+    /// never found it. Every world WAD carries a `terrain/` directory (JUNGLE 159 files, FANTASY
+    /// 117, SPACE 132, HALLOW 83) holding two `.mps`, their `.aps`, and 79 textures of their own.
+    /// FANTASY's meshes are named `heightfield`, `gatebase01`, `grass01`..`grass10`; JUNGLE's are
+    /// `A_ROAD`, `EMBANKMENT`, `RIVERBED_03`, `ticket_booths`. It is the park.</summary>
+    public void SetTerrain(Node3D built)
+    {
+        if (_terrain != null) { _terrain.QueueFree(); _terrain = null; }
+        if (built == null) return;
+        built.GetParent()?.RemoveChild(built);
+        _terrain = built;
+        Root.AddChild(_terrain);
+    }
+
+    /// <summary>Hide the synthetic grass once real ground is under the park. Keeping both draws a
+    /// checkerboard through the terrain and reads as z-fighting rather than as two floors.</summary>
+    public bool ShowGrass { set { if (_ground != null) _ground.Visible = value; } }
+
     public Park()
     {
         _ground = new Node3D { Name = "Ground" };

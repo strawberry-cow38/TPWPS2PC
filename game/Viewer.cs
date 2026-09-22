@@ -35,6 +35,8 @@ public partial class Viewer : Node3D
     /// plinth, small enough to see the edges.</summary>
     const int ParkCells = 24;
     Park _park;
+    AnimatedModel _terrain;
+    string _terrainPath;
     RideCatalogue _cat;
     TextDatabase _text;
 
@@ -608,6 +610,37 @@ public partial class Viewer : Node3D
     /// <summary>Stand the current ride on park ground at its own footprint, and say what the game
     /// would say about it. ⚠ The headline is the TABLE's name, not `Info.Name`: those disagree on
     /// 70 of the 273 rides that reach a row.</summary>
+    /// <summary>Put the world's own ground under the park. Built exactly like a ride -- terrain is
+    /// a `.mps`, not a format of its own -- and rebuilt only when the archive changes, since it is
+    /// the largest model on the disc at ~700 KB and 17,000 triangles.</summary>
+    void LoadTerrain()
+    {
+        var models = _lib.TerrainModels();
+        if (models.Count == 0)
+        {
+            if (_terrain != null) { _park.SetTerrain(null); _terrain = null; _terrainPath = null; }
+            _park.ShowGrass = true;
+            return;
+        }
+        var pick = models[0];
+        if (_terrainPath == pick.Path && _terrain != null) { _park.ShowGrass = false; return; }
+        try
+        {
+            var tm = new Model(_lib.Read(pick));
+            _terrain = new AnimatedModel(tm, null, null, TextureFor);
+            _terrain.SetFrame(0);
+            AddChild(_terrain.Root);
+            _park.SetTerrain(_terrain.Root);
+            _terrainPath = pick.Path;
+            // ⚠ Hide the synthetic grass. Two floors at the same height read as z-fighting.
+            _park.ShowGrass = false;
+            var (lo, hi) = Park.DrawnBounds(_terrain.Root);
+            GD.Print($"[terrain] {pick.Path}  {tm.Meshes.Count} meshes  "
+                   + $"extent {hi.X - lo.X:F1} x {hi.Z - lo.Z:F1}  height {hi.Y - lo.Y:F1}");
+        }
+        catch (Exception ex) { GD.PrintErr($"[terrain] {pick.Path}: {ex.Message}"); _park.ShowGrass = true; }
+    }
+
     void BuildPark(Model mesh)
     {
         var def = DefinitionFor(_ride.Model);
@@ -639,6 +672,7 @@ public partial class Viewer : Node3D
         // it at a position, which is what makes the next class of bug -- overlap, edges, footprints
         // that do not fit -- possible to have at all.
         _park.Build(ParkCells, ParkCells);
+        LoadTerrain();
         int px = (ParkCells - fp.Width) / 2, py = (ParkCells - fp.Height) / 2;
         bool placed = _park.TryPlace(_current.Root, fp, def.Id ?? 1, display ?? def.Name ?? "?", px, py);
         // ⚠ AFTER the placement, never before. Rebuild frames the camera on the model in its own
