@@ -21,9 +21,9 @@ public static class Ps2Materials
     /// means the grass baked down its sides bleeding into the dirt where two tiles meet. Repeat
     /// buys such a surface nothing and costs it that seam.</param>
     public static Shader Shader(bool soft, string cull, bool rawNormals = true, bool linearFilter = false,
-                                bool clamp = false)
+                                bool clamp = false, bool water = false)
     {
-        string key = $"{soft}/{cull}/{rawNormals}/{linearFilter}/{clamp}";
+        string key = $"{soft}/{cull}/{rawNormals}/{linearFilter}/{clamp}/{water}";
         if (Shaders.TryGetValue(key, out var found)) return found;
         return Shaders[key] = new Shader { Code = $$"""
 shader_type spatial;
@@ -38,6 +38,16 @@ uniform vec3 ps2_ambient;
 uniform vec3 ps2_directional;
 uniform vec3 ps2_ray;
 varying vec3 ps2_colour;
+{{(water ? """
+// ⭐ WATER. The PSX rolls a flagged sprite by ONE ROW PER FRAME and re-uploads it, which is a V
+// scroll of one texel a frame; `water_scroll` is that, in UV a second. `water_wave` lifts the
+// surface on a travelling sine -- the sea, which the terrain names A_SEA_01..06 itself.
+// ⚠ The scroll's DIRECTION and the wave's size and speed are chosen, not read: the PS2 flag that
+// marks a surface as water has not been found, and neither has anything that states an amplitude.
+uniform float water_time = 0.0;
+uniform vec2 water_scroll = vec2(0.0, 0.0);
+uniform vec3 water_wave = vec3(0.0);   // amplitude, wavelength, speed
+""" : "")}}
 
 void vertex() {
     // EE transforms the world ray into the mesh basis and normalises the ray, not N.
@@ -48,6 +58,13 @@ void vertex() {
     vec3 raw_normal = {{(rawNormals ? "CUSTOM0.xyz" : "NORMAL * 127.0")}};
     float n_dot_l = max(dot(raw_normal, -local_ray), 0.0);
     ps2_colour = floor(min(vec3(255.0), ps2_ambient * 128.0 + ps2_directional * n_dot_l));
+{{(water ? """
+    if (water_wave.x > 0.0 && water_wave.y > 0.0) {
+        vec3 w = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+        float phase = (w.x + w.z) / water_wave.y + water_time * water_wave.z;
+        VERTEX.y += water_wave.x * sin(phase);
+    }
+""" : "")}}
 }
 
 vec3 output_colour(vec3 encoded) {
@@ -69,7 +86,8 @@ vec3 output_colour(vec3 encoded) {
 }
 
 void fragment() {
-    vec4 c = has_tex ? texture(albedo_tex, UV) : vec4(fallback_colour, 1.0);
+    vec2 uv = UV{{(water ? " + water_scroll * water_time" : "")}};
+    vec4 c = has_tex ? texture(albedo_tex, uv) : vec4(fallback_colour, 1.0);
     if (c.a < cutout) discard;
     vec3 encoded = floor(clamp(c.rgb * 255.0 * ps2_colour / 128.0, vec3(0.0), vec3(255.0))) / 255.0;
     ALBEDO = output_colour(encoded);
@@ -94,6 +112,21 @@ void fragment() {
         material.SetShaderParameter("albedo_tex", texture);
         material.SetShaderParameter("has_tex", texture != null);
         if (fallback is { } colour) material.SetShaderParameter("fallback_colour", new Vector3(colour.R, colour.G, colour.B));
+        BindLight(material);
+        return material;
+    }
+
+    /// <summary>A water surface: the ordinary ground material plus a scroll and, for the sea, a
+    /// travelling sine. ⚠ It repeats rather than clamps -- a scrolled UV leaves 0..1 by design,
+    /// which is the one place on the ground where repeat is the right answer.</summary>
+    public static ShaderMaterial Water(ImageTexture texture, Vector2 scroll, Vector3 wave)
+    {
+        var material = new ShaderMaterial
+        { Shader = Shader(false, "cull_back", rawNormals: false, linearFilter: true, water: true) };
+        material.SetShaderParameter("albedo_tex", texture);
+        material.SetShaderParameter("has_tex", texture != null);
+        material.SetShaderParameter("water_scroll", scroll);
+        material.SetShaderParameter("water_wave", wave);
         BindLight(material);
         return material;
     }

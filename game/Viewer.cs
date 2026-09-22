@@ -78,6 +78,9 @@ public partial class Viewer : Node3D
     Godot.Environment _flatEnv;
     /// <summary>Rain and snow. ⚠ OFF by default -- a park that is always raining is not the park.</summary>
     readonly Weather _weather = new();
+    /// <summary>The terrain's moving water, rebuilt with the terrain.</summary>
+    Water _water;
+    float _waterTime;
     /// <summary>Weather asked for but not built yet. ⚠ It cannot be built inside the park load:
     /// the camera's transform is written in _Process, so at that moment _cam is still wherever the
     /// LAST park left it, and the volume would be preprocessed around the wrong place.</summary>
@@ -1142,6 +1145,8 @@ public partial class Viewer : Node3D
                 if (mat == null) continue;
                 if (TextureNear(pick.Path, mat).Tex != null) got++; else missed++;
             }
+            _water = new Water(_terrain.Root, tm);
+            GD.Print($"[water] {_water.Report}");
             GD.Print($"[terrain] {pick.Path}  {tm.Meshes.Count} meshes  "
                    + $"extent {hi.X - lo.X:F1} x {hi.Z - lo.Z:F1}  height {hi.Y - lo.Y:F1}  "
                    + $"textures {got} resolved, {missed} MISSING");
@@ -1478,11 +1483,17 @@ public partial class Viewer : Node3D
         }
         _shotPath = saved;
         int distinct = seen.Distinct().Count();
+        // ⚠ "One set" is only a failure if the model HAS something to animate. Most models do
+        // not -- 7 of JUNGLE's 113 carry a multi-choice material -- so reporting a still model as
+        // a fault would cry wolf on almost every ride there is.
+        bool couldMove = _current.Frames > 1 && seen.Count > 0;
         GD.Print($"[anim] {animated} slots; over 8 steps the park model showed {distinct} distinct"
-               + $" choice sets {(distinct > 1 ? "-- it animates" : "-- IT DOES NOT MOVE")}: {string.Join(" ", seen.Distinct())}");
+               + $" choice sets {(distinct > 1 ? "-- it animates" : couldMove ? "-- nothing in this model's materials animates" : "-- this model has no clock")}"
+               + $": {string.Join(" ", seen.Distinct())}");
         // ⚠ And the gate, which is the one thing the park ALWAYS has. Its clock is reported even
         // when it has nothing to animate, so "the park does not animate" can be told from "the
         // park has nothing animated in it" -- they look identical from a screenshot.
+        if (_water != null && _terrain != null) GD.Print($"[water] {_water.State(_terrain.Root)}");
         GD.Print(_gate == null
             ? "[anim] no gate in this park"
             : $"[anim] the gate has {_gate.Frames} frames and {_gate.TextureChoices.Count} material slots,"
@@ -2470,6 +2481,14 @@ public partial class Viewer : Node3D
         }
         // ⚠ AFTER the camera is placed, both of them: the volume follows the eye, and a pending
         // build happens here rather than in the park load for the reason on _weatherWanted.
+        // ⭐ On the console's clock like everything else that moves, and in SECONDS because a
+        // scroll and a sine are continuous -- there is nothing to quantise to a tick and nothing
+        // to interpolate between.
+        if (_water != null && _mode == Mode.Park)
+        {
+            _waterTime += (float)delta;
+            _water.Advance(_waterTime);
+        }
         if (_toolOpen) UpdateGhost();
         // ⚠ AFTER the camera has been placed for this frame, or the projection is a frame stale
         // and the check is of the wrong camera.

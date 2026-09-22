@@ -212,8 +212,11 @@ public sealed class AnimatedModel
             // ⭐ Named after the mesh it came from, so a surface can be pointed at by name. The
             // terrain is one model with dozens of meshes in it; without names the only way to aim
             // at "the bus stop" is to guess coordinates.
-            var mi = new MeshInstance3D { Name = $"{p.Mesh.Name}#{i}" };
+            // ⚠ The number after the hash is the MATERIAL INDEX, not the surface's ordinal. It
+            // used to be the ordinal, and anything reading it as a material -- the water finder
+            // did -- silently matched nothing and looked exactly like "this terrain has no river".
             int m = byMat[i].Key;
+            var mi = new MeshInstance3D { Name = $"{p.Mesh.Name}#{m}" };
             if (!_materials.TryGetValue(m, out var mat))
             {
                 _materials[m] = mat = new ShaderMaterial();
