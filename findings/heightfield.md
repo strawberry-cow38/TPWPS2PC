@@ -645,3 +645,29 @@ model's own geometry properly, not about inventing terrain to cover it.
 
 ⚠ This also retires "height 1" as a description of that population. Those 1,477 JUNGLE cells are not
 raised by one unit; they are cells the engine is told to leave alone.
+
+### The one disagreeing cell is index 0, in every park
+
+`cow tools` reported the skip/material cross-check agreeing on 4,863 of 4,864 cells, with a single
+`skip & material != 0` outlier per park. Located it: **it is cell (0,0) — array index 0 — in seven
+of the eight terrain files**, and its material is always that park's *modal* one.
+
+| file | outlier | `byte0` | `byte1` | park's dominant material |
+|---|---|---|---|---|
+| JUNGLE t1 | (0,0) | `0x01` | 24 | 24 (50% of cells) |
+| JUNGLE t2 | (0,0) | `0x01` | 14 | 14 |
+| FANTASY t1 | **none** | — | — | 0 (79% of cells) |
+| FANTASY t2 | (0,0) | `0x21` | 6 | 6 |
+| HALLOW t1 | (0,0) | `0x09` | 42 | 42 (67%) |
+| HALLOW t2 | (0,0) | `0x01` | 42 | 42 |
+| SPACE t1 | (0,0) | `0x01` | 2 | 2 (61%) |
+| SPACE t2 | (0,0) | `0x01` | 45 | 45 |
+
+And FANTASY `terrain_1` is the one file with no outlier **because its dominant material is 0** — so
+its cell (0,0) carries the same default as the rest and simply does not stand out. The exception
+explains itself.
+
+So the rule is not "agrees on 4,863 of 4,864". It is **"skip ⟺ material 0, without exception, on
+every cell except array index 0"**, where index 0 holds the default material in every file that has
+a non-zero default. That is an authoring artefact at element zero, not a case the rule fails to
+cover — the same shape as a boot singleton, and worth naming rather than carrying as a residual.
