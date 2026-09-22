@@ -968,7 +968,7 @@ public partial class Viewer : Node3D
         if (_ride?.Model == null) return;
         try
         {
-            GD.Print($"[v] building {_ride.Name}"); var model = new Model(_lib.Read(_ride.Model));
+            GD.Print($"[v] building {_ride.Name}"); var model = _lib.LoadModel(_ride);
             var rec = _recordIndex < _records.Count ? _records[_recordIndex] : null;
             // ⚠ Report which materials got a texture and which did not. A material that silently
             // resolves to null renders flat-shaded and reads as missing geometry, not a missing file.
@@ -1224,7 +1224,7 @@ public partial class Viewer : Node3D
     void ReFrame()
     {
         if (_ride?.Model == null) return;
-        try { FrameCamera(new Model(_lib.Read(_ride.Model))); } catch { }
+        try { FrameCamera(_lib.LoadModel(_ride)); } catch { }
     }
 
 }

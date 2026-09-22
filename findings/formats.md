@@ -13,8 +13,8 @@ Measured on `DATA/JUNGLE.WAD` (2,545 files, 170 directories, all read). Counts a
 | `.aps` | 89 | 1,414,064 | same magic family, 0x148-byte header — animation, probably |
 | `.rss` | 90 | 155,681 | **ride behaviour script, PLAIN TEXT SOURCE** |
 | `.sam` | 77 | 81,876 | **ride description, PLAIN TEXT** |
-| `.md2` | 4 | 63,912 | ⚠ **not Quake 2** — M3D2 family under stamp `0x1CD15D46`, see below and `core/Model.cs` |
-| `.mtr` | 4 | 60,932 | magic `0x2E5915AF`, one per `.MD2` — its material table. **Still unread** |
+| `.md2` | 4 | 63,912 | Legacy M3D2 `0x1CD15D46`; separate indexed geometry/material reader, [evidence](mtr.md) |
+| `.mtr` | 4 | 60,932 | `0x2E5915AF`: node matrices and topology remaps, **not a material table**; [layout, audit and unknowns](mtr.md) |
 | `.rse` | 91 | 52,265 | magic `RSSEQ` — the assembled form of the `.rss` beside it |
 | `.scc` | 78 | 7,024 | Visual SourceSafe status files, shipped by accident |
 
