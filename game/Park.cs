@@ -473,21 +473,8 @@ public sealed class Park
                 void V(Vector3 v, float u, float w2) { st.SetUV(new Vector2(u, w2)); st.SetNormal(Vector3.Up); st.AddVertex(v); }
                 V(a, 0, 0); V(b, 1, 0); V(c, 1, 1);
                 V(a, 0, 0); V(c, 1, 1); V(dd, 0, 1);
-                // ⚠ A raised cell needs SIDES. Without them a step is a slab hanging in the air
-                // with daylight under it, which reads as a hole in the floor rather than terrain.
-                if (Field == null) continue;
-                foreach (var (dx, dy, p0, p1) in new[] { (0, -1, a, b), (1, 0, b, c), (0, 1, c, dd), (-1, 0, dd, a) })
-                {
-                    int nx2 = x + dx, ny2 = y + dy;
-                    float ny = nx2 >= 0 && ny2 >= 0 && nx2 < width && ny2 < height && IsPlayable(nx2, ny2)
-                        ? CellY(nx2, ny2) : BaseY;
-                    if (ny >= cy - 0.01f) continue;
-                    var q0 = new Vector3(p0.X, ny, p0.Z);
-                    var q1 = new Vector3(p1.X, ny, p1.Z);
-                    void S(Vector3 v, float u, float w2) { st.SetUV(new Vector2(u, w2)); st.SetNormal(new Vector3(dx, 0, dy)); st.AddVertex(v); }
-                    S(p0, 0, 0); S(q0, 0, 1); S(q1, 1, 1);
-                    S(p0, 0, 0); S(q1, 1, 1); S(p1, 1, 0);
-                }
+                // (No skirts. With the plot flat there are no steps to close -- the sides
+                // went out with the boxes; see CellY.)
             }
         var ground = st.Commit();
         if (ground != null && ground.GetSurfaceCount() > 0)
@@ -506,15 +493,24 @@ public sealed class Park
     /// it, so reading the disc and reading RAM give the same thing.</summary>
     public Model.HeightField Field { get; set; }
 
-    /// <summary>World Y of a cell. The height itself is proven (`byte0 &amp; 0x03`, the mask the
-    /// engine's own accessor preserves).
+    /// <summary>World Y of a cell. ⚠⚠ FLAT, DELIBERATELY.
     ///
-    /// ⚠ ONE UNIT PER STEP IS STILL A GUESS. I first justified it against the marker AABB's
-    /// `Y 0..2` -- that was wrong twice over: those floats are bit-identical in all eight terrain
-    /// files so they state nothing, and heights actually reach 3. One unit is what the geometry
-    /// looks like, not what anything says.</summary>
-    float CellY(int x, int y) =>
-        BaseY + (Field != null && x < Field.Width && y < Field.Height ? Field.HeightAt(x, y) : 0) * CellSize;
+    /// This used to extrude a flat-topped box per cell from `byte0 &amp; 0x03`, and that is WRONG BY
+    /// CONSTRUCTION -- master said so on sight and the engine agrees. The builder at 0x222230 does
+    /// not read a height: it takes the cell as a u16 and splits it THREE ways, each scaled by 4 and
+    /// used as an offset into a different float array (`lwc1`) -- bits 0-3, bits 4-7, and bits 8-15
+    /// (what I called byte1). The shape logic at 0x2233b0 skips a cell when `andi 0x3c` is zero,
+    /// and `andi 0x20` SWAPS TWO BYTES on the stack: it selects and ROTATES a tile shape. So a cell
+    /// names a tile whose CORNER heights are looked up, which draws as sloped and stepped tiles. A
+    /// cuboid per cell can never be that shape, whatever mask feeds it.
+    ///
+    /// ⚠ The three float arrays are STACK buffers built earlier in the same function (0x221e3c,
+    /// sp+0x60 / sp+0x30 / sp+0x10), not static tables, so the corner values are assembled at draw
+    /// time and cannot be dumped off the disc.
+    ///
+    /// Until those are decoded the plot stays flat. A flat plot is visibly unfinished; fabricated
+    /// blocks look finished and are not.</summary>
+    float CellY(int x, int y) => BaseY;
 
     /// <summary>Cells that are ground -- the plot's real size, as opposed to its bounding box.</summary>
     public int PlayableCells

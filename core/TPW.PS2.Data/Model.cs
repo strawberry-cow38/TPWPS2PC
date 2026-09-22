@@ -35,35 +35,42 @@ public sealed class Model
     /// independently predicted from the `heightfield` marker's AABB -- two unrelated routes, an
     /// AABB on a zero-geometry mesh and a u32 pair nothing else references, agreeing 8 of 8.
     ///
-    /// ⭐ THE HEIGHT IS `byte0 &amp; 0x03`, proven by the engine rather than by us: the accessor at
-    /// 0x166100 takes this same struct (`lw $t3, 0x44($a0)`) and its read-modify-write does
-    /// `andi $v0, $v0, 0xc3` -- 11000011, keeping 0x80/0x40/0x02/0x01 and CLEARING bits 2-5. So
-    /// `0x3C` is a field the engine wipes and repaints, which is why `&amp; 0x3F` gave wild per-world
-    /// histograms; jungle's 0x3C bits happen to be clear, which is why jungle alone looked tidy.
-    /// Indexing is `(z * NX + x) * 2`, row-major, with the bounds checks reading +0x0c and +0x10.
-    /// (tinyclaw, from the disassembly.)
+    /// ⚠⚠ THE CELL IS NOT A HEIGHT. It is THREE TABLE INDICES. The builder at 0x222230 reads the
+    /// cell as a u16 and splits it three ways, each scaled by 4 and used as an offset into a
+    /// different float array (`lwc1`): bits 0-3, bits 4-7, and bits 8-15. The shape logic at
+    /// 0x2233b0 skips a cell when `andi 0x3c` is zero, and `andi 0x20` SWAPS TWO BYTES on the
+    /// stack -- it is selecting and ROTATING a tile shape. A cell names a tile whose CORNER
+    /// heights are looked up, so the ground is sloped and stepped tiles, never a cuboid per cell.
     ///
-    /// Measured over all eight parks: `byte0 &amp; 0x03` is {0,1,2} in seven and {0,1,2,3} in
-    /// FANTASY t1 (a single cell). `0x3C` is 0 across both jungle files and heavily used elsewhere.
-    /// `0x40` is set on 32-280 cells per park. ⭐ `0x80` is NEVER set in any park on this disc.
+    /// ⚠ The three float arrays are STACK buffers built earlier in the same function (0x221e3c,
+    /// sp+0x60 / sp+0x30 / sp+0x10), not static tables -- assembled at draw time, so they cannot
+    /// be dumped off the disc.
     ///
-    /// ⚠ HOW TALL A STEP IS, IS STILL A GUESS. I justified one world unit per step against the
-    /// marker AABB's `Y 0..2` -- that reasoning was wrong, because those floats are bit-identical
-    /// in all eight files and carry no information, and because heights reach 3. One unit is what
-    /// the geometry looks like, not what anything states.
+    /// ⚠ `0x40` is NOT a flag. It is bit 6: the bits4-7 nibble holding the value 4. I reported it
+    /// as an unexplained flag for hours because I was masking a field that does not exist.
     ///
-    /// ⚠ `byte1` is WRITTEN from a table, not read as one: `lw $v1, 0x2c($t3)` indexes an array
-    /// with `lbu $v0, 0x28($t3)` bounding the argument. On disc +0x28 is 2 in all eight files and
-    /// +0x2c points at a 2-byte array ending exactly at EOF -- a good check that the pointer is
-    /// read right, but it does not say what byte1 MEANS. Still unidentified.</summary>
+    /// ⚠ I previously documented `byte0 &amp; 0x03` here as "the height, proven by the engine". It
+    /// was neither. `andi 0xc3` in the accessor proves only which bits THAT function preserves,
+    /// and I read a meaning into it; the histograms I used as support were me inferring semantics
+    /// from distributions. Master called the rendered result wrong on sight and was right.
+    ///
+    /// ⚠ And jungle cannot referee any of this: bits 4-7 are {0,4} there against fantasy's
+    /// {0,2,3,4,6}, and its 0x3C is zero throughout. That is the FOURTH field where the world we
+    /// test on is the one that cannot tell a wrong answer from a right one.
+    /// (Decoding by tinyclaw, from the code.)</summary>
     public sealed class HeightField
     {
         public int Width, Height;
         /// <summary>NX*NZ pairs, row-major: [0] is the height-and-flags byte, [1] is unidentified.</summary>
         public byte[] Cells;
         public int Count => Width * Height;
-        /// <summary>A cell's height: `byte0 &amp; 0x03`, the mask the engine itself preserves.</summary>
-        public int HeightAt(int x, int y) => Cells[(y * Width + x) * 2] & 0x03;
+        /// <summary>The tile-shape index, bits 0-3 -- an offset into a float array, NOT a height.
+        /// Nothing may treat this as an elevation until the corner tables are decoded.</summary>
+        public int ShapeA(int x, int y) => Cells[(y * Width + x) * 2] & 0x0F;
+        /// <summary>The second index, bits 4-7.</summary>
+        public int ShapeB(int x, int y) => (Cells[(y * Width + x) * 2] >> 4) & 0x0F;
+        /// <summary>The third index, bits 8-15.</summary>
+        public int ShapeC(int x, int y) => Cells[(y * Width + x) * 2 + 1];
         public byte Raw(int x, int y) => Cells[(y * Width + x) * 2];
         public byte Second(int x, int y) => Cells[(y * Width + x) * 2 + 1];
     }
