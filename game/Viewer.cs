@@ -975,6 +975,7 @@ public partial class Viewer : Node3D
                    + "[ / ] nudge the gate  |  V weather  |  B buildable  |  F3 hide this panel\n"
                    + "RMB path tool (shift+RMB queue)  |  LMB press: start a run, again to lay\n"
                    + "O take it back  |  M straight/elbow segments  |  Esc close the tool\n"
+                   + "LMB opens the path tool (shift for a queue) and works it, RMB shuts it\n"
                    + "in the park the mouse buttons are the TOOL'S -- pan with the middle drag";
     }
 
@@ -1552,7 +1553,7 @@ public partial class Viewer : Node3D
         _runX = _runY = -1;
         _ghostAt = (-1, -1, -1, -1);
         _ghostView?.Clear();
-        Status("right-click to open the path tool, shift+right-click for a queue");
+        Status("left-click to open the path tool, shift+left-click for a queue");
     }
 
     /// <summary>The ghost, every frame the tool is open: from the run's start to the cursor, or
@@ -1582,6 +1583,16 @@ public partial class Viewer : Node3D
     }
 
     void Status(string text) { if (_toolStatus != null) _toolStatus.Text = text; }
+
+    /// <summary>What the pointer is over that would rather have the click than the path tool, or
+    /// null for bare ground.
+    ///
+    /// ⚠⚠ IT ALWAYS RETURNS NULL TODAY, and that is not an oversight to be read as "nothing is
+    /// clickable". NOTHING IN THE SCENE IS CLICKABLE YET -- no ride answers a click, no shop, no
+    /// guest -- so there is nothing for it to find and inventing one would be inventing a feature.
+    /// It exists as the one place that decision goes when the first of them arrives, so that
+    /// "left-click opens the path tool" does not have to be unpicked from the input handler then.</summary>
+    string InteractiveUnderCursor() => null;
 
     /// <summary>A press of the open tool. The first starts a run, the second lays it -- and ⭐ the
     /// run CARRIES ON from where it ended, which is what makes a path drawn in legs rather than
@@ -2458,8 +2469,8 @@ public partial class Viewer : Node3D
             // The right button is the tool's whenever a park is up; the left is the tool's while
             // the tool is open. Panning is the MIDDLE drag, and shift with the left button when
             // the tool is shut. The camera's own keys -- WASD, Q/E, R/F -- are untouched.
-            bool tools = _mode == Mode.Park && _paths != null;
-            bool orbiting = lDown && !_toolOpen && (_left.Dragged || !_left.Down);
+            bool tools = _mode == Mode.Park && _paths != null && GameCamActive;
+            bool orbiting = lDown && !tools && (_left.Dragged || !_left.Down);
             bool panning = (rDown && !tools && (_right.Dragged || !_right.Down)) || mDown
                         || (orbiting && Input.IsKeyPressed(Key.Shift));
             // LEFT drag orbits.
@@ -2501,26 +2512,32 @@ public partial class Viewer : Node3D
                     // A quick press counts however far it slid; a slow one still counts if it
                     // barely moved. ⭐ And a button the tool owns needs no test at all: the right
                     // one whenever a park is up, the left one while the tool is open.
-                    bool toolsOwn = _mode == Mode.Park && _paths != null
-                                 && (mb.ButtonIndex == MouseButton.Right
-                                     || (_toolOpen && mb.ButtonIndex == MouseButton.Left));
+                    // ⚠ BOTH buttons, open or shut. Opening has the same fault placing had --
+                    // you are moving the mouse when you reach for the tool -- so a slop test on
+                    // the button that opens it is one the player fails by aiming at the tile they
+                    // want. ⚠ Only while the GAME camera is up: under the free camera (G) the
+                    // buttons still drag the view, which is the whole point of it.
+                    bool toolsOwn = _mode == Mode.Park && _paths != null && GameCamActive;
                     bool click = toolsOwn
                               || (!held.Dragged
                                   && (Time.GetTicksMsec() - held.Ms <= ClickMs
                                       || mb.Position.DistanceTo(held.At) <= ClickSlop));
-                    if (click && _mode == Mode.Park)
+                    if (click && _mode == Mode.Park && _paths != null)
                     {
+                        // ⭐ LEFT OPENS AND WORKS IT, RIGHT ONLY SHUTS IT. Master's layout: the
+                        // button you build with is the button you reach for, and the other one
+                        // gets you out.
                         if (mb.ButtonIndex == MouseButton.Right)
                         {
                             if (_toolOpen) { CloseTool(); GD.Print("[tool] closed"); }
-                            else OpenTool(Input.IsKeyPressed(Key.Shift) ? PathTool.Kind.Queue : PathTool.Kind.Path);
                         }
                         else if (_toolOpen) PressTool();
-                        else
+                        else if (InteractiveUnderCursor() is { } busy)
                         {
-                            GD.Print("[tool] the path tool is shut -- right-click opens it");
-                            Status("the path tool is shut -- right-click opens it");
+                            GD.Print($"[tool] not opening: {busy} is under the cursor");
+                            Status($"{busy} under the cursor");
                         }
+                        else OpenTool(Input.IsKeyPressed(Key.Shift) ? PathTool.Kind.Queue : PathTool.Kind.Path);
                     }
                 }
             }
