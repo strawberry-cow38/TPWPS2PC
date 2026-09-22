@@ -26,6 +26,10 @@ public sealed class Park
     public const float CellSize = 1.0f;
 
     public readonly Node3D Root = new() { Name = "Park" };
+
+    /// <summary>The plot's own floor, WITHOUT the terrain model parented beside it. Hiding the
+    /// whole Root hides the terrain too, which answers nothing.</summary>
+    public Node3D Floor => _ground;
     Node3D _ground, _ride;
 
     /// <summary>A ride's footprint as a grid. `*` is an occupied cell and `2` the entrance; rows

@@ -229,7 +229,14 @@ public partial class Viewer : Node3D
 
     void BuildUi()
     {
-        _cam = new Camera3D { Current = true };
+        // ⚠ Godot's default near plane is 0.05 against a far of 4000, and this world is 210 units
+        // across -- 80,000:1 spends nearly all the depth range on the first few centimetres. The
+        // subject is never closer than about a unit, so the near plane starts there. Overridable,
+        // because it is also the control that tells z-fighting (changes) from a coplanar-by-design
+        // surface (does not).
+        float near = 0.5f, far = 6000f;
+        if (float.TryParse(OS.GetEnvironment("TPW_PS2_NEAR"), out var n) && n > 0f) near = n;
+        _cam = new Camera3D { Current = true, Near = near, Far = far };
         AddChild(_cam);
         AddChild(new DirectionalLight3D
         {
@@ -939,6 +946,38 @@ public partial class Viewer : Node3D
         catch (Exception ex) { GD.PrintErr($"[terrain] {pick.Path}: {ex.Message}"); }
     }
 
+    /// <summary>The park debug viewpoints, shared by every path that frames the park. ⚠ They used
+    /// to live only in FrameParkCamera, so opening a map without a ride silently ignored them.</summary>
+    void ParkCameraOverrides()
+    {
+        // ⚠ Straight down on demand. An orbited view cannot be read for placement -- which way +X
+        // and +Z run on screen is unknown, and I misjudged the same picture three times arguing
+        // the floor was off the island when its coordinates said otherwise. Top-down makes screen
+        // axes world axes, so the floor's position against the hole is a thing you can see.
+        if (System.Environment.GetEnvironmentVariable("TPW_HOLE_DEBUG") == "1") _pitch = -1.5533f;
+
+        // ⭐ An INDEPENDENT check on triangle winding. Looking up from underneath asks a different
+        // question than "what fraction flipped": if the ground is wound correctly it is
+        // back-facing from below and should be CULLED, so the terrain largely disappears. If the
+        // sign is inverted the ground is solid from below and missing from above. The flip-count
+        // agreement cannot see this, because it and the census come from the same model data.
+        if (System.Environment.GetEnvironmentVariable("TPW_PARK_UNDER") == "1")
+        {
+            _pitch = 1.30f;
+            _dist = Math.Max(_terrainSize.X, _terrainSize.Y) * 0.55f;
+        }
+
+        // A ground-level look along the plot, for comparing against a screenshot of the real game.
+        // The island-wide shot cannot show a one-unit step: it is about 1% of the frame.
+        if (System.Environment.GetEnvironmentVariable("TPW_PARK_CLOSEUP") == "1" && _holeSize.X > 1f)
+        {
+            _focus = new Vector3(_holeOrigin.X + _holeSize.X * 0.45f, _holeY + 2f,
+                                 _holeOrigin.Y + _holeSize.Y * 0.45f);
+            _dist = Math.Max(_holeSize.X, _holeSize.Y) * 0.42f;
+            _pitch = -0.30f;
+        }
+    }
+
     /// <summary>Lay the playable plot on the loaded terrain. Shared by the park tab, which shows
     /// the park alone, and by BuildPark, which then stands a ride in it.</summary>
     void BuildPlot()
@@ -976,11 +1015,20 @@ public partial class Viewer : Node3D
         _parkRide = false;
         BuildPlot();
         if (_current != null) _current.Root.Visible = false;
+        // ⭐ The control for "is the terrain already drawing ground here?". With the plot hidden,
+        // whatever fills the plot's footprint is the terrain mesh's own ground -- which is the
+        // question behind every overlap complaint about this pair of surfaces.
+        if (System.Environment.GetEnvironmentVariable("TPW_PARK_HIDE") == "1") _park.Floor.Visible = false;
+        // ⭐ And the other half of the same question: the plot floor with nothing under it, which
+        // is how you tell an overlap between the two surfaces from one INSIDE the floor itself.
+        if (System.Environment.GetEnvironmentVariable("TPW_TERRAIN_HIDE") == "1" && _terrain != null)
+            _terrain.Root.Visible = false;
         var (lo, hi) = Park.DrawnBounds(_terrain != null ? _terrain.Root : _park.Root,
                                         inParent: _terrain != null);
         _focus = new Vector3((lo.X + hi.X) * 0.5f, lo.Y + (hi.Y - lo.Y) * 0.3f, (lo.Z + hi.Z) * 0.5f);
         _dist = Mathf.Max(Mathf.Max(hi.X - lo.X, hi.Z - lo.Z) * 0.99f, 1e-3f);
         _pitch = -0.55f;
+        ParkCameraOverrides();
     }
 
     void BuildPark(Model mesh)
@@ -1233,32 +1281,7 @@ public partial class Viewer : Node3D
         }
         _dist = Math.Max(span * 0.9f, 1e-3f);
         _pitch = -0.55f;
-        // ⚠ Straight down on demand. An orbited view cannot be read for placement -- which way +X
-        // and +Z run on screen is unknown, and I misjudged the same picture three times arguing
-        // the floor was off the island when its coordinates said otherwise. Top-down makes screen
-        // axes world axes, so the floor's position against the hole is a thing you can see.
-        if (System.Environment.GetEnvironmentVariable("TPW_HOLE_DEBUG") == "1") _pitch = -1.5533f;
-
-        // ⭐ An INDEPENDENT check on triangle winding. Looking up from underneath asks a different
-        // question than "what fraction flipped": if the ground is wound correctly it is
-        // back-facing from below and should be CULLED, so the terrain largely disappears. If the
-        // sign is inverted the ground is solid from below and missing from above. The flip-count
-        // agreement cannot see this, because it and the census come from the same model data.
-        if (System.Environment.GetEnvironmentVariable("TPW_PARK_UNDER") == "1")
-        {
-            _pitch = 1.30f;
-            _dist = Math.Max(_terrainSize.X, _terrainSize.Y) * 0.55f;
-        }
-
-        // A ground-level look along the plot, for comparing against a screenshot of the real game.
-        // The island-wide shot cannot show a one-unit step: it is about 1% of the frame.
-        if (System.Environment.GetEnvironmentVariable("TPW_PARK_CLOSEUP") == "1" && _holeSize.X > 1f)
-        {
-            _focus = new Vector3(_holeOrigin.X + _holeSize.X * 0.45f, _holeY + 2f,
-                                 _holeOrigin.Y + _holeSize.Y * 0.45f);
-            _dist = Math.Max(_holeSize.X, _holeSize.Y) * 0.42f;
-            _pitch = -0.30f;
-        }
+        ParkCameraOverrides();
     }
 
     void FrameCamera(Model model)
