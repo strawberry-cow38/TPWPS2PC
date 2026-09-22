@@ -886,6 +886,11 @@ public partial class Viewer : Node3D
         }
         _dist = Math.Max(span * 0.9f, 1e-3f);
         _pitch = -0.55f;
+        // ⚠ Straight down on demand. An orbited view cannot be read for placement -- which way +X
+        // and +Z run on screen is unknown, and I misjudged the same picture three times arguing
+        // the floor was off the island when its coordinates said otherwise. Top-down makes screen
+        // axes world axes, so the floor's position against the hole is a thing you can see.
+        if (System.Environment.GetEnvironmentVariable("TPW_HOLE_DEBUG") == "1") _pitch = -1.5533f;
     }
 
     void FrameCamera(Model model)
