@@ -579,3 +579,38 @@ The lesson is the one already filed today in a different coat: I found a functio
 was legible and assumed it was operating on the data I was interested in. **Confirm the function
 touches your structure before reading meaning out of its instructions** — one scan for the
 structure's own pointers would have caught this before it reached anyone else.
+
+### From the function that DOES touch the cells — byte1 confirmed, and byte0 bit 0 is a boolean
+
+`0x222fe8` is the one that passed the pointer test (`lw +0x24` twice). Both sites do the same thing:
+
+```
+lw   $v1, 0x24($a3)     cells base
+addu $v0, $a2, $fp      index
+sll  $v0, $v0, 1        * 2                     two bytes per cell, again
+addu $v1, $v1, $v0
+lbu  $v0, ($v1)         byte0
+xori $v0, $v0, 1
+andi $v0, $v0, 1        -> if bit 0 is SET, skip the cell
+beqz ...
+lbu  $v0, 1($v1)        byte1
+lw   $v1, 0x5c($s3)     a table base
+sll  $v0, $v0, 3        byte1 * 8
+addu $a3, $v1, $v0      &table[byte1]           EIGHT-BYTE RECORDS
+```
+
+**`byte1` is an index into an 8-byte-record table at `[$s3+0x5c]`.** That is `cow tools`' material
+finding arriving independently from the instruction stream, and it adds the record size they did not
+have. Their evidence was a 6-of-7 hit on the right tile set in two worlds with per-world indices;
+this is the code doing the lookup. Two routes, same answer.
+
+**`byte0` bit 0 is a per-cell boolean**, tested identically at both sites as `(byte0 ^ 1) & 1` and
+used to skip the cell. That is consistent with the other function's `andi 0xfe` (clear bit 0) and
+`ori 0x81` (set bit 0 together with 0x80).
+
+**On the reopened height question: still no evidence either way.** Across every function confirmed
+to touch this structure, nothing converts any part of `byte0` into a Y coordinate. What is
+established is narrower than "height": bit 0 is a skip flag, bits `0x3C` are wiped and repainted by
+`0x166100`, `0x80` is never set on disc, and `byte1` is the material. Whether a height lives in the
+remainder is open, and the honest position is that it should stay open rather than be argued from a
+function that has not been shown to read this data.
