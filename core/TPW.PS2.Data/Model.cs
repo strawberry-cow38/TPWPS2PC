@@ -111,6 +111,28 @@ public sealed class Model
         /// regions, with the volcano and the plot boundary punched out) and lands at 68-82% drawn
         /// across all eight parks.</summary>
         public bool Drawn(int x, int y) => (Cells[(y * Width + x) * 2] & 1) == 0;
+
+        /// <summary>⭐ Can anything be built on this cell? `byte0` BIT 1 CLEAR.
+        ///
+        /// Read out of the PS2 executable rather than inferred from the picture. `0x14E138` is the
+        /// map accessor and returns `base + (y * width + x) * 8` — **eight bytes per tile**, the
+        /// same record size the PSX port carries as `ParkMap.TileBytes`. Histogramming what the
+        /// engine actually loads out of those eight across all 132 of its call sites gives
+        /// `lbu +0`, `+1`, `+2`, `lhu +4` and `lbu +7`, which lands field for field on the PSX
+        /// layout (type, raw, links, a u16 ground, flags) — and byte `+2` is only ever masked with
+        /// 0xFE/0xFD/0xFB/0xF7/0xEF/0xDF/0xBF/0x7F, single-bit clears, so it is the eight path
+        /// links exactly as that port has it.
+        ///
+        /// ⭐⭐ The test itself is `+7 &amp; 0x02`, and the PSX port documents bit 1 of the same flags
+        /// byte as "nothing may be built here", proven there from its own can-build routines. Two
+        /// binaries, same offset, same bit.
+        ///
+        /// ⚠ WHAT IS ASSUMED, and it is one step: that this 2-byte authored cell's `byte0` IS that
+        /// runtime flags byte. Bit 0 agrees — it means "no ground drawn here" in both, which is
+        /// what <see cref="Drawn"/> was decoded as independently — but the runtime record is built
+        /// at park load and I have not watched it being built. If the overlay ever disagrees with
+        /// the game, this is the join to doubt first.</summary>
+        public bool Buildable(int x, int y) => (Cells[(y * Width + x) * 2] & 0x02) == 0;
         public byte Raw(int x, int y) => Cells[(y * Width + x) * 2];
         public byte Second(int x, int y) => Cells[(y * Width + x) * 2 + 1];
     }

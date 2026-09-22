@@ -79,6 +79,8 @@ public partial class Viewer : Node3D
     /// the camera's transform is written in _Process, so at that moment _cam is still wherever the
     /// LAST park left it, and the volume would be preprocessed around the wrong place.</summary>
     Weather.Kind? _weatherWanted;
+    /// <summary>The buildable overlay, rebuilt with the park. B toggles it.</summary>
+    Node3D _buildable;
     /// <summary>Nudge on the gate's z, in units, starting at master's own correction.
     ///
     /// ⭐ Fantasy's pad alone put the gate a quarter unit too far from the road, and master — who
@@ -444,6 +446,11 @@ public partial class Viewer : Node3D
         else if (GameCamActive && k.Keycode == Key.Q) _game.Turn(-1);
         else if (GameCamActive && k.Keycode == Key.E) _game.Turn(1);
         else if (GameCamActive && k.Keycode == Key.Home) StartGameCam();
+        else if (k.Keycode == Key.B && _mode == Mode.Park && _buildable != null)
+        {
+            _buildable.Visible = !_buildable.Visible;
+            GD.Print($"[build] overlay {(_buildable.Visible ? "on" : "off")}");
+        }
         else if (k.Keycode == Key.V && _mode == Mode.Park)
         {
             var next = _weather.Current switch
@@ -477,6 +484,7 @@ public partial class Viewer : Node3D
         if (_gate != null) _gate.Root.Visible = m == Mode.Park;
         if (_sky != null) _sky.Environment = m == Mode.Park && _skyEnv != null ? _skyEnv : _flatEnv;
         _weather.Root.Visible = m == Mode.Park;
+        if (_buildable != null && m != Mode.Park) _buildable.Visible = false;
         if (m == Mode.Sounds) FillBankPicker();
         else if (m == Mode.Movies) FillMovieList();
         else FillWadPicker();
@@ -798,7 +806,7 @@ public partial class Viewer : Node3D
         _info.Text = m.Label + "\n\nthe game's own camera\n"
                    + "WASD move  |  Q/E turn a quarter  |  R/F zoom\n"
                    + "Z/X dolly  |  Home reset  |  G free orbit\n"
-                   + "[ / ] nudge the gate  |  V weather  |  F3 hide this panel";
+                   + "[ / ] nudge the gate  |  V weather  |  B buildable  |  F3 hide this panel";
     }
 
     /// <summary>Show one image at its own size, or the reason it cannot be shown.</summary>
@@ -1084,6 +1092,54 @@ public partial class Viewer : Node3D
         _sky.Environment = _mode == Mode.Park && _skyEnv != null ? _skyEnv : _flatEnv;
     }
 
+    /// <summary>Lay a flat marker over every cell nothing may be built on, so the authored map is
+    /// something you can look at rather than a histogram.
+    ///
+    /// ⚠ Only over cells the terrain DRAWS. A cell that is both undrawn and unbuildable is
+    /// simply outside the park, and colouring those paints the whole surround red and says
+    /// nothing.</summary>
+    void BuildBuildableOverlay()
+    {
+        _buildable?.QueueFree();
+        _buildable = null;
+        var f = _park?.Field;
+        if (f == null || _holeSize.X <= 1f) return;
+
+        var st = new SurfaceTool();
+        st.Begin(Mesh.PrimitiveType.Triangles);
+        int no = 0, yes = 0;
+        for (int y = 0; y < f.Height; y++)
+            for (int x = 0; x < f.Width; x++)
+            {
+                if (!f.Drawn(x, y)) continue;
+                if (f.Buildable(x, y)) { yes++; continue; }
+                no++;
+                var c = _park.CellCentre(x, y) + new Vector3(0f, Park.CellSize * 0.04f, 0f);
+                float h = Park.CellSize * 0.5f;
+                var a = c + new Vector3(-h, 0, -h); var b = c + new Vector3(h, 0, -h);
+                var d = c + new Vector3(h, 0, h);   var e = c + new Vector3(-h, 0, h);
+                foreach (var v in new[] { a, b, d, a, d, e }) st.AddVertex(v);
+            }
+        if (no == 0) { GD.Print($"[build] every drawn cell is buildable ({yes})"); return; }
+        var mesh = st.Commit();
+        _buildable = new MeshInstance3D
+        {
+            Mesh = mesh,
+            // ⭐ Visible from the start for a shot run, which cannot press a key.
+            Visible = System.Environment.GetEnvironmentVariable("TPW_PARK_BUILD") == "1",
+            MaterialOverride = new StandardMaterial3D
+            {
+                AlbedoColor = new Color(1f, 0.15f, 0.15f, 0.42f),
+                Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
+                ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+                CullMode = BaseMaterial3D.CullModeEnum.Disabled,
+            },
+        };
+        AddChild(_buildable);
+        GD.Print($"[build] {no} of {no + yes} drawn cells are NOT buildable "
+               + $"({100.0 * no / (no + yes):F0}%) -- byte0 bit 1; B shows them");
+    }
+
     /// <summary>The bounds of the terrain surfaces whose mesh name matches, in the terrain's
     /// parent space. Several surfaces share one mesh name, so they are merged.</summary>
     bool TerrainBounds(string name, out Aabb box)
@@ -1139,6 +1195,12 @@ public partial class Viewer : Node3D
         // ⚠ IT IS STILL ONE PARK'S WORD. Fantasy is the only world that ships a pad, so where a
         // pad exists its own z is used outright and elsewhere this offset stands in for it.
         const float AuthoredZBias = -2.29f;
+        // ⭐ PER-PARK, because the gates are not interchangeable and master calibrates them one
+        // at a time by eye. Each entry is one press of `]` that they asked for in that park and
+        // that park only; anything not listed rides the shared bias above.
+        //   JUNGLE ("LOST KINGDOM"): +0.25, 2026-09-22.
+        float perPark = (_lib.WadName ?? "").Contains("JUNGLE", StringComparison.OrdinalIgnoreCase)
+            ? 0.25f : 0f;
         if (!TerrainBounds("ticket_booths", out var booths))
         { GD.PrintErr("[gate] no ticket_booths -- cannot find this park's entrance axis"); return; }
         float shift = booths.Position.X + booths.Size.X * 0.5f - AuthoredX;
@@ -1172,13 +1234,14 @@ public partial class Viewer : Node3D
             var (lo, hi) = Park.DrawnBounds(_gate.Root, inParent: true);
             float dz = (hasPad
                 ? pad.Position.Z + pad.Size.Z * 0.5f - (lo.Z + hi.Z) * 0.5f
-                : AuthoredZBias) + _gateNudge;
+                : AuthoredZBias) + _gateNudge + perPark;
             _gate.Root.Position += new Vector3(shift, 0f, dz);
             _gate.Root.Visible = _mode == Mode.Park;
             GD.Print($"[gate] {ride.Name}: authored x {lo.X:F2}..{hi.X:F2}  y {lo.Y:F2}..{hi.Y:F2}  "
                    + $"z {lo.Z:F2}..{hi.Z:F2}; shifted {shift:+0.0;-0.0;0} x, {dz:+0.00;-0.00;0} z "
                    + (hasPad ? "onto its own gatebase01 pad" : "by the offset Fantasy's pad states")
                    + (_gateNudge != 0f ? $"  [nudged {_gateNudge:+0.00;-0.00}]" : "")
+                   + (perPark != 0f ? $"  [this park {perPark:+0.00;-0.00}]" : "")
                    + $"\n[gate] front edge now z={hi.Z + dz:F2} -- the road ends at -18.90 and the "
                    + $"booths' back is -16.12, in every park");
         }
@@ -1343,6 +1406,14 @@ public partial class Viewer : Node3D
     /// to live only in FrameParkCamera, so opening a map without a ride silently ignored them.</summary>
     void ParkCameraOverrides()
     {
+        // ⚠ A DEBUG VIEWPOINT MUST TURN THE GAME CAMERA OFF. StartGameCam runs after this and
+        // puts the camera back at the plot centre, so asking for the top-down or the close-up and
+        // getting the ordinary game view is not the switch failing -- it is being overruled one
+        // line later. Same fault fable hit with the mesh aim.
+        if (System.Environment.GetEnvironmentVariable("TPW_HOLE_DEBUG") == "1"
+            || System.Environment.GetEnvironmentVariable("TPW_PARK_CLOSEUP") == "1"
+            || System.Environment.GetEnvironmentVariable("TPW_PARK_UNDER") == "1")
+            _freeCam = true;
         // ⚠ Straight down on demand. An orbited view cannot be read for placement -- which way +X
         // and +Z run on screen is unknown, and I misjudged the same picture three times arguing
         // the floor was off the island when its coordinates said otherwise. Top-down makes screen
@@ -1425,6 +1496,7 @@ public partial class Viewer : Node3D
         // ⚠ LAST. Everything above sets the camera, so aiming before them aims at nothing.
         LoadGate();
         LoadSky();
+        BuildBuildableOverlay();
         var want = (System.Environment.GetEnvironmentVariable("TPW_PS2_WEATHER") ?? "").ToLowerInvariant();
         var kind = want.StartsWith("rain") ? Weather.Kind.Rain
                  : want.StartsWith("snow") ? Weather.Kind.Snow : Weather.Kind.None;
