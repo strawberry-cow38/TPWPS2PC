@@ -45,6 +45,8 @@ public sealed class RseMachine
     public int this[string name] { get => this[Program.VariableIndex(name)]; set => this[Program.VariableIndex(name)] = value; }
     public IReadOnlyList<int> Variables => Array.AsReadOnly(_variables);
     public int GuestCount => _guestTop;
+    /// <summary>Guest identities in HUSH order, excluding the shared call-stack region.</summary>
+    public IReadOnlyList<int> GuestIds => Array.AsReadOnly(_stack[.._guestTop]);
 
     /// <summary>One scheduled visit, using the authored instruction budget (+0x10).
     /// Critical sections suspend that budget; a separate hard limit faults runaway locks.</summary>

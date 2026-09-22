@@ -16,6 +16,7 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TPW.PS2.FontAudit", "tools\TPW.PS2.FontAudit\TPW.PS2.FontAudit.csproj", "{A1000000-0000-0000-0000-000000000008}"
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TPW.PS2.RseAudit", "tools\TPW.PS2.RseAudit\TPW.PS2.RseAudit.csproj", "{A1000000-0000-0000-0000-000000000009}"
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TPW.PS2.AdvisorAudit", "tools\TPW.PS2.AdvisorAudit\TPW.PS2.AdvisorAudit.csproj", "{A1000000-0000-0000-0000-00000000000A}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TPW.PS2.VisitorAudit", "tools\TPW.PS2.VisitorAudit\TPW.PS2.VisitorAudit.csproj", "{4484758D-E46D-498C-A5FD-56AA1EE92C98}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -59,5 +60,9 @@ Global
 		{A1000000-0000-0000-0000-000000000004}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{A1000000-0000-0000-0000-000000000005}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{A1000000-0000-0000-0000-000000000005}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4484758D-E46D-498C-A5FD-56AA1EE92C98}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4484758D-E46D-498C-A5FD-56AA1EE92C98}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4484758D-E46D-498C-A5FD-56AA1EE92C98}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4484758D-E46D-498C-A5FD-56AA1EE92C98}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

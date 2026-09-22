@@ -30,6 +30,9 @@ public sealed class Park
     /// <summary>The plot's own floor, WITHOUT the terrain model parented beside it. Hiding the
     /// whole Root hides the terrain too, which answers nothing.</summary>
     public Node3D Floor => _ground;
+
+    public ParkPaths Paths { get; private set; }
+    public void SetPaths(ParkPaths paths) { Paths = paths; Field = paths.Field; }
     Node3D _ground, _ride;
 
     /// <summary>A ride's footprint as a grid. `*` is an occupied cell and `2` the entrance; rows
@@ -835,11 +838,17 @@ public sealed class Park
         // Godot, not a move, and leaves the ride where it was.
         model.GetParent()?.RemoveChild(model);
         _ride.AddChild(model);
-        var (min, max) = DrawnBounds(model);
+        var (min, max) = DrawnBounds(model, inParent: true);
         var centre = (min + max) * 0.5f;
-        model.Position = new Vector3(
+        model.Position += new Vector3(
             Origin.X + (x + fp.Width * 0.5f) * CellSize - centre.X,
             BaseY - min.Y,
+            // ⚠⚠ MERGE NOTE, visitor-ai. That branch changed this same line the other way --
+            // `+ centre.Z` to `- centre.Z` -- for a holder whose children the live RSSE presenter
+            // replaces and which may be UNMIRRORED. Mine is kept because main's caller passes the
+            // mirrored AnimatedModel root and the row reversal below it was confirmed visually by
+            // master (the wooden bridge landing on the road). ⚠ The presenter's unmirrored case is
+            // therefore UNTESTED against this line and is tinyclaw's to re-check.
             // ⚠ PLUS, not minus. The model root's Scale.Z is -1, so a local z maps to world -z:
             // the offset that lands the model's own centre on the plot has to be added back. X and
             // Y are unscaled and stay as they are.
