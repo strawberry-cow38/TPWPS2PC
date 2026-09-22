@@ -56,14 +56,12 @@ public sealed class AnimatedModel
     /// conjugates the whole assembled scene -- vertices, node transforms and the hierarchy together
     /// -- so nothing can be half-converted.
     ///
-    /// ⚠ A mirror reverses triangle orientation, so front faces become back faces. That costs
-    /// nothing here because the shader lights both sides via FRONT_FACING; it would matter if
-    /// culling were ever re-enabled.</summary>
-    /// <summary>⚠ Scale (1,1,-1) is a MIRROR, determinant -1, and it reverses triangle winding on
-    /// the way to the screen -- which is the root of the winding trouble. A true 180-degree yaw is
-    /// (-1,1,-1), determinant +1, orientation-preserving. If the intent was ever "turn it round"
-    /// rather than "flip it", the X negation is missing and everything is mirrored rather than
-    /// rotated. TPW_PS2_YAW180=1 renders it the other way so the two can be compared.</summary>
+    /// ⚠ A mirror reverses triangle orientation on the way to the screen. Godot allows for that
+    /// itself: an instance whose global transform has a negative determinant is drawn with its
+    /// cull mode reversed, so the mesh-space facing that Model.Triangles establishes survives this
+    /// root. Verified by the cull_back control render, where the ground stays visible from above
+    /// under this mirror. A true 180-degree yaw is (-1,1,-1), determinant +1;
+    /// TPW_PS2_YAW180=1 renders it that way so the two can be compared.</summary>
     public Node3D Root { get; } = new Node3D
     {
         Scale = System.Environment.GetEnvironmentVariable("TPW_PS2_YAW180") == "1"
@@ -159,47 +157,43 @@ public sealed class AnimatedModel
     // ⚠ Culling is owned by the shader's render_mode, not by a material property. It is built
     // into the shader source from TPW_PS2_CULL rather than hardwired -- it used to say
     // `cull_disabled` while the switch below claimed a default of `back`, so the switch was a
-    // fiction and nothing ever culled. The measured fact stays in findings/formats.md: M3D2 front
-    // faces are CLOCKWISE, which is why the triangles below are emitted reversed.
+    // fiction and nothing ever culled.
+    //
+    // ⭐⭐ BACK CULLING IS THE MODE THIS DATA WAS AUTHORED FOR, AND THE FILE SAYS WHICH WAY EACH
+    // TRIANGLE FACES. Bit 0 of every vertex's Y word is a per-triangle facing flag, and the game's
+    // VU1 microprogram culls with it (findings/formats.md, "winding is a per-triangle flag").
+    // Model.Triangles honours it and hands out every triangle in OUTWARD order -- right-hand
+    // normal out, counter-clockwise front. Godot's front face is CLOCKWISE, so the triangles below
+    // are emitted reversed (A, C, B), uniformly, with no per-triangle guessing.
 
     /// ⚠ TRIED AND REJECTED, kept switchable so nobody re-tries it blind: duplicating every
     /// triangle puts two coincident faces at the SAME depth, which z-fights per pixel and looks
     /// worse than either plain mode. `TPW_PS2_CULL=two` still selects it; it is not the default.
-    /// <summary>⚠ DEFAULT IS `off` AND THAT IS A KNOWN DEFECT, NOT A CHOICE. `back` is the mode
-    /// this data was authored for -- M3D2 front faces are CLOCKWISE and the triangles are emitted
-    /// reversed for it -- and it visibly FIXES the bus stop canopies. It also deletes the terrain's
-    /// ground, because within ONE model the ground is wound the other way from the shelters. Until
-    /// the per-triangle winding is decoded, culling cannot be turned on globally.</summary>
-    static string CullMode => (OS.GetEnvironment("TPW_PS2_CULL") ?? "off").ToLowerInvariant();
+    /// <summary>`back` is the default and the mode the data was authored for. `off` is the control:
+    /// it is what the viewer did for its first weeks, and it shows the underside of every roof
+    /// through the roof wherever the two are near-coplanar.</summary>
+    static string CullMode => (OS.GetEnvironment("TPW_PS2_CULL") ?? "back").ToLowerInvariant();
 
     static bool TwoSided => CullMode is "two" or "twosided";
 
     /// <summary>The shader's cull render_mode. ⚠⚠ IT USED TO BE HARDWIRED TO `cull_disabled`
-    /// WHILE THE SWITCH ABOVE CLAIMED A DEFAULT OF `back` -- so the declared default was a
-    /// fiction and nothing ever culled. Drawing back faces means the INSIDE of a roof can win
-    /// over its outside wherever the two are near-coplanar, which is the flat slab across the bus
-    /// stop canopies. M3D2 front faces are CLOCKWISE and the triangles are emitted reversed for
-    /// it, so back culling is the mode this data was authored for.
-    /// TPW_PS2_CULL=off restores the old behaviour, which is the control.</summary>
-    static string CullRenderMode => CullMode is "back" ? "cull_back" : "cull_disabled";
+    /// WHILE THE SWITCH ABOVE CLAIMED A DEFAULT OF `back`, so nothing ever culled and the ground
+    /// under every park drew its own underside on top of itself.</summary>
+    static string CullRenderMode => CullMode is "off" or "disabled" or "none" or "two" or "twosided"
+        ? "cull_disabled" : "cull_back";
 
     /// <summary>The viewer's material, as a shader rather than a StandardMaterial3D.
     ///
-    /// ⚠⚠ THE REASON IS TWO-SIDED LIGHTING. With culling disabled, Godot's StandardMaterial3D does
-    /// NOT flip the normal on back faces, so every surface you are seeing from behind is lit by a
-    /// normal pointing away from the light and comes out dark. The owner described it exactly:
-    /// "all the faces are there, its like they are textured on the wrong side half of the time."
-    /// `FRONT_FACING` is the only way to fix that, and it needs a shader.
+    /// ⚠⚠ THE REASON WAS TWO-SIDED LIGHTING. With culling disabled, Godot's own side check lights
+    /// a back face by the NEGATED normal, so with the winding unknown half of every model was lit
+    /// from the wrong side -- the owner's "textured on the wrong side half of the time". The
+    /// `SideCheck` line below undoes that so both sides use the model's stored normal. Now that the
+    /// winding is read from the file, cull_back is the default and no face is ever lit from behind.
     ///
     /// It also carries the two settings this data actually needs: repeat, because `m_boxes` UVs run
     /// u 0..4, and a cutout threshold of 16/255 rather than the engine default of 0.5, which would
     /// discard the ~50% of texels at or below alpha 128.</summary>
     static Shader _shader, _blendShader;
-
-    /// <summary>How many triangles had their winding corrected, and out of how many. Reported so
-    /// the correction can be checked against the 37% measured off the file rather than trusted.</summary>
-    static int _wound, _woundTotal;
-    public static (int Flipped, int Total) WindingFixes => (_wound, _woundTotal);
 
     /// <summary>The blended twin of the viewer shader, for textures with SOFT alpha.
     ///
@@ -238,8 +232,7 @@ void fragment() {
     } else {
         ALBEDO = vec3(0.72);
     }
-    if (!FRONT_FACING) { NORMAL = -NORMAL; }
-}
+" + SideCheck + @"}
 "
     };
 
@@ -265,12 +258,28 @@ void fragment() {
     } else {
         ALBEDO = vec3(0.72);
     }
-    // ⭐ Light a back face by the normal it actually presents; without this half of every closed
-    // model renders dark and reads as missing artwork.
-    if (!FRONT_FACING) { NORMAL = -NORMAL; }
-}
+" + SideCheck + @"}
 "
     };
+
+    /// <summary>The two-sided lighting line, and ⚠⚠ ONLY WHEN CULLING IS OFF.
+    ///
+    /// With `cull_disabled`, Godot's own two-sided lighting (its DO_SIDE_CHECK) negates the
+    /// interpolated normal of every back face BEFORE the fragment function runs. Negating it again
+    /// here lands both sides on the model's stored normal, which is the lighting this data was
+    /// authored for -- and is why reversing every triangle's order changes not one pixel of a
+    /// no-cull render.
+    ///
+    /// With `cull_back` there are no back faces to light, and the line is actively wrong: the scene
+    /// root is a mirror (Scale 1,1,-1), Godot draws a mirrored instance by swapping the pipeline's
+    /// cull mode, and FRONT_FACING then reports FALSE for every visible face. The first cull_back
+    /// render with the winding fixed had the whole terrain at ambient only -- the sea floor read
+    /// (0,19,28) against (1,56,69) with culling off, a 2.95x ratio that is exactly
+    /// (ambient + 0.8 x directional) / ambient -- because this line turned every normal away from
+    /// the light.</summary>
+    static string SideCheck => CullRenderMode == "cull_disabled"
+        ? "    if (!FRONT_FACING) { NORMAL = -NORMAL; }   // undo Godot's side check: stored normal both sides\n"
+        : "";
 
     void SetTexture(ShaderMaterial material, int slot, int index)
     {
@@ -323,49 +332,18 @@ void fragment() {
             bool two = TwoSided;
             foreach (var t in grp)
             {
-                // ⭐⭐ WINDING PER TRIANGLE, FROM THE MODEL'S OWN NORMALS. Emitting A,C,B for every
-                // triangle assumes the source is consistently wound, and this one is not: measured
-                // over jungle's terrain, 37% of near-horizontal triangles end up facing away --
-                // whole meshes at 100% (`surface13/15/22/25/27`, every `HOARDING_*`, `RIVERBED_04`).
-                // A face wound backwards is culled, so it is simply absent.
+                // ⭐ Model.Triangles already put every triangle in OUTWARD order (right-hand normal
+                // out) from the file's own per-triangle facing flag. Godot's front face is
+                // CLOCKWISE, so emit reversed: A, C, B. One rule for every triangle.
                 //
-                // The stored per-vertex normal says which side is out. Pick the order whose
-                // geometric normal AGREES with it.
-                //
-                // ⚠ I first reasoned this the other way -- opposed, on the grounds that the scene
-                // root's Scale (1,1,-1) has determinant -1 and reverses orientation. That gave a
-                // 61% flip rate against the 37% measured off the file, i.e. it was correcting the
-                // majority and breaking them. The check below caught it; the argument had sounded
-                // perfectly good.
-                //
-                // ⭐ Self-checking: the flip count is logged, and a 61% reading caught the sign
-                // being inverted before this shipped.
-                //
-                // ⭐ THE COUNT IS NOW CROSS-CHECKED. An independent census off the per-vertex
-                // normals (Model.Vertices, Batch.NormalOffset, three signed bytes over 127), run
-                // through the other reader, gives 38.8% against this code's 38.2%. ⚠ Compare the
-                // same CONVENTION or the numbers look like a disagreement: this code emits A,C,B,
-                // so its geometric normal is the negation of the natural order's, and 61.2%
-                // "opposing" under A,B,C is the same fact as 38.8% under A,C,B. Both readers
-                // already honour strip parity; ignoring it lands at ~50%, which is chance.
-                //
-                // ⚠⚠ THE SEMANTICS ARE STILL NOT VERIFIED. That two readers agree on the number
-                // does not make it the right rule: the stored normals are per-VERTEX and smoothed,
-                // so averaging three over near-flat terrain gives roughly +Y whatever the face
-                // does -- "disagrees with the stored normal" may be measuring "faces down" rather
-                // than "is wound wrong". (tinyclaw's caution, and it stands.)
-                //
-                // ⚠ And the ~37% I first cited as agreement was a DIFFERENT QUANTITY -- the share
-                // of near-horizontal triangles facing down in model space, not disagreement with a
-                // stored normal. Two unrelated metrics landing 1% apart. That was a coincidence,
-                // not evidence, and I reported it as confirmation.
-                var na = p.Normal[t.A] + p.Normal[t.B] + p.Normal[t.C];
-                var pa = pos[t.A]; var pb = pos[t.B]; var pc = pos[t.C];
-                var g = System.Numerics.Vector3.Cross(pc - pa, pb - pa);      // normal of A,C,B
-                bool keep = g.X * na.X + g.Y * na.Y + g.Z * na.Z >= 0;
-                if (!keep) _wound++;
-                _woundTotal++;
-                foreach (var idx in keep ? new[] { t.A, t.C, t.B } : new[] { t.A, t.B, t.C })
+                // ⚠⚠ This used to pick the order per triangle by comparing the geometric normal
+                // with the stored vertex normals -- and had the sign backwards, so it faced EVERY
+                // triangle away from its normal. With culling off nobody could see that; the first
+                // real cull_back render lost the ground, the road and the sea (63% of the frame)
+                // while the bus shelters, inside out, happened to look plausible. The reader's
+                // parity swap before that pointed half the ground down too. Neither guess is
+                // needed now that the file's flag is read.
+                foreach (var idx in new[] { t.A, t.C, t.B })
                 {
                     st.SetUV(p.Uv[idx]);
                     // ⭐ The model's OWN normal, not one derived from triangle order.
@@ -374,7 +352,7 @@ void fragment() {
                     st.AddVertex(new Godot.Vector3(v.X, v.Y, v.Z));
                 }
                 if (!two) continue;
-                foreach (var idx in keep ? new[] { t.A, t.B, t.C } : new[] { t.A, t.C, t.B })  // back copy
+                foreach (var idx in new[] { t.A, t.B, t.C })  // back copy
                 {
                     st.SetUV(p.Uv[idx]);
                     st.SetNormal(-p.Normal[idx]);                 // ⚠ flipped, or it lights inside-out

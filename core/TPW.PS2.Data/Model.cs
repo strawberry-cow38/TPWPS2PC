@@ -259,16 +259,37 @@ public sealed class Model
 
     public record Triangle(int A, int B, int C, int Material);
 
-    /// <summary>⭐ The mesh's real triangles, honouring the **ADC bit**.
+    /// <summary>⭐ The mesh's real triangles, honouring the TWO flags the VU1 microcode reads off
+    /// every vertex.
     ///
-    /// A batch is a triangle strip with the PS2's ADC flag living in **bit 0 of the X position
-    /// word**: a triangle spanning vertices k, k+1, k+2 is drawn only when bit 0 of vertex k+2's X
-    /// is CLEAR. One rule both restarts a strip inside a batch -- so no triangle bridges unrelated
-    /// pieces -- and kills a fan's degenerate triangles. The flag costs one ulp on a float, which is
-    /// why <c>FUN_001a6d68</c> writes X as <c>value &amp; 0xfffffffe | old &amp; 1</c>.
+    /// A batch is a triangle strip. Vertex k carries, in the low bit of two of its float words:
+    /// <list type="bullet">
+    /// <item>X bit 0 -- ADC: the triangle (k-2, k-1, k) is not drawn. That restarts a strip inside
+    /// a batch and kills a fan's degenerate triangles.</item>
+    /// <item>Y bit 0 -- FACING: 1 means the triangle (k-2, k-1, k) faces its own right-hand normal,
+    /// so that order is the outward (counter-clockwise-front) order; 0 means it faces the other
+    /// way, so the outward order is (k-2, k, k-1).</item>
+    /// </list>
+    ///
+    /// ⚠⚠ THERE IS NO STRIP PARITY. This used to swap every odd triangle (<c>if (k &amp; 1)</c>),
+    /// which is what a strip means on hardware with a winding convention. The GS has none, and the
+    /// game culls in its VU1 microprogram instead (<c>.vutext</c>, the strip loops at L00ab-L00c4
+    /// and L00e8-L0106): it takes the screen-space orientation of (k-2, k-1, k) from
+    /// OPMULA/OPMSUB, reads the sign flag of its Z, and forces ADC on when that sign differs from
+    /// Y bit 0. The flag is per-triangle and authoritative; the parity guess agreed with it only by
+    /// chance, and pointed half of jungle's ground DOWN. See findings/formats.md.
+    ///
+    /// Validated on the data: with this rule the right-hand normal of every triangle of every
+    /// ground mesh in jungle's terrain_1 points up (2,618 of 2,619), and it agrees with the stored
+    /// vertex normals on 60,084 of 60,537 triangles across all 112 jungle models (99.25%). The
+    /// disagreements are where smoothed vertex normals are unreliable; the flag is what the game
+    /// culls with, not the normal.
+    ///
+    /// Each flag costs one ulp on a float, which is why <c>FUN_001a6d68</c> writes X AND Y as
+    /// <c>value &amp; 0xfffffffe | old &amp; 1</c>.
     ///
     /// ⭐ Validated against <c>mesh+0x62</c>, the format's own face count: reading each batch as one
-    /// plain strip matches for 8.1% of meshes; this matches for **935 / 935 = 100.00%**.</summary>
+    /// plain strip matches for 8.1% of meshes; honouring ADC matches for **935 / 935 = 100.00%**.</summary>
     public List<Triangle> Triangles(Mesh m)
     {
         var batchMat = new Dictionary<int, int>();
@@ -280,12 +301,17 @@ public sealed class Model
         foreach (var b in Batches(m))
         {
             var adc = new bool[b.Count];
-            for (int k = 0; k < b.Count; k++) adc[k] = (U32(b.PosOffset + k * 12) & 1) != 0;
-            for (int k = 0; k < b.Count - 2; k++)
+            var faces = new bool[b.Count];
+            for (int k = 0; k < b.Count; k++)
             {
-                if (adc[k + 2]) continue;
-                int i0 = k, i1 = k + 1, i2 = k + 2;
-                if ((k & 1) != 0) (i1, i2) = (i2, i1);
+                adc[k] = (U32(b.PosOffset + k * 12) & 1) != 0;          // X bit 0
+                faces[k] = (U32(b.PosOffset + k * 12 + 4) & 1) != 0;    // Y bit 0
+            }
+            for (int k = 2; k < b.Count; k++)
+            {
+                if (adc[k]) continue;
+                int i0 = k - 2, i1 = k - 1, i2 = k;
+                if (!faces[k]) (i1, i2) = (i2, i1);   // faces away from its right-hand normal
                 tris.Add(new Triangle(baseV + i0, baseV + i1, baseV + i2,
                                       batchMat.TryGetValue(bi, out var mm) ? mm : -1));
             }

@@ -2,8 +2,10 @@
 header 0x00 u32 magic 0x183076E4 | 0x04 u32 version | 0x30 u16 meshCount | 0x48 u32 meshTable
 mesh entry, 160 B: +0x10 mat4 | +0x50 texIdx | +0x54 nameOff | +0x60 u16 vertCount, u16 faceCount
                    +0x6C u32 batchTable | +0x94 u32 batchTableLen
-batch, 16 B: u32 posOff, u32 bOff, u32 cOff, u32 vertCount
-             positions = vertCount xyz float32 at posOff (stream padded out to a vertex multiple)
+batch, 16 B: u32 posOff, u32 uvOff, u32 normalOff, u16 vertCount (+u16 ceil(n/3))
+             positions = vertCount xyz float32 at posOff; uvs int16/4096 pairs; normals 3 x int8/127
+             ⭐ bit 0 of X = ADC (triangle ending here not drawn); bit 0 of Y = FACING of that
+             triangle (1: faces its right-hand normal, 0: faces the other way) -- see `triangles`
 """
 import struct, re
 NAME = re.compile(rb'[ -~]{1,31}\0')
@@ -53,30 +55,50 @@ def strips(m, mesh):
             for a, b, c, n in batches(m, mesh)]
 
 
+def _strip_triangles(m, a, n, base=0):
+    """The drawn triangles of one batch as index triples, in OUTWARD (counter-clockwise-front)
+    order, from the two flags the VU1 microcode reads off each vertex -- see `triangles`."""
+    out = []
+    words = [struct.unpack_from('<2I', m, a + k*12) for k in range(n)]
+    for k in range(2, n):
+        if words[k][0] & 1: continue                # ADC: the triangle ending here is not drawn
+        i0, i1, i2 = k-2, k-1, k
+        if not words[k][1] & 1: i1, i2 = i2, i1     # faces AWAY from its right-hand normal
+        out.append((base+i0, base+i1, base+i2))
+    return out
+
+
 def triangles(m, mesh):
-    """⭐ The mesh's real triangles, as (v0, v1, v2) positions.
+    """⭐ The mesh's real triangles, as (v0, v1, v2) positions in OUTWARD order: the right-hand
+    normal of each triple is the side the game shows.
 
-    A batch is a triangle strip with the PS2's **ADC bit** in it: **bit 0 of the X position word**
-    means "do not draw a triangle ending at this vertex". It is how the format restarts a strip
-    inside a batch (the first two vertices of a new piece are suppressed) and how it kills the
-    degenerate triangles of a fan.
+    A batch is a triangle strip and vertex k carries TWO flags in the low bit of its floats:
+      X bit 0 -- ADC: the triangle (k-2, k-1, k) is not drawn. Restarts a strip inside a batch
+                 and kills a fan's degenerate triangles.
+      Y bit 0 -- FACING: 1 = the triangle (k-2, k-1, k) faces its own right-hand normal, so that
+                 is the outward order; 0 = it faces the other way, outward order (k-2, k, k-1).
 
-    The position value is a float, so the flag costs one ulp -- invisible -- which is why the
-    runtime writer is careful to preserve it: `FUN_001a6d68` stores X as
+    ⚠⚠ THERE IS NO STRIP PARITY. This used to swap every odd triangle (`if k & 1`), which is what
+    a strip means on hardware with a winding convention. The GS has none; the game culls in its
+    VU1 microprogram (SLES_500.32 `.vutext`, strip loops at L00ab-L00c4 and L00e8-L0106 --
+    `tools/vu1dis.py`): it takes the screen-space orientation of (k-2, k-1, k) from OPMULA/OPMSUB,
+    reads the sign flag of its Z (FMAND 0x20), and forces ADC on when that sign differs from Y bit
+    0. Per-triangle, authoritative. The parity guess pointed half of jungle's ground DOWN.
+
+    Validated on the data (`tools/winding_check.py`): every ground triangle of jungle's terrain_1
+    faces up under this rule (2,618 / 2,619), and it agrees with the stored vertex normals on
+    60,084 / 60,537 triangles across all 112 jungle models (99.25%).
+
+    Each flag costs one ulp, which is why the runtime writer `FUN_001a6d68` stores X AND Y as
     `(uint)value & 0xfffffffe | old & 1`.
 
     ⭐⭐ Validated against the mesh's own face count at +0x62: reading each batch as one plain strip
-    matches it for **8.1%** of meshes; filtering by the ADC bit AND taking the batch count from
-    +0x66 matches for **935 / 935 = 100.00%**."""
+    matches it for **8.1%** of meshes; honouring ADC AND taking the batch count from +0x66 matches
+    for **935 / 935 = 100.00%**."""
     out = []
     for a, b, c, n in batches(m, mesh):
         pos = [struct.unpack_from('<3f', m, a + k*12) for k in range(n)]
-        adc = [struct.unpack_from('<I', m, a + k*12)[0] & 1 for k in range(n)]
-        for k in range(n - 2):
-            if adc[k+2]: continue                   # ADC: this triangle is not drawn
-            i0, i1, i2 = k, k+1, k+2
-            if k & 1: i1, i2 = i2, i1
-            out.append((pos[i0], pos[i1], pos[i2]))
+        out += [(pos[i0], pos[i1], pos[i2]) for i0, i1, i2 in _strip_triangles(m, a, n)]
     return out
 
 
@@ -85,12 +107,7 @@ def triangle_indices(m, mesh):
     renderer needs when an animation replaces vertex POSITIONS by index."""
     out, base = [], 0
     for a, b, c, n in batches(m, mesh):
-        adc = [struct.unpack_from('<I', m, a + k*12)[0] & 1 for k in range(n)]
-        for k in range(n - 2):
-            if adc[k+2]: continue
-            i0, i1, i2 = k, k+1, k+2
-            if k & 1: i1, i2 = i2, i1
-            out.append((base+i0, base+i1, base+i2))
+        out += _strip_triangles(m, a, n, base)
         base += n
     return out
 
@@ -163,15 +180,10 @@ def triangle_indices_mat(m, mesh):
         for j in range(first, first + nb): batch_mat[j] = mi
     tris, uvs, base = [], [], 0
     for j, (a, b, c, n) in enumerate(batches(m, mesh)):
-        adc = [struct.unpack_from('<I', m, a + k*12)[0] & 1 for k in range(n)]
         for k in range(n):
             u, v = struct.unpack_from('<2h', m, b + k*4)
             uvs.append((u/4096.0, v/4096.0))
-        for k in range(n - 2):
-            if adc[k+2]: continue
-            i0, i1, i2 = k, k+1, k+2
-            if k & 1: i1, i2 = i2, i1
-            tris.append((base+i0, base+i1, base+i2, batch_mat.get(j)))
+        tris += [(i0, i1, i2, batch_mat.get(j)) for i0, i1, i2 in _strip_triangles(m, a, n, base)]
         base += n
     return tris, uvs
 

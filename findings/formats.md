@@ -313,6 +313,12 @@ posts and swags and the sign backings disappear.
 
 ## Winding: front faces are CLOCKWISE
 
+⚠⚠ **SUPERSEDED 2026-09-22** — there is no strip parity and no single winding. Each triangle
+carries its own facing in **bit 0 of vertex k's Y word**, and the game's VU1 microcode culls with
+it. See *"Winding is a per-triangle flag"* at the end of this file. The numbers below were taken
+with the parity guess, which faces half of a strip the wrong way and happened to look right on
+`mumbo`.
+
 ⚠⚠ **AND I REJECTED THIS HYPOTHESIS AFTER TESTING HALF OF IT.** Master suggested bad winding; I
 implemented alternating strip winding with culling, saw the render get worse, and wrote it up as
 "tested and rejected". I had tested **one cull parity**. The other is right.
@@ -675,6 +681,10 @@ not.
 
 ## ⭐ M3D2 FRONT FACES ARE CLOCKWISE — opposite to Godot's convention
 
+⚠ **SUPERSEDED in part, 2026-09-22.** The parity walk this was measured with is wrong (see the
+per-triangle-flag section at the end). What survives: Godot's front face IS clockwise, so the
+outward order the reader now produces is still emitted reversed.
+
 Asked directly whether the winding was right, the honest first answer was **no idea**, because the
 viewer had culling DISABLED. That does not answer the question, it hides it — and it is what let a
 wrong parity survive for days on the PSX side.
@@ -773,9 +783,10 @@ Root = new Node3D { Scale = new Vector3(1, 1, -1) };
 hierarchy together — so nothing can end up half-converted, which is the usual way a handedness fix
 goes wrong.
 
-⚠ A mirror reverses triangle orientation, so front faces become back faces. That costs nothing
-while the shader lights both sides via `FRONT_FACING`; it would matter immediately if culling were
-re-enabled. Noted next to the code rather than left as a trap.
+⚠ A mirror reverses triangle orientation, so front faces become back faces. Godot allows for it
+by reversing the cull mode of a negative-determinant instance -- but `FRONT_FACING` then reports
+FALSE for every visible face of it, which is the trap that bit when culling was re-enabled (see
+the per-triangle-flag section at the end).
 
 ⚠ This was already known on the PSX side of the project ("left-handed → negate z") and it still
 took the owner pointing at a mirrored picture to apply it here. **A fact recorded about one build
@@ -2119,3 +2130,102 @@ through this function.
 objection was the right one: *pulling a tool you have stopped believing, without knowing why,
 removes the evidence along with the doubt.* Finding out why took one diff against the reader and
 produced a one-line fix.
+
+
+## ⭐⭐ WINDING IS A PER-TRIANGLE FLAG IN THE FILE: BIT 0 OF Y (2026-09-22)
+
+**The symptom, measured.** With the viewer's cull switch made real, `TPW_PS2_CULL=back` rendered
+the bus shelters correctly and deleted the terrain's ground, road and sea: **321,634 of 509,320
+pixels changed (63.1%)** against the no-cull render (`tools/pngdiff.py`). Inside one model,
+`terrain_1.mps`, the ground was wound the opposite way to the shelters. Not a per-mesh property:
+every one of its 144 meshes has a local matrix of determinant **+1.00** under one uniform 0.1
+parent (`tools/m3d2.py world_transforms`), so no node is mirrored.
+
+**And no parity rule fits.** Per batch, the natural strip order (k-2, k-1, k) with the odd-triangle
+swap points the ground DOWN for 1,154 of its 2,619 triangles -- chance. Counting the parity from
+each ADC restart instead is just as mixed (`A_SEA_04`: `dd.uu..uuu..uu.dd..dddd.uu.ddd`). Meshes
+like `surface15` are 100% one way and `LAND_00` is 49/51, which no strip convention produces.
+
+### Read the parser: the game culls in its VU1 microprogram
+
+The GS has no winding convention; the culling is in the microcode. `SLES_500.32`'s `.vutext`
+(EE `0x2a4210`, 7,104 bytes) is two pre-built DMA chains of VIF `MPG` uploads (findings/executable.md
+has the map), and `tools/vu1dis.py` disassembles all 868 instructions with none undecoded. The
+strip loop of the main program, per vertex k, with the previous two screen-space positions in
+`vf30`/`vf31` and the current one in `vf20`:
+
+```
+L009d  ILW.x   vi03, -1(vi12)        ; X word of vertex k          L00a1 ILW.y vi08, -1(vi12)  ; Y word
+L00ae  IAND    vi06, vi03, vi01      ; vi06 = X & 1  = ADC          L00ac IAND  vi05, vi08, vi01 ; vi05 = Y & 1
+L00b0  IADDIU  vi05, vi05, 0x1f      ; (Y & 1) + 0x1f
+L00b6  IAND    vi05, vi05, vi04      ; & 0x20  -> 0x20 iff Y bit 0 is set        (vi04 = 0x20)
+L00af  SUB     vf29, vf31, vf20      ; prev2 - cur                  L00b0 SUB vf28, vf30, vf20  ; prev1 - cur
+L00b6  OPMULA.xyz ACC, vf28, vf29    ; cross product ...
+L00b7  OPMSUB.xyz vf27, vf29, vf28   ; ... its Z is the screen-space orientation; sets the MAC flags
+L00b8  IADDIU  vi06, vi06, 0x7fff    ; ADC -> bit 15 of the XYZ2 W word (0x8000 when set)
+L00bb  FMAND   vi07, vi04            ; vi07 = MAC SIGN flag of Z (bit 5 = 0x20)
+L00bc  IBNE    vi05, vi07, L00c3     ; flag != orientation ->
+L00c4    IADDIU vi06, vi06, 0x1      ;   ADC forced on: the triangle is NOT drawn
+L00c0  ISW.w   vi06, -1(vi13)        ; W of the emitted XYZ2
+```
+
+The clipped twin of the loop (L00e8–L0106, after `CLIPw`/`FCAND`) does the same compare. So the
+game decides per triangle: the screen-space orientation of (k-2, k-1, k) must equal bit 0 of vertex
+k's Y word, or the kick is suppressed. **That is the winding rule. There is no parity.** And the
+tell was on record already: `FUN_001a6d68` writes the animated X *and Y* as
+`value & 0xfffffffe | old & 1` -- two preserved bits, one of which had been read as noise.
+
+### The rule, with its sign calibrated on the data
+
+In mesh space, natural strip order (k-2, k-1, k), vertex k carrying the flags:
+
+| bit | meaning |
+|---|---|
+| X bit 0 = 1 | ADC: the triangle is not drawn (unchanged) |
+| **Y bit 0 = 1** | the triangle **faces its own right-hand normal**: (k-2, k-1, k) is the outward, counter-clockwise-front order |
+| **Y bit 0 = 0** | it faces the other way: the outward order is (k-2, k, k-1) |
+
+The microcode fixes the mechanism; the sign of "faces" goes through the projection and the GS's
+y-down raster, so it was calibrated on a control the data cannot argue with -- the ground -- and
+then checked against a quantity it was not fitted to (`tools/winding_check.py`):
+
+| check | result |
+|---|---|
+| every ground mesh of `terrain_1` (LAND, A_SEA, RIVERBED, surface): outward normal points up | **2,617 up, 1 down**, 1 vertical |
+| all 112 JUNGLE models: outward normal vs the stored vertex normals | **60,013 / 60,147 decided = 99.78%** (+390 ties: zero normals or degenerate) |
+| worst model | `croccar.mps` 68 / 76 -- smoothed vertex normals at creases, the flag is what the game culls with |
+| face count against `+0x62` | still **17,006 / 17,006** on `terrain_1` |
+| the parity guess, same ground | 1,154 down / 1,465 up |
+| the "wind from the stored normal" heuristic (38% flipped) | had its sign backwards: faced every triangle AWAY from its normal |
+
+### Two Godot facts that had to be right at the same time
+
+1. **Godot's front face is CLOCKWISE**, so the outward order is emitted reversed (A, C, B), the
+   same for every triangle. (`ArrayMesh` docs; also the sign of `Plane(a, b, c).normal`.)
+2. **Godot allows for the scene root's mirror by swapping the pipeline's cull mode**, and
+   `FRONT_FACING` then reports **false** for every visible face of a mirrored instance. The
+   viewer's `if (!FRONT_FACING) NORMAL = -NORMAL;` therefore turned every normal away from the
+   light as soon as culling was on: the sea floor read **(0,19,28)** against **(1,56,69)** with
+   culling off, a ratio of 2.95 = (0.45 ambient + 0.8 x 1.1 directional) / 0.45 ambient, in a scene
+   with no shadows. With culling off the same line only undoes Godot's own back-face normal flip
+   (`DO_SIDE_CHECK`), which is why reversing every triangle's order changed **0 pixels** of a no-cull
+   render. The line is now emitted only for `cull_disabled`.
+
+### The control, one render each, `TPW_PARK_MESH="BUS STOP"` in JUNGLE
+
+| cull back render | vs the same view with culling off |
+|---|---|
+| old rule | 321,634 / 509,320 px differ (63.1%): ground, road and sea gone |
+| flag rule, FRONT_FACING flip still in | 315,570 (62.0%): everything present, everything at ambient only |
+| **flag rule, flip out** | **13,825 (2.7%)**; sea patch **0 / 95,000**; the shelter box 9,615 / 41,600 (23%) |
+
+The 2.7% is the shelter roofs, which is where it should be: with culling off the underside of the
+roof (the down-facing half of `gte_rof1`) is drawn and shows through the translucent skylight
+(`gte_rof2`, alpha mostly 64–127) as a flat pale slab across the canopy. The game culls that
+underside from above, and now so does the viewer -- the canopy is a light roof with its two glass
+panels inset, and the terrain under it is pixel-identical to the no-cull render.
+
+⚠ Culling on means single-sided pieces are single-sided now. The flag says the flowers
+(`big flower*`, 8 up / 8 down) and palm tops are crossed quads authored with a face for each
+side, so they survive; anything an artist relied on being seen from behind would not. Nothing of
+the sort has been seen; noted so it is the first suspect if something thin goes missing.

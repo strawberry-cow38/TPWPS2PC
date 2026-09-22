@@ -1117,6 +1117,10 @@ public partial class Viewer : Node3D
         _focus = a.Position + a.Size * 0.5f;
         _dist = Mathf.Max(a.Size.Length() * 0.9f, 0.5f);
         _pitch = -0.25f;
+        // ⚠ The aim is an orbit-camera viewpoint, and StartGameCam runs right after this and puts
+        // the game's camera at the plot centre whenever the ground bake succeeds -- which silently
+        // replaced the aimed shot with the default park view. Aiming means the free camera.
+        _freeCam = true;
         GD.Print($"[aim] '{want}': {hits} surfaces, centre {_focus}, size {a.Size}");
     }
 
