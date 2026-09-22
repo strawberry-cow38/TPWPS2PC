@@ -64,6 +64,8 @@ public partial class Viewer : Node3D
     /// <summary>The camera the console actually runs. ⭐ THE DEFAULT in park mode, at master's
     /// call -- the orbit camera is the debug view, not the game's.</summary>
     readonly GameCamera _game = new();
+    /// <summary>The park's entrance arch, Features/Gates/Gates.mps, one per archive.</summary>
+    AnimatedModel _gate;
     /// <summary>G swaps to the free orbit camera.</summary>
     bool _freeCam;
     /// <summary>Ground height per TILE in world units, the same lookup the game does. Baked when
@@ -429,6 +431,7 @@ public partial class Viewer : Node3D
         // ⚠ Hide the model too. A transparent image pane over a lit 3D scene reads as a bug.
         if (_current != null) _current.Root.Visible = m == Mode.Models || (m == Mode.Park && _parkRide);
         if (_park != null) _park.Root.Visible = m == Mode.Park;
+        if (_gate != null) _gate.Root.Visible = m == Mode.Park;
         if (m == Mode.Sounds) FillBankPicker();
         else if (m == Mode.Movies) FillMovieList();
         else FillWadPicker();
@@ -1010,6 +1013,73 @@ public partial class Viewer : Node3D
         catch (Exception ex) { GD.PrintErr($"[terrain] {pick.Path}: {ex.Message}"); }
     }
 
+    /// <summary>The bounds of the terrain surfaces whose mesh name matches, in the terrain's
+    /// parent space. Several surfaces share one mesh name, so they are merged.</summary>
+    bool TerrainBounds(string name, out Aabb box)
+    {
+        box = default;
+        bool any = false;
+        if (_terrain == null) return false;
+        foreach (var child in _terrain.Root.GetChildren())
+        {
+            if (child is not MeshInstance3D mi || mi.Mesh == null) continue;
+            if (!mi.Name.ToString().Contains(name, StringComparison.OrdinalIgnoreCase)) continue;
+            var b = _terrain.Root.Transform * mi.Transform * mi.Mesh.GetAabb();
+            box = any ? box.Merge(b) : b;
+            any = true;
+        }
+        return any;
+    }
+
+    /// <summary>Stand the park's entrance arch on its pad.
+    ///
+    /// ⭐ WHERE IT GOES COMES FROM THE TERRAIN, NOT FROM A CONSTANT. Fantasy ships a flat 6x4
+    /// pad mesh called `gatebase01` at exactly the gate's place; the other three worlds do not,
+    /// but all four put `ticket_booths` on the entrance axis at the same depth, and Fantasy's pad
+    /// sits 5.5 units past its booths. So the pad is used where it exists and that offset
+    /// reproduces it where it does not -- one rule, checkable against the world that states the
+    /// answer.</summary>
+    void LoadGate()
+    {
+        _gate?.Root.QueueFree();
+        _gate = null;
+        var ride = _lib.Rides.FirstOrDefault(
+            r => r.Name.Contains("gates", StringComparison.OrdinalIgnoreCase) && r.Model != null);
+        if (ride == null) { GD.PrintErr("[gate] no Gates model in this archive"); return; }
+
+        Vector3 at;
+        if (TerrainBounds("gatebase01", out var pad))
+        { at = pad.Position + pad.Size * 0.5f; GD.Print($"[gate] on its own gatebase01 pad at {at}"); }
+        else if (TerrainBounds("ticket_booths", out var booths))
+        {
+            var c = booths.Position + booths.Size * 0.5f;
+            at = new Vector3(c.X, booths.Position.Y, c.Z - 5.5f);
+            GD.Print($"[gate] no pad here; 5.5 past the ticket booths at {at}");
+        }
+        else { GD.PrintErr("[gate] no gatebase01 and no ticket_booths -- cannot place the gate"); return; }
+
+        try
+        {
+            var gm = new Model(_lib.Read(ride.Model));
+            Aps anim = null; Aps.Record rec = null;
+            if (ride.Animation != null)
+                try { anim = new Aps(_lib.Read(ride.Animation)); rec = anim.Records().FirstOrDefault(); }
+                catch (Exception ex) { GD.PrintErr($"[gate] animation: {ex.Message}"); }
+            _gate = new AnimatedModel(gm, anim, rec, m => TextureNear(ride.Model.Path, m));
+            _gate.SetFrame(0);
+            AddChild(_gate.Root);
+            // ⚠ Seat it on the pad by its OWN base, not by its centre: the arch is tall and
+            // centring it buries half of it.
+            var (lo, hi) = Park.DrawnBounds(_gate.Root, inParent: true);
+            var mid = (lo + hi) * 0.5f;
+            _gate.Root.Position += new Vector3(at.X - mid.X, at.Y - lo.Y, at.Z - mid.Z);
+            _gate.Root.Visible = _mode == Mode.Park;
+            GD.Print($"[gate] {ride.Name}: {hi.X - lo.X:F1} x {hi.Y - lo.Y:F1} x {hi.Z - lo.Z:F1} units, "
+                   + $"seated at {at}");
+        }
+        catch (Exception ex) { GD.PrintErr($"[gate] {ride.Model.Path}: {ex.Message}"); }
+    }
+
     /// <summary>Sample the terrain's surface once per tile, because that is the shape of the
     /// question the game asks: `0x14F820` looks the ground up by TILE INDEX
     /// (`eyeX * 0x10000 >> 0x18`), never by a ray. One Godot unit is one tile here.</summary>
@@ -1112,7 +1182,19 @@ public partial class Viewer : Node3D
             var b = _terrain.Root.Transform * mi.Transform * mi.Mesh.GetAabb();
             box = box.HasValue ? box.Value.Merge(b) : b;
         }
-        if (!box.HasValue) { GD.PrintErr($"[aim] no mesh matches '{want}'"); return; }
+        if (!box.HasValue)
+        {
+            // ⭐ Say what IS there. A miss with no list is a dead end; a miss with the names is
+            // a survey of what the terrain model actually holds.
+            GD.PrintErr($"[aim] no mesh matches '{want}'. The terrain has:");
+            foreach (var c in _terrain.Root.GetChildren())
+                if (c is MeshInstance3D m2 && m2.Mesh != null)
+                {
+                    var bb = _terrain.Root.Transform * m2.Transform * m2.Mesh.GetAabb();
+                    GD.PrintErr($"    {m2.Name,-28} at {bb.Position + bb.Size * 0.5f} size {bb.Size}");
+                }
+            return;
+        }
         var a = box.Value;
         _focus = a.Position + a.Size * 0.5f;
         _dist = Mathf.Max(a.Size.Length() * 0.9f, 0.5f);
@@ -1208,6 +1290,7 @@ public partial class Viewer : Node3D
         _pitch = -0.55f;
         ParkCameraOverrides();
         // ⚠ LAST. Everything above sets the camera, so aiming before them aims at nothing.
+        LoadGate();
         AimAtMesh();
         StartGameCam();
     }
