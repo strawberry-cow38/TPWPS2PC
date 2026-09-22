@@ -30,17 +30,27 @@ the same byte as "nothing may be built here".
 The flags helpers are `0x18E6A8` (OR a mask in), `0x18E6D8` (clear a mask), `0x18E710` (test a
 mask), `0x18E740` (zero the byte).
 
-## ⚠ Why there is no map to draw
+## ⚠ Is there an authored no-placement map? NOT ESTABLISHED
 
-**Bit 1 is not authored anywhere.** Scanning every `sb` to offset +7 in the whole executable — 64
-sites, with the three known helper writes present as a control — the only places that OR `0x2`
-into a tile's flags are **four consecutive tiles in one hardcoded routine** at `0x14ED20`,
-`0x14ED40`, `0x14ED60`, `0x14ED80`, immediately after a build-tool call at the literal coordinate
-`(35, 65)`. Four tiles, poked by name. That is a special case, not a map.
+Four sites OR the literal `0x2` into a byte at `+7` — `0x14ED20`, `0x14ED40`, `0x14ED60`,
+`0x14ED80` — four consecutive tiles, immediately after a build-tool call at the literal coordinate
+`(35, 65)`. Four tiles poked by name, which is a special case rather than a map.
 
-So the authored no-placement map does not exist in this form. What bounds building is the plot's
-own footprint — `byte0` bit 0 of the terrain cell, which the engine tests as a bit at `0x222FE8`
-— plus whatever occupies tiles at runtime.
+⚠⚠ **AND THAT IS AS FAR AS IT GOES.** I said in a previous version of this file that bit 1 is
+*only* set there, and that is not something my search can support:
+
+- The scan was for `sb reg, 7(reg)` anywhere in `.text`. That is a store to offset 7 of **any
+  structure**, not of a tile — and the 64 hits include literals like 12345, 99 and 255, which no
+  flags byte would take. So the count never was 64 tile-flag writes; I never enumerated the real
+  set.
+- Two of the writers OR a mask held in a **register**: `0x18E6CC` (the shared `SetFlags(x,y,mask)`
+  helper) and `0x14E5A4` (a second setter that computes the tile pointer inline). A register mask
+  can carry bit 1, and I have not enumerated the callers of the second one — `jal` finds none, so
+  it is entered some other way.
+
+So the honest state is: bit 1 is real, tested in 24 places through `0x18E278` and inline at
+`0x191718`, and the only *literal* writes of it are four hardcoded tiles. Whether an authored map
+also supplies it is **open**, and the place to look is the fill of the tile array at park load.
 
 ## ⚠⚠ Two methodological misses in getting here, both worth keeping
 
@@ -51,8 +61,13 @@ own footprint — `byte0` bit 0 of the terrain cell, which the engine tests as a
    Same shape as the withdrawn "`0x40` is a raised flag".
 2. **A search scoped to one caller is not a search.** I concluded "bit 1 is never set" from
    scanning only the call sites of the accessor — and the writer at `0x14E5A4` computes the tile
-   pointer inline, so it was invisible to that scan, as were 60 others. The full scan found it in
-   one pass *because it carried a control that it had to hit*.
+   pointer inline, so it was invisible to that scan. The full scan found it in one pass *because
+   it carried a control that it had to hit*.
+3. **And then I did it again, one rung up.** Having found that writer, I claimed from the wider
+   scan that bit 1 is set in only four places. But that scan matched a store to offset 7 of ANY
+   structure, and two of the writers take their mask in a register. The scan was broader than the
+   first and still narrower than the claim. ⭐ The pattern to watch: every time, the search was
+   sound and the SENTENCE built on it reached further than the search did.
 
 ## Open
 
