@@ -111,6 +111,18 @@ unknowns](findings/advisor.md), including the retail missing-lip defect and why 
 asset database rather than the speech table. The game-state producers and full advisor simulation
 remain unimplemented.
 
+Read and audit the regional park asset database payloads:
+
+```sh
+dotnet run --project tools/TPW.PS2.DbaAudit -- /path/to/disc.bin
+dotnet run --project tools/TPW.PS2.DbaAudit -- /path/to/disc.bin --list
+```
+
+The reader exposes eight layouts, ride tiers, shop effects, research/cost fields, minigames and
+footprint cells. The audit checks named identities and every decoded field across all three
+regions, with external mutation options `--eur=FILE`, `--usa=FILE`, `--jap=FILE`, `--elf=FILE`.
+Specialised fields remain unresolved; see [DBA evidence and exact gaps](findings/dba.md).
+
 
 The four legacy sideshow `.MD2` models are selectable in the viewer, with their own texture
 tables and validated `.mtr` companions. MTR holds node matrices and topology remaps; several

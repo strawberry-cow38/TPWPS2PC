@@ -20,9 +20,15 @@ corpus.** The requested three kanji tables and two ride engine files now have co
 readers and identity/behavior audits; see [kanji evidence and limits](kanji-table.md) and
 [ride engine evidence and limits](ride-engine.md).
 
+**DBA payload follow-up:** all eight layouts now have bounds-checked decoding of common
+placement data, footprint cells, ride tiers, research/cost fields, shop effects and minigames,
+with a dedicated identity/field audit across EUR, USA and JAP. Specialised track/tour settings
+and other explicitly listed fields still lack complete semantics, so the count remains
+**3 partly undecoded**, not zero. See [payload evidence and precise remaining ranges](dba.md).
+
 **Reconciliation of the “last five” premise:** this worktree began at `1091482`, before the font,
 advisor and MTR findings were integrated. Their existing commits have been brought onto
-`last-five` only. The advisor findings explicitly keep `.dba` partial (most payload fields unknown),
+`last-five` (subsequently fast-forwarded into isolated `dba-payload`). The advisor findings kept `.dba` partial,
 so the honest progression is **20 → 8 → 3**, not 20 → 5 → 0. MTR's four checked readers are now
 represented here too; its earlier commit had not updated this ledger. “Decoded” still allows
 explicitly documented unknown fields and unverified live integration; it does not imply a full port.
@@ -82,14 +88,15 @@ produces a coherent, wrong answer — that is a mistake already made here once, 
 
 | ext | n | bytes | where | what is known |
 |---|---:|---:|---|---|
-| `.dba` | 3 | 120,588 | `DATA.WAD/ars{,us,jap}db.dba` | **Partially decoded park asset database.** Directory is `u32 count`, then `(key, offset, size)` records; payload `+4` selects an asset-name text row. Earlier advisor-speech interpretation was wrong: that join is embedded in the ELF. Managed directory/common-prefix reader exists; most payload fields remain unknown. [Evidence](advisor.md) |
+| `.dba` | 3 | 120,588 | `DATA.WAD/ars{,us,jap}db.dba` | **Partially decoded park asset database.** Managed reader covers eight layouts, common placement/minigame fields, footprint cells, ride tiers, research/costs, shop effects and sideshow pricing. Named-asset and decoded-field audit passes all three regions and fails mutations. Specialised track/tour fields, upgrade selector and some flags/bytes remain unresolved. [Field evidence and unknown ranges](dba.md) |
 
 ### What remains
 
 The advisor's `.ass` pair is decoded, with a checked rule evaluator and the executable's
 speech/text/lip catalogue. `.dba` belongs to park assets; grouping it with advisor speech was an
-incorrect inference. Its directory and common asset-name prefix have a reader, while most payload
-fields remain unknown. See [the explicit remaining DBA work](advisor.md).
+incorrect inference. Its payload reader now covers the eight layouts and confirmed gameplay
+fields. The unresolved specialised settings and flags still prevent calling the three files
+fully decoded. See [the explicit remaining DBA work](dba.md).
 
 ## How this was measured
 

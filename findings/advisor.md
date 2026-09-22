@@ -305,6 +305,10 @@ the caller's random shape variation. See [lip.md](lip.md) for timing measurement
 
 ## `.dba`: indexed park asset records, not speech
 
+**Payload follow-up:** [dba.md](dba.md) extends this directory/name result with eight layouts,
+placement and footprint data, ride tiers, research/cost fields, shop effects and minigames,
+plus a dedicated reader audit and exact remaining gaps. The three files remain partly decoded.
+
 The filename string `Data\\arsdb.dba` at `0x3599c8` leads to loader `0x10f148`. It saves the
 loaded buffer to global **`0x2aadfc`** at `0x10f1dc`, with byte length at `0x2aae00`.
 Lookup function **`0x10f248` reads that exact global at `0x10f24c`**, scans the directory,
@@ -319,9 +323,9 @@ compares the requested key at `0x10f270..74`, and returns `base + directory.offs
 | directory `+4` | `u32` | Absolute file offset of payload | Added to loaded file base, `0x10f27c..84` |
 | directory `+8` | `u32` | Payload byte extent | **Structural evidence**, not read by this lookup: all spans tile exactly to EOF in all three files |
 | `0xcd0..0xcdb` | 12 bytes | Zero gap between directory and payloads | Observed and preserved; purpose unknown |
-| payload `+0` | raw `u32` | Kind/type word, enum not decoded | Accessor `0x12b540` returns only its low `u16`; the reader retains the full raw word |
+| payload `+0` | two `u16` | Kind and runtime category index | Accessor `0x12b540` returns the low `u16`; [payload follow-up](dba.md) establishes the high-halfword setter and eight kinds |
 | payload `+4` | `u32` | Localised asset-name row | Consumer `0x12b548` loads it at `0x12b554` and calls translation lookup `0x1dfa58` |
-| payload `+8..end` | bytes | Undecoded asset-specific data | Retained verbatim, not assigned speech meanings |
+| payload `+8..end` | variant data | Placement, gameplay and footprint data | [Field-by-field evidence and unknown ranges](dba.md); original payload retained |
 
 The caller chain matters: `0x12ae78` uses the asset-category key mapping at `0x12b1b8`, calls
 `0x10f248`, and its returned payload is consumed by `0x1b5b98 -> 0x12b548`. Translation lookup
@@ -345,13 +349,13 @@ lookup. Every payload's `+4` maps to a `STR_GRAPHICS_...` identity, across all t
 four records have byte `+0x32` changed from 25 to 15 and byte `+0x36` from 10 to 15. Their keys
 are 245 (Jungle `SHOPS_ICECREAM_ICECREAM`), 151 (Hallow `SHOPS_ICES_ICES`), 69 (Fantasy
 `SHOPS_ICECREAM_ICECREAM`), and 391 (Space `SHOPS_ICES_ICES`). All four name the Ice Cream Shop.
-The audit pins these full identities and exact changes. These are byte observations; neither
-the logical field widths nor their gameplay meanings are established here.
+The advisor audit pins these full identities and exact changes. The [payload follow-up](dba.md)
+establishes their separate `u8` widths and consuming hunger-reduction/vomit-increase arithmetic.
 
-There are further consumers (for example `0x12b758` reads `+0x48 + 0x34*tier`, `0x12b840` reads
-`+0x4c + 0x34*tier`, and `0x12bc10` reads `+0x50`), but assigning them prices, stock, or timing
-from context alone would overstate the result. Those fields remain raw. The PAL executable
-references `arsdb.dba`; the selection policy for separate regional executables is not established.
+The further consumers `0x12b758`, `0x12b840` and `0x12bc10` are traced in [dba.md](dba.md):
+they provide research group, research work and purchase cost respectively. Some specialised
+payload settings remain raw. The PAL executable references `arsdb.dba`; the selection policy
+for separate regional executables is not established.
 
 ## Port integration and the audit's contract
 
@@ -407,8 +411,9 @@ They are not listening tests or rendered-mouth comparisons.
 * `TextUi` presentation details, animation-selector categories, variant byte `+3`, and the
   full advisor facial/body rendering path remain unknown. Lip polling is decoded, but no mouth
   mesh is animated by this change.
-* Most DBA payload semantics, kind enum, directory-gap purpose, and the two USA byte fields
-  remain unknown. DBA stays in the inventory's partially decoded / not-done bucket.
+* DBA's remaining specialised settings, flags and other unidentified byte ranges are listed
+  in [dba.md](dba.md). Its kind enum, tier parameters and USA effect fields now have readers
+  and a dedicated audit; substantive gaps keep DBA in the partially decoded / not-done bucket.
 * The 23 sounds absent from this message table may have other callers. The audit does not
   prove reachability, exhaust every possible simulation state, or verify all valid-but-altered
   programs against gameplay. It is not an original-console execution comparison.
