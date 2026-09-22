@@ -146,6 +146,20 @@ public sealed class Park
         // while a thin mesh near the shore leaves a box-shaped gap that is solid ground. The map
         // then looked convincing and put the floor a good 80 units off, over the sea. A terrain's
         // occupancy is where its triangles are.
+        var edges = new Dictionary<(long A, long B), (int Count, float Y)>();
+        var edgeAt = new Dictionary<(long A, long B), Vector3>();
+        static long Key(Vector3 v) =>
+            ((long)Mathf.RoundToInt(v.X * 100) * 73856093)
+          ^ ((long)Mathf.RoundToInt(v.Y * 100) * 19349663)
+          ^ ((long)Mathf.RoundToInt(v.Z * 100) * 83492791);
+        void Edge(Vector3 a, Vector3 b)
+        {
+            long ka = Key(a), kb = Key(b);
+            var k = ka <= kb ? (ka, kb) : (kb, ka);
+            if (edges.TryGetValue(k, out var e)) edges[k] = (e.Count + 1, e.Y);
+            else { edges[k] = (1, (a.Y + b.Y) * 0.5f); edgeAt[k] = (a + b) * 0.5f; }
+        }
+
         void Mark(Node n, Transform3D acc)
         {
             var t = n is Node3D n3 && n != terrain ? acc * n3.Transform : acc;
@@ -170,6 +184,10 @@ public sealed class Park
                         int x1 = Mathf.Clamp((int)Math.Ceiling(Math.Max(cx0, Math.Max(cx1, cx2))), 0, res - 1);
                         int z0 = Mathf.Clamp((int)Math.Floor(Math.Min(cz0, Math.Min(cz1, cz2))), 0, res - 1);
                         int z1 = Mathf.Clamp((int)Math.Ceiling(Math.Max(cz0, Math.Max(cz1, cz2))), 0, res - 1);
+                        // ⭐ Count every edge. An edge used by ONE triangle is an OPEN edge -- the
+                        // seam the terrain was authored with, where the engine hangs the park's own
+                        // tiles. That seam is where the floor height comes from; see below.
+                        Edge(p0, p1); Edge(p1, p2); Edge(p2, p0);
                         float top = Math.Max(p0.Y, Math.Max(p1.Y, p2.Y));
                         // ⚠ A triangle smaller than a cell covers no cell centre. Mark its own
                         // cells too, or dense fine geometry reads as empty ground.
@@ -271,25 +289,26 @@ public sealed class Park
                 if (area > bestArea) { bestArea = area; bestId = id; minX = aX; maxX = bX; minZ = aZ; maxZ = bZ; }
             }
         if (maxX < minX) return (Vector2.Zero, Vector2.Zero, 0f, null);
-        // ⚠ The MEDIAN of the rim, not its min or max. The rim runs over a beach on one side and
-        // a cliff on another, so an extreme picks a floor that is under the ground at one edge or
-        // floating above it at the other; the median sits at the height most of the rim is at.
-        var rim = new List<float>();
-        for (int z = 0; z < res; z++)
-            for (int x = 0; x < res; x++)
-            {
-                if (!cov[z, x] || topY[z, x] == float.MinValue) continue;
-                bool touches = false;
-                foreach (var (dz, dx) in new[] { (1, 0), (-1, 0), (0, 1), (0, -1) })
-                {
-                    int nz = z + dz, nx = x + dx;
-                    if (nz < 0 || nx < 0 || nz >= res || nx >= res) continue;
-                    if (comp[nz, nx] == bestId) { touches = true; break; }
-                }
-                if (touches) rim.Add(topY[z, x]);
-            }
-        rim.Sort();
-        float floorY = rim.Count > 0 ? rim[rim.Count / 2] : lo.Y;
+        // ⭐⭐ THE FLOOR HEIGHT COMES OFF THE MESH'S OPEN SEAM, NOT OUT OF A STATISTIC.
+        // This was the median of the rim cells' TOP Y, which is a heuristic I invented, and it sat
+        // the park a full unit high: a rim cell usually holds a bank or a wall going up, so the top
+        // of it is not the ground. The terrain is genuinely OPEN around the plot -- 1,562 of
+        // jungle's 3,700 unshared edges border it -- because that seam is where the engine hangs
+        // the park's own tiles. 1,652 of those 3,124 boundary vertices sit at exactly 0.0, and
+        // EMBANKMENT's base is -0.004: the datum is authored, not inferred.
+        var seam = new List<float>();
+        foreach (var (k, e) in edges)
+        {
+            if (e.Count != 1 || !edgeAt.TryGetValue(k, out var mid)) continue;
+            int gx = Mathf.Clamp((int)((mid.X - lo.X) / w * (res - 1)), 0, res - 1);
+            int gz = Mathf.Clamp((int)((mid.Z - lo.Z) / h * (res - 1)), 0, res - 1);
+            if (gx < minX - 2 || gx > maxX + 2 || gz < minZ - 2 || gz > maxZ + 2) continue;
+            seam.Add(e.Y);
+        }
+        seam.Sort();
+        float floorY = seam.Count > 0 ? seam[seam.Count / 2] : lo.Y;
+        GD.Print($"[floorY] {seam.Count} open seam edges border the plot -> y={floorY:F3}"
+               + (seam.Count > 0 ? $"  (min {seam[0]:F2}, max {seam[^1]:F2})" : ""));
 
         float ux = w / (res - 1), uz = h / (res - 1);
         var origin = new Vector2(lo.X + minX * ux, lo.Z + minZ * uz);
