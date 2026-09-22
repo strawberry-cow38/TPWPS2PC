@@ -100,11 +100,28 @@ public partial class Viewer : Node3D
     bool _pickChecked;
     /// <summary>The run the ghost was last built for, so it is not rebuilt every frame.</summary>
     (int Sx, int Sy, int X, int Y) _ghostAt = (-1, -1, -1, -1);
-    /// <summary>Where a mouse button went down, to tell a CLICK from a DRAG. ⚠ Both buttons
-    /// already drive the camera: right drags pan and left drags orbit, so acting on the press
-    /// would open the tool every time the view is moved.</summary>
-    Vector2 _downAt;
-    MouseButton _downButton = MouseButton.None;
+    /// <summary>A button being held, so a CLICK can be told from a DRAG. ⚠ Both buttons already
+    /// drive the camera -- right drags pan and left drags orbit -- so acting on the press would
+    /// open the tool every time the view is moved.</summary>
+    struct Held
+    {
+        public bool Down;
+        public Vector2 At;
+        public ulong Ms;
+        /// <summary>Set once the pointer has travelled far enough that this is a drag, and it
+        /// never goes back: a drag that returns to where it started is still a drag.</summary>
+        public bool Dragged;
+    }
+    Held _left, _right;
+
+    /// <summary>How far a click may travel, and how long it may last if it travels further.
+    ///
+    /// ⚠⚠ THIS WAS 4px AND NOTHING ELSE, and it ate clicks. A deliberate click on a real mouse
+    /// moves a few pixels, so some presses simply vanished -- "sometimes the tool doesn't
+    /// respond", which is exactly what a threshold set one pixel too tight looks like. A quick
+    /// press is now a click however far it slid, and a slow one still is if it barely moved.</summary>
+    const float ClickSlop = 10f;
+    const ulong ClickMs = 350;
     PathPieces _pieces;
     Model _terrainModel;
     bool _pathTest;
@@ -136,6 +153,7 @@ public partial class Viewer : Node3D
     /// <summary>The terrain file the park tab asked for, or null for the first one.</summary>
     string _wantTerrain;
     Label _info;
+    Label _toolStatus;
     HSlider _scrub;
 
     /// <summary>What the left-hand list is showing. The archive is the same either way; only what
@@ -446,6 +464,15 @@ public partial class Viewer : Node3D
         _info = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart,
                             MouseFilter = Control.MouseFilterEnum.Ignore };
         col.AddChild(_info);
+
+        // ⭐⭐ THE TOOL SAYS WHAT IT THINKS, ON SCREEN. Every refusal already printed a reason to
+        // the console, which nobody playing the game can see -- so a click over the panel, or one
+        // whose ray missed the plot, looked exactly like a click that was lost. Now the difference
+        // is readable without a terminal.
+        _toolStatus = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart,
+                                  MouseFilter = Control.MouseFilterEnum.Ignore };
+        _toolStatus.AddThemeColorOverride("font_color", new Color(0.6f, 0.85f, 1f));
+        col.AddChild(_toolStatus);
 
         _player = new AudioStreamPlayer();
         AddChild(_player);
@@ -1431,6 +1458,7 @@ public partial class Viewer : Node3D
         _toolKind = kind;
         _runX = _runY = -1;
         GD.Print($"[tool] {kind} open -- press to start a run, press again to lay it");
+        Status($"{kind} tool open -- click to start a run");
     }
 
     void CloseTool()
@@ -1439,6 +1467,7 @@ public partial class Viewer : Node3D
         _runX = _runY = -1;
         _ghostAt = (-1, -1, -1, -1);
         _ghostView?.Clear();
+        Status("right-click to open the path tool, shift+right-click for a queue");
     }
 
     /// <summary>The ghost, every frame the tool is open: from the run's start to the cursor, or
@@ -1446,7 +1475,13 @@ public partial class Viewer : Node3D
     void UpdateGhost()
     {
         if (_ghost == null || _paths == null) return;
-        if (!CursorCell(out int x, out int y)) { _ghostView.Clear(); _ghostAt = (-1, -1, -1, -1); return; }
+        if (!CursorCell(out int x, out int y))
+        {
+            _ghostView.Clear();
+            _ghostAt = (-1, -1, -1, -1);
+            Status($"{_toolKind} tool open -- the pointer is not over the park");
+            return;
+        }
         int sx = _runX < 0 ? x : _runX, sy = _runY < 0 ? y : _runY;
         // ⚠ Only when it MOVED. The ghost is rebuilt geometry, and rebuilding the same run every
         // frame is a mesh churn that buys nothing -- the run only changes when a cell boundary is
@@ -1455,7 +1490,13 @@ public partial class Viewer : Node3D
         _ghostAt = (sx, sy, x, y);
         _ghost.Set(sx, sy, x, y, _toolKind);
         _ghostView.Show(_ghost, _park);
+        Status(_runX < 0
+            ? $"{_toolKind} tool open at ({x},{y}) -- click to start a run"
+            : $"{_toolKind} run ({_runX},{_runY}) to ({x},{y}), {_ghost.Tiles.Count} tiles"
+              + (_ghost.Layable ? " -- click to lay" : " -- BLOCKED"));
     }
+
+    void Status(string text) { if (_toolStatus != null) _toolStatus.Text = text; }
 
     /// <summary>A press of the open tool. The first starts a run, the second lays it -- and ⭐ the
     /// run CARRIES ON from where it ended, which is what makes a path drawn in legs rather than
@@ -1463,8 +1504,20 @@ public partial class Viewer : Node3D
     void PressTool()
     {
         if (!_toolOpen || _paths == null || _ghost == null) return;
-        if (!CursorCell(out int x, out int y)) { GD.Print("[path] the cursor is off the plot"); return; }
-        if (_runX < 0) { _runX = x; _runY = y; GD.Print($"[path] run starts at ({x},{y})"); return; }
+        if (!CursorCell(out int x, out int y))
+        {
+            GD.Print("[path] the cursor is off the plot");
+            Status("that click was not over the park");
+            return;
+        }
+        if (_runX < 0)
+        {
+            _runX = x; _runY = y;
+            _ghostAt = (-1, -1, -1, -1);
+            GD.Print($"[path] run starts at ({x},{y})");
+            Status($"run starts at ({x},{y}) -- click again to lay it");
+            return;
+        }
         _ghost.Set(_runX, _runY, x, y, _toolKind);
         if (!_ghost.Layable)
         {
@@ -1472,6 +1525,7 @@ public partial class Viewer : Node3D
             // run goes red after the first one and the picture alone cannot tell you which.
             var bad = _ghost.Tiles.FirstOrDefault(t => t.Verdict == PathGhost.Verdict.Refused);
             GD.Print($"[path] refused at ({bad.X},{bad.Y}): {_paths.Describe(bad.X, bad.Y)}");
+            Status($"blocked at ({bad.X},{bad.Y}) -- nothing laid");
             return;
         }
         // ⭐ Does this run END ON something it joins? Read BEFORE laying, while the verdicts
@@ -1489,6 +1543,7 @@ public partial class Viewer : Node3D
             CloseTool();
             GD.Print($"[path] laid {laid} of {_ghost.Tiles.Count}; joined at ({last.X},{last.Y}) "
                    + $"-- tool closed; {_paths.Laid} total");
+            Status($"laid {laid}, joined at ({last.X},{last.Y}) -- tool closed");
             return;
         }
         // ⚠ From the SEGMENT'S END, not from the cursor. The cursor is snapped to one axis, so
@@ -1497,6 +1552,7 @@ public partial class Viewer : Node3D
         (_runX, _runY) = _ghost.End;
         _ghostAt = (-1, -1, -1, -1);
         GD.Print($"[path] laid {laid} of {_ghost.Tiles.Count}; the run goes on from ({_runX},{_runY}); {_paths.Laid} total");
+        Status($"laid {laid} -- the run goes on from ({_runX},{_runY})");
     }
 
     void BuildBuildableOverlay()
@@ -2248,16 +2304,28 @@ public partial class Viewer : Node3D
     {
         if (e is InputEventMouseMotion mm)
         {
+            bool lDown = (mm.ButtonMask & MouseButtonMask.Left) != 0;
+            bool rDown = (mm.ButtonMask & MouseButtonMask.Right) != 0;
+            bool mDown = (mm.ButtonMask & MouseButtonMask.Middle) != 0;
+            // ⭐ The camera does not move until the pointer has left the click's slop. Without
+            // this a click that slides two pixels nudges the view AND is thrown away, which is the
+            // worst of both: nothing happens and the scene drifts.
+            if (lDown && _left.Down && !_left.Dragged && mm.Position.DistanceTo(_left.At) > ClickSlop)
+                _left.Dragged = true;
+            if (rDown && _right.Down && !_right.Dragged && mm.Position.DistanceTo(_right.At) > ClickSlop)
+                _right.Dragged = true;
+            bool orbiting = lDown && (_left.Dragged || !_left.Down);
+            bool panning = (rDown && (_right.Dragged || !_right.Down)) || mDown
+                        || (orbiting && Input.IsKeyPressed(Key.Shift));
             // LEFT drag orbits.
-            if ((mm.ButtonMask & MouseButtonMask.Left) != 0)
+            if (orbiting && !panning)
             {
                 _yaw -= mm.Relative.X * 0.01f;
                 _pitch = Mathf.Clamp(_pitch + mm.Relative.Y * 0.01f, -1.5f, 1.5f);
             }
             // RIGHT or MIDDLE drag pans, in the camera's own plane so it moves with the view
             // rather than along world axes. Scaled by distance so it feels the same when zoomed in.
-            else if ((mm.ButtonMask & (MouseButtonMask.Right | MouseButtonMask.Middle)) != 0
-                     || ((mm.ButtonMask & MouseButtonMask.Left) != 0 && Input.IsKeyPressed(Key.Shift)))
+            else if (panning)
             {
                 var b = _cam.GlobalTransform.Basis;
                 float k = _dist * 0.0016f;
@@ -2269,24 +2337,41 @@ public partial class Viewer : Node3D
             if (mb.Pressed && mb.ButtonIndex == MouseButton.WheelUp) _dist = Mathf.Max(_dist * 0.9f, 0.05f);
             if (mb.Pressed && mb.ButtonIndex == MouseButton.WheelDown) _dist *= 1.1f;
             // ⭐ RIGHT CLICK OPENS AND CLOSES THE TOOL, left click is the press -- but only a
-            // CLICK. A drag of either button is the camera's, so the button is judged on release
-            // by how far the mouse travelled since it went down.
-            if (mb.Pressed && mb.ButtonIndex is MouseButton.Right or MouseButton.Left)
+            // CLICK. A drag of either button is the camera's, so the button is judged on release.
+            // ⚠ The two buttons are tracked SEPARATELY. One slot meant pressing the second button
+            // while the first was down threw the first one's release away.
+            if (mb.ButtonIndex is MouseButton.Right or MouseButton.Left)
             {
-                _downAt = mb.Position;
-                _downButton = mb.ButtonIndex;
-            }
-            else if (!mb.Pressed && mb.ButtonIndex == _downButton && _mode == Mode.Park)
-            {
-                _downButton = MouseButton.None;
-                if (mb.Position.DistanceTo(_downAt) <= 4f)
+                ref var held = ref (mb.ButtonIndex == MouseButton.Left ? ref _left : ref _right);
+                if (mb.Pressed)
                 {
-                    if (mb.ButtonIndex == MouseButton.Right)
+                    held.Down = true;
+                    held.At = mb.Position;
+                    held.Ms = Time.GetTicksMsec();
+                    held.Dragged = false;
+                }
+                else if (held.Down)
+                {
+                    held.Down = false;
+                    // A quick press counts however far it slid; a slow one still counts if it
+                    // barely moved.
+                    bool click = !held.Dragged
+                              && (Time.GetTicksMsec() - held.Ms <= ClickMs
+                                  || mb.Position.DistanceTo(held.At) <= ClickSlop);
+                    if (click && _mode == Mode.Park)
                     {
-                        if (_toolOpen) { CloseTool(); GD.Print("[tool] closed"); }
-                        else OpenTool(Input.IsKeyPressed(Key.Shift) ? PathTool.Kind.Queue : PathTool.Kind.Path);
+                        if (mb.ButtonIndex == MouseButton.Right)
+                        {
+                            if (_toolOpen) { CloseTool(); GD.Print("[tool] closed"); }
+                            else OpenTool(Input.IsKeyPressed(Key.Shift) ? PathTool.Kind.Queue : PathTool.Kind.Path);
+                        }
+                        else if (_toolOpen) PressTool();
+                        else
+                        {
+                            GD.Print("[tool] the path tool is shut -- right-click opens it");
+                            Status("the path tool is shut -- right-click opens it");
+                        }
                     }
-                    else if (_toolOpen) PressTool();
                 }
             }
         }
