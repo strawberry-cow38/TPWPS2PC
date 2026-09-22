@@ -380,22 +380,9 @@ void fragment() {
                 L = Compose ? Matrix4x4.CreateFromQuaternion(q) * L : Replace(L, q);
             }
             if (_scale.TryGetValue(node, out var sk))
-            {
-                // ⚠⚠ THE SCALE TRACK IS A MULTIPLIER, NOT AN ABSOLUTE BASIS LENGTH. Its values sit
-                // at a median of exactly 1.0000 (tools/aps.py), so assigning them directly REPLACES
-                // whatever the bind carried. Every model on this disc has a root whose bind scale is
-                // exactly 0.1 -- 464 of 496 of them -- so a root with a scale track came out at 1.0
-                // and the entire ride rendered TEN TIMES too big.
-                //
-                // It only showed on ANIMATED models: a static prop never reaches this branch, which
-                // is why `bigpalm` was right at 2.0 while `monkey` was 42 instead of 4. And it was
-                // invisible in the viewer, because a camera that frames whatever it is handed cannot
-                // show absolute scale -- it took rides standing on a shared grid.
-                var mul = Sample(sk.Select(x => x.Time).ToArray(), sk.Select(x => x.S).ToArray(), now);
-                var bind3 = BasisScale(bind);
-                L = Renormalise(L, new System.Numerics.Vector3(
-                    bind3.X * mul.X, bind3.Y * mul.Y, bind3.Z * mul.Z));
-            }
+                L = Renormalise(L, Sample(sk.Select(x => x.Time).ToArray(),
+                                          sk.Select(x => x.S).ToArray(), now));
+
             L.M41 = bind.M41; L.M42 = bind.M42; L.M43 = bind.M43;   // translation stays put
             if (_path.TryGetValue(node, out var path))
             {
@@ -419,6 +406,12 @@ void fragment() {
                     // rendered TEN TIMES too big. It never looked wrong in the viewer because the
                     // camera frames whatever it is given; it only showed up once rides had to stand
                     // on a shared grid, where one filled its plot and another filled a tenth of it.
+                    // ⚠ UNVERIFIED, and kept only because it cannot lose information: assigning
+                    // right/realUp/tangent straight into the basis rows discards whatever scale the
+                    // bind carried, since those three are unit vectors. It was written chasing a
+                    // 10x that turned out to be DrawnBounds counting hidden parts, so nothing here
+                    // has ever been shown to fix an observable symptom. No test exercises a facing
+                    // path; if one is ever written, this is the line it should pin.
                     L = Renormalise(L, BasisScale(bind));
                 }
             }
