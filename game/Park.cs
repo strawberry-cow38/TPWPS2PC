@@ -179,6 +179,9 @@ public sealed class Park
     /// own geometry before Build.</summary>
     public Vector2 Origin = Vector2.Zero;
 
+    /// <summary>The height the playable floor sits at, from the terrain's own base.</summary>
+    public float BaseY;
+
     /// <summary>Lay the park. Empty grass, no ride in it -- rides arrive through TryPlace.</summary>
     public void Build(int width, int height)
     {
@@ -197,7 +200,7 @@ public sealed class Park
                 {
                     Mesh = tile,
                     MaterialOverride = (x + y) % 2 == 0 ? grass : darker,
-                    Position = new Vector3(Origin.X + (x + 0.5f) * CellSize, 0f, Origin.Y + (y + 0.5f) * CellSize),
+                    Position = new Vector3(Origin.X + (x + 0.5f) * CellSize, BaseY, Origin.Y + (y + 0.5f) * CellSize),
                 });
     }
 
@@ -240,7 +243,7 @@ public sealed class Park
                 {
                     Mesh = tile,
                     MaterialOverride = isEntry ? entry : claimed,
-                    Position = new Vector3(Origin.X + (x + fx + 0.5f) * CellSize, CellSize * 0.02f,
+                    Position = new Vector3(Origin.X + (x + fx + 0.5f) * CellSize, BaseY + CellSize * 0.02f,
                                            Origin.Y + (y + fy + 0.5f) * CellSize),
                 });
             }
@@ -254,7 +257,7 @@ public sealed class Park
         var centre = (min + max) * 0.5f;
         model.Position = new Vector3(
             Origin.X + (x + fp.Width * 0.5f) * CellSize - centre.X,
-            -min.Y,
+            BaseY - min.Y,
             Origin.Y + (y + fp.Height * 0.5f) * CellSize - centre.Z);
         return true;
     }

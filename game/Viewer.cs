@@ -39,6 +39,7 @@ public partial class Viewer : Node3D
     string _terrainPath;
     Vector2 _terrainSize;
     Vector2 _holeOrigin, _holeSize;
+    float _holeY;
     RideCatalogue _cat;
     TextDatabase _text;
 
@@ -625,7 +626,7 @@ public partial class Viewer : Node3D
             return;
         }
         var pick = models[0];
-        if (_terrainPath == pick.Path && _terrain != null) { _park.ShowGrass = false; return; }
+        if (_terrainPath == pick.Path && _terrain != null) return;
         try
         {
             var tm = new Model(_lib.Read(pick));
@@ -635,7 +636,10 @@ public partial class Viewer : Node3D
             _park.SetTerrain(_terrain.Root);
             _terrainPath = pick.Path;
             // ⚠ Hide the synthetic grass. Two floors at the same height read as z-fighting.
-            _park.ShowGrass = false;
+            // ⚠ The grid is the PLAYABLE FLOOR once it is sized to the hole, not decoration. It
+            // was hidden on the assumption that any grass under real terrain is a second floor --
+            // true when it spanned the whole world, wrong once it fills the hole the terrain
+            // leaves for it.
             var (lo, hi) = Park.DrawnBounds(_terrain.Root);
             // ⚠ Say how many of its materials found a texture. A material that silently resolves to
             // null renders flat white, which reads as "the terrain has no textures" rather than as
@@ -653,9 +657,12 @@ public partial class Viewer : Node3D
             _terrainSize = new Vector2(hi.X - lo.X, hi.Z - lo.Z);
             var (ho, hs) = Park.FindHole(_terrain.Root);
             _holeOrigin = ho; _holeSize = hs;
+            // ⚠ The floor goes at the terrain's own base, not at y=0. The terrain spans -12..99 in
+            // Y, so a grid at zero sits well above the ground it is meant to be part of.
+            _holeY = lo.Y;
             GD.Print($"[hole] origin {ho.X:F1},{ho.Y:F1}  size {hs.X:F1} x {hs.Y:F1} cells");
         }
-        catch (Exception ex) { GD.PrintErr($"[terrain] {pick.Path}: {ex.Message}"); _park.ShowGrass = true; }
+        catch (Exception ex) { GD.PrintErr($"[terrain] {pick.Path}: {ex.Message}"); }
     }
 
     void BuildPark(Model mesh)
@@ -696,6 +703,7 @@ public partial class Viewer : Node3D
         if (_holeSize.X > 1f)
         {
             _park.Origin = _holeOrigin;
+            _park.BaseY = _holeY;
             _park.Build(Mathf.RoundToInt(_holeSize.X), Mathf.RoundToInt(_holeSize.Y));
         }
         else _park.Build(ParkCells, ParkCells);
@@ -756,7 +764,7 @@ public partial class Viewer : Node3D
         var over = (max.X - min.X) / Math.Max(fp.Width, 1) / Park.CellSize;
         var overZ = (max.Z - min.Z) / Math.Max(fp.Height, 1) / Park.CellSize;
         _info.Text = Park.Describe(def, display, fp)
-                     + $"\n\npark {ParkCells}x{ParkCells}: {(placed ? "placed" : "WOULD NOT FIT")} at {px},{py}"
+                     + $"\n\npark {_park.Width}x{_park.Height}: {(placed ? "placed" : "WOULD NOT FIT")} at {px},{py}"
                      + $"\n{inv}"
                      + $"\nmodel fills {over:P0} x {overZ:P0} of its cells"
                      + $"\n{_current.Summary}"
