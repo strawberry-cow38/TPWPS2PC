@@ -589,16 +589,30 @@ public sealed class Park
     ///
     /// Until those are decoded the plot stays flat. A flat plot is visibly unfinished; fabricated
     /// blocks look finished and are not.</summary>
-    /// <summary>Preview only: raise the squares marked 2. ⚠ OFF unless TPW_PARK_RAISE=1, because
-    /// master told me to take the blocks out and that instruction stands until they say otherwise.
-    /// This is for LOOKING at, not for shipping. The step is one unit, which is a guess.</summary>
-    static readonly bool RaisePreview =
-        System.Environment.GetEnvironmentVariable("TPW_PARK_RAISE") == "1";
+    /// <summary>Raised squares. ⭐ THE MARKER IS `byte0 & 0x40`, and it was master's memory of
+    /// playing the game that found it -- they said the real jungle park has "maybe 16-20 raised
+    /// tiles" against the 283 we were drawing, which is the kind of error no amount of internal
+    /// consistency was ever going to surface.
+    ///
+    /// `0x40` gives 20 in JUNGLE t1 and t2, 12 in FANTASY t1, 12 in HALLOW t1, 158 in SPACE t1 --
+    /// sane numbers for a theme park, where the field we had been using (`byte0 & 0x03 == 2`)
+    /// gives 283 and 1,473.
+    ///
+    /// ⭐ And the POSITIONS match what master recalled independently, hours earlier: "the volcano
+    /// is meant to have a few raised tiles, and the back left edge a few too". The 20 cells are a
+    /// patch of 16 at x 8-15, z 74-75 -- back left, since Z=0 is the park's front -- and four
+    /// single cells on the volcano. Two places, right counts, from outside our own file-reading.
+    ///
+    /// ⚠ Drawn cells only: `0x41` and `0x42` carry 0x40 with the skip bit set and are not ground.
+    /// ⚠ The step height is still one unit and still a guess; it is not in the files.</summary>
+    static readonly bool RaiseEnabled =
+        System.Environment.GetEnvironmentVariable("TPW_PARK_RAISE") != "0";
 
     float CellY(int x, int y)
     {
-        if (!RaisePreview || Field == null || x >= Field.Width || y >= Field.Height) return BaseY;
-        return BaseY + ((Field.Raw0(x, y) & 3) == 2 ? CellSize : 0f);
+        if (!RaiseEnabled || Field == null || x >= Field.Width || y >= Field.Height) return BaseY;
+        byte b = Field.Raw0(x, y);
+        return BaseY + ((b & 0x40) != 0 && (b & 1) == 0 ? CellSize : 0f);
     }
 
     /// <summary>The terrain model's top surface height for each cell of a plot, sampled with a
