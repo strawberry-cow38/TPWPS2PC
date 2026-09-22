@@ -724,18 +724,19 @@ public partial class Viewer : Node3D
 
             // ⭐⭐ Ask the disc where the park is before measuring anything.
             Vector2? apO = null, apS = null;
-            var ap = Park.AuthoredPlot(tm);
+            var ap = Park.AuthoredPlot(tm, _terrain.Root.Transform);
             if (ap != null)
             {
-                // The model's own space is pre-mirror; the scene root carries Scale (1,1,-1).
-                var tf = _terrain.Root.Transform;
-                var a = tf * ap.Value.Min; var b = tf * ap.Value.Max;
-                var pmin = new Vector3(Math.Min(a.X, b.X), Math.Min(a.Y, b.Y), Math.Min(a.Z, b.Z));
-                var pmax = new Vector3(Math.Max(a.X, b.X), Math.Max(a.Y, b.Y), Math.Max(a.Z, b.Z));
+                _park.PlotSpace = ap;
+                // corners of the plot in world space, whatever its orientation
+                var c0 = ap.Value.ToWorld * ap.Value.LocalMin;
+                var c1 = ap.Value.ToWorld * (ap.Value.LocalMin + ap.Value.LocalSize);
+                var pmin = new Vector3(Math.Min(c0.X, c1.X), Math.Min(c0.Y, c1.Y), Math.Min(c0.Z, c1.Z));
+                var pmax = new Vector3(Math.Max(c0.X, c1.X), Math.Max(c0.Y, c1.Y), Math.Max(c0.Z, c1.Z));
                 apO = new Vector2(pmin.X, pmin.Z);
                 apS = new Vector2(pmax.X - pmin.X, pmax.Z - pmin.Z);
-                GD.Print($"[plot] AUTHORED by the heightfield node: {pmin} .. {pmax}  "
-                       + $"=> {apS.Value.X:F2} x {apS.Value.Y:F2} cells, elevation {pmax.Y - pmin.Y:F2}");
+                GD.Print($"[plot] AUTHORED {pmin} .. {pmax}  => {apS.Value.X:F2} x {apS.Value.Y:F2} cells; "
+                       + $"node basis X {ap.Value.ToWorld.Basis.X} Z {ap.Value.ToWorld.Basis.Z}");
             }
             else GD.PrintErr("[plot] no heightfield node -- falling back to the measured hole");
 

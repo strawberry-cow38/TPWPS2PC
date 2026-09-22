@@ -154,28 +154,48 @@ public sealed class Park
     /// ⚠ What replaced: a flood-fill over triangle coverage that I invented. It put jungle's plot
     /// at Z 12.7..75.0 where the disc says Z 0..76.23 -- a 12-unit strip missing down one whole
     /// edge, which no render would have shown because the strip is empty either way.</summary>
-    public static (Vector3 Min, Vector3 Max)? AuthoredPlot(Model model)
+    /// <summary>The plot's own space and how it reaches the world.
+    ///
+    /// ⭐⭐ RETURNS A TRANSFORM, NOT A BOX, because a box loses the orientation. Each park's
+    /// heightfield node carries its own matrix and they are NOT all the same:
+    ///
+    ///   JUNGLE t1  X(1,0,0)  Z(0,0,1)   T(0,0,0)
+    ///   SPACE  t1  X(1,0,0)  Z(0,0,1)   T(0,0,-100)
+    ///   FANTASY t1 X(1,0,0)  Z(0,0,1)   T(0,0,-80)
+    ///   HALLOW t1  X(-1,0,0) Z(0,0,-1)  T(0,0,-100)   <- a 180-degree yaw
+    ///
+    /// Computing a cell's world position by hand -- "origin plus x, and Z counts backwards" --
+    /// silently assumes every park is axis-aligned the same way. Two are not, so FANTASY landed 34
+    /// units out and HALLOW 156. Master asked whether the terrain was 180 out hours before this
+    /// was found; they were right, it is just one park rather than all of them.
+    ///
+    /// So the cell goes through the node's matrix exactly as a mesh vertex does, and rotation,
+    /// translation and mirroring all come out right with no convention left to get backwards.</summary>
+    public readonly record struct Plot(Transform3D ToWorld, Vector3 LocalMin, Vector3 LocalSize);
+
+    public static Plot? AuthoredPlot(Model model, Transform3D root)
     {
         var hf = model.Meshes.FirstOrDefault(m =>
             m.Name != null && m.Name.Equals("heightfield", StringComparison.OrdinalIgnoreCase));
         if (hf == null) return null;
         var world = model.WorldTransforms();
         if (!world.TryGetValue(hf.Offset, out var w)) return null;
-        var lo = System.Numerics.Vector3.Transform(
-            new System.Numerics.Vector3(hf.BoundsMin.X, hf.BoundsMin.Y, hf.BoundsMin.Z), w);
-        var hi = System.Numerics.Vector3.Transform(
-            new System.Numerics.Vector3(hf.BoundsMax.X, hf.BoundsMax.Y, hf.BoundsMax.Z), w);
-        var min = new Vector3(Math.Min(lo.X, hi.X), Math.Min(lo.Y, hi.Y), Math.Min(lo.Z, hi.Z));
-        var max = new Vector3(Math.Max(lo.X, hi.X), Math.Max(lo.Y, hi.Y), Math.Max(lo.Z, hi.Z));
 
-        // ⭐ DIVIDE THE EXPORTER PAD OUT, do not round it off. The stored box is inflated by a
-        // fixed ratio -- min is -0.001x the true extent and max is 1.003x -- so (max-min)/1.004 is
-        // the real size and it comes out an exact integer on every axis of every world: 640, 760,
-        // 800, 600, 960, 520, 960, 540. Rounding instead happens to work on the maxima and breaks
-        // on the minima, where -0.064 floors to -1 rather than 0. (Same inflation as EMBANKMENT
-        // storing ±200.30 where its verts give ±199.50. Thanks tinyclaw.)
-        var size = (max - min) / 1.004f;
-        return (min + size * 0.001f, min + size * 0.001f + size);
+        // ⭐ Divide the exporter pad out IN LOCAL SPACE, before any transform: min is -0.001x the
+        // true extent and max is 1.003x, so (max-min)/1.004 is the real size and lands on an exact
+        // integer on every axis of every park. Doing it after a transform that can negate an axis
+        // would fold the sign into the pad.
+        var bmin = new Vector3(hf.BoundsMin.X, hf.BoundsMin.Y, hf.BoundsMin.Z);
+        var bmax = new Vector3(hf.BoundsMax.X, hf.BoundsMax.Y, hf.BoundsMax.Z);
+        var size = (bmax - bmin) / 1.004f;
+        var min = bmin + size * 0.001f;
+
+        // the node's own matrix, then the scene root -- the same path a mesh vertex takes
+        var basis = new Basis(new Vector3(w.M11, w.M12, w.M13),
+                              new Vector3(w.M21, w.M22, w.M23),
+                              new Vector3(w.M31, w.M32, w.M33));
+        var node = new Transform3D(basis, new Vector3(w.M41, w.M42, w.M43));
+        return new Plot(root * node, min, size);
     }
 
     public static (Vector2 Origin, Vector2 Size, float FloorY, bool[,] Cells) FindHole(
@@ -427,6 +447,22 @@ public sealed class Park
     /// floor actually landed rather than trust the origin they asked for.</summary>
     public Node3D GroundRoot => _ground;
 
+    /// <summary>The plot's own space and how it reaches the world. Set before Build.</summary>
+    public Plot? PlotSpace { get; set; }
+
+    /// <summary>A cell's centre in world space. ⭐ Goes through the plot's own matrix, so a park
+    /// that is rotated (HALLOW t1 is a 180-degree yaw) or translated (FANTASY -80, SPACE -100)
+    /// lands correctly with no per-axis reasoning here to get backwards.</summary>
+    public Vector3 CellCentre(int x, int y)
+    {
+        if (PlotSpace is not { } p || Width <= 0 || Height <= 0)
+            return new Vector3(Origin.X + (x + 0.5f) * CellSize, BaseY, Origin.Y + (y + 0.5f) * CellSize);
+        var local = p.LocalMin + new Vector3((x + 0.5f) / Width * p.LocalSize.X, 0f,
+                                             (y + 0.5f) / Height * p.LocalSize.Z);
+        var v = p.ToWorld * local;
+        return new Vector3(v.X, BaseY, v.Z);
+    }
+
     /// <summary>Where the playable grid sits inside the world, in cells. Set from the terrain's
     /// own geometry before Build.</summary>
     public Vector2 Origin = Vector2.Zero;
@@ -498,8 +534,8 @@ public sealed class Park
                 // ⭐ Not a mirror and not a rotation: tinyclaw scored the grid against the water
                 // under identity, 180, mirror-X and mirror-Z, and identity won outright (space
                 // 100%). The data was never wrong -- only my placement of it.
-                float cx = Origin.X + (x + 0.5f) * CellSize;
-                float cz = Origin.Y + (height - y - 0.5f) * CellSize;
+                var centre = CellCentre(x, y);
+                float cx = centre.X, cz = centre.Z;
                 float cy = CellY(x, y);
                 var a = new Vector3(cx - half, cy, cz - half);
                 var b = new Vector3(cx + half, cy, cz - half);
@@ -753,8 +789,7 @@ public sealed class Park
                 {
                     Mesh = tile,
                     MaterialOverride = isEntry ? entry : claimed,
-                    Position = new Vector3(Origin.X + (x + fx + 0.5f) * CellSize, BaseY + CellSize * 0.02f,
-                                           Origin.Y + (Height - (y + fy) - 0.5f) * CellSize),
+                    Position = CellCentre(x + fx, y + fy) + new Vector3(0f, CellSize * 0.02f, 0f),
                 });
             }
 
