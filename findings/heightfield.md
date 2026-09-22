@@ -671,3 +671,36 @@ So the rule is not "agrees on 4,863 of 4,864". It is **"skip ⟺ material 0, wit
 every cell except array index 0"**, where index 0 holds the default material in every file that has
 a non-zero default. That is an authoring artefact at element zero, not a case the rule fails to
 cover — the same shape as a boot singleton, and worth naming rather than carrying as a residual.
+
+## The river and volcano gaps: transition cells, measured
+
+`strawberry_cow`: *"there are gaps between the river and the terrain tiles. there are gaps around
+the volcano."* Measured on JUNGLE `terrain_1`, per-mesh `mat4` applied this time (the earlier attempt
+that skipped it produced garbage — see Correction 5), 10 raw units per cell, plot datum Y = 0:
+
+| mesh | cells it covers | **skipped** | Y range |
+|---|---:|---:|---|
+| `A_ROAD`, `road_rhs bend`, `bend01` | 149 / 80 / 80 | **100%** | −10.00 … 1.00 |
+| `A_SEA_02`, `A_SEA_05` | 21 each | **100%** | −10.00 flat |
+| `RIVERBED_01B … 08B` | 14–25 each | 79–100% | −10.50 … −0.50 |
+| `EMBANKMENT` | 280 | 99% | −0.04 … 18.28 |
+| `newcliff12` | 160 | 99% | −8.63 … 19.07 |
+| **`VOLCANO`** | 180 | **93%** | −0.01 … 60.23 |
+| **`RIVERBED_01 … 08`** | 33–38 each | **70–76%** | 0.00 … 0.04 |
+
+**The features that are 100% skipped show no seam. The two strawberry named are the two that are
+not.** The volcano leaves 7% of its cells flagged *draw*, and each riverbed leaves 24–30%. Those
+cells get a flat tile laid at the datum while the mesh's own surface is rising up the volcano flank
+or dipping into the channel through the same cell — so tile and model disagree inside one cell and
+the result reads as a gap.
+
+So this is not missing data and not a wrong mask. It is the **transition band**, and the data says
+precisely where it is: roughly 13 cells around the volcano and 8–11 per riverbed segment.
+
+The river's shape also falls out of the same measurement: the bed lip sits at **Y 0**, flush with the
+plot; the `*B` meshes are the walls dropping to **−10.5**; `A_SEA` is the water at a flat **−10**.
+It is a channel cut below the plot, which is why looking into it reads as a hole rather than a
+surface — `cow tools` predicted that from `A_ROAD` and it holds for the river too.
+
+**Falsifiable form:** seam risk should track `(1 − skip%) × cells`. Anything at 100% skip cannot
+show one. If a visible gap ever appears along `A_ROAD`, this explanation is wrong.
