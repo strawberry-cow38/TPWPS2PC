@@ -39,6 +39,7 @@ public partial class Viewer : Node3D
     string _terrainPath;
     Vector2 _terrainSize;
     Vector2 _holeOrigin, _holeSize;
+    bool[,] _holeCells;
     float _holeY;
     RideCatalogue _cat;
     TextDatabase _text;
@@ -676,14 +677,17 @@ public partial class Viewer : Node3D
                 }
                 Dump(_terrain.Root, Transform3D.Identity);
             }
-            var (ho, hs, hy) = Park.FindHole(_terrain.Root);
-            _holeOrigin = ho; _holeSize = hs;
+            var (ho, hs, hy, hc) = Park.FindHole(_terrain.Root);
+            _holeOrigin = ho; _holeSize = hs; _holeCells = hc;
             // ⚠⚠ The floor goes at the height of the ground AROUND the hole, NOT at the terrain's
             // minimum. The terrain spans only -1.3..9.9 in Y and that minimum is the sea floor, so
             // `lo.Y` laid the grid UNDER the island: bounds said it was in the hole, the picture
             // showed no grid, and I spent two renders reading the miss as a lateral placement bug.
             _holeY = hy;
-            GD.Print($"[hole] origin {ho.X:F1},{ho.Y:F1}  size {hs.X:F1} x {hs.Y:F1} cells  "
+            int play = 0;
+            if (hc != null) foreach (var b in hc) if (b) play++;
+            GD.Print($"[hole] origin {ho.X:F1},{ho.Y:F1}  box {hs.X:F1} x {hs.Y:F1}  "
+                   + $"GROUND {play} cells ({100.0 * play / Math.Max(1, hs.X * hs.Y):F0}% of the box)  "
                    + $"floor y={hy:F2} (terrain base {lo.Y:F2}, top {hi.Y:F2})");
         }
         catch (Exception ex) { GD.PrintErr($"[terrain] {pick.Path}: {ex.Message}"); }
@@ -728,11 +732,13 @@ public partial class Viewer : Node3D
         {
             _park.Origin = _holeOrigin;
             _park.BaseY = _holeY;
-            _park.Build(Mathf.RoundToInt(_holeSize.X), Mathf.RoundToInt(_holeSize.Y));
+            _park.Build(Mathf.RoundToInt(_holeSize.X), Mathf.RoundToInt(_holeSize.Y), _holeCells);
         }
         else _park.Build(ParkCells, ParkCells);
-        int px = (ParkCells - fp.Width) / 2, py = (ParkCells - fp.Height) / 2;
-        bool placed = _park.TryPlace(_current.Root, fp, def.Id ?? 1, display ?? def.Name ?? "?", px, py);
+        // ⚠ Aim at the PARK's middle, not at ParkCells/2 -- that constant is the fallback size and
+        // has nothing to do with the plot once the plot comes off the terrain.
+        bool placed = _park.TryPlaceNear(_current.Root, fp, def.Id ?? 1, display ?? def.Name ?? "?");
+        int px = _park.LastX, py = _park.LastY;
         // ⚠ AFTER the placement, never before. Rebuild frames the camera on the model in its own
         // space and Place then MOVES it onto the footprint, so framing first aims the shot at where
         // the ride used to be -- which photographs empty grass and looks like the ride failed to load.
@@ -809,7 +815,8 @@ public partial class Viewer : Node3D
         var over = (max.X - min.X) / Math.Max(fp.Width, 1) / Park.CellSize;
         var overZ = (max.Z - min.Z) / Math.Max(fp.Height, 1) / Park.CellSize;
         _info.Text = Park.Describe(def, display, fp)
-                     + $"\n\npark {_park.Width}x{_park.Height}: {(placed ? "placed" : "WOULD NOT FIT")} at {px},{py}"
+                     + $"\n\npark {_park.Width}x{_park.Height} box, {_park.PlayableCells} ground cells"
+                     + $"\n{(placed ? $"placed at {px},{py}" : "WOULD NOT FIT")}"
                      + $"\n{inv}"
                      + $"\nmodel fills {over:P0} x {overZ:P0} of its cells"
                      + $"\n{_current.Summary}"

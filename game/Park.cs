@@ -130,11 +130,11 @@ public sealed class Park
     /// which is what a first attempt did, reporting a corner of the bounding box as the hole.
     /// Scanning instead for empty runs that have terrain on BOTH sides keeps the entrance row as
     /// the only one that leaks, rather than all of them.</summary>
-    public static (Vector2 Origin, Vector2 Size, float FloorY) FindHole(Node3D terrain, int res = 160)
+    public static (Vector2 Origin, Vector2 Size, float FloorY, bool[,] Cells) FindHole(Node3D terrain, int res = 160)
     {
         var (lo, hi) = DrawnBounds(terrain);
         float w = hi.X - lo.X, h = hi.Z - lo.Z;
-        if (w <= 0 || h <= 0) return (Vector2.Zero, Vector2.Zero, 0f);
+        if (w <= 0 || h <= 0) return (Vector2.Zero, Vector2.Zero, 0f, null);
         var cov = new bool[res, res];
         // ⭐ The top of whatever covers each cell. The floor height has to come from the ground
         // AROUND the hole; the terrain's global minimum is the sea floor, and a floor laid there
@@ -270,7 +270,7 @@ public sealed class Park
                 }
                 if (area > bestArea) { bestArea = area; bestId = id; minX = aX; maxX = bX; minZ = aZ; maxZ = bZ; }
             }
-        if (maxX < minX) return (Vector2.Zero, Vector2.Zero, 0f);
+        if (maxX < minX) return (Vector2.Zero, Vector2.Zero, 0f, null);
         // ⚠ The MEDIAN of the rim, not its min or max. The rim runs over a beach on one side and
         // a cliff on another, so an extreme picks a floor that is under the ground at one edge or
         // floating above it at the other; the median sits at the height most of the rim is at.
@@ -292,8 +292,24 @@ public sealed class Park
         float floorY = rim.Count > 0 ? rim[rim.Count / 2] : lo.Y;
 
         float ux = w / (res - 1), uz = h / (res - 1);
-        return (new Vector2(lo.X + minX * ux, lo.Z + minZ * uz),
-                new Vector2((maxX - minX + 1) * ux, (maxZ - minZ + 1) * uz), floorY);
+        var origin = new Vector2(lo.X + minX * ux, lo.Z + minZ * uz);
+        var size = new Vector2((maxX - minX + 1) * ux, (maxZ - minZ + 1) * uz);
+
+        // ⚠⚠ THE PLOT IS NOT A RECTANGLE, so its bounding box is not the plot. The hole has the
+        // riverbed running out of one corner, and building a full rectangle over the box put two
+        // of its four corners in open sea -- while every printed number still agreed, because a
+        // bounding box of an L is a perfectly good bounding box. Hand back the CELLS.
+        int cw = Math.Max(1, Mathf.RoundToInt(size.X / CellSize)), ch = Math.Max(1, Mathf.RoundToInt(size.Y / CellSize));
+        var cells = new bool[cw, ch];
+        for (int cy = 0; cy < ch; cy++)
+            for (int cx = 0; cx < cw; cx++)
+            {
+                float wx = origin.X + (cx + 0.5f) * CellSize, wz = origin.Y + (cy + 0.5f) * CellSize;
+                int gx = Mathf.Clamp((int)Math.Round((wx - lo.X) / w * (res - 1)), 0, res - 1);
+                int gz = Mathf.Clamp((int)Math.Round((wz - lo.Z) / h * (res - 1)), 0, res - 1);
+                cells[cx, cy] = comp[gz, gx] == bestId;
+            }
+        return (origin, size, floorY, cells);
     }
 
     /// <summary>The node holding the playable floor tiles, so callers can measure where the
@@ -307,13 +323,23 @@ public sealed class Park
     /// <summary>The height the playable floor sits at, from the terrain's own base.</summary>
     public float BaseY;
 
+    /// <summary>Which cells are actually ground. Null means the whole rectangle, which is what a
+    /// park with no terrain under it gets.</summary>
+    public bool[,] Playable { get; private set; }
+
+    /// <summary>Is this cell part of the plot at all?</summary>
+    public bool IsPlayable(int x, int y) =>
+        x >= 0 && y >= 0 && x < Width && y < Height && (Playable == null || Playable[x, y]);
+
     /// <summary>Lay the park. Empty grass, no ride in it -- rides arrive through TryPlace.</summary>
-    public void Build(int width, int height)
+    public void Build(int width, int height, bool[,] playable = null)
     {
         foreach (var c in _ground.GetChildren()) c.QueueFree();
         foreach (var c in _ride.GetChildren()) c.QueueFree();
         _placed.Clear();
         Width = width; Height = height;
+        Playable = playable != null && playable.GetLength(0) == width && playable.GetLength(1) == height
+            ? playable : null;
         _occupied = new int[width, height];
 
         var grass = Flat(new Color(0.30f, 0.46f, 0.22f));
@@ -321,13 +347,57 @@ public sealed class Park
         var tile = new BoxMesh { Size = new Vector3(CellSize, CellSize * 0.06f, CellSize) };
         for (int y = 0; y < height; y++)
             for (int x = 0; x < width; x++)
+            {
+                if (!IsPlayable(x, y)) continue;
                 _ground.AddChild(new MeshInstance3D
                 {
                     Mesh = tile,
                     MaterialOverride = (x + y) % 2 == 0 ? grass : darker,
                     Position = new Vector3(Origin.X + (x + 0.5f) * CellSize, BaseY, Origin.Y + (y + 0.5f) * CellSize),
                 });
+            }
     }
+
+    /// <summary>Cells that are ground -- the plot's real size, as opposed to its bounding box.</summary>
+    public int PlayableCells
+    {
+        get
+        {
+            int n = 0;
+            for (int y = 0; y < Height; y++) for (int x = 0; x < Width; x++) if (IsPlayable(x, y)) n++;
+            return n;
+        }
+    }
+
+    /// <summary>Put a ride on the plot, as near its middle as it fits. ⚠ Scanning from a corner
+    /// drops rides into the plot's thin tail; the middle of the ground is where a park starts.</summary>
+    public bool TryPlaceNear(Node3D model, Footprint fp, int id, string name)
+    {
+        float cx = 0, cy = 0; int n = 0;
+        for (int y = 0; y < Height; y++)
+            for (int x = 0; x < Width; x++)
+                if (IsPlayable(x, y)) { cx += x; cy += y; n++; }
+        if (n == 0) return false;
+        cx /= n; cy /= n;
+        var order = new List<(int X, int Y)>();
+        for (int y = 0; y + fp.Height <= Height; y++)
+            for (int x = 0; x + fp.Width <= Width; x++) order.Add((x, y));
+        order.Sort((a, b) =>
+        {
+            float da = (a.X + fp.Width * 0.5f - cx) * (a.X + fp.Width * 0.5f - cx)
+                     + (a.Y + fp.Height * 0.5f - cy) * (a.Y + fp.Height * 0.5f - cy);
+            float db = (b.X + fp.Width * 0.5f - cx) * (b.X + fp.Width * 0.5f - cx)
+                     + (b.Y + fp.Height * 0.5f - cy) * (b.Y + fp.Height * 0.5f - cy);
+            return da.CompareTo(db);
+        });
+        foreach (var (x, y) in order)
+            if (TryPlace(model, fp, id, name, x, y)) { LastX = x; LastY = y; return true; }
+        return false;
+    }
+
+    /// <summary>Where <see cref="TryPlaceNear"/> put the last ride.</summary>
+    public int LastX { get; private set; }
+    public int LastY { get; private set; }
 
     /// <summary>Can this footprint sit at (x, y)? Fails on the park edge and on any cell already
     /// claimed. ⚠ Checked BEFORE anything is written, so a rejected placement leaves no trace --
@@ -338,7 +408,13 @@ public sealed class Park
         if (x < 0 || y < 0 || x + fp.Width > Width || y + fp.Height > Height) return false;
         for (int fy = 0; fy < fp.Height; fy++)
             for (int fx = 0; fx < fp.Width; fx++)
-                if (fp.Cells[fx, fy] && _occupied[x + fx, y + fy] != 0) return false;
+            {
+                if (!fp.Cells[fx, fy]) continue;
+                // ⚠ Off the plot is as much a refusal as on top of another ride. Without this a
+                // ride sits on a cell that has no ground under it and hangs over the sea.
+                if (!IsPlayable(x + fx, y + fy)) return false;
+                if (_occupied[x + fx, y + fy] != 0) return false;
+            }
         return true;
     }
 
