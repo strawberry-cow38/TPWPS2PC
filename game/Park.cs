@@ -438,9 +438,18 @@ public sealed class Park
     /// park with no terrain under it gets.</summary>
     public bool[,] Playable { get; private set; }
 
-    /// <summary>Is this cell part of the plot at all?</summary>
-    public bool IsPlayable(int x, int y) =>
-        x >= 0 && y >= 0 && x < Width && y < Height && (Playable == null || Playable[x, y]);
+    /// <summary>Is this cell part of the plot at all?
+    ///
+    /// ⭐ When the terrain file carries a field, the ANSWER IS AUTHORED: `byte0` bit 0 is the
+    /// engine's own skip flag. That replaces the mesh-coverage mask, which was me inferring the
+    /// footprint from where terrain geometry happened to be and dropping ~290 cells the game
+    /// draws.</summary>
+    public bool IsPlayable(int x, int y)
+    {
+        if (x < 0 || y < 0 || x >= Width || y >= Height) return false;
+        if (Field != null && x < Field.Width && y < Field.Height) return Field.Drawn(x, y);
+        return Playable == null || Playable[x, y];
+    }
 
     /// <summary>Lay the park. Empty grass, no ride in it -- rides arrive through TryPlace.</summary>
     public void Build(int width, int height, bool[,] playable = null)
@@ -469,7 +478,7 @@ public sealed class Park
             for (int x = 0; x < width; x++)
             {
                 if (!IsPlayable(x, y)) continue;
-                int mat = Field != null && x < Field.Width && y < Field.Height ? Field.ShapeC(x, y) : 0;
+                int mat = Field != null && x < Field.Width && y < Field.Height ? Field.Material(x, y) : 0;
                 if (!surfaces.TryGetValue(mat, out var st))
                 {
                     st = new SurfaceTool();

@@ -64,13 +64,36 @@ public sealed class Model
         /// <summary>NX*NZ pairs, row-major: [0] is the height-and-flags byte, [1] is unidentified.</summary>
         public byte[] Cells;
         public int Count => Width * Height;
-        /// <summary>The tile-shape index, bits 0-3 -- an offset into a float array, NOT a height.
-        /// Nothing may treat this as an elevation until the corner tables are decoded.</summary>
-        public int ShapeA(int x, int y) => Cells[(y * Width + x) * 2] & 0x0F;
-        /// <summary>The second index, bits 4-7.</summary>
-        public int ShapeB(int x, int y) => (Cells[(y * Width + x) * 2] >> 4) & 0x0F;
-        /// <summary>The third index, bits 8-15.</summary>
-        public int ShapeC(int x, int y) => Cells[(y * Width + x) * 2 + 1];
+        /// <summary>A cell's first byte, raw. ⚠ NOT a height, and NOT decoded.
+        ///
+        /// What is established: bit 0 is the skip flag (see <see cref="Drawn"/>); bits 2-5
+        /// (`0x3C`) are wiped and repainted by the accessor at 0x166100, so that function owns
+        /// them; bit 7 (`0x80`) is never set in any of the eight parks on disc.
+        ///
+        /// ⚠ Two readings have been proposed and BOTH withdrawn. "`&amp; 0x03` is the height, proven
+        /// by `andi 0xc3`" was mine -- that instruction only shows which bits one function
+        /// preserves, never what they mean. "Three index fields at bits 0-3 / 4-7 / 8-15" came
+        /// from 0x221e3c, which was then shown never to touch this structure at all. Nothing in
+        /// any function confirmed to reach the cells turns part of this byte into a Y. Leave it
+        /// undecoded rather than name it.</summary>
+        public byte Raw0(int x, int y) => Cells[(y * Width + x) * 2];
+
+        /// <summary>The material index for a cell: `byte1`, into the terrain model's own
+        /// <see cref="Model.Materials"/>. Confirmed two ways -- a 6-of-7 hit on each world's own
+        /// ground-tile set at per-world indices, and the lookup in 0x222fe8, which does
+        /// `lbu byte1` then `sll 3` into an 8-byte-record table at `[$s3+0x5c]`.
+        /// ⚠ Index 0 is a SENTINEL, not a material.</summary>
+        public int Material(int x, int y) => Cells[(y * Width + x) * 2 + 1];
+
+        /// <summary>⭐ Does the engine draw this cell? `byte0` bit 0 SET means SKIP. Tested
+        /// identically at both cell sites in 0x222fe8 as `(byte0 ^ 1) &amp; 1`, and consistent with
+        /// the `andi 0xfe` / `ori 0x81` in the other routine.
+        ///
+        /// This is the authored footprint, and it replaces a mask I derived from mesh coverage --
+        /// which dropped about 290 cells the game does draw. It is spatially coherent (solid
+        /// regions, with the volcano and the plot boundary punched out) and lands at 68-82% drawn
+        /// across all eight parks.</summary>
+        public bool Drawn(int x, int y) => (Cells[(y * Width + x) * 2] & 1) == 0;
         public byte Raw(int x, int y) => Cells[(y * Width + x) * 2];
         public byte Second(int x, int y) => Cells[(y * Width + x) * 2 + 1];
     }
