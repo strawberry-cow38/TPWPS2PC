@@ -975,7 +975,7 @@ public partial class Viewer : Node3D
                    + "[ / ] nudge the gate  |  V weather  |  B buildable  |  F3 hide this panel\n"
                    + "RMB path tool (shift+RMB queue)  |  LMB press: start a run, again to lay\n"
                    + "O take it back  |  M straight/elbow segments  |  Esc close the tool\n"
-                   + "LMB opens the path tool (shift for a queue) and works it, RMB shuts it\n"
+                   + "LMB or RMB opens the path tool (shift for a queue); LMB works it, RMB shuts it\n"
                    + "in the park the mouse buttons are the TOOL'S -- pan with the middle drag";
     }
 
@@ -1553,7 +1553,7 @@ public partial class Viewer : Node3D
         _runX = _runY = -1;
         _ghostAt = (-1, -1, -1, -1);
         _ghostView?.Clear();
-        Status("left-click to open the path tool, shift+left-click for a queue");
+        Status("click to open the path tool, shift+click for a queue");
     }
 
     /// <summary>The ghost, every frame the tool is open: from the run's start to the cursor, or
@@ -2529,7 +2529,13 @@ public partial class Viewer : Node3D
                         // gets you out.
                         if (mb.ButtonIndex == MouseButton.Right)
                         {
+                            // ⭐ Right toggles, and it opens WITHOUT the under-the-cursor test
+                            // that the left button gets. That test is there so a left click can
+                            // reach a ride rather than lay path over it; the right button has no
+                            // such duty, which makes it the way to open the tool while pointing
+                            // at something that will one day answer a click.
                             if (_toolOpen) { CloseTool(); GD.Print("[tool] closed"); }
+                            else OpenTool(Input.IsKeyPressed(Key.Shift) ? PathTool.Kind.Queue : PathTool.Kind.Path);
                         }
                         else if (_toolOpen) PressTool();
                         else if (InteractiveUnderCursor() is { } busy)
