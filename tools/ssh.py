@@ -1,4 +1,8 @@
-"""`.ssh` -- EA's SHPS image container, as the PS2 build ships it. Container SOLVED; pixels NOT.
+"""`.ssh` -- EA's SHPS image container, as the PS2 build ships it.
+
+Pixels are now decoded by core/TPW.PS2.Data/Ssh.cs using FFmpeg's existing IPU codec.
+See findings/ssh.md and tools/TPW.PS2.SshScore for the scored results and limitations.
+This Python module remains the lightweight container inspector.
 
     0x00  'SHPS'
     0x04  u32 fileSize          (matches the archive's declared size)
@@ -16,25 +20,28 @@
     +0x0C u16 posX,    u16 posY
     +0x10 the payload
 
-⭐ TYPE CENSUS over all 5,764 `.ssh` on the disc (2026-09-21):
+⭐ TYPE CENSUS over all 5,764 `.ssh` on the disc:
 
-    type 4, compressed   3,933 entries
-    type 5, compressed   1,823 entries
-    type 2, RAW              8 entries
+    type 4, compressed   3,933 entries     RGB
+    type 5, compressed   1,823 entries     RGB + alpha
+    type 2, RAW              8 entries     uncompressed, 8-bit paletted
 
-⚠ An earlier note here said "every entry seen is type 0x84 = compressed type 4". There are also
-1,823 type-5 entries, and eight that are not compressed at all.
+The top bit of the type byte is the compression flag, so those read as 0x84, 0x85 and 0x02. In the
+400-pair fixture set the split is 331 type 0x84 and 69 type 0x85.
+
+⚠ An earlier note here said "every entry seen is type 0x84 = compressed type 4". That missed both
+the 1,823-strong alpha population and the eight that are not compressed at all.
 
 ⭐⭐ **THE EIGHT TYPE-2 ENTRIES ARE THE ONLY UNCOMPRESSED ONES, AND THEY ARE THE SKIES** --
-`{FANTASY,HALLOW,JUNGLE,SPACE}/Sky/*_{back,front2}.ssh`, every one 256x256. They are not a gap in a
-decoder for the compressed types; they were never compressed. Point a palette reader at them.
+`{FANTASY,HALLOW,JUNGLE,SPACE}/Sky/*_{back,front2}.ssh`, every one 256x256. They were never a gap
+in the coefficient decoder; they were never compressed.
 
 ⭐ Two independent routes land on exactly these eight files: they are also **the only paletted TGAs
 on the disc** (see findings/formats.md), four of which declare true-colour at 8bpp. The skies are a
 different animal in both formats.
 
-The compressed payload opens `47 4d 04 04`, is high-entropy throughout, and is NOT RefPack, which
-would announce itself with `10 FB`.
+The compressed payload is an IPU macroblock stream -- not an ordinary MPEG elementary stream and not
+RefPack, which would announce itself with `10 FB`.
 
 ⭐ When it IS attacked, the test set is already there: **5,493 of the disc's 6,007 material
 references ship BOTH a `.ssh` and a `.tga` of the same stem**, so a candidate decoder can be scored

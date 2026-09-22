@@ -26,6 +26,7 @@ against the owner's own rip of their own copy.
 | Archives | `FKNL` container, a **tree** of blocks; entries RefPacked unless they did not shrink |
 | Compression | **EA RefPack (QFS)** |
 | Models | **M3D2** — mesh table, scene graph, materials, positions, UVs and textures decoded |
+| Textures | **SHPS/GM** — managed IPU and type 0x02 palette decoders; 5,695 of 5,695 pairs byte-identical to the reference; [differential results](findings/ipu.md) |
 | Animation | `.aps`, magic `0x185AA030` — header and section table mapped, contents not |
 
 **JUNGLE.WAD reads 2,545 / 2,545 files to their exact declared size, 0 failures**, and five further
@@ -41,7 +42,17 @@ PS2 adding about seven rides. So a port's **simulation** layer transfers from th
 
 ## Tools
 
-All read a Mode 2/2352 track directly. Nothing copies a disc image.
+The standalone SHPS scorer takes a directory of SSH/TGA pairs, matches stems and extensions
+case-insensitively, and reports every image. It requires .NET 8:
+
+```sh
+dotnet run --project tools/TPW.PS2.SshScore -c Release -- /path/to/pairs
+```
+
+The decoder and scorer run without FFmpeg. See [managed IPU validation](findings/ipu.md) for
+the differential harness, synthetic checks, exact populations, and source-image tolerances.
+
+The disc tools below read a Mode 2/2352 track directly. Nothing copies a disc image.
 
 | | |
 |---|---|

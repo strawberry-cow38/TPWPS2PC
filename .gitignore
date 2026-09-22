@@ -14,6 +14,7 @@ SCES_*
 *.tga
 *.TGA
 *.ssh
+*.SSH
 *.mpc
 *.MPC
 *.irx
@@ -34,12 +35,13 @@ dump/
 __pycache__/
 *.pyc
 
-# Build output. ⚠ These were tracked from 2026-09-21 until this commit, because `git add -A` after
-# a local build picks them up and nothing here excluded them. A committed DLL also means a `git
-# pull` on a machine that has built the same tree fails with "local changes would be overwritten",
-# which is how it surfaced.
-bin/
-obj/
+# Build output. ⚠ These were tracked from 2026-09-21 until they were removed, because `git add -A`
+# after a local build picks them up and nothing here excluded them. A committed DLL also means a
+# `git pull` on a machine that has built the same tree fails with "local changes would be
+# overwritten", which is how it surfaced.
+# ⭐ `**/` rather than bare `bin/` -- tinyclaw's form, which matches at any depth.
+**/bin/
+**/obj/
 *.dll
 *.pdb
 *.deps.json

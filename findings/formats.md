@@ -1103,7 +1103,20 @@ Counted over every model on the disc:
 `LOBBY.WAD` alone accounts for **448** of the 514 — the lobby is almost entirely `.ssh`-only, which
 is why it looks the most broken in a viewer.
 
-### The SHPS container — SOLVED. The pixels — NOT.
+### SHPS pixels — now decoded through an existing IPU codec
+
+**Update: [the decoder and measured results are in ssh.md](ssh.md).** The core now uses FFmpeg's
+dedicated IPU decoder, with a small GM/IPUM adapter. It decodes **400 of 400** fixture images;
+**254 of 306** lowercase partners and **322 of 400** overall pass RGB MAE <=5 and alpha MAE <=1.
+Only **2 of 63 flat colours** are exact. Types 0x84 **and 0x85** are present (331/400 and 69/400).
+
+The following is the historical investigation, preserved for its failed-experiment numbers.
+Its rejection of ordinary MPEG picture/slice wrappers remains valid. The stronger inference that
+the start-code census rules out IPU macroblock syntax was wrong: IDEC does not require numbered
+slice headers, and one stream can span several macroblock rows. The new adapter establishes this
+with per-image scores; it does not reuse the failed wrappers.
+
+### Historical container and payload investigation
 
 ```
 'SHPS' · u32 fileSize · u32 entryCount · char[4] platform ('GIMX')
@@ -1779,7 +1792,13 @@ English bank clips are trimmed shorter than the line they were marked against, o
 mis-paired. Not resolved, and the asymmetry is the clue.
 
 
-## ⚠⚠ Grid cell size: 10, and how 14.42 happened (2026-09-21)
+## ⚠⚠ SUPERSEDED — Grid cell size: 10, and how 14.42 happened (2026-09-21)
+
+> **The answer below is wrong and is kept for the reasoning, not the number.** One model unit is one
+> footprint cell; see *"One model unit IS one footprint cell"* further down, and `findings/grid.md`.
+> 14.42 and 10 were both derived from extents taken through each mesh's own matrix while the engine
+> composes a parent chain. The containment argument that chose 10 over 9.6 was sound; the extents it
+> ran on were not.
 
 The park needs to know how big a tile is in model units. Rides named after their own footprint give
 it directly -- `1x1east`, `2x2rck`, `4x4rock`, `5x5rck` are props built to fill a plot.
