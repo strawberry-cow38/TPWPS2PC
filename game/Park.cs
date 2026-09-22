@@ -506,9 +506,13 @@ public sealed class Park
     /// it, so reading the disc and reading RAM give the same thing.</summary>
     public Model.HeightField Field { get; set; }
 
-    /// <summary>World Y of a cell. ⚠ One height step is one world unit: the marker AABB tops out
-    /// at Y 2.006 and the highest value in jungle is 2. Provisional beyond that, since the bit
-    /// layout outside jungle is unproven.</summary>
+    /// <summary>World Y of a cell. The height itself is proven (`byte0 &amp; 0x03`, the mask the
+    /// engine's own accessor preserves).
+    ///
+    /// ⚠ ONE UNIT PER STEP IS STILL A GUESS. I first justified it against the marker AABB's
+    /// `Y 0..2` -- that was wrong twice over: those floats are bit-identical in all eight terrain
+    /// files so they state nothing, and heights actually reach 3. One unit is what the geometry
+    /// looks like, not what anything says.</summary>
     float CellY(int x, int y) =>
         BaseY + (Field != null && x < Field.Width && y < Field.Height ? Field.HeightAt(x, y) : 0) * CellSize;
 
