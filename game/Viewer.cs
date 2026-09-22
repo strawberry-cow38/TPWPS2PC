@@ -1856,7 +1856,7 @@ public partial class Viewer : Node3D
         if (Input.IsKeyPressed(Key.F)) _game.Zoom(1);
         if (Input.IsKeyPressed(Key.Z)) _game.Push(-1);
         if (Input.IsKeyPressed(Key.X)) _game.Push(1);
-        _game.Step(GameCamera.FrameTime60, GroundAt);
+        _game.Step(GameCamera.FrameTime(delta), GroundAt);
         _cam.Transform = new Transform3D(
             Basis.LookingAt(_game.Look - _game.Eye, _game.Up), _game.Eye);
     }

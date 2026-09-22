@@ -35,8 +35,25 @@ public sealed class GameCamera
     public const int MinDolly = -0x800, MaxDolly = 0x3C0;
     /// <summary>What one frame of holding a zoom or dolly button is worth.</summary>
     public const int AxisStep = 0x20;
-    /// <summary>Frame time at 60fps in the units 0x14F820 uses; it clamps at 0x4000.</summary>
-    public const int FrameTime60 = 0x1000;
+    /// <summary>What ONE console frame is worth, in the units 0x14F820 uses; it clamps at 0x4000.</summary>
+    public const int FrameTick = 0x1000;
+
+    /// <summary>How many of those frames the console gets through in a second.
+    ///
+    /// ⚠ 50 because this is the PAL disc (SLES), which is the field rate, NOT something measured
+    /// out of the game -- a PS2 title can run its logic at 60 on a 50Hz display. If the camera
+    /// still feels fast or slow after this, THIS is the number to doubt first, before the eases.</summary>
+    public const int TicksPerSecond = 50;
+
+    /// <summary>⚠⚠ THE STEP TAKES REAL TIME, NOT A CONSTANT. Every frame used to advance the
+    /// camera by exactly one console frame's worth, whatever the display was doing -- so on a
+    /// 144Hz screen the ease ran nearly THREE TIMES the console's speed, and the faster the machine
+    /// the faster the camera turned. Master, on real hardware, said Q and E were too quick.</summary>
+    public static int FrameTime(double delta) =>
+        (int)Math.Clamp(delta * TicksPerSecond * FrameTick, 0, 0x4000);
+
+    /// <summary>The old fixed step, kept for anything that wants exactly one console frame.</summary>
+    public const int FrameTime60 = FrameTick;
 
     public int TargetYaw, Yaw;                  // 0x395390, 0x39538C
     public int FocusX, FocusZ;                  // 0x395300, 0x395310 -- 24.8 fixed point
