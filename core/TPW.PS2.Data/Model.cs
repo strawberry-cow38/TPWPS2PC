@@ -65,6 +65,19 @@ public sealed class Model
     public sealed class HeightField
     {
         public int Width, Height;
+
+        /// <summary>The header float at struct +0x18, 2.0 in all eight terrain files.
+        ///
+        /// ⭐ Almost certainly the step height. tinyclaw dismissed it this morning BECAUSE it is
+        /// constant -- "identical everywhere, so it states nothing per park" -- and that was the
+        /// wrong test: a step height SHOULD be the same in every park, so being constant is what it
+        /// ought to look like. Master then said 1 unit renders too short.
+        ///
+        /// ⚠ NOT PROVEN. No code has been found reading it as a height, and "right sort of number
+        /// in the right sort of place" is the reasoning behind several of today's retractions. It
+        /// is read from the file rather than hardcoded so that if it is wrong, it is wrong in a way
+        /// the data can correct.</summary>
+        public float Step;
         /// <summary>NX*NZ pairs, row-major: [0] is the height-and-flags byte, [1] is unidentified.</summary>
         public byte[] Cells;
         public int Count => Width * Height;
@@ -136,7 +149,12 @@ public sealed class Model
             {
                 var cells = new byte[nx * nz * 2];
                 Array.Copy(D, fp + 0x30, cells, 0, cells.Length);
-                Field = new HeightField { Width = nx, Height = nz, Cells = cells };
+                float step = F32(fp + 0x18);
+                Field = new HeightField
+                {
+                    Width = nx, Height = nz, Cells = cells,
+                    Step = step > 0f && step < 64f ? step : 1f,
+                };
             }
         }
         int nmat = U16(0x22), matTable = (int)U32(0x40);

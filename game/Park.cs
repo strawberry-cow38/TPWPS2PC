@@ -660,7 +660,10 @@ public sealed class Park
     {
         if (!RaiseEnabled || Field == null || x >= Field.Width || y >= Field.Height) return BaseY;
         byte b = Field.Raw0(x, y);
-        return BaseY + ((b & 0x40) != 0 && (b & 1) == 0 ? CellSize : 0f);
+        // ⭐ The step height comes from the field's own header (+0x18), not from CellSize. Master
+        // said one unit rendered too short; the header carries 2.0 in all eight parks, which is
+        // what a step height should look like -- the same everywhere.
+        return BaseY + ((b & 0x40) != 0 && (b & 1) == 0 ? Field.Step : 0f);
     }
 
     /// <summary>The terrain model's top surface height for each cell of a plot, sampled with a
