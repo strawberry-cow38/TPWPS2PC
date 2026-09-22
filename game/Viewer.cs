@@ -66,6 +66,10 @@ public partial class Viewer : Node3D
     readonly GameCamera _game = new();
     /// <summary>The park's entrance arch, Features/Gates/Gates.mps, one per archive.</summary>
     AnimatedModel _gate;
+    /// <summary>Live nudge on the gate's z, in units. ⭐ Here so the one quantity I cannot measure
+    /// can be MEASURED BY SOMEONE WHO CAN SEE IT: [ and ] move it and print the number, and that
+    /// number then gets checked against the anchors and baked in.</summary>
+    float _gateNudge;
     /// <summary>G swaps to the free orbit camera.</summary>
     bool _freeCam;
     /// <summary>Ground height per TILE in world units, the same lookup the game does. Baked when
@@ -418,6 +422,13 @@ public partial class Viewer : Node3D
         else if (GameCamActive && k.Keycode == Key.Q) _game.Turn(-1);
         else if (GameCamActive && k.Keycode == Key.E) _game.Turn(1);
         else if (GameCamActive && k.Keycode == Key.Home) StartGameCam();
+        // ⭐ [ and ] slide the gate along z and print where its front edge lands. Master can see
+        // the park and I cannot, so this turns "not quite right" into a number.
+        else if (k.Keycode is Key.Bracketleft or Key.Bracketright && _mode == Mode.Park)
+        {
+            _gateNudge += k.Keycode == Key.Bracketright ? 0.25f : -0.25f;
+            LoadGate();
+        }
     }
 
     void SetMode(Mode m)
@@ -1086,14 +1097,17 @@ public partial class Viewer : Node3D
             // ⚠ Seat it on the pad by its OWN base, not by its centre: the arch is tall and
             // centring it buries half of it.
             var (lo, hi) = Park.DrawnBounds(_gate.Root, inParent: true);
-            float dz = hasPad
+            float dz = (hasPad
                 ? pad.Position.Z + pad.Size.Z * 0.5f - (lo.Z + hi.Z) * 0.5f
-                : AuthoredZBias;
+                : AuthoredZBias) + _gateNudge;
             _gate.Root.Position += new Vector3(shift, 0f, dz);
             _gate.Root.Visible = _mode == Mode.Park;
             GD.Print($"[gate] {ride.Name}: authored x {lo.X:F2}..{hi.X:F2}  y {lo.Y:F2}..{hi.Y:F2}  "
                    + $"z {lo.Z:F2}..{hi.Z:F2}; shifted {shift:+0.0;-0.0;0} x, {dz:+0.00;-0.00;0} z "
-                   + (hasPad ? "onto its own gatebase01 pad" : "by the offset Fantasy's pad states"));
+                   + (hasPad ? "onto its own gatebase01 pad" : "by the offset Fantasy's pad states")
+                   + (_gateNudge != 0f ? $"  [nudged {_gateNudge:+0.00;-0.00}]" : "")
+                   + $"\n[gate] front edge now z={hi.Z + dz:F2} -- the road ends at -18.90 and the "
+                   + $"booths' back is -16.12, in every park");
         }
         catch (Exception ex) { GD.PrintErr($"[gate] {ride.Model.Path}: {ex.Message}"); }
     }
