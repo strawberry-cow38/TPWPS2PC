@@ -46,7 +46,20 @@ public partial class Viewer : Node3D
 
     ItemList _rideList;
     CheckBox _texOn;
-    OptionButton _wadPick, _animPick, _modePick;
+    OptionButton _wadPick, _animPick;
+    TabBar _tabs;
+    Control _panel;
+
+    /// <summary>List row -> data index. Category headers are -1, so a click on a heading selects
+    /// nothing rather than the wrong item.</summary>
+    readonly List<int> _rows = new();
+
+    /// <summary>Every park on the disc: which archive, which terrain file. Built once, lazily.</summary>
+    readonly List<(string Wad, string Path, string Label)> _maps = new();
+    bool _mapsBuilt;
+
+    /// <summary>The terrain file the park tab asked for, or null for the first one.</summary>
+    string _wantTerrain;
     Label _info;
     HSlider _scrub;
 
@@ -151,11 +164,11 @@ public partial class Viewer : Node3D
         // cmd's quoting and a silent empty argument presents as a hang rather than an error.
         if (_wantMode != null && _wantMode.StartsWith("mov", StringComparison.OrdinalIgnoreCase))
         {
-            _modePick.Select(3); SetMode(Mode.Movies);
+            _tabs.CurrentTab = ModeTab(Mode.Movies); SetMode(Mode.Movies);
         }
         else if (_wantMode != null && _wantMode.StartsWith("sou", StringComparison.OrdinalIgnoreCase))
         {
-            _modePick.Select(2); SetMode(Mode.Sounds);
+            _tabs.CurrentTab = ModeTab(Mode.Sounds); SetMode(Mode.Sounds);
             if (_wantSound != null)
             {
                 for (int b = 0; b < _wadPick.ItemCount; b++)
@@ -169,7 +182,7 @@ public partial class Viewer : Node3D
         }
         else if (_wantMode != null && _wantMode.StartsWith("tex", StringComparison.OrdinalIgnoreCase))
         {
-            _modePick.Select(1); SetMode(Mode.Textures);
+            _tabs.CurrentTab = ModeTab(Mode.Textures); SetMode(Mode.Textures);
             if (_wantImage != null)
                 for (int i = 0; i < _rideList.ItemCount; i++)
                     if (_rideList.GetItemText(i).Contains(_wantImage, StringComparison.OrdinalIgnoreCase))
@@ -177,7 +190,7 @@ public partial class Viewer : Node3D
         }
         else if (_wantMode != null && _wantMode.StartsWith("par", StringComparison.OrdinalIgnoreCase))
         {
-            _modePick.Select(4); SetMode(Mode.Park);
+            _tabs.CurrentTab = ModeTab(Mode.Park); SetMode(Mode.Park);
             // ⚠ Re-select the ride AFTER the mode change. SetMode does not rebuild, so a --shot run
             // that only set the mode photographed the model standing on no ground at all.
             if (_rideList.ItemCount > 0)
@@ -223,12 +236,12 @@ public partial class Viewer : Node3D
                                MouseFilter = Control.MouseFilterEnum.Ignore };
         AddChild(ui);
 
-        var panel = new PanelContainer { CustomMinimumSize = new Vector2(280, 0),
+        _panel = new PanelContainer { CustomMinimumSize = new Vector2(280, 0),
                                          MouseFilter = Control.MouseFilterEnum.Pass };
-        panel.SetAnchorsPreset(Control.LayoutPreset.LeftWide);
-        ui.AddChild(panel);
+        _panel.SetAnchorsPreset(Control.LayoutPreset.LeftWide);
+        ui.AddChild(_panel);
         var col = new VBoxContainer();
-        panel.AddChild(col);
+        _panel.AddChild(col);
 
         // The image pane sits BEHIND the side panel and in front of the 3D view, so switching mode
         // is just a visibility flip -- the models stay built and come back instantly.
@@ -249,24 +262,28 @@ public partial class Viewer : Node3D
         _imageView.SetAnchorsPreset(Control.LayoutPreset.FullRect);
         ui.AddChild(_imageView);
 
-        _modePick = new OptionButton();
-        _modePick.AddItem("Models"); _modePick.AddItem("Textures");
-        _modePick.AddItem("Sounds"); _modePick.AddItem("Movies");
-        _modePick.AddItem("Park");
-        _modePick.ItemSelected += i => SetMode((Mode)(int)i);
-        col.AddChild(_modePick);
+        // ⭐ Tabs rather than a dropdown, in the order master asked for. The Mode enum keeps its
+        // old numbering so saved command-line args still work, so the tab order is mapped, not
+        // assumed to match.
+        _tabs = new TabBar();
+        foreach (var t in new[] { "Models", "Parks", "Textures", "Sounds", "Movies" }) _tabs.AddTab(t);
+        _tabs.TabSelected += i => SetMode(TabMode((int)i));
+        col.AddChild(_tabs);
 
         _wadPick = new OptionButton();
         _wadPick.ItemSelected += i => { if (_mode == Mode.Sounds) OpenBank((int)i); else OpenWad((int)i); };
         col.AddChild(_wadPick);
 
         _rideList = new ItemList { SizeFlagsVertical = Control.SizeFlags.ExpandFill };
-        _rideList.ItemSelected += i =>
+        _rideList.ItemSelected += row =>
         {
-            if (_mode == Mode.Models || _mode == Mode.Park) ShowRide((int)i);
-            else if (_mode == Mode.Textures) ShowImage((int)i);
-            else if (_mode == Mode.Movies) ShowMovie((int)i);
-            else ShowSound((int)i);
+            int i = Row((int)row);
+            if (i < 0) return;                       // a category heading
+            if (_mode == Mode.Park) LoadMap(i);
+            else if (_mode == Mode.Models) ShowRide(i);
+            else if (_mode == Mode.Textures) ShowImage(i);
+            else if (_mode == Mode.Movies) ShowMovie(i);
+            else ShowSound(i);
         };
         col.AddChild(_rideList);
 
@@ -302,6 +319,45 @@ public partial class Viewer : Node3D
         _video.SetAnchorsPreset(Control.LayoutPreset.FullRect);
         ui.AddChild(_video);
         ui.MoveChild(_video, 0);
+    }
+
+    /// <summary>Tab order is master's -- Models, Parks, Textures, Sounds, Movies -- and the Mode
+    /// enum keeps its original numbering so existing --mode arguments still work. Mapped both
+    /// ways rather than assumed to line up.</summary>
+    static Mode TabMode(int tab) => tab switch
+    {
+        1 => Mode.Park, 2 => Mode.Textures, 3 => Mode.Sounds, 4 => Mode.Movies, _ => Mode.Models,
+    };
+
+    static int ModeTab(Mode m) => m switch
+    {
+        Mode.Park => 1, Mode.Textures => 2, Mode.Sounds => 3, Mode.Movies => 4, _ => 0,
+    };
+
+    /// <summary>The data index behind a list row, or -1 for a category heading.</summary>
+    int Row(int row) => row >= 0 && row < _rows.Count ? _rows[row] : -1;
+
+    /// <summary>Add a category heading. ⚠ Not selectable -- a heading that can be clicked reads as
+    /// an item and shows the wrong thing.</summary>
+    void AddHeading(string text)
+    {
+        int at = _rideList.AddItem("── " + text);
+        _rideList.SetItemSelectable(at, false);
+        _rideList.SetItemCustomFgColor(at, new Color(0.55f, 0.75f, 1f));
+        _rows.Add(-1);
+    }
+
+    void AddRow(string text, int index)
+    {
+        _rideList.AddItem(text);
+        _rows.Add(index);
+    }
+
+    /// <summary>F3 hides the whole panel, for looking at the scene without it.</summary>
+    public override void _UnhandledKeyInput(InputEvent e)
+    {
+        if (e is InputEventKey { Pressed: true, Keycode: Key.F3 } && _panel != null)
+            _panel.Visible = !_panel.Visible;
     }
 
     void SetMode(Mode m)
@@ -486,20 +542,106 @@ public partial class Viewer : Node3D
 
     void FillList()
     {
-        _rideList.Clear();
+        _rideList.Clear(); _rows.Clear();
         if (_mode == Mode.Sounds) return;      // the bank picker fills this list instead
-        if (_mode == Mode.Models || _mode == Mode.Park)
+        if (_mode == Mode.Park) { FillMapList(); return; }
+        if (_mode == Mode.Models)
         {
-            foreach (var r in _lib.Rides) _rideList.AddItem(r.Name);
-            if (_lib.Rides.Count > 0) { _rideList.Select(0); ShowRide(0); }
+            // ⭐ Grouped by the first path segment, which is the disc's own categorisation:
+            // Rides, Features, Shops, Sideshow. 300-odd flat entries is a scroll, not a list.
+            foreach (var g in _lib.Rides.Select((r, i) => (r, i))
+                                        .GroupBy(t => Category(t.r.Name))
+                                        .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase))
+            {
+                AddHeading($"{g.Key}  ({g.Count()})");
+                foreach (var (r, i) in g) AddRow("   " + Leaf(r.Name), i);
+            }
+            int first = _rows.FindIndex(v => v >= 0);
+            if (first >= 0) { _rideList.Select(first); ShowRide(_rows[first]); }
         }
         else
         {
             _images = _lib.Images();
-            foreach (var e in _images) _rideList.AddItem(e.Path.TrimStart('/'));
-            if (_images.Count > 0) { _rideList.Select(0); ShowImage(0); }
+            foreach (var g in _images.Select((e, i) => (e, i))
+                                     .GroupBy(t => Category(t.e.Path.TrimStart('/')))
+                                     .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase))
+            {
+                AddHeading($"{g.Key}  ({g.Count()})");
+                foreach (var (e, i) in g) AddRow("   " + Leaf(e.Path.TrimStart('/')), i);
+            }
+            int first = _rows.FindIndex(v => v >= 0);
+            if (first >= 0) { _rideList.Select(first); ShowImage(_rows[first]); }
             else _info.Text = "no images in this archive";
         }
+    }
+
+    static string Category(string path)
+    {
+        int i = path.IndexOf('/');
+        return i > 0 ? path[..i] : "(root)";
+    }
+
+    static string Leaf(string path)
+    {
+        int i = path.LastIndexOf('/');
+        return i >= 0 ? path[(i + 1)..] : path;
+    }
+
+    /// <summary>Every park on the disc, grouped by world. ⚠ Built once: finding them means opening
+    /// each archive, so it is done on the first visit to the tab rather than at startup.</summary>
+    void FillMapList()
+    {
+        if (!_mapsBuilt)
+        {
+            _mapsBuilt = true;
+            var open = _lib.WadName;
+            var t0 = Time.GetTicksMsec();
+            foreach (var wad in _lib.Wads())
+            {
+                try
+                {
+                    _lib.OpenWad(wad);
+                    foreach (var m in _lib.TerrainModels())
+                        _maps.Add((wad, m.Path, $"{Leaf(wad).Replace(".WAD", "")}  {Leaf(m.Path)}"));
+                }
+                catch (Exception ex) { GD.PrintErr($"[maps] {wad}: {ex.Message}"); }
+            }
+            if (open != null) _lib.OpenWad(open);
+            GD.Print($"[maps] {_maps.Count} parks across {_lib.Wads().Count} archives "
+                   + $"in {Time.GetTicksMsec() - t0} ms");
+        }
+        foreach (var g in _maps.Select((m, i) => (m, i))
+                               .GroupBy(t => t.m.Wad)
+                               .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase))
+        {
+            AddHeading(Leaf(g.Key).Replace(".WAD", ""));
+            foreach (var (m, i) in g) AddRow("   " + Leaf(m.Path), i);
+        }
+        if (_maps.Count == 0) _info.Text = "no parks found";
+    }
+
+    /// <summary>Open the archive a park lives in and load that terrain file.</summary>
+    void LoadMap(int i)
+    {
+        if (i < 0 || i >= _maps.Count) return;
+        var m = _maps[i];
+        if (!string.Equals(m.Wad, _lib.WadName, StringComparison.OrdinalIgnoreCase))
+        {
+            _lib.OpenWad(m.Wad);
+            _texCache.Clear();
+            IndexRides();
+            for (int w = 0; w < _wadPick.ItemCount; w++)
+                if (_wadPick.GetItemText(w) == m.Wad) { _wadPick.Select(w); break; }
+        }
+        // ⚠ Force a reload: the terrain is cached by path, and switching park within one archive
+        // would otherwise keep the old one.
+        _wantTerrain = m.Path;
+        _terrainPath = null;
+        _terrain?.Root.QueueFree();
+        _terrain = null;
+        _park.Field = null;
+        if (_lib.Rides.Count > 0) ShowRide(0);
+        _info.Text = m.Label;
     }
 
     /// <summary>Show one image at its own size, or the reason it cannot be shown.</summary>
@@ -626,7 +768,11 @@ public partial class Viewer : Node3D
             _park.ShowGrass = true;
             return;
         }
+        // ⭐ The park tab picks the terrain file; models[0] is only the default.
         var pick = models[0];
+        if (_wantTerrain != null)
+            pick = models.FirstOrDefault(m =>
+                string.Equals(m.Path, _wantTerrain, StringComparison.OrdinalIgnoreCase)) ?? models[0];
         if (_terrainPath == pick.Path && _terrain != null) return;
         try
         {
