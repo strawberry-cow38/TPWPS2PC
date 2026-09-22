@@ -254,3 +254,28 @@ does not follow. Constant YUV means the encoder kept DC only; it says nothing ab
 same integer arithmetic the decoder uses, and collect the distinct packed RGB values. Then test each
 flat reference colour for membership. Independent of the PCSX2 harness above — it needs nothing but
 the conversion itself — and it returned the same 26, which is why both are recorded.
+
+## The `.tga` is never loaded, which settles what the residual is
+
+The scoring corpus is `.tga` files **from the PS2 disc itself** — they sit in the same WAD folder as
+the `.ssh`, same stem (`JUNGLE/Rides/Monkey/textures/m_back.TGA` beside `m_back.ssh`). An earlier
+version of this document called them "the PC version's files". They are not; nobody had checked.
+
+⭐ **Every material reference on the disc names `.ssh`. All 6,007 of them. Zero name `.tga`.**
+Measured by reading the material strings out of every `.mps`:
+
+    material references across every .mps on the disc
+       .ssh    6007
+       .tga       0
+
+So the engine never loads a TGA. They are EA's pre-compression source art, shipped and unreferenced.
+
+**That settles what the 2,153 out-of-tolerance pairs are, and more firmly than "probably encoder
+loss".** There is no path by which a player sees the TGA, so the difference between our decode and it
+is *by construction* exactly what the encoder discarded. The TGA comparison was only ever a proxy for
+"did we decode correctly", and that now has a direct answer: identical to PCSX2's reference over all
+16,777,216 inputs.
+
+⚠ Scope of the claim: this measures what the models **ask for**, not what the loader does with the
+request. A loader could strip the extension and prefer a `.tga` beside it. Nothing on the disc asks
+for one, so it would have to do that unprompted — but that has not been read out of the executable.
