@@ -25,7 +25,23 @@ would look like a hit.
 import sys, zipfile, struct, collections
 
 EE_MASK = 0x1FFFFFFF
-HEIGHTFIELD_PTR = 0x2EA840          # tinyclaw: set by 0x1f6858, zeroed by 0x1f6868
+MODEL_PTR = 0x2EA840   # the loaded terrain model (M3D2). tinyclaw's handle -- it is NOT the field.
+FIELD_PTR = 0x2EA83C   # ⭐ THE PARK FIELD OBJECT, one word EARLIER. Found by dumping the globals
+                       # around the model handle rather than trusting the label on it.
+
+# ⭐⭐ The field object describes itself, which is what makes this a confirmation and not a guess:
+#   +0x0c u32  NX        64 for jungle terrain_1 -- the size predicted from the disc's heightfield
+#   +0x10 u32  NZ        76          "
+#   +0x18 f32  2.0       the Y envelope max, matching the authored AABB
+#   +0x20 f32  10.0      model units per cell (10 units = 1 world cell)
+#   +0x24 ptr  cells     -> OBJ+0x30, NX*NZ entries of 2 bytes
+#   +0x28 u32  2
+# Cell encoding: byte0 & 0x3F is the HEIGHT and is only ever 0, 1 or 2 across all 4,864 cells,
+# exactly the authored envelope. byte0 & 0x40 is a flag set on 67 CONTIGUOUS cells.
+# ⚠ byte1 is per-cell and varies (24 / 0 / 57 / 55-60). Surface type or grass variant are both
+# plausible -- we ship jgr_bas2..6 -- but it renders more repetitively than a hand-built park
+# should, so it stays UNIDENTIFIED rather than named wrongly.
+FIELD = dict(NX=0x0c, NZ=0x10, YMAX=0x18, CELL=0x20, CELLS=0x24)
 
 # ⚠ PLOT SIZE IS A PROPERTY OF THE TERRAIN FILE, NOT THE WORLD. Two files per world, and they
 # differ everywhere except JUNGLE -- so a fantasy park is 4800 cells OR 4712 depending which file
@@ -48,13 +64,34 @@ def expected():
     return out
 
 
+def _member(path, want):
+    """One entry's bytes. ⚠ PCSX2 v2 compresses savestates with ZSTANDARD (zip method 93), which
+    python's zipfile refuses -- so read the raw member and pipe it through the zstd CLI. Using
+    zipfile.read() raises NotImplementedError and reads as a corrupt state rather than a missing
+    codec."""
+    import subprocess
+    with zipfile.ZipFile(path) as z:
+        info = next((i for i in z.infolist() if i.filename.lower() == want.lower()), None)
+        if info is None:
+            raise SystemExit(f"no {want} in {path}; entries: {[i.filename for i in z.infolist()]}")
+        if info.compress_type != 93:
+            return z.read(info)
+        with open(path, 'rb') as f:
+            f.seek(info.header_offset)
+            hdr = f.read(30)
+            namelen, extralen = struct.unpack_from('<HH', hdr, 26)
+            f.seek(info.header_offset + 30 + namelen + extralen)
+            raw = f.read(info.compress_size)
+    out = subprocess.run(['zstd', '-d', '-c'], input=raw, capture_output=True)
+    if len(out.stdout) != info.file_size:
+        raise SystemExit(f"{want}: expected {info.file_size} bytes, got {len(out.stdout)}")
+    return out.stdout
+
+
 def ee_ram(path):
     with zipfile.ZipFile(path) as z:
         names = z.namelist()
-        hit = next((n for n in names if n.lower().endswith('eememory.bin')), None)
-        if hit is None:
-            raise SystemExit(f"no eeMemory.bin in {path}; entries: {names}")
-        return z.read(hit), names
+    return _member(path, 'eeMemory.bin'), names
 
 
 def u32(d, o):
@@ -64,8 +101,26 @@ def u32(d, o):
 def probe(path):
     ram, names = ee_ram(path)
     print(f"{path}: EE RAM {len(ram):,} bytes; state entries: {len(names)}")
-    p = u32(ram, HEIGHTFIELD_PTR)
-    print(f"  [{HEIGHTFIELD_PTR:#x}] = {p:#010x}" + ("  (NULL -- no park loaded?)" if not p else ""))
+    fld = u32(ram, FIELD_PTR)
+    mdl = u32(ram, MODEL_PTR)
+    print(f"  [{MODEL_PTR:#x}] model = {mdl:#010x}")
+    print(f"  [{FIELD_PTR:#x}] field = {fld:#010x}" + ("  (NULL -- no park loaded)" if not fld else ""))
+    if fld:
+        o = fld & EE_MASK
+        nx, nz = u32(ram, o + FIELD['NX']), u32(ram, o + FIELD['NZ'])
+        ymax = struct.unpack_from('<f', ram, o + FIELD['YMAX'])[0]
+        cs = struct.unpack_from('<f', ram, o + FIELD['CELL'])[0]
+        cells = u32(ram, o + FIELD['CELLS']) & EE_MASK
+        print(f"    grid {nx} x {nz} = {nx*nz} cells, ymax {ymax}, {cs} units/cell, data {cells:#x}")
+        want = expected()
+        if nx * nz in want:
+            print(f"    ⭐ {nx*nz} matches our prediction: {', '.join(want[nx*nz])}")
+        hs = collections.Counter(ram[cells + i*2] & 0x3F for i in range(nx*nz))
+        fl = sum(1 for i in range(nx*nz) if ram[cells + i*2] & 0x40)
+        print(f"    heights: {sorted(hs.items())}   flag 0x40 on {fl} cells")
+        for z in range(0, nz, max(1, nz // 24)):
+            print("      " + "".join(".12345"[ram[cells + (z*nx + x)*2] & 0x3F] for x in range(nx)))
+    p = mdl
     if not p:
         return
     off = p & EE_MASK
