@@ -24,12 +24,30 @@ camera). The game's own camera is created in `0x151498`:
 
 so **`0x14F758` is the camera's per-frame function**. It dispatches on `DAT_00395288`:
 
-| mode | runs |
-|---:|---|
-| 0 | `0x14F820` — the normal park camera |
-| 1 | `0x14F820(0)` then `0x137968` |
-| 2 | nothing |
-| 3 | `0x1503A0` |
+| mode | runs | what it is |
+|---:|---|---|
+| 0 | `0x14F820` | the normal park camera |
+| 1 | `0x14F820(0)` then `0x137968` | **riding a ride, first person** |
+| 2 | nothing | not dispatched |
+| 3 | `0x1503A0` | **attached first person — camcorder mode** |
+
+`SetCameraMode` is `0x14DAF8`, and it names them by what it does on the way in:
+
+- **Mode 1 takes the cursor's TILE** (`0x14E138(x >> 8, z >> 8)`, the same 256-units-to-a-tile
+  divide as everywhere else), asks `0x1E61E0` whether what is there can be ridden, and if not
+  puts up message `0xAF` and stays put. If it can, `0x136E20` mounts it **carrying the current
+  yaw** `0x39538C`, so you board facing the way you were looking. It also pulls the view in:
+  the pair of distances goes from 2000..6000 to **1200..5000** and the float from `0.8` to
+  `0.04`, which is the tighter, closer view you want sitting in a car.
+- **Mode 3 computes no camera position at all.** It drives a target object at `DAT_002B72A0`
+  through its vtable and watches for a button that calls `SetCameraMode(1)` — get on the thing
+  you are looking at. It is the only mode that changes no distances on entry.
+- Mode 0 restores 2000..6000 and `0.8`.
+
+⚠ Which also corrects the axis above: **`0x2B73D0` is not a standalone global.** It sits
+`0x130` into the camera-target block that starts at `0x2B72A0`, alongside `0x2B73F8` (the vector
+the yaw rotation is applied to) and `0x2B7400` (the yaw offset for the quantised facing). It is a
+field of the attached-camera state, which is why mode 3 is the only place that reads it.
 
 ## The normal camera, `0x14F820`
 
