@@ -68,6 +68,18 @@ currently **fails**. See [resolver results and all unresolved names](findings/te
 
 The disc tools below read a Mode 2/2352 track directly. Nothing copies a disc image.
 
+Decode and audit all PS2 bitmap fonts, writing PGM text specimens and glyph atlases:
+
+```sh
+dotnet run --project tools/TPW.PS2.FontAudit -c Release -- /path/to/disc.bin /tmp/font-audit
+dotnet run --project tools/TPW.PS2.FontAudit -c Release -- --self-test
+```
+
+The managed `BitmapFont` reader exposes character lookup, signed bearings, advance and four-bit
+coverage. The audit fails on changes to ordered pixels, character mappings or metrics, and on
+malformed input. It includes asymmetric shape checks; matching glyph totals is insufficient.
+See [BFF evidence, visual inspection and limitations](findings/bff-font.md).
+
 Model texture animation uses explicit MPS filename lists and APS material/index keyframes,
 at the existing 30-frame animation clock. See [animated texture evidence and limits](findings/animated-textures.md).
 Audit the full disc's authored lists and keys:

@@ -9,14 +9,15 @@ is the deep dive into one archive (JUNGLE.WAD); this is the whole-disc ledger.
 
 | bucket | files | bytes |
 |---|---:|---:|
-| **we have it RE'd** — a reader exists and is checked | 8,398 | 557,577,665 |
+| **we have it RE'd** — a reader exists and is checked | 8,404 | 557,900,384 |
 | **common standard** — ordinary format or plain text | 6,440 | 133,911,488 |
-| **not done** | **20** | **542,043** |
+| **not done** | **14** | **219,324** |
 | total | 14,858 | 692,031,196 |
 
-The three buckets sum to the census exactly, with nothing unclassified: that is the check, not a
-presentational choice. **What is left is 20 files and half a megabyte** — 0.13% of the files and
-0.08% of the bytes.
+The three buckets sum to the census exactly, with nothing unclassified. This checks inventory
+coverage, not decoder correctness. **What is left is 14 files, 219,324 bytes** — 0.09% of the
+files and 0.03% of the bytes. The six fonts moved to decoded after consumer tracing, pixel
+auditing and visual inspection; see [BFF evidence and remaining unknowns](bff-font.md).
 
 ⚠ **Counts are case-insensitive.** The disc mixes spellings within a single extension and the split
 is not small: `.tga`×4,563 / `.TGA`×1,132 (19.9%), `.RSE`×710 / `.rse`×8 (98.9% uppercase),
@@ -42,6 +43,7 @@ produces a coherent, wrong answer — that is a mistake already made here once, 
 | `.wad` | 16 | 88,111,280 | **FKNL** archive — *not* the PC release's `.WAD`. Payloads are EA **RefPack**, and an entry is stored raw when RefPack could not beat it | `core/WadArchive.cs`, `core/RefPack.cs`, `tools/wadtree.py` |
 | `.gin` | 14 | 3,740,116 | **GIN4** sideshow scenes — the fairground minigames as full 3D scenes with bones and animation | `tools/gin.py` |
 | `.mpc` | 11 | 258,791,928 | EA movie container: a flat `4cc + u32 size` chunk stream, `MPCh` carrying one frame of **MPEG-2 video elementary stream** each, `SCHl`/`SCDl` the audio. Container is ours; the video inside is standard MPEG-2 | `tools/mpc.py` |
+| `.bff` | 6 | 322,719 | **PS2 bitmap font**, `2FFB` / `ULGU` / `DGFB`. Range lookup, 14-byte descriptors, signed bearings, advances and high-nibble-first four-bit coverage; [consumer evidence, PGM inspection and regression audit](bff-font.md). Two header metrics remain unnamed | `core/TPW.PS2.Data/BitmapFont.cs`, `tools/TPW.PS2.FontAudit` |
 | `.md2` | 4 | 63,912 | same M3D2 family as `.mps` under another stamp (`0x1CD15D46`). ⚠ **not** Quake 2 — the engine's own dispatch lists `sam / mps / aps / md2 / hmp` together | `core/Model.cs` |
 | `.plb` | 1 | 35,704 | particle library, 105 records of 320 bytes. Layout confirmed against the loader call `FUN_00220800(…, "Data\Particle\Tp2.plb", 400, 0x400)` | `tools/plb.py` |
 
@@ -64,11 +66,10 @@ produces a coherent, wrong answer — that is a mistake already made here once, 
 | `.img` | 1 | 98,901 | `IOPRP165.IMG`, Sony IOP reboot image |
 | *(none)* | 1 | 31,457,280 | `/PADDING.` — 31.5 MB of filler to pad the disc |
 
-## Not done — 20 files, 542,043 bytes
+## Not done — 14 files, 219,324 bytes
 
 | ext | n | bytes | where | what is known |
 |---|---:|---:|---|---|
-| `.bff` | 6 | 322,719 | `DATA.WAD/Fonts/{European,Jap}/{Console,Large,Small}.bff` | **EA bitmap font**, magic `2FFB`. Nothing decoded. This is the one that matters for a port: no font, no text on screen |
 | `.mtr` | 4 | 60,932 | `*/Sideshow/*/` | magic `0x2E5915AF`, exactly one per sideshow `.MD2`, so near-certainly its **material table**. Header counts look like (records, submeshes, offset) but nothing is confirmed |
 | `.dba` | 3 | 120,588 | `DATA.WAD/ars{,us,jap}db.dba` | one per region, matching the three `translations/` dirs. `u32` records that advance in step (+0x13, +2, +0x214). Almost certainly the **advisor speech database** — the table linking a text id to a sound id. Sits beside the `.ass` pair below, and drives audio we already decode (`/AUDIO/ADVISOR/*/SPCHHD.SDT`) and lipsync we already read (`.lip`) |
 | `.table` | 3 | 33,186 | `translations/*/kanji.table` | `u16` pairs, `FFFF` as a hole marker. Japanese glyph mapping. Only needed for a Japanese build |
@@ -77,9 +78,10 @@ produces a coherent, wrong answer — that is a mistake already made here once, 
 
 ### What the remainder is actually worth
 
-Three of the six are one subsystem: `.ass` + `.dba` are the **advisor**, whose audio and lipsync are
-already decoded. `.bff` is the only one blocking something visible — text rendering. `.mtr` is
-cosmetic for four minigame models. `.table` is Japanese-only. `.eng` is two files of curve data.
+Two of the five remaining extensions are one subsystem: `.ass` + `.dba` are the **advisor**,
+whose audio and lipsync are already decoded. Fonts now have a reader; UI text integration is
+separate work. `.mtr` is cosmetic for four minigame models. `.table` is Japanese-only.
+`.eng` is two files of curve data.
 
 ## How this was measured
 
@@ -87,7 +89,7 @@ cosmetic for four minigame models. `.table` is Japanese-only. `.eng` is two file
 `tools/wadtree.py` walks each `.WAD`'s FKNL tree and `wadtree.read` un-RefPacks each entry.
 Extensions are folded to lowercase and the original spellings counted separately, so a case split
 shows up instead of halving the corpus. Bucket membership was then summed back against the census
-total — 8,398 + 6,440 + 20 = 14,858 — because a breakdown that does not add up to its own total is
+total — 8,404 + 6,440 + 14 = 14,858 — because a breakdown that does not add up to its own total is
 hiding a path.
 
 ---
@@ -96,7 +98,8 @@ hiding a path.
 
 Theme Park World has an active reverse-engineering community around **OpenTPW**
 (`OpenTPW/OpenTPW`, `maexah/OpenTPW`, docs at `OpenTPW/opentpw-docs`), which targets the **PC**
-release. Their coverage was checked against the six formats above, plus the ones already done here.
+release. Their coverage was checked against the original six remaining formats, plus the ones
+already done here. The PS2 `.bff` reader was completed subsequently in this worktree.
 
 ⚠ **PC ≠ PS2, and their own docs say so.** The PC archive is `BFWD`/`DWFB`; the docs state outright
 that the PS2's `FKNL` "is not compatible with DWFB". Treat every PC layout as a lead to test, never
@@ -111,40 +114,23 @@ as a spec — the case below where it half-transfers is the normal outcome, not 
 | `.ass` | absent from their format list | nothing |
 | `.eng` | absent from their format list | nothing |
 
-### What `BF4` does and does not tell us about `BFF2`
+### What `BF4` did and did not tell us about `BFF2`
 
-Measured across **all six** fonts on the disc (`DATA.WAD/Fonts/{European,Jap}/{Console,Large,Small}.bff`):
+The initial header interpretation here was superseded by the executable consumer. Full field
+evidence is in [bff-font.md](bff-font.md). The key corrections are:
 
-```
-+0x00  "2FFB"                   magic                       (PC: "F4FB")
-+0x04  u8   1                   version, 1 in all six
-+0x05  u8   line height         Console 9, EurLarge 22, EurSmall 15, JapLarge 23, JapSmall 16
-+0x06  u8   ?                   3 / 8 / 6 / 2 / 1           scales with size, not monotonically
-+0x07  u8   ?                   14 / 30 / 21 / 30 / 21
-+0x08  cc f8 55 4c 47 55        SIX CONSTANT BYTES, identical in all six. No PC counterpart
-+0x0e  u16  glyph count         132 / 294 / 294 / 2454 / 2454
-+0x10  u16  256                 constant in all six
-+0x12  u16  n                   22 / 49 / 49 / 409 / 409
-+0x14  u16[n] character map     SORTED ASCENDING in all six
-       then the glyph records, the first beginning 0x0020 in all six -- space is glyph 0
-```
-
-The map is not one entry per glyph (22 entries against 132 glyphs), and it is sorted, so it indexes
-blocks rather than characters. What it does settle is **which encoding each font is in**:
-
-* **European** — Unicode. `007e 00a5 00ac 00b1 00b8 00bb 00cf 00d6 00dc 00ef 00fc 00ff 0131 0153
-  0178 0192 02c7 02c9 02dd 0394 03a9 03bc 03c0 2010 2014 201a 201e 2022 2026 2030 203a 2044 2122
-  2126 2202 2206 220f 2211 2219 221a …` — cp1252's extensions plus Greek (Δ Ω μ π) and the maths
-  set (∂ ∆ ∏ ∑ ∙ √), ending on `FFFF`.
-* **Japanese** — Shift-JIS. `0021 0026 0029 002b 0039 005a 007a 007c 8142 8146 8149 815c …`, with
-  **401 of 409** entries at or above `0x8140`, topping out at `0x9862`. Which is precisely what
-  `kanji.table` here, and `BFMU`/`BFUM` on PC, exist to bridge.
-
-So the PC work transfers as a **model** — glyphs carry width/height/bearings/advance, pixels are
-4-bit coverage, packing is chosen per glyph — and not as a **layout**: different magic, different
-header shape, a glyph count at a different offset, and six constant bytes at `+0x08` that `BF4` has
-no slot for. The glyph records themselves are unread. It stays in the "not done" bucket until a
-reader round-trips a real glyph to pixels.
+* The alleged glyph count at `+0x0e` is a **24-bit map-array byte length**, followed by an
+  unknown high byte of 1. The apparent `u16 256` crosses those fields.
+* The six constant bytes at `+8` are two ignored bytes and the **`ULGU`** magic.
+* There are **three** `u16[n]` arrays: range ends, starts and subtractors. The apparent
+  first glyph `0020` was the first range start. Actual 14-byte descriptors follow `DGFB`.
+* Header `+7` is the line advance, proven by the text layout's Y increment. Meanings of
+  `+5` and `+6` remain unestablished.
+* European fonts, including the identical `Jap/Console`, map Unicode values. Japanese
+  Large/Small map packed Shift-JIS values, confirmed against rendered kana and 日/本.
+* The fonts have 217 / 224 / 701 descriptors, not 132 / 294 / 2454. They all store raw
+  high-nibble-first coverage; the traced decoder rejects flag bit 0. PC packing modes
+  cannot be assigned to PS2 flags from the existence of a similar RLE helper.
 
 ⚠ **Two corrections I had to make to my own first pass here**, both from flattening a tree:
 
@@ -153,9 +139,11 @@ reader round-trips a real glyph to pixels.
    three "European" fonts I first examined were Japanese. Same-named files in different directories
    eat each other without a word when you flatten.
 2. I labelled European/Large as Shift-JIS off a one-line test — `any(v >= 0x8140)` — which fired on
-   the `FFFF` sentinel at the end of its own map. **A heuristic that a single sentinel value can
+   the `FFFF` terminal value at the end of its own map. **A heuristic that a single high value can
    trip is not a classifier.** Counting how many entries land in the range (2 of 49 against 401 of
-   409) separates them immediately; asking whether *any* does, does not.
+   409) separates these corpora; asking whether *any* does, does not. That distribution alone
+   does not establish an encoding. The new reader checks actual glyphs. Also, `FFFF` is mapped
+   to a real descriptor by the consumer, not special-cased as a sentinel.
 
 ### And one thing the community confirmed that we had already done
 
