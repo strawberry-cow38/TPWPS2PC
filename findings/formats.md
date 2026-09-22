@@ -2002,3 +2002,29 @@ The rate was checked four independent ways — frame headers, NLayer's own repor
 
 ⭐ Two decoders on the same bitstream is the check that would have caught it at any point, and it
 cost one command.
+
+
+### The acceptance gate, and the hole tinyclaw found in it
+
+`tools/TPW.PS2.Mp2Gate` is the test any MP2 decoder change has to pass. A known tone, encoded by
+ffmpeg four ways, each decode fitted against ffmpeg's own. It never touches the disc.
+
+```
+  case                        samples       gain   residual    verdict
+  MPEG-1  LII  44100 mono      132480    32767.9      0.19%    PASS
+  MPEG-1  LII  44100 STEREO    264960    32767.8      0.23%    PASS
+  MPEG-2  LII  22050 mono       66816     2836.4     99.73%    *** FAIL ***
+  MPEG-2  LII  22050 STEREO    133632     3243.6     99.58%    *** FAIL ***
+```
+
+⚠ **The MPEG-1 rows are in it although they already pass**, because a patch that fixes LSF and
+breaks MPEG-1 would otherwise read as a clean win.
+
+⚠⚠ **The stereo rows exist because tinyclaw found the gate's hole before it was built on.** The
+disc's 2,220 sounds are `0x24` mono MPEG 1,407, `0x25` **stereo** MPEG 442, PS-ADPCM 356 and 15
+empty — measured, not repeated from a docstring — and all 1,849 MPEG sounds are 22,050, so all of
+them are LSF. **The 442 stereo are the music banks.** A mono-only gate would have gone green while
+every music bank stayed broken. The stereo fixture is 440 Hz left against 660 Hz right so a channel
+collapse or swap cannot hide in it either.
+
+⭐ It exits non-zero on any failing row. A gate that always returns 0 gates nothing.
