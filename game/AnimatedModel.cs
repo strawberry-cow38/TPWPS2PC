@@ -304,15 +304,27 @@ void fragment() {
                 // majority and breaking them. The check below caught it; the argument had sounded
                 // perfectly good.
                 //
-                // ⭐ Self-checking: the flip count is logged, and comparing it against ~37% caught
-                // the sign being wrong. ⚠ But that 37% is NOT an independent confirmation -- it is
-                // my own earlier measurement off the same model data through the same reader, i.e.
-                // one method twice. A view from underneath was tried as a real check and does not
-                // discriminate: the terrain reads solid from both sides, which could be mixed
-                // winding or the model shipping separate top and bottom shells. So this fix is
-                // PLAUSIBLE AND UNVERIFIED. A genuinely separate census is possible off the
-                // per-vertex normals already decoded in Model.Vertices (Batch.NormalOffset, three
-                // signed bytes over 127) and has not been done.
+                // ⭐ Self-checking: the flip count is logged, and a 61% reading caught the sign
+                // being inverted before this shipped.
+                //
+                // ⭐ THE COUNT IS NOW CROSS-CHECKED. An independent census off the per-vertex
+                // normals (Model.Vertices, Batch.NormalOffset, three signed bytes over 127), run
+                // through the other reader, gives 38.8% against this code's 38.2%. ⚠ Compare the
+                // same CONVENTION or the numbers look like a disagreement: this code emits A,C,B,
+                // so its geometric normal is the negation of the natural order's, and 61.2%
+                // "opposing" under A,B,C is the same fact as 38.8% under A,C,B. Both readers
+                // already honour strip parity; ignoring it lands at ~50%, which is chance.
+                //
+                // ⚠⚠ THE SEMANTICS ARE STILL NOT VERIFIED. That two readers agree on the number
+                // does not make it the right rule: the stored normals are per-VERTEX and smoothed,
+                // so averaging three over near-flat terrain gives roughly +Y whatever the face
+                // does -- "disagrees with the stored normal" may be measuring "faces down" rather
+                // than "is wound wrong". (tinyclaw's caution, and it stands.)
+                //
+                // ⚠ And the ~37% I first cited as agreement was a DIFFERENT QUANTITY -- the share
+                // of near-horizontal triangles facing down in model space, not disagreement with a
+                // stored normal. Two unrelated metrics landing 1% apart. That was a coincidence,
+                // not evidence, and I reported it as confirmation.
                 var na = p.Normal[t.A] + p.Normal[t.B] + p.Normal[t.C];
                 var pa = pos[t.A]; var pb = pos[t.B]; var pc = pos[t.C];
                 var g = System.Numerics.Vector3.Cross(pc - pa, pb - pa);      // normal of A,C,B
