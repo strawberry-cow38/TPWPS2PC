@@ -89,6 +89,7 @@ public partial class Viewer : Node3D
     PathPieces _pieces;
     Model _terrainModel;
     bool _pathTest;
+    string _wantCam;
     /// <summary>Nudge on the gate's z, in units, starting at master's own correction.
     ///
     /// ⭐ Fantasy's pad alone put the gate a quarter unit too far from the road, and master — who
@@ -161,6 +162,7 @@ public partial class Viewer : Node3D
             else if (a.StartsWith("--map=")) _wantMap = a["--map=".Length..];
             else if (a.StartsWith("--mode=")) _wantMode = a["--mode=".Length..];
             else if (a == "--path-test") _pathTest = true;
+            else if (a.StartsWith("--cam=")) _wantCam = a["--cam=".Length..];
             else if (a.StartsWith("--ride=")) _wantRide = a["--ride=".Length..];
             else if (a.StartsWith("--anim=")) _wantAnim = a["--anim=".Length..];
             else if (a.StartsWith("--wad=")) _wantWad = a["--wad=".Length..];
@@ -1229,6 +1231,17 @@ public partial class Viewer : Node3D
         for (int i = 1; i <= 2; i++) if (_paths.Lay(cx + 4 + i, cy + 2)) laid++;
         GD.Print($"[path] control run at ({cx},{cy}): {laid} cells laid; "
                + $"centre {_paths.Describe(cx, cy)}, corner {_paths.Describe(cx + 4, cy)}");
+        // ⭐ Say WHERE each piece landed, in world coordinates as well as cells. A picture of a
+        // symmetric cross cannot tell a correct layout from a mirrored one; the L can, and only if
+        // it is possible to say which end of the screen it should be at.
+        for (int y = 0; y < f.Height; y++)
+            for (int x = 0; x < f.Width; x++)
+                if (_paths.KindAt(x, y) != PathTool.Kind.None)
+                {
+                    var w = _park.CellCentre(x, y);
+                    GD.Print($"[path]   ({x,3},{y,3}) -> {_park.Field.Material(x, y),3} turns {_paths.Turns(x, y)} "
+                           + $"at world {w.X:F1},{w.Z:F1}");
+                }
         RebuildFloor();
     }
 
@@ -1487,7 +1500,7 @@ public partial class Viewer : Node3D
         else _game.PlaceAt(_focus.X, _focus.Z);
         // ⭐ A shot run cannot hold a key, so the three axes are settable for renders. This is
         // what makes "the zoom is the pitch" checkable in a picture instead of in a paragraph.
-        var set = System.Environment.GetEnvironmentVariable("TPW_CAM");
+        var set = _wantCam ?? System.Environment.GetEnvironmentVariable("TPW_CAM");
         if (!string.IsNullOrWhiteSpace(set))
         {
             var f = set.Split(',');
