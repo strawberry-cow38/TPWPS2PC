@@ -154,6 +154,19 @@ public sealed class Park
         }
         Mark(terrain, Transform3D.Identity);
 
+        if (System.Environment.GetEnvironmentVariable("TPW_HOLE_DEBUG") == "1")
+        {
+            int marked = 0;
+            for (int z = 0; z < res; z++) for (int x = 0; x < res; x++) if (cov[z, x]) marked++;
+            GD.Print($"[cov] bounds {lo.X:F1},{lo.Z:F1} .. {hi.X:F1},{hi.Z:F1}  span {w:F1} x {h:F1}  marked {marked}/{res * res} ({100.0 * marked / (res * res):F1}%)");
+            for (int z = 0; z < res; z += Math.Max(1, res / 48))
+            {
+                var sb = new System.Text.StringBuilder("[cov] ");
+                for (int x = 0; x < res; x += Math.Max(1, res / 48)) sb.Append(cov[z, x] ? '#' : '.');
+                GD.Print(sb.ToString());
+            }
+        }
+
         // Cells that are empty AND have terrain somewhere to their left and right on the same row,
         // and likewise above and below on the same column. That excludes the sea outside the island
         // without a flood fill, which the entrance gap would let escape.
