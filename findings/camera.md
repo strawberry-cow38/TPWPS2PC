@@ -92,6 +92,30 @@ sight line and leaves the direction — and therefore the pitch — exactly as i
 world units, from 2048 back to 960 forward. ⚠ It can push the eye below the ground-plus-`0xA10`
 floor the easing above works so hard to hold.
 
+## ⭐ The scale, proven rather than assumed: 256 world units to a tile
+
+The ground under the eye is looked up as
+
+    FUN_00149D20(eyeX * 0x10000 >> 0x18, eyeZ * 0x10000 >> 0x18)
+
+`(v << 16) >> 24` sign-extends the low 16 bits and then divides by 256, so that argument is a
+TILE INDEX and **one tile is 256 world units** — the same as the PSX port's `TileUnits`. The
+focus coordinates are masked to 16 bits in the same function, which caps the world at 256 tiles
+against a park of about 96, so the two facts agree.
+
+That makes the camera directly expressible in cells, which is what the viewer draws in:
+
+| | world units | cells |
+|---|---:|---:|
+| height above ground | `0xA10` = 2576 | **10.06** |
+| distance, zoomed in | `0x180` = 384 | **1.50** |
+| distance, default / PSX | `0x6E0` = 1760 | **6.875** |
+| distance, zoomed out | `0xC3C` = 3132 | **12.23** |
+| dolly | -2048 .. +960 | **-8.0 .. +3.75** |
+
+And it checks against the PSX write-up independently: `sqrt(1760² + 2576²) / 256 = 12.19`, which
+is the "about 12.2 tiles away" recorded there from the other binary.
+
 ## A detail worth keeping
 
 The up vector is not straight up. After `up' = normalise(cross(dir, right))` the code adds the
