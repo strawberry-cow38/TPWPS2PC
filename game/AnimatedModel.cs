@@ -69,6 +69,10 @@ public sealed class AnimatedModel
             : new Godot.Vector3(1, 1, -1),
     };
     public int Frames { get; private set; }
+
+    /// <summary>Which texture each material slot is currently showing. ⭐ The animation's OUTPUT,
+    /// so a check can watch it change instead of watching the clock and hoping.</summary>
+    public IReadOnlyList<int> TextureChoices => _textureIndices;
     public string Summary { get; private set; }
 
     /// <summary>Surfaces on the blend shader, i.e. ones whose ordering depends on the depth

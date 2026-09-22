@@ -101,6 +101,9 @@ public partial class Viewer : Node3D
     /// <summary>A cell to use instead of the mouse, for captures. Null in normal use.</summary>
     (int X, int Y)? _cursorOverride;
     bool _pickChecked;
+    bool _animChecked;
+    /// <summary>The park's own animation clock, separate from the Models tab's scrubber.</summary>
+    float _parkTime;
     /// <summary>The run the ghost was last built for, so it is not rebuilt every frame.</summary>
     (int Sx, int Sy, int X, int Y) _ghostAt = (-1, -1, -1, -1);
     /// <summary>A button being held, so a CLICK can be told from a DRAG. ⚠ Both buttons already
@@ -130,6 +133,7 @@ public partial class Viewer : Node3D
     bool _pathTest;
     bool _ghostTest;
     bool _ghostPress;
+    bool _animTest;
     string _wantSegments;
     string _wantCam;
     /// <summary>Nudge on the gate's z, in units, starting at master's own correction.
@@ -207,6 +211,7 @@ public partial class Viewer : Node3D
             else if (a == "--path-test") _pathTest = true;
             else if (a == "--ghost-test") _ghostTest = true;
             else if (a == "--ghost-press") { _ghostTest = true; _ghostPress = true; }
+            else if (a == "--anim-test") _animTest = true;
             else if (a.StartsWith("--segments=")) _wantSegments = a["--segments=".Length..];
             else if (a.StartsWith("--cam=")) _wantCam = a["--cam=".Length..];
             else if (a.StartsWith("--ride=")) _wantRide = a["--ride=".Length..];
@@ -1451,6 +1456,39 @@ public partial class Viewer : Node3D
         return best <= Park.CellSize * Park.CellSize;
     }
 
+    /// <summary>⭐ Does a ride standing IN THE PARK play its animated textures?
+    ///
+    /// ⚠ It drives the real per-frame path rather than calling SetFrame itself -- a check that
+    /// pokes the model directly would pass even if nothing in the park ever advanced it, which is
+    /// the exact thing being asked about. A capture normally freezes the clock, so the shot path
+    /// is set aside for the duration and put back.</summary>
+    void CheckParkAnimation()
+    {
+        _animChecked = true;
+        if (_current == null || _current.TextureChoices.Count == 0)
+        { GD.Print("[anim] no model in the park with material slots to animate"); return; }
+        int animated = _current.TextureChoices.Count;
+        var saved = _shotPath;
+        _shotPath = null;
+        var seen = new List<string>();
+        for (int i = 0; i < 8; i++)
+        {
+            _Process(4.0 / Aps.Fps);
+            seen.Add(string.Join(",", _current.TextureChoices));
+        }
+        _shotPath = saved;
+        int distinct = seen.Distinct().Count();
+        GD.Print($"[anim] {animated} slots; over 8 steps the park model showed {distinct} distinct"
+               + $" choice sets {(distinct > 1 ? "-- it animates" : "-- IT DOES NOT MOVE")}: {string.Join(" ", seen.Distinct())}");
+        // ⚠ And the gate, which is the one thing the park ALWAYS has. Its clock is reported even
+        // when it has nothing to animate, so "the park does not animate" can be told from "the
+        // park has nothing animated in it" -- they look identical from a screenshot.
+        GD.Print(_gate == null
+            ? "[anim] no gate in this park"
+            : $"[anim] the gate has {_gate.Frames} frames and {_gate.TextureChoices.Count} material slots,"
+              + $" clock now {_parkTime:F1}");
+    }
+
     /// <summary>⭐ A CONTROL FOR THE MOUSE PICKING that works without a mouse: put a known cell's
     /// centre on the screen with the camera's own projection, then send that screen point back
     /// through the picking. It must come back as the cell it started from. A capture cannot move
@@ -2413,6 +2451,16 @@ public partial class Viewer : Node3D
             _current.SetFrame(_time);
             _scrub.SetValueNoSignal(_time / Mathf.Max(_current.Frames, 1));
         }
+        // ⭐ THE PARK'S OWN MODELS TICK TOO. Only the model on the Models tab was ever advanced,
+        // so anything standing in the park that was not the chosen ride was frozen -- the gate is
+        // built WITH its animation and its record and then never asked for a frame. Its doors
+        // cannot open if nobody moves its clock.
+        if (_gate != null && _playing && _shotPath == null && _mode == Mode.Park)
+        {
+            _parkTime += (float)delta * Aps.Fps;
+            if (_gate.Frames > 0 && _parkTime >= _gate.Frames) _parkTime %= _gate.Frames;
+            _gate.SetFrame(_parkTime);
+        }
         if (GameCamActive) StepGameCam(delta);
         else
         {
@@ -2426,6 +2474,7 @@ public partial class Viewer : Node3D
         // ⚠ AFTER the camera has been placed for this frame, or the projection is a frame stale
         // and the check is of the wrong camera.
         if (_ghostTest && !_pickChecked && _mode == Mode.Park) CheckMousePicking();
+        if (_animTest && !_animChecked && _mode == Mode.Park) CheckParkAnimation();
         _weather.Follow(_cam.GlobalPosition);
         if (_weatherWanted is { } wk)
         {
