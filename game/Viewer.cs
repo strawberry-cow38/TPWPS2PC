@@ -779,11 +779,23 @@ public partial class Viewer : Node3D
             // of them and the floor rendered flat. Master spotted it from a screenshot of the real
             // game: a plain with raised blocks standing on it, where mine had no relief at all.
             //
-            // ⭐ That same overlap is what PROVES `byte0 & 0x03` is elevation. The field's raised
-            // cells coincide with the mesh's own raised ground 1,475/1,477 -- an independent route
-            // to the same answer as the engine's andi 0xc3. (My earlier correlation attempt failed
-            // because I compared MEAN MESH HEIGHT per value; the right question was whether the
-            // mesh has a surface there at all.)
+            // ⚠⚠ I BRIEFLY CLAIMED THAT OVERLAP PROVED `byte0 & 0x03` IS ELEVATION. It does not,
+            // and the claim is withdrawn. 1,475 of 1,477 height-1 cells being mesh-covered is
+            // CONFOUNDED BY POSITION: height-1 cells sit a median of 6 cells from the plot edge
+            // against 12 for height-0 (46% within six cells, vs 24%), and mesh coverage hugs that
+            // same boundary. Two things concentrated at the edge overlap without one causing the
+            // other.
+            //
+            // The magnitude test settles nothing either: regressing transformed surface Y against
+            // both candidate masks over the ~1,000-1,700 mesh-covered cells of all eight parks
+            // gives |r| < 0.22 throughout, several of them NEGATIVE, for `&0x03` AND for
+            // `(>>2)&0x0F`. The mesh cannot referee this even at the edges, because the mesh there
+            // is the SURROUNDING terrain -- embankment, roads, banks -- not the park's own tiles.
+            // ⚠ And jungle cannot referee it at all: its 0x3C is zero in every cell, so the rival
+            // mask is constant there.
+            //
+            // So the mask below is right for a reason that does not depend on any of that: the
+            // cells are authored, and dropping them loses data we were handed.
             _park.Build(_park.Field?.Width ?? Mathf.RoundToInt(_holeSize.X),
                         _park.Field?.Height ?? Mathf.RoundToInt(_holeSize.Y),
                         _park.Field != null ? null : _holeCells);
