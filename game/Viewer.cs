@@ -71,6 +71,7 @@ public partial class Viewer : Node3D
         foreach (var a in OS.GetCmdlineArgs())
             if (a.StartsWith("--disc=")) disc = a["--disc=".Length..];
         disc ??= OS.GetEnvironment("TPW_PS2_DISC");
+        if (string.IsNullOrWhiteSpace(disc)) disc = GetTree().GetMeta("tpw_disc", "").AsString();
         // ⚠ Environment fallbacks for every switch. Arguments after `--` do not survive some shells
         // intact, and a disc path with spaces is the common case -- losing them silently is how this
         // looked like a hang rather than a missing argument.
@@ -255,6 +256,16 @@ public partial class Viewer : Node3D
         _modePick.AddItem("Park");
         _modePick.ItemSelected += i => SetMode((Mode)(int)i);
         col.AddChild(_modePick);
+
+        var scripts = new Button { Text = "Run ride scripts" };
+        scripts.Pressed += () =>
+        {
+            if (string.IsNullOrWhiteSpace(_discPath)) return;
+            GetTree().SetMeta("tpw_disc", _discPath);
+            _lib?.Dispose();
+            GetTree().ChangeSceneToFile("res://RideScriptDemo.tscn");
+        };
+        col.AddChild(scripts);
 
         _wadPick = new OptionButton();
         _wadPick.ItemSelected += i => { if (_mode == Mode.Sounds) OpenBank((int)i); else OpenWad((int)i); };

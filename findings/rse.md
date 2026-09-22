@@ -1,5 +1,11 @@
 # `.rse` — RSSE, the compiled game scripts
 
+**Runtime correction, 2026-09-22:** [rse-vm.md](rse-vm.md) supersedes the code-boundary,
+header, symbol-index and unused-opcode claims below. The PS2 loader reads a code count at
+`+0x30`, code at `+0x34`, a byte-offset string pool, then variable-name records. Full world/path
+source matching establishes 83 observed opcodes, including LOOPANIM_CH and GETVARINCHILD.
+The historical findings below are retained to show which earlier claims failed consumer checks.
+
 **Solved 2026-09-21.** `tools/rse.py` reads and disassembles them; the format and the full opcode
 table live in its docstring rather than being restated here.
 
