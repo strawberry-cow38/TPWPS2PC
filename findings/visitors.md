@@ -16,8 +16,9 @@ Requires the owner's disc and .NET 8. Simulation and pathfinding live entirely i
 with no Godot reference, subprocesses or native dependencies.
 
 ```sh
+export MSBUILDDISABLENODEREUSE=1
 dotnet run --project tools/TPW.PS2.VisitorAudit -- /path/to/disc.bin
-dotnet build game/TPWPS2Viewer.csproj
+(cd game && dotnet build)
 TPW_PS2_DISC=/path/to/disc.bin /path/to/godot-4.6.2-mono --path game res://VisitorDemo.tscn
 # Or choose “Visit the park” in the existing viewer.
 TPW_PS2_DISC=/path/to/disc.bin /path/to/godot-4.6.2-mono --headless --path game res://tests/VisitorAudit.tscn
@@ -153,6 +154,21 @@ effects without attaching character geometry to seats.
 
 ## Rendering and audit teeth
 
+2026-09-22, `visitor-rows`: the visitor fork predates main's row reversal in `9481dfc7`.
+The view now supplies `Park.PlotSpace` and derives its origin from the transformed plot
+corners, matching main's tiles. At the sim → world boundary, guest Z is
+`Origin.Y + (Height - p.Z) * CellSize`; facing reverses its Z delta too. The simulation
+coordinates and shared `Paths.Field` instance stay unchanged. The measured subtraction in
+`Park.TryPlace` from `c05af10` is unchanged, as are main's tile convention and `Viewer.cs`.
+
+The geometry audit checks positions on both SPACE terrains: at 7000ms Ada stands at the
+drawn queue tail (world Z ≈ **-21.5 / -28.5**), and the Orbiter's bind centre through its
+actual holder/model transform matches its drawn footprint (XZ ≈ **86,-16.5 / 43,-23.5**).
+It reads floor triangles and footprint vertices, checks queue texture bytes, and exercises
+interpolated movement and facing. Node-position identity retains **1e-5** tolerance;
+comparisons to authored tiles allow **0.001** for exporter/bind-scale rounding (observed
+offsets below 0.0006), not whole-cell differences.
+
 `VisitorParkView` uses the existing `Park` ground builder and `RseModelPresenter`. Ride
 placement now measures bounds including the root transform, so both a mirrored model root
 and an unmirrored holder have correct offsets. The holder keeps its position when the VM
@@ -167,15 +183,23 @@ It also checks the presenter's live APS record/frame against the VM host. These 
 mesh/APS evaluators, not an independent PS2 framebuffer oracle.
 
 `teeth.sh` runs the unchanged managed audit, temporarily mutates production code, rebuilds,
-requires both exit **1** and the specific failure, restores both files with an EXIT trap, then
+requires exit **1** and the specific failure, restores the files with an EXIT trap, then
 reruns the original audit. No fault switches live in simulation code. Optional Godot checks
-mutate only the audit's actual rendered node.
+require exit **2** for a displaced rendered node and for reverting the view's production row
+conversion, then rebuild and rerun the restored view. All builds disable MSBuild node reuse.
 
 | Deliberate mutation | Required failure |
 |---|---|
 | Movement increment `100` → `0` in `VisitorSimulation.Move` | `Ada movement at 100ms: expected 100, got 0` |
 | HUSH stores offered ID **+1**, preserving stack occupancy | `Boarding identity lost: Ada (101) is absent from RSSE HUSH stack` |
 | Audit moves Ada's actual rendered node to the origin | `Ada rendered position identity at 100ms`, Godot exit **2** |
+| View reverts guest Z from `Height - p.Z` to `p.Z`, rebuilt against the unchanged audit | `Ada rendered position identity at 100ms`, Godot exit **2** |
+
+For `visitor-rows`, the entire `c05af10` version of `VisitorParkView.cs` was also restored
+temporarily and rebuilt against the updated audit: exit **2**, with the Orbiter bind centre
+**21 units** from its drawn footprint. Restoring the fix passes SPACE t1/t2; all existing
+mutation controls still fail. `RseAnimationAudit` passes, and `--mutate-freeze` still exits
+**2**. Logs: `/tmp/tpw-visitor-teeth.x7oVGt/` and `/tmp/tpw-visitor-rows-proof.ivpweoak/`.
 
 Unmodified and restored managed/geometry audits pass. Controls also remove a real connecting
 path cell, hold a closed queue and reopen it, preserve terrain flag/material identities, reject

@@ -21,13 +21,14 @@ public sealed class VisitorParkView : IDisposable
         var terrain = new AnimatedModel(scenario.Terrain, null, null,
             name => Texture(world, scenario.TerrainPath, name));
         terrain.SetFrame(0); Park.SetTerrain(terrain.Root);
-        // ⚠ MERGE: AuthoredPlot now takes the node's world transform too, and Plot carries
-        // LocalMin/LocalSize rather than Min/Max -- both changed on main while this branch was
-        // out. The terrain root is what the normal viewer passes.
         var plot = Park.AuthoredPlot(scenario.Terrain, terrain.Root.Transform)
                    ?? throw new InvalidDataException("No authored plot");
-        // Same mirror and plot origin as the normal park viewer.
-        Park.Origin = new Vector2(plot.LocalMin.X, -(plot.LocalMin.Z + plot.LocalSize.Z)); Park.BaseY = 0;
+        // Use main's authored plot transform: it supplies both the bind scale and the Z mirror.
+        // LocalMin/LocalSize are model coordinates, not the park's world-space origin.
+        Park.PlotSpace = plot;
+        var a = plot.ToWorld * plot.LocalMin;
+        var b = plot.ToWorld * (plot.LocalMin + plot.LocalSize);
+        Park.Origin = new Vector2(Math.Min(a.X, b.X), Math.Min(a.Z, b.Z)); Park.BaseY = 0;
         Park.SetPaths(scenario.Simulation.Paths);
         var ground = new Dictionary<int, Material>();
         Park.MaterialForCell = index =>
@@ -86,10 +87,13 @@ public sealed class VisitorParkView : IDisposable
         foreach (var guest in Scenario.Simulation.Visitors)
         {
             var actor = _actors[guest.Id]; var p = guest.Position;
-            actor.Position = new Vector3(Park.Origin.X + p.X, Park.BaseY + p.Y, Park.Origin.Y + p.Z);
+            // Simulation rows stay in Paths.Field order; only presentation reverses Z, just
+            // like Park's tiles and ride placement. This also applies between cell centres.
+            actor.Position = new Vector3(Park.Origin.X + p.X * Park.CellSize, Park.BaseY + p.Y,
+                Park.Origin.Y + (Park.Height - p.Z) * Park.CellSize);
             actor.Visible = guest.State is VisitorState.Walking or VisitorState.Queuing or VisitorState.Alighting or VisitorState.Leaving;
             if (guest.NextCell is ParkCell next)
-                actor.Rotation = new Vector3(0, Mathf.Atan2(next.X - guest.Cell.X, next.Z - guest.Cell.Z), 0);
+                actor.Rotation = new Vector3(0, Mathf.Atan2(next.X - guest.Cell.X, guest.Cell.Z - next.Z), 0);
         }
     }
     public void Dispose()
