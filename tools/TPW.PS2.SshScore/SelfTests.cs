@@ -23,6 +23,7 @@ internal static class SelfTests
         try
         {
             CodecTests.Run(Check);
+            ColourAudit.SelfTest(Check);
             byte[] data = Synthetic(32, 32, [32, 64, 96, 128], true);
             var image = new Ssh(data);
             // Four independent constant macroblocks have unique luminance; a raster/column mixup

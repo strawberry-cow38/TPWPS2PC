@@ -1,5 +1,9 @@
 > Historical FFmpeg-adapter research. The shipping path is now managed; see
 > [the IPU differential report](ipu.md) for current API, requirements, and whole-disc results.
+> The flat-colour losslessness claim below was rejected by the
+> [source-based CSC audit](ssh-colour.md): the existing conversion matches PCSX2
+> on all 16,777,216 of 16,777,216 byte-input triples, and 26 of 117 compressed flat
+> reference colours are unrepresentable by that fixed conversion at any input.
 
 # SHPS / GM texture decoder — 2026-09-21
 
@@ -220,9 +224,9 @@ and a pure-white reference IS flat, so the flat population became **121** and th
 19 of 121. The numerator did not move -- no flat image became exact -- but a denominator that
 changes because a DIFFERENT bug was fixed is exactly the kind of drift that makes an old number
 look like a regression later. The 117-sample analysis below stands as measured: all 117 were
-type 0x84/0x85 and went through the YUV path, and the four newcomers are type 0x02 and do not. A flat source that decodes to a constant which is off by
-one or two is a colour-conversion or DC-quantisation question, and it is the sharpest remaining
-lead -- a flat block should round-trip, so the residual there is not "lossy compression".
+type 0x84/0x85 and went through the YUV path, and the four newcomers are type 0x02 and do not.
+The earlier inference that a flat block must round-trip was incorrect: RGB-to-YCbCr sample
+quantisation can lose information before DC encoding. See [the CSC audit](ssh-colour.md).
 
 ### Teeth-check on the scorer
 
@@ -241,13 +245,16 @@ format finding (GM is an IPU macroblock stream in MPEG-1 coefficient syntax, mac
 order, alpha a separate linear 0..128 plane) is the durable part and is what a managed decoder would
 be written from; the FFmpeg adapter is scaffolding that proves it, not a shipping path.
 
-## The flat-colour residual is a linear-model mismatch, NOT rounding
+## Historical flat-colour trials: measurements retained, losslessness inference rejected
 
-117 flat-source pairs on the disc, 19 byte-exact. Every one of those 117 decodes to a **constant**
-Y/Cb/Cr -- checked, 117 of 117, zero non-constant -- so the encoder stored DC only and lost nothing
-that matters here. The entire residual is in the YUV->RGB step, which makes those 117 an exact
-(Y,Cb,Cr) -> (R,G,B) dataset rather than a guess. Measured independently in Python through the same
-FFmpeg IPU path, so it does not inherit the C# conversion.
+117 compressed flat-source pairs on the disc, 19 of 117 byte-exact. Every one decodes to a
+**constant** Y/Cb/Cr -- checked, 117 of 117. These measurements used Python through the FFmpeg
+IPU path, independently of the C# conversion. The original inference that this proves DC-only
+encoding with no relevant information loss was wrong: spatial constancy proves neither lossless
+RGB-to-YCbCr sample quantisation nor the absence of AC coefficients in the stream. These are
+source-versus-decoded observations, not exact hardware input/output measurements. The subsequent
+[CSC audit](ssh-colour.md) independently verifies the conversion and explains the limitation.
+The historical trials below were not rerun for that audit.
 
 **Rounding is not the cause, which was the obvious hypothesis and it is dead:**
 
@@ -263,9 +270,9 @@ R and B's one, so a flooring cause predicts G biased low -- and the commonest si
 `(+1,+1,+1)` on **36 of 117**, uniform across all three channels, which is a LUMA offset and cannot
 come from the chroma shifts at all.
 
-**Exact float BT.601 nearly doubles it: 35 of 117** (studio-to-full swing; full-range scores 0, so
-the 16..235 convention is confirmed). The integer approximation is therefore costing real accuracy
--- but 35 of 117 also says plain BT.601 is not the mapping either.
+**Exact float BT.601 nearly doubles it: 35 of 117** (studio-to-full swing; full-range scores
+0 of 117). This is closer to the TGA targets on this population, but does not establish greater
+hardware accuracy: the IPU has an explicitly specified integer approximation.
 
 Least squares over the 117 samples, fitting reference RGB from the decoded YUV:
 
