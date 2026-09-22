@@ -342,21 +342,37 @@ public sealed class Park
             ? playable : null;
         _occupied = new int[width, height];
 
-        var grass = Flat(new Color(0.30f, 0.46f, 0.22f));
-        var darker = Flat(new Color(0.26f, 0.41f, 0.19f));
-        var tile = new BoxMesh { Size = new Vector3(CellSize, CellSize * 0.06f, CellSize) };
+        // ⭐ ONE mesh for the whole plot, with the game's own ground texture and a fresh 0..1 UV
+        // per cell -- that is what a tile IS. The plot was 3,097 separate boxes with flat colours
+        // standing in for grass; `jgr_bas2..6` are the jungle ground tiles on the disc (64x64,
+        // green), and `jpa_*` are the paths, so the placeholder can go.
+        var st = new SurfaceTool();
+        st.Begin(Mesh.PrimitiveType.Triangles);
+        float half = CellSize * 0.5f;
         for (int y = 0; y < height; y++)
             for (int x = 0; x < width; x++)
             {
                 if (!IsPlayable(x, y)) continue;
-                _ground.AddChild(new MeshInstance3D
-                {
-                    Mesh = tile,
-                    MaterialOverride = (x + y) % 2 == 0 ? grass : darker,
-                    Position = new Vector3(Origin.X + (x + 0.5f) * CellSize, BaseY, Origin.Y + (y + 0.5f) * CellSize),
-                });
+                float cx = Origin.X + (x + 0.5f) * CellSize, cz = Origin.Y + (y + 0.5f) * CellSize;
+                var a = new Vector3(cx - half, BaseY, cz - half);
+                var b = new Vector3(cx + half, BaseY, cz - half);
+                var c = new Vector3(cx + half, BaseY, cz + half);
+                var dd = new Vector3(cx - half, BaseY, cz + half);
+                void V(Vector3 v, float u, float w2) { st.SetUV(new Vector2(u, w2)); st.SetNormal(Vector3.Up); st.AddVertex(v); }
+                V(a, 0, 0); V(b, 1, 0); V(c, 1, 1);
+                V(a, 0, 0); V(c, 1, 1); V(dd, 0, 1);
             }
+        var ground = st.Commit();
+        if (ground != null && ground.GetSurfaceCount() > 0)
+            _ground.AddChild(new MeshInstance3D
+            {
+                Mesh = ground,
+                MaterialOverride = GroundMaterial ?? Flat(new Color(0.30f, 0.46f, 0.22f)),
+            });
     }
+
+    /// <summary>The plot's ground material -- the disc's own tile texture when one resolved.</summary>
+    public Material GroundMaterial { get; set; }
 
     /// <summary>Cells that are ground -- the plot's real size, as opposed to its bounding box.</summary>
     public int PlayableCells

@@ -677,6 +677,20 @@ public partial class Viewer : Node3D
                 }
                 Dump(_terrain.Root, Transform3D.Identity);
             }
+            // ⭐ The plot's ground comes off the disc, not out of a Color. `jgr_bas2..6` are the
+            // jungle ground tiles (64x64, green); `jpa_*` are the paths. Named by the model's own
+            // convention so the ordinary resolver finds them beside the terrain.
+            var grass = TextureNear(pick.Path, "jgr_bas2.ssh");
+            if (grass.Tex != null)
+                _park.GroundMaterial = new StandardMaterial3D
+                {
+                    AlbedoTexture = grass.Tex,
+                    TextureFilter = BaseMaterial3D.TextureFilterEnum.LinearWithMipmaps,
+                    Roughness = 1f,
+                    SpecularMode = BaseMaterial3D.SpecularModeEnum.Disabled,
+                };
+            else GD.PrintErr("[park] no ground tile resolved -- falling back to flat colour");
+
             var (ho, hs, hy, hc) = Park.FindHole(_terrain.Root);
             _holeOrigin = ho; _holeSize = hs; _holeCells = hc;
             // ⚠⚠ The floor goes at the height of the ground AROUND the hole, NOT at the terrain's
