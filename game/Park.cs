@@ -570,7 +570,17 @@ public sealed class Park
     ///
     /// Until those are decoded the plot stays flat. A flat plot is visibly unfinished; fabricated
     /// blocks look finished and are not.</summary>
-    float CellY(int x, int y) => BaseY;
+    /// <summary>Preview only: raise the squares marked 2. ⚠ OFF unless TPW_PARK_RAISE=1, because
+    /// master told me to take the blocks out and that instruction stands until they say otherwise.
+    /// This is for LOOKING at, not for shipping. The step is one unit, which is a guess.</summary>
+    static readonly bool RaisePreview =
+        System.Environment.GetEnvironmentVariable("TPW_PARK_RAISE") == "1";
+
+    float CellY(int x, int y)
+    {
+        if (!RaisePreview || Field == null || x >= Field.Width || y >= Field.Height) return BaseY;
+        return BaseY + ((Field.Raw0(x, y) & 3) == 2 ? CellSize : 0f);
+    }
 
     /// <summary>The terrain model's top surface height for each cell of a plot, sampled with a
     /// real point-in-triangle test at the cell centre. ⚠ Not a bounding-box fill: filling each
