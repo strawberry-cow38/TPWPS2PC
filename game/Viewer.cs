@@ -27,7 +27,7 @@ public partial class Viewer : Node3D
     // Capture mode, the same shape the PSX port uses: --shot=<path>:<frame> renders one frame and
     // quits, so a render can be checked over ssh without a display.
     string _shotPath; int _shotFrame = -1, _shotWait;
-    string _wantRide, _wantAnim, _wantWad, _wantMode, _wantImage, _wantSound, _wantPlay;
+    string _wantRide, _wantAnim, _wantWad, _wantMode, _wantImage, _wantSound, _wantPlay, _wantMap;
     string _discPath;
     // The park, and the two tables it needs: every ride's design data, and the text the player
     // is actually shown. Loaded once -- RideCatalogue walks every WAD.
@@ -47,6 +47,9 @@ public partial class Viewer : Node3D
     ItemList _rideList;
     CheckBox _texOn;
     OptionButton _wadPick, _animPick;
+    /// <summary>Side panel width. The image panes are offset by it, so it is one number.</summary>
+    const int PanelW = 320;
+
     TabBar _tabs;
     Control _panel;
 
@@ -103,6 +106,7 @@ public partial class Viewer : Node3D
         }
 
         _wantMode = Env("TPW_PS2_MODE");
+        _wantMap = Env("TPW_PS2_MAP");
         _wantSound = Env("TPW_PS2_SOUND");
         _wantPlay = Env("TPW_PS2_PLAY");
         _wantImage = Env("TPW_PS2_IMAGE");
@@ -191,17 +195,30 @@ public partial class Viewer : Node3D
         else if (_wantMode != null && _wantMode.StartsWith("par", StringComparison.OrdinalIgnoreCase))
         {
             _tabs.CurrentTab = ModeTab(Mode.Park); SetMode(Mode.Park);
-            // ⚠ Re-select the ride AFTER the mode change. SetMode does not rebuild, so a --shot run
-            // that only set the mode photographed the model standing on no ground at all.
-            if (_rideList.ItemCount > 0)
+            // ⚠ The park tab lists MAPS, not rides, so a row here is a map. Picking one AFTER the
+            // mode change is what puts a ride on ground -- a --shot run that only set the mode
+            // photographed the model standing on nothing at all.
+            // ⚠ Default to a map in the archive that is already open. The list spans every
+            // archive, so taking its first row would silently switch away from --wad.
+            int pick = _rideList.ItemCount > 0
+                ? _rows.FindIndex(v => v >= 0 && string.Equals(_maps[v].Wad, _lib.WadName,
+                                                               StringComparison.OrdinalIgnoreCase))
+                : -1;
+            if (pick < 0) pick = _rows.FindIndex(v => v >= 0);
+            // ⚠ Matched against the map's LABEL, not the row text: every row reads "terrain_1.mps"
+            // and only the heading says which world, so the row text alone cannot pick one.
+            if (_wantMap != null)
             {
-                int pick = 0;
-                if (_wantRide != null)
-                    for (int i = 0; i < _rideList.ItemCount; i++)
-                        if (_rideList.GetItemText(i).Contains(_wantRide, StringComparison.OrdinalIgnoreCase))
-                        { pick = i; break; }
-                _rideList.Select(pick); ShowRide(pick);
+                int at = _rows.FindIndex(v => v >= 0
+                    && _maps[v].Label.Contains(_wantMap, StringComparison.OrdinalIgnoreCase));
+                if (at >= 0) pick = at;
             }
+            if (pick >= 0) { _rideList.Select(pick); LoadMap(Row(pick)); }
+            // The ride shown standing on that ground is still TPW_PS2_RIDE.
+            if (_wantRide != null)
+                for (int i = 0; i < _lib.Rides.Count; i++)
+                    if (_lib.Rides[i].Name.Contains(_wantRide, StringComparison.OrdinalIgnoreCase))
+                    { ShowRide(i); break; }
         }
     }
 
@@ -236,7 +253,7 @@ public partial class Viewer : Node3D
                                MouseFilter = Control.MouseFilterEnum.Ignore };
         AddChild(ui);
 
-        _panel = new PanelContainer { CustomMinimumSize = new Vector2(280, 0),
+        _panel = new PanelContainer { CustomMinimumSize = new Vector2(PanelW, 0),
                                          MouseFilter = Control.MouseFilterEnum.Pass };
         _panel.SetAnchorsPreset(Control.LayoutPreset.LeftWide);
         ui.AddChild(_panel);
@@ -247,7 +264,7 @@ public partial class Viewer : Node3D
         // is just a visibility flip -- the models stay built and come back instantly.
         // An opaque backdrop, or the 3D scene shows through the image pane.
         _imageBack = new ColorRect { Visible = false, Color = new Color(0.07f, 0.07f, 0.09f),
-                                     MouseFilter = Control.MouseFilterEnum.Ignore, OffsetLeft = 280 };
+                                     MouseFilter = Control.MouseFilterEnum.Ignore, OffsetLeft = PanelW };
         _imageBack.SetAnchorsPreset(Control.LayoutPreset.FullRect);
         ui.AddChild(_imageBack);
 
@@ -257,7 +274,7 @@ public partial class Viewer : Node3D
             StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
             TextureFilter = CanvasItem.TextureFilterEnum.Nearest,
             MouseFilter = Control.MouseFilterEnum.Ignore,
-            OffsetLeft = 280,
+            OffsetLeft = PanelW,
         };
         _imageView.SetAnchorsPreset(Control.LayoutPreset.FullRect);
         ui.AddChild(_imageView);
@@ -265,7 +282,10 @@ public partial class Viewer : Node3D
         // ⭐ Tabs rather than a dropdown, in the order master asked for. The Mode enum keeps its
         // old numbering so saved command-line args still work, so the tab order is mapped, not
         // assumed to match.
-        _tabs = new TabBar();
+        // ⚠ Five tabs do not fit at the default font: the bar clips and puts scroll arrows over
+        // the two end tabs, which hides Models and Movies entirely. Smaller text and no clipping.
+        _tabs = new TabBar { ClipTabs = false };
+        _tabs.AddThemeFontSizeOverride("font_size", 12);
         foreach (var t in new[] { "Models", "Parks", "Textures", "Sounds", "Movies" }) _tabs.AddTab(t);
         _tabs.TabSelected += i => SetMode(TabMode((int)i));
         col.AddChild(_tabs);
@@ -314,7 +334,7 @@ public partial class Viewer : Node3D
         // ⭐ Godot plays Ogg Theora with no plugin and no native build, which is why the movies are
         // converted once rather than decoded at runtime: the eleven .MPC files are MPEG-2
         // elementary streams inside EA's own container, and nothing off the shelf opens that.
-        _video = new VideoStreamPlayer { Visible = false, Expand = true, OffsetLeft = 280,
+        _video = new VideoStreamPlayer { Visible = false, Expand = true, OffsetLeft = PanelW,
                                          MouseFilter = Control.MouseFilterEnum.Ignore };
         _video.SetAnchorsPreset(Control.LayoutPreset.FullRect);
         ui.AddChild(_video);
