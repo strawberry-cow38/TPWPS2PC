@@ -372,7 +372,7 @@ its distinct values per park are small sets (6–8 values, e.g. JUNGLE t1 `{0,24
 |---|---|
 | location, extent, element size | **proven** — `model+0x44`, `NX`/`NZ` at `+0x0c`/`+0x10`, 2 bytes per cell |
 | indexing | **proven** — row-major, `(z*NX + x) * 2` |
-| height | **proven** — `byte0 & 0x03`, confirmed by the engine's `andi 0xc3` and by the disc histograms |
+| height | **NOT proven — see the correction below.** `byte0 & 0x03` is well supported but rests on an inference |
 | `byte0 & 0x3C` | engine-maintained, wiped and repainted; meaning open |
 | `byte0 & 0x80` | set by the engine in three places; meaning open |
 | `byte0 & 0x40` | survives the mask; unexplained |
@@ -413,3 +413,34 @@ to chase, and it is a code question rather than a data one.
 **Confirmed from `cow tools`, independently re-measured here: `byte0 & 0x80` is set on zero cells in
 all eight parks.** It is not an unknown flag, it is unused on this disc. `0x40` is set on 32–280
 cells per park (JUNGLE 67 and 59, SPACE 278 and 280) and remains unexplained.
+
+
+## ⚠ Correction 5 — I called the height mask "proven" and it is not
+
+`strawberry_cow` looked at the rendered result and said the height byte looks wrong. Re-examining
+what I actually established:
+
+**What the code proves.** In `0x166100`, `andi $v0, $v0, 0xc3` clears bits `0x3C` and preserves
+`0x80`, `0x40`, `0x02`, `0x01`. That is a fact about which bits *that function* owns and rewrites.
+
+**What I inferred and then published as fact.** That the bits the function preserves are therefore
+the height. That does not follow from the mask alone. The competing reading — that this routine
+*flattens* terrain as it paints, so `0x3C` is the height being cleared — is not excluded by
+`andi 0xc3`.
+
+The argument for `0x03` is real but circumstantial: JUNGLE's `0x3C` is zero in **all 4,864 cells of
+both its files**, and JUNGLE plainly has elevation in game, so `0x3C` cannot be its height. That is
+evidence, not proof, and it is evidence from the one park that has been the degenerate case three
+times today already.
+
+**My attempt to referee it independently failed, and the failure is worth recording.** I compared
+decoded heights against the terrain mesh's own vertex Y, mapping vertices to cells at 10 raw units
+per cell. The result was nonsense — Y from −314.88 to +76.05 — because I used **raw per-batch vertex
+positions without applying each mesh's transform** (`mesh+0x10`, the mat4). Only 426 of 4,864 cells
+came out covered. A comparison run on untransformed coordinates is not a weak check, it is not a
+check at all, and I nearly had a second number to publish off it.
+
+**The test that would settle it**, for whoever has the transform pipeline working: take the ~1,700
+plot-edge cells that do have mesh surface over them, transform properly, and correlate decoded
+height against surface Y for both candidate masks. If `& 0x03` tracks and `(>>2) & 0x0F` does not,
+it is settled; the same data then fits the step size, which is the other open question.
