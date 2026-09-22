@@ -59,7 +59,17 @@ public sealed class AnimatedModel
     /// ⚠ A mirror reverses triangle orientation, so front faces become back faces. That costs
     /// nothing here because the shader lights both sides via FRONT_FACING; it would matter if
     /// culling were ever re-enabled.</summary>
-    public Node3D Root { get; } = new Node3D { Scale = new Godot.Vector3(1, 1, -1) };
+    /// <summary>⚠ Scale (1,1,-1) is a MIRROR, determinant -1, and it reverses triangle winding on
+    /// the way to the screen -- which is the root of the winding trouble. A true 180-degree yaw is
+    /// (-1,1,-1), determinant +1, orientation-preserving. If the intent was ever "turn it round"
+    /// rather than "flip it", the X negation is missing and everything is mirrored rather than
+    /// rotated. TPW_PS2_YAW180=1 renders it the other way so the two can be compared.</summary>
+    public Node3D Root { get; } = new Node3D
+    {
+        Scale = System.Environment.GetEnvironmentVariable("TPW_PS2_YAW180") == "1"
+            ? new Godot.Vector3(-1, 1, -1)
+            : new Godot.Vector3(1, 1, -1),
+    };
     public int Frames { get; private set; }
     public string Summary { get; private set; }
 
