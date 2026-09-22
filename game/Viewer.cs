@@ -626,6 +626,50 @@ public partial class Viewer : Node3D
 
     /// <summary>Every park on the disc, grouped by world. ⚠ Built once: finding them means opening
     /// each archive, so it is done on the first visit to the tab rather than at startup.</summary>
+    /// <summary>Dump the cell-byte distributions for every park on the disc, then quit.
+    ///
+    /// ⭐ The cell is THREE TABLE INDICES, not a height: bits 0-3, bits 4-7 and byte1. Jungle
+    /// cannot referee any hypothesis about them -- its bits 4-7 are {0,4} and its 0x3C is zero
+    /// throughout -- so the FIRST thing any reading of them needs is what the other seven parks
+    /// actually contain. Printed per park and per field so a claim can be checked against a
+    /// distribution rather than against one world that is blind to the question.</summary>
+    void DumpFieldStats()
+    {
+        var open = _lib.WadName;
+        GD.Print("park                     cells  drawn   bits0-3 histogram                  "
+               + "bits4-7 histogram                  0x3C non-zero");
+        foreach (var m in _maps)
+        {
+            try
+            {
+                _lib.OpenWad(m.Wad);
+                var entry = _lib.TerrainModels().FirstOrDefault(
+                    e => string.Equals(e.Path, m.Path, StringComparison.OrdinalIgnoreCase));
+                if (entry == null) continue;
+                var f = new Model(_lib.Read(entry)).Field;
+                if (f == null) { GD.Print($"{m.Label,-24} no field"); continue; }
+                var lo = new int[16]; var hi = new int[16];
+                int drawn = 0, nz3c = 0;
+                for (int y = 0; y < f.Height; y++)
+                    for (int x = 0; x < f.Width; x++)
+                    {
+                        byte b = f.Raw0(x, y);
+                        lo[b & 0x0F]++; hi[(b >> 4) & 0x0F]++;
+                        if (f.Drawn(x, y)) drawn++;
+                        if ((b & 0x3C) != 0) nz3c++;
+                    }
+                GD.Print($"{m.Label,-24} {f.Count,6} {drawn,6}   {Hist(lo),-34} {Hist(hi),-34} {nz3c,6}");
+            }
+            catch (Exception ex) { GD.PrintErr($"[stats] {m.Label}: {ex.Message}"); }
+        }
+        if (open != null) _lib.OpenWad(open);
+        GetTree().Quit();
+    }
+
+    /// <summary>Only the values that OCCUR, as value:count. A row of zeroes hides the shape.</summary>
+    static string Hist(int[] counts) => string.Join(" ",
+        counts.Select((c, v) => (c, v)).Where(t => t.c > 0).Select(t => $"{t.v}:{t.c}"));
+
     void FillMapList()
     {
         if (!_mapsBuilt)
@@ -655,6 +699,7 @@ public partial class Viewer : Node3D
             foreach (var (m, i) in g) AddRow("   " + Leaf(m.Path), i);
         }
         if (_maps.Count == 0) _info.Text = "no parks found";
+        if (System.Environment.GetEnvironmentVariable("TPW_PS2_FIELD_STATS") == "1") DumpFieldStats();
     }
 
     /// <summary>Open the archive a park lives in and load that terrain file.</summary>
