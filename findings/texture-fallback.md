@@ -205,3 +205,40 @@ in that same method. Neither test edits the disc or decoder.
 This run's raw logs, filename inventory, probes, hashes, scorer JSON and source-mutation harness
 are outside the repository at `/tmp/tpw-texfallback-validation/`. The disc and existing scorer
 inputs stayed under `/home/ec2-user/tpw-ps2/`. No game bytes or textures were added to this worktree.
+
+## Status: UNFINISHED, deliberately, and this is the shape of what is left
+
+**Closed on 2026-09-22 by the project owner: "everything in the game looks textured. its fine."**
+Recorded rather than fixed, because the remaining 43 are not one problem and neither half is urgent.
+
+    material references   6007 of 6007
+      resolved to .tga    5940
+      resolved to .ssh      24        <- these rendered BLANK before this change
+      UNRESOLVED            43
+      decode threw           0
+
+**29 of the 43 are a resolver-scope question, not missing art.** Those textures exist on the disc;
+the per-WAD walk does not reach them. `h_bell`, `h_roof`, `h_skull` and the rest sit in
+`HALLOW.WAD/rides/gokarts/textures`; `hp_base`, `hp_base1`, `hp_base6`, `hp_base7` and `h_glow2` sit
+in **`DATA.WAD/Ultimate/Sharetex`**, a global pool no per-archive search reaches. Widening the
+search closes these; the risk in doing so is the one already recorded in `AssetLibrary` — a flat
+by-name search once put Mumbo's sign on Crazy Ape, because 22 rides each ship a `sign_eng.tga`.
+**Widen carefully or not at all.**
+
+**14 of the 43 cannot be closed.** Five stems appear in no form anywhere on the disc:
+
+    flowerpot   hpa_ctr2   jpa_que4 (x8)   mutant_eye   wr_flap (x3)
+
+Dead references in EA's own art. `jpa_que4` is requested by **SPACE**'s terrain while carrying a
+*jungle* prefix, which reads like a copied model nobody re-pointed.
+
+⚠ **So the floor is 14, and the gate this job was given ("zero unresolved") was unmeetable.** That
+is the second acceptance bar set in this repo that cannot be reached by construction — the other
+being flat-colour exactness in `ssh-colour.md`, where 26 of 117 references are unreachable by any
+input. Both were honest and ungameable. Both were partly measuring something impossible. **A gate
+being unfittable is not the same as it being achievable**, and the way to tell is to ask what the
+best possible implementation would score before adopting the number.
+
+⚠ And a counting note, because it nearly went out wrong: the first split was reported as 13/30. The
+grep behind it matched `[a-z0-9_]+` and four of the stems are `Brain_Glow`, `Mutant_Eye`,
+`PURPLE_BASE`, `d_POOL3`. The real split is **14/29**.
