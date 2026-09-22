@@ -680,7 +680,9 @@ public partial class Viewer : Node3D
             // ⭐ The plot's ground comes off the disc, not out of a Color. `jgr_bas2..6` are the
             // jungle ground tiles (64x64, green); `jpa_*` are the paths. Named by the model's own
             // convention so the ordinary resolver finds them beside the terrain.
-            var grass = TextureNear(pick.Path, "jgr_bas2.ssh");
+            var tile = _lib.GroundTileName();
+            var grass = tile != null ? TextureNear(pick.Path, tile + ".ssh") : (null, false);
+            GD.Print($"[park] ground tile '{tile ?? "(none found)"}' -> {(grass.Tex != null ? "resolved" : "UNRESOLVED")}");
             if (grass.Tex != null)
                 _park.GroundMaterial = new StandardMaterial3D
                 {

@@ -164,6 +164,34 @@ public sealed class AssetLibrary : IDisposable
                  && e.Path.Contains("/terrain/", StringComparison.OrdinalIgnoreCase))
         .OrderBy(e => e.Path, StringComparer.OrdinalIgnoreCase).ToList();
 
+    /// <summary>The ground tile to floor the park with.
+    ///
+    /// ⚠ THIS IS A CHOICE, NOT A FINDING. The park plot has no geometry on the disc -- the engine
+    /// draws its tiles at runtime -- so nothing here says which texture the empty park is floored
+    /// with. The rule: prefer the world's own `*_bas*` ("base") tile, else the shared `grd_top1`.
+    ///
+    /// ⚠ Case-insensitively, always. The disc mixes case inside one extension -- HALLOW ships
+    /// `Jpa_*` and `.TGA` where JUNGLE ships `jpa_*` and `.tga` -- so an ordinal match finds a
+    /// coherent subset and misses the rest.
+    ///
+    /// Per world: JUNGLE and FANTASY both use `jgr_bas2..6`, SPACE uses `sfl_bas1..6`, and HALLOW
+    /// ships no `_bas` at all, which is what the fallback is for.</summary>
+    public string GroundTileName()
+    {
+        var names = Wad.Entries
+            .Where(e => !WadArchive.IsAlias(e)
+                     && e.Path.Contains("/terrain/", StringComparison.OrdinalIgnoreCase)
+                     && (e.Path.EndsWith(".tga", StringComparison.OrdinalIgnoreCase)
+                      || e.Path.EndsWith(".ssh", StringComparison.OrdinalIgnoreCase)))
+            .Select(e => System.IO.Path.GetFileNameWithoutExtension(e.Path))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        return names.FirstOrDefault(n => n.Contains("_bas", StringComparison.OrdinalIgnoreCase))
+            ?? names.FirstOrDefault(n => n.Equals("grd_top1", StringComparison.OrdinalIgnoreCase))
+            ?? names.FirstOrDefault(n => n.StartsWith("grd_top", StringComparison.OrdinalIgnoreCase));
+    }
+
     /// <summary>Every image in the open archive, in path order. Both TGA and SSH have managed
     /// decoders; material lookup prefers the pre-compression TGA source when available.</summary>
     public List<WadArchive.Entry> Images(bool includeSsh = true) => Wad.Entries
