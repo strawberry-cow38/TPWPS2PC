@@ -693,7 +693,24 @@ public partial class Viewer : Node3D
                 };
             else GD.PrintErr("[park] no ground tile resolved -- falling back to flat colour");
 
-            var (ho, hs, hy, hc) = Park.FindHole(_terrain.Root);
+            // ⭐⭐ Ask the disc where the park is before measuring anything.
+            Vector2? apO = null, apS = null;
+            var ap = Park.AuthoredPlot(tm);
+            if (ap != null)
+            {
+                // The model's own space is pre-mirror; the scene root carries Scale (1,1,-1).
+                var tf = _terrain.Root.Transform;
+                var a = tf * ap.Value.Min; var b = tf * ap.Value.Max;
+                var pmin = new Vector3(Math.Min(a.X, b.X), Math.Min(a.Y, b.Y), Math.Min(a.Z, b.Z));
+                var pmax = new Vector3(Math.Max(a.X, b.X), Math.Max(a.Y, b.Y), Math.Max(a.Z, b.Z));
+                apO = new Vector2(pmin.X, pmin.Z);
+                apS = new Vector2(pmax.X - pmin.X, pmax.Z - pmin.Z);
+                GD.Print($"[plot] AUTHORED by the heightfield node: {pmin} .. {pmax}  "
+                       + $"=> {apS.Value.X:F2} x {apS.Value.Y:F2} cells, elevation {pmax.Y - pmin.Y:F2}");
+            }
+            else GD.PrintErr("[plot] no heightfield node -- falling back to the measured hole");
+
+            var (ho, hs, hy, hc) = Park.FindHole(_terrain.Root, 160, apO, apS);
             _holeOrigin = ho; _holeSize = hs; _holeCells = hc;
             // ⚠⚠ The floor goes at the height of the ground AROUND the hole, NOT at the terrain's
             // minimum. The terrain spans only -1.3..9.9 in Y and that minimum is the sea floor, so

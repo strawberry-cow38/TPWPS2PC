@@ -130,7 +130,38 @@ public sealed class Park
     /// which is what a first attempt did, reporting a corner of the bounding box as the hole.
     /// Scanning instead for empty runs that have terrain on BOTH sides keeps the entrance row as
     /// the only one that leaks, rather than all of them.</summary>
-    public static (Vector2 Origin, Vector2 Size, float FloorY, bool[,] Cells) FindHole(Node3D terrain, int res = 160)
+    /// <summary>The park plot, as the disc states it.
+    ///
+    /// ⭐⭐ THE PLOT IS AUTHORED, NOT INFERRED. Every M3D2 mesh record carries its local AABB at
+    /// +0x70/+0x80 (verified against vertex-computed bounds for all 144 meshes in jungle's terrain
+    /// that have geometry). The node named `heightfield` has NO geometry -- zero verts, zero faces
+    /// -- and still carries one, and that AABB is the park:
+    ///
+    ///   JUNGLE 64 x 76   FANTASY 80 x 60   HALLOW 96 x 52   SPACE 96 x 54, Y 0..2.01 in all four.
+    ///
+    /// Clean integers at one cell per unit, and jungle's matches its hoarding footprint to a
+    /// decimal. Its node transform places it too: SPACE's carries a translation of (0,0,-100).
+    ///
+    /// ⚠ What replaced: a flood-fill over triangle coverage that I invented. It put jungle's plot
+    /// at Z 12.7..75.0 where the disc says Z 0..76.23 -- a 12-unit strip missing down one whole
+    /// edge, which no render would have shown because the strip is empty either way.</summary>
+    public static (Vector3 Min, Vector3 Max)? AuthoredPlot(Model model)
+    {
+        var hf = model.Meshes.FirstOrDefault(m =>
+            m.Name != null && m.Name.Equals("heightfield", StringComparison.OrdinalIgnoreCase));
+        if (hf == null) return null;
+        var world = model.WorldTransforms();
+        if (!world.TryGetValue(hf.Offset, out var w)) return null;
+        var lo = System.Numerics.Vector3.Transform(
+            new System.Numerics.Vector3(hf.BoundsMin.X, hf.BoundsMin.Y, hf.BoundsMin.Z), w);
+        var hi = System.Numerics.Vector3.Transform(
+            new System.Numerics.Vector3(hf.BoundsMax.X, hf.BoundsMax.Y, hf.BoundsMax.Z), w);
+        return (new Vector3(Math.Min(lo.X, hi.X), Math.Min(lo.Y, hi.Y), Math.Min(lo.Z, hi.Z)),
+                new Vector3(Math.Max(lo.X, hi.X), Math.Max(lo.Y, hi.Y), Math.Max(lo.Z, hi.Z)));
+    }
+
+    public static (Vector2 Origin, Vector2 Size, float FloorY, bool[,] Cells) FindHole(
+        Node3D terrain, int res = 160, Vector2? plotOrigin = null, Vector2? plotSize = null)
     {
         var (lo, hi) = DrawnBounds(terrain, inParent: true);
         float w = hi.X - lo.X, h = hi.Z - lo.Z;
@@ -188,6 +219,16 @@ public sealed class Park
                         // seam the terrain was authored with, where the engine hangs the park's own
                         // tiles. That seam is where the floor height comes from; see below.
                         Edge(p0, p1); Edge(p1, p2); Edge(p2, p0);
+
+                        // ⚠⚠ ONLY NEAR-HORIZONTAL SURFACES COUNT AS GROUND. Testing "does any
+                        // triangle overlap this cell in XZ" threw away the elevated terrain and the
+                        // palm trees with one swing: a canopy hanging over the grass answered yes,
+                        // so the floor lost a cell under every tree, and EMBANKMENT / VOLCANO /
+                        // newcliff12 -- which ARE the elevated terrain, not props -- were binned
+                        // the same way. With this filter the contributors are exactly EMBANKMENT,
+                        // CLIFFS, newcliff12, A_ROAD and VOLCANO, and the palms drop out.
+                        var nrm = (p1 - p0).Cross(p2 - p0);
+                        if (nrm.Length() <= 0 || Math.Abs(nrm.Y) / nrm.Length() < 0.7f) continue;
                         float top = Math.Max(p0.Y, Math.Max(p1.Y, p2.Y));
                         // ⚠ A triangle smaller than a cell covers no cell centre. Mark its own
                         // cells too, or dense fine geometry reads as empty ground.
@@ -337,8 +378,11 @@ public sealed class Park
                + $"({bestCount} of them, {100.0 * bestCount / Math.Max(1, seamCount):F0}%)");
 
         float ux = w / (res - 1), uz = h / (res - 1);
-        var origin = new Vector2(lo.X + minX * ux, lo.Z + minZ * uz);
-        var size = new Vector2((maxX - minX + 1) * ux, (maxZ - minZ + 1) * uz);
+        // ⭐ The AUTHORED extent wins when the disc states one. The flood-fill bbox below is only
+        // a fallback for a terrain with no `heightfield` node -- it put jungle's plot at
+        // Z 12.7..75.0 where the disc says 0..76.23.
+        var origin = plotOrigin ?? new Vector2(lo.X + minX * ux, lo.Z + minZ * uz);
+        var size = plotSize ?? new Vector2((maxX - minX + 1) * ux, (maxZ - minZ + 1) * uz);
 
         // ⚠⚠ THE PLOT IS NOT A RECTANGLE, so its bounding box is not the plot. The hole has the
         // riverbed running out of one corner, and building a full rectangle over the box put two
@@ -352,7 +396,11 @@ public sealed class Park
                 float wx = origin.X + (cx + 0.5f) * CellSize, wz = origin.Y + (cy + 0.5f) * CellSize;
                 int gx = Mathf.Clamp((int)Math.Round((wx - lo.X) / w * (res - 1)), 0, res - 1);
                 int gz = Mathf.Clamp((int)Math.Round((wz - lo.Z) / h * (res - 1)), 0, res - 1);
-                cells[cx, cy] = comp[gz, gx] == bestId;
+                // ⚠ With the extent authored, a cell is ground unless a near-horizontal terrain
+                // surface already occupies it -- the elevated terrain draws itself and does not
+                // need a flat tile laid through it. The old test also demanded the cell belong to
+                // the flood-filled component, which is meaningless once the boundary is given.
+                cells[cx, cy] = plotOrigin != null ? !cov[gz, gx] : comp[gz, gx] == bestId;
             }
         return (origin, size, floorY, cells);
     }
