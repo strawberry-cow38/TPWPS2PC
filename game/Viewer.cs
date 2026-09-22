@@ -772,33 +772,17 @@ public partial class Viewer : Node3D
         {
             _park.Origin = _holeOrigin;
             _park.BaseY = _holeY;
-            // ⚠⚠ WITH AN AUTHORED FIELD, DRAW EVERY CELL. The mesh-coverage mask is left over from
-            // when the plot was being approximated -- "don't lay a floor where terrain already
-            // exists" -- and once the field is loaded it deletes the terrain the field describes:
-            // 1,475 of jungle's 1,477 height-1 cells are mesh-covered, so the mask dropped ~100%
-            // of them and the floor rendered flat. Master spotted it from a screenshot of the real
-            // game: a plain with raised blocks standing on it, where mine had no relief at all.
+            // ⚠ The mesh-coverage mask is BACK, at master's call. I dropped it because it was
+            // deleting the cells I was extruding into blocks -- but those blocks were fabricated
+            // (a cell is three tile indices, not a height), so there is nothing left for the mask
+            // to destroy. What it does do is keep the park floor from being laid straight over
+            // terrain the mesh already draws: the embankment, the roads, the banks. Without it the
+            // plot is a slab covering real geometry, which is extra terrain we invented.
             //
-            // ⚠⚠ I BRIEFLY CLAIMED THAT OVERLAP PROVED `byte0 & 0x03` IS ELEVATION. It does not,
-            // and the claim is withdrawn. 1,475 of 1,477 height-1 cells being mesh-covered is
-            // CONFOUNDED BY POSITION: height-1 cells sit a median of 6 cells from the plot edge
-            // against 12 for height-0 (46% within six cells, vs 24%), and mesh coverage hugs that
-            // same boundary. Two things concentrated at the edge overlap without one causing the
-            // other.
-            //
-            // The magnitude test settles nothing either: regressing transformed surface Y against
-            // both candidate masks over the ~1,000-1,700 mesh-covered cells of all eight parks
-            // gives |r| < 0.22 throughout, several of them NEGATIVE, for `&0x03` AND for
-            // `(>>2)&0x0F`. The mesh cannot referee this even at the edges, because the mesh there
-            // is the SURROUNDING terrain -- embankment, roads, banks -- not the park's own tiles.
-            // ⚠ And jungle cannot referee it at all: its 0x3C is zero in every cell, so the rival
-            // mask is constant there.
-            //
-            // So the mask below is right for a reason that does not depend on any of that: the
-            // cells are authored, and dropping them loses data we were handed.
-            _park.Build(_park.Field?.Width ?? Mathf.RoundToInt(_holeSize.X),
-                        _park.Field?.Height ?? Mathf.RoundToInt(_holeSize.Y),
-                        _park.Field != null ? null : _holeCells);
+            // ⚠ The grid still comes from the authored field; only which cells get a floor is
+            // masked. When the corner tables are decoded this stops being a mask and becomes the
+            // tile shapes.
+            _park.Build(Mathf.RoundToInt(_holeSize.X), Mathf.RoundToInt(_holeSize.Y), _holeCells);
         }
         else _park.Build(ParkCells, ParkCells);
         // ⚠ Aim at the PARK's middle, not at ParkCells/2 -- that constant is the fallback size and
