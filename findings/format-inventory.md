@@ -9,18 +9,29 @@ is the deep dive into one archive (JUNGLE.WAD); this is the whole-disc ledger.
 
 | bucket | files | bytes |
 |---|---:|---:|
-| **we have it RE'd** — a reader exists and is checked | 8,406 | 557,904,472 |
+| **we have it RE'd** — a reader exists and is checked | 8,415 | 557,999,120 |
 | **common standard** — ordinary format or plain text | 6,440 | 133,911,488 |
-| **not done** | **12** | **215,236** |
+| **not done** | **3** | **120,588** |
 | total | 14,858 | 692,031,196 |
 
 The three buckets sum to the census exactly, with nothing unclassified. This checks inventory
-coverage, not decoder correctness. **What is left is 12 files, 215,236 bytes** — 0.08% of the
-files and 0.03% of the bytes. ⚠ These figures are the MERGE of two branches that each decoded
-from the same baseline: bff-font moved 6 files / 322,719 bytes and advisor moved 2 / 4,088, so
-taking either branch's table on its own would have silently dropped the other's progress. Base
-was 8,398 RE'd and 20 not done; both dimensions reconcile exactly. See
-[BFF evidence and remaining unknowns](bff-font.md).
+coverage, not decoder correctness. **Three files remain partly undecoded: the 120,588-byte `.dba`
+corpus.** The requested three kanji tables and two ride engine files now have consumer-backed
+readers and identity/behavior audits; see [kanji evidence and limits](kanji-table.md) and
+[ride engine evidence and limits](ride-engine.md).
+
+**DBA payload follow-up:** all eight layouts now have bounds-checked decoding of common
+placement data, footprint cells, ride tiers, research/cost fields, shop effects and minigames,
+with a dedicated identity/field audit across EUR, USA and JAP. Specialised track/tour settings
+and other explicitly listed fields still lack complete semantics, so the count remains
+**3 partly undecoded**, not zero. See [payload evidence and precise remaining ranges](dba.md).
+
+**Reconciliation of the “last five” premise:** this worktree began at `1091482`, before the font,
+advisor and MTR findings were integrated. Their existing commits have been brought onto
+`last-five` (subsequently fast-forwarded into isolated `dba-payload`). The advisor findings kept `.dba` partial,
+so the honest progression is **20 → 8 → 3**, not 20 → 5 → 0. MTR's four checked readers are now
+represented here too; its earlier commit had not updated this ledger. “Decoded” still allows
+explicitly documented unknown fields and unverified live integration; it does not imply a full port.
 
 ⚠ **Counts are case-insensitive.** The disc mixes spellings within a single extension and the split
 is not small: `.tga`×4,563 / `.TGA`×1,132 (19.9%), `.RSE`×710 / `.rse`×8 (98.9% uppercase),
@@ -48,6 +59,9 @@ produces a coherent, wrong answer — that is a mistake already made here once, 
 | `.mpc` | 11 | 258,791,928 | EA movie container: a flat `4cc + u32 size` chunk stream, `MPCh` carrying one frame of **MPEG-2 video elementary stream** each, `SCHl`/`SCDl` the audio. Container is ours; the video inside is standard MPEG-2 | `tools/mpc.py` |
 | `.bff` | 6 | 322,719 | **PS2 bitmap font**, `2FFB` / `ULGU` / `DGFB`. Range lookup, 14-byte descriptors, signed bearings, advances and high-nibble-first four-bit coverage; [consumer evidence, PGM inspection and regression audit](bff-font.md). Two header metrics remain unnamed | `core/TPW.PS2.Data/BitmapFont.cs`, `tools/TPW.PS2.FontAudit` |
 | `.md2` | 4 | 63,912 | same M3D2 family as `.mps` under another stamp (`0x1CD15D46`). ⚠ **not** Quake 2 — the engine's own dispatch lists `sam / mps / aps / md2 / hmp` together | `core/Model.cs` |
+| `.mtr` | 4 | 60,932 | node matrices, vertex/face remaps and legacy MD2 companions; [identity audit and unresolved fields](mtr.md) | `core/TPW.PS2.Data/Mtr.cs`, `tools/TPW.PS2.MtrAudit` |
+| `.table` | 3 | 33,186 | compact Shift-JIS → exported image ordinal; **not Unicode**, not a BFF index. Signed holes, three consumer code ranges, regional identities; [evidence and missing loader connection](kanji-table.md) | `core/TPW.PS2.Data/KanjiTable.cs`, `tools/TPW.PS2.LastFiveAudit` |
+| `.eng` | 2 | 530 | two ride sound layers with 32-sample volume curves, interpolated parameters and export metadata; [consumer arithmetic and unknown units](ride-engine.md) | `core/TPW.PS2.Data/RideEngine.cs`, `tools/TPW.PS2.LastFiveAudit` |
 | `.ass` | 2 | 4,088 | advisor rule VM: 12-byte headers, game-day delays, signed-halfword instructions, ten opcodes; [consumer evidence and speech/text/lip join](advisor.md) | `core/TPW.PS2.Data/AdvisorRules.cs`, `tools/TPW.PS2.AdvisorAudit` |
 | `.plb` | 1 | 35,704 | particle library, 105 records of 320 bytes. Layout confirmed against the loader call `FUN_00220800(…, "Data\Particle\Tp2.plb", 400, 0x400)` | `tools/plb.py` |
 
@@ -70,23 +84,19 @@ produces a coherent, wrong answer — that is a mistake already made here once, 
 | `.img` | 1 | 98,901 | `IOPRP165.IMG`, Sony IOP reboot image |
 | *(none)* | 1 | 31,457,280 | `/PADDING.` — 31.5 MB of filler to pad the disc |
 
-## Not done — 12 files, 215,236 bytes
+## Not done — 3 files, 120,588 bytes
 
 | ext | n | bytes | where | what is known |
 |---|---:|---:|---|---|
-| `.mtr` | 4 | 60,932 | `*/Sideshow/*/` | magic `0x2E5915AF`, exactly one per sideshow `.MD2`, so near-certainly its **material table**. Header counts look like (records, submeshes, offset) but nothing is confirmed |
-| `.dba` | 3 | 120,588 | `DATA.WAD/ars{,us,jap}db.dba` | **Partially decoded park asset database.** Directory is `u32 count`, then `(key, offset, size)` records; payload `+4` selects an asset-name text row. Earlier advisor-speech interpretation was wrong: that join is embedded in the ELF. Managed directory/common-prefix reader exists; most payload fields remain unknown. [Evidence](advisor.md) |
-| `.table` | 3 | 33,186 | `translations/*/kanji.table` | `u16` pairs, `FFFF` as a hole marker. Japanese glyph mapping. Only needed for a Japanese build |
-| `.eng` | 2 | 530 | `/AUDIO/RIDES/{GRC,WTR}.ENG` | not a language file. Two mirrored amplitude ramps (`00 02 03 05 08 … 61 63 63` and its reverse) plus the build path `Q:\Theme Park II\TP-PS2\Export\Global\Sound\` and a bank name. An **envelope curve** for the `GRC`/`WTR` bank groups, which also have their own `*BANK.MAP`/`*SFX.MAP` pairs |
+| `.dba` | 3 | 120,588 | `DATA.WAD/ars{,us,jap}db.dba` | **Partially decoded park asset database.** Managed reader covers eight layouts, common placement/minigame fields, footprint cells, ride tiers, research/costs, shop effects and sideshow pricing. Named-asset and decoded-field audit passes all three regions and fails mutations. Specialised track/tour fields, upgrade selector and some flags/bytes remain unresolved. [Field evidence and unknown ranges](dba.md) |
 
-### What the remainder is actually worth
+### What remains
 
-The advisor's `.ass` pair is now decoded, with a checked rule evaluator and the executable's
+The advisor's `.ass` pair is decoded, with a checked rule evaluator and the executable's
 speech/text/lip catalogue. `.dba` belongs to park assets; grouping it with advisor speech was an
-incorrect inference from filenames and numeric patterns. Fonts now have a reader, so `.bff` has
-left this list and only its UI text integration remains, which is separate work. `.mtr` is
-cosmetic for four minigame models, `.table` is Japanese glyph mapping, and `.eng` is two files of
-curve data.
+incorrect inference. Its payload reader now covers the eight layouts and confirmed gameplay
+fields. The unresolved specialised settings and flags still prevent calling the three files
+fully decoded. See [the explicit remaining DBA work](dba.md).
 
 ## How this was measured
 
@@ -94,7 +104,7 @@ curve data.
 `tools/wadtree.py` walks each `.WAD`'s FKNL tree and `wadtree.read` un-RefPacks each entry.
 Extensions are folded to lowercase and the original spellings counted separately, so a case split
 shows up instead of halving the corpus. Bucket membership was then summed back against the census
-total — 8,406 + 6,440 + 12 = 14,858 — because a breakdown that does not add up to its own total is
+total — 8,415 + 6,440 + 3 = 14,858 — because a breakdown that does not add up to its own total is
 hiding a path.
 
 ---
@@ -104,8 +114,7 @@ hiding a path.
 Theme Park World has an active reverse-engineering community around **OpenTPW**
 (`OpenTPW/OpenTPW`, `maexah/OpenTPW`, docs at `OpenTPW/opentpw-docs`), which targets the **PC**
 release. Their coverage was checked against the original six remaining formats, plus the ones
-already done here. The PS2 `.bff` reader was completed
-subsequently in this worktree, and `.ass` has since moved to the decoded bucket.
+already done here. The PS2 `.bff` reader was completed subsequently in this worktree.
 
 ⚠ **PC ≠ PS2, and their own docs say so.** The PC archive is `BFWD`/`DWFB`; the docs state outright
 that the PS2's `FKNL` "is not compatible with DWFB". Treat every PC layout as a lead to test, never
@@ -115,7 +124,7 @@ as a spec — the case below where it half-transfers is the normal outcome, not 
 |---|---|---|
 | `.bff` | **Cracked, and implemented well beyond their own docs.** `maexah/OpenTPW`'s `UI/BitmapFont.cs` carries a full `BF4` reader — glyph record, three pixel packings (raw nibbles / RLE / 1bpp), 4-bit coverage — derived from PC addresses `0x006b0680`, `0x006b4aa0`, `0x006b15f0`. The published doc page is only a partial header | **Large head start, not a drop-in.** PC magic is `"F4FB"`; ours is `"2FFB"` — a different version of the same family. See below |
 | `.mtr` | **Not cracked by anyone.** `opentpw-docs/src/formats/mtr.md` is the word `TODO` and nothing else. `Render/Assets/Material.cs` is a Veldrid render material, not a file parser | nothing to borrow |
-| `.table` | **Analogue documented**: `BFMU` / `BFUM` (Bullfrog Multibyte↔Unicode), the PC's `MBtoUni.dat`. Different file, same job — mapping multibyte to Unicode | a lead on what the table is *for*, not on its layout |
+| `.table` | PC `BFMU` / `BFUM` maps multibyte ↔ Unicode | **Purpose lead refuted for this file:** the PS2 consumer returns an image ID, not Unicode; [identity evidence](kanji-table.md) |
 | `.dba` | absent from their format list | nothing |
 | `.ass` | absent from their format list | nothing |
 | `.eng` | absent from their format list | nothing |
@@ -133,7 +142,8 @@ evidence is in [bff-font.md](bff-font.md). The key corrections are:
 * Header `+7` is the line advance, proven by the text layout's Y increment. Meanings of
   `+5` and `+6` remain unestablished.
 * European fonts, including the identical `Jap/Console`, map Unicode values. Japanese
-  Large/Small map packed Shift-JIS values, confirmed against rendered kana and 日/本.
+  Large/Small map packed Shift-JIS values, confirmed against rendered あ / カ / 本; the bitmap
+  at the 日 code is anomalous (see kanji findings).
 * The fonts have 217 / 224 / 701 descriptors, not 132 / 294 / 2454. They all store raw
   high-nibble-first coverage; the traced decoder rejects flag bit 0. PC packing modes
   cannot be assigned to PS2 flags from the existence of a similar RLE helper.

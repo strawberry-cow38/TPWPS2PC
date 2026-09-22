@@ -68,6 +68,22 @@ currently **fails**. See [resolver results and all unresolved names](findings/te
 
 The disc tools below read a Mode 2/2352 track directly. Nothing copies a disc image.
 
+
+
+Read and audit the three kanji export tables and two ride engine sound files:
+
+```sh
+dotnet run --project tools/TPW.PS2.LastFiveAudit -c Release -- /path/to/disc.bin
+dotnet run --project tools/TPW.PS2.LastFiveAudit -c Release -- --self-test
+```
+
+The managed readers preserve regional character/image identities and the sound consumer's
+sampled volume arithmetic. The audit fails on changed mappings, ordered glyph pixels, parsed
+fields or evaluated curves; it includes malformed-input and count-preserving negative controls.
+See [kanji consumer and Unicode-purpose correction](findings/kanji-table.md) and
+[ride engine fields and unknown units](findings/ride-engine.md). The ledger retains three partly
+decoded `.dba` files; this does not claim that every disc field is now understood.
+
 Decode and audit all PS2 bitmap fonts, writing PGM text specimens and glyph atlases:
 
 ```sh
@@ -96,6 +112,21 @@ bank normally, or use `TPW_PS2_MODE=sounds TPW_PS2_SOUND=ADVISOR/ENGLISH TPW_PS2
 unknowns](findings/advisor.md), including the retail missing-lip defect and why `.dba` is a park
 asset database rather than the speech table. The game-state producers and full advisor simulation
 remain unimplemented.
+
+
+
+Read and audit the regional park asset database payloads:
+
+```sh
+dotnet run --project tools/TPW.PS2.DbaAudit -- /path/to/disc.bin
+dotnet run --project tools/TPW.PS2.DbaAudit -- /path/to/disc.bin --list
+```
+
+The reader exposes eight layouts, ride tiers, shop effects, research/cost fields, minigames and
+footprint cells. The audit checks named identities and every decoded field across all three
+regions, with external mutation options `--eur=FILE`, `--usa=FILE`, `--jap=FILE`, `--elf=FILE`.
+Specialised fields remain unresolved; see [DBA evidence and exact gaps](findings/dba.md).
+
 
 The four legacy sideshow `.MD2` models are selectable in the viewer, with their own texture
 tables and validated `.mtr` companions. MTR holds node matrices and topology remaps; several

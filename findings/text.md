@@ -30,7 +30,7 @@ holds exactly 1,087 rows. Only which LANGUAGES exist varies, never the indexing.
 | `id.dat` | the **symbolic keys**, same format, same count, same order |
 | `include/trans.h` | the same list a **third** time, as a C `enum` |
 | `final.dat`, `finalame.dat` | the plain-text masters, `[STR_KEY]` form, 338KB / 118KB |
-| `kanji.table`, `kanji.lbmlist` | Japanese glyph tables, not read |
+| `kanji.table`, `kanji.lbmlist` | Shift-JIS → exported image ordinal and numbered LBM list; [consumer and regional identities](kanji-table.md). Not a Unicode conversion table or BFF descriptor index |
 | `cleanlang.pl`, `showlang.pl` | EA's own build scripts, shipped to retail |
 
 ## Why it is proven rather than plausible
@@ -62,9 +62,10 @@ English-only by construction, which is a second reason — beyond the id collisi
 
 ## Open
 
-* `kanji.table` (11,062 bytes, both locales) and `kanji.lbmlist` are unread.
+* The three `kanji.table` files now have a managed reader and identity audit. Their loader/global-pointer assignment and downstream image-ID use remain unestablished; see [kanji-table.md](kanji-table.md).
 * `jap/` and `usa/` differ: `usa/` has `final.dat` + `finalame.dat`, `jap/` has `finaljap.dat`.
-  Whether the `jap/` binaries differ from `usa/`'s beyond the master has not been checked.
+  The kanji investigation also measured different `jap.dat` bytes: EUR/JAP 33,901 bytes,
+  USA 33,655 bytes, with changed strings (for example row 3 is 収支 versus 銀行).
 * ⚠ 1,066 of 1,087 `id.dat` entries end in a trailing space — the empty format spec. A parser that
   trims keys before comparing will not notice; one that does not will fail to match `trans.h` on
   1,066 of 1,087 and look catastrophically broken. Split at the first space, do not trim.

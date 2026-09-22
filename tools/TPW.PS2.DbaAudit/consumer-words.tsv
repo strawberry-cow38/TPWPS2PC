@@ -1,0 +1,35 @@
+# Virtual address	R5900 word	evidence
+0010f24c	8c42adfc	lookup loaded DBA global
+0010f270	8c62fffc	directory key comparison
+0010f0c0	0c043c92	resource handle calls DBA lookup
+0010fa40	0c043c2c	handle fetch
+001e1428	0c043e8c	object fetch
+0035a5bc	001e1420	ride vtable payload method
+003680dc	001e1420	shop vtable payload method
+0012b544	94820000	kind halfword
+0012b52c	00052c00	runtime category index setter shift
+0012a710	0c04ad4a	enumerator calls index setter
+0012b57c	90820008	width byte
+0012b584	90820009	middle dimension byte
+0012b58c	9082000a	depth byte
+0012b5a8	8c82001c	footprint relative offset
+001e2d04	86a50000	signed footprint tile
+001e2d10	96a70002	footprint flags halfword
+001e2d9c	26b50004	four-byte grid stride
+00124420	94510016	minigame halfword
+003698d8	001dec78	minigame7 dispatch
+001178d0	8c500038	minimum speed field
+00117930	8c50003c	maximum speed field
+00117990	8c500040	minimum duration field
+001179f0	8c500044	maximum duration field
+00117a50	8c500024	minimum speed damage field
+00117ab0	8c500028	minimum capacity damage field
+00117b10	8c50002c	wear field
+00117b70	8c500030	capacity parameter field
+0012b7e4	8c530048	research level field
+0012b8d0	8c53004c	research work field
+001d1c6c	90510032	shop hunger byte
+001d1cec	90510036	shop vomit byte
+001d2378	9605002c	sideshow price halfword
+001d2388	9605002e	sideshow prize halfword
+001d237c	92050030	sideshow win percentage byte
