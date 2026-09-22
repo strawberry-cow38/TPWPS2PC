@@ -118,6 +118,38 @@ A number that comes out identical everywhere is a constant, not a measurement �
 separates the two is cheap: compare the raw bits across every instance before reading meaning into
 the value.
 
+## The call graph, and what `Base` / `TestBase` actually are
+
+Traced 2026-09-22, after the two retractions above. Everything here is from the call graph and the
+disassembly, so it is checkable without running anything.
+
+* **`0x1f31f8`, the `.lnd` path-builder — 0 callers.** Dead, and that is now proven by the call
+  graph as well as by the file's absence.
+* **`0x1f3248`, the loader — exactly 1 caller, `0x1f66f4`, and it passes `$a0 = 0`.** That zero
+  matters: the loader branches on it at `0x1f325c` and the zero path takes the *second* of two path
+  builders (`0x147090`, not `0x146f80`) to fill `"%s\Terrain"`.
+* **`0x1f7ed8` is not a mesh lookup.** I called it one; it is a **load-by-name**. It builds
+  `"%s%s"` from a prefix and the name, then calls `strchr(path, '.')` (`$a1 = 0x2e`) to see whether
+  the name already carries an extension. So `"Base"` and `"TestBase"` are **model stems**, not the
+  names of meshes inside `base.md2` — and `"base.md2"` having the stem `base` is why the lookup
+  asks for `Base`. The constant `8` in `$a1` is a flags word, tested elsewhere as `& 0x200`.
+* The result lands in `hf_obj` (`0x2ea848`); `hf_a` (`0x2ea840`) holds the live heightfield pointer,
+  written by the setter at `0x1f6858` (called from `0x149a10`) and zeroed by `0x1f6868` (from
+  `0x14ee00`).
+
+**⚠ Still unresolved, and it is the interesting part:** `<world>/terrain/` on this disc holds
+`terrain_1.mps` and `terrain_2.mps` and no `base`. Only `LOBBY.WAD` ships a `base.mps`. So either
+`0x147090` does not return the world directory, or the name resolution is not path-exact. That is
+the next thing to read, and it should be read rather than guessed — the last three things I asserted
+about this loader without following the code through were all wrong in some detail.
+
+### For a live-RAM session
+
+The cheapest handle is not a breakpoint on the loader: **read the pointer at `0x2ea840`** and follow
+it. The grids are already known (64×76, 80×60, 96×52, 96×54 depending on the terrain *file*), so the
+buffer can be confirmed by its shape rather than hunted for blind, and a raise-one-tile diff then
+gives stride, element size and encoding against an input you chose.
+
 ## What is still open
 
 The marker gives the **extent and the resolution**. It does not give the **per-cell heights**, and
