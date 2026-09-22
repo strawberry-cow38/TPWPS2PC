@@ -84,6 +84,9 @@ public sealed class Weather
             // frustum -- which, since it follows the camera, is most of the time.
             VisibilityAabb = new Aabb(new Vector3(-Span, -Height, -Span),
                                       new Vector3(Span * 2, Height * 2, Span * 2)),
+            // ⭐ The quad's Y follows the fall instead, so a drop is a streak along the direction
+            // it is actually travelling rather than a card turned to the viewer.
+            ParticleFlagAlignY = true,
         };
         if (!rain)
         {
@@ -98,10 +101,15 @@ public sealed class Weather
             AlbedoTexture = tex,
             Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
             ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
-            BillboardMode = BaseMaterial3D.BillboardModeEnum.Particles,
-            // ⚠⚠ BillboardMode.Particles THROWS AWAY ScaleAmount unless this is set. Without it
-            // every drop renders at one unit and the screen fills with paper.
-            BillboardKeepScale = true,
+            // ⭐⭐ NOT A BILLBOARD. Master, watching the real game: "they dont always face the
+            // camera." So the sprites hold a FIXED orientation in the world and you see them at
+            // whatever angle the camera happens to be standing at -- turn a quarter and the same
+            // drop presents differently, and edge-on it thins away. Billboarding them was my
+            // assumption, not the game's behaviour.
+            // ⚠ With billboarding off, BillboardKeepScale does nothing and ScaleAmount applies
+            // normally, which is the one good thing about losing it.
+            BillboardMode = BaseMaterial3D.BillboardModeEnum.Disabled,
+            CullMode = BaseMaterial3D.CullModeEnum.Disabled,
             VertexColorUseAsAlbedo = true,
             DisableReceiveShadows = true,
         };
