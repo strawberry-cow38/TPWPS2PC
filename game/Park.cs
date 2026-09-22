@@ -101,8 +101,7 @@ public sealed class Park
         Root.AddChild(_ride);
     }
 
-    static StandardMaterial3D Flat(Color c) =>
-        new() { AlbedoColor = c, Roughness = 1.0f, SpecularMode = BaseMaterial3D.SpecularModeEnum.Disabled };
+    static ShaderMaterial Flat(Color c) => Ps2Materials.Ground(null, c);
 
     /// <summary>The park's own dimensions in cells. Fixed, because a park is a place rides are
     /// put into -- ground sized to whichever ride was selected is a model viewer with grass.</summary>
