@@ -128,6 +128,18 @@ integer tile-height path, not floating-point. Whatever the PS2 does or does not 
    on every tile of a run laid along existing path. Master saw the string of them. The flag was
    already written down in §3 — it was read and then not used.
 
+### 5.1 A run that connects closes the tool
+
+**A run whose last tile joins something already there finishes the job, and the tool closes.**
+Master says so for this build, and the PSX report has the same rule from the other one: its path
+tool "CLOSES itself when a run finishes on existing path" (`0x8001C328` after the g7_3 sound), and
+that case gets its own sound layered on the ordinary one and its own ghost marker — the link rings.
+Three separate things in the game single out the same event, which is what makes it a rule rather
+than a quirk.
+
+⚠ Not read on PS2. The PS2 validator's two joining answers (5 and 6) are read, and so is the marker
+they share, but the code that closes the tool after a press has not been followed here.
+
 ## 6. What is NOT established
 
 - **`m_nocash`, `m_nopath`, `m_erase`, `m_break`, `m_cross` are not in the verdict table.** They are

@@ -109,6 +109,7 @@ public partial class Viewer : Node3D
     Model _terrainModel;
     bool _pathTest;
     bool _ghostTest;
+    bool _ghostPress;
     string _wantSegments;
     string _wantCam;
     /// <summary>Nudge on the gate's z, in units, starting at master's own correction.
@@ -184,6 +185,7 @@ public partial class Viewer : Node3D
             else if (a.StartsWith("--mode=")) _wantMode = a["--mode=".Length..];
             else if (a == "--path-test") _pathTest = true;
             else if (a == "--ghost-test") _ghostTest = true;
+            else if (a == "--ghost-press") { _ghostTest = true; _ghostPress = true; }
             else if (a.StartsWith("--segments=")) _wantSegments = a["--segments=".Length..];
             else if (a.StartsWith("--cam=")) _wantCam = a["--cam=".Length..];
             else if (a.StartsWith("--ride=")) _wantRide = a["--ride=".Length..];
@@ -1324,6 +1326,27 @@ public partial class Viewer : Node3D
         _ghostView.Show(_ghost, _park);
         GD.Print($"[ghost] run ({_runX},{_runY}) -> ({ex},{ey}), layable {_ghost.Layable}: "
                + string.Join(" ", _ghost.Tiles.Select(t => $"({t.X},{t.Y}){t.Verdict}")));
+        // ⭐ And the other half of the control: press it. A run that ends on the path just laid
+        // must CLOSE the tool, so the line after this one has to say so -- and the picture has to
+        // show laid path with no ghost over it.
+        if (_ghostPress)
+        {
+            // ⚠ THE CONTROL THAT MUST NOT CLOSE, first. A run over clear ground joins nothing, so
+            // the tool has to stay open -- otherwise "closes on a join" is indistinguishable from
+            // "closes on every press", and the joining case below would prove nothing.
+            _cursorOverride = (cx - 4, cy + 5);
+            _runX = cx - 8; _runY = cy + 5;
+            PressTool();
+            GD.Print($"[ghost] after a run over clear ground the tool is "
+                   + $"{(_toolOpen ? "open, as it must be" : "CLOSED, so it closes on any press")}");
+
+            if (!_toolOpen) OpenTool(PathTool.Kind.Path);
+            _cursorOverride = (ex, ey);
+            _runX = cx - 5; _runY = cy + 3;
+            PressTool();
+            GD.Print($"[ghost] after a run that joins, the tool is "
+                   + $"{(_toolOpen ? "STILL OPEN" : "closed, as it must be")}");
+        }
     }
 
     /// <summary>The plot cell under the game camera's cursor. ⚠ Found by nearest centre rather
@@ -1451,8 +1474,23 @@ public partial class Viewer : Node3D
             GD.Print($"[path] refused at ({bad.X},{bad.Y}): {_paths.Describe(bad.X, bad.Y)}");
             return;
         }
+        // ⭐ Does this run END ON something it joins? Read BEFORE laying, while the verdicts
+        // still describe the ground the run was drawn over.
+        var last = _ghost.Tiles[^1];
+        bool joined = last.Verdict is PathGhost.Verdict.Joins or PathGhost.Verdict.Already;
         int laid = _ghost.Lay(_toolKind);
         RebuildFloor();
+        // ⭐⭐ A RUN THAT CONNECTS CLOSES THE TOOL. Master's call, and the PSX report has the same
+        // rule from the other build -- its path tool closes itself when a run finishes on existing
+        // path, and gives that case its own sound and its own ghost marker. Finishing a path is a
+        // finished job, so the tool does not sit open waiting for a press nobody meant.
+        if (joined)
+        {
+            CloseTool();
+            GD.Print($"[path] laid {laid} of {_ghost.Tiles.Count}; joined at ({last.X},{last.Y}) "
+                   + $"-- tool closed; {_paths.Laid} total");
+            return;
+        }
         // ⚠ From the SEGMENT'S END, not from the cursor. The cursor is snapped to one axis, so
         // carrying on from where the mouse was would put the next segment's start off the end of
         // the one just laid -- by however far the cursor had drifted off the line.
