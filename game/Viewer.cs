@@ -661,11 +661,11 @@ public partial class Viewer : Node3D
             // would move the contents. Per-mesh centres are not.
             if (System.Environment.GetEnvironmentVariable("TPW_HOLE_DEBUG") == "1")
             {
-                var want = new[] { "EMBANKMENT", "VOLCANO", "LAND_00", "LAND_02", "A_ROAD", "heightfield" };
+                int shown = 0;
                 void Dump(Node n, Transform3D acc)
                 {
                     var t = n is Node3D n3 && n != _terrain.Root ? acc * n3.Transform : acc;
-                    if (n is MeshInstance3D mi && mi.Mesh != null && want.Any(x => n.Name.ToString().Contains(x)))
+                    if (n is MeshInstance3D mi && mi.Mesh != null && shown++ < 200)
                     {
                         var bx = mi.GetAabb();
                         var a = t * bx.Position; var b = t * (bx.Position + bx.Size);
