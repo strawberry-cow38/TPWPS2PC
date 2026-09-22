@@ -174,7 +174,16 @@ public sealed class AssetLibrary : IDisposable
     ///
     /// ⚠⚠ `_bas` ALONE IS NOT THE TEST. It also matches ride and shop art -- `ab_base`,
     /// `TV_BASE_C_0`, `PURPLE_BASE`, `CR_base1b` -- and SPACE has 165 such files against 6 real
-    /// ground tiles. The ground set spells it `_bas1`, the prop bases spell it `_base`.
+    /// ground tiles. The ground set mostly spells it `_bas1` where prop bases spell it `_base`.
+    ///
+    /// ⚠⚠ MOSTLY: that name test is 20 of 21, and THE PATH SCOPE IS WHAT CATCHES THE 21st. The
+    /// exception is `bmp_bas3`, bumper-car art in `SPACE.WAD/Rides/bumper/textures`, spelled with
+    /// a digit exactly like a tile. It stays out of the set because of WHERE it is, not what it is
+    /// called -- so the terrain/sharetex scope above is load-bearing, not belt-and-braces. Drop it
+    /// and trust the name alone and SPACE gets a bumper car in its floor. (tinyclaw)
+    ///
+    /// ⭐ `?gr_` is ground -- `jgr_`, `hgr_`. `hrk_` is ROCK, not a second hallow ground set, which
+    /// is why `gr_bas` is preferred above rather than merely first alphabetically.
     ///
     /// ⚠⚠ AND NOT ONLY UNDER `/terrain/`. Looking there alone found nothing for HALLOW and fell
     /// back to a shared tile, when HALLOW's ground set (`hgr_bas2`, `hrk_bas1..7`) is in
