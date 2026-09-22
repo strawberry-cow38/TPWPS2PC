@@ -74,6 +74,28 @@ public sealed class AssetLibrary : IDisposable
         .Where(f => !f.IsDirectory && f.Path.EndsWith(".WAD", StringComparison.OrdinalIgnoreCase))
         .ToList();
 
+    WadArchive _generic;
+
+    /// <summary>The shared archive, opened alongside whichever world is current and kept.
+    ///
+    /// ⭐ DATA.WAD holds what every park draws from -- the weather sprites, the water, the logo,
+    /// the characters. `OpenWad` has exactly one archive open, so reading a generic asset while a
+    /// park is loaded needs a SECOND one rather than a swap: swapping would throw away the park's
+    /// index and everything built from it.</summary>
+    public byte[] ReadGeneric(string pathContains)
+    {
+        if (_generic == null)
+        {
+            var f = WadFiles().FirstOrDefault(
+                x => x.Path.EndsWith("DATA.WAD", StringComparison.OrdinalIgnoreCase));
+            if (f == null) return null;
+            _generic = new WadArchive(_disc.Read(f.Extent, f.Size));
+        }
+        var e = _generic.Entries.FirstOrDefault(
+            x => x.Path.EndsWith(pathContains, StringComparison.OrdinalIgnoreCase));
+        return e == null ? null : _generic.Read(e);
+    }
+
     public void OpenWad(string path)
     {
         var f = _disc.Files().First(x => x.Path.Equals(path, StringComparison.OrdinalIgnoreCase));

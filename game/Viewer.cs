@@ -73,6 +73,12 @@ public partial class Viewer : Node3D
     Godot.Environment _skyEnv;
     /// <summary>The plain backdrop used everywhere that is not a park.</summary>
     Godot.Environment _flatEnv;
+    /// <summary>Rain and snow. ⚠ OFF by default -- a park that is always raining is not the park.</summary>
+    readonly Weather _weather = new();
+    /// <summary>Weather asked for but not built yet. ⚠ It cannot be built inside the park load:
+    /// the camera's transform is written in _Process, so at that moment _cam is still wherever the
+    /// LAST park left it, and the volume would be preprocessed around the wrong place.</summary>
+    Weather.Kind? _weatherWanted;
     /// <summary>Nudge on the gate's z, in units, starting at master's own correction.
     ///
     /// ⭐ Fantasy's pad alone put the gate a quarter unit too far from the road, and master — who
@@ -287,6 +293,7 @@ public partial class Viewer : Node3D
         };
         _sky = new WorldEnvironment { Environment = _flatEnv };
         AddChild(_sky);
+        AddChild(_weather.Root);
 
         // ⚠⚠ A full-screen Control swallows mouse events before _UnhandledInput ever sees them.
         // Orbit appeared to work only because the left button is also used by the widgets; a
@@ -437,6 +444,16 @@ public partial class Viewer : Node3D
         else if (GameCamActive && k.Keycode == Key.Q) _game.Turn(-1);
         else if (GameCamActive && k.Keycode == Key.E) _game.Turn(1);
         else if (GameCamActive && k.Keycode == Key.Home) StartGameCam();
+        else if (k.Keycode == Key.V && _mode == Mode.Park)
+        {
+            var next = _weather.Current switch
+            {
+                Weather.Kind.None => Weather.Kind.Rain,
+                Weather.Kind.Rain => Weather.Kind.Snow,
+                _ => Weather.Kind.None,
+            };
+            GD.Print($"[weather] {next}: {_weather.Set(_lib, next, _cam.GlobalPosition)}");
+        }
         // ⭐ [ and ] slide the gate along z and print where its front edge lands. Master can see
         // the park and I cannot, so this turns "not quite right" into a number.
         else if (k.Keycode is Key.Bracketleft or Key.Bracketright && _mode == Mode.Park)
@@ -459,6 +476,7 @@ public partial class Viewer : Node3D
         if (_park != null) _park.Root.Visible = m == Mode.Park;
         if (_gate != null) _gate.Root.Visible = m == Mode.Park;
         if (_sky != null) _sky.Environment = m == Mode.Park && _skyEnv != null ? _skyEnv : _flatEnv;
+        _weather.Root.Visible = m == Mode.Park;
         if (m == Mode.Sounds) FillBankPicker();
         else if (m == Mode.Movies) FillMovieList();
         else FillWadPicker();
@@ -780,7 +798,7 @@ public partial class Viewer : Node3D
         _info.Text = m.Label + "\n\nthe game's own camera\n"
                    + "WASD move  |  Q/E turn a quarter  |  R/F zoom\n"
                    + "Z/X dolly  |  Home reset  |  G free orbit\n"
-                   + "[ / ] nudge the gate  |  F3 hide this panel";
+                   + "[ / ] nudge the gate  |  V weather  |  F3 hide this panel";
     }
 
     /// <summary>Show one image at its own size, or the reason it cannot be shown.</summary>
@@ -1407,6 +1425,10 @@ public partial class Viewer : Node3D
         // ⚠ LAST. Everything above sets the camera, so aiming before them aims at nothing.
         LoadGate();
         LoadSky();
+        var want = (System.Environment.GetEnvironmentVariable("TPW_PS2_WEATHER") ?? "").ToLowerInvariant();
+        var kind = want.StartsWith("rain") ? Weather.Kind.Rain
+                 : want.StartsWith("snow") ? Weather.Kind.Snow : Weather.Kind.None;
+        if (kind != Weather.Kind.None || _weather.Current != Weather.Kind.None) _weatherWanted = kind;
         if (System.Environment.GetEnvironmentVariable("TPW_PARK_SKIP") == "1") DumpEntranceSkip();
         AimAtMesh();
         StartGameCam();
@@ -1711,6 +1733,14 @@ public partial class Viewer : Node3D
             var eye = _focus + new Vector3(
                 Mathf.Cos(_pitch) * Mathf.Sin(_yaw), Mathf.Sin(-_pitch), Mathf.Cos(_pitch) * Mathf.Cos(_yaw)) * _dist;
             _cam.Transform = new Transform3D(Basis.LookingAt(_focus - eye, Vector3.Up), eye);
+        }
+        // ⚠ AFTER the camera is placed, both of them: the volume follows the eye, and a pending
+        // build happens here rather than in the park load for the reason on _weatherWanted.
+        _weather.Follow(_cam.GlobalPosition);
+        if (_weatherWanted is { } wk)
+        {
+            _weatherWanted = null;
+            GD.Print($"[weather] {wk}: {_weather.Set(_lib, wk, _cam.GlobalPosition)}");
         }
 
         if (_shotPath != null)
