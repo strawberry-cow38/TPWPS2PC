@@ -425,6 +425,8 @@ void fragment() {
             locals[off] = L;
         }
         var world = _model.WorldTransforms(locals);
+        LastWorld = world;
+        OverriddenNodes = new HashSet<int>(_rot.Keys.Concat(_scale.Keys).Concat(_path.Keys));
         // One-shot diagnostic: which node's scale changes between bind and world, and by how much.
         if (System.Environment.GetEnvironmentVariable("TPW_PS2_SCALEDUMP") == "1" && !_dumped)
         {
@@ -446,6 +448,12 @@ void fragment() {
     }
 
     /// <summary>`TPW_PS2_ROT=compose` restores the old behaviour for an A/B.</summary>
+    /// <summary>The world matrices the last WorldAt produced, for callers that want to compare
+    /// them against the bind chain. Null while the model has no tracks at all.</summary>
+    public Dictionary<int, Matrix4x4> LastWorld;
+    /// <summary>Node indices that had a track overriding their local matrix.</summary>
+    public HashSet<int> OverriddenNodes = new();
+
     bool _dumped;
 
     static bool Compose =>

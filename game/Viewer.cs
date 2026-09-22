@@ -665,6 +665,23 @@ public partial class Viewer : Node3D
                + $"{Park.DrawnBounds(_current.Root).Max.Z - Park.DrawnBounds(_current.Root).Min.Z:F3}   "
                + $"plot {fp.Width}x{fp.Height}");
 
+        // ⭐ Self-triggering: only speaks when reader and builder actually disagree, so it needs no
+        // switch to arm -- the env var version never fired because the variable did not arrive.
+        if (rmax.X - rmin.X > 0 && (Park.DrawnBounds(_current.Root).Max.X - Park.DrawnBounds(_current.Root).Min.X)
+            / (rmax.X - rmin.X) > 2.0f && _current.LastWorld != null)
+        {
+            var bindWorld = mesh.WorldTransforms();
+            foreach (var m in mesh.Meshes)
+            {
+                if (!_current.LastWorld.TryGetValue(m.Offset, out var w)) continue;
+                if (!bindWorld.TryGetValue(m.Offset, out var bw)) continue;
+                float bl = new Vector3(bw.M11, bw.M12, bw.M13).Length();
+                float al = new Vector3(w.M11, w.M12, w.M13).Length();
+                GD.Print($"[scale] {m.Name,-10} bind {bl:F4}  anim {al:F4}  ratio {(bl > 0 ? al / bl : 0),7:F3}"
+                       + $"  overridden={_current.OverriddenNodes.Contains(mesh.NodeIndex(m.Offset))}");
+            }
+        }
+
         var (min, max) = Park.DrawnBounds(_current.Root);
         // ⚠ `Visible` is a node's OWN flag. A hidden ancestor leaves it true and draws nothing,
         // so the flag that matters is IsVisibleInTree.
