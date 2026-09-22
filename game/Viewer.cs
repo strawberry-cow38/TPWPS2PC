@@ -761,6 +761,21 @@ public partial class Viewer : Node3D
         Count(_current.Root);
         GD.Print($"[park] drawn {min}..{max} placed {_current.Root.Position} plot "
                  + $"{fp.Width * Park.CellSize}x{fp.Height * Park.CellSize}");
+        // ⚠ Markers on the COMPUTED corners. I read this render wrong three times running -- a
+        // blob is not labelled, and "that pale quad is my floor" was a guess each time. Posts at
+        // the coordinates the code actually chose make the picture answer the question itself.
+        if (System.Environment.GetEnvironmentVariable("TPW_HOLE_DEBUG") == "1" && _holeSize.X > 1f)
+        {
+            var post = new BoxMesh { Size = new Vector3(2f, 40f, 2f) };
+            var red = new StandardMaterial3D { AlbedoColor = new Color(1f, 0f, 0.2f), ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded };
+            foreach (var (cx, cz) in new[] { (0f, 0f), (_holeSize.X, 0f), (0f, _holeSize.Y), (_holeSize.X, _holeSize.Y) })
+                _park.GroundRoot.AddChild(new MeshInstance3D
+                {
+                    Mesh = post, MaterialOverride = red,
+                    Position = new Vector3(_holeOrigin.X + cx, _holeY + 20f, _holeOrigin.Y + cz),
+                });
+        }
+
         var (gmin, gmax) = Park.DrawnBounds(_park.GroundRoot);
         GD.Print($"[floor] ground {gmin}..{gmax}  visible={_park.GroundRoot.IsVisibleInTree()} "
                + $"tiles={_park.GroundRoot.GetChildCount()}  terrain {Park.DrawnBounds(_terrain?.Root ?? _park.Root)}");
