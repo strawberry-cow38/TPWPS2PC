@@ -152,6 +152,11 @@ public sealed class AnimatedModel
     /// discard the ~50% of texels at or below alpha 128.</summary>
     static Shader _shader, _blendShader;
 
+    /// <summary>How many triangles had their winding corrected, and out of how many. Reported so
+    /// the correction can be checked against the 37% measured off the file rather than trusted.</summary>
+    static int _wound, _woundTotal;
+    public static (int Flipped, int Total) WindingFixes => (_wound, _woundTotal);
+
     /// <summary>The blended twin of the viewer shader, for textures with SOFT alpha.
     ///
     /// ⚠⚠ CUTOUT THROWS AWAY EVERY INTERMEDIATE TEXEL. 1,532 of the disc's 32-bit TGAs have more
@@ -284,8 +289,25 @@ void fragment() {
             bool two = TwoSided;
             foreach (var t in grp)
             {
-                // ⭐ REVERSED: A, C, B -- M3D2 front faces are clockwise. See the CullMode note.
-                foreach (var idx in new[] { t.A, t.C, t.B })
+                // ⭐⭐ WINDING PER TRIANGLE, FROM THE MODEL'S OWN NORMALS. Emitting A,C,B for every
+                // triangle assumes the source is consistently wound, and this one is not: measured
+                // over jungle's terrain, 37% of near-horizontal triangles end up facing away --
+                // whole meshes at 100% (`surface13/15/22/25/27`, every `HOARDING_*`, `RIVERBED_04`).
+                // A face wound backwards is culled, so it is simply absent.
+                //
+                // The stored per-vertex normal says which side is out. Pick the order that agrees
+                // with it -- OPPOSED in model space, because the scene root carries Scale (1,1,-1),
+                // a determinant of -1, which reverses orientation on the way to the screen.
+                //
+                // ⭐ Self-checking: the flip count is logged. It should land near the 37% measured
+                // off the file. If it comes out near 63%, the sign here is backwards.
+                var na = p.Normal[t.A] + p.Normal[t.B] + p.Normal[t.C];
+                var pa = pos[t.A]; var pb = pos[t.B]; var pc = pos[t.C];
+                var g = System.Numerics.Vector3.Cross(pc - pa, pb - pa);      // normal of A,C,B
+                bool keep = g.X * na.X + g.Y * na.Y + g.Z * na.Z <= 0;
+                if (!keep) _wound++;
+                _woundTotal++;
+                foreach (var idx in keep ? new[] { t.A, t.C, t.B } : new[] { t.A, t.B, t.C })
                 {
                     st.SetUV(p.Uv[idx]);
                     // ⭐ The model's OWN normal, not one derived from triangle order.
@@ -294,7 +316,7 @@ void fragment() {
                     st.AddVertex(new Godot.Vector3(v.X, v.Y, v.Z));
                 }
                 if (!two) continue;
-                foreach (var idx in new[] { t.A, t.B, t.C })      // the back copy
+                foreach (var idx in keep ? new[] { t.A, t.B, t.C } : new[] { t.A, t.C, t.B })  // back copy
                 {
                     st.SetUV(p.Uv[idx]);
                     st.SetNormal(-p.Normal[idx]);                 // ⚠ flipped, or it lights inside-out

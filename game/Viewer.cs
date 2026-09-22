@@ -652,6 +652,10 @@ public partial class Viewer : Node3D
                 if (mat == null) continue;
                 if (TextureNear(pick.Path, mat).Tex != null) got++; else missed++;
             }
+            var wf = AnimatedModel.WindingFixes;
+            GD.Print($"[winding] corrected {wf.Flipped} of {wf.Total} triangles "
+                   + $"({(wf.Total > 0 ? 100.0 * wf.Flipped / wf.Total : 0):F0}%) -- "
+                   + "expect ~37% from the file-side measurement; ~63% would mean the sign is backwards");
             GD.Print($"[terrain] {pick.Path}  {tm.Meshes.Count} meshes  "
                    + $"extent {hi.X - lo.X:F1} x {hi.Z - lo.Z:F1}  height {hi.Y - lo.Y:F1}  "
                    + $"textures {got} resolved, {missed} MISSING");
