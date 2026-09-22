@@ -12,14 +12,40 @@ state and 4800 in a fantasy state is the array, confirmed against a number we co
 advance -- which is stronger than the raise-a-tile diff this replaced (the park has no terrain
 tool, so that control never existed).
 
-⚠ EE pointers are segmented: mask with 0x1FFFFFFF to index eeMemory.bin.
+⚠ 0x2ea840 INDEXES STRAIGHT INTO THE EE RAM IMAGE -- do not subtract the ELF load base. The
+PT_LOAD has vaddr == paddr == 0x100000 covering 0x100000..0x3af354, so 0x2ea840 sits inside it,
+and EE RAM is 32MB at physical 0: byte offset 0x2ea840 in the dump IS the pointer. Subtracting
+0x100000 out of habit lands on 0x1ea840, which reads as a plausible wrong number rather than an
+obvious error. (tinyclaw.)
+
+⚠ The VALUE there is a pointer into the same 32MB; mask off the KSEG/uncached bits before using
+it as an index. A masked offset past the end of RAM is reported, not wrapped -- a wrapped pointer
+would look like a hit.
 """
 import sys, zipfile, struct, collections
 
 EE_MASK = 0x1FFFFFFF
 HEIGHTFIELD_PTR = 0x2EA840          # tinyclaw: set by 0x1f6858, zeroed by 0x1f6868
 
-GRIDS = {'JUNGLE': (64, 76), 'FANTASY': (80, 60), 'HALLOW': (96, 52), 'SPACE': (96, 54)}
+# ⚠ PLOT SIZE IS A PROPERTY OF THE TERRAIN FILE, NOT THE WORLD. Two files per world, and they
+# differ everywhere except JUNGLE -- so a fantasy park is 4800 cells OR 4712 depending which file
+# it loaded, and scanning for only one reads as "no buffer found". Scan the whole set.
+# (My own finding, handed back to me by tinyclaw after I wrote the four-number version.)
+GRIDS = [
+    ('JUNGLE',  1, 64, 76), ('JUNGLE',  2, 64, 76),     # the only world whose two files agree
+    ('FANTASY', 1, 80, 60), ('FANTASY', 2, 76, 62),
+    ('HALLOW',  1, 96, 52), ('HALLOW',  2, 88, 56),
+    ('SPACE',   1, 96, 54), ('SPACE',   2, 72, 62),
+]
+
+def expected():
+    """Every count worth looking for: per-cell n*m and per-corner (n+1)*(m+1), since which one
+    the engine stores is not yet known. Kept as {count: [labels]} so a hit names itself."""
+    out = {}
+    for world, f, nx, nz in GRIDS:
+        out.setdefault(nx * nz, []).append(f"{world} t{f} {nx}x{nz} cells")
+        out.setdefault((nx + 1) * (nz + 1), []).append(f"{world} t{f} {nx}x{nz} corners")
+    return out
 
 
 def ee_ram(path):
@@ -50,11 +76,20 @@ def probe(path):
         print("     " + " ".join(f"{b:02x}" for b in ram[off + r:off + r + 16]))
     print(f"  as u32: {[hex(u32(ram, off + i * 4)) for i in range(8)]}")
     # If the struct starts with dimensions, they will be the grids we predicted.
-    head = [u32(ram, off + i * 4) for i in range(12)]
+    want = expected()
+    dims = {}
+    for world, f, nx, nz in GRIDS:
+        dims.setdefault(nx, []).append(f"{world} t{f} X={nx}")
+        dims.setdefault(nz, []).append(f"{world} t{f} Z={nz}")
+        dims.setdefault(nx + 1, []).append(f"{world} t{f} X+1={nx+1}")
+        dims.setdefault(nz + 1, []).append(f"{world} t{f} Z+1={nz+1}")
+    head = [u32(ram, off + i * 4) for i in range(16)]
     for i, v in enumerate(head):
-        for w, (gx, gz) in GRIDS.items():
-            if v in (gx, gz, gx + 1, gz + 1, gx * gz, (gx + 1) * (gz + 1)):
-                print(f"  ⭐ word {i} = {v} matches {w} {gx}x{gz} (cells {gx*gz}, corners {(gx+1)*(gz+1)})")
+        if v in want:
+            print(f"  ⭐ word {i} = {v} -> {', '.join(want[v])}")
+        elif v in dims:
+            print(f"  ⭐ word {i} = {v} -> {', '.join(dims[v])}")
+    print(f"  (counts sought: {sorted(want)})")
 
 
 def histogram(path, addr, count, stride=1):
