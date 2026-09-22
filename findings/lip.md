@@ -1,11 +1,32 @@
 # `.LIP` — the advisor lip-sync tracks
 
-**Solved 2026-09-21 — structure and unit both.** `tools/lip.py`; the layout is in its docstring.
+**Structure and unit measured 2026-09-21; runtime consumer confirmed 2026-09-22.**
+`tools/lip.py` and the managed `core/TPW.PS2.Data/LipTrack.cs` reader.
 
 A flat `u32` mark list terminated by `FFFFFFFF`. 516 files, all in `LIPS.WAD`, and every one of the
 516 satisfies all four of: length a multiple of 4, `FFFFFFFF` terminator, strictly increasing marks,
-and an **odd** mark count. That last one rules out the obvious reading — they are not open/close
-pairs.
+and an **odd** mark count. They alternate an active/silent lip-animation gate, initially active.
+The earlier claim that odd counts ruled out alternating states was wrong: an odd number of
+toggles from active ends inactive. The executable consumer, not the histogram, settles this.
+
+Loader `0x105e48` takes the lip stem from a variant in the advisor message table at ELF address
+`0x2a6ac8`. Playback sets the lip gate to true and the start time at `0x107a58..64`, attaching
+the loaded track at advisor-object `+0x244`. Consumer `0x105f30` reads that same pointer, clears
+the gate at `FFFFFFFF`, otherwise divides the mark by **1,000** and compares it strictly below
+elapsed **milliseconds**. It advances at most one mark per call and toggles the flag at
+`0x105f98..ac`. `LipTrack.Playback` preserves those boundaries and polling behavior.
+Its caller at `0x106b54..0x106be8` reads this flag: inactive selects shape 0, a transition to
+active selects shape 1, and an unchanged active gate permits random changes among five shapes.
+Thus a mark does not encode a phoneme or a particular mouth pose. The shape setter `0x105fc8`
+uses the same advisor object's model pointer and five part indices at `+0x24c`, clearing flag
+`0x8000` on the selected part and setting it on the others. The renderer's consumption of that
+flag remains untraced here. The managed gate does not reproduce random shape selection or rendering.
+
+See [advisor.md](advisor.md) for the complete consumer chain and a specific identity:
+`STR_ADVMES_OPEN_PARK`, text row 1030 → message 0 → sound ID 48 → bank index 47, `sp_001.mp2`
+→ `English/sp_001.LIP` (and the corresponding French/German tracks). The catalogue also exposes
+a shipped defect: message 268 selects `PS2_1.mp2` but requests missing `PS2_.lip` in all three
+languages. A same-stem survey alone does not detect that defect.
 
 **Three languages, not nine.** `English/`, `French/`, `German/`, 172 files each, against the text
 database's nine locales. 243 distinct stems and only 128 present in all three, so the lip tracks
@@ -45,11 +66,10 @@ This is not a preference among readings that all roughly work: **the three rival
 between them.** 469 of 509 last marks fall inside their own clip at a median **97.6%** of its
 length, which is where a mouth stops moving relative to where a file ends.
 
-### The English overrun is a SHIFT, not 37 bad pairs
+### English overruns and the timing distribution
 
 40 pairs have a last mark past the end of the clip, and the split is lopsided — **37 English, 1
-French, 2 German**. Mis-pairing would leave the bulk of English sitting on the French/German centre
-and add outliers. It does not:
+French, 2 German**. The language-specific distributions are:
 
 | language | n | p10 | p25 | median | p75 | p90 | over 1.0 |
 |---|---:|---:|---:|---:|---:|---:|---:|
@@ -57,13 +77,12 @@ and add outliers. It does not:
 | French | 170 | 0.9560 | 0.9655 | 0.9736 | 0.9827 | 0.9879 | 1 |
 | German | 170 | 0.9441 | 0.9635 | 0.9748 | 0.9828 | 0.9919 | 2 |
 
-**English's whole distribution is displaced upward and is wider at both ends** — higher median, p75
-and p90, and a *lower* p10. Whatever produces the 37 is acting on all 169, so those 37 are the top
-of a shifted distribution rather than a set of broken joins. On the 169 stems measurable in all
+**English has higher median, p75 and p90, and a lower p10.** On the 169 stems measurable in all
 three languages, English exceeds French on 105 — a real majority but only 62%, so it is not a
 uniform offset either.
 
-⚠ That identifies the SHAPE and rules out mis-pairing. It does not identify the cause. The reading
+⚠ That identifies the SHAPE; the distribution alone cannot rule out mis-pairing or identify the
+cause. The runtime associations are now checked independently in the advisor audit. The reading
 it fits is the English audio being re-trimmed after its tracks were authored, and that is a
 hypothesis with a distribution behind it, not a measurement.
 
