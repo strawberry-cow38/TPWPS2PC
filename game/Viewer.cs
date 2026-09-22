@@ -1038,6 +1038,17 @@ public partial class Viewer : Node3D
         // axes world axes, so the floor's position against the hole is a thing you can see.
         if (System.Environment.GetEnvironmentVariable("TPW_HOLE_DEBUG") == "1") _pitch = -1.5533f;
 
+        // ⭐ An INDEPENDENT check on triangle winding. Looking up from underneath asks a different
+        // question than "what fraction flipped": if the ground is wound correctly it is
+        // back-facing from below and should be CULLED, so the terrain largely disappears. If the
+        // sign is inverted the ground is solid from below and missing from above. The flip-count
+        // agreement cannot see this, because it and the census come from the same model data.
+        if (System.Environment.GetEnvironmentVariable("TPW_PARK_UNDER") == "1")
+        {
+            _pitch = 1.30f;
+            _dist = Math.Max(_terrainSize.X, _terrainSize.Y) * 0.55f;
+        }
+
         // A ground-level look along the plot, for comparing against a screenshot of the real game.
         // The island-wide shot cannot show a one-unit step: it is about 1% of the frame.
         if (System.Environment.GetEnvironmentVariable("TPW_PARK_CLOSEUP") == "1" && _holeSize.X > 1f)
