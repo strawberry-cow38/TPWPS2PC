@@ -34,9 +34,10 @@ public sealed class Water
     static readonly Vector3 SeaWave = new(0.06f, 9f, 1.1f);
 
     /// <summary>Which way the scroll runs, in degrees, where 0 is straight down the V axis -- the
-    /// direction a rolled sprite moves on the PSX. ⚠ -90 because master watched it and said so;
-    /// the row roll fixes the SPEED, not which way the surface is laid out under it.</summary>
-    const float ScrollDegrees = -90f;
+    /// direction a rolled sprite moves on the PSX. ⚠ 90 because master watched it: first a quarter
+    /// turn off the V axis, then a half turn back on that. The row roll fixes the SPEED, not which
+    /// way the surface is laid out under it, so the angle is somebody's eyes and not a reading.</summary>
+    const float ScrollDegrees = 90f;
 
     readonly List<ShaderMaterial> _moving = new();
     public int Surfaces => _moving.Count;
