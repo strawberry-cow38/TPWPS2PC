@@ -790,12 +790,15 @@ public partial class Viewer : Node3D
             var post = new BoxMesh { Size = new Vector3(2f, 40f, 2f) };
             var red = new StandardMaterial3D { AlbedoColor = new Color(1f, 0f, 0.2f), ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded };
             foreach (var (cx, cz) in new[] { (0f, 0f), (_holeSize.X, 0f), (0f, _holeSize.Y), (_holeSize.X, _holeSize.Y) })
-                _park.GroundRoot.AddChild(new MeshInstance3D
+                _park.Root.AddChild(new MeshInstance3D
                 {
                     Mesh = post, MaterialOverride = red,
                     Position = new Vector3(_holeOrigin.X + cx, _holeY + 20f, _holeOrigin.Y + cz),
                 });
         }
+
+        // Terrain alone, markers kept: the only way to see whether the marked region is the gap.
+        if (System.Environment.GetEnvironmentVariable("TPW_HIDE_GRID") == "1") _park.ShowGrass = false;
 
         var (gmin, gmax) = Park.DrawnBounds(_park.GroundRoot);
         GD.Print($"[floor] ground {gmin}..{gmax}  visible={_park.GroundRoot.IsVisibleInTree()} "
