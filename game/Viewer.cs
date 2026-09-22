@@ -1145,7 +1145,7 @@ public partial class Viewer : Node3D
                 if (mat == null) continue;
                 if (TextureNear(pick.Path, mat).Tex != null) got++; else missed++;
             }
-            _water = new Water(_terrain.Root, tm);
+            _water = new Water(_terrain.Root, tm, mat => TextureNear(pick.Path, mat).Soft);
             GD.Print($"[water] {_water.Report}");
             GD.Print($"[terrain] {pick.Path}  {tm.Meshes.Count} meshes  "
                    + $"extent {hi.X - lo.X:F1} x {hi.Z - lo.Z:F1}  height {hi.Y - lo.Y:F1}  "

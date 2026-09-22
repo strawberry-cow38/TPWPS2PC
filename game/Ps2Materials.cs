@@ -119,10 +119,14 @@ void fragment() {
     /// <summary>A water surface: the ordinary ground material plus a scroll and, for the sea, a
     /// travelling sine. ⚠ It repeats rather than clamps -- a scrolled UV leaves 0..1 by design,
     /// which is the one place on the ground where repeat is the right answer.</summary>
-    public static ShaderMaterial Water(ImageTexture texture, Vector2 scroll, Vector3 wave)
+    /// <param name="soft">⚠ CARRY THE TRANSLUCENCY THROUGH. `wr_water3` is partly clear on 4031
+    /// of its 4096 texels and `jri_sur1` the same -- a river is SEE-THROUGH. Building its moving
+    /// material without that flag swapped a translucent surface for an opaque one, which is
+    /// exactly what master saw: "river also lost its transparency".</param>
+    public static ShaderMaterial Water(ImageTexture texture, bool soft, Vector2 scroll, Vector3 wave)
     {
         var material = new ShaderMaterial
-        { Shader = Shader(false, "cull_back", rawNormals: false, linearFilter: true, water: true) };
+        { Shader = Shader(soft, "cull_back", rawNormals: false, linearFilter: true, water: true) };
         material.SetShaderParameter("albedo_tex", texture);
         material.SetShaderParameter("has_tex", texture != null);
         material.SetShaderParameter("water_scroll", scroll);

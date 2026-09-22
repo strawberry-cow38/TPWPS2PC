@@ -33,6 +33,11 @@ public sealed class Water
     /// <summary>⚠ CHOSEN. Amplitude in world units, wavelength in world units, radians a second.</summary>
     static readonly Vector3 SeaWave = new(0.06f, 9f, 1.1f);
 
+    /// <summary>Which way the scroll runs, in degrees, where 0 is straight down the V axis -- the
+    /// direction a rolled sprite moves on the PSX. ⚠ -90 because master watched it and said so;
+    /// the row roll fixes the SPEED, not which way the surface is laid out under it.</summary>
+    const float ScrollDegrees = -90f;
+
     readonly List<ShaderMaterial> _moving = new();
     public int Surfaces => _moving.Count;
     public string Report { get; private set; } = "no water";
@@ -41,8 +46,11 @@ public sealed class Water
 
     /// <summary>Replace the water surfaces' materials with moving ones. ⚠ Takes the surfaces as
     /// the model built them, so a surface this does not recognise keeps exactly what it had.</summary>
-    public Water(Node3D terrain, Model model)
+    readonly Func<string, bool> _soft;
+
+    public Water(Node3D terrain, Model model, Func<string, bool> soft = null)
     {
+        _soft = soft;
         if (terrain == null || model == null) return;
         int sea = 0, flow = 0;
         foreach (var mi in terrain.GetChildren().OfType<MeshInstance3D>())
@@ -61,19 +69,23 @@ public sealed class Water
             if (!isSea && !WaterTextures.Any(w => material.Contains(w, StringComparison.OrdinalIgnoreCase)))
                 continue;
 
-            float perSecond = ScrollTexelsPerTick * ConsoleClock.TicksPerSecond / AssumedTextureHeight;
-            var scroll = new Vector2(0f, Env("TPW_WATER_SCROLL", perSecond));
+            float perSecond = Env("TPW_WATER_SCROLL",
+                ScrollTexelsPerTick * ConsoleClock.TicksPerSecond / AssumedTextureHeight);
+            float radians = Mathf.DegToRad(Env("TPW_WATER_ANGLE", ScrollDegrees));
+            var scroll = new Vector2(Mathf.Sin(radians) * perSecond, Mathf.Cos(radians) * perSecond);
             var wave = isSea
                 ? new Vector3(Env("TPW_SEA_AMP", SeaWave.X), Env("TPW_SEA_LEN", SeaWave.Y), Env("TPW_SEA_SPEED", SeaWave.Z))
                 : Vector3.Zero;
-            var made = Ps2Materials.Water(tex, scroll, wave);
+            // ⚠ The material's OWN translucency, from the same resolver the model used. A river
+            // drawn opaque is not a river.
+            var made = Ps2Materials.Water(tex, _soft?.Invoke(material) ?? false, scroll, wave);
             mi.MaterialOverride = made;
             _moving.Add(made);
             if (isSea) sea++; else flow++;
         }
         Report = _moving.Count == 0
             ? "no water surfaces in this terrain"
-            : $"{sea} sea surfaces on a sine, {flow} flowing";
+            : $"{sea} sea surfaces on a sine, {flow} flowing at {ScrollDegrees:F0} degrees";
     }
 
     /// <summary>The material a surface wears, by the index AnimatedModel put in its node name.
@@ -113,7 +125,11 @@ public sealed class Water
             b.Position += mi.GlobalPosition;
             if (first) { box = b; first = false; } else box = box.Merge(b);
         }
-        return $"time {t:F2}s, scroll {scroll.Y:F3}/s, {_moving.Count} surfaces spanning "
+        // ⚠ THE WHOLE VECTOR, not its V component. Reporting scroll.Y alone printed "-0.000/s"
+        // the moment the direction turned ninety degrees into U, which reads exactly like a scroll
+        // that has stopped -- an instrument that names the wrong axis is worse than none.
+        return $"time {t:F2}s, scroll ({scroll.X:F3},{scroll.Y:F3}) = {scroll.Length():F3}/s,"
+             + $" {_moving.Count} surfaces spanning "
              + $"x {box.Position.X:F0}..{box.End.X:F0} z {box.Position.Z:F0}..{box.End.Z:F0}";
     }
 }
