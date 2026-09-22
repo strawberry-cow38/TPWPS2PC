@@ -515,3 +515,36 @@ and RAM says something else, and the zero looks like an answer.
 `cow tools` already has is exactly the instrument for the remainder: read three floats at `0x2f07e0`
 and three at `0x2f07f0` (EE RAM indexes directly, no base subtraction) and the tables can be
 reconstructed and checked against the 0.12 / 0.6 / 0.5 arithmetic above.
+
+### ⚠ Correction 6 — `0x221e3c` is not the terrain mesher, and those arrays are COORDINATES
+
+`cow tools` pulled the globals live from the savestate:
+
+    0x2f07e0:  31.0   0.0   23.0
+    0x2f07f0:   5.0   6.0    5.0
+    0x2f0c04:  0.784782        (a single float -- the next words are a pointer and a packed pair)
+
+Replaying the prologue's arithmetic with those exact values reproduces `sp+0x30 … sp+0x40` as
+
+    30.88913   31.00000   33.50000   36.00000   36.11087
+
+which is `P.x − b`, `P.x`, `P.x + S.x/2`, `P.x + S.x`, `P.x + S.x + b`, with `b = 0.11087`. So:
+
+* `0x2f07e0` is a **position** `(31, 0, 23)` and `0x2f07f0` is a **size** `(5, 6, 5)`;
+* the array holds **world coordinates** spanning that footprint, with a small bevel either side and
+  the midpoint in the middle — not corner height offsets, which is what I called them;
+* `0x2f0c04` feeds only the bevel (`(C − 0.6) × S × 0.12`), and at `0.784782` is not a round number,
+  so it reads as an animated value rather than a constant.
+
+**A 5×5 footprint, 6 tall, at one spot on the grid, rebuilt every draw from globals, with a pulsing
+bevel — that is the build/placement cursor, not the terrain.** It reads terrain cells because it
+conforms to the ground it hovers over.
+
+So the three indexed arrays are this cursor's own geometry, and **the terrain tile mesher is
+somewhere else and still unfound**. What survives from the earlier entry is the cell layout itself —
+three index fields at bits 0-3, 4-7 and 8-15, and `0x2233b0` orienting a shape via `0x20`/`0x04` —
+because that was read from the cell, not from this function.
+
+`cow tools` declined to interpret the dumped triples and said so explicitly. That was the right call:
+the numbers are integral because they are grid coordinates, and every reading I would have put on
+them as "corner offsets" was wrong.
