@@ -1,18 +1,20 @@
 # What is inside a world archive
 
 Measured on `DATA/JUNGLE.WAD` (2,545 files, 170 directories, all read). Counts are that archive's.
+**For the whole disc — all 36 extensions, 14,858 files, and which are done — see
+`findings/format-inventory.md`.** The `unknown`s that were in this table are resolved there.
 
 | ext | n | bytes out | what it is |
 |---|---:|---:|---|
 | `.tga` | 984 | 12,811,784 | source textures, ordinary Targa (type 2, 24 bpp, BGR, bottom-left origin) |
-| `.gin` | 14 | 3,740,116 | unknown, and the largest per-file — 267 KB average |
+| `.gin` | 14 | 3,740,116 | **GIN4** sideshow scene — solved, `tools/gin.py`. Largest per-file, 267 KB average |
 | `.ssh` | 998 | 3,450,288 | **EA SHPS** image container, magic `SHPS`, first entry tagged `GIMX` (GIMEX). One per `.tga`, so: the converted-for-PS2 form |
 | `.mps` | 113 | 2,986,292 | **model**, magic `0x183076E4`, 0x140-byte header |
 | `.aps` | 89 | 1,414,064 | same magic family, 0x148-byte header — animation, probably |
 | `.rss` | 90 | 155,681 | **ride behaviour script, PLAIN TEXT SOURCE** |
 | `.sam` | 77 | 81,876 | **ride description, PLAIN TEXT** |
-| `.md2` | 4 | 63,912 | Quake-2-style model |
-| `.mtr` | 4 | 60,932 | unknown |
+| `.md2` | 4 | 63,912 | ⚠ **not Quake 2** — M3D2 family under stamp `0x1CD15D46`, see below and `core/Model.cs` |
+| `.mtr` | 4 | 60,932 | magic `0x2E5915AF`, one per `.MD2` — its material table. **Still unread** |
 | `.rse` | 91 | 52,265 | magic `RSSEQ` — the assembled form of the `.rss` beside it |
 | `.scc` | 78 | 7,024 | Visual SourceSafe status files, shipped by accident |
 
