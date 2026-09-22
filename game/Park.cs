@@ -210,24 +210,32 @@ public sealed class Park
             }
         }
 
-        // Cells that are empty AND have terrain somewhere to their left and right on the same row,
-        // and likewise above and below on the same column. That excludes the sea outside the island
-        // without a flood fill, which the entrance gap would let escape.
+        // ⚠⚠ A BAY IS NOT A COURTYARD. The test used to be "empty, with terrain to the left and
+        // right on this row and above and below on this column" -- and a bay bitten into the
+        // coastline passes it exactly as the park's courtyard does. It picked the bay, and the
+        // floor went down half over the sea. The sea is whatever the map border reaches: flood
+        // from the edge through empty cells, and what the flood cannot get to is enclosed.
+        var outside = new bool[res, res];
+        var flood = new Stack<(int Z, int X)>();
+        void Seed(int z, int x)
+        {
+            if (cov[z, x] || outside[z, x]) return;
+            outside[z, x] = true; flood.Push((z, x));
+        }
+        for (int i = 0; i < res; i++) { Seed(0, i); Seed(res - 1, i); Seed(i, 0); Seed(i, res - 1); }
+        while (flood.Count > 0)
+        {
+            var (z, x) = flood.Pop();
+            foreach (var (dz, dx) in new[] { (1, 0), (-1, 0), (0, 1), (0, -1) })
+            {
+                int nz = z + dz, nx = x + dx;
+                if (nz < 0 || nx < 0 || nz >= res || nx >= res) continue;
+                Seed(nz, nx);
+            }
+        }
         var inside = new bool[res, res];
         for (int z = 0; z < res; z++)
-        {
-            int f = -1, l = -1;
-            for (int x = 0; x < res; x++) if (cov[z, x]) { if (f < 0) f = x; l = x; }
-            if (f < 0) continue;
-            for (int x = f + 1; x < l; x++) if (!cov[z, x]) inside[z, x] = true;
-        }
-        for (int x = 0; x < res; x++)
-        {
-            int f = -1, l = -1;
-            for (int z = 0; z < res; z++) if (cov[z, x]) { if (f < 0) f = z; l = z; }
-            for (int z = 0; z < res; z++)
-                if (inside[z, x] && (f < 0 || z <= f || z >= l)) inside[z, x] = false;
-        }
+            for (int x = 0; x < res; x++) inside[z, x] = !cov[z, x] && !outside[z, x];
 
         // ⚠ The LARGEST CONNECTED region of those, not their bounding box. A coastline notch is
         // "internal" on its own row too, and one near the edge dragged the origin to the rim -- the
