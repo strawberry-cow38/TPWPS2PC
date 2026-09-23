@@ -64,6 +64,30 @@ try
     Check(!receipt.CanLaunch(next, assembly), "null receipt fails closed");
     File.WriteAllText(path, new string('x', 4097));
     Check(!receipt.CanLaunch(next, assembly), "oversized receipt fails closed");
+    string dependency = Path.Combine(temporary, "TPW.PS2.Data.dll");
+    string deps = Path.Combine(temporary, "viewer.deps.json");
+    File.WriteAllText(dependency, "original dependency");
+    File.WriteAllText(deps, "original dependency resolution");
+    receipt.RecordSuccess(next, assembly);
+    File.WriteAllText(dependency, "changed dependency");
+    Check(!receipt.CanLaunch(next, assembly), "changed sibling dependency invalidates build readiness");
+    receipt.RecordSuccess(next, assembly); File.Delete(dependency);
+    Check(!receipt.CanLaunch(next, assembly), "missing sibling dependency invalidates build readiness");
+    receipt.RecordSuccess(next, assembly); File.WriteAllText(dependency, "new dependency");
+    Check(!receipt.CanLaunch(next, assembly), "added runtime dependency invalidates build readiness");
+    receipt.RecordSuccess(next, assembly); File.WriteAllText(deps, "changed resolution");
+    Check(!receipt.CanLaunch(next, assembly), "changed dependency-resolution metadata invalidates readiness");
+    string resources = Path.Combine(temporary, "locale"); Directory.CreateDirectory(resources);
+    string satellite = Path.Combine(resources, "viewer.resources.dll");
+    File.WriteAllText(satellite, "satellite"); receipt.RecordSuccess(next, assembly);
+    File.WriteAllText(satellite, "changed satellite");
+    Check(!receipt.CanLaunch(next, assembly), "changed nested resource assembly invalidates readiness");
+    receipt.RecordSuccess(next, assembly);
+    Check(new ViewerBuildReceipt(path).CanLaunch(next, assembly), "dependency manifest survives launcher restart");
+    File.WriteAllText(Path.Combine(temporary, "viewer.pdb"), "non-runtime debugging data");
+    Check(receipt.CanLaunch(next, assembly), "debug-symbol-only changes do not invalidate runtime evidence");
+    File.WriteAllText(path, File.ReadAllText(path).Replace("\"Schema\":2", "\"Schema\":1"));
+    Check(!receipt.CanLaunch(next, assembly), "legacy single-assembly receipts require a rebuild");
     receipt.Invalidate(); File.Delete(assembly);
     try { receipt.RecordSuccess(revision, assembly); Check(false, "missing artifact must not be recorded"); }
     catch (FileNotFoundException) { Check(!receipt.CanLaunch(revision, assembly), "missing artifact cannot be recorded"); }

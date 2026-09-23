@@ -306,3 +306,25 @@ the original receipt hashes only the main DLL and would miss later changes to si
 runtime dependencies. Next narrow package: reproduce that missing-dependency gate,
 then record the managed output manifest rather than only the viewer assembly. Keep
 Windows/manual launch gates explicit and preserve the peer's ongoing render work.
+
+## Peer-review follow-up: launcher dependency manifest
+
+Needs integration tests published as `6455861`, after a normal push rejection exposed
+concurrent peer render commit `69e7eab`; rebased, reran the full matrix and 20 Python
+tests, then pushed normally. No peer edits overwritten.
+
+Cow tools' receipt review identified a coverage gap beyond the main viewer DLL.
+Five added dependency-mutation controls reproduced it. Schema 2 now hashes the sorted
+managed-output manifest (recursive DLLs plus dependency/runtime configuration JSON),
+rejecting changed, missing and added runtime files. Legacy single-DLL receipts require
+rebuilding; debug-symbol-only changes do not invalidate runtime output. LauncherAudit
+passes 40 assertions and launcher builds. Evidence: `tpw-launcher-dependencies-before.log`,
+`tpw-launcher-manifest-final.log`, `tpw-launcher-dependencies-build.log`.
+
+No full Windows/runtime-attestation claim: engine installations, external plugins,
+native non-DLL dependencies and concurrent installers remain outside this receipt.
+Next independent package: make the README/current release checklist reflect the
+verified source/build state instead of its early research-only snapshot, then resume
+lifecycle long-stall/catch-up checks and renderer smoke in coordination with cow tools.
+Need-clock tests currently validate normal frame rates/zero time, not large stalled
+frames; do not silently claim the latter. Rendering/thought bubbles remain peer-owned.

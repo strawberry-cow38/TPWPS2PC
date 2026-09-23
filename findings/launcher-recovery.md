@@ -84,3 +84,26 @@ kills its real test process first, then reports an aggregate cleanup failure, pr
 the remaining cleanup/result path without deliberately leaking a child. Two review
 findings (exceptional tree cleanup and `.cmd` selection) were addressed before landing.
 Launcher compiles; no actual Git update or self-update was executed by these tests.
+
+## Peer-review correction: dependency manifest, receipt schema 2
+
+Cow tools identified that a single viewer-DLL hash does not cover changed sibling
+runtime dependencies. The existing build-exit gate already refused a nonzero build;
+the reproduced gap is that changing/removing/adding a dependency after a successful
+receipt left that receipt accepted. Five new mutation controls failed before the
+correction (changed/missing/added dependency, changed dependency-resolution metadata,
+and changed nested resource assembly).
+
+Receipt schema 2 hashes a sorted, relative-path manifest of the output directory's
+DLLs, `.deps.json` and `.runtimeconfig.json` files recursively. Each entry includes
+its own SHA-256. This covers the managed output and Windows DLLs located there;
+added/removed files change the manifest too. Debug symbols do not affect readiness.
+The compact receipt stores the manifest digest rather than an unbounded file list.
+Schema-1 receipts require rebuilding, rather than silently retaining the weaker gate.
+
+LauncherAudit now passes 40 assertions, including all five mutations, unchanged
+manifest restart, ignored debug-symbol changes, and schema migration. Launcher
+compiles. This still does not attest external engine installations/plugins, native
+non-DLL dependencies, arbitrary source working-tree modifications, or concurrent
+installers. The manifest verifies current local output against the successful-build
+record; it is not proof of retail correctness or cryptographic publisher identity.
