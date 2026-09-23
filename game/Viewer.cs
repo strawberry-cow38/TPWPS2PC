@@ -172,6 +172,11 @@ public partial class Viewer : Node3D
     bool _linkTest;
     bool _placeTest;
     bool _walkAudit;
+    /// <summary>The sim's own grid, built once per park. ⚠ Only its ENTRANCE set is read from it;
+    /// laid path comes from the live tool, because ParkPaths copies the cell bytes when it is made
+    /// and would show the park as it was when the overlay was first asked for.</summary>
+    ParkPaths _walkGrid;
+    MeshInstance3D _walkView;
     bool _ghostPress;
     bool _animTest;
     bool _buildTest;
@@ -633,6 +638,9 @@ public partial class Viewer : Node3D
             _buildable.Visible = !_buildable.Visible;
             GD.Print($"[build] overlay {(_buildable.Visible ? "on" : "off")}");
         }
+        // ⭐ N shows what the SIM thinks it can walk on: the entrance the park came with, in blue,
+        // and everything laid since, in green for path and amber for queue.
+        else if (k.Keycode == Key.N && _mode == Mode.Park) ToggleWalkOverlay();
         else if (k.Keycode == Key.V && _mode == Mode.Park)
         {
             var next = _weather.Current switch
@@ -1073,7 +1081,7 @@ public partial class Viewer : Node3D
                    + "Z/X dolly  |  Home reset  |  G free orbit\n"
                    + "[ / ] nudge the gate  |  V weather  |  B buildable  |  F3 hide this panel\n"
                    + "RMB path tool (shift+RMB queue)  |  LMB press: start a run, again to lay\n"
-                   + "O take it back  |  M straight/elbow segments  |  Esc close the tool\n"
+                   + "N walkable  |  O take it back  |  M straight/elbow segments  |  Esc close the tool\n"
                    + "Tab build menu  |  LMB or RMB opens the path tool; RMB shuts it or drops\n"
                    + "what you hold  |  . turns it  |  shift stamps  |  queues come with the ride\n"
                    + "in the park the mouse buttons are the TOOL'S -- pan with the middle drag";
@@ -1402,6 +1410,8 @@ public partial class Viewer : Node3D
         if (_ghostTest || System.Environment.GetEnvironmentVariable("TPW_GHOST_TEST") == "1") ShowTestGhost();
         if (_linkTest || System.Environment.GetEnvironmentVariable("TPW_LINK_TEST") == "1") CheckLinking();
         if (_walkAudit) WalkAudit();
+        // ⭐ So a capture can photograph the overlay, which has no key to press.
+        if (System.Environment.GetEnvironmentVariable("TPW_WALK_OVERLAY") == "1") ToggleWalkOverlay();
     }
 
     /// <summary>⭐ A CONTROL RUN, not a feature. It lays a shape that MUST come out wearing one of
@@ -2796,6 +2806,101 @@ public partial class Viewer : Node3D
         GD.Print($"[path] laid {laid} of {_ghost.Tiles.Count}; the run goes on from ({_runX},{_runY}); {_paths.Laid} total");
         Status($"laid {laid} -- the run goes on from ({_runX},{_runY})");
         _toolSfx?.Play(ToolSounds.Cue.Lay);
+    }
+
+    /// <summary>⭐ WHAT THE SIM WALKS ON, drawn on the park. Master asked to see the routes.
+    ///
+    /// Blue is the entrance the park came with -- bus stop, road, turnstiles -- which is MESH the
+    /// prefab brings, not tiles: the authored grid ships no path at all. Green is laid path and
+    /// amber a queue.
+    ///
+    /// ⚠⚠ DRAWN AT THE VIEWER'S CELLS, and in three worlds of four that is NOT where the sim
+    /// thinks they are. ParkPaths takes the grid's origin from the `heightfield` marker and the
+    /// viewer takes it through Park.FindHole; jungle agrees, space is 10 out in z and hallow is
+    /// off entirely. So in jungle this overlay is the truth and elsewhere the offset you can see
+    /// IS the bug -- which is more use than quietly drawing it in the right place and hiding it.</summary>
+    void ToggleWalkOverlay()
+    {
+        if (_walkView != null && IsInstanceValid(_walkView))
+        { _walkView.QueueFree(); _walkView = null; GD.Print("[walk] overlay off"); return; }
+        var f = _park?.Field;
+        if (f == null || _terrainModel == null) { GD.PrintErr("[walk] no park"); return; }
+        if (_walkGrid == null)
+        {
+            try { _walkGrid = new ParkPaths(_terrainModel); }
+            catch (Exception e) { GD.PrintErr($"[walk] no sim grid: {e.Message}"); return; }
+        }
+
+        var by = new Dictionary<int, SurfaceTool>();
+        int ent = 0, path = 0, queue = 0;
+        float half = Park.CellSize * 0.5f;
+        // ⚠⚠ EACH SET IN THE FRAME IT ACTUALLY LIVES IN. There are THREE origins in this park and
+        // they do not agree: ParkPaths takes one off the `heightfield` marker, the viewer's
+        // _holeOrigin comes out of Park.FindHole, and Park.CellCentre draws from PlotSpace. In
+        // JUNGLE the first two match each other and PlotSpace is EIGHT cells away from both -- so
+        // the entrance drawn at CellCentre landed past the gate and off the plot, and read as not
+        // drawn at all. Until that is settled, the entrance is drawn where ParkPaths means it
+        // (Origin + cell, un-mirrored into world Z) and laid path where the build grid means it,
+        // so each lands on the thing it is talking about.
+        void Cell(Vector3 c, int layer)
+        {
+            if (!by.TryGetValue(layer, out var st))
+            { st = new SurfaceTool(); st.Begin(Mesh.PrimitiveType.Triangles); by[layer] = st; }
+            // ⚠⚠ THE PLOT'S FLOOR IS FLAT AND THE ENTRANCE IS NOT. The bus stop and the road sit on
+            // an embankment well above the plot's base height, so an overlay drawn at CellY was
+            // BURIED under the road -- the whole entrance set was being drawn and none of it could
+            // be seen, which reads exactly like not being drawn at all. The baked per-tile ground
+            // is the same lookup the game camera uses, so the overlay rides whatever is there.
+            float ground = GroundAt(Mathf.FloorToInt(c.X), Mathf.FloorToInt(c.Z)) / (float)GameCamera.TileUnits;
+            float h = Mathf.Max(c.Y, ground) + Park.CellSize * (0.05f + layer * 0.005f);
+            var a = new Vector3(c.X - half, h, c.Z - half);
+            var b2 = new Vector3(c.X + half, h, c.Z - half);
+            var d = new Vector3(c.X + half, h, c.Z + half);
+            var e = new Vector3(c.X - half, h, c.Z + half);
+            foreach (var v in new[] { a, b2, d, a, d, e }) { st.SetNormal(Vector3.Up); st.AddVertex(v); }
+        }
+        for (int y = 0; y < f.Height; y++)
+            for (int x = 0; x < f.Width; x++)
+            {
+                var kind = _paths?.KindAt(x, y) ?? PathTool.Kind.None;
+                if (kind is PathTool.Kind.Queue) { Cell(_park.CellCentre(x, y), 2); queue++; }
+                else if (kind is PathTool.Kind.Path or PathTool.Kind.Both) { Cell(_park.CellCentre(x, y), 1); path++; }
+            }
+        // ⭐ The entrance through ParkPaths' OWN origin: model X is Origin.X + cell, and the scene
+        // mirrors Z, so world Z is Origin.Y + cell rather than its negative. Checked against the
+        // disc: jungle cell z=61 lands at world -14.5, and findings/gates.md measured
+        // `ticket_booths` at -16.12..-14.88.
+        foreach (var c in _walkGrid.EntranceCells)
+        {
+            Cell(new Vector3(_walkGrid.Origin.X + c.X + 0.5f, _park.BaseY, _walkGrid.Origin.Y + c.Z + 0.5f), 0);
+            ent++;
+        }
+        if (by.Count == 0) { GD.Print("[walk] nothing walkable to draw"); return; }
+
+        _walkView = new MeshInstance3D { Name = "walkable", CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
+        var colours = new[] { new Color(0.25f, 0.6f, 1f, 0.45f),      // the entrance, blue
+                              new Color(0.3f, 0.95f, 0.35f, 0.45f),   // laid path, green
+                              new Color(1f, 0.75f, 0.2f, 0.5f) };     // a queue, amber
+        var mesh = new ArrayMesh();
+        int surface = 0;
+        foreach (var (layer, st) in by.OrderBy(kv => kv.Key))
+        {
+            var m = st.Commit();
+            if (m == null || m.GetSurfaceCount() == 0) continue;
+            mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, m.SurfaceGetArrays(0));
+            mesh.SurfaceSetMaterial(surface++, new StandardMaterial3D
+            {
+                AlbedoColor = colours[layer],
+                Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
+                ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+                CullMode = BaseMaterial3D.CullModeEnum.Disabled,
+                DepthDrawMode = BaseMaterial3D.DepthDrawModeEnum.Disabled,
+            });
+        }
+        _walkView.Mesh = mesh;
+        AddChild(_walkView);
+        GD.Print($"[walk] overlay on: {ent} entrance (blue), {path} path (green), {queue} queue (amber)");
+        Status($"walkable: {ent} entrance, {path} path, {queue} queue -- N to hide");
     }
 
     void BuildBuildableOverlay()
