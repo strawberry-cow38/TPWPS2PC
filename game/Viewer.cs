@@ -145,6 +145,17 @@ public partial class Viewer : Node3D
     /// <summary>Rides part way through their Create animation, with where each one's clock is.
     /// ⚠ They come OFF this list when they finish, so a park full of built rides costs nothing.</summary>
     readonly List<(AnimatedModel Model, float Frame)> _building = new();
+
+    /// <summary>⭐⭐ THE PARK, RUNNING. Every ride put down gets its `.rse` started here, and from
+    /// then on the SCRIPT decides what its model is doing -- the slot, the variant and the frame
+    /// all come back out of <see cref="ParkSim"/>. Nothing in this file animates a placed ride any
+    /// more, which is the point: `core/` decides and `game/` draws.
+    ///
+    /// ⚠ A RIDE WITH A WORKING SCRIPT MUST NOT ALSO BE IN `_building`. The script's own first
+    /// instruction is `WAITANIM 0 0` -- it plays its Create animation itself -- so winding the
+    /// same model by hand would have two clocks fighting over one mesh.</summary>
+    ParkSim _sim;
+    readonly List<(ParkRide Ride, AnimatedModel Model, Aps Anim, int Slot, int Variant)> _scripted = new();
     /// <summary>A cell to use instead of the mouse, for captures. Null in normal use.</summary>
     (int X, int Y)? _cursorOverride;
     bool _pickChecked;
@@ -2304,6 +2315,79 @@ public partial class Viewer : Node3D
     /// been freed -- the park rebuilding drops the lot -- must come off the list rather than be
     /// asked for a frame, because a freed wrapper answers as if it were alive right up until it
     /// throws.</summary>
+    /// <summary>The sim's own copy of the ground, made once. ⚠ Null is an answer: a world whose
+    /// terrain has no `heightfield` marker has no grid to walk, and the caller says so rather
+    /// than running a park over nothing.</summary>
+    ParkPaths WalkGrid()
+    {
+        if (_walkGrid != null || _terrainModel == null) return _walkGrid;
+        try { _walkGrid = new ParkPaths(_terrainModel); }
+        catch (Exception e) { GD.PrintErr($"[walk] no sim grid: {e.Message}"); return null; }
+        GD.Print($"[walk] entrance: {_walkGrid.SetEntrance(_entranceTable)}");
+        return _walkGrid;
+    }
+
+    /// <summary>Start a placed ride's script. Returns false when there is nothing to run -- no
+    /// `.rse`, no `.aps`, or a program that would not load -- and the caller falls back to winding
+    /// the Create animation by hand, which is what every ride did before this.</summary>
+    bool StartScript(int id, AssetLibrary.RideAssets assets, AnimatedModel model, Aps anim,
+                     int cx, int cy, int w, int h)
+    {
+        if (assets?.Script == null || anim == null || model == null) return false;
+        _sim ??= new ParkSim(WalkGrid());
+        // ⭐ SPAWNCHILD LOOKS IN THE RIDE'S OWN FOLDER (0x1be91c builds directory + name). Seven
+        // jungle rides each ship a file called EventMap.rse, so a lookup by name alone would hand
+        // six of them somebody else's script.
+        string dir = assets.Script.Path[..(assets.Script.Path.LastIndexOf('/') + 1)];
+        byte[] Sibling(string child)
+        {
+            var e = _lib.Wad?.Entries.FirstOrDefault(
+                x => x.Path.Equals(dir + child, StringComparison.OrdinalIgnoreCase));
+            return e == null ? null : _lib.Read(e);
+        }
+        var ride = _sim.Add(id, _place.Display ?? Leaf(assets.Name), new ParkCell(cx, cy), w, h,
+                            _lib.Read(assets.Script), anim, _place.Def?.UpgradeCapacity(0) ?? 1,
+                            null, null, out string fault, sibling: Sibling);
+        if (ride == null) { GD.PrintErr($"[sim] {Leaf(assets.Name)} script would not start: {fault}"); return false; }
+        _scripted.Add((ride, model, anim, -1, -1));
+        // ⭐ A RIDE IS BUILT CLOSED and opens once it stands. king.RSE spins on VAR_RIDECLOSED
+        // right after its Create animation, so a ride left closed would build itself and then
+        // stand there -- which is correct, and is also not a park.
+        _sim.SetOpen(id, true);
+        GD.Print($"[sim] {Leaf(assets.Name)} running its script ({ride.Variables.Count} variables)");
+        return true;
+    }
+
+    /// <summary>Hand every scripted ride the frame its own script asked for.
+    ///
+    /// ⚠ THE RECORD ONLY CHANGES WHEN THE SLOT DOES. `UseRecord` rebuilds the model's animation
+    /// tracks, so calling it every frame would rebuild a mesh sixty times a second to show the
+    /// same animation; the last slot and variant are remembered for exactly that reason.</summary>
+    void StepScripted(double delta)
+    {
+        if (_sim == null) return;
+        _sim.Advance(delta);
+        for (int i = _scripted.Count - 1; i >= 0; i--)
+        {
+            var (ride, model, anim, slot, variant) = _scripted[i];
+            if (model?.Root == null || !GodotObject.IsInstanceValid(model.Root)) { _scripted.RemoveAt(i); continue; }
+            int want = ride.Slot, wantVariant = ride.Variant;
+            if (want < 0) continue;
+            if (want != slot || wantVariant != variant)
+            {
+                var rec = anim.Records().Where(r => r.Slot == want).Skip(Math.Max(0, wantVariant)).FirstOrDefault()
+                       ?? anim.Records().FirstOrDefault(r => r.Slot == want);
+                if (rec != null) model.UseRecord(rec);
+                // ⭐ A LINE PER CHANGE, because a shot of a ride standing still and a shot of one
+                // whose script never moved look the same. This is the proof that it ran.
+                GD.Print($"[sim] {ride.Name} -> slot {want}:{wantVariant}"
+                       + $" ({rec?.DurationFrames ?? 0} frames)" + (ride.Fault != null ? $" FAULT {ride.Fault}" : ""));
+                _scripted[i] = (ride, model, anim, want, wantVariant);
+            }
+            model.SetFrame(ride.Frame);
+        }
+    }
+
     void StepBuilding(float frames)
     {
         for (int i = _building.Count - 1; i >= 0; i--)
@@ -2904,7 +2988,7 @@ public partial class Viewer : Node3D
             return;
         }
         var (cx, cy) = _place.CornerFor(x, y);
-        var built = LoadPlaceable(_armedRide);
+        var built = LoadPlaceable(_armedRide, out var builtAnim);
         var model = built?.Root;
         if (model == null) { Status($"{_place.Display} has no model to place"); return; }
         if (!_park.TryPlace(model, _place.Turned, _place.Id, _place.Display, cx, cy, _place.Turns))
@@ -2943,7 +3027,13 @@ public partial class Viewer : Node3D
         // ⭐⭐ AND IT BUILDS ITSELF. The ride goes down on frame 0 of its Create animation -- which
         // is the UNBUILT state -- and is wound forward from there. Every ride placed so far has
         // been sitting frozen at the first frame of its own construction.
-        if (built.Frames > 1) { built.SetFrame(0); _building.Add((built, 0f)); }
+        // ⭐⭐ THE SCRIPT BUILDS IT, IF IT HAS ONE. A ride's `.rse` opens with `WAITANIM 0 0` --
+        // it plays its own Create animation -- so a scripted ride is handed to the sim and nothing
+        // here touches its clock again. `_building` stays for the ones with no script, which is
+        // what every ride used before, and the two must never hold the same model.
+        int w = _place.Turned.Width, h = _place.Turned.Height;
+        if (!StartScript(ride, _armedRide, built, builtAnim, cx, cy, w, h)
+            && built.Frames > 1) { built.SetFrame(0); _building.Add((built, 0f)); }
         // ⭐ The ground under it goes now that the cells are claimed.
         RefreshFloor();
         _toolSfx?.Play(ToolSounds.Cue.Lay);
@@ -3003,8 +3093,11 @@ public partial class Viewer : Node3D
     }
 
     /// <summary>The model for the held thing, built the same way the viewer builds any other.</summary>
-    AnimatedModel LoadPlaceable(AssetLibrary.RideAssets ride)
+    AnimatedModel LoadPlaceable(AssetLibrary.RideAssets ride) => LoadPlaceable(ride, out _);
+
+    AnimatedModel LoadPlaceable(AssetLibrary.RideAssets ride, out Aps animation)
     {
+        animation = null;
         if (ride?.Model == null) return null;
         try
         {
@@ -3031,6 +3124,7 @@ public partial class Viewer : Node3D
             // put the finished ride off its own plot. The caller winds it back to 0 once it has
             // been placed, so the measurement and the animation do not fight over the clock.
             drawn.SetFrame(Math.Max(drawn.Frames - 1, 0));
+            animation = anim;
             return drawn;
         }
         catch (Exception e) { GD.PrintErr($"[build] {Leaf(ride.Name)} would not load: {e.Message}"); return null; }
@@ -3307,12 +3401,7 @@ public partial class Viewer : Node3D
         { _walkView.QueueFree(); _walkView = null; GD.Print("[walk] overlay off"); return; }
         var f = _park?.Field;
         if (f == null || _terrainModel == null) { GD.PrintErr("[walk] no park"); return; }
-        if (_walkGrid == null)
-        {
-            try { _walkGrid = new ParkPaths(_terrainModel); }
-            catch (Exception e) { GD.PrintErr($"[walk] no sim grid: {e.Message}"); return; }
-            GD.Print($"[walk] entrance: {_walkGrid.SetEntrance(_entranceTable)}");
-        }
+        if (WalkGrid() == null) { GD.PrintErr("[walk] no sim grid"); return; }
 
         var by = new Dictionary<int, SurfaceTool>();
         int ent = 0, path = 0, queue = 0;
@@ -4449,6 +4538,9 @@ public partial class Viewer : Node3D
         // thing. ⚠ Backwards, because a finished one is removed as we go.
         if (_playing && _shotPath == null && _building.Count > 0)
             StepBuilding((float)delta * Aps.Fps);
+        // ⭐ And the ones that run themselves. Paused means paused: the park's clock is the
+        // viewer's, so nothing advances while the game is held still.
+        if (_playing && _shotPath == null) StepScripted(delta);
         // ⭐ The selection breathes on its own clock, and like the console's it stands still
         // while the game is paused.
         if (_mode == Mode.Park) UpdateHover();

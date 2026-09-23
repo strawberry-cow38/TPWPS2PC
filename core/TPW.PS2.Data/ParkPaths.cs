@@ -142,9 +142,29 @@ public sealed class ParkPaths
         return !m.Success ? ParkPathKind.None : m.Groups[1].Value.Equals("que", StringComparison.OrdinalIgnoreCase)
             ? ParkPathKind.Queue : ParkPathKind.Path;
     }
+    /// <summary>What is painted on this cell -- and ONLY that.
+    ///
+    /// ⭐⭐ "WHAT IS HERE" IS NOT "WHAT MAY BE BUILT HERE", and asking one question in place of
+    /// the other sealed three parks out of four. This used to begin `if (!CanBuild(c)) return
+    /// None`, so a cell the scenery projection had ruled out could not read as path even when the
+    /// terrain plainly painted one on it -- and since <see cref="Open"/> is built on this, no
+    /// guest could stand there.
+    ///
+    /// ⚠⚠ DISPROVED BY THE GAME'S OWN SAVESTATE. findings/paths.md records master's live FANTASY
+    /// tile map holding kind 13 -- a queue laid onto a path, so a cell a player BUILT ON -- at
+    /// (40,24) and (39,25). The projection blocks both (ticket_booths and A_ROAD over one,
+    /// A_ROAD and EMBANKMENT over the other) with the game's own no-build bit clear on each. A
+    /// rule that forbids what the retail game did is not the retail rule.
+    ///
+    /// ⚠ NOR IS BUILDABILITY A TEST HERE. Master: the paths outside the gate "are just phantom
+    /// paths that the ai uses" -- not buildable, still walked. Gating this on the no-build bit
+    /// would take those away too.
+    ///
+    /// The projection stays where it belongs, in <see cref="CanBuild"/>, which is what decides
+    /// whether something NEW may go down.</summary>
     public ParkPathKind Kind(ParkCell c)
     {
-        if (!CanBuild(c)) return ParkPathKind.None;
+        if (!Contains(c)) return ParkPathKind.None;
         int material = Field.Material(c.X, c.Z);
         return material == 0 || material >= Materials.Count ? ParkPathKind.None : Classify(Materials[material]);
     }
@@ -157,9 +177,18 @@ public sealed class ParkPaths
             throw new InvalidOperationException("Ride footprint overlaps a path or ineligible terrain");
         _occupied.UnionWith(all);
     }
+    /// <summary>Whether a path may go down here. ⭐ THE GAME'S OWN RULE, not the projection:
+    /// master's FANTASY savestate has player-built path on two cells the projection blocks, so
+    /// the projection cannot be what the game asked before letting them lay it. What is left is
+    /// the terrain's no-build bit and whether something already stands there.
+    ///
+    /// ⚠ <see cref="CanBuild"/> -- still projection-backed -- remains the test for putting a RIDE
+    /// down. Nothing has disproved it there, and nothing has confirmed it either.</summary>
+    public bool CanLay(ParkCell c) => Contains(c) && Field.Buildable(c.X, c.Z) && !_occupied.Contains(c);
+
     public void Lay(ParkCell cell, int material)
     {
-        if (!CanBuild(cell) || material <= 0 || material >= Materials.Count || material > byte.MaxValue
+        if (!CanLay(cell) || material <= 0 || material >= Materials.Count || material > byte.MaxValue
             || Classify(Materials[material]) == ParkPathKind.None)
             throw new InvalidOperationException($"Cannot lay path at {cell} with material {material}");
         Field.Cells[(cell.Z * Field.Width + cell.X) * 2 + 1] = (byte)material;

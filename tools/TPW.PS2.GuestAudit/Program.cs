@@ -1,3 +1,4 @@
+using System.Numerics;
 using TPW.PS2.Data;
 
 // ⭐⭐ GUESTS WALKING THE PARK, WITH NO ENGINE. Spawn a crowd at the walkway's mouth, send them
@@ -79,6 +80,34 @@ var refused = LayNetwork(paths);
 Console.WriteLine($"laid {layout.Count - refused.Count} of {layout.Count} path cells in from the mouth"
                 + (refused.Count > 0 ? $"; REFUSED {refused.Count}: {string.Join(" ", refused)}" : ""));
 Check(refused.Count == 0, "every cell of the layout could be laid (a refusal is unbuildable or scenery-covered ground)");
+// ⚠ WHY, for each one, and WHICH MESH. A refusal is either the game's own no-build bit or
+// ParkPaths' scenery projection, and those are different claims: the bit is read out of the
+// loader, the projection is a conservative policy of ours. The coverage is rebuilt here with the
+// same triangle test the constructor uses, so the mesh named is the one that actually did it.
+if (refused.Count > 0)
+{
+    var transforms = terrain.WorldTransforms();
+    foreach (var c in refused)
+    {
+        var covering = new List<string>();
+        foreach (var mesh in terrain.Meshes)
+        {
+            var vertices = terrain.Vertices(mesh).Pos.Select(v => Vector3.Transform(v, transforms[mesh.Offset]))
+                .Select(v => new Vector2(v.X - paths.Origin.X, v.Z - paths.Origin.Y)).ToArray();
+            if (terrain.Triangles(mesh).Any(t => ParkPaths.TriangleCoversCell(vertices[t.A], vertices[t.B], vertices[t.C], c.X, c.Z)))
+                covering.Add(mesh.Name);
+        }
+        Console.WriteLine($"  refused {c}: game no-build bit {(paths.Field.Buildable(c.X, c.Z) ? "clear" : "SET")}, "
+                        + $"scenery projection {(paths.SceneryBlocks(c) ? "BLOCKS" : "clear")}"
+                        + (covering.Count > 0 ? $", covered by {string.Join(", ", covering.Distinct())}" : ""));
+    }
+}
+// ⭐ THE ONE THAT DECIDES EVERYTHING ELSE: if neither cell past the mouth takes a path, the gate
+// is sealed and every "no route" below is about the gate, not the router.
+bool sealed_ = refused.Contains(new ParkCell(xl, z0)) && refused.Contains(new ParkCell(xr, z0));
+Check(!sealed_, $"the park can be entered: a cell past the mouth, {new ParkCell(xl, z0)} or {new ParkCell(xr, z0)}, takes a path");
+if (sealed_) Console.WriteLine("  GATE SEALED under ParkPaths' rules: nothing in this park is reachable from the walkway, so every"
+                             + " no-route and every idle control below is about the gate, not the router. Try another world.");
 
 // Two control cells. ⚠ CONTROLS FIRST, because "everybody arrived" is also what a router that
 // walks on grass would say. A guest sent to the grass beside the corridor must have no route;
