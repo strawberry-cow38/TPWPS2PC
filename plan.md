@@ -1,6 +1,6 @@
 # TPWPS2PC completion plan
 
-Updated: 2026-09-23. Working baseline: upstream `f9d1035` plus the tested ride-availability fix.
+Updated: 2026-09-23. Working baseline: upstream `0db3678` plus the tested ride-availability fix.
 Execution/results/handoff: [progress.md](progress.md). This is a completion roadmap, not a claim that the port is finished.
 
 ## What “complete” means
