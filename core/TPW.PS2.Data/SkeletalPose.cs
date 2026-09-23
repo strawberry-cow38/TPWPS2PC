@@ -91,6 +91,51 @@ public static class SkeletalPose
         return keys[i].P * (1f - t) + keys[i + 1].P * t;
     }
 
+    /// <summary>⭐ A SKELETAL RECORD'S PER-MESH SHOW/HIDE LISTS, from <c>rec+0x14</c> -- the "small"
+    /// array, which on a skeletal record is one 8-byte entry PER MESH of the model (<c>u16 count</c>,
+    /// pad, <c>u32 -> int16 frame times</c>), consumed by <c>FUN_001a8c30</c> after the bones are
+    /// posed. Three records on the disc carry one, and they read as intent: in FatMechanic's
+    /// <c>Start</c> the toolbox leaves his hand at frame 16 (<c>toolboxinhand [-16, -33]</c>,
+    /// <c>toolboxfree [0, 16, 33]</c>), in <c>End</c> it comes back (<c>[0, 16, 41]</c> /
+    /// <c>[-16, -41]</c>), and the hunter's <c>Main</c> juggles its three guns. Every list's
+    /// magnitudes ascend, and each ends one frame past the record's duration. Keyed by MESH
+    /// index, which is the mesh's node index.</summary>
+    public static Dictionary<int, int[]> MeshVisibility(Animation aps, Animation.Record rec, int meshCount)
+    {
+        var lists = new Dictionary<int, int[]>();
+        if (rec == null || !rec.Skeletal || rec.SmallCount == 0 || rec.Small <= 0) return lists;
+        var d = aps.D;
+        for (int i = 0; i < Math.Min(rec.SmallCount, meshCount); i++)
+        {
+            int e = rec.Small + i * 8;
+            if (e + 8 > d.Length) break;
+            int n = BitConverter.ToUInt16(d, e), p = (int)BitConverter.ToUInt32(d, e + 4);
+            if (n == 0 || p <= 0 || p + n * 2 > d.Length) continue;
+            var times = new int[n];
+            for (int k = 0; k < n; k++) times[k] = BitConverter.ToInt16(d, p + k * 2);
+            lists[i] = times;
+        }
+        return lists;
+    }
+
+    /// <summary>The rule of <c>FUN_001a8c30</c>, verbatim, on one mesh's list: before the first
+    /// entry's magnitude the mesh is SHOWN; otherwise the first pair whose later magnitude is
+    /// still ahead of the frame decides -- shown if its earlier entry is positive, hidden if it
+    /// is zero or negative -- and past the last entry the state is LEFT AS IT WAS. ⚠ That last
+    /// clause is where this differs from the 48-byte channel's <see cref="Animation.VisibleAt"/>,
+    /// which applies the final entry forever: on a one-entry list the two disagree, though no
+    /// list on the disc has fewer than two entries. The frame is compared as the game does, as
+    /// an int16 of the truncated frame.</summary>
+    public static bool MeshShown(int[] times, float frame, bool shown)
+    {
+        if (times == null || times.Length == 0) return shown;
+        int f = (short)(int)frame;
+        if (f < Math.Abs(times[0])) return true;
+        for (int k = 0; k < times.Length - 1; k++)
+            if (f < Math.Abs(times[k + 1])) return times[k] > 0;
+        return shown;
+    }
+
     /// <summary>One matrix per node slot for the record at a frame. Slots the record does not key
     /// are identity here -- the game leaves them as stack garbage, and the audit checks that no
     /// skin on the disc references a bone its records leave unkeyed.</summary>

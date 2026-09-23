@@ -464,8 +464,8 @@ dotnet run --project tools/TPW.PS2.SkinAudit -- /path/to/disc.bin      # or a ba
   and the fourth component appears only in cross terms.
 * **`FUN_001a8c30`**, the skeletal record's `small` array: one 8-byte entry per MESH holding an
   int16 show/hide timeline with the same sign convention as the 48-byte visibility channel.
-  Three records on the disc carry one (FatMechanic 2, hunter 1); none of the kids do. ⚠ Not yet
-  applied by the viewer.
+  Three records on the disc carry one (FatMechanic 2, hunter 1); none of the kids do. Applied by
+  the viewer since the note under "Not done" below.
 
 ### ⭐⭐ The bone index is a HELPER index
 
@@ -517,9 +517,18 @@ Boy3a, Boy4a) carry only flag-0x80 records whose tracks live in Boy1a's file and
 * The guest actors in `Viewer.cs` and Ada in `VisitorParkView.cs` are still built with no
   record; wiring them is the callers' change (`new AnimatedModel(model, aps, walkRecord, tex)` and
   `SetFrame` on the park clock).
-* The per-mesh show/hide lists (`FUN_001a8c30`) are read but not applied; prop bones some
-  records leave unkeyed (Box01–03 on dino/flower/gnome, the toolboxes, the guns) sit at the
-  identity here where the PS2 has stack garbage -- and, presumably, the list to hide them.
+* ~~The per-mesh show/hide lists (`FUN_001a8c30`) are read but not applied~~ -- applied
+  (`SkeletalPose.MeshVisibility` / `MeshShown`, `AnimatedModel.SetFrame`): three records carry
+  them, and they read as intent -- FatMechanic's `Start` moves the toolbox from `toolboxinhand`
+  `[-16, -33]` to `toolboxfree` `[0, 16, 33]` at frame 16 and `End` moves it back (`[0, 16, 41]` /
+  `[-16, -41]`); hunter's `Main` juggles `gun1 [-5, 41, -50, 71, 75]`, `gun2 [0, -5, -41, 50, -71,
+  -75]`, `gun3 [0, 5, -41, -50, -71, -75]`. The game's rule is kept verbatim (before the first
+  magnitude: shown; the first pair still ahead decides by the sign of its earlier entry; past the
+  last entry the state is left) rather than reusing `VisibleAt`, which would differ on a
+  one-entry list -- none exists. Every list ascends in magnitude and ends one frame past the
+  record's duration. Prop bones some records leave unkeyed (Box01–03 on dino/flower/gnome, the
+  toolboxes, the guns) still sit at the identity here where the PS2 has stack garbage; with the
+  lists applied, those props are hidden when their record says so.
 * The bind translations are solved, never read; the five rigs above are reported, not explained.
 * Rotation keys never take the short path across the hemisphere, as in the game; no character
   track on the disc starts after frame 0, so the sampler's lack of a clamp is never exercised.

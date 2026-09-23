@@ -51,6 +51,9 @@ public sealed class AnimatedModel
     readonly Dictionary<int, int> _rotTrack = new();   // node -> its track, for the easing curves
     readonly Dictionary<int, List<(int Time, System.Numerics.Vector3 S)>> _scale = new();
     Dictionary<int, int[]> _vis = new();
+    /// <summary>A skeletal record's per-MESH show/hide lists (SkeletalPose.MeshVisibility): the
+    /// mechanic's toolbox and the hunter's guns come and go by these.</summary>
+    Dictionary<int, int[]> _meshVis = new();
     /// <summary>Nodes currently hidden. ⚠ SURVIVES UseRecord on purpose: see SetFrame.</summary>
     readonly HashSet<int> _hidden = new();
     readonly Dictionary<int, Aps.Path> _path = new();
@@ -162,7 +165,7 @@ public sealed class AnimatedModel
         // node the old record drove that the new one leaves alone would otherwise keep its old keys
         // and carry on moving after the animation changed.
         _textureTracks.Clear(); _rot.Clear(); _rotTrack.Clear(); _scale.Clear(); _path.Clear(); _facing.Clear();
-        _vis = new(); _skel = null; Frames = 0;
+        _vis = new(); _meshVis = new(); _skel = null; Frames = 0;
         // ⭐ _textureIndices is left alone on purpose. It is model-sized and mirrors what each
         // material is showing NOW, which is the `previous` that TextureTrack.Sample retains before
         // a track's first key -- the game's own consumer does (0x1a6b60-0x1a6bd4) -- so a slot the
@@ -201,6 +204,7 @@ public sealed class AnimatedModel
         else if (rec != null)
         {
             _skel = _anim.SkeletalTracks(rec);
+            _meshVis = SkeletalPose.MeshVisibility(_anim, rec, _model.Meshes.Count);
             Frames = Math.Max(rec.DurationFrames, 1);
         }
         // The morph channel lives on the part, so it is re-pointed in place rather than rebuilt.
@@ -435,6 +439,13 @@ public sealed class AnimatedModel
         foreach (var (node, timeline) in _vis)
         {
             if (Aps.VisibleAt(timeline, now)) _hidden.Remove(node); else _hidden.Add(node);
+        }
+        // ⭐ And the skeletal path's own lists, per MESH, by FUN_001a8c30's rule -- the same node
+        // state bit (0x10 on the mesh header), so it lives in the same set and survives UseRecord
+        // the same way. A mesh's index IS its node index.
+        foreach (var (mesh, times) in _meshVis)
+        {
+            if (SkeletalPose.MeshShown(times, now, !_hidden.Contains(mesh))) _hidden.Remove(mesh); else _hidden.Add(mesh);
         }
         var world = WorldAt(now);
         // ⭐ THE BIPED. A skeletal record's tracks are each bone's whole transform -- there is no

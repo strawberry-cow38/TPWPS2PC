@@ -44,7 +44,7 @@ var models = wad.Entries.Where(e => e.Path.StartsWith("/Chars/", StringCompariso
 Console.WriteLine($"DATA.WAD: {models.Count} character models under /Chars");
 
 double worstAll = 0; string worstWho = "-";
-int skinnedMeshes = 0, unskinnedMeshes = 0, characters = 0, moved = 0, sharedOnly = 0, restPoses = 0;
+int skinnedMeshes = 0, unskinnedMeshes = 0, characters = 0, moved = 0, sharedOnly = 0, restPoses = 0, visLists = 0;
 foreach (var entry in models)
 {
     string stem = entry.Path[..^4], leaf = stem[(stem.LastIndexOf('/') + 1)..];
@@ -287,6 +287,24 @@ foreach (var entry in models)
     Console.WriteLine($"  tracks starting after frame 0: {lateStart}; tracks at or past the game's {GameSlots} stack slots: {overSlots};"
                     + $" records with per-mesh show/hide lists (FUN_001a8c30): {withLists} of {live.Count};"
                     + (unkeyed.Count == 0 ? " every skin bone keyed by every record" : $" bones some record leaves unkeyed: {string.Join(", ", unkeyed)}"));
+    // ⭐ The per-mesh show/hide lists, read as the game reads them: each named, and checked the way
+    // the 48-byte channel's timelines were -- magnitudes ascending, at least two entries (the
+    // one-entry case is where the game's rule and VisibleAt would part company; none exists).
+    foreach (var rec in live)
+    {
+        var lists = SkeletalPose.MeshVisibility(aps, rec, model.Meshes.Count);
+        if (lists.Count == 0) continue;
+        string slotLabel2 = Animation.SlotNames.ContainsKey(rec.Slot) ? $"slot {rec.Slot} {rec.SlotName}" : $"slot {rec.Slot}";
+        foreach (var (mesh, times) in lists.OrderBy(kv => kv.Key))
+        {
+            bool ascending = true;
+            for (int k = 1; k < times.Length; k++) if (Math.Abs(times[k]) < Math.Abs(times[k - 1])) ascending = false;
+            Console.WriteLine($"  show/hide {slotLabel2} ({rec.DurationFrames} frames) mesh {model.Meshes[mesh].Name}: [{string.Join(", ", times)}]"
+                            + (times[^1] != 0 && Math.Abs(times[^1]) == rec.DurationFrames + 1 ? " (ends one frame past the duration)" : ""));
+            Check(ascending && times.Length >= 2, $"{leaf}: {model.Meshes[mesh].Name}'s show/hide list in {slotLabel2} has ascending magnitudes and at least two entries");
+            visLists++;
+        }
+    }
 
     // ⭐ THE PROOF. Slot 1's first record is the walk on every kid (feet in anti-phase, a pelvis
     // bob) and its left foot is the bone to watch; a rig without a slot 1 gets whichever bone of
@@ -377,6 +395,7 @@ foreach (var entry in models)
 Console.WriteLine($"\n{characters} characters, {skinnedMeshes} skinned meshes ({unskinnedMeshes} unskinned), worst bind error {worstAll:F3} units on {worstWho}, threshold {Threshold}");
 Console.WriteLine($"{moved} characters showed a bone moving between two frames; {sharedOnly} carry only shared records and were not sampled");
 Console.WriteLine($"{restPoses} characters have a record whose frame 0, skinned through the game's matrices with nothing solved, lands on the authored vertices within 50 units");
+Console.WriteLine($"{visLists} per-mesh show/hide lists (FUN_001a8c30) read across the disc");
 Check(characters > 0, "at least one character was audited (otherwise every check above is vacuous)");
 Check(restPoses > 0, "at least one rig proves the whole runtime pipeline with nothing fitted (a record's frame 0 returns its authored vertices)");
 Console.WriteLine(bad == 0 ? "PASS" : $"FAIL: {bad}");
