@@ -1494,6 +1494,8 @@ public partial class Viewer : Node3D
         // grid was never reset before this, so a second map walked the first map's ground.
         ResetGuests();
         _walkGrid = null;
+        // ⭐ AND THE SIM WITH IT: it was made on that grid, and its rides stood on that park.
+        _sim = null; _scripted.Clear(); _shotWound = false;
         if (_terrainModel?.Field == null) return;
         if (_pieces == null)
         {
@@ -2347,7 +2349,7 @@ public partial class Viewer : Node3D
     /// `.rse`, no `.aps`, or a program that would not load -- and the caller falls back to winding
     /// the Create animation by hand, which is what every ride did before this.</summary>
     bool StartScript(int id, AssetLibrary.RideAssets assets, AnimatedModel model, Aps anim,
-                     int cx, int cy, int w, int h)
+                     int cx, int cy, int w, int h, ParkCell? entrance = null, ParkCell? exit = null)
     {
         if (assets?.Script == null || anim == null || model == null) return false;
         _sim ??= new ParkSim(WalkGrid());
@@ -2363,14 +2365,14 @@ public partial class Viewer : Node3D
         }
         var ride = _sim.Add(id, _place.Display ?? Leaf(assets.Name), new ParkCell(cx, cy), w, h,
                             _lib.Read(assets.Script), anim, _place.Def?.UpgradeCapacity(0) ?? 1,
-                            null, null, out string fault, sibling: Sibling);
+                            entrance, exit, out string fault, sibling: Sibling);
         if (ride == null) { GD.PrintErr($"[sim] {Leaf(assets.Name)} script would not start: {fault}"); return false; }
         _scripted.Add((ride, model, anim, -1, -1));
         // ⭐ A RIDE IS BUILT CLOSED and opens once it stands. king.RSE spins on VAR_RIDECLOSED
         // right after its Create animation, so a ride left closed would build itself and then
         // stand there -- which is correct, and is also not a park.
         _sim.SetOpen(id, true);
-        GD.Print($"[sim] {Leaf(assets.Name)} running its script ({ride.Variables.Count} variables)");
+        GD.Print($"[sim] {Leaf(assets.Name)} running its script ({ride.Variables.Count} variables), doors {entrance}/{exit}");
         return true;
     }
 
@@ -2386,19 +2388,23 @@ public partial class Viewer : Node3D
     /// ⚠ IN THE SIM'S OWN TICKS, not one big delta. <see cref="ParkSim.Advance"/> deliberately
     /// caps a single call at eight ticks so a stalled frame cannot make the park sprint, which
     /// means handing it four seconds at once would quietly drop most of them.</summary>
-    void WindScripted(int frames)
+    void WindPark(int frames)
     {
-        if (_sim == null || frames <= 0) return;
+        if (frames <= 0) return;
         long target = (long)(frames * 1000f / Aps.Fps);
         int guard = 0;
-        while (_sim.Time < target && guard++ < 100_000) StepScripted(ParkSim.TickMilliseconds / 1000.0);
-        GD.Print($"[sim] wound to {_sim.Time}ms for the shot ({_scripted.Count} scripted)");
+        while (_parkTicks * ParkSim.TickMilliseconds < target && guard++ < 100_000) TickPark();
+        PresentScripted();
+        if (_guests != null) PlaceActors(1f);
+        GD.Print($"[sim] wound to {_parkTicks * ParkSim.TickMilliseconds}ms for the shot ({_scripted.Count} scripted, {_guests?.Guests.Count ?? 0} walking)");
     }
 
-    void StepScripted(double delta)
+    /// <summary>Hand every scripted ride the frame its own script asked for. ⚠ PRESENTATION
+    /// ONLY: the sim is advanced by <see cref="TickPark"/>, on the park's one clock, so rides and
+    /// guests can never be a tick apart.</summary>
+    void PresentScripted()
     {
         if (_sim == null) return;
-        _sim.Advance(delta);
         for (int i = _scripted.Count - 1; i >= 0; i--)
         {
             var (ride, model, anim, slot, variant) = _scripted[i];
@@ -2422,14 +2428,16 @@ public partial class Viewer : Node3D
 
     /// <summary>⭐⭐ PEOPLE. Guests come in at the walkway's mouth -- the two kind-0x0E cells the
     /// game's own table paints -- and walk the park's laid paths, one in every couple of seconds
-    /// while there is somewhere to go and room for more. Where they go is a laid cell picked at
-    /// random; on arriving they stand a moment and pick another. <see cref="GuestWalk"/> decides
-    /// all of it and this draws it: `core/` decides, `game/` draws, the same line ParkSim holds.
+    /// while there is somewhere to go and room for more. Once a ride with a script stands in the
+    /// park, <see cref="ParkVisitors"/> takes the crowd over: a guest picks a ride it can reach,
+    /// walks to that ride's queue stub, is handed to the script (and LEAVES the walking layer --
+    /// the script owns them until it hands them back at the exit), and walks off again. Until
+    /// then they wander. `core/` decides all of it and this draws it, the line ParkSim holds.
     ///
-    /// ⚠⚠ THE ROUTING AND THE PACE ARE OURS -- GuestWalk's own doc says so; the console's guest
-    /// AI has not been read -- and SO IS "one every two seconds, to a random cell", which is a
-    /// demo policy chosen so that a park with a path has people on it. None of it should be
-    /// quoted as the game's behaviour.
+    /// ⚠⚠ THE ROUTING, THE PACE AND THE DAWDLING ARE OURS -- GuestWalk's and ParkVisitors' own
+    /// docs say so; the console's guest AI has not been read -- and SO IS "one every two seconds,
+    /// to a random cell", a demo policy chosen so that a park with a path has people on it. None
+    /// of it should be quoted as the game's behaviour.
     ///
     /// ⭐ THE BODIES ARE THE DISC'S. DATA.WAD ships twenty-four characters under /Chars; the eight
     /// kids -- Boy1a..Boy4a and Girl1a..Girl4a -- are its guests, the same meshes VisitorParkView
@@ -2437,21 +2445,32 @@ public partial class Viewer : Node3D
     /// it, but the skeletal animation path those use is decoded and not yet executed, so a guest
     /// slides rather than walks. That is a gait still to do, not a placeholder body.
     ///
-    /// ⚠ ON THE CONSOLE'S TICK, drawn between ticks: the walk steps at 25 a second through its
-    /// own <see cref="ConsoleClock"/> and the actor is placed at the lerp of the last tick's cell
-    /// position and this one's, which is what makes 25 Hz look like 60.</summary>
+    /// ⚠ A GUEST ON A RIDE HAS NO BODY HERE. Handing over is total (ParkVisitors removes the
+    /// Guest), so its actor is freed the frame it goes, and the one that comes back out at the
+    /// exit is a NEW guest with a new id -- and, by id, possibly a different kid. Drawing riders
+    /// on their seats is the script's WALKON/WALKOFF, still to be wired to the model.
+    ///
+    /// ⭐ ONE CLOCK FOR THE PARK. Rides and guests step together, 25 a second, through
+    /// <see cref="_parkClock"/>; the screen lerps the actors by its Alpha, which is what makes
+    /// 25 Hz look like 60.</summary>
     static readonly string[] GuestModels =
     {
         "/Chars/Girl1a/girl1a.mps", "/Chars/Boy1a/boy1a.mps", "/Chars/Girl2a/girl2a.mps", "/Chars/Boy2a/boy2a.mps",
         "/Chars/Girl3a/girl3a.mps", "/Chars/Boy3a/boy3a.mps", "/Chars/Girl4a/girl4a.mps", "/Chars/Boy4a/boy4a.mps",
     };
     GuestWalk _guests;
-    readonly ConsoleClock _guestClock = new();
+    /// <summary>The two halves joined, once there is a ride to join them over. Null until the
+    /// first scripted ride stands; guests just wander until then.</summary>
+    ParkVisitors _visitors;
+    readonly ConsoleClock _parkClock = new();
+    /// <summary>Whole park ticks so far, the number a capture winds to.</summary>
+    int _parkTicks;
     Node3D _guestRoot;
     readonly Dictionary<int, Node3D> _actors = new();
     /// <summary>Where each guest was before the last tick, in cell space, for the lerp.</summary>
     readonly Dictionary<int, Vector3> _guestPrev = new();
-    /// <summary>Ticks a stopped guest has left to stand before it is sent somewhere else.</summary>
+    /// <summary>Ticks a stopped guest has left to stand before it is sent somewhere else, or,
+    /// under ParkVisitors, before a guest with no way is asked to try again.</summary>
     readonly Dictionary<int, int> _guestDwell = new();
     /// <summary>DATA.WAD, open beside the park's own archive: the guests live there whatever
     /// world is up, and the park's library holds one archive at a time.</summary>
@@ -2474,15 +2493,18 @@ public partial class Viewer : Node3D
     string _guestLabel;
     /// <summary>Which of the capture's stages has run, and the frame it ran on.</summary>
     int _guestStage, _guestSince;
+    /// <summary>The corner of the ride the control run put down, for aiming its camera.</summary>
+    (int X, int Y, int W, int H)? _guestTestRide;
 
     void ResetGuests()
     {
         if (_guestRoot != null && IsInstanceValid(_guestRoot)) _guestRoot.QueueFree();
-        _guestRoot = null; _guests = null; _mouth = null; _gateClosed = false;
+        _guestRoot = null; _guests = null; _visitors = null; _mouth = null; _gateClosed = false;
         _actors.Clear(); _guestPrev.Clear(); _guestDwell.Clear();
         _guestPool = null; _guestPoolLaid = -1; _guestPoolAt = -1; _guestAt = null; _guestLabel = null;
-        _gateTimer = 0; _guestRng = new Random(1); _guestStage = 0; _guestSince = 0;
-        _guestClock.Reset();
+        _gateTimer = 0; _guestRng = new Random(1); _guestStage = 0; _guestSince = 0; _guestTestRide = null;
+        _parkTicks = 0;
+        _parkClock.Reset();
     }
 
     /// <summary>Find the gate and make the walk. False, once and for all this park, when there is
@@ -2511,38 +2533,72 @@ public partial class Viewer : Node3D
         _guests = new GuestWalk(grid);
         _guestRoot = new Node3D { Name = "guests" };
         AddChild(_guestRoot);
-        _guestClock.Reset();
         GD.Print($"[guest] the gate is at {string.Join(" ", _mouth)}; guests come in once a path meets it");
         return true;
     }
 
-    void StepGuests(double delta)
+    /// <summary>A rendered frame's worth of park: whole console ticks, then the picture between
+    /// them.</summary>
+    void StepPark(double delta)
     {
-        if (!OpenGate()) return;
-        int ticks = _guestClock.Advance(delta);
-        for (int i = 0; i < ticks; i++) TickGuests();
-        PlaceActors(_guestClock.Alpha);
+        int ticks = _parkClock.Advance(delta);
+        for (int i = 0; i < ticks; i++) TickPark();
+        if (_guests != null) PlaceActors(_parkClock.Alpha);
+        PresentScripted();
     }
 
-    /// <summary>One console tick of the crowd: the gate lets somebody in, everybody moves, and
-    /// whoever has stopped -- arrived, or found no way -- stands a moment and picks somewhere.</summary>
-    void TickGuests()
+    /// <summary>One console tick of everything that moves in the park.
+    ///
+    /// ⭐⭐ ONE GRID, ONE CLOCK. The rides' sim was made on <see cref="WalkGrid"/> and so was the
+    /// walk, so <see cref="ParkVisitors"/> sees one ParkPaths from both sides -- the control run
+    /// logs the reference check. And both are stepped HERE, by the same tick, never separately:
+    /// under ParkVisitors through its Step, which orders the two handovers between them; before
+    /// any ride stands, the walk and the sim (if any) one after the other.</summary>
+    void TickPark()
     {
-        if (_guests.Guests.Count < _guestCap && ++_gateTimer >= _gateEvery)
+        _parkTicks++;
+        if (_visitors == null && _sim != null && OpenGate())
         {
-            var pool = GuestPool();
-            if (pool.Count > 0)
-            {
-                _gateTimer = 0;
-                var at = _mouth[_guests.Guests.Count % _mouth.Count];
-                var g = _guests.Spawn(at, pool[_guestRng.Next(pool.Count)]);
-                GD.Print($"[guest] #{g.Id} in at {at}, bound for {g.Destination}: {g.State}"
-                       + (g.Route != null ? $", {g.Route.Count - 1} cells" : $" -- {g.Reason}"));
-            }
+            _visitors = new ParkVisitors(_sim, _guests);
+            GD.Print($"[guest] guests now visit rides; the sim and the walk share one grid: {ReferenceEquals(_sim.Paths, _guests.Paths)}");
         }
+        if (_visitors != null)
+        {
+            Gate();
+            Snapshot();
+            _visitors.Step(ConsoleClock.TickSeconds, Wander);
+            Retry();
+            return;
+        }
+        if (OpenGate()) { Gate(); Snapshot(); _guests.Step(); Dawdle(); }
+        _sim?.Advance(ConsoleClock.TickSeconds);
+    }
+
+    /// <summary>The gate lets somebody in: one guest per <see cref="_gateEvery"/> ticks while
+    /// there is a laid cell to go to and room for more.</summary>
+    void Gate()
+    {
+        if (_guests.Guests.Count >= _guestCap || ++_gateTimer < _gateEvery) return;
+        var pool = GuestPool();
+        if (pool.Count == 0) return;
+        _gateTimer = 0;
+        var at = _mouth[_guests.Guests.Count % _mouth.Count];
+        var to = pool[_guestRng.Next(pool.Count)];
+        var g = _visitors != null ? _visitors.Arrive(at, to) : _guests.Spawn(at, to);
+        GD.Print($"[guest] #{g.Id} in at {at}, bound for {g.Destination}: {g.State}"
+               + (g.Route != null ? $", {g.Route.Count - 1} cells" : $" -- {g.Reason}"));
+    }
+
+    void Snapshot()
+    {
         _guestPrev.Clear();
         foreach (var g in _guests.Guests) _guestPrev[g.Id] = Cell(g.Position);
-        _guests.Step();
+    }
+
+    /// <summary>Without rides: whoever has stopped -- arrived, or found no way -- stands a moment
+    /// and picks somewhere else.</summary>
+    void Dawdle()
+    {
         foreach (var g in _guests.Guests)
         {
             if (g.State == GuestState.Walking) { _guestDwell.Remove(g.Id); continue; }
@@ -2554,10 +2610,48 @@ public partial class Viewer : Node3D
                 continue;
             }
             if (dwell > 1) { _guestDwell[g.Id] = dwell - 1; continue; }
-            var pool = GuestPool();
-            if (pool.Count == 0 || !_guests.Send(g, pool[_guestRng.Next(pool.Count)])) _guestDwell[g.Id] = 25;
+            if (!_guests.Send(g, Wander())) _guestDwell[g.Id] = 25;
             else _guestDwell.Remove(g.Id);
         }
+    }
+
+    /// <summary>Under ParkVisitors, which re-sends everyone who ARRIVES, the only guests left
+    /// standing are the ones with no way: asked again a second later.
+    ///
+    /// ⚠ A GUEST HEADING FOR A RIDE IS RE-SENT THROUGH PARKVISITORS, never straight through the
+    /// walk: its plan says which ride it is walking to, and a plan left pointing at a ride while
+    /// the guest wanders off somewhere else would hand them to that ride from wherever they
+    /// happened to stop.</summary>
+    void Retry()
+    {
+        foreach (var g in _guests.Guests.ToArray())
+        {
+            if (g.State is GuestState.Walking or GuestState.Arrived) { _guestDwell.Remove(g.Id); continue; }
+            if (!_guestDwell.TryGetValue(g.Id, out int wait))
+            {
+                _guestDwell[g.Id] = 25;
+                GD.Print($"[guest] #{g.Id} {g.State} at {g.Cell}: {g.Reason}");
+                continue;
+            }
+            if (wait > 1) { _guestDwell[g.Id] = wait - 1; continue; }
+            _guestDwell.Remove(g.Id);
+            bool sent;
+            if (_visitors.Plans.TryGetValue(g.Id, out var plan) && plan.Intent == VisitorIntent.Heading)
+            {
+                var ride = _sim.Rides.FirstOrDefault(r => r.Id == plan.RideId);
+                sent = ride != null && _visitors.SendTo(g, ride);
+            }
+            else sent = _guests.Send(g, Wander());
+            if (!sent) _guestDwell[g.Id] = 25;
+        }
+    }
+
+    /// <summary>Somewhere to walk to when there is nothing better: a laid cell at random, or the
+    /// mouth when nothing is laid -- ParkVisitors asks for a cell, not for a maybe.</summary>
+    ParkCell Wander()
+    {
+        var pool = GuestPool();
+        return pool.Count > 0 ? pool[_guestRng.Next(pool.Count)] : _mouth[0];
     }
 
     /// <summary>Every laid cell a guest may be sent to -- open ground that is not the walkway.
@@ -2585,6 +2679,15 @@ public partial class Viewer : Node3D
 
     void PlaceActors(float alpha)
     {
+        // ⭐ Whoever has left the walk -- handed to a ride -- loses their body this frame. The
+        // script has them now; a kid standing in the queue AND riding would be two bodies for
+        // one guest, which is exactly what the total handover exists to prevent.
+        var alive = new HashSet<int>(_guests.Guests.Select(g => g.Id));
+        foreach (int id in _actors.Keys.Where(id => !alive.Contains(id)).ToArray())
+        {
+            if (_actors[id] is { } gone && IsInstanceValid(gone)) gone.QueueFree();
+            _actors.Remove(id); _guestDwell.Remove(id);
+        }
         foreach (var g in _guests.Guests)
         {
             if (!_actors.TryGetValue(g.Id, out var actor)) actor = MakeActor(g);
@@ -2659,10 +2762,12 @@ public partial class Viewer : Node3D
 
     /// <summary>⭐ A CONTROL RUN, not a feature. Lays the GuestAudit's network in from the gate --
     /// two columns straight in from the mouth and a bar across their end -- through the real
-    /// tool, the way a press would, and lets six guests in twenty ticks apart so they are spread
-    /// along the corridor rather than stacked on one cell. The capture then photographs it twice
-    /// (see the shot branch in _Process): people standing in one picture prove nothing about
-    /// walking.</summary>
+    /// tool, the way a press would; stands a ride that BOARDS beside it, through the real
+    /// placement, so its stubs go down with it and its script starts; and lets guests in twenty
+    /// ticks apart so they are spread along the corridor rather than stacked on one cell. The
+    /// capture then photographs it twice (see the shot branch in _Process) and logs, at both
+    /// times, how many queued, boarded and came back out: people standing in one picture prove
+    /// nothing about walking, and walking proves nothing about riding.</summary>
     void GuestTest()
     {
         var f = _park.Field;
@@ -2680,32 +2785,98 @@ public partial class Viewer : Node3D
         // last row, and the tool counts a cell once however many runs cross it.
         int cells = left.Concat(right).Concat(bar).Distinct().Count();
         GD.Print($"[guest] laid {_paths.Laid - before} of {cells} path cells in from the mouth ({xl},{z0 - 1}) ({xr},{z0 - 1})");
-        _guestCap = 6; _gateEvery = 20; _gateTimer = _gateEvery - 1;
-        if (!OpenGate()) GD.Print("[guest] the gate would not open, so there is nobody to photograph");
+        _guestCap = 8; _gateEvery = 20; _gateTimer = _gateEvery - 1;
+        if (!OpenGate()) { GD.Print("[guest] the gate would not open, so there is nobody to photograph"); return; }
+        GuestTestRide(xl, z0);
+    }
+
+    /// <summary>Stand Crazy Ape beside the corridor. ⚠ A RIDE THAT BOARDS: Chac Atak, Gorilla
+    /// Thrilla, Temple Of Gloom, Dino Karts, Splish Splash and Jurassic Tours take a guest and
+    /// then wait forever on COAST/BUMP/TOUR, which this executable answers with zero -- the
+    /// game's behaviour, and a useless demo. Crazy Ape boards and returns its riders, and it is
+    /// master's standing pick for a preview.
+    ///
+    /// The site is found by scanning, in a fixed order, for a cursor cell where the whole thing
+    /// fits, the queue stub (bare ground -- a queue may never be laid over path) touches the laid
+    /// network, and the exit stub is on it or touches it, so a rider handed back has a way home.
+    /// Placed through <see cref="PlaceHeld"/>, exactly as a press would.</summary>
+    void GuestTestRide(int xl, int z0)
+    {
+        ToggleBuildMenu();
+        ShowBuildCategory("Rides");
+        int row = -1;
+        for (int i = 0; i < _buildRows.Count && row < 0; i++)
+        {
+            var d = DefinitionFor(_lib.Rides[_buildRows[i]].Model);
+            if (d?.Name != null && d.Name.Contains("Crazy Ape", StringComparison.OrdinalIgnoreCase)) row = i;
+        }
+        if (row < 0) { GD.Print("[guest] no Crazy Ape among this archive's Rides -- nothing to board"); return; }
+        var grid = _guests.Paths;
+        bool Touches(int x, int y) => ParkPaths.Neighbours(new ParkCell(x, y)).Any(grid.Open);
+        for (int turn = 0; turn < 4; turn++)
+            for (int y = z0 - 2; y < z0 + 14; y++)
+                for (int x = xl - 12; x < xl + 14; x++)
+                {
+                    ArmFromList(row);
+                    _place.Turn(turn);
+                    if (!_place.Fits(_park, x, y)) continue;
+                    var stubs = _place.Stubs(_park, x, y).ToList();
+                    if (!stubs.Any(s => s.Entrance) || !stubs.Any(s => !s.Entrance)) continue;
+                    var q = stubs.First(s => s.Entrance); var o = stubs.First(s => !s.Entrance);
+                    if (!Touches(q.X, q.Y)) continue;
+                    if (!(grid.Open(new ParkCell(o.X, o.Y)) || Touches(o.X, o.Y))) continue;
+                    var (cx, cy) = _place.CornerFor(x, y);
+                    int w = _place.Turned.Width, h = _place.Turned.Height;
+                    int placed = _park.Placed.Count;
+                    _cursorOverride = (x, y);
+                    PlaceHeld();
+                    _cursorOverride = null;
+                    if (_park.Placed.Count == placed) { GD.Print($"[guest] {_place.Display ?? "the ride"} REFUSED at ({x},{y}) turned {turn * 90}"); continue; }
+                    _guestTestRide = (cx, cy, w, h);
+                    var ride = _sim?.Rides.LastOrDefault();
+                    GD.Print($"[guest] Crazy Ape at ({cx},{cy}) {w}x{h} turned {turn * 90}: queue stub ({q.X},{q.Y}) {_paths.KindAt(q.X, q.Y)}, "
+                           + $"exit stub ({o.X},{o.Y}) {_paths.KindAt(o.X, o.Y)}; the sim's ride has entrance {ride?.Entrance} exit {ride?.Exit}"
+                           + $"{(ride == null ? " -- NO SCRIPT STARTED" : ride.Has("VAR_LETMEON") ? "" : " -- declares no VAR_LETMEON, so it takes nobody")}");
+                    CloseTool();
+                    return;
+                }
+        _place.Clear();
+        GD.Print("[guest] no site beside the corridor takes Crazy Ape with its queue on the path -- nothing to board");
     }
 
     /// <summary>The free camera, inside the park looking back at the gate, so guests walk toward
-    /// it down the corridor. ⚠ Free, not the game's: the game camera is placed by tile through
-    /// its own frame, and a control wants its eye in the frame the guests are drawn in.</summary>
+    /// it down the corridor -- pulled back to take in the ride when the control run stood one.
+    /// ⚠ Free, not the game's: the game camera is placed by tile through its own frame, and a
+    /// control wants its eye in the frame the guests are drawn in.</summary>
     void GuestTestCamera()
     {
         if (_guests == null || _mouth == null || _mouth.Count == 0) return;
         var m = _mouth[0];
         _freeCam = true;
-        _focus = GuestWorld(new Vector3(m.X + 1f, 0.4f, m.Z + 4f), m);
-        _dist = 10f; _pitch = -0.5f; _yaw = Mathf.Pi;
+        var look = new Vector3(m.X + 1f, 0.4f, m.Z + 4f);
+        _dist = 10f;
+        if (_guestTestRide is { } r)
+        {
+            look = new Vector3((look.X + r.X + r.W * 0.5f) * 0.5f, 0.4f, (look.Z + r.Y + r.H * 0.5f) * 0.5f);
+            _dist = 16f;
+        }
+        _focus = GuestWorld(look, m);
+        _pitch = -0.5f; _yaw = Mathf.Pi;
         GD.Print($"[guest] camera: free orbit on ({_focus.X:F1}, {_focus.Y:F1}, {_focus.Z:F1}), {_dist:F0} out, "
                + $"{Mathf.RadToDeg(-_pitch):F0} degrees down, facing the gate");
     }
 
-    /// <summary>Wind the crowd to a tick and put every guest in the log with its cell, its step
+    /// <summary>Wind the park to a tick and put every guest in the log with its cell, its step
     /// and its world position -- and, from the second stage on, how far it moved since the last,
-    /// which is the number a picture cannot give.</summary>
+    /// which is the number a picture cannot give -- then the rides' census: queued, boarded,
+    /// back out.</summary>
     void GuestTestStage(string label, int tick)
     {
         if (_guests == null) return;
-        while (_guests.Time < tick * GuestWalk.TickMilliseconds) TickGuests();
+        while (_parkTicks < tick) TickPark();
         PlaceActors(1f);
+        PresentScripted();
+        double t = _parkTicks * ParkSim.TickMilliseconds / 1000.0;
         int moved = 0; float farthest = 0;
         foreach (var g in _guests.Guests)
         {
@@ -2719,13 +2890,23 @@ public partial class Viewer : Node3D
                 farthest = Mathf.Max(farthest, d);
                 motion = $", moved {d:F2} cells since {_guestLabel}";
             }
-            GD.Print($"[guest] {label} t={_guests.Time / 1000.0:F2}s #{g.Id} {g.State} at {g.Cell}"
+            GD.Print($"[guest] {label} t={t:F2}s #{g.Id} {g.State} at {g.Cell}"
                    + (g.Next is ParkCell n ? $" -> {n} {g.Fraction:F2}" : "")
                    + $" world ({world.X:F2}, {world.Y:F2}, {world.Z:F2}), bound for {g.Destination}{motion}");
         }
         if (_guestAt != null)
             GD.Print($"[guest] {label}: {moved} of {_guests.Guests.Count} guests moved since {_guestLabel}; the farthest {farthest:F2} cells"
                    + (moved == 0 ? " -- NOBODY MOVED" : ""));
+        if (_visitors != null)
+        {
+            int queued = _visitors.Plans.Values.Count(p => p.Intent == VisitorIntent.Queued);
+            GD.Print($"[guest] {label} t={t:F2}s rides: {_visitors.Boardings} boarded so far, {_visitors.Rides} came back out and walked away, "
+                   + $"{queued} queued or riding now, {_guests.Guests.Count} walking");
+            foreach (var r in _sim.Rides)
+                GD.Print($"[guest] {label} {r.Name}: queue {r.Queue.Count}, on ride {r.OnRide}, {(r.Running ? "running" : "standing")}, "
+                       + $"slot {r.Slot}:{r.Variant}, doors {r.Entrance}/{r.Exit}" + (r.Fault != null ? $" FAULT {r.Fault}" : ""));
+        }
+        else GD.Print($"[guest] {label} t={t:F2}s no ride stands, so nobody rides");
         _guestAt = _guests.Guests.ToDictionary(g => g.Id, g => Cell(g.Position));
         _guestLabel = label;
     }
@@ -3360,6 +3541,12 @@ public partial class Viewer : Node3D
         // to the entry/exit points". Registered BEFORE the floor is redrawn so the first draw
         // already has them. Every ride gets a fresh id so two rides' doors never read as one.
         int ride = ++_rideSerial;
+        // ⚠ CAPTURED BEFORE THE PRESS DROPS THE BLUEPRINT, and handed to the sim below: the
+        // queue stub is where a guest goes to join this ride and the path stub is where the script
+        // hands them back, so a ride that started without them could never take anybody.
+        var stubs = _place.Stubs(_park, x, y).ToList();
+        ParkCell? queueStub = stubs.Where(s => s.Entrance).Select(s => (ParkCell?)new ParkCell(s.X, s.Y)).FirstOrDefault();
+        ParkCell? pathStub = stubs.Where(s => !s.Entrance).Select(s => (ParkCell?)new ParkCell(s.X, s.Y)).FirstOrDefault();
         if (_paths != null)
         {
             // ⚠ WITH THE WAY EACH ONE OPENS -- the step from the door cell to its stub. A door
@@ -3378,7 +3565,7 @@ public partial class Viewer : Node3D
             //
             // ⚠ OUTSIDE ANY LEG. They belong to the ride, not to a press, so a step back through
             // the queue can never take them with it.
-            foreach (var st in _place.Stubs(_park, x, y))
+            foreach (var st in stubs)
                 _paths.Lay(st.X, st.Y, st.Queue ? PathTool.Kind.Queue : PathTool.Kind.Path, ride);
         }
         // ⭐⭐ AND IT BUILDS ITSELF. The ride goes down on frame 0 of its Create animation -- which
@@ -3389,7 +3576,7 @@ public partial class Viewer : Node3D
         // here touches its clock again. `_building` stays for the ones with no script, which is
         // what every ride used before, and the two must never hold the same model.
         int w = _place.Turned.Width, h = _place.Turned.Height;
-        if (!StartScript(ride, _armedRide, built, builtAnim, cx, cy, w, h)
+        if (!StartScript(ride, _armedRide, built, builtAnim, cx, cy, w, h, queueStub, pathStub)
             && built.Frames > 1) { built.SetFrame(0); _building.Add((built, 0f)); }
         // ⭐ The ground under it goes now that the cells are claimed.
         RefreshFloor();
@@ -4910,12 +5097,11 @@ public partial class Viewer : Node3D
         // back unwound. Latch only once there is something to wind.
         if (_shotPath != null)
         {
-            if (!_shotWound && _scripted.Count > 0) { _shotWound = true; WindScripted(_shotFrame); }
+            // ⚠ Not under --guest-test: its capture branch winds the park itself, in two stages.
+            if (!_guestTest && !_shotWound && _scripted.Count > 0) { _shotWound = true; WindPark(_shotFrame); }
         }
-        else if (_playing) StepScripted(delta);
-        // ⭐ And the people, on the console's tick with the screen interpolating between ticks.
-        // ⚠ Under a shot the crowd is wound by the capture branch below, in two stages.
-        if (_shotPath == null && _playing && _mode == Mode.Park) StepGuests(delta);
+        // ⭐ Rides AND people, on the console's tick, with the screen interpolating between ticks.
+        else if (_playing && _mode == Mode.Park) StepPark(delta);
         // ⭐ The selection breathes on its own clock, and like the console's it stands still
         // while the game is paused.
         if (_mode == Mode.Park) UpdateHover();

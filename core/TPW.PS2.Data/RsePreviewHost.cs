@@ -37,10 +37,30 @@ public sealed class RsePreviewHost : IRseHost
         Time = milliseconds;
         if (_queued != null && Time >= _queued.Start) { Current = _queued; _queued = null; }
     }
+    /// <summary>How long a request for an animation the model does not have takes. ⭐⭐ THE
+    /// CONSOLE DOES NOT TREAT THIS AS AN ERROR. `0x1abc80` looks the record up through
+    /// `0x1ab518` and, when that returns nothing, simply adds 1000 to the answer and plays
+    /// nothing; the other arm of the same function falls back to the same 1000 when playback
+    /// reports zero.
+    ///
+    /// ⚠⚠ THIS USED TO THROW, and it was the single biggest thing stopping scripts on this disc.
+    /// Every `/features/` bin, speaker, fountain, camera, tower and portaloo opens with the
+    /// standard `WAITANIM 0 0` prologue on a model that has no Create animation at all -- 38 of
+    /// them across the four worlds -- along with rides asking for an Unload or Load slot they do
+    /// not carry. A rock with no build animation is not a broken rock. The VM's rule that an
+    /// unavailable service must fail explicitly still stands; this is not an unavailable service,
+    /// it is a service whose answer has now been read.</summary>
+    public const int MissingAnimationMilliseconds = 1000;
+
     public int PlayAnimation(int slot, int variant, bool loop)
     {
         if (!_slots.TryGetValue(slot, out var records) || variant < 0 || variant >= records.Length)
-            throw new NotSupportedException($"APS has no animation {slot}:{variant}");
+        {
+            // Nothing is started and nothing already playing is disturbed.
+            long unfinished = Current is { Loop: false }
+                ? Math.Max(0, Current.Start + Duration(Current.Record) - Time) : 0;
+            return checked((int)unfinished) + MissingAnimationMilliseconds;
+        }
         if (loop && Current is { Loop: true } && AnimationSlot == slot && AnimationVariant == variant && _queued == null)
             return Duration(Current.Record);
         long start = Time;
@@ -76,8 +96,10 @@ public sealed class RsePreviewHost : IRseHost
     public int PlayAnimationOn(int channel, int slot, int variant, bool loop)
     {
         if (channel == 0) return PlayAnimation(slot, variant, loop);
+        // Same rule as channel 0: a record the model does not have costs a second and plays
+        // nothing, rather than stopping the script.
         if (!_slots.TryGetValue(slot, out var records) || variant < 0 || variant >= records.Length)
-            throw new NotSupportedException($"APS has no animation {slot}:{variant}");
+            return MissingAnimationMilliseconds;
         _channels[channel] = new Playback(records[variant], variant, Time, loop);
         return Duration(records[variant]);
     }

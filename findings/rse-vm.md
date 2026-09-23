@@ -230,6 +230,19 @@ a missing host and the real Space Gates LOOPANIM_CH instruction. No game data is
   HOUR, MIN, SEC and SPARK. Their file operands are decoded; their engine services are not
   fabricated.
 
+## A missing animation is not an error
+
+`0x1abc80` resolves a record through `0x1ab518` and, when that lookup returns nothing, adds
+**1000** to the duration it reports and plays nothing; the other arm of the same function falls
+back to the same 1000 when playback reports zero. So a script asking for an animation its model
+does not carry costs one second and carries on.
+
+⚠ This was the single biggest thing stopping scripts on the disc. Every `/features/` bin,
+speaker, fountain, camera, tower and portaloo opens with the standard `WAITANIM 0 0` prologue on
+a model with no Create record at all -- 38 across the four worlds -- and several rides ask for a
+Load or Unload slot they do not carry (`whirli` asks 3:0, 7:0 and 7:1 of an APS holding 0, 2, 4,
+5, 6, 9 and 10). A rock with no build animation is not a broken rock.
+
 ## Limbo, which is what a shop is
 
 The limbo table is instance `+0x24`, `+0x58` entries of 8 bytes (the declared `#setlimbo`, not
