@@ -214,19 +214,67 @@ voice was playing and how far its playback position had moved. That run needs a 
 `--audio-driver Dummy` and had not been made when this was written. Until it has, the chain is shown
 to reach a decoded stream handed to a player, not a voice consumed by the mixer.
 
+## The engine layer, read from the executable
+
+Every call into the audio entry `0x111428(sys, a1 = subsystem, a2 = event id, a3 = &position, t0 = &out,
+t1 = 0)` was censused: **119 sites**, each classified by the subsystem loaded into `a1` and by where
+its event id comes from. The subsystem ids are named by the registration block at `0x112108..0x1124c0`,
+reconstructed by tracking its constant loads:
+
+| id | bank | id | bank | id | bank |
+|---:|---|---:|---|---:|---|
+| 0 | `GLOBAL/UI` | 4 | `RIDES/grc` | 9 | `RIDES/fprc` |
+| 1 | `GLOBAL/AMB` | 5 | `RIDES/wtr` | 10 | `RIDES/fpwt` |
+| 2 | `GLOBAL/RIDE` | 6 | `RIDES/trck` | 11 | `ADVISOR/spch` |
+| 3 | `RIDES/bump` | 7 | `GLOBAL/KIDS` | 12 / 13 | the park's `RIDE` / `AMB` |
+| 8 | `GLOBAL/STAF` | | | 14 / 15 | `MUS`, `LOBM` / `LOBS` |
+
+⭐ **The VM's dispatch confirms the group table above from the other side.** The `EVENT`/`ADDOBJ`
+jump table at `0x366e90` sends each kind to its own case, and the cases load `a1`: kind 3 → 12,
+4 → 13, 5 → 2, 6 → 7, 7 → 8, 8 → 1, 9 → 0, 11 → 3. That is `LOC_RID` → the park ride map,
+`GLO_KID` → `KIDSSFX`, `GLO_BMP` → `BUMPSFX`, exactly as the membership matrix measured.
+
+**The "unused" event ids are the engine's, and they are literals.** Every engine-side site either
+passes a literal or reads a per-object slot that was filled from a per-world literal table,
+selected on the world number (`0x147d00` returns `*0x3952e4`: 1 Halloween, 2 Fantasy, 3 Space):
+
+| code | what it is, by the names its ids resolve to |
+|---|---|
+| `0x1ce090` | a throwing stall: Halloween {191 `misspumpkin`, 221 `throwatpumpkin`, 192 `hitpumpkin`}, Fantasy {162 `fruitsquidge`, 161 `fruitboing`, 159 `throwatfruit`, 160 `fruitslide1`, 170 `fruitupB`} |
+| `0x1d0538` | a hammer stall: Jungle {224 `Hammove`, 222 `Molehit`, 225 `bell1b`, 221 `Moleup`, 227 `ahh1`, 226 `frog3`}, Space {202 `Sphammove`, 195 `Spacehit`, 197 `Spacehitcounter`, 194 `Spaceup`, 198/199 `Alianhit win/lose`}, Halloween {`devilup`, `winbell2b`, `losebell`}, Fantasy {`strength_target`, `strength_beeup`} |
+| `0x193478` → `0x193708` | the pong stall: Jungle {250..252 `pong_gemdrops/gemhit/hitball`}, Fantasy/Halloween {191..193, 217..219}, Space {215..219}; fired from five slots at `+0x200..+0x210` |
+| `0x1cd198` | Jungle {228, 229, 230} → `dino000..002.mp2` |
+| `0x1cf7c8`, `0x1cf8c8` | walk a zero-terminated id list at `object+0x174` and fire each |
+| `0x1af330` | a five-slot kids table at `+0x280..+0x290` from literals {83, 285, 269, 253, 237} or {87, 289, 273, 257, 241} |
+
+**The track rides are literals as well:** `trck` 4 (`Engine.mp2`) at `0x203280`/`0x203de0` and 15
+(`Toot.mp2`) at `0x2049d0` -- the OLDER header generation's `EVT_KARTSTART`/`EVT_KART_TOOT`
+numbers; the lift-chain creak `EVT_STRETCH` 69 under the global ride map at `0x1999e8`/`0x199ae8`;
+the track follower `0x1af330`/`0x1af858` firing 17 under a subsystem held in a register (the ride
+type's `/AUDIO/RIDES/` bank -- `GRCSFX` 17 is `Whir01Flt`) and one `fprc` (9) call.
+
+⭐⭐ **Not one of the 119 sites takes its id from the sound child.** No path loads instance `+0x14`
+and then `+0x1c`; the only five-slot tables found (`+0x2e4`, `+0x1e8`, `+0x200`, `+0x280`) are
+filled from literals. The `EventMap.rse` numbers (the newer `soundint` generation) match no map
+and no literal, while the engine's numbers are the older generation's. Reading: on this build the
+`SPAWNSOUND` child is loaded and scheduled and its table is not consumed. ⚠ That is a negative
+from a static census of ONE entry point: a reader through the audio object's vtable (`0x3706c8`,
+reached by `jalr`) is not excluded, and four non-VM sites have an id source not traced
+(`0x1af650`, `0x1afa9c`, `0x1afd30` in the track follower; `0x15535c`).
+
+For the port this means the engine-layer sounds are reproducible from data plus these literal
+tables, and the `.ENG` layers from the `.ENG` selectors (`RideEngine.cs`); none of that is
+implemented, and `RideSounds.cs` plays script cues only.
+
 ## Not established
 
-* **`SPAWNSOUND`'s child and the engine layer.** All 52 `SPAWNSOUND` sites name `EventMap.rse` in
-  the ride's own directory (26 track rides x the mirror archives; hallow `rides/shake` has none).
-  The child is a static table -- ten `COPY`s of five event ids and five parameter ids
-  (`FANTASY_COASTER_SPEED` 19, `_STATE` 20, `PYLON_STATE` 22 …) then `ENDSLICE`/`BRANCH` forever --
-  read by the ride engine, not an instruction. Those ids (per world 134..217: `EVT_COAST` F156 H187
-  J216 S188) are in NO shipped map by equality and no constant shift places them (tested -120..120).
-  `/AUDIO/RIDES/*SFX.MAP` are keyed by the OLDER generation's numbers of the same symbols
-  (`TRCKSFX` 4/5/15 = `Engine.mp2`/`engine_stop.mp2`/`Toot.mp2` = `EVT_KARTSTART`/`KARTSTOP`/
-  `KART_TOOT`) and their links chain engine states by a 0..100 scalar, matching the `.ENG` layer
-  selectors (`GRCSFX` 17 and 1, findings/ride-engine.md). The consumer is ride-engine code nobody has
-  decompiled. ⚠ `0x1fa8c0`, once credited as "the ride's own table", is `jr ra; move v0, zero`.
+* **What is left of the engine layer.** The four untraced id sources above; the vtable path;
+  the `.ENG` parameter channel (who writes the speed the layers crossfade on, findings/ride-engine.md);
+  the audio play path (`0x240970` → `0x243f50` → `0x24d6f8`), which would replace "read from shape"
+  on the clip threshold with a consumer fact. `0x1fa8c0`, once credited as "the ride's own table",
+  is `jr ra; move v0, zero`. A short decompile list for one box slot: `0x1af330`, `0x1af858`,
+  `0x1ce090`, `0x1d0538`, `0x193478`, `0x1cf2d8`, `0x1cd198`, `0x203280`, `0x2049d0`, `0x1999e8`,
+  `0x240970`, `0x243f50`, `0x24d6f8`, `0x2438a8`, `0x243540`.
 * The L2 `+0xC`/`+0x12` words, the L3 middle bytes, the L1 floats and the exact random draw are
   carried raw.
 * Group 10 has no name in any source and is not resolved.
