@@ -124,5 +124,43 @@ Check(movedOpen > movedShut, $"opening rides makes MORE of them move ({movedOpen
 Check(sim.Time == 1750 * ParkSim.TickMilliseconds || sim.Time > 0, $"the sim's own clock advanced to {sim.Time}ms");
 Check(live.Count > 0, $"{live.Count} rides ran the whole 60s without faulting");
 
+// ⭐⭐ AND NOW SOMEBODY RIDES THEM. The sixty seconds above ran every ride open with NOBODY
+// queuing, which makes it the control this section needs: VAR_ONRIDE is the script's own count,
+// incremented by its own `ADD VAR_ONRIDE 1` as it boards, so if it has moved already then
+// something is boarding guests that do not exist and every number below is worthless.
+int ghosts = sim.Rides.Count(r => r.OnRide != 0);
+Console.WriteLine($"\n60s open with an empty queue: {ghosts} rides claim riders, {sim.Rides.Sum(r => r.Left.Count)} claim leavers");
+Check(ghosts == 0, "no ride boards a guest who does not exist");
+
+int next = 1000;
+var sent = new Dictionary<int, List<int>>();
+foreach (var r in sim.Rides)
+{
+    sent[r.Id] = new List<int>();
+    if (r.Fault != null) continue;
+    for (int i = 0; i < 4; i++) { int g = next++; r.Join(g); sent[r.Id].Add(g); }
+}
+var peak = sim.Rides.ToDictionary(r => r.Id, _ => 0);
+for (int i = 0; i < 4500; i++)
+{
+    sim.Advance(0.04);
+    foreach (var r in sim.Rides) peak[r.Id] = Math.Max(peak[r.Id], r.OnRide);
+}
+var offered = sim.Rides.Where(r => sent[r.Id].Count > 0).ToList();
+var boarded = offered.Where(r => peak[r.Id] > 0).ToList();
+var returned = offered.Where(r => r.Left.Count > 0).ToList();
+// ⚠ THE IDS, NOT THE COUNT. A ride that hands back four of SOMETHING is not a ride that hands
+// back the four guests it was given, and only the second one means the guest went through.
+var wrong = offered.Where(r => r.Left.Any(g => !sent[r.Id].Contains(g))).ToList();
+Console.WriteLine($"4 guests queued at each of {offered.Count} running rides, 180s:");
+Console.WriteLine($"  {boarded.Count} boarded at least one, {returned.Count} handed at least one back");
+foreach (var r in offered.OrderByDescending(r => peak[r.Id]).Take(10))
+    Console.WriteLine($"  {r.Name,-22} peak on ride {peak[r.Id]}  came back {r.Left.Count}/{sent[r.Id].Count}"
+                    + $"  queue left {r.Queue.Count}  walks {(r.Machine.WalksAreTimed ? "timed" : "at the floor")}");
+Check(boarded.Count > 0, $"a queued guest gets on a ride ({boarded.Count} rides boarded one)");
+Check(returned.Count > 0, $"a ride gives its guests back ({returned.Count} rides did)");
+Check(wrong.Count == 0, $"every guest handed back is one that was queued"
+                      + (wrong.Count > 0 ? $" -- {wrong[0].Name} returned a stranger" : ""));
+
 Console.WriteLine(bad == 0 ? "PASS" : $"FAIL: {bad}");
 return bad == 0 ? 0 : 1;

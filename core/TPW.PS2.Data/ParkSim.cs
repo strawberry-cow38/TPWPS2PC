@@ -32,6 +32,27 @@ public sealed class ParkRide
     public int Get(string name) => Has(name) ? Machine[name] : 0;
     public void Set(string name, int value) { if (Has(name)) Machine[name] = value; }
 
+    readonly Queue<int> _queue = new();
+    readonly List<int> _left = new();
+
+    /// <summary>A guest joins the back of this ride's queue. They are not on the ride and the
+    /// script has not seen them yet; <see cref="ParkSim"/> offers them when the ride asks.</summary>
+    public void Join(int guest) => _queue.Enqueue(guest);
+    public IReadOnlyCollection<int> Queue => _queue;
+    internal bool TryTakeFromQueue(out int guest) => _queue.TryDequeue(out guest);
+
+    /// <summary>Guests the ride has finished with, oldest first, since they were last read.</summary>
+    public IReadOnlyList<int> Left => _left;
+    internal void Leaves(int guest) => _left.Add(guest);
+    public void ClearLeft() => _left.Clear();
+
+    /// <summary>How many riders the script believes it has. ⭐ The script keeps this itself --
+    /// king.RSE does `ADD VAR_ONRIDE 1` as it boards and `-1` as they go -- so it is the honest
+    /// answer to "did anyone actually get on", not a count the host maintains and then checks.</summary>
+    public int OnRide => Get("VAR_ONRIDE");
+    public int SpaceLeft => Get("VAR_SPACELEFT");
+    public bool Running => Get("VAR_RUNNING") != 0;
+
     /// <summary>What the renderer should be drawing: the animation slot, which variant of it, and
     /// how far through. ⚠ The FRAME is the host's, in APS frames, so the view never has to know
     /// how long anything is.</summary>
@@ -174,6 +195,7 @@ public sealed class ParkSim
         {
             if (r.Machine == null) continue;
             r.Host.AdvanceTo(Time);
+            Handshake(r);
             // ⭐ A SPAWNED CHILD IS ITS OWN SCHEDULED SCRIPT, not something the parent steps. The
             // PS2's scheduler visits every live instance, children included, so they are visited
             // here too -- and a child faulting leaves its parent running.
@@ -189,6 +211,35 @@ public sealed class ParkSim
                 }
             }
         }
+    }
+
+    /// <summary>⭐⭐ THE WHOLE GUEST CONTRACT, AND IT IS TWO VARIABLES. Read straight off
+    /// king.RSE, which is the clearest copy of a shape every ride repeats:
+    ///
+    /// <code>
+    ///  40  TEST VAR_LETMEON ; BRANCH_NZ @47      -- spin until the HOST puts a guest here
+    ///  52  HUSH VAR_LETMEON ; WALKON ...
+    ///  65  COPY VAR_LETMEON 0                    -- the script zeroes it: "taken"
+    /// ...
+    /// 233  WALKGET VAR_LETMEOFF                  -- the script puts the leaver here
+    /// 237  TEST VAR_LETMEOFF ; BRANCH_NZ @237    -- spin until the HOST zeroes it: "collected"
+    /// </code>
+    ///
+    /// So the host offers by writing and the script accepts by clearing, in one direction; the
+    /// script offers by writing and the host accepts by clearing, in the other. Neither side ever
+    /// has to be told how long anything takes.
+    ///
+    /// ⚠ BOTH SPINS ARE TIGHT LOOPS WITH NO ENDSLICE. They burn the script's instruction budget
+    /// and yield on it, so the handshake must happen BETWEEN slices -- which is why this runs
+    /// before the machine rather than inside it.</summary>
+    static void Handshake(ParkRide ride)
+    {
+        if (ride.Has("VAR_LETMEON") && ride.Get("VAR_LETMEON") == 0
+            && ride.TryTakeFromQueue(out int boarding))
+            ride.Set("VAR_LETMEON", boarding);
+
+        int leaving = ride.Get("VAR_LETMEOFF");
+        if (leaving != 0) { ride.Leaves(leaving); ride.Set("VAR_LETMEOFF", 0); }
     }
 
     /// <summary>A machine and everything it has spawned, parents before children. ⚠ The walk is

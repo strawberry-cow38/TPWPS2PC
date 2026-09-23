@@ -191,7 +191,7 @@ public sealed class GuestWalk
     {
         if (g.Cell == g.Destination) { g.State = GuestState.Arrived; return false; }
         var ahead = Ahead(g);
-        if (ahead is ParkCell open && Paths.Open(open)) { g.Next = open; return true; }
+        if (ahead is ParkCell cell && Paths.Open(cell)) { g.Next = cell; return true; }
         // ⚠ The way ahead has gone -- un-laid since this route was found. Look again from here;
         // the start is exempt from being open, so a guest whose OWN cell went can still walk off it.
         if (!Assign(g))
@@ -209,10 +209,13 @@ public sealed class GuestWalk
 
     static ParkCell? Ahead(Guest g) => g.Route != null && g.RouteIndex + 1 < g.Route.Count ? g.Route[g.RouteIndex + 1] : null;
 
+    /// <summary>A fresh route from where the guest stands. ⚠ On failure the OLD route is left in
+    /// place: a stranded guest's record says what it was walking when the way went, which is what
+    /// a census wants to print.</summary>
     bool Assign(Guest g)
     {
         var route = Route(g.Cell, g.Destination);
-        if (route == null) { g.Route = null; return false; }
+        if (route == null) return false;
         g.Route = route; g.RouteIndex = 0;
         return true;
     }
