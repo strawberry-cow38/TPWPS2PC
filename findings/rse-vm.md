@@ -428,9 +428,20 @@ as a NODE INDEX that resolves to real names in `monkey.mps`: `m_arm1`, `m_arm`, 
 model's own node table**, which means a fitting can be found by name through the node chain that
 is already read. That is a usable fact on its own.
 
-⚠⚠ THE THREE FLOATS ARE NOT A POSITION AND ARE NOT UNDERSTOOD. They look like one -- values from
-0.1 to 0.97 -- but the third is 0.102..0.110 on **every one of the seventeen** `k=2` entries,
-which no set of attachment points on a ride this shape would be. Read as an offset they would put
-every fitting on one plane. Recorded as observed and left uninterpreted, because the next step
-from here is to start believing a story the numbers do not support: this note exists so the next
-reader does not spend the same hour arriving at the same wrong place.
+⭐⭐ THE THREE FLOATS ARE A POSITION, NORMALISED INSIDE THE MESH'S OWN BOUNDS (`+0x70` min,
+`+0x80` max). Crazy Ape's five `m_crate` seats then come out as a ROW across the crate -- x 1.67,
+1.72, 2.00, 2.19, 2.55 -- at one depth; two seats on each arm; the rest up the body; all sixteen
+distinct and all inside the ride's four-by-four plot.
+
+⚠⚠ THIS NOTE PREVIOUSLY SAID THEY WERE NOT A POSITION, AND THAT WAS WRONG TWICE. The test behind
+it read BoundsMax from `+0x7c` instead of `+0x80` and produced nonsense; and the reason given --
+that the third component is 0.102..0.110 on every seat, so they would all lie on one plane -- is
+exactly what a rank of seats at one height looks like. The objection was the evidence. It is left
+written down because the wrong version was reasoned carefully and still wrong, and because what
+broke the deadlock was not more staring: it was a renderer reporting that three riders were
+sitting on one point.
+
+⚠ It is a reading that fits, not a consumer that was walked. `0x1f2978` takes the position from a
+runtime matrix and nobody has followed what builds it. Four independent properties hold -- the
+crate seats are monotonic, nothing stacks, everything lands inside the footprint, the heights form
+a narrow band -- and the wrong frame broke all four.

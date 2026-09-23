@@ -553,6 +553,33 @@ public sealed partial class Model
         }
     }
 
+    /// <summary>Where a fitting sits in its node's own space.
+    ///
+    /// ⭐⭐ THE THREE FLOATS ARE A POSITION, NORMALISED INSIDE THE MESH'S OWN BOUNDS. Crazy Ape's
+    /// five `m_crate` seats come out as a ROW across the crate -- x 1.67, 1.72, 2.00, 2.19, 2.55
+    /// -- all at the same depth, two seats on each arm, the rest up the body, every one of the
+    /// sixteen a distinct point inside the ride's four-by-four plot. Used raw they are separated
+    /// by a hundredth of a unit and sixteen riders pile onto four spots.
+    ///
+    /// ⚠⚠ I CALLED THIS "NOT A POSITION" AND WAS WRONG TWICE. The first test read BoundsMax from
+    /// `+0x7c` instead of `+0x80` and produced nonsense; and the reason I gave -- that the third
+    /// component is 0.102..0.110 on every seat, so they would all lie on one plane -- is exactly
+    /// what a rank of seats at one height DOES look like. The objection was the evidence.
+    ///
+    /// ⚠ This is a reading that fits, not a consumer that was walked: `0x1f2978` takes the
+    /// position from a runtime matrix and nobody has followed what builds it. Four independent
+    /// properties hold -- the crate seats are monotonic, nothing stacks, everything lands inside
+    /// the footprint, and the heights form a narrow band -- and a wrong frame broke all four.</summary>
+    public System.Numerics.Vector3 FittingLocal(Fitting f)
+    {
+        if (f.Node < 0 || f.Node >= Meshes.Count) return new System.Numerics.Vector3(f.X, f.Y, f.Z);
+        var m = Meshes[f.Node];
+        var lo = m.BoundsMin; var hi = m.BoundsMax;
+        return new System.Numerics.Vector3(lo.X + f.X * (hi.X - lo.X),
+                                           lo.Y + f.Y * (hi.Y - lo.Y),
+                                           lo.Z + f.Z * (hi.Z - lo.Z));
+    }
+
     /// <summary>The fitting a script means, or null. ⚠ The mask falls back exactly as `0x1f1f78`
     /// does: a space sharing no bit with `0x3da1f83` is replaced by `0x3da1f82`.</summary>
     public Fitting? FindFitting(int id, uint space)
