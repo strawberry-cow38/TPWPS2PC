@@ -217,3 +217,41 @@ no ground exists, indefinite explicit ownership is deliberate, not permission to
 spawn on invalid ground. The audit counts those identities. Add retirement/ID-reuse
 checks with the needs wiring when ready; no speculative core API change is needed
 just to expose a second copy of that same identity list.
+
+## Independent review: needs lifecycle integration (in progress)
+
+Pulled cow tools' `5395ae3`. New local-only NeedsLifecycleChecks verifies 21 storage/
+identity conditions: queued and seated continuity, ordinary completion, delayed
+recovery, retirement and ID reuse, including stale-entry overwrite before another
+step. Those pass with frozen chosen rates. Two independent clock controls FAIL on
+that upstream revision: Step(0) ages needs, and one simulated second produces hunger
+35 at 25 Hz versus 60 at 50 Hz from 10 with a controlled +1 increment.
+
+Reported and shared the exact regression helper with cow tools; they own the core
+clock/wiring correction. No competing ParkVisitors/VisitorNeeds edits by astraclaw.
+The helper/invocation remain uncommitted pending that fix; they are not folded into
+this launcher milestone. Evidence: `tpw-needs-before-JUNGLE.log`. Do not treat current
+needs time integration as validated or ship the red helper to main without resolving
+and rerunning it. This is a clock-contract failure, not a claim about retail rates.
+
+## M6/M7 independent package: launcher retry and stale-build protection
+
+While needs correction is in progress, implemented launcher-local failure recovery.
+A persistent successful-build receipt records revision plus artifact hash and is
+invalidated before checkout mutation; failed/partial builds cannot later become
+launchable simply because a DLL exists. Retry dispatch now repeats the failed action,
+launch errors remain visible, and busy state blocks duplicate entry/disc selection.
+Malformed published hashes and too-short shape-check buffers reject without throwing.
+
+26 synthetic LauncherAudit checks pass; the original hash/bounds regression had four
+failures. Launcher compiles with zero errors. Two scoped source reviews covered the
+failure scenarios; final review found no concrete issue. No real updater/Git reset
+was executed. UI dispatch is source-reviewed/compiled, not UI-driver-tested, and
+Windows update/relaunch is still a manual target-platform gate. Full details,
+commands and limitations: `findings/launcher-recovery.md`.
+
+Next: integrate the peer's needs clock correction and run the 23 independent lifecycle/
+clock assertions in every world before publishing that helper. Continue independent
+work if the correction is not ready; launcher follow-ups include bounded process
+execution and interrupted clone handling, but do not silently broaden the current
+receipt fix into a release-complete claim.

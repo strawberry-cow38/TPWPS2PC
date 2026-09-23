@@ -29,7 +29,7 @@ public static class SelfUpdate
     /// "&lt;html", never "MZ". A 404 page is a perfectly successful HTTP response, so nothing
     /// upstream of here will have complained about it.</summary>
     public static bool LooksLikeWindowsExe(byte[] bytes, int minBytes = MinPlausibleBytes) =>
-        bytes != null && bytes.Length >= minBytes && bytes[0] == (byte)'M' && bytes[1] == (byte)'Z';
+        bytes != null && bytes.Length >= Math.Max(2, minBytes) && bytes[0] == (byte)'M' && bytes[1] == (byte)'Z';
 
     public static string Sha256Of(byte[] bytes)
     {
@@ -55,6 +55,10 @@ public static class SelfUpdate
                             + "(an error page or a partial transfer) — keeping the current launcher");
         if (string.IsNullOrWhiteSpace(expectedSha256))
             return new(true, "shape looks right; no published hash to verify against");
+
+        expectedSha256 = expectedSha256.Trim();
+        if (expectedSha256.Length != 64 || !expectedSha256.All(Uri.IsHexDigit))
+            return new(false, "published hash is malformed — keeping the current launcher");
 
         string actual = Sha256Of(bytes);
         if (!string.Equals(actual, expectedSha256.Trim(), StringComparison.OrdinalIgnoreCase))

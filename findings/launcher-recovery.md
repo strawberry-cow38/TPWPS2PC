@@ -1,0 +1,62 @@
+# Launcher recovery and successful-build evidence
+
+2026-09-23. This work changes launcher error paths, not game/disc semantics.
+
+## Findings and changes
+
+Previously the launcher remembered readiness only through an existing viewer DLL
+and matching checkout heads. A build can emit that DLL and fail a later target;
+refresh/restart then offered Play despite the failed build. A failed DLL deletion
+after updating the checkout had a similar stale-artifact path. The immediate build
+call did check its exit code, but later state refresh forgot the result.
+
+`ViewerBuildReceipt` now stores successful-build evidence beside the launcher,
+outside its managed checkout: schema, full Git revision, and assembly SHA-256.
+The receipt is invalidated **before** checkout/build mutation. Failure to invalidate
+aborts the operation. Only a zero build exit, an existing artifact and unchanged
+before/after HEAD permit recording success. Refresh and the final launch gate both
+require matching revision and artifact hash. Missing, corrupt or oversized receipts
+fail closed. Existing installations without a receipt require a successful rebuild
+once. This is local build provenance, not publisher authentication, source-tree
+attestation, a signature, or a transactional multi-process installer.
+
+The window also remembers the failed action and explicitly dispatches Retry to it.
+It no longer silently falls through to state refresh. Start errors retain their
+message and Retry action rather than being overwritten by Ready. Busy dispatch is
+set synchronously, and the disc picker is disabled while an operation is underway.
+A failed `git clean` now aborts instead of being ignored.
+
+Two malformed self-update inputs were reproduced with executable-free synthetic
+fixtures: short hash strings threw while formatting their mismatch reason, and a
+custom zero plausibility floor allowed zero-/one-byte arrays to index outside their
+bounds. Hash validation now requires 64 hexadecimal characters if supplied; shape
+checks always require the two signature bytes. The pre-existing explicit shape-only
+policy when no hash is available remains unchanged. This patch does not redesign
+release authenticity, the Windows update shim, clone recovery, process timeouts,
+or engine-version discovery.
+
+## Validation
+
+```sh
+dotnet run --project tools/TPW.PS2.LauncherAudit -c Release
+dotnet build launcher/TPWPS2Launcher.csproj
+```
+
+No disc, network, real update, or actual Git reset is required by LauncherAudit.
+Its temporary files are synthetic, unique per run, and removed afterward.
+
+* Before the hash/bounds fix: four failed checks (two malformed-hash exceptions,
+  two short-array exceptions).
+* Afterward: 26 passing assertions, including matching/mismatching/malformed hashes,
+  version rejection, missing/corrupt/oversized receipts, revision/hash mismatches,
+  failed builds that leave output, restart persistence, and successful retry.
+* Launcher build succeeds on the Linux aarch64 development box (12 existing core
+  nullable warnings, zero errors in the recorded build).
+* Two narrow review passes checked the failure paths and resulting integration.
+  The receipt audit models failed deletion by retaining an old DLL after invalidation;
+  it does not induce actual Windows file locking.
+
+UI Retry dispatch, error persistence, and invalidation ordering were source-reviewed
+and compiled, not exercised by an automated UI driver. Windows self-replacement,
+locked-file behavior, and actual install/update/relaunch still need target-platform
+manual validation. No Windows compatibility/release sign-off is claimed.

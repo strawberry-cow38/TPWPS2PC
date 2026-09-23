@@ -50,6 +50,9 @@ public class MainWindow : Window
     };
 
     Mode _mode = Mode.Busy;
+    Mode _retryMode = Mode.Busy;
+    readonly ViewerBuildReceipt _receipt;
+    readonly Button _locate = new() { Content = "Locate disc…", MinWidth = 110 };
     DiscResult _disc;
     GodotChoice _godot;
     readonly string _baseDir;
@@ -64,8 +67,14 @@ public class MainWindow : Window
         _baseDir = AppContext.BaseDirectory;
         _repoDir = Path.Combine(_baseDir, "TPWPS2PC");
 
-        var locate = new Button { Content = "Locate disc…", MinWidth = 110 };
-        locate.Click += async (_, _) => await LocateAsync();
+        _receipt = new ViewerBuildReceipt(Path.Combine(_baseDir, "viewer-build.json"));
+        _locate.Click += async (_, _) =>
+        {
+            if (_mode == Mode.Busy) return;
+            SetMode(Mode.Busy, "…", "Locating disc…");
+            try { await LocateAsync(); }
+            catch (Exception e) { Retry(Mode.NeedDisc, e.Message); }
+        };
         _action.Click += async (_, _) => await OnActionAsync();
 
         Content = new ScrollViewer
@@ -84,7 +93,7 @@ public class MainWindow : Window
                                              + "Nothing is bundled and nothing is downloaded from EA.",
                                         Foreground = TextDim, FontSize = 11,
                                         TextWrapping = TextWrapping.Wrap },
-                        locate),
+                        _locate),
                     Box("Viewer", _buildState),
                     new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12,
                                      Children = { _action, _status } },
@@ -109,10 +118,14 @@ public class MainWindow : Window
     async Task StartupAsync()
     {
         SetMode(Mode.Busy, "…", "Looking for your disc…");
-        if (await CheckSelfUpdateAsync()) return;              // may close the window
-        Refresh(DiscLocator.Probe());
-        _godot = GodotLocator.Find(console: false);
-        await RefreshStateAsync();
+        try
+        {
+            if (await CheckSelfUpdateAsync()) return;              // may close the window
+            Refresh(DiscLocator.Probe());
+            _godot = GodotLocator.Find(console: false);
+            await RefreshStateAsync();
+        }
+        catch (Exception e) { Retry(Mode.Busy, e.Message); }
     }
 
     // ------------------------------------------------------------------ state
@@ -141,46 +154,64 @@ public class MainWindow : Window
                 ? $"   →  {Short(remote)} available" : "   (up to date)");
         if (remote != null && remote != local)
             SetMode(Mode.Update, "Update and play", "A newer viewer is available.");
-        else if (!File.Exists(AssemblyPath))
-            SetMode(Mode.Update, "Build and play", "Installed but not built yet.");
+        else if (!_receipt.CanLaunch(local, AssemblyPath))
+            SetMode(Mode.Update, "Build and play", "A verified successful build is required.");
         else
             SetMode(Mode.Play, "Play", "Ready.");
     }
 
     async Task OnActionAsync()
     {
-        var was = _mode;
+        if (_mode == Mode.Busy) return;
+        var was = _mode == Mode.Broken ? _retryMode : _mode;
+        SetMode(Mode.Busy, "…", "Working…");
         try
         {
             switch (was)
             {
+                case Mode.Busy: await StartupAsync(); return; // retry failed startup
                 case Mode.NeedDisc: await LocateAsync(); return;
                 case Mode.Install:
                 case Mode.Update:
-                    SetMode(Mode.Busy, "…", "Working…");
-                    if (!await InstallOrUpdateAsync()) { await RefreshStateAsync(); return; }
-                    Play();
-                    break;
-                case Mode.Play: Play(); break;
+                    if (!await InstallOrUpdateAsync())
+                    {
+                        Retry(was, "Install/build failed. See the log, then retry.");
+                        return;
+                    }
+                    await PlayAsync();
+                    return;
+                case Mode.Play: await PlayAsync(); return;
             }
+            await RefreshStateAsync();
         }
-        catch (Exception e) { Log("ERROR: " + e.Message); SetMode(Mode.Broken, "Retry", e.Message); return; }
-        await RefreshStateAsync();
+        catch (Exception e) { Retry(was, e.Message); }
     }
 
-    void SetMode(Mode m, string label, string status) => Dispatcher.UIThread.Post(() =>
+    void Retry(Mode operation, string message)
     {
+        _retryMode = operation;
+        Log("ERROR: " + message);
+        SetMode(Mode.Broken, "Retry", message);
+    }
+
+    void SetMode(Mode m, string label, string status)
+    {
+        // Update dispatch state synchronously; a second queued click must see Busy.
         _mode = m;
-        _action.Content = label;
-        _action.IsEnabled = m is not (Mode.Busy or Mode.Broken) || m == Mode.Broken && label == "Retry";
-        _status.Text = status;
-        _status.Foreground = m == Mode.Broken ? Bad : m == Mode.Play ? Good : TextDim;
-    });
+        Dispatcher.UIThread.Post(() =>
+        {
+            _action.Content = label;
+            _action.IsEnabled = m is not (Mode.Busy or Mode.Broken) || m == Mode.Broken && label == "Retry";
+            _locate.IsEnabled = m != Mode.Busy;
+            _status.Text = status;
+            _status.Foreground = m == Mode.Broken ? Bad : m == Mode.Play ? Good : TextDim;
+        });
+    }
 
     // ------------------------------------------------------------------ install / update
 
-    /// <summary>Clone or hard-reset the repo, then build. Returns true only if the viewer assembly
-    /// actually exists afterwards.
+    /// <summary>Clone or hard-reset the repo, then build. Returns true only after a zero build
+    /// exit, a produced assembly, an unchanged revision and a recorded successful-build receipt.
     ///
     /// ⚠⚠ THIS IS WHY UPDATES DID NOT APPLY BEFORE. Copying files over an existing tree leaves
     /// anything the new version deleted, and leaves a STALE COMPILED ASSEMBLY that Godot happily
@@ -192,6 +223,9 @@ public class MainWindow : Window
         string git = Which("git");
         if (git == null) { Log("git not found on PATH — install Git for Windows."); return false; }
 
+        // Invalidate BEFORE clone/reset/delete. If this fails, do not touch the
+        // checkout: an old DLL/receipt must never describe newly updated sources.
+        _receipt.Invalidate();
         if (!Directory.Exists(Path.Combine(_repoDir, ".git")))
         {
             Log($"cloning {Branch}…");
@@ -206,9 +240,10 @@ public class MainWindow : Window
             // ⚠ reset --hard, not pull: a local edit or a half-applied previous update would make
             // a merge fail and leave the tree in neither state.
             if (!await RunAsync(git, new[] { "reset", "--hard", "origin/" + Branch }, _repoDir)) return false;
-            await RunAsync(git, new[] { "clean", "-fd", "-e", ".godot" }, _repoDir);
+            if (!await RunAsync(git, new[] { "clean", "-fd", "-e", ".godot" }, _repoDir)) return false;
         }
 
+        string revision = (await CaptureAsync(git, new[] { "-C", _repoDir, "rev-parse", "HEAD" }))?.Trim();
         if (File.Exists(AssemblyPath)) File.Delete(AssemblyPath);
         Log("building…");
         if (!await RunAsync("dotnet", new[] { "build" }, ProjectDir)) { Log("build FAILED"); return false; }
@@ -218,6 +253,9 @@ public class MainWindow : Window
             Log("build reported success but produced no assembly — refusing to launch");
             return false;
         }
+        string after = (await CaptureAsync(git, new[] { "-C", _repoDir, "rev-parse", "HEAD" }))?.Trim();
+        if (revision != after) { Log("checkout changed during build — refusing to launch"); return false; }
+        _receipt.RecordSuccess(revision, AssemblyPath);
         Log("ready");
         return true;
     }
@@ -235,8 +273,15 @@ public class MainWindow : Window
 
     static string Short(string sha) => sha != null && sha.Length >= 7 ? sha[..7] : sha;
 
-    void Play()
+    async Task PlayAsync()
     {
+        string git = Which("git");
+        string revision = git == null ? null : (await CaptureAsync(git, new[] { "-C", _repoDir, "rev-parse", "HEAD" }))?.Trim();
+        if (!_receipt.CanLaunch(revision, AssemblyPath))
+        {
+            Retry(Mode.Update, "Viewer build is missing or changed. Retry to rebuild; refusing to launch stale output.");
+            return;
+        }
         var psi = new ProcessStartInfo(_godot.Path) { UseShellExecute = false };
         psi.ArgumentList.Add("--path");
         psi.ArgumentList.Add(ProjectDir);
@@ -253,13 +298,13 @@ public class MainWindow : Window
             // below, so a start that throws would otherwise take the only window that could say
             // what went wrong with it -- the game would not appear and neither would the reason.
             Log($"could not start Godot: {e.Message}");
-            SetMode(Mode.Broken, "Play", $"Godot would not start: {e.Message}");
+            Retry(Mode.Play, $"Godot would not start: {e.Message}");
             return;
         }
         if (child == null)
         {
             Log("Godot did not start");
-            SetMode(Mode.Broken, "Play", "Godot did not start.");
+            Retry(Mode.Play, "Godot did not start.");
             return;
         }
         // ⭐ Hand off and GO. The child was started with UseShellExecute = false and no job object,
