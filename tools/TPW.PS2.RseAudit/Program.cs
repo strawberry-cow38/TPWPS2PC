@@ -281,10 +281,18 @@ sealed class Audit(Dictionary<string, WadArchive> wads, bool trace)
         var vm = new RseMachine(Script("HALLOW", "/rides/bug/Bug"));
         try { vm.RunSlice(0); throw new Exception("Absent host guard failed"); }
         catch (InvalidOperationException) when (vm.Fault != null) { }
-        vm = new RseMachine(Script("SPACE", "/features/gates/Gates"));
-        try { vm.RunSlice(0); throw new Exception("Unsupported opcode guard failed"); }
-        catch (InvalidOperationException) when (vm.Fault?.Contains("LOOPANIM_CH") == true) { }
-        Console.WriteLine("GUARDS: branch into operand rejected; absent host and unsupported LOOPANIM_CH fault with PC");
+        // ⚠⚠ THIS GUARD USED TO RUN SPACE's Gates AND EXPECT IT TO FAULT ON LOOPANIM_CH. It does
+        // not any more -- every opcode the loader will accept is now implemented, so there is no
+        // shipped script left that can demonstrate a run-time refusal. Rather than delete the
+        // check or keep asserting something that has become false, it now proves the refusal that
+        // IS still live: an opcode number the arity table does not know is rejected at LOAD, so a
+        // future disc or a corrupted file cannot execute as if it were understood.
+        var unknown = Read("JUNGLE", "/Rides/Monkey/child.rse");
+        var op = new RseProgram(unknown).Instructions.Single(i => i.Opcode == RseOpcode.ADD);
+        BitConverter.GetBytes(0x8000006Bu).CopyTo(unknown, 52 + op.Address * 4);
+        try { new RseProgram(unknown); throw new Exception("Unknown opcode guard failed"); }
+        catch (InvalidDataException) { }
+        Console.WriteLine("GUARDS: branch into operand and unknown opcode rejected at load; absent host faults with PC");
     }
     sealed class ImmediateHost : IRseHost
     {
