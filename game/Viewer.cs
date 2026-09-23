@@ -128,6 +128,9 @@ public partial class Viewer : Node3D
     /// <summary>What <see cref="PathTool.LegCount"/> was when the tool opened. ⚠ A step back must
     /// never walk out of this run and into one laid before it.</summary>
     int _legBase;
+    /// <summary>Rides part way through their Create animation, with where each one's clock is.
+    /// ⚠ They come OFF this list when they finish, so a park full of built rides costs nothing.</summary>
+    readonly List<(AnimatedModel Model, float Frame)> _building = new();
     /// <summary>A cell to use instead of the mouse, for captures. Null in normal use.</summary>
     (int X, int Y)? _cursorOverride;
     bool _pickChecked;
@@ -1523,6 +1526,23 @@ public partial class Viewer : Node3D
         RefreshFloor();
     }
 
+    static IEnumerable<MeshInstance3D> Walk(Node n)
+    {
+        if (n is MeshInstance3D m && m.Visible && m.Mesh != null) yield return m;
+        foreach (var c in n.GetChildren()) foreach (var g in Walk(c)) yield return g;
+    }
+
+    /// <summary>The world rectangle a footprint at (cx,cy) covers: its centre and its size. ⭐ Read
+    /// off the plot's own corners, so it is the same arithmetic the floor is built from rather than
+    /// a second guess at where a cell is.</summary>
+    (Vector3 Centre, float W, float H) FootprintRect(int cx, int cy, int w, int h)
+    {
+        var a = _park.CellCorner(cx, cy);
+        var b = _park.CellCorner(cx + w, cy + h);
+        return (new Vector3((a.X + b.X) * 0.5f, a.Y, (a.Z + b.Z) * 0.5f),
+                Mathf.Abs(b.X - a.X), Mathf.Abs(b.Z - a.Z));
+    }
+
     /// <summary>Lay a run as one undoable leg, the way a press does.</summary>
     void LayLeg(List<(int X, int Y)> run, PathTool.Kind kind, int owner)
     {
@@ -1903,6 +1923,28 @@ public partial class Viewer : Node3D
               + (_ghost.Layable ? " -- click to lay" : " -- BLOCKED"));
     }
 
+    /// <summary>Wind every ride that is still building itself forward. ⚠ A model whose node has
+    /// been freed -- the park rebuilding drops the lot -- must come off the list rather than be
+    /// asked for a frame, because a freed wrapper answers as if it were alive right up until it
+    /// throws.</summary>
+    void StepBuilding(float frames)
+    {
+        for (int i = _building.Count - 1; i >= 0; i--)
+        {
+            var (m, at) = _building[i];
+            if (m?.Root == null || !GodotObject.IsInstanceValid(m.Root)) { _building.RemoveAt(i); continue; }
+            at += frames;
+            if (at >= m.Frames - 1)
+            {
+                m.SetFrame(Mathf.Max(m.Frames - 1, 0));
+                _building.RemoveAt(i);
+                continue;
+            }
+            m.SetFrame(at);
+            _building[i] = (m, at);
+        }
+    }
+
     void Status(string text) { if (_toolStatus != null) _toolStatus.Text = text; }
 
     /// <summary>⭐ A CONTROL FOR THE BUILD MENU that needs no mouse: open it, read back the
@@ -2017,12 +2059,78 @@ public partial class Viewer : Node3D
             // ⚠ CAPTURED BEFORE THE PRESS. PlaceHeld drops the blueprint, so asking it afterwards
             // where its stubs were would be asking nothing at all.
             var want = _place.Stubs(_park, cx, cy).ToList();
+            // ⚠ CAPTURED BEFORE THE PRESS, like the stubs: PlaceHeld drops the blueprint, and the
+            // cursor cell is not the footprint's CORNER -- asking afterwards would measure a hole
+            // half a shape away from the one the ride went into.
+            var (fx, fy) = _place.CornerFor(cx, cy);
+            int fpw = _place.Turned.Width, fph = _place.Turned.Height;
             GD.Print($"[place]   stubs " + string.Join(" ", want
                         .Select(t => $"({t.X},{t.Y}){(t.Queue ? "queue" : "path")}{(t.Ok ? "" : " BLOCKED")}")));
             PlaceHeld();
             GD.Print($"[place]   {(_park.Placed.Count > before ? "down" : "REFUSED")}; stubs are now "
                    + string.Join(" ", want.Select(t => $"({t.X},{t.Y}){_paths.KindAt(t.X, t.Y)}"))
                    + $" -- {(want.All(t => _paths.KindAt(t.X, t.Y) == (t.Queue ? PathTool.Kind.Queue : PathTool.Kind.Path)) ? "laid with the ride, as they must be" : "NOT LAID")}");
+            // ⭐⭐ THREE STAGES OF ONE BUILD, IN ONE PICTURE. Each ride is wound to a different
+            // point of its Create animation and taken off the list, so the shot shows a quarter
+            // built, two thirds built and finished side by side. A single finished ride cannot
+            // tell an animation that played from one that was never wound at all.
+            if (_building.Count > 0)
+            {
+                var m = _building[^1].Model;
+                _building.Clear();
+                float frac = System.Environment.GetEnvironmentVariable("TPW_BUILD_STAGES") == "1"
+                           ? (t == 0 ? 0.25f : t == 1 ? 0.6f : 1f) : 1f;
+                float at = Mathf.Max(m.Frames - 1, 0) * frac;
+                m.SetFrame(0);
+                var b0 = Park.DrawnBounds(m.Root, inParent: true);
+                m.SetFrame(at);
+                var b1 = Park.DrawnBounds(m.Root, inParent: true);
+                // ⚠⚠ A SPAN IS NOT A POSITION. The first version of this line printed the bounding
+                // box's DIAGONAL LENGTH at two frames and called them nearly equal -- and a box
+                // that has slid sideways has exactly the same diagonal as one that has not. What
+                // the alignment question asks about is the CENTRE, so the centre is what it says.
+                var (fc, fw, fh) = FootprintRect(fx, fy, fpw, fph);
+                // ⭐ BOTH CENTRINGS, EVERY TIME. The claim being made is that aligning on the
+                // floor parts changes only the rides that carry them wrongly -- so the control
+                // prints what the whole-model box would have said as well, and a ride the change
+                // moves is a ride that shows up here rather than one that quietly shifts.
+                var whole = Park.DrawnBounds(m.Root, inParent: true);
+                var flr = Park.DrawnBounds(m.Root, inParent: true, onlyNamed: "floor");
+                bool hasFloor = flr.Max.X > flr.Min.X;
+                GD.Print($"[place]   whole-model centre {(whole.Min.X + whole.Max.X) * 0.5f:F2},{(whole.Min.Z + whole.Max.Z) * 0.5f:F2}"
+                       + $" size {whole.Max.X - whole.Min.X:F2}x{whole.Max.Z - whole.Min.Z:F2}; floor "
+                       + (hasFloor ? $"centre {(flr.Min.X + flr.Max.X) * 0.5f:F2},{(flr.Min.Z + flr.Max.Z) * 0.5f:F2}"
+                                   + $" size {flr.Max.X - flr.Min.X:F2}x{flr.Max.Z - flr.Min.Z:F2}"
+                                   + $" -- the two disagree by {(flr.Min.X + flr.Max.X - whole.Min.X - whole.Max.X) * 0.5f:F2},"
+                                   + $"{(flr.Min.Z + flr.Max.Z - whole.Min.Z - whole.Max.Z) * 0.5f:F2}"
+                                 : "NONE -- aligned on the whole model"));
+                GD.Print($"[place]   Create {m.Summary}; centre at frame 0 {b0.Min.X + b0.Max.X:F1},{b0.Min.Z + b0.Max.Z:F1}"
+                       + $" -> at frame {at:F0}/{m.Frames} {b1.Min.X + b1.Max.X:F1},{b1.Min.Z + b1.Max.Z:F1} (doubled)");
+                if (t == 0)
+                {
+                    // ⭐ NAME THE PART. "The model overhangs" is not an answer anybody can act on;
+                    // WHICH piece of it overhangs, and by how much, is. Each drawn surface against
+                    // the hole it is supposed to sit in.
+                    foreach (var mi in Walk(m.Root))
+                    {
+                        // ⚠⚠ TRANSFORM TIMES AABB, not the other way round. `aabb * transform` is
+                        // the INVERSE transform in Godot, and since every surface here carries its
+                        // own animated transform the inverse differs per node -- so the parts came
+                        // out in a dozen different spaces and read as metres apart from each other
+                        // inside a model four units wide, which is impossible and was the clue.
+                        var ab = mi.GlobalTransform * mi.GetAabb();
+                        float ox = Mathf.Max(fc.X - fw * 0.5f - ab.Position.X, ab.End.X - (fc.X + fw * 0.5f));
+                        float oz = Mathf.Max(fc.Z - fh * 0.5f - ab.Position.Z, ab.End.Z - (fc.Z + fh * 0.5f));
+                        GD.Print($"[ride] {mi.Name,-28} {ab.Size.X:F2}x{ab.Size.Y:F2}x{ab.Size.Z:F2}"
+                               + $" at {ab.GetCenter().X:F2},{ab.GetCenter().Y:F2},{ab.GetCenter().Z:F2}"
+                               + $"{(ox > 0.01f || oz > 0.01f ? $"  OVER by {Mathf.Max(ox, 0):F2},{Mathf.Max(oz, 0):F2}" : "")}");
+                    }
+                }
+                GD.Print($"[place]   hole centre {fc.X:F1},{fc.Z:F1} {fw:F1}x{fh:F1}; built model centre "
+                       + $"{(b1.Min.X + b1.Max.X) * 0.5f:F1},{(b1.Min.Z + b1.Max.Z) * 0.5f:F1} "
+                       + $"size {b1.Max.X - b1.Min.X:F1}x{b1.Max.Z - b1.Min.Z:F1} -- off by "
+                       + $"{(b1.Min.X + b1.Max.X) * 0.5f - fc.X:F2},{(b1.Min.Z + b1.Max.Z) * 0.5f - fc.Z:F2}");
+            }
             CloseTool();
         }
         // The fourth stays on the cursor, turned once, so the shot carries a live ghost with both
@@ -2158,7 +2266,9 @@ public partial class Viewer : Node3D
         _armedRide = r;
         _ghostAt = (-1, -1, -1, -1);
         Status($"holding {_place.Display} ({fp.Width}x{fp.Height}) -- click to put it down, . to turn");
-        GD.Print($"[build] holding {_place.Display} {fp.Width}x{fp.Height} entry {fp.EntryX},{fp.EntryY}");
+        GD.Print($"[build] holding {_place.Display} {fp.Width}x{fp.Height} entry {fp.EntryX},{fp.EntryY}"
+               + $" exit {fp.ExitX},{fp.ExitY} facing {fp.ExitDX},{fp.ExitDY}"
+               + $" shape [{string.Join("|", def.Shape ?? new string[0])}]");
     }
 
     /// <summary>Draw what is held, tile by tile. ⭐ Green where the park will take it, red where it
@@ -2221,7 +2331,8 @@ public partial class Viewer : Node3D
             return;
         }
         var (cx, cy) = _place.CornerFor(x, y);
-        var model = LoadPlaceable(_armedRide);
+        var built = LoadPlaceable(_armedRide);
+        var model = built?.Root;
         if (model == null) { Status($"{_place.Display} has no model to place"); return; }
         if (!_park.TryPlace(model, _place.Turned, _place.Id, _place.Display, cx, cy, _place.Turns))
         {
@@ -2249,6 +2360,10 @@ public partial class Viewer : Node3D
             foreach (var st in _place.Stubs(_park, x, y))
                 _paths.Lay(st.X, st.Y, st.Queue ? PathTool.Kind.Queue : PathTool.Kind.Path, ride);
         }
+        // ⭐⭐ AND IT BUILDS ITSELF. The ride goes down on frame 0 of its Create animation -- which
+        // is the UNBUILT state -- and is wound forward from there. Every ride placed so far has
+        // been sitting frozen at the first frame of its own construction.
+        if (built.Frames > 1) { built.SetFrame(0); _building.Add((built, 0f)); }
         // ⭐ The ground under it goes now that the cells are claimed.
         RefreshFloor();
         _toolSfx?.Play(ToolSounds.Cue.Lay);
@@ -2298,7 +2413,7 @@ public partial class Viewer : Node3D
     }
 
     /// <summary>The model for the held thing, built the same way the viewer builds any other.</summary>
-    Node3D LoadPlaceable(AssetLibrary.RideAssets ride)
+    AnimatedModel LoadPlaceable(AssetLibrary.RideAssets ride)
     {
         if (ride?.Model == null) return null;
         try
@@ -2309,11 +2424,24 @@ public partial class Viewer : Node3D
             if (ride.Animation != null)
             {
                 anim = new Aps(_lib.Read(ride.Animation));
-                rec = anim.Records().FirstOrDefault();
+                // ⭐⭐ SLOT 0 IS "Create" -- the animation of the thing BUILDING ITSELF, named by
+                // the disc's own ride scripts (`WAITANIM ANIM_Create 0`, harvested over 352 script
+                // pairs with no disagreement; see Animation.SlotNames). Master: "rides should play
+                // their 'create' animation on build". Asked for by SLOT rather than taken as the
+                // first record, because a thing that does not build itself -- the Super Bog is a
+                // portaloo -- has nothing in slot 0 and its first record is something else
+                // entirely, which would have played its Main loop as if it were a build.
+                rec = anim.Records().FirstOrDefault(r => r.Slot == 0) ?? anim.Records().FirstOrDefault();
             }
             var drawn = new AnimatedModel(mesh, anim, rec, m => TextureNear(ride.Model.Path, m));
-            drawn.SetFrame(0);
-            return drawn.Root;
+            // ⭐⭐ HANDED BACK ON ITS LAST FRAME -- the BUILT thing. The park centres a model on its
+            // drawn bounds, and frame 0 of a Create animation is the ride flat-packed: the Belly
+            // Bounce is an inflatable dinosaur and its first frame is the deflated heap, which is
+            // nothing like the shape or the size of what ends up standing there. Centring on that
+            // put the finished ride off its own plot. The caller winds it back to 0 once it has
+            // been placed, so the measurement and the animation do not fight over the clock.
+            drawn.SetFrame(Math.Max(drawn.Frames - 1, 0));
+            return drawn;
         }
         catch (Exception e) { GD.PrintErr($"[build] {Leaf(ride.Name)} would not load: {e.Message}"); return null; }
     }
@@ -3190,6 +3318,10 @@ public partial class Viewer : Node3D
             if (_gate.Frames > 0 && _parkTime >= _gate.Frames) _parkTime %= _gate.Frames;
             _gate.SetFrame(_parkTime);
         }
+        // ⭐ A RIDE BUILDING ITSELF runs ONCE and then holds on its last frame, which is the built
+        // thing. ⚠ Backwards, because a finished one is removed as we go.
+        if (_playing && _shotPath == null && _building.Count > 0)
+            StepBuilding((float)delta * Aps.Fps);
         if (GameCamActive) StepGameCam(delta);
         else
         {

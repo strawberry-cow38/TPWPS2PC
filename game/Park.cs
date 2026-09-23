@@ -953,7 +953,19 @@ public sealed class Park
         // the shape it had before it turned.
         if ((turns & 3) != 0)
             model.Basis = new Basis(Vector3.Up, Mathf.Pi * 0.5f * (turns & 3)) * model.Basis;
-        var (min, max) = DrawnBounds(model, inParent: true);
+        // ⭐⭐ A RIDE THAT BRINGS ITS OWN FLOOR IS ALIGNED BY THAT FLOOR. The Belly Bounce carries
+        // `jb_floor#0..11` -- twelve flat tiles that measure EXACTLY 3.0 x 4.0, which is its
+        // footprint to the last decimal. Its fence, signs and hoarding hang off one side, so the
+        // whole model's bounding box is lopsided and centring THAT put the floor 0.40 out in x
+        // while the box itself sat dead centre. Master: "the belly bounce is the only ride in the
+        // game that is misaligned in its footprint... just try to re-align it in its hole."
+        //
+        // ⚠ FALLS BACK to the whole model. Most rides have no part called floor, and for the ones
+        // that do the two answers agree -- the control prints both, so a ride this moves is a ride
+        // that says so rather than one that quietly shifts.
+        var (fmin, fmax) = DrawnBounds(model, inParent: true, onlyNamed: "floor");
+        bool onFloor = fmax.X > fmin.X && fmax.Z > fmin.Z;
+        var (min, max) = onFloor ? (fmin, fmax) : DrawnBounds(model, inParent: true);
         var centre = (min + max) * 0.5f;
         model.Position += new Vector3(
             Origin.X + (x + fp.Width * 0.5f) * CellSize - centre.X,
@@ -995,7 +1007,8 @@ public sealed class Park
     /// locally and then placing the park in world coordinates put the plot at +Z where the hole is
     /// at -Z -- and a Z mirror leaves the bounding box, the extents and the X axis all correct, so
     /// every number agreed while the picture did not.</param>
-    public static (Vector3 Min, Vector3 Max) DrawnBounds(Node3D root, bool inParent = false)
+    public static (Vector3 Min, Vector3 Max) DrawnBounds(Node3D root, bool inParent = false,
+                                                        string onlyNamed = null)
     {
         var min = new Vector3(float.MaxValue, float.MaxValue, float.MaxValue);
         var max = new Vector3(float.MinValue, float.MinValue, float.MinValue);
@@ -1009,7 +1022,8 @@ public sealed class Park
             // measured the whole animation's envelope rather than the ride, which is why the
             // builder's extent came out 42 x 46 against the reader's 4 x 4: the X and Z ratios were
             // 10.56 and 11.64, and a scale error cannot be non-uniform.
-            if (n is MeshInstance3D mi && mi.Mesh != null && mi.Visible)
+            if (n is MeshInstance3D mi && mi.Mesh != null && mi.Visible
+                && (onlyNamed == null || ((string)mi.Name).Contains(onlyNamed, StringComparison.OrdinalIgnoreCase)))
             {
                 var box = mi.GetAabb();
                 for (int i = 0; i < 8; i++)
