@@ -126,10 +126,28 @@ public sealed class SelectionBox
                 AlbedoTexture = ImageTexture.CreateFromImage(img),
                 Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
                 ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+                // ⭐⭐ YELLOW, AND THE TINT IS IN THE CODE. 0x221E38 sets four consecutive floats
+                // immediately before its draw loop, from DAT_002F0C00 (which 0x2225A0 takes from
+                // the selected object's own field, and which held 9 in master's savestate):
+                //
+                //   0x2F02A0 = n * 0.25 * 0.0078125 + 1.6   ->  1.6176
+                //   0x2F02A4 = n * 0.21 * 0.0078125 + 1.4   ->  1.4148
+                //   0x2F02A8 = 0
+                //   0x2F02AC = n * 0.00390625               ->  0.0352
+                //
+                // Four in a row with the third pinned at ZERO and the first two near each other is
+                // an RGBA, and R:G:B of 1.6176 : 1.4148 : 0 is yellow. Master said yellow from
+                // having played it; the constants say yellow from the other end. The tile itself
+                // is white, so it is tinted, and this is that tint normalised on its own maximum.
+                AlbedoColor = new Color(1f, 1.4148f / 1.6176f, 0f),
                 // ⚠ Both sides: the strips are a closed-ish shell and the camera goes round it.
                 CullMode = BaseMaterial3D.CullModeEnum.Disabled,
+                // ⚠⚠ IT DEPTH-TESTS. I had NoDepthTest on, reasoning that a selection hidden behind
+                // what you selected is not a selection -- master: "it seems like all the corners
+                // are rendering on top of the ride". They are meant to go behind it; the far
+                // corners of a box are behind the thing in the box. No depth WRITE, though, so the
+                // brackets do not fight each other where two overlap.
                 DepthDrawMode = BaseMaterial3D.DepthDrawModeEnum.Disabled,
-                NoDepthTest = true,
                 TextureFilter = BaseMaterial3D.TextureFilterEnum.Linear,
             };
         }
