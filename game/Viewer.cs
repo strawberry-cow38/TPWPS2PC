@@ -2676,7 +2676,10 @@ public partial class Viewer : Node3D
         int before = _paths.Laid;
         LayLeg(left, PathTool.Kind.Path, 0); LayLeg(right, PathTool.Kind.Path, 0); LayLeg(bar, PathTool.Kind.Path, 0);
         RefreshFloor();
-        GD.Print($"[guest] laid {_paths.Laid - before} of {left.Count + right.Count + bar.Count} path cells in from the mouth ({xl},{z0 - 1}) ({xr},{z0 - 1})");
+        // ⚠ Distinct cells, not run lengths: the bar shares its two middle cells with the columns'
+        // last row, and the tool counts a cell once however many runs cross it.
+        int cells = left.Concat(right).Concat(bar).Distinct().Count();
+        GD.Print($"[guest] laid {_paths.Laid - before} of {cells} path cells in from the mouth ({xl},{z0 - 1}) ({xr},{z0 - 1})");
         _guestCap = 6; _gateEvery = 20; _gateTimer = _gateEvery - 1;
         if (!OpenGate()) GD.Print("[guest] the gate would not open, so there is nobody to photograph");
     }

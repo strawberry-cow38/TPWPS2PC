@@ -237,5 +237,82 @@ Check(backOut.Count > 0, $"a shop lets its guests back out ({backOut.Count} shop
 Check(shops.Rides.All(s => s.Left.All(g => shopSent[s.Id].Contains(g))),
       "every guest a shop hands back is one that was queued there");
 
+// ⭐⭐ AND NOW THE WHOLE THING AT ONCE. Walking was proved on its own and the scripts were proved
+// on their own; neither of those is a park. This walks guests in at the gate, lets them pick a
+// ride, hands them to that ride's script at its queue stub, and counts the ones the script hands
+// BACK at the exit and who then walk off. Nothing here is a stub: the route is over laid path,
+// the boarding is the VAR_LETMEON handshake, and the ride in between is its own bytecode.
+var loopPaths = new ParkPaths(terrain);
+loopPaths.SetEntrance(entrance);
+var mouth = loopPaths.EntranceCells.Count > 0
+    ? loopPaths.EntranceCells.OrderByDescending(c => c.Z).First() : default;
+// A corridor straight into the park from the mouth, using the game's own path material.
+int corridor = loopPaths.MaterialIndex("jpa_squ1.ssh");
+var laid = new List<ParkCell>();
+for (int z = mouth.Z + 1; z < mouth.Z + 14; z++)
+    foreach (int x in new[] { mouth.X, mouth.X + 1 })
+    {
+        var c = new ParkCell(x, z);
+        if (!loopPaths.CanLay(c)) continue;
+        loopPaths.Lay(c, corridor);
+        laid.Add(c);
+    }
+Console.WriteLine($"\nwhole loop: mouth {mouth}, {laid.Count} path cells laid in");
+
+var loop = new ParkSim(loopPaths);
+var loopWalk = new GuestWalk(loopPaths);
+var visitors = new ParkVisitors(loop, loopWalk);
+int loopId = 0;
+var onPath = laid.Where(c => loopPaths.Open(c)).ToArray();
+// Three rides hung off the corridor, plus a FOURTH whose queue is out in the grass -- the
+// control. If guests ever queue at that one, "they walked to the queue" is not what happened.
+// ⚠ The FOURTH stop is off the path on purpose -- see the control below.
+var unreachable = new ParkCell(1, 1);
+var stops = new[] { onPath[3], onPath[5], onPath[7], unreachable };
+foreach (var e in wad.Entries.Where(e => e.Path.EndsWith(".rse", StringComparison.OrdinalIgnoreCase)
+                                      && e.Path.StartsWith("/Rides/", StringComparison.OrdinalIgnoreCase))
+                             .OrderBy(e => e.Path, StringComparer.OrdinalIgnoreCase))
+{
+    if (loopId >= 4) break;
+    string stem = e.Path[..^4];
+    var samEntry = wad.Find(stem + ".sam");
+    if (samEntry == null) continue;
+    var def = RideDefinition.Parse(System.Text.Encoding.ASCII.GetString(wad.Read(samEntry)), stem + ".sam");
+    Animation aps = null;
+    try { var ae = wad.Find(stem + ".aps"); if (ae != null) aps = new Animation(wad.Read(ae)); } catch { }
+    string ldir = e.Path[..(e.Path.LastIndexOf('/') + 1)];
+    byte[] SLoop(string child)
+    {
+        var c = wad.Entries.FirstOrDefault(x => x.Path.Equals(ldir + child, StringComparison.OrdinalIgnoreCase));
+        return c == null ? null : wad.Read(c);
+    }
+    var stop = stops[loopId];
+    bool control = loopId == 3;
+    var r = loop.Add(loopId + 1, (control ? "CONTROL " : "") + (def.Name ?? stem), stop, 1, 1,
+                     wad.Read(e), aps, def.UpgradeCapacity(0) ?? 1,
+                     stop, control ? stop : onPath[^1], out _, sibling: SLoop);
+    if (r != null) { loop.SetOpen(r.Id, true); loopId++; }
+}
+var marooned = loop.Rides.FirstOrDefault(r => r.Name.StartsWith("CONTROL", StringComparison.Ordinal));
+Console.WriteLine($"  {loopId} rides placed, 3 on the corridor at {string.Join(", ", stops.Take(3))}"
+                + $"; the control's queue is at {unreachable}, off the path");
+
+for (int i = 0; i < 12; i++) visitors.Arrive(mouth, onPath[^1]);
+var rng = new Random(3);
+for (int i = 0; i < 12_000; i++)
+    visitors.Step(0.04, () => onPath[rng.Next(onPath.Length)]);
+
+Console.WriteLine($"  after {loopWalk.Time / 1000}s: {visitors.Boardings} boardings, {visitors.Rides} completed rides"
+                + $", {loopWalk.Guests.Count} still walking, {visitors.Plans.Values.Count(p => p.Intent == VisitorIntent.Queued)} queued");
+foreach (var r in loop.Rides)
+    Console.WriteLine($"  {r.Name,-22} queue {r.Queue.Count}  on ride {r.OnRide}"
+                    + (r.Fault != null ? $"  FAULT {Kind(r.Fault)}" : ""));
+Check(visitors.Boardings > 0, $"a guest walks to a ride's queue and is handed over ({visitors.Boardings} times)");
+Check(visitors.Rides > 0, $"a guest comes back OUT of a ride and walks away ({visitors.Rides} did)");
+Check(marooned == null || (marooned.Queue.Count == 0 && marooned.OnRide == 0),
+      "control: nobody reaches the ride whose queue is off the path"
+    + (marooned != null ? $" (queue {marooned.Queue.Count}, on ride {marooned.OnRide})" : " -- control did not load"));
+Check(marooned != null, "the control ride exists at all (otherwise the check above is vacuous)");
+
 Console.WriteLine(bad == 0 ? "PASS" : $"FAIL: {bad}");
 return bad == 0 ? 0 : 1;
