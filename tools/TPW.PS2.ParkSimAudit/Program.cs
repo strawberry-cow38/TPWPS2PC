@@ -406,12 +406,19 @@ var onPath = laid.Where(c => loopPaths.Open(c)).ToArray();
 // control. If guests ever queue at that one, "they walked to the queue" is not what happened.
 // ⚠ The FOURTH stop is off the path on purpose -- see the control below.
 var unreachable = new ParkCell(1, 1);
-var stops = new[] { onPath[3], onPath[5], onPath[7], unreachable };
+// ⭐ AS MANY RIDES AS THE CORRIDOR HOLDS, not three. The walk-timing and track-subsystem checks
+// below only bite on rides that were actually PLACED, and three of the thirty-five rides that
+// call WALKON across the four worlds is not coverage. Every other open cell from index 3 leaves a
+// gap between neighbours so their queues do not overlap; the LAST entry is always the control,
+// out in the grass, and must stay last because `control` is keyed on being the final stop.
+var corridorStops = new List<ParkCell>();
+for (int i = 3; i < onPath.Length - 1 && corridorStops.Count < 8; i += 2) corridorStops.Add(onPath[i]);
+var stops = corridorStops.Append(unreachable).ToArray();
 foreach (var e in wad.Entries.Where(e => e.Path.EndsWith(".rse", StringComparison.OrdinalIgnoreCase)
                                       && e.Path.StartsWith("/Rides/", StringComparison.OrdinalIgnoreCase))
                              .OrderBy(e => e.Path, StringComparer.OrdinalIgnoreCase))
 {
-    if (loopId >= 4) break;
+    if (loopId >= stops.Length) break;
     string stem = e.Path[..^4];
     var samEntry = wad.Find(stem + ".sam");
     if (samEntry == null) continue;
@@ -446,7 +453,7 @@ foreach (var e in wad.Entries.Where(e => e.Path.EndsWith(".rse", StringCompariso
     catch { }
     if (seats == 0) continue;
     var stop = stops[loopId];
-    bool control = loopId == 3;
+    bool control = loopId == stops.Length - 1;
     var r = loop.Add(loopId + 1, (control ? "CONTROL " : "") + (def.Name ?? stem), stop, 1, 1,
                      wad.Read(e), aps, def.UpgradeCapacity(0) ?? 1,
                      stop, control ? stop : onPath[^1], out _, sibling: SLoop, headSlots: seats);
@@ -469,7 +476,7 @@ foreach (var e in wad.Entries.Where(e => e.Path.EndsWith(".rse", StringCompariso
     }
 }
 var marooned = loop.Rides.FirstOrDefault(r => r.Name.StartsWith("CONTROL", StringComparison.Ordinal));
-Console.WriteLine($"  {loopId} rides placed, 3 on the corridor at {string.Join(", ", stops.Take(3))}"
+Console.WriteLine($"  {loopId} rides placed, {Math.Max(0, loopId - 1)} on the corridor at {string.Join(", ", stops.Take(Math.Max(0, loopId - 1)))}"
                 + $"; the control's queue is at {unreachable}, off the path");
 
 for (int i = 0; i < 12; i++) visitors.Arrive(mouth, onPath[^1]);
@@ -541,8 +548,16 @@ Console.WriteLine($"  {walkers.Count} of {loop.Rides.Count} placed rides call WA
 foreach (var r in flooredWalkers)
     Console.WriteLine($"  FLOORED: {r.Name} calls WALKON but no node resolved -- its legs ran at 100 ms");
 Check(walkers.Count > neverWalked.Count, $"some placed ride actually RAN a walk ({walkers.Count - neverWalked.Count} of {walkers.Count} that call WALKON) -- otherwise the check below is vacuous");
+// ⚠ EXPECTED RED ON SPACE (Moon Buggies), and left red for the same reason as Thrill Grill: a
+// by-name exclusion is where the next one would hide. `WalkMilliseconds` resolves the GUEST-side
+// node of a walk in park space `0x800` against the RIDE MODEL -- but that node is where the guest
+// stands in the PARK, at the queue. Rides that pass (dizzyd, incagod) each carry exactly four
+// `0x800` fittings; Moon Buggies carries none and still calls WALKON, so either the console
+// resolves that node somewhere other than the ride model, or the disc is like that. OPEN.
 Check(flooredWalkers.Count == 0, "every ride that calls WALKON timed its legs from real node positions"
-    + (flooredWalkers.Count == 0 ? "" : ": " + string.Join(", ", flooredWalkers.Select(r => r.Name))));
+    + (flooredWalkers.Count == 0 ? "" : ": " + string.Join(", ", flooredWalkers.Select(r => r.Name))
+        + " -- KNOWN for Moon Buggies (SPACE): it calls WALKON but its model has no 0x800 park-space"
+        + " fitting for the guest-side node, so every leg floors. See findings/visitors.md. Others here are NEW."));
 Check(visitors.Rides > 0, $"a guest comes back OUT of a ride and walks away ({visitors.Rides} did)");
 // ⚠⚠ THE SAME PEOPLE, not the same COUNT. A guest handed to a ride leaves the walking layer and
 // is put back when the script is done, and putting them back as a NEW id would pass every count

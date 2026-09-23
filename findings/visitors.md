@@ -712,3 +712,80 @@ not a rule question, and it should not be lumped in with the four above.
 ⚠ Separately and already fixed (`27460fa`): `UseRecord` threw "Index was out of range" on girl1a's
 and girl4a's `Load` v0 by asking for 48-byte texture tracks on a 20-byte skeletal table. That is a
 different failure from these five and is no longer in the tree.
+
+### ⭐⭐ Bug one, measured per INFLUENCE: not the second and third bone bytes — the blend itself
+
+The suspect above ("which second and third bone indices a multi-influence vertex is read as
+naming") was tested directly, with the bone bytes used only as group labels — no helper-index
+reading, no bind rotation rule involved — and it is not that. `SkinAudit` now prints the test
+under every failing rig.
+
+**The property that a consistent skin has.** On boy1a every influence of every vertex, taken
+ALONE through its own bone's transform, lands on that vertex: 0.01 units over all 265
+influences, blended vertices included. The exporter built each influence from the same authored
+point, so each one reproduces it by itself.
+
+**What the four blend-failing rigs have instead.** Fit each bone from its SINGLE-influence
+vertices only (bone byte beyond doubt, threshold-exact on these rigs), then score the influences
+of BLENDED vertices with that fit, first influence and later ones apart:
+
+| rig | first influence of a blended vertex vs its own bone | later influences | later influences ANY fitted bone maps within 5 units |
+|---|---:|---:|---:|
+| girl2a | **315.5** over 7 | 350.9 over 8 | **0 of 92** |
+| guard | **171.5** over 18 | 407.5 over 26 | 24 of 100 (its Spine and Hand blends, all exact) |
+| boy2a | (no fitted bone leads a blend) | 314.7 over 8 | **0 of 78** |
+| handyman | — | 0.01 over 16 | 16 of 145 |
+
+⭐ **The FIRST influence misses too**, by hundreds of units, so no misreading of the later bone
+bytes can be the cause; and no re-mapping of a later influence to any other bone brings it
+home (0 of 92, 0 of 78). A free per-bone affine fit over all of a bone's influences cannot close
+either (boy2a Spine 700, girl2a R Calf 901 units) — no rigid transform of the bone maps its own
+influences onto their vertices. Yet the WEIGHTED blend lands: 3.9 (girl2a), 5.8 (guard), 59
+(handyman), 220 (boy2a). These skins carry per-influence positions whose offsets cancel only in
+the blend. On guard it is per-VERTEX: the Spine and Hand blends are consistent at 0.01 while the
+Head+Neck and Foot+Calf blends are not, which an indexing error could not produce. **Hypothesis,
+not a finding:** 3ds Max Physique's "deformable" vertices export exactly this shape (per-link
+offsets that sum out); the rigid ones are the consistent vertices.
+
+For the runtime nothing changes: `Skin.Deform` is the same weighted sum the PS2 does, so a posed
+girl2a/guard is as consistent as its authored mesh (a 1/4,000-of-height residual), boy2a within
+1% of its height. Researcher's blends are consistent (0.01 over 15); its fault is a single-bone
+one — both hands' bind rotation sit a consistent ~1° (0.02 per element) off the rule, amplified
+to 196 (clipboard, 13,000 units out on the left hand) and 500 (placard, right hand) — a
+per-character question, as above.
+
+⚠ Correction to the paragraph before this one: the "Index was out of range" thrower was not the
+texture-track call (`TextureTracks` already returns early on a skeletal record); it was
+`AnimatedModel.MorphFor` walking the 20-byte skeletal table at the 48-byte stride and handing
+`Animation.Morph` garbage headers — 93 of the disc's 177 skeletal records throw, 84 are clean, and
+none produces a silent garbage morph (every garbage pointer lands outside the file). Fixed in
+`92375ff` on `rec.Skeletal` (flag 0x20), independent of the bone-index reading.
+
+## ⚠ Moon Buggies (SPACE): a ride that WALKS but has no park-space node — OPEN
+
+Widening the whole-loop audit from three placed rides to eight **doubled** how much of each world
+the new checks touch (walk timing went from 8 of the 35 rides that call `WALKON` across the four
+worlds, to 16 of 35) and immediately caught a ride the narrow test could never reach:
+
+```
+FLOORED: Moon Buggies calls WALKON but no node resolved -- its legs ran at 100 ms
+```
+
+`WalkMilliseconds` resolves the **guest-side** node of a walk in park space `0x800` against the
+**ride model**. But that node is where the guest stands in the PARK, at the queue — and the rides
+that pass this check (`dizzyd`, `incagod`) each carry exactly **four** `0x800` fittings, which is
+what an entrance/exit/queue-start/queue-end set looks like sitting on the ride's own footprint.
+Moon Buggies carries none and calls `WALKON` anyway.
+
+So one of two things is true and this does not yet say which:
+
+- the console resolves the guest-side node somewhere **other than the ride model** — in which case
+  our `0x800`-against-the-model lookup is too narrow and several rides are floored that should not
+  be; or
+- the disc is simply like that for this ride, as it is for Thrill Grill's missing `.aps`.
+
+⚠ Note this is NOT the Crazy Ape situation, which is settled: Crazy Ape also has no `0x800`
+fittings and that is fine **because its script never calls `WALKON`** — it seats riders with
+`ADDHEAD`. Moon Buggies is the case that combination rules out.
+
+Left FAILING on SPACE rather than excluded by name, same reasoning as Thrill Grill on HALLOW.
