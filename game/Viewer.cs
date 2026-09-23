@@ -1401,6 +1401,14 @@ public partial class Viewer : Node3D
         }
         if (_pieces == null) return;
         _paths = new PathTool(_terrainModel, _pieces);
+        // ⭐ The park's own entrance walkway, from the game's table. It joins like path and
+        // nothing may be laid on it, so a run brought up to the gate attaches to the way in.
+        if (_entranceTable != null && _terrainModel.Field is { } fld)
+        {
+            var e = _entranceTable.Fit(fld, out string which);
+            if (!e.Empty) _paths.SetWalkway(e.Cells().Select(c => (c.X, c.Z)));
+            GD.Print($"[path] the park's walkway: {which}");
+        }
         _ghost = new PathGhost(_paths) { Occupied = (x, y) => !_park.Vacant(x, y) };
         // ⭐ The blueprint asks the tool what is already on a cell, so a stub can tell path from
         // queue. Through a lambda, because _paths is rebuilt with every park.
@@ -1555,6 +1563,29 @@ public partial class Viewer : Node3D
         var mid1 = _paths.KindAt(lx, ly + 1);
         var far1 = _paths.KindAt(lx + 2, ly + 2);
         bool undone = _paths.UndoLeg();
+        // ⭐⭐ AND THE PARK'S OWN WALKWAY. A path laid at its mouth must grow an arm INTO it, and
+        // the walkway itself must refuse to be built on. ⚠ The pair matters: "it joins" and "it
+        // is buildable" would both be satisfied by simply treating it as ordinary ground.
+        // ⚠ THE MOUTH IS THE WALKWAY'S LAST ROW, the end that touches the park -- not the first
+        // cell a scan happens to reach. Scanning from y=0 found the far end of the cross-corridor
+        // and then tested a cell inside the skipped block, which cannot be built on at all: the
+        // control read "NO ARM" about a tile that was never laid.
+        var mouth = (X: -1, Y: -1);
+        for (int y = f.Height - 2; y >= 0 && mouth.X < 0; y--)
+            for (int x = 0; x < f.Width; x++)
+                if (_paths.IsWalkway(x, y) && f.Drawn(x, y + 1)) { mouth = (x, y); break; }
+        if (mouth.X >= 0)
+        {
+            int px2 = mouth.X, py2 = mouth.Y + 1;
+            _paths.Lay(px2, py2, PathTool.Kind.Path);
+            int bits2 = _paths.LinkBits(px2, py2);
+            bool up = (bits2 & PathPieces.North) != 0;
+            GD.Print($"[link] the walkway's mouth is ({mouth.X},{mouth.Y}); a path at ({px2},{py2}) "
+                   + $"reads {bits2:X2} -- {(up ? "an arm into the walkway, as it must be" : "NO ARM")}"
+                   + $"; laying on the walkway itself is {(_paths.CanLay(mouth.X, mouth.Y) ? "ALLOWED" : "refused, as it must be")}");
+        }
+        else GD.Print("[link] this park has no walkway to test against");
+
         GD.Print($"[link] two legs then one step back: first leg {_paths.KindAt(lx, ly + 1)} (was {mid1}), "
                + $"second leg {_paths.KindAt(lx + 2, ly + 2)} (was {far1}) -- "
                + $"{(undone && _paths.KindAt(lx, ly + 1) == PathTool.Kind.Path && _paths.KindAt(lx + 2, ly + 2) == PathTool.Kind.None ? "the second went, the first stayed, as it must be" : "WRONG")}");

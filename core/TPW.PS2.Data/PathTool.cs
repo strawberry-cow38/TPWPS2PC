@@ -46,6 +46,15 @@ public sealed class PathTool
     /// out would be drawing a route nobody walks. A PATH may reach either, because a path is what
     /// people leave by.</summary>
     readonly Dictionary<int, (int Ride, bool Entrance, int Dx, int Dy)> _doors = new();
+
+    /// <summary>⭐⭐ THE WALKWAY THE PARK COMES WITH. The game paints it straight into the runtime
+    /// tile map from its own table (see <see cref="ParkEntrance"/>), so it is path as far as
+    /// anything that walks or joins is concerned, and a run laid up to its mouth has to attach.
+    ///
+    /// ⚠ IT IS NOT GROUND THIS TOOL PAINTS. Every cell of it is one the terrain draws NO ground
+    /// on -- the entrance prefab's mesh stands there instead -- so writing a path tile into the
+    /// grid would lay `jpa_` art over the road. It counts as path and is never drawn.</summary>
+    readonly HashSet<int> _walkway = new();
     readonly Dictionary<int, byte> _before = new();
 
     /// <summary>⭐⭐ ONE LEG, ONE UNDO. The queue tool's right button steps a run BACK, not out --
@@ -139,9 +148,26 @@ public sealed class PathTool
     /// <summary>⭐ The engine's own rule, from the tile-map fill at 0x14E700: a cell is unbuildable
     /// exactly when its authored byte0 bit 0 is set, which is the same bit that says the terrain
     /// draws no ground there.</summary>
-    public bool CanLay(int x, int y) => Ready && In(x, y) && _field.Buildable(x, y);
+    public bool CanLay(int x, int y) => Ready && In(x, y) && _field.Buildable(x, y) && !_walkway.Contains(At(x, y));
 
-    public Kind KindAt(int x, int y) => In(x, y) ? _kind[At(x, y)] : Kind.None;
+    public Kind KindAt(int x, int y)
+        => !In(x, y) ? Kind.None
+         : _walkway.Contains(At(x, y)) ? Kind.Path
+         : _kind[At(x, y)];
+
+    /// <summary>Is this one of the park's own entrance cells?</summary>
+    public bool IsWalkway(int x, int y) => In(x, y) && _walkway.Contains(At(x, y));
+
+    /// <summary>Tell the tool where the park's own walkway runs. ⚠ Replaces whatever was there,
+    /// because it belongs to the park and not to anything the player did.</summary>
+    public void SetWalkway(IEnumerable<(int X, int Y)> cells)
+    {
+        if (!Ready) return;
+        var was = _walkway.ToArray();
+        _walkway.Clear();
+        foreach (var (x, y) in cells) if (In(x, y)) _walkway.Add(At(x, y));
+        foreach (var at in was.Concat(_walkway)) RepickAround(at % _field.Width, at / _field.Width);
+    }
 
     static readonly (int Dx, int Dy, int Bit)[] Ring =
     {
@@ -211,6 +237,7 @@ public sealed class PathTool
     bool PathJoins(int x, int y)
     {
         if (!In(x, y)) return false;
+        if (_walkway.Contains(At(x, y))) return true;
         var k = _kind[At(x, y)];
         if (k is Kind.Path or Kind.Both) return true;
         return k == Kind.Queue && IsQueueEnd(x, y);
