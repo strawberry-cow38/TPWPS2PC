@@ -2150,6 +2150,7 @@ public partial class Viewer : Node3D
     {
         if (_paths == null) { GD.Print("[path] the tool is off for this park"); return; }
         _toolOpen = true;
+        _shownBox = -1; _hovered = -1; _selectView?.Hide();
         _toolKind = kind;
         _toolOwner = owner;
         _runX = _runY = -1;
@@ -2558,6 +2559,11 @@ public partial class Viewer : Node3D
                 // ⭐ HOVER FIRST, with no click at all: the outline must appear on the ride and
                 // go again off it. ⚠ Its partner is the empty cell -- "it shows a box" is
                 // satisfied by something that shows one everywhere.
+                // ⚠ THE TOOL OFF FIRST. Placing the three rides leaves the exit-path tool open,
+                // and hover is now suppressed while a tool owns the cursor -- so the first run of
+                // this control reported "hovering gives NOTHING, WRONG" about the new rule working
+                // exactly as asked. The control's setup was the fault, not the code.
+                _toolOpen = false; _place.Clear();
                 _cursorOverride = (mid.X + mid.Fp.Width / 2, mid.Y + mid.Fp.Height / 2);
                 UpdateHover();
                 bool onRide = _hovered == 1;
@@ -2578,6 +2584,28 @@ public partial class Viewer : Node3D
                 GD.Print($"[select] on {mid.Name}'s own cell: {(got && _selected == 1 ? "selected it" : "MISSED")}"
                        + $"; camera cursor {camWas} -> {_game.CursorX}"
                        + $" -- {(got && _selected == 1 ? "still selected after the camera moved, as it must be" : "WRONG")}");
+
+                // ⭐⭐ AND NOT WHILE A TOOL OWNS THE CURSOR. Master: "selection boxes shouldnt show
+                // with path or a blueprint on ur cursor." Each half has its partner right above
+                // it -- the same cell hovered with nothing held gave the outline.
+                _cursorOverride = (mid.X + mid.Fp.Width / 2, mid.Y + mid.Fp.Height / 2);
+                _toolOpen = true; UpdateHover(); bool withTool = _hovered >= 0;
+                _toolOpen = false;
+                ArmFromList(chosen); UpdateHover(); bool withBlueprint = _hovered >= 0;
+                _place.Clear();
+                UpdateHover(); bool withNeither = _hovered >= 0;
+                GD.Print($"[select] on the same cell: with the path tool open {(withTool ? "A BOX" : "none")}, "
+                       + $"holding a blueprint {(withBlueprint ? "A BOX" : "none")}, with neither {(withNeither ? "a box" : "NONE")}"
+                       + $" -- {(!withTool && !withBlueprint && withNeither ? "only when the cursor is free, as it must be" : "WRONG")}");
+
+                // ⭐ The ray the hover really uses, asked directly -- a box the ray passes through
+                // and one it misses, because a test that only hits proves nothing about picking.
+                var rlo = new Vector3(0, 0, 0); var rhi = new Vector3(2, 2, 2);
+                bool hits = RayHitsBox(new Vector3(1, 10, 1), Vector3.Down, rlo, rhi, out float tHit);
+                bool misses = RayHitsBox(new Vector3(9, 10, 9), Vector3.Down, rlo, rhi, out _);
+                GD.Print($"[select] ray down through a 2x2x2 box: {(hits ? $"hits at {tHit:F1}" : "MISSES")}, "
+                       + $"beside it: {(misses ? "HITS ANYWAY" : "misses")}"
+                       + $" -- {(hits && Mathf.Abs(tHit - 8f) < 0.01f && !misses ? "picks by the model's box, as it must be" : "WRONG")}");
 
                 // Somewhere well clear of all three.
                 _cursorOverride = (mid.X, _park.Field.Height - 3);
@@ -3042,12 +3070,67 @@ public partial class Viewer : Node3D
     /// <summary>Follow the pointer. ⭐ The box is drawn for whatever is under it, and falls back to
     /// the SELECTION when the pointer is over nothing -- so a selected ride keeps its outline
     /// while you point elsewhere, and hovering another shows that one instead.</summary>
+    /// <summary>What the pointer is over, by RAY AGAINST THE MODEL rather than by the cell under
+    /// it. ⭐ Master: "the hover should be anywhere on the thing's model". A ride's mesh overhangs
+    /// its footprint and stands well above it, so picking by the ground cell means the top of a
+    /// tall ride -- the part you are actually looking at -- picks whatever cell happens to be
+    /// behind it.
+    ///
+    /// ⚠ NEAREST HIT, not first: boxes overlap on screen and the one in front is the one meant.
+    /// ⚠ And the cell route is kept for the controls, which have no mouse to cast from.</summary>
+    int PointedAt()
+    {
+        if (_park == null) return -1;
+        if (_cursorOverride is { } fixedCell) return PlacedIndexAt(fixedCell.X, fixedCell.Y);
+        if (_cam == null) return -1;
+        var mouse = GetViewport().GetMousePosition();
+        if (_panel != null && _panel.Visible && mouse.X < PanelW) return -1;
+        if (_buildBox != null && _buildBox.Visible && mouse.X > GetViewport().GetVisibleRect().Size.X - BuildW)
+            return -1;
+        var from = _cam.ProjectRayOrigin(mouse);
+        var dir = _cam.ProjectRayNormal(mouse);
+        int best = -1; float near = float.MaxValue;
+        for (int i = 0; i < _park.Placed.Count; i++)
+        {
+            var node = _park.Placed[i].Node;
+            if (node == null || !IsInstanceValid(node)) continue;
+            var (lo, hi) = Park.DrawnBounds(node, inParent: true);
+            if (RayHitsBox(from, dir, lo, hi, out float t) && t < near) { near = t; best = i; }
+        }
+        return best;
+    }
+
+    /// <summary>Slab test. ⚠ A zero component of the direction is handled by the infinities falling
+    /// out of the division rather than by a branch -- the branch is where this is usually wrong,
+    /// because a ray exactly along an axis is the common case for a camera looking down one.</summary>
+    static bool RayHitsBox(Vector3 from, Vector3 dir, Vector3 lo, Vector3 hi, out float t)
+    {
+        float t0 = 0f, t1 = float.MaxValue;
+        for (int a = 0; a < 3; a++)
+        {
+            float o = from[a], d = dir[a];
+            float aLo = (lo[a] - o) / d, aHi = (hi[a] - o) / d;
+            if (aLo > aHi) (aLo, aHi) = (aHi, aLo);
+            t0 = Mathf.Max(t0, aLo); t1 = Mathf.Min(t1, aHi);
+            if (t0 > t1 || float.IsNaN(t0) || float.IsNaN(t1)) { t = 0f; return false; }
+        }
+        t = t0;
+        return true;
+    }
+
     void UpdateHover()
     {
         int was = _hovered;
-        _hovered = _park != null && CursorCell(out int x, out int y) ? PlacedIndexAt(x, y) : -1;
-        if (_hovered != was) ShowBoxFor(_hovered >= 0 ? _hovered : _selected);
+        // ⭐⭐ NOT WHILE SOMETHING ELSE OWNS THE CURSOR. Master: "selection boxes shouldnt show
+        // with path or a blueprint on ur cursor." Both of those draw their own ghost on the tile
+        // under the pointer, and a selection outline on top of it is two answers to one question.
+        _hovered = _toolOpen || _place.Active ? -1 : PointedAt();
+        int want = _toolOpen || _place.Active ? -1 : (_hovered >= 0 ? _hovered : _selected);
+        if (_hovered != was || want != _shownBox) { _shownBox = want; ShowBoxFor(want); }
     }
+
+    /// <summary>Which index the box is currently drawn for, so it is not rebuilt every frame.</summary>
+    int _shownBox = -1;
 
     void ShowBoxFor(int at)
     {
@@ -3092,6 +3175,7 @@ public partial class Viewer : Node3D
     {
         if (_selected >= 0) { GD.Print("[select] nothing selected"); Status("nothing selected"); }
         _selected = -1;
+        _shownBox = _hovered;
         ShowBoxFor(_hovered);
     }
 
@@ -4367,7 +4451,7 @@ public partial class Viewer : Node3D
             StepBuilding((float)delta * Aps.Fps);
         // ⭐ The selection breathes on its own clock, and like the console's it stands still
         // while the game is paused.
-        if (_mode == Mode.Park && !_place.Active) UpdateHover();
+        if (_mode == Mode.Park) UpdateHover();
         if (_playing) _selectView?.Step(delta);
         if (GameCamActive) StepGameCam(delta);
         else
