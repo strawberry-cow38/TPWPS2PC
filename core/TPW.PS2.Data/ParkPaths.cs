@@ -25,6 +25,11 @@ public sealed class ParkPaths
     readonly HashSet<ParkCell> _occupied = new();
     readonly HashSet<ParkCell> _scenery = new();
     readonly HashSet<ParkCell> _entrance = new();
+    /// <summary>What this park's own flagpoles say its walkway column is, for the one case where
+    /// two table entries both fit the grid -- see <see cref="ParkEntrance.WalkwayColumnFromPoles"/>.
+    /// Taken in the constructor because that is where the terrain MODEL is; SetEntrance only gets
+    /// the grid.</summary>
+    readonly int? _walkwayColumn;
 
     /// <summary>⭐⭐ THE WALKWAY THE PARK COMES WITH -- the way in from the gate -- READ FROM THE
     /// GAME'S OWN TABLE at 0x2B71B0 and painted the way 0x14E5B0 paints it. See
@@ -42,7 +47,7 @@ public sealed class ParkPaths
     {
         _entrance.Clear();
         if (table == null) return "no entrance table";
-        var entry = table.Fit(Field, out string report);
+        var entry = table.Fit(Field, _walkwayColumn, out string report);
         if (!entry.Empty)
             foreach (var (x, z, _) in entry.Cells())
                 if (x >= 0 && z >= 0 && x < Field.Width && z < Field.Height) _entrance.Add(new ParkCell(x, z));
@@ -57,6 +62,7 @@ public sealed class ParkPaths
         var f = terrain.Field ?? throw new ArgumentException("Terrain has no authored grid");
         Field = new Model.HeightField { Width = f.Width, Height = f.Height, Cells = (byte[])f.Cells.Clone() };
         Materials = terrain.Materials.AsReadOnly();
+        _walkwayColumn = ParkEntrance.WalkwayColumnFromPoles(terrain);
         var marker = terrain.Meshes.Single(m => string.Equals(m.Name, "heightfield", StringComparison.OrdinalIgnoreCase));
         var transforms = terrain.WorldTransforms();
         var a = Vector3.Transform(marker.BoundsMin, transforms[marker.Offset]);

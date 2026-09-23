@@ -15,6 +15,19 @@ public readonly record struct ParkEntranceEntry(int XStart, int ZRow, int XCol, 
 {
     public bool Empty => XStart == 0 && ZRow == 0 && XCol == 0 && ZEnd == 0;
 
+    /// <summary>The four fields 0x14E5B0 paints the walkway from, and NOTHING ELSE.
+    ///
+    /// ⚠⚠ THE AMBIGUITY TEST MUST COMPARE THIS, NOT THE WHOLE RECORD, AND I BROKE IT BY
+    /// FORGETTING THAT. Adding <see cref="PathRows"/> as a fifth positional component put it into
+    /// the record's generated equality, so entries 3 and 9 -- which carry the SAME walkway and
+    /// differ only in how far the starting path runs, 3 against 4 -- stopped comparing equal.
+    /// <see cref="ParkEntrance.Fit"/> then saw two distinct answers for any park with XCol 47,
+    /// called it ambiguous, and returned `default`: no entrance at all in HALLOW t1 and SPACE t1,
+    /// which spawned guests at (0,0) and crashed. astraclaw found it at f2ef76e.
+    ///
+    /// The question Fit asks is "which WALKWAY is this park's", so that is what it compares.</summary>
+    public (int XStart, int ZRow, int XCol, int ZEnd) Walkway => (XStart, ZRow, XCol, ZEnd);
+
     /// <summary>The cells this entry paints, with the kind the game writes on each.
     ///
     /// ⭐⭐ THE SHAPE IS THE CODE'S, not a rectangle drawn round the numbers. 0x14E5B0 writes, in
@@ -156,7 +169,40 @@ public sealed class ParkEntrance
     ///
     /// ⚠ Returns default when NO entry fits or when more than one does; the caller says so out
     /// loud rather than picking one.</summary>
-    public ParkEntranceEntry Fit(Model.HeightField field, out string report)
+    /// <summary>⭐⭐ THE FLAGPOLES BREAK A TIE THE GRID CANNOT. SPACE's second park matches BOTH
+    /// entry 7 (walkway at x 37) and entry 10 (x 35): their columns are undrawn there and the cell
+    /// past each mouth is drawn, so the shape test passes twice and honestly reports "ambiguous" --
+    /// which left that park with NO entrance and guests spawning at (0,0). That predates the
+    /// PathRows change; astraclaw hit both faults at once at f2ef76e.
+    ///
+    /// The park itself settles it. `A_POLES &amp; BOLLARDS` stands at the bus stop, and across all
+    /// EIGHT parks its first pole sits exactly **5.865** left of the walkway's left column:
+    ///
+    ///   pole 23.135 29.135 31.135 33.135 37.135 41.135  ->  XCol 29 35 37 39 43 47
+    ///
+    /// ⚠ That is a MEASURED correspondence, not something read out of the code, so it is used
+    /// only to CHOOSE between entries the grid already accepted -- never to invent one. If the
+    /// hint matches nothing that fits, the ambiguity is reported as before.</summary>
+    public static int? WalkwayColumnFromPoles(Model terrain)
+    {
+        var mesh = terrain?.Meshes.FirstOrDefault(
+            m => m.Name.Contains("POLES", StringComparison.OrdinalIgnoreCase));
+        if (mesh == null) return null;
+        var world = terrain.WorldTransforms();
+        var pts = terrain.Vertices(mesh).Pos
+            .Select(p => System.Numerics.Vector3.Transform(p, world[mesh.Offset])).ToArray();
+        if (pts.Length == 0) return null;
+        float top = pts.Max(p => p.Y);
+        var tall = pts.Where(p => p.Y > top * 0.6f).ToArray();
+        if (tall.Length == 0) return null;
+        return (int)Math.Round(tall.Min(p => p.X) + 5.865f);
+    }
+
+    public ParkEntranceEntry Fit(Model.HeightField field, out string report) => Fit(field, null, out report);
+
+    /// <param name="walkwayColumn">The column this park's poles say the walkway is in, from
+    /// <see cref="WalkwayColumnFromPoles"/>, or null. Used ONLY to break a tie.</param>
+    public ParkEntranceEntry Fit(Model.HeightField field, int? walkwayColumn, out string report)
     {
         var hits = new List<int>();
         for (int i = 0; i < All.Count; i++)
@@ -175,14 +221,49 @@ public sealed class ParkEntrance
             hits.Add(i);
         }
         // ⚠⚠ SEVERAL ENTRIES FIT, AND THAT IS NOT AMBIGUITY -- the table REPEATS. Jungle's three
-        // park slots hold the same four numbers, and entries 3 and 9 are identical to each other,
-        // so "entries 0, 1 and 2 all fit" was one answer counted three times. What matters is how
-        // many DISTINCT walkways fit, not how many rows.
-        var distinct = hits.Select(i => All[i]).Distinct().ToArray();
-        report = distinct.Length == 0 ? "no entrance entry fits this grid"
-               : distinct.Length > 1
-                 ? $"entries {string.Join(", ", hits)} fit and disagree -- ambiguous"
-                 : $"entry {hits[0]}{(hits.Count > 1 ? $" (and {string.Join(", ", hits.Skip(1))}, identical)" : "")}: {distinct[0]}";
-        return distinct.Length == 1 ? distinct[0] : default;
+        // park slots hold the same four numbers, and entries 3 and 9 carry the same walkway, so
+        // "entries 0, 1 and 2 all fit" was one answer counted three times. What matters is how
+        // many DISTINCT WALKWAYS fit, not how many rows -- see ParkEntranceEntry.Walkway for why
+        // comparing the whole record instead cost HALLOW and SPACE their entrance entirely.
+        var distinct = hits.Select(i => All[i]).DistinctBy(e => e.Walkway).ToArray();
+        string chose = "";
+        int matched = -1;
+        if (distinct.Length > 1 && walkwayColumn is { } want)
+        {
+            var picked = distinct.Where(e => e.XCol == want).ToArray();
+            matched = picked.Length;
+            if (picked.Length == 1)
+            {
+                chose = $" (of {distinct.Length}, chosen by this park's poles at column {want})";
+                hits = hits.Where(i => All[i].XCol == want).ToList();
+                distinct = picked;
+            }
+        }
+        if (distinct.Length != 1)
+        {
+            // ⚠ SAY WHAT THE HINT DID, not just that it failed. "matches none of them" when it
+            // in fact matched BOTH sends the next reader looking at the poles instead of at the
+            // reason two entries with the SAME column are being told apart at all.
+            string hint = walkwayColumn is { } w
+                ? $"; the poles say column {w}, which {matched switch
+                    { 0 => "matches none of them", 1 => "matched one", _ => $"matches {matched} of them" }}"
+                : "";
+            report = distinct.Length == 0 ? "no entrance entry fits this grid"
+                   : $"entries {string.Join(", ", hits)} fit and their walkways disagree -- ambiguous" + hint;
+            return default;
+        }
+        // ⭐ ONE WALKWAY, AND THE TIED ENTRIES CAN STILL DISAGREE ON HOW FAR THE PATH RUNS.
+        // HALLOW's first park and SPACE's have the identical walkway at XCol 47 and differ only
+        // here -- 3 rows against 4 -- and the grid cannot tell them apart, because the difference
+        // is INSIDE the park rather than in the shape being matched. The shorter run is taken and
+        // SAID OUT LOUD: it lays one row less than retail in one park of one world, against a
+        // guess that would be silently wrong in whichever of the two it got backwards. Resolving
+        // it needs the loader's world number, which the disc does not carry.
+        var rows = hits.Select(i => All[i].PathRows).Distinct().OrderBy(r => r).ToArray();
+        var pick = distinct[0] with { PathRows = rows[0] };
+        report = $"entry {hits[0]}{(hits.Count > 1 ? $" (and {string.Join(", ", hits.Skip(1))}, same walkway)" : "")}{chose}: {pick}"
+               + (rows.Length > 1 ? $"  ⚠ those entries give {string.Join("/", rows)} starting-path rows; "
+                                  + $"taking {rows[0]}, the grid cannot choose" : "");
+        return pick;
     }
 }

@@ -43,7 +43,7 @@ Check(paths.EntranceCells.Count > 0, $"the park has an entrance to walk in by ({
 
 // ⭐ THE MOUTH: the two kind-0x0E cells where the walkway meets the park. That is where the game
 // paints the walkway's last row, and it is where guests come in.
-var entry = table.Fit(paths.Field, out _);
+var entry = table.Fit(paths.Field, ParkEntrance.WalkwayColumnFromPoles(terrain), out _);
 var mouth = entry.Cells().Where(c => c.Kind == 0x0E).Select(c => new ParkCell(c.X, c.Z)).ToArray();
 Check(mouth.Length == 2 && mouth.All(paths.Open), $"the walkway has a two-cell mouth on open ground: {string.Join(" ", mouth)}");
 if (mouth.Length != 2) { Console.WriteLine("FAIL: no mouth, nowhere to spawn"); return 1; }

@@ -1582,7 +1582,7 @@ public partial class Viewer : Node3D
         var entry = default(ParkEntranceEntry);
         if (_entranceTable != null && _terrainModel.Field is { } fld)
         {
-            entry = _entranceTable.Fit(fld, out string which);
+            entry = _entranceTable.Fit(fld, ParkEntrance.WalkwayColumnFromPoles(_terrainModel), out string which);
             if (!entry.Empty) _paths.SetWalkway(entry.Cells().Select(c => (c.X, c.Z)));
             GD.Print($"[path] the park's walkway: {which}");
         }
@@ -2799,7 +2799,8 @@ public partial class Viewer : Node3D
         if (_gateClosed) return false;
         var grid = WalkGrid();
         var field = _terrainModel?.Field;
-        var entry = _entranceTable != null && field != null ? _entranceTable.Fit(field, out _) : default;
+        var entry = _entranceTable != null && field != null
+            ? _entranceTable.Fit(field, ParkEntrance.WalkwayColumnFromPoles(_terrainModel), out _) : default;
         if (grid == null || entry.Empty)
         {
             _gateClosed = true;
@@ -3584,7 +3585,7 @@ public partial class Viewer : Node3D
     {
         var f = _park.Field;
         if (f == null || _entranceTable == null || _paths == null) { GD.Print("[guest] no grid, no entrance table or no tool -- nothing to test"); return; }
-        var e = _entranceTable.Fit(f, out _);
+        var e = _entranceTable.Fit(f, ParkEntrance.WalkwayColumnFromPoles(_terrainModel), out _);
         if (e.Empty) { GD.Print("[guest] no entrance entry fits this park -- nothing to test"); return; }
         int xl = e.XCol, xr = e.XCol + 1, z0 = e.ZEnd;
         var left = new List<(int X, int Y)>(); var right = new List<(int X, int Y)>(); var bar = new List<(int X, int Y)>();

@@ -258,6 +258,48 @@ Console.WriteLine($"  known-answer controls: {samControlOk} of {samChecked} repr
                       + $"band 5 (sideshows) spans {(bands.TryGetValue(5, out var s5) ? s5.Count : 0)} worlds");
 }
 
+// ⭐⭐ EVERY PARK MUST RESOLVE AN ENTRANCE, and this check exists because two did not and
+// nothing noticed. A park whose entrance comes back empty has no way in: the sim spawns its
+// guests at (0,0) and falls over. Both faults were invisible to every other audit, which tested
+// JUNGLE and FANTASY and found them healthy.
+//
+//  * HALLOW t1 and SPACE t1 -- mine, at f2ef76e. Adding `PathRows` as a fifth positional
+//    component of ParkEntranceEntry pulled it into the record's equality, so table entries 3 and
+//    9 (same walkway, different starting-path length) stopped comparing equal and Fit called a
+//    repeat an ambiguity.
+//  * SPACE t2 -- older, and honest: entries 7 and 10 genuinely both fit its grid. The park's own
+//    flagpoles break the tie.
+//
+// The check is cheap, it covers all eight parks, and a miss here is a crash there.
+int parks = 0, parkless = 0;
+{
+    ParkEntrance entranceTable = null;
+    try { entranceTable = ParkEntrance.Read(disc); }
+    catch (Exception e) { Console.WriteLine($"entrance table: {e.Message}"); }
+    if (entranceTable != null)
+        foreach (var w in wads)
+        {
+            WadArchive wad2 = null;
+            try { wad2 = new WadArchive(disc.Read(w.Extent, w.Size)); } catch { continue; }
+            foreach (var t in wad2.Entries.Where(e => !WadArchive.IsAlias(e)
+                         && e.Path.Contains("/terrain/terrain_", StringComparison.OrdinalIgnoreCase)
+                         && e.Path.EndsWith(".mps", StringComparison.OrdinalIgnoreCase)))
+            {
+                Model terrain;
+                try { terrain = new Model(wad2.Read(t)); } catch { continue; }
+                if (terrain.Field == null) continue;
+                parks++;
+                var fitted = entranceTable.Fit(terrain.Field,
+                    ParkEntrance.WalkwayColumnFromPoles(terrain), out string why);
+                if (!fitted.Empty && fitted.Cells().Any()) continue;
+                parkless++;
+                Console.WriteLine($"   NO ENTRANCE  {w.Path.Split('/')[^1]} {t.Path.Split('/')[^1]}: {why}");
+            }
+        }
+    Console.WriteLine($"entrances: {parks - parkless} of {parks} parks resolve one"
+                      + (parkless == 0 ? "" : $"  <-- {parkless} WITH NO WAY IN"));
+}
+
 // Every archive entry, named. The readers above cover three extensions; the rest are present and
 // unexamined, and saying so is the difference between a known gap and an invisible one.
 var examined = new[] { ".mps", ".tga", ".aps", ".sam" };
@@ -271,4 +313,5 @@ if (firstFails.Count > 0)
     Console.WriteLine("first failures:");
     foreach (var f in firstFails) Console.WriteLine("   " + f);
 }
-return faceBad == 0 && tgaBad == 0 && decBad == 0 && samControlOk == samChecked ? 0 : 2;
+return faceBad == 0 && tgaBad == 0 && decBad == 0 && samControlOk == samChecked
+       && parkless == 0 ? 0 : 2;
