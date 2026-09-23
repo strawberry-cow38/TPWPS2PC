@@ -573,3 +573,50 @@ So "walks at the floor" on Crazy Ape is the correct behaviour of a ride that doe
    CONTROL ride is placed off the path precisely so nobody reaches it, so it carries `WALKON` in
    its bytecode, never runs one, and got reported as broken. `RseMachine.WalksWereAttempted`, set
    inside `WalkMilliseconds` itself, separates the two without a proxy such as boardings.
+
+## ⭐⭐ The rides that board nobody are the track rides — with exactly one exception
+
+A third of the park takes no guests: 6 of 21 rides in JUNGLE, 6 of 23 in SPACE, 9 of 23 in HALLOW,
+6 of 19 in FANTASY. The audit used to say why in a *comment* — "they are the coasters, the karts
+and the tour bus, the rides whose scripts poll TOUR/BUMP/COAST" — which is the weakest kind of
+finding: it reads like a conclusion, and nothing would have noticed a flat ride quietly joining
+them.
+
+It is now a check, in both directions, and it holds in three worlds out of four:
+
+```
+JUNGLE    6 of 21 poll a track subsystem;  6 took nobody   PASS
+SPACE     6 of 23 poll a track subsystem;  6 took nobody   PASS
+FANTASY   6 of 19 poll a track subsystem;  6 took nobody   PASS
+HALLOW    8 of 23 poll a track subsystem;  9 took nobody   FAIL
+```
+
+The three subsystem opcodes are dead in this build by design — every branch of `0x1c1260`,
+`0x1c1370` and `0x1c14e0` writes zero or discards its argument — so a script that polls one waits
+forever, and those rides sit at `VAR_RUNNING 0` with a guest parked in `VAR_LETMEON` that they
+never take. That is this executable's behaviour, not a gap in the port.
+
+### ⚠ THE EXCEPTION: Thrill Grill (HALLOW) — OPEN
+
+**`Thrill Grill` boards nobody and does not poll a track subsystem at all.** It is the only such
+ride on the disc, and it is unlike the eight around it in exactly the way that matters:
+
+```
+Ghosta Coasta  polls track: yes  RUNNING 0  LETMEON 1020  CAPACITY 10  reads LETMEON: yes  WALKON: no
+Thrill Grill   polls track: NO   RUNNING 1  LETMEON 1040  CAPACITY 18  reads LETMEON: yes  WALKON: yes
+```
+
+**`VAR_RUNNING 1`** — every track ride is stalled at 0, never having started. Thrill Grill's script
+is alive and cycling. It reads `VAR_LETMEON`, it calls `WALKON`, a guest id is sitting in the
+handshake slot waiting to be accepted, and it never accepts one. Not a fault, not closed, not
+broken, capacity 18.
+
+Unproven leads, in the order worth trying: its walk table may be saturating (`WalkOn` at
+`0x1bb180` drops a walk SILENTLY when no slot is free — compare `WalkSlotsInUse` against
+`WalkSlots`, which is what those accessors are for); or its accept branch is gated on a condition
+the host never satisfies. Note the *other* ride with `WALKON: yes`, Dare Devil, is stalled for the
+ordinary track reason, so "uses WALKON" is not itself the discriminator.
+
+The check is deliberately left FAILING on HALLOW rather than excluded by name. A "by design" filter
+is exactly where a defect would hide, and one red world is a better record of this than a green
+suite with a note in it.

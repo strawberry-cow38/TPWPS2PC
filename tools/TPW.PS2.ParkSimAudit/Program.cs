@@ -160,8 +160,54 @@ foreach (var r in offered.OrderByDescending(r => peak[r.Id]).Take(10))
 // ⚠ NAME THE ONES THAT DID NOT. "13 of 19 boarded" is a number to feel good about; the six that
 // took nobody are the finding, and they are the coasters, the karts and the tour bus -- the rides
 // whose scripts poll TOUR/BUMP/COAST, which this executable's own handlers answer with zero.
-foreach (var r in offered.Where(r => peak[r.Id] == 0))
-    Console.WriteLine($"  took nobody: {r.Name,-22} queue still {r.Queue.Count}, fault {Kind(r.Fault)}");
+// ⭐⭐ AND THE CLAIM ABOVE IS NOW CHECKED RATHER THAN ASSERTED. "They are the coasters, the karts
+// and the tour bus" was a sentence in a comment, which is the weakest kind of finding: it reads
+// like a conclusion and nothing would have noticed if a flat ride had quietly joined them. The
+// three subsystem opcodes are dead in this build by design -- every branch of `0x1c1260`,
+// `0x1c1370` and `0x1c14e0` writes zero or discards its argument -- so a script that polls one
+// waits forever, and the rides that take nobody should be EXACTLY the rides that poll one.
+//
+// A flat ride in the took-nobody list would be a real defect. A track ride that boards without
+// polling would mean the reading of those handlers is wrong. Both are worth failing on.
+bool Uses(ParkRide r, RseOpcode op) => ParkSim.Chain(r.Machine)
+    .Any(m => m.Program.Instructions.Any(i => i.Opcode == op));
+// ⭐ HAVING the variable is not READING it. Every ride declares VAR_LETMEON -- ParkSim writes a
+// guest into it regardless -- so "Has" proves nothing about whether the script is listening. The
+// handshake only works if some instruction actually names that slot.
+bool ReadsLetMeOn(ParkRide r)
+{
+    foreach (var m in ParkSim.Chain(r.Machine))
+    {
+        int slot = m.Program.VariableNames.ToList().IndexOf("VAR_LETMEON");
+        if (slot < 0) continue;
+        if (m.Program.Instructions.Any(i => i.Operands.Any(o => o.Tag == 0x40 && o.Index == slot)))
+            return true;
+    }
+    return false;
+}
+bool PollsTrack(ParkRide r) => ParkSim.Chain(r.Machine).Any(m => m.Program.Instructions.Any(
+    i => i.Opcode is RseOpcode.TOUR or RseOpcode.BUMP or RseOpcode.COAST));
+var tookNobody = offered.Where(r => peak[r.Id] == 0).ToList();
+foreach (var r in tookNobody)
+    Console.WriteLine($"  took nobody: {r.Name,-22} queue still {r.Queue.Count}, fault {Kind(r.Fault)}"
+                    + $", polls TOUR/BUMP/COAST: {(PollsTrack(r) ? "yes" : "NO")}"
+                    + $", LETMEON {(r.Has("VAR_LETMEON") ? r.Get("VAR_LETMEON").ToString() : "ABSENT")}"
+                    + $", RUNNING {(r.Has("VAR_RUNNING") ? r.Get("VAR_RUNNING").ToString() : "absent")}"
+                    + $", CLOSED {(r.Has("VAR_RIDECLOSED") ? r.Get("VAR_RIDECLOSED").ToString() : "absent")}"
+                    + $", BROKEN {(r.Has("VAR_BROKEN") ? r.Get("VAR_BROKEN").ToString() : "absent")}"
+                    + $", CAPACITY {(r.Has("VAR_CAPACITY") ? r.Get("VAR_CAPACITY").ToString() : "absent")}"
+                    + $", reads LETMEON: {(ReadsLetMeOn(r) ? "yes" : "NO")}"
+                    + $", ADDHEAD: {(Uses(r, RseOpcode.ADDHEAD) ? "yes" : "no")}"
+                    + $", WALKON: {(Uses(r, RseOpcode.WALKON) ? "yes" : "no")}");
+var stuckWithoutTrack = tookNobody.Where(r => !PollsTrack(r)).ToList();
+var trackRidesThatBoarded = boarded.Where(PollsTrack).ToList();
+Console.WriteLine($"  {offered.Count(PollsTrack)} of {offered.Count} rides poll a track subsystem"
+                + $"; {tookNobody.Count} took nobody");
+Check(offered.Any(PollsTrack), "some ride polls TOUR/BUMP/COAST at all -- otherwise the checks below are vacuous");
+Check(stuckWithoutTrack.Count == 0, "every ride that boarded nobody is one polling a dead track subsystem"
+    + (stuckWithoutTrack.Count == 0 ? "" : ": " + string.Join(", ", stuckWithoutTrack.Select(r => r.Name))));
+Check(trackRidesThatBoarded.Count == 0, "no ride boards guests while polling a subsystem that answers zero"
+    + (trackRidesThatBoarded.Count == 0 ? "" : ": " + string.Join(", ", trackRidesThatBoarded.Select(r => r.Name))));
 Check(boarded.Count > 0, $"a queued guest gets on a ride ({boarded.Count} rides boarded one)");
 Check(returned.Count > 0, $"a ride gives its guests back ({returned.Count} rides did)");
 Check(wrong.Count == 0, $"every guest handed back is one that was queued"
