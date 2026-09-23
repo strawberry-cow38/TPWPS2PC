@@ -83,11 +83,24 @@ public struct VisitorWants
 ///   `FUN_0020C930`   what a guest does about it, and every threshold  <see cref="Decide"/>
 ///   `FUN_00216028`   the bubble ids                                   <see cref="Thought"/>
 ///
-/// ⚠⚠ WHAT IS NOT READ: THE RATES. The console's needs rise from a 26-byte record it streams out
-/// of a data file (`FUN_0015FD48` hands out successive records by bumping `DAT_00395C84`), giving
-/// a `base` and a `spread` per need. The file has not been found, so <see cref="Rates"/> holds
-/// CHOSEN numbers in the engine's own shape. The shapes and the thresholds are read; the rates
-/// are not, and they are kept in one table so that finding the file is a data change.
+/// ⚠⚠ WHAT IS NOT READ: **THE RISE**. Not the rates -- the rise itself. I traced the 26-byte
+/// record and reported it as the per-tick rates; it is not. `FUN_001603B0` reads **ONE** record
+/// off the level blob, OUTSIDE its loop, and hands the SAME record to `FUN_00211A00` for every
+/// visitor it creates:
+///
+///     record = read(0x1a);  for (i = 0; i &lt; park.visitorCount; i++) spawn(newGuest(), record);
+///
+/// So it is a per-level SPAWN TEMPLATE -- this park's visitors' starting personality -- and there
+/// are two spawn paths, this one and `FUN_0020BCD0`'s hardcoded distributions, both virtual.
+///
+/// ⚠ And the code that raises a need over time has NOT been found. The need setters at
+/// `0x212330..` have **no `jal` callers at all**, so they are reached through a vtable built at
+/// runtime; the same is true of `FUN_0020BCD0`. (That claim has a control: the identical scan
+/// finds the one caller of `FUN_00211A00` and of the selection-box drawer, both known-called.)
+///
+/// So <see cref="Rates"/> and <see cref="SecondsPerRise"/> are a PORT INVENTION, not a decode --
+/// the roll SHAPES are the console's, borrowed from the spawn, and nothing else about them is.
+/// They are kept in one table so that finding the real rise is a data change.
 ///
 /// ⚠ Keyed by GUEST ID, never held on a walking Guest object: readmission after a ride preserves
 /// the id but builds a NEW Guest (astraclaw, reviewing the boundary). <see cref="Reconcile"/>
@@ -100,8 +113,10 @@ public sealed class VisitorNeeds
     /// shape. ⚠ THE NUMBERS ARE CHOSEN, the shape is not -- see the class note.</summary>
     public sealed record Rate(byte Base, byte Spread, bool High);
 
-    /// <summary>⚠ CHOSEN. Hunger, thirst and the toilet use the HIGH roll because that is which
-    /// helper `FUN_00211A00` passes them; the rest use the centred one, for the same reason.</summary>
+    /// <summary>⚠⚠ INVENTED, not read -- see the class note. The roll SHAPES are the console's
+    /// (hunger, thirst and the toilet take the high roll because that is the helper
+    /// `FUN_00211A00` passes them at SPAWN, and the rest take the centred one); the base, the
+    /// spread and the cadence are all mine.</summary>
     public Dictionary<string, Rate> Rates { get; } = new()
     {
         ["hunger"] = new Rate(0, 2, High: true),

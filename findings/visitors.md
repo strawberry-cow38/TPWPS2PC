@@ -996,3 +996,47 @@ own animation at the game's own 30 fps clock (`FUN_001acfc0`), and the pace is o
 guests walk at about a third of a cell a second, or its gait plays faster than 30 fps; the
 console's guest speed is unread, and that is the next thing to read before touching either number.
 Visual confirmation of the slide is the clip's job; a still cannot carry it.
+
+
+## ⭐⭐ The visitors' needs, and a correction (2026-09-23)
+
+Eight bytes on the guest, each clamped 0..100, identified by the arithmetic that touches them
+rather than by plausible names:
+
+| offset | need | what pins it |
+|---|---|---|
+| `+0x75` | happiness | spawns at exactly 50, the only need seeded to a constant; a shop's DBA happiness effect is added here |
+| `+0x76` | sick | a shop's DBA "vomit increase" (key `0x36`) is added here; above 92, with one roll in four, the guest vomits |
+| `+0x77` | hunger | a shop's "hunger reduction" (key `0x32`) is subtracted |
+| `+0x79` | toilet | ⭐ the SAME hunger reduction is also ADDED here, and it is one of only two needs seeded `rand(100)*rand(100)/100`, which piles up near zero |
+| `+0x7A` | thirst | a shop's "thirst reduction" (key `0x33`) is subtracted; seeded biased-low like the toilet |
+| `+0x60` | cash | `(rand(300) + 200) * 10`, so 2000..4990; below 100 the guest goes home |
+| `+0x74`, `+0x78`, `+0x7B` | ⚠ **not identified** | `+0x74 > 89` triggers `FUN_0020D010(guest, 0)` and `+0x7B < 99` gates the leave check; named by their offsets |
+
+Thresholds, from `FUN_0020C930`: hunger AND thirst both above 90 is checked **before** either single
+want; sick above 92 vomits on one roll in four; happiness below 3 is angry (id 10) and below 5 goes
+home. The thought ids `+0x40` takes are the sixteen the UI table at `FUN_00216028` names
+`bubbles\tb*.ssh`, and five of them agree with what `0x20C930` writes.
+
+### ⚠⚠ The 26-byte record is a SPAWN TEMPLATE, not a rate table
+
+I reported it as the per-tick rise rates. It is not. `FUN_001603B0` reads **one** record off the
+level blob, **outside** its loop, and gives the same one to every visitor it creates:
+
+```c
+record = FUN_0015fd48(0x1a, 1);
+for (i = 0; i < park->visitorCount; i++)
+    FUN_00211a00(FUN_0014ac48(), record);   // base + roll(spread + 1) per need
+```
+
+So it is this park's visitors' starting personality, and there are two spawn paths -- this one and
+`FUN_0020BCD0`'s hardcoded distributions.
+
+### ⚠ The rise over time has not been found
+
+The need setters at `0x212330..` have **no `jal` callers at all**, and neither does `FUN_0020BCD0`:
+both are reached through a vtable built at runtime. ⭐ That claim has a control -- the identical
+scan finds the single caller of `FUN_00211A00` (`0x160410`) and of the selection-box drawer
+(`0x225F7C`), both independently known to be called. A plain word-search for those addresses finds
+nothing either, and that search is worthless: it finds nothing for the known-called functions too,
+because `jal` encodes its target in 26 bits and not as a literal word.

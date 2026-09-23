@@ -112,7 +112,10 @@ public sealed class ParkVisitors
         ReconcileRemovedRides();
         Collect();
         RecoverGuests();
-        Walk.Advance(deltaSeconds);
+        // ⭐ KEEP WHAT THE PARK ACTUALLY RAN. Both clocks cap at eight ticks a call and DROP the
+        // remainder, so the time that passed for the guests is the ticks they took -- not the
+        // delta they were offered.
+        int ticks = Walk.Advance(deltaSeconds);
         Sim.Advance(deltaSeconds);
         Deliver();
         Idle(wander);
@@ -120,10 +123,20 @@ public sealed class ParkVisitors
         // Recovering, and it has already dropped anyone retired this step -- so reconciling here
         // forgets exactly the people who have gone. Ids are REUSED; a stale entry hands the next
         // arrival a dead stranger's hunger.
-        // ⚠ The CLOCK drives the rise, not this call: a coordinator stepped twice as often must
-        // not make people twice as hungry (astraclaw's reproduction, 2026-09-23). Reconcile runs
-        // either way, because a guest can be retired on a zero-time step.
-        if (Needs != null) { Needs.Step(deltaSeconds); Needs.Reconcile(_plans.Keys); }
+        // ⚠⚠ THE PARK'S CLOCK, NOT THE FRAME'S, AND THAT IS A SECOND BUG ON TOP OF THE FIRST.
+        // The rise already follows a clock rather than the call count -- but it was the FRAME'S
+        // delta, and a frame is not what the park experiences. Walk.Advance and Sim.Advance run at
+        // most EIGHT ticks (320 ms) per call and throw the rest away, exactly as a dropped frame
+        // should; feeding the raw delta to the needs aged a guest ten seconds while the park moved
+        // 0.32 of one. astraclaw's probe: hunger 50 against 11 for the same 320 ms of park time.
+        //
+        // ⭐ So the needs take the ticks the walk ACTUALLY took. Reconcile still runs either
+        // way, because a guest can be retired on a step that moved no clock at all.
+        if (Needs != null)
+        {
+            Needs.Step(ticks * GuestWalk.TickMilliseconds / 1000.0);
+            Needs.Reconcile(_plans.Keys);
+        }
     }
 
     /// <summary>Guests the scripts have finished with go back on the path at the ride's exit.

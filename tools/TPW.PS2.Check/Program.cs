@@ -272,6 +272,7 @@ Console.WriteLine($"  known-answer controls: {samControlOk} of {samChecked} repr
 //
 // The check is cheap, it covers all eight parks, and a miss here is a crash there.
 int parks = 0, parkless = 0;
+ParkPaths paths8 = null;
 {
     ParkEntrance entranceTable = null;
     try { entranceTable = ParkEntrance.Read(disc); }
@@ -291,6 +292,7 @@ int parks = 0, parkless = 0;
                 parks++;
                 var fitted = entranceTable.Fit(terrain.Field,
                     ParkEntrance.WalkwayColumnFromPoles(terrain), out string why);
+                if (paths8 == null) try { paths8 = new ParkPaths(terrain); } catch { }
                 if (!fitted.Empty && fitted.Cells().Any()) continue;
                 parkless++;
                 Console.WriteLine($"   NO ENTRANCE  {w.Path.Split('/')[^1]} {t.Path.Split('/')[^1]}: {why}");
@@ -374,6 +376,20 @@ int needsBad = 0;
     // Ids are reused; a stale entry would hand the next arrival a dead stranger's hunger.
     int forgotten = needs.Reconcile(Enumerable.Range(0, 10));
     Need(forgotten == N - 9 && needs.All.Count == 10, $"Reconcile forgets the retired: dropped {forgotten}, kept {needs.All.Count}");
+
+    // ⚠⚠ AND THE NEEDS TAKE THE PARK'S CLOCK, NOT THE FRAME'S. Both park clocks run at most
+    // EIGHT ticks a call and drop the remainder, so a ten-second frame moves the park 320 ms --
+    // and the needs must age by that, not by ten seconds. astraclaw's probe measured hunger 50
+    // against 11 for the same 320 ms before this was fixed. The ceiling is the thing the needs
+    // path now depends on, so it is asserted here rather than left as a comment in another file.
+    {
+        var walk = new GuestWalk(paths8);
+        int big = walk.Advance(10.0), small = walk.Advance(0.04);
+        Need(big == 8, $"a long frame is CLAMPED to 8 ticks, not run to completion: got {big}");
+        Need(small == 1, $"and an ordinary frame is one tick: got {small}");
+        Need(big * GuestWalk.TickMilliseconds == 320,
+             $"so the most park time one call can pass is 320 ms: got {big * GuestWalk.TickMilliseconds}");
+    }
 
     Console.WriteLine($"visitor needs: {(needsBad == 0 ? "all spawn/roll/purchase checks pass" : $"{needsBad} FAILED")}");
 }
