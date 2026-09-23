@@ -2363,6 +2363,22 @@ public partial class Viewer : Node3D
     /// ⚠ THE RECORD ONLY CHANGES WHEN THE SLOT DOES. `UseRecord` rebuilds the model's animation
     /// tracks, so calling it every frame would rebuild a mesh sixty times a second to show the
     /// same animation; the last slot and variant are remembered for exactly that reason.</summary>
+    bool _shotWound;
+
+    /// <summary>Run the park forward to a given animation frame in one go, for a render.
+    ///
+    /// ⚠ IN THE SIM'S OWN TICKS, not one big delta. <see cref="ParkSim.Advance"/> deliberately
+    /// caps a single call at eight ticks so a stalled frame cannot make the park sprint, which
+    /// means handing it four seconds at once would quietly drop most of them.</summary>
+    void WindScripted(int frames)
+    {
+        if (_sim == null || frames <= 0) return;
+        long target = (long)(frames * 1000f / Aps.Fps);
+        int guard = 0;
+        while (_sim.Time < target && guard++ < 100_000) StepScripted(ParkSim.TickMilliseconds / 1000.0);
+        GD.Print($"[sim] wound to {_sim.Time}ms for the shot ({_scripted.Count} scripted)");
+    }
+
     void StepScripted(double delta)
     {
         if (_sim == null) return;
@@ -4540,7 +4556,22 @@ public partial class Viewer : Node3D
             StepBuilding((float)delta * Aps.Fps);
         // ⭐ And the ones that run themselves. Paused means paused: the park's clock is the
         // viewer's, so nothing advances while the game is held still.
-        if (_playing && _shotPath == null) StepScripted(delta);
+        //
+        // ⚠⚠ A SHOT MUST RUN THE SIM TOO, and the first version of this did not: the guard was
+        // copied from `_building` above, so every render came back with the park frozen on
+        // whatever its scripts had reached in six frames. `--shot=out.png:400` means the park AT
+        // frame 400, so shot mode winds the sim forward once, in the sim's own fixed ticks, and
+        // the picture is of a park that has been running.
+        //
+        // ⚠ AND NOT ON THE FIRST FRAME. `--place-test` puts its rides down LATER IN THIS SAME
+        // `_Process`, so a one-shot flag latched here burns before the park contains anything --
+        // which is what happened: the log showed three scripts starting and the shot still came
+        // back unwound. Latch only once there is something to wind.
+        if (_shotPath != null)
+        {
+            if (!_shotWound && _scripted.Count > 0) { _shotWound = true; WindScripted(_shotFrame); }
+        }
+        else if (_playing) StepScripted(delta);
         // ⭐ The selection breathes on its own clock, and like the console's it stands still
         // while the game is paused.
         if (_mode == Mode.Park) UpdateHover();
@@ -4579,7 +4610,7 @@ public partial class Viewer : Node3D
         if (_shotPath != null)
         {
             if (_current != null) { _time = _shotFrame < 0 ? 0 : _shotFrame; _current.SetFrame(_time); }
-            if (++_shotWait > 6)
+            if (++_shotWait > 10)
             {
                 var img = GetViewport().GetTexture().GetImage();
                 img.SavePng(_shotPath);
