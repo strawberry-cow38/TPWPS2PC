@@ -52,6 +52,9 @@ public partial class Viewer : Node3D
     OptionButton _wadPick, _animPick;
     /// <summary>Side panel width. The image panes are offset by it, so it is one number.</summary>
     const int PanelW = 320;
+    /// <summary>The build panel's width. ⚠ Wide enough for the five category buttons the jungle
+    /// archive names; the bar wraps, so a park with more or longer ones still shows them all.</summary>
+    const int BuildW = 430;
 
     TabBar _tabs;
     Control _panel;
@@ -95,6 +98,7 @@ public partial class Viewer : Node3D
     Control _buildPanel;
     Control _buildBox;
     ItemList _buildList;
+    HFlowContainer _buildTabBar;
     Button[] _buildTabs;
     string _buildCategory;
     readonly List<int> _buildRows = new();
@@ -522,15 +526,21 @@ public partial class Viewer : Node3D
         // Upgrades -- so the grouping is the game's, and it is per park because the open WAD is
         // the park.
         var buildBox = new PanelContainer { Visible = false, MouseFilter = Control.MouseFilterEnum.Pass,
-                                            CustomMinimumSize = new Vector2(300, 0) };
+                                            CustomMinimumSize = new Vector2(BuildW, 0) };
         buildBox.SetAnchorsPreset(Control.LayoutPreset.RightWide);
-        buildBox.OffsetLeft = -300;
+        buildBox.OffsetLeft = -BuildW;
         ui.AddChild(buildBox);
         _buildPanel = new VBoxContainer();
         buildBox.AddChild(_buildPanel);
         _buildPanel.AddChild(new Label { Text = "BUILD  (Tab)" });
-        var tabs = new HBoxContainer();
-        _buildPanel.AddChild(tabs);
+        // ⭐⭐ THE CATEGORY BAR WRAPS. At 300 wide in one row the five folders ran off the edge and
+        // Shops and Upgrades were simply not on screen -- master: "expand the build tab to be wide
+        // enough to show shops too". Widening alone would only move the cliff: the categories are
+        // the ARCHIVE'S folder names, so their number and their length are the disc's to choose
+        // and not mine to size a panel around. A flow container puts what fits on a row and the
+        // rest on the next, so every category is reachable at any width.
+        _buildTabBar = new HFlowContainer();
+        _buildPanel.AddChild(_buildTabBar);
         _buildTabs = Array.Empty<Button>();
         // ⚠⚠ NO KEYBOARD FOCUS. An ItemList with focus swallows every key press -- R, the commas,
         // WASD, the lot -- so picking a ride left the whole keyboard dead until you clicked the
@@ -2023,10 +2033,9 @@ public partial class Viewer : Node3D
     {
         _buildChecked = true;
         ToggleBuildMenu();
-        var bar = _buildPanel.GetChildren().OfType<HBoxContainer>().First();
         GD.Print($"[build] {_buildTabs.Length} categories: "
-               + string.Join(" ", bar.GetChildren().OfType<Button>().Select(b => b.Text)));
-        foreach (var b in bar.GetChildren().OfType<Button>().ToList())
+               + string.Join(" ", _buildTabBar.GetChildren().OfType<Button>().Select(b => b.Text)));
+        foreach (var b in _buildTabBar.GetChildren().OfType<Button>().ToList())
         {
             b.EmitSignal(Button.SignalName.Pressed);
             GD.Print($"[build]   {b.Text} -> {_buildRows.Count} listed, first \"{(_buildList.ItemCount > 0 ? _buildList.GetItemText(0) : "-")}\"");
@@ -2256,7 +2265,7 @@ public partial class Viewer : Node3D
             .GroupBy(r => Category(r.Name), StringComparer.OrdinalIgnoreCase)
             .OrderByDescending(g => g.Count())
             .ToList();
-        var bar = _buildPanel.GetChildren().OfType<HBoxContainer>().First();
+        var bar = _buildTabBar;
         foreach (var c in bar.GetChildren()) c.QueueFree();
         _buildTabs = groups.Select(g =>
         {
