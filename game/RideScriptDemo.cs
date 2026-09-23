@@ -21,7 +21,9 @@ public partial class RideScriptDemo : Node3D
     Button _pauseButton;
     Vector3 _focus;
     float _distance, _yaw = 0.65f, _pitch = 0.35f;
-    string _capture;
+    string _capture, _film;
+    int _filmStep = 200, _filmFrames = 120, _filmSaved;
+    float _filmZoom = 1f;
     int _captureFrames;
 
     public override void _Ready()
@@ -67,6 +69,21 @@ public partial class RideScriptDemo : Node3D
             {
                 if (argv[i] == "--shot") _capture = argv[i + 1];
                 if (argv[i] == "--at-ms") captureTime = int.Parse(argv[i + 1]);
+                if (argv[i] == "--film") _film = argv[i + 1];
+                if (argv[i] == "--step-ms") _filmStep = int.Parse(argv[i + 1]);
+                if (argv[i] == "--frames") _filmFrames = int.Parse(argv[i + 1]);
+                // ⚠ Applied AFTER Restart, which is what sets _distance from the bounds.
+                if (argv[i] == "--zoom") _filmZoom = float.Parse(argv[i + 1], System.Globalization.CultureInfo.InvariantCulture);
+                if (argv[i] == "--stem") _stem = argv[i + 1];
+                if (argv[i] == "--world") { _world = argv[i + 1]; }
+            }
+            if (_film != null)
+            {
+                // ⚠ The normal update must NOT also advance the clock, or every film frame is
+                // two steps on and the strip runs at double speed.
+                _paused = true;
+                Restart(); _paused = true; _distance *= _filmZoom;
+                GD.Print($"[film] {_world}{_stem}: {_filmFrames} frames every {_filmStep}ms");
             }
             if (_capture != null)
             {
@@ -124,6 +141,30 @@ public partial class RideScriptDemo : Node3D
                 _camera.Position = _focus + new Vector3(Mathf.Sin(_yaw) * Mathf.Cos(_pitch),
                     Mathf.Sin(_pitch), Mathf.Cos(_yaw) * Mathf.Cos(_pitch)) * _distance;
                 _camera.LookAt(_focus);
+            }
+            // ⭐⭐ A FILM, NOT A FRAME. Master asked to SEE a ride run its script, and one
+            // picture of a ride and one picture of a frozen ride are the same picture. This
+            // steps the preview by a fixed slice and saves one PNG per step, so the status panel
+            // -- state, riders, animation slot and frame -- moves in the strip beside the model.
+            //
+            // ⚠ ONE SAVE PER _Process. The viewport has to have actually drawn the frame before
+            // its texture is worth reading, so the sim is stepped here and grabbed here, never
+            // in a loop.
+            if (_film != null)
+            {
+                if (++_captureFrames > 3)
+                {
+                    using var shot = GetViewport().GetTexture().GetImage();
+                    shot.SavePng($"{_film}{_filmSaved:D4}.png");
+                    if (++_filmSaved >= _filmFrames)
+                    {
+                        GD.Print($"[film] {_filmSaved} frames at {_filmStep}ms to {_time / 1000d:F1}s");
+                        GetTree().Quit(); _film = null; return;
+                    }
+                    _time += _filmStep; _preview.Tick(_time);
+                    _presenter.Update(_preview.Host); ShowStatus();
+                }
+                return;
             }
             if (_capture != null && ++_captureFrames > 6)
             {
