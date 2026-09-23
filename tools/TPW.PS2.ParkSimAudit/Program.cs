@@ -198,7 +198,35 @@ foreach (var r in tookNobody)
                     + $", CAPACITY {(r.Has("VAR_CAPACITY") ? r.Get("VAR_CAPACITY").ToString() : "absent")}"
                     + $", reads LETMEON: {(ReadsLetMeOn(r) ? "yes" : "NO")}"
                     + $", ADDHEAD: {(Uses(r, RseOpcode.ADDHEAD) ? "yes" : "no")}"
-                    + $", WALKON: {(Uses(r, RseOpcode.WALKON) ? "yes" : "no")}");
+                    + $", WALKON: {(Uses(r, RseOpcode.WALKON) ? "yes" : "no")}"
+                    // ⭐ LEAD ONE, TESTED RATHER THAN LISTED: WalkOn drops a walk silently when
+                    // the table is full, so a saturated table is a ride that stops taking people
+                    // with no error anywhere. Printed for every stalled ride, not just the odd
+                    // one, so "full" only means something if the others are not.
+                    + $", walk slots {r.Machine.WalkSlotsInUse}/{r.Machine.WalkSlots}"
+                    + $", attempted {(r.Machine.WalksWereAttempted ? "yes" : "NO")}");
+// ⭐⭐ AND WHERE IT IS PARKED. A ride that is RUNNING and still takes nobody is spinning on some
+// instruction, and the PC plus the yield reason names it outright -- far better than guessing at
+// which condition the host failed to satisfy. Printed with the surrounding instructions so the
+// loop is readable without a separate disassembly.
+foreach (var r in tookNobody.Where(r => r.Get("VAR_RUNNING") != 0))
+{
+    foreach (var m in ParkSim.Chain(r.Machine))
+    {
+        var code = m.Program.Instructions;
+        int at = code.ToList().FindIndex(i => i.Address == m.Pc);
+        Console.WriteLine($"    {r.Name} is parked at pc {m.Pc} (yield {m.Yield}), host slot"
+                        + $" {r.Host.AnimationSlot}:{r.Host.AnimationVariant}, around it:");
+        for (int k = Math.Max(0, at - 4); k < Math.Min(code.Count, at + 5) && at >= 0; k++)
+            Console.WriteLine($"      {(k == at ? "->" : "  ")} {Disasm(m, code[k])}");
+        if (at < 0) Console.WriteLine($"      (pc {m.Pc} is not an instruction boundary)");
+    }
+}
+// Operands as NAMES where the program has one, so the loop reads as a condition and not as slots.
+string Disasm(RseMachine m, RseProgram.Instruction i) => $"{i.Address,4}: {i.Opcode} " + string.Join(" ",
+    i.Operands.Select(o => o.Tag == 0x40
+        ? (o.Index < m.Program.VariableNames.Count ? m.Program.VariableNames[o.Index] : $"v{o.Index}") + $"={m[o.Index]}"
+        : o.ToString()));
 var stuckWithoutTrack = tookNobody.Where(r => !PollsTrack(r)).ToList();
 var trackRidesThatBoarded = boarded.Where(PollsTrack).ToList();
 Console.WriteLine($"  {offered.Count(PollsTrack)} of {offered.Count} rides poll a track subsystem"
