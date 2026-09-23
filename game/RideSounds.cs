@@ -44,8 +44,10 @@ public sealed class RideSounds
         public bool Loop, OneShot;
         public int Frames;
         public bool? PlayingAt1;
-        public float PositionAt8 = -1;
-        public bool Verdict;
+        public float MaxPosition;
+        public int FirstAdvanceFrame = -1;
+        public double Elapsed;
+        public bool Finished, Verdict;
         public bool Fading; public float Db;
         /// <summary>A loop still to be started once this (its start clip) has finished.</summary>
         public Action ThenLoop;
@@ -134,17 +136,20 @@ public sealed class RideSounds
             // it enters the tree with.
             p3.Position = at;
             _root.AddChild(p3);
-            p3.Play();
             player = p3;
         }
         else
         {
             var p2 = new AudioStreamPlayer { Stream = wav, Bus = "Master", Name = $"snd{_serial}" };
             _root.AddChild(p2);
-            p2.Play();
             player = p2;
         }
         var v = new Voice { Ride = ride, Tag = tag, Serial = ++_serial, Name = name, Player = player, Loop = loop, OneShot = !loop, Line = line };
+        // ⭐ The mixer's own word that it consumed the clip to the end -- the strongest "it played"
+        // there is, and the one a position poll cannot give for a clip shorter than a frame.
+        if (player is AudioStreamPlayer3D a3) a3.Finished += () => v.Finished = true;
+        else if (player is AudioStreamPlayer a2) a2.Finished += () => v.Finished = true;
+        if (player is AudioStreamPlayer3D q3) q3.Play(); else if (player is AudioStreamPlayer q2) q2.Play();
         _voices.Add(v);
         return v;
     }
@@ -209,19 +214,23 @@ public sealed class RideSounds
     }
 
     /// <summary>`KILLOBJ tag`: the ride's objects with that tag stop now; a loop with an end clip
-    /// plays it.</summary>
-    public void Kill(int rideId, int tag)
+    /// plays it. Logged with the script time, because a loop's END is as much a fact of the
+    /// timeline as its start -- an assembled track has to stop the grunt where the script did.</summary>
+    public void Kill(int rideId, string ride, int tag, long scriptMs)
     {
-        foreach (var v in _voices.Where(v => v.Ride == rideId && v.Tag == tag).ToList())
-        {
-            var end = v.OnEnd; Free(v); end?.Invoke();
-        }
+        var hit = _voices.Where(v => v.Ride == rideId && v.Tag == tag).ToList();
+        string line = $"[snd] {scriptMs / 1000.0,7:F1}s {ride,-22} KILLOBJ tag {tag,4} -> stops {hit.Count}: {string.Join(", ", hit.Select(v => v.Name))}";
+        Census.Add(line); GD.Print(line);
+        foreach (var v in hit) { var end = v.OnEnd; Free(v); end?.Invoke(); }
     }
 
     /// <summary>`FADEOBJ tag`: the same, over half a second. ⚠ The half second is ours.</summary>
-    public void Fade(int rideId, int tag)
+    public void Fade(int rideId, string ride, int tag, long scriptMs)
     {
-        foreach (var v in _voices.Where(v => v.Ride == rideId && v.Tag == tag)) v.Fading = true;
+        var hit = _voices.Where(v => v.Ride == rideId && v.Tag == tag).ToList();
+        string line = $"[snd] {scriptMs / 1000.0,7:F1}s {ride,-22} FADEOBJ tag {tag,4} -> fades {hit.Count}: {string.Join(", ", hit.Select(v => v.Name))}";
+        Census.Add(line); GD.Print(line);
+        foreach (var v in hit) v.Fading = true;
     }
 
     /// <summary>The ride is gone (bulldozed, or the park rebuilt): everything it owned stops.</summary>
@@ -236,17 +245,25 @@ public sealed class RideSounds
         {
             var v = _voices[i];
             if (v.Player == null || !GodotObject.IsInstanceValid(v.Player)) { _voices.RemoveAt(i); continue; }
-            v.Frames++;
+            v.Frames++; v.Elapsed += delta;
             if (v.Frames == 1) v.PlayingAt1 = IsPlaying(v.Player);
-            if (v.Frames == 8 && !v.Verdict)
+            float pos = Position(v.Player);
+            if (pos > v.MaxPosition) { v.MaxPosition = pos; if (v.FirstAdvanceFrame < 0) v.FirstAdvanceFrame = v.Frames; }
+            // ⭐ THE COLUMN THAT MATTERS, judged as early as the evidence allows. Playing one frame
+            // on says the engine accepted the voice; a playback position past zero says the mixer
+            // is consuming it (under --audio-driver Dummy included, which is what a render is);
+            // Finished says it consumed the whole clip. ⚠ IT USED TO READ THE POSITION ONCE, EIGHT
+            // FRAMES ON: a walk film runs near 105 ms a frame, so a 314 ms clip had finished and
+            // stopped before the read and reported 0 -- two "VOICE DID NOT START" verdicts on
+            // clips that had played to the end. The elapsed seconds are printed beside the frame
+            // count for exactly that reason.
+            if (!v.Verdict && (v.MaxPosition > 0 || v.Finished || v.Frames >= 8))
             {
-                v.Verdict = true; v.PositionAt8 = Position(v.Player); Verdicts++;
-                // ⭐ THE COLUMN THAT MATTERS. Playing one frame on says the engine accepted the
-                // voice; a playback position past zero eight frames on says the mixer is actually
-                // consuming it -- under --audio-driver Dummy included, which is what a render is.
-                bool started = v.PlayingAt1 == true && v.PositionAt8 > 0;
+                v.Verdict = true; Verdicts++;
+                bool started = v.PlayingAt1 == true && (v.MaxPosition > 0 || v.Finished);
                 if (started) StartedVoices++; else SilentVoices++;
-                string verdict = $"[snd]   #{v.Serial} {v.Name}: playing@+1f={v.PlayingAt1} position@+8f={v.PositionAt8:F3}s -> {(started ? "VOICE STARTED" : "VOICE DID NOT START")}";
+                string verdict = $"[snd]   #{v.Serial} {v.Name}: playing@+1f={v.PlayingAt1} first advance@+{v.FirstAdvanceFrame}f "
+                               + $"max position {v.MaxPosition:F3}s finished={v.Finished} after {v.Frames}f={v.Elapsed:F2}s -> {(started ? "VOICE STARTED" : "VOICE DID NOT START")}";
                 Census.Add(verdict); GD.Print(verdict);
             }
             if (v.Fading)
@@ -256,7 +273,7 @@ public sealed class RideSounds
                 if (v.Db < -60) { var end = v.OnEnd; Free(v); end?.Invoke(); }
                 continue;
             }
-            if (v.Frames > 8 && !IsPlaying(v.Player))
+            if (v.Verdict && (v.Finished || !IsPlaying(v.Player)))
             {
                 // A finished start clip hands over to its loop; a finished one-shot is dropped.
                 var next = v.ThenLoop; Free(v); next?.Invoke();

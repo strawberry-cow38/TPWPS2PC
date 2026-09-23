@@ -161,6 +161,12 @@ public partial class Viewer : Node3D
     /// <summary>`--sound-census=N`: run the park for N seconds in REAL frames rather than winding
     /// it, so every cue gets its voice verdict, then print the census and quit.</summary>
     int _soundCensus;
+    /// <summary>`--ride-film=N` (+ `--film-fps=F`, default 12): film the guest test's ride for N
+    /// frames at F park-frames a second with the orbit on the ride, one PNG per frame; the
+    /// `[film]` lines carry the park time so every `[snd]` cue maps to a video timestamp.</summary>
+    int _rideFilm, _filmFps = 12; long _filmStartMs; float _filmYaw0 = 0.8f;
+    /// <summary>The particles the scripted rides ask for, drawn as the demo scene draws them.</summary>
+    RideParticles _burst;
     /// <summary>Each scripted ride's own <see cref="Model"/>, by ride id, for its fittings -- the
     /// seats ADDHEAD names are the model's `0x80` fittings, found by slot + 1.</summary>
     readonly Dictionary<int, Model> _rideMeshes = new();
@@ -302,6 +308,8 @@ public partial class Viewer : Node3D
             // ⭐ The census borrows --guest-test's park (corridor, Crazy Ape, guests) and replaces
             // its wind-and-shoot with real frames: a voice needs frames to advance in.
             else if (a.StartsWith("--sound-census=")) { int.TryParse(a["--sound-census=".Length..], out _soundCensus); _guestTest = true; }
+            else if (a.StartsWith("--ride-film=")) { int.TryParse(a["--ride-film=".Length..], out _rideFilm); _guestTest = true; }
+            else if (a.StartsWith("--film-fps=")) { int.TryParse(a["--film-fps=".Length..], out _filmFps); if (_filmFps <= 0) _filmFps = 12; }
             else if (a.StartsWith("--guest-ride=")) _guestRide = a["--guest-ride=".Length..];
             else if (a == "--type-audit") _typeAudit = true;
             else if (a == "--ghost-press") { _ghostTest = true; _ghostPress = true; }
@@ -2395,8 +2403,8 @@ public partial class Viewer : Node3D
         // ⭐⭐ AND ITS SOUNDS. The same EffectRequested the particles would use; the voice stands
         // at the ride root for node -1 (the console's own reading of a negative node: 0x1b9388
         // takes the instance's position through 0x1b9220) or at the named fitting.
-        _sounds ??= MakeSounds();
-        if (_sounds != null) ride.Host.EffectRequested += fx => OnRideSound(ride, model, fx);
+        _sounds ??= MakeSounds(); _burst ??= MakeParticles();
+        if (_sounds != null || _burst != null) ride.Host.EffectRequested += fx => OnRideEffect(ride, model, fx);
         // ⭐⭐ THE SCRIPT ASKS WHERE ITS NODES ARE, and the placed model answers -- the ANIMATED one,
         // LastWorld through the ride root, not the bind pose -- so WALKON's legs take the real
         // distance between the ride's own fittings instead of the 100 ms floor. Null, never a
@@ -2433,16 +2441,42 @@ public partial class Viewer : Node3D
         catch (Exception e) { GD.PrintErr($"[snd] no sound catalogue: {e.Message}"); return null; }
     }
 
-    void OnRideSound(ParkRide ride, AnimatedModel model, RsePreviewHost.Effect fx)
+    RideParticles MakeParticles()
+    {
+        try
+        {
+            // ⭐ A second AssetLibrary, as the demo scene does: the first has the world open and
+            // the effects live in their own WAD.
+            var pw = new AssetLibrary(_discPath);
+            pw.OpenWad("/DATA/PARTICLE.WAD");
+            var lib = new ParticleLibrary(pw.Read(pw.Wad.Find("/Tp2.plb")));
+            GD.Print($"[fx] Tp2.plb: {lib.Effects.Count} effects; bursts drawn at the script's fittings");
+            return new RideParticles(this, lib);
+        }
+        catch (Exception e) { GD.PrintErr($"[fx] no particle library: {e.Message}"); return null; }
+    }
+
+    void OnRideEffect(ParkRide ride, AnimatedModel model, RsePreviewHost.Effect fx)
     {
         var a = fx.Arguments;
         try
         {
             switch (fx.Opcode)
             {
+                case RseOpcode.EVENT or RseOpcode.ADDOBJ when a.Count >= 3 && a[0] is 1 or 2:
+                {
+                    // ⭐ Particles as the demo draws them: kinds 1 and 2 resolve the node in space
+                    // 0x100 (0x1bbf28), and a fitting that does not resolve draws nothing.
+                    if (_burst == null) return;
+                    var at = NodeWorld(ride.Id, a[1], 0x100);
+                    var made = at is { } p ? _burst.Emit(a[2], p) : null;
+                    GD.Print($"[fx] {fx.Time / 1000.0,7:F1}s {ride.Name,-22} {fx.Opcode,-7} kind {a[0]} node {a[1],3} id {a[2],3} -> {made?.Name ?? "(no fitting or no such effect)"}"
+                           + (at is { } q ? $" at ({q.X:F1},{q.Y:F1},{q.Z:F1})" : ""));
+                    break;
+                }
                 case RseOpcode.EVENT or RseOpcode.ADDOBJ when a.Count >= 3 && SoundCatalogue.IsSoundGroup(a[0]):
                 {
-                    if (model?.Root == null || !IsInstanceValid(model.Root)) return;
+                    if (_sounds == null || model?.Root == null || !IsInstanceValid(model.Root)) return;
                     int node = a[1];
                     Vector3? at = node < 0 ? model.Root.GlobalPosition : NodeWorld(ride.Id, node, 0x200);
                     int tag = fx.Opcode == RseOpcode.ADDOBJ && a.Count > 3 ? a[3] : 1000;
@@ -2450,11 +2484,57 @@ public partial class Viewer : Node3D
                                 at ?? model.Root.GlobalPosition, fellBack: at == null && node >= 0);
                     break;
                 }
-                case RseOpcode.KILLOBJ when a.Count >= 1: _sounds.Kill(ride.Id, a[0]); break;
-                case RseOpcode.FADEOBJ when a.Count >= 1: _sounds.Fade(ride.Id, a[0]); break;
+                case RseOpcode.KILLOBJ when a.Count >= 1: _sounds?.Kill(ride.Id, ride.Name, a[0], fx.Time); break;
+                case RseOpcode.FADEOBJ when a.Count >= 1: _sounds?.Fade(ride.Id, ride.Name, a[0], fx.Time); break;
             }
         }
         catch (Exception e) { GD.PrintErr($"[snd] {ride.Name}: {e.Message}"); }
+    }
+
+    /// <summary>`--ride-film=N`: the guest test's park, filmed from park time zero with the orbit
+    /// on the ride -- the build with its crate cues, the guests walking in, boarding, the cycle --
+    /// one PNG per frame at a fixed 1/F s of park time each, so frame k IS park time start + k/F
+    /// and a `[snd]` cue at t lands at video time t - start. ⚠ The park is STEPPED by the film,
+    /// never wound: a wound park fires every cue in one frame and no voice can advance.</summary>
+    void RideFilmStart()
+    {
+        _filmFrame = 0; _filmStartMs = _parkTicks * ParkSim.TickMilliseconds;
+        // ⚠ The help panel covered a third of every frame of the first film; a video is not a
+        // debugging view.
+        if (_panel != null) _panel.Visible = false;
+        RideFilmCamera();
+        GD.Print($"[film] ride film: {_rideFilm} frames at {_filmFps}/s = {_rideFilm / (float)_filmFps:F1}s of park time from t={_filmStartMs / 1000.0:F2}s"
+               + $" | audio: a cue at park time t belongs at video time t - {_filmStartMs / 1000.0:F2}s");
+    }
+
+    void RideFilmFrame()
+    {
+        SaveShot(ShotSibling(_shotPath, $"-f{_filmFrame:D4}"));
+        _filmFrame++;
+        if (_filmFrame >= _rideFilm)
+        {
+            GD.Print($"[film] done: {_filmFrame} frames to park t={_parkTicks * ParkSim.TickMilliseconds / 1000.0:F2}s; riders {_seated.Count}, guests {_guests.Guests.Count}");
+            if (_sounds != null) GD.Print(_sounds.Summary());
+            GetTree().Quit(); return;
+        }
+        StepPark(1.0 / _filmFps);
+        RideFilmCamera();
+        if (_filmFrame % (_filmFps * 5) == 0)
+        {
+            var first = _scripted.FirstOrDefault();
+            GD.Print($"[film] f{_filmFrame:D4} t={_parkTicks * ParkSim.TickMilliseconds / 1000.0:F2}s riders={_seated.Count} guests={_guests.Guests.Count}"
+                   + (first.Ride != null ? $" {first.Ride.Name} slot {first.Ride.Slot}:{first.Ride.Variant} onride {first.Ride.Get("VAR_ONRIDE")}" : ""));
+        }
+    }
+
+    /// <summary>A slow orbit round the ride, high enough to keep a six-unit ape and its riders
+    /// in frame.</summary>
+    void RideFilmCamera()
+    {
+        if (_guestTestRide is not { } r || _mouth == null || _mouth.Count == 0) return;
+        var centre = GuestWorld(new Vector3(r.X + r.W * 0.5f, 0f, r.Y + r.H * 0.5f), _mouth[0]);
+        float t = _filmFrame / (float)_filmFps;
+        _freeCam = true; _focus = centre + new Vector3(0, 2.6f, 0); _dist = 10f; _pitch = -0.3f; _yaw = _filmYaw0 + t * 0.1f;
     }
 
     void SoundCensusReport()
@@ -6045,7 +6125,7 @@ public partial class Viewer : Node3D
         // one frame and no voice can advance, which is exactly the "resolves but never plays"
         // that the census exists to catch.
         else if (_playing && _mode == Mode.Park) StepPark(delta);
-        _sounds?.Step(delta);
+        _sounds?.Step(delta); _burst?.Step();
         if (_soundCensus > 0 && _mode == Mode.Park && _parkTicks * ParkSim.TickMilliseconds >= _soundCensus * 1000L)
         {
             SoundCensusReport();
@@ -6103,6 +6183,11 @@ public partial class Viewer : Node3D
             // park. Each grab is two frames after its stage -- one for the camera, one for the draw.
             const int warm = 10;
             if (_soundCensus > 0) { }   // the census ends itself above, after its seconds of real frames
+            else if (_rideFilm > 0 && _guestTest && _guests != null)
+            {
+                if (_guestStage == 0 && _shotWait >= warm) { RideFilmStart(); _guestStage = 6; }
+                else if (_guestStage == 6) RideFilmFrame();
+            }
             else if (_guestTest && _guests != null)
             {
                 if (_guestStage == 0 && _shotWait >= warm)

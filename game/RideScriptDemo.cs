@@ -153,8 +153,8 @@ public partial class RideScriptDemo : Node3D
                         _sounds.Cue(0, _preview.Machine.Name ?? _stem, fx.Time, fx.Opcode, sa[0], sa[1], sa[2],
                                     fx.Opcode == RseOpcode.ADDOBJ && sa.Count > 3 ? sa[3] : 1000, sat ?? Vector3.Zero, sat == null && sa[1] >= 0);
                     }
-                    else if (fx.Opcode == RseOpcode.KILLOBJ && sa.Count >= 1) _sounds.Kill(0, sa[0]);
-                    else if (fx.Opcode == RseOpcode.FADEOBJ && sa.Count >= 1) _sounds.Fade(0, sa[0]);
+                    else if (fx.Opcode == RseOpcode.KILLOBJ && sa.Count >= 1) _sounds.Kill(0, _preview.Machine.Name ?? _stem, sa[0], fx.Time);
+                    else if (fx.Opcode == RseOpcode.FADEOBJ && sa.Count >= 1) _sounds.Fade(0, _preview.Machine.Name ?? _stem, sa[0], fx.Time);
                 }
                 if (_burst == null || fx.Arguments.Count < 3) return;
                 if (fx.Opcode != RseOpcode.EVENT && fx.Opcode != RseOpcode.ADDOBJ) return;
