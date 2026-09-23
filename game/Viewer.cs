@@ -482,6 +482,7 @@ public partial class Viewer : Node3D
         _gateBox = new SelectionBox(path => _lib?.ReadGeneric(path));
         AddChild(_gateBox.Root);
         AddChild(_flags.Root);
+        AddChild(_thoughts.Root);
 
         // ⚠⚠ A full-screen Control swallows mouse events before _UnhandledInput ever sees them.
         // Orbit appeared to work only because the left button is also used by the widgets; a
@@ -1633,6 +1634,87 @@ public partial class Viewer : Node3D
                + (laid == want.Count ? "" : " -- SOME REFUSED, the plot may not reach that far"));
     }
 
+    /// <summary>Put each walking guest's want over their head.
+    ///
+    /// ⚠ THE FACILITY FLAGS ARE PASSED TRUE, and that is a decision worth stating. The one path
+    /// that has been READ (`0x20C930` case 0) sets the hungry/thirsty/toilet thought only after
+    /// `FUN_0020F888` finds a shop of type 0x34/0x32/0x3B -- so on that path a guest with nothing
+    /// to buy thinks nothing. But that is ONE arm of a `rand(6)` switch and the other arms, and
+    /// whatever else writes `+0x40`, are unread: "the console never shows a want it cannot meet"
+    /// would be a claim about code I have not looked at. The want is shown, and this says why.
+    ///
+    /// ⚠ Only WALKING guests get one. A guest handed to a ride has no body of ours to hang it
+    /// on, and a seated rider is drawn as a head on the ride's own node.</summary>
+    void PlaceThoughts()
+    {
+        if (_visitors?.Needs is not { } needs || !_thoughts.Ready) return;
+        foreach (var g in _guests.Guests)
+        {
+            if (!needs.Has(g.Id)) continue;
+            var want = needs.Decide(g.Id, foodNearby: true, drinkNearby: true, toiletNearby: true);
+            // ⚠⚠ GLOBAL, NOT LOCAL. The actors live under the guest root and the bubbles under
+            // their own node, so an actor's `Position` is in a DIFFERENT space -- a bubble placed
+            // from it lands wherever the two frames differ, which for a mirrored park is across
+            // the map. Asking for the world position is the only form that cannot be wrong.
+            if (_actors.TryGetValue(g.Id, out var actor) && IsInstanceValid(actor))
+                _thoughts.Show(g.Id, want, actor.GlobalPosition);
+            else _thoughts.Hide(g.Id);
+        }
+        _thoughts.Sweep(_guests.Guests.Select(g => g.Id).ToHashSet());
+
+        // ⭐ AND A CAMERA THAT FINDS ONE. A bubble is a third of a guest's height, and the game
+        // camera sits 2576 units up -- so at the park view it is sub-pixel and "no bubble in the
+        // picture" says nothing at all. This points the free camera at somebody who actually wants
+        // something, which is the only framing in which the feature can be photographed.
+        if (System.Environment.GetEnvironmentVariable("TPW_WANT_CAM") == "1")
+        {
+            var who = _guests.Guests.FirstOrDefault(
+                g => needs.Has(g.Id) && needs.Of(g.Id).Thought != Thought.Normal
+                     && _actors.TryGetValue(g.Id, out var a) && IsInstanceValid(a));
+            if (who != null && _actors.TryGetValue(who.Id, out var body) && IsInstanceValid(body))
+            {
+                _freeCam = true;
+                _focus = body.GlobalPosition + new Vector3(0f, 0.45f, 0f);
+                _dist = 2.2f;
+                _pitch = -0.12f;
+                // ⭐⭐ AND SHOOT WHEN THERE IS SOMETHING TO SHOOT. Chasing the guest-test's own
+                // staging cost four renders that each photographed a moment with no wants in it --
+                // by the frame it shoots, the walkers have been handed to the ride. This waits for
+                // the condition instead of for a frame number, which is the difference between an
+                // instrument and a guess.
+                if (System.Environment.GetEnvironmentVariable("TPW_WANT_SHOT") is { } want)
+                {
+                    if (++_wantHeld >= 2)
+                    {
+                        GD.Print($"[want] shooting guest {who.Id} thinking "
+                               + $"{needs.Of(who.Id).Thought} at {body.GlobalPosition}");
+                        SaveShot(want);
+                        GetTree().Quit();
+                    }
+                }
+            }
+            else _wantHeld = 0;
+        }
+
+        // ⭐ A CENSUS, because a picture cannot tell "no bubbles because nobody wants anything"
+        // from "no bubbles because the sprite is broken". It prints what the needs actually ARE.
+        if (_parkTicks - _lastWantCensus < 250) return;
+        _lastWantCensus = _parkTicks;
+        var held = _guests.Guests.Where(g => needs.Has(g.Id)).Select(g => needs.Of(g.Id)).ToList();
+        if (held.Count == 0) { GD.Print("[want] nobody in the park"); return; }
+        var tally = held.GroupBy(v => v.Thought).OrderByDescending(x => x.Count())
+                        .Select(x => $"{x.Key} {x.Count()}");
+        GD.Print($"[want] t={_parkTicks * ParkSim.TickMilliseconds / 1000.0:F1}s {held.Count} guests: "
+               + string.Join(", ", tally)
+               + $"  | hunger {held.Min(v => v.Hunger)}..{held.Max(v => v.Hunger)}"
+               + $"  thirst {held.Min(v => v.Thirst)}..{held.Max(v => v.Thirst)}"
+               + $"  toilet {held.Min(v => v.Toilet)}..{held.Max(v => v.Toilet)}"
+               + $"  happy {held.Min(v => v.Happiness)}..{held.Max(v => v.Happiness)}");
+    }
+
+    long _lastWantCensus = -1000;
+    int _wantHeld;
+
     /// <summary>⭐ A CONTROL RUN, not a feature. It lays a shape that MUST come out wearing one of
     /// every piece -- a crossroads at the middle, four straight arms, four ends, and an L off the
     /// east arm for a corner and a T -- so a render says whether the table, the tile lists and the
@@ -2713,6 +2795,8 @@ public partial class Viewer : Node3D
     int _parkTicks;
     Node3D _guestRoot;
     readonly Dictionary<int, Node3D> _actors = new();
+    /// <summary>The bubbles over their heads -- see <see cref="ThoughtBubbles"/>.</summary>
+    readonly ThoughtBubbles _thoughts = new();
     /// <summary>Each actor's drawn model and its sitting record, so a rider can be posed and a
     /// walker un-posed. Where says which file the pose came from, or why there is none.</summary>
     readonly Dictionary<int, (AnimatedModel Drawn, Aps.Record Sit, string Where)> _drawn = new();
@@ -2782,6 +2866,7 @@ public partial class Viewer : Node3D
     {
         if (_guestRoot != null && IsInstanceValid(_guestRoot)) _guestRoot.QueueFree();
         _guestRoot = null; _guests = null; _visitors = null; _mouth = null; _gateClosed = false;
+        _thoughts.Clear();
         _actors.Clear(); _drawn.Clear(); _parts.Clear(); _headOnly.Clear(); _posed.Clear(); _guestPrev.Clear(); _guestDwell.Clear();
         _walkRec.Clear(); _gaitFrom.Clear();
         _guestPool = null; _guestPoolLaid = -1; _guestPoolAt = -1; _guestAt = null; _guestLabel = null;
@@ -2854,8 +2939,16 @@ public partial class Viewer : Node3D
         _parkTicks++;
         if (_visitors == null && _sim != null && OpenGate())
         {
-            _visitors = new ParkVisitors(_sim, _guests);
+            _visitors = new ParkVisitors(_sim, _guests)
+            {
+                // ⭐ The wants, from the executable's own spawn distributions. Seeded only on
+                // Arrive and reconciled against the live plans -- see VisitorNeeds.
+                Needs = new VisitorNeeds(seed: 20260923),
+            };
             GD.Print($"[guest] guests now visit rides; the sim and the walk share one grid: {ReferenceEquals(_sim.Paths, _guests.Paths)}");
+            GD.Print($"[want] {_thoughts.Load(path => _lib?.ReadGeneric(path))}"
+                   + $"; cam={System.Environment.GetEnvironmentVariable("TPW_WANT_CAM")}"
+                   + $" shot={System.Environment.GetEnvironmentVariable("TPW_WANT_SHOT")}");
         }
         if (_visitors != null)
         {
@@ -3160,6 +3253,7 @@ public partial class Viewer : Node3D
 
     void PlaceActors(float alpha)
     {
+        PlaceThoughts();
         SeatRiders();
         WalkRiders();
         // ⭐ Whoever has left the walk -- handed to a ride -- loses their body this frame unless a
@@ -5368,7 +5462,8 @@ public partial class Viewer : Node3D
                + $"{def.MapOffsetY}) shifted {Mathf.RoundToInt(shift):+0;-0;0} in x\n"
                + $"[gate.zone] world x {centre.X - rw * 0.5f:F2}..{centre.X + rw * 0.5f:F2}  "
                + $"z {centre.Z - rh * 0.5f:F2}..{centre.Z + rh * 0.5f:F2}; {cells} of {w * h} cells "
-               + "are on the plot and now refuse a build (the rest are off it, on the walkway)\n"
+               + "are on the plot and now refuse a build"
+               + (cells == w * h ? "\n" : $"; the other {w * h - cells} are off it, on the walkway\n")
                + $"[gate.zone] the gate itself is centred ({gx:F2}, {gz:F2}); the zone is centred "
                + $"({centre.X:F2}, {centre.Z:F2}) -- off by ({gx - centre.X:+0.00;-0.00;0}, "
                + $"{gz - centre.Z:+0.00;-0.00;0}). The zone is READ, the gate is TUNED.");

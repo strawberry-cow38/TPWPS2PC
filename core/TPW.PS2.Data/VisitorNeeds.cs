@@ -111,6 +111,20 @@ public sealed class VisitorNeeds
         ["unknown74"] = new Rate(0, 1, High: false),
     };
 
+    /// <summary>How much SIMULATED time passes between one rise and the next.
+    ///
+    /// ⚠⚠ IT IS SIMULATED SECONDS, NOT CALLS, AND THE FIRST VERSION COUNTED CALLS. astraclaw's
+    /// independent check caught it: one simulated second took hunger 10 -> 35 at 25 Hz and
+    /// 10 -> 60 at 50 Hz, because the rise was driven by how often the coordinator happened to be
+    /// called rather than by the clock. A need that fills faster on a faster machine is a bug in
+    /// any sim, and it would have read as "the chosen rates are too high".
+    ///
+    /// ⚠ CHOSEN. The console applies its rise on a cadence that has not been read; 2.56 s
+    /// fills a need over roughly two park minutes. The moment the rate file turns up this becomes
+    /// data like the rest.</summary>
+    public double SecondsPerRise { get; set; } = 2.56;
+    double _sinceRise;
+
     readonly Dictionary<int, VisitorWants> _byGuest = new();
     readonly Random _rng;
 
@@ -166,7 +180,23 @@ public sealed class VisitorNeeds
 
     /// <summary>Let one step of time pass for everyone. ⚠ Needs only ever RISE here; they fall by
     /// being met -- see <see cref="Buy"/>.</summary>
-    public void Step()
+    /// <summary>Let <paramref name="seconds"/> of SIMULATED time pass for everyone.
+    ///
+    /// ⚠ Zero seconds ages nobody -- a step that moves no clock must not move a need either --
+    /// and the caller still reconciles afterwards, because a guest can be retired on a zero-time
+    /// step.</summary>
+    public void Step(double seconds)
+    {
+        if (seconds <= 0d) return;
+        _sinceRise += seconds;
+        if (_sinceRise < SecondsPerRise) return;
+        // ⚠ One rise per elapsed period, not one per call: a long step owes several.
+        int rises = (int)(_sinceRise / SecondsPerRise);
+        _sinceRise -= rises * SecondsPerRise;
+        for (int i = 0; i < rises; i++) Rise();
+    }
+
+    void Rise()
     {
         foreach (int guest in _byGuest.Keys.ToArray())
         {

@@ -120,7 +120,10 @@ public sealed class ParkVisitors
         // Recovering, and it has already dropped anyone retired this step -- so reconciling here
         // forgets exactly the people who have gone. Ids are REUSED; a stale entry hands the next
         // arrival a dead stranger's hunger.
-        if (Needs != null) { Needs.Step(); Needs.Reconcile(_plans.Keys); }
+        // ⚠ The CLOCK drives the rise, not this call: a coordinator stepped twice as often must
+        // not make people twice as hungry (astraclaw's reproduction, 2026-09-23). Reconcile runs
+        // either way, because a guest can be retired on a zero-time step.
+        if (Needs != null) { Needs.Step(deltaSeconds); Needs.Reconcile(_plans.Keys); }
     }
 
     /// <summary>Guests the scripts have finished with go back on the path at the ride's exit.

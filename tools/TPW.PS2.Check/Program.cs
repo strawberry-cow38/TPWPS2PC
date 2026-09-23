@@ -344,6 +344,33 @@ int needsBad = 0;
          $"a burger feeds AND fills the bladder: hunger {after.Hunger}, toilet {after.Toilet}, "
          + $"happy {after.Happiness}, sick {after.Sick}");
 
+    // ⚠⚠ THE RISE MUST FOLLOW THE CLOCK, NOT THE CALL COUNT, and this check exists because the
+    // first version did not: astraclaw's independent test took hunger 10 -> 35 at 25 Hz and
+    // 10 -> 60 at 50 Hz off the same simulated second. A zero-spread rate makes one rise worth
+    // exactly +1, so the two step sizes below must land on the SAME number or the clock is wrong.
+    int Advance(double total, double step)
+    {
+        var n = new VisitorNeeds(seed: 7);
+        n.Rates["hunger"] = new VisitorNeeds.Rate(1, 0, High: false);
+        n.Spawn(0);
+        n.Set(0, n.Of(0) with { Hunger = 0 });
+        // ⚠ A zero step would loop forever, and the first version of this check DID -- it hung
+        // the whole self-test. Ask it once and let Step decide, which is the thing being tested.
+        if (step <= 0d) n.Step(0d);
+        else for (double t = 0; t < total - 1e-9; t += step) n.Step(step);
+        return n.Of(0).Hunger;
+    }
+    int coarse = Advance(25.6, 25.6), fine = Advance(25.6, 0.01), idle = Advance(25.6, 0.0);
+    // ⚠ ±1, not exact. Summing 0.01 two and a half thousand times lands a hair under 25.6 in
+    // binary floating point, so a total sitting exactly on a rise boundary can fall either side of
+    // it. That is an epsilon, and it is not what this check is for: the bug it rejects turned one
+    // simulated second into 25 rises or 60 depending on the frame rate, and shows up here as 0
+    // against 40.
+    Need(Math.Abs(coarse - fine) <= 1,
+         $"the rise follows the CLOCK: 25.6s in one step gives {coarse}, in 2560 steps {fine}");
+    Need(coarse == 10, $"and 25.6s at 2.56s a rise is 10 rises: got {coarse}");
+    Need(idle == 0, $"a zero-time step ages nobody: got {idle}");
+
     // Ids are reused; a stale entry would hand the next arrival a dead stranger's hunger.
     int forgotten = needs.Reconcile(Enumerable.Range(0, 10));
     Need(forgotten == N - 9 && needs.All.Count == 10, $"Reconcile forgets the retired: dropped {forgotten}, kept {needs.All.Count}");
