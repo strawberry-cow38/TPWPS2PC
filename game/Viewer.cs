@@ -1373,6 +1373,9 @@ public partial class Viewer : Node3D
         if (_pieces == null) return;
         _paths = new PathTool(_terrainModel, _pieces);
         _ghost = new PathGhost(_paths) { Occupied = (x, y) => !_park.Vacant(x, y) };
+        // ⭐ The blueprint asks the tool what is already on a cell, so a stub can tell path from
+        // queue. Through a lambda, because _paths is rebuilt with every park.
+        _place.GroundAt = (x, y) => _paths?.KindAt(x, y) ?? PathTool.Kind.None;
         // ⚠ Once, not per park: the UI bank is the same file whichever park is up, and decoding it
         // again on every load would be four decodes for nothing.
         if (_toolSfx == null) { _toolSfx = new ToolSounds(_lib, this); GD.Print($"[sfx] {_toolSfx.Report}"); }
@@ -1524,6 +1527,70 @@ public partial class Viewer : Node3D
                + $"second leg {_paths.KindAt(lx + 2, ly + 2)} (was {far1}) -- "
                + $"{(undone && _paths.KindAt(lx, ly + 1) == PathTool.Kind.Path && _paths.KindAt(lx + 2, ly + 2) == PathTool.Kind.None ? "the second went, the first stayed, as it must be" : "WRONG")}");
         RefreshFloor();
+    }
+
+    /// <summary>⭐ A CONTROL FOR WHAT A STUB MAY LAND ON. Master: "allow overlapping that point
+    /// over other paths. (but not queues)".
+    ///
+    /// ⚠ THREE CASES, and the first two are each other's control: the SAME shop over the SAME
+    /// cell must be allowed when that cell is path and refused when it is queue, so neither answer
+    /// can come from the placement simply always agreeing or always refusing. The third is the
+    /// other half of the rule -- a RIDE's stub is a queue tile and a queue tile may not go on path
+    /// either, or placing a ride would quietly make the one cell that is BOTH.</summary>
+    void CheckStubOverlap()
+    {
+        int row = -1;
+        ShowBuildCategory("Shops");
+        for (int i = 0; i < _buildRows.Count && row < 0; i++)
+        {
+            var d = DefinitionFor(_lib.Rides[_buildRows[i]].Model);
+            if (d?.Shape != null && Park.Footprint.From(d.Shape).EntryX >= 0) row = i;
+        }
+        if (row < 0) { GD.Print("[stub] nothing in Shops declares an entrance"); return; }
+
+        var f = _park.Field;
+        int sx = f.Width / 2 - 4, sy = f.Height / 2 + 8;
+        ArmFromList(row);
+        for (int r = 0; r < 24 && !_place.Fits(_park, sx, sy); r++) sy += 1;
+        if (_place.Stubs(_park, sx, sy).FirstOrDefault() is not { Ok: true } stub)
+        { GD.Print($"[stub] {_place.Display} will not fit anywhere near ({sx},{sy}) to test with"); return; }
+        GD.Print($"[stub] {_place.Display} is a shop (IsRide {_place.IsRide}); its one node is "
+               + $"({stub.X},{stub.Y}) and it wants a {(stub.Queue ? "QUEUE" : "path")} tile there");
+
+        _paths.BeginLeg();
+        _paths.Lay(stub.X, stub.Y, PathTool.Kind.Path);
+        bool overPath = _place.Fits(_park, sx, sy);
+        _paths.UndoLeg();
+        _paths.BeginLeg();
+        _paths.Lay(stub.X, stub.Y, PathTool.Kind.Queue, 99);
+        bool overQueue = _place.Fits(_park, sx, sy);
+        _paths.UndoLeg();
+        GD.Print($"[stub] a shop's node over PATH {(overPath ? "fits" : "REFUSED")}, over QUEUE "
+               + $"{(overQueue ? "FITS" : "refused")} -- "
+               + $"{(overPath && !overQueue ? "path yes, queue no, as it must be" : "WRONG")}");
+
+        // And the ride's side of it.
+        ShowBuildCategory("Rides");
+        int rr = -1;
+        for (int i = 0; i < _buildRows.Count && rr < 0; i++)
+        {
+            var d = DefinitionFor(_lib.Rides[_buildRows[i]].Model);
+            if (d?.Shape != null && Park.Footprint.From(d.Shape).EntryX >= 0) rr = i;
+        }
+        if (rr < 0) return;
+        ArmFromList(rr);
+        int rx = f.Width / 2 - 4, ry = f.Height / 2 + 14;
+        for (int r = 0; r < 24 && !_place.Fits(_park, rx, ry); r++) ry += 1;
+        if (_place.Stubs(_park, rx, ry).FirstOrDefault(t => t.Queue) is not { Ok: true } qs)
+        { GD.Print("[stub] no ride queue stub to test with"); _place.Clear(); return; }
+        _paths.BeginLeg();
+        _paths.Lay(qs.X, qs.Y, PathTool.Kind.Path);
+        bool rideOverPath = _place.Fits(_park, rx, ry);
+        _paths.UndoLeg();
+        GD.Print($"[stub] a RIDE's queue node over PATH {(rideOverPath ? "FITS" : "refused")}"
+               + $" -- {(rideOverPath ? "WRONG -- that would make a BOTH cell nobody asked for" : "as it must be")}");
+        _place.Clear();
+        _ghostView?.Clear();
     }
 
     static IEnumerable<MeshInstance3D> Walk(Node n)
@@ -2133,6 +2200,8 @@ public partial class Viewer : Node3D
             }
             CloseTool();
         }
+        CheckStubOverlap();
+
         // The fourth stays on the cursor, turned once, so the shot carries a live ghost with both
         // arrows in it.
         // ⚠ THE PATH TOOL OFF FIRST. Each placement hands over to the queue and then to the exit

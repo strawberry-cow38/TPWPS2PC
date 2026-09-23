@@ -31,6 +31,11 @@ public sealed class Placement
     /// with a door, which is most of the shops.</summary>
     public bool IsRide { get; private set; }
 
+    /// <summary>What kind of laid ground is on a cell. ⚠ A DELEGATE: the blueprint has to know
+    /// whether a stub would land on path or on queue, and the path tool is built later and per
+    /// park -- holding it would freeze a null, which this file's neighbours have done before.</summary>
+    public Func<int, int, PathTool.Kind> GroundAt { get; set; }
+
     public bool Active => Def != null;
 
     /// <summary>The footprint as it currently stands, turned.</summary>
@@ -120,8 +125,21 @@ public sealed class Placement
             // ⭐ A QUEUE ONLY OUTSIDE A RIDE'S ENTRANCE. Everything else -- a shop's counter, a
             // sideshow's stall -- is a combined node on one tile, and the ground outside it is
             // ordinary path that people walk both ways over.
-            yield return (o.X, o.Y, entrance, IsRide && entrance,
-                          park.IsPlayable(o.X, o.Y) && park.Vacant(o.X, o.Y));
+            bool queue = IsRide && entrance;
+            var had = GroundAt?.Invoke(o.X, o.Y) ?? PathTool.Kind.None;
+            // ⭐⭐ A PATH STUB MAY LAND ON PATH. Master: "allow overlapping that point over other
+            // paths. (but not queues)". A shop's one node is a path tile and a path tile is what
+            // is already there, so the two are the same ground and the stub simply joins it --
+            // refusing would mean a shop could never be set down against a path anybody had laid,
+            // which is where shops go.
+            //
+            // ⚠ NEVER ON A QUEUE, and a QUEUE stub never on either. A queue laid onto path is the
+            // one cell that is BOTH, and that junction belongs to somebody running a queue INTO a
+            // path on purpose -- made by a placement it would appear without anyone asking.
+            bool free = had == PathTool.Kind.None
+                     || (!queue && had == PathTool.Kind.Path);
+            yield return (o.X, o.Y, entrance, queue,
+                          park.IsPlayable(o.X, o.Y) && park.Vacant(o.X, o.Y) && free);
         }
     }
 
