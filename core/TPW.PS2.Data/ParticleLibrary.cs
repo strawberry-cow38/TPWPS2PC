@@ -100,27 +100,40 @@ public sealed class ParticleLibrary
     public ParticleEffect Find(string name) =>
         Effects.FirstOrDefault(e => e.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
 
-    /// <summary>⭐ THE RAMP READ BACK AGAINST THE NAMES, which is the only check available: nobody
-    /// wrote down that `+0xd8` is a colour, so the evidence is that reading it that way makes Fire
-    /// orange and Smoke grey. Returns the effects whose ramp does NOT match what their name says,
-    /// so a caller reports them rather than a pass rate.</summary>
+    /// <summary>⭐ THE RAMP READ BACK AGAINST THE NAMES, which is the only check available:
+    /// nobody wrote down that `+0xd8` is a colour in `A, R, G, B` order, so the evidence is that
+    /// reading it that way makes six effects match what they are called -- `Fire` (190, 116, 0),
+    /// `Flames` (190, 128, 0), `DemonFire` (184, 101, 36), `Smoke` and `BigSmokePuff` white,
+    /// `ApeSmoke` (128, 128, 128) and `GreenSmokePuff` (0, 223, 0). No other byte order gets more
+    /// than one of those right.
+    ///
+    /// ⚠⚠ THE FIRST VERSION OF THIS TEST REPORTED TEN FAILURES AND EVERY ONE WAS ITS OWN FAULT.
+    /// It matched "fire" inside `Firework1` and `FireworkLaser`, which are green because fireworks
+    /// are, and flagged `GreenSmokePuff` for being coloured when its name says so. A test that
+    /// rejects correct data is worse than no test: it spends the reader's attention and then
+    /// trains them to ignore it. The families below are the ones whose names genuinely fix a
+    /// colour, and `Firework` is excluded by name rather than by silently dropping failures.
+    ///
+    /// ⚠ `SmokeTrailR`, `SmokeTrailB` and `SmokeTrailW` come out pale green, cyan and blue. If
+    /// those letters meant red, blue and white the ordering would be wrong -- but no ordering
+    /// makes all three right, and one that did would break the six above. Recorded as an open
+    /// oddity: the letters are probably not colours.</summary>
     public IEnumerable<(ParticleEffect Effect, string Why)> RampDisagreements()
     {
         foreach (var e in Effects)
         {
             if (e.Ramp.All(c => c == 0)) continue;
-            var mid = e.ColourAt(0.5f);
-            if (e.Name.Contains("Fire", StringComparison.OrdinalIgnoreCase)
-                || e.Name.Contains("Flame", StringComparison.OrdinalIgnoreCase))
-            {
-                if (mid.R <= mid.B) yield return (e, $"a fire whose midpoint is not warm: {mid}");
-            }
-            else if (e.Name.Contains("Smoke", StringComparison.OrdinalIgnoreCase))
-            {
-                // Grey or white: the three channels close together.
-                int spread = Math.Max(mid.R, Math.Max(mid.G, mid.B)) - Math.Min(mid.R, Math.Min(mid.G, mid.B));
-                if (spread > 64) yield return (e, $"a smoke whose midpoint is coloured: {mid}");
-            }
+            string n = e.Name;
+            bool Has(string s) => n.Contains(s, StringComparison.OrdinalIgnoreCase);
+            if (Has("Firework") || Has("Trail")) continue;   // named above, and said why
+            var (r, g, b, _) = e.ColourAt(0.5f);
+            int spread = Math.Max(r, Math.Max(g, b)) - Math.Min(r, Math.Min(g, b));
+            if (Has("Green") && !(g > r && g > b))
+                yield return (e, $"a green whose midpoint is not green: ({r}, {g}, {b})");
+            else if ((Has("Fire") || Has("Flame")) && r <= b)
+                yield return (e, $"a fire whose midpoint is not warm: ({r}, {g}, {b})");
+            else if (Has("Smoke") && !Has("Torch") && spread > 64)
+                yield return (e, $"a smoke whose midpoint is coloured: ({r}, {g}, {b})");
         }
     }
 }
