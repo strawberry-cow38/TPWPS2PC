@@ -2832,9 +2832,12 @@ public partial class Viewer : Node3D
             OpenTool(PathTool.Kind.Queue, ride);
             _runX = q.X; _runY = q.Y;
             _runStack.Add(q);
-            // ⭐ The camera follows the job. Master: "when placing a ride, focus the camera on the
-            // queue stub tile."
-            LookAtCell(q.X, q.Y);
+            // ⭐ The camera follows the job, and it comes ROUND to do it. Master: "when placing a
+            // ride, focus the camera on the queue stub tile", then "the camera for both of those
+            // needs to rotate 180 degrees around" -- the queue hand-over turns as much as the exit
+            // one does. Placing looks at the ride from the front; working its queue happens from
+            // behind.
+            LookAtCell(q.X, q.Y, quarters: 2);
             _ghostAt = (-1, -1, -1, -1);
             Status($"{was} is in -- run its queue from ({q.X},{q.Y})");
             GD.Print($"[build] queue mode from ({q.X},{q.Y}); the exit path will start at "
