@@ -611,11 +611,45 @@ is alive and cycling. It reads `VAR_LETMEON`, it calls `WALKON`, a guest id is s
 handshake slot waiting to be accepted, and it never accepts one. Not a fault, not closed, not
 broken, capacity 18.
 
-Unproven leads, in the order worth trying: its walk table may be saturating (`WalkOn` at
-`0x1bb180` drops a walk SILENTLY when no slot is free — compare `WalkSlotsInUse` against
-`WalkSlots`, which is what those accessors are for); or its accept branch is gated on a condition
-the host never satisfies. Note the *other* ride with `WALKON: yes`, Dare Devil, is stalled for the
-ordinary track reason, so "uses WALKON" is not itself the discriminator.
+**FOUND. It is stuck on an animation that never starts.** The saturating-walk-table lead is dead:
+its table reads `0 of 60` and `WalksWereAttempted` is false, so it never even tried to walk
+anybody. Printing the PC and the yield reason names the instruction outright:
+
+```
+Thrill Grill is parked at pc 85 (yield Animation), host slot -1:-1, around it:
+       75: COPY VAR_RUNNING=1 1
+       78: WAIT 1000
+       80: COPY VAR_COUNT=1 VAR_DURATION=1
+       83: JSR @251
+  ->   85: TRIGWAITANIM 4 0 0
+       89: STARTSCREAM VAR_ONRIDE=0 20
+```
+
+`VAR_RUNNING` is set to 1 at pc 75 — which is why the ride *looks* alive while doing nothing —
+and then it hangs one instruction later. **`host slot -1:-1` means no animation has ever started
+on this ride at all.**
+
+The chain is exact:
+
+1. Thrill Grill's model has no slot 4, so `PlayAnimation(4, 0)` finds no record.
+2. The host correctly returns 1000 ms and starts nothing — "nothing is started and nothing
+   already playing is disturbed" is `0x1abc80`'s own behaviour and is well sourced.
+3. `TRIGWAITANIM` then sets `_triggerSlot = 4` and re-visits itself until
+   `Host().AnimationSlot == _triggerSlot`. Since step 2 started nothing, `AnimationSlot` stays
+   `-1` and the condition can never become true.
+
+**⚠⚠ STEP 3 IS A RECONSTRUCTION, NOT A READING.** Its comment ("revisit the instruction to wait
+for the requested slot to start") cites no address, unlike the code either side of it, which names
+`0x1abc80` and `0x1bcfa8`. So the defect is in the spin condition, and there are two readings the
+executable can tell apart and I cannot:
+
+- the console's `TRIGWAITANIM` also waits for the slot to start, and the real Thrill Grill hangs
+  too — faithful, and implausible for a shipped ride;
+- the console does not gate on the slot having started, and the spin is invented here.
+
+**The fix must come from `0x1bcfa8`'s handler for this opcode, not from intuition.** The obvious
+patch — only wait when the animation actually started — would un-stick this ride, and would also
+change behaviour for the 59 rides that currently work, so it is not to be applied blind.
 
 The check is deliberately left FAILING on HALLOW rather than excluded by name. A "by design" filter
 is exactly where a defect would hide, and one red world is a better record of this than a green
