@@ -1464,6 +1464,16 @@ public partial class Viewer : Node3D
             PressTool();
             GD.Print($"[ghost] after a run that joins, the tool is "
                    + $"{(_toolOpen ? "STILL OPEN" : "closed, as it must be")}");
+
+            // ⭐ ONE TILE closes the tool too. ⚠ And the control has to show it is the LENGTH that
+            // closed it, not the joining -- so this one lands on bare ground where nothing joins.
+            if (!_toolOpen) OpenTool(PathTool.Kind.Path);
+            _cursorOverride = (cx - 7, cy + 6);
+            _runX = cx - 7; _runY = cy + 6;
+            int had = _paths.Laid;
+            PressTool();
+            GD.Print($"[ghost] a single tile on bare ground laid {_paths.Laid - had} and left the tool "
+                   + $"{(_toolOpen ? "OPEN" : "closed, as it must be")}");
         }
     }
 
@@ -2059,8 +2069,21 @@ public partial class Viewer : Node3D
         // still describe the ground the run was drawn over.
         var last = _ghost.Tiles[^1];
         bool joined = last.Verdict is PathGhost.Verdict.Joins or PathGhost.Verdict.Already;
+        bool single = _ghost.Tiles.Count == 1;
         int laid = _ghost.Lay(_toolKind);
         RefreshFloor();
+        // ⭐ ONE TILE IS A WHOLE JOB. A run of a single tile is somebody dropping one piece, not
+        // starting a line, so it lays and the tool shuts -- master's call. ⚠ Shift keeps it open,
+        // the same modifier that keeps it open on a connection and that stamps a blueprint, so
+        // there is one "I am still building" key rather than three.
+        if (single && !Input.IsKeyPressed(Key.Shift))
+        {
+            _toolSfx?.Play(ToolSounds.Cue.Lay);
+            GD.Print($"[path] laid one tile at ({x},{y}) -- tool closed");
+            Status($"laid one tile at ({x},{y})");
+            CloseTool();
+            return;
+        }
         // ⭐⭐ A RUN THAT CONNECTS CLOSES THE TOOL. Master's call, and the PSX report has the same
         // rule from the other build -- its path tool closes itself when a run finishes on existing
         // path, and gives that case its own sound and its own ghost marker. Finishing a path is a
