@@ -23,6 +23,7 @@ public partial class RideScriptDemo : Node3D
     float _distance, _yaw = 0.65f, _pitch = 0.35f;
     ParticleLibrary _particles;
     RideParticles _burst;
+    RideSounds _sounds;
     string _capture, _film;
     int _filmStep = 200, _filmFrames = 120, _filmSaved;
     float _filmZoom = 1f;
@@ -131,6 +132,9 @@ public partial class RideScriptDemo : Node3D
             _presenter = new RseModelPresenter(this, model, animation, Texture);
             _burst?.Clear();
             _burst = _particles == null ? null : new RideParticles(this, _particles);
+            _sounds?.Clear();
+            try { _sounds ??= new RideSounds(this, new SoundCatalogue(_lib.Disc, _world, 1), new SoundCatalogue(_lib.Disc, _world, 2)); }
+            catch (Exception e) { GD.PrintErr($"[snd] no sound catalogue: {e.Message}"); _sounds = null; }
             _fx = 0;
             // ⭐⭐ THE SCRIPT ASKS AND THIS ANSWERS. EVENT and ADDOBJ carry a KIND first: 1 and 2
             // reach the particle library (`0x18b5a8`/`0x18b0f8`), 3 goes to a different manager
@@ -138,6 +142,20 @@ public partial class RideScriptDemo : Node3D
             _preview.Host.EffectRequested += fx =>
             {
                 GD.Print($"[fx] {fx.Time}ms {fx.Opcode} {string.Join(" ", fx.Arguments)}");
+                // ⭐ Sound first: kinds 3..11 are the OBJ_SOUND_* groups and the model sits at the
+                // origin here, so node -1 is the origin and a named node is its 0x200 fitting.
+                if (_sounds != null && fx.Arguments.Count >= 1)
+                {
+                    var sa = fx.Arguments;
+                    if (fx.Opcode is RseOpcode.EVENT or RseOpcode.ADDOBJ && sa.Count >= 3 && SoundCatalogue.IsSoundGroup(sa[0]))
+                    {
+                        var sat = sa[1] < 0 ? Vector3.Zero : NodeAt(sa[1], 0x200);
+                        _sounds.Cue(0, _preview.Machine.Name ?? _stem, fx.Time, fx.Opcode, sa[0], sa[1], sa[2],
+                                    fx.Opcode == RseOpcode.ADDOBJ && sa.Count > 3 ? sa[3] : 1000, sat ?? Vector3.Zero, sat == null && sa[1] >= 0);
+                    }
+                    else if (fx.Opcode == RseOpcode.KILLOBJ && sa.Count >= 1) _sounds.Kill(0, sa[0]);
+                    else if (fx.Opcode == RseOpcode.FADEOBJ && sa.Count >= 1) _sounds.Fade(0, sa[0]);
+                }
                 if (_burst == null || fx.Arguments.Count < 3) return;
                 if (fx.Opcode != RseOpcode.EVENT && fx.Opcode != RseOpcode.ADDOBJ) return;
                 int kind = fx.Arguments[0], node = fx.Arguments[1], id = fx.Arguments[2];
@@ -184,6 +202,7 @@ public partial class RideScriptDemo : Node3D
                 _presenter.Update(_preview.Host); ShowStatus();
             }
             _burst?.Step();
+            _sounds?.Step(delta);
             if (_camera != null && _distance > 0)
             {
                 _camera.Position = _focus + new Vector3(Mathf.Sin(_yaw) * Mathf.Cos(_pitch),
@@ -207,6 +226,7 @@ public partial class RideScriptDemo : Node3D
                     if (++_filmSaved >= _filmFrames)
                     {
                         GD.Print($"[film] {_filmSaved} frames at {_filmStep}ms to {_time / 1000d:F1}s");
+                        if (_sounds != null) GD.Print(_sounds.Summary());
                         GetTree().Quit(); _film = null; return;
                     }
                     _time += _filmStep; _preview.Tick(_time);

@@ -68,6 +68,7 @@ public sealed class AssetLibrary : IDisposable
         .OrderBy(f => f.Path, StringComparer.OrdinalIgnoreCase).ToList();
 
     public byte[] ReadDisc(Disc.Entry f) => _disc.Read(f.Extent, f.Size);
+    public Disc Disc => _disc;
 
     /// <summary>The console executable, for the tables that live in it. ⚠ Null when the disc is a
     /// different build: nothing here is baked, so a table that cannot be read is a missing feature

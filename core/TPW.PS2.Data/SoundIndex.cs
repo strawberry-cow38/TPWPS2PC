@@ -160,7 +160,7 @@ public sealed class SfxMap
 public sealed class SoundCatalogue
 {
     public sealed record ResolvedClip(int Set, string Bank, int Index, string Name, int Milliseconds, int Threshold);
-    public sealed record Resolved(SoundGroup Group, int Id, string Map, IReadOnlyList<ResolvedClip> Clips);
+    public sealed record Resolved(SoundGroup Group, int Id, string Map, IReadOnlyList<ResolvedClip> Clips, int Sets);
 
     readonly Disc _disc;
     readonly Dictionary<string, Disc.Entry> _files;
@@ -238,6 +238,16 @@ public sealed class SoundCatalogue
                 string file = bankName == null ? $"bank{c.Bank}?" : bankName.Replace('\\', '/').Split('/')[^1].ToUpperInvariant() + "HD.SDT";
                 clips.Add(new ResolvedClip(s, file, c.Sound, sound?.Name ?? "??", c.Milliseconds, c.Threshold));
             }
-        return new Resolved(group, id, path, clips);
+        return new Resolved(group, id, path, clips, ev.Sets.Count);
+    }
+
+    /// <summary>The bank a resolved clip lives in, for whoever decodes it. Null when the bank
+    /// file is not on the disc.</summary>
+    public SoundBank BankOf(Resolved r, ResolvedClip c)
+    {
+        var (_, banks) = MapAt(r.Map);
+        foreach (var name in banks)
+            if (name.Replace('\\', '/').Split('/')[^1].ToUpperInvariant() + "HD.SDT" == c.Bank) return BankFor(r.Map, name);
+        return null;
     }
 }
