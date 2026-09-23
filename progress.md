@@ -368,3 +368,24 @@ The ordinary 24 needs assertions still cover storage, zero-time and normal frame
 not stalled-frame policy. While that decision is pending, continue independent release/
 launcher validation rather than idle. Check recent channel messages before choosing
 scope, and keep rendered needs-bubble work with its current maintainer.
+
+## Long-stall clock correction verified with the peer
+
+Cow tools confirmed the measured discrepancy was unintended and pushed `69faca2`.
+Integrated it without competing core edits. The same probe now reports hunger 11 for
+both a clipped ten-second frame and eight ordinary .04-second frames, with both park
+and walking clocks at 320ms. Added three permanent assertions: the actual eight-tick
+ceiling is exercised, needs follow consumed time, and longer ordinary runs still age.
+All 27 needs assertions per world pass in the full matrix; runner and its 20 Python
+tests updated for the new minimum. Known HALLOW/SPACE reds remain exact, runner exit 2.
+Evidence: `tpw-needs-clock-stall-fixed.log`, `tpw-needs-stall-final-69faca2/manifest.json`.
+
+Evidence correction from the maintainer: the 26-byte record is a per-level spawn
+template, not temporal rise data. Rates/cadence and the needs-growth policy are port
+inventions; these tests validate continuity/clock consistency, not retail growth values.
+
+Independent launcher follow-up also reproduced four false-positive disc recognition
+cases (suffix-only match, wrong folder, root-level name, directory named as an archive).
+That separate narrow fix/test package is being validated; no disc-parser or viewer
+changes are needed. Continue release/manual validation while respecting active renderer
+ownership and the distinction between synthetic fixtures and real-disc verification.

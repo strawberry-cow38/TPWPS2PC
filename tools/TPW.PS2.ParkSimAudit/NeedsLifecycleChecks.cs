@@ -99,19 +99,25 @@ static class NeedsLifecycleChecks
         clock.Visitors.Step(0, null);
         Check(clock.Visitors.Needs.Of(clock.Guest.Id).Hunger == 10, "zero elapsed time does not age needs");
 
-        byte AfterFrames(int frames, double delta)
+        (long Walk, long Park, byte Hunger) AfterFrames(int frames, double delta)
         {
             var f = Fresh(); f.Sim.SetOpen(1, false);
             f.Visitors.Needs.Rates["hunger"] = new VisitorNeeds.Rate(1, 0, false);
             f.Visitors.Needs.SecondsPerRise = .25; // controlled test cadence, not retail rate evidence
             f.Visitors.Needs.Set(f.Guest.Id, original with { Hunger = 10 });
             for (int i = 0; i < frames; i++) f.Visitors.Step(delta, null);
-            return f.Visitors.Needs.Of(f.Guest.Id).Hunger;
+            return (f.Visitors.Walk.Time, f.Sim.Time, f.Visitors.Needs.Of(f.Guest.Id).Hunger);
         }
         // 1.2 seconds is safely away from a .25-second period boundary, so the
         // check neither tolerates a missing rise nor trips on boundary rounding.
-        byte slow = AfterFrames(30, .04), fast = AfterFrames(60, .02);
-        Check(slow == 14, "clock control actually applies four rises rather than passing with no updates");
-        Check(slow == fast, $"equal simulated time has frame-rate-independent need updates (25Hz={slow}, 50Hz={fast})");
+        var slow = AfterFrames(30, .04); var fast = AfterFrames(60, .02);
+        Check(slow.Hunger == 14, "clock control actually applies four rises rather than passing with no updates");
+        Check(slow == fast, $"equal simulated time has frame-rate-independent need updates (25Hz={slow.Hunger}, 50Hz={fast.Hunger})");
+        var stalled = AfterFrames(1, 10); var matched = AfterFrames(8, .04);
+        Check(stalled.Walk == 320 && stalled.Park == 320, "stall fixture actually exercises the eight-tick catch-up ceiling");
+        Check(stalled == matched && stalled.Hunger == 11,
+              $"needs ages by consumed park time, not discarded frame time (stalled={stalled.Hunger}, normal={matched.Hunger})");
+        Check(AfterFrames(253, .04).Hunger == 50,
+              "ordinary longer running still ages needs rather than globally capping total progress");
     }
 }

@@ -132,3 +132,24 @@ Only the two pre-existing retail failures remain in full ParkSimAudit.
 These tests do not establish every rate/decision rule, long-stall catch-up behavior,
 thought-bubble visibility, or retail AI parity. Rendering remains the peer's active
 integration scope and requires its own evidence.
+
+## Catch-up ceiling: second independent clock correction
+
+A later controlled probe exposed a different defect from call-count aging: the
+coordinator dropped most of a stalled frame for walking/park simulation, but passed
+its full delta to needs. One Step(10) and eight Step(.04) both advanced park/walk
+clocks to 320ms, yet hunger reached 50 versus 11 from 10 with controlled .25-second
++1 rises. The needs maintainer confirmed this was unintended and corrected it in
+`69faca2` to use consumed walking ticks rather than raw frame delta.
+
+Three permanent checks now cover the real eight-tick ceiling, identical needs for
+equal consumed simulation time, and continued aging during an ordinary longer run.
+The suite is now 27 needs assertions per world. All pass in the integrated four-world
+matrix; the two original retail findings remain unchanged. The probe also reproduces
+the corrected 11/11 results. This is managed clock consistency, not retail timing parity.
+
+The maintainer also corrected the evidence label: the 26-byte record discussed in
+VisitorNeeds is a **per-level spawn template**, not decoded temporal rise-rate data.
+Need growth, its selected rates, and cadence remain port policy. This suite audits
+storage/identity and clock consistency; it does not independently establish retail
+need-growth rules. See the corrected source and `findings/visitors.md`.

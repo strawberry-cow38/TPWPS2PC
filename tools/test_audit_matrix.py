@@ -9,7 +9,7 @@ COVERAGE = '\n'.join(['  ok   availability: check'] * 30 +
                      ['  ok   removal regression exercised a real non-track ride with seats'] +
                      ['  ok   conservation: check'] * 19 +
                      ['  ok   conservation: identical fixed-tick inputs reproduce the full sampled lifecycle (100 steps, SHA256 ' + 'A' * 64 + ')'] +
-                     ['  ok   needs lifecycle: check'] * 23 +
+                     ['  ok   needs lifecycle: check'] * 26 +
                      ['  ok   needs lifecycle: clock control actually applies four rises rather than passing with no updates'])
 
 
@@ -85,7 +85,7 @@ class ClassificationTests(unittest.TestCase):
         self.assertEqual(row['availability_checks'], 30)
         self.assertEqual(row['removal_checks'], 57)
         self.assertEqual(row['conservation_checks'], 20)
-        self.assertEqual(row['needs_lifecycle_checks'], 24)
+        self.assertEqual(row['needs_lifecycle_checks'], 27)
 
     def test_suppressed_failure_exit_is_not_pass(self):
         self.assertEqual(classify('HALLOW', 0, known('HALLOW'))['status'], 'unexpected_failure')
