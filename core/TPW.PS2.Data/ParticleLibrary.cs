@@ -24,6 +24,20 @@ public sealed class ParticleEffect
 
     public int RawAt(int offset) => BinaryPrimitives.ReadInt32LittleEndian(Raw.AsSpan(offset, 4));
 
+    /// <summary>⚠⚠ CANDIDATE, and the reason the code no longer hardcodes additive blending.
+    /// `+0x70` is a BINARY field across the library -- 0 on 56 effects and 4 on the other 49 --
+    /// and the two effects whose right answer is already known land on opposite sides: `Sparks`
+    /// reads 0 and `ApeSnot` reads 4. A spark glows; snot does not.
+    ///
+    /// ⭐ Drawing everything ADDITIVELY is what "way too opaque" looks like: additive blending
+    /// cannot darken, so over a bright park it saturates towards white and no amount of alpha
+    /// makes it read as translucent. Half the library was being drawn that way.
+    ///
+    /// ⚠ NO CONSUMER READ. This is a two-known-answers test over a binary field, not the
+    /// executable's own branch. `+0x58` (a 0..3 enum) and `+0x71` (0 or 32, adjacent and probably
+    /// the same flags word) also separate the two and are the next candidates if this is wrong.
+    public bool Additive => (RawAt(0x70) & 4) == 0;
+
     /// <summary>⚠ CANDIDATE, from the shape of the values: `+0x74` is 100 for Sparks, 300 for
     /// MumboPuff, 800 for ApeSnot and 1500 for Fire and ApeSmoke -- an ordering that matches how
     /// long each of those should hang about, in milliseconds. No consumer read.</summary>

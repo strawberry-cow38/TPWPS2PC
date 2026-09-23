@@ -119,7 +119,10 @@ public sealed class RideParticles
         {
             ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
             Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
-            BlendMode = BaseMaterial3D.BlendModeEnum.Add,
+            // ⚠ NOT ADDITIVE FOR EVERYTHING -- see ParticleEffect.Additive. Master, on the live
+            // park: "still way too opaque everywhere". Additive blending cannot darken, so it
+            // saturates towards white over a bright scene and never reads as translucent.
+            BlendMode = e.Additive ? BaseMaterial3D.BlendModeEnum.Add : BaseMaterial3D.BlendModeEnum.Mix,
             BillboardMode = BaseMaterial3D.BillboardModeEnum.Particles,
             // ⚠ BillboardMode.Particles drops ScaleAmount unless this is set.
             BillboardKeepScale = true,
