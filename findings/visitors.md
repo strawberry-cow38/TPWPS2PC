@@ -788,8 +788,22 @@ is in no firepit animation on the disc. Its other requests are `WAITANIM` 0, 3, 
 too.
 
 Corrected statement: **one ride's animation lives in a folder we do not search, and its script
-waits forever on a slot that folder does not contain either.** Fixing the search is worth doing on
-its own — it is a real lookup gap — and it will not un-stick Thrill Grill.
+waits forever on a slot that folder does not contain either.** Fixing the search is a real lookup
+gap, and it will not un-stick Thrill Grill.
+
+⭐ **And it is a quirk, not a systematic gap — censused before anyone chases it.** Across all four
+worlds there are 86 ride scripts that carry a `.sam`, and exactly **two** have no sibling `.mps`:
+
+```
+SPACE    /Rides/whirli.RSE            -> /Rides/whirli/whirli.mps      (the stub, now fixed)
+HALLOW   /rides/firepit/firepit.RSE   -> /upgrades/firepit/firepit.mps (the real case)
+```
+
+JUNGLE and FANTASY have none. So after the stub fix, **firepit is the only ride on the disc whose
+model is not beside its script** — worth a note and not worth a search-path redesign. ⚠ How the
+console resolves it is still unread: whether `/upgrades/` is a second search root, or the `.sam`
+points at it, or the upgrade is a separate entity the ride references. Read it before generalising
+from one ride's folder name.
 ## ⭐⭐ The five failing rigs are TWO bugs, and the bone indices are not one of them
 
 `SkinAudit` fails five of twenty-four characters on "skinning the bind pose returns the authored
