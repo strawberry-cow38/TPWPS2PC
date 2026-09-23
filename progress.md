@@ -502,3 +502,12 @@ mistake Queued for waiting or claim the chosen effect scales are decoded retail 
 A source-summary wording mismatch (Ride mentions toilet emptying while the agreed
 contract leaves Toilet unchanged) was flagged for the needs maintainer, not changed
 silently in its active file.
+
+Joint consumer/audit publication completed: main tip `d02510b` includes peer consumer
+`0c0981c` and the revised no-reseed/effect checks, pushed together after green integration.
+No mutants or local core modifications remain. Next useful independent gate is an
+actual current-revision Godot scene audit/rendered smoke using the installed engine,
+recording reported engine version, compile target, exit/counts and any compatibility
+failure. Do not infer project compatibility from the new --version capability check,
+and do not claim screenshot visual inspection unless it actually occurs. Coordinate
+with the renderer maintainer and leave its active source files untouched.
