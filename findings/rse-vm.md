@@ -404,6 +404,21 @@ name said all along.
 The four entries whose flags carry `0x100` are ids 1, 5, 9 and 13; every other entry is
 `0x000400f1`. So the space argument picks a KIND of fitting and the node number picks which one.
 
+⚠⚠ THE PARAGRAPH BELOW IS WRONG AND IS KEPT AS A WARNING. The entry's `u16` gives `m_body`,
+`m_crate` and `m_arm` -- plausible parts of the right ride, satisfying every self-consistency
+check I could think of -- and it is not the seat's node. The right rule is one line: **the nth
+fitting is the nth HELPER node.** `monkey.mps` has 24 fittings and exactly 24 helpers before its
+last dummy -- `Head1`..`Head17`, `nose1`, `nose03`..`nose07`, `destroy` -- and they correspond one
+for one in order. Every one of the sixteen `0x80` fittings then lands on a `Head` node, and every
+`Head` node is parented to `m_arm` or `m_arm1`: the arms holding the bananas, which is where
+Crazy Ape's riders actually sit.
+
+The correction came from master, who has played the game -- "they should all be on the bananas" --
+and the hierarchy agrees. Four self-consistency properties held for the wrong answer. What it
+could not survive was somebody who knew what the ride looks like.
+
+THE WRONG READING FOLLOWED:
+
 ⭐⭐ THE ENTRY'S FIRST POINTER SAYS WHICH NODE IT SITS ON. It opens on `u16, u16, float x, y, z`,
 and the second `u16` is a node index. Reading Crazy Ape that way is coherent all the way through
 its script: `EVENT 1 5 92` and `1 6 92` (BigSmokePuff) and `EVENT 2 5 1` / `2 6 30` (Sparks,

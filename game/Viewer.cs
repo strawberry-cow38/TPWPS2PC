@@ -156,6 +156,9 @@ public partial class Viewer : Node3D
     /// same model by hand would have two clocks fighting over one mesh.</summary>
     ParkSim _sim;
     readonly List<(ParkRide Ride, AnimatedModel Model, Aps Anim, int Slot, int Variant)> _scripted = new();
+    /// <summary>Each scripted ride's own <see cref="Model"/>, by ride id, for its fittings -- the
+    /// seats ADDHEAD names are the model's `0x80` fittings, found by slot + 1.</summary>
+    readonly Dictionary<int, Model> _rideMeshes = new();
     /// <summary>A cell to use instead of the mouse, for captures. Null in normal use.</summary>
     (int X, int Y)? _cursorOverride;
     bool _pickChecked;
@@ -1495,7 +1498,7 @@ public partial class Viewer : Node3D
         ResetGuests();
         _walkGrid = null;
         // ⭐ AND THE SIM WITH IT: it was made on that grid, and its rides stood on that park.
-        _sim = null; _scripted.Clear(); _shotWound = false;
+        _sim = null; _scripted.Clear(); _rideMeshes.Clear(); _shotWound = false;
         if (_terrainModel?.Field == null) return;
         if (_pieces == null)
         {
@@ -2349,10 +2352,14 @@ public partial class Viewer : Node3D
     /// `.rse`, no `.aps`, or a program that would not load -- and the caller falls back to winding
     /// the Create animation by hand, which is what every ride did before this.</summary>
     bool StartScript(int id, AssetLibrary.RideAssets assets, AnimatedModel model, Aps anim,
-                     int cx, int cy, int w, int h, ParkCell? entrance = null, ParkCell? exit = null)
+                     int cx, int cy, int w, int h, ParkCell? entrance = null, ParkCell? exit = null,
+                     Model mesh = null)
     {
         if (assets?.Script == null || anim == null || model == null) return false;
         _sim ??= new ParkSim(WalkGrid());
+        // ⭐ THE SEATS ARE THE MODEL'S 0x80 FITTINGS -- ADDHEAD indexes them by slot + 1 -- so the
+        // ride is told how many it has, or it seats nobody however many the script boards.
+        int headSlots = mesh?.Fittings.Count(f => (f.Flags & 0x80) != 0) ?? 0;
         // ⭐ SPAWNCHILD LOOKS IN THE RIDE'S OWN FOLDER (0x1be91c builds directory + name). Seven
         // jungle rides each ship a file called EventMap.rse, so a lookup by name alone would hand
         // six of them somebody else's script.
@@ -2365,14 +2372,15 @@ public partial class Viewer : Node3D
         }
         var ride = _sim.Add(id, _place.Display ?? Leaf(assets.Name), new ParkCell(cx, cy), w, h,
                             _lib.Read(assets.Script), anim, _place.Def?.UpgradeCapacity(0) ?? 1,
-                            entrance, exit, out string fault, sibling: Sibling);
+                            entrance, exit, out string fault, sibling: Sibling, headSlots: headSlots);
         if (ride == null) { GD.PrintErr($"[sim] {Leaf(assets.Name)} script would not start: {fault}"); return false; }
         _scripted.Add((ride, model, anim, -1, -1));
+        if (mesh != null) _rideMeshes[id] = mesh;
         // ⭐ A RIDE IS BUILT CLOSED and opens once it stands. king.RSE spins on VAR_RIDECLOSED
         // right after its Create animation, so a ride left closed would build itself and then
         // stand there -- which is correct, and is also not a park.
         _sim.SetOpen(id, true);
-        GD.Print($"[sim] {Leaf(assets.Name)} running its script ({ride.Variables.Count} variables), doors {entrance}/{exit}");
+        GD.Print($"[sim] {Leaf(assets.Name)} running its script ({ride.Variables.Count} variables), doors {entrance}/{exit}, {headSlots} seats");
         return true;
     }
 
@@ -2685,20 +2693,70 @@ public partial class Viewer : Node3D
     Vector3 GuestWorld(Vector3 p, ParkCell cell)
         => new(_guests.Paths.Origin.X + p.X, _park.CellY(cell.X, cell.Z) + p.Y, -(_guests.Paths.Origin.Y + p.Z));
 
+    /// <summary>Where each seated rider was last drawn, by guest id, with the seat it sits in.</summary>
+    readonly Dictionary<int, (Transform3D At, string Where)> _seated = new();
+
+    /// <summary>⭐⭐ RIDERS SIT WHERE ADDHEAD PUT THEM. The script takes a random free head slot
+    /// and attaches the guest to fitting `slot + 1` in the `0x80` space (the lead's reading of
+    /// its handler), so a seated guest is drawn on that fitting's node -- and follows it, because
+    /// the node's world matrix is read every frame from the animated model. ⚠ AT THE NODE'S
+    /// ORIGIN: the fitting's three floats are an offset within the part and are not understood
+    /// -- read now through <see cref="Model.FittingLocal"/>, whose frame is inferred rather than
+    /// walked. ⚠ Position and yaw only, never the node's basis: the ride's root carries the
+    /// Z mirror and the node its bind scale, and a kid drawn through both came out mirrored and
+    /// a tenth the size.</summary>
+    void SeatRiders()
+    {
+        _seated.Clear();
+        foreach (var (ride, model, _, _, _) in _scripted)
+        {
+            if (ride.Host == null || ride.Host.Seats.Count == 0 || model?.Root == null
+                || !IsInstanceValid(model.Root) || model.LastWorld == null) continue;
+            if (!_rideMeshes.TryGetValue(ride.Id, out var mesh)) continue;
+            var root = model.Root.GlobalTransform;
+            foreach (var (slot, guest) in ride.Host.Seats)
+            {
+                if (mesh.FindFitting(slot + 1, 0x80) is not { Node: >= 0 } fit) continue;
+                if (!model.LastWorld.TryGetValue(mesh.NodeOffset(fit.Node), out var w)) continue;
+                // ⭐ THE SEAT IS A POINT ON THE PART, not the part's origin: the fitting's three
+                // floats are a position normalised inside the mesh's own bounds
+                // (Model.FittingLocal) -- a reading that fits four independent properties, not a
+                // consumer that was walked, so "the frame is inferred" is the caveat that remains.
+                // Through the node's world matrix and then the ride root, as the origin went; drawn
+                // at the origin, three of the crate's riders shared one point.
+                var seat = System.Numerics.Vector3.Transform(mesh.FittingLocal(fit), w);
+                var at = root * new Vector3(seat.X, seat.Y, seat.Z);
+                var forward = root.Basis * new Vector3(w.M31, w.M32, w.M33);
+                forward.Y = 0;
+                float yaw = forward.LengthSquared() > 1e-6f ? Mathf.Atan2(forward.X, forward.Z) : 0f;
+                _seated[guest] = (new Transform3D(Basis.Identity.Rotated(Vector3.Up, yaw), at),
+                                  $"{ride.Name} seat {slot} on node {fit.Node}");
+            }
+        }
+    }
+
     void PlaceActors(float alpha)
     {
-        // ⭐ Whoever has left the walk -- handed to a ride -- loses their body this frame. The
-        // script has them now; a kid standing in the queue AND riding would be two bodies for
-        // one guest, which is exactly what the total handover exists to prevent.
+        SeatRiders();
+        // ⭐ Whoever has left the walk -- handed to a ride -- loses their body this frame unless a
+        // seat has them. The script has them now; a kid standing in the queue AND riding would be
+        // two bodies for one guest, which is exactly what the total handover exists to prevent.
+        // A queued guest not yet seated has no body at all.
         var alive = new HashSet<int>(_guests.Guests.Select(g => g.Id));
+        alive.UnionWith(_seated.Keys);
         foreach (int id in _actors.Keys.Where(id => !alive.Contains(id)).ToArray())
         {
             if (_actors[id] is { } gone && IsInstanceValid(gone)) gone.QueueFree();
             _actors.Remove(id); _guestDwell.Remove(id);
         }
+        foreach (var (id, seat) in _seated)
+        {
+            if (!_actors.TryGetValue(id, out var rider)) rider = MakeActor(id);
+            if (rider != null) rider.Transform = seat.At;
+        }
         foreach (var g in _guests.Guests)
         {
-            if (!_actors.TryGetValue(g.Id, out var actor)) actor = MakeActor(g);
+            if (!_actors.TryGetValue(g.Id, out var actor)) actor = MakeActor(g.Id);
             if (actor == null) continue;
             var now = Cell(g.Position);
             var was = _guestPrev.TryGetValue(g.Id, out var p) ? p : now;
@@ -2712,9 +2770,9 @@ public partial class Viewer : Node3D
     /// <summary>A body for a guest: one of the disc's eight kids, by id, stood on its feet at the
     /// origin of its own node. Null -- logged, and not asked again -- when DATA.WAD would not
     /// give one up.</summary>
-    Node3D MakeActor(Guest g)
+    Node3D MakeActor(int id)
     {
-        string path = GuestModels[(g.Id - 1) % GuestModels.Length];
+        string path = GuestModels[(id - 1) % GuestModels.Length];
         try
         {
             if (_charLib == null) { _charLib = new AssetLibrary(_discPath); _charLib.OpenWad("/DATA/DATA.WAD"); }
@@ -2726,20 +2784,20 @@ public partial class Viewer : Node3D
             }
             var drawn = new AnimatedModel(model, null, null, m => CharTexture(path, m));
             drawn.SetFrame(0);
-            var actor = new Node3D { Name = $"Guest_{g.Id}" };
+            var actor = new Node3D { Name = $"Guest_{id}" };
             actor.AddChild(drawn.Root);
             // Feet on the node's origin and centred on it, measured the way VisitorParkView does.
             var (lo, hi) = Park.DrawnBounds(drawn.Root, inParent: true);
             drawn.Root.Position = new Vector3(-(lo.X + hi.X) / 2, -lo.Y, -(lo.Z + hi.Z) / 2);
             _guestRoot.AddChild(actor);
-            _actors[g.Id] = actor;
-            GD.Print($"[guest] #{g.Id} wears {Leaf(path)}, {hi.Y - lo.Y:F2} tall, {hi.X - lo.X:F2} wide");
+            _actors[id] = actor;
+            GD.Print($"[guest] #{id} wears {Leaf(path)}, {hi.Y - lo.Y:F2} tall, {hi.X - lo.X:F2} wide");
             return actor;
         }
         catch (Exception e)
         {
-            GD.PrintErr($"[guest] #{g.Id} has no body: {e.Message}");
-            _actors[g.Id] = null;
+            GD.PrintErr($"[guest] #{id} has no body: {e.Message}");
+            _actors[id] = null;
             return null;
         }
     }
@@ -2920,6 +2978,27 @@ public partial class Viewer : Node3D
                + $"{Mathf.RadToDeg(-_pitch):F0} degrees down, facing the gate");
     }
 
+    /// <summary>The free camera close on the ride the control run stood, from the side its
+    /// riders sit on, so a seated kid is a kid in the picture and not a pixel.</summary>
+    void GuestTestCloseUp()
+    {
+        if (_guestTestRide is not { } r || _mouth == null || _mouth.Count == 0) return;
+        _freeCam = true;
+        var centre = GuestWorld(new Vector3(r.X + r.W * 0.5f, 0f, r.Y + r.H * 0.5f), _mouth[0]);
+        // ⭐ AT THE RIDERS, if there are any: their mean seat is where the picture should look.
+        if (_seated.Count > 0)
+        {
+            var mean = Vector3.Zero;
+            foreach (var seat in _seated.Values) mean += seat.At.Origin;
+            centre = mean / _seated.Count;
+        }
+        // ⚠ From the GATE side (yaw 0 puts the eye at +Z), because the ape faces the gate: the
+        // first close-up was of its back, riders and all.
+        _focus = centre; _dist = 7f; _pitch = -0.3f; _yaw = 0f;
+        GD.Print($"[guest] close-up camera: free orbit on ({_focus.X:F1}, {_focus.Y:F1}, {_focus.Z:F1}), {_dist:F0} out, "
+               + $"{Mathf.RadToDeg(-_pitch):F0} degrees down, from the gate side, {_seated.Count} riders in frame");
+    }
+
     /// <summary>Wind the park to a tick and put every guest in the log with its cell, its step
     /// and its world position -- and, from the second stage on, how far it moved since the last,
     /// which is the number a picture cannot give -- then the rides' census: queued, boarded,
@@ -2963,11 +3042,81 @@ public partial class Viewer : Node3D
                    + $"{queued} queued or riding now, {_guests.Guests.Count} walking");
             foreach (var r in _sim.Rides)
                 GD.Print($"[guest] {label} {r.Name}: queue {r.Queue.Count}, on ride {r.OnRide}, {(r.Running ? "running" : "standing")}, "
-                       + $"slot {r.Slot}:{r.Variant}, doors {r.Entrance}/{r.Exit}" + (r.Fault != null ? $" FAULT {r.Fault}" : ""));
+                       + $"slot {r.Slot}:{r.Variant}, doors {r.Entrance}/{r.Exit}, seats {r.Host?.Seats.Count ?? 0} of {r.Host?.HeadSlots ?? 0} taken"
+                       + (r.Fault != null ? $" FAULT {r.Fault}" : ""));
+            foreach (var (id, seat) in _seated)
+                GD.Print($"[guest] {label} rider #{id} in {seat.Where} at world ({seat.At.Origin.X:F2}, {seat.At.Origin.Y:F2}, {seat.At.Origin.Z:F2})"
+                       + (_actors.TryGetValue(id, out var body) && body != null ? "" : " -- NO BODY"));
+            // ⭐ THE CLOSEST PAIR is the number that says whether seats stack: at the node origins
+            // it was 0.00 for three riders on the crate.
+            if (_seated.Count > 1)
+            {
+                var list = _seated.ToList();
+                float closest = float.MaxValue; string pair = "";
+                for (int i = 0; i < list.Count; i++)
+                    for (int j = i + 1; j < list.Count; j++)
+                    {
+                        float d = (list[i].Value.At.Origin - list[j].Value.At.Origin).Length();
+                        if (d < closest) { closest = d; pair = $"#{list[i].Key} and #{list[j].Key}"; }
+                    }
+                GD.Print($"[guest] {label} seats: closest pair {pair} are {closest:F2} apart" + (closest < 0.05f ? " -- STACKED" : ""));
+            }
+            // ⭐ SCALE, MEASURED IN ONE UNIT: the ride, the parts the riders sit on, a kid, and the
+            // terrain's ticket booths -- the game's own human-sized prop -- all through DrawnBounds
+            // in world units, so "the kids look small" can be checked against a number rather than
+            // against how big a gorilla ought to look.
+            foreach (var (ride, model, _, _, _) in _scripted)
+            {
+                if (model?.Root == null || !IsInstanceValid(model.Root) || !_rideMeshes.TryGetValue(ride.Id, out var mesh)) continue;
+                var (lo, hi) = Park.DrawnBounds(model.Root, inParent: true);
+                var parts = ride.Host.Seats.Keys.Select(slot => mesh.FindFitting(slot + 1, 0x80))
+                    .Where(f => f is { Node: >= 0 } && f.Value.Node < mesh.Meshes.Count)
+                    .Select(f => mesh.Meshes[f.Value.Node].Name).Distinct().ToList();
+                string partSizes = string.Join(", ", parts.Select(name =>
+                {
+                    var (plo, phi) = Park.DrawnBounds(model.Root, inParent: true, onlyNamed: name);
+                    return phi.Y >= plo.Y ? $"{name} {phi.Y - plo.Y:F2} tall x {phi.X - plo.X:F2} x {phi.Z - plo.Z:F2}" : $"{name} (no drawn mesh)";
+                }));
+                GD.Print($"[guest] scale: {ride.Name} stands {hi.Y - lo.Y:F2} tall, {hi.X - lo.X:F2} x {hi.Z - lo.Z:F2} on its plot; seat parts: {partSizes}");
+            }
+            var kid = _actors.Values.FirstOrDefault(a => a != null && IsInstanceValid(a));
+            if (kid != null)
+            {
+                var (klo, khi) = Park.DrawnBounds(kid, inParent: true);
+                GD.Print($"[guest] scale: a kid stands {khi.Y - klo.Y:F2} tall, {khi.X - klo.X:F2} wide (cell = 1.00)");
+            }
+            if (_terrain?.Root != null && IsInstanceValid(_terrain.Root))
+            {
+                var (blo, bhi) = Park.DrawnBounds(_terrain.Root, inParent: true, onlyNamed: "ticket_booths");
+                GD.Print(bhi.Y >= blo.Y ? $"[guest] scale: the terrain's ticket_booths stand {bhi.Y - blo.Y:F2} tall, {bhi.X - blo.X:F2} x {bhi.Z - blo.Z:F2} -- the game's own human-sized prop"
+                                        : "[guest] scale: this terrain draws no ticket_booths mesh to compare against");
+            }
         }
         else GD.Print($"[guest] {label} t={t:F2}s no ride stands, so nobody rides");
         _guestAt = _guests.Guests.ToDictionary(g => g.Id, g => Cell(g.Position));
         _guestLabel = label;
+        // ⭐ DOES THE RIDE CARRY THEM? A seat is a node on an animated part, so a rider drawn
+        // from LastWorld each frame should move while the ride runs. Measured rather than
+        // assumed: one more second of ticks after the last stage, and each rider's displacement,
+        // with whether the ride was running -- a zero on a standing ride is not a finding.
+        // ⚠ So the final shot is one second later than the B census it follows.
+        if (label == "B" && _seated.Count > 0)
+        {
+            var before = _seated.ToDictionary(kv => kv.Key, kv => kv.Value.At.Origin);
+            var running = _sim.Rides.Where(r => r.Running).Select(r => r.Name).ToList();
+            for (int i = 0; i < 25; i++) { TickPark(); PresentScripted(); }
+            PlaceActors(1f);
+            int carried = 0;
+            foreach (var (id, seat) in _seated)
+                if (before.TryGetValue(id, out var was))
+                {
+                    float d = (seat.At.Origin - was).Length();
+                    if (d > 0.001f) carried++;
+                    GD.Print($"[guest] carry: rider #{id} in {seat.Where} moved {d:F3} units over 1 s");
+                }
+            GD.Print($"[guest] carry: {carried} of {before.Count} riders moved with the ride"
+                   + (running.Count > 0 ? $" ({string.Join(", ", running)} running)" : " -- but no ride was running, so this says nothing about carrying"));
+        }
     }
 
     void SaveShot(string path)
@@ -3585,7 +3734,7 @@ public partial class Viewer : Node3D
             return;
         }
         var (cx, cy) = _place.CornerFor(x, y);
-        var built = LoadPlaceable(_armedRide, out var builtAnim);
+        var built = LoadPlaceable(_armedRide, out var builtAnim, out var builtMesh);
         var model = built?.Root;
         if (model == null) { Status($"{_place.Display} has no model to place"); return; }
         if (!_park.TryPlace(model, _place.Turned, _place.Id, _place.Display, cx, cy, _place.Turns))
@@ -3635,7 +3784,7 @@ public partial class Viewer : Node3D
         // here touches its clock again. `_building` stays for the ones with no script, which is
         // what every ride used before, and the two must never hold the same model.
         int w = _place.Turned.Width, h = _place.Turned.Height;
-        if (!StartScript(ride, _armedRide, built, builtAnim, cx, cy, w, h, queueStub, pathStub)
+        if (!StartScript(ride, _armedRide, built, builtAnim, cx, cy, w, h, queueStub, pathStub, builtMesh)
             && built.Frames > 1) { built.SetFrame(0); _building.Add((built, 0f)); }
         // ⭐ The ground under it goes now that the cells are claimed.
         RefreshFloor();
@@ -3696,15 +3845,16 @@ public partial class Viewer : Node3D
     }
 
     /// <summary>The model for the held thing, built the same way the viewer builds any other.</summary>
-    AnimatedModel LoadPlaceable(AssetLibrary.RideAssets ride) => LoadPlaceable(ride, out _);
+    AnimatedModel LoadPlaceable(AssetLibrary.RideAssets ride) => LoadPlaceable(ride, out _, out _);
+    AnimatedModel LoadPlaceable(AssetLibrary.RideAssets ride, out Aps animation) => LoadPlaceable(ride, out animation, out _);
 
-    AnimatedModel LoadPlaceable(AssetLibrary.RideAssets ride, out Aps animation)
+    AnimatedModel LoadPlaceable(AssetLibrary.RideAssets ride, out Aps animation, out Model mesh)
     {
-        animation = null;
+        animation = null; mesh = null;
         if (ride?.Model == null) return null;
         try
         {
-            var mesh = new Model(_lib.Read(ride.Model));
+            mesh = new Model(_lib.Read(ride.Model));
             Aps anim = null;
             Aps.Record rec = default;
             if (ride.Animation != null)
@@ -5217,7 +5367,15 @@ public partial class Viewer : Node3D
                 { GuestTestCamera(); GuestTestStage("A", 1500); _guestStage = 1; _guestSince = _shotWait; }
                 else if (_guestStage == 1 && _shotWait >= _guestSince + 2)
                 { SaveShot(ShotSibling(_shotPath, "-a")); GuestTestStage("B", 4500); _guestStage = 2; _guestSince = _shotWait; }
-                else if (_guestStage == 2 && _shotWait >= _guestSince + 2) { SaveShot(_shotPath); GetTree().Quit(); }
+                else if (_guestStage == 2 && _shotWait >= _guestSince + 2)
+                {
+                    SaveShot(_shotPath);
+                    // ⭐ And a third, close on the ride, once one stands: the park shot cannot show
+                    // a half-unit kid on a six-unit ape from sixteen units out.
+                    if (_guestTestRide != null) { GuestTestCloseUp(); _guestStage = 3; _guestSince = _shotWait; }
+                    else GetTree().Quit();
+                }
+                else if (_guestStage == 3 && _shotWait >= _guestSince + 2) { SaveShot(ShotSibling(_shotPath, "-c")); GetTree().Quit(); }
             }
             else if (_shotWait > (_guestTest ? 600 : warm))
             {

@@ -505,27 +505,36 @@ public sealed partial class Model
     /// a "space" (`0x80`, `0x100`, `0x200`, `0x800`) and only a fitting sharing a bit with it is
     /// a match.</param>
     /// <param name="Id">The number the script uses.</param>
-    /// <param name="Node">The model node it sits on -- for `monkey.mps` these come out as
-    /// `m_arm`, `m_arm1`, `m_crate`, `m_body`, `m_boxes`, `m_shards` and `Head09`.</param>
+    /// <param name="Node">The model node it IS -- the nth fitting is the nth helper node.</param>
     public readonly record struct Fitting(uint Flags, int Id, int Node, float X, float Y, float Z);
 
     List<Fitting> _fittings;
 
-    /// <summary>⭐⭐ WHAT A SCRIPT MEANS BY A "NODE". `EVENT`, `ADDOBJ`, `WALKON` and `SPARK` all
-    /// name one, and none of them means an index into the node table. `0x1b9388` hands the number
-    /// AND the space to `0x1f1f78`, which SEARCHES this table -- at `+0x74`, `u16` count at
-    /// `+0x36`, twenty bytes an entry -- for the first entry whose id matches and whose flags
-    /// share a bit with the space, and returns THAT ENTRY. No match and the instruction does
-    /// nothing at all.
+    /// <summary>⭐⭐ WHAT A SCRIPT MEANS BY A "NODE". `EVENT`, `ADDOBJ`, `WALKON`, `ADDHEAD` and
+    /// `SPARK` all name one, and none of them means an index into the node table. `0x1b9388` hands
+    /// the number AND the space to `0x1f1f78`, which SEARCHES this table -- at `+0x74`, `u16`
+    /// count at `+0x36`, twenty bytes an entry -- for the first entry whose id matches and whose
+    /// flags share a bit with the space, and returns THAT ENTRY'S INDEX. No match and the
+    /// instruction does nothing at all.
     ///
-    /// ⭐ It reads coherently across a whole ride. Crazy Ape's `EVENT 1 5 92` and `1 6 92`
-    /// (BigSmokePuff) and its `EVENT 2 5 1` / `2 6 30` (Sparks, BigSparks) all land on `m_crate`;
-    /// its `ADDOBJ 2 3 16` and `2 4 16` (Smoke2, as it breaks) land on `m_arm`. Smoke and sparks
-    /// off the crate the ape bursts out of, and smoke off its arms when it breaks down.
+    /// ⭐⭐ AND THE INDEX IS THE HELPER NODE. `monkey.mps` has 24 fittings and exactly 24 helper
+    /// nodes before its last dummy -- `Head1`..`Head17`, `nose1`, `nose03`..`nose07`, `destroy` --
+    /// and they line up one for one in order. Every one of the sixteen `0x80` fittings lands on a
+    /// `Head` node, and EVERY `Head` node is parented to `m_arm` or `m_arm1`: the arms holding the
+    /// bananas. Which is where this ride's riders sit.
     ///
-    /// ⚠ The three floats are NOT understood -- see findings/rse-vm.md. The third is 0.102..0.110
-    /// on every k=2 entry, which no set of points on a ride this shape would be, so they are
-    /// carried and not used.</summary>
+    /// ⚠⚠ I FIRST READ THE `u16` AT THE RECORD'S FIRST POINTER `+2` AS THE NODE, AND IT IS NOT.
+    /// It gives `m_body`, `m_crate` and `m_arm` -- plausible parts of the right ride, and twelve
+    /// of sixteen riders end up on the ape's belly and on a crate that its own visibility
+    /// timeline has already hidden. The correction came from master, who has played the game:
+    /// "they should all be on the bananas". The hierarchy then says so too. A reading can satisfy
+    /// four self-consistency checks and still be the wrong sixteen points; what it could not
+    /// survive was somebody who knew what the ride looks like.
+    ///
+    /// ⚠ The three floats are a position normalised in the node's own bounds -- see
+    /// <see cref="FittingLocal"/>. What builds the runtime array `0x1f2978` indexes is still
+    /// unread; the ordering above is a correspondence that is exact and matches the game, not a
+    /// constructor that was walked.</summary>
     public IReadOnlyList<Fitting> Fittings
     {
         get
@@ -539,15 +548,10 @@ public sealed partial class Model
                 int o = table + i * 20;
                 uint flags = U32(o);
                 int id = (int)U32(o + 4), p = (int)U32(o + 12);
-                // ⚠ An entry with no pointer still EXISTS and still answers a search; it simply
-                // has no node behind it. Dropping those would silently renumber the rest.
-                int node = -1; float x = 0, y = 0, z = 0;
-                if (p > 0 && p + 16 <= D.Length)
-                {
-                    node = U16(p + 2);
-                    x = F32(p + 4); y = F32(p + 8); z = F32(p + 12);
-                }
-                _fittings.Add(new Fitting(flags, id, node, x, y, z));
+                float x = 0, y = 0, z = 0;
+                if (p > 0 && p + 16 <= D.Length) { x = F32(p + 4); y = F32(p + 8); z = F32(p + 12); }
+                // ⚠ The nth fitting is the nth HELPER, not whatever the record's own u16 says.
+                _fittings.Add(new Fitting(flags, id, Meshes.Count + i, x, y, z));
             }
             return _fittings;
         }
@@ -555,24 +559,17 @@ public sealed partial class Model
 
     /// <summary>Where a fitting sits in its node's own space.
     ///
-    /// ⭐⭐ THE THREE FLOATS ARE A POSITION, NORMALISED INSIDE THE MESH'S OWN BOUNDS. Crazy Ape's
-    /// five `m_crate` seats come out as a ROW across the crate -- x 1.67, 1.72, 2.00, 2.19, 2.55
-    /// -- all at the same depth, two seats on each arm, the rest up the body, every one of the
-    /// sixteen a distinct point inside the ride's four-by-four plot. Used raw they are separated
-    /// by a hundredth of a unit and sixteen riders pile onto four spots.
+    /// ⭐ The three floats are a position NORMALISED inside the node's bounds (`+0x70` min,
+    /// `+0x80` max). Used raw they are a hundredth of a unit apart and every rider on a part
+    /// piles onto one spot -- which is how the frame was found, from a renderer reporting three
+    /// kids on one point.
     ///
-    /// ⚠⚠ I CALLED THIS "NOT A POSITION" AND WAS WRONG TWICE. The first test read BoundsMax from
-    /// `+0x7c` instead of `+0x80` and produced nonsense; and the reason I gave -- that the third
-    /// component is 0.102..0.110 on every seat, so they would all lie on one plane -- is exactly
-    /// what a rank of seats at one height DOES look like. The objection was the evidence.
-    ///
-    /// ⚠ This is a reading that fits, not a consumer that was walked: `0x1f2978` takes the
-    /// position from a runtime matrix and nobody has followed what builds it. Four independent
-    /// properties hold -- the crate seats are monotonic, nothing stacks, everything lands inside
-    /// the footprint, and the heights form a narrow band -- and a wrong frame broke all four.</summary>
+    /// ⚠ A HELPER HAS NO BOUNDS, so a fitting on one is at its node's origin and the floats are
+    /// carried unused. That covers every `Head` and `nose` on `monkey.mps`, which is all of them:
+    /// the helper IS the seat, and it is already in the right place.</summary>
     public System.Numerics.Vector3 FittingLocal(Fitting f)
     {
-        if (f.Node < 0 || f.Node >= Meshes.Count) return new System.Numerics.Vector3(f.X, f.Y, f.Z);
+        if (f.Node < 0 || f.Node >= Meshes.Count) return System.Numerics.Vector3.Zero;
         var m = Meshes[f.Node];
         var lo = m.BoundsMin; var hi = m.BoundsMax;
         return new System.Numerics.Vector3(lo.X + f.X * (hi.X - lo.X),
