@@ -380,3 +380,33 @@ they are filled from `Tp2.plb` at load. Read the file, never the image.
 `tools/TPW.PS2.ParkSimAudit` prints every request the park makes and does not render: 387 EVENT,
 46 ADDOBJ, 14 KILLOBJ, 11 FADEOBJ, 4 SETREVERB and 2 SINGLESCREAM in sixty seconds of jungle,
 across just 44 distinct argument sets.
+
+## A script's "node" is a named attachment point, found by id AND kind
+
+`EVENT`, `ADDOBJ`, `WALKON` and `SPARK` all name a node, and none of them means an index into the
+model's node table. `0x1b9388(vm, outPos, outDir, node, SPACE)` passes both the node number and
+the space to `0x1f1f78`, which is a **search**:
+
+```
+table  = model + 0x74        count = u16 at model + 0x36        stride = 20
+for each entry:  if (entry.id == node && (entry.flags & mask) != 0) return its INDEX
+otherwise -1, and 0x1b9388 returns 0 -- the instruction does nothing at all
+```
+
+⚠ The mask defaults: `if ((space & 0x3da1f83) == 0) mask = 0x3da1f82`.
+
+⭐⭐ **They are the ride's named fittings.** `monkey.mps` has 24 of them, and the strings beside
+the table are `Head1`, `Head02`..`Head17`, `nose1`, `nose03`..`nose07`, `destroy` and `Dummy01`
+-- the guest head slots that ADDHEAD and DELHEAD fill, and the ape's noses. Crazy Ape's
+`EVENT 2 1 22` and `EVENT 2 2 22` are `ApeSnot` **out of its nose**, which is what the effect's
+name said all along.
+
+The four entries whose flags carry `0x100` are ids 1, 5, 9 and 13; every other entry is
+`0x000400f1`. So the space argument picks a KIND of fitting and the node number picks which one.
+
+⚠⚠ STILL UNKNOWN: what the entry's two pointers (at `+0x0c` and `+0x10`) bind to. The position
+comes from a RUNTIME matrix -- `0x1f2978` reads `index * 0x18` into an array hanging off the
+instance at `+0x24`, and takes the translation at `+0x30..0x38` -- so the file-side record must
+say which node the fitting hangs off and where on it, and that has not been read. Until it is, a
+particle cannot be put where the console put it, and `IRseHost.TryNodePosition` has to keep
+answering "I do not know" so that walk durations stay honestly at their floor.
