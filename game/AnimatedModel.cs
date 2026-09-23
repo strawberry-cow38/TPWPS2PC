@@ -288,6 +288,41 @@ public sealed class AnimatedModel
     static Shader BlendShader => Ps2Materials.Shader(true, CullRenderMode, linearFilter: Ps2Materials.Bilinear);
     static Shader ViewerShader => Ps2Materials.Shader(false, CullRenderMode, linearFilter: Ps2Materials.Bilinear);
 
+    /// <summary>The surface a mesh draws with a given MATERIAL index, or null.
+    ///
+    /// ⚠⚠ THIS EXISTS BECAUSE THE NAMING TRAP HAS NOW CAUGHT TWO CALLERS. A surface is named
+    /// `"{mesh}#{material}"`, and the number is the MATERIAL INDEX, not the surface's ordinal --
+    /// there is a comment saying exactly that a few lines below, and `LightingAudit` still read
+    /// `CLIFFS#0` as "the first surface" and silently compared another material's vertices. Before
+    /// that the water finder made the mirror-image mistake. A comment was not enough twice, so
+    /// callers can now ASK instead of parsing a name.
+    ///
+    /// ⭐ Ask with the material you already know -- `Model.Triangles(mesh)[i].Material` -- and a
+    /// mesh that does not draw that material returns null rather than handing back a neighbour.</summary>
+    public MeshInstance3D SurfaceFor(string mesh, int material)
+    {
+        foreach (var p in _parts)
+        {
+            if (!string.Equals(p.Mesh.Name, mesh, StringComparison.OrdinalIgnoreCase)) continue;
+            if (p.SurfaceMaterial == null || p.Surfaces == null) continue;
+            for (int i = 0; i < p.SurfaceMaterial.Length; i++)
+                if (p.SurfaceMaterial[i] == material) return p.Surfaces[i];
+        }
+        return null;
+    }
+
+    /// <summary>Every surface, as (mesh, material, node). ⭐ For a caller that wants to ENUMERATE
+    /// rather than guess at a name -- the material is handed over, not encoded in a string.</summary>
+    public IEnumerable<(string Mesh, int Material, MeshInstance3D Node)> Surfaces()
+    {
+        foreach (var p in _parts)
+        {
+            if (p.SurfaceMaterial == null || p.Surfaces == null) continue;
+            for (int i = 0; i < p.SurfaceMaterial.Length; i++)
+                yield return (p.Mesh.Name, p.SurfaceMaterial[i], p.Surfaces[i]);
+        }
+    }
+
     void SetTexture(ShaderMaterial material, int slot, int index)
     {
         var (tex, soft) = slot >= 0 && slot < _model.MaterialTextures.Count
