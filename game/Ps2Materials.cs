@@ -12,6 +12,16 @@ public static class Ps2Materials
     // Used only by standalone callers that have no disc. The viewer always configures from ELF.
     public static readonly Lighting UnconfiguredNeutral = new(new(1), new(0), new(0, -1, 0), new(0), new(0), 0);
     public static Lighting Lighting { get; set; } = UnconfiguredNeutral;
+
+    /// <summary>⭐ BILINEAR FILTERING, ON BY DEFAULT -- master's call, and the console's.
+    /// The GS filters per texture (TEX1's MMAG/MMIN), and the ground and the water were already
+    /// sampled linear here while every model was sampled nearest, so a ride read crunchier than
+    /// the terrain it stood on. This is one switch over all of it, so turning it off gives a
+    /// genuinely global nearest look rather than half a scene.
+    ///
+    /// ⚠ SETTING IT ALONE CHANGES NOTHING ALREADY BUILT -- a ShaderMaterial holds its Shader
+    /// and the filter is baked into the shader's sampler hint. Call <see cref="Refilter"/>.</summary>
+    public static bool Bilinear { get; set; } = true;
     public const float DefaultWeatherAmount = 0; // no weather simulation connected yet
     static readonly Dictionary<string, Shader> Shaders = new();
 
@@ -108,7 +118,7 @@ void fragment() {
     public static ShaderMaterial Ground(ImageTexture texture, Color? fallback = null)
     {
         var material = new ShaderMaterial
-        { Shader = Shader(false, "cull_back", rawNormals: false, linearFilter: true, clamp: true) };
+        { Shader = Shader(false, "cull_back", rawNormals: false, linearFilter: Bilinear, clamp: true) };
         material.SetShaderParameter("albedo_tex", texture);
         material.SetShaderParameter("has_tex", texture != null);
         if (fallback is { } colour) material.SetShaderParameter("fallback_colour", new Vector3(colour.R, colour.G, colour.B));
@@ -126,13 +136,59 @@ void fragment() {
     public static ShaderMaterial Water(ImageTexture texture, bool soft, Vector2 scroll, Vector3 wave)
     {
         var material = new ShaderMaterial
-        { Shader = Shader(soft, "cull_back", rawNormals: false, linearFilter: true, water: true) };
+        { Shader = Shader(soft, "cull_back", rawNormals: false, linearFilter: Bilinear, water: true) };
         material.SetShaderParameter("albedo_tex", texture);
         material.SetShaderParameter("has_tex", texture != null);
         material.SetShaderParameter("water_scroll", scroll);
         material.SetShaderParameter("water_wave", wave);
         BindLight(material);
         return material;
+    }
+
+    /// <summary>Move every material already standing in a tree onto the current
+    /// <see cref="Bilinear"/> setting, and answer how many moved.
+    ///
+    /// ⭐ THE CACHE IS THE LOOKUP. Every shader here is keyed by the flags it was built from,
+    /// so the variant a live material is ON can be read straight back out of that key -- flip the
+    /// one field and ask for the matching shader. No registry of materials to keep in step, and
+    /// nothing to leak when a park is thrown away and rebuilt.</summary>
+    public static int Refilter(Node root)
+    {
+        if (root == null) return 0;
+        var byShader = new Dictionary<Shader, string>();
+        foreach (var kv in Shaders) byShader[kv.Value] = kv.Key;
+        int changed = 0;
+
+        bool Swap(Material m)
+        {
+            if (m is not ShaderMaterial sm || sm.Shader == null) return false;
+            if (!byShader.TryGetValue(sm.Shader, out var key)) return false;
+            var f = key.Split('/');
+            if (f.Length != 6) return false;
+            var want = Shader(bool.Parse(f[0]), f[1], bool.Parse(f[2]), Bilinear, bool.Parse(f[4]), bool.Parse(f[5]));
+            if (want == sm.Shader) return false;
+            sm.Shader = want;
+            return true;
+        }
+
+        void Walk(Node n)
+        {
+            if (n is MeshInstance3D mi)
+            {
+                if (Swap(mi.MaterialOverride)) changed++;
+                for (int i = 0; i < mi.GetSurfaceOverrideMaterialCount(); i++)
+                    if (Swap(mi.GetSurfaceOverrideMaterial(i))) changed++;
+                // ⚠ And the materials on the MESH itself, which a MaterialOverride hides but
+                // does not replace -- the ground sets them that way.
+                if (mi.Mesh != null)
+                    for (int i = 0; i < mi.Mesh.GetSurfaceCount(); i++)
+                        if (Swap(mi.Mesh.SurfaceGetMaterial(i))) changed++;
+            }
+            foreach (var c in n.GetChildren()) Walk(c);
+        }
+
+        Walk(root);
+        return changed;
     }
 
     static Vector3 V(System.Numerics.Vector3 value) => new(value.X, value.Y, value.Z);

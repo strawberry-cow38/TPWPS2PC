@@ -285,8 +285,8 @@ public sealed class AnimatedModel
 
     // Lighting is evaluated in the vertex stage from the stored signed-byte normals.
     // FRONT_FACING never changes it, including beneath the mirrored root.
-    static Shader BlendShader => Ps2Materials.Shader(true, CullRenderMode);
-    static Shader ViewerShader => Ps2Materials.Shader(false, CullRenderMode);
+    static Shader BlendShader => Ps2Materials.Shader(true, CullRenderMode, linearFilter: Ps2Materials.Bilinear);
+    static Shader ViewerShader => Ps2Materials.Shader(false, CullRenderMode, linearFilter: Ps2Materials.Bilinear);
 
     void SetTexture(ShaderMaterial material, int slot, int index)
     {

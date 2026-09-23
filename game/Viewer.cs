@@ -72,8 +72,6 @@ public partial class Viewer : Node3D
     readonly GameCamera _game = new();
     /// <summary>The park's entrance arch, Features/Gates/Gates.mps, one per archive.</summary>
     AnimatedModel _gate;
-    /// <summary>The park's crossing lights, Features/Lights/lights.mps, placed with the gate.</summary>
-    AnimatedModel _lights;
     /// <summary>The park's sky, rebuilt when the archive changes.</summary>
     WorldEnvironment _sky;
     /// <summary>Kept so the sky can be taken away outside park mode and put back without a rebuild.
@@ -322,6 +320,11 @@ public partial class Viewer : Node3D
             else if (a.StartsWith("--ride=")) _wantRide = a["--ride=".Length..];
             else if (a.StartsWith("--anim=")) _wantAnim = a["--anim=".Length..];
             else if (a.StartsWith("--wad=")) _wantWad = a["--wad=".Length..];
+            // ⭐ TEXTURE FILTERING. Bilinear is the default (the console's) -- this is the way
+            // to ask for the crunchy one, and for a render to state which it used rather than
+            // inherit whatever the last keypress left behind.
+            else if (a == "--nearest") Ps2Materials.Bilinear = false;
+            else if (a == "--bilinear") Ps2Materials.Bilinear = true;
         }
 
         _wantMode ??= Env("TPW_PS2_MODE");
@@ -689,6 +692,15 @@ public partial class Viewer : Node3D
         else if (GameCamActive && k.Keycode == Key.Q) _game.Turn(-1);
         else if (GameCamActive && k.Keycode == Key.E) _game.Turn(1);
         else if (GameCamActive && k.Keycode == Key.Home) StartGameCam();
+        // ⭐ L flips the texture filter, live, on everything already standing.
+        else if (k.Keycode == Key.L)
+        {
+            Ps2Materials.Bilinear = !Ps2Materials.Bilinear;
+            int n = Ps2Materials.Refilter(this);
+            string line = $"textures {(Ps2Materials.Bilinear ? "bilinear" : "nearest")} ({n} materials)";
+            Status(line);
+            GD.Print($"[tex] {line}");
+        }
         else if (k.Keycode == Key.B && _mode == Mode.Park && _buildable != null)
         {
             _buildable.Visible = !_buildable.Visible;
@@ -761,8 +773,15 @@ public partial class Viewer : Node3D
             // ⚠ Rounded, or repeated float additions drift into 0.15000000000000002 and the log
             // becomes unreadable at exactly the moment it is being used to write a number down.
             _gateNudge = Mathf.Round(_gateNudge * 1000f) / 1000f;
-            GD.Print($"[gate] nudge {_gateNudge:+0.00;-0.00;0} ({(step > 0.1f ? "coarse" : "fine")}"
-                   + ", shift for coarse) -- moves the gate AND the lights together");
+            // ⚠⚠ ON SCREEN, NOT DOWN A TERMINAL. Master: "i also dont see where my nudge is
+            // being printed?" -- because GD.Print goes to a console nobody playing the game has in
+            // front of them. This panel was built for exactly that ("every refusal already printed
+            // a reason to the console, which nobody playing the game can see") and I still wrote
+            // the ONE number master is meant to read off and hand back into the console alone.
+            string line = $"gate nudge {_gateNudge:+0.00;-0.00;0}  ({(step > 0.1f ? "coarse" : "fine")}"
+                        + ", shift for the other)";
+            Status(line);
+            GD.Print($"[gate] {line}");
             LoadGate();
         }
     }
@@ -779,7 +798,6 @@ public partial class Viewer : Node3D
         if (_current != null) _current.Root.Visible = m == Mode.Models || (m == Mode.Park && _parkRide);
         if (_park != null) _park.Root.Visible = m == Mode.Park;
         if (_gate != null) _gate.Root.Visible = m == Mode.Park;
-        if (_lights != null) _lights.Root.Visible = m == Mode.Park;
         if (_sky != null) _sky.Environment = m == Mode.Park && _skyEnv != null ? _skyEnv : _flatEnv;
         _weather.Root.Visible = m == Mode.Park;
         if (_buildable != null && m != Mode.Park) _buildable.Visible = false;
@@ -5160,13 +5178,19 @@ public partial class Viewer : Node3D
     /// but all four put `ticket_booths` on the entrance axis at the same depth, and Fantasy's pad
     /// sits 5.5 units past its booths. So the pad is used where it exists and that offset
     /// reproduces it where it does not -- one rule, checkable against the world that states the
-    /// answer.</summary>
+    /// answer.
+    ///
+    /// ⚠⚠ AND THE CROSSING LIGHTS ARE NOT PART OF IT, though they used to be placed here.
+    /// `/Features/Lights/lights.mps` sits in every archive next to the gate and I stood it beside
+    /// the gate on the strength of that. Master, who has the retail game in front of them: "the
+    /// lights DONT ship in the final game". ON THE DISC IS NOT IN THE GAME -- the archives carry
+    /// a pile of features the console never places (Speaker1-4, Statue1/2, Ferry, SeaPlane), and
+    /// a file existing is not evidence that anything draws it. Removed; do not re-derive it from
+    /// the file's existence a second time.</summary>
     void LoadGate()
     {
         _gate?.Root.QueueFree();
         _gate = null;
-        _lights?.Root.QueueFree();
-        _lights = null;
         var ride = _lib.Rides.FirstOrDefault(
             r => r.Name.Contains("gates", StringComparison.OrdinalIgnoreCase) && r.Model != null);
         if (ride == null) { GD.PrintErr("[gate] no Gates model in this archive"); return; }
@@ -5258,66 +5282,8 @@ public partial class Viewer : Node3D
                    + (perPark != 0f ? $"  [this park {perPark:+0.00;-0.00}]" : "")
                    + $"\n[gate] front edge now z={hi.Z + dz:F2} -- the road ends at -18.90 and the "
                    + $"booths' back is -16.12, in every park");
-            PlaceEntranceLights(shift, dz);
         }
         catch (Exception ex) { GD.PrintErr($"[gate] {ride.Model.Path}: {ex.Message}"); }
-    }
-
-    /// <summary>⭐⭐ THE CROSSING LIGHTS, WHICH NOTHING HAS EVER PLACED. `/Features/Lights/` (Id
-    /// 1603, 8 meshes) sits in every archive beside the gate and the viewer put only the gate in
-    /// the park -- along with Speaker1-4, Fountain, Statue1/2, Toilet, PelBin, Sign1, Bus, Ferry,
-    /// SeaPlane and Staff, all browsable in the Models tab and none of them standing anywhere.
-    ///
-    /// ⭐ IT TAKES THE GATE'S OWN TRANSFORM, and that is the whole point rather than laziness.
-    /// The lights are authored at x 46.93..49.06 against the gate's 45..51 -- the same frame,
-    /// centred on the same 48 -- and ten units nearer the road (z centre 7.5 against 17.75).
-    /// That relationship is DATA. Applying the gate's shift and dz preserves it, so the lights
-    /// are exactly as right as the gate is: if the gate is a couple of tiles out, they are out
-    /// with it, together, instead of being independently wrong.
-    ///
-    /// ⚠ NOT READ: whether the console places this feature at all, or from what. `lights.sam`
-    /// carries `DontApplyOffset 1` like the gate but, unlike the gate, NO
-    /// `EngineMapOffsetOverride` -- so there is no per-park coordinate in it to follow, and this
-    /// is the authored position plus the entrance offset, not a decode. I put the gate in the sea
-    /// once today by treating a .sam field as a coordinate; this deliberately does not.</summary>
-    void PlaceEntranceLights(float shift, float dz)
-    {
-        _lights?.Root.QueueFree();
-        _lights = null;
-        // ⚠ BY MODEL PATH, NOT BY NAME. Matching `Info.Name == "Lights"` found nothing even
-        // though /Features/Lights/lights.mps is right there in the archive -- the catalogue is
-        // keyed in a way that does not surface it under that name (RideCatalogue already warns
-        // that keying by name silently merges entries). The file on the disc is the thing that
-        // certainly exists, so match that.
-        var feature = _lib.Rides.FirstOrDefault(
-            r => r.Model?.Path != null && r.Model.Path.EndsWith("lights.mps", StringComparison.OrdinalIgnoreCase));
-        if (feature == null)
-        {
-            var seen = _lib.Rides.Where(r => r.Model?.Path != null
-                          && r.Model.Path.Contains("/Features/", StringComparison.OrdinalIgnoreCase))
-                      .Select(r => r.Model.Path.Split('/')[^1]).Take(12).ToList();
-            GD.Print($"[lights] no lights.mps in this archive; Features models the catalogue does have: "
-                   + (seen.Count == 0 ? "NONE -- the catalogue carries no Features at all" : string.Join(" ", seen)));
-            return;
-        }
-        try
-        {
-            var lm = new Model(_lib.Read(feature.Model));
-            Aps anim = null; Aps.Record rec = null;
-            if (feature.Animation != null)
-                try { anim = new Aps(_lib.Read(feature.Animation)); rec = anim.Records().FirstOrDefault(); }
-                catch (Exception ex) { GD.PrintErr($"[lights] animation: {ex.Message}"); }
-            _lights = new AnimatedModel(lm, anim, rec, m => TextureNear(feature.Model.Path, m));
-            _lights.SetFrame(0);
-            AddChild(_lights.Root);
-            var (llo, lhi) = Park.DrawnBounds(_lights.Root, inParent: true);
-            _lights.Root.Position += new Vector3(shift, 0f, dz);
-            _lights.Root.Visible = _mode == Mode.Park;
-            GD.Print($"[lights] {feature.Model.Path}: authored x {llo.X:F2}..{lhi.X:F2} z {llo.Z:F2}..{lhi.Z:F2}"
-                   + $"; placed with the gate's own offset ({shift:+0.0;-0.0;0} x, {dz:+0.00;-0.00;0} z)"
-                   + $"; {(rec != null ? $"animation {_lights.Frames} frames, held at 0" : "no animation record")}");
-        }
-        catch (Exception ex) { GD.PrintErr($"[lights] {feature.Model.Path}: {ex.Message}"); }
     }
 
     /// <summary>Print the authored footprint around the park entrance as a map.
