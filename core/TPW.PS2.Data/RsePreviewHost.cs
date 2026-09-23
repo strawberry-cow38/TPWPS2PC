@@ -60,12 +60,36 @@ public sealed class RsePreviewHost : IRseHost
         return true;
     }
 
-    /// <summary>⚠ ONE CHANNEL, AND IT SAYS SO. This host owns a single playback, so a request for
-    /// any other channel is refused rather than quietly played on channel 0 -- a ride whose arms
-    /// and cars animate on separate channels would otherwise look right while being wrong.</summary>
-    public int PlayAnimationOn(int channel, int slot, int variant, bool loop) => channel == 0
-        ? PlayAnimation(slot, variant, loop)
-        : throw new NotSupportedException($"This host has no animation channel {channel}");
+    /// <summary>⭐⭐ THE OTHER CHANNELS ARE REAL, AND THEY ARE NOT DRAWN. Inca Totem asks for
+    /// `TRIGANIM_CH 5 1 0 1`, `5 4 0 2` and `5 7 0 3` -- three variants of one slot playing at
+    /// once, one per totem head. The script genuinely needs all three to run, so they are kept
+    /// here and their durations are honest.
+    ///
+    /// ⚠⚠ BUT A RENDERER THAT DRAWS ONLY <see cref="Current"/> SHOWS ONE THIRD OF THAT RIDE, and
+    /// it will look finished while it is not. That is what <see cref="Channels"/> is for: a view
+    /// can ask how many are running and say so, rather than the ride quietly losing two heads.
+    /// Accepting a channel means the script no longer stops -- it does not mean the ride is
+    /// drawn right.</summary>
+    readonly Dictionary<int, Playback> _channels = new();
+    public IReadOnlyDictionary<int, Playback> Channels => _channels;
+
+    public int PlayAnimationOn(int channel, int slot, int variant, bool loop)
+    {
+        if (channel == 0) return PlayAnimation(slot, variant, loop);
+        if (!_slots.TryGetValue(slot, out var records) || variant < 0 || variant >= records.Length)
+            throw new NotSupportedException($"APS has no animation {slot}:{variant}");
+        _channels[channel] = new Playback(records[variant], variant, Time, loop);
+        return Duration(records[variant]);
+    }
+
+    /// <summary>How far through its own animation a channel is, in APS frames.</summary>
+    public float FrameOn(int channel)
+    {
+        if (!_channels.TryGetValue(channel, out var p)) return 0;
+        double frame = (Time - p.Start) * Animation.Fps / 1000d;
+        int duration = p.Record.DurationFrames;
+        return (float)(p.Loop && duration > 0 ? frame % duration : Math.Min(frame, duration));
+    }
 
     /// <summary>⚠ THE PREVIEW CANNOT PLACE A NODE. The APS gives this host frames, not the park's
     /// node table, so every walk here runs at the minimum leg time. Said through the return value

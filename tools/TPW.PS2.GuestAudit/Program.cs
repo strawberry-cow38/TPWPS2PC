@@ -261,6 +261,25 @@ if (island != null)
     Check(islandGuest.State == GuestState.NoRoute, "control: the guest sent to the lone tile has no route -- " + Describe(islandGuest));
 }
 
+// ── Sent somewhere else: an arrived guest walks back out ───────────────────────────────────
+// ⭐ The viewer keeps guests wandering by re-sending them, so Send is checked here the same way
+// a spawn is: the walk back must be exactly the Manhattan distance, at exactly the pace.
+{
+    var back = crowd.FirstOrDefault(g => g.State == GuestState.Arrived && g.Cell != mouth[0]);
+    if (back != null)
+    {
+        var from = back.Cell; int had = back.Steps;
+        Check(walk.Send(back, mouth[0]) && back.State == GuestState.Walking, $"guest {back.Id} at {from} is sent back to the mouth {mouth[0]}");
+        int t = 0;
+        while (back.State == GuestState.Walking && t < ticks) { walk.Step(); t++; }
+        Check(back.State == GuestState.Arrived && back.Cell == mouth[0] && back.Steps - had == Manhattan(from, mouth[0])
+              && t == ((back.Steps - had) * GuestWalk.UnitsPerCell + GuestWalk.UnitsPerTick - 1) / GuestWalk.UnitsPerTick,
+              $"...and arrives in {back.Steps - had} steps, {t} ticks -- " + Describe(back));
+        Check(!walk.Send(back, grass) && back.State == GuestState.NoRoute, "control: sending it to the grass fails the same way a spawn does -- " + Describe(back));
+    }
+    else Check(false, "no arrived guest to send back (the census above has none)");
+}
+
 // ── Dig up one column of the corridor: everyone re-routes round it ─────────────────────────
 // ⚠ Un-laying is putting the terrain's own material byte back, the way the visitor audit's cut
 // control does it; ParkPaths has no un-lay because the viewer's tool keeps its own kind bytes.

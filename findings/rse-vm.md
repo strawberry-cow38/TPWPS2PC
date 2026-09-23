@@ -226,11 +226,19 @@ a missing host and the real Space Gates LOOPANIM_CH instruction. No game data is
   by `RsePreviewHost`; a missing or rejecting host faults. Economic/wear/breakdown decisions
   remain host inputs. Breakdown/repair paths are not covered by the demonstrated cycles.
 * These observed instructions deliberately fail on execution: SETOBJPARAM, TRIGANIMSPEED,
-  LOOPANIM_CH, GETANIM_CH, TURBO, TOUR, BUMP, COAST, LIMBO, UNLIMBO,
-  FORCEUNLIMBO, INLIMBO, LIMBOSPACE, BOUNCESETNODE, BOUNCE, UNBOUNCE,
-  FORCEUNBOUNCE, WALKST_FLOAT, WALKFLOATSTAT,
-  WALKFLOATSTOP, FINDSCRIPTRAND, SETREMOTEVAR, HOUR, MIN, SEC and SPARK. Their file operands
-  are decoded; their engine services are not fabricated.
+  LOOPANIM_CH, GETANIM_CH, LIMBO, UNLIMBO, FORCEUNLIMBO, INLIMBO, LIMBOSPACE,
+  WALKST_FLOAT, WALKFLOATSTAT, WALKFLOATSTOP, FINDSCRIPTRAND, SETREMOTEVAR, HOUR, MIN, SEC
+  and SPARK. Their file operands are decoded; their engine services are not fabricated.
+
+## Animation channels
+
+TRIGANIM_CH's fourth operand is a channel. `0x1bda84` is TRIGANIM's body with that channel passed
+to `0x1abc80`, and the same `duration - 300` floored at 300. Inca Totem asks for `5 1 0 1`,
+`5 4 0 2` and `5 7 0 3` -- three variants of one slot playing at once, one per totem head.
+
+⚠ `RsePreviewHost` keeps every channel and reports honest durations, and exposes them through
+`Channels`. It does NOT draw them: a renderer that follows only `Current` shows one third of that
+ride and will look finished while it is not.
 
 ## Children, and the walk table
 

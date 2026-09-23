@@ -23,7 +23,7 @@ public sealed class Guest
     public ParkCell Cell { get; internal set; }
     public ParkCell? Next { get; internal set; }
     public int Progress { get; internal set; }
-    public ParkCell Destination { get; init; }
+    public ParkCell Destination { get; internal set; }
     public GuestState State { get; internal set; }
 
     /// <summary>The route being walked, from the cell the guest stood in when it was found to
@@ -117,6 +117,22 @@ public sealed class GuestWalk
     }
 
     public void Clear() { _guests.Clear(); Time = 0; _carry = 0; _lastId = 0; }
+    public void Remove(int id) => _guests.RemoveAll(g => g.Id == id);
+
+    /// <summary>Give a guest somewhere new to go, from where it stands. False when it cannot get
+    /// there -- the guest is left in <see cref="GuestState.NoRoute"/> with the reason, exactly
+    /// as a spawn would leave it -- or when it is mid-edge, because a guest changes its mind on a
+    /// cell, not between two. ⭐ The start is exempt from being open, so a stranded guest can be
+    /// sent off the cell it is stranded on.</summary>
+    public bool Send(Guest g, ParkCell to)
+    {
+        if (g.Next != null) return false;
+        g.Destination = to; g.Progress = 0; g.Reason = null;
+        if (g.Cell == to) { g.State = GuestState.Arrived; return true; }
+        if (!Assign(g)) { g.State = GuestState.NoRoute; g.Reason = $"no route from {g.Cell} to {to}"; return false; }
+        g.State = GuestState.Walking;
+        return true;
+    }
 
     /// <summary>The shortest walk over open ground from one cell to another, both included; null
     /// when there is none. Breadth-first over <see cref="ParkPaths.Neighbours"/>: every step
