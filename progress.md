@@ -255,3 +255,25 @@ clock assertions in every world before publishing that helper. Continue independ
 work if the correction is not ready; launcher follow-ups include bounded process
 execution and interrupted clone handling, but do not silently broaden the current
 receipt fix into a release-complete claim.
+
+## Launcher follow-up: bounded process failures
+
+Receipt/Retry implementation published as `18a90c6`. Continued independent work
+rather than waiting idle for the needs clock correction. Added shared shell-free
+`LauncherProcess` with bounded concurrent output draining, command deadlines, failed
+launch/exit/timeout evidence, and best-effort timeout cleanup. MainWindow build/Git
+paths use it; repository metadata rejects truncated output. Removed `.cmd` selection
+from direct Windows executable lookup.
+
+LauncherAudit now passes 32 checks, including actual harmless child-process fixtures
+for quoting, dual-stream output pressure, exit failure, timeout, missing executable
+and exceptional cleanup. Source review caught exceptional tree-termination handling
+and unsupported batch-wrapper selection; both corrected. Launcher builds. See
+`findings/launcher-recovery.md` for exact timeouts, cleanup limits and remaining
+Windows/UI manual gates. Local evidence: `tpw-launcher-process-reviewed.log` and
+`tpw-launcher-process-reviewed-build.log`.
+
+Needs clock reproduction was also run in FANTASY/HALLOW/SPACE: each passes the same
+21 storage checks and fails exactly the same two clock controls as JUNGLE. Local
+helper still uncommitted; no core collision. Keep integrating the peer correction
+when it arrives and proceed with independent plan items in the meantime.

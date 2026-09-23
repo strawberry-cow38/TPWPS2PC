@@ -408,7 +408,7 @@ public class MainWindow : Window
         {
             if (string.IsNullOrWhiteSpace(dir)) continue;
             foreach (var cand in OperatingSystem.IsWindows()
-                     ? new[] { exe + ".exe", exe + ".cmd", exe } : new[] { exe })
+                     ? new[] { exe + ".exe", exe } : new[] { exe })
             {
                 try { var p = Path.Combine(dir, cand); if (File.Exists(p)) return p; } catch { }
             }
@@ -418,38 +418,25 @@ public class MainWindow : Window
 
     async Task<bool> RunAsync(string exe, string[] args, string cwd)
     {
-        var psi = new ProcessStartInfo(exe)
-        {
-            WorkingDirectory = cwd, UseShellExecute = false, CreateNoWindow = true,
-            RedirectStandardOutput = true, RedirectStandardError = true,
-        };
-        foreach (var a in args) psi.ArgumentList.Add(a);
-        using var p = Process.Start(psi);
-        var so = p.StandardOutput.ReadToEndAsync();
-        var se = p.StandardError.ReadToEndAsync();
-        await p.WaitForExitAsync();
-        var text = (await so) + (await se);
-        // ⚠ Surface the tool's OWN error lines. "build failed" with no reason sends people to the
-        // wrong place; the compiler already said what was wrong.
-        foreach (var line in text.Split('\n')
-                 .Where(l => l.Contains("error", StringComparison.OrdinalIgnoreCase)).Take(8))
+        var budget = Path.GetFileNameWithoutExtension(exe).Equals("dotnet", StringComparison.OrdinalIgnoreCase)
+            ? TimeSpan.FromMinutes(10) : TimeSpan.FromMinutes(3);
+        var result = await LauncherProcess.RunAsync(exe, args, cwd, budget);
+        if (result.Error != null) Log("command error: " + result.Error);
+        if (result.TimedOut) Log("command timed out — stopped waiting; retry when ready");
+        if (result.Truncated) Log("large command output: showing only its diagnostic tail");
+        foreach (var line in (result.Stdout + "\n" + result.Stderr).Split('\n')
+                     .Where(l => l.Contains("error", StringComparison.OrdinalIgnoreCase)).Take(8))
             Log("  " + line.Trim());
-        return p.ExitCode == 0;
+        return result.Succeeded;
     }
 
     async Task<string> CaptureAsync(string exe, string[] args)
     {
-        try
-        {
-            var psi = new ProcessStartInfo(exe)
-            { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true };
-            foreach (var a in args) psi.ArgumentList.Add(a);
-            using var p = Process.Start(psi);
-            var s = await p.StandardOutput.ReadToEndAsync();
-            await p.WaitForExitAsync();
-            return p.ExitCode == 0 ? s : null;
-        }
-        catch { return null; }
+        var result = await LauncherProcess.RunAsync(exe, args, _baseDir, TimeSpan.FromSeconds(30));
+        if (result.TimedOut) Log("repository status command timed out");
+        if (result.Error != null) Log("repository status unavailable: " + result.Error);
+        // A partial hash/status response is not evidence about the checkout.
+        return result.Succeeded && !result.Truncated ? result.Stdout : null;
     }
 
     void Log(string line) => Dispatcher.UIThread.Post(() =>

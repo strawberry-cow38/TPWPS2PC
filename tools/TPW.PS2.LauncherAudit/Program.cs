@@ -1,5 +1,19 @@
 using TPW.PS2.Launcher;
 
+if (args.FirstOrDefault() == "--process-fixture")
+{
+    switch (args.ElementAtOrDefault(1))
+    {
+        case "echo": Console.WriteLine(args.ElementAtOrDefault(2)); Console.Error.WriteLine("stderr marker"); return 0;
+        case "fail": Console.Error.WriteLine("error: deliberate fixture failure"); return 17;
+        case "sleep": Console.WriteLine("before timeout"); Console.Out.Flush(); await Task.Delay(10000); return 0;
+        case "noisy":
+            for (int i = 0; i < 64; i++) { Console.Write(new string('o', 4096)); Console.Error.Write(new string('e', 4096)); }
+            Console.Write("stdout tail"); Console.Error.Write("error: stderr tail"); return 0;
+        default: return 99;
+    }
+}
+
 int bad = 0;
 void Check(bool ok, string message) { Console.WriteLine((ok ? "ok   " : "FAIL ") + message); if (!ok) bad++; }
 var exe = new byte[SelfUpdate.MinPlausibleBytes]; exe[0] = (byte)'M'; exe[1] = (byte)'Z';
@@ -55,5 +69,37 @@ try
     catch (FileNotFoundException) { Check(!receipt.CanLaunch(revision, assembly), "missing artifact cannot be recorded"); }
 }
 finally { Directory.Delete(temporary, recursive: true); }
+string host = Environment.ProcessPath;
+string assemblyPath = System.Reflection.Assembly.GetExecutingAssembly().Location;
+string[] Child(params string[] values) => Path.GetFileNameWithoutExtension(host).Equals("dotnet", StringComparison.OrdinalIgnoreCase)
+    ? new[] { assemblyPath, "--process-fixture" }.Concat(values).ToArray()
+    : new[] { "--process-fixture" }.Concat(values).ToArray();
+var echo = await LauncherProcess.RunAsync(host, Child("echo", "path with spaces [and brackets]"),
+    Environment.CurrentDirectory, TimeSpan.FromSeconds(10));
+Check(echo.Succeeded && echo.Stdout.Contains("path with spaces [and brackets]") && echo.Stderr.Contains("stderr marker"),
+      "process arguments preserve spaces and both pipes are captured");
+var failed = await LauncherProcess.RunAsync(host, Child("fail"), Environment.CurrentDirectory, TimeSpan.FromSeconds(10));
+Check(!failed.Succeeded && failed.ExitCode == 17 && failed.Stderr.Contains("deliberate fixture failure"),
+      "nonzero process exit preserves diagnostics and fails");
+var noisy = await LauncherProcess.RunAsync(host, Child("noisy"), Environment.CurrentDirectory, TimeSpan.FromSeconds(10), 1024);
+Check(noisy.Succeeded && noisy.Truncated && noisy.Stdout.Length <= 1024 && noisy.Stderr.Length <= 1024
+      && noisy.Stdout.EndsWith("stdout tail") && noisy.Stderr.EndsWith("error: stderr tail"),
+      "large simultaneous output is drained without deadlock and keeps bounded diagnostic tails");
+var timer = System.Diagnostics.Stopwatch.StartNew();
+var stalled = await LauncherProcess.RunAsync(host, Child("sleep"), Environment.CurrentDirectory, TimeSpan.FromSeconds(1));
+Check(stalled.TimedOut && !stalled.Succeeded && stalled.Stdout.Contains("before timeout") && timer.Elapsed < TimeSpan.FromSeconds(5),
+      "stalled process times out and retains pre-timeout diagnostics");
+var cleanup = await LauncherProcess.RunCoreAsync(host, Child("sleep"), Environment.CurrentDirectory,
+    TimeSpan.FromMilliseconds(500), 1024, process =>
+    {
+        process.Kill(entireProcessTree: true);
+        throw new AggregateException("synthetic partial-tree cleanup failure");
+    });
+Check(cleanup.TimedOut && !cleanup.Succeeded && cleanup.Error.Contains("synthetic partial-tree") && cleanup.ExitCode != null,
+      "exceptional tree cleanup still reports timeout and completes exit/pipe cleanup");
+var absent = await LauncherProcess.RunAsync(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")),
+    Array.Empty<string>(), Environment.CurrentDirectory, TimeSpan.FromSeconds(1));
+Check(!absent.Succeeded && absent.ExitCode == null && absent.Error != null,
+      "missing executable reports launch failure without inventing a child exit code");
 Console.WriteLine(bad == 0 ? "PASS launcher audit" : $"FAIL: {bad}");
 return bad == 0 ? 0 : 1;

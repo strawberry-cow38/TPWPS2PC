@@ -60,3 +60,27 @@ UI Retry dispatch, error persistence, and invalidation ordering were source-revi
 and compiled, not exercised by an automated UI driver. Windows self-replacement,
 locked-file behavior, and actual install/update/relaunch still need target-platform
 manual validation. No Windows compatibility/release sign-off is claimed.
+
+## Bounded command execution follow-up
+
+Launcher commands now share `LauncherProcess`: argument-list execution without a
+shell, concurrent draining of stdout/stderr, and at most 65,536 retained characters
+per stream (diagnostic tails). Build execution has a ten-minute deadline, other
+install Git commands three minutes, and repository-status queries thirty seconds.
+These are launcher safety limits, not project delivery estimates. Timeout is failure
+even if the associated process happened to exit zero while its pipes stayed open;
+partial/truncated repository responses are not accepted as revision evidence.
+
+Timeout attempts tree termination, waits at most two additional seconds for the
+associated process, and closes redirected readers. Cleanup is best-effort, not an OS
+job-object/process-supervisor guarantee: descendants of an already-exited parent
+may outlive it. A cleanup failure remains visible and cannot become a successful
+command. Windows `.cmd` wrappers are not selected as directly executable Git binaries.
+
+The audit now has 32 passing assertions, including real synthetic subprocesses for
+spaced arguments, exit 17, large dual-stream output, timeout with retained diagnostics,
+missing executable, and an injected exceptional termination result. That injection
+kills its real test process first, then reports an aggregate cleanup failure, proving
+the remaining cleanup/result path without deliberately leaking a child. Two review
+findings (exceptional tree cleanup and `.cmd` selection) were addressed before landing.
+Launcher compiles; no actual Git update or self-update was executed by these tests.
