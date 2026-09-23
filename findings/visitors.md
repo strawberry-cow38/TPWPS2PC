@@ -654,3 +654,22 @@ change behaviour for the 59 rides that currently work, so it is not to be applie
 The check is deliberately left FAILING on HALLOW rather than excluded by name. A "by design" filter
 is exactly where a defect would hide, and one red world is a better record of this than a green
 suite with a note in it.
+
+
+### Two rides ship no animation file at all — only one of them hangs
+
+`wad.Find(stem + ".aps")` comes back null for exactly two rides on the disc: **Thrill Grill**
+(HALLOW, folder `firepit`) and **WhirliGig** (SPACE). Neither is a parse failure — the audit's
+`catch { }` used to swallow those indistinguishably from a missing file, and now keeps the reason.
+
+**WhirliGig does not hang.** SPACE passes; only HALLOW fails. So "carries no animation records" is
+not by itself what stalls a ride — the stall needs a script that *waits* on one, and the
+discriminator is `TRIGWAITANIM`. That is a useful narrowing: it rules out "the port cannot cope
+with an unanimated ride" and points squarely at the one opcode whose spin condition is a
+reconstruction.
+
+⚠ A first cut of this diagnostic also printed the ride's whole folder, to ask whether an `.aps`
+lived under another name. **Its answer could not be told from its question**: the directory prefix
+it derived (`stem` up to the last `/`) collapses to the WAD root for the flat paths in some
+archives, so it listed every model in SPACE for WhirliGig and nothing at all for Thrill Grill. It
+was removed rather than tuned. `wad.Find` returning null is measured directly and is the fact.

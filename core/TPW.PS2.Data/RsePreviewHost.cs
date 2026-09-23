@@ -12,6 +12,12 @@ public sealed class RsePreviewHost : IRseHost
     public Playback Current { get; private set; }
     public long Time { get; private set; }
     public int AnimationSlot => Current?.Record.Slot ?? -1;
+    /// <summary>Which animation slots this model actually carries, and how many variants each
+    /// has. ⭐ A script asking for a slot the model does not have is the difference between "the
+    /// disc is like that" and "the loader dropped it", and nothing else distinguishes them: a
+    /// missing record and a mis-parsed one both look like silence at the call site.</summary>
+    public IReadOnlyList<(int Slot, int Variants)> AvailableSlots =>
+        _slots.OrderBy(kv => kv.Key).Select(kv => (kv.Key, kv.Value.Length)).ToList();
     public int AnimationVariant => Current?.Variant ?? -1;
     public event Action<Effect> EffectRequested;
     public Effect LastEffect { get; private set; }

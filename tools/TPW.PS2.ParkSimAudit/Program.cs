@@ -35,6 +35,7 @@ var sim = new ParkSim(paths);
 int placed = 0, scriptless = 0, faulted = 0;
 var faults = new Dictionary<string, int>(StringComparer.Ordinal);
 int id = 0, col = 4;
+var apsReason = new Dictionary<string, string>(StringComparer.Ordinal);
 foreach (var e in wad.Entries.Where(e => e.Path.EndsWith(".rse", StringComparison.OrdinalIgnoreCase)
                                       && e.Path.StartsWith("/Rides/", StringComparison.OrdinalIgnoreCase))
                              .OrderBy(e => e.Path, StringComparer.OrdinalIgnoreCase))
@@ -46,8 +47,20 @@ foreach (var e in wad.Entries.Where(e => e.Path.EndsWith(".rse", StringCompariso
     var def = RideDefinition.Parse(System.Text.Encoding.ASCII.GetString(wad.Read(samEntry)), stem + ".sam");
     var shape = def.Shape;
     int w = shape == null ? 1 : shape.Max(r => r.TrimEnd().Length), h = shape?.Length ?? 1;
+    // ⚠⚠ THIS USED TO BE `catch { }` AND SAID NOTHING. A ride whose .aps will not parse and a
+    // ride that simply has none both came out as a silent null, so "carries no animation records"
+    // could not be told from "the loader threw on it" -- and a script that waits on an animation
+    // from a model with none hangs forever (Thrill Grill, TRIGWAITANIM at pc 85). Keep the reason.
     Animation aps = null;
-    try { if (apsEntry != null) aps = new Animation(wad.Read(apsEntry)); } catch { }
+    // ⚠ NO FOLDER LISTING HERE, deliberately. A first cut printed the ride's whole directory to
+    // say whether an .aps lived under another name, and the directory prefix it derived
+    // (`stem` up to the last '/') collapses to the WAD ROOT for the flat paths in some archives
+    // -- so it printed every model in SPACE for one ride and nothing at all for another. The
+    // answer it gave could not be told from the question it was asked. `wad.Find(stem + ".aps")`
+    // returning null is measured directly and is the fact worth keeping.
+    if (apsEntry == null) apsReason[def.Name ?? stem] = "no .aps beside the .mps";
+    else try { aps = new Animation(wad.Read(apsEntry)); }
+    catch (Exception apsEx) { apsReason[def.Name ?? stem] = $"{apsEx.GetType().Name}: {apsEx.Message}"; }
     // ⭐ SPAWNCHILD LOOKS IN THE RIDE'S OWN FOLDER. `0x1be91c` builds the path as directory +
     // name, which matters here because seven different rides each ship a file called
     // EventMap.rse -- a lookup by name alone would hand six of them the wrong script.
@@ -119,6 +132,17 @@ foreach (var r in sim.Rides.Where(r => r.Fault != null))
 foreach (var (k, n) in running.OrderByDescending(kv => kv.Value))
     Console.WriteLine($"  stopped while running x{n,-3} {k}");
 
+// ⭐⭐ A RIDE WITH NO ANIMATION RECORDS AT ALL. Thrill Grill hangs on TRIGWAITANIM waiting for a
+// slot to start, and the reason turned out not to be "it lacks slot 4" but "it carries NOTHING":
+// its host reports zero slots. A script waiting on an animation from a model that has none can
+// never continue, so this is worth naming on its own rather than only where a ride stalls -- and
+// it separates "the disc is like that" from "the loader dropped this one", which nothing else
+// does, since a missing record and a mis-parsed one both look like silence at the call site.
+var noAnim = sim.Rides.Where(r => r.Host.AvailableSlots.Count == 0).ToList();
+Console.WriteLine($"  {noAnim.Count} of {sim.Rides.Count} rides carry NO animation slots at all"
+                + (noAnim.Count > 0 ? ": " + string.Join(", ", noAnim.Select(r => r.Name)) : ""));
+foreach (var r in noAnim)
+    Console.WriteLine($"    {r.Name}: {(apsReason.TryGetValue(r.Name, out var why) ? why : "the .aps parsed and yielded no records")}");
 Check(movedOpen > 0, "an open ride works through its animation slots");
 Check(movedOpen > movedShut, $"opening rides makes MORE of them move ({movedOpen} open vs {movedShut} closed)");
 Check(sim.Time == 1750 * ParkSim.TickMilliseconds || sim.Time > 0, $"the sim's own clock advanced to {sim.Time}ms");
@@ -216,7 +240,9 @@ foreach (var r in tookNobody.Where(r => r.Get("VAR_RUNNING") != 0))
         var code = m.Program.Instructions;
         int at = code.ToList().FindIndex(i => i.Address == m.Pc);
         Console.WriteLine($"    {r.Name} is parked at pc {m.Pc} (yield {m.Yield}), host slot"
-                        + $" {r.Host.AnimationSlot}:{r.Host.AnimationVariant}, around it:");
+                        + $" {r.Host.AnimationSlot}:{r.Host.AnimationVariant}"
+                        + $", model carries slots [{string.Join(" ", r.Host.AvailableSlots.Select(a => $"{a.Slot}x{a.Variants}"))}]"
+                        + $", around it:");
         for (int k = Math.Max(0, at - 4); k < Math.Min(code.Count, at + 5) && at >= 0; k++)
             Console.WriteLine($"      {(k == at ? "->" : "  ")} {Disasm(m, code[k])}");
         if (at < 0) Console.WriteLine($"      (pc {m.Pc} is not an instruction boundary)");
@@ -531,8 +557,10 @@ Check(marooned != null, "the control ride exists at all (otherwise the check abo
 // x812" is a thing to go and identify.
 // ⭐ NAMED, not numbered. The census used to print "EVENT 2 5 22 x49", which is a number to
 // stare at; Tp2.plb turns it into ApeSnot, which is a thing to go and draw. Kinds 1 and 2 index
-// the particle library; kind 3 goes to a different manager whose ids run past its 105, so those
-// are left as numbers rather than given a name they do not have.
+// the particle library. ⭐⭐ KINDS 3..11 ARE THE `OBJ_SOUND_*` GROUPS, and each is one `*SFX.MAP`
+// keyed by the third operand: `EVENT 3 -1 8` is `EVT_RIDE_APE` and the jungle ride map's event 8
+// is `apeoooooC.vag`. This used to say kind 3 "goes to a different manager whose ids run past
+// 105" and left them as numbers; the ids run past 105 because they are event ids, not particles.
 ParticleLibrary fx = null;
 try
 {
@@ -544,25 +572,55 @@ try
     }
 }
 catch (Exception e) { Console.WriteLine($"  (no particle library: {e.Message})"); }
+// ⚠ A WORLD SHIPS TWO PARKS AND THIS AUDIT BUILDS EVERY RIDE IN ONE. Each park has its own ride
+// map (jungle: 70 events against 54), and a ride the game only offers in park 2 -- Mumbo, Inca
+// Totem -- has its sounds only in park 2's map: resolved against park 1 alone, 43 of the jungle's
+// 95 cues came back "no such event" and every one was those two rides. Park 1 is asked first,
+// then park 2, and the census says which served, because the game loads exactly one of them.
+SoundCatalogue sounds = null, park2 = null;
+try { sounds = new SoundCatalogue(disc, world, 1); park2 = new SoundCatalogue(disc, world, 2); }
+catch (Exception e) { Console.WriteLine($"  (no sound catalogue: {e.Message})"); }
+(SoundCatalogue.Resolved Hit, int Park) ResolveEither(int kind, int id)
+{
+    var a = sounds?.Resolve(kind, id);
+    if (a != null) return (a, 1);
+    var b = park2?.Resolve(kind, id);
+    return (b, b == null ? 0 : 2);
+}
+string Clips(SoundCatalogue.Resolved r) => string.Join("|", r.Clips.Select(c => c.Name).Distinct());
 string Named(RseOpcode op, IReadOnlyList<int> a)
 {
     string plain = $"{op} {string.Join(" ", a)}";
-    if (fx == null || a.Count < 3 || (op != RseOpcode.EVENT && op != RseOpcode.ADDOBJ)) return plain;
-    if (a[0] is not (1 or 2)) return plain;
-    var e = fx[a[2]];
-    return e == null || e.Name.Length == 0 ? plain : $"{plain} ({e.Name})";
+    if (a.Count < 3 || (op != RseOpcode.EVENT && op != RseOpcode.ADDOBJ)) return plain;
+    if (a[0] is 1 or 2)
+    {
+        var e = fx?[a[2]];
+        return e == null || e.Name.Length == 0 ? plain : $"{plain} ({e.Name})";
+    }
+    if (sounds == null || !SoundCatalogue.IsSoundGroup(a[0])) return plain;
+    var (r, park) = ResolveEither(a[0], a[2]);
+    // ⚠ An id no map carries is said so, by name of the map that was asked. Gates and the
+    // seaplane are like that on this disc; a silent number here would hide exactly that.
+    return r == null ? $"{plain} (no event {a[2]} in {System.IO.Path.GetFileName(SoundCatalogue.MapFor((SoundGroup)a[0], world, 1))} of either park)"
+                     : $"{plain} ({(SoundGroup)a[0]}: {Clips(r)}{(park == 2 ? ", park 2 map" : "")})";
 }
+var cues = new List<(string Ride, long At, RseOpcode Op, IReadOnlyList<int> Args)>();
 var asked = new Dictionary<string, int>(StringComparer.Ordinal);
 var askedBy = new Dictionary<string, SortedSet<string>>(StringComparer.Ordinal);
 foreach (var (list, tag) in new[] { (sim.Rides, "ride"), (shops.Rides, "shop") })
     foreach (var r in list)
+    {
+        long t0 = tag == "ride" ? sim.Time : shops.Time;
         r.Host.EffectRequested += e =>
         {
+            if (e.Arguments.Count >= 3 && e.Opcode is RseOpcode.EVENT or RseOpcode.ADDOBJ && SoundCatalogue.IsSoundGroup(e.Arguments[0]))
+                cues.Add((r.Name, e.Time - t0, e.Opcode, e.Arguments));
             string key = Named(e.Opcode, e.Arguments);
             asked[key] = asked.GetValueOrDefault(key) + 1;
             if (!askedBy.TryGetValue(key, out var who)) askedBy[key] = who = new SortedSet<string>(StringComparer.Ordinal);
             who.Add(r.Name);
         };
+    }
 for (int i = 0; i < 1500; i++) { sim.Advance(0.04); shops.Advance(0.04); }
 Console.WriteLine($"\nunrendered requests in 60s from {sim.Rides.Count} rides and {shops.Rides.Count} shops:");
 var byOpcode = asked.GroupBy(kv => kv.Key.Split(' ')[0])
@@ -574,6 +632,53 @@ foreach (var (key, n) in asked.OrderByDescending(kv => kv.Value).Take(12))
     Console.WriteLine($"    {key,-40} x{n,-5} {string.Join(", ", askedBy[key].Take(4))}"
                     + (askedBy[key].Count > 4 ? $" +{askedBy[key].Count - 4}" : ""));
 Check(asked.Count > 0, $"the park's scripts ask for presentation ({asked.Count} distinct requests)");
+
+// ⭐⭐ THE SOUND CENSUS: per ride, per second of script time, the clip by name and the opcode that
+// asked for it -- verified by lookup, never by listening (every render is --audio-driver Dummy).
+// The control is stated before the lookup: the ride called Crazy Ape asks for `EVENT 3 -1 8`,
+// and a join that is right names an ape; a join that is off by a group or a park names something
+// else. `EVT_BOG3` is the second control: its own source comments it `; PISS`, and the kids map's
+// event 50 must say so in the clip's name. Unresolved cues are listed, not dropped.
+if (sounds != null)
+{
+    Console.WriteLine($"\nsound cues in those 60s ({world} park 1 maps, park 2's where a ride is only there): {cues.Count} from {cues.Select(c => c.Ride).Distinct().Count()} rides/shops");
+    var unresolved = new Dictionary<string, int>(StringComparer.Ordinal);
+    foreach (var byRide in cues.GroupBy(c => c.Ride).OrderBy(g => g.Key, StringComparer.Ordinal))
+    {
+        Console.WriteLine($"  {byRide.Key}");
+        int shown = 0;
+        foreach (var c in byRide.OrderBy(c => c.At))
+        {
+            var (r, park) = ResolveEither(c.Args[0], c.Args[2]);
+            string what = r == null ? "-> (no such event in " + System.IO.Path.GetFileName(SoundCatalogue.MapFor((SoundGroup)c.Args[0], world, 1)) + " of either park)"
+                                    : "-> " + string.Join(" | ", r.Clips.Select(x => $"{x.Bank}[{x.Index}] {x.Name} {x.Milliseconds}ms").Distinct()) + (park == 2 ? "  (park 2 map)" : "");
+            if (r == null) { string k = $"{byRide.Key} {c.Op} {(SoundGroup)c.Args[0]} evt {c.Args[2]}"; unresolved[k] = unresolved.GetValueOrDefault(k) + 1; }
+            // ⚠ Twelve per ride on screen; the count says what was cut. Crazy Ape alone asks 800 times a minute.
+            if (shown++ < 12) Console.WriteLine($"    {c.At / 1000.0,6:F1}s {c.Op,-7} {(SoundGroup)c.Args[0],-13} node {c.Args[1],3} evt {c.Args[2],3} {what}");
+        }
+        if (shown > 12) Console.WriteLine($"    ... {shown - 12} more cues from this ride");
+    }
+    Console.WriteLine($"  unresolved cues: {unresolved.Values.Sum()} ({unresolved.Count} distinct)");
+    foreach (var (k, n) in unresolved.OrderByDescending(kv => kv.Value)) Console.WriteLine($"    x{n,-4} {k}");
+
+    var ape = cues.FirstOrDefault(c => c.Ride.Contains("Ape", StringComparison.OrdinalIgnoreCase) && c.Args[0] == (int)SoundGroup.LocalRide && c.Args[2] == 8);
+    if (ape.Ride != null)
+    {
+        var r = sounds.Resolve(SoundGroup.LocalRide, 8);
+        Check(r != null && r.Clips.Any(c => c.Name.Contains("ape", StringComparison.OrdinalIgnoreCase)),
+              $"CONTROL: Crazy Ape's EVENT 3 -1 8 at {ape.At / 1000.0:F1}s names an ape ({(r == null ? "nothing" : Clips(r))})");
+        var wrongGroup = sounds.Resolve(SoundGroup.GlobalRide, 8);
+        Check(wrongGroup == null || !wrongGroup.Clips.Any(c => c.Name.Contains("ape", StringComparison.OrdinalIgnoreCase)),
+              $"CONTROL: the same id under GLO_RID is not the ape ({(wrongGroup == null ? "no event 8 there" : Clips(wrongGroup))})");
+    }
+    else Console.WriteLine("  (no Crazy Ape cue in this world; the ape control does not apply)");
+    var bog = sounds.Resolve(SoundGroup.GlobalKids, 50);
+    Check(bog != null && bog.Clips.Any(c => c.Name.StartsWith("wee", StringComparison.OrdinalIgnoreCase)),
+          $"CONTROL: EVT_BOG3 (50, commented PISS) in the kids map is a wee ({(bog == null ? "nothing" : Clips(bog))})");
+    int resolvedCues = cues.Count(c => ResolveEither(c.Args[0], c.Args[2]).Hit != null);
+    Check(cues.Count > 0 && resolvedCues * 10 >= cues.Count * 9,
+          $"at least nine in ten sound cues resolve to a clip in one of the two park maps ({resolvedCues} of {cues.Count})");
+}
 
 Console.WriteLine(bad == 0 ? "PASS" : $"FAIL: {bad}");
 return bad == 0 ? 0 : 1;
