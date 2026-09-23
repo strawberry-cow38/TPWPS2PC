@@ -529,3 +529,18 @@ as a note and not a failure, because an untaken branch is not a bug.
 ⚠ `AsksForLimbo` scans the chain as it stands after the run, not every program the shop could
 reach; a shop that spawns a LIMBO-carrying child only on a later branch would read "no". That is
 exactly why the hard failure is the *hid-without-asking* direction.
+
+**⭐⭐ THE SAME FIVE IN EVERY WORLD.** The audit passes on all four, and the walk-in set is not a
+jungle quirk — it is the game's design, five archetypes repeated per park:
+
+| world | shops + sideshows | carry LIMBO | the five |
+|---|---|---|---|
+| JUNGLE | 16 | 5 | Balloon, Costume, Gift, **Steak Restaurant**, Arcade |
+| SPACE | 15 | 5 | Balloon, Costume, Gift, **Moonrock Cafe**, Arcade |
+| HALLOW | 19 | 5 | Balloon, Costume, Gift, **Restaurant**, Arcade |
+| FANTASY | 17 | 5 | Balloon, Costume, Gift, **Restaurant**, Arcade |
+
+Sixty-seven shops and sideshows, twenty of them walk-in, and the LIMBO correlation is exact in
+every world with no exceptions in either direction. The only thing that varies is what the
+restaurant is called. Four independent parks agreeing is worth more than the jungle result alone:
+a bug in the limbo path would have had to reproduce this split four times.
