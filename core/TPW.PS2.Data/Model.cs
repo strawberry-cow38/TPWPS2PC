@@ -586,6 +586,34 @@ public sealed partial class Model
         return null;
     }
 
+    /// <summary>A node's name, mesh or helper. ⭐ A HELPER CARRIES ITS NAME POINTER AT +0x54 LIKE A
+    /// MESH DOES -- checked on `monkey.mps`, whose 25 helper records read `Head1, Head02, Head06,
+    /// Head03, Head07, Head04, Head08, Head05, Head17, nose05, Head09, Head10, Head14, Head15,
+    /// Head12, Head16, Head13, Head11, nose06, nose1, nose07, nose03, nose04, destroy, Dummy01`
+    /// through that pointer, in table order. ⚠ Checked on that one PS2 model; the legacy .MD2
+    /// helper record is 0x58 bytes and unchecked, so it answers "" there rather than a guess.</summary>
+    public string NodeName(int node)
+    {
+        if (node < 0) return "";
+        if (node < Meshes.Count) return Meshes[node].Name ?? "";
+        if (IsLegacyMd2) return "";
+        int o = NodeOffset(node);
+        if (o + 0x58 > D.Length) return "";
+        int p = (int)U32(o + 0x54);
+        return p > 0 && p < D.Length ? NameAt(p) : "";
+    }
+
+    /// <summary>A node's parent node, or -1 at a root. The parent is the record's `+4`, the
+    /// offset <see cref="WorldTransforms"/> already walks for every mesh and helper.</summary>
+    public int NodeParent(int node)
+    {
+        if (node < 0) return -1;
+        int o = NodeOffset(node);
+        if (o + 8 > D.Length) return -1;
+        int parent = (int)U32(o + 4);
+        return parent <= 0 ? -1 : NodeIndex(parent);
+    }
+
     public int NodeOffset(int node) =>
         node < Meshes.Count ? MeshTable + node * 160 : HelperTable + (node - Meshes.Count) * (IsLegacyMd2 ? 0x58 : 0x60);
 

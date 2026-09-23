@@ -2729,8 +2729,13 @@ public partial class Viewer : Node3D
                 var forward = root.Basis * new Vector3(w.M31, w.M32, w.M33);
                 forward.Y = 0;
                 float yaw = forward.LengthSquared() > 1e-6f ? Mathf.Atan2(forward.X, forward.Z) : 0f;
+                // ⭐ NAMED, so the log says Head09 and not "node 19" -- and says out loud when a
+                // rider lands on anything that is not a Head, which would be the fitting reading
+                // failing. On Crazy Ape every 0x80 fitting is a Head helper under an arm.
+                string node = mesh.NodeName(fit.Node);
                 _seated[guest] = (new Transform3D(Basis.Identity.Rotated(Vector3.Up, yaw), at),
-                                  $"{ride.Name} seat {slot} on node {fit.Node}");
+                                  $"{ride.Name} seat {slot} on {(node.Length > 0 ? node : "node " + fit.Node)}"
+                                  + (node.StartsWith("Head", StringComparison.OrdinalIgnoreCase) ? "" : " -- NOT A HEAD"));
             }
         }
     }
@@ -3069,9 +3074,13 @@ public partial class Viewer : Node3D
             {
                 if (model?.Root == null || !IsInstanceValid(model.Root) || !_rideMeshes.TryGetValue(ride.Id, out var mesh)) continue;
                 var (lo, hi) = Park.DrawnBounds(model.Root, inParent: true);
+                // The seat's PART is the first mesh up its parent chain (a Head helper hangs off an
+                // arm), and that is what a kid's height is compared against.
                 var parts = ride.Host.Seats.Keys.Select(slot => mesh.FindFitting(slot + 1, 0x80))
-                    .Where(f => f is { Node: >= 0 } && f.Value.Node < mesh.Meshes.Count)
-                    .Select(f => mesh.Meshes[f.Value.Node].Name).Distinct().ToList();
+                    .Where(f => f is { Node: >= 0 })
+                    .Select(f => { int n = f.Value.Node; for (int guard = 0; n >= mesh.Meshes.Count && guard < 32; guard++) n = mesh.NodeParent(n); return n; })
+                    .Where(n => n >= 0 && n < mesh.Meshes.Count)
+                    .Select(n => mesh.Meshes[n].Name).Distinct().ToList();
                 string partSizes = string.Join(", ", parts.Select(name =>
                 {
                     var (plo, phi) = Park.DrawnBounds(model.Root, inParent: true, onlyNamed: name);

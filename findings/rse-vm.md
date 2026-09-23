@@ -460,3 +460,24 @@ sitting on one point.
 runtime matrix and nobody has followed what builds it. Four independent properties hold -- the
 crate seats are monotonic, nothing stacks, everything lands inside the footprint, the heights form
 a narrow band -- and the wrong frame broke all four.
+
+### Seats and emitters are two families in one table, one bit apart
+
+`monkey.mps`'s 24 fittings split cleanly by flag bit, with no overlap at all:
+
+| bit | family | which nodes |
+|-----|--------|-------------|
+| `0x80` | a rider's seat, what ADDHEAD fills | all 16 `Head` nodes, no `nose` |
+| `0x100` | a particle emitter, what EVENT kinds 1 and 2 resolve | all 6 `nose` nodes, no `Head` |
+
+⭐ So Crazy Ape's `EVENT 2 1 22` and `EVENT 2 2 22` -- effect 22, `ApeSnot` -- come out of `nose1`
+and `nose07`, the two emitters side by side at the ape's head height. **Its nostrils.** Master's
+reading of the name is that it is a misspelled *snort*, and the geometry agrees with them. Its
+`EVENT 1 5 92` / `1 6 92` (BigSmokePuff) and `EVENT 2 5 1` / `2 6 30` (Sparks, BigSparks) go to
+`nose05` and `nose06`, which sit at the arms.
+
+⚠⚠ I claimed in passing that `EVENT 2 1 22` resolved to `Head1` -- a rider's SEAT -- and built a
+story on it about the ape sneezing on its passengers. It does not: in `0x100400f1` the leading
+digit is bit **28**, not bit 8, so `& 0x100` is zero and no `Head` ever matches an emitter mask.
+The code was right; only the sentence was wrong. It is recorded because a misread nibble produced
+a conclusion that sounded like a discovery.
