@@ -155,7 +155,18 @@ public sealed class ParkSim : IRseDirectory
         ride.Set("VAR_CAPACITY", capacity > 0 ? capacity : 1);
         ride.Set("VAR_DURATION", 1);
         ride.Set("VAR_RIDECLOSED", 1);
-        try { machine.RunSlice(0); }
+        // ⚠⚠ THE PARK'S CLOCK, NOT ZERO. This used to be `RunSlice(0)`, so EVERY ride ran its
+        // opening slice at time zero however late it was placed -- and that slice is where the
+        // script plays its Create animation. The playback's Start was therefore 0 while the park
+        // was at, say, 40 s, and `Frame` = (Time - Start) * Fps / 1000 came out past the record's
+        // end and clamped there: the ride appeared with Create already finished and dropped
+        // straight into its running loop.
+        //
+        // ⭐ Only the FIRST ride placed looked right, because for it the park clock really was ~0
+        // and the two agreed by accident. Reproduced before fixing: two Crazy Apes, one at t=0 and
+        // one at t=40000, entered slot 0 at frame 1.2 and frame 215.0 respectively -- 215 being
+        // the last frame of a 215-frame Create.
+        try { machine.RunSlice(Time); }
         catch (Exception e) { fault = e.Message; return null; }
         _rides.Add(ride);
         return ride;
