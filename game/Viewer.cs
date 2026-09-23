@@ -1648,6 +1648,18 @@ public partial class Viewer : Node3D
     void PlaceThoughts()
     {
         if (_visitors?.Needs is not { } needs || !_thoughts.Ready) return;
+        // ⚠⚠ SHOOT THE FRAME AFTER THE SIGHTING, UNCONDITIONALLY. SaveShot grabs the viewport
+        // as it was last DRAWN, so a shot taken on the same frame the camera moved photographs the
+        // old camera -- and waiting for a second sighting never came true, because the park has
+        // exactly one frame with a wanting walker in it before they are handed to the ride. So the
+        // sighting arms this, and the very next frame fires it whatever the park has done since.
+        if (_wantArmed)
+        {
+            _wantArmed = false;
+            SaveShot(System.Environment.GetEnvironmentVariable("TPW_WANT_SHOT"));
+            GetTree().Quit();
+            return;
+        }
         foreach (var g in _guests.Guests)
         {
             if (!needs.Has(g.Id)) continue;
@@ -1682,18 +1694,19 @@ public partial class Viewer : Node3D
                 // by the frame it shoots, the walkers have been handed to the ride. This waits for
                 // the condition instead of for a frame number, which is the difference between an
                 // instrument and a guess.
-                if (System.Environment.GetEnvironmentVariable("TPW_WANT_SHOT") is { } want)
+                if (System.Environment.GetEnvironmentVariable("TPW_WANT_SHOT") != null)
                 {
-                    if (++_wantHeld >= 2)
-                    {
-                        GD.Print($"[want] shooting guest {who.Id} thinking "
-                               + $"{needs.Of(who.Id).Thought} at {body.GlobalPosition}");
-                        SaveShot(want);
-                        GetTree().Quit();
-                    }
+                    // ⚠⚠ SIGHTINGS, NOT CONSECUTIVE FRAMES, and that distinction is the whole
+                    // bug. The guest test winds the sim in jumps of hundreds of ticks between
+                    // render frames, so "a wanting walker on two frames in a row" can never come
+                    // true: the park hands everyone to the ride in the gap. Counting sightings
+                    // lets the second one arrive whenever it arrives, which is what waiting for a
+                    // condition means.
+                    GD.Print($"[want] armed on guest {who.Id} thinking {needs.Of(who.Id).Thought} "
+                           + $"at {body.GlobalPosition}; shooting next frame");
+                    _wantArmed = true;
                 }
             }
-            else _wantHeld = 0;
         }
 
         // ⭐ A CENSUS, because a picture cannot tell "no bubbles because nobody wants anything"
@@ -1713,7 +1726,7 @@ public partial class Viewer : Node3D
     }
 
     long _lastWantCensus = -1000;
-    int _wantHeld;
+    bool _wantArmed;
 
     /// <summary>⭐ A CONTROL RUN, not a feature. It lays a shape that MUST come out wearing one of
     /// every piece -- a crossroads at the middle, four straight arms, four ends, and an L off the
