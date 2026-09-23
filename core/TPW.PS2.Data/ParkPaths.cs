@@ -50,6 +50,13 @@ public sealed class ParkPaths
     /// -- and the shape the second one draws is the thing master described: a three-wide corridor
     /// through the turnstiles opening onto a fifteen-wide apron at the bus stop. The skip test was
     /// my own addition and the connectivity is what threw it out.</summary>
+    /// ⚠⚠ AND THIS LIST IS A STAND-IN, NOT THE ENGINE'S RULE. Read out of SLES_500.32 since:
+    /// the runtime tile's byte `+0` is a KIND -- 2 is path and 4 is queue, the same numbers
+    /// PathTool.Kind already carries -- and `0x18E020` answers "a usable path is here" with
+    /// `tile[0] == 2 &amp;&amp; !(flags &amp; 1)`. That is what walkable MEANS to the game. But the load-time
+    /// fill at `0x14E5B0` only ever writes kind 0 or 1, so nothing at all is walkable when a park
+    /// opens, and whatever writes the entrance into the tile map HAS NOT BEEN FOUND. Three mesh
+    /// names are what stands in for it, and they are my choice. See findings/paths.md.</summary>
     public static readonly string[] EntranceParts = { "A_ROAD", "A_BUS STOP", "ticket_booths" };
     public IEnumerable<ParkCell> Cells => Enumerable.Range(0, Field.Count)
         .Select(i => new ParkCell(i % Field.Width, i / Field.Width));

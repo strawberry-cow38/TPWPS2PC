@@ -103,3 +103,39 @@ and `end1` at the ends; a crossroads → `xrd1`; a corner joined east and south 
 **the same corner with its fourth cell filled → `cnr1`** (the diagonal rule); a 3×3 block's middle →
 `ctr1`; a T joined north/east/south → `tju1` unturned; a queue run → `que1` and `que3`; and a
 no-build cell **refuses**. All pass in FANTASY, HALLOW, JUNGLE and SPACE.
+
+## The runtime tile, and what the engine calls walkable
+
+2026-09-23. Read out of `SLES_500.32` with Ghidra, not inferred.
+
+The park's runtime tile map is **8 bytes per tile**, allocated and filled at `0x14E5B0` from the
+authored grid (the fill loop the earlier note placed at `0x14E700` is inside this function):
+
+| offset | filled at load with |
+|---|---|
+| `+0` | **kind** — `1` if the authored `byte0` bit 0 is set (a skipped cell), `0` otherwise |
+| `+1` | height — `2` if authored `byte0 & 0x40`, else `0` |
+| `+2` `+3` `+6` | zero |
+| `+4..5` | `s16` block id = `(x / 10) * 10 + (y / 10) + 1` — a **10×10 zone number** |
+| `+7` | **flags** — `0x23` (bits 0, 1, 5) for a skipped cell, `0` otherwise |
+
+`FUN_0018E710(x, y, mask)` is the whole flags test: `(tile[+7] & mask) != 0`. The predicates
+built on it, with the kind byte, are where walkability actually lives:
+
+| function | test | meaning |
+|---|---|---|
+| `0x18E020` | `tile[0] == 2` and `!(flags & 1)` | a usable **path** is here |
+| `0x18E0C8` | `tile[0] == 4` | a **queue** is here |
+| `0x18E1E8` | `tile[0] == 2` and `flags & 8` | path, plus something bit 3 marks |
+| `0x18E158` | `tile[0] == 4` and `flags & 8` | queue, same |
+| `0x18E278` | `flags & 2` | **nothing may be built here** |
+
+⭐⭐ **So the engine's walkable set is the KIND BYTE: 2 is path, 4 is queue.** Those are the same
+numbers `PathTool.Kind` already carries. Flags bit 1 is the no-build bit, which is why a skipped
+cell's `0x23` refuses a placement; bit 0 additionally makes a path tile unusable.
+
+⚠⚠ **AND NOTHING IS WALKABLE AT LOAD.** The fill writes kind `0` or `1` and never `2` or `4`, so
+the entrance plaza is not walkable by anything this function does. Something else must write the
+bus stop and the turnstiles into the tile map, and **that writer has not been found.** Until it
+is, `ParkPaths.EntranceParts` — a list of three mesh names — is a STAND-IN chosen by me, not a
+recovered rule, and it should be replaced by whatever that writer actually does.
