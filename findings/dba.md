@@ -328,3 +328,48 @@ is claimed. PAL executable selection of the other regional files is still unesta
 Thus the ledger remains **3 partly undecoded files, 120,588 bytes**. The reader and audit make
 the established portion usable and falsifiable; completing the remaining semantic joins still
 requires tracing the specialised consumers and their runtime resource/state identities.
+
+
+## Unknown-storage preservation coverage (2026-09-23)
+
+`tools/TPW.PS2.DbaAudit/UnknownFieldCoverage.cs` adds audit-local coverage without
+changing the reader, retail identities, projection goldens, or the **partly decoded**
+classification. Its offset/mask descriptors follow the ranges above, not guessed
+field meanings.
+
+The normal audit validates descriptor bounds, disjoint masks, all eight kinds and
+the 57,664-probe retail coverage census, and runs five negative controls per region.
+To execute every one-bit mutation:
+
+```sh
+dotnet run --project tools/TPW.PS2.DbaAudit -c Release -- "$DISC" --unknown-coverage
+# A single exhaustive region, while still checking all original regional goldens:
+dotnet run --project tools/TPW.PS2.DbaAudit -c Release -- "$DISC" --unknown-coverage=eur
+```
+
+Measured on the existing EUR/USA/JAP corpus: **273 entries, eight kinds and 57,664
+one-bit probes per region; 172,992 probes total, all passing**. Each region includes
+528 probes across the two distinct `FFFFFFFF` entries, identified by directory
+ordinal rather than the first-match `Find` helper. Mutation files exist only as
+in-memory clones; no extracted payload is written or committed.
+
+Coverage includes common `09/0b`; all three tier flag words; feature raw bytes and
+upper flag bits; ride control/tail; shop/sideshow unresolved bytes; coaster `c4..d2`
+and low nibble of `d3`; track/tour/upgrade unresolved storage; and footprint flag
+bits above the already interpreted low nibble. It deliberately does not relabel
+known coaster coordinates/direction bits, runtime indices or the directory gap as
+newly decoded fields.
+
+For each probe the audit checks structural parsing, unchanged directory identity,
+exactly one changed payload bit, unchanged raw payloads of every other record,
+exact `Extra` bytes, every exposed unknown/raw accessor in the target record,
+unchanged target decoded fields, and an exact canonical projection delta derived
+independently from the changed raw byte. Existing original-input projection hashes
+and named goldens remain unchanged. Negative controls reject discarded mutations,
+invisible canonical changes, collateral unknown-accessor corruption, a stale typed
+projection hidden by a changing `Extra` hex string, and mutation of another record.
+
+These are **preservation and isolation** tests, not consumer decoding or gameplay
+validation; one-bit coverage is not an exhaustive test of every multi-bit combination.
+Track/tour selector identities, upgrade joins, flags, height semantics and the other
+remaining gaps listed above remain unresolved.

@@ -9,7 +9,7 @@ using Db = TPW.PS2.Data.AssetResourceDatabase;
 CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
 if (args.Length == 0)
 {
-    Console.Error.WriteLine("usage: dotnet run --project tools/TPW.PS2.DbaAudit -- <disc.bin> [--eur=DBA] [--usa=DBA] [--jap=DBA] [--elf=ELF] [--list]");
+    Console.Error.WriteLine("usage: dotnet run --project tools/TPW.PS2.DbaAudit -- <disc.bin> [--eur=DBA] [--usa=DBA] [--jap=DBA] [--elf=ELF] [--list] [--unknown-coverage[=eur|usa|jap]]");
     return 2;
 }
 int failures = 0;
@@ -71,7 +71,8 @@ string Projection(Db.Entry e, TextDatabase text)
 try
 {
     foreach (string option in args.Skip(1))
-        if (option != "--list" && !new[] { "--eur=", "--usa=", "--jap=", "--elf=" }.Any(option.StartsWith))
+        if (option != "--list" && !new[] { "--unknown-coverage", "--unknown-coverage=eur", "--unknown-coverage=usa", "--unknown-coverage=jap" }.Contains(option)
+            && !new[] { "--eur=", "--usa=", "--jap=", "--elf=" }.Any(option.StartsWith))
             throw new ArgumentException("Unknown option " + option);
     using var disc = new Disc(args[0]);
     byte[] DiscFile(string path)
@@ -145,6 +146,8 @@ try
         Check(db.Find(220).Minigame == 7 && db.Find(250).Minigame == 5 && db.Find(606).Minigame == 10,
             region + " Dino Karts / Jungle Puzzle / Pong minigame identities");
         Console.WriteLine($"DBA {region}: checked named assets, all decoded projections, unknown bytes, and footprint cells");
+        UnknownFieldCoverage.Run(region, bytes, db, e => Projection(e, text), Check,
+                                 args.Contains("--unknown-coverage") || args.Contains("--unknown-coverage=" + region));
     }
     Check(raw["eur"].AsSpan().SequenceEqual(raw["jap"]), "EUR/JAP must be identical");
     var expectedUs = (byte[])raw["eur"].Clone();

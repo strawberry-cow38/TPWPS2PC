@@ -6,7 +6,7 @@ Updated: 2026-09-23. Roadmap: [plan.md](plan.md).
 
 M0 is published on remote main through `4090631`: plan, handoff ledger, and integrated ride-availability fix.
 M1 now includes a standalone audit matrix runner and a real rendered JUNGLE guest smoke. Full visual sign-off and broader audit/scene coverage remain open.
-Next independent work package: strengthen DBA unknown-byte preservation tests without inventing field semantics or changing core readers/goldens; then expand repeatable scene/runtime coverage. Keep off the active viewer/placement/particle files.
+DBA unknown-byte preservation coverage is implemented and verified without changing core readers/goldens. Next: the isolated guest/ride-removal lifecycle gap, after checking current ownership and reproducing it; continue periodic rendered/runtime checks. Keep off the active viewer/placement/particle files.
 
 ## Coordination / branch state
 
@@ -93,3 +93,31 @@ A scoped subagent review identified a safe, bounded gap: the DBA reader preserve
 Acceptance: bounds/overlap checks, directory-ordinal identity (duplicate keys exist), one-bit mutations on cloned in-memory records, exact raw-byte preservation, unchanged unrelated decoded fields, and useful region/key/kind/offset/mask failure messages. Original regional golden checks must still pass. This tests preservation only; track/tour selectors, upgrade joins, unknown flags and other semantics remain UNKNOWN until consumer evidence supports them.
 
 M1 integration follow-up: upstream `2a45f4b` changed viewer presentation while this isolated tooling work ran. Rebased without overwriting it; the recorded rendered captures predate that viewer-only commit and are not claimed as a visual verification of its changes. The audit runner and known-red baseline were rerun after integration.
+
+
+## M2 evidence milestone: DBA unresolved-storage preservation
+
+Implemented audit-local `UnknownFieldCoverage.cs`, minimal DbaAudit invocation/CLI,
+and an evidence update in `findings/dba.md`. No core reader, retail identity table or
+existing golden changed; DBA remains partly decoded.
+
+Validation: all original EUR/USA/JAP identity/field/consumer-signature checks pass;
+57,664 one-bit preservation probes pass per region (**172,992 total**), covering 273
+entries/eight kinds in each. Both duplicate-key records are exercised by ordinal
+(528 probes per region). Five negative controls per region demonstrate that the
+checker rejects missing mutations, hidden typed-projection defects, collateral
+unknown-accessor corruption and unrelated-record changes.
+
+A review caught two weak checks before landing: change-only canonical comparison
+could hide a stale typed field behind updated raw hex, and checking only the mutated
+accessor could miss collateral unknown-value corruption. Both were strengthened to
+exact raw-byte-derived canonical deltas and all target unknown accessor bytes, then
+the full three-region sweep was rerun successfully. No semantic meaning was inferred
+from these tests. No rendered capture is needed or claimed for this audit-only change.
+
+Next proposed implementation package: reproduce `ParkSim.Remove` dropping a ride
+without reconciling its queued/riding guest ownership. Coordinate `ParkSim.cs` and
+`ParkVisitors.cs` before edits, preserve guest IDs, and add engine-free lifecycle
+regressions; leave active viewer/placement/particle work alone. This is still a
+proposed next task, not a reported fix or an assertion that the current viewer calls
+that API. If ownership conflicts, advance independent audit coverage instead.
