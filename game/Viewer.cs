@@ -2338,6 +2338,18 @@ public partial class Viewer : Node3D
         UpdatePlacementGhost();
         GD.Print($"[place] holding {_place.Display} turned 90 at ({gx},{gy}) for the picture, "
                + $"{(_place.Fits(_park, gx, gy) ? "clear" : "BLOCKED")}");
+        // ⭐ THE FRONT RANK, AT EVERY TURN. The line has to move round the shape as it is turned,
+        // and four ranks that are all the same row would draw a line that never moved -- which is
+        // exactly the shop bug wearing different clothes.
+        for (int q = 0; q < 4; q++)
+        {
+            _place.Turn(q == 0 ? 0 : 1);
+            var (fdx2, fdy2) = _place.Facing;
+            GD.Print($"[place]   turned {_place.Turns * 90}: faces {fdx2},{fdy2}, line turn "
+                   + $"{GhostMarkers.TurnToward(-fdx2, -fdy2)}, front rank "
+                   + string.Join(" ", _place.Front(gx, gy).Select(c => $"({c.X},{c.Y})")));
+        }
+        _place.Turn(1);   // back to the quarter the picture wants
         // ⚠ BOTH PANELS OUT OF THE WAY. They cover two thirds of a 1280-wide frame, and the thing
         // being photographed is where four rides are standing -- hidden DIRECTLY rather than
         // through the Tab toggle, which drops what is held and would take the ghost with it.
@@ -2470,8 +2482,21 @@ public partial class Viewer : Node3D
         // ⭐⭐ A BLUEPRINT IS BLUE. Master: "the blueprints for all of this should be blue, not
         // green. and red when not allowed." 165 is the console's own flat blue and 175 its red --
         // the same two the path ghost has always used, so one build tool reads one way.
+        // ⭐⭐ AND A LINE ALONG THE FRONT. Master: "blueprints should have a row of 170's. with the
+        // line against the direction its facing." 170 is the same flat blue with a green bar down
+        // one edge, so the front rank wears it and the bar is turned to sit against the outside.
+        //
+        // ⚠ The bar is at the BOTTOM of the texture, which is the OPPOSITE end from the one the
+        // turn table names -- turn 0 puts texture-up at grid +y, so it puts the bar at grid -y.
+        // The turn wanted is therefore TurnToward of the facing NEGATED, and reading the table
+        // straight would have laid the line down the back of everything.
+        var front = new HashSet<(int, int)>(_place.Front(x, y));
+        var (fdx, fdy) = _place.Facing;
+        int frontTurn = GhostMarkers.TurnToward(-fdx, -fdy);
         var cells = _place.Cells(_park, x, y)
-                          .Select(c => (c.X, c.Y, c.Ok ? 165 : 175, 0))
+                          .Select(c => (c.X, c.Y,
+                                        c.Ok ? (front.Contains((c.X, c.Y)) ? 170 : 165) : 175,
+                                        front.Contains((c.X, c.Y)) ? frontTurn : 0))
                           .ToList();
         // ⭐⭐ THE DOORS STICK OUT A TILE. Master: "the path entrance/exit needs to stick out a
         // tile from the blueprint". They mark where the queue and the path will START, which is

@@ -158,6 +158,32 @@ public sealed class Placement
     public bool Fits(Park park, int cursorX, int cursorY)
         => Cells(park, cursorX, cursorY).All(c => c.Ok) && Stubs(park, cursorX, cursorY).All(s => s.Ok);
 
+    /// <summary>Which way the thing faces: the direction its entrance opens onto. ⚠ Zero when the
+    /// shape declares no entrance, and most scenery declares none.</summary>
+    public (int Dx, int Dy) Facing => (Turned.EntryDX, Turned.EntryDY);
+
+    /// <summary>The footprint's FRONT RANK -- the cells with no more of the shape in front of
+    /// them, looking the way it faces.
+    ///
+    /// ⭐ This is the row the blueprint draws its line on. Master: "blueprints should have a row of
+    /// 170's. with the line against the direction its facing." A shape turned a quarter has a
+    /// different rank, because the facing turns with it, which is the whole point of drawing it:
+    /// the line says which way the thing will end up pointing before it is put down.</summary>
+    public IEnumerable<(int X, int Y)> Front(int cursorX, int cursorY)
+    {
+        var (dx, dy) = Facing;
+        if (!Active || (dx == 0 && dy == 0)) yield break;
+        var (cx, cy) = CornerFor(cursorX, cursorY);
+        for (int fy = 0; fy < Turned.Height; fy++)
+            for (int fx = 0; fx < Turned.Width; fx++)
+            {
+                if (!Turned.Cells[fx, fy]) continue;
+                int nx = fx + dx, ny = fy + dy;
+                if (nx >= 0 && ny >= 0 && nx < Turned.Width && ny < Turned.Height && Turned.Cells[nx, ny]) continue;
+                yield return (cx + fx, cy + fy);
+            }
+    }
+
     /// <summary>The entrance tile, turned with the shape. ⚠ Null when the shape does not declare
     /// one: most scenery has no door, and drawing an entrance marker on a tree would be inventing
     /// one.</summary>
