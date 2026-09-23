@@ -930,4 +930,28 @@ So one of two things is true and this does not yet say which:
 fittings and that is fine **because its script never calls `WALKON`** — it seats riders with
 `ADDHEAD`. Moon Buggies is the case that combination rules out.
 
-Left FAILING on SPACE rather than excluded by name, same reasoning as Thrill Grill on HALLOW.
+### CLOSED: its model is missing the four park fittings every other WALKON ride has
+
+Two rides, the **identical** instruction:
+
+```
+/Rides/mbuggy/mBUGGY.RSE     72: WALKON VAR_LETMEON  1  2  3  4  kind 1  extra 1
+/Rides/spawheel/Spawheel.RSE 61: WALKON VAR_LETMEON  1  2  3  4  kind 1  extra 1
+```
+
+Spawheel's model answers it — `id1/0x811  id2/0x811  id3/0x811  id4/0x811`, four fittings with ids
+1..4 carrying bit 11. **Moon Buggies' model has ids 1..8 and not one `0x800` among them**: seven
+`0xb1` seats, one `0x111` emitter, one `0x10b1`. Nodes 1..4 exist on that model — as SEATS, not as
+park nodes — so the lookup finds nothing and every leg floors.
+
+Every other SPACE ride that calls `WALKON` has them: bumper 4, hoverbot 4, scitour 5, spawheel 4,
+tv_ride 2, whirli 4, zerog 10. **`mbuggy` is the only one with zero.** There is no companion model
+in its folder to carry them.
+
+So this is a **disc-data gap, not a port defect** — the same shape as Thrill Grill asking for a
+slot 4 that is in no firepit animation. The check is correct to fail and stays red.
+
+⭐ Worth noting the pattern across all three of today's OPEN items — Thrill Grill, WhirliGig and
+Moon Buggies. **Not one turned out to be a VM bug.** Two were data the disc simply does not carry,
+and one was the audit censusing a stub. The VM and the walk table were right every time; what was
+wrong was twice the disc and once the instrument.

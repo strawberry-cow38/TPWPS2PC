@@ -572,8 +572,10 @@ Check(walkers.Count > neverWalked.Count, $"some placed ride actually RAN a walk 
 // resolves that node somewhere other than the ride model, or the disc is like that. OPEN.
 Check(flooredWalkers.Count == 0, "every ride that calls WALKON timed its legs from real node positions"
     + (flooredWalkers.Count == 0 ? "" : ": " + string.Join(", ", flooredWalkers.Select(r => r.Name))
-        + " -- KNOWN for Moon Buggies (SPACE): it calls WALKON but its model has no 0x800 park-space"
-        + " fitting for the guest-side node, so every leg floors. See findings/visitors.md. Others here are NEW."));
+        + " -- KNOWN for Moon Buggies (SPACE), and it is the DISC, not us: its WALKON asks for nodes"
+        + " 1-4 exactly as Spawheel's does, but its model carries no 0x800 fitting at all where"
+        + " Spawheel has id1-4 at 0x811. Only SPACE ride with zero. See findings/visitors.md."
+        + " Anything else here is NEW."));
 Check(visitors.Rides > 0, $"a guest comes back OUT of a ride and walks away ({visitors.Rides} did)");
 // ⚠⚠ THE SAME PEOPLE, not the same COUNT. A guest handed to a ride leaves the walking layer and
 // is put back when the script is done, and putting them back as a NEW id would pass every count
