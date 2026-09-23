@@ -1,0 +1,118 @@
+using TPW.PS2.Data;
+
+// ⭐⭐ THE PARK SIM, WITH NO ENGINE. This runs the rides and their scripts as a console app --
+// no Godot, no window, no renderer -- which is the line the port holds: core/ decides, game/
+// draws. If this passes, the game loop is right whatever the view does with it.
+//
+// ⚠ IT NEEDS THE OWNER'S DISC. Nothing is committed and nothing is cached.
+
+if (args.Length < 1) { Console.Error.WriteLine("Usage: ParkSimAudit /path/to/disc.bin [WORLD]"); return 2; }
+string world = args.Length > 1 ? args[1].ToUpperInvariant() : "JUNGLE";
+int bad = 0;
+void Check(bool ok, string line) { Console.WriteLine((ok ? "  ok   " : "  FAIL ") + line); if (!ok) bad++; }
+
+using var disc = new Disc(args[0]);
+WadArchive Wad(string name)
+{
+    var e = disc.Files().Single(f => f.Path.Equals($"/DATA/{name}.WAD", StringComparison.OrdinalIgnoreCase));
+    return new WadArchive(disc.Read(e.Extent, e.Size));
+}
+var wad = Wad(world);
+var terrain = new Model(wad.Read(wad.Find("/terrain/terrain_1.mps")));
+var paths = new ParkPaths(terrain);
+
+// The entrance the park comes with, from the game's own table in the owner's executable.
+var exe = disc.Files().SingleOrDefault(f => f.Path.Equals("/SLES_500.32", StringComparison.OrdinalIgnoreCase));
+var entrance = exe == null ? null : ParkEntrance.ReadExecutable(disc.Read(exe.Extent, exe.Size));
+Console.WriteLine($"{world} terrain_1: {paths.Field.Width}x{paths.Field.Height}; entrance {paths.SetEntrance(entrance)}");
+Check(paths.EntranceCells.Count > 0, $"the park has an entrance to walk in by ({paths.EntranceCells.Count} cells)");
+
+// ⚠⚠ RIDES, NOT EVERYTHING WITH A SCRIPT. The first twelve .rse files alphabetically are all
+// /Features/ -- rocks and bushes -- whose scripts ask for an animation their model does not have,
+// so the first run of this audit reported eleven of twelve "would not start" about scenery. A
+// census has to census the thing it is about.
+var sim = new ParkSim(paths);
+int placed = 0, scriptless = 0, faulted = 0;
+var faults = new Dictionary<string, int>(StringComparer.Ordinal);
+int id = 0, col = 4;
+foreach (var e in wad.Entries.Where(e => e.Path.EndsWith(".rse", StringComparison.OrdinalIgnoreCase)
+                                      && e.Path.StartsWith("/Rides/", StringComparison.OrdinalIgnoreCase))
+                             .OrderBy(e => e.Path, StringComparer.OrdinalIgnoreCase))
+{
+    string stem = e.Path[..^4];
+    var samEntry = wad.Find(stem + ".sam");
+    var apsEntry = wad.Find(stem + ".aps");
+    if (samEntry == null) continue;
+    var def = RideDefinition.Parse(System.Text.Encoding.ASCII.GetString(wad.Read(samEntry)), stem + ".sam");
+    var shape = def.Shape;
+    int w = shape == null ? 1 : shape.Max(r => r.TrimEnd().Length), h = shape?.Length ?? 1;
+    Animation aps = null;
+    try { if (apsEntry != null) aps = new Animation(wad.Read(apsEntry)); } catch { }
+    var ride = sim.Add(++id, def.Name ?? stem, new ParkCell(col, 20), w, h,
+                       wad.Read(e), aps, def.UpgradeCapacity(0) ?? 1, null, null, out string fault);
+    col += w + 1;
+    if (ride == null)
+    {
+        if (fault == "no script") scriptless++;
+        else { faulted++; faults[Kind(fault)] = faults.GetValueOrDefault(Kind(fault)) + 1; }
+    }
+    else placed++;
+}
+Console.WriteLine($"rides with a script: {placed} started, {faulted} would not start, {scriptless} scriptless");
+foreach (var (k, n) in faults.OrderByDescending(kv => kv.Value))
+    Console.WriteLine($"  would not start x{n,-3} {k}");
+Check(placed > 0, "at least one ride's script started");
+
+// ⭐ The kind of a fault, not its instance: "Unimplemented RSSE instruction: 4: FINDSCRIPTRAND s+4
+// v2" and the same opcode at another address are ONE thing to fix, and counting them separately
+// turns a short list of missing opcodes into a long list of addresses.
+static string Kind(string fault)
+{
+    if (fault == null) return "(none)";
+    int i = fault.IndexOf("Unimplemented RSSE instruction:", StringComparison.Ordinal);
+    if (i >= 0)
+    {
+        var rest = fault[(i + 31)..].Trim();
+        int colon = rest.IndexOf(':');
+        var name = colon >= 0 ? rest[(colon + 1)..].Trim() : rest;
+        int sp = name.IndexOf(' ');
+        return "unimplemented opcode " + (sp > 0 ? name[..sp] : name);
+    }
+    if (fault.Contains("APS has no animation", StringComparison.Ordinal)) return "script wants an animation its model lacks";
+    return fault.Length > 60 ? fault[..60] : fault;
+}
+
+// ⭐ AND THEY MUST ACTUALLY RUN. A ride that never leaves the slot it started in is a statue with
+// a script attached, which is exactly what the park had before this. ⚠ The partner is the SAME
+// rides left CLOSED: they must NOT move, or "it animates" is just a clock ticking.
+var shut = new Dictionary<int, HashSet<int>>();
+foreach (var r in sim.Rides) shut[r.Id] = new HashSet<int> { r.Slot };
+for (int i = 0; i < 250; i++) { sim.Advance(0.04); foreach (var r in sim.Rides) shut[r.Id].Add(r.Slot); }
+int movedShut = shut.Count(kv => kv.Value.Count > 1);
+Console.WriteLine($"closed for 10s: {movedShut} of {sim.Rides.Count} rides changed animation");
+
+foreach (var r in sim.Rides) sim.SetOpen(r.Id, true);
+var seen = new Dictionary<int, HashSet<int>>();
+foreach (var r in sim.Rides) seen[r.Id] = new HashSet<int> { r.Slot };
+for (int i = 0; i < 1500; i++) { sim.Advance(0.04); foreach (var r in sim.Rides) seen[r.Id].Add(r.Slot); }
+int movedOpen = seen.Count(kv => kv.Value.Count > 1);
+Console.WriteLine($"open for 60s:   {movedOpen} of {sim.Rides.Count} rides changed animation");
+var live = sim.Rides.Where(r => r.Fault == null).ToList();
+Console.WriteLine($"  {live.Count} of {sim.Rides.Count} still running after 60s");
+foreach (var r in sim.Rides.Take(14))
+    Console.WriteLine($"  {r.Name,-22} slots {string.Join(",", seen[r.Id].OrderBy(s => s))}"
+                    + $"  now {r.Slot}:{r.Variant} frame {r.Frame:F1}"
+                    + (r.Fault != null ? $"  FAULT {Kind(r.Fault)}" : ""));
+var running = new Dictionary<string, int>(StringComparer.Ordinal);
+foreach (var r in sim.Rides.Where(r => r.Fault != null))
+    running[Kind(r.Fault)] = running.GetValueOrDefault(Kind(r.Fault)) + 1;
+foreach (var (k, n) in running.OrderByDescending(kv => kv.Value))
+    Console.WriteLine($"  stopped while running x{n,-3} {k}");
+
+Check(movedOpen > 0, "an open ride works through its animation slots");
+Check(movedOpen > movedShut, $"opening rides makes MORE of them move ({movedOpen} open vs {movedShut} closed)");
+Check(sim.Time == 1750 * ParkSim.TickMilliseconds || sim.Time > 0, $"the sim's own clock advanced to {sim.Time}ms");
+Check(live.Count > 0, $"{live.Count} rides ran the whole 60s without faulting");
+
+Console.WriteLine(bad == 0 ? "PASS" : $"FAIL: {bad}");
+return bad == 0 ? 0 : 1;

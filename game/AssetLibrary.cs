@@ -44,6 +44,7 @@ public sealed class AssetLibrary : IDisposable
         public WadArchive.Entry Model;            // .mps, or a legacy .MD2
         public WadArchive.Entry Animation;        // the .aps beside it
         public WadArchive.Entry Companion;        // .mtr for a legacy .MD2 only
+        public WadArchive.Entry Script;           // the .rse beside it -- what the ride DOES
     }
 
     readonly Disc _disc;
@@ -164,13 +165,26 @@ public sealed class AssetLibrary : IDisposable
         // them by name.
         var apsByPath = new Dictionary<string, WadArchive.Entry>(StringComparer.OrdinalIgnoreCase);
         var apsByDir = new Dictionary<string, List<WadArchive.Entry>>(StringComparer.OrdinalIgnoreCase);
+        // ⭐ The .rse is paired the same way and by the same rules: a ride's SCRIPT is what it
+        // does, and without it a placed ride is a statue.
+        var rseByPath = new Dictionary<string, WadArchive.Entry>(StringComparer.OrdinalIgnoreCase);
+        var rseByDir = new Dictionary<string, List<WadArchive.Entry>>(StringComparer.OrdinalIgnoreCase);
         foreach (var e in Wad.Entries)
         {
-            if (!Path.GetExtension(e.Path).Equals(".aps", StringComparison.OrdinalIgnoreCase)) continue;
+            var ext = Path.GetExtension(e.Path);
             var d2 = e.Path[..Math.Max(e.Path.LastIndexOf('/'), 0)];
-            apsByPath[Path.ChangeExtension(e.Path, null)] = e;
-            if (!apsByDir.TryGetValue(d2, out var l)) apsByDir[d2] = l = new();
-            l.Add(e);
+            if (ext.Equals(".aps", StringComparison.OrdinalIgnoreCase))
+            {
+                apsByPath[Path.ChangeExtension(e.Path, null)] = e;
+                if (!apsByDir.TryGetValue(d2, out var l)) apsByDir[d2] = l = new();
+                l.Add(e);
+            }
+            else if (ext.Equals(".rse", StringComparison.OrdinalIgnoreCase))
+            {
+                rseByPath[Path.ChangeExtension(e.Path, null)] = e;
+                if (!rseByDir.TryGetValue(d2, out var l)) rseByDir[d2] = l = new();
+                l.Add(e);
+            }
         }
         foreach (var r in byDir.Values)
         {
@@ -182,12 +196,11 @@ public sealed class AssetLibrary : IDisposable
                 continue;
             }
             var stem = Path.ChangeExtension("/" + r.Name, null);
+            var dir = ("/" + r.Name)[..Math.Max(("/" + r.Name).LastIndexOf('/'), 0)];
             if (apsByPath.TryGetValue(stem, out var a)) r.Animation = a;
-            else
-            {
-                var d2 = ("/" + r.Name)[..Math.Max(("/" + r.Name).LastIndexOf('/'), 0)];
-                if (apsByDir.TryGetValue(d2, out var l) && l.Count == 1) r.Animation = l[0];
-            }
+            else if (apsByDir.TryGetValue(dir, out var l) && l.Count == 1) r.Animation = l[0];
+            if (rseByPath.TryGetValue(stem, out var sc)) r.Script = sc;
+            else if (rseByDir.TryGetValue(dir, out var l2) && l2.Count == 1) r.Script = l2[0];
         }
 
         RideAssets Get(string key)
