@@ -293,5 +293,10 @@ sealed class Audit(Dictionary<string, WadArchive> wads, bool trace)
         public int PlayAnimation(int slot, int variant, bool loop) { AnimationSlot = slot; return 1000; }
         public void FlushAnimation() => AnimationSlot = -1;
         public bool TryEffect(RseOpcode opcode, IReadOnlyList<int> arguments) => true;
+        public int PlayAnimationOn(int channel, int slot, int variant, bool loop) => PlayAnimation(slot, variant, loop);
+        // No node table here either, so walks in this audit run at the floor time.
+        public bool TryNodePosition(int node, int space, out float x, out float y, out float z)
+        { x = y = z = 0f; return false; }
+        public void WalkerPose(int guest, int fromNode, int toNode, int mode, int perMille, int angle) { }
     }
 }

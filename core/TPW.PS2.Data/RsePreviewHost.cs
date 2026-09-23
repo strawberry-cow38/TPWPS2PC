@@ -59,6 +59,36 @@ public sealed class RsePreviewHost : IRseHost
         EffectRequested?.Invoke(LastEffect);
         return true;
     }
+
+    /// <summary>⚠ ONE CHANNEL, AND IT SAYS SO. This host owns a single playback, so a request for
+    /// any other channel is refused rather than quietly played on channel 0 -- a ride whose arms
+    /// and cars animate on separate channels would otherwise look right while being wrong.</summary>
+    public int PlayAnimationOn(int channel, int slot, int variant, bool loop) => channel == 0
+        ? PlayAnimation(slot, variant, loop)
+        : throw new NotSupportedException($"This host has no animation channel {channel}");
+
+    /// <summary>⚠ THE PREVIEW CANNOT PLACE A NODE. The APS gives this host frames, not the park's
+    /// node table, so every walk here runs at the minimum leg time. Said through the return value
+    /// rather than by inventing an origin, so `RseMachine.WalksAreTimed` stays honest.</summary>
+    public bool TryNodePosition(int node, int space, out float x, out float y, out float z)
+    {
+        x = y = z = 0f;
+        return false;
+    }
+
+    public sealed record Walker(long Time, int Guest, int FromNode, int ToNode, int Mode, int PerMille, int Angle);
+    public event Action<Walker> WalkerMoved;
+    /// <summary>Where each guest this script is moving was last put. The preview draws nothing;
+    /// it records, so an audit can show a rider actually crossed from node to node.</summary>
+    public IReadOnlyDictionary<int, Walker> Walkers => _walkers;
+    readonly Dictionary<int, Walker> _walkers = new();
+
+    public void WalkerPose(int guest, int fromNode, int toNode, int mode, int perMille, int angle)
+    {
+        var w = new Walker(Time, guest, fromNode, toNode, mode, perMille, angle);
+        _walkers[guest] = w;
+        WalkerMoved?.Invoke(w);
+    }
 }
 
 /// <summary>Small, explicit host scenario for the preview: open after construction, offer two

@@ -48,8 +48,18 @@ foreach (var e in wad.Entries.Where(e => e.Path.EndsWith(".rse", StringCompariso
     int w = shape == null ? 1 : shape.Max(r => r.TrimEnd().Length), h = shape?.Length ?? 1;
     Animation aps = null;
     try { if (apsEntry != null) aps = new Animation(wad.Read(apsEntry)); } catch { }
+    // ⭐ SPAWNCHILD LOOKS IN THE RIDE'S OWN FOLDER. `0x1be91c` builds the path as directory +
+    // name, which matters here because seven different rides each ship a file called
+    // EventMap.rse -- a lookup by name alone would hand six of them the wrong script.
+    string dir = e.Path[..(e.Path.LastIndexOf('/') + 1)];
+    byte[] Sibling(string child)
+    {
+        var c = wad.Entries.FirstOrDefault(x => x.Path.Equals(dir + child, StringComparison.OrdinalIgnoreCase));
+        return c == null ? null : wad.Read(c);
+    }
     var ride = sim.Add(++id, def.Name ?? stem, new ParkCell(col, 20), w, h,
-                       wad.Read(e), aps, def.UpgradeCapacity(0) ?? 1, null, null, out string fault);
+                       wad.Read(e), aps, def.UpgradeCapacity(0) ?? 1, null, null, out string fault,
+                       sibling: Sibling);
     col += w + 1;
     if (ride == null)
     {

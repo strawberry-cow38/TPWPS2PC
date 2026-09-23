@@ -58,6 +58,11 @@ public enum RseOpcode
     REMOVECHILD = 0x41,
     SETVARINCHILD = 0x42,
     GETVARINCHILD = 0x43,
+    /// <summary>⭐ NAMED FROM THE HANDLER, not from a PC source list, because no source name
+    /// reached this slot. `0x1bea64` shares its tail (`LAB_001bead4`) with SETVARINCHILD -- it
+    /// WRITES a variable -- and differs only in taking the parent handle at `+0x10` instead of
+    /// the child at `+0x0c`. 0x45 is the read in the other direction, and is already named.</summary>
+    SETVARINPARENT = 0x44,
     GETVARINPARENT = 0x45,
     BOUNCESETNODE = 0x46,
     BOUNCESETBASE = 0x47,

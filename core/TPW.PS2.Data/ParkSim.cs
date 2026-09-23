@@ -39,7 +39,10 @@ public sealed class ParkRide
     public int Variant => Host?.AnimationVariant ?? -1;
     public float Frame => Host?.Frame ?? 0f;
 
-    public string Fault => Machine?.Fault;
+    /// <summary>⚠ A CHILD'S FAULT IS THE RIDE'S FAULT. A ride whose effects script died is not a
+    /// working ride, and reporting only the parent's state hid exactly that: the parent runs its
+    /// cycle forever while the thing that makes it look like anything is stopped.</summary>
+    public string Fault => ParkSim.Chain(Machine).Select(m => m.Fault).FirstOrDefault(f => f != null);
 }
 
 /// <summary>The park, ticking. Rides, their scripts, and the ground they stand on.
@@ -81,9 +84,13 @@ public sealed class ParkSim
     /// ⚠ A BAD SCRIPT MUST NOT TAKE THE PARK WITH IT. One ride's `.rse` failing to parse is that
     /// ride not running, not the park failing to load, so the throw is caught here and reported
     /// through <paramref name="fault"/>.</summary>
+    /// <param name="sibling">Resolves a script named by SPAWNCHILD/SPAWNSOUND against the ride's
+    /// own folder, which is how the game finds it. Null means this ride cannot spawn children,
+    /// and a script that tries will fault rather than pretend it worked.</param>
     public ParkRide Add(int id, string name, ParkCell origin, int width, int height,
                         byte[] script, Animation animation, int capacity,
-                        ParkCell? entrance, ParkCell? exit, out string fault)
+                        ParkCell? entrance, ParkCell? exit, out string fault,
+                        Func<string, byte[]> sibling = null)
     {
         fault = null;
         if (script == null || script.Length == 0) { fault = "no script"; return null; }
@@ -95,7 +102,17 @@ public sealed class ParkSim
         {
             program = new RseProgram(script);
             host = new RsePreviewHost(animation);
-            machine = new RseMachine(program, host);
+            // ⭐ THE CHILD SHARES THE PARENT'S ANIMATION. `0x1be91c` copies the parent's `+0xc8`
+            // -- its animation context -- into the child, so an effects script drives the same
+            // model its ride does. That is also why TRIGANIM_CH exists: they need channels to
+            // stay out of each other's way.
+            RseMachine Spawn(string child)
+            {
+                var bytes = sibling?.Invoke(child);
+                if (bytes == null || bytes.Length == 0) return null;
+                return new RseMachine(new RseProgram(bytes), host, spawn: Spawn);
+            }
+            machine = new RseMachine(program, host, spawn: sibling == null ? null : Spawn);
             foreach (var v in RideVariables)
             {
                 // ⚠ VariableIndex throws on a name the program does not declare, so each one is
@@ -155,18 +172,32 @@ public sealed class ParkSim
     {
         foreach (var r in _rides)
         {
-            if (r.Machine == null || r.Machine.Fault != null) continue;
-            try
+            if (r.Machine == null) continue;
+            r.Host.AdvanceTo(Time);
+            // ⭐ A SPAWNED CHILD IS ITS OWN SCHEDULED SCRIPT, not something the parent steps. The
+            // PS2's scheduler visits every live instance, children included, so they are visited
+            // here too -- and a child faulting leaves its parent running.
+            foreach (var m in Chain(r.Machine))
             {
-                r.Host.AdvanceTo(Time);
-                r.Machine.RunSlice(Time);
-            }
-            catch (Exception)
-            {
-                // ⚠ One ride's script throwing stops THAT ride. RseMachine records a Fault of its
-                // own for the faults it knows about; this is for the ones it does not, and the
-                // alternative is a single bad ride taking the whole park's tick with it.
+                if (m.Fault != null) continue;
+                try { m.RunSlice(Time); }
+                catch (Exception)
+                {
+                    // ⚠ One script throwing stops THAT script. RseMachine records a Fault of its
+                    // own for the faults it knows about; this is for the ones it does not, and
+                    // the alternative is a single bad ride taking the whole park's tick with it.
+                }
             }
         }
+    }
+
+    /// <summary>A machine and everything it has spawned, parents before children. ⚠ The walk is
+    /// depth-limited because nothing stops a script spawning a script that spawns it back.</summary>
+    public static IEnumerable<RseMachine> Chain(RseMachine machine, int depth = 0)
+    {
+        if (machine == null || depth > 8) yield break;
+        yield return machine;
+        foreach (var m in Chain(machine.Child, depth + 1)) yield return m;
+        foreach (var m in Chain(machine.SoundChild, depth + 1)) yield return m;
     }
 }

@@ -226,12 +226,60 @@ a missing host and the real Space Gates LOOPANIM_CH instruction. No game data is
   by `RsePreviewHost`; a missing or rejecting host faults. Economic/wear/breakdown decisions
   remain host inputs. Breakdown/repair paths are not covered by the demonstrated cycles.
 * These observed instructions deliberately fail on execution: SETOBJPARAM, TRIGANIMSPEED,
-  TRIGANIM_CH, LOOPANIM_CH, GETANIM_CH, TURBO, TOUR, BUMP, COAST, LIMBO, UNLIMBO,
-  FORCEUNLIMBO, INLIMBO, LIMBOSPACE, SPAWNCHILD, SPAWNSOUND, REMOVECHILD, SETVARINCHILD,
-  GETVARINCHILD, GETVARINPARENT, BOUNCESETNODE, BOUNCESETBASE, BOUNCE, UNBOUNCE,
-  FORCEUNBOUNCE, BOUNCING, WALKON, WALKOFF, WALKGET, WALKST_FLOAT, WALKFLOATSTAT,
+  LOOPANIM_CH, GETANIM_CH, TURBO, TOUR, BUMP, COAST, LIMBO, UNLIMBO,
+  FORCEUNLIMBO, INLIMBO, LIMBOSPACE, BOUNCESETNODE, BOUNCE, UNBOUNCE,
+  FORCEUNBOUNCE, WALKST_FLOAT, WALKFLOATSTAT,
   WALKFLOATSTOP, FINDSCRIPTRAND, SETREMOTEVAR, HOUR, MIN, SEC and SPARK. Their file operands
   are decoded; their engine services are not fabricated.
+
+## Children, and the walk table
+
+`SPAWNCHILD` (`0x1be91c`) is **not a presentation request**. Its single operand is tag `0x10`,
+a string, and the handler copies the script's own directory from instance `+0x38`, appends that
+string and loads the result as a second program. The twelve spawns in `JRSE.WAD` all name a real
+sibling: `Coaster1.RSE` spawns **its own** `EventMap.rse`, one of seven files with that name in
+the archive, which is why the lookup cannot be by name alone.
+
+| instance | meaning | evidence |
+|----------|---------|----------|
+| `+0x08` | this instance's handle, copied into the child's `+0x10` | `0x1be968..0x1be988` |
+| `+0x0c` | the child. **One slot**; SPAWNCHILD overwrites it | `0x1be964`, `REMOVECHILD 0x1bea14` |
+| `+0x10` | the parent | `SETVARINPARENT 0x1bea64`, `GETVARINPARENT 0x1beaa4` |
+| `+0x14` | the sound child; no parent link is written back | `0x1be9f8` |
+| `+0x38` | the script's directory, used to build a child's path | `0x1be950` |
+| `+0xc8` | animation context, **copied to the child** -- they drive one model | `0x1be98c` |
+
+Opcode `0x44` has no name in any source list. Its handler shares `LAB_001bead4` with
+SETVARINCHILD -- it **writes** -- and differs only in taking `+0x10` instead of `+0x0c`, so it is
+recorded here as `SETVARINPARENT`. `0x45` is the matching read and already carried its name.
+
+The walk table is instance `+0x2c`, `+0x7c` entries of 32 bytes (the loader at `0x1bff78`
+allocates **twice** the declared `#setwalk` capacity):
+
+| offset | field |
+|--------|-------|
+| `+0x00` `+0x02` | nodes A, B -- the route in |
+| `+0x04` `+0x06` | nodes C, D -- the route out, stashed by WALKON for WALKOFF |
+| `+0x08` `+0x0c` | start and end milliseconds |
+| `+0x10` | guest id |
+| `+0x14` | bearing, `0x1b9138`'s atan2(dz, dx) in twelfths of a circle |
+| `+0x16` | kind; `4` puts the ride-side node in model space `0x80` instead of park space `0x800` |
+| `+0x18` | state |
+| `+0x1a` | WALKON's seventh operand |
+
+⭐⭐ **State 1 does not become state 4.** The ticker `0x1bade8` runs 1 (walking in) → **2**
+(aboard, re-placed every tick so a moving ride carries its riders); only `WALKOFF` (`0x1bb3f0`)
+starts 3 (walking out), which finishes into 4, and `WALKGET` (`0x1bb338`) harvests a 4 and frees
+the slot. Reading WALKGET on its own suggests a guest is collectable the moment they arrive; a
+host built on that would hand every rider back without them ever riding.
+
+Leg duration is `(int)distance * 1000` ms with a 100 ms floor -- **the cast runs before the
+scale**, so a 2.7 unit walk is timed at 2000 ms. `RseMachine.WalksAreTimed` reports false when
+the host could not place the nodes, in which case every leg ran at that floor.
+
+`BOUNCING` reads instance `+0x6c` (`0x1bb880`) and `BOUNCESETBASE` writes `+0x6e`; the bounce
+ticker `0x1bb888` uses `+0x6e` as a rest height under a sine table. `BOUNCING` is implemented and
+`BOUNCE`/`UNBOUNCE` are not, so it answers truthfully only for a script that never bounced.
 * The remaining 23 absent opcode slots are not accepted as executable instructions. Their
   borrowed PC names alone do not validate PS2 semantics. Version `0x10f51` is accepted; other
   RSSE versions are not established.
