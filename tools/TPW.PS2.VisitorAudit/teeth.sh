@@ -29,11 +29,27 @@ run baseline
 python3 - <<'PYMUTATE'
 from pathlib import Path
 p = Path('core/TPW.PS2.Data/ParkPaths.cs')
-s = p.read_text(); old = 'Field.Buildable(c.X, c.Z)'
+s = p.read_text(); old = 'Contains(c) && Field.Buildable(c.X, c.Z) && !_occupied.Contains(c) && !_scenery.Contains(c)'
 assert s.count(old) == 1
-p.write_text(s.replace(old, 'Field.Raw0(c.X, c.Z) == 0'))
+p.write_text(s.replace(old, old.replace('Field.Buildable(c.X, c.Z)', 'Field.Raw0(c.X, c.Z) == 0')))
 PYMUTATE
 expect_failure whole_byte 'FANTASY/1 bit-0 eligibility is empty'
+restore
+python3 - <<'PY'
+from pathlib import Path
+p = Path('core/TPW.PS2.Data/ParkPaths.cs')
+s = p.read_text(); old = 'var transforms = terrain.WorldTransforms();'
+assert s.count(old) == 1
+# Drop just the HALLOW t1 marker's yaw, retaining bind scale and translation.
+# The oracle's scenery classifier is shared; its independent marker-position check must
+# catch this even when actual/expected eligible totals continue to agree with one another.
+new = old + '''
+        if (transforms[marker.Offset].M11 < 0 && transforms[marker.Offset].M33 < 0)
+            transforms[marker.Offset] = Matrix4x4.CreateScale(0.1f)
+                * Matrix4x4.CreateTranslation(transforms[marker.Offset].Translation);'''
+p.write_text(s.replace(old, new))
+PY
+expect_failure hallow_rotation 'HALLOW/1 marker rotation ignored'
 restore
 python3 - <<'PY'
 from pathlib import Path
@@ -73,7 +89,15 @@ if [[ $# == 2 ]]; then
     build_game game
     geometry geometry
     expect_geometry_failure rendered_position 'Ada rendered position identity at 100ms' -- --mutate-position
+    expect_geometry_failure hallow_rendered_x 'HALLOW/1 Ada rendered position identity at 100ms' -- --mutate-hallow-x
     geometry geometry-restored
+    TPW_PS2_DISC="$disc" "$godot" --headless --path game res://tests/RseAnimationAudit.tscn > "$work/rse-animation.log" 2>&1
+    code=0
+    TPW_PS2_DISC="$disc" "$godot" --headless --path game res://tests/RseAnimationAudit.tscn -- --mutate-freeze > "$work/rse-freeze.log" 2>&1 || code=$?
+    if [[ $code != 2 ]] || ! rg -F 'rendered vertex identity differs from Main:1' "$work/rse-freeze.log"; then
+        cat "$work/rse-freeze.log"; echo "Expected APS freeze failure missing (exit $code)" >&2; exit 1
+    fi
+    echo "TEETH rse_freeze: expected failure, exit $code"
 fi
 rg "^CYCLE PASS " "$work/restored.log"
 echo "PASS: baseline and restored audits pass with the cell counts above; mutations fail by identity. Logs: $work"

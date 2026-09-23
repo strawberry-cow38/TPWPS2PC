@@ -1,8 +1,8 @@
 # Visitors on the park grid
 
-2026-09-22. **Ada (guest 101) walks to Orbiter or Bugs TV, queues, is accepted by the ride's real RSSE
+2026-09-23. **Ada (guest 101) walks to Orbiter, Bugs TV or Hocus Pocus, queues, is accepted by the ride's real RSSE
 script, comes back through that script's unload mailbox, and walks out.** Both visitor audits
-cover SPACE and FANTASY `terrain_1.mps` and `terrain_2.mps`. The scene renders the disc's character meshes
+cover SPACE, FANTASY and HALLOW `terrain_1.mps` and `terrain_2.mps`. The scene renders the disc's character meshes
 and the script-selected ride APS. Characters disappear while on the ride; seat/head attachments
 are not implemented. Their skeletal animation is (see [Skinned characters](#skinned-characters-2026-09-23)):
 `AnimatedModel` poses a character from any skeletal record of its `.aps`, so a guest walks the
@@ -140,6 +140,100 @@ selector would make it accessible interactively. No broader terrain predicate is
 This is ride-specific: Brain Buster requires the currently unsupported BOUNCE/BOUNCING/
 UNBOUNCE service and Pumpkin Castle uses WALKON/WALKOFF/WALKGET, so merely adding an
 arbitrary HALLOW ride name is insufficient.
+
+### HALLOW integration (2026-09-23)
+
+Hocus Pocus now completes the four visitors on **both HALLOW terrains** in the managed and
+rendered visitor audits. `RseAnimationAudit` also covers all six visitor parks, retaining its
+JUNGLE/Crazy Ape regression. The interactive demo's selector remains SPACE-only.
+
+The independent oracle reads `/rides/candle/Candle.sam`, `.rss`, `.aps` and each original
+terrain before constructing the scenario. SAM supplies ID **2100**, capacity **20**, shape
+`**S** / ***** / ***** / ***** / **2**`, and entrance `(2,4)`. Placement is still the exhaustive
+complete-layout search. These are the fresh census and positions on this branch's `origin/main`
+base; they supersede the older feasibility counts above. The existing scenery projection has
+changed since that probe; this integration does not change it or `CanBuild`.
+
+| Terrain | Bit-0 buildable | Eligible (actual = expected) | Complete layouts | Ride origin | Spawn | Queue front → tail |
+|---|---:|---:|---:|---|---|---|
+| SPACE 1 | 4068 | 2935 | 1481 | (45,30) | (43,39) | (47,33) → (47,36) |
+| SPACE 2 | 3176 | 2287 | 1016 | (33,30) | (31,39) | (35,33) → (35,36) |
+| FANTASY 1 | 3928 | 3026 | 1432 | (38,32) | (35,42) | (39,36) → (39,39) |
+| FANTASY 2 | 3604 | 3313 | 1679 | (36,29) | (33,39) | (37,33) → (37,36) |
+| HALLOW 1 | 3906 | 3218 | 1678 | (45,23) | (43,34) | (47,28) → (47,31) |
+| HALLOW 2 | 3924 | 2867 | 1411 | (41,30) | (39,41) | (43,35) → (43,38) |
+
+**The HALLOW t1 yaw was measured, not applied as an extra visitor flip.** Its heightfield
+marker at MPS **0x2300** has composed X `(-0.1,0,0)`, Z `(0,0,-0.1)` and translation
+`(0,0,-10)` (the node's 180° yaw and -100 translation through the 0.1 bind scale). Current
+`Park.AuthoredPlot` deliberately uses that scale with the marker's **local** bounds, dropping
+its yaw and translation for the model-base grid. The ground triangles confirm this convention:
+
+| Terrain / observation | Actual X, Z | Drawn ground X, Z |
+|---|---|---|
+| HALLOW 1, Ada on queue tail `(47,31)`, 7000ms | (47.49971, -31.50020) | (47.5, -31.50004) |
+| HALLOW 1, ride bind centre on 5×5 footprint | (47.49971, -25.50020) | (47.5, -25.49999) |
+| HALLOW 2, Ada on queue tail `(43,38)`, 7000ms | (43.49973, -38.50021) | (43.5, -38.50008) |
+| HALLOW 2, ride bind centre on 5×5 footprint | (43.49973, -32.50021) | (43.5, -32.50003) |
+
+The rendered audit locates floor triangles from independently derived disc bounds, checks
+the actual claimed cell identities against SAM, and compares the ride's transformed bind
+centre to those drawn cells. It checks Ada's interpolated position, facing, queue texture and
+visibility. Node identity tolerance remains **1e-5**; disc/ground comparisons retain **0.001**
+for exporter rounding. No additional X handling is needed. `Viewer.cs`, `Park.cs`, the placement
+sign and the SPACE/FANTASY row convention are unchanged.
+
+The conservative `ParkPaths` scenery projection still uses the rotated marker's transformed
+AABB. The oracle separately checks its asymmetric far corner, giving origin
+**(-96.19229, -62.10420)**. This prevents the shared scenery dependency from concealing an
+ignored yaw behind agreeing eligible counts. It establishes that transform's position, not
+retail scenery collision parity or a reason to apply the marker's yaw to the drawn grid.
+
+**Timeline from RSS/APS.** The four boardings are 10000/12000/14000/16000ms. Candle resets
+`STARTNOW` by 10000 on each admission and tests a strict negative difference, so RUNNING rises
+at **26100ms**. All three animation calls are `TRIGWAITANIM ... 0 0` followed by `WAIT4ANIM`.
+The oracle checks the complete explicit WAIT sequences between them, rounding each wait to
+100ms independently. Start's waits total **4400ms** after rounding; End's total **4500ms**.
+Sound/event services are neither changed nor used as timing observations.
+
+| APS slot (variant 0) | Frames at 30fps | Script call | Actual queued start | WAIT4ANIM resumes |
+|---|---:|---:|---:|---:|
+| Start | 200 | 26100 | 26100 | 32500 |
+| Main | 100 | 32500 | 32766 | 35800 |
+| End | 240 | 35800 | 36099 | 43800 |
+
+RUNNING falls at **43800ms**. HOP returns Dee/Cy/Ben/Ada at
+**43800/44800/46800/48800ms**; Ada clears the held exit mailbox at **50800ms** and departs
+at **66800ms**. Candle returns directly to loading without Orbiter's empty-ride guard, so
+another **empty** run starts at **60900ms** while Ada is walking out. The oracle checks that
+third RUNNING edge too. Reopening the closed control at 19000ms boards at 19600ms, after the
+next ENDSLICE tick and Candle's explicit loading `WAIT 500`.
+
+The baseline audits also needed updates for existing main changes: head operations now report
+through `HeadChanged`, so the scenario supplies the disc model's `0x80` fitting count and the
+managed audit verifies the same ADDHEAD/DELHEAD guest identities through seat callbacks.
+Placement now keeps model Y=0 and no longer draws debug baseplates, so the rendered audit
+measures claimed floor cells. `RseAnimationAudit` advances the presenter every tick and gives
+its independent APS reference the preceding records' visibility state; recreating a wholly
+visible Main model incorrectly resurrected Crazy Ape's destroyed crate. It requires visibility
+to be stable across each prior record's final ten frames before using that end state.
+
+`teeth.sh` retains the whole-byte, frozen-motion, wrong-HUSH-ID, displaced-node and frozen-APS
+controls. It adds a production mutation dropping only HALLOW t1's marker yaw, and a rendered
+HALLOW-only X reversal. The former must fail on the independent marker position even though
+the shared eligible totals agree; the latter must fail on Ada's position with unchanged counts.
+All verdicts include buildable/eligible counts. No ride sound, `SPAWNSOUND`, `EVENT`, or
+`TRIGWAITANIM` implementation is changed; Thrill Grill is not part of these scenarios.
+
+Validation: managed visitor, rendered visitor and `RseAnimationAudit` all pass on all six parks.
+Whole-byte, ignored-yaw, frozen-motion and wrong-HUSH-ID mutations exit **1**; displaced Ada,
+HALLOW X reversal and frozen APS exit **2**. The ignored-yaw mutation reports **3906 buildable,
+2754 actual / 2754 expected eligible** but fails the marker-position identity: actual origin
+approximately **(0,-10)** versus **(-96.19229,-62.10420)**. Baseline and restored visitor runs
+pass. All builds used `MSBUILDDISABLENODEREUSE=1 DOTNET_CLI_USE_MSBUILD_SERVER=0`; the game was
+built before scenes using the supplied Godot 4.6 mono binary. Complete logs:
+`/tmp/tpw-visitor-teeth.YxSKrG/` (including `rse-animation.log` and all failure controls).
+
 ## Movement and queue ownership
 
 `VisitorSimulation` owns registered guest identities and the states Outside, Walking, Queuing,

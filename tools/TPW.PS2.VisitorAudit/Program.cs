@@ -14,7 +14,7 @@ try
     var data = Wad("DATA");
     var verdicts = new List<string>();
     // FANTASY comes first: reverting CanBuild to Raw0 == 0 must fail before any cycle.
-    foreach (string world in new[] { "FANTASY", "SPACE" })
+    foreach (string world in new[] { "FANTASY", "SPACE", "HALLOW" })
     {
         var wad = Wad(world);
         foreach (int terrain in new[] { 1, 2 })
@@ -51,7 +51,12 @@ static void Cycle(WadArchive wad, WadArchive data, VisitorExpectations expected)
     }
     var traces = new List<VisitorSimulation.Transition>();
     var heads = new List<(RseOpcode Op, int Id)>();
-    sim.Host.EffectRequested += e => { if (e.Opcode is RseOpcode.ADDHEAD or RseOpcode.DELHEAD) heads.Add((e.Opcode, e.Arguments[0])); };
+    var seats = new Dictionary<int, int>();
+    sim.Host.HeadChanged += e =>
+    {
+        if (e.Guest != 0) { seats.Add(e.Slot, e.Guest); heads.Add((RseOpcode.ADDHEAD, e.Guest)); }
+        else { heads.Add((RseOpcode.DELHEAD, seats[e.Slot])); seats.Remove(e.Slot); }
+    };
     sim.Changed += e =>
     {
         traces.Add(e);
@@ -61,7 +66,7 @@ static void Cycle(WadArchive wad, WadArchive data, VisitorExpectations expected)
             int seat = Array.IndexOf(new[] { 101, 202, 303, 404 }, e.GuestId) + 1;
             Eq(e.LetMeOn, 0, e.Name + " consumed mailbox"); Eq(e.OnRide, seat, e.Name + " script occupancy");
             Eq(e.SpaceLeft, expected.Capacity - seat, e.Name + " script capacity left");
-            if (expected.World == "SPACE") Eq(e.StartNow, (int)e.Time + expected.Timeout, e.Name + " script deadline reset");
+            if (expected.World != "FANTASY") Eq(e.StartNow, (int)e.Time + expected.Timeout, e.Name + " script deadline reset");
             Sequence(vm.GuestIds, new[] { 101, 202, 303, 404 }.Take(seat), e.Name + " HUSH identity");
         }
         if (e.Action == "unload requested")
@@ -85,7 +90,7 @@ static void Cycle(WadArchive wad, WadArchive data, VisitorExpectations expected)
         var pose = expected.AdaAt(t);
         Eq(ada.State, pose.State, $"Ada state at {t}"); Eq(ada.Cell, pose.Cell, $"Ada cell at {t}");
         Eq(ada.NextCell, pose.Next, $"Ada next cell at {t}"); Eq(ada.EdgeProgress, pose.Progress, $"Ada progress at {t}");
-        if (expected.World == "SPACE" && t == expected.RunningAt - 100) { Eq(vm["VAR_RUNNING"], 0, "timeout equality must still wait"); Eq(vm["VAR_TEMP"], 0, "deadline minus time at equality"); }
+        if (expected.World != "FANTASY" && t == expected.RunningAt - 100) { Eq(vm["VAR_RUNNING"], 0, "timeout equality must still wait"); Eq(vm["VAR_TEMP"], 0, "deadline minus time at equality"); }
         if (t == expected.RunningAt) Eq(vm["VAR_RUNNING"], 1, "source starts ride");
         if (t == expected.StartAnimationAt) Eq(vm["VAR_COUNT"], 1, "source copies duration");
         if (t >= expected.UnloadAt && t < expected.UnloadAt + 1000) { Eq(vm["VAR_LETMEOFF"], 404, "Dee unload mailbox held"); Eq(vm["VAR_ONRIDE"], 4, "script waits for Dee to clear portal"); }
@@ -100,7 +105,7 @@ static void Cycle(WadArchive wad, WadArchive data, VisitorExpectations expected)
                     $"{g.Name}/{other.Name} cell reservation collision at {t}");
         }
     }
-    Sequence(runningEdges, new[] { (expected.RunningAt, 1), (expected.UnloadAt, 0) }, "ride source/APS running transitions");
+    Sequence(runningEdges, expected.RunningEdges, "ride source/APS running transitions");
     Sequence(traces.Where(e => e.Action == "board").Select(e => (e.GuestId, e.Time)),
         new[] { 101, 202, 303, 404 }.Zip(expected.Board), "FIFO boarding identities/times");
     Sequence(traces.Where(e => e.Action == "unload requested").Select(e => (e.GuestId, e.Time)), new[] { 404, 303, 202, 101 }.Zip(expected.Unload), "LIFO unloading identities/times");
@@ -151,7 +156,7 @@ static void Controls(WadArchive wad, VisitorExpectations expected)
     Sequence(s.Simulation.Queue, new[] { 101, 202, 303, 404 }, "closed FIFO identity");
     Eq(s.Simulation.Machine["VAR_LETMEON"], 0, "closed boarding mailbox"); Eq(s.Simulation.Machine["VAR_ONRIDE"], 0, "closed script occupancy");
     s.AdvanceTo(19000); Eq(ada.EdgeProgress, 0, "closed Ada exact motion floor after one second");
-    s.Simulation.SetRideOpen(true); s.AdvanceTo(19500); Eq(ada.State, VisitorState.Riding, "reopened ride boards Ada");
+    s.Simulation.SetRideOpen(true); s.AdvanceTo(expected.ReopenedBoardBy); Eq(ada.State, VisitorState.Riding, "reopened ride boards Ada");
     // Different caller cadence must preserve actual identities and integer state.
     var one = new VisitorScenario(wad, expected.World); var split = new VisitorScenario(wad, expected.World);
     one.AdvanceTo(expected.DepartAt); foreach (long t in new long[] { 117, 877, 2301, 10049, 17111, 39873, expected.DepartAt }) split.AdvanceTo(t);

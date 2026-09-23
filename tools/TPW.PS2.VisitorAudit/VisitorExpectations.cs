@@ -18,6 +18,14 @@ public sealed class VisitorExpectations
     public int Height { get; }
     public int Capacity { get; }
     public int Id { get; }
+    // Grid positions are model-base coordinates in the current ground renderer. The
+    // heightfield node's yaw/translation belong to its marker, not to these tile vertices.
+    public Vector3 PlotMin { get; }
+    public Vector3 PlotSize { get; }
+    public int GridWidth { get; }
+    public int GridHeight { get; }
+    public Vector3 DrawnPosition(Vector3 cell) => new(PlotMin.X + cell.X / GridWidth * PlotSize.X,
+        cell.Y, -(PlotMin.Z + cell.Z / GridHeight * PlotSize.Z));
     public ParkCell Origin { get; }
     public ParkCell Head { get; }
     public ParkCell Spawn => Head.Offset(-4, 6);
@@ -34,16 +42,21 @@ public sealed class VisitorExpectations
     public int Timeout { get; }
     public long RunningAt { get; }
     public long StartAnimationAt { get; }
+    public sealed record Playback(int Slot, int Frames, long Call, long Start, long Resume);
+    public IReadOnlyList<Playback> Animations { get; }
     public long UnloadAt { get; }
     public long[] Unload { get; }
     public long AdaAck => UnloadAt + 7000;
     public long DepartAt => AdaAck + (Outward.Length - 2) * 1000L;
+    public IReadOnlyList<(long Time, int Running)> RunningEdges { get; }
+    public long ReopenedBoardBy { get; }
     public string Evidence => $"{Label}: {Counts}, sites={Sites}, origin={Origin}, spawn={Spawn}, queue={Head}..{Queue[^1]}, exit={Exit}";
 
     public VisitorExpectations(WadArchive wad, string world, int terrain, Action<string> print)
     {
         World = world; TerrainNumber = terrain;
         Stem = world switch { "SPACE" => "/Rides/orbiter/orbiter", "FANTASY" => "/Rides/bugstv/bugstv",
+            "HALLOW" => "/rides/candle/Candle",
             _ => throw new ArgumentException("No source derivation for " + world) };
         byte[] Read(string path) => wad.Read(wad.Find(path) ?? throw new Exception("Missing " + path));
         var model = new Model(Read($"/terrain/terrain_{terrain}.mps"));
@@ -56,6 +69,24 @@ public sealed class VisitorExpectations
         Counts = $"buildable={grid.Cells.Count(BitClear)}/{f.Count}, eligible={actual}, expected eligible={expected}, Raw0==0={grid.Cells.Count(c => f.Raw0(c.X, c.Z) == 0)}";
         print($"CENSUS {Label}: {Counts}");
         Require(expected > 0 && actual > 0, $"{Label} bit-0 eligibility is empty; {Counts}");
+        var marker = model.Meshes.Single(m => m.Name.Equals("heightfield", StringComparison.OrdinalIgnoreCase));
+        var matrix = model.WorldTransforms()[marker.Offset];
+        float scale = new Vector3(matrix.M11, matrix.M12, matrix.M13).Length();
+        PlotSize = (marker.BoundsMax - marker.BoundsMin) * (scale / 1.004f);
+        PlotMin = marker.BoundsMin * scale + PlotSize * 0.001f;
+        GridWidth = f.Width; GridHeight = f.Height;
+        if (world == "HALLOW" && terrain == 1)
+        {
+            Require(matrix.M11 < 0 && matrix.M33 < 0, $"{Label} marker no longer has its authored yaw; {Counts}");
+            // The conservative scenery projection still uses the transformed marker AABB.
+            // Check an asymmetric marker corner independently of that shared projection so
+            // a translation-only mutation cannot pass by changing both eligibility counts.
+            var far = Vector3.Transform(marker.BoundsMax, matrix);
+            var expectedOrigin = new Vector2(far.X + PlotSize.X * 0.001f, far.Z + PlotSize.Z * 0.001f);
+            Require(Vector2.Distance(grid.Origin, expectedOrigin) < 0.0001f,
+                $"{Label} marker rotation ignored: scenery origin={grid.Origin}, expected={expectedOrigin}, marker=0x{marker.Offset:X}; {Counts}");
+            print($"ROTATION {Label}: marker=0x{marker.Offset:X}, X=({matrix.M11},{matrix.M12},{matrix.M13}), Z=({matrix.M31},{matrix.M32},{matrix.M33}), translation={matrix.Translation}, scenery origin={grid.Origin}; {Counts}");
+        }
         foreach (var c in grid.Cells)
             Require(grid.CanBuild(c) == Eligible(c), $"{Label} bit-0 eligibility at {c}, byte0=0x{f.Raw0(c.X, c.Z):X2}; {Counts}");
         var sam = RideDefinition.Parse(Encoding.ASCII.GetString(Read(Stem + ".sam")));
@@ -103,7 +134,11 @@ public sealed class VisitorExpectations
         foreach (string s in new[] { "TEST VAR_SPACELEFT\nBRANCH_Z run", "HUSH VAR_LETMEON\nADDHEAD VAR_LETMEON\nCOPY VAR_LETMEON 0\nADD VAR_ONRIDE 1\nADD VAR_SPACELEFT -1\nBRANCH_Z go",
             "COPY VAR_COUNT VAR_DURATION", "ADD VAR_COUNT -1\nBRANCH_PV runlp", "COPY VAR_RUNNING 0", "HOP VAR_LETMEOFF\nDELHEAD VAR_LETMEOFF\nCRIT_UNLOCK",
             "TEST VAR_LETMEOFF\nBRANCH_NZ wait2\nADD VAR_ONRIDE -1" }) Has(s);
-        bool bugs = world == "FANTASY";
+        bool bugs = world == "FANTASY", candle = world == "HALLOW";
+        // Controls reopen at 19000. Candle resumes the closed ENDSLICE on the next tick,
+        // then its load loop's explicit WAIT 500 must complete before reading LETMEON.
+        if (candle) Has("LOOPANIM ANIM_Load 0\nWAIT 500\nTEST VAR_SPACELEFT");
+        ReopenedBoardBy = candle ? 19000 + 100 + 500 : 19500;
         Timeout = int.Parse(Regex.Match(source, bugs ? @"SETTIMER (\d+)" : @"ADD VAR_STARTNOW (\d+)").Groups[1].Value);
         int preStart = 0, unloadPause = 0;
         if (bugs)
@@ -117,31 +152,76 @@ public sealed class VisitorExpectations
         }
         else
         {
-            Require(Capacity == 10, "Orbiter SAM capacity must exceed this cohort");
+            Require(Capacity == (candle ? 20 : 10), "Timeout ride SAM capacity must exceed this cohort");
             Has("GETTIME VAR_STARTNOW\nADD VAR_STARTNOW 10000");
             Has("SUB VAR_TEMP VAR_STARTNOW VAR_TEMP\nBRANCH_NV run");
-            Has("COPY VAR_ANIMSET 0"); Has("WAITANIM ANIM_Start VAR_ANIMSET");
-            Has("TRIGWAITANIM ANIM_Main VAR_ANIMSET 0"); Has("WAIT4ANIM"); Has("WAITANIM ANIM_End VAR_ANIMSET");
+            if (candle)
+            {
+                Has("COPY VAR_RUNNING 1\nCOPY VAR_COUNT VAR_DURATION\nTRIGWAITANIM ANIM_Start 0 0");
+                Has("TRIGWAITANIM ANIM_Main 0 0"); Has("TRIGWAITANIM ANIM_End 0 0");
+                Has("WAIT4ANIM\nSTOPSCREAM\nLOOPANIM ANIM_Load 0\nCOPY VAR_RUNNING 0");
+                Has("ADD VAR_ONRIDE -1\nBRANCH_NZ next");
+            }
+            else
+            {
+                Has("COPY VAR_ANIMSET 0"); Has("WAITANIM ANIM_Start VAR_ANIMSET");
+                Has("TRIGWAITANIM ANIM_Main VAR_ANIMSET 0"); Has("WAIT4ANIM"); Has("WAITANIM ANIM_End VAR_ANIMSET");
+            }
         }
         // Full branch resumes after CRIT_UNLOCK; Orbiter's negative timeout is strict.
         RunningAt = Board[^1] + (bugs ? 0 : Timeout) + 100;
         StartAnimationAt = RunningAt + preStart;
         var aps = new Animation(Read(Stem + ".aps"));
         long call = StartAnimationAt, animationEnd = call;
+        var animations = new List<Playback>();
         foreach (int slot in new[] { 4, 5, 6 })
         {
             int frames = aps.Records().First(r => r.Slot == slot).DurationFrames;
             // Engine truncates frames/30 to ms; next one-shot queues behind the full end,
             // while WAITANIM/WAIT4ANIM resume 300ms early (minimum 300), on a 100ms tick.
-            animationEnd = Math.Max(call, animationEnd) + frames * 1000 / 30;
-            call = ((call + Math.Max(300, animationEnd - call - 300) + 99) / 100) * 100;
+            long start = Math.Max(call, animationEnd);
+            animationEnd = start + frames * 1000 / 30;
+            long resume = Tick(call + Math.Max(300, animationEnd - call - 300));
+            if (candle)
+            {
+                // TRIGWAITANIM waits for the queued slot to START before the straight-line
+                // RSS sequence runs. Every explicit WAIT rounds separately to a 100ms tick;
+                // WAIT4ANIM then waits out the original animation deadline. Read only the
+                // waits, not the sound services whose implementations are outside this audit.
+                string name = slot == 4 ? "Start" : slot == 5 ? "Main" : "End";
+                string block = source.Split($"TRIGWAITANIM ANIM_{name} 0 0\n")[1].Split("WAIT4ANIM")[0];
+                var waits = Regex.Matches(block, @"(?m)^WAIT (\d+)$").Select(m => int.Parse(m.Groups[1].Value)).ToArray();
+                int[] checkedWaits = slot == 4 ? new[] { 500, 500, 400, 400, 350, 350, 300, 300, 250, 250, 200, 200, 150 }
+                    : slot == 6 ? new[] { 150, 200, 200, 250, 250, 300, 300, 350, 350, 400, 400, 500, 580 } : Array.Empty<int>();
+                Require(waits.SequenceEqual(checkedWaits), $"{Label} RSS {name} wait sequence changed");
+                long explicitEnd = Tick(start) + waits.Sum(w => Tick(w));
+                resume = Math.Max(resume, explicitEnd);
+                print($"RSS/APS {Label} {name}: frames={frames}, call={call}, start={start}, waits=[{string.Join(',', waits)}], waits end={explicitEnd}, resume={resume}; {Counts}");
+            }
+            animations.Add(new(slot, frames, call, start, resume));
+            call = resume;
         }
+        Animations = animations.AsReadOnly();
         UnloadAt = call;
         // LIFO. First guest clears at +1s; each follower clears +2s later because both
         // current and next cells are reserved. RSS pause delays HOP, not the clearance.
         Unload = new[] { UnloadAt, UnloadAt + 1000 + unloadPause, UnloadAt + 3000 + unloadPause, UnloadAt + 5000 + unloadPause };
+        var edges = new List<(long, int)> { (RunningAt, 1), (UnloadAt, 0) };
+        if (candle)
+        {
+            // Unlike Orbiter, Candle has no ONRIDE guard before returning to load: after
+            // Ada's acknowledgement its timeout starts a second, empty cycle at +10001ms.
+            Has("TEST VAR_RIDECLOSED\nBRANCH_NZ closed\nBRANCH load");
+            Has("GETTIME VAR_STARTNOW\nADD VAR_STARTNOW 10000\nCOPY VAR_SPACELEFT VAR_CAPACITY");
+            long emptyRun = AdaAck + Timeout + 100;
+            Require(emptyRun < DepartAt && DepartAt < emptyRun + UnloadAt - RunningAt,
+                "Candle's second cycle must still be running when Ada departs");
+            edges.Add((emptyRun, 1));
+        }
+        RunningEdges = edges.AsReadOnly();
         print($"DERIVED {Evidence}; boards={string.Join(',', Board)}, running={RunningAt}..{UnloadAt}, Ada unload/ack/depart={Unload[^1]}/{AdaAck}/{DepartAt}");
     }
+    static long Tick(long milliseconds) => (milliseconds + 99) / 100 * 100;
     static void Require(bool b, string message) { if (!b) throw new Exception(message); }
     public void CheckLayout(VisitorScenario s)
     {

@@ -26,7 +26,9 @@ public partial class VisitorAudit : Node3D
     {
         var corners = new List<Vector3>();
         var transforms = model.WorldTransforms();
-        foreach (var mesh in model.Meshes)
+        var floorMeshes = model.Meshes.Where(m => m.Name.Contains("floor", StringComparison.OrdinalIgnoreCase)
+            && model.Triangles(m).Any()).ToArray();
+        foreach (var mesh in floorMeshes.Length > 0 ? floorMeshes : model.Meshes.ToArray())
         {
             var vertices = model.Vertices(mesh).Pos;
             foreach (var surface in model.Triangles(mesh).GroupBy(t => t.Material))
@@ -50,11 +52,14 @@ public partial class VisitorAudit : Node3D
     }
     // Locate a triangle spanning the expected cell square in the actual ground mesh. Its
     // bounds centre lies on the tile's diagonal. Do not infer placement from a tile count.
-    static (MeshInstance3D Mesh, Vector3 Centre) FloorTile(Park park, ParkCell cell)
+    static (MeshInstance3D Mesh, Vector3 Centre) FloorTile(Park park, VisitorExpectations evidence, ParkCell cell)
     {
-        var lo = new Vector3(park.Origin.X + cell.X * Park.CellSize, park.BaseY,
-            park.Origin.Y + (park.Height - cell.Z - 1) * Park.CellSize);
-        var hi = lo + new Vector3(Park.CellSize, 0, Park.CellSize);
+        // Derive corners from the disc marker's local bounds and bind scale, without asking
+        // Park.Origin/PlotSpace/CellCorner or the guest node for the expected tile position.
+        var a = evidence.DrawnPosition(new System.Numerics.Vector3(cell.X, 0, cell.Z));
+        var b = evidence.DrawnPosition(new System.Numerics.Vector3(cell.X + 1, 0, cell.Z + 1));
+        var lo = new Vector3(Math.Min(a.X, b.X), 0, Math.Min(a.Z, b.Z));
+        var hi = new Vector3(Math.Max(a.X, b.X), 0, Math.Max(a.Z, b.Z));
         foreach (var mesh in park.GroundRoot.GetChildren().OfType<MeshInstance3D>().Where(m => m.Mesh is ArrayMesh))
             for (int s = 0; s < mesh.Mesh.GetSurfaceCount(); s++)
             {
@@ -79,7 +84,7 @@ public partial class VisitorAudit : Node3D
             using var world = new AssetLibrary(OS.GetEnvironment("TPW_PS2_DISC"));
             using var data = new AssetLibrary(OS.GetEnvironment("TPW_PS2_DISC")); data.OpenWad("/DATA/DATA.WAD");
             var verdicts = new List<string>();
-            foreach (string worldName in new[] { "FANTASY", "SPACE" })
+            foreach (string worldName in new[] { "FANTASY", "SPACE", "HALLOW" })
             {
                 world.OpenWad($"/DATA/{worldName}.WAD");
                 foreach (int terrain in new[] { 1, 2 })
@@ -94,7 +99,7 @@ public partial class VisitorAudit : Node3D
                     var (bindLo, bindHi) = BindSurfaceBounds(scenario.RideModel);
                     var centre = (bindLo + bindHi) / 2;
                     var holderPosition = new Vector3(view.Park.Origin.X + (evidence.Origin.X + evidence.Width / 2f) * Park.CellSize - centre.X,
-                        view.Park.BaseY - bindLo.Y,
+                        view.Park.BaseY,
                         view.Park.Origin.Y + (view.Park.Height - evidence.Origin.Z - evidence.Height / 2f) * Park.CellSize + centre.Z);
                     var holder = view.Ride.Drawn.Root.GetParent<Node3D>();
                     Check(holder.Position.DistanceTo(holderPosition) < 0.00001f,
@@ -102,15 +107,19 @@ public partial class VisitorAudit : Node3D
                     // The bind centre through the actual holder/mirrored model transform must also
                     // land on the footprint's drawn cells. Construction APS debris is not its centre.
                     var drawnCentre = holder.GlobalTransform * (view.Ride.Drawn.Root.Transform * centre);
-                    var footprint = view.Park.GroundRoot.GetChildren().OfType<MeshInstance3D>()
-                        .Where(m => m.Mesh is BoxMesh).SelectMany(m => Vertices(m, m.GlobalTransform)).ToArray();
+                    // Park no longer draws debug BoxMesh baseplates. Measure the ground
+                    // triangles at every claimed SAM cell instead; they still exist here
+                    // because VisitorParkView builds the floor before placing the ride.
+                    var claimed = scenario.Simulation.Paths.Cells.Where(c => !view.Park.Vacant(c.X, c.Z)).ToArray();
+                    Check(claimed.ToHashSet().SetEquals(evidence.Footprint), "Rendered ride claims different SAM cells");
+                    var footprint = claimed.Select(c => FloorTile(view.Park, evidence, c).Centre).ToArray();
                     var footprintBounds = new Aabb(footprint.First(), Vector3.Zero);
                     foreach (var vertex in footprint) footprintBounds = footprintBounds.Expand(vertex);
                     var footprintCentre = footprintBounds.GetCenter();
                     Check(new Vector2(drawnCentre.X, drawnCentre.Z).DistanceTo(new Vector2(footprintCentre.X, footprintCentre.Z)) < TileTolerance,
                         $"Ride drawn bind centre {drawnCentre} is displaced from drawn footprint {footprintCentre}");
-                    var firstTile = FloorTile(view.Park, evidence.Origin).Centre;
-                    var lastTile = FloorTile(view.Park, evidence.Origin.Offset(evidence.Width - 1, evidence.Height - 1)).Centre;
+                    var firstTile = FloorTile(view.Park, evidence, evidence.Origin).Centre;
+                    var lastTile = FloorTile(view.Park, evidence, evidence.Origin.Offset(evidence.Width - 1, evidence.Height - 1)).Centre;
                     Check(new Vector2(footprintCentre.X, footprintCentre.Z).DistanceTo(
                         new Vector2((firstTile.X + lastTile.X) / 2, (firstTile.Z + lastTile.Z) / 2)) < 0.00001f,
                         "Ride footprint is displaced from the drawn ground cells");
@@ -130,7 +139,7 @@ public partial class VisitorAudit : Node3D
                     finally { reference.Root.Free(); }
                     // Find the actual floor triangles covering Ada's queue cell, then inspect their bound texture.
                     var head = evidence.Head;
-                    var floor = FloorTile(view.Park, head).Mesh;
+                    var floor = FloorTile(view.Park, evidence, head).Mesh;
                     var pixels = world.TextureNear(scenario.TerrainPath, "jpa_que1.ssh");
                     using (var actual = ((StandardMaterial3D)floor.MaterialOverride).AlbedoTexture.GetImage())
                         Check(actual.GetData().SequenceEqual(pixels.Pixels), "queue floor texture bytes differ from jpa_que1");
@@ -141,17 +150,26 @@ public partial class VisitorAudit : Node3D
                     {
                         scenario.AdvanceTo(t); view.Update();
                         if (t >= 100 && OS.GetCmdlineUserArgs().Contains("--mutate-position")) actor.Position = Vector3.Zero;
+                        if (t >= 100 && worldName == "HALLOW" && terrain == 1 && OS.GetCmdlineUserArgs().Contains("--mutate-hallow-x"))
+                            actor.Position = new Vector3(2 * view.Park.Origin.X + view.Park.Width * Park.CellSize - actor.Position.X,
+                                actor.Position.Y, actor.Position.Z);
                         var pose = evidence.AdaAt(t);
                         Check(ada.State == pose.State && ada.Cell == pose.Cell && ada.NextCell == pose.Next && ada.EdgeProgress == pose.Progress,
                             $"Ada simulation differs from derived path/timeline at {t}ms");
                         var p = pose.Position;
                         var wanted = new Vector3(view.Park.Origin.X + p.X * Park.CellSize, view.Park.BaseY + p.Y,
                             view.Park.Origin.Y + (view.Park.Height - p.Z) * Park.CellSize);
-                        Check(actor.Position.DistanceTo(wanted) <= 0.00001f, $"Ada rendered position identity at {t}ms: {actor.Position} vs {wanted}");
+                        Check(actor.Position.DistanceTo(wanted) <= 0.00001f, $"{evidence.Label} Ada rendered position identity at {t}ms: {actor.Position} vs {wanted}");
                         Check(actor.IsVisibleInTree() == pose.Visible, $"Ada rendered visibility at {t}ms");
+                        if (pose.Visible)
+                        {
+                            var position = evidence.DrawnPosition(p);
+                            Check(actor.GlobalPosition.DistanceTo(new Vector3(position.X, position.Y, position.Z)) < TileTolerance,
+                                $"Ada differs from disc-derived tile position at {t}ms");
+                        }
                         if (t == evidence.QueueAt || t == evidence.Board[0] - 1000)
                         {
-                            var tile = FloorTile(view.Park, pose.Cell);
+                            var tile = FloorTile(view.Park, evidence, pose.Cell);
                             Check(actor.GlobalPosition.DistanceTo(tile.Centre) <= TileTolerance,
                                 $"Ada is displaced from her drawn queue tile at {t}ms: {actor.GlobalPosition} vs {tile.Centre}");
                             Check(tile.Mesh == floor, "Ada's drawn tile is not the queue floor");
@@ -159,7 +177,7 @@ public partial class VisitorAudit : Node3D
                         }
                         if (pose.Next is ParkCell next)
                         {
-                            var direction = (FloorTile(view.Park, next).Centre - FloorTile(view.Park, pose.Cell).Centre).Normalized();
+                            var direction = (FloorTile(view.Park, evidence, next).Centre - FloorTile(view.Park, evidence, pose.Cell).Centre).Normalized();
                             Check(actor.Basis.Z.DistanceTo(direction) < 0.00001f, $"Ada facing differs from drawn path direction at {t}ms");
                         }
                         Check(view.Ride.Record == scenario.Simulation.Host.Current.Record && view.Ride.Frame == scenario.Simulation.Host.Frame,

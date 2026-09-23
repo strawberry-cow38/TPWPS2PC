@@ -2,7 +2,7 @@ using System.Text;
 
 namespace TPW.PS2.Data;
 
-/// <summary>Explicit small park construction on SPACE/FANTASY. The disc supplies the terrain,
+/// <summary>Explicit small park construction on SPACE/FANTASY/HALLOW. The disc supplies the terrain,
 /// palette, footprint, capacity, bytecode and APS; this scenario supplies placement, paths,
 /// arrivals and one-cycle duration. The shipped terrain has no placed path network.</summary>
 public sealed class VisitorScenario
@@ -24,7 +24,8 @@ public sealed class VisitorScenario
     {
         World = world.ToUpperInvariant();
         RideStem = World switch { "SPACE" => "/Rides/orbiter/orbiter", "FANTASY" => "/Rides/bugstv/bugstv",
-            _ => throw new ArgumentException("Visitor scenario supports SPACE and FANTASY") };
+            "HALLOW" => "/rides/candle/Candle",
+            _ => throw new ArgumentException("Visitor scenario supports SPACE, FANTASY and HALLOW") };
         if (terrainNumber is not (1 or 2)) throw new ArgumentOutOfRangeException(nameof(terrainNumber));
         TerrainPath = $"/terrain/terrain_{terrainNumber}.mps";
         byte[] Read(string path) => wad.Read(wad.Find(path) ?? throw new InvalidDataException($"Missing {World}{path}"));
@@ -63,6 +64,7 @@ public sealed class VisitorScenario
         byte[] script = Read(RideStem + ".rse");
         Simulation = new VisitorSimulation(paths, new RseProgram(script), RideAnimation,
             Definition.UpgradeCapacity(0) ?? throw new InvalidDataException("Missing SAM capacity"), spawn, queue, exit);
+        Simulation.Host.HeadSlots = RideModel.Fittings.Count(f => (f.Flags & 0x80) != 0);
         Simulation.Schedule(101, "Ada", "/Chars/Girl1a/girl1a.mps", 0);
         Simulation.Schedule(202, "Ben", "/Chars/Boy1a/boy1a.mps", 1500);
         Simulation.Schedule(303, "Cy", "/Chars/Boy2a/boy2a.mps", 3000);

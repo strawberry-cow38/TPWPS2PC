@@ -44,7 +44,7 @@ public sealed class VisitorParkView : IDisposable
         Park.Build(Park.Paths.Field.Width, Park.Paths.Field.Height);
         // Place once using the bind model. The holder keeps that transform when RSSE replaces
         // its child for a new APS record; construction debris cannot move the ride's origin.
-        var holder = new Node3D { Name = "Orbiter" };
+        var holder = new Node3D { Name = scenario.Definition.Name };
         var bind = new AnimatedModel(scenario.RideModel, null, null, _ => (null, false));
         bind.SetFrame(0); holder.AddChild(bind.Root);
         var fp = Park.Footprint.From(scenario.Definition.Shape);
