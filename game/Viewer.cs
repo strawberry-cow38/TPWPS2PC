@@ -156,6 +156,11 @@ public partial class Viewer : Node3D
     /// same model by hand would have two clocks fighting over one mesh.</summary>
     ParkSim _sim;
     readonly List<(ParkRide Ride, AnimatedModel Model, Aps Anim, int Slot, int Variant)> _scripted = new();
+    /// <summary>The voices the scripted rides ask for; see <see cref="RideSounds"/>.</summary>
+    RideSounds _sounds;
+    /// <summary>`--sound-census=N`: run the park for N seconds in REAL frames rather than winding
+    /// it, so every cue gets its voice verdict, then print the census and quit.</summary>
+    int _soundCensus;
     /// <summary>Each scripted ride's own <see cref="Model"/>, by ride id, for its fittings -- the
     /// seats ADDHEAD names are the model's `0x80` fittings, found by slot + 1.</summary>
     readonly Dictionary<int, Model> _rideMeshes = new();
@@ -293,6 +298,9 @@ public partial class Viewer : Node3D
             else if (a == "--place-test") { _buildTest = true; _placeTest = true; }
             else if (a == "--walk-audit") _walkAudit = true;
             else if (a == "--guest-test") _guestTest = true;
+            // ⭐ The census borrows --guest-test's park (corridor, Crazy Ape, guests) and replaces
+            // its wind-and-shoot with real frames: a voice needs frames to advance in.
+            else if (a.StartsWith("--sound-census=")) { int.TryParse(a["--sound-census=".Length..], out _soundCensus); _guestTest = true; }
             else if (a.StartsWith("--guest-ride=")) _guestRide = a["--guest-ride=".Length..];
             else if (a == "--type-audit") _typeAudit = true;
             else if (a == "--ghost-press") { _ghostTest = true; _ghostPress = true; }
@@ -2383,6 +2391,11 @@ public partial class Viewer : Node3D
         if (ride == null) { GD.PrintErr($"[sim] {Leaf(assets.Name)} script would not start: {fault}"); return false; }
         _scripted.Add((ride, model, anim, -1, -1));
         if (mesh != null) _rideMeshes[id] = mesh;
+        // ⭐⭐ AND ITS SOUNDS. The same EffectRequested the particles would use; the voice stands
+        // at the ride root for node -1 (the console's own reading of a negative node: 0x1b9388
+        // takes the instance's position through 0x1b9220) or at the named fitting.
+        _sounds ??= MakeSounds();
+        if (_sounds != null) ride.Host.EffectRequested += fx => OnRideSound(ride, model, fx);
         // ⭐⭐ THE SCRIPT ASKS WHERE ITS NODES ARE, and the placed model answers -- the ANIMATED one,
         // LastWorld through the ride root, not the bind pose -- so WALKON's legs take the real
         // distance between the ride's own fittings instead of the 100 ms floor. Null, never a
@@ -2402,6 +2415,52 @@ public partial class Viewer : Node3D
         _sim.SetOpen(id, true);
         GD.Print($"[sim] {Leaf(assets.Name)} running its script ({ride.Variables.Count} variables), doors {entrance}/{exit}, {headSlots} seats");
         return true;
+    }
+
+    RideSounds MakeSounds()
+    {
+        try
+        {
+            string world = System.IO.Path.GetFileNameWithoutExtension(_lib.WadName ?? "").ToUpperInvariant();
+            if (world.Length == 0) return null;
+            // ⚠ Park 1 first, park 2 second, and the line says which served: a world's two parks
+            // ship different ride maps and the game loads exactly one.
+            var s = new RideSounds(this, new SoundCatalogue(_lib.Disc, world, 1), new SoundCatalogue(_lib.Disc, world, 2));
+            GD.Print($"[snd] catalogue for {world}: park maps 1 and 2, positional voices reach {RideSounds.MaxDistance} units");
+            return s;
+        }
+        catch (Exception e) { GD.PrintErr($"[snd] no sound catalogue: {e.Message}"); return null; }
+    }
+
+    void OnRideSound(ParkRide ride, AnimatedModel model, RsePreviewHost.Effect fx)
+    {
+        var a = fx.Arguments;
+        try
+        {
+            switch (fx.Opcode)
+            {
+                case RseOpcode.EVENT or RseOpcode.ADDOBJ when a.Count >= 3 && SoundCatalogue.IsSoundGroup(a[0]):
+                {
+                    if (model?.Root == null || !IsInstanceValid(model.Root)) return;
+                    int node = a[1];
+                    Vector3? at = node < 0 ? model.Root.GlobalPosition : NodeWorld(ride.Id, node, 0x200);
+                    int tag = fx.Opcode == RseOpcode.ADDOBJ && a.Count > 3 ? a[3] : 1000;
+                    _sounds.Cue(ride.Id, ride.Name, fx.Time, fx.Opcode, a[0], node, a[2], tag,
+                                at ?? model.Root.GlobalPosition, fellBack: at == null && node >= 0);
+                    break;
+                }
+                case RseOpcode.KILLOBJ when a.Count >= 1: _sounds.Kill(ride.Id, a[0]); break;
+                case RseOpcode.FADEOBJ when a.Count >= 1: _sounds.Fade(ride.Id, a[0]); break;
+            }
+        }
+        catch (Exception e) { GD.PrintErr($"[snd] {ride.Name}: {e.Message}"); }
+    }
+
+    void SoundCensusReport()
+    {
+        if (_sounds == null) { GD.Print("[snd] census: no catalogue, nothing played"); return; }
+        GD.Print($"[snd] census after {_parkTicks * ParkSim.TickMilliseconds / 1000.0:F1}s of park time, {_scripted.Count} scripted rides");
+        GD.Print(_sounds.Summary());
     }
 
     /// <summary>Hand every scripted ride the frame its own script asked for.
@@ -2439,7 +2498,7 @@ public partial class Viewer : Node3D
         for (int i = _scripted.Count - 1; i >= 0; i--)
         {
             var (ride, model, anim, slot, variant) = _scripted[i];
-            if (model?.Root == null || !GodotObject.IsInstanceValid(model.Root)) { _scripted.RemoveAt(i); continue; }
+            if (model?.Root == null || !GodotObject.IsInstanceValid(model.Root)) { _sounds?.Drop(ride.Id); _scripted.RemoveAt(i); continue; }
             int want = ride.Slot, wantVariant = ride.Variant;
             if (want < 0) continue;
             if (want != slot || wantVariant != variant)
@@ -2502,13 +2561,22 @@ public partial class Viewer : Node3D
     /// walker un-posed. Where says which file the pose came from, or why there is none.</summary>
     readonly Dictionary<int, (AnimatedModel Drawn, Aps.Record Sit, string Where)> _drawn = new();
     /// <summary>Each actor's two ways of standing on its node: the whole kid with its feet at the
-    /// origin, or its head alone with the head's base at the origin -- with the body and legs
+    /// origin, or its head alone hung on the origin by RiderHeadAnchor -- with the body and legs
     /// meshes to hide for the second, and the head's size for the log.</summary>
-    readonly Dictionary<int, (Vector3 Feet, Vector3 HeadBase, List<MeshInstance3D> Body, string Head)> _parts = new();
+    readonly Dictionary<int, (Vector3 Feet, Vector3 HeadAt, List<MeshInstance3D> Body, string Head)> _parts = new();
     readonly HashSet<int> _headOnly = new();
     /// <summary>⚠ Unused for a head-only rider: a head has nothing to pose. Left wired for whatever
     /// shows a whole guest in a seat -- an open-topped ride, or the queue -- rather than ripped out.</summary>
     const bool PoseSeatedRiders = false;
+    /// <summary>Where a rider's head hangs on its seat fitting. ADDHEAD carries no offset, so the
+    /// fitting is either the head's BASE or its CENTRE. Base was measured first: the head's
+    /// bottom -0.01 from the helper, its top 0.12-0.18 above the car's rim -- and master looked
+    /// at that picture twice, Hot Pot and ape, and called the heads floating. So the centre
+    /// reading is drawn: the head sunk to its middle, top showing, about half a head (~0.14)
+    /// lower. Base stays reachable here so the two readings can be compared without an
+    /// archaeology dig; the census prints both distances whichever is drawn.</summary>
+    enum HeadAnchor { Base, Centre }
+    const HeadAnchor RiderHeadAnchor = HeadAnchor.Centre;
     /// <summary>Who is currently held in the sitting pose.</summary>
     readonly HashSet<int> _posed = new();
     readonly Dictionary<string, Aps> _charAnims = new(StringComparer.OrdinalIgnoreCase);
@@ -3001,17 +3069,19 @@ public partial class Viewer : Node3D
                 foreach (var c in n.GetChildren()) Walk(c);
             }
             Walk(drawn.Root);
-            var headBase = feet;
+            var headAt = feet;
             if (headName != null)
             {
                 var (hlo, hhi) = Park.DrawnBounds(drawn.Root, inParent: true, onlyNamed: headName);
-                // The head's bounds are measured with the feet offset applied, so the base comes off it.
-                headBase = feet - new Vector3((hlo.X + hhi.X) / 2, hlo.Y, (hlo.Z + hhi.Z) / 2);
+                // The head's bounds are measured with the feet offset applied, so the anchor comes off
+                // it: the head's base, or its centre half a head lower -- RiderHeadAnchor says which.
+                float hang = RiderHeadAnchor == HeadAnchor.Centre ? (hlo.Y + hhi.Y) / 2 : hlo.Y;
+                headAt = feet - new Vector3((hlo.X + hhi.X) / 2, hang, (hlo.Z + hhi.Z) / 2);
                 GD.Print($"[guest] #{id} wears {Leaf(path)}, {hi.Y - lo.Y:F2} tall, {hi.X - lo.X:F2} wide; "
-                       + $"head {headName} {hhi.Y - hlo.Y:F2} tall x {hhi.X - hlo.X:F2} wide, base {hlo.Y:F2} above the feet");
+                       + $"head {headName} {hhi.Y - hlo.Y:F2} tall x {hhi.X - hlo.X:F2} wide, base {hlo.Y:F2} above the feet, hung by its {RiderHeadAnchor}");
             }
             else GD.Print($"[guest] #{id} wears {Leaf(path)}, {hi.Y - lo.Y:F2} tall, {hi.X - lo.X:F2} wide -- NO HEAD MESH FOUND, a rider will show whole");
-            _parts[id] = (feet, headBase, body, headName ?? "(none)");
+            _parts[id] = (feet, headAt, body, headName ?? "(none)");
             _guestRoot.AddChild(actor);
             _actors[id] = actor;
             return actor;
@@ -3086,7 +3156,7 @@ public partial class Viewer : Node3D
         if (headOnly == _headOnly.Contains(id)) return;
         bool canHead = headOnly && parts.Head != "(none)";
         foreach (var mi in parts.Body) if (IsInstanceValid(mi)) mi.Visible = !canHead;
-        d.Drawn.Root.Position = canHead ? parts.HeadBase : parts.Feet;
+        d.Drawn.Root.Position = canHead ? parts.HeadAt : parts.Feet;
         if (canHead) _headOnly.Add(id); else _headOnly.Remove(id);
     }
 
@@ -3404,7 +3474,7 @@ public partial class Viewer : Node3D
                 string partTop = float.IsNaN(seat.PartTop) ? "n/a" : seat.PartTop.ToString("F2");
                 GD.Print($"[guest] {label} height: rider #{id} head {rp.Head} Y {hl.Y:F2}..{hh.Y:F2} (all visible {al.Y:F2}..{ah.Y:F2}{(headOnlyDrawn ? "" : " -- NOT JUST THE HEAD")}); "
                        + $"seat helper Y {helperY:F2}; part {seat.Part} top {partTop}; "
-                       + $"head base - helper {hl.Y - helperY:+0.00;-0.00}"
+                       + $"head base - helper {hl.Y - helperY:+0.00;-0.00}, head centre - helper {(hl.Y + hh.Y) / 2 - helperY:+0.00;-0.00} (hung by {RiderHeadAnchor})"
                        + (float.IsNaN(seat.PartTop) ? "" : $", helper - part top {helperY - seat.PartTop:+0.00;-0.00}, head top - part top {hh.Y - seat.PartTop:+0.00;-0.00}"));
             }
             // ⚠ THE VERDICT IS A DIRECT TEST, not a reading of R's axis: the kid's forward (its
@@ -5781,13 +5851,23 @@ public partial class Viewer : Node3D
         // `_Process`, so a one-shot flag latched here burns before the park contains anything --
         // which is what happened: the log showed three scripts starting and the shot still came
         // back unwound. Latch only once there is something to wind.
-        if (_shotPath != null)
+        if (_shotPath != null && _soundCensus <= 0)
         {
             // ⚠ Not under --guest-test: its capture branch winds the park itself, in two stages.
             if (!_guestTest && !_shotWound && _scripted.Count > 0) { _shotWound = true; WindPark(_shotFrame); }
         }
         // ⭐ Rides AND people, on the console's tick, with the screen interpolating between ticks.
+        // ⚠ And under a sound census even with a shot asked for: a wound park fires every cue in
+        // one frame and no voice can advance, which is exactly the "resolves but never plays"
+        // that the census exists to catch.
         else if (_playing && _mode == Mode.Park) StepPark(delta);
+        _sounds?.Step(delta);
+        if (_soundCensus > 0 && _mode == Mode.Park && _parkTicks * ParkSim.TickMilliseconds >= _soundCensus * 1000L)
+        {
+            SoundCensusReport();
+            if (_shotPath != null) SaveShot(_shotPath);
+            GetTree().Quit(); _soundCensus = 0; return;
+        }
         // ⭐ The selection breathes on its own clock, and like the console's it stands still
         // while the game is paused.
         if (_mode == Mode.Park) UpdateHover();
@@ -5838,7 +5918,8 @@ public partial class Viewer : Node3D
             // after the first _Process, and a stage keyed to frame ten would photograph an empty
             // park. Each grab is two frames after its stage -- one for the camera, one for the draw.
             const int warm = 10;
-            if (_guestTest && _guests != null)
+            if (_soundCensus > 0) { }   // the census ends itself above, after its seconds of real frames
+            else if (_guestTest && _guests != null)
             {
                 if (_guestStage == 0 && _shotWait >= warm)
                 { GuestTestCamera(); GuestTestStage("A", 1500); _guestStage = 1; _guestSince = _shotWait; }
