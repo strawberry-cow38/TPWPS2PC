@@ -85,22 +85,31 @@ public sealed class Placement
     /// <summary>The tile just OUTSIDE a door -- where a queue begins and where a path from the
     /// exit begins, which is what the console starts its runs on.
     ///
-    /// ⚠ Found by stepping off the footprint, NOT from the compass letter the exit carries. That
-    /// letter is read -- N, S, E or W -- but what it means is not established: `b_drip` puts its N
-    /// beside the entrance on the last row while `acorn` puts an S on the FIRST row, which no
-    /// single reading of "faces north" fits. Stepping out of the shape needs no such reading.</summary>
+    /// ⭐⭐ THE EXIT USES ITS OWN FACING, out of the shape string. All 86 compass cells on the disc
+    /// point out of their footprint under `N` = +y, `E` = +x, with no exceptions, so the letter
+    /// says which tile without any stepping about. ⚠ I had this as unusable on one test of four.
+    ///
+    /// ⚠ THE ENTRANCE HAS NO LETTER, so it is still found by stepping off the shape -- and that is
+    /// a coin toss for some of them: 137 entrances on the disc have exactly one free side, but 34
+    /// have more than one. The order below is the tie-break, and it is a CHOICE, not a reading.</summary>
     public (int X, int Y)? OutsideOf((int X, int Y) door, int cursorX, int cursorY)
     {
         if (!Active) return null;
         var (cx, cy) = CornerFor(cursorX, cursorY);
         int fx = door.X - cx, fy = door.Y - cy;
-        foreach (var (dx, dy) in new[] { (0, 1), (0, -1), (1, 0), (-1, 0) })
+
+        bool Inside(int nx, int ny) => nx >= 0 && ny >= 0 && nx < Turned.Width && ny < Turned.Height
+                                    && Turned.Cells[nx, ny];
+
+        // The exit knows which way it faces; take it and nothing else.
+        if (fx == Turned.ExitX && fy == Turned.ExitY && (Turned.ExitDX != 0 || Turned.ExitDY != 0))
         {
-            int nx = fx + dx, ny = fy + dy;
-            bool inside = nx >= 0 && ny >= 0 && nx < Turned.Width && ny < Turned.Height
-                       && Turned.Cells[nx, ny];
-            if (!inside) return (cx + nx, cy + ny);
+            int nx = fx + Turned.ExitDX, ny = fy + Turned.ExitDY;
+            return Inside(nx, ny) ? null : (cx + nx, cy + ny);
         }
+
+        foreach (var (dx, dy) in new[] { (0, 1), (0, -1), (1, 0), (-1, 0) })
+            if (!Inside(fx + dx, fy + dy)) return (cx + fx + dx, cy + fy + dy);
         return null;
     }
 
@@ -111,6 +120,7 @@ public sealed class Placement
         var cells = fp.Cells; int w = fp.Width, h = fp.Height;
         int ex = fp.EntryX, ey = fp.EntryY;
         int xx = fp.ExitX, xy = fp.ExitY;
+        int xdx = fp.ExitDX, xdy = fp.ExitDY;
         for (int t = 0; t < (turns & 3); t++)
         {
             var next = new bool[h, w];
@@ -119,8 +129,12 @@ public sealed class Placement
                     next[h - 1 - y, x] = cells[x, y];
             if (ex >= 0 && ey >= 0) (ex, ey) = (h - 1 - ey, ex);
             if (xx >= 0 && xy >= 0) (xx, xy) = (h - 1 - xy, xx);
+            // ⭐ The FACING turns with the cell, by the same map: a point (x,y) goes to (h-1-y, x),
+            // so a direction (dx,dy) goes to (-dy, dx). A door whose tile moved and whose facing
+            // did not would point into the ride.
+            (xdx, xdy) = (-xdy, xdx);
             cells = next; (w, h) = (h, w);
         }
-        return new Park.Footprint(w, h, cells, ex, ey, xx, xy);
+        return new Park.Footprint(w, h, cells, ex, ey, xx, xy, xdx, xdy);
     }
 }

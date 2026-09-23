@@ -41,11 +41,19 @@ public sealed class Park
     ///
     /// ⭐⭐ THE SHAPE STRING IS A LEGEND, read off every .sam on the disc: `*` an ordinary cell,
     /// `2` the ENTRANCE (171 of them, one in nearly everything placeable), and `N` `S` `E` `W` the
-    /// EXIT -- a cell marked with the way it faces (`b_drip` is `*2N*`, `acorn` has `**S**` at one
-    /// end and `**2**` at the other). `<` and `>` come in pairs on track rides and `+` and `.`
-    /// appear in a handful; none of those are doors and none are claimed to be.</summary>
+    /// EXIT -- a cell marked with THE WAY IT FACES.
+    ///
+    /// ⭐⭐ THE LETTER IS THE FACING, and the convention is `N` = +y down the listed rows, `E` = +x.
+    /// Under that reading ALL 86 compass cells on the disc point OUT of their own footprint, with
+    /// no exceptions; the other three combinations score 3, 0 and 83. A reading that needs no
+    /// exceptions over every shape on the disc is the reading.
+    ///
+    /// ⚠ I said earlier that no single reading fit, having tried ONE of the four. It fits.
+    ///
+    /// `&lt;` and `&gt;` come in pairs on track rides and `+` and `.` appear in a handful; none of those
+    /// are doors and none are claimed to be.</summary>
     public readonly record struct Footprint(int Width, int Height, bool[,] Cells, int EntryX, int EntryY,
-                                            int ExitX = -1, int ExitY = -1)
+                                            int ExitX = -1, int ExitY = -1, int ExitDX = 0, int ExitDY = 0)
     {
         public static Footprint From(string[] shape)
         {
@@ -53,7 +61,7 @@ public sealed class Park
             if (rows.Length == 0) return new Footprint(0, 0, new bool[0, 0], -1, -1);
             int w = rows.Max(r => r.TrimEnd().Length), h = rows.Length;
             var cells = new bool[w, h];
-            int ex = -1, ey = -1, xx = -1, xy = -1;
+            int ex = -1, ey = -1, xx = -1, xy = -1, xdx = 0, xdy = 0;
             for (int y = 0; y < h; y++)
                 for (int x = 0; x < rows[y].TrimEnd().Length; x++)
                 {
@@ -61,9 +69,16 @@ public sealed class Park
                     if (c is ' ' or '\t') continue;
                     cells[x, y] = true;
                     if (c == '2') { ex = x; ey = y; }
-                    else if (c is 'N' or 'S' or 'E' or 'W') { xx = x; xy = y; }
+                    else if (c is 'N' or 'S' or 'E' or 'W')
+                    {
+                        xx = x; xy = y;
+                        (xdx, xdy) = c switch
+                        {
+                            'N' => (0, 1), 'S' => (0, -1), 'E' => (1, 0), _ => (-1, 0),
+                        };
+                    }
                 }
-            return new Footprint(w, h, cells, ex, ey, xx, xy);
+            return new Footprint(w, h, cells, ex, ey, xx, xy, xdx, xdy);
         }
 
         public int Occupied
