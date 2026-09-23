@@ -129,3 +129,37 @@ dotnet run --project tools/TPW.PS2.LauncherAudit -c Release -- --disc "$DISC"
 The real disc is read in place and still recognized. Launcher builds. Broader structural
 validation, alternate sector layouts and target-platform UI testing are not established
 by tightening this filename predicate.
+
+## Actual window event-path audit (headless, not Windows release sign-off)
+
+`tools/TPW.PS2.LauncherUiAudit` now constructs the actual MainWindow in Avalonia's
+headless dispatcher and raises its routed button events. Production uses the same
+real command/process defaults as before; an internal constructor permits a fixture
+root and fake external-effect services. Startup and disc discovery explicitly refuse
+to run in that isolated host, including accidental Retry-to-startup dispatch.
+
+The 22 assertions cover failed builds that emit a DLL, receipt rejection on refresh,
+Retry rebuilding/launching only after success, throwing/null process starts, preserved
+error messages, recovery-window visibility, close after successful handoff, changed
+artifacts, disabled busy controls, duplicate-click suppression, and asynchronous
+failure recovery. The fake start boundary also checks exact project arguments, a disc
+path with spaces/brackets passed through the environment, and shell-free execution.
+The actual action task is awaited; fixture disposal releases pending work and waits
+before deleting its own files.
+
+Four deliberate temporary source mutations were rejected by the audit: broken Retry
+dispatch (7 failed assertions), error overwrite (3), closing the window on failure (5),
+and bypassing the final receipt gate (3). Original source was restored and the green
+audit rerun. Two source reviews checked fixture isolation and assertion strength;
+the first review prompted environment guards, window-visibility checks, launch-contract
+checks and awaited disposal before the final review found no concrete blocker.
+
+```sh
+dotnet run --project tools/TPW.PS2.LauncherUiAudit -c Release
+```
+
+No actual Git command, viewer process, HTTP update, disc lookup, or self-replacement
+runs in this audit. Synthetic receipt/artifact files are confined to a unique temporary
+folder. This improves the earlier source-only UI coverage, but does not test native
+mouse input, visual layout, accessibility, Windows file locks, or a real installer/
+self-update handoff. Those target-platform/manual gates remain open.

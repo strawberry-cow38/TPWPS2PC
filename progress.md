@@ -408,3 +408,28 @@ packages. Integrate it without overwriting the peer's source/findings, rerun the
 matrix and launcher audit, and only then push normally. Next independent release
 validation should target actual launcher/UI error paths or a bounded scope agreed with
 the renderer maintainer, not infer visual correctness from these data-layer gates.
+
+## Actual launcher window event-path validation
+
+Added `TPW.PS2.LauncherUiAudit` using the matching Avalonia.Headless 11.3.18 package.
+It invokes the real MainWindow routed button handler under a headless dispatcher,
+with controlled commands/processes and a unique temporary installation directory.
+The production constructor retains real defaults; internal seams allow isolation.
+Environment startup/discovery are explicitly blocked in the fixture so even an
+accidental Retry-to-startup cannot touch real update/discovery paths.
+
+22 assertions pass: build failure with emitted output, preserved failure/Retry,
+refresh readiness, successful retry, throwing/null process start, artifact mutation,
+actual window visibility/closure, exact launch arguments/disc environment, busy
+controls, duplicate events, and awaited asynchronous completion/disposal.
+
+Four deliberate broken variants were rejected (7/3/5/3 assertions respectively):
+Retry dispatch removed, launch error overwritten, close on error, final receipt gate
+bypassed. Original source restored; final green run completed. Two review passes
+strengthened isolation, visibility and task-lifetime coverage. Evidence:
+`tpw-launcher-ui-final.log`, `tpw-launcher-ui-mutations/manifest.json`.
+
+This closes the previous source-only UI-event gap, not native Windows/visual/input/
+self-update gates. No real Git, engine launch, HTTP update or disc lookup is executed
+by the UI fixture. No renderer/needs core files touched. Update release matrix and
+publish explicit paths after final builds and upstream reconciliation.

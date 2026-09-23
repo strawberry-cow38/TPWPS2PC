@@ -49,9 +49,11 @@ public class MainWindow : Window
         FontFamily = new FontFamily("Consolas,monospace"), FontSize = 12,
     };
 
+    internal Task PendingAction { get; private set; } = Task.CompletedTask;
     Mode _mode = Mode.Busy;
     Mode _retryMode = Mode.Busy;
     readonly ViewerBuildReceipt _receipt;
+    readonly LauncherWindowServices _services;
     readonly Button _locate = new() { Content = "Locate disc…", MinWidth = 110 };
     DiscResult _disc;
     GodotChoice _godot;
@@ -60,11 +62,14 @@ public class MainWindow : Window
     string ProjectDir => Path.Combine(_repoDir, "game");
     string AssemblyPath => Path.Combine(ProjectDir, ".godot", "mono", "temp", "bin", "Debug", "TPWPS2Viewer.dll");
 
-    public MainWindow()
+    public MainWindow() : this(AppContext.BaseDirectory, new LauncherWindowServices(), true) { }
+
+    internal MainWindow(string baseDirectory, LauncherWindowServices services, bool startAutomatically)
     {
+        _services = services;
         Title = "Theme Park World (PS2) — asset viewer";
         Width = 660; Height = 600; Background = Bg;
-        _baseDir = AppContext.BaseDirectory;
+        _baseDir = baseDirectory;
         _repoDir = Path.Combine(_baseDir, "TPWPS2PC");
 
         _receipt = new ViewerBuildReceipt(Path.Combine(_baseDir, "viewer-build.json"));
@@ -75,7 +80,12 @@ public class MainWindow : Window
             try { await LocateAsync(); }
             catch (Exception e) { Retry(Mode.NeedDisc, e.Message); }
         };
-        _action.Click += async (_, _) => await OnActionAsync();
+        _action.Click += async (_, _) =>
+        {
+            if (_mode == Mode.Busy) return;
+            PendingAction = OnActionAsync();
+            await PendingAction;
+        };
 
         Content = new ScrollViewer
         {
@@ -102,7 +112,7 @@ public class MainWindow : Window
                 }
             }
         };
-        _ = StartupAsync();
+        if (startAutomatically) _ = StartupAsync();
     }
 
     static Control Box(string title, params Control[] rows)
@@ -120,6 +130,8 @@ public class MainWindow : Window
         SetMode(Mode.Busy, "…", "Looking for your disc…");
         try
         {
+            if (!_services.AllowEnvironmentActions)
+                throw new InvalidOperationException("Environment startup disabled by the isolated host.");
             if (await CheckSelfUpdateAsync()) return;              // may close the window
             Refresh(DiscLocator.Probe());
             _godot = GodotLocator.Find(console: false);
@@ -220,7 +232,7 @@ public class MainWindow : Window
     /// failure cannot masquerade as a successful update.</summary>
     async Task<bool> InstallOrUpdateAsync()
     {
-        string git = Which("git");
+        string git = _services.FindExecutable("git");
         if (git == null) { Log("git not found on PATH — install Git for Windows."); return false; }
 
         // Invalidate BEFORE clone/reset/delete. If this fails, do not touch the
@@ -262,7 +274,7 @@ public class MainWindow : Window
 
     async Task<(string local, string remote)> HeadsAsync()
     {
-        string git = Which("git");
+        string git = _services.FindExecutable("git");
         if (git == null) return (null, null);
         string local = (await CaptureAsync(git, new[] { "-C", _repoDir, "rev-parse", "HEAD" }))?.Trim();
         string remote = null;
@@ -275,7 +287,7 @@ public class MainWindow : Window
 
     async Task PlayAsync()
     {
-        string git = Which("git");
+        string git = _services.FindExecutable("git");
         string revision = git == null ? null : (await CaptureAsync(git, new[] { "-C", _repoDir, "rev-parse", "HEAD" }))?.Trim();
         if (!_receipt.CanLaunch(revision, AssemblyPath))
         {
@@ -291,7 +303,7 @@ public class MainWindow : Window
         psi.Environment["TPW_PS2_DISC"] = _disc.Path;
         Log($"launching {Path.GetFileName(_godot.Path)}");
         Process child;
-        try { child = Process.Start(psi); }
+        try { child = _services.Start(psi); }
         catch (Exception e)
         {
             // ⚠⚠ THE LAUNCHER MUST SURVIVE A FAILED START. It closes itself on a good hand-off
@@ -324,6 +336,8 @@ public class MainWindow : Window
 
     async Task LocateAsync()
     {
+        if (!_services.AllowEnvironmentActions)
+            throw new InvalidOperationException("Environment discovery disabled by the isolated host.");
         var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
             Title = "Select your Theme Park World disc image",
@@ -402,7 +416,7 @@ public class MainWindow : Window
 
     // ------------------------------------------------------------------ process plumbing
 
-    static string Which(string exe)
+    internal static string Which(string exe)
     {
         foreach (var dir in (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator))
         {
@@ -420,7 +434,7 @@ public class MainWindow : Window
     {
         var budget = Path.GetFileNameWithoutExtension(exe).Equals("dotnet", StringComparison.OrdinalIgnoreCase)
             ? TimeSpan.FromMinutes(10) : TimeSpan.FromMinutes(3);
-        var result = await LauncherProcess.RunAsync(exe, args, cwd, budget);
+        var result = await _services.Execute(exe, args, cwd, budget);
         if (result.Error != null) Log("command error: " + result.Error);
         if (result.TimedOut) Log("command timed out — stopped waiting; retry when ready");
         if (result.Truncated) Log("large command output: showing only its diagnostic tail");
@@ -432,7 +446,7 @@ public class MainWindow : Window
 
     async Task<string> CaptureAsync(string exe, string[] args)
     {
-        var result = await LauncherProcess.RunAsync(exe, args, _baseDir, TimeSpan.FromSeconds(30));
+        var result = await _services.Execute(exe, args, _baseDir, TimeSpan.FromSeconds(30));
         if (result.TimedOut) Log("repository status command timed out");
         if (result.Error != null) Log("repository status unavailable: " + result.Error);
         // A partial hash/status response is not evidence about the checkout.

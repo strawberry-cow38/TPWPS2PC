@@ -28,6 +28,7 @@ and limitations rather than inferring release readiness from a successful build.
 ```sh
 # .NET 8 and Python 3; use your own existing disc image in place.
 dotnet run --project tools/TPW.PS2.LauncherAudit -c Release
+dotnet run --project tools/TPW.PS2.LauncherUiAudit -c Release
 python3 -m unittest discover -s tools -p test_audit_matrix.py
 python3 tools/audit_matrix.py --disc "$DISC" --out "$NEW_EVIDENCE_DIR"
 ```
