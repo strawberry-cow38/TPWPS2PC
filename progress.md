@@ -345,3 +345,26 @@ Next: independent long-stall/catch-up measurements around the needs clock versus
 park/guest clocks. Establish observed behavior first; agree policy with the needs maintainer
 before edits to its files. Continue coordinating rendered current-revision smoke and never
 substitute earlier generated captures for present visual sign-off.
+
+## Long-stall clock measurement — decision pending with needs maintainer
+
+A scratch-only real-disc JUNGLE probe now demonstrates a timing-policy mismatch,
+using a controlled .25-second rise period and deterministic +1 hunger from 10:
+
+* One coordinator Step(10): offered 10s; ParkSim.Time=320ms, GuestWalk.Time=320ms,
+  hunger=50.
+* Eight Step(.04): offered .32s; both clocks=320ms, hunger=11.
+* 250 Step(.04): offered 10s; both clocks=10000ms, hunger=50.
+
+The existing park/walk catch-up cap deliberately discards excess time; needs currently
+receives raw deltaSeconds. This establishes the difference, not a retail timing rule.
+Shared the exact results with cow tools and proposed driving needs from actual park
+clock advancement. Await that policy decision before changing its active core files.
+No new red assertion was put on main and no existing clock check was weakened.
+
+Reproduction artifact outside Git: `tpw-needs-clock-probe/probe.csproj` and Program.cs;
+log `tpw-needs-clock-stall-evidence.log`. Uses the user's disc in place, no payload files.
+The ordinary 24 needs assertions still cover storage, zero-time and normal frame rates,
+not stalled-frame policy. While that decision is pending, continue independent release/
+launcher validation rather than idle. Check recent channel messages before choosing
+scope, and keep rendered needs-bubble work with its current maintainer.
