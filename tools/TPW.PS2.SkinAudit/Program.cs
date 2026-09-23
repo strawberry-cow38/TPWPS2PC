@@ -154,6 +154,90 @@ foreach (var entry in models)
             if (err > worst) { worst = err; worstAt = $"{mesh.Name} slot {s} (bone{(skin.Count[map[s]] > 1 ? "s" : "")} {string.Join("+", Enumerable.Range(skin.First[map[s]], skin.Count[map[s]]).Select(j => HelperName(skin.Bone[j])))})"; }
         }
     }
+    // ⭐⭐ WHICH OF TWO THINGS A BLENDED MISS IS. On a consistent skin every influence of a vertex,
+    // taken ALONE through its own bone's transform, lands on that vertex (boy1a: 0.01 on all 265
+    // influences) -- the exporter built each one from the same authored point. So fit each bone
+    // from its SINGLE-influence vertices only, where the bone byte is beyond doubt, and score the
+    // influences of BLENDED vertices with it, first influence and later ones apart. If the FIRST
+    // influence misses too, no misreading of the later bone bytes can be the cause; and if no
+    // fitted bone brings a later influence within 5 units, no re-mapping of them can be either.
+    // Measured: girl2a's Head as a first influence misses by 315, guard's Head by 172, boy2a's
+    // hands as later influences by 250-315, and 0 of 170 later influences re-map anywhere --
+    // those skins carry per-influence offsets that cancel only in the weighted blend (guard's
+    // Spine and Hand blends are consistent at 0.01 while its Head and Foot blends are not, a
+    // per-VERTEX property, which is what Physique's deformable vertices would leave behind).
+    // The bone bytes are used here only as group labels: nothing below rests on the helper-index
+    // reading or on the bind rotation rule.
+    double firstMiss = 0, laterMiss = 0, laterAny = 0; int firstN = 0, laterN = 0, laterRemap = 0;
+    foreach (var mesh in model.Meshes)
+    {
+        if (!skins.TryGetValue(mesh.Index, out var sk)) continue;
+        var map = model.AnimVertexMap(mesh); var (pos, _, _) = model.Vertices(mesh);
+        if (map == null) continue;
+        var slotOf = new int[sk.VertexCount]; Array.Fill(slotOf, -1);
+        for (int s = 0; s < map.Length; s++) if (slotOf[map[s]] < 0) slotOf[map[s]] = s;
+        var single = new Dictionary<int, List<(Vector3 P, Vector3 V)>>();
+        for (int i = 0; i < sk.VertexCount; i++)
+        {
+            if (sk.Count[i] != 1 || slotOf[i] < 0) continue;
+            // ⚠ Not GetValueOrDefault(key, dict[key] = new()): C# evaluates that second argument
+            // FIRST, so it replaced every list with an empty one on each add and nothing fitted.
+            if (!single.TryGetValue(sk.Bone[sk.First[i]], out var list)) single[sk.Bone[sk.First[i]]] = list = new();
+            list.Add((sk.Position[sk.First[i]], pos[slotOf[i]]));
+        }
+        var fits = new Dictionary<int, Matrix4x4>();
+        // ⚠ A bone whose few single vertices are near-coplanar fits an affine map with a wild
+        // basis (handyman: a 700,000-unit "error" from one). A rigid bone's fit has unit rows;
+        // anything else is the fit's ill-conditioning, not the skin's, and is left out.
+        foreach (var (b, pairs) in single)
+            if (pairs.Count >= 4 && FitAffine(pairs) is { } f && RowLengths(f).All(l => l > 0.8 && l < 1.25)) fits[b] = f;
+        if (fits.Count == 0) continue;
+        for (int i = 0; i < sk.VertexCount; i++)
+        {
+            if (sk.Count[i] < 2 || slotOf[i] < 0) continue;
+            var v = pos[slotOf[i]];
+            for (int j = sk.First[i]; j < sk.First[i] + sk.Count[i]; j++)
+            {
+                bool first = j == sk.First[i];
+                if (fits.TryGetValue(sk.Bone[j], out var f))
+                {
+                    double e = (Vector3.Transform(sk.Position[j], f) - v).Length();
+                    if (first) { firstN++; firstMiss = Math.Max(firstMiss, e); } else { laterN++; laterMiss = Math.Max(laterMiss, e); }
+                }
+                if (!first)
+                {
+                    double best = fits.Values.Min(m => (Vector3.Transform(sk.Position[j], m) - v).Length());
+                    laterAny++; if (best < 5) laterRemap++;
+                }
+            }
+        }
+    }
+    if (worst > Threshold)
+        Console.WriteLine($"       per-influence: blended vertices' FIRST influence vs its own bone's single-vertex fit: worst {firstMiss:F2} over {firstN};"
+                        + $" later influences: worst {laterMiss:F2} over {laterN}; later influences that ANY fitted bone maps within 5 units: {laterRemap} of {laterAny}"
+                        // ⚠⚠ DO NOT DRAW THE CONCLUSION FROM THIS LINE. It used to end with "first
+                        // influences miss too: not a misread bone byte, the skin's own blend
+                        // offsets". Checked against the bind result: this probe fires on FIVE
+                        // characters and ALL FIVE PASS the bind check -- boy1a 0.016, girl1a
+                        // 0.013, gnome 0.023 -- while reporting first-influence misses of 314,
+                        // 350 and 407. It says the same thing about skins that are demonstrably
+                        // correct to a hundredth of a unit, so it cannot be what distinguishes
+                        // the five that fail. Meanwhile HallowKid and JungleKid come out at 0.01
+                        // on the same probe, so the 300s are a property of the FIT, not the skin.
+                        //
+                        // ⚠ And it never runs on a failing character at all: `fits.Count == 0`
+                        // skips, so boy2a, girl2a, guard, handyman and Researcher produce no line
+                        // here. A diagnostic that only speaks about the cases that work is not
+                        // evidence about the cases that do not.
+                        //
+                        // ⭐ The one part that IS load-bearing is the re-map count: 0 of 78 and
+                        // 0 of 92 later influences land within 5 units of ANY fitted bone. That
+                        // rules out "a later bone byte is being read wrong" as the explanation,
+                        // which was the standing hypothesis. A negative that strong is worth
+                        // keeping; the positive claim built on top of it was not.
+                        + (firstN > 0 && firstMiss > Threshold
+                            ? " -- ⚠ UNEXPLAINED: this fires on characters that PASS the bind check, so it does not diagnose the failures"
+                            : ""));
     if (worst > worstAll) { worstAll = worst; worstWho = leaf; }
     Console.WriteLine($"{leaf,-12} meshes {model.Meshes.Count} ({skins.Count} skinned) helpers {model.HelperCount,2} bones {bonesUsed.Count,2} slots {verts,4}"
                     + $" | bind worst {worst,9:F3} (single-bone {worstSingle:F3}, blended {worstBlend:F3}) at {worstAt}");
@@ -298,6 +382,32 @@ static string NameOf(Model model, int node)
     int e = p; while (e < model.D.Length && model.D[e] != 0) e++;
     return System.Text.Encoding.Latin1.GetString(model.D, p, e - p);
 }
+
+// Least-squares affine map p -> v (row-vector: v = p * M), as three 4-unknown solves.
+static Matrix4x4? FitAffine(List<(Vector3 P, Vector3 V)> pairs)
+{
+    var ata = new double[4, 4]; var atb = new double[3, 4];
+    foreach (var (p, v) in pairs)
+    {
+        double[] row = { p.X, p.Y, p.Z, 1.0 };
+        for (int i = 0; i < 4; i++) { for (int j = 0; j < 4; j++) ata[i, j] += row[i] * row[j]; atb[0, i] += row[i] * v.X; atb[1, i] += row[i] * v.Y; atb[2, i] += row[i] * v.Z; }
+    }
+    var cols = new double[3][];
+    for (int c = 0; c < 3; c++) cols[c] = Solve(ata, Enumerable.Range(0, 4).Select(i => atb[c, i]).ToArray());
+    var m = Matrix4x4.Identity;
+    m.M11 = (float)cols[0][0]; m.M12 = (float)cols[1][0]; m.M13 = (float)cols[2][0];
+    m.M21 = (float)cols[0][1]; m.M22 = (float)cols[1][1]; m.M23 = (float)cols[2][1];
+    m.M31 = (float)cols[0][2]; m.M32 = (float)cols[1][2]; m.M33 = (float)cols[2][2];
+    m.M41 = (float)cols[0][3]; m.M42 = (float)cols[1][3]; m.M43 = (float)cols[2][3];
+    return m;
+}
+
+static double[] RowLengths(Matrix4x4 m) => new[]
+{
+    Math.Sqrt(m.M11 * m.M11 + m.M12 * m.M12 + m.M13 * m.M13),
+    Math.Sqrt(m.M21 * m.M21 + m.M22 * m.M22 + m.M23 * m.M23),
+    Math.Sqrt(m.M31 * m.M31 + m.M32 * m.M32 + m.M33 * m.M33),
+};
 
 static double MaxAbs(Matrix4x4 a, Matrix4x4 b) => new[]
 {
