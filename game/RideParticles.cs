@@ -95,7 +95,20 @@ public sealed class RideParticles
             Amount = count,
             Lifetime = life,
             OneShot = true,
-            Explosiveness = 0.65f,
+            // ⚠⚠ EXPLOSIVENESS IS MINE, NOT THE DISC'S -- and at 0.65 it was the reason bursts
+            // read as solid paint. Master, asked whether a single particle was translucent or
+            // only the heap: "piles". So the material and the ramp are fine and the EMITTER is
+            // wrong: at 0.65 nearly every particle is born in the same frame at the same point,
+            // so N overlapping quads multiply into an opaque blob no matter how transparent each
+            // one is. Spread over the lifetime they read as a puff.
+            //
+            // ⚠ NOTHING IN THIS BLOCK IS READ FROM THE DISC. Explosiveness, Spread, the initial
+            // velocities, Gravity and the scale range are all invented to look plausible; only
+            // the ramp, the sprite and the three CANDIDATE fields (count/lifetime/size) come from
+            // the file at all. The 320-byte record is mostly unread and the real emission shape
+            // is somewhere in it. Treat this as a placeholder that now errs sparse rather than
+            // solid, not as a decode.
+            Explosiveness = 0.15f,
             Emitting = false,
             ColorRamp = RampOf(e),
             Direction = Vector3.Up,
