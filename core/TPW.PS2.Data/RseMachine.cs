@@ -134,6 +134,40 @@ public sealed class RseMachine
     /// TWICE the declared `#setwalk` capacity (`0x1bff78..0x1bffa8`).</summary>
     public int WalkSlots => _walks.Length;
 
+    /// <summary>⭐ HOW FULL THE WALK TABLE IS, because a full one FAILS SILENTLY. `WalkOn`
+    /// (`0x1bb180`) takes the first slot whose state is 0 and, finding none, falls out of its
+    /// loop without doing anything: no fault, no return value, the guest simply never walks and
+    /// is never harvested by WALKGET. A ride that quietly stops taking people looks exactly like
+    /// a ride whose script is waiting, so nothing downstream can tell those apart without this.
+    ///
+    /// A census that prints `InUse` of <see cref="WalkSlots"/> can see the table saturate one
+    /// slot before it starts dropping guests.</summary>
+    public int WalkSlotsInUse
+    {
+        get
+        {
+            int n = 0;
+            foreach (var w in _walks) if (w.State != 0) n++;
+            return n;
+        }
+    }
+
+    /// <summary>Every occupied walk slot as (guest, state), in table order, for a census to
+    /// print. The states are the ticker's (`0x1bade8`): 1 walking in, 2 aboard, 3 walking out,
+    /// 4 arrived and waiting for WALKGET. An empty slot is left out rather than reported as 0.
+    ///
+    /// ⚠ A ROW HERE IS NOT A RIDER. State 1 and 3 are guests in transit between two nodes; only
+    /// state 2 is on the ride. Counting rows as riders over-counts on both sides of a cycle.</summary>
+    public IReadOnlyList<(int Guest, int State)> WalkTable
+    {
+        get
+        {
+            var rows = new List<(int, int)>();
+            foreach (var w in _walks) if (w.State != 0) rows.Add((w.Guest, w.State));
+            return rows;
+        }
+    }
+
     /// <summary>⚠ FALSE MEANS EVERY WALK RAN AT THE FLOOR. Walk duration is the distance between
     /// two of the script's nodes, and a host that cannot place a node (see
     /// <see cref="IRseHost.TryNodePosition"/>) leaves every leg at the 100 ms minimum. The
