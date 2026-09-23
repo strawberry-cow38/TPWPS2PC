@@ -82,6 +82,19 @@ public sealed class RsePreviewHost : IRseHost
         return Duration(records[variant]);
     }
 
+    /// <summary>How much longer this channel has, or -1 when it is idle or done. ⚠ A LOOP NEVER
+    /// FINISHES, so it reports the time left in the current turn of the loop and never -1 --
+    /// otherwise a script waiting for a looping animation to end would sail straight past it.</summary>
+    public int AnimationRemainingOn(int channel)
+    {
+        var p = channel == 0 ? Current : (_channels.TryGetValue(channel, out var c) ? c : null);
+        if (p == null) return -1;
+        int length = Duration(p.Record);
+        if (p.Loop) return length <= 0 ? 0 : checked((int)(length - (Time - p.Start) % length));
+        long ends = p.Start + length;
+        return Time >= ends ? -1 : checked((int)(ends - Time));
+    }
+
     /// <summary>How far through its own animation a channel is, in APS frames.</summary>
     public float FrameOn(int channel)
     {
@@ -113,6 +126,13 @@ public sealed class RsePreviewHost : IRseHost
         _walkers[guest] = w;
         WalkerMoved?.Invoke(w);
     }
+
+    public sealed record Hidden(long Time, int Guest, bool Visible);
+    /// <summary>Which guests this script has taken out of sight, and when. The preview draws
+    /// nobody; it records, so an audit can show a guest actually went into the shop.</summary>
+    public IReadOnlyDictionary<int, Hidden> Visibility => _visible;
+    readonly Dictionary<int, Hidden> _visible = new();
+    public void GuestVisible(int guest, bool visible) => _visible[guest] = new Hidden(Time, guest, visible);
 }
 
 /// <summary>Small, explicit host scenario for the preview: open after construction, offer two

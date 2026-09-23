@@ -27,6 +27,20 @@ public interface IRseHost
     /// <paramref name="angle"/> (the VM's 12-bit turn), in the ticker's mode
     /// (`0x1ba7f0`: 0 on the ground, 1 stepping off, 2 carried by the ride).</summary>
     void WalkerPose(int guest, int fromNode, int toNode, int mode, int perMille, int angle);
+
+    /// <summary>What GETANIM_CH asks: how much longer the animation on <paramref name="channel"/>
+    /// has to run, or NEGATIVE when it has finished or was never started.
+    ///
+    /// ⚠ ONLY THE SIGN IS ESTABLISHED. `0x1bdeb8` fills the result from `0x1acaf8` and then
+    /// overwrites it with -1 when that call reports bit 2, and every script that uses it tests
+    /// only `BRANCH_PV` / `BRANCH_Z` -- they act on "finished", never on the magnitude. So the
+    /// milliseconds here are ours and the sign is the game's; do not build anything on the number.</summary>
+    int AnimationRemainingOn(int channel);
+
+    /// <summary>Show or hide a guest. ⭐ This is what LIMBO is FOR: `0x1bbb30` calls `0x1fa2c8`
+    /// to take the guest out of sight when they go in and `0x1bbbe8` calls it again to put them
+    /// back, which is how somebody walks into a burger stand and stops existing for a while.</summary>
+    void GuestVisible(int guest, bool visible);
 }
 
 public enum RseYield { Budget, EndSlice, Unlock, Wait, Animation }
@@ -57,6 +71,8 @@ public sealed class RseMachine
     byte _turbo;
     int _bounceNode;
     readonly Bouncer[] _bounce;
+    readonly LimboSlot[] _limbo;
+    int _limboUsed;
     bool _timedWalk;
 
     /// <summary>⭐⭐ A SCRIPT IS NOT ALONE. `SPAWNCHILD` (`0x1be91c`) loads a second program and
@@ -103,6 +119,7 @@ public sealed class RseMachine
         _walks = new Walk[Math.Max(0, program.WalkCapacity) * 2];
         // ⚠ The bounce table is NOT doubled the way the walk table is (0x1bff48..0x1bff74).
         _bounce = new Bouncer[Math.Max(0, program.BounceCapacity)];
+        _limbo = new LimboSlot[Math.Max(0, program.LimboCapacity)];
         var rng = new Random(1);
         _random = random ?? (() => rng.Next());
     }
@@ -285,6 +302,22 @@ public sealed class RseMachine
                     case RseOpcode.WALKOFF: WalkOff(V(0)); break;
                     case RseOpcode.WALKGET: Result(WalkGet(), true); break;
 
+                    // ⭐⭐ LIMBO IS WHAT A SHOP IS. Every shop and sideshow on this disc -- the
+                    // balloon stand, the gift shop, the steak house, the Super Bog, the arcade --
+                    // is blocked on these five and nothing else. A guest goes IN (and stops being
+                    // drawn), a timer runs, and they come back out.
+                    case RseOpcode.LIMBO: LastValue = Limbo(V(0), V(1)); break;
+                    case RseOpcode.UNLIMBO: Result(Unlimbo(false), true); break;
+                    case RseOpcode.FORCEUNLIMBO:
+                        // ⚠ `0x1bea14`'s FORCEUNLIMBO does nothing at all without a destination
+                        // variable -- it checks the tag BEFORE calling the helper, so a literal
+                        // operand leaves the queue untouched rather than popping somebody.
+                        if (a[0].Tag == 0x40) Result(Unlimbo(true));
+                        break;
+                    case RseOpcode.GETANIM_CH: Result(Host().AnimationRemainingOn(V(1)), true); break;
+                    case RseOpcode.INLIMBO: Result(_limboUsed, true); break;
+                    case RseOpcode.LIMBOSPACE: Result(_limbo.Length - _limboUsed, true); break;
+
                     // ⚠ The RAW operand word, like TURBO: `0x1bebb8` hands what the fetch returned
                     // straight to `0x1bb5b0` without evaluating it.
                     case RseOpcode.BOUNCESETNODE: _bounceNode = (int)a[0].Word; break;
@@ -321,6 +354,46 @@ public sealed class RseMachine
     int Value(RseProgram.Operand a) => a.Tag == 0x40 ? this[a.Index]
         : a.Tag == 0 ? a.Immediate : throw new InvalidDataException($"Expected numeric operand, got {a}");
     IRseHost Host() => _host ?? throw new NotSupportedException("This instruction requires an RSSE host");
+
+    /// <summary>One guest tucked away inside something. 8 bytes at instance `+0x24`: the guest and
+    /// when they are due out. `+0x58` is the capacity and `+0x60` the count.</summary>
+    struct LimboSlot { public int Guest; public long Due; }
+
+    /// <summary>Take a guest in for <paramref name="seconds"/>. 1, or 0 when there is no room --
+    /// `0x1bbb30` walks to the first free slot and gives up at the end.
+    ///
+    /// ⭐ AND THEY STOP BEING DRAWN. The handler calls `0x1fa2c8` to hide them, which is the whole
+    /// illusion: a guest walks up to a burger stand, vanishes into it, and reappears later.</summary>
+    int Limbo(int guest, int seconds)
+    {
+        for (int i = 0; i < _limbo.Length; i++)
+        {
+            if (_limbo[i].Guest != 0) continue;
+            _limbo[i] = new LimboSlot { Guest = guest, Due = Time + (long)seconds * 1000 };
+            _limboUsed++;
+            _host?.GuestVisible(guest, false);
+            return 1;
+        }
+        return 0;
+    }
+
+    /// <summary>Let one guest back out and show them again, or 0 if nobody is due.
+    /// <paramref name="force"/> is FORCEUNLIMBO (`0x1bbc80`): the first occupant, due or not.</summary>
+    int Unlimbo(bool force)
+    {
+        for (int i = 0; i < _limbo.Length; i++)
+        {
+            ref var l = ref _limbo[i];
+            if (l.Guest == 0) continue;
+            if (!force && l.Due >= Time) continue;
+            _limboUsed--;
+            int guest = l.Guest;
+            l.Guest = 0;
+            _host?.GuestVisible(guest, true);
+            return guest;
+        }
+        return 0;
+    }
 
     /// <summary>One guest on the trampoline. 16 bytes at instance `+0x28`, `+0x64` of them.</summary>
     struct Bouncer { public int Guest; public int Node; public long End, Start; }

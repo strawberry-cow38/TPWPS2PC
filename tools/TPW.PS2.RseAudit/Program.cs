@@ -298,5 +298,7 @@ sealed class Audit(Dictionary<string, WadArchive> wads, bool trace)
         public bool TryNodePosition(int node, int space, out float x, out float y, out float z)
         { x = y = z = 0f; return false; }
         public void WalkerPose(int guest, int fromNode, int toNode, int mode, int perMille, int angle) { }
+        public void GuestVisible(int guest, bool visible) { }
+        public int AnimationRemainingOn(int channel) => -1;
     }
 }

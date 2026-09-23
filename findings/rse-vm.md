@@ -226,9 +226,35 @@ a missing host and the real Space Gates LOOPANIM_CH instruction. No game data is
   by `RsePreviewHost`; a missing or rejecting host faults. Economic/wear/breakdown decisions
   remain host inputs. Breakdown/repair paths are not covered by the demonstrated cycles.
 * These observed instructions deliberately fail on execution: SETOBJPARAM, TRIGANIMSPEED,
-  LOOPANIM_CH, GETANIM_CH, LIMBO, UNLIMBO, FORCEUNLIMBO, INLIMBO, LIMBOSPACE,
-  WALKST_FLOAT, WALKFLOATSTAT, WALKFLOATSTOP, FINDSCRIPTRAND, SETREMOTEVAR, HOUR, MIN, SEC
-  and SPARK. Their file operands are decoded; their engine services are not fabricated.
+  LOOPANIM_CH, WALKST_FLOAT, WALKFLOATSTAT, WALKFLOATSTOP, FINDSCRIPTRAND, SETREMOTEVAR,
+  HOUR, MIN, SEC and SPARK. Their file operands are decoded; their engine services are not
+  fabricated.
+
+## Limbo, which is what a shop is
+
+The limbo table is instance `+0x24`, `+0x58` entries of 8 bytes (the declared `#setlimbo`, not
+doubled), with `+0x60` holding how many are in use:
+
+| offset | field |
+|--------|-------|
+| `+0x00` | guest id, 0 when free |
+| `+0x04` | when they are due out: `now + seconds * 1000` |
+
+`LIMBO(guest, seconds)` takes the first free slot and returns 1, or 0 when full (`0x1bbb30`).
+`UNLIMBO` (`0x1bbbe8`) returns the first guest whose time is up; `FORCEUNLIMBO` (`0x1bbc80`) the
+first guest at all, and it does NOTHING without a destination variable because `0x1bea14` checks
+the tag before calling the helper. `INLIMBO` is `+0x60` -- how many are inside, not whether a
+particular guest is -- and `LIMBOSPACE` is `+0x58 - +0x60`.
+
+⭐ Both ends call `0x1fa2c8` to hide the guest going in and show them coming out. That is the
+whole illusion: somebody walks into a burger stand and stops existing for five seconds.
+
+Every shop and sideshow on this disc -- balloon, costume, gift, steak, Super Bog, arcade -- was
+blocked on this family and nothing else.
+
+`GETANIM_CH(dest, channel)` fills the result from `0x1acaf8` and replaces it with **-1** when that
+call reports bit 2. ⚠ Only the SIGN is established: every script using it tests `BRANCH_PV` and
+`BRANCH_Z` and acts only on "finished", never on the magnitude.
 
 ## Animation channels
 

@@ -167,5 +167,75 @@ Check(returned.Count > 0, $"a ride gives its guests back ({returned.Count} rides
 Check(wrong.Count == 0, $"every guest handed back is one that was queued"
                       + (wrong.Count > 0 ? $" -- {wrong[0].Name} returned a stranger" : ""));
 
+// ⭐⭐ AND THE SHOPS, WHICH ARE A DIFFERENT SHAPE OF THING. A shop does not run a cycle: it takes
+// a guest IN (LIMBO, which also hides them), waits, and lets them out. Every shop and sideshow on
+// this disc was blocked on that one family of five opcodes and nothing else, so they are censused
+// separately rather than folded into the ride numbers above -- a shop that works says nothing
+// about a ride and the other way round.
+var shops = new ParkSim(paths);
+int shopCol = 4, shopId = 0, shopsPlaced = 0;
+var shopFaults = new Dictionary<string, int>(StringComparer.Ordinal);
+foreach (var e in wad.Entries.Where(e => e.Path.EndsWith(".rse", StringComparison.OrdinalIgnoreCase)
+                                      && (e.Path.StartsWith("/Shops/", StringComparison.OrdinalIgnoreCase)
+                                       || e.Path.StartsWith("/Sideshow/", StringComparison.OrdinalIgnoreCase)))
+                             .OrderBy(e => e.Path, StringComparer.OrdinalIgnoreCase))
+{
+    string stem = e.Path[..^4];
+    var samEntry = wad.Find(stem + ".sam");
+    if (samEntry == null) continue;
+    var def = RideDefinition.Parse(System.Text.Encoding.ASCII.GetString(wad.Read(samEntry)), stem + ".sam");
+    var shape = def.Shape;
+    int w = shape == null ? 1 : shape.Max(r => r.TrimEnd().Length), h = shape?.Length ?? 1;
+    Animation aps = null;
+    try { var ae = wad.Find(stem + ".aps"); if (ae != null) aps = new Animation(wad.Read(ae)); } catch { }
+    string sdir = e.Path[..(e.Path.LastIndexOf('/') + 1)];
+    byte[] SShop(string child)
+    {
+        var c = wad.Entries.FirstOrDefault(x => x.Path.Equals(sdir + child, StringComparison.OrdinalIgnoreCase));
+        return c == null ? null : wad.Read(c);
+    }
+    var shop = shops.Add(++shopId, def.Name ?? stem, new ParkCell(shopCol, 40), w, h,
+                         wad.Read(e), aps, def.UpgradeCapacity(0) ?? 1, null, null, out string sf,
+                         sibling: SShop);
+    shopCol += w + 1;
+    if (shop == null) shopFaults[Kind(sf)] = shopFaults.GetValueOrDefault(Kind(sf)) + 1;
+    else shopsPlaced++;
+}
+Console.WriteLine($"\nshops and sideshows: {shopsPlaced} started, {shopFaults.Values.Sum()} would not start");
+foreach (var (k, n) in shopFaults.OrderByDescending(kv => kv.Value))
+    Console.WriteLine($"  would not start x{n,-3} {k}");
+
+foreach (var s in shops.Rides) shops.SetOpen(s.Id, true);
+var shopSent = new Dictionary<int, List<int>>();
+foreach (var s in shops.Rides)
+{
+    shopSent[s.Id] = new List<int>();
+    for (int i = 0; i < 3; i++) { int g = next++; s.Join(g); shopSent[s.Id].Add(g); }
+}
+var hidden = new Dictionary<int, HashSet<int>>();
+foreach (var s in shops.Rides) hidden[s.Id] = new HashSet<int>();
+for (int i = 0; i < 3000; i++)
+{
+    shops.Advance(0.04);
+    // ⚠ WHO IS ACTUALLY OUT OF SIGHT. VAR_ONRIDE only says the script counted somebody; the
+    // host's visibility record says LIMBO really took them off the map, which is the part a
+    // shop is for and the part a stub would quietly skip.
+    foreach (var s in shops.Rides)
+        foreach (var (g, v) in s.Host.Visibility) if (!v.Visible) hidden[s.Id].Add(g);
+}
+var served = shops.Rides.Where(s => hidden[s.Id].Count > 0).ToList();
+var backOut = shops.Rides.Where(s => s.Left.Count > 0).ToList();
+Console.WriteLine($"3 guests queued at each of {shops.Rides.Count} shops, 120s:");
+foreach (var s in shops.Rides)
+    Console.WriteLine($"  {s.Name,-22} went inside {hidden[s.Id].Count}/{shopSent[s.Id].Count}"
+                    + $"  came back {s.Left.Count}  queue left {s.Queue.Count}"
+                    + (s.Fault != null ? $"  FAULT {Kind(s.Fault)}" : ""));
+Check(shopsPlaced > 0, $"the shops' scripts start ({shopsPlaced} of them)");
+Check(shops.Rides.All(s => s.Fault == null), "no shop faults while running");
+Check(served.Count > 0, $"a guest goes INSIDE a shop and stops being drawn ({served.Count} shops took one in)");
+Check(backOut.Count > 0, $"a shop lets its guests back out ({backOut.Count} shops did)");
+Check(shops.Rides.All(s => s.Left.All(g => shopSent[s.Id].Contains(g))),
+      "every guest a shop hands back is one that was queued there");
+
 Console.WriteLine(bad == 0 ? "PASS" : $"FAIL: {bad}");
 return bad == 0 ? 0 : 1;
