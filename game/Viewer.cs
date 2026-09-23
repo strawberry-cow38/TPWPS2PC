@@ -2560,6 +2560,14 @@ public partial class Viewer : Node3D
     /// <summary>Each actor's drawn model and its sitting record, so a rider can be posed and a
     /// walker un-posed. Where says which file the pose came from, or why there is none.</summary>
     readonly Dictionary<int, (AnimatedModel Drawn, Aps.Record Sit, string Where)> _drawn = new();
+    /// <summary>Each actor's WALK record -- slot 1 of the same .aps its model was built with (its
+    /// own file, or Boy1a's for the boys whose records are Shared) -- with that file and model
+    /// beside it so a census can measure the pose it is drawn in. Null when the file has no
+    /// slot-1 record with tracks (the adults), which leaves that kid in bind pose and says so.</summary>
+    readonly Dictionary<int, (Aps Anim, Aps.Record Walk, Model Model)> _walkRec = new();
+    /// <summary>Guests whose walk record is playing, with the park tick their walk began: the
+    /// gait's phase is the walk's own, not a clock the guest never started.</summary>
+    readonly Dictionary<int, int> _gaitFrom = new();
     /// <summary>Each actor's two ways of standing on its node: the whole kid with its feet at the
     /// origin, or its head alone hung on the origin by RiderHeadAnchor -- with the body and legs
     /// meshes to hide for the second, and the head's size for the log.</summary>
@@ -2614,6 +2622,7 @@ public partial class Viewer : Node3D
         if (_guestRoot != null && IsInstanceValid(_guestRoot)) _guestRoot.QueueFree();
         _guestRoot = null; _guests = null; _visitors = null; _mouth = null; _gateClosed = false;
         _actors.Clear(); _drawn.Clear(); _parts.Clear(); _headOnly.Clear(); _posed.Clear(); _guestPrev.Clear(); _guestDwell.Clear();
+        _walkRec.Clear(); _gaitFrom.Clear();
         _guestPool = null; _guestPoolLaid = -1; _guestPoolAt = -1; _guestAt = null; _guestLabel = null;
         _gateTimer = 0; _guestRng = new Random(1); _guestStage = 0; _guestSince = 0; _guestTestRide = null;
         _parkTicks = 0;
@@ -3007,6 +3016,7 @@ public partial class Viewer : Node3D
             walker.Transform = leg.At;
             Show(id, headOnly: false);
             Pose(id, sitting: false);
+            Gait(id, walking: true, alpha);
         }
         foreach (var g in _guests.Guests)
         {
@@ -3014,6 +3024,7 @@ public partial class Viewer : Node3D
             if (actor == null) continue;
             Show(g.Id, headOnly: false);
             Pose(g.Id, sitting: false);
+            Gait(g.Id, g.State == GuestState.Walking, alpha);
             var now = Cell(g.Position);
             var was = _guestPrev.TryGetValue(g.Id, out var p) ? p : now;
             actor.Position = GuestWorld(was.Lerp(now, alpha), g.Cell);
@@ -3046,6 +3057,14 @@ public partial class Viewer : Node3D
             var drawn = new AnimatedModel(model, aps, null, m => CharTexture(path, m));
             drawn.SetFrame(0);
             _drawn[id] = (drawn, sit, where);
+            // ⭐ THE WALK is slot 1 of the SAME file the model was built against: measured on every
+            // kid's tracks, slot 1 record 0 (16 frames) is the walk cycle -- both feet travel ~6,300
+            // vertex units along the forward axis in anti-phase with an 800-unit pelvis bob -- and
+            // slot 2's six records are idles. A record must be read from the file that holds its
+            // tracks, which SittingRecord already chose (own, or Boy1a's for the Shared boys).
+            var walk = aps?.Records().FirstOrDefault(r => r.Slot == 1 && r.Skeletal && !r.Shared);
+            _walkRec[id] = (aps, walk, model);
+            GD.Print($"[guest] #{id} walk: " + (walk == null ? $"no slot-1 record with tracks in {where.Split(" from ").Last()} -- bind pose when walking" : $"slot 1 v0, {walk.DurationFrames} frames, {where.Split(" from ").Last()}"));
             var actor = new Node3D { Name = $"Guest_{id}" };
             actor.AddChild(drawn.Root);
             // Feet on the node's origin and centred on it, measured the way VisitorParkView does.
@@ -3145,6 +3164,115 @@ public partial class Viewer : Node3D
             if (sibRec != null && !Shared(sibRec)) return (sibling, sibRec, $"Load v0 from {Leaf(family)} (own record {(rec == null ? "absent" : "Shared, no tracks")})");
         }
         return (own, null, rec == null ? "no slot 3 record -- bind pose" : "slot 3 Shared and no sibling tracks -- bind pose");
+    }
+
+    /// <summary>⭐⭐ THE GAIT. A walking guest plays its walk record; a standing one goes back to
+    /// bind; a seated one is the sitting pose's and is left alone. The frame is the park's own
+    /// clock -- 25 ticks a second against the animation's 30 -- counted from the tick this guest
+    /// started walking, with the screen's alpha carrying it between ticks; the record loops at
+    /// its declared length because the sampler holds its last pose past the last key.
+    ///
+    /// ⚠ PREDICTION, NOT A TUNING: the walk's stride is 6,334 vertex units = 0.164 model units per
+    /// swing, about 0.31 units/s in place, while GuestWalk moves 1.0 cell/s (our policy, unread
+    /// from the console), so the feet should visibly slide about 3x on a video. If they do, the
+    /// pace and the stride disagree and one of them is ours to question -- not the skinning.</summary>
+    void Gait(int id, bool walking, float alpha)
+    {
+        if (!_drawn.TryGetValue(id, out var d) || d.Drawn?.Root == null || !IsInstanceValid(d.Drawn.Root)) return;
+        if (!_walkRec.TryGetValue(id, out var w) || w.Walk == null || _posed.Contains(id)) return;
+        if (!walking)
+        {
+            if (_gaitFrom.Remove(id)) { d.Drawn.UseRecord(null); d.Drawn.SetFrame(0); }
+            return;
+        }
+        if (!_gaitFrom.ContainsKey(id))
+        {
+            try { d.Drawn.UseRecord(w.Walk); }
+            catch (Exception e) { GD.PrintErr($"[guest] #{id} would not take its walk record: {e.Message}"); _walkRec[id] = (w.Anim, null, w.Model); return; }
+            _gaitFrom[id] = _parkTicks;
+        }
+        d.Drawn.SetFrame(GaitFrame(id, alpha));
+    }
+
+    float GaitFrame(int id, float alpha)
+    {
+        if (!_gaitFrom.TryGetValue(id, out int from) || !_walkRec.TryGetValue(id, out var w) || w.Walk == null) return 0f;
+        float frame = (_parkTicks - from + alpha) * Aps.Fps / (1000f / ParkSim.TickMilliseconds);
+        return frame % Math.Max(1, w.Walk.DurationFrames);
+    }
+
+    /// <summary>⭐⭐ A WALKER MID-STEP, BY CONDITION AND NOT BY CLOCK. Every picture so far is people
+    /// standing, queueing or riding; a park that teleported guests between poses would pass all
+    /// of them. So after stage A the park is wound one tick at a time until some guest is Walking
+    /// with 0.3-0.7 of a cell behind it -- off the cell centre, where a teleport could not put it
+    /// -- and at least 0.5 cells clear of every other guest, so it is not the queue conga line
+    /// drawn on top of itself. The free orbit then looks at that kid from its side, three units
+    /// out, and the census says what to expect BEFORE the file is opened: with the walk playing,
+    /// feet about 0.16 model units apart at gait frames 0 and 8 and crossing at 4 and 12, one arm
+    /// forward and one back; without it, feet together and arms down -- a slide. The feet are
+    /// also MEASURED off the pose it is drawn in, so the picture has a number to be checked
+    /// against rather than a squint. False when no such guest turns up in the allowance, and the
+    /// log says so rather than photographing whatever stood there.</summary>
+    bool WalkerCloseUp(int maxTicks)
+    {
+        if (_guests == null) return false;
+        int start = _parkTicks;
+        while (_parkTicks < start + maxTicks)
+        {
+            Guest pick = null; float bestClear = 0;
+            foreach (var g in _guests.Guests)
+            {
+                if (g.State != GuestState.Walking || g.Next is not ParkCell || g.Fraction < 0.3f || g.Fraction > 0.7f) continue;
+                var me = Cell(g.Position); float clear = float.MaxValue;
+                foreach (var o in _guests.Guests) if (o.Id != g.Id) clear = Mathf.Min(clear, (Cell(o.Position) - me).Length());
+                if (clear >= 0.5f && clear > bestClear) { bestClear = clear; pick = g; }
+            }
+            if (pick != null)
+            {
+                PlaceActors(1f); PresentScripted();
+                var g = pick; var next = g.Next.Value;
+                var at = GuestWorld(Cell(g.Position), g.Cell);
+                var heading = new Vector3(next.X - g.Cell.X, 0, g.Cell.Z - next.Z).Normalized();    // the walk's own mirrored frame, as WalkBasis
+                var side = new Vector3(heading.Z, 0, -heading.X);
+                _freeCam = true; _focus = at + new Vector3(0, 0.3f, 0); _dist = 3f; _pitch = -0.2f; _yaw = Mathf.Atan2(side.X, side.Z);
+                double t = _parkTicks * ParkSim.TickMilliseconds / 1000.0;
+                string gait = "bind pose (no walk record)"; string feet = "";
+                if (_walkRec.TryGetValue(g.Id, out var w) && w.Walk != null && _gaitFrom.ContainsKey(g.Id))
+                {
+                    float frame = GaitFrame(g.Id, 1f);
+                    gait = $"slot 1 frame {frame:F1} of {w.Walk.DurationFrames}, playing since tick {_gaitFrom[g.Id]}";
+                    // The feet, measured off the pose drawn: the two foot bones through the game's
+                    // matrices and the mesh's world, in model units.
+                    var tracks = w.Anim.SkeletalTracks(w.Walk);
+                    if (tracks != null && w.Model.Meshes.Count > 0)
+                    {
+                        var pose = SkeletalPose.At(tracks, frame, w.Model.HelperCount);
+                        int lf = -1, rf = -1;
+                        for (int h = 0; h < w.Model.HelperCount; h++)
+                        {
+                            string n = w.Model.NodeName(w.Model.SkinBoneNode(h)) ?? "";
+                            if (n.EndsWith("L Foot", StringComparison.OrdinalIgnoreCase)) lf = h;
+                            if (n.EndsWith("R Foot", StringComparison.OrdinalIgnoreCase)) rf = h;
+                        }
+                        if (lf >= 0 && rf >= 0)
+                        {
+                            var mw = w.Model.WorldTransforms()[w.Model.Meshes[0].Offset];
+                            var l = System.Numerics.Vector3.Transform(pose[lf].Translation, mw);
+                            var r = System.Numerics.Vector3.Transform(pose[rf].Translation, mw);
+                            feet = $"; feet apart {(l - r).Length():F3} model units (bind: together)";
+                        }
+                    }
+                }
+                GD.Print($"[guest] W t={t:F2}s walker #{g.Id} at {g.Cell} -> {next} fraction {g.Fraction:F2}, heading ({heading.X:F0}, {heading.Z:F0}), "
+                       + $"nearest other guest {bestClear:F2} cells; world ({at.X:F2}, {at.Y:F2}, {at.Z:F2}); gait: {gait}{feet}");
+                GD.Print($"[guest] W camera: free orbit on ({_focus.X:F2}, {_focus.Y:F2}, {_focus.Z:F2}), {_dist:F0} out, {Mathf.RadToDeg(-_pitch):F0} degrees down, side-on"
+                       + " | expected: legs scissored ~0.16 units at gait frames 0/8 and crossing at 4/12, one arm forward -- or feet together and arms down if the gait is not playing");
+                return true;
+            }
+            TickPark(); PresentScripted(frames: false);
+        }
+        GD.Print($"[guest] W: no guest was Walking mid-cell and 0.5 cells clear of the crowd in {maxTicks} ticks after A -- no walker shot taken");
+        return false;
     }
 
     /// <summary>Show the whole kid, or its head alone with the head's base on the node.
@@ -5922,7 +6050,18 @@ public partial class Viewer : Node3D
             else if (_guestTest && _guests != null)
             {
                 if (_guestStage == 0 && _shotWait >= warm)
-                { GuestTestCamera(); GuestTestStage("A", 1500); _guestStage = 1; _guestSince = _shotWait; }
+                {
+                    GuestTestCamera();
+                    // ⭐ W FIRST, while the gate is still streaming guests in: one every twenty ticks
+                    // at a cell a second puts them 0.8 cells apart on the way to the queue, which is
+                    // the only time they are both walking and clear of each other. Searched AFTER
+                    // stage A the first time, it found nobody in 750 ticks -- by then the crowd is
+                    // queued, riding, or stacked in the queue line.
+                    if (WalkerCloseUp(Math.Max(0, 1500 - _parkTicks))) { _guestStage = 4; _guestSince = _shotWait; }
+                    else { GuestTestStage("A", 1500); _guestStage = 1; _guestSince = _shotWait; }
+                }
+                else if (_guestStage == 4 && _shotWait >= _guestSince + 2)
+                { SaveShot(ShotSibling(_shotPath, "-w")); GuestTestCamera(); GuestTestStage("A", 1500); _guestStage = 1; _guestSince = _shotWait; }
                 else if (_guestStage == 1 && _shotWait >= _guestSince + 2)
                 { SaveShot(ShotSibling(_shotPath, "-a")); GuestTestStage("B", 4500); _guestStage = 2; _guestSince = _shotWait; }
                 else if (_guestStage == 2 && _shotWait >= _guestSince + 2)
