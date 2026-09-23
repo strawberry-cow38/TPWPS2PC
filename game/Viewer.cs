@@ -113,6 +113,9 @@ public partial class Viewer : Node3D
     /// not a second system bolted on. This one is not hover-driven: it marks a zone that is
     /// always there.</summary>
     SelectionBox _gateBox;
+    /// <summary>The eight flags on the bus stop's poles, built rather than loaded -- see
+    /// <see cref="EntranceFlags"/>.</summary>
+    readonly EntranceFlags _flags = new();
     /// <summary>What is selected in the park, by its index in Park.Placed. ⚠ An INDEX, not an id:
     /// two of the same ride share an id, and a selection means the one you clicked.</summary>
     int _selected = -1;
@@ -478,6 +481,7 @@ public partial class Viewer : Node3D
         AddChild(_selectView.Root);
         _gateBox = new SelectionBox(path => _lib?.ReadGeneric(path));
         AddChild(_gateBox.Root);
+        AddChild(_flags.Root);
 
         // ⚠⚠ A full-screen Control swallows mouse events before _UnhandledInput ever sees them.
         // Orbit appeared to work only because the left button is also used by the widgets; a
@@ -799,6 +803,7 @@ public partial class Viewer : Node3D
         if (_park != null) _park.Root.Visible = m == Mode.Park;
         if (_gate != null) _gate.Root.Visible = m == Mode.Park;
         if (_gateBox != null) _gateBox.Root.Visible = m == Mode.Park;
+        _flags.Root.Visible = m == Mode.Park;
         if (_sky != null) _sky.Environment = m == Mode.Park && _skyEnv != null ? _skyEnv : _flatEnv;
         _weather.Root.Visible = m == Mode.Park;
         if (_buildable != null && m != Mode.Park) _buildable.Visible = false;
@@ -5959,6 +5964,9 @@ public partial class Viewer : Node3D
         ParkCameraOverrides();
         // ⚠ LAST. Everything above sets the camera, so aiming before them aims at nothing.
         LoadGate();
+        _flags.Build(_terrainModel, path => _lib?.ReadGeneric(path));
+        GD.Print($"[flags] {_flags.Report}");
+        _flags.Root.Visible = _mode == Mode.Park;
         LoadSky();
         MakePathTool();
         BuildBuildableOverlay();
@@ -6325,6 +6333,7 @@ public partial class Viewer : Node3D
         if (_mode == Mode.Park) UpdateHover();
         if (_playing) _selectView?.Step(delta);
         if (_playing && _mode == Mode.Park) _gateBox?.Step(delta);
+        if (_playing && _mode == Mode.Park) _flags.Step(delta);
         if (GameCamActive) StepGameCam(delta);
         else
         {

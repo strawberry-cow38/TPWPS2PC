@@ -85,3 +85,58 @@ the shifted gate exactly, which is what made it look like one — but z 19 is `z
 first row, and the entrance's own starting path runs x 39..40, z 19..24 straight over it (see
 findings/paths.md). It is the paving under the path INSIDE the park. Centring the gate on it is
 where the −2.29 bias came from, and it dragged every gate two tiles into the park.
+
+
+## ⭐⭐ The bus stop's flags are built by the engine, not modelled (2026-09-23)
+
+Master: *"there are flags on the poles. use a sine. check data again."* They are not a mesh, which
+is why searching every model on the disc for one named like a flag found only the go-karts'
+`Newflag` and the race sideshow's `startflag`. ⚠ That search had no control and a miss was
+reported as an answer; it was wrong.
+
+**`0x220FA0(obj, float x, float y, float z)`** allocates `528` bytes — `16 + 8 * 64` — writes a
+count of `8`, and constructs eight 64-byte objects (`0x22EDB0`, stride 64). Each goes to
+**`0x22EEB8(obj, verts, verts2, texture)`** at an offset from the base:
+
+| | z + 0 | z + 1.2 |
+|---|---|---|
+| **x + 0** | flag 0 | flag 1 |
+| **x + 4** | flag 2 | flag 3 |
+| **x + 10** | flag 4 | flag 5 |
+| **x + 14** | flag 6 | flag 7 |
+
+then each is registered into the render list at `0x310D48` by `0x226040`.
+
+The **texture** is loaded at `0x221108` into `DAT_002F07CC` from `data/generic/weather/` —
+**`logo.ssh`**, or `logoam.ssh` when the region flag at `0x2210E8` is set (`logojp.ssh` ships too).
+It is 128x64, the Theme Park World wordmark, and the same call loads `raindrop.ssh`,
+`snowflake.ssh` and `justwater.ssh` — so a flag is an engine effect in the rain's bucket, not
+scenery.
+
+The **base** is hard-coded per park at `0x149A70..0x149BC0`: `y = 2.2`, `z = 5.875`, and
+`x ∈ {23.125, 29.125, 31.125, 33.125, 37.125, 41.125}`.
+
+### The mesh confirms every number
+
+Clustering the tall vertices of `A_POLES & BOLLARDS` (`y > 0.6 * top`, grouped by x AND z) gives
+**eight** poles per park, not four:
+
+```
+x 23.135  27.135  33.135  37.135     offsets +0, +4.00, +10.00, +14.00
+z  5.872   7.077                     the code's z + 0 and z + 1.2 = 5.875, 7.075
+top y 2.37                           the code anchors at 2.2, just under the finial
+```
+
+and across all eight parks the measured first-pole x is
+`{23.13, 23.13, 33.13, 31.13, 41.13, 37.13, 41.13, 29.13}` — exactly the six values the
+executable lists, with nothing left over on either side. A model in a WAD and float immediates in
+an ELF are two sources that know nothing about each other, and they agree eight times.
+
+⭐ So `EntranceFlags` MEASURES the anchors off the poles and keeps the executable's rule as a
+check it prints when the two disagree — no six-value table to go stale.
+
+⚠ **Not read:** which way a flag flies and how far. `0x22EEB8` is handed two corners,
+`(0.05, 0, 0)` and `(1.08, 0, 0.72)`, and the setup turns by `-pi/2` (`0x16F2D0`) — about 1.03
+long and 0.72 tall — but the axis of that turn is not established. And **the sine is master's
+instruction, not a decode**: no `sinf` call reaches these objects on the EE, so the wave is on the
+VU or inside the draw, and neither has been read.
