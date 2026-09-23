@@ -237,9 +237,7 @@ public partial class Viewer : Node3D
     /// still agree. What it is: one calibration by the only pair of eyes on the real thing,
     /// applied to all four parks because the entrance is one prefab (see the anchors in
     /// findings/, where A_ROAD and ticket_booths are identical in every park).</summary>
-    // ⚠ Defaults to ZERO now that the .sam supplies the position; the bracket keys remain so a
-    // suspected mis-reading can be probed by hand, not so a constant can be re-tuned.
-    float _gateNudge = 0f;
+    float _gateNudge = 0.25f;
     /// <summary>G swaps to the free orbit camera.</summary>
     bool _freeCam;
     /// <summary>Ground height per TILE in world units, the same lookup the game does. Baked when
@@ -5216,32 +5214,26 @@ public partial class Viewer : Node3D
             // ⚠ Seat it on the pad by its OWN base, not by its centre: the arch is tall and
             // centring it buries half of it.
             var (lo, hi) = Park.DrawnBounds(_gate.Root, inParent: true);
-            // ⭐⭐ THE .SAM SAYS WHERE IT STANDS, AND IT SAYS SO PER PARK. `MapOffsetY +
-            // FootprintHeightOverride` is the gate's centre in cells, and on this disc one cell
-            // is one unit. Validated against the only park that can answer: Fantasy ships a
-            // `gatebase01` pad whose measured centre is z 21.00, and its .sam gives 16 + 5 = 21.
-            // The other three come to 19. One known answer, reproduced before it was trusted.
+            // ⚠⚠ THE .SAM'S MAP OFFSET IS **NOT** WHERE THE GATE MESH GOES, AND I SHIPPED IT AS
+            // IF IT WERE. ff8c76e replaced the tuned bias with `MapOffsetY + FootprintHeight`
+            // and put the gate IN THE SEA. Master: "the footprint height/width is the width of
+            // the no-build zone the gate creates around it", and "our gate pos is way off ...
+            // it sits in the sea instead of at the entrance."
             //
-            // ⚠⚠ THIS REPLACES A HAND-TUNED CONSTANT THAT WAS SLIGHTLY WRONG. `AuthoredZBias`
-            // (-2.29) plus a per-park `]` press stood in for a number the file had all along --
-            // and the viewer was already PRINTING every .sam key to the log beside the gate it
-            // then mis-placed. Master: "our tuned constant was wrong slightly."
+            // ⭐⭐ WHY THE "VALIDATION" WAS WORTHLESS, because this is the lesson. Fantasy's pad
+            // centre is z 21.00 and its .sam gives 16 + 5 = 21, so I called the formula proven.
+            // That is ONE number agreeing ONCE -- n = 1, with no second case able to disagree,
+            // which is the definition of a vacuous control. And the semantics were never checked:
+            // a field that measures a NO-BUILD RADIUS has no business being added to a position,
+            // however well the arithmetic lands. The old bias was -2.29; the "validated" value
+            // was ~19. A twenty-unit jump should have been the tell on its own.
             //
-            // ⚠ `_gateNudge` stays on the bracket keys so a wrong reading can still be probed by
-            // hand, but it now defaults to ZERO: the data is the position, not the starting point
-            // for another calibration.
-            float? samCentreZ = def?.MapOffsetY is { } my && def?.FootprintHeightOverride is { } fh
-                              ? my + fh : null;
-            float dzSam = samCentreZ is { } sc ? sc - (lo.Z + hi.Z) * 0.5f : AuthoredZBias;
-            float dzPad = hasPad ? pad.Position.Z + pad.Size.Z * 0.5f - (lo.Z + hi.Z) * 0.5f : dzSam;
-            float dz = dzSam + _gateNudge;
-            // ⭐ BOTH NUMBERS, SIDE BY SIDE, so a disagreement is visible rather than inferred.
-            // Where a pad exists these must agree; where it does not, the .sam is all there is.
-            GD.Print($"[gate] z from .sam {(samCentreZ is { } s2 ? s2.ToString("F2") : "absent")}"
-                   + $" -> dz {dzSam:F3}"
-                   + (hasPad ? $"; z from gatebase01 pad -> dz {dzPad:F3}; they differ by {dzSam - dzPad:F3}"
-                             : "; no pad in this park, the .sam is the only source")
-                   + $"; old tuned constant would have given {(hasPad ? dzPad : AuthoredZBias + perPark):F3}");
+            // The authored model is already near its final place; the bias is a small correction
+            // to it, not an absolute coordinate. Restored, and the .sam numbers are kept only as
+            // what master says they are.
+            float dz = (hasPad
+                ? pad.Position.Z + pad.Size.Z * 0.5f - (lo.Z + hi.Z) * 0.5f
+                : AuthoredZBias) + _gateNudge + perPark;
             _gate.Root.Position += new Vector3(shift, 0f, dz);
             _gate.Root.Visible = _mode == Mode.Park;
             GD.Print($"[gate] {ride.Name}: authored x {lo.X:F2}..{hi.X:F2}  y {lo.Y:F2}..{hi.Y:F2}  "

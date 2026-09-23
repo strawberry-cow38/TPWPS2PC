@@ -42,30 +42,34 @@ public sealed class RideDefinition
 
     public string? Name => Fields.TryGetValue("Info.Name", out var v) ? v : null;
 
-    /// <summary>⭐⭐ WHERE A FIXED FEATURE STANDS, IN MAP CELLS -- the coordinate master asked for
-    /// ("whys there no coord to read?") and which the viewer was PRINTING to its log and then
-    /// ignoring while it placed the gate with a hand-tuned constant.
-    ///
-    /// `Gates.sam` ships once per world and the numbers differ per park:
+    /// <summary>The `Engine*Override` fields of a fixed feature's `.sam`. `Gates.sam` ships once
+    /// per world and the numbers differ per park:
     ///   JUNGLE 45,16 6x3 · SPACE 45,15 6x4 · HALLOW 45,16 6x3 · FANTASY 45,16 6x5
     ///
-    /// ⭐ VALIDATED AGAINST THE ONE PARK THAT CAN ANSWER. Fantasy is the only world shipping a
-    /// `gatebase01` pad, so its gate position is already known from terrain geometry: the pad
-    /// spans x 37..43 (width SIX, exactly FootprintWidth) and z 19..23, centre **21**. And
-    /// `MapOffsetY + FootprintHeight` = 16 + 5 = **21**. The other three all come to 19.
-    /// One known answer, reproduced by the formula, before it is applied anywhere else.
+    /// ⚠⚠ **THE FOOTPRINT IS A NO-BUILD ZONE, NOT THE FEATURE'S SIZE, AND THE MAP OFFSET IS NOT
+    /// WHERE THE MESH GOES.** Master, after I shipped the opposite: "the footprint height/width
+    /// is the width of the no-build zone the gate creates around it", and the gate "sits in the
+    /// sea instead of at the entrance".
     ///
-    /// ⚠ CELLS, NOT UNITS -- though on this disc 1 unit is 1 cell, so they coincide. And ⚠ the
-    /// pad's z SPAN is 4 where FootprintHeight is 5, so the height is not simply the pad's depth;
-    /// only the centre relation is established here.</summary>
+    /// ⚠⚠ AND THE "VALIDATION" THAT LET IT SHIP WAS VACUOUS. Fantasy's `gatebase01` pad centres
+    /// at z 21.00 and its .sam gives `MapOffsetY + FootprintHeight` = 16 + 5 = 21, so I called
+    /// the formula proven. That is ONE number agreeing ONCE, with no second case able to
+    /// disagree -- n = 1 is not a control, it is a coincidence with a rationalisation attached.
+    /// The semantics were never checked either: a radius has no business being added to a
+    /// coordinate however well the arithmetic lands, and a jump from a -2.29 bias to ~19 should
+    /// have been the tell by itself.
+    ///
+    /// These are exposed because they are real fields worth having. **Nothing places a mesh from
+    /// them.** What the map offset IS in, and which frame, is unread.</summary>
     public int? MapOffsetX => Int("Info.EngineMapOffsetOverrideX");
     public int? MapOffsetY => Int("Info.EngineMapOffsetOverrideY");
-    public int? FootprintWidthOverride => Int("Info.EngineFootprintWidthOverride");
-    public int? FootprintHeightOverride => Int("Info.EngineFootprintHeightOverride");
+    /// <summary>⚠ The NO-BUILD ZONE around the feature, per master -- not its own extent.</summary>
+    public int? NoBuildWidthOverride => Int("Info.EngineFootprintWidthOverride");
+    /// <summary>⚠ The NO-BUILD ZONE around the feature, per master -- not its own extent.</summary>
+    public int? NoBuildHeightOverride => Int("Info.EngineFootprintHeightOverride");
 
     /// <summary>⚠ "this is a fixed item whose animation should be played relative to world (0,0),
-    /// not the object pos" -- the .sam's own words. Unused so far; recorded because the gate is
-    /// flagged with it and anything animating a fixed feature needs to know.</summary>
+    /// not the object pos" -- the .sam's own words. Exposed and UNUSED.</summary>
     public bool DontApplyOffset => Int("Info.DontApplyOffset") == 1;
     public string[]? Shape => Blocks.TryGetValue("Info.Shape", out var v) ? v : null;
     public string[]? Hoarding => Blocks.TryGetValue("Info.Hoarding", out var v) ? v : null;
