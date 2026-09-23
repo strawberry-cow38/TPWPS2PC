@@ -114,10 +114,7 @@ public sealed class PathGhost
     /// says Lay to might still be refused by the game for a reason not modelled here.</summary>
     Verdict Judge(int x, int y, PathTool.Kind kind, bool last)
     {
-        // ⚠ THE PARK'S OWN WALKWAY IS NOT BUILDABLE AND IS STILL PATH. CanLay refuses it -- it
-        // stands on cells the terrain draws no ground on -- but a run that reaches it has reached
-        // the way in, and must say so rather than go red at the one tile the player is aiming for.
-        if (!_tool.CanLay(x, y) && !_tool.IsWalkway(x, y)) return Verdict.Refused;
+        if (!_tool.CanLay(x, y)) return Verdict.Refused;
         // ⭐ A RIDE'S TILES ARE NOT GROUND TO BUILD ON. Master: paths "should be invalid on tiles
         // occupied by rides, they shouldn't delete the rides".
         if (Occupied?.Invoke(x, y) == true) return Verdict.Refused;

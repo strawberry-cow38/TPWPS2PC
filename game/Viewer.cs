@@ -172,6 +172,7 @@ public partial class Viewer : Node3D
     bool _linkTest;
     bool _placeTest;
     bool _walkAudit;
+    bool _typeAudit;
     /// <summary>The sim's own grid, built once per park. ⚠ Only its ENTRANCE set is read from it;
     /// laid path comes from the live tool, because ParkPaths copies the cell bytes when it is made
     /// and would show the park as it was when the overlay was first asked for.</summary>
@@ -261,6 +262,7 @@ public partial class Viewer : Node3D
             else if (a == "--link-test") _linkTest = true;
             else if (a == "--place-test") { _buildTest = true; _placeTest = true; }
             else if (a == "--walk-audit") _walkAudit = true;
+            else if (a == "--type-audit") _typeAudit = true;
             else if (a == "--ghost-press") { _ghostTest = true; _ghostPress = true; }
             else if (a == "--anim-test") _animTest = true;
             else if (a == "--build-test") _buildTest = true;
@@ -970,6 +972,86 @@ public partial class Viewer : Node3D
         return i > 0 ? path[..i] : "(root)";
     }
 
+    /// <summary>The build category a thing belongs in. ⭐⭐ THE ARCHIVE FOLDER, EXCEPT THAT A
+    /// COASTER IS ITS OWN CATEGORY. Master asked for "rides, track, coasters, shops, features etc.
+    /// as their own buttons", and the folders do not separate them -- every coaster is filed under
+    /// Rides beside the flat rides.
+    ///
+    /// ⭐ The .sam files separate them completely, and the difference is not a name to match on.
+    /// A coaster declares `sCoasterType`, `sTrainType`, `asCarTypes`, `asCrossSections` and
+    /// `asPylonControls` -- 252 keys describing a track to be BUILT -- and declares NO
+    /// `Info.Shape`, `Info.Name` or `Info.Id`. A ride declares exactly those three, plus
+    /// `UsageInfo` and `Upgrades`, and none of the coaster keys. Measured on jungle's coaster1
+    /// against Dizzy Dinos: the two key sets are disjoint in every one of those fields.
+    ///
+    /// ⚠ And "Track" is NOT a category of things. `STR_LISTBOX_BUILD_TRACK` = "Build Track" and
+    /// `STR_LISTBOX_EDIT_TRACK` = "Edit Track" are LISTBOX strings -- entries in a list, which is
+    /// to say ACTIONS on a coaster, not a shelf of items to place. So it is not made into a button
+    /// holding nothing.</summary>
+    string BuildCategory(AssetLibrary.RideAssets r)
+    {
+        var def = r.Model == null ? null : DefinitionFor(r.Model);
+        return def != null && def.Fields.Keys.Concat(def.Blocks.Keys)
+                   .Any(k => k.StartsWith("sCoasterType.", StringComparison.OrdinalIgnoreCase))
+             ? "Coasters" : Category(r.Name);
+    }
+
+    /// <summary>The name a thing is listed under. ⭐⭐ `Info.Name` FIRST, THEN THE TEXT DATABASE.
+    /// A coaster's .sam declares no name at all, so the build list showed `coaster1.mps` --
+    /// but the disc knows it: `STR_GRAPHICS_JUNGLE_RIDES_COASTER1_COASTER1` reads "Chak Atak".
+    /// That key is built from the path, which is why it works for a file that says nothing about
+    /// itself. Falls back to the filename, which is what it always did.</summary>
+    string DisplayName(AssetLibrary.RideAssets r, RideDefinition def)
+    {
+        if (def?.Name is { Length: > 0 } named) return named;
+        // ⚠⚠ THE KEY IS BUILT FROM THE MODEL, NOT FROM THE .sam. For most things the two share a
+        // stem -- `Rides/dizzyd/dizzyd` either way -- so keying on the definition worked and
+        // looked general. A coaster's do NOT: `/Rides/Coaster1/coaster.sam` beside
+        // `/Rides/Coaster1/coaster1.mps`, and the table's key is
+        // STR_GRAPHICS_JUNGLE_RIDES_COASTER1_COASTER1. Keying on the .sam asked for ..._COASTER
+        // and got -1, which is how "the name is not on the disc" and "I asked for the wrong name"
+        // look the same. The model is tried first and the definition kept as the fallback.
+        // ⚠⚠ THE WORLD COMES FROM THE .sam's PATH AND THE STEM FROM THE MODEL'S, because the two
+        // paths are not the same shape: `def.Source` is a full disc path
+        // (/DATA/JUNGLE.WAD/Rides/Coaster1/coaster.sam) and `Model.Path` is WAD-RELATIVE
+        // (/Rides/Coaster1/coaster1.mps). Keying on the .sam alone asks for ..._COASTER1_COASTER
+        // and misses; keying on the model alone finds no `.WAD` element and misses too, silently,
+        // in both cases looking exactly like "the disc does not know this name".
+        if (_text != null && def != null)
+        {
+            var src = def.Source.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            int wi = Array.FindIndex(src, x => x.EndsWith(".WAD", StringComparison.OrdinalIgnoreCase));
+            if (wi >= 0)
+            {
+                string world = src[wi][..^4];
+                foreach (var p2 in new[] { r?.Model?.Path, string.Join('/', src.Skip(wi + 1)) })
+                {
+                    if (string.IsNullOrEmpty(p2)) continue;
+                    int row = _text.IndexOf(TextDatabase.GraphicsKey(world, p2));
+                    if (row >= 0 && _text.Text("eng", row) is { Length: > 0 } t) return t;
+                }
+            }
+        }
+        return Leaf(r.Name);
+    }
+
+    /// <summary>⚠ A COASTER'S FOLDER HOLDS ITS PARTS TOO. `/Rides/coaster1/` ships the track, the
+    /// car (`croccar`) and the pylon (`StdPylon`) as separate models, and DefinitionFor matches a
+    /// .sam by directory suffix, so all three resolved to the same coaster definition and all
+    /// three appeared in the build list under their filenames. One folder is one coaster: the
+    /// entry whose own stem matches the folder is the one that lists.</summary>
+    static bool IsCoasterPart(string path)
+    {
+        int slash = path.LastIndexOf('/');
+        if (slash <= 0) return false;
+        string stem = path[(slash + 1)..];
+        int dot = stem.LastIndexOf('.');
+        if (dot > 0) stem = stem[..dot];
+        int prev = path.LastIndexOf('/', slash - 1);
+        string folder = path[(prev + 1)..slash];
+        return !stem.Equals(folder, StringComparison.OrdinalIgnoreCase);
+    }
+
     static string Leaf(string path)
     {
         int i = path.LastIndexOf('/');
@@ -1427,6 +1509,7 @@ public partial class Viewer : Node3D
         if (_ghostTest || System.Environment.GetEnvironmentVariable("TPW_GHOST_TEST") == "1") ShowTestGhost();
         if (_linkTest || System.Environment.GetEnvironmentVariable("TPW_LINK_TEST") == "1") CheckLinking();
         if (_walkAudit) WalkAudit();
+        if (_typeAudit) TypeAudit();
         // ⭐ So a capture can photograph the overlay, which has no key to press.
         if (System.Environment.GetEnvironmentVariable("TPW_WALK_OVERLAY") == "1") ToggleWalkOverlay();
     }
@@ -1580,8 +1663,11 @@ public partial class Viewer : Node3D
             _paths.Lay(px2, py2, PathTool.Kind.Path);
             int bits2 = _paths.LinkBits(px2, py2);
             bool up = (bits2 & PathPieces.North) != 0;
+            // ⚠ THE WALKWAY IS PHANTOM: master asked for "not path linkable or buildable either",
+            // so the arm must NOT appear. The first version grew one and this line said so
+            // approvingly -- it was testing the wrong thing, not failing to test.
             GD.Print($"[link] the walkway's mouth is ({mouth.X},{mouth.Y}); a path at ({px2},{py2}) "
-                   + $"reads {bits2:X2} -- {(up ? "an arm into the walkway, as it must be" : "NO ARM")}"
+                   + $"reads {bits2:X2} -- {(up ? "AN ARM INTO IT, which it must not have" : "no arm, as it must be")}"
                    + $"; laying on the walkway itself is {(_paths.CanLay(mouth.X, mouth.Y) ? "ALLOWED" : "refused, as it must be")}");
         }
         else GD.Print("[link] this park has no walkway to test against");
@@ -2436,7 +2522,9 @@ public partial class Viewer : Node3D
         // that test looked like it would work and did not.
         var groups = _lib.Rides
             .Where(r => r.Model != null && !IsTerrain(r.Model.Path) && DefinitionFor(r.Model) != null)
-            .GroupBy(r => Category(r.Name), StringComparer.OrdinalIgnoreCase)
+            .Where(r => !(BuildCategory(r).Equals("Coasters", StringComparison.OrdinalIgnoreCase)
+                          && IsCoasterPart(r.Model.Path)))
+            .GroupBy(BuildCategory, StringComparer.OrdinalIgnoreCase)
             .OrderByDescending(g => g.Count())
             .ToList();
         var bar = _buildTabBar;
@@ -2491,12 +2579,13 @@ public partial class Viewer : Node3D
         {
             var r = _lib.Rides[i];
             if (r.Model == null || IsTerrain(r.Model.Path)
-                || !Category(r.Name).Equals(category, StringComparison.OrdinalIgnoreCase)) continue;
+                || !BuildCategory(r).Equals(category, StringComparison.OrdinalIgnoreCase)) continue;
             var def = DefinitionFor(r.Model);
             if (def == null) continue;
-            string shown = Leaf(r.Name);
-            if (def?.Name is { Length: > 0 } named) shown = named;
-            _buildList.AddItem(shown);
+            // ⚠ One folder is one coaster; its car and its pylon are not separate things to place.
+            if (BuildCategory(r).Equals("Coasters", StringComparison.OrdinalIgnoreCase)
+                && IsCoasterPart(r.Model.Path)) continue;
+            _buildList.AddItem(DisplayName(r, def));
             _buildRows.Add(i);
         }
         Status($"{Title(category)}: {_buildRows.Count} things -- pick one, then click the park");
@@ -2513,7 +2602,7 @@ public partial class Viewer : Node3D
                                    : new Park.Footprint(1, 1, new[,] { { true } }, -1, -1);
         // ⭐ The CATEGORY decides whether it has a queue, and the category is where the row came
         // from -- not a field read back off the .sam.
-        _place.Arm(def, def.Name ?? Leaf(r.Name), def.Id ?? 1, fp,
+        _place.Arm(def, DisplayName(r, def), def.Id ?? 1, fp,
                    isRide: "Rides".Equals(_buildCategory, StringComparison.OrdinalIgnoreCase));
         _armedRide = r;
         _ghostAt = (-1, -1, -1, -1);
@@ -3124,6 +3213,84 @@ public partial class Viewer : Node3D
                 row.Append(x < 0 || x >= f.Width ? ' ' : f.Drawn(x, z) ? '.' : '#');
             GD.Print($"[skip] z={z,3} (world {_holeOrigin.Y + (f.Height - z),7:F1})  {row}");
         }
+    }
+
+    /// <summary>⭐ IS `Info.RideTypeStringIndex` AN INDEX INTO THE TEXT DATABASE? Master wants
+    /// track and coasters as their own build categories, and the archive folders do not separate
+    /// them -- everything with a track is filed under Rides. The .sam files declare a ride type
+    /// NUMBER (jungle: 1..16 on Rides, 19/21/22 on Sideshow) and its name says it indexes a table
+    /// of strings, which has never been located.
+    ///
+    /// ⚠ The obvious candidate is the localisation database, so this asks it directly and prints
+    /// what comes back. A row that reads like a ride type answers the question; a row that reads
+    /// like anything else answers it just as well, which is why the rows are printed rather than
+    /// a verdict.</summary>
+    void TypeAudit()
+    {
+        if (_text == null) { GD.PrintErr("[type] no text database loaded"); return; }
+        GD.Print($"[type] {_text.Keys.Length} rows in {_text.Locale}; keys mentioning a ride type:");
+        for (int i = 0; i < _text.Keys.Length; i++)
+        {
+            var k = _text.Keys[i];
+            if (k == null) continue;
+            if (!k.Contains("RIDETYPE", StringComparison.OrdinalIgnoreCase)
+             && !k.Contains("COASTER", StringComparison.OrdinalIgnoreCase)
+             && !k.Contains("TRACK", StringComparison.OrdinalIgnoreCase)) continue;
+            GD.Print($"[type]   {i,4} {k} = \"{_text.Text("eng", i)}\"");
+        }
+        GD.Print("[type] the first 26 rows, in case the index is simply the row:");
+        for (int i = 0; i < 26 && i < _text.Keys.Length; i++)
+            GD.Print($"[type]   {i,4} {_text.Keys[i]} = \"{_text.Text("eng", i)}\"");
+
+        // And what the .sam files actually declare, per category.
+        var byType = new Dictionary<int, List<string>>();
+        foreach (var r in _lib.Rides)
+        {
+            if (r.Model == null || IsTerrain(r.Model.Path)) continue;
+            var def = DefinitionFor(r.Model);
+            if (def?.Int("Info.RideTypeStringIndex") is not { } t) continue;
+            if (!byType.TryGetValue(t, out var list)) byType[t] = list = new List<string>();
+            list.Add($"{Category(r.Name)}/{def.Name ?? Leaf(r.Name)}");
+        }
+        // ⚠⚠ AND THE ANSWER, WHICHEVER WAY IT FALLS. If the rows above read like ride types the
+        // index is the text database; if they read like "Salt" and "Edit Track" it is not, and the
+        // next place to look is what the .sam files themselves say. So both are printed.
+        //
+        // ⭐ The Rides folder visibly holds coaster PARTS as well as rides -- coaster1, croccar,
+        // StdPylon show in the build list under their filenames because they declare no name. What
+        // separates them from Dizzy Dinos is what a category split has to be built on, so the key
+        // sets of one of each are printed side by side.
+        var keysOf = new Dictionary<string, string[]>();
+        foreach (var want in new[] { "coaster1", "croccar", "stdpylon", "dizzy", "bellybounce" })
+        {
+            var hit = _lib.Rides.FirstOrDefault(r => r.Model != null && !IsTerrain(r.Model.Path)
+                        && r.Model.Path.Contains(want, StringComparison.OrdinalIgnoreCase));
+            if (hit == null) continue;
+            var def = DefinitionFor(hit.Model);
+            if (def == null) continue;
+            keysOf[want] = def.Fields.Keys.Concat(def.Blocks.Keys).OrderBy(k => k).ToArray();
+            var parts2 = def.Source.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            int wi2 = Array.FindIndex(parts2, x => x.EndsWith(".WAD", StringComparison.OrdinalIgnoreCase));
+            string key2 = wi2 < 0 ? "(no WAD in source)"
+                : TextDatabase.GraphicsKey(parts2[wi2][..^4], string.Join('/', parts2.Skip(wi2 + 1)));
+            GD.Print($"[type] {want,-12} source={def.Source}");
+            GD.Print($"[type] {want,-12} key={key2} -> row {_text.IndexOf(key2)} = \"{(_text.IndexOf(key2) >= 0 ? _text.Text("eng", _text.IndexOf(key2)) : "-")}\"");
+            GD.Print($"[type] {want,-12} name={def.Name ?? "(none)"} id={def.Id?.ToString() ?? "-"} "
+                   + $"type={def.Int("Info.RideTypeStringIndex")?.ToString() ?? "-"} "
+                   + $"shape={(def.Shape == null ? "none" : $"{def.Shape.Max(r => r.Length)}x{def.Shape.Length}")} "
+                   + $"{def.Fields.Count + def.Blocks.Count} keys");
+        }
+        if (keysOf.TryGetValue("coaster1", out var ck) && keysOf.TryGetValue("dizzy", out var dk))
+        {
+            GD.Print($"[type] keys coaster1 has and Dizzy Dinos does not: {string.Join(" ", ck.Except(dk))}");
+            GD.Print($"[type] keys Dizzy Dinos has and coaster1 does not: {string.Join(" ", dk.Except(ck))}");
+        }
+
+        GD.Print($"[type] {byType.Count} distinct ride types declared in this park:");
+        foreach (var (t, list) in byType.OrderBy(kv => kv.Key))
+            GD.Print($"[type]   type {t,3} ({list.Count,2}) {string.Join(", ", list.Take(4))}"
+                   + $"{(list.Count > 4 ? " ..." : "")}"
+                   + $"   text row {t}: \"{_text.Text("eng", t)}\"");
     }
 
     /// <summary>⭐ WHAT IS ALREADY WALKABLE, read off the disc rather than assumed.

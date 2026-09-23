@@ -51,9 +51,13 @@ public sealed class PathTool
     /// tile map from its own table (see <see cref="ParkEntrance"/>), so it is path as far as
     /// anything that walks or joins is concerned, and a run laid up to its mouth has to attach.
     ///
-    /// ⚠ IT IS NOT GROUND THIS TOOL PAINTS. Every cell of it is one the terrain draws NO ground
-    /// on -- the entrance prefab's mesh stands there instead -- so writing a path tile into the
-    /// grid would lay `jpa_` art over the road. It counts as path and is never drawn.</summary>
+    /// ⚠⚠ AND IT IS PHANTOM TO THE BUILD TOOL. Master: "the paths outside the gate should not be
+    /// buildable. they are just phantom paths that the ai uses" -- and then, when the first version
+    /// let a path at the mouth grow an arm toward it, "not path linkable or buildable either". So
+    /// the ONLY thing this set does here is refuse: nothing may be laid on it, nothing joins to it,
+    /// and it is never drawn (every cell of it is one the terrain draws no ground on, so writing a
+    /// path tile would lay `jpa_` art over the road). The simulation walks it through
+    /// <see cref="ParkPaths.Open"/>, which is a different question with a different answer.</summary>
     readonly HashSet<int> _walkway = new();
     readonly Dictionary<int, byte> _before = new();
 
@@ -156,10 +160,7 @@ public sealed class PathTool
     /// draws no ground there.</summary>
     public bool CanLay(int x, int y) => Ready && In(x, y) && _field.Buildable(x, y) && !_walkway.Contains(At(x, y));
 
-    public Kind KindAt(int x, int y)
-        => !In(x, y) ? Kind.None
-         : _walkway.Contains(At(x, y)) ? Kind.Path
-         : _kind[At(x, y)];
+    public Kind KindAt(int x, int y) => In(x, y) ? _kind[At(x, y)] : Kind.None;
 
     /// <summary>Is this one of the park's own entrance cells?</summary>
     public bool IsWalkway(int x, int y) => In(x, y) && _walkway.Contains(At(x, y));
@@ -243,7 +244,6 @@ public sealed class PathTool
     bool PathJoins(int x, int y)
     {
         if (!In(x, y)) return false;
-        if (_walkway.Contains(At(x, y))) return true;
         var k = _kind[At(x, y)];
         if (k is Kind.Path or Kind.Both) return true;
         return k == Kind.Queue && IsQueueEnd(x, y);
