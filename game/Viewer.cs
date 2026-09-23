@@ -2581,7 +2581,12 @@ public partial class Viewer : Node3D
     /// there is a laid cell to go to and room for more.</summary>
     void Gate()
     {
-        if (_guests.Guests.Count >= _guestCap || ++_gateTimer < _gateEvery) return;
+        // ⚠ THE WHOLE POPULATION, not the walkers: a queued or riding guest is off the walk, and
+        // counting only the walk let the gate admit a new guest for every one that joined a
+        // queue -- ninety-three boardings and a forty-four-deep queue in three minutes.
+        int population = _guests.Guests.Count
+                       + (_visitors?.Plans.Values.Count(p => p.Intent == VisitorIntent.Queued) ?? 0);
+        if (population >= _guestCap || ++_gateTimer < _gateEvery) return;
         var pool = GuestPool();
         if (pool.Count == 0) return;
         _gateTimer = 0;
@@ -2788,7 +2793,7 @@ public partial class Viewer : Node3D
         // last row, and the tool counts a cell once however many runs cross it.
         int cells = left.Concat(right).Concat(bar).Distinct().Count();
         GD.Print($"[guest] laid {_paths.Laid - before} of {cells} path cells in from the mouth ({xl},{z0 - 1}) ({xr},{z0 - 1})");
-        _guestCap = 8; _gateEvery = 20; _gateTimer = _gateEvery - 1;
+        _guestCap = 16; _gateEvery = 20; _gateTimer = _gateEvery - 1;
         if (!OpenGate()) { GD.Print("[guest] the gate would not open, so there is nobody to photograph"); return; }
         GuestTestRide(xl, z0);
     }
@@ -2926,7 +2931,7 @@ public partial class Viewer : Node3D
         PlaceActors(1f);
         PresentScripted();
         double t = _parkTicks * ParkSim.TickMilliseconds / 1000.0;
-        int moved = 0; float farthest = 0;
+        int moved = 0, comparable = 0; float farthest = 0;
         foreach (var g in _guests.Guests)
         {
             var p = Cell(g.Position);
@@ -2935,6 +2940,7 @@ public partial class Viewer : Node3D
             if (_guestAt != null && _guestAt.TryGetValue(g.Id, out var was))
             {
                 float d = (p - was).Length();
+                comparable++;
                 if (d > 0.01f) moved++;
                 farthest = Mathf.Max(farthest, d);
                 motion = $", moved {d:F2} cells since {_guestLabel}";
@@ -2943,9 +2949,13 @@ public partial class Viewer : Node3D
                    + (g.Next is ParkCell n ? $" -> {n} {g.Fraction:F2}" : "")
                    + $" world ({world.X:F2}, {world.Y:F2}, {world.Z:F2}), bound for {g.Destination}{motion}");
         }
+        // ⚠ ONLY GUESTS PRESENT AT BOTH STAGES CAN BE COMPARED. A guest who rode in between left
+        // the walk and came back, and one who came in later has no earlier position; a verdict
+        // over the whole crowd once said "NOBODY MOVED" about a park where everybody had.
         if (_guestAt != null)
-            GD.Print($"[guest] {label}: {moved} of {_guests.Guests.Count} guests moved since {_guestLabel}; the farthest {farthest:F2} cells"
-                   + (moved == 0 ? " -- NOBODY MOVED" : ""));
+            GD.Print($"[guest] {label}: of {_guests.Guests.Count} walking, {comparable} were also walking at {_guestLabel}; "
+                   + $"{moved} of those moved, the farthest {farthest:F2} cells"
+                   + (comparable == 0 ? " -- nobody to compare" : moved == 0 ? " -- NOBODY MOVED" : ""));
         if (_visitors != null)
         {
             int queued = _visitors.Plans.Values.Count(p => p.Intent == VisitorIntent.Queued);

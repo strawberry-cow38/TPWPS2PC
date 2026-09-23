@@ -14,7 +14,12 @@ namespace TPWPS2Viewer;
 ///   is what keeps the rest pose intact at frame 0;
 /// * scale renormalises each basis vector to the interpolated length;
 /// * vertex morph replaces positions through the model's own `mesh+0x98` map;
-/// * a node is not drawn before its appear frame or after its disappear frame.</summary>
+/// * a node is not drawn before its appear frame or after its disappear frame;
+/// * ⭐ a SKELETAL record (the characters in DATA.WAD) is sampled into one bone matrix per
+///   helper the way `FUN_001a8da8` does -- no hierarchy, the keys are the whole transform -- and
+///   every part that carries a skin at `mesh+0x90` is re-skinned from it each frame, through the
+///   same `mesh+0x98` map the morph path uses. The arithmetic is core's (Model.Skin,
+///   SkeletalPose) and tools/TPW.PS2.SkinAudit checks it against the disc without Godot.</summary>
 public sealed class AnimatedModel
 {
     sealed class Part
@@ -26,6 +31,8 @@ public sealed class AnimatedModel
         public List<Godot.Vector3> Normal;
         public List<Model.Triangle> Tris;
         public int[] AnimMap;
+        /// <summary>The mesh's skin, or null for a mesh that is not skinned (every ride part).</summary>
+        public Model.Skin Skin;
         public List<(int[] Times, System.Numerics.Vector3[] Keys)> Morph;
         public MeshInstance3D[] Surfaces;          // one per material
         public int[] SurfaceMaterial;
@@ -108,11 +115,22 @@ public sealed class AnimatedModel
                 Ancestry = _model.Ancestry(mesh.Index),
                 Morph = MorphFor(rec, mesh.Index),
             };
+            try { p.Skin = _model.ReadSkin(mesh); }
+            catch (InvalidDataException e) { GD.PrintErr($"[part] {mesh.Name}: skin rejected: {e.Message}"); }
+            // ⚠ The mesh+0x98 run list must name exactly the skin's animated vertices, or a slot
+            // would read past the skin's tables. Checked once here, not per frame.
+            if (p.Skin != null && (p.AnimMap == null || p.AnimMap.Max() + 1 != p.Skin.VertexCount))
+            {
+                GD.PrintErr($"[part] {mesh.Name}: skin has {p.Skin.VertexCount} animated vertices but the run list maps "
+                          + (p.AnimMap == null ? "nothing" : (p.AnimMap.Max() + 1).ToString()) + " -- not skinned");
+                p.Skin = null;
+            }
             BuildSurfaces(p);
             _parts.Add(p);
             var vs = _vis.TryGetValue(mesh.Index, out var vv) ? "vis[" + string.Join(",", vv) + "]" : "always";
             GD.Print($"[part] {mesh.Name,-10} tris={tris.Count,-5} verts={pos.Count,-5} " +
                      $"morph={(p.Morph != null ? p.Morph.Count.ToString() : "-"),-5} " +
+                     $"skin={(p.Skin != null ? p.Skin.Bones.Count() + "b" : "-"),-4} " +
                      $"map={(p.AnimMap != null ? "yes" : "NO "),-4} {vs}");
         }
         RefreshSummary();
@@ -147,9 +165,10 @@ public sealed class AnimatedModel
         // the old texture on screen while the mirror claimed 0.
         _textureTracks.AddRange(textureTracks);
         // ⚠ THE TWO TRACK FORMATS ARE NOT INTERCHANGEABLE. A skeletal record's tracks are 20 bytes,
-        // not 48, so none of the channel readers below may be pointed at one. The characters in
-        // DATA.WAD are skinned to a biped and are shown in their bind pose until the skin is wired;
-        // their morph record (there is exactly one per character) still animates.
+        // not 48, so none of the channel readers below may be pointed at one. A skeletal record is
+        // kept whole in _skel and sampled by SetFrame into the parts' skins; a record with flag
+        // 0x80 (Shared) has no tracks in this file -- Boy2a/3a/4a reuse Boy1a's -- and leaves the
+        // character in its bind pose until it is given the file that has them.
         Skeletal = rec != null && rec.Skeletal;
         if (rec != null && !rec.Skeletal)
         {
@@ -181,11 +200,14 @@ public sealed class AnimatedModel
         // ⚠ A part the old record morphed and the new one does not goes back on its bind positions
         // HERE: SetFrame only rebuilds a part that has a morph, so without this it would stay
         // frozen at whatever frame the old record left it on.
+        // ⚠ And a part the old record SKINNED goes back to its bind positions the same way when
+        // the new record has no pose to give it.
+        bool posed = _posed; _posed = false;
         foreach (var p in _parts)
         {
             bool morphed = p.Morph != null;
             p.Morph = MorphFor(rec, p.Mesh.Index);
-            if (morphed && p.Morph == null) RebuildGeometry(p, 0);
+            if ((morphed && p.Morph == null) || (posed && p.Skin != null && _skel == null)) RebuildGeometry(p, 0);
         }
         RefreshSummary();
     }
@@ -205,7 +227,8 @@ public sealed class AnimatedModel
     void RefreshSummary() =>
         Summary = $"{_parts.Count} parts, {Frames} frames, {_model.Materials.Count} materials"
                   + $", {_textureTracks.Count} texture tracks"
-                  + (Skeletal ? $", {_skel?.Count ?? 0} bone tracks (bind pose)" : "");
+                  + (Skeletal ? $", {_skel?.Count ?? 0} bone tracks over {_parts.Count(p => p.Skin != null)} skinned parts"
+                               + (_skel == null ? " (shared record, no tracks here: bind pose)" : "") : "");
 
     // ⚠ Culling is owned by the shader's render_mode, not by a material property. It is built
     // into the shader source from TPW_PS2_CULL rather than hardwired -- it used to say
@@ -279,10 +302,18 @@ public sealed class AnimatedModel
         RebuildGeometry(p, 0);
     }
 
-    void RebuildGeometry(Part p, float now)
+    void RebuildGeometry(Part p, float now, Matrix4x4[] pose = null)
     {
         var pos = p.BindPos;
-        if (p.Morph != null && p.AnimMap != null)
+        if (pose != null && p.Skin != null && p.AnimMap != null)
+        {
+            // ⭐ The game's own skinning per animated vertex (Model.Skin.Deform), fanned out to
+            // the strip slots through the same run list the morph path uses.
+            var ev = new System.Numerics.Vector3[p.Skin.VertexCount];
+            for (int i = 0; i < ev.Length; i++) ev[i] = p.Skin.Deform(i, pose);
+            pos = p.AnimMap.Select(i => ev[i]).ToList();
+        }
+        else if (p.Morph != null && p.AnimMap != null)
         {
             var ev = p.Morph.Select(v => Sample(v.Times, v.Keys, now)).ToArray();
             pos = p.AnimMap.Select(i => ev[i]).ToList();
@@ -385,6 +416,11 @@ public sealed class AnimatedModel
             if (Aps.VisibleAt(timeline, now)) _hidden.Remove(node); else _hidden.Add(node);
         }
         var world = WorldAt(now);
+        // ⭐ THE BIPED. A skeletal record's tracks are each bone's whole transform -- there is no
+        // hierarchy to compose -- sampled the sampler's way into one matrix per helper and shared
+        // by every part, exactly as FUN_001a8da8 fills one matrix array and then walks every mesh.
+        var pose = Skeletal && _skel != null ? SkeletalPose.At(_skel, now, _model.HelperCount) : null;
+        if (pose != null) _posed = true;
         foreach (var p in _parts)
         {
             // ⚠⚠ VISIBILITY IS INHERITED. 183 of the disc's 2,033 appear/disappear entries are
@@ -395,7 +431,7 @@ public sealed class AnimatedModel
                 if (_hidden.Contains(node)) { shown = false; break; }
             foreach (var s in p.Surfaces) s.Visible = shown;
             if (!shown) continue;
-            if (p.Morph != null && p.AnimMap != null) RebuildGeometry(p, now);
+            if ((p.Morph != null || (pose != null && p.Skin != null)) && p.AnimMap != null) RebuildGeometry(p, now, pose);
             var w = world[p.NodeOffset];
             var t = new Transform3D(
                 new Godot.Basis(new Godot.Vector3(w.M11, w.M12, w.M13),
@@ -500,6 +536,8 @@ public sealed class AnimatedModel
     public HashSet<int> OverriddenNodes = new();
 
     bool _dumped;
+    /// <summary>Whether SetFrame has skinned the parts from a skeletal pose since the last UseRecord.</summary>
+    bool _posed;
 
     static bool Compose =>
         (OS.GetEnvironment("TPW_PS2_ROT") ?? "").ToLowerInvariant() == "compose";

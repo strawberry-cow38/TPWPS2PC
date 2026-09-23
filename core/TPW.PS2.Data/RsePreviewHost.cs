@@ -159,6 +159,25 @@ public sealed class RsePreviewHost : IRseHost
         WalkerMoved?.Invoke(w);
     }
 
+    /// <summary>How many seats the thing being previewed has. ⭐ Set from the model's `0x80`
+    /// fittings -- `Model.Fittings.Count(f => (f.Flags & 0x80) != 0)` -- because that is the list
+    /// ADDHEAD's own handler indexes with `slot + 1`. Left at zero the ride seats nobody, which
+    /// is what a preview with no model to ask should say.</summary>
+    public int HeadSlots { get; set; }
+
+    public sealed record Seat(long Time, int Slot, int Guest);
+    public event Action<Seat> HeadChanged;
+    /// <summary>Who is in which seat. The preview draws nobody; it records, so an audit can show
+    /// that a ride running with eight aboard really did seat eight.</summary>
+    public IReadOnlyDictionary<int, int> Seats => _seats;
+    readonly Dictionary<int, int> _seats = new();
+
+    public void HeadAt(int slot, int guest)
+    {
+        if (guest == 0) _seats.Remove(slot); else _seats[slot] = guest;
+        HeadChanged?.Invoke(new Seat(Time, slot, guest));
+    }
+
     public sealed record Hidden(long Time, int Guest, bool Visible);
     /// <summary>Which guests this script has taken out of sight, and when. The preview draws
     /// nobody; it records, so an audit can show a guest actually went into the shop.</summary>

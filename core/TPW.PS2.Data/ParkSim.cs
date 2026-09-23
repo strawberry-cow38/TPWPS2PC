@@ -111,7 +111,7 @@ public sealed class ParkSim : IRseDirectory
     public ParkRide Add(int id, string name, ParkCell origin, int width, int height,
                         byte[] script, Animation animation, int capacity,
                         ParkCell? entrance, ParkCell? exit, out string fault,
-                        Func<string, byte[]> sibling = null)
+                        Func<string, byte[]> sibling = null, int headSlots = 0)
     {
         fault = null;
         if (script == null || script.Length == 0) { fault = "no script"; return null; }
@@ -122,7 +122,7 @@ public sealed class ParkSim : IRseDirectory
         try
         {
             program = new RseProgram(script);
-            host = new RsePreviewHost(animation);
+            host = new RsePreviewHost(animation) { HeadSlots = headSlots };
             // ⭐ THE CHILD SHARES THE PARENT'S ANIMATION. `0x1be91c` copies the parent's `+0xc8`
             // -- its animation context -- into the child, so an effects script drives the same
             // model its ride does. That is also why TRIGANIM_CH exists: they need channels to

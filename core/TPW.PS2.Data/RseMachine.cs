@@ -48,6 +48,16 @@ public interface IRseHost
     /// milliseconds here are ours and the sign is the game's; do not build anything on the number.</summary>
     int AnimationRemainingOn(int channel);
 
+    /// <summary>How many head fittings the thing this script drives has -- the `0x80` family of
+    /// `Model.Fittings`. ⭐ ADDHEAD's own handler looks its slot up as `FindFitting(slot + 1,
+    /// 0x80)`, so the number of slots and the seats a rider can be drawn in are the same list.
+    /// Zero is a fine answer and means this ride seats nobody.</summary>
+    int HeadSlots { get; }
+
+    /// <summary>A guest has been put on head slot <paramref name="slot"/> (0-based), or taken off
+    /// it when <paramref name="guest"/> is zero. The seat is `FindFitting(slot + 1, 0x80)`.</summary>
+    void HeadAt(int slot, int guest);
+
     /// <summary>Show or hide a guest. ⭐ This is what LIMBO is FOR: `0x1bbb30` calls `0x1fa2c8`
     /// to take the guest out of sight when they go in and `0x1bbbe8` calls it again to put them
     /// back, which is how somebody walks into a burger stand and stops existing for a while.</summary>
@@ -290,7 +300,7 @@ public sealed class RseMachine
                         if (_animationUntil != null && Time < _animationUntil) return Yield = RseYield.Animation;
                         _animationUntil = null; break;
                     case RseOpcode.ADDOBJ: case RseOpcode.KILLOBJ: case RseOpcode.FADEOBJ:
-                    case RseOpcode.EVENT: case RseOpcode.ADDHEAD: case RseOpcode.DELHEAD:
+                    case RseOpcode.EVENT:
                     case RseOpcode.STARTSCREAM: case RseOpcode.STOPSCREAM:
                     case RseOpcode.SINGLESCREAM: case RseOpcode.SCREAMLEVEL:
                     case RseOpcode.REPAIREFFECT: case RseOpcode.SETREVERB: case RseOpcode.DIPMUSIC:
@@ -399,6 +409,36 @@ public sealed class RseMachine
                         }
                         break;
 
+                    // ⭐⭐ WHERE A RIDER SITS. `0x1be...`'s ADDHEAD takes a RANDOM free slot, puts
+                    // the guest in it, and attaches them to `FindFitting(slot + 1, 0x80)` -- so
+                    // the seats are the model's own `0x80` fittings and the slot number IS the
+                    // fitting id, less one. DELHEAD scans every slot holding that guest, detaches
+                    // each and clears it.
+                    //
+                    // ⚠ RANDOM, not the first free one. A half-full ride fills its seats in no
+                    // particular order on the console, and taking the lowest would look tidier
+                    // than the game does.
+                    case RseOpcode.ADDHEAD:
+                    {
+                        int joining = V(0);
+                        var seats = (int[])Heads;
+                        // No room: `0x1be...` returns without touching anything.
+                        if (seats.Length == 0 || seats.All(x => x != 0)) break;
+                        int seat;
+                        do { seat = (int)((uint)_random() % (uint)seats.Length); } while (seats[seat] != 0);
+                        seats[seat] = joining;
+                        _host?.HeadAt(seat, joining);
+                        break;
+                    }
+                    case RseOpcode.DELHEAD:
+                    {
+                        int leaving = V(0);
+                        var seats = (int[])Heads;
+                        for (int i = 0; i < seats.Length; i++)
+                            if (seats[i] == leaving) { seats[i] = 0; _host?.HeadAt(i, 0); }
+                        break;
+                    }
+
                     case RseOpcode.LIMBO: LastValue = Limbo(V(0), V(1)); break;
                     case RseOpcode.UNLIMBO: Result(Unlimbo(false), true); break;
                     case RseOpcode.FORCEUNLIMBO:
@@ -447,6 +487,12 @@ public sealed class RseMachine
     int Value(RseProgram.Operand a) => a.Tag == 0x40 ? this[a.Index]
         : a.Tag == 0 ? a.Immediate : throw new InvalidDataException($"Expected numeric operand, got {a}");
     IRseHost Host() => _host ?? throw new NotSupportedException("This instruction requires an RSSE host");
+
+    int[] _heads;
+    /// <summary>Who is in each seat, by head slot. ⚠ Sized from the HOST, not from the program:
+    /// the script's header says nothing about seats, and the count comes from the model's `0x80`
+    /// fittings -- which is why a ride with no such fittings simply cannot take a head.</summary>
+    public IReadOnlyList<int> Heads => _heads ??= new int[Math.Max(0, _host?.HeadSlots ?? 0)];
 
     /// <summary>One guest tucked away inside something. 8 bytes at instance `+0x24`: the guest and
     /// when they are due out. `+0x58` is the capacity and `+0x60` the count.</summary>

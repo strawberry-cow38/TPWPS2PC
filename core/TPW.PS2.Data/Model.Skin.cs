@@ -162,8 +162,9 @@ public sealed partial class Model
     ///
     /// <code>R = D1 * chain(bone) * D2</code>
     ///
-    /// where <c>chain</c> composes the helper's parent-relative matrices (basis rows normalised to
-    /// length 1) up to but EXCLUDING <c>Bip01</c>, <c>D1</c> swaps the bone-space y and z axes
+    /// where <c>chain</c> is the bone's rotation relative to <c>Bip01</c>'s frame -- its world
+    /// rotation against Bip01's, which for a bone under Bip01 is its parent-relative matrices
+    /// (basis rows normalised to length 1) composed up to but EXCLUDING Bip01 -- <c>D1</c> swaps the bone-space y and z axes
     /// (the same Z-up-to-Y-up swap <see cref="BoneMatrix"/> shows the game applying to the keys)
     /// and <c>D2</c> is a quarter turn about Y. Stopping at Bip01 is what makes it one rule: the
     /// kids' Bip01 is their root, while every adult rig hangs Bip01 under a "picked up pivot"
@@ -182,18 +183,18 @@ public sealed partial class Model
         int bip = -1;
         for (int h = 0; h < HelperCount; h++)
             if (NameAt((int)U32(NodeOffset(Meshes.Count + h) + 0x54)) == "Bip01") { bip = Meshes.Count + h; break; }
-        var local = LocalTransforms();
-        Matrix4x4 Chain(int n, int depth)
-        {
-            int off = NodeOffset(n);
-            int parent = NodeIndex((int)U32(off + 4));
-            var l = Normalised(local[off]);
-            if (parent < 0 || parent == bip || depth > 64) return l;
-            return l * Chain(parent, depth + 1);
-        }
+        var world = WorldTransforms();
+        // "Relative to Bip01's frame", in the form that holds for a bone whether or not its
+        // ancestry passes through Bip01: the node's world rotation against Bip01's. For a bone
+        // under Bip01 this is the chain of locals up to but excluding Bip01; for Bip01 itself it
+        // is the identity; for a prop bone hung off the pivot beside Bip01 (the vampire's bats,
+        // the researcher's placard) it is the node's own rotation through Bip01's inverse, which
+        // the chain form got wrong by thousands of units.
+        var r = Normalised(world[NodeOffset(node)]);
+        if (bip >= 0) r *= Matrix4x4.Transpose(Normalised(world[NodeOffset(bip)]));
         var d1 = new Matrix4x4(1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1);
         var d2 = new Matrix4x4(0, 0, -1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1);
-        var r = d1 * Chain(node, 0) * d2;
+        r = d1 * r * d2;
         r.M41 = 0; r.M42 = 0; r.M43 = 0;
         return r;
     }

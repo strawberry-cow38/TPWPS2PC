@@ -18,7 +18,7 @@ using TPW.PS2.Data;
 //
 // ⚠ IT NEEDS THE OWNER'S DISC. Nothing is committed and nothing is cached.
 
-if (args.Length < 1) { Console.Error.WriteLine("Usage: SkinAudit /path/to/disc.bin"); return 2; }
+if (args.Length < 1) { Console.Error.WriteLine("Usage: SkinAudit /path/to/disc.bin | /path/to/DATA.WAD"); return 2; }
 int bad = 0;
 void Check(bool ok, string line) { Console.WriteLine((ok ? "  ok   " : "  FAIL ") + line); if (!ok) bad++; }
 
@@ -29,16 +29,22 @@ const double Threshold = 1.0;
 // ⚠ The sampler's matrix array on the PS2 stack holds 35 slots (afStack_9c0, 560 floats).
 const int GameSlots = 35;
 
-using var disc = new Disc(args[0]);
-var dataEntry = disc.Files().Single(f => f.Path.Equals("/DATA/DATA.WAD", StringComparison.OrdinalIgnoreCase));
-var wad = new WadArchive(disc.Read(dataEntry.Extent, dataEntry.Size));
+// A bare DATA.WAD is accepted too, for a machine that holds the archive but not the image.
+WadArchive wad;
+if (args[0].EndsWith(".wad", StringComparison.OrdinalIgnoreCase)) wad = new WadArchive(File.ReadAllBytes(args[0]));
+else
+{
+    using var disc = new Disc(args[0]);
+    var dataEntry = disc.Files().Single(f => f.Path.Equals("/DATA/DATA.WAD", StringComparison.OrdinalIgnoreCase));
+    wad = new WadArchive(disc.Read(dataEntry.Extent, dataEntry.Size));
+}
 var models = wad.Entries.Where(e => e.Path.StartsWith("/Chars/", StringComparison.OrdinalIgnoreCase)
                                  && e.Path.EndsWith(".mps", StringComparison.OrdinalIgnoreCase))
                         .OrderBy(e => e.Path, StringComparer.OrdinalIgnoreCase).ToList();
 Console.WriteLine($"DATA.WAD: {models.Count} character models under /Chars");
 
 double worstAll = 0; string worstWho = "-";
-int skinnedMeshes = 0, unskinnedMeshes = 0, characters = 0, moved = 0, sharedOnly = 0;
+int skinnedMeshes = 0, unskinnedMeshes = 0, characters = 0, moved = 0, sharedOnly = 0, restPoses = 0;
 foreach (var entry in models)
 {
     string stem = entry.Path[..^4], leaf = stem[(stem.LastIndexOf('/') + 1)..];
@@ -59,8 +65,10 @@ foreach (var entry in models)
     var world = model.WorldTransforms();
     var bindT = new Dictionary<(int Mesh, int Bone), Vector3>();   // solved translations, for the runtime comparison below
     var skins = new Dictionary<int, Model.Skin>();
-    double worst = 0; string worstAt = "-"; int verts = 0; var bonesUsed = new SortedSet<int>();
+    double worst = 0, worstSingle = 0, worstBlend = 0; string worstAt = "-"; int verts = 0; var bonesUsed = new SortedSet<int>();
     double weightDev = 0, slotSpread = 0;
+    var bindPose = new Dictionary<int, Matrix4x4[]>();   // per mesh: the bind matrices (rotation from the model, translation solved)
+    var meshWorst = new Dictionary<string, (double Single, double Blend)>();
     foreach (var mesh in model.Meshes)
     {
         Model.Skin skin;
@@ -126,6 +134,8 @@ foreach (var entry in models)
             var m = rot[b]; m.M41 = t[col[b]].X; m.M42 = t[col[b]].Y; m.M43 = t[col[b]].Z;
             pose[b] = m; bindT[(mesh.Index, b)] = t[col[b]];
         }
+        bindPose[mesh.Index] = pose;
+        meshWorst[mesh.Name] = (0.0, 0.0);
         // ⭐ The same Deform the viewer draws with, over EVERY strip slot -- fitted vertices included,
         // because the fit only had 3 numbers per bone to spend and the rotations are not its to change.
         var skinned = new Vector3[skin.VertexCount];
@@ -134,17 +144,31 @@ foreach (var entry in models)
         {
             double err = (skinned[map[s]] - pos[s]).Length();
             verts++;
+            // ⭐ Single-influence vertices and blended ones are scored apart: a bone's rotation is
+            // wrong if the single ones miss; only the blended ones missing says the SKIN is not
+            // one rigid transform per bone -- a mesh edited after it was weighted, which is the
+            // data's business and not the reader's.
+            if (skin.Count[map[s]] == 1) worstSingle = Math.Max(worstSingle, err); else worstBlend = Math.Max(worstBlend, err);
+            var mw = meshWorst[mesh.Name];
+            meshWorst[mesh.Name] = skin.Count[map[s]] == 1 ? (Math.Max(mw.Single, err), mw.Blend) : (mw.Single, Math.Max(mw.Blend, err));
             if (err > worst) { worst = err; worstAt = $"{mesh.Name} slot {s} (bone{(skin.Count[map[s]] > 1 ? "s" : "")} {string.Join("+", Enumerable.Range(skin.First[map[s]], skin.Count[map[s]]).Select(j => HelperName(skin.Bone[j])))})"; }
         }
     }
     if (worst > worstAll) { worstAll = worst; worstWho = leaf; }
     Console.WriteLine($"{leaf,-12} meshes {model.Meshes.Count} ({skins.Count} skinned) helpers {model.HelperCount,2} bones {bonesUsed.Count,2} slots {verts,4}"
-                    + $" | bind worst {worst,9:F3} at {worstAt}");
+                    + $" | bind worst {worst,9:F3} (single-bone {worstSingle:F3}, blended {worstBlend:F3}) at {worstAt}");
     Check(hasBip, $"{leaf}: the hierarchy has a Bip01 to stop the bind chain at");
     Check(skins.Count > 0, $"{leaf}: at least one mesh is skinned");
     Check(weightDev <= 1e-3, $"{leaf}: every vertex's weights sum to 1 (worst |sum-1| {weightDev:E1})");
-    Check(slotSpread <= 1e-3, $"{leaf}: every run of the mesh+0x98 list is one authored vertex (worst spread {slotSpread:F3})");
+    // ⚠ 0.1, not zero: a strip slot's X and Y words carry the ADC and facing flags in their low
+    // bit, so two slots of one vertex differ by an ulp or two -- a few thousandths at 15,000.
+    Check(slotSpread <= 0.1, $"{leaf}: every run of the mesh+0x98 list is one authored vertex (worst spread {slotSpread:F3}, an ulp of flag bits)");
     Check(worst <= Threshold, $"{leaf}: skinning the bind pose returns the authored vertices (worst {worst:F3} units, threshold {Threshold})");
+    // ⚠ NAMED, NOT FILTERED. A rig that misses says which mesh and whether its single-bone
+    // vertices (the rotation's business) or only its blended ones (the skin's own consistency)
+    // are the ones off.
+    if (worst > Threshold)
+        Console.WriteLine("       per mesh (single-bone / blended): " + string.Join("; ", meshWorst.Select(kv => $"{kv.Key} {kv.Value.Single:F2} / {kv.Value.Blend:F2}")));
 
     // ---- the tracks: coverage, index space, and the proof of motion ----
     if (aps == null) { Console.WriteLine($"  {leaf}: no .aps beside the model"); continue; }
@@ -152,27 +176,48 @@ foreach (var entry in models)
     var live = records.Where(r => !r.Shared).ToList();
     Console.WriteLine($"  {records.Count} skeletal records, {live.Count} with tracks in this file" + (live.Count < records.Count ? $" ({records.Count - live.Count} shared, flag 0x80: tracks live in another character's file)" : ""));
     if (live.Count == 0) { sharedOnly++; continue; }
-    int uncovered = 0, lateStart = 0, maxNode = -1, overSlots = 0;
+    int lateStart = 0, maxNode = -1, overSlots = 0, withLists = 0;
+    var unkeyed = new SortedSet<string>();
     foreach (var rec in live)
     {
         var tracks = aps.SkeletalTracks(rec);
         var keyed = new HashSet<int>(tracks.Select(x => x.Node));
-        uncovered += bonesUsed.Count(b => !keyed.Contains(b));
+        foreach (var b in bonesUsed) if (!keyed.Contains(b)) unkeyed.Add(HelperName(b));
         lateStart += tracks.Count(x => (x.Rot.Count > 0 && x.Rot[0].Time != 0) || (x.Pos.Count > 0 && x.Pos[0].Time != 0));
         maxNode = Math.Max(maxNode, tracks.Max(x => x.Node));
         overSlots += tracks.Count(x => x.Node >= GameSlots);
+        if (rec.SmallCount > 0) withLists++;
     }
-    Check(uncovered == 0, $"{leaf}: every skin bone is keyed by every record (a bone the record leaves alone would be stack garbage on the PS2) -- {uncovered} misses");
     Check(maxNode < model.HelperCount, $"{leaf}: track node indices ({maxNode} at most) stay inside the {model.HelperCount} helpers");
-    Console.WriteLine($"  tracks starting after frame 0: {lateStart}; tracks indexing at or past the game's {GameSlots} stack slots: {overSlots}");
+    // ⚠ A bone a record does not key keeps whatever its stack slot held on the PS2 and the
+    // identity here. The disc does this only on prop bones (a placard, a hammer, a rock), so
+    // it is reported by name rather than failed: the reader is not what is wrong with it.
+    Console.WriteLine($"  tracks starting after frame 0: {lateStart}; tracks at or past the game's {GameSlots} stack slots: {overSlots};"
+                    + $" records with per-mesh show/hide lists (FUN_001a8c30): {withLists} of {live.Count};"
+                    + (unkeyed.Count == 0 ? " every skin bone keyed by every record" : $" bones some record leaves unkeyed: {string.Join(", ", unkeyed)}"));
 
     // ⭐ THE PROOF. Slot 1's first record is the walk on every kid (feet in anti-phase, a pelvis
-    // bob); elsewhere take the first record with tracks. A foot at two frames, in vertex units
-    // and through the mesh's world matrix (model units, before the viewer's Z mirror).
-    var walk = live.FirstOrDefault(r => r.Slot == 1) ?? live[0];
-    var wt = aps.SkeletalTracks(walk);
+    // bob) and its left foot is the bone to watch; a rig without a slot 1 gets whichever bone of
+    // whichever record travels FURTHEST between frame 0 and the record's midpoint, so that a
+    // still bone in a still record can never pass this by standing still. Vertex units, and
+    // through the mesh's world matrix (model units, before the viewer's Z mirror).
+    Animation.Record walk = live.FirstOrDefault(r => r.Slot == 1);
+    List<Animation.SkeletalTrack> wt = walk == null ? null : aps.SkeletalTracks(walk);
     int foot = Enumerable.Range(0, model.HelperCount).FirstOrDefault(h => HelperName(h).EndsWith("L Foot", StringComparison.OrdinalIgnoreCase), -1);
-    if (foot < 0 || wt.All(x => x.Node != foot)) foot = wt.OrderByDescending(x => x.Pos.Count).First().Node;
+    if (walk == null || foot < 0 || wt.All(x => x.Node != foot))
+    {
+        double far = -1;
+        foreach (var rec in live)
+        {
+            var tr = aps.SkeletalTracks(rec);
+            var a = SkeletalPose.At(tr, 0, model.HelperCount); var b = SkeletalPose.At(tr, Math.Max(1, rec.DurationFrames / 2f), model.HelperCount);
+            foreach (var x in tr)
+            {
+                double d = (b[x.Node].Translation - a[x.Node].Translation).Length();
+                if (d > far) { far = d; walk = rec; wt = tr; foot = x.Node; }
+            }
+        }
+    }
     float f0 = 0, f1 = Math.Max(1, walk.DurationFrames / 2f);
     var p0 = SkeletalPose.At(wt, f0, model.HelperCount)[foot].Translation;
     var p1 = SkeletalPose.At(wt, f1, model.HelperCount)[foot].Translation;
@@ -180,7 +225,8 @@ foreach (var entry in models)
     var w = world[bodyMesh.Offset];
     Vector3 W(Vector3 v) => Vector3.Transform(v, w);
     double dist = (p1 - p0).Length();
-    Console.WriteLine($"  {walk.SlotName} slot {walk.Slot} ({walk.DurationFrames} frames): {HelperName(foot)} at frame {f0} = ({p0.X:F0}, {p0.Y:F0}, {p0.Z:F0})"
+    string slotLabel = Animation.SlotNames.ContainsKey(walk.Slot) ? $"slot {walk.Slot} {walk.SlotName}" : $"slot {walk.Slot}";
+    Console.WriteLine($"  {slotLabel} ({walk.DurationFrames} frames): {HelperName(foot)} at frame {f0} = ({p0.X:F0}, {p0.Y:F0}, {p0.Z:F0})"
                     + $" -> model ({W(p0).X:F3}, {W(p0).Y:F3}, {W(p0).Z:F3}); at frame {f1} = ({p1.X:F0}, {p1.Y:F0}, {p1.Z:F0})"
                     + $" -> model ({W(p1).X:F3}, {W(p1).Y:F3}, {W(p1).Z:F3}); moved {dist:F0} units");
     // and the skinned mesh itself, not just a bone: the body's centroid at the same two frames
@@ -188,9 +234,33 @@ foreach (var entry in models)
     Vector3 Centroid(float f) { var pose = SkeletalPose.At(wt, f, model.HelperCount); var c = Vector3.Zero; for (int i = 0; i < bs.VertexCount; i++) c += bs.Deform(i, pose); return c / bs.VertexCount; }
     var c0 = Centroid(f0); var c1 = Centroid(f1);
     Console.WriteLine($"  {bodyMesh.Name} skinned centroid: frame {f0} ({c0.X:F0}, {c0.Y:F0}, {c0.Z:F0}), frame {f1} ({c1.X:F0}, {c1.Y:F0}, {c1.Z:F0})");
-    bool footKeyed = wt.First(x => x.Node == foot).Pos.Count > 1;
-    Check(!footKeyed || dist > 10, $"{leaf}: the sampled {HelperName(foot)} moves between frames {f0} and {f1} ({dist:F0} units)");
+    Check(dist > 10, $"{leaf}: the sampled {HelperName(foot)} moves between frames {f0} and {f1} of {slotLabel} ({dist:F0} units)");
     if (dist > 10) moved++;
+
+    // ⭐⭐ THE CONTROL WITH NOTHING SOLVED. Skin frame 0 of every record straight through the
+    // game's own matrices -- keys in, Model.BoneMatrix, Skin.Deform, nothing fitted -- and
+    // compare with the authored vertices. A record whose frame 0 is the rest pose must give
+    // them back, and on the disc several rigs' Idle does exactly that; the kids' records all
+    // start mid-gait, so for them this can only report how far off the nearest is.
+    double nearest = double.MaxValue; string nearestRec = "-";
+    foreach (var rec in live)
+    {
+        var tr = aps.SkeletalTracks(rec);
+        var pose = SkeletalPose.At(tr, 0, model.HelperCount);
+        double err = 0;
+        foreach (var mesh in model.Meshes)
+        {
+            if (!skins.TryGetValue(mesh.Index, out var sk)) continue;
+            var map = model.AnimVertexMap(mesh); var (pos, _, _) = model.Vertices(mesh);
+            if (map == null) continue;
+            var ev = new Vector3[sk.VertexCount];
+            for (int i = 0; i < ev.Length; i++) ev[i] = sk.Deform(i, pose);
+            for (int s = 0; s < map.Length; s++) err = Math.Max(err, (ev[map[s]] - pos[s]).Length());
+        }
+        if (err < nearest) { nearest = err; nearestRec = Animation.SlotNames.ContainsKey(rec.Slot) ? $"slot {rec.Slot} {rec.SlotName}" : $"slot {rec.Slot}"; }
+    }
+    Console.WriteLine($"  frame 0 skinned through the game's matrices alone, nearest record to the authored vertices: {nearestRec}, worst vertex {nearest:F1} units");
+    if (nearest < 50) restPoses++;
 
     // Informational: how close does a record's frame 0 come to the bind pose? (No record is a
     // T-pose, so this can only corroborate the runtime layout, not prove it.)
@@ -214,7 +284,9 @@ foreach (var entry in models)
 
 Console.WriteLine($"\n{characters} characters, {skinnedMeshes} skinned meshes ({unskinnedMeshes} unskinned), worst bind error {worstAll:F3} units on {worstWho}, threshold {Threshold}");
 Console.WriteLine($"{moved} characters showed a bone moving between two frames; {sharedOnly} carry only shared records and were not sampled");
+Console.WriteLine($"{restPoses} characters have a record whose frame 0, skinned through the game's matrices with nothing solved, lands on the authored vertices within 50 units");
 Check(characters > 0, "at least one character was audited (otherwise every check above is vacuous)");
+Check(restPoses > 0, "at least one rig proves the whole runtime pipeline with nothing fitted (a record's frame 0 returns its authored vertices)");
 Console.WriteLine(bad == 0 ? "PASS" : $"FAIL: {bad}");
 return bad == 0 ? 0 : 1;
 

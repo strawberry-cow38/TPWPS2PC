@@ -277,6 +277,13 @@ foreach (var e in wad.Entries.Where(e => e.Path.EndsWith(".rse", StringCompariso
     string stem = e.Path[..^4];
     var samEntry = wad.Find(stem + ".sam");
     if (samEntry == null) continue;
+    // ⭐⭐ A RIDE THAT CAN SEAT SOMEBODY. Picking the first three alphabetically gave Belly Bounce
+    // (an inflatable: no seats, its riders BOUNCE) and Chac Atak (a coaster, which stalls on
+    // COAST), and the seat checks below then passed vacuously on rides that never seat anyone.
+    // The two facts line up exactly across the disc -- every jungle ride whose script uses
+    // ADDHEAD has `0x80` fittings and every ride without ADDHEAD has none, ten for ten -- so
+    // asking the MODEL whether it has seats is asking whether the script will use them.
+    if (!System.Text.Encoding.ASCII.GetString(wad.Read(e)).Contains("VAR_ONRIDE", StringComparison.Ordinal)) continue;
     var def = RideDefinition.Parse(System.Text.Encoding.ASCII.GetString(wad.Read(samEntry)), stem + ".sam");
     Animation aps = null;
     try { var ae = wad.Find(stem + ".aps"); if (ae != null) aps = new Animation(wad.Read(ae)); } catch { }
@@ -286,11 +293,21 @@ foreach (var e in wad.Entries.Where(e => e.Path.EndsWith(".rse", StringCompariso
         var c = wad.Entries.FirstOrDefault(x => x.Path.Equals(ldir + child, StringComparison.OrdinalIgnoreCase));
         return c == null ? null : wad.Read(c);
     }
+    // ⭐ THE SEATS ARE THE MODEL'S OWN `0x80` FITTINGS, which is the list ADDHEAD indexes with
+    // `slot + 1`. A ride whose model is missing simply seats nobody rather than guessing a number.
+    int seats = 0;
+    try
+    {
+        var mps = wad.Find(stem + ".mps");
+        if (mps != null) seats = new Model(wad.Read(mps)).Fittings.Count(f => (f.Flags & 0x80) != 0);
+    }
+    catch { }
+    if (seats == 0) continue;
     var stop = stops[loopId];
     bool control = loopId == 3;
     var r = loop.Add(loopId + 1, (control ? "CONTROL " : "") + (def.Name ?? stem), stop, 1, 1,
                      wad.Read(e), aps, def.UpgradeCapacity(0) ?? 1,
-                     stop, control ? stop : onPath[^1], out _, sibling: SLoop);
+                     stop, control ? stop : onPath[^1], out _, sibling: SLoop, headSlots: seats);
     if (r != null) { loop.SetOpen(r.Id, true); loopId++; }
 }
 var marooned = loop.Rides.FirstOrDefault(r => r.Name.StartsWith("CONTROL", StringComparison.Ordinal));
@@ -308,6 +325,17 @@ foreach (var r in loop.Rides)
     Console.WriteLine($"  {r.Name,-22} queue {r.Queue.Count}  on ride {r.OnRide}"
                     + (r.Fault != null ? $"  FAULT {Kind(r.Fault)}" : ""));
 Check(visitors.Boardings > 0, $"a guest walks to a ride's queue and is handed over ({visitors.Boardings} times)");
+// ⭐⭐ AND SOMEBODY IS IN THE SEATS. ADDHEAD puts a rider in a RANDOM free head slot and attaches
+// them to that slot's fitting, so this is the first number that says WHERE a rider is and not just
+// that one exists -- and it is the thing a renderer needs to draw a person on a ride.
+var seated = loop.Rides.Where(r => r.Host.Seats.Count > 0).ToList();
+foreach (var r in loop.Rides)
+    Console.WriteLine($"  {r.Name,-22} {r.Machine.Heads.Count} seats, {r.Host.Seats.Count} taken"
+                    + (r.Host.Seats.Count > 0 ? $": {string.Join(", ", r.Host.Seats.OrderBy(kv => kv.Key).Select(kv => $"#{kv.Key}=g{kv.Value}"))}" : ""));
+Check(loop.Rides.Any(r => r.Machine.Heads.Count > 0), "a ride has seats at all (its model's 0x80 fittings)");
+Check(seated.Count > 0, $"a rider is put IN a seat, not just counted ({seated.Count} rides have somebody seated)");
+Check(loop.Rides.All(r => r.Host.Seats.Count <= r.Machine.Heads.Count),
+      "no ride seats more people than it has seats");
 Check(visitors.Rides > 0, $"a guest comes back OUT of a ride and walks away ({visitors.Rides} did)");
 // ⚠⚠ THE SAME PEOPLE, not the same COUNT. A guest handed to a ride leaves the walking layer and
 // is put back when the script is done, and putting them back as a NEW id would pass every count
