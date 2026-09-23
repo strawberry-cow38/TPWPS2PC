@@ -143,7 +143,14 @@ public sealed class AnimatedModel
     /// state a freshly built one would be in.</summary>
     public void UseRecord(Aps.Record rec)
     {
-        var textureTracks = _anim?.TextureTracks(rec) ?? new();
+        // ⚠⚠ NOT ON A SKELETAL RECORD. A skeletal record's tracks are 20 bytes, not 48, so asking
+        // for texture tracks points a 48-byte reader at a 20-byte table and it walks off the end
+        // -- "Index was out of range ... (Parameter 'startIndex')" from inside the APS reader.
+        // The file already warns about this further down, but the warning sat BELOW the one call
+        // that breaks it. It threw for girl1a (25 tracks) and girl4a (24) and not for girl2a (22)
+        // or boy1a (22), which is the shape of an overrun: whether it lands past the end depends
+        // on how many tracks the record has, so it looks like a per-character quirk.
+        var textureTracks = rec is { Skeletal: true } ? new() : _anim?.TextureTracks(rec) ?? new();
         foreach (var track in textureTracks)
         {
             if (track.Material >= _model.MaterialTextures.Count ||

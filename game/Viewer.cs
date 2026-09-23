@@ -2498,6 +2498,12 @@ public partial class Viewer : Node3D
     int _parkTicks;
     Node3D _guestRoot;
     readonly Dictionary<int, Node3D> _actors = new();
+    /// <summary>Each actor's drawn model and its sitting record, so a rider can be posed and a
+    /// walker un-posed. Where says which file the pose came from, or why there is none.</summary>
+    readonly Dictionary<int, (AnimatedModel Drawn, Aps.Record Sit, string Where)> _drawn = new();
+    /// <summary>Who is currently held in the sitting pose.</summary>
+    readonly HashSet<int> _posed = new();
+    readonly Dictionary<string, Aps> _charAnims = new(StringComparer.OrdinalIgnoreCase);
     /// <summary>Where each guest was before the last tick, in cell space, for the lerp.</summary>
     readonly Dictionary<int, Vector3> _guestPrev = new();
     /// <summary>Ticks a stopped guest has left to stand before it is sent somewhere else, or,
@@ -2531,7 +2537,7 @@ public partial class Viewer : Node3D
     {
         if (_guestRoot != null && IsInstanceValid(_guestRoot)) _guestRoot.QueueFree();
         _guestRoot = null; _guests = null; _visitors = null; _mouth = null; _gateClosed = false;
-        _actors.Clear(); _guestPrev.Clear(); _guestDwell.Clear();
+        _actors.Clear(); _drawn.Clear(); _posed.Clear(); _guestPrev.Clear(); _guestDwell.Clear();
         _guestPool = null; _guestPoolLaid = -1; _guestPoolAt = -1; _guestAt = null; _guestLabel = null;
         _gateTimer = 0; _guestRng = new Random(1); _guestStage = 0; _guestSince = 0; _guestTestRide = null;
         _parkTicks = 0;
@@ -2873,23 +2879,32 @@ public partial class Viewer : Node3D
         foreach (var (id, seat) in _seated)
         {
             if (!_actors.TryGetValue(id, out var rider)) rider = MakeActor(id);
-            if (rider != null) rider.Transform = seat.At;
+            if (rider == null) continue;
+            rider.Transform = seat.At;
+            Pose(id, sitting: true);
         }
         foreach (var (id, leg) in _walking)
         {
             if (!_actors.TryGetValue(id, out var walker)) walker = MakeActor(id);
-            if (walker != null) walker.Transform = leg.At;
+            if (walker == null) continue;
+            walker.Transform = leg.At;
+            Pose(id, sitting: false);
         }
         foreach (var g in _guests.Guests)
         {
             if (!_actors.TryGetValue(g.Id, out var actor)) actor = MakeActor(g.Id);
             if (actor == null) continue;
+            Pose(g.Id, sitting: false);
             var now = Cell(g.Position);
             var was = _guestPrev.TryGetValue(g.Id, out var p) ? p : now;
             actor.Position = GuestWorld(was.Lerp(now, alpha), g.Cell);
             // Facing the step, in the same mirrored frame. Standing guests keep their last facing.
+            // ⚠ Assigned as a whole basis, not through Rotation: a kid back from a seat still carries
+            // the seat's full basis, and Euler on that is the round trip this codebase already lost.
             if (g.Next is ParkCell next)
-                actor.Rotation = new Vector3(0, Mathf.Atan2(next.X - g.Cell.X, g.Cell.Z - next.Z), 0);
+                actor.Basis = Basis.Identity.Rotated(Vector3.Up, Mathf.Atan2(next.X - g.Cell.X, g.Cell.Z - next.Z));
+            else if (actor.Basis.Determinant() < 0 || Mathf.Abs(actor.Basis.Y.Dot(Vector3.Up) - 1f) > 1e-3f)
+                actor.Basis = Basis.Identity;
         }
     }
 
@@ -2908,8 +2923,10 @@ public partial class Viewer : Node3D
                 model = new Model(_charLib.Read(entry));
                 _charModels[path] = model;
             }
-            var drawn = new AnimatedModel(model, null, null, m => CharTexture(path, m));
+            var (aps, sit, where) = SittingRecord(path);
+            var drawn = new AnimatedModel(model, aps, null, m => CharTexture(path, m));
             drawn.SetFrame(0);
+            _drawn[id] = (drawn, sit, where);
             var actor = new Node3D { Name = $"Guest_{id}" };
             actor.AddChild(drawn.Root);
             // Feet on the node's origin and centred on it, measured the way VisitorParkView does.
@@ -2926,6 +2943,84 @@ public partial class Viewer : Node3D
             _actors[id] = null;
             return null;
         }
+    }
+
+    /// <summary>⭐ THE SITTING POSE IS SLOT 3, `Load`, MEASURED OFF THE KNEES (findings, 62fbf90):
+    /// of a kid's sixteen skeletal records, fourteen hang the leg down at about 46 degrees from
+    /// vertical and exactly two -- both variants of slot 3 -- raise the thigh past horizontal
+    /// (140 and 143 degrees), which is what sitting is. The slot's ride-table name agrees and is
+    /// only a bonus; the angles are the evidence.
+    ///
+    /// ⚠⚠ ONE INFERENCE ON TOP OF ANOTHER: those angles rest on the skinning agent's reading that
+    /// a skeletal track's node is `meshCount + bone`, under which they are sitting and under the
+    /// old `skin.py` reading they would be noise. Both have controls under them; neither is a
+    /// consumer walked in the executable.
+    ///
+    /// ⚠ A SHARED RECORD HAS NO TRACKS, AND THE FLAG DECIDES, PER CHARACTER, PER RECORD. Checked
+    /// on the disc: every girl's slot 3 carries its own tracks (girl1a 25, girl2a 22, girl3a 28,
+    /// girl4a 24 -- flags 0x25, and NOT the same skeleton as each other, so one girl's record on
+    /// another's rig would drive the wrong bones); only boy2a/3a/4a are flagged Shared (0xa5)
+    /// and reuse Boy1a's. So a kid is built against its own file whenever its record has tracks,
+    /// against the family's *1a file only when the flag says Shared or the record is absent, and
+    /// with no usable record at all it stays in bind pose and says so. The log prints which file
+    /// posed whom; "own record Shared, no tracks" must never print for a girl.</summary>
+    (Aps Anim, Aps.Record Sit, string Where) SittingRecord(string modelPath)
+    {
+        Aps Load(string mps)
+        {
+            string apsPath = System.IO.Path.ChangeExtension(mps, ".aps");
+            if (_charAnims.TryGetValue(apsPath, out var cached)) return cached;
+            Aps aps = null;
+            try
+            {
+                var entry = _charLib.Wad.Find(apsPath);
+                if (entry != null) aps = new Aps(_charLib.Read(entry));
+            }
+            catch (Exception e) { GD.PrintErr($"[guest] {apsPath} would not load: {e.Message}"); }
+            _charAnims[apsPath] = aps;
+            return aps;
+        }
+        static Aps.Record Slot3(Aps aps) => aps?.Records().FirstOrDefault(r => r.Slot == 3);
+        static bool Shared(Aps.Record r) => r != null && (r.Flags & 0x80) != 0;
+        var own = Load(modelPath);
+        var rec = Slot3(own);
+        if (rec != null && !Shared(rec)) return (own, rec, $"Load v0 from {Leaf(modelPath)}'s own file");
+        // Shared or absent: the family's first file carries the tracks.
+        // ⚠ "${1}1a", braced: "$11a" reads as group ELEVEN and replaces nothing, which left every
+        // boy but Boy1a "Shared and no sibling tracks" in the first render.
+        string family = System.Text.RegularExpressions.Regex.Replace(modelPath, @"(Boy|Girl)\d[a-z]", "${1}1a", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (!family.Equals(modelPath, StringComparison.OrdinalIgnoreCase))
+        {
+            var sibling = Load(family);
+            var sibRec = Slot3(sibling);
+            if (sibRec != null && !Shared(sibRec)) return (sibling, sibRec, $"Load v0 from {Leaf(family)} (own record {(rec == null ? "absent" : "Shared, no tracks")})");
+        }
+        return (own, null, rec == null ? "no slot 3 record -- bind pose" : "slot 3 Shared and no sibling tracks -- bind pose");
+    }
+
+    /// <summary>Hold a rider in its sitting record, or put a walker back in bind pose. Frame 0
+    /// of the record, held: the lead measured the pose there, and a rider does not act out a
+    /// boarding while the ride runs.</summary>
+    void Pose(int id, bool sitting)
+    {
+        if (!_drawn.TryGetValue(id, out var d) || d.Drawn?.Root == null || !IsInstanceValid(d.Drawn.Root)) return;
+        if (sitting == _posed.Contains(id)) return;
+        try
+        {
+            d.Drawn.UseRecord(sitting ? d.Sit : null);
+            d.Drawn.SetFrame(0);
+        }
+        catch (Exception e)
+        {
+            // ⚠ INTO THE CENSUS, NOT ONLY STDERR, and not retried every frame: a record the skinning
+            // path will not take (girl1a's and girl4a's Load v0 throw "Index was out of range" in
+            // UseRecord where girl2a's and boy1a's do not) is that kid's bind pose with the reason
+            // beside it -- the skinning path's question, said where the seat lines are read.
+            GD.PrintErr($"[guest] #{id} would not take its {(sitting ? "sitting" : "bind")} pose: {e.Message}");
+            if (sitting) _drawn[id] = (d.Drawn, null, $"{d.Where} -- UseRecord threw: {e.Message}");
+            return;
+        }
+        if (sitting && d.Sit != null) _posed.Add(id); else _posed.Remove(id);
     }
 
     /// <summary>TextureNear for a character: the same decode, against DATA.WAD, in its own cache
@@ -3176,7 +3271,8 @@ public partial class Viewer : Node3D
                        + (r.Fault != null ? $" FAULT {r.Fault}" : ""));
             foreach (var (id, seat) in _seated)
                 GD.Print($"[guest] {label} rider #{id} in {seat.Where} at world ({seat.At.Origin.X:F2}, {seat.At.Origin.Y:F2}, {seat.At.Origin.Z:F2})"
-                       + (_actors.TryGetValue(id, out var body) && body != null ? "" : " -- NO BODY"));
+                       + (_actors.TryGetValue(id, out var body) && body != null ? "" : " -- NO BODY")
+                       + (_drawn.TryGetValue(id, out var dr) ? $"; pose: {(_posed.Contains(id) ? dr.Where : "BIND -- " + dr.Where)}" : ""));
             foreach (var (id, leg) in _walking)
                 GD.Print($"[guest] {label} walker #{id} on {leg.Where} at world ({leg.At.Origin.X:F2}, {leg.At.Origin.Y:F2}, {leg.At.Origin.Z:F2})");
             // ⭐ THE MIRROR COUNT, AS A NUMBER. A kid's mesh must end up with an ODD number of
