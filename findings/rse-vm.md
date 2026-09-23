@@ -398,8 +398,19 @@ code does not contain.
 resolve, `hallow/rides/shake` ships none and the game gets a null child. And all 50 programs are
 **33/36-word STATIC TABLES** — ten `COPY`s setting `VAR_EVT0..4` to event ids and `VAR_PAR0..4` to
 parameter ids, then `ENDSLICE`/`BRANCH` forever. Opcodes used: `COPY`, `ENDSLICE`, `BRANCH`, and
-nothing else. **The bridge is the child's VARIABLE ARRAY, read by the ride engine — not an
-instruction.** That reader has not been found.
+nothing else. ⚠⚠ **AND THE OBVIOUS CONCLUSION — "the bridge is the child's VARIABLE ARRAY, read by the ride
+engine" — IS NOT SUPPORTED.** That was written here as a reading when the reader had merely not
+been looked for. It has now been looked for: all **119 of 119** call sites into the audio entry
+`0x111428` are traced to a literal, a literal table, a table-fed list or the script's own operand,
+and **not one takes its id from the sound child.** No path loads instance `+0x14` then `+0x1c`;
+the only five-slot tables (`+0x2e4`, `+0x1e8`, `+0x200`, `+0x280`) are filled from literals. The
+`EventMap.rse` numbers are the newer `soundint` generation and match no map and no literal, while
+the engine's are the older generation's.
+
+**Reading: on this build the `SPAWNSOUND` child is loaded and scheduled and its table is simply
+not consumed.** ⚠ The bound on that negative, stated: it is a static census of ONE entry point,
+complete for that entry, and a reader reached through the audio object's vtable (`0x3706c8`, via
+`jalr`) is not excluded by it.
 
 ⭐ The two mechanisms PARTITION the rides rather than disagree: the six JUNGLE scripts that
 `SPAWNSOUND` an `EventMap` (Coaster1, Coaster3, MineCart, GoKarts, TourRide, Wateride) carry
