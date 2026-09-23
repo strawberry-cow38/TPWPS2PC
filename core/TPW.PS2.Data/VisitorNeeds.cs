@@ -54,13 +54,23 @@ public struct VisitorWants
     /// <summary>`+0x7A`. A shop's DBA "thirst reduction" (key `0x33`) is subtracted from here.</summary>
     public byte Thirst;
 
-    /// <summary>`+0x74`. ⚠ NOT IDENTIFIED. Above 89 it triggers `FUN_0020D010(guest, 0)`, and the
-    /// sibling call `(guest, 1)` is what an unhappy guest does — so the pair is very likely litter
-    /// and vandalism. Which is which, and what this counts, is NOT read. Named by its offset.</summary>
-    public byte Unknown74;
-    /// <summary>`+0x78`. ⚠ NOT IDENTIFIED. Seeded `rand(40)` and read by the shop scorer.</summary>
+    /// <summary>`+0x74`, LITTER CARRIED -- and the engine says so in its own words. Above 89 it
+    /// runs `FUN_0020D010`, whose debug labels are `"litter"`, `"litter bin"`, `"drop litter"` and
+    /// `"bin litter"`, and that function sets this byte back to **0**. You carry rubbish until you
+    /// drop it or find a bin. ⭐ Which is also where the `Litter` bubble (id 15) comes from.</summary>
+    public byte Litter;
+
+    /// <summary>`+0x78`. ⚠ CANDIDATE: boredom. THE NAME IS NOT READ; THE ARITHMETIC IS.
+    /// `FUN_0020C6A8` -- the function labelled `"Toilet"` -- adds **+5** while the guest waits, and
+    /// `FUN_0020EDD8`, which ends a ride, SUBTRACTS from it scaled by that ride's own value. Up
+    /// while queueing, down when entertained, seeded `rand(40)`, and read by the what-shall-I-do
+    /// scorer. That is boredom's shape; nothing in the executable names it.</summary>
     public byte Unknown78;
-    /// <summary>`+0x7B`. ⚠ NOT IDENTIFIED. Below 99 it gates the whole leave-the-park check.</summary>
+
+    /// <summary>`+0x7B`. ⚠ CANDIDATE: had-enough / going-home. Arithmetic read, name not.
+    /// `FUN_0020C930` only ASKS whether to leave while this is below 99 -- at 99 or above the
+    /// guest goes regardless -- and ending a ride takes `rand(20)` off it. A meter that sends you
+    /// home when it maxes and that rides push back down. Seeded `rand(50)`.</summary>
     public byte Unknown7B;
 
     /// <summary>`+0x60`, a word, not a byte and not clamped. Spawns at `(rand(300) + 200) * 10`,
@@ -123,7 +133,7 @@ public sealed class VisitorNeeds
         ["thirst"] = new Rate(0, 2, High: true),
         ["toilet"] = new Rate(0, 1, High: true),
         ["sick"] = new Rate(0, 0, High: false),
-        ["unknown74"] = new Rate(0, 1, High: false),
+        ["litter"] = new Rate(0, 1, High: false),
     };
 
     /// <summary>How much SIMULATED time passes between one rise and the next.
@@ -178,7 +188,7 @@ public sealed class VisitorNeeds
     {
         var w = new VisitorWants
         {
-            Unknown74 = Clamp(Rand(40)),
+            Litter = Clamp(Rand(40)),
             Happiness = Clamp(50),
             Sick = Clamp(Rand(50)),
             Hunger = Clamp(Rand(70)),
@@ -220,7 +230,7 @@ public sealed class VisitorNeeds
             w.Thirst = Clamp(w.Thirst + Roll(Rates["thirst"]));
             w.Toilet = Clamp(w.Toilet + Roll(Rates["toilet"]));
             w.Sick = Clamp(w.Sick + Roll(Rates["sick"]));
-            w.Unknown74 = Clamp(w.Unknown74 + Roll(Rates["unknown74"]));
+            w.Litter = Clamp(w.Litter + Roll(Rates["litter"]));
             _byGuest[guest] = w;
         }
     }
@@ -282,10 +292,53 @@ public sealed class VisitorNeeds
         return t;
     }
 
-    /// <summary>⚠ `happiness &lt; 5` or `cash &lt; 100`, and `FUN_0020C930` only asks at all while
-    /// `+0x7B` is below 99.</summary>
+    /// <summary>⚠ `happiness &lt; 5` or `cash &lt; 100` -- but only while `+0x7B` is below 99.
+    /// ⭐ AT 99 OR ABOVE THE GUEST GOES HOME REGARDLESS, which is the other half of
+    /// `FUN_0020C930`'s gate and the half a "leaves when unhappy" reading would miss: the check is
+    /// `if (+0x7B &lt; 99) { ...reasons... }` with the leave flag set unconditionally after it.</summary>
     public bool WantsToGoHome(int guest)
-        => _byGuest.TryGetValue(guest, out var w) && w.Unknown7B < 99 && (w.Happiness < 5 || w.Cash < 100);
+        => _byGuest.TryGetValue(guest, out var w)
+           && (w.Unknown7B >= 99 || w.Happiness < 5 || w.Cash < 100);
+
+    /// <summary>Getting off a ride, as `FUN_0020EDD8` has it.
+    ///
+    /// ⭐ THE SHAPE IS READ. Happiness up; sickness by the ride's own value measured against **30**,
+    /// so a gentle ride settles the stomach and a fierce one turns it; `+0x78` down by that value;
+    /// `+0x7B` down by `rand(20)`; and the toilet emptied -- see <see cref="UseToilet"/>.
+    ///
+    /// ⚠ The three scale factors are globals (`DAT_002EEB30/34/44`) that have NOT been read, so
+    /// they are arguments here rather than constants invented inside.</summary>
+    public void Ride(int guest, int intensity, int happinessGain, float sickScale, float boredomScale)
+    {
+        if (!_byGuest.TryGetValue(guest, out var w)) return;
+        w.Happiness = Clamp(w.Happiness + happinessGain);
+        w.Sick = Clamp(w.Sick + (int)(sickScale * (intensity - 30)));
+        w.Unknown78 = Clamp(w.Unknown78 - (int)(boredomScale * intensity));
+        w.Unknown7B = Clamp(w.Unknown7B - Rand(20));
+        _byGuest[guest] = w;
+    }
+
+    /// <summary>Waiting, as the function labelled `"Toilet"` has it: happiness down for the wait,
+    /// and **+5** to `+0x78` -- the byte whose arithmetic reads as boredom.</summary>
+    public void Queue(int guest, int happinessCost = 5)
+    {
+        if (!_byGuest.TryGetValue(guest, out var w)) return;
+        w.Happiness = Clamp(w.Happiness - happinessCost);
+        w.Unknown78 = Clamp(w.Unknown78 + 5);
+        _byGuest[guest] = w;
+    }
+
+    /// <summary>Using the toilet. ⭐ The need goes to zero, and whatever it was OVER 60 is handed
+    /// back as the mess left behind -- `(toilet - 60) * 2 / 3`, which `FUN_0020EDD8` passes to the
+    /// facility itself. Returns that, or 0 for a guest who was not desperate.</summary>
+    public int UseToilet(int guest)
+    {
+        if (!_byGuest.TryGetValue(guest, out var w)) return 0;
+        int soil = w.Toilet < 61 ? 0 : (w.Toilet - 60) * 2 / 3;
+        w.Toilet = 0;
+        _byGuest[guest] = w;
+        return soil;
+    }
 
     /// <summary>⚠⚠ FORGET WHOEVER IS NO LONGER IN THE PARK. Guest ids are REUSED, and a stale
     /// entry means the next person with that id inherits a dead stranger's hunger. The

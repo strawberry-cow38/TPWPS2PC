@@ -24,7 +24,7 @@ static class NeedsLifecycleChecks
             visitors.Needs.Set(guest.Id, new VisitorWants
             {
                 Happiness = 83, Sick = 71, Hunger = 94, Toilet = 88, Thirst = 96,
-                Unknown74 = 61, Unknown78 = 62, Unknown7B = 63, Cash = 1234, Thought = Thought.Good,
+                Litter = 61, Unknown78 = 62, Unknown7B = 63, Cash = 1234, Thought = Thought.Good,
             });
             return (paths, sim, visitors, ride, guest);
         }
