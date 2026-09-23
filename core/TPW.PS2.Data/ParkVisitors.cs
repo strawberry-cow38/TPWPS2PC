@@ -112,9 +112,10 @@ public sealed class ParkVisitors
             {
                 _plans.Remove(guest);
                 if (back is not { } cell) continue;
-                // Re-enter the walking layer standing on the exit, going nowhere yet; Idle picks
-                // their next destination on this same tick.
-                var g = Walk.Spawn(cell, cell);
+                // ⭐ THE SAME PERSON, not a new one. Spawn would issue a fresh id, and then the
+                // guest who queued and the guest who walked away would be different people to
+                // anything counting them -- which is every feature that comes after this one.
+                var g = Walk.Readmit(guest, cell, cell);
                 _plans[g.Id] = new Plan(g.Id, VisitorIntent.Wandering, 0, cell);
                 Rides++;
             }

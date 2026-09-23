@@ -119,6 +119,25 @@ public sealed class GuestWalk
         return guest;
     }
 
+    /// <summary>⭐⭐ PUT THE SAME PERSON BACK. A guest handed to a ride LEAVES this layer
+    /// entirely -- the script owns them while they are aboard -- and comes back when the script
+    /// is done with them. Spawning them again would give them a NEW id, so the person who queued
+    /// and the person who walked away would be different people as far as anything counting them
+    /// is concerned: money, needs, which rides they have been on, even which of the eight kid
+    /// models they were wearing.
+    ///
+    /// ⚠ The id is not checked against the living; a caller readmitting somebody who never left
+    /// gets two of them, which is the caller's mistake and looks like one.</summary>
+    public Guest Readmit(int id, ParkCell at, ParkCell to)
+    {
+        if (!Paths.Walkable(at)) throw new ArgumentException($"A guest cannot be put down at {at}: not walkable ground");
+        var guest = new Guest { Id = id, Cell = at, Destination = to, State = GuestState.Walking };
+        _guests.Add(guest);
+        if (!Assign(guest)) { guest.State = GuestState.NoRoute; guest.Reason = $"no route from {at} to {to}"; }
+        else if (at == to) guest.State = GuestState.Arrived;
+        return guest;
+    }
+
     public void Clear() { _guests.Clear(); Time = 0; _carry = 0; _lastId = 0; }
     public void Remove(int id) => _guests.RemoveAll(g => g.Id == id);
 

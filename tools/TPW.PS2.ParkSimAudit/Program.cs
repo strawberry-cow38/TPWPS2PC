@@ -309,6 +309,15 @@ foreach (var r in loop.Rides)
                     + (r.Fault != null ? $"  FAULT {Kind(r.Fault)}" : ""));
 Check(visitors.Boardings > 0, $"a guest walks to a ride's queue and is handed over ({visitors.Boardings} times)");
 Check(visitors.Rides > 0, $"a guest comes back OUT of a ride and walks away ({visitors.Rides} did)");
+// ⚠⚠ THE SAME PEOPLE, not the same COUNT. A guest handed to a ride leaves the walking layer and
+// is put back when the script is done, and putting them back as a NEW id would pass every count
+// in this audit while quietly making the park's population grow forever. The twelve who walked in
+// are the twelve who should still be here, whatever they have been on.
+var ids = loopWalk.Guests.Select(g => g.Id).Concat(
+              visitors.Plans.Values.Where(p => p.Intent == VisitorIntent.Queued).Select(p => p.Guest))
+          .Distinct().OrderBy(i => i).ToArray();
+Console.WriteLine($"  the park holds {ids.Length} distinct guests: {string.Join(", ", ids.Take(14))}");
+Check(ids.Length == 12, $"the twelve who walked in are still the same twelve ({ids.Length} distinct ids)");
 Check(marooned == null || (marooned.Queue.Count == 0 && marooned.OnRide == 0),
       "control: nobody reaches the ride whose queue is off the path"
     + (marooned != null ? $" (queue {marooned.Queue.Count}, on ride {marooned.OnRide})" : " -- control did not load"));
