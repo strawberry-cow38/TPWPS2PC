@@ -752,7 +752,17 @@ public partial class Viewer : Node3D
         }
         else if (k.Keycode is Key.Bracketleft or Key.Bracketright && _mode == Mode.Park)
         {
-            _gateNudge += k.Keycode == Key.Bracketright ? 0.25f : -0.25f;
+            // ⭐ FINE BY DEFAULT, COARSE ON SHIFT. 0.25 was too big to settle the entrance with --
+            // master, calibrating it by eye, asked for a smaller step. 0.05 is a twentieth of a
+            // cell, which is about where a tile edge stops being ambiguous; shift keeps the old
+            // 0.25 so crossing a whole tile is still five presses rather than twenty-five.
+            float step = Input.IsKeyPressed(Key.Shift) ? 0.25f : 0.05f;
+            _gateNudge += k.Keycode == Key.Bracketright ? step : -step;
+            // ⚠ Rounded, or repeated float additions drift into 0.15000000000000002 and the log
+            // becomes unreadable at exactly the moment it is being used to write a number down.
+            _gateNudge = Mathf.Round(_gateNudge * 1000f) / 1000f;
+            GD.Print($"[gate] nudge {_gateNudge:+0.00;-0.00;0} ({(step > 0.1f ? "coarse" : "fine")}"
+                   + ", shift for coarse) -- moves the gate AND the lights together");
             LoadGate();
         }
     }
