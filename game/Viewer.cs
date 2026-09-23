@@ -2992,9 +2992,22 @@ public partial class Viewer : Node3D
         if (at < 0) { ClearSelection(); return false; }
         _selected = at;
         var sel = _park.Placed[at];
-        _selectView.Show(_park, sel.Fp, sel.X, sel.Y);
+        // ⭐ The box the game draws is a WORLD BOX, so it is given one. X and Z come from the
+        // footprint's own world rectangle (min and max, not grid order -- the plot mirrors), and
+        // the height from the model, because a footprint has none.
+        var c0 = _park.CellCorner(sel.X, sel.Y);
+        var c1 = _park.CellCorner(sel.X + sel.Fp.Width, sel.Y + sel.Fp.Height);
+        float bx0 = Mathf.Min(c0.X, c1.X), bx1 = Mathf.Max(c0.X, c1.X);
+        float bz0 = Mathf.Min(c0.Z, c1.Z), bz1 = Mathf.Max(c0.Z, c1.Z);
+        float top = _park.BaseY + Mathf.Max(bx1 - bx0, bz1 - bz0);
+        if (sel.Node != null && IsInstanceValid(sel.Node))
+            top = Mathf.Max(Park.DrawnBounds(sel.Node, inParent: true).Max.Y, _park.BaseY + 1f);
+        var min = new Vector3(bx0, _park.BaseY, bz0);
+        var size = new Vector3(bx1 - bx0, top - _park.BaseY, bz1 - bz0);
+        _selectView.Show(min, size);
         GD.Print($"[select] {sel.Name} at ({sel.X},{sel.Y}) {sel.Fp.Width}x{sel.Fp.Height}"
-               + $" -- brackets on its four corner cells");
+               + $" -- box min {min.X:F1},{min.Y:F1},{min.Z:F1} size {size.X:F1},{size.Y:F1},{size.Z:F1}"
+               + $" (the live console sample was 5,5,5)");
         Status($"{sel.Name} selected -- right click to clear");
         return true;
     }
