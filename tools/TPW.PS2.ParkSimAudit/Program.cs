@@ -314,5 +314,37 @@ Check(marooned == null || (marooned.Queue.Count == 0 && marooned.OnRide == 0),
     + (marooned != null ? $" (queue {marooned.Queue.Count}, on ride {marooned.OnRide})" : " -- control did not load"));
 Check(marooned != null, "the control ride exists at all (otherwise the check above is vacuous)");
 
+// ⭐⭐ WHAT THE PARK IS ASKING FOR AND NOT GETTING. Every ride and shop above runs its whole
+// script, and a good part of what those scripts DO is ask the world for things this port does not
+// yet make: a noise, a puff of smoke, a hat on a guest's head. Those requests go through
+// IRseHost.TryEffect, which records them and renders nothing -- so the park is quietly generating
+// a complete specification for the presentation layer, and this prints it rather than leaving it
+// to be guessed at later.
+//
+// ⚠ COUNTED BY THE ARGUMENTS, not just the opcode. "EVENT x4,000" is a number; "EVENT 3 -1 8
+// x812" is a thing to go and identify.
+var asked = new Dictionary<string, int>(StringComparer.Ordinal);
+var askedBy = new Dictionary<string, SortedSet<string>>(StringComparer.Ordinal);
+foreach (var (list, tag) in new[] { (sim.Rides, "ride"), (shops.Rides, "shop") })
+    foreach (var r in list)
+        r.Host.EffectRequested += e =>
+        {
+            string key = $"{e.Opcode} {string.Join(" ", e.Arguments)}";
+            asked[key] = asked.GetValueOrDefault(key) + 1;
+            if (!askedBy.TryGetValue(key, out var who)) askedBy[key] = who = new SortedSet<string>(StringComparer.Ordinal);
+            who.Add(r.Name);
+        };
+for (int i = 0; i < 1500; i++) { sim.Advance(0.04); shops.Advance(0.04); }
+Console.WriteLine($"\nunrendered requests in 60s from {sim.Rides.Count} rides and {shops.Rides.Count} shops:");
+var byOpcode = asked.GroupBy(kv => kv.Key.Split(' ')[0])
+                    .OrderByDescending(g => g.Sum(kv => kv.Value)).ToArray();
+foreach (var g in byOpcode)
+    Console.WriteLine($"  {g.Key,-14} {g.Sum(kv => kv.Value),6} calls, {g.Count()} distinct argument sets");
+Console.WriteLine("  the twelve most asked-for, with who wants them:");
+foreach (var (key, n) in asked.OrderByDescending(kv => kv.Value).Take(12))
+    Console.WriteLine($"    {key,-28} x{n,-5} {string.Join(", ", askedBy[key].Take(4))}"
+                    + (askedBy[key].Count > 4 ? $" +{askedBy[key].Count - 4}" : ""));
+Check(asked.Count > 0, $"the park's scripts ask for presentation ({asked.Count} distinct requests)");
+
 Console.WriteLine(bad == 0 ? "PASS" : $"FAIL: {bad}");
 return bad == 0 ? 0 : 1;
