@@ -36,9 +36,25 @@ int placed = 0, scriptless = 0, faulted = 0;
 var faults = new Dictionary<string, int>(StringComparer.Ordinal);
 int id = 0, col = 4;
 var apsReason = new Dictionary<string, string>(StringComparer.Ordinal);
-foreach (var e in wad.Entries.Where(e => e.Path.EndsWith(".rse", StringComparison.OrdinalIgnoreCase)
-                                      && e.Path.StartsWith("/Rides/", StringComparison.OrdinalIgnoreCase))
-                             .OrderBy(e => e.Path, StringComparer.OrdinalIgnoreCase))
+// ⚠⚠ A STUB SCRIPT CAN SHADOW THE REAL RIDE. SPACE ships BOTH `/Rides/whirli.RSE` + `.sam` at the
+// top level with no model or animation beside them, AND the real `/Rides/whirli/whirli.{rse,sam,
+// mps,aps}` one folder down. Ordered by path the stub sorts FIRST ('.' is 0x2E, '/' is 0x2F), so
+// it won and WhirliGig was censused as "carries NO animation slots at all" -- a fact about a stub,
+// published as a fact about the disc. `whirli` is the only such pair: every other repeated
+// basename under /Rides/ is EventMap/Worn/effects, which carry no `.sam` and are skipped anyway.
+//
+// ⭐ The rule prefers a candidate whose stem HAS a model, and keeps what it has when none does --
+// so it fixes whirli without disturbing firepit, whose script legitimately ships with no `.mps`
+// beside it.
+var rideScripts = wad.Entries
+    .Where(e => e.Path.EndsWith(".rse", StringComparison.OrdinalIgnoreCase)
+             && e.Path.StartsWith("/Rides/", StringComparison.OrdinalIgnoreCase))
+    .GroupBy(e => e.Path[(e.Path.LastIndexOf('/') + 1)..^4], StringComparer.OrdinalIgnoreCase)
+    .SelectMany(g => g.Count() == 1 || g.All(x => wad.Find(x.Path[..^4] + ".mps") == null)
+                     ? g
+                     : g.Where(x => wad.Find(x.Path[..^4] + ".mps") != null))
+    .OrderBy(e => e.Path, StringComparer.OrdinalIgnoreCase);
+foreach (var e in rideScripts)
 {
     string stem = e.Path[..^4];
     var samEntry = wad.Find(stem + ".sam");

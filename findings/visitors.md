@@ -732,42 +732,64 @@ The chain is exact:
    `Host().AnimationSlot == _triggerSlot`. Since step 2 started nothing, `AnimationSlot` stays
    `-1` and the condition can never become true.
 
-**⚠⚠ STEP 3 IS A RECONSTRUCTION, NOT A READING.** Its comment ("revisit the instruction to wait
-for the requested slot to start") cites no address, unlike the code either side of it, which names
-`0x1abc80` and `0x1bcfa8`. So the defect is in the spin condition, and there are two readings the
-executable can tell apart and I cannot:
+**⭐⭐ STEP 3 IS SOURCED, NOT A RECONSTRUCTION — AND THE CONSOLE HANGS TOO.** This paragraph used to
+say the spin was invented here because its comment cited no address. It is the console's, read two
+independent ways that agree: Ghidra decompiles of `0x1bcfa8`/`0x1abc80`/`0x1ab780`/`0x1ab518`/
+`0x1acaf8`/`0x1ac8a0`/`0x1f8c18`, and a raw R5900 disassembly by a hand-written decoder (neither
+Ghidra nor capstone), validated first on two controls whose decompiles were already in hand.
 
-- the console's `TRIGWAITANIM` also waits for the slot to start, and the real Thrill Grill hangs
-  too — faithful, and implausible for a shipped ride;
-- the console does not gate on the slot having started, and the spin is invented here.
+`TRIGWAITANIM` is `0x366ec0[0x13] = 0x1bd78c`, a **distinct** handler from `TRIGANIM`
+(`[0x10] = 0x1bd4e0`), `WAITANIM` (`[0x11] = 0x1bd5cc`) and `WAIT4ANIM` (`[0x2e] = 0x1be01c`).
+`TRIGANIM`'s body is `TRIGWAITANIM`'s **minus the gate** — no `+0xbc` load, no PC−4, no `+0xbc`
+store. (Our VM sharing one C# case for those two is therefore harmless, because it branches on the
+opcode inside; calling that "a confirmed defect on our side" was wrong.)
 
-**The fix must come from `0x1bcfa8`'s handler for this opcode, not from intuition.** The obvious
-patch — only wait when the animation actually started — would un-stick this ride, and would also
-change behaviour for the 59 rides that currently work, so it is not to be applied blind.
+The gate, at `0x1bd7d0..0x1bd81c`: on re-visit it reads channel 0's **current slot** via
+`0x1acaf8`, compares `cur + 1` against the pending `+0xbc`, and on a mismatch sets PC := PC−4 and
+yields. **There is no timeout** — the `+0xa4` deadline is armed once before the wait and the gate
+never looks at the clock. Nothing can put a missing slot into that channel: `0x1ab780` writes
+either a slot that HAS a record or the sentinel `0xc`, and `0x1ac8a0` resets every channel to
+`0xc` at construction. A writer census of all 24 `×0x38` channel accessors in the ELF finds no
+other store into word [0]. The 173 `TRIGWAITANIM` sites on the disc request slots 2..11 only,
+never `0xc`, so a "nothing" channel cannot accidentally match.
 
-The check is deliberately left FAILING on HALLOW rather than excluded by name. A "by design" filter
-is exactly where a defect would hide, and one red world is a better record of this than a green
-suite with a note in it.
+⭐ **And this is the ONLY opcode that can wait forever.** `WAITANIM` (its own deadline `+0xa0`),
+`TRIGANIM` and `WAIT4ANIM` (the shared `+0xa4`) all finish on the clock with a 300 ms floor, so a
+missing record costs them time and nothing else. That is exactly why WhirliGig — which uses only
+`WAITANIM` — never hangs.
 
+**So the real Thrill Grill hangs at pc 85 exactly as ours does.** HALLOW stays red as the console's
+own behaviour, not as a port defect.
 
-### Two rides ship no animation file at all — only one of them hangs
+⚠ Residual ambiguity, stated: this is the ELF's semantics plus the constructor/writer census, not
+an observation of a live instance. A PCSX2 savestate with Thrill Grill built would close it —
+channel 0 of its context should read `0xc`.
+### ⚠ "Two rides ship no animation file" was WRONG, both halves — and one half was an audit bug
 
-`wad.Find(stem + ".aps")` comes back null for exactly two rides on the disc: **Thrill Grill**
-(HALLOW, folder `firepit`) and **WhirliGig** (SPACE). Neither is a parse failure — the audit's
-`catch { }` used to swallow those indistinguishably from a missing file, and now keeps the reason.
+**WhirliGig ships a full animation.** `/Rides/whirli/whirli.aps` (8,312 B) and `whirli.mps`
+(46,512 B) are in `SPACE.WAD`. The audit said otherwise because SPACE ships a **stub that shadows
+the real ride**: `/Rides/whirli.RSE` and `/Rides/whirli.sam` sit at the top level with no model or
+animation beside them, and ordered by path the stub sorts FIRST (`.` is 0x2E, `/` is 0x2F). The
+census described a stub and published it as a fact about the disc.
 
-**WhirliGig does not hang.** SPACE passes; only HALLOW fails. So "carries no animation records" is
-not by itself what stalls a ride — the stall needs a script that *waits* on one, and the
-discriminator is `TRIGWAITANIM`. That is a useful narrowing: it rules out "the port cannot cope
-with an unanimated ride" and points squarely at the one opcode whose spin condition is a
-reconstruction.
+`whirli` is the only such pair — every other repeated basename under `/Rides/` is
+`EventMap`/`Worn`/`effects`, which carry no `.sam` and were skipped anyway. Fixed by preferring a
+candidate whose stem has a `.mps` and keeping what it has when none does, which leaves firepit
+alone. SPACE now reports **0 of 22** rides with no animation slots.
 
-⚠ A first cut of this diagnostic also printed the ride's whole folder, to ask whether an `.aps`
-lived under another name. **Its answer could not be told from its question**: the directory prefix
-it derived (`stem` up to the last `/`) collapses to the WAD root for the flat paths in some
-archives, so it listed every model in SPACE for WhirliGig and nothing at all for Thrill Grill. It
-was removed rather than tuned. `wad.Find` returning null is measured directly and is the fact.
+**Thrill Grill ships one too — in a folder we do not search.** `/rides/firepit/` holds only
+`firepit.RSE/.rss/.sam` and signs, but **`/upgrades/firepit/` holds `firepit.sam`, `firepit.aps`
+and `firepit.mps`**. The loader looks for an `.aps` beside the script, so it finds nothing.
 
+⚠⚠ **And that does not rescue the ride.** `/upgrades/firepit/firepit.aps` contains exactly **one
+record: slot 5, 25 frames**. The script's `TRIGWAITANIM 4 0 0` at pc 85 asks for **slot 4**, which
+is in no firepit animation on the disc. Its other requests are `WAITANIM` 0, 3, 6, 7, 9, 10 and
+`TRIGANIM 5` — slot 5 is the only one that exists. Given the gate above, the console hangs there
+too.
+
+Corrected statement: **one ride's animation lives in a folder we do not search, and its script
+waits forever on a slot that folder does not contain either.** Fixing the search is worth doing on
+its own — it is a real lookup gap — and it will not un-stick Thrill Grill.
 ## ⭐⭐ The five failing rigs are TWO bugs, and the bone indices are not one of them
 
 `SkinAudit` fails five of twenty-four characters on "skinning the bind pose returns the authored

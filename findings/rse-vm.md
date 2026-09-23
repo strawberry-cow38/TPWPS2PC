@@ -367,12 +367,53 @@ operand is a **kind** and it selects between two unrelated subsystems:
 jungle park actually asks for lands on itself: the ride named **Mumbo** asks for `EVENT 1 3 31`
 and effect **31 is `MumboPuff`**. Nobody chose that mapping; the two files agree.
 
-Kind 3 takes ids past 105 (131, 200, 203, 254), returns a handle the script keeps and later
-KILLOBJs or FADEOBJs, and goes to a different manager entirely -- so it is not a particle.
+⭐⭐ **Kind 3 IS SOUND, and so are 4..11.** The first operand is not "particle or not" — it is the
+`OBJ_SOUND_*` group, recovered by aligning all 351 `.rss`/`.rse` pairs with **0 mismatches**:
+`LOC_RID=3, LOC_AMB=4, GLO_RID=5, GLO_KID=6, GLO_STA=7, GLO_AMB=8, GLO_UI=9, GLO_BMP=11` (10 is
+unnamed in every source). Each group is one `*SFX.MAP`. 793 cues across the four worlds. See
+`core/TPW.PS2.Data/SoundIndex.cs`.
 
-⚠ If the id has bit `0x8000` set it is looked up per-instance first, through
-`0x1fa8c0(animationContext, id & 0x7fff)` -- the ride's own table. That is what `EventMap.rse`
-is for.
+⚠⚠ **AND THE THIRD OPERAND IS AN EVENT ID, NOT AN INDEX INTO THE BANK.** It is matched against the
+**leading u16 of each L2 record** in the group's map; the 16-byte entry's one-based sound index is
+the SECOND hop. This matters because the obvious falsification test kills the right answer: JUNGLE's
+kind-3 ids run **8..260** (61 distinct) while its park ride banks hold **88 and 79** sounds, so
+**45 of the 61 are past the bank count** — and "ids past the bank count, therefore not sound" was
+exactly the test proposed to let the hypothesis fail honestly. Ids past the bank count is what an
+**event-keyed** index looks like. `JUNGLE/PARK1/RIDESFX.MAP`'s 70 events are numbered 8..260, the
+same range.
+
+⚠ `node` is `-1` in 716 of the 793 cues — "the ride" — but not always: fireworks sit at nodes 9 and
+10, the gates at node 1, the seaplane likewise. Positional one-shots are real.
+
+⚠⚠ **`0x1fa8c0` IS A STUB AND THIS PARAGRAPH USED TO CREDIT IT.** It said: *"if the id has bit
+`0x8000` set it is looked up per-instance first, through `0x1fa8c0(animationContext, id & 0x7fff)`
+-- the ride's own table. That is what `EventMap.rse` is for."* The address is
+`jr ra; move v0,zero` — two instructions returning 0 — and its only two callers are inside the
+EVENT handler's `0x8000`-bit path. A pattern scan for `lw x,0x14(y); lw z,0x1c(x)` over `.text`
+finds **0 hits**. So the sentence named a real address and attributed a mechanism to it that the
+code does not contain.
+
+**What `EventMap.rse` actually is:** `SPAWNSOUND` has **52 sites** and every one names
+`EventMap.rse` in the ride's OWN directory (26 track rides × the world/mirror archives); 50
+resolve, `hallow/rides/shake` ships none and the game gets a null child. And all 50 programs are
+**33/36-word STATIC TABLES** — ten `COPY`s setting `VAR_EVT0..4` to event ids and `VAR_PAR0..4` to
+parameter ids, then `ENDSLICE`/`BRANCH` forever. Opcodes used: `COPY`, `ENDSLICE`, `BRANCH`, and
+nothing else. **The bridge is the child's VARIABLE ARRAY, read by the ride engine — not an
+instruction.** That reader has not been found.
+
+⭐ The two mechanisms PARTITION the rides rather than disagree: the six JUNGLE scripts that
+`SPAWNSOUND` an `EventMap` (Coaster1, Coaster3, MineCart, GoKarts, TourRide, Wateride) carry
+**zero** `OBJ_SOUND_` cues, except Wateride with 3. Track rides get continuous engine audio driven
+by ride state; everything else gets scripted one-shots. `ADDOBJ` returns a handle the script keeps
+and later `KILLOBJ`s or `FADEOBJ`s.
+
+⚠ **UNSETTLED:** the EventMap ids (per-world 134..217) are in **no shipped map by equality**, and
+no constant shift fits (tested −120..120). The `/AUDIO/RIDES/*SFX.MAP` engine maps are keyed by an
+**older header generation** of the same symbols — `TRCKSFX` ids 4/5/15 are
+`Engine.mp2`/`engine_stop.mp2`/`Toot.mp2`, i.e. the old-generation `EVT_KARTSTART`/`KARTSTOP`/
+`KART_TOOT`. The `.rss` sources carry two generations (`audiosys/*Event.h` old vs
+`game/soundint/*` new) with the same symbol at a different number per world. The consumer is ride-
+engine code nobody has decompiled.
 
 ⚠⚠ The 105 templates live at `0x2ce508`, which reads as **all zeros in the executable image**:
 they are filled from `Tp2.plb` at load. Read the file, never the image.
