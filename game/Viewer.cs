@@ -2573,7 +2573,21 @@ public partial class Viewer : Node3D
     /// <summary>Hand every scripted ride the frame its own script asked for. ⚠ PRESENTATION
     /// ONLY: the sim is advanced by <see cref="TickPark"/>, on the park's one clock, so rides and
     /// guests can never be a tick apart.</summary>
-    void PresentScripted(bool frames = true)
+    /// <summary>⭐⭐ `alpha` IS THE FRACTION OF A TICK ALREADY ELAPSED, and without it a ride's
+    /// animation steps at the PARK's rate rather than the renderer's. `ride.Frame` comes from the
+    /// host's clock, which only moves when <see cref="TickPark"/> runs -- 25 Hz -- so every frame
+    /// drawn between two ticks showed the same pose and the ride juddered at 25 fps however fast
+    /// the viewer was running. Master: "like they still last the same amount of time, but run
+    /// smoothly."
+    ///
+    /// ⚠ THE DURATION IS UNCHANGED. This adds only the part-tick that has already passed, so the
+    /// animation reaches the same frame at the same wall time; it is drawn at the positions
+    /// BETWEEN the steps rather than played faster. A tick is TickMilliseconds long and the
+    /// records run at Aps.Fps, so a whole tick is that many frames.
+    ///
+    /// ⭐ It smooths the RIDERS too, for free: SeatPose reads model.LastWorld, which SetFrame
+    /// writes, so seats interpolate with the arm they are bolted to.</summary>
+    void PresentScripted(bool frames = true, float alpha = 0f)
     {
         if (_sim == null) return;
         for (int i = _scripted.Count - 1; i >= 0; i--)
@@ -2593,7 +2607,7 @@ public partial class Viewer : Node3D
                        + $" ({rec?.DurationFrames ?? 0} frames)" + (ride.Fault != null ? $" FAULT {ride.Fault}" : ""));
                 _scripted[i] = (ride, model, anim, want, wantVariant);
             }
-            if (frames) model.SetFrame(ride.Frame);
+            if (frames) model.SetFrame(ride.Frame + alpha * (ParkSim.TickMilliseconds * Aps.Fps / 1000f));
         }
     }
 
@@ -2762,7 +2776,7 @@ public partial class Viewer : Node3D
         // paths through the same pair in opposite orders, and only the moving one could show the
         // difference -- which is why this survived every seat-position check we ran. Those checks
         // measured WHERE a rider was, never WHEN.
-        PresentScripted();
+        PresentScripted(alpha: _parkClock.Alpha);
         if (_guests != null) PlaceActors(_parkClock.Alpha);
     }
 
