@@ -42,7 +42,21 @@ public sealed class ParticleEffect
     public (byte R, byte G, byte B, byte A) ColourAt(float life)
     {
         if (Ramp.Length == 0) return (255, 255, 255, 255);
-        int i = Math.Clamp((int)(life * Ramp.Length), 0, Ramp.Length - 1);
+        // ⭐⭐ THE RAMP RUNS END-TO-START. Sampled forwards, 71 of the 105 effects get MORE opaque
+        // as they age and only 8 fade out, and 58 begin at alpha 0 against 17 that end there --
+        // i.e. almost every effect on the disc would wink into existence invisible and then
+        // vanish at its most solid. Reversed, 71 fade out and 58 end at nothing, which is what a
+        // puff of snot, a spark and a cloud of green all actually do.
+        //
+        // That is master's report: "right shape, too opaque". The shape was always right (it
+        // comes from the sprite's own alpha); what was missing was the FADE, because the fade was
+        // being played backwards and the particle was at maximum alpha at the instant it died.
+        //
+        // ⚠ THIS IS A READING FROM THE DATA, NOT FROM A CONSUMER. Nobody has walked the
+        // executable's ramp lookup. The evidence is a 71-against-8 census plus the fact that the
+        // alternative is physically silly, which is strong but is not the same as having read it.
+        // If the PS2's sampler is ever decompiled, this is the line it settles.
+        int i = Math.Clamp((int)((1f - life) * Ramp.Length), 0, Ramp.Length - 1);
         uint c = Ramp[i];
         return ((byte)(c >> 16), (byte)(c >> 8), (byte)c, (byte)(c >> 24));
     }
