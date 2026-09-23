@@ -2729,8 +2729,18 @@ public partial class Viewer : Node3D
 
     /// <summary>Where each seated rider was last drawn, by guest id, with the seat it sits in.</summary>
     readonly Dictionary<int, (Transform3D At, string Where)> _seated = new();
-    /// <summary>The model-to-world Z mirror every AnimatedModel root carries, as a transform.</summary>
-    static readonly Transform3D Mirror = new(new Basis(new Vector3(1, 0, 0), new Vector3(0, 1, 0), new Vector3(0, 0, -1)), Vector3.Zero);
+    /// <summary>⭐⭐ THE ONE FLIP IN THE SEAT PATH, measured in and not guessed. A seated kid's pose is
+    /// ride root x seat basis x THIS, and the census's R = WalkBasis(s)^-1 x B_seat read exactly
+    /// 180 degrees about the seat's own up on every rider, at two different tilts, with the walker
+    /// control identity -- master's "180 out relative to its seat". The factor here used to be the
+    /// Z mirror diag(1,1,-1), which keeps the mirror count odd (the kid's own root carries one, the
+    /// ride root one) but negates the kid's local Z, and local Z is the facing. diag(-1,1,1) is
+    /// that same mirror composed with a half-turn about Y: still odd, so the determinant control
+    /// still reads -1 on every kid, and the kid now faces its seat's forward. ⚠ A head is
+    /// left-right symmetric, so which axis carries the odd mirror is invisible on it; on a whole
+    /// seated kid it would swap left and right, which is the day this needs the ride's own
+    /// convention read rather than inferred.</summary>
+    static readonly Transform3D Mirror = new(new Basis(new Vector3(-1, 0, 0), new Vector3(0, 1, 0), new Vector3(0, 0, 1)), Vector3.Zero);
 
     /// <summary>⭐⭐ RIDERS SIT WHERE ADDHEAD PUT THEM. The script takes a random free head slot
     /// and attaches the guest to fitting `slot + 1` in the `0x80` space (the lead's reading of
