@@ -955,3 +955,35 @@ slot 4 that is in no firepit animation. The check is correct to fail and stays r
 Moon Buggies. **Not one turned out to be a VM bug.** Two were data the disc simply does not carry,
 and one was the audit censusing a stub. The VM and the walk table were right every time; what was
 wrong was twice the disc and once the instrument.
+
+### ⭐⭐ The walker, photographed and then FILMED (2026-09-23, `a4d1377`, `e9cd996`, `7a2d85b`)
+
+Guests now walk: each actor takes slot 1 of the `.aps` its model was built against (its own file,
+or Boy1a's for the boys whose records are Shared -- every kid logged "slot 1 v0, 16 frames" from
+the right file, none refused), and `Gait()` plays it while the guest is `Walking`, at the park's
+25 ticks a second against the animation's 30, from the tick the walk began.
+
+**The shot, by condition and not by clock.** A stage W winds the park one tick at a time until a
+guest is Walking with 0.3-0.7 of a cell behind it, three cells out from the mouth, half a cell clear
+of every other guest, then looks at it side-on from three units out. The expectation was written
+before the render: feet ~0.16 model units apart at gait frames 0/8, crossing at 4/12, one arm
+forward; feet together and arms down if the gait were not playing. Result (`skin_walk-w.png`):
+walker #1 at (29,21) -> (29,22), fraction 0.32, 1.40 cells from the nearest of 5 guests, legs
+scissored and one arm forward -- **feet apart 0.180 model units** at gait frame 1.2, measured off
+the two foot bones through the game's own matrices, the bind control reading "together".
+
+**The clip (`--walk-film=150`, `skin_walk.mp4`, 2.5 s of park time at 60 frames a second, 654 KB).**
+The orbit re-aims at the followed guest every frame; every fifteen frames the census prints the
+body's speed and the feet's separation off the pose drawn. Walker #1, followed for all 150 frames:
+body **0.88-1.04 units/s** (GuestWalk's 1.0 cell/s), gait frames cycling (8.4, 15.6, 6.8, 14.0,
+6.4, 13.6, 4.8, 12.0, 4.4 at 0.24 s spacing), feet apart **0.075-0.189** units -- widest near
+frames 0/8 (0.180, 0.189), narrowest near the crossings (0.075 at frame 4.8).
+
+**⭐ The prediction, made before the film and now measured: the feet slide about 3x.** One
+16-frame cycle takes 0.53 s and carries the feet 0.16-0.19 units, while the body covers 0.53 units
+in the same time -- a ratio of 2.8-3.3. The skinning is not what is wrong: the stride is the game's
+own animation at the game's own 30 fps clock (`FUN_001acfc0`), and the pace is ours --
+`GuestWalk.UnitsPerTick = 40` of 1,000 per cell, chosen so the demo moves. Either the console's
+guests walk at about a third of a cell a second, or its gait plays faster than 30 fps; the
+console's guest speed is unread, and that is the next thing to read before touching either number.
+Visual confirmation of the slide is the clip's job; a still cannot carry it.
