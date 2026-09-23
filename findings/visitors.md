@@ -455,3 +455,44 @@ tenth of a degree and two disagree by ninety-odd.
 ⚠⚠ This rests on `node = meshCount + bone` above. Under `skin.py`'s old "meshes then helpers"
 reading the same measurement is noise, so it is one inference standing on another -- both with
 controls under them, and neither read out of a consumer.
+
+## ⭐⭐ A seat helper's ORIENTATION is authored per seat — there is no constant to flip
+
+Every 0x80 fitting on **Crazy Ape** (`monkey.mps`) carries the *same* basis, and it is exactly a
+180° yaw: X `(-1,0,0)`, Y `(0,1,0)`, Z `(0,0,-1)`, det `+1` (a proper rotation, not a mirror), with
+only a ±5° pitch that tracks the row of the banana. Sixteen seats, no exception. Read against the
+ape's `m_body`, all sixteen come out at ±180°.
+
+That reads as a constant bug and it is not. Across **all 21 models that have 0x80 fittings**, the
+seat-vs-body angles are:
+
+```
+Bird       9 seats  [0]                cart      6 seats  [0]
+ape        2 seats  [90]               croccar   6 seats  [0]
+bumper     5 seats  [-120,-20,55,120,180]        dizzyd    4 seats  [-90,90]
+gk_*       1 seat   [-180]             incagod  32 seats  [90,94]
+king       9 seats  [-90]              manic     8 seats  [-180,180]
+monkey    16 seats  [-180,180]         mumbo     5 seats  [-125,-45,-2,101,180]
+porkpie    8 seats  [-162,-75,14,103]  spider   40 seats  [-155,-154,-108,-69,-68,-16,23,65,112,162]
+totem     13 seats  [-180,0]           tvsim    27 seats  [0]
+volcano   16 seats  [-170,-150,-120,-100,-75,-55,-30,-10,10,30,60,80,105,125,150,170]
+wr_ring    5 seats  [-165,-84,-18,65,141]
+```
+
+**Dodgems point five different ways because they are PARKED at angles. Volcano's sixteen are a
+ring, every 20-25°. `tvsim`'s twenty-seven all face one way because it is an auditorium.** The
+helper basis is real authored per-seat facing, so nothing in the seat path may apply a blanket
+180° keyed off the ride data — it would be right on the ape and wrong on every ride whose seats are
+not parallel.
+
+⚠ THE "BODY" REFERENCE IN THAT TABLE IS A HEURISTIC — last of `m_body`/`body`/`m_base`, else mesh 0
+— so the per-ride *offsets* are soft and `gk_*`'s `-180` may only mean its body mesh was picked
+differently from `cart`'s. What does not depend on the heuristic, and is the load-bearing fact, is
+that **seats within a single ride differ from each other**.
+
+So a rider that looks 180° out is 180° out *relative to its own seat*: a convention in the path
+that puts a character into a seat basis, not a number in the disc. The control for that is the
+**walk** path, which is known-good by inspection (a walker faces the way it is going), and the
+comparison is `B_walk(s).Inverse() * B_seat` for a seat whose world forward is `s` — identity means
+the two paths agree, a 180° yaw means one flip in the seat path, and anything else means one of the
+two readings is wrong. Script: `tools`-adjacent `yaw.py` (scratchpad), fittings via `Model.Fittings`.
