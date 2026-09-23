@@ -225,14 +225,46 @@ for (int i = 0; i < 3000; i++)
 }
 var served = shops.Rides.Where(s => hidden[s.Id].Count > 0).ToList();
 var backOut = shops.Rides.Where(s => s.Left.Count > 0).ToList();
+
+// ⭐⭐ ELEVEN OF SIXTEEN SHOPS TAKE NOBODY INSIDE, and `served.Count > 0` passes anyway. That is
+// the exact shape of a defect hiding behind a filter: the five that work carry the check and the
+// eleven are never questioned. So ask the bytecode. LIMBO is what a shop IS, and a script that
+// never contains the opcode was never going to hide anybody -- a burger stall is counter service
+// and a gift shop is a room you walk into, and that difference should be AUTHORED, not accidental.
+//
+// The checks below are deliberately asymmetric, because "contains LIMBO and hid nobody" is not
+// proof of a bug: a branch may simply not have been taken in 120 seconds. What IS proof, either
+// way round, is a shop that hid somebody with no LIMBO anywhere in its chain -- nothing else can
+// make a guest vanish -- and the whole opcode going dark at once.
+//
+// ⚠ THIS READS THE CHAIN AS IT STANDS AFTER THE RUN, not every program the shop could ever
+// reach: a shop that would spawn a LIMBO-carrying child only on some later branch reads "no"
+// here. That would show up as a shop in `hidWithoutAsking`, which is why that one is the hard
+// failure and "carries it but hid nobody" is only a note.
+bool AsksForLimbo(ParkRide s) => ParkSim.Chain(s.Machine)
+    .Any(m => m.Program.Instructions.Any(i => i.Opcode == RseOpcode.LIMBO));
+var askers = shops.Rides.Where(AsksForLimbo).ToList();
+var hidWithoutAsking = shops.Rides.Where(s => !AsksForLimbo(s) && hidden[s.Id].Count > 0).ToList();
+var askedButEmpty = askers.Where(s => hidden[s.Id].Count == 0).ToList();
+
 Console.WriteLine($"3 guests queued at each of {shops.Rides.Count} shops, 120s:");
 foreach (var s in shops.Rides)
     Console.WriteLine($"  {s.Name,-22} went inside {hidden[s.Id].Count}/{shopSent[s.Id].Count}"
                     + $"  came back {s.Left.Count}  queue left {s.Queue.Count}"
+                    + $"  LIMBO in script: {(AsksForLimbo(s) ? "yes" : "no ")}"
                     + (s.Fault != null ? $"  FAULT {Kind(s.Fault)}" : ""));
+if (askedButEmpty.Count > 0)
+    Console.WriteLine($"  note: {askedButEmpty.Count} shop(s) carry LIMBO but hid nobody in 120s: "
+                    + string.Join(", ", askedButEmpty.Select(s => s.Name)));
 Check(shopsPlaced > 0, $"the shops' scripts start ({shopsPlaced} of them)");
 Check(shops.Rides.All(s => s.Fault == null), "no shop faults while running");
 Check(served.Count > 0, $"a guest goes INSIDE a shop and stops being drawn ({served.Count} shops took one in)");
+Check(askers.Count > 0, $"the shops that take guests in are the ones whose scripts contain LIMBO "
+                      + $"({askers.Count} of {shops.Rides.Count} carry it) -- otherwise the check below is vacuous");
+Check(hidWithoutAsking.Count == 0, "nobody is hidden by a shop whose script never asks for LIMBO"
+    + (hidWithoutAsking.Count == 0 ? "" : ": " + string.Join(", ", hidWithoutAsking.Select(s => s.Name))));
+Check(served.Count > 0 && askers.Count > 0 && served.All(AsksForLimbo),
+      "every shop that took somebody in is one that asks for LIMBO");
 Check(backOut.Count > 0, $"a shop lets its guests back out ({backOut.Count} shops did)");
 Check(shops.Rides.All(s => s.Left.All(g => shopSent[s.Id].Contains(g))),
       "every guest a shop hands back is one that was queued there");

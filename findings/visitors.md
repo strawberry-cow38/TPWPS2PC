@@ -496,3 +496,36 @@ that puts a character into a seat basis, not a number in the disc. The control f
 comparison is `B_walk(s).Inverse() * B_seat` for a seat whose world forward is `s` — identity means
 the two paths agree, a 180° yaw means one flip in the seat path, and anything else means one of the
 two readings is wrong. Script: `tools`-adjacent `yaw.py` (scratchpad), fittings via `Model.Fittings`.
+
+## ⭐⭐ A shop takes you INSIDE only if its script contains LIMBO — and the split is exact
+
+Sixteen jungle shops and sideshows, three guests queued at each, 120 s. **Five take a guest inside
+and eleven take nobody**, and the old check (`at least one shop took somebody in`) passed anyway —
+the five that worked carried it and the eleven were never questioned.
+
+Asking the bytecode settles it. LIMBO is what a shop IS (`0x1bbb30` -> `0x1fa2c8` hides the guest),
+so a script that does not contain the opcode was never going to hide anybody. The correlation is
+perfect, both directions, with no exceptions:
+
+```
+LIMBO in script: yes -> went inside 3/3   Balloon Shop, Costume Shop, Gift Shop,
+                                          Steak Restaurant, Arcade
+LIMBO in script: no  -> went inside 0/3   Burger, Drinks, Fries, Ice Cream,
+                                          Laughing Hyenas, Jungle Spray, Busta Block,
+                                          Giant Puzzle, Dino Race, Strength Bird, Gopher Whack
+```
+
+**The five you enter are rooms; the eleven you do not are food counters and standing sideshows.**
+That is authored behaviour, not a defect — the thing the weak check could not tell you. All
+sixteen still hand every guest back out, so a food stall serves you and returns you without ever
+taking you off the map, which is what a food stall does.
+
+The audit now checks the two directions that cannot be timing artefacts: **nobody is hidden by a
+shop whose script never asks for LIMBO** (nothing else can make a guest vanish, so this fails hard
+either way round) and **every shop that took somebody in is one that asks**, plus a non-vacuity
+guard that some shop carries the opcode at all. "Carries LIMBO but hid nobody in 120 s" is printed
+as a note and not a failure, because an untaken branch is not a bug.
+
+⚠ `AsksForLimbo` scans the chain as it stands after the run, not every program the shop could
+reach; a shop that spawns a LIMBO-carrying child only on a later branch would read "no". That is
+exactly why the hard failure is the *hid-without-asking* direction.
