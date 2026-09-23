@@ -1503,7 +1503,7 @@ public partial class Viewer : Node3D
         for (int r = 0; r < 12 && !(_paths.CanLay(dx2, dy2) && _paths.CanLay(dx2 + 1, dy2)); r++) dy2 += 1;
         _paths.Lay(dx2, dy2, PathTool.Kind.Path);
         int before = _paths.LinkBits(dx2, dy2);
-        _paths.AddDoor(dx2 + 1, dy2, 9, entrance: true);
+        _paths.AddDoor(dx2 + 1, dy2, 9, entrance: true, dx: -1, dy: 0);
         int after = _paths.LinkBits(dx2, dy2);
         GD.Print($"[link] a lone path cell reads {before:X2}; with a ride door to its east {after:X2}"
                + $" -- {((before & PathPieces.East) == 0 && (after & PathPieces.East) != 0 ? "the door is an arm, as it must be" : "THE DOOR DID NOTHING")}");
@@ -1516,9 +1516,9 @@ public partial class Viewer : Node3D
         for (int r = 0; r < 20 && !(_paths.CanLay(qx, qy) && _paths.CanLay(qx + 1, qy)
                                  && _paths.CanLay(qx, qy + 3) && _paths.CanLay(qx + 1, qy + 3)); r++) qy += 1;
         _paths.Lay(qx, qy, PathTool.Kind.Queue, 7);
-        _paths.AddDoor(qx + 1, qy, 7, entrance: true);
+        _paths.AddDoor(qx + 1, qy, 7, entrance: true, dx: -1, dy: 0);
         _paths.Lay(qx, qy + 3, PathTool.Kind.Queue, 7);
-        _paths.AddDoor(qx + 1, qy + 3, 7, entrance: false);
+        _paths.AddDoor(qx + 1, qy + 3, 7, entrance: false, dx: -1, dy: 0);
         int toEntrance = _paths.LinkBits(qx, qy) & PathPieces.East;
         int toExit = _paths.LinkBits(qx, qy + 3) & PathPieces.East;
         GD.Print($"[link] queue beside its ride's ENTRANCE {toEntrance:X2}, beside its EXIT {toExit:X2}"
@@ -1601,6 +1601,35 @@ public partial class Viewer : Node3D
                + $" -- {(rideOverPath ? "WRONG -- that would make a BOTH cell nobody asked for" : "as it must be")}");
         _place.Clear();
         _ghostView?.Clear();
+    }
+
+    /// <summary>The grid cell the centre of every part whose name carries <paramref name="needle"/>
+    /// lands in. ⚠ Found by NEAREST CELL CENTRE rather than by inverting the plot's transform --
+    /// the plot may sit under an authored node transform and a wrong inverse is a silent one-cell
+    /// miss, which is exactly the size of the thing being measured.</summary>
+    (int X, int Y)? PartCell(Node3D root, string needle)
+    {
+        var sum = Vector3.Zero;
+        int n = 0;
+        foreach (var mi in Walk(root))
+        {
+            if (!((string)mi.Name).Contains(needle, StringComparison.OrdinalIgnoreCase)) continue;
+            sum += (mi.GlobalTransform * mi.GetAabb()).GetCenter();
+            n++;
+        }
+        if (n == 0) return null;
+        var at = sum / n;
+        var f = _park.Field;
+        (int X, int Y)? best = null;
+        float near = float.MaxValue;
+        for (int y = 0; y < f.Height; y++)
+            for (int x = 0; x < f.Width; x++)
+            {
+                var c = _park.CellCentre(x, y);
+                float d = (c.X - at.X) * (c.X - at.X) + (c.Z - at.Z) * (c.Z - at.Z);
+                if (d < near) { near = d; best = (x, y); }
+            }
+        return best;
     }
 
     static IEnumerable<MeshInstance3D> Walk(Node n)
@@ -2115,6 +2144,10 @@ public partial class Viewer : Node3D
 
         var f = _park.Field;
         int bx = f.Width / 2 - 9, by = f.Height / 2 - 4;
+        // ⭐ The door markers of every ride placed, kept so the shot can show them ON the built
+        // rides -- the ghost only ever draws for what is HELD, so a placed ride's doors are
+        // invisible and "the model faces one way and its door is on another" cannot be looked at.
+        var doorMarks = new List<(int X, int Y, int Marker, int Turns)>();
         for (int t = 0; t < 3; t++)
         {
             ArmFromList(chosen);
@@ -2135,6 +2168,14 @@ public partial class Viewer : Node3D
             // ⚠ CAPTURED BEFORE THE PRESS. PlaceHeld drops the blueprint, so asking it afterwards
             // where its stubs were would be asking nothing at all.
             var want = _place.Stubs(_park, cx, cy).ToList();
+            foreach (var st in want)
+            {
+                var which = st.Entrance ? _place.DoorFor(cx, cy) : _place.ExitFor(cx, cy);
+                if (which is not { } dc) continue;
+                var (ddx, ddy) = Placement.FacingOf(dc, (st.X, st.Y));
+                doorMarks.Add((st.X, st.Y, st.Entrance ? (_place.IsRide ? 168 : 172) : 169,
+                               GhostMarkers.TurnToward(ddx, ddy)));
+            }
             // ⚠ CAPTURED BEFORE THE PRESS, like the stubs: PlaceHeld drops the blueprint, and the
             // cursor cell is not the footprint's CORNER -- asking afterwards would measure a hole
             // half a shape away from the one the ride went into.
@@ -2166,6 +2207,19 @@ public partial class Viewer : Node3D
                 // that has slid sideways has exactly the same diagonal as one that has not. What
                 // the alignment question asks about is the CENTRE, so the centre is what it says.
                 var (fc, fw, fh) = FootprintRect(fx, fy, fpw, fph);
+                // ⭐⭐ DOES THE MODEL AGREE WITH ITS OWN DOOR? Master: "the model visually changes
+                // but the tile it comes out of is wrong". A ride's signage stands AT its entrance,
+                // so the cell the sign parts land in must be the cell the footprint calls the
+                // entrance -- at every turn. Two things derived by different routes from the same
+                // quarter turn: if the footprint's rotation and the mesh's ever disagree in sign,
+                // this is where it shows, and a picture of a symmetric ride never could.
+                foreach (var (needle, what) in new[] { ("sign", "signage"), ("post", "posts") })
+                {
+                    if (PartCell(m.Root, needle) is not { } pc) continue;
+                    GD.Print($"[place]   {what} lands on ({pc.X},{pc.Y}); the footprint's entrance is "
+                           + $"({want.FirstOrDefault(q => q.Entrance).X},{want.FirstOrDefault(q => q.Entrance).Y}) outside "
+                           + $"-- {(Math.Abs(pc.X - want.FirstOrDefault(q => q.Entrance).X) <= 1 && Math.Abs(pc.Y - want.FirstOrDefault(q => q.Entrance).Y) <= 1 ? "same end, as it must be" : "DIFFERENT ENDS")}");
+                }
                 // ⭐ BOTH CENTRINGS, EVERY TIME. The claim being made is that aligning on the
                 // floor parts changes only the rides that carry them wrongly -- so the control
                 // prints what the whole-model box would have said as well, and a ride the change
@@ -2210,6 +2264,29 @@ public partial class Viewer : Node3D
             CloseTool();
         }
         CheckStubOverlap();
+
+        // ⭐ THE PICTURE THE QUESTION NEEDS: three rides at three turns with their OWN door markers
+        // drawn on the tiles they were laid on, so the mesh and its doorway are in one frame.
+        if (System.Environment.GetEnvironmentVariable("TPW_DOOR_MARKS") == "1")
+        {
+            // ⚠⚠ THE TOOL FIRST. Placing a queued ride hands over to the QUEUE tool and closing
+            // that hands over to the EXIT PATH tool -- so the path tool is still open here, and
+            // UpdateGhost redraws its own run into this same node every frame, wiping the markers
+            // before the capture. They were being made (the node held two surfaces) and painted
+            // over, which looks exactly like never being made at all.
+            _toolOpen = false; _runX = _runY = -1; _pathFrom = null;
+            _place.Clear();
+            _ghostView.ShowTurnedCells(doorMarks, _park);
+            if (_buildBox != null) _buildBox.Visible = false;
+            if (_panel != null) _panel.Visible = false;
+            // ⚠ SAY WHETHER ANYTHING WAS ACTUALLY MADE. "Drew 6 markers" is a count of what was
+            // ASKED FOR; the node's child count is what came out, and a marker whose texture would
+            // not read is cached as a null and silently contributes nothing.
+            GD.Print($"[place] asked for {doorMarks.Count} door markers "
+                   + $"({string.Join(" ", doorMarks.Select(d => $"({d.X},{d.Y})#{d.Marker}t{d.Turns}"))})"
+                   + $"; the ghost node holds {_ghostView.Root.GetChildCount()} surfaces");
+            return;
+        }
 
         // The fourth stays on the cursor, turned once, so the shot carries a live ghost with both
         // arrows in it.
@@ -2358,8 +2435,11 @@ public partial class Viewer : Node3D
         if (!CursorCell(out int x, out int y)) { _ghostView.Clear(); return; }
         if (_ghostAt == (x, y, _place.Turns, 0)) return;
         _ghostAt = (x, y, _place.Turns, 0);
+        // ⭐⭐ A BLUEPRINT IS BLUE. Master: "the blueprints for all of this should be blue, not
+        // green. and red when not allowed." 165 is the console's own flat blue and 175 its red --
+        // the same two the path ghost has always used, so one build tool reads one way.
         var cells = _place.Cells(_park, x, y)
-                          .Select(c => (c.X, c.Y, c.Ok ? 24 : 175, 0))
+                          .Select(c => (c.X, c.Y, c.Ok ? 165 : 175, 0))
                           .ToList();
         // ⭐⭐ THE DOORS STICK OUT A TILE. Master: "the path entrance/exit needs to stick out a
         // tile from the blueprint". They mark where the queue and the path will START, which is
@@ -2388,7 +2468,11 @@ public partial class Viewer : Node3D
             foreach (var t in stubs) if (t.Entrance == entrance) return t.Ok;
             return true;      // no stub of that kind at all -- nothing to refuse
         }
-        Door(_place.DoorFor(x, y), 168, StubOk(true));
+        // ⭐⭐ 172 IS BOTH ARROWS ON ONE TILE -- green in beside orange out, which is exactly what a
+        // shop's single node IS. Master named the number and the art agrees: the two separate
+        // arrows are 168 and 169, and 172 is the pair. A ride keeps them apart because its way in
+        // and its way out are two different tiles.
+        Door(_place.DoorFor(x, y), _place.IsRide ? 168 : 172, StubOk(true));
         Door(_place.ExitFor(x, y), 169, StubOk(false));
         _ghostView.ShowTurnedCells(cells, _park);
         bool ok = _place.Fits(_park, x, y);
@@ -2426,8 +2510,15 @@ public partial class Viewer : Node3D
         int ride = ++_rideSerial;
         if (_paths != null)
         {
-            if (_place.DoorFor(x, y) is { } d0) _paths.AddDoor(d0.X, d0.Y, ride, entrance: true);
-            if (_place.ExitFor(x, y) is { } d1) _paths.AddDoor(d1.X, d1.Y, ride, entrance: false);
+            // ⚠ WITH THE WAY EACH ONE OPENS -- the step from the door cell to its stub. A door
+            // registered without a facing linked to anything that walked past it.
+            void Door(( int X, int Y)? cell, bool entrance)
+            {
+                if (cell is not { } c || _place.OutsideOf(c, x, y) is not { } o) return;
+                _paths.AddDoor(c.X, c.Y, ride, entrance, o.X - c.X, o.Y - c.Y);
+            }
+            Door(_place.DoorFor(x, y), true);
+            Door(_place.ExitFor(x, y), false);
             // ⭐⭐ AND THE STUBS GO DOWN WITH THE RIDE. Master: they "should always be created with
             // the ride". The entrance's is the first tile of its queue and the exit's is the first
             // tile of its path out -- so they are laid as those kinds, owned by this ride, and the
@@ -2463,9 +2554,11 @@ public partial class Viewer : Node3D
         var entrance = _place.DoorFor(x, y);
         var exitDoor = _place.ExitFor(x, y);
         var queueFrom = queued && entrance is { } e ? _place.OutsideOf(e, x, y) : null;
-        _pathFrom = exitDoor is { } xd ? _place.OutsideOf(xd, x, y) : null;
-        // A thing with no separate way out hands its ONE node to the path tool instead.
-        if (_pathFrom == null && !queued && entrance is { } only2) _pathFrom = _place.OutsideOf(only2, x, y);
+        // ⭐⭐ NO TOOL FOR A SHOP. Master: "the shops, sideshows, features shouldnt have the 'path
+        // building' tool open. the 1 queue tile lands where it lands." Their one node is laid with
+        // them and that is the whole job -- opening a path run from it made every stall purchase
+        // into a building session nobody asked for.
+        _pathFrom = queued && exitDoor is { } xd ? _place.OutsideOf(xd, x, y) : null;
         _pathOwner = ride;
         _place.Clear();
         _ghostView?.Clear();

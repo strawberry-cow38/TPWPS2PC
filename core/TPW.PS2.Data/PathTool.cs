@@ -45,7 +45,7 @@ public sealed class PathTool
     /// sprite for the 'internal' path tile of the exit" -- a queue that wore an arm toward the way
     /// out would be drawing a route nobody walks. A PATH may reach either, because a path is what
     /// people leave by.</summary>
-    readonly Dictionary<int, (int Ride, bool Entrance)> _doors = new();
+    readonly Dictionary<int, (int Ride, bool Entrance, int Dx, int Dy)> _doors = new();
     readonly Dictionary<int, byte> _before = new();
 
     /// <summary>⭐⭐ ONE LEG, ONE UNDO. The queue tool's right button steps a run BACK, not out --
@@ -176,6 +176,13 @@ public sealed class PathTool
             if (dx != 0 && dy != 0) continue;
             if (!In(x + dx, y + dy)) continue;
             if (!_doors.TryGetValue(At(x + dx, y + dy), out var door)) continue;
+            // ⭐⭐ A DOOR FACES ONE WAY. Master: "the imaginary secret exit path tile / entry-exit
+            // tile should only attach in the direction the path tile is in". A doorway opens onto
+            // exactly one tile -- the stub laid with the ride -- so a path merely running PAST the
+            // door cell along the ride's wall is not at the door and gets no arm. Without this,
+            // every path that brushed the side of a ride grew a stub toward a doorway nobody could
+            // reach from it.
+            if (door.Dx != -dx || door.Dy != -dy) continue;
             if (queue && !door.Entrance) continue;
             if (queue && owner != 0 && door.Ride != owner) continue;
             bits |= bit;
@@ -243,10 +250,12 @@ public sealed class PathTool
 
     /// <summary>Tell the tool about a ride's entrance or exit cell, so the ground beside it can
     /// look attached to it.</summary>
-    public void AddDoor(int x, int y, int rideId, bool entrance)
+    /// <summary>⚠ (dx,dy) is THE WAY THE DOOR OPENS -- from the door cell toward the tile outside
+    /// it. Only that one tile may wear an arm back at it.</summary>
+    public void AddDoor(int x, int y, int rideId, bool entrance, int dx, int dy)
     {
         if (!Ready || !In(x, y)) return;
-        _doors[At(x, y)] = (rideId, entrance);
+        _doors[At(x, y)] = (rideId, entrance, dx, dy);
         RepickAround(x, y);
     }
 
@@ -335,7 +344,8 @@ public sealed class PathTool
         var kind = _kind[At(x, y)];
         if (kind == Kind.None)
             return _doors.TryGetValue(At(x, y), out var who)
-                 ? $"({x},{y}) ride {who.Ride}'s {(who.Entrance ? "entrance" : "exit")}" : $"({x},{y}) clear";
+                 ? $"({x},{y}) ride {who.Ride}'s {(who.Entrance ? "entrance" : "exit")} facing {who.Dx},{who.Dy}"
+                 : $"({x},{y}) clear";
         return $"({x},{y}) {kind} links {LinksFor(x, y):X2} turns {_turns[At(x, y)]}"
              + (_owner[At(x, y)] != 0 ? $" of ride {_owner[At(x, y)]}" : "")
              + (IsQueueEnd(x, y) ? " (tip)" : "");
