@@ -164,3 +164,31 @@ checks around these lifecycle transitions, including removing one ride while ano
 continues running. Start audit-only, demonstrate failures before any additional core
 change, and leave active renderer/placement/entrance/particle work to its maintainer.
 M3 is not complete: queue presentation and rendered lifecycle sign-off remain open.
+
+## M3 follow-up: crowds, ownership controls, replay
+
+Published removal implementation: `9da7a2a`. The next package adds only
+`GuestConservationChecks.cs`, its invocation in the audit helper, and docs; no core
+or renderer edits. Eight guests/two real scripts are exercised through actual seating,
+removal of one instance, completion on the surviving instance, and final Clear.
+Every step checks identity conservation and incompatible body ownership; five
+corrupted fixtures prove the census rejects bad ownership. Two independent runs
+must reproduce the same sampled lifecycle digest (not full VM state or cross-frame-
+rate equivalence).
+
+All 20 additional assertions pass in each world, isolated and integrated. Replay
+lengths are 112/91/133/170 steps for JUNGLE/FANTASY/HALLOW/SPACE respectively, twice
+each per mode. Existing 57 removal and 30 availability assertions per world remain
+passing. The whole-park matrix still retains exactly HALLOW Thrill Grill and SPACE
+Moon Buggies, exit 2. Evidence: `tpw-crowd-integrated-9da7a2a/manifest.json`,
+`tpw-crowd-final-isolated-{WORLD}.log`. No new runtime bug was found by this package.
+
+Coordination requested by VoX: cow tools owns VisitorNeeds.cs and core/viewer needs
+and thought-bubble wiring; ParkVisitors.cs was explicitly released after `9da7a2a`.
+Astraclaw owns independent lifecycle/conservation/replay audits, and has requested
+mutual review of removal handoffs plus the needs commit and initialization/update
+contract. Next: review that implementation and add independent tests for need-state
+continuity through boarding, ride removal and readmission. Do not race its core edits
+or assume a Guest object survives readmission (identity does; the walking object is
+recreated). Needs semantics must retain evidence/placeholder labels. If not ready,
+advance independent audit coverage, not duplicate implementation.

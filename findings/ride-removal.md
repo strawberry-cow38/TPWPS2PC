@@ -75,3 +75,34 @@ while that integration was blocked, not as a replacement for failing retail chec
 Source review also caught a lost-completion boundary and weak identity fixtures;
 those were corrected and rerun before landing. Final scoped review found no concrete
 remaining issue, which is not proof of absence of bugs.
+
+## Crowd conservation and fixed-input replay
+
+Audit-only `GuestConservationChecks.cs` extends each removal run with eight guests
+split across two real script instances. Both must actually seat guests; one is then
+removed while the other retains its riders and subsequently reports completion.
+Final Clear must recover all eight original identities. At every sampled step the
+census checks the expected identity set, walking-body multiplicity, live ride intent,
+and incompatible cross-layer/cross-ride ownership.
+
+Queue/offer/seated/exit representations are unioned within each ride because a
+script handover can transiently expose more than one of those. They are never
+merged across different rides. Queued plans can bridge script transitions without
+a visible seat/mailbox/queue entry; this is not a proof that every possible live
+script will eventually hand every guest back. The fixture additionally requires
+actual seated bodies and a real completion so a perpetually idle script cannot pass.
+
+Five deliberately corrupted fixture controls must be rejected: duplicate walker,
+missing walker, unregistered identity, simultaneous walking/ride ownership, and
+ownership by two rides. Two independent identical-input runs then hash all sampled
+plans, walking states, public ride variables, queues, exits, and seat identities.
+Their traces must match. This establishes deterministic replay of that fixed-input
+sequence, **not different-frame-rate equivalence or a full VM-state snapshot**.
+
+On `9da7a2a` plus the audit extension, all 20 additional assertions pass per world
+in isolated and integrated modes. Each replay samples 112 steps in JUNGLE, 91 in
+FANTASY, 133 in HALLOW, and 170 in SPACE; each mode executes two independent runs
+per world. Integrated and isolated hashes differ because their corridor coordinates
+differ; only same-fixture replay pairs are compared. The full matrix still reports
+only the two unchanged retail findings, runner exit 2. No production core change
+was needed for this additional coverage.

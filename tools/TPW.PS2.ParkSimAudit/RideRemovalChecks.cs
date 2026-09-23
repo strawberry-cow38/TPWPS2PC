@@ -209,5 +209,7 @@ static class RideRemovalChecks
         var clear = Fresh(); Queue(clear.Visitors, clear.Ride, clear.Guest);
         clear.Sim.Clear(); clear.Visitors.Step(0, null);
         Check(Returned(clear.Visitors, clear.Guest.Id), "clearing ride instances cannot orphan visitor ownership");
+
+        GuestConservationChecks.Run(terrain, sourcePaths, script, animation, capacity, entrance, exit, sibling, headSlots, check);
     }
 }
