@@ -4,7 +4,12 @@ import unittest
 from audit_matrix import EXPECTED, classify
 
 COVERAGE = '\n'.join(['  ok   availability: check'] * 30 +
-                     ['  ok   availability regression exercised a real ride with both availability flags'])
+                     ['  ok   availability regression exercised a real ride with both availability flags'] +
+                     ['  ok   removal: check'] * 57 +
+                     ['  ok   removal regression exercised a real non-track ride with seats'] +
+                     ['  ok   conservation: check'] * 19 +
+                     ['  ok   conservation: identical fixed-tick inputs reproduce the full sampled lifecycle (100 steps, SHA256 ' + 'A' * 64 + ')'])
+
 
 
 def known(world):
@@ -48,6 +53,36 @@ class ClassificationTests(unittest.TestCase):
         self.assertEqual(classify('JUNGLE', 0, 'PASS')['status'], 'missing_coverage')
         self.assertEqual(classify('JUNGLE', 0, COVERAGE)['status'], 'incomplete_output')
         self.assertEqual(classify('JUNGLE', 0, '')['status'], 'incomplete_output')
+
+    def test_missing_lifecycle_suites_are_not_pass(self):
+        for category in ('availability', 'removal', 'conservation'):
+            output = '\n'.join(line for line in COVERAGE.splitlines()
+                               if f'ok   {category}:' not in line) + '\nPASS'
+            with self.subTest(category=category):
+                self.assertEqual(classify('JUNGLE', 0, output)['status'], 'missing_coverage')
+
+    def test_partial_lifecycle_suite_is_not_pass(self):
+        for category in ('removal', 'conservation'):
+            output = COVERAGE.replace(f'  ok   {category}: check\n', '', 1) + '\nPASS'
+            with self.subTest(category=category):
+                self.assertEqual(classify('JUNGLE', 0, output)['status'], 'missing_coverage')
+
+    def test_missing_removal_or_replay_witness_is_not_pass(self):
+        for witness in ('removal regression exercised', 'identical fixed-tick inputs reproduce'):
+            output = COVERAGE.replace(witness, 'something else') + '\nPASS'
+            with self.subTest(witness=witness):
+                self.assertEqual(classify('JUNGLE', 0, output)['status'], 'missing_coverage')
+
+    def test_known_red_requires_lifecycle_coverage_too(self):
+        output = '\n'.join(line for line in known('HALLOW').splitlines()
+                           if 'ok   conservation:' not in line)
+        self.assertEqual(classify('HALLOW', 1, output)['status'], 'missing_coverage')
+
+    def test_lifecycle_counts_recorded_in_manifest_row(self):
+        row = classify('JUNGLE', 0, COVERAGE + '\nPASS')
+        self.assertEqual(row['availability_checks'], 30)
+        self.assertEqual(row['removal_checks'], 57)
+        self.assertEqual(row['conservation_checks'], 20)
 
     def test_suppressed_failure_exit_is_not_pass(self):
         self.assertEqual(classify('HALLOW', 0, known('HALLOW'))['status'], 'unexpected_failure')

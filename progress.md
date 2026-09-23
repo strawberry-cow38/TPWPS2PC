@@ -192,3 +192,28 @@ continuity through boarding, ride removal and readmission. Do not race its core 
 or assume a Guest object survives readmission (identity does; the walking object is
 recreated). Needs semantics must retain evidence/placeholder labels. If not ready,
 advance independent audit coverage, not duplicate implementation.
+
+## Audit-runner coverage gate follow-up
+
+The matrix previously required availability coverage but could still accept a PASS
+or known-red result if the new removal/crowd helpers were accidentally omitted.
+Added minimum per-world coverage gates (30 availability, 57 removal, 20 conservation)
+and explicit fixture/replay witnesses; manifests and console summaries now retain
+all three counts. Missing/partial lifecycle coverage fails even on known-red worlds.
+
+Regression first: five added test methods exposed seven failed subcases and one
+missing-evidence-field error before the runner change. Afterward all 20 Python tests
+pass. The original-disc matrix reports 30/57/20 for every world, full JUNGLE/FANTASY
+pass and only the two unchanged retail failures elsewhere (runner exit 2). Local
+artifacts: `tpw-coverage-before.log`, `tpw-lifecycle-coverage-final/manifest.json`.
+No C# or renderer change in this follow-up.
+
+Mutual review with cow tools: needs will live in a guest-ID side table, not on the
+transient walking Guest object. Its retirement concern is valid integration work:
+`Plans.Keys` is the existing coordinator identity census, includes Recovering, and
+excludes retired entries after Step. Reconcile needs against it and initialize on
+fresh arrival, not readmission. Recovery already tries any public open cell; when
+no ground exists, indefinite explicit ownership is deliberate, not permission to
+spawn on invalid ground. The audit counts those identities. Add retirement/ID-reuse
+checks with the needs wiring when ready; no speculative core API change is needed
+just to expose a second copy of that same identity list.

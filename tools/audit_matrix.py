@@ -24,14 +24,24 @@ EXPECTED = {
 PROJECT = 'tools/TPW.PS2.ParkSimAudit'
 ASSEMBLY = PROJECT + '/bin/Release/net8.0/TPW.PS2.ParkSimAudit.dll'
 MAX_LOG_BYTES = 8 * 1024 * 1024
+# Minimum assertions in the current integrated ParkSimAudit. A stale binary or
+# accidentally omitted helper must not turn missing lifecycle coverage into PASS.
+REQUIRED_CHECKS = {'availability': 30, 'removal': 57, 'conservation': 20}
+REQUIRED_WITNESSES = (
+    'ok   availability regression exercised',
+    'ok   removal regression exercised',
+    'ok   conservation: identical fixed-tick inputs reproduce the full sampled lifecycle',
+)
 
 
 def classify(world: str, raw_exit: int | None, text: str, *, timed_out: bool = False,
              truncated: bool = False, launch_error: str | None = None) -> dict:
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     failures = [line[5:] for line in lines if line.startswith('FAIL ')]
-    checks = sum(line.startswith('ok   availability:') for line in lines)
-    evidence = {'raw_exit': raw_exit, 'failures': failures, 'availability_checks': checks}
+    counts = {category: sum(line.startswith(f'ok   {category}:') for line in lines)
+              for category in REQUIRED_CHECKS}
+    evidence = {'raw_exit': raw_exit, 'failures': failures,
+                **{f'{category}_checks': count for category, count in counts.items()}}
     if launch_error:
         return {**evidence, 'status': 'launch_error'}
     if timed_out:
@@ -40,7 +50,8 @@ def classify(world: str, raw_exit: int | None, text: str, *, timed_out: bool = F
         return {**evidence, 'status': 'truncated_log'}
     if not lines or lines[-1] not in ('PASS', 'FAIL: 1'):
         return {**evidence, 'status': 'unexpected_failure' if raw_exit else 'incomplete_output'}
-    if checks < 30 or not any(line.startswith('ok   availability regression exercised') for line in lines):
+    if (any(counts[category] < minimum for category, minimum in REQUIRED_CHECKS.items())
+            or any(not any(line.startswith(witness) for line in lines) for witness in REQUIRED_WITNESSES)):
         return {**evidence, 'status': 'missing_coverage'}
     if raw_exit == 0 and lines[-1] == 'PASS' and not failures:
         return {**evidence, 'status': 'unexpected_pass' if world in EXPECTED else 'pass'}
@@ -154,7 +165,8 @@ def main(argv=None) -> int:
         row.update(verdict, world=world)
         manifest['results'].append(row)
         save()  # preserve completed worlds if the next one is interrupted
-        print(f'{world}: {row["status"].upper()} raw_exit={row["raw_exit"]} availability={row["availability_checks"]}')
+        coverage = ' '.join(f'{category}={row[f"{category}_checks"]}' for category in REQUIRED_CHECKS)
+        print(f'{world}: {row["status"].upper()} raw_exit={row["raw_exit"]} {coverage}')
     statuses = {row['status'] for row in manifest['results']}
     if statuses - {'pass', 'known_retail_failure'}:
         exit_code, status = 1, 'unexpected_result'
