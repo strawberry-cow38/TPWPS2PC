@@ -92,6 +92,22 @@ public sealed class GameCamera
     public void Zoom(int steps) => Behind = Math.Clamp(Behind + AxisStep * steps, MinBehind, MaxBehind);
     public void Push(int steps) => Dolly = Math.Clamp(Dolly + AxisStep * steps, MinDolly, MaxDolly);
 
+    /// <summary>Turn the camera to look along a world direction, easing there like any other turn.
+    ///
+    /// ⭐ The view direction is the yaw's own: Step builds the eye at `focus - (sin, cos) * Behind`
+    /// and looks at the focus, so the camera looks ALONG `(sin yaw, cos yaw)`. Inverting that is
+    /// `atan2(x, z)`, in that order -- x against sin, z against cos -- and not the usual
+    /// `atan2(z, x)`, which would be a quarter turn out and look plausible.
+    ///
+    /// ⚠ Sets the TARGET only. The ease takes the shortest way round by itself.</summary>
+    public void Face(float worldX, float worldZ)
+    {
+        if (worldX == 0f && worldZ == 0f) return;
+        double a = Math.Atan2(worldX, worldZ);
+        if (a < 0) a += Math.Tau;
+        TargetYaw = (int)Math.Round(a * TurnUnits / Math.Tau) & (TurnUnits - 1);
+    }
+
     /// <summary>Send the camera to a tile and let it EASE there. ⭐ Only the cursor moves: the
     /// focus already chases it an eighth of the way per tick, which is the game's own easing and
     /// the reason this is not PlaceAt. Snapping the view onto a ride's door the instant it goes

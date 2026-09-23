@@ -122,6 +122,8 @@ public partial class Viewer : Node3D
     (int X, int Y)? _pathFrom;
     /// <summary>Which ride the pending exit path belongs to, held across the queue tool.</summary>
     int _pathOwner;
+    /// <summary>Which way the pending exit opens, so the camera can face along it.</summary>
+    (int Dx, int Dy) _pathFacing;
     /// <summary>One number per thing PUT DOWN. ⚠ Not the definition's id: two of the same ride
     /// share that, and then one ride's queue would happily walk into the other's door.</summary>
     int _rideSerial;
@@ -2127,14 +2129,21 @@ public partial class Viewer : Node3D
     /// <summary>Swing the game camera onto a grid cell. ⭐ Through CellCentre, which is the plot's
     /// own cell-to-world map -- the camera takes world units and one of them is one tile.
     /// ⚠ Does nothing when the free orbit camera is driving; it is not the game's to move.</summary>
-    void LookAtCell(int x, int y, int quarters = 0)
+    void LookAtCell(int x, int y, (int Dx, int Dy)? facing = null)
     {
         if (_game == null || !GameCamActive || _park?.Field == null) return;
-        if (quarters != 0) _game.Turn(quarters);
+        // ⭐⭐ AIMED AT THE DOOR'S OWN DIRECTION, not turned a fixed half. Master: "or be based
+        // relative to the exit / entrance direction". A half turn assumes where the camera already
+        // was; the door knows which way it opens, so the camera is pointed ALONG that -- out of
+        // the ride and down the ground the run is about to be drawn over.
+        //
+        // ⚠ Grid to world for a DIRECTION is not the same map as for a point: grid +x is world +X
+        // but grid +y is world -Z, because Park.Build lays row y at `Origin.Y + (H - y - 0.5)`.
+        if (facing is { } f && (f.Dx != 0 || f.Dy != 0)) _game.Face(f.Dx, -f.Dy);
         var c = _park.CellCentre(x, y);
         _game.GlideTo(c.X, c.Z);
         GD.Print($"[cam] looking at cell ({x},{y}) -- world {c.X:F1},{c.Z:F1}"
-               + (quarters != 0 ? $", turned {quarters * 90} degrees" : ""));
+               + (facing is { } g ? $", facing grid {g.Dx},{g.Dy} -> yaw {_game.TargetYaw:X3}" : ""));
     }
 
     /// <summary>Hand the exit's path over: open the path tool with a run already begun outside
@@ -2142,7 +2151,8 @@ public partial class Viewer : Node3D
     void StartExitPath((int X, int Y) from)
     {
         int owner = _pathOwner;
-        _pathFrom = null; _pathOwner = 0;
+        var facing = _pathFacing;
+        _pathFrom = null; _pathOwner = 0; _pathFacing = (0, 0);
         // ⚠ BOTH TESTS. `CanLay` is the terrain's own no-build bit and knows nothing about what is
         // standing there -- an exit facing another ride handed the tool a run beginning inside it,
         // which is one of the ways the entry-exit hand-over was "a lil broken".
@@ -2172,7 +2182,7 @@ public partial class Viewer : Node3D
         // focus the camera on the exit tile." A ride's exit is on the far side from its queue, so
         // a half turn puts the player behind it rather than looking at the back of the ride they
         // just walked the queue around.
-        LookAtCell(from.X, from.Y, quarters: 2);
+        LookAtCell(from.X, from.Y, facing);
         _ghostAt = (-1, -1, -1, -1);
         Status($"now the path out -- run it from ({from.X},{from.Y})");
         GD.Print($"[build] exit path mode from ({from.X},{from.Y})");
@@ -2819,6 +2829,8 @@ public partial class Viewer : Node3D
         // them and that is the whole job -- opening a path run from it made every stall purchase
         // into a building session nobody asked for.
         _pathFrom = queued && exitDoor is { } xd ? _place.OutsideOf(xd, x, y) : null;
+        _pathFacing = exitDoor is { } xd2 && _pathFrom is { } pf2
+                    ? (pf2.X - xd2.X, pf2.Y - xd2.Y) : (0, 0);
         _pathOwner = ride;
         _place.Clear();
         _ghostView?.Clear();
@@ -2837,7 +2849,7 @@ public partial class Viewer : Node3D
             // needs to rotate 180 degrees around" -- the queue hand-over turns as much as the exit
             // one does. Placing looks at the ride from the front; working its queue happens from
             // behind.
-            LookAtCell(q.X, q.Y, quarters: 2);
+            LookAtCell(q.X, q.Y, entrance is { } e2 ? (q.X - e2.X, q.Y - e2.Y) : null);
             _ghostAt = (-1, -1, -1, -1);
             Status($"{was} is in -- run its queue from ({q.X},{q.Y})");
             GD.Print($"[build] queue mode from ({q.X},{q.Y}); the exit path will start at "
