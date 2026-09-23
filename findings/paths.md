@@ -134,8 +134,56 @@ built on it, with the kind byte, are where walkability actually lives:
 numbers `PathTool.Kind` already carries. Flags bit 1 is the no-build bit, which is why a skipped
 cell's `0x23` refuses a placement; bit 0 additionally makes a path tile unusable.
 
-⚠⚠ **AND NOTHING IS WALKABLE AT LOAD.** The fill writes kind `0` or `1` and never `2` or `4`, so
-the entrance plaza is not walkable by anything this function does. Something else must write the
-bus stop and the turnstiles into the tile map, and **that writer has not been found.** Until it
-is, `ParkPaths.EntranceParts` — a list of three mesh names — is a STAND-IN chosen by me, not a
-recovered rule, and it should be replaced by whatever that writer actually does.
+## The entrance is a table in the executable
+
+⭐⭐ **FOUND, and it is the same function.** `0x14E5B0` runs the fill loop above and then, still in
+the same call, draws the park's own entrance into the tile map from a per-park table at
+**`0x2B71B0`** — `0x12` bytes per entry, `0x36` per world, so three parks each and twelve entries.
+
+| offset in the entry | field |
+|---|---|
+| `+0x00` | `xStart` — where the cross-corridor begins |
+| `+0x01` | `zRow` — the row it runs along |
+| `+0x10` | `xCol` — the left column of the two-wide walkway |
+| `+0x11` | `zEnd` — one past its last row |
+
+and the shape it writes:
+
+- row `zRow`, x from `xStart` to `xCol + 1` → kind `0x0C`, flags `8`
+- columns `xCol` and `xCol + 1`, z from `zRow` to `zEnd - 2` → kind `0x0C`, flags `8`
+- row `zEnd - 1`, both columns → kind **`0x0E`** — the mouth, where it meets the park
+
+⭐ **`zRow` is 6 and `zEnd` is 19 in EVERY entry; only x moves.** findings/gates.md reached "the
+entrance is one prefab translated in x" from mesh anchors, and this table says it again from the
+code, which is two routes to the same sentence.
+
+## Checked against a live park
+
+Master's PCSX2 savestate, a running FANTASY park (30/03/2000, £21,671). Controls first: the field
+object in RAM reads `NX=80 NZ=60`, 4800 cells, **872 skipped and 3928 drawn — exactly what our
+disc read of FANTASY gives**, so the RAM grid and the disc grid are the same data in the same
+frame before anything else is claimed.
+
+Then the tile map, 81 x 61 at `0x2B73C0`:
+
+| kind | count | where |
+|---|---|---|
+| `2` path | 43 | the player's network |
+| `4` queue | 9 | beside it |
+| `13` both | 2 | (40,24) and (39,25) — **exactly where a queue meets the path** |
+| `12` | 27 | x 39..40, z 6..17, with a five-wide lip at z=6 |
+| `14` | 2 | (39,18), (40,18) |
+
+Table entry 6 reads `xStart=36 zRow=6 xCol=39 zEnd=19`, which **predicts those 27 and 2 cells
+exactly**. And `2`, `4` and `13` are the numbers `PathTool.Kind` already carried, read back out of
+live memory.
+
+⚠⚠ **THE ENTRANCE IS NOT AUTHORED IN THE GRID.** Every corridor cell has authored `byte0 = 0x01`
+and `byte1 = 0` — identical to the skipped cells either side of it at x=38 and x=41. There is
+nothing in the terrain data that distinguishes the walkway; it exists only because this table
+paints it.
+
+⚠⚠ **AND `ParkPaths.EntranceParts` IS WRONG, not merely unproven.** Rasterising `A_ROAD`,
+`A_BUS STOP` and `ticket_booths` gave **147 cells at z 33..47** for FANTASY. The game's answer is
+**29 cells at x 39..40, z 6..18** — a two-tile walkway, not a fifteen-wide apron, and in a
+different place. The mesh names were never the rule and the difference is not small.
