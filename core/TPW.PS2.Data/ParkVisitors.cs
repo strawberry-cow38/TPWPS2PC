@@ -80,6 +80,20 @@ public sealed class ParkVisitors
     /// lifecycle, 2026-09-23). Null leaves the park exactly as it was before needs existed.</summary>
     public VisitorNeeds Needs { get; set; }
 
+    /// <summary>What a ride does to a rider, applied ONCE on genuine completion.
+    ///
+    /// ⚠⚠ ALL FOUR ARE CHOSEN. `FUN_0020EDD8` reads the ride's own value and three globals
+    /// (`DAT_002EEB30/34/44`), and neither has been decoded -- so these stand in, carrying the
+    /// console's SHAPE only: sickness is measured against **30**, so an intensity below that
+    /// settles the stomach and above it turns one.
+    ///
+    /// ⭐ Exposed as properties so an audit can set them and assert the exact arithmetic,
+    /// rather than having to know a constant buried in a method.</summary>
+    public int RideIntensity { get; set; } = 45;
+    public int RideHappiness { get; set; } = 8;
+    public float RideSickScale { get; set; } = 0.25f;
+    public float RideBoredomScale { get; set; } = 0.5f;
+
     public Guest Arrive(ParkCell at, ParkCell to)
     {
         var g = Walk.Spawn(at, to);
@@ -223,7 +237,22 @@ public sealed class ParkVisitors
                 walking = Walk.Readmit(guest, at.Value, at.Value);
             }
             Wander(guest, walking.Cell); // only relinquish recovery ownership after readmission
-            if (returning.CompletedRide) Rides++;
+            if (returning.CompletedRide)
+            {
+                Rides++;
+                // ⭐⭐ THE RIDE CHANGED HOW THEY FEEL, and this is the ONE place that knows a
+                // ride genuinely happened. I first put it in `Collect`, reasoning that a
+                // demolished ride must not pay out a ride's worth of happiness -- astraclaw
+                // corrected me: `ReconcileRemovedRides` marks completion only when `Left` or
+                // `VAR_LETMEOFF` has ALREADY reported the handback, so ordinary demolition is not
+                // completion at all. Here catches both routes, skips aborted rides, and fires once
+                // per guest because `Wander` drops them from `_returning` on the same pass.
+                //
+                // ⚠ This CHANGES needs -- that is the feature -- so a continuity check asserts
+                // these effects happened exactly once, not that the record is untouched. Cash is
+                // the reseed tripwire: nothing on this path touches it.
+                Needs?.Ride(guest, RideIntensity, RideHappiness, RideSickScale, RideBoredomScale);
+            }
         }
     }
 
