@@ -58,10 +58,10 @@ public sealed class VisitorSimulation
         if (QueueCells.Count == 0 || QueueCells.Distinct().Count() != QueueCells.Count
             || QueueCells.Any(c => paths.Kind(c) != ParkPathKind.Queue)
             || QueueCells.Zip(QueueCells.Skip(1)).Any(p => Math.Abs(p.First.X - p.Second.X) + Math.Abs(p.First.Z - p.Second.Z) != 1)
-            || entrance == exitPortal || paths.Kind(entrance) != ParkPathKind.Path || paths.Kind(exitPortal) != ParkPathKind.Path)
+            || entrance == exitPortal || !paths.Open(entrance) || !paths.Open(exitPortal))
             throw new ArgumentException("Invalid queue or park portals");
-        if (paths.Route(entrance, QueueCells[^1], c => paths.Kind(c) == ParkPathKind.Path || c == QueueCells[^1]) == null
-            || paths.Route(exitPortal, entrance, c => paths.Kind(c) == ParkPathKind.Path) == null)
+        if (paths.Route(entrance, QueueCells[^1], c => paths.Open(c) || c == QueueCells[^1]) == null
+            || paths.Route(exitPortal, entrance, c => paths.Open(c)) == null)
             throw new ArgumentException("Disconnected park portals");
         Host = new RsePreviewHost(animation); Machine = new RseMachine(program, Host);
         foreach (string name in new[] { "VAR_LETMEON", "VAR_LETMEOFF", "VAR_CAPACITY", "VAR_DURATION",
@@ -112,12 +112,12 @@ public sealed class VisitorSimulation
         {
             if (g.State == VisitorState.Walking)
             {
-                Move(g, QueueCells[^1], c => Paths.Kind(c) == ParkPathKind.Path || c == QueueCells[^1]);
+                Move(g, QueueCells[^1], c => Paths.Open(c) || c == QueueCells[^1]);
                 if (At(g, QueueCells[^1])) { g.State = VisitorState.Queuing; _queue.Add(g.Id); Report(g, "queue"); }
             }
             else
             {
-                Move(g, Entrance, c => Paths.Kind(c) == ParkPathKind.Path);
+                Move(g, Entrance, c => Paths.Open(c));
                 if (g.State == VisitorState.Alighting && g.Cell != ExitPortal)
                 {
                     if (_alighting != g.Id || Machine["VAR_LETMEOFF"] != g.Id)

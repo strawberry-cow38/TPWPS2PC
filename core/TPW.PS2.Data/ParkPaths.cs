@@ -23,6 +23,34 @@ public sealed class ParkPaths
     public Vector2 Origin { get; }
     readonly HashSet<ParkCell> _occupied = new();
     readonly HashSet<ParkCell> _scenery = new();
+    readonly HashSet<ParkCell> _entrance = new();
+
+    /// <summary>⭐⭐ THE GROUND THAT IS WALKABLE BEFORE ANYONE BUILDS ANYTHING -- the bus stop, the
+    /// road up to it and the turnstiles.
+    ///
+    /// ⚠⚠ THE DISC SHIPS NO PRE-LAID PATH TILES. Measured over jungle's whole grid with the
+    /// classifier's own control beside it (the material table names 16 path and 4 queue tiles, so
+    /// the classifier had something to hit): 3387 drawn cells, 7 distinct materials, all of them
+    /// `jgr_bas*` grass and one `jbr_log1`. ZERO path, ZERO queue. So "the paths that are there
+    /// from the start" are not tiles at all -- they are the entrance PREFAB'S MESH, standing on
+    /// cells the authored grid marks as drawing no ground.
+    ///
+    /// ⚠ NAMED, and the names are anchored: findings/gates.md measured `A_ROAD` and
+    /// `ticket_booths` as IDENTICAL in all four parks -- the entrance is one prefab translated in
+    /// x. So this is a reading of the prefab, not a region drawn by hand per world.
+    ///
+    /// ⚠⚠ AND NO SKIP TEST. I first took only the cells the terrain draws NO ground on, reasoning
+    /// that the plaza is where the grid steps aside for the prefab. It is not: that rule cut the
+    /// corridor in two at z=63 and z=65, where the road runs over ordinary drawn terrain, and a
+    /// walkway with a hole in it is not a walkway. Measured both ways over jungle --
+    ///
+    ///   with the skip test     56 cells, the far end reaches neither the near end nor most of itself
+    ///   without it           147 cells, ALL 147 reachable from the far end, near end included
+    ///
+    /// -- and the shape the second one draws is the thing master described: a three-wide corridor
+    /// through the turnstiles opening onto a fifteen-wide apron at the bus stop. The skip test was
+    /// my own addition and the connectivity is what threw it out.</summary>
+    public static readonly string[] EntranceParts = { "A_ROAD", "A_BUS STOP", "ticket_booths" };
     public IEnumerable<ParkCell> Cells => Enumerable.Range(0, Field.Count)
         .Select(i => new ParkCell(i % Field.Width, i / Field.Width));
 
@@ -45,6 +73,7 @@ public sealed class ParkPaths
         // collision flags. Triangle/square SAT includes thin walls missed by centre samples.
         foreach (var mesh in terrain.Meshes)
         {
+            bool isEntrance = EntranceParts.Any(n => (mesh.Name ?? "").StartsWith(n, StringComparison.OrdinalIgnoreCase));
             var vertices = terrain.Vertices(mesh).Pos.Select(v => Vector3.Transform(v, transforms[mesh.Offset]))
                 .Select(v => new Vector2(v.X - Origin.X, -v.Z - Origin.Y)).ToArray();
             foreach (var triangle in terrain.Triangles(mesh))
@@ -57,14 +86,33 @@ public sealed class ParkPaths
                 for (int z = z0; z <= z1; z++) for (int x = x0; x <= x1; x++)
                 {
                     var c = new ParkCell(x, z);
-                    if (!_scenery.Contains(c) && Intersects(p, q, r, new Vector2(x + 0.5f, z + 0.5f))) _scenery.Add(c);
+                    bool hit = Intersects(p, q, r, new Vector2(x + 0.5f, z + 0.5f));
+                    if (hit && !_scenery.Contains(c)) _scenery.Add(c);
+                    if (hit && isEntrance) _entrance.Add(c);
                 }
             }
         }
     }
     public bool Contains(ParkCell c) => c.X >= 0 && c.Z >= 0 && c.X < Field.Width && c.Z < Field.Height;
+
+    /// <summary>Is this one of the park's own entrance cells -- bus stop, road, turnstiles?</summary>
+    public bool IsEntrance(ParkCell c) => _entrance.Contains(c);
+    public IReadOnlyCollection<ParkCell> EntranceCells => _entrance;
+
+    /// <summary>⭐ PUBLIC GROUND: what a visitor with nowhere particular to be may stand on. Laid
+    /// path, or the entrance the park came with. ⚠ NOT a queue -- a queue belongs to its ride, and
+    /// letting anyone walk it would make every queue a shortcut.</summary>
+    public bool Open(ParkCell c) => Contains(c) && (IsEntrance(c) || Kind(c) == ParkPathKind.Path);
     public bool SceneryBlocks(ParkCell c) => _scenery.Contains(c);
     public bool CanBuild(ParkCell c) => Contains(c) && Field.Buildable(c.X, c.Z) && !_occupied.Contains(c) && !_scenery.Contains(c);
+    /// <summary>Does this triangle cover the cell at (x,z)? ⚠ PUBLIC so an audit can build the same
+    /// coverage the constructor does instead of a looser one -- a control that rasterises by
+    /// BOUNDING BOX and compares itself against an exact set reports disagreements that are its
+    /// own, which is how "the embankment is walkable" was read off a map that had simply painted
+    /// the bank over the road.</summary>
+    public static bool TriangleCoversCell(Vector2 a, Vector2 b, Vector2 c, int x, int z)
+        => Intersects(a, b, c, new Vector2(x + 0.5f, z + 0.5f));
+
     static bool Intersects(Vector2 a, Vector2 b, Vector2 c, Vector2 centre)
     {
         var ab = b - a; var bc = c - b; var ca = a - c;
@@ -90,7 +138,8 @@ public sealed class ParkPaths
         int material = Field.Material(c.X, c.Z);
         return material == 0 || material >= Materials.Count ? ParkPathKind.None : Classify(Materials[material]);
     }
-    public bool Walkable(ParkCell c) => Kind(c) != ParkPathKind.None;
+    /// <summary>Anything a visitor can legitimately be standing on: public ground or a queue.</summary>
+    public bool Walkable(ParkCell c) => IsEntrance(c) || Kind(c) != ParkPathKind.None;
     public void Occupy(IEnumerable<ParkCell> cells)
     {
         var all = cells.ToArray();
