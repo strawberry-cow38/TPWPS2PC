@@ -359,5 +359,36 @@ var cut = new ParkCell(xl, z0 + 5);
     else Check(false, "no arrived guest to send back (the census above has none)");
 }
 
+// ── A queue tile is a place to go, not a place to go through ───────────────────────────────
+// ⭐ A ride's queue stub is a queue tile, and the viewer hands GuestWalk exactly that cell as
+// the ride's entrance. So a guest sent to a queue tile must ARRIVE on it, a guest whose only
+// way to a path cell runs THROUGH that tile must have no route, and a guest put down ON it (a
+// rider handed back at a ride with no exit stub) must be able to walk off. The path cell beyond
+// the tile is the control: reachable in the first case's world only if queues were open ground.
+{
+    int que = paths.MaterialIndex("jpa_que1.ssh");
+    var stub = new ParkCell(xl - Arm, bar + Spur + 1);        // just past the left spur's tip
+    var beyond = new ParkCell(xl - Arm, bar + Spur + 2);      // and the cell after it
+    if (paths.CanLay(stub) && paths.CanLay(beyond))
+    {
+        paths.Lay(stub, que); paths.Lay(beyond, squ);
+        Check(paths.Kind(stub) == ParkPathKind.Queue && !paths.Open(stub) && paths.Walkable(stub), $"control: {stub} is a queue tile -- walkable, not open");
+        var rider = crowd.First(g => g.State == GuestState.Arrived);
+        var from = rider.Cell; int had = rider.Steps;
+        Check(walk.Send(rider, stub), $"guest {rider.Id} at {from} is sent to the queue tile {stub}");
+        int t = 0; while (rider.State == GuestState.Walking && t < ticks) { walk.Step(); t++; }
+        Check(rider.State == GuestState.Arrived && rider.Cell == stub && rider.Steps - had == Manhattan(from, stub),
+              $"...and arrives on it in {rider.Steps - had} steps -- " + Describe(rider));
+        Check(walk.Route(from, stub)?.Count(c => paths.Kind(c) == ParkPathKind.Queue) == 1, "the route touches exactly one queue cell: the destination");
+        Check(walk.Route(from, beyond) == null, $"control: the path tile {beyond} beyond the queue has NO route -- a queue is not a corridor");
+        var back = walk.Spawn(stub, from);
+        Check(back.State == GuestState.Walking && back.Route[0] == stub && back.Route.Skip(1).All(paths.Open),
+              $"a guest put down on the queue tile walks off it over open ground -- " + Describe(back));
+        t = 0; while (back.State == GuestState.Walking && t < ticks) { walk.Step(); t++; }
+        Check(back.State == GuestState.Arrived && back.Cell == from, "...and gets there -- " + Describe(back));
+    }
+    else Check(false, $"the queue-tile control could not be laid at {stub}/{beyond} (unbuildable ground) -- untested");
+}
+
 Console.WriteLine(bad == 0 ? "PASS" : $"FAIL: {bad}");
 return bad == 0 ? 0 : 1;

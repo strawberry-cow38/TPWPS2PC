@@ -108,7 +108,10 @@ public sealed class GuestWalk
     /// census counts it and a view can show it standing at the gate looking lost.</summary>
     public Guest Spawn(ParkCell at, ParkCell to)
     {
-        if (!Paths.Open(at)) throw new ArgumentException($"A guest cannot be put down at {at}: not open ground");
+        // ⚠ WALKABLE, not open: a guest handed back by a ride is put down on that ride's own
+        // stub, and a queue tile is ground a guest may stand on even though nobody may walk
+        // through it. Leaving it is the start exemption in Route.
+        if (!Paths.Walkable(at)) throw new ArgumentException($"A guest cannot be put down at {at}: not walkable ground");
         var guest = new Guest { Id = ++_lastId, Cell = at, Destination = to, State = GuestState.Walking };
         _guests.Add(guest);
         if (!Assign(guest)) { guest.State = GuestState.NoRoute; guest.Reason = $"no route from {at} to {to}"; }
@@ -142,11 +145,17 @@ public sealed class GuestWalk
     /// ⭐ THE START IS EXEMPT from being open. <see cref="ParkPaths.Route"/> refuses a start it
     /// would not let anyone stand on, which is right for a search that begins at a portal; this
     /// one begins wherever a guest already IS, and a guest standing on a cell that was path a
-    /// moment ago has to be allowed to step off it. That is the only difference between the two
-    /// searches -- the neighbour order and the open test are ParkPaths' own.</summary>
+    /// moment ago has to be allowed to step off it.
+    ///
+    /// ⭐ AND THE END MAY BE A QUEUE TILE. A ride's queue stub is where a guest goes to join it,
+    /// and it is a queue tile -- walkable, not open -- so the destination is allowed to be any
+    /// walkable cell while every cell BETWEEN stays open ground: a guest may walk INTO a queue,
+    /// never THROUGH one (the rule VisitorSimulation already walks Ada by). Those two exemptions
+    /// are the only differences from ParkPaths' search -- the neighbour order and the open test
+    /// are its own.</summary>
     public IReadOnlyList<ParkCell> Route(ParkCell from, ParkCell to)
     {
-        if (!Paths.Contains(from) || !Paths.Open(to)) return null;
+        if (!Paths.Contains(from) || !Paths.Walkable(to)) return null;
         var previous = new Dictionary<ParkCell, ParkCell> { [from] = from };
         var pending = new Queue<ParkCell>(); pending.Enqueue(from);
         while (pending.TryDequeue(out var c))
@@ -158,7 +167,7 @@ public sealed class GuestWalk
                 result.Reverse(); return result.AsReadOnly();
             }
             foreach (var next in ParkPaths.Neighbours(c))
-                if (Paths.Open(next) && previous.TryAdd(next, c)) pending.Enqueue(next);
+                if ((Paths.Open(next) || next == to) && previous.TryAdd(next, c)) pending.Enqueue(next);
         }
         return null;
     }
@@ -207,13 +216,13 @@ public sealed class GuestWalk
     {
         if (g.Cell == g.Destination) { g.State = GuestState.Arrived; return false; }
         var ahead = Ahead(g);
-        if (ahead is ParkCell cell && Paths.Open(cell)) { g.Next = cell; return true; }
+        if (ahead is ParkCell cell && Standable(g, cell)) { g.Next = cell; return true; }
         // ⚠ The way ahead has gone -- un-laid since this route was found. Look again from here;
         // the start is exempt from being open, so a guest whose OWN cell went can still walk off it.
         if (!Assign(g))
         {
             g.State = GuestState.Stranded;
-            g.Reason = !Paths.Open(g.Destination) ? $"the destination {g.Destination} is no longer a path"
+            g.Reason = !Paths.Walkable(g.Destination) ? $"the destination {g.Destination} is no longer a path"
                      : ahead is ParkCell lost ? $"the path at {lost} is gone and there is no other way from {g.Cell} to {g.Destination}"
                      : $"no way from {g.Cell} to {g.Destination}";
             return false;
@@ -224,6 +233,11 @@ public sealed class GuestWalk
     }
 
     static ParkCell? Ahead(Guest g) => g.Route != null && g.RouteIndex + 1 < g.Route.Count ? g.Route[g.RouteIndex + 1] : null;
+
+    /// <summary>May this guest step onto this cell: open ground, or its own destination if that
+    /// is merely walkable -- the queue-tile exemption Route makes, applied at the moment of the
+    /// step so a stub is not read as "the way ahead has gone".</summary>
+    bool Standable(Guest g, ParkCell c) => Paths.Open(c) || (c == g.Destination && Paths.Walkable(c));
 
     /// <summary>A fresh route from where the guest stands. ⚠ On failure the OLD route is left in
     /// place: a stranded guest's record says what it was walking when the way went, which is what

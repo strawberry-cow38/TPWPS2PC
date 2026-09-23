@@ -44,6 +44,8 @@ public sealed class AnimatedModel
     readonly Dictionary<int, int> _rotTrack = new();   // node -> its track, for the easing curves
     readonly Dictionary<int, List<(int Time, System.Numerics.Vector3 S)>> _scale = new();
     Dictionary<int, int[]> _vis = new();
+    /// <summary>Nodes currently hidden. ⚠ SURVIVES UseRecord on purpose: see SetFrame.</summary>
+    readonly HashSet<int> _hidden = new();
     readonly Dictionary<int, Aps.Path> _path = new();
     readonly HashSet<int> _facing = new();
     List<Aps.SkeletalTrack> _skel;
@@ -365,6 +367,23 @@ public sealed class AnimatedModel
             if (_materials.TryGetValue(slot, out var material)) SetTexture(material, slot, index);
             _textureIndices[slot] = index;
         }
+        // ⭐⭐ VISIBILITY IS STATE ON THE NODE, NOT A PROPERTY OF THE RECORD. `0x1a7f48` reads a
+        // track's appear/disappear list ONLY when the track carries flag `0x20000`, and a track
+        // without it falls straight through and touches nothing -- it does not make the node
+        // visible. The flag it sets is `0x10` on the node itself, so the answer outlives the
+        // animation that gave it.
+        //
+        // ⚠⚠ THAT IS THE BUG MASTER SPOTTED IN THE APE. Only Crazy Ape's `Create` record carries
+        // visibility -- the crate appears at 28 and is smashed at 100, the shards appear at 100
+        // and vanish at 138 -- and every other record (Idle, Load, Start, seven Mains, End, Break)
+        // has three or four tracks and says nothing about them. Treating "not keyed" as "visible"
+        // brought a destroyed crate and its debris back the moment the script left Create, which
+        // is what the flying bananas in the first film were. Across JUNGLE it is the rule and not
+        // an exception: 27 `Create` records carry visibility against 13 Mains and 4 others.
+        foreach (var (node, timeline) in _vis)
+        {
+            if (Aps.VisibleAt(timeline, now)) _hidden.Remove(node); else _hidden.Add(node);
+        }
         var world = WorldAt(now);
         foreach (var p in _parts)
         {
@@ -373,7 +392,7 @@ public sealed class AnimatedModel
             // off with it. Checking only the mesh's own entry left those parts on screen.
             bool shown = true;
             foreach (var node in p.Ancestry ?? new List<int> { p.Mesh.Index })
-                if (_vis.TryGetValue(node, out var v) && !Aps.VisibleAt(v, now)) { shown = false; break; }
+                if (_hidden.Contains(node)) { shown = false; break; }
             foreach (var s in p.Surfaces) s.Visible = shown;
             if (!shown) continue;
             if (p.Morph != null && p.AnimMap != null) RebuildGeometry(p, now);

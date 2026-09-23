@@ -18,15 +18,28 @@ public sealed class RseModelPresenter : IDisposable
         Func<string, (ImageTexture Tex, bool Soft)> texture)
     { _parent = parent; _model = model; _animation = animation; _texture = texture; }
 
+    /// <summary>⭐⭐ THE MODEL IS KEPT, NOT REBUILT. This used to `Free()` the whole AnimatedModel
+    /// and construct a new one every time the script changed animation, which threw away every
+    /// piece of state the console carries ACROSS a change: the texture each material is showing
+    /// (retained at `0x1a6b60`) and, worse, which nodes are hidden (`0x1a7f48` sets flag `0x10` on
+    /// the NODE, and a record with no visibility track for it touches nothing).
+    ///
+    /// ⚠ That is why Crazy Ape's smashed crate and its shards came back the moment the ride left
+    /// its Create animation: rebuilt model, blank state, everything visible. `UseRecord` re-points
+    /// the channels in place and leaves the state alone, which is what the PS2 does.</summary>
     public void Update(RsePreviewHost host)
     {
         var record = host.Current?.Record;
-        if (Drawn == null || Record != record)
+        if (Drawn == null)
         {
-            Drawn?.Root.Free();
             Record = record;
             Drawn = new AnimatedModel(_model, _animation, record, _texture);
             _parent.AddChild(Drawn.Root);
+        }
+        else if (Record != record)
+        {
+            Record = record;
+            Drawn.UseRecord(record);
         }
         Frame = host.Frame;
         Drawn.SetFrame(Frame);
