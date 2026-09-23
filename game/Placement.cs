@@ -73,7 +73,8 @@ public sealed class Placement
                 cells[x, h - 1 - y] = fp.Cells[x, y];
         int ey = fp.EntryY >= 0 ? h - 1 - fp.EntryY : -1;
         int xy = fp.ExitY >= 0 ? h - 1 - fp.ExitY : -1;
-        return new Park.Footprint(w, h, cells, fp.EntryX, ey, fp.ExitX, xy, fp.ExitDX, -fp.ExitDY);
+        return new Park.Footprint(w, h, cells, fp.EntryX, ey, fp.ExitX, xy, fp.ExitDX, -fp.ExitDY,
+                                  fp.EntryDX, -fp.EntryDY);
     }
 
     public void Clear() { Def = null; Display = null; Turned = default; Turns = 0; IsRide = false; }
@@ -101,7 +102,17 @@ public sealed class Placement
             {
                 if (!Turned.Cells[fx, fy]) continue;
                 int x = cx + fx, y = cy + fy;
-                yield return (x, y, park.IsPlayable(x, y) && park.Vacant(x, y));
+                // ⭐⭐ THE BODY MAY NOT STAND ON LAID GROUND. Master: "dont allow placing the entire
+                // shop/sideshow/feature over paths. just the path tile is valid." Only the door's
+                // STUB may overlap, because a stub and the path it lands on are the same ground;
+                // the thing itself would be standing in the middle of a walkway.
+                //
+                // ⚠ Rides too, though master was looking at shops. It is the same invariant they
+                // gave from the other side -- "paths should be invalid on tiles occupied by rides,
+                // they shouldnt delete the rides" -- and a rule that held one way round and not
+                // the other would just be the same bug wearing the other hat.
+                yield return (x, y, park.IsPlayable(x, y) && park.Vacant(x, y)
+                                 && (GroundAt?.Invoke(x, y) ?? PathTool.Kind.None) == PathTool.Kind.None);
             }
     }
 
@@ -191,6 +202,14 @@ public sealed class Placement
             int nx = fx + Turned.ExitDX, ny = fy + Turned.ExitDY;
             return Inside(nx, ny) ? null : (cx + nx, cy + ny);
         }
+        // ⭐⭐ AND SO DOES THE ENTRANCE, NOW. Its facing was worked out once in the authored frame
+        // and has turned with the shape ever since, so it no longer re-answers in fixed grid
+        // directions every time the thing is rotated.
+        if (fx == Turned.EntryX && fy == Turned.EntryY && (Turned.EntryDX != 0 || Turned.EntryDY != 0))
+        {
+            int nx = fx + Turned.EntryDX, ny = fy + Turned.EntryDY;
+            return Inside(nx, ny) ? null : (cx + nx, cy + ny);
+        }
 
         foreach (var (dx, dy) in new[] { (0, 1), (0, -1), (1, 0), (-1, 0) })
             if (!Inside(fx + dx, fy + dy)) return (cx + fx + dx, cy + fy + dy);
@@ -216,6 +235,7 @@ public sealed class Placement
         int ex = fp.EntryX, ey = fp.EntryY;
         int xx = fp.ExitX, xy = fp.ExitY;
         int xdx = fp.ExitDX, xdy = fp.ExitDY;
+        int edx = fp.EntryDX, edy = fp.EntryDY;
         for (int t = 0; t < (turns & 3); t++)
         {
             var next = new bool[h, w];
@@ -228,8 +248,12 @@ public sealed class Placement
             // so a direction (dx,dy) goes to (-dy, dx). A door whose tile moved and whose facing
             // did not would point into the ride.
             (xdx, xdy) = (-xdy, xdx);
+            // ⭐ AND THE ENTRANCE'S FACING TURNS BY THE SAME MAP. It is the whole of the shop bug:
+            // a door whose tile moved and whose facing did not opens onto a side that is no longer
+            // there.
+            (edx, edy) = (-edy, edx);
             cells = next; (w, h) = (h, w);
         }
-        return new Park.Footprint(w, h, cells, ex, ey, xx, xy, xdx, xdy);
+        return new Park.Footprint(w, h, cells, ex, ey, xx, xy, xdx, xdy, edx, edy);
     }
 }

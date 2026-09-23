@@ -53,7 +53,8 @@ public sealed class Park
     /// `&lt;` and `&gt;` come in pairs on track rides and `+` and `.` appear in a handful; none of those
     /// are doors and none are claimed to be.</summary>
     public readonly record struct Footprint(int Width, int Height, bool[,] Cells, int EntryX, int EntryY,
-                                            int ExitX = -1, int ExitY = -1, int ExitDX = 0, int ExitDY = 0)
+                                            int ExitX = -1, int ExitY = -1, int ExitDX = 0, int ExitDY = 0,
+                                            int EntryDX = 0, int EntryDY = 0)
     {
         public static Footprint From(string[] shape)
         {
@@ -78,7 +79,29 @@ public sealed class Park
                         };
                     }
                 }
-            return new Footprint(w, h, cells, ex, ey, xx, xy, xdx, xdy);
+            // ⭐⭐ THE ENTRANCE'S FACING IS RESOLVED HERE, ONCE, IN THE AUTHORED FRAME -- and then
+            // it TURNS with the shape like the exit's does.
+            //
+            // The entrance carries no compass letter, so which side it opens onto is found by
+            // stepping off the shape. That is unambiguous for the 137 entrances on the disc with
+            // exactly one free side, and a TIE-BREAK for the 34 with more -- which is every small
+            // square shop. Resolving it fresh at every rotation meant the tie-break answered in
+            // FIXED GRID DIRECTIONS: a 1x1 shop's node came out at +y whatever the shape had been
+            // turned to, so the model spun and its door stayed put. Master: "the rotation of the
+            // entry/exit tiles isnt rotating properly... its on shops mainly."
+            //
+            // ⚠ The ORDER is unchanged, so an unturned shape puts its node exactly where it always
+            // did; what changes is that the answer is now part of the footprint and rotates with it.
+            int edx = 0, edy = 0;
+            if (ex >= 0 && ey >= 0)
+                foreach (var (dx, dy) in new[] { (0, 1), (0, -1), (1, 0), (-1, 0) })
+                {
+                    int nx = ex + dx, ny = ey + dy;
+                    if (nx >= 0 && ny >= 0 && nx < w && ny < h && cells[nx, ny]) continue;
+                    (edx, edy) = (dx, dy);
+                    break;
+                }
+            return new Footprint(w, h, cells, ex, ey, xx, xy, xdx, xdy, edx, edy);
         }
 
         public int Occupied

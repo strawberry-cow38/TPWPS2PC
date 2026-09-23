@@ -1567,10 +1567,42 @@ public partial class Viewer : Node3D
         GD.Print($"[stub] {_place.Display} is a shop (IsRide {_place.IsRide}); its one node is "
                + $"({stub.X},{stub.Y}) and it wants a {(stub.Queue ? "QUEUE" : "path")} tile there");
 
+        // ⭐⭐ THE SHOP, THROUGH ALL FOUR TURNS. Master: "the rotation of the entry/exit tiles isnt
+        // rotating properly... its on shops mainly." A shop is small and square, so its entrance
+        // has SEVERAL free sides and the side it opens onto is a tie-break -- which used to be
+        // re-answered in fixed grid directions at every rotation, so the model turned and the node
+        // sat still. Four turns must give four DIFFERENT offsets, going round.
+        //
+        // ⚠ The offsets are from the CURSOR, not absolute: the footprint's corner moves as its
+        // width and height swap, and absolute cells would read as noise.
+        var seen = new List<(int X, int Y)>();
+        for (int q = 0; q < 4; q++)
+        {
+            ArmFromList(row);
+            _place.Turn(q);
+            var one = _place.Stubs(_park, sx, sy).FirstOrDefault(t => t.Entrance);
+            seen.Add((one.X - sx, one.Y - sy));
+        }
+        GD.Print($"[stub] {_place.Display}'s node at turns 0/90/180/270, offset from the cursor: "
+               + string.Join(" ", seen.Select(o => $"({o.X},{o.Y})"))
+               + $" -- {(seen.Distinct().Count() == 4 ? "four different sides, as it must be" : "IT DOES NOT TURN")}");
+        ArmFromList(row);
+
         _paths.BeginLeg();
         _paths.Lay(stub.X, stub.Y, PathTool.Kind.Path);
         bool overPath = _place.Fits(_park, sx, sy);
         _paths.UndoLeg();
+        // ⚠ AND THE OTHER HALF OF THE SAME RULE: the same path, one cell further in, under the
+        // shop's BODY rather than its node, must REFUSE. Without this pair "the node may overlap"
+        // is indistinguishable from "anything may overlap".
+        var body = _place.Cells(_park, sx, sy).First();
+        _paths.BeginLeg();
+        _paths.Lay(body.X, body.Y, PathTool.Kind.Path);
+        bool bodyOverPath = _place.Fits(_park, sx, sy);
+        _paths.UndoLeg();
+        GD.Print($"[stub] the same shop with path under its BODY ({body.X},{body.Y}) "
+               + $"{(bodyOverPath ? "FITS" : "refused")} -- "
+               + $"{(bodyOverPath ? "WRONG -- a shop standing in a walkway" : "as it must be")}");
         _paths.BeginLeg();
         _paths.Lay(stub.X, stub.Y, PathTool.Kind.Queue, 99);
         bool overQueue = _place.Fits(_park, sx, sy);
