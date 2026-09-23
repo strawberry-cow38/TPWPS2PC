@@ -53,7 +53,8 @@ public sealed class RseMachine
     readonly Func<int> _random;
     readonly Func<string, RseMachine> _spawn;
     readonly Walk[] _walks;
-    short _bounceBase, _bouncing;
+    short _bounceBase, _bouncing, _bumpRate;
+    byte _turbo;
     bool _timedWalk;
 
     /// <summary>⭐⭐ A SCRIPT IS NOT ALONE. `SPAWNCHILD` (`0x1be91c`) loads a second program and
@@ -280,6 +281,12 @@ public sealed class RseMachine
                     case RseOpcode.BOUNCESETBASE: _bounceBase = (short)V(0); break;
                     case RseOpcode.BOUNCING: Result(_bouncing, true); break;
 
+                    // ⚠ The raw operand WORD, not its value: `0x1be610` stores what the fetch
+                    // returned into a byte at `+0xb8` without evaluating it.
+                    case RseOpcode.TURBO: _turbo = (byte)a[0].Word; break;
+                    case RseOpcode.TOUR: case RseOpcode.BUMP: case RseOpcode.COAST:
+                        RideSubsystem(ins.Opcode, a); break;
+
                     default: throw new NotSupportedException($"Unimplemented RSSE instruction: {ins}");
                 }
                 if (branch)
@@ -301,6 +308,56 @@ public sealed class RseMachine
     int Value(RseProgram.Operand a) => a.Tag == 0x40 ? this[a.Index]
         : a.Tag == 0 ? a.Immediate : throw new InvalidDataException($"Expected numeric operand, got {a}");
     IRseHost Host() => _host ?? throw new NotSupportedException("This instruction requires an RSSE host");
+
+    /// <summary>TOUR, BUMP and COAST -- the three rides that carry their riders along a track.
+    ///
+    /// ⭐⭐ EACH IS A SUB-OPCODE, NOT AN INSTRUCTION. The first operand is a SELECTOR read as a raw
+    /// word, and the handler (`0x1c1260`, `0x1c1370`, `0x1c14e0`) switches on it and then pulls
+    /// however many further operands that selector wants -- which is why `COAST 8 0` and
+    /// `BUMP 5 0` both carry two.
+    ///
+    /// ⚠⚠ AND THIS BUILD'S HANDLERS ANSWER NOTHING. Every branch either discards its argument or
+    /// writes ZERO into the result and the destination variable; the only branches that do
+    /// anything else read a variable straight back (TOUR 4/16), pass a value through (BUMP 13/14)
+    /// or store one field (BUMP 17 -> `+0xe6`). TOUR's selector 1 even resolves node 99's position
+    /// and throws it away. That is not a truncated decompile -- the call is there, its result is
+    /// not used -- and the dispatch table at `0x366ec0` confirms these three entries are the real
+    /// handlers and not some unused debug copy.
+    ///
+    /// So the coaster, the karts and the tour bus are NOT driven from the script in this build. It
+    /// is modelled exactly as read, including the zeros: a script that polls one of these in a
+    /// loop will keep polling, and a ride that never starts because of that is this executable's
+    /// behaviour, not a gap in the port. Said plainly rather than nudged into something that looks
+    /// livelier.</summary>
+    void RideSubsystem(RseOpcode op, IReadOnlyList<RseProgram.Operand> a)
+    {
+        if (a.Count == 0) return;
+        int selector = (int)a[0].Word;
+        if (a.Count < 2) return;                      // a selector with no argument does nothing
+        var arg = a[1];
+        bool variable = arg.Tag == 0x40;
+        void Zero() { LastValue = 0; if (variable) this[arg.Index] = 0; }
+        switch (op)
+        {
+            case RseOpcode.COAST:
+                if (selector is 2 or 3) Zero();
+                break;
+            case RseOpcode.BUMP:
+                switch (selector)
+                {
+                    case 1: if (variable) LastValue = 0; break;
+                    case 2: if (variable) { this[arg.Index] = 0; LastValue = 0; } break;
+                    case 4: case 5: case 0xc: case 0x10: LastValue = 0; break;
+                    case 0xb: Zero(); break;
+                    case 0xd: case 0xe: LastValue = Value(arg); break;
+                    case 0x11: _bumpRate = (short)Value(arg); break;
+                }
+                break;
+            case RseOpcode.TOUR:
+                if (selector is 4 or 0x10 && variable) LastValue = this[arg.Index];
+                break;
+        }
+    }
 
     /// <summary>Load a sibling script. ⚠ A NULL CHILD IS THE GAME'S OWN ANSWER: `0x1be91c` stores
     /// whatever the loader returned, zero included, and every later opcode checks the handle

@@ -157,6 +157,11 @@ Console.WriteLine($"  {boarded.Count} boarded at least one, {returned.Count} han
 foreach (var r in offered.OrderByDescending(r => peak[r.Id]).Take(10))
     Console.WriteLine($"  {r.Name,-22} peak on ride {peak[r.Id]}  came back {r.Left.Count}/{sent[r.Id].Count}"
                     + $"  queue left {r.Queue.Count}  walks {(r.Machine.WalksAreTimed ? "timed" : "at the floor")}");
+// ⚠ NAME THE ONES THAT DID NOT. "13 of 19 boarded" is a number to feel good about; the six that
+// took nobody are the finding, and they are the coasters, the karts and the tour bus -- the rides
+// whose scripts poll TOUR/BUMP/COAST, which this executable's own handlers answer with zero.
+foreach (var r in offered.Where(r => peak[r.Id] == 0))
+    Console.WriteLine($"  took nobody: {r.Name,-22} queue still {r.Queue.Count}, fault {Kind(r.Fault)}");
 Check(boarded.Count > 0, $"a queued guest gets on a ride ({boarded.Count} rides boarded one)");
 Check(returned.Count > 0, $"a ride gives its guests back ({returned.Count} rides did)");
 Check(wrong.Count == 0, $"every guest handed back is one that was queued"
