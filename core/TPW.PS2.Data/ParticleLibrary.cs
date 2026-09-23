@@ -1,0 +1,126 @@
+using System.Buffers.Binary;
+
+namespace TPW.PS2.Data;
+
+/// <summary>One effect in `Tp2.plb`.
+///
+/// ⭐⭐ WHAT IS ESTABLISHED AND WHAT IS NOT, kept apart on purpose. <see cref="Name"/>,
+/// <see cref="Sprite"/> and <see cref="Ramp"/> are read: the name is where `tools/plb.py` proved
+/// it from the loader, the sprite pair is consumed at `0x146290`/`0x189e78`, and the ramp checks
+/// out against the effects' own names -- Fire is orange, Smoke is white, ApeSmoke is grey, and a
+/// wrong byte order would make all three nonsense. The rest of the 320-byte record is given as
+/// <see cref="Raw"/> with the offsets named as CANDIDATES, because their meaning comes from the
+/// shape of their values and not from a consumer, and a number that reads plausibly is exactly
+/// the kind of thing that turns into a fact by being used.</summary>
+public sealed class ParticleEffect
+{
+    public int Id { get; init; }
+    public string Name { get; init; } = "";
+    /// <summary>(sprite group, how many logical frames it has).</summary>
+    public (int Group, int Frames) Sprite { get; init; }
+    /// <summary>Sixteen steps of colour over the particle's life, `0xAARRGGBB`.</summary>
+    public uint[] Ramp { get; init; } = Array.Empty<uint>();
+    public byte[] Raw { get; init; } = Array.Empty<byte>();
+
+    public int RawAt(int offset) => BinaryPrimitives.ReadInt32LittleEndian(Raw.AsSpan(offset, 4));
+
+    /// <summary>⚠ CANDIDATE, from the shape of the values: `+0x74` is 100 for Sparks, 300 for
+    /// MumboPuff, 800 for ApeSnot and 1500 for Fire and ApeSmoke -- an ordering that matches how
+    /// long each of those should hang about, in milliseconds. No consumer read.</summary>
+    public int LifetimeGuess => RawAt(0x74);
+
+    /// <summary>⚠ CANDIDATE: `+0x78` is 8 for Sparks, 25 for MumboPuff, 40 for ApeSmoke, 75 for
+    /// ApeSnot, 100 for Fire. Read here as how many particles the effect makes.</summary>
+    public int CountGuess => RawAt(0x78);
+
+    /// <summary>⚠ CANDIDATE: `+0x44`, `+0x48` and `+0x4c` are usually three EQUAL numbers -- 9 for
+    /// Fire, 15 for ApeSmoke, 18 for MumboPuff, 31 for ApeSnot -- which is the shape of a size or
+    /// a speed given per axis. Read here as a size.</summary>
+    public int SizeGuess => RawAt(0x44);
+
+    /// <summary>The ramp step at a fraction of the particle's life, as (r, g, b, a) bytes.</summary>
+    public (byte R, byte G, byte B, byte A) ColourAt(float life)
+    {
+        if (Ramp.Length == 0) return (255, 255, 255, 255);
+        int i = Math.Clamp((int)(life * Ramp.Length), 0, Ramp.Length - 1);
+        uint c = Ramp[i];
+        return ((byte)(c >> 16), (byte)(c >> 8), (byte)c, (byte)(c >> 24));
+    }
+}
+
+/// <summary>`Tp2.plb` -- the 105 particle effects, from `/DATA/PARTICLE.WAD`.
+///
+/// ⭐⭐ THIS IS WHAT `EVENT 1` AND `EVENT 2` NAME. `0x1bbf28` resolves the instruction's node and
+/// hands the third operand to `0x18b5a8`/`0x18b0f8`, which bound it at `0x69` -- 105 -- and copy a
+/// per-type template. This file declares exactly 105 records of 320 bytes. The mapping validates
+/// itself: the ride named **Mumbo** asks for effect **31**, and effect 31 is named `MumboPuff`;
+/// **Crazy Ape** asks for **22** from two nodes over and over, and 22 is `ApeSnot`.
+///
+/// ⚠⚠ THE TEMPLATES ARE ZERO IN THE EXECUTABLE. `0x2ce508` reads as 105 records of nothing in the
+/// image because the loader fills them from this file. Read the file, never the image.</summary>
+public sealed class ParticleLibrary
+{
+    public IReadOnlyList<ParticleEffect> Effects { get; }
+    public ParticleEffect this[int id] => id >= 0 && id < Effects.Count ? Effects[id] : null;
+
+    /// <summary>Where the sixteen colour steps start, and how many there are.</summary>
+    public const int RampOffset = 0xD8, RampSteps = 16;
+
+    public ParticleLibrary(byte[] plb)
+    {
+        if (plb == null || plb.Length < 8) throw new InvalidDataException("Tp2.plb is empty");
+        int count = BinaryPrimitives.ReadInt32LittleEndian(plb.AsSpan(0, 4));
+        int size = BinaryPrimitives.ReadInt32LittleEndian(plb.AsSpan(4, 4));
+        // ⚠ A CHECK THAT CAN FAIL. 0x18b5a8 bounds the id at 105 and the record must be big enough
+        // to hold a name at +0x118, so a file that disagrees is not this library.
+        if (count <= 0 || count > 1024 || size < 0x120 || 8 + (long)count * size > plb.Length)
+            throw new InvalidDataException($"Tp2.plb declares {count} records of {size}, which does not fit");
+
+        var all = new List<ParticleEffect>(count);
+        for (int i = 0; i < count; i++)
+        {
+            int o = 8 + i * size;
+            int end = plb.AsSpan(o + 0x118, size - 0x118).IndexOf((byte)0);
+            var ramp = new uint[RampSteps];
+            for (int k = 0; k < RampSteps; k++)
+                ramp[k] = BinaryPrimitives.ReadUInt32LittleEndian(plb.AsSpan(o + RampOffset + k * 4, 4));
+            all.Add(new ParticleEffect
+            {
+                Id = i,
+                Name = end <= 0 ? "" : System.Text.Encoding.ASCII.GetString(plb, o + 0x118, end),
+                Sprite = (BinaryPrimitives.ReadInt16LittleEndian(plb.AsSpan(o + 0x94, 2)),
+                          BinaryPrimitives.ReadInt16LittleEndian(plb.AsSpan(o + 0x96, 2))),
+                Ramp = ramp,
+                Raw = plb[o..(o + size)],
+            });
+        }
+        Effects = all;
+    }
+
+    public ParticleEffect Find(string name) =>
+        Effects.FirstOrDefault(e => e.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>⭐ THE RAMP READ BACK AGAINST THE NAMES, which is the only check available: nobody
+    /// wrote down that `+0xd8` is a colour, so the evidence is that reading it that way makes Fire
+    /// orange and Smoke grey. Returns the effects whose ramp does NOT match what their name says,
+    /// so a caller reports them rather than a pass rate.</summary>
+    public IEnumerable<(ParticleEffect Effect, string Why)> RampDisagreements()
+    {
+        foreach (var e in Effects)
+        {
+            if (e.Ramp.All(c => c == 0)) continue;
+            var mid = e.ColourAt(0.5f);
+            if (e.Name.Contains("Fire", StringComparison.OrdinalIgnoreCase)
+                || e.Name.Contains("Flame", StringComparison.OrdinalIgnoreCase))
+            {
+                if (mid.R <= mid.B) yield return (e, $"a fire whose midpoint is not warm: {mid}");
+            }
+            else if (e.Name.Contains("Smoke", StringComparison.OrdinalIgnoreCase))
+            {
+                // Grey or white: the three channels close together.
+                int spread = Math.Max(mid.R, Math.Max(mid.G, mid.B)) - Math.Min(mid.R, Math.Min(mid.G, mid.B));
+                if (spread > 64) yield return (e, $"a smoke whose midpoint is coloured: {mid}");
+            }
+        }
+    }
+}

@@ -12,6 +12,10 @@ public sealed class RseModelPresenter : IDisposable
     readonly Aps _animation;
     readonly Func<string, (ImageTexture Tex, bool Soft)> _texture;
     public AnimatedModel Drawn { get; private set; }
+    /// <summary>The mesh behind the drawing, for a caller that needs the node table --
+    /// the RSE's EVENT instructions name nodes by index and the world matrices are keyed
+    /// by file offset.</summary>
+    public Model Model => _model;
     public Aps.Record Record { get; private set; }
     public float Frame { get; private set; }
     public RseModelPresenter(Node3D parent, Model model, Aps animation,

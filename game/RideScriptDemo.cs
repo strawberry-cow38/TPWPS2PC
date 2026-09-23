@@ -21,9 +21,12 @@ public partial class RideScriptDemo : Node3D
     Button _pauseButton;
     Vector3 _focus;
     float _distance, _yaw = 0.65f, _pitch = 0.35f;
+    ParticleLibrary _particles;
+    RideParticles _burst;
     string _capture, _film;
     int _filmStep = 200, _filmFrames = 120, _filmSaved;
     float _filmZoom = 1f;
+    int _filmControl = -1;
     int _captureFrames;
 
     public override void _Ready()
@@ -63,7 +66,19 @@ public partial class RideScriptDemo : Node3D
             for (int i = 0; i + 1 < argv.Length; i++) if (argv[i] == "--disc") disc = argv[i + 1];
             if (string.IsNullOrEmpty(disc)) throw new Exception("Set TPW_PS2_DISC or pass -- --disc /path/to/disc.bin");
             GetTree().SetMeta("tpw_disc", disc);
-            _lib = new AssetLibrary(disc); Restart();
+            _lib = new AssetLibrary(disc);
+            // ⭐ The effects library, from its own WAD. A second AssetLibrary because the first
+            // one has the ride's world open and this must not disturb it.
+            try
+            {
+                var pw = new AssetLibrary(disc);
+                pw.OpenWad("/DATA/PARTICLE.WAD");
+                _particles = new ParticleLibrary(pw.Read(pw.Wad.Find("/Tp2.plb")));
+                GD.Print($"[fx] Tp2.plb: {_particles.Effects.Count} effects; "
+                       + $"{_particles.RampDisagreements().Count()} whose colours disagree with their name");
+            }
+            catch (Exception e) { GD.PrintErr($"[fx] no particle library: {e.Message}"); }
+            Restart();
             int captureTime = 19000;
             for (int i = 0; i + 1 < argv.Length; i++)
             {
@@ -73,6 +88,7 @@ public partial class RideScriptDemo : Node3D
                 if (argv[i] == "--step-ms") _filmStep = int.Parse(argv[i + 1]);
                 if (argv[i] == "--frames") _filmFrames = int.Parse(argv[i + 1]);
                 // ⚠ Applied AFTER Restart, which is what sets _distance from the bounds.
+                if (argv[i] == "--fx-control") _filmControl = int.Parse(argv[i + 1]);
                 if (argv[i] == "--zoom") _filmZoom = float.Parse(argv[i + 1], System.Globalization.CultureInfo.InvariantCulture);
                 if (argv[i] == "--stem") _stem = argv[i + 1];
                 if (argv[i] == "--world") { _world = argv[i + 1]; }
@@ -83,6 +99,12 @@ public partial class RideScriptDemo : Node3D
                 // two steps on and the strip runs at double speed.
                 _paused = true;
                 Restart(); _paused = true; _distance *= _filmZoom;
+                // ⭐ A CONTROL IN A KNOWN-GOOD PLACE. One burst at the camera's focus, owing
+                // nothing to the node table or the script: if this does not appear, the emitter
+                // is wrong; if it appears and the script's do not, the POSITION is wrong.
+                if (_burst != null && _filmControl >= 0)
+                    GD.Print($"[fx] control burst {_filmControl} at focus {_focus}: "
+                           + (_burst.Emit(_filmControl, _focus + Vector3.Up) != null));
                 GD.Print($"[film] {_world}{_stem}: {_filmFrames} frames every {_filmStep}ms");
             }
             if (_capture != null)
@@ -107,6 +129,29 @@ public partial class RideScriptDemo : Node3D
             var model = new Model(Read(".mps")); var animation = new Aps(Read(".aps"));
             _preview = new RseRidePreview(new RseProgram(Read(".rse")), animation);
             _presenter = new RseModelPresenter(this, model, animation, Texture);
+            _burst?.Clear();
+            _burst = _particles == null ? null : new RideParticles(this, _particles);
+            _fx = 0;
+            // ⭐⭐ THE SCRIPT ASKS AND THIS ANSWERS. EVENT and ADDOBJ carry a KIND first: 1 and 2
+            // reach the particle library (`0x18b5a8`/`0x18b0f8`), 3 goes to a different manager
+            // entirely and is NOT a particle -- its ids run past the library's 105.
+            _preview.Host.EffectRequested += fx =>
+            {
+                GD.Print($"[fx] {fx.Time}ms {fx.Opcode} {string.Join(" ", fx.Arguments)}");
+                if (_burst == null || fx.Arguments.Count < 3) return;
+                if (fx.Opcode != RseOpcode.EVENT && fx.Opcode != RseOpcode.ADDOBJ) return;
+                int kind = fx.Arguments[0], node = fx.Arguments[1], id = fx.Arguments[2];
+                if (kind is not (1 or 2)) return;
+                var at = NodeAt(node);
+                var made = _burst.Emit(id, at);
+                // ⚠ THE POSITION, NOT JUST THE NAME. Two films came back with the counter going up
+                // and nothing on screen, which looks identical whether the burst is invisible or
+                // in the wrong place. (0,0,0) here means the node lookup failed.
+                GD.Print($"[fx] -> {made?.Name ?? "(none)"} id {id} node {node} at {at} "
+                       + $"life {made?.LifetimeGuess}ms count {made?.CountGuess} size {made?.SizeGuess} "
+                       + $"mid {made?.ColourAt(0.5f)}");
+                if (made != null) { _fx++; _lastFx = $"{made.Name} at node {node}"; }
+            };
             _time = 0; _accumulator = 0; _paused = false;
             _pauseButton.Text = "Pause";
             _preview.Tick(0); _presenter.Update(_preview.Host);
@@ -136,6 +181,7 @@ public partial class RideScriptDemo : Node3D
                 while (_accumulator >= 100) { _time += 100; _preview.Tick(_time); _accumulator -= 100; }
                 _presenter.Update(_preview.Host); ShowStatus();
             }
+            _burst?.Step();
             if (_camera != null && _distance > 0)
             {
                 _camera.Position = _focus + new Vector3(Mathf.Sin(_yaw) * Mathf.Cos(_pitch),
@@ -181,8 +227,30 @@ public partial class RideScriptDemo : Node3D
             : host.AnimationSlot == 0 ? "Building" : vm[6] != 0 ? "Closed" : "Loading";
         _status.Text = $"{vm.Name} • {_time / 1000d:F1}s\n{state}\nRiders: {vm[5]} / {vm[2]}    Unloaded: {_preview.Unloaded}\n"
             + $"Animation: {host.Current?.Record.SlotName} {host.AnimationVariant} • frame {host.Frame:F1}\n"
-            + $"Running: {vm[9]}    Remaining cycles: {vm["VAR_COUNT"]}";
+            + $"Running: {vm[9]}    Remaining cycles: {vm["VAR_COUNT"]}"
+            + (_burst == null ? "" : $"\nParticles: {_fx} asked for" + (_lastFx == "" ? "" : $" -- last {_lastFx}"));
     }
+    int _fx; string _lastFx = "";
+
+    /// <summary>Where the instruction's node is, in the scene.
+    ///
+    /// ⚠⚠ THIS READING IS NOT ESTABLISHED. The RSE's node numbers are taken here as the MODEL's
+    /// node order -- meshes then helpers -- because that is the order the animation's own track
+    /// nodes use. But the console resolves them through `0x1b9388(vm, out, out, node, SPACE)`,
+    /// and the space argument (`0x80`, `0x100`, `0x200`, `0x800`) selects between different
+    /// tables, so the number is very likely an index into a space-specific one and not into this.
+    /// The symptom: Crazy Ape's `EVENT 2 1 22` lands on the model ORIGIN while its `2 2 22` lands
+    /// somewhere plausible, which is what a wrong table looks like when one entry happens to fit.
+    /// Left as it is, and said out loud, rather than nudged until a puff appears in a nice spot.</summary>
+    Vector3 NodeAt(int node)
+    {
+        var drawn = _presenter?.Drawn;
+        if (drawn?.LastWorld == null || node < 0) return Vector3.Zero;
+        int off = _presenter.Model?.NodeOffset(node) ?? -1;
+        if (off < 0 || !drawn.LastWorld.TryGetValue(off, out var w)) return Vector3.Zero;
+        return new Vector3(w.M41, w.M42, -w.M43);
+    }
+
     void Fail(Exception ex) { _paused = true; _status.Text = ex.Message; GD.PrintErr(ex); }
     public override void _UnhandledInput(InputEvent ev)
     {

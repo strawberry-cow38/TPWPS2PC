@@ -2393,7 +2393,10 @@ public partial class Viewer : Node3D
         if (frames <= 0) return;
         long target = (long)(frames * 1000f / Aps.Fps);
         int guard = 0;
-        while (_parkTicks * ParkSim.TickMilliseconds < target && guard++ < 100_000) TickPark();
+        // ⭐ A LINE PER SLOT CHANGE EVEN WHILE WOUND: presenting per tick without the frame
+        // keeps "-> slot 0:0" (Create) in the log before whatever the ride reached, which is the
+        // proof the script played its build rather than being dropped into its cycle.
+        while (_parkTicks * ParkSim.TickMilliseconds < target && guard++ < 100_000) { TickPark(); PresentScripted(frames: false); }
         PresentScripted();
         if (_guests != null) PlaceActors(1f);
         GD.Print($"[sim] wound to {_parkTicks * ParkSim.TickMilliseconds}ms for the shot ({_scripted.Count} scripted, {_guests?.Guests.Count ?? 0} walking)");
@@ -2402,7 +2405,7 @@ public partial class Viewer : Node3D
     /// <summary>Hand every scripted ride the frame its own script asked for. ⚠ PRESENTATION
     /// ONLY: the sim is advanced by <see cref="TickPark"/>, on the park's one clock, so rides and
     /// guests can never be a tick apart.</summary>
-    void PresentScripted()
+    void PresentScripted(bool frames = true)
     {
         if (_sim == null) return;
         for (int i = _scripted.Count - 1; i >= 0; i--)
@@ -2422,7 +2425,7 @@ public partial class Viewer : Node3D
                        + $" ({rec?.DurationFrames ?? 0} frames)" + (ride.Fault != null ? $" FAULT {ride.Fault}" : ""));
                 _scripted[i] = (ride, model, anim, want, wantVariant);
             }
-            model.SetFrame(ride.Frame);
+            if (frames) model.SetFrame(ride.Frame);
         }
     }
 
@@ -2813,35 +2816,69 @@ public partial class Viewer : Node3D
         if (row < 0) { GD.Print("[guest] no Crazy Ape among this archive's Rides -- nothing to board"); return; }
         var grid = _guests.Paths;
         bool Touches(int x, int y) => ParkPaths.Neighbours(new ParkCell(x, y)).Any(grid.Open);
+        int tried = 0, fits = 0, doors = 0;
         for (int turn = 0; turn < 4; turn++)
+        {
+            // ⚠ Armed once per turn: Fits() only asks, and re-arming per cell logged a line each.
+            ArmFromList(row);
+            _place.Turn(turn);
             for (int y = z0 - 2; y < z0 + 14; y++)
                 for (int x = xl - 12; x < xl + 14; x++)
                 {
-                    ArmFromList(row);
-                    _place.Turn(turn);
+                    tried++;
                     if (!_place.Fits(_park, x, y)) continue;
+                    fits++;
                     var stubs = _place.Stubs(_park, x, y).ToList();
                     if (!stubs.Any(s => s.Entrance) || !stubs.Any(s => !s.Entrance)) continue;
+                    doors++;
                     var q = stubs.First(s => s.Entrance); var o = stubs.First(s => !s.Entrance);
+                    // ⭐ THE QUEUE STUB MUST TOUCH THE NETWORK -- that is the cell a guest walks to.
+                    // The exit stub need not: a ride's doors may face opposite ways, and the way
+                    // home from the exit is a path the player lays afterwards, so it is laid below.
                     if (!Touches(q.X, q.Y)) continue;
-                    if (!(grid.Open(new ParkCell(o.X, o.Y)) || Touches(o.X, o.Y))) continue;
                     var (cx, cy) = _place.CornerFor(x, y);
                     int w = _place.Turned.Width, h = _place.Turned.Height;
                     int placed = _park.Placed.Count;
                     _cursorOverride = (x, y);
                     PlaceHeld();
                     _cursorOverride = null;
-                    if (_park.Placed.Count == placed) { GD.Print($"[guest] {_place.Display ?? "the ride"} REFUSED at ({x},{y}) turned {turn * 90}"); continue; }
+                    if (_park.Placed.Count == placed) { GD.Print($"[guest] the ride was REFUSED at ({x},{y}) turned {turn * 90} although it fitted"); continue; }
+                    CloseTool();
                     _guestTestRide = (cx, cy, w, h);
                     var ride = _sim?.Rides.LastOrDefault();
-                    GD.Print($"[guest] Crazy Ape at ({cx},{cy}) {w}x{h} turned {turn * 90}: queue stub ({q.X},{q.Y}) {_paths.KindAt(q.X, q.Y)}, "
-                           + $"exit stub ({o.X},{o.Y}) {_paths.KindAt(o.X, o.Y)}; the sim's ride has entrance {ride?.Entrance} exit {ride?.Exit}"
+                    GD.Print($"[guest] Crazy Ape at ({cx},{cy}) {w}x{h} turned {turn * 90} after {tried} cells tried ({fits} fitted, {doors} with both doors): "
+                           + $"queue stub ({q.X},{q.Y}) {_paths.KindAt(q.X, q.Y)}, exit stub ({o.X},{o.Y}) {_paths.KindAt(o.X, o.Y)}; "
+                           + $"the sim's ride has entrance {ride?.Entrance} exit {ride?.Exit}"
                            + $"{(ride == null ? " -- NO SCRIPT STARTED" : ride.Has("VAR_LETMEON") ? "" : " -- declares no VAR_LETMEON, so it takes nobody")}");
-                    CloseTool();
+                    ConnectExit(o.X, o.Y);
                     return;
                 }
+        }
         _place.Clear();
-        GD.Print("[guest] no site beside the corridor takes Crazy Ape with its queue on the path -- nothing to board");
+        GD.Print($"[guest] no site takes Crazy Ape with its queue stub on the network: {tried} cells tried, {fits} fitted, {doors} of those with both doors, none touching");
+    }
+
+    /// <summary>The way home from a ride's exit: a straight run from the exit stub to the first
+    /// network cell in any of the four directions, laid through the tool -- what the exit-path
+    /// tool that opens after a placement is for, done by hand because a capture has no hand.</summary>
+    void ConnectExit(int ex, int ey)
+    {
+        var grid = _guests.Paths;
+        if (grid.Open(new ParkCell(ex, ey)) && ParkPaths.Neighbours(new ParkCell(ex, ey)).Any(grid.Open))
+        { GD.Print($"[guest] the exit stub ({ex},{ey}) already meets the network"); return; }
+        foreach (var (dx, dy) in new[] { (0, 1), (0, -1), (1, 0), (-1, 0) })
+        {
+            var run = new List<(int X, int Y)> { (ex, ey) };
+            for (int i = 1; i <= 12; i++)
+            {
+                int x = ex + dx * i, y = ey + dy * i;
+                if (grid.Open(new ParkCell(x, y))) { LayLeg(run, PathTool.Kind.Path, 0); RefreshFloor();
+                    GD.Print($"[guest] exit path: {run.Count - 1} cells from ({ex},{ey}) to the network at ({x},{y})"); return; }
+                if (!_paths.CanLay(x, y) || !_park.Vacant(x, y)) break;
+                run.Add((x, y));
+            }
+        }
+        GD.Print($"[guest] the exit stub ({ex},{ey}) could not be joined to the network in a straight run -- riders handed back there will be stranded");
     }
 
     /// <summary>The free camera, inside the park looking back at the gate, so guests walk toward
@@ -2873,7 +2910,7 @@ public partial class Viewer : Node3D
     void GuestTestStage(string label, int tick)
     {
         if (_guests == null) return;
-        while (_parkTicks < tick) TickPark();
+        while (_parkTicks < tick) { TickPark(); PresentScripted(frames: false); }
         PlaceActors(1f);
         PresentScripted();
         double t = _parkTicks * ParkSim.TickMilliseconds / 1000.0;

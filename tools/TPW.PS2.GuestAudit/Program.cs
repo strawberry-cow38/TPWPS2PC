@@ -373,12 +373,17 @@ var cut = new ParkCell(xl, z0 + 5);
     {
         paths.Lay(stub, que); paths.Lay(beyond, squ);
         Check(paths.Kind(stub) == ParkPathKind.Queue && !paths.Open(stub) && paths.Walkable(stub), $"control: {stub} is a queue tile -- walkable, not open");
-        var rider = crowd.First(g => g.State == GuestState.Arrived);
-        var from = rider.Cell; int had = rider.Steps;
+        // ⭐ FROM THE RIGHT SPUR'S TIP, so the expected length is DERIVED: up that spur, along the
+        // whole bar, down the left spur and one more -- Spur + (2 Arm + 1) + (Spur + 1). ⚠ Not the
+        // Manhattan distance: across the tree that is a lie, and the first version told it.
+        var tip = new ParkCell(xr + Arm, bar + Spur);
+        var rider = crowd.First(g => g.State == GuestState.Arrived && g.Cell == tip);
+        var from = rider.Cell; int had = rider.Steps, expect = Spur + (2 * Arm + 1) + (Spur + 1);
         Check(walk.Send(rider, stub), $"guest {rider.Id} at {from} is sent to the queue tile {stub}");
         int t = 0; while (rider.State == GuestState.Walking && t < ticks) { walk.Step(); t++; }
-        Check(rider.State == GuestState.Arrived && rider.Cell == stub && rider.Steps - had == Manhattan(from, stub),
-              $"...and arrives on it in {rider.Steps - had} steps -- " + Describe(rider));
+        Check(rider.State == GuestState.Arrived && rider.Cell == stub && rider.Steps - had == expect
+              && t == (expect * GuestWalk.UnitsPerCell + GuestWalk.UnitsPerTick - 1) / GuestWalk.UnitsPerTick,
+              $"...and arrives on it in {rider.Steps - had} steps (the tree says {expect}), {t} ticks -- " + Describe(rider));
         Check(walk.Route(from, stub)?.Count(c => paths.Kind(c) == ParkPathKind.Queue) == 1, "the route touches exactly one queue cell: the destination");
         Check(walk.Route(from, beyond) == null, $"control: the path tile {beyond} beyond the queue has NO route -- a queue is not a corridor");
         var back = walk.Spawn(stub, from);
