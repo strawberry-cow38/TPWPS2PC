@@ -251,16 +251,20 @@ selected on the world number (`0x147d00` returns `*0x3952e4`: 1 Halloween, 2 Fan
 (`Toot.mp2`) at `0x2049d0` -- the OLDER header generation's `EVT_KARTSTART`/`EVT_KART_TOOT`
 numbers; the lift-chain creak `EVT_STRETCH` 69 under the global ride map at `0x1999e8`/`0x199ae8`;
 the track follower `0x1af330`/`0x1af858` firing 17 under a subsystem held in a register (the ride
-type's `/AUDIO/RIDES/` bank -- `GRCSFX` 17 is `Whir01Flt`) and one `fprc` (9) call.
+type's `/AUDIO/RIDES/` bank -- `GRCSFX` 17 is `Whir01Flt`); the rider's-eye layer at `0x1af650`/
+`0x1afa9c` picks the subsystem itself, 9 (`fprc`) or 10 (`fpwt`) on a predicate `0x122ce8(ride)`,
+and the id 22 (`FPRCSFX` `Peepass`, riders whooshing past) or 23 (`FPWTSFX` `wr_flow`, the only event
+that map has); `0x1afd30` picks 3 (`Corkscrew`/`Oblivion`) or 22 under `fprc`; `0x15535c` fires 183
+under the park ambient map.
 
 ⭐⭐ **Not one of the 119 sites takes its id from the sound child.** No path loads instance `+0x14`
 and then `+0x1c`; the only five-slot tables found (`+0x2e4`, `+0x1e8`, `+0x200`, `+0x280`) are
 filled from literals. The `EventMap.rse` numbers (the newer `soundint` generation) match no map
 and no literal, while the engine's numbers are the older generation's. Reading: on this build the
 `SPAWNSOUND` child is loaded and scheduled and its table is not consumed. ⚠ That is a negative
-from a static census of ONE entry point: a reader through the audio object's vtable (`0x3706c8`,
-reached by `jalr`) is not excluded, and four non-VM sites have an id source not traced
-(`0x1af650`, `0x1afa9c`, `0x1afd30` in the track follower; `0x15535c`).
+from a static census of ONE entry point, complete for that entry (119 of 119 sites traced to a
+literal, a literal table, a table-fed list or the script's own operand): a reader through the
+audio object's vtable (`0x3706c8`, reached by `jalr`) is not excluded by it.
 
 For the port this means the engine-layer sounds are reproducible from data plus these literal
 tables, and the `.ENG` layers from the `.ENG` selectors (`RideEngine.cs`); none of that is
@@ -268,7 +272,7 @@ implemented, and `RideSounds.cs` plays script cues only.
 
 ## Not established
 
-* **What is left of the engine layer.** The four untraced id sources above; the vtable path;
+* **What is left of the engine layer.** The vtable path;
   the `.ENG` parameter channel (who writes the speed the layers crossfade on, findings/ride-engine.md);
   the audio play path (`0x240970` → `0x243f50` → `0x24d6f8`), which would replace "read from shape"
   on the clip threshold with a consumer fact. `0x1fa8c0`, once credited as "the ride's own table",
