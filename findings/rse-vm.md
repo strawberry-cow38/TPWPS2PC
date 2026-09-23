@@ -348,3 +348,35 @@ ticker `0x1bb888` uses `+0x6e` as a rest height under a sine table. `BOUNCING` i
 * DIV/MOD and some presentation opcodes have consumer evidence but are not independently
   exercised by a source-derived arithmetic scenario here. Corpus alignment validates their
   encoded identity, not their complete execution behavior.
+
+## EVENT and ADDOBJ: what the scripts are asking the world for
+
+`EVENT a b c` and `ADDOBJ a b c d` are the **same call** -- `0x1bd3e4`/`0x1bd16c` both reach
+`0x1bbf28`, and EVENT simply passes 1000 where ADDOBJ passes its fourth operand. The first
+operand is a **kind** and it selects between two unrelated subsystems:
+
+| kind | what the handler does |
+|------|-----------------------|
+| 1 | node `b` resolved in space `0x100`, then `0x18b5a8(c, x*10240, y*10240, z*10240)` |
+| 2 | node `b`'s position **and** direction, then `0x18b0f8(c, pos, dir)` |
+| 3 | node `b` in space `0x200` scaled by 256, then `0x111428(sys, 0xc, c, pos, out, 0)` |
+
+⭐ **Kinds 1 and 2 are particles, and the data proves it.** `0x18b5a8` bounds its id at `0x69`
+(105) and copies a per-type template; `/DATA/PARTICLE.WAD` holds `Tp2.plb`, whose header declares
+**105 records of 320 bytes** with a name at record `+0x118`. Reading those names against what the
+jungle park actually asks for lands on itself: the ride named **Mumbo** asks for `EVENT 1 3 31`
+and effect **31 is `MumboPuff`**. Nobody chose that mapping; the two files agree.
+
+Kind 3 takes ids past 105 (131, 200, 203, 254), returns a handle the script keeps and later
+KILLOBJs or FADEOBJs, and goes to a different manager entirely -- so it is not a particle.
+
+⚠ If the id has bit `0x8000` set it is looked up per-instance first, through
+`0x1fa8c0(animationContext, id & 0x7fff)` -- the ride's own table. That is what `EventMap.rse`
+is for.
+
+⚠⚠ The 105 templates live at `0x2ce508`, which reads as **all zeros in the executable image**:
+they are filled from `Tp2.plb` at load. Read the file, never the image.
+
+`tools/TPW.PS2.ParkSimAudit` prints every request the park makes and does not render: 387 EVENT,
+46 ADDOBJ, 14 KILLOBJ, 11 FADEOBJ, 4 SETREVERB and 2 SINGLESCREAM in sixty seconds of jungle,
+across just 44 distinct argument sets.

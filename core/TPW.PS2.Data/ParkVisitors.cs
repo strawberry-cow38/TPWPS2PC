@@ -122,6 +122,8 @@ public sealed class ParkVisitors
         }
     }
 
+    ParkRide RideOf(Plan plan) => Sim.Rides.FirstOrDefault(r => r.Id == plan.RideId);
+
     /// <summary>A guest who has reached the stub they were heading for joins that ride's queue and
     /// leaves the walking layer.</summary>
     void Deliver()
@@ -130,7 +132,13 @@ public sealed class ParkVisitors
         {
             if (!_plans.TryGetValue(g.Id, out var plan) || plan.Intent != VisitorIntent.Heading) continue;
             if (g.State != GuestState.Arrived) continue;
-            var ride = Sim.Rides.FirstOrDefault(r => r.Id == plan.RideId);
+            // ⚠⚠ ARRIVED SOMEWHERE IS NOT ARRIVED HERE. This used to join the queue on State alone,
+            // so a guest heading for a ride who finished any other walk -- re-routed round a dug
+            // path, or re-sent while still Heading -- was handed to that ride's queue from
+            // wherever they happened to be standing. Caught by the agent wiring this into the
+            // viewer, where it would have looked like teleporting into a queue.
+            var ride = RideOf(plan);
+            if (ride != null && g.Cell != ride.Entrance) continue;
             // ⚠ THE RIDE MAY HAVE GONE, or closed, or broken, while they walked. Then this is not
             // a queue any more and they are just somebody standing in a park.
             if (ride == null || !Takes(ride))
@@ -151,6 +159,13 @@ public sealed class ParkVisitors
     {
         foreach (var g in Walk.Guests.ToArray())
         {
+            // ⚠ A GUEST WHO CANNOT GET THERE MUST BE ABLE TO GIVE UP. Only Arrived was handled
+            // here, so somebody Heading for a ride whose path was dug up under them stayed
+            // Stranded forever with a plan nobody would ever complete -- a slowly filling pool of
+            // people standing still. They go back to Wandering and are re-tasked like anyone else.
+            if (g.State is GuestState.NoRoute or GuestState.Stranded
+                && _plans.TryGetValue(g.Id, out var stuck) && stuck.Intent == VisitorIntent.Heading)
+                _plans[g.Id] = stuck with { Intent = VisitorIntent.Wandering, RideId = 0 };
             if (g.State != GuestState.Arrived) continue;
             if (_plans.TryGetValue(g.Id, out var plan) && plan.Intent == VisitorIntent.Heading) continue;
             var rides = Open.ToArray();
