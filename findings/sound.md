@@ -206,69 +206,23 @@ themselves so); the clip within a set is a random draw against the cumulative th
 half a second; positional voices reach 80 units with Godot's default attenuation. None of that is
 walked from the console's object list or its SPU code.
 
-⚠⚠ **STATUS: wired and built, not yet shown to play.** `--sound-census=<seconds>` on the park viewer
-borrows `--guest-test`'s park (corridor, Crazy Ape, guests) and runs it in REAL frames -- a wound
-park fires every cue in one frame and no voice can advance, which is precisely the "resolves but
-never plays" hole -- printing two lines per cue: the resolution, and eight frames later whether the
-voice was playing and how far its playback position had moved. That run needs a render box under
-`--audio-driver Dummy` and had not been made when this was written. Until it has, the chain is shown
-to reach a decoded stream handed to a player, not a voice consumed by the mixer.
+⭐ **STATUS: plays, measured.** `--sound-census`/`--ride-film` run the guest test's park in REAL
+frames rather than winding it -- a wound park fires every cue in one frame and no voice can
+advance -- and log every cue twice: the resolution, and the verdict once the voice's playback
+position has moved (or the mixer reports it finished), with the elapsed seconds beside the frame
+count. On the render box under `--audio-driver Dummy`, a 90 s film of Crazy Ape gave **36 cues, 36
+resolved, 36 voices started** (crate thumps, the crunch, the grunt, the roar, the swings, the
+ADDOBJ grunt loop ended by its `KILLOBJ 10` at 46.4 s). ⚠ The first census read the position once,
+eight frames after `Play()`, and reported two 314 ms clips as "DID NOT START" while a 1065 ms clip
+read 0.842 s: at ~105 ms a frame the short clips had finished and stopped before the read. That
+was the instrument, fixed as above; the mixed verdict it produced is also what proved the Dummy
+driver ticks playback at all.
 
-## The engine layer, read from the executable
-
-Every call into the audio entry `0x111428(sys, a1 = subsystem, a2 = event id, a3 = &position, t0 = &out,
-t1 = 0)` was censused: **119 sites**, each classified by the subsystem loaded into `a1` and by where
-its event id comes from. The subsystem ids are named by the registration block at `0x112108..0x1124c0`,
-reconstructed by tracking its constant loads:
-
-| id | bank | id | bank | id | bank |
-|---:|---|---:|---|---:|---|
-| 0 | `GLOBAL/UI` | 4 | `RIDES/grc` | 9 | `RIDES/fprc` |
-| 1 | `GLOBAL/AMB` | 5 | `RIDES/wtr` | 10 | `RIDES/fpwt` |
-| 2 | `GLOBAL/RIDE` | 6 | `RIDES/trck` | 11 | `ADVISOR/spch` |
-| 3 | `RIDES/bump` | 7 | `GLOBAL/KIDS` | 12 / 13 | the park's `RIDE` / `AMB` |
-| 8 | `GLOBAL/STAF` | | | 14 / 15 | `MUS`, `LOBM` / `LOBS` |
-
-⭐ **The VM's dispatch confirms the group table above from the other side.** The `EVENT`/`ADDOBJ`
-jump table at `0x366e90` sends each kind to its own case, and the cases load `a1`: kind 3 → 12,
-4 → 13, 5 → 2, 6 → 7, 7 → 8, 8 → 1, 9 → 0, 11 → 3. That is `LOC_RID` → the park ride map,
-`GLO_KID` → `KIDSSFX`, `GLO_BMP` → `BUMPSFX`, exactly as the membership matrix measured.
-
-**The "unused" event ids are the engine's, and they are literals.** Every engine-side site either
-passes a literal or reads a per-object slot that was filled from a per-world literal table,
-selected on the world number (`0x147d00` returns `*0x3952e4`: 1 Halloween, 2 Fantasy, 3 Space):
-
-| code | what it is, by the names its ids resolve to |
-|---|---|
-| `0x1ce090` | a throwing stall: Halloween {191 `misspumpkin`, 221 `throwatpumpkin`, 192 `hitpumpkin`}, Fantasy {162 `fruitsquidge`, 161 `fruitboing`, 159 `throwatfruit`, 160 `fruitslide1`, 170 `fruitupB`} |
-| `0x1d0538` | a hammer stall: Jungle {224 `Hammove`, 222 `Molehit`, 225 `bell1b`, 221 `Moleup`, 227 `ahh1`, 226 `frog3`}, Space {202 `Sphammove`, 195 `Spacehit`, 197 `Spacehitcounter`, 194 `Spaceup`, 198/199 `Alianhit win/lose`}, Halloween {`devilup`, `winbell2b`, `losebell`}, Fantasy {`strength_target`, `strength_beeup`} |
-| `0x193478` → `0x193708` | the pong stall: Jungle {250..252 `pong_gemdrops/gemhit/hitball`}, Fantasy/Halloween {191..193, 217..219}, Space {215..219}; fired from five slots at `+0x200..+0x210` |
-| `0x1cd198` | Jungle {228, 229, 230} → `dino000..002.mp2` |
-| `0x1cf7c8`, `0x1cf8c8` | walk a zero-terminated id list at `object+0x174` and fire each |
-| `0x1af330` | a five-slot kids table at `+0x280..+0x290` from literals {83, 285, 269, 253, 237} or {87, 289, 273, 257, 241} |
-
-**The track rides are literals as well:** `trck` 4 (`Engine.mp2`) at `0x203280`/`0x203de0` and 15
-(`Toot.mp2`) at `0x2049d0` -- the OLDER header generation's `EVT_KARTSTART`/`EVT_KART_TOOT`
-numbers; the lift-chain creak `EVT_STRETCH` 69 under the global ride map at `0x1999e8`/`0x199ae8`;
-the track follower `0x1af330`/`0x1af858` firing 17 under a subsystem held in a register (the ride
-type's `/AUDIO/RIDES/` bank -- `GRCSFX` 17 is `Whir01Flt`); the rider's-eye layer at `0x1af650`/
-`0x1afa9c` picks the subsystem itself, 9 (`fprc`) or 10 (`fpwt`) on a predicate `0x122ce8(ride)`,
-and the id 22 (`FPRCSFX` `Peepass`, riders whooshing past) or 23 (`FPWTSFX` `wr_flow`, the only event
-that map has); `0x1afd30` picks 3 (`Corkscrew`/`Oblivion`) or 22 under `fprc`; `0x15535c` fires 183
-under the park ambient map.
-
-⭐⭐ **Not one of the 119 sites takes its id from the sound child.** No path loads instance `+0x14`
-and then `+0x1c`; the only five-slot tables found (`+0x2e4`, `+0x1e8`, `+0x200`, `+0x280`) are
-filled from literals. The `EventMap.rse` numbers (the newer `soundint` generation) match no map
-and no literal, while the engine's numbers are the older generation's. Reading: on this build the
-`SPAWNSOUND` child is loaded and scheduled and its table is not consumed. ⚠ That is a negative
-from a static census of ONE entry point, complete for that entry (119 of 119 sites traced to a
-literal, a literal table, a table-fed list or the script's own operand): a reader through the
-audio object's vtable (`0x3706c8`, reached by `jalr`) is not excluded by it.
-
-For the port this means the engine-layer sounds are reproducible from data plus these literal
-tables, and the `.ENG` layers from the `.ENG` selectors (`RideEngine.cs`); none of that is
-implemented, and `RideSounds.cs` plays script cues only.
+The video handed to the owner (`crazy_ape_park.mp4`, 90 s, 960x540, 12 fps) carries an audio track
+**assembled from what the bytecode requested, at the times it requested it** -- each logged clip
+decoded from the bank's own bytes and laid at its cue's park time, the loop repeated until its
+kill -- **not recorded off the engine's mixer**, which every render mutes. `tools/` does not ship
+the assembler; it is a scratch script over the census lines.
 
 ## Not established
 
