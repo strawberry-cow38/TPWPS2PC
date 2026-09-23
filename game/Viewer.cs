@@ -3154,6 +3154,18 @@ public partial class Viewer : Node3D
         GD.Print($"[walk] the material table holds {_terrainModel.Materials.Count} entries, of which the "
                + $"classifier calls {pathMats} path and {queueMats} queue -- "
                + $"{(pathMats > 0 && queueMats > 0 ? "it has something to hit" : "IT HITS NOTHING, so a zero below means nothing")}");
+        // ⭐ NAME THEM, and say whether each one's ART is actually on the disc. The queue table
+        // chooses sprite 3 for EVERY corner a queue turns, so a queue tile with no texture is not
+        // an oddity in a list -- it is every turn the player draws.
+        for (int i = 1; i < _terrainModel.Materials.Count; i++)
+        {
+            var k = ParkPaths.Classify(_terrainModel.Materials[i] ?? "");
+            if (k == ParkPathKind.None) continue;
+            var got = TextureNear(_terrainModel == null ? "" : _lib.Rides.FirstOrDefault(r => r.Model != null
+                        && IsTerrain(r.Model.Path))?.Model.Path ?? "", _terrainModel.Materials[i]);
+            GD.Print($"[walk]   {i,3} {k,-5} {_terrainModel.Materials[i],-18} "
+                   + $"{(got.Tex != null ? "resolved" : "NO ART ON THE DISC")}");
+        }
 
         // 2. The histogram of what the cells actually use.
         var counts = new Dictionary<int, int>();

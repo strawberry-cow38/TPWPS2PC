@@ -132,6 +132,12 @@ public sealed class PathTool
         }
         // ⚠ A CHECK THAT CAN FAIL. The tables index these lists, so a terrain with a different
         // number of tiles would quietly paint the wrong art rather than refuse.
+        // ⚠ ONE OF THESE HAS NO ART ON THE DISC. Jungle names `jpa_que4` at index 77 and no WAD
+        // carries a file of that stem. It is the FIRST queue-classified material, so by the same
+        // list-order rule the path block confirms name-for-name (squ1 end1 str1 cnr2 against
+        // sprites 0 1 2 3) it is queue sprite 0 -- the tile for a cell joined to NOTHING. A queue
+        // always carries its run link or its ride's door, so it should never be picked. See
+        // findings/paths.md; this is left as it is rather than papered over with a substitute.
         if (path.Count != 16 || queue.Count != 4)
         {
             Report = $"expected 16 path and 4 queue tiles in the material table, found {path.Count} and {queue.Count}";

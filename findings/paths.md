@@ -187,3 +187,30 @@ paints it.
 `A_BUS STOP` and `ticket_booths` gave **147 cells at z 33..47** for FANTASY. The game's answer is
 **29 cells at x 39..40, z 6..18** — a two-tile walkway, not a fifteen-wide apron, and in a
 different place. The mesh names were never the rule and the difference is not small.
+
+## `jpa_que4` has no art, and it is the tile a queue never wears
+
+2026-09-23. Jungle's terrain names twenty path materials at indices 61..80 and the resolver finds
+nineteen of them. `jpa_que4.ssh` has no entry of any extension in any WAD on the disc
+(findings/texture-fallback.md counts sixteen such references in total).
+
+⭐ **Which SPRITE it is falls out of the list order, and the path list is the control.** The lists
+are the material table's own order filtered by kind, and jungle's path block reads
+`squ1 end1 str1 cnr2 tju1 xrd1 …` against the piece table's sprite 0 = alone, 1 = the four single
+arms, 2 = straight, 3 = the four right angles — name for name, six for six. The same rule on the
+queue block, which reads **`que4 que3 que1 que2`**, gives
+
+| queue sprite | masks it answers | tile |
+|---|---|---|
+| 0 | `00` — no links at all | **`jpa_que4`, which does not exist** |
+| 1 | `10 40 01 04` — one arm | `jpa_que3` |
+| 2 | `11 44` — straight | `jpa_que1` |
+| 3 | `14 50 41 05` — the four corners | `jpa_que2` |
+
+So the missing tile is the one a queue cell wears when it is joined to **nothing** — not the
+corner, which was the first guess and would have been every turn a queue makes. A queue cell
+always carries at least its run link or its ride's door, so sprite 0 should never be chosen in
+play. The reference is a real gap in the disc and a defect nobody can see.
+
+⚠ Not established: whether the game falls back to something for it, or whether `jpa_que4` was
+simply never authored. Only that no file of that stem ships.
