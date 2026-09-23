@@ -304,7 +304,16 @@ public sealed class VisitorNeeds
     ///
     /// ⭐ THE SHAPE IS READ. Happiness up; sickness by the ride's own value measured against **30**,
     /// so a gentle ride settles the stomach and a fierce one turns it; `+0x78` down by that value;
-    /// `+0x7B` down by `rand(20)`; and the toilet emptied -- see <see cref="UseToilet"/>.
+    /// `+0x7B` down by `rand(20)`.
+    ///
+    /// ⚠ AND IT LEAVES THE TOILET ALONE, although `FUN_0020EDD8` empties it in the same breath.
+    /// That function is one exit path serving rides AND facilities, and emptying a bladder is the
+    /// toilet's doing, not a rollercoaster's -- so it lives in <see cref="UseToilet"/> and a caller
+    /// picks. This comment used to describe the console's whole function while the code did only
+    /// half of it, which astraclaw caught reviewing the contract; a doc that overstates its method
+    /// is worse than no doc, because the next reader believes it.
+    /// ⭐ Untouched here, and the contract depends on it: `Cash`, `Hunger`, `Thirst`, `Toilet`,
+    /// `Litter` and `Thought`. Cash is the tripwire a continuity check watches for a reseed.
     ///
     /// ⚠ The three scale factors are globals (`DAT_002EEB30/34/44`) that have NOT been read, so
     /// they are arguments here rather than constants invented inside.</summary>
