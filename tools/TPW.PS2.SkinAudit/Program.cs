@@ -168,7 +168,7 @@ foreach (var entry in models)
     // per-VERTEX property, which is what Physique's deformable vertices would leave behind).
     // The bone bytes are used here only as group labels: nothing below rests on the helper-index
     // reading or on the bind rotation rule.
-    double firstMiss = 0, laterMiss = 0, laterAny = 0; int firstN = 0, laterN = 0, laterRemap = 0;
+    double firstMiss = 0, laterMiss = 0, laterAny = 0; int firstN = 0, laterN = 0, laterRemap = 0, fitsMade = 0;
     foreach (var mesh in model.Meshes)
     {
         if (!skins.TryGetValue(mesh.Index, out var sk)) continue;
@@ -191,6 +191,7 @@ foreach (var entry in models)
         // anything else is the fit's ill-conditioning, not the skin's, and is left out.
         foreach (var (b, pairs) in single)
             if (pairs.Count >= 4 && FitAffine(pairs) is { } f && RowLengths(f).All(l => l > 0.8 && l < 1.25)) fits[b] = f;
+        fitsMade += fits.Count;
         if (fits.Count == 0) continue;
         for (int i = 0; i < sk.VertexCount; i++)
         {
@@ -212,32 +213,38 @@ foreach (var entry in models)
             }
         }
     }
-    if (worst > Threshold)
-        Console.WriteLine($"       per-influence: blended vertices' FIRST influence vs its own bone's single-vertex fit: worst {firstMiss:F2} over {firstN};"
-                        + $" later influences: worst {laterMiss:F2} over {laterN}; later influences that ANY fitted bone maps within 5 units: {laterRemap} of {laterAny}"
-                        // ⚠⚠ DO NOT DRAW THE CONCLUSION FROM THIS LINE. It used to end with "first
-                        // influences miss too: not a misread bone byte, the skin's own blend
-                        // offsets". Checked against the bind result: this probe fires on FIVE
-                        // characters and ALL FIVE PASS the bind check -- boy1a 0.016, girl1a
-                        // 0.013, gnome 0.023 -- while reporting first-influence misses of 314,
-                        // 350 and 407. It says the same thing about skins that are demonstrably
-                        // correct to a hundredth of a unit, so it cannot be what distinguishes
-                        // the five that fail. Meanwhile HallowKid and JungleKid come out at 0.01
-                        // on the same probe, so the 300s are a property of the FIT, not the skin.
-                        //
-                        // ⚠ And it never runs on a failing character at all: `fits.Count == 0`
-                        // skips, so boy2a, girl2a, guard, handyman and Researcher produce no line
-                        // here. A diagnostic that only speaks about the cases that work is not
-                        // evidence about the cases that do not.
-                        //
-                        // ⭐ The one part that IS load-bearing is the re-map count: 0 of 78 and
-                        // 0 of 92 later influences land within 5 units of ANY fitted bone. That
-                        // rules out "a later bone byte is being read wrong" as the explanation,
-                        // which was the standing hypothesis. A negative that strong is worth
-                        // keeping; the positive claim built on top of it was not.
-                        + (firstN > 0 && firstMiss > Threshold
-                            ? " -- ⚠ UNEXPLAINED: this fires on characters that PASS the bind check, so it does not diagnose the failures"
-                            : ""));
+    // ⚠⚠ ATTRIBUTION. This line used to print only for a failing rig and ABOVE that rig's own
+    // "ok/FAIL <name>" lines, so read in sequence it looked like the tail of the PREVIOUS rig's
+    // block: the 314.72 / 350.88 / 407.47 that were once quoted as boy1a / girl1a / gnome are
+    // boy2a's, girl2a's and guard's own numbers, and "it never runs on a failing character" was
+    // the same slip inverted -- it ran ONLY on them. It now prints for EVERY rig, named, directly
+    // under that rig's bind verdict, so the discrimination is in one run: on rigs that pass the
+    // bind check every influence lands alone at 0.00-0.01 (boy1a, girl1a, girl3a, gnome, HallowKid,
+    // JungleKid: first and later influences alike); on girl2a the FIRST influence of a blended
+    // vertex misses its own bone by 315 and on guard by 172, so no misreading of the later bone
+    // bytes can be the cause; and 0 of 92 (girl2a) / 0 of 78 (boy2a) later influences land within
+    // 5 units of ANY fitted bone, so no re-mapping of them can be either. A free per-bone affine
+    // fit over all of a bone's influences cannot close them (boy2a Spine 700). Only the weighted
+    // blend lands, and on guard per VERTEX (Spine and Hand blends exact, Head and Foot blends not)
+    // -- which an indexing error cannot produce and per-influence offsets baked by the exporter
+    // (Physique's deformable vertices: a hypothesis, not a finding) would. Vampire shows the same
+    // shape at a size that still cancels (offsets of 13, bind 0.023), so the offsets alone are not
+    // the FAIL; the residual they leave is.
+    string influenceLine = fitsMade == 0
+        ? $"       {leaf}: per-influence check: no bone has 4+ single-influence vertices with a well-conditioned fit -- not scored"
+        : $"       {leaf}: per-influence check (bones fitted from single-influence vertices: {fitsMade}): blended vertices' FIRST influence vs its own bone's fit: "
+          + (firstN > 0 ? $"worst {firstMiss:F2} over {firstN}" : "none led by a fitted bone")
+          + $"; later influences: " + (laterN > 0 ? $"worst {laterMiss:F2} over {laterN}" : "none on a fitted bone")
+          + $"; later influences ANY fitted bone maps within 5 units: {laterRemap} of {laterAny}"
+          // ⚠ The verdict describes what THIS line measures and no more. Vampire PASSES the bind
+          // check at 0.023 with influences that miss alone by 13: per-influence offsets exist
+          // there too, and cancel. What separates a failing rig is the bind residual the blend
+          // LEAVES (girl2a 3.9, guard 5.8, boy2a 220 from offsets of 170-410), which is the
+          // number above this line, not this one.
+          + (firstN + laterN == 0 ? ""
+             : Math.Max(firstMiss, laterMiss) <= Threshold ? " -- every scored influence lands alone"
+             : $" -- influences do not land alone (offsets that cancel in the blend down to the bind residual {worst:F2})"
+               + (firstN > 0 && firstMiss > Threshold ? ", first influences included: not a misread later bone byte" : ""));
     if (worst > worstAll) { worstAll = worst; worstWho = leaf; }
     Console.WriteLine($"{leaf,-12} meshes {model.Meshes.Count} ({skins.Count} skinned) helpers {model.HelperCount,2} bones {bonesUsed.Count,2} slots {verts,4}"
                     + $" | bind worst {worst,9:F3} (single-bone {worstSingle:F3}, blended {worstBlend:F3}) at {worstAt}");
@@ -253,6 +260,7 @@ foreach (var entry in models)
     // are the ones off.
     if (worst > Threshold)
         Console.WriteLine("       per mesh (single-bone / blended): " + string.Join("; ", meshWorst.Select(kv => $"{kv.Key} {kv.Value.Single:F2} / {kv.Value.Blend:F2}")));
+    Console.WriteLine(influenceLine);
 
     // ---- the tracks: coverage, index space, and the proof of motion ----
     if (aps == null) { Console.WriteLine($"  {leaf}: no .aps beside the model"); continue; }

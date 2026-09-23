@@ -821,25 +821,37 @@ point, so each one reproduces it by itself.
 
 **What the four blend-failing rigs have instead.** Fit each bone from its SINGLE-influence
 vertices only (bone byte beyond doubt, threshold-exact on these rigs), then score the influences
-of BLENDED vertices with that fit, first influence and later ones apart:
+of BLENDED vertices with that fit, first influence and later ones apart. The audit now prints this
+for EVERY rig, named, directly under that rig's bind verdict, so one run shows the discrimination:
 
-| rig | first influence of a blended vertex vs its own bone | later influences | later influences ANY fitted bone maps within 5 units |
-|---|---:|---:|---:|
-| girl2a | **315.5** over 7 | 350.9 over 8 | **0 of 92** |
-| guard | **171.5** over 18 | 407.5 over 26 | 24 of 100 (its Spine and Hand blends, all exact) |
-| boy2a | (no fitted bone leads a blend) | 314.7 over 8 | **0 of 78** |
-| handyman | — | 0.01 over 16 | 16 of 145 |
+| rig | bind | first influence of a blended vertex vs its own bone | later influences | later influences ANY fitted bone maps within 5 units |
+|---|---:|---:|---:|---:|
+| boy1a, girl1a, girl3a, girl4a, HallowKid, JungleKid, SpaceKid, FantasyKid, dino, gnome, franky, flower, FatMechanic, spaceman, Alien | pass | 0.00–0.01 | 0.00–0.03 | every scored one |
+| boy3a / hunter | pass | — | 0.34 / 2.56 | all |
+| vampire | pass (0.023) | 13.05 over 2 | 9.57 over 31 | 28 of 154 |
+| girl2a | **3.9** | **315.5** over 7 | 350.9 over 8 | **0 of 92** |
+| guard | **5.8** | **171.5** over 18 | 407.5 over 26 | 24 of 100 (its Spine and Hand blends, all exact) |
+| boy2a | **220.7** | (no blend led by a fitted bone) | 314.7 over 8 | **0 of 78** |
+| handyman / Researcher | 59.3 / 499.7 | — | 0.01 / 0.01 | all — their misses are on UNSCORED bones: the coat tails (no single vertices) and the hands' ~1° rotation (single-bone) |
 
-⭐ **The FIRST influence misses too**, by hundreds of units, so no misreading of the later bone
-bytes can be the cause; and no re-mapping of a later influence to any other bone brings it
-home (0 of 92, 0 of 78). A free per-bone affine fit over all of a bone's influences cannot close
-either (boy2a Spine 700, girl2a R Calf 901 units) — no rigid transform of the bone maps its own
-influences onto their vertices. Yet the WEIGHTED blend lands: 3.9 (girl2a), 5.8 (guard), 59
-(handyman), 220 (boy2a). These skins carry per-influence positions whose offsets cancel only in
-the blend. On guard it is per-VERTEX: the Spine and Hand blends are consistent at 0.01 while the
-Head+Neck and Foot+Calf blends are not, which an indexing error could not produce. **Hypothesis,
-not a finding:** 3ds Max Physique's "deformable" vertices export exactly this shape (per-link
-offsets that sum out); the rigid ones are the consistent vertices.
+⭐ **The FIRST influence misses too** on girl2a and guard, by hundreds of units, so no misreading
+of the later bone bytes can be the cause; and no re-mapping of a later influence to any other bone
+brings it home (0 of 92, 0 of 78). A free per-bone affine fit over all of a bone's influences
+cannot close either (boy2a Spine 700, girl2a R Calf 901 units) — no rigid transform of the bone
+maps its own influences onto their vertices. Yet the WEIGHTED blend lands: 3.9 (girl2a), 5.8
+(guard), 220 (boy2a). These skins carry per-influence positions whose offsets cancel only in the
+blend; vampire shows the same shape at a size that still cancels (offsets of 13, bind 0.023), so
+the offsets by themselves are not the FAIL — the residual they leave is. On guard it is
+per-VERTEX: the Spine and Hand blends are consistent at 0.01 while the Head+Neck and Foot+Calf
+blends are not, which an indexing error could not produce. **Hypothesis, not a finding:** 3ds Max
+Physique's "deformable" vertices export exactly this shape (per-link offsets that sum out); the
+rigid ones are the consistent vertices.
+
+⚠ **Attribution note.** An earlier form of this line printed only for a failing rig and ABOVE that
+rig's own `ok/FAIL <name>` lines, so read in sequence it looked like the tail of the previous
+rig's block: the 314.72 / 350.88 / 407.47 once quoted as boy1a / girl1a / gnome are boy2a's,
+girl2a's and guard's own numbers, and "it never runs on a failing character" was the same slip
+inverted — it ran only on them. Now named and universal.
 
 For the runtime nothing changes: `Skin.Deform` is the same weighted sum the PS2 does, so a posed
 girl2a/guard is as consistent as its authored mesh (a 1/4,000-of-height residual), boy2a within
