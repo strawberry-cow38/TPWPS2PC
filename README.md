@@ -3,8 +3,38 @@
 Notes on **Theme Park World (PlayStation 2, PAL)** — `SLES_500.32`, EA/Bullfrog.
 
 Sibling of [TPW-PSXPC](https://github.com/strawberry-cow38/TPW-PSXPC), which ports the PSX release.
-This repo is **research only**: what the disc holds, how its containers are shaped, and what that
-implies for a port. Nothing here is a port yet.
+This is a **work-in-progress PS2-data-driven viewer and managed park simulation**, with
+reverse-engineering evidence and executable audits. It is not a complete replacement for the
+retail game. Readers, live consumers, tested behavior and remaining guesses are separate claims.
+
+## Current development status — 2026-09-23
+
+Start with [the completion plan](plan.md), [the latest progress ledger](progress.md), and
+[the release/validation checklist](findings/release-checklist.md). The original research notebook
+below contains explicitly historical sections; it is not the current backlog.
+
+Implemented and exercised paths include compiled ride scripts, animated assets, guest walking/
+ride handoffs, closed/broken-ride eligibility, ride-removal recovery, and guest-ID-based needs
+storage. Needs rise rates/cadence are chosen port policy, not measured retail behavior. Track
+services, full park-management behavior, advisor producers and several format fields remain
+incomplete; rendering changes need separate visual checks.
+
+The integrated park matrix currently passes JUNGLE/FANTASY and deliberately retains the exact
+HALLOW Thrill Grill and SPACE Moon Buggies retail findings. An expected retail failure is not
+a green pass. The launcher has independent failure-path checks, but recent launcher changes
+still need Windows install/update/relaunch validation. See the checklist for precise evidence
+and limitations rather than inferring release readiness from a successful build.
+
+```sh
+# .NET 8 and Python 3; use your own existing disc image in place.
+dotnet run --project tools/TPW.PS2.LauncherAudit -c Release
+python3 -m unittest discover -s tools -p test_audit_matrix.py
+python3 tools/audit_matrix.py --disc "$DISC" --out "$NEW_EVIDENCE_DIR"
+```
+
+The matrix output directory must not already exist. Exit 0 means all selected worlds passed;
+exit 1 means an unexpected result; exit 2 means only the precisely documented retail failures
+remain. No disc payload is written by these commands.
 
 ## ⚠ Bring your own disc
 
@@ -15,7 +45,12 @@ copy the user already owns, from their own machine.
 A ROM site is not an authorised source no matter who owns the disc. The work in this repo was done
 against the owner's own rip of their own copy.
 
-## What is established
+## Early research measurements (historical snapshot)
+
+These measurements predate the whole-disc census and current implementations. For the newer
+inventory and its explicit limits, use [format-inventory.md](findings/format-inventory.md).
+In particular, the old APS row below is historical, not the current animation-reader status.
+
 
 | | |
 |---|---|
@@ -161,14 +196,19 @@ path; it does not compare framebuffer pixels or emulate particles/loading screen
 | `tools/refpack.py` | `decompress(data, off) -> (bytes, declared_size, end_offset)` |
 | `tools/wadtree.py` | `walk(data)` for the archive tree, `read(data, off, stored, decomp)` for one entry |
 
-## Open
+## Early open questions (historical, not the current backlog)
+
+Many items in this original list now have readers and live consumers. Follow the current
+[plan](plan.md), [format inventory](findings/format-inventory.md), and individual findings
+instead of interpreting this retained notebook list as an implementation census.
+
 
 - Per-file formats: `.RSE`, `.rss`, `.sam`, `.mps`, `.aps` (models/animation?), `.ssh` (EA SHPS image container)
 - `MOVIES/*.MPC` — ~285 MB, codec unidentified
 - `AUDIO/**/*.MAP` + `*.SDT` bank pairs
 - `ILINK.IRX` / `ILSOCK.IRX` — the online features
 
-## What this repo has that OpenTPW does not
+## Historical format-list comparison — 2026-09-21
 
 [OpenTPW](https://github.com/OpenTPW/OpenTPW) re-implements the **PC** release. Comparing format
 coverage only — their status table and repo against this one, 2026-09-21:
@@ -199,7 +239,12 @@ carry more than the repo does, and a ⚠️ can mean anything from a stub to nea
 of the exercise was to find what is genuinely unexplored, not to grade anyone's work — and the
 answer is that **animation and particles appear to be undocumented for this game anywhere.**
 
-## What this is for next
+## Original research priorities (historical)
+
+These priorities describe the earlier research phase; DATA.WAD and compiled RSE execution
+have since been exercised. They are retained as context, **not instructions for what to do next**.
+The active work breakdown is [plan.md](plan.md).
+
 
 ⭐ **1. The PS2 ride scripts are documentation for the PSX port.** The PSX work
 ([TPW-PSXPC](https://github.com/strawberry-cow38/TPW-PSXPC)) carries ~100 findings files —

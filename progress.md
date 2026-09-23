@@ -328,3 +328,20 @@ verified source/build state instead of its early research-only snapshot, then re
 lifecycle long-stall/catch-up checks and renderer smoke in coordination with cow tools.
 Need-clock tests currently validate normal frame rates/zero time, not large stalled
 frames; do not silently claim the latter. Rendering/thought bubbles remain peer-owned.
+
+## Current README and release-validation ledger
+
+Updated README's research-only introduction and explicitly marked retained early format/open-
+question/priorities sections historical. Added `findings/release-checklist.md` with exact tested
+revisions, reproducible commands, expected retail reds, and outstanding Windows/manual/rendered
+release gates. It distinguishes compile success from runtime/visual sign-off and storage
+preservation from semantic decoding. No new game or launcher runtime behavior is claimed.
+
+This documentation package follows the restored continuation path; recurring TPW work is now
+bound to the original Discord request's actual poster/source, with assistant handoff context
+separate. Project code was not changed by that harness repair.
+
+Next: independent long-stall/catch-up measurements around the needs clock versus the capped
+park/guest clocks. Establish observed behavior first; agree policy with the needs maintainer
+before edits to its files. Continue coordinating rendered current-revision smoke and never
+substitute earlier generated captures for present visual sign-off.
