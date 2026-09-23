@@ -198,6 +198,8 @@ public partial class Viewer : Node3D
     bool _walkAudit;
     bool _typeAudit;
     bool _guestTest;
+    /// <summary>Which ride the control run stands, by display name; Crazy Ape unless told.</summary>
+    string _guestRide = "Crazy Ape";
     /// <summary>The sim's own grid, built once per park. ⭐⭐ ITS CELLS ARE THE GROUND'S. ParkPaths
     /// clones the terrain's cell bytes when it is made, and the tool writes the LIVE ones, so a
     /// clone shows the park as it was when it was asked for -- which is why the overlay reads laid
@@ -291,6 +293,7 @@ public partial class Viewer : Node3D
             else if (a == "--place-test") { _buildTest = true; _placeTest = true; }
             else if (a == "--walk-audit") _walkAudit = true;
             else if (a == "--guest-test") _guestTest = true;
+            else if (a.StartsWith("--guest-ride=")) _guestRide = a["--guest-ride=".Length..];
             else if (a == "--type-audit") _typeAudit = true;
             else if (a == "--ghost-press") { _ghostTest = true; _ghostPress = true; }
             else if (a == "--anim-test") _animTest = true;
@@ -2359,7 +2362,11 @@ public partial class Viewer : Node3D
         _sim ??= new ParkSim(WalkGrid());
         // ⭐ THE SEATS ARE THE MODEL'S 0x80 FITTINGS -- ADDHEAD indexes them by slot + 1 -- so the
         // ride is told how many it has, or it seats nobody however many the script boards.
-        int headSlots = mesh?.Fittings.Count(f => (f.Flags & 0x80) != 0) ?? 0;
+        // ⚠ COUNTED THE LOADER'S WAY (Model.HeadSlotCount): 0x1bfdf8 walks up from id 1 and stops
+        // at the first id with no 0x80 fitting, so a gap truncates the run. A plain count of the
+        // 0x80 fittings agrees on every model in JUNGLE.WAD, which is exactly how a simpler rule
+        // looks right without being the rule.
+        int headSlots = mesh?.HeadSlotCount ?? 0;
         // ⭐ SPAWNCHILD LOOKS IN THE RIDE'S OWN FOLDER (0x1be91c builds directory + name). Seven
         // jungle rides each ship a file called EventMap.rse, so a lookup by name alone would hand
         // six of them somebody else's script.
@@ -2376,6 +2383,19 @@ public partial class Viewer : Node3D
         if (ride == null) { GD.PrintErr($"[sim] {Leaf(assets.Name)} script would not start: {fault}"); return false; }
         _scripted.Add((ride, model, anim, -1, -1));
         if (mesh != null) _rideMeshes[id] = mesh;
+        // ⭐⭐ THE SCRIPT ASKS WHERE ITS NODES ARE, and the placed model answers -- the ANIMATED one,
+        // LastWorld through the ride root, not the bind pose -- so WALKON's legs take the real
+        // distance between the ride's own fittings instead of the 100 ms floor. Null, never a
+        // zero, when a fitting does not resolve: RseMachine.WalksAreTimed is built on that
+        // difference, and a zero would read as a real node at the origin. ⚠ Called from inside
+        // RunSlice, so nothing is cached that the park rebuild could free -- the node is looked up
+        // and checked on every call.
+        if (mesh != null)
+            ride.Host.NodeSource = (node, space) =>
+            {
+                var at = NodeWorld(id, node, (uint)space);
+                return at is { } p ? (p.X, p.Y, p.Z) : null;
+            };
         // ⭐ A RIDE IS BUILT CLOSED and opens once it stands. king.RSE spins on VAR_RIDECLOSED
         // right after its Create animation, so a ride left closed would build itself and then
         // stand there -- which is correct, and is also not a park.
@@ -2695,6 +2715,8 @@ public partial class Viewer : Node3D
 
     /// <summary>Where each seated rider was last drawn, by guest id, with the seat it sits in.</summary>
     readonly Dictionary<int, (Transform3D At, string Where)> _seated = new();
+    /// <summary>The model-to-world Z mirror every AnimatedModel root carries, as a transform.</summary>
+    static readonly Transform3D Mirror = new(new Basis(new Vector3(1, 0, 0), new Vector3(0, 1, 0), new Vector3(0, 0, -1)), Vector3.Zero);
 
     /// <summary>⭐⭐ RIDERS SIT WHERE ADDHEAD PUT THEM. The script takes a random free head slot
     /// and attaches the guest to fitting `slot + 1` in the `0x80` space (the lead's reading of
@@ -2702,7 +2724,10 @@ public partial class Viewer : Node3D
     /// the node's world matrix is read every frame from the animated model. ⚠ AT THE NODE'S
     /// ORIGIN: the fitting's three floats are an offset within the part and are not understood
     /// -- read now through <see cref="Model.FittingLocal"/>, whose frame is inferred rather than
-    /// walked. ⚠ Position and yaw only, never the node's basis: the ride's root carries the
+    /// walked. ⚠ A rider STANDS on its seat point in bind pose: the sitting pose, like the walking
+    /// gait, is skinning work and belongs with it, not here. ⚠ The yaw comes from the Head's own
+    /// Z row, which is plausible and unread -- left until a kid looks wrong rather than tuned
+    /// until one looks right. ⚠ Position and yaw only, never the node's basis: the ride's root carries the
     /// Z mirror and the node its bind scale, and a kid drawn through both came out mirrored and
     /// a tenth the size.</summary>
     void SeatRiders()
@@ -2725,17 +2750,106 @@ public partial class Viewer : Node3D
                 // Through the node's world matrix and then the ride root, as the origin went; drawn
                 // at the origin, three of the crate's riders shared one point.
                 var seat = System.Numerics.Vector3.Transform(mesh.FittingLocal(fit), w);
-                var at = root * new Vector3(seat.X, seat.Y, seat.Z);
-                var forward = root.Basis * new Vector3(w.M31, w.M32, w.M33);
-                forward.Y = 0;
-                float yaw = forward.LengthSquared() > 1e-6f ? Mathf.Atan2(forward.X, forward.Z) : 0f;
+                var seatLocal = new Vector3(seat.X, seat.Y, seat.Z);
+                // ⭐⭐ THE WHOLE ROTATION, NOT A YAW. Master, on the banana shot: "i dont think
+                // they're rotating with the ride" -- a banana that swings up and over tips its
+                // riders, and a yaw-only rider stays upright and merely translates, which is why
+                // the carry probe was perfect while the picture read as static. The Head's three
+                // axis rows, each divided by its own length, are its orientation with the bind
+                // scale (m_base's 0.1 and all) dropped; that is the rider's basis in the ride
+                // root's own space.
+                //
+                // ⭐ ROOT x LOCAL x MIRROR, and here is why the last factor is there: the ride root's
+                // GlobalTransform carries the model->world mirror once, and the kid's own
+                // AnimatedModel root carries ITS mirror once, so without taking one back out a
+                // seated kid would be mirrored twice and a walking kid once. The product is a
+                // PROPER transform, assigned whole -- never Euler angles, whose decomposition of a
+                // mirrored basis does not survive the round trip.
+                //
+                // ⚠ Whether the console orients a rider from the seat node at all is unread; what
+                // is known is that yaw alone is wrong, because riders visibly did not tip.
+                var ax = new Vector3(w.M11, w.M12, w.M13);
+                var ay = new Vector3(w.M21, w.M22, w.M23);
+                var az = new Vector3(w.M31, w.M32, w.M33);
+                Transform3D pose;
+                if (ax.LengthSquared() > 1e-10f && ay.LengthSquared() > 1e-10f && az.LengthSquared() > 1e-10f)
+                    pose = root * new Transform3D(new Basis(ax.Normalized(), ay.Normalized(), az.Normalized()), seatLocal) * Mirror;
+                else
+                {
+                    // ⚠ A degenerate axis: the yaw-only reading rather than a squashed basis.
+                    var forward = root.Basis * az;
+                    forward.Y = 0;
+                    float yaw = forward.LengthSquared() > 1e-6f ? Mathf.Atan2(forward.X, forward.Z) : 0f;
+                    pose = new Transform3D(Basis.Identity.Rotated(Vector3.Up, yaw), root * seatLocal);
+                }
                 // ⭐ NAMED, so the log says Head09 and not "node 19" -- and says out loud when a
                 // rider lands on anything that is not a Head, which would be the fitting reading
                 // failing. On Crazy Ape every 0x80 fitting is a Head helper under an arm.
                 string node = mesh.NodeName(fit.Node);
-                _seated[guest] = (new Transform3D(Basis.Identity.Rotated(Vector3.Up, yaw), at),
+                _seated[guest] = (pose,
                                   $"{ride.Name} seat {slot} on {(node.Length > 0 ? node : "node " + fit.Node)}"
                                   + (node.StartsWith("Head", StringComparison.OrdinalIgnoreCase) ? "" : " -- NOT A HEAD"));
+            }
+        }
+    }
+
+    /// <summary>A script node's place in the world, or null: the fitting by id and space, its
+    /// node's world matrix from the animated model, FittingLocal through it, then the ride root.
+    /// The one resolver behind NodeSource, the seats and the walkers, so all three agree.</summary>
+    Vector3? NodeWorld(int rideId, int node, uint space)
+    {
+        if (!_rideMeshes.TryGetValue(rideId, out var mesh)) return null;
+        var entry = _scripted.FirstOrDefault(e => e.Ride.Id == rideId);
+        var model = entry.Model;
+        if (model?.Root == null || !IsInstanceValid(model.Root) || model.LastWorld == null) return null;
+        if (mesh.FindFitting(node, space) is not { Node: >= 0 } fit) return null;
+        if (!model.LastWorld.TryGetValue(mesh.NodeOffset(fit.Node), out var w)) return null;
+        var p = System.Numerics.Vector3.Transform(mesh.FittingLocal(fit), w);
+        return model.Root.GlobalTransform * new Vector3(p.X, p.Y, p.Z);
+    }
+
+    /// <summary>Where each guest the scripts are WALKING was last drawn: between two of the
+    /// ride's nodes, the script's per-mille of the way along.</summary>
+    readonly Dictionary<int, (Transform3D At, string Where)> _walking = new();
+    /// <summary>Legs that could not be placed, said once each rather than sixty times a second.</summary>
+    readonly HashSet<(int Ride, int From, int To)> _unplacedLegs = new();
+
+    /// <summary>⭐ A GUEST WALKING TO ITS SEAT IS DRAWN WHERE THE SCRIPT SAYS. WALKON moves a guest
+    /// from a park node (space 0x800) to a ride node (0x80 for a seat), and the host records each
+    /// pose as WalkerPose(guest, from, to, mode, perMille, angle); the kid is drawn at that
+    /// fraction of the way between the two nodes as this frame's model places them, facing along
+    /// the leg. A leg whose nodes do not resolve is not drawn and is logged once: a guest drawn
+    /// at the origin would be a lie, and the vanish is the script's own shape. ⚠ Crazy Ape's
+    /// script has no WALKON at all -- HUSH/ADDHEAD straight to the seat -- so on it this draws
+    /// nobody, correctly; king, incagod and manic walk their riders.</summary>
+    void WalkRiders()
+    {
+        _walking.Clear();
+        foreach (var (ride, model, _, _, _) in _scripted)
+        {
+            if (ride.Host == null || ride.Host.Walkers.Count == 0 || ride.Machine == null) continue;
+            // ⚠ THE WALKER TABLE REMEMBERS EVERY LAST POSE, so it holds guests who finished their
+            // leg and stand waiting, and guests who have long since HOPped off and are walking the
+            // park again. Only a guest the script still HOLDS -- on its HUSH stack, between
+            // boarding and leaving -- and has not seated is a walker to draw; the first version
+            // drew eighteen kids on one point at 100% of a leg, some of them also out on the paths.
+            var held = ride.Machine.GuestIds;
+            foreach (var (guest, w) in ride.Host.Walkers)
+            {
+                if (_seated.ContainsKey(guest) || !held.Contains(guest)) continue;
+                var from = NodeWorld(ride.Id, w.FromNode, 0x800) ?? NodeWorld(ride.Id, w.FromNode, 0x80);
+                var to = NodeWorld(ride.Id, w.ToNode, 0x80) ?? NodeWorld(ride.Id, w.ToNode, 0x800);
+                if (from is not { } a || to is not { } b)
+                {
+                    if (_unplacedLegs.Add((ride.Id, w.FromNode, w.ToNode)))
+                        GD.Print($"[guest] walker #{guest} on {ride.Name}: leg node {w.FromNode} -> {w.ToNode} does not resolve on the model, not drawn");
+                    continue;
+                }
+                var at = a.Lerp(b, Mathf.Clamp(w.PerMille / 1000f, 0f, 1f));
+                var d = b - a; d.Y = 0;
+                float yaw = d.LengthSquared() > 1e-6f ? Mathf.Atan2(d.X, d.Z) : 0f;
+                _walking[guest] = (new Transform3D(Basis.Identity.Rotated(Vector3.Up, yaw), at),
+                                   $"{ride.Name} leg {w.FromNode} -> {w.ToNode} {w.PerMille / 10}% mode {w.Mode}");
             }
         }
     }
@@ -2743,12 +2857,14 @@ public partial class Viewer : Node3D
     void PlaceActors(float alpha)
     {
         SeatRiders();
+        WalkRiders();
         // ⭐ Whoever has left the walk -- handed to a ride -- loses their body this frame unless a
         // seat has them. The script has them now; a kid standing in the queue AND riding would be
         // two bodies for one guest, which is exactly what the total handover exists to prevent.
         // A queued guest not yet seated has no body at all.
         var alive = new HashSet<int>(_guests.Guests.Select(g => g.Id));
         alive.UnionWith(_seated.Keys);
+        alive.UnionWith(_walking.Keys);
         foreach (int id in _actors.Keys.Where(id => !alive.Contains(id)).ToArray())
         {
             if (_actors[id] is { } gone && IsInstanceValid(gone)) gone.QueueFree();
@@ -2758,6 +2874,11 @@ public partial class Viewer : Node3D
         {
             if (!_actors.TryGetValue(id, out var rider)) rider = MakeActor(id);
             if (rider != null) rider.Transform = seat.At;
+        }
+        foreach (var (id, leg) in _walking)
+        {
+            if (!_actors.TryGetValue(id, out var walker)) walker = MakeActor(id);
+            if (walker != null) walker.Transform = leg.At;
         }
         foreach (var g in _guests.Guests)
         {
@@ -2856,7 +2977,11 @@ public partial class Viewer : Node3D
         // last row, and the tool counts a cell once however many runs cross it.
         int cells = left.Concat(right).Concat(bar).Distinct().Count();
         GD.Print($"[guest] laid {_paths.Laid - before} of {cells} path cells in from the mouth ({xl},{z0 - 1}) ({xr},{z0 - 1})");
-        _guestCap = 16; _gateEvery = 20; _gateTimer = _gateEvery - 1;
+        // ⚠ MORE GUESTS THAN THE RIDE CAN SWALLOW, on purpose: with a cap the queue could hold,
+        // everyone was queued or riding by three minutes and the moved-metric had nobody on the
+        // paths to compare. A busier park is a park; a guest who chooses to wander instead of ride
+        // would be a behaviour nobody has read, so the cap goes up rather than the policy.
+        _guestCap = 28; _gateEvery = 20; _gateTimer = _gateEvery - 1;
         if (!OpenGate()) { GD.Print("[guest] the gate would not open, so there is nobody to photograph"); return; }
         GuestTestRide(xl, z0);
     }
@@ -2879,9 +3004,9 @@ public partial class Viewer : Node3D
         for (int i = 0; i < _buildRows.Count && row < 0; i++)
         {
             var d = DefinitionFor(_lib.Rides[_buildRows[i]].Model);
-            if (d?.Name != null && d.Name.Contains("Crazy Ape", StringComparison.OrdinalIgnoreCase)) row = i;
+            if (d?.Name != null && d.Name.Contains(_guestRide, StringComparison.OrdinalIgnoreCase)) row = i;
         }
-        if (row < 0) { GD.Print("[guest] no Crazy Ape among this archive's Rides -- nothing to board"); return; }
+        if (row < 0) { GD.Print($"[guest] no '{_guestRide}' among this archive's Rides -- nothing to board"); return; }
         var grid = _guests.Paths;
         bool Touches(int x, int y) => ParkPaths.Neighbours(new ParkCell(x, y)).Any(grid.Open);
         int tried = 0, fits = 0, doors = 0;
@@ -2914,7 +3039,7 @@ public partial class Viewer : Node3D
                     CloseTool();
                     _guestTestRide = (cx, cy, w, h);
                     var ride = _sim?.Rides.LastOrDefault();
-                    GD.Print($"[guest] Crazy Ape at ({cx},{cy}) {w}x{h} turned {turn * 90} after {tried} cells tried ({fits} fitted, {doors} with both doors): "
+                    GD.Print($"[guest] {_place.Display ?? _guestRide} at ({cx},{cy}) {w}x{h} turned {turn * 90} after {tried} cells tried ({fits} fitted, {doors} with both doors): "
                            + $"queue stub ({q.X},{q.Y}) {_paths.KindAt(q.X, q.Y)}, exit stub ({o.X},{o.Y}) {_paths.KindAt(o.X, o.Y)}; "
                            + $"the sim's ride has entrance {ride?.Entrance} exit {ride?.Exit}"
                            + $"{(ride == null ? " -- NO SCRIPT STARTED" : ride.Has("VAR_LETMEON") ? "" : " -- declares no VAR_LETMEON, so it takes nobody")}");
@@ -2925,7 +3050,7 @@ public partial class Viewer : Node3D
                 }
         }
         _place.Clear();
-        GD.Print($"[guest] no site takes Crazy Ape with its queue stub on the network: {tried} cells tried, {fits} fitted, {doors} of those with both doors, none touching");
+        GD.Print($"[guest] no site takes {_guestRide} with its queue stub on the network: {tried} cells tried, {fits} fitted, {doors} of those with both doors, none touching");
     }
 
     /// <summary>The way home from a ride's exit: the shortest run of layable, empty ground from
@@ -3052,6 +3177,33 @@ public partial class Viewer : Node3D
             foreach (var (id, seat) in _seated)
                 GD.Print($"[guest] {label} rider #{id} in {seat.Where} at world ({seat.At.Origin.X:F2}, {seat.At.Origin.Y:F2}, {seat.At.Origin.Z:F2})"
                        + (_actors.TryGetValue(id, out var body) && body != null ? "" : " -- NO BODY"));
+            foreach (var (id, leg) in _walking)
+                GD.Print($"[guest] {label} walker #{id} on {leg.Where} at world ({leg.At.Origin.X:F2}, {leg.At.Origin.Y:F2}, {leg.At.Origin.Z:F2})");
+            // ⭐ THE MIRROR COUNT, AS A NUMBER. A kid's mesh must end up with an ODD number of
+            // mirrors whether it walks (its own root: one) or sits (ride root, the Mirror factor,
+            // its own root: three); a cancelled pair would leave the seated kid inside out on a
+            // silhouette too symmetric to show it. So the determinant sign of each kid's FINAL
+            // basis is printed and the seated ones must match the walking one.
+            float? walkDet = null;
+            foreach (var g in _guests.Guests)
+                if (_actors.TryGetValue(g.Id, out var wa) && wa != null && IsInstanceValid(wa) && wa.GetChildCount() > 0 && wa.GetChild(0) is Node3D wroot)
+                { walkDet = wroot.GlobalTransform.Basis.Determinant(); break; }
+            var seatDets = new List<float>();
+            foreach (var id in _seated.Keys)
+                if (_actors.TryGetValue(id, out var sa) && sa != null && IsInstanceValid(sa) && sa.GetChildCount() > 0 && sa.GetChild(0) is Node3D sroot)
+                    seatDets.Add(sroot.GlobalTransform.Basis.Determinant());
+            if (seatDets.Count > 0)
+            {
+                bool allNegative = seatDets.All(d => d < 0);
+                bool match = walkDet is not { } wd || seatDets.All(d => Math.Sign(d) == Math.Sign(wd));
+                GD.Print($"[guest] {label} mirror: walking kid det {(walkDet is { } w0 ? w0.ToString("F2") : "n/a (nobody walking)")}; "
+                       + $"seated kids det {string.Join(" ", seatDets.Select(d => d.ToString("F2")))} -- "
+                       + (allNegative && match ? "one net mirror each, same as a walking kid" : "SIGN MISMATCH: a seated kid is INSIDE OUT"));
+            }
+            foreach (var r in _sim.Rides)
+                GD.Print($"[guest] {label} {r.Name}: {r.Host?.Walkers.Count ?? 0} walker poses on record, {r.Machine?.GuestIds.Count ?? 0} guests held by the script, "
+                       + $"{_walking.Count(kv => kv.Value.Where.StartsWith(r.Name))} drawn walking node to node, "
+                       + $"walks {(r.Machine?.WalksAreTimed == true ? "TIMED from the model's fittings" : "at the floor (no node resolved yet)")}");
             // ⭐ THE CLOSEST PAIR is the number that says whether seats stack: at the node origins
             // it was 0.00 for three riders on the crate.
             if (_seated.Count > 1)
@@ -3111,20 +3263,33 @@ public partial class Viewer : Node3D
         // ⚠ So the final shot is one second later than the B census it follows.
         if (label == "B" && _seated.Count > 0)
         {
-            var before = _seated.ToDictionary(kv => kv.Key, kv => kv.Value.At.Origin);
+            var before = _seated.ToDictionary(kv => kv.Key, kv => kv.Value.At);
             var running = _sim.Rides.Where(r => r.Running).Select(r => r.Name).ToList();
             for (int i = 0; i < 25; i++) { TickPark(); PresentScripted(); }
             PlaceActors(1f);
-            int carried = 0;
+            // ⭐ AND THE TURN, not only the move: a rider on a banana that swings up must tip, so
+            // the forward and up vectors are printed a second apart with the angle between them --
+            // position that moves while the vectors stay put is the yaw-only mistake, in numbers.
+            int carried = 0, turned = 0; float mostTurn = 0;
             foreach (var (id, seat) in _seated)
                 if (before.TryGetValue(id, out var was))
                 {
-                    float d = (seat.At.Origin - was).Length();
+                    float d = (seat.At.Origin - was.Origin).Length();
+                    var f0 = was.Basis.Z.Normalized(); var f1 = seat.At.Basis.Z.Normalized();
+                    var u0 = was.Basis.Y.Normalized(); var u1 = seat.At.Basis.Y.Normalized();
+                    float turnF = Mathf.RadToDeg(Mathf.Acos(Mathf.Clamp(f0.Dot(f1), -1f, 1f)));
+                    float turnU = Mathf.RadToDeg(Mathf.Acos(Mathf.Clamp(u0.Dot(u1), -1f, 1f)));
                     if (d > 0.001f) carried++;
-                    GD.Print($"[guest] carry: rider #{id} in {seat.Where} moved {d:F3} units over 1 s");
+                    if (turnF > 0.5f || turnU > 0.5f) turned++;
+                    mostTurn = Mathf.Max(mostTurn, Mathf.Max(turnF, turnU));
+                    GD.Print($"[guest] carry: rider #{id} in {seat.Where} moved {d:F3} units over 1 s; "
+                           + $"forward ({f0.X:F2}, {f0.Y:F2}, {f0.Z:F2}) -> ({f1.X:F2}, {f1.Y:F2}, {f1.Z:F2}) turned {turnF:F1} deg/s; "
+                           + $"up ({u0.X:F2}, {u0.Y:F2}, {u0.Z:F2}) -> ({u1.X:F2}, {u1.Y:F2}, {u1.Z:F2}) tipped {turnU:F1} deg/s");
                 }
-            GD.Print($"[guest] carry: {carried} of {before.Count} riders moved with the ride"
-                   + (running.Count > 0 ? $" ({string.Join(", ", running)} running)" : " -- but no ride was running, so this says nothing about carrying"));
+            GD.Print($"[guest] carry: {carried} of {before.Count} riders moved and {turned} of {before.Count} turned with the ride (the most {mostTurn:F1} deg/s)"
+                   + (turned > 0 && mostTurn < 5f ? " -- BARELY TURNING for a swinging seat, suspicious" : "")
+                   + (running.Count > 0 ? $" ({string.Join(", ", running)} running)" : " -- but no ride was running, so this says nothing about carrying")
+                   + (carried > 0 && turned == 0 ? " -- MOVING WITHOUT TURNING: the basis is not reaching them" : ""));
         }
     }
 
