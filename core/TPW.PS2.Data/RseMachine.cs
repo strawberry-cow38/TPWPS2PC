@@ -55,6 +55,8 @@ public sealed class RseMachine
     readonly Walk[] _walks;
     short _bounceBase, _bouncing, _bumpRate;
     byte _turbo;
+    int _bounceNode;
+    readonly Bouncer[] _bounce;
     bool _timedWalk;
 
     /// <summary>⭐⭐ A SCRIPT IS NOT ALONE. `SPAWNCHILD` (`0x1be91c`) loads a second program and
@@ -81,12 +83,15 @@ public sealed class RseMachine
     /// not, and anything measuring how long a ride cycle takes must check this first.</summary>
     public bool WalksAreTimed => _timedWalk;
 
-    /// <summary>The bounce count BOUNCING reads (`0x1bb880` returns instance `+0x6c`) and the
-    /// rest height BOUNCESETBASE writes (`+0x6e`). ⚠ The count only ever moves when BOUNCE and
-    /// UNBOUNCE exist, and they do not yet, so BOUNCING truthfully answers zero for a script
-    /// that never bounced anything and would LIE for one that did -- which is why BOUNCE is not
-    /// quietly stubbed alongside it.</summary>
+    /// <summary>The trampoline: how many are on it (BOUNCING reads instance `+0x6c` through
+    /// `0x1bb880`) and the rest height BOUNCESETBASE writes to `+0x6e`, which the bounce ticker
+    /// `0x1bb888` uses as the bottom of a sine.
+    ///
+    /// ⚠ NOTHING HERE MOVES ANYBODY UP AND DOWN. The table, the count and the come-off-at-the-
+    /// bottom rule are the game's; the height a bouncer is actually drawn at is the ticker's, and
+    /// that belongs to a host with a model to put them on.</summary>
     public int BounceBase => _bounceBase;
+    public int Bouncing => _bouncing;
 
     public RseMachine(RseProgram program, IRseHost host = null, Func<int> random = null,
                       Func<string, RseMachine> spawn = null)
@@ -96,6 +101,8 @@ public sealed class RseMachine
         _callTop = _stack.Length;
         // 0x1bff78 doubles the declared capacity before allocating.
         _walks = new Walk[Math.Max(0, program.WalkCapacity) * 2];
+        // ⚠ The bounce table is NOT doubled the way the walk table is (0x1bff48..0x1bff74).
+        _bounce = new Bouncer[Math.Max(0, program.BounceCapacity)];
         var rng = new Random(1);
         _random = random ?? (() => rng.Next());
     }
@@ -278,7 +285,13 @@ public sealed class RseMachine
                     case RseOpcode.WALKOFF: WalkOff(V(0)); break;
                     case RseOpcode.WALKGET: Result(WalkGet(), true); break;
 
+                    // ⚠ The RAW operand word, like TURBO: `0x1bebb8` hands what the fetch returned
+                    // straight to `0x1bb5b0` without evaluating it.
+                    case RseOpcode.BOUNCESETNODE: _bounceNode = (int)a[0].Word; break;
                     case RseOpcode.BOUNCESETBASE: _bounceBase = (short)V(0); break;
+                    case RseOpcode.BOUNCE: LastValue = Bounce(V(0), V(1)); break;
+                    case RseOpcode.UNBOUNCE: Result(Unbounce(false), true); break;
+                    case RseOpcode.FORCEUNBOUNCE: Result(Unbounce(true), true); break;
                     case RseOpcode.BOUNCING: Result(_bouncing, true); break;
 
                     // ⚠ The raw operand WORD, not its value: `0x1be610` stores what the fetch
@@ -308,6 +321,56 @@ public sealed class RseMachine
     int Value(RseProgram.Operand a) => a.Tag == 0x40 ? this[a.Index]
         : a.Tag == 0 ? a.Immediate : throw new InvalidDataException($"Expected numeric operand, got {a}");
     IRseHost Host() => _host ?? throw new NotSupportedException("This instruction requires an RSSE host");
+
+    /// <summary>One guest on the trampoline. 16 bytes at instance `+0x28`, `+0x64` of them.</summary>
+    struct Bouncer { public int Guest; public int Node; public long End, Start; }
+
+    /// <summary>Put a guest on for <paramref name="seconds"/>. Returns 1, or 0 when the table is
+    /// full -- `0x1bb5b8` takes the first free slot and gives up if there is none.
+    ///
+    /// ⭐ THE NODE IS THE SLOT'S POSITION, not the guest's choice: `slotIndex + BOUNCESETNODE's
+    /// base`, so the first bouncer stands on the first pad and so on.</summary>
+    int Bounce(int guest, int seconds)
+    {
+        for (int i = 0; i < _bounce.Length; i++)
+        {
+            if (_bounce[i].Guest != 0) continue;
+            _bounce[i] = new Bouncer
+            {
+                Guest = guest, Node = i + _bounceNode,
+                End = Time + (long)seconds * 1000, Start = Time,
+            };
+            _bouncing++;
+            return 1;
+        }
+        return 0;
+    }
+
+    /// <summary>Take one guest off, or 0 if nobody may come off yet.
+    ///
+    /// ⭐⭐ THEY CAN ONLY GET OFF AT THE BOTTOM OF A BOUNCE. Both `0x1bb6b0` and `0x1bb7a8` gate on
+    /// `((now - start) % 1000) / 200 == 0` -- the first fifth of each one-second cycle, which is
+    /// when the bounce ticker (`0x1bb888`) has them nearest their rest height. So a full
+    /// trampoline empties in a staggered, springy way rather than all at once, and a caller that
+    /// polls this will get 0 most of the time by design.
+    ///
+    /// <paramref name="force"/> is FORCEUNBOUNCE: the same scan WITHOUT the "their time is up"
+    /// test, so it takes the first person who happens to be down.</summary>
+    int Unbounce(bool force)
+    {
+        for (int i = 0; i < _bounce.Length; i++)
+        {
+            ref var b = ref _bounce[i];
+            if (b.Guest == 0) continue;
+            if (!force && b.End >= Time) continue;
+            if ((Time - b.Start) % 1000 / 200 != 0) continue;
+            _bouncing--;
+            int guest = b.Guest;
+            b.Guest = 0;
+            return guest;
+        }
+        return 0;
+    }
 
     /// <summary>TOUR, BUMP and COAST -- the three rides that carry their riders along a track.
     ///
