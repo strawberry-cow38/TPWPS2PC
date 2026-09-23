@@ -107,6 +107,10 @@ public partial class Viewer : Node3D
     ToolSounds _toolSfx;
     PathGhost _ghost;
     GhostMarkers _ghostView;
+    SelectionBox _selectView;
+    /// <summary>What is selected in the park, by its index in Park.Placed. ⚠ An INDEX, not an id:
+    /// two of the same ride share an id, and a selection means the one you clicked.</summary>
+    int _selected = -1;
     /// <summary>Whether the path tool is open. ⭐ On the console a build tool is a MODE you open
     /// and close, not a key you tap: while it is open the ghost follows the cursor and a press
     /// lays a run.</summary>
@@ -424,6 +428,8 @@ public partial class Viewer : Node3D
         AddChild(_weather.Root);
         _ghostView = new GhostMarkers(path => _lib?.ReadGeneric(path));
         AddChild(_ghostView.Root);
+        _selectView = new SelectionBox();
+        AddChild(_selectView.Root);
 
         // ⚠⚠ A full-screen Control swallows mouse events before _UnhandledInput ever sees them.
         // Orbit appeared to work only because the left button is also used by the widgets; a
@@ -2538,6 +2544,26 @@ public partial class Viewer : Node3D
             }
             CloseTool();
         }
+        // ⭐ AND A CONTROL FOR SELECTION, which is a pair: a cell the middle ride stands on must
+        // select it, and a cell nothing stands on must clear. "It selects" alone is satisfied by
+        // a thing that selects whatever you last clicked and never lets go.
+        {
+            var mid = _park.Placed.Count > 1 ? _park.Placed[1] : default;
+            if (mid.Fp.Width > 0)
+            {
+                _cursorOverride = (mid.X + mid.Fp.Width / 2, mid.Y + mid.Fp.Height / 2);
+                bool got = SelectUnderCursor();
+                GD.Print($"[select] on {mid.Name}'s own cell: {(got && _selected == 1 ? "selected it, as it must be" : "MISSED")}");
+                // Somewhere well clear of all three.
+                _cursorOverride = (mid.X, _park.Field.Height - 3);
+                bool none = SelectUnderCursor();
+                GD.Print($"[select] on empty ground: {(!none && _selected < 0 ? "cleared, as it must be" : "STILL HOLDING ONE")}");
+                // Put it back for the picture.
+                _cursorOverride = (mid.X + mid.Fp.Width / 2, mid.Y + mid.Fp.Height / 2);
+                SelectUnderCursor();
+            }
+        }
+
         CheckStubOverlap();
 
         // ⭐ THE PICTURE THE QUESTION NEEDS: three rides at three turns with their OWN door markers
@@ -2552,6 +2578,12 @@ public partial class Viewer : Node3D
             _toolOpen = false; _runX = _runY = -1; _pathFrom = null;
             _place.Clear();
             _ghostView.ShowTurnedCells(doorMarks, _park);
+            if (_park.Placed.Count > 1)
+            {
+                _cursorOverride = (_park.Placed[1].X + _park.Placed[1].Fp.Width / 2,
+                                   _park.Placed[1].Y + _park.Placed[1].Fp.Height / 2);
+                SelectUnderCursor();
+            }
             if (_buildBox != null) _buildBox.Visible = false;
             if (_panel != null) _panel.Visible = false;
             // ⚠ SAY WHETHER ANYTHING WAS ACTUALLY MADE. "Drew 6 markers" is a count of what was
@@ -2936,7 +2968,47 @@ public partial class Viewer : Node3D
     /// guest -- so there is nothing for it to find and inventing one would be inventing a feature.
     /// It exists as the one place that decision goes when the first of them arrives, so that
     /// "left-click opens the path tool" does not have to be unpicked from the input handler then.</summary>
-    string InteractiveUnderCursor() => null;
+    /// <summary>What the pointer is over that would rather have the click than the path tool.
+    /// ⭐ A PLACED THING. Until now this returned null and the comment above it described a rule
+    /// nothing implemented -- every left click went to the path tool, including one aimed squarely
+    /// at a ride.</summary>
+    string InteractiveUnderCursor()
+        => _park != null && CursorCell(out int x, out int y) && _park.PlacedAt(x, y) is { } hit
+         ? hit.Name : null;
+
+    /// <summary>Select whatever is under the pointer, or clear the selection when nothing is.
+    /// Returns true when something was selected.</summary>
+    bool SelectUnderCursor()
+    {
+        if (_park == null || !CursorCell(out int x, out int y)) { ClearSelection(); return false; }
+        int at = -1;
+        for (int i = 0; i < _park.Placed.Count; i++)
+        {
+            var p = _park.Placed[i];
+            int fx = x - p.X, fy = y - p.Y;
+            if (fx < 0 || fy < 0 || fx >= p.Fp.Width || fy >= p.Fp.Height) continue;
+            if (p.Fp.Cells[fx, fy]) { at = i; break; }
+        }
+        if (at < 0) { ClearSelection(); return false; }
+        _selected = at;
+        var sel = _park.Placed[at];
+        // ⭐ The box rises to the MODEL's top, because a footprint has no height and a box one cell
+        // tall round a ride is a line on the floor.
+        float top = _park.BaseY + 4f;
+        if (sel.Node != null && IsInstanceValid(sel.Node))
+            top = Park.DrawnBounds(sel.Node, inParent: true).Max.Y;
+        _selectView.Show(_park, sel.Fp, sel.X, sel.Y, top, new Color(1f, 0.95f, 0.35f, 0.9f));
+        GD.Print($"[select] {sel.Name} at ({sel.X},{sel.Y}) {sel.Fp.Width}x{sel.Fp.Height}, top {top:F1}");
+        Status($"{sel.Name} selected -- right click to clear");
+        return true;
+    }
+
+    void ClearSelection()
+    {
+        if (_selected >= 0) { GD.Print("[select] nothing selected"); Status("nothing selected"); }
+        _selected = -1;
+        _selectView?.Hide();
+    }
 
     /// <summary>A press of the open tool. The first starts a run, the second lays it -- and ⭐ the
     /// run CARRIES ON from where it ended, which is what makes a path drawn in legs rather than
@@ -3848,6 +3920,7 @@ public partial class Viewer : Node3D
     /// moment -- see RefreshFloor.</summary>
     void BuildFloor()
     {
+        ClearSelection();
         if (_holeSize.X <= 1f) { _park.Build(ParkCells, ParkCells); return; }
         _park.Build(Mathf.RoundToInt(_holeSize.X), Mathf.RoundToInt(_holeSize.Y), _holeCells);
     }
@@ -4353,15 +4426,19 @@ public partial class Viewer : Node3D
                             // such duty, which makes it the way to open the tool while pointing
                             // at something that will one day answer a click.
                             if (_toolOpen) { CloseTool(); GD.Print("[tool] closed"); }
+                            // ⭐ And it drops a selection before it opens anything, the same
+                            // bargain it already makes with a held blueprint: reaching for cancel
+                            // means cancel THAT, not start something else underneath it.
+                            else if (_selected >= 0) ClearSelection();
                             else OpenTool(PathTool.Kind.Path);
                         }
                         else if (_place.Active) PlaceHeld();
                         else if (_toolOpen) PressTool();
-                        else if (InteractiveUnderCursor() is { } busy)
-                        {
-                            GD.Print($"[tool] not opening: {busy} is under the cursor");
-                            Status($"{busy} under the cursor");
-                        }
+                        // ⭐⭐ A LEFT CLICK REACHES A RIDE BEFORE IT REACHES THE GROUND. That was
+                        // always the intent -- the comment on the right button says so -- and it
+                        // had never been wired: InteractiveUnderCursor returned null, so a click
+                        // aimed at a ride opened the path tool on the cell underneath it.
+                        else if (SelectUnderCursor()) { }
                         // ⚠ ALWAYS A PATH. A queue is not something you lay wherever you like:
                         // it belongs to a ride, it starts at that ride's entrance, and the game
                         // puts you in it when you place one. Offering it on a modifier let you

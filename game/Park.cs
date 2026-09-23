@@ -159,8 +159,22 @@ public sealed class Park
     /// meshes are just what it looks like.</summary>
     int[,] _occupied = new int[0, 0];
 
-    readonly List<(int Id, string Name, Footprint Fp, int X, int Y)> _placed = new();
-    public IReadOnlyList<(int Id, string Name, Footprint Fp, int X, int Y)> Placed => _placed;
+    readonly List<(int Id, string Name, Footprint Fp, int X, int Y, Node3D Node)> _placed = new();
+    public IReadOnlyList<(int Id, string Name, Footprint Fp, int X, int Y, Node3D Node)> Placed => _placed;
+
+    /// <summary>What is standing on a cell, or null. ⭐ Found through the footprint rather than the
+    /// occupancy id, because two of the same ride share that id and the answer has to be the ONE
+    /// the pointer is over.</summary>
+    public (int Id, string Name, Footprint Fp, int X, int Y, Node3D Node)? PlacedAt(int x, int y)
+    {
+        foreach (var p in _placed)
+        {
+            int fx = x - p.X, fy = y - p.Y;
+            if (fx < 0 || fy < 0 || fx >= p.Fp.Width || fy >= p.Fp.Height) continue;
+            if (p.Fp.Cells[fx, fy]) return p;
+        }
+        return null;
+    }
 
     /// <summary>Cells claimed by something. ⭐ The invariant a caller can check: this must equal
     /// the summed `Occupied` of everything in <see cref="Placed"/>. If it does not, a placement
@@ -948,7 +962,7 @@ public sealed class Park
         for (int fy = 0; fy < fp.Height; fy++)
             for (int fx = 0; fx < fp.Width; fx++)
                 if (fp.Cells[fx, fy]) _occupied[x + fx, y + fy] = id;
-        _placed.Add((id, name, fp, x, y));
+        _placed.Add((id, name, fp, x, y, model));
 
         // The claimed tiles, drawn over the grass so the plot reads at a glance.
         // ⚠⚠ NO BASEPLATE. A slab was drawn under every claimed cell -- a grey box the size of the
