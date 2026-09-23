@@ -73,10 +73,18 @@ public sealed class ParkVisitors
     public IEnumerable<ParkRide> Open => Sim.Rides.Where(Takes);
 
     /// <summary>Put a guest in at the gate and set them wandering.</summary>
+    /// <summary>⭐⭐ THE VISITORS' WANTS, and they are seeded HERE AND NOWHERE ELSE. Readmission
+    /// after a ride keeps a guest's id but builds a NEW <see cref="Guest"/>, so needs must live
+    /// beside the walking layer rather than on it, and must not be re-rolled when the person comes
+    /// back off a rollercoaster (agreed with astraclaw while they were landing the removal
+    /// lifecycle, 2026-09-23). Null leaves the park exactly as it was before needs existed.</summary>
+    public VisitorNeeds Needs { get; set; }
+
     public Guest Arrive(ParkCell at, ParkCell to)
     {
         var g = Walk.Spawn(at, to);
         Wander(g.Id, at);
+        Needs?.Spawn(g.Id);
         return g;
     }
 
@@ -108,6 +116,11 @@ public sealed class ParkVisitors
         Sim.Advance(deltaSeconds);
         Deliver();
         Idle(wander);
+        // ⚠⚠ LAST, AND AFTER Idle. `_plans` is the live set -- it still holds guests in
+        // Recovering, and it has already dropped anyone retired this step -- so reconciling here
+        // forgets exactly the people who have gone. Ids are REUSED; a stale entry hands the next
+        // arrival a dead stranger's hunger.
+        if (Needs != null) { Needs.Step(); Needs.Reconcile(_plans.Keys); }
     }
 
     /// <summary>Guests the scripts have finished with go back on the path at the ride's exit.

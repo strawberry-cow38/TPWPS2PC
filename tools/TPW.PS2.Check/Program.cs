@@ -300,6 +300,57 @@ int parks = 0, parkless = 0;
                       + (parkless == 0 ? "" : $"  <-- {parkless} WITH NO WAY IN"));
 }
 
+// ⭐⭐ THE VISITORS' WANTS, checked by their SHAPE and not by their code. Every number below is
+// the console's, off `FUN_0020BCD0` and the two roll helpers, and each check is written so that
+// using the WRONG one fails it -- the three distributions are easy to swap and impossible to tell
+// apart from a mean alone.
+int needsBad = 0;
+{
+    var needs = new VisitorNeeds(seed: 12345);
+    const int N = 40000;
+    var w = new VisitorWants[N];
+    for (int i = 0; i < N; i++) w[i] = needs.Spawn(i);
+    void Need(bool ok, string what) { if (!ok) { needsBad++; Console.WriteLine("   NEEDS FAIL  " + what); } }
+
+    Need(w.All(v => v.Happiness == 50), "happiness spawns at exactly 50 -- the only need seeded to a constant");
+    Need(w.All(v => v.Hunger < 70), "hunger spawns in [0,69] (rand(70))");
+    Need(w.All(v => v.Cash >= 2000 && v.Cash <= 4990), "cash spawns in [2000,4990] ((rand(300)+200)*10)");
+
+    // ⭐ THE CONTROL THAT REJECTS A FLAT ROLL. The toilet and thirst are seeded
+    // `rand(100)*rand(100)/100`, which piles up near zero: about 31% land under 10, where a flat
+    // rand(100) would put 10% there. A check on the MEAN alone would pass either.
+    double lowToilet = w.Count(v => v.Toilet < 10) / (double)N;
+    double lowThirst = w.Count(v => v.Thirst < 10) / (double)N;
+    Need(lowToilet > 0.25 && lowToilet < 0.40, $"the toilet spawns biased LOW: {lowToilet:P1} under 10, flat would be 10%");
+    Need(lowThirst > 0.25 && lowThirst < 0.40, $"thirst spawns biased LOW: {lowThirst:P1} under 10, flat would be 10%");
+    double lowHunger = w.Count(v => v.Hunger < 7) / (double)N;
+    Need(lowHunger > 0.07 && lowHunger < 0.13, $"hunger is FLAT, not biased: {lowHunger:P1} in its lowest tenth");
+
+    // ⚠ The high roll is the one a hand disassembly got backwards. `n - rand(n)*rand(n)/n`
+    // clusters near n; if it were ever replaced by the product itself the mean would invert.
+    double high = Enumerable.Range(0, N).Average(_ => needs.RollHigh(100));
+    double centred = Enumerable.Range(0, N).Average(_ => needs.RollCentred(100));
+    double centredTail = Enumerable.Range(0, N).Count(_ => needs.RollCentred(100) < 10) / (double)N;
+    Need(high > 70 && high < 80, $"the HIGH roll clusters near n: mean {high:F1} of 100");
+    Need(centred > 45 && centred < 55, $"the CENTRED roll sits mid-range: mean {centred:F1} of 100");
+    Need(centredTail < 0.04, $"and it is TRIANGULAR, not flat: {centredTail:P1} under 10, flat would be 10%");
+
+    // Eating fills the bladder -- the arithmetic that identified +0x79 in the first place.
+    var one = needs.Spawn(N + 1);
+    needs.Set(N + 1, one with { Hunger = 80, Toilet = 10, Thirst = 80, Happiness = 50, Sick = 0 });
+    needs.Buy(N + 1, price: 30, hungerReduction: 25, thirstReduction: 0, happinessEffect: 5, vomitIncrease: 15);
+    var after = needs.Of(N + 1);
+    Need(after.Hunger == 55 && after.Toilet == 35 && after.Happiness == 55 && after.Sick == 15,
+         $"a burger feeds AND fills the bladder: hunger {after.Hunger}, toilet {after.Toilet}, "
+         + $"happy {after.Happiness}, sick {after.Sick}");
+
+    // Ids are reused; a stale entry would hand the next arrival a dead stranger's hunger.
+    int forgotten = needs.Reconcile(Enumerable.Range(0, 10));
+    Need(forgotten == N - 9 && needs.All.Count == 10, $"Reconcile forgets the retired: dropped {forgotten}, kept {needs.All.Count}");
+
+    Console.WriteLine($"visitor needs: {(needsBad == 0 ? "all spawn/roll/purchase checks pass" : $"{needsBad} FAILED")}");
+}
+
 // Every archive entry, named. The readers above cover three extensions; the rest are present and
 // unexamined, and saying so is the difference between a known gap and an invisible one.
 var examined = new[] { ".mps", ".tga", ".aps", ".sam" };
@@ -314,4 +365,4 @@ if (firstFails.Count > 0)
     foreach (var f in firstFails) Console.WriteLine("   " + f);
 }
 return faceBad == 0 && tgaBad == 0 && decBad == 0 && samControlOk == samChecked
-       && parkless == 0 ? 0 : 2;
+       && parkless == 0 && needsBad == 0 ? 0 : 2;
