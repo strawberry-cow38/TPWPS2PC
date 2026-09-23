@@ -3150,6 +3150,19 @@ public partial class Viewer : Node3D
                 model = new Model(_charLib.Read(entry));
                 _charModels[path] = model;
             }
+            // ⚠⚠ A NEW ACTOR IS PLAYING NOTHING, SO THE "ALREADY PLAYING" FLAGS MUST GO WITH THE
+            // OLD BODY. `_gaitFrom` is what Gait() checks to avoid re-calling UseRecord every
+            // frame -- but it is keyed on the GUEST, while the body it describes is this actor.
+            // A guest handed to a ride and not yet seated is in none of the alive sets (see
+            // PlaceActors: "a queued guest not yet seated has no body at all"), so its actor is
+            // freed and then rebuilt here on the way out. The rebuilt one is constructed with a
+            // NULL record; if `_gaitFrom` still held the id, Gait() concluded the walk was
+            // already running, never applied it, and the guest walked home in bind pose.
+            //
+            // ⭐ That is master's "guests lose their animations after leaving a ride", and it is
+            // the same shape as the seat-pose lag: state cached against one lifetime, read during
+            // another. Clear it where the lifetime actually starts.
+            _gaitFrom.Remove(id); _posed.Remove(id); _headOnly.Remove(id);
             var (aps, sit, where) = SittingRecord(path);
             var drawn = new AnimatedModel(model, aps, null, m => CharTexture(path, m));
             drawn.SetFrame(0);
