@@ -2134,12 +2134,19 @@ public partial class Viewer : Node3D
         if (_game == null || !GameCamActive || _park?.Field == null) return;
         // ⭐⭐ AIMED AT THE DOOR'S OWN DIRECTION, not turned a fixed half. Master: "or be based
         // relative to the exit / entrance direction". A half turn assumes where the camera already
-        // was; the door knows which way it opens, so the camera is pointed ALONG that -- out of
-        // the ride and down the ground the run is about to be drawn over.
+        // was; the door knows which way it opens, so the camera is aimed by it.
         //
-        // ⚠ Grid to world for a DIRECTION is not the same map as for a point: grid +x is world +X
-        // but grid +y is world -Z, because Park.Build lays row y at `Origin.Y + (H - y - 0.5)`.
-        if (facing is { } f && (f.Dx != 0 || f.Dy != 0)) _game.Face(f.Dx, -f.Dy);
+        // ⚠⚠ AND IT LOOKS BACK AT THE DOOR, not out through it. I first pointed the view ALONG the
+        // way the door opens, reasoning that the player wants to see the ground the run will cover
+        // -- master, looking at it: "its still opposite". Facing the OTHER way puts the camera
+        // outside the door with the ride beyond it, so the thing just placed and the tile the run
+        // starts on are both in front of you. Hence the negation.
+        //
+        // ⚠ This ride's doors both open along z, so the sign of the grid-to-world map and the sign
+        // of the intent would BOTH show up as "opposite" here and cannot be told apart by it. The
+        // map is not the guess: grid +x is world +X and grid +y is world -Z, because Park.Build
+        // lays row y at `Origin.Y + (H - y - 0.5)` and its own comment cites the ticket booths.
+        if (facing is { } f && (f.Dx != 0 || f.Dy != 0)) _game.Face(-f.Dx, f.Dy);
         var c = _park.CellCentre(x, y);
         _game.GlideTo(c.X, c.Z);
         GD.Print($"[cam] looking at cell ({x},{y}) -- world {c.X:F1},{c.Z:F1}"
