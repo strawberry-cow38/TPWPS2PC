@@ -298,6 +298,7 @@ public partial class Viewer : Node3D
             else if (a == "--place-test") { _buildTest = true; _placeTest = true; }
             else if (a == "--walk-audit") _walkAudit = true;
             else if (a == "--guest-test") _guestTest = true;
+            else if (a.StartsWith("--walk-film=")) int.TryParse(a["--walk-film=".Length..], out _walkFilm);
             // ⭐ The census borrows --guest-test's park (corridor, Crazy Ape, guests) and replaces
             // its wind-and-shoot with real frames: a voice needs frames to advance in.
             else if (a.StartsWith("--sound-census=")) { int.TryParse(a["--sound-census=".Length..], out _soundCensus); _guestTest = true; }
@@ -2568,6 +2569,11 @@ public partial class Viewer : Node3D
     /// <summary>Guests whose walk record is playing, with the park tick their walk began: the
     /// gait's phase is the walk's own, not a clock the guest never started.</summary>
     readonly Dictionary<int, int> _gaitFrom = new();
+    /// <summary>`--walk-film=N`: instead of one frame, FOLLOW the W walker for N frames at sixty
+    /// a second of park time, saving each as `<shot>-fNNNN.png` for ffmpeg -- the clip a gait
+    /// needs, since no still can show one. Master: "cant see walking with a pic lol".</summary>
+    int _walkFilm, _filmGuest = -1, _filmFrame, _filmCensusTick;
+    Vector3 _filmCensusAt; float _filmYaw;
     /// <summary>Each actor's two ways of standing on its node: the whole kid with its feet at the
     /// origin, or its head alone hung on the origin by RiderHeadAnchor -- with the body and legs
     /// meshes to hide for the second, and the head's size for the log.</summary>
@@ -3201,6 +3207,74 @@ public partial class Viewer : Node3D
         return frame % Math.Max(1, w.Walk.DurationFrames);
     }
 
+    /// <summary>What a guest's gait is doing right now, as text for a census: the record and
+    /// frame it is drawn at, and the two feet's separation MEASURED off that pose -- the foot
+    /// bones through the game's own matrices and the mesh's world -- in model units.</summary>
+    string GaitCensus(int id)
+    {
+        if (!_walkRec.TryGetValue(id, out var w) || w.Walk == null || !_gaitFrom.ContainsKey(id)) return "gait: bind pose (no walk record playing)";
+        float frame = GaitFrame(id, 1f);
+        string text = $"gait: slot 1 frame {frame:F1} of {w.Walk.DurationFrames}, playing since tick {_gaitFrom[id]}";
+        var tracks = w.Anim.SkeletalTracks(w.Walk);
+        if (tracks == null || w.Model.Meshes.Count == 0) return text;
+        var pose = SkeletalPose.At(tracks, frame, w.Model.HelperCount);
+        int lf = -1, rf = -1;
+        for (int h = 0; h < w.Model.HelperCount; h++)
+        {
+            string n = w.Model.NodeName(w.Model.SkinBoneNode(h)) ?? "";
+            if (n.EndsWith("L Foot", StringComparison.OrdinalIgnoreCase)) lf = h;
+            if (n.EndsWith("R Foot", StringComparison.OrdinalIgnoreCase)) rf = h;
+        }
+        if (lf < 0 || rf < 0) return text;
+        var mw = w.Model.WorldTransforms()[w.Model.Meshes[0].Offset];
+        var l = System.Numerics.Vector3.Transform(pose[lf].Translation, mw);
+        var r = System.Numerics.Vector3.Transform(pose[rf].Translation, mw);
+        return text + $"; feet apart {(l - r).Length():F3} model units (bind: together)";
+    }
+
+    /// <summary>⭐⭐ ONE FRAME OF THE WALKER FILM. Save what was drawn, step the park a sixtieth of a
+    /// second, re-aim the side-on orbit at where the followed guest now stands, and every fifteen
+    /// frames say where it is, how fast its body moved and what its feet are doing -- the numbers
+    /// the clip is FOR. ⚠ The prediction this instrument tests, stated before the film was shot:
+    /// the walk's stride is 0.164 model units per swing (a 16-frame cycle at 30 fps, 0.53 s), about
+    /// 0.31 units/s in place, while GuestWalk carries the body at 1.0 cell/s -- OUR pace, unread
+    /// from the console -- so the planted foot should slide backward about 3x faster than a
+    /// matching pace would plant it. If it does, the pace or the stride is ours to question, not
+    /// the skinning. The film ends at the asked count, or early if the walker is handed to a ride
+    /// and loses its body, and says which.</summary>
+    void FilmFrame()
+    {
+        SaveShot(ShotSibling(_shotPath, $"-f{_filmFrame:D4}"));
+        _filmFrame++;
+        bool have = _actors.TryGetValue(_filmGuest, out var actor) && actor != null && IsInstanceValid(actor);
+        if (_filmFrame >= _walkFilm || !have)
+        {
+            GD.Print($"[guest] film: {_filmFrame} frames = {_filmFrame / 60f:F2}s of park time following #{_filmGuest}"
+                   + (have ? "" : " -- walker lost its body (handed to a ride?), film ended early"));
+            GetTree().Quit(); return;
+        }
+        StepPark(1.0 / 60.0);
+        var g = _guests.Guests.FirstOrDefault(x => x.Id == _filmGuest);
+        var at = actor.Position;
+        if (g?.Next is ParkCell next)
+        {
+            var heading = new Vector3(next.X - g.Cell.X, 0, g.Cell.Z - next.Z).Normalized();
+            var side = new Vector3(heading.Z, 0, -heading.X);
+            _filmYaw = Mathf.Atan2(side.X, side.Z);
+        }
+        _freeCam = true; _focus = at + new Vector3(0, 0.3f, 0); _dist = 3f; _pitch = -0.35f; _yaw = _filmYaw;
+        if (_filmFrame % 15 == 0 && g != null)
+        {
+            float dt = (_parkTicks - _filmCensusTick) * ParkSim.TickMilliseconds / 1000f;
+            float moved = (at - _filmCensusAt).Length();
+            GD.Print($"[guest] film f{_filmFrame:D4} t={_parkTicks * ParkSim.TickMilliseconds / 1000.0:F2}s #{g.Id} {g.State} at {g.Cell}"
+                   + (g.Next is ParkCell n2 ? $" -> {n2} {g.Fraction:F2}" : "")
+                   + $" world ({at.X:F2}, {at.Y:F2}, {at.Z:F2}); body moved {moved:F2} units in {dt:F2}s"
+                   + (dt > 0 ? $" = {moved / dt:F2} units/s" : "") + $"; {GaitCensus(g.Id)}");
+            _filmCensusAt = at; _filmCensusTick = _parkTicks;
+        }
+    }
+
     /// <summary>⭐⭐ A WALKER MID-STEP, BY CONDITION AND NOT BY CLOCK. Every picture so far is people
     /// standing, queueing or riding; a park that teleported guests between poses would pass all
     /// of them. So after stage A the park is wound one tick at a time until some guest is Walking
@@ -3243,36 +3317,10 @@ public partial class Viewer : Node3D
                 var side = new Vector3(heading.Z, 0, -heading.X);
                 _freeCam = true; _focus = at + new Vector3(0, 0.3f, 0); _dist = 3f; _pitch = -0.35f; _yaw = Mathf.Atan2(side.X, side.Z);
                 double t = _parkTicks * ParkSim.TickMilliseconds / 1000.0;
-                string gait = "bind pose (no walk record)"; string feet = "";
-                if (_walkRec.TryGetValue(g.Id, out var w) && w.Walk != null && _gaitFrom.ContainsKey(g.Id))
-                {
-                    float frame = GaitFrame(g.Id, 1f);
-                    gait = $"slot 1 frame {frame:F1} of {w.Walk.DurationFrames}, playing since tick {_gaitFrom[g.Id]}";
-                    // The feet, measured off the pose drawn: the two foot bones through the game's
-                    // matrices and the mesh's world, in model units.
-                    var tracks = w.Anim.SkeletalTracks(w.Walk);
-                    if (tracks != null && w.Model.Meshes.Count > 0)
-                    {
-                        var pose = SkeletalPose.At(tracks, frame, w.Model.HelperCount);
-                        int lf = -1, rf = -1;
-                        for (int h = 0; h < w.Model.HelperCount; h++)
-                        {
-                            string n = w.Model.NodeName(w.Model.SkinBoneNode(h)) ?? "";
-                            if (n.EndsWith("L Foot", StringComparison.OrdinalIgnoreCase)) lf = h;
-                            if (n.EndsWith("R Foot", StringComparison.OrdinalIgnoreCase)) rf = h;
-                        }
-                        if (lf >= 0 && rf >= 0)
-                        {
-                            var mw = w.Model.WorldTransforms()[w.Model.Meshes[0].Offset];
-                            var l = System.Numerics.Vector3.Transform(pose[lf].Translation, mw);
-                            var r = System.Numerics.Vector3.Transform(pose[rf].Translation, mw);
-                            feet = $"; feet apart {(l - r).Length():F3} model units (bind: together)";
-                        }
-                    }
-                }
+                _filmGuest = g.Id; _filmYaw = _yaw; _filmCensusAt = at; _filmCensusTick = _parkTicks; _filmFrame = 0;
                 GD.Print($"[guest] W t={t:F2}s walker #{g.Id} at {g.Cell} -> {next} fraction {g.Fraction:F2}, heading ({heading.X:F0}, {heading.Z:F0}), "
                        + (bestClear < 1e6f ? $"nearest other guest {bestClear:F2} cells" : "no other guest to compare against")
-                       + $"; {_guests.Guests.Count} guests in the park; world ({at.X:F2}, {at.Y:F2}, {at.Z:F2}); gait: {gait}{feet}");
+                       + $"; {_guests.Guests.Count} guests in the park; world ({at.X:F2}, {at.Y:F2}, {at.Z:F2}); {GaitCensus(g.Id)}");
                 GD.Print($"[guest] W camera: free orbit on ({_focus.X:F2}, {_focus.Y:F2}, {_focus.Z:F2}), {_dist:F0} out, {Mathf.RadToDeg(-_pitch):F0} degrees down, side-on"
                        + " | expected: legs scissored ~0.16 units at gait frames 0/8 and crossing at 4/12, one arm forward -- or feet together and arms down if the gait is not playing");
                 return true;
@@ -6069,7 +6117,17 @@ public partial class Viewer : Node3D
                     else { GuestTestStage("A", 1500); _guestStage = 1; _guestSince = _shotWait; }
                 }
                 else if (_guestStage == 4 && _shotWait >= _guestSince + 2)
-                { SaveShot(ShotSibling(_shotPath, "-w")); GuestTestCamera(); GuestTestStage("A", 1500); _guestStage = 1; _guestSince = _shotWait; }
+                {
+                    if (_walkFilm > 0)
+                    {
+                        // ⭐ THE CLIP instead of the still: follow the walker for N frames (FilmFrame).
+                        GD.Print($"[guest] film: following #{_filmGuest} for {_walkFilm} frames at 60 a second = {_walkFilm / 60f:F2}s of park time"
+                               + " | expected: legs scissor twice per 16-frame cycle (0.53s) with the arms swinging opposite; body at 1.0 cell/s against a 0.164-unit stride, so the planted foot should slide back ~3x");
+                        _guestStage = 5;
+                    }
+                    else { SaveShot(ShotSibling(_shotPath, "-w")); GuestTestCamera(); GuestTestStage("A", 1500); _guestStage = 1; _guestSince = _shotWait; }
+                }
+                else if (_guestStage == 5) FilmFrame();
                 else if (_guestStage == 1 && _shotWait >= _guestSince + 2)
                 { SaveShot(ShotSibling(_shotPath, "-a")); GuestTestStage("B", 4500); _guestStage = 2; _guestSince = _shotWait; }
                 else if (_guestStage == 2 && _shotWait >= _guestSince + 2)
