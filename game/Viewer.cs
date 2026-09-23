@@ -2501,6 +2501,14 @@ public partial class Viewer : Node3D
     /// <summary>Each actor's drawn model and its sitting record, so a rider can be posed and a
     /// walker un-posed. Where says which file the pose came from, or why there is none.</summary>
     readonly Dictionary<int, (AnimatedModel Drawn, Aps.Record Sit, string Where)> _drawn = new();
+    /// <summary>Each actor's two ways of standing on its node: the whole kid with its feet at the
+    /// origin, or its head alone with the head's base at the origin -- with the body and legs
+    /// meshes to hide for the second, and the head's size for the log.</summary>
+    readonly Dictionary<int, (Vector3 Feet, Vector3 HeadBase, List<MeshInstance3D> Body, string Head)> _parts = new();
+    readonly HashSet<int> _headOnly = new();
+    /// <summary>⚠ Unused for a head-only rider: a head has nothing to pose. Left wired for whatever
+    /// shows a whole guest in a seat -- an open-topped ride, or the queue -- rather than ripped out.</summary>
+    const bool PoseSeatedRiders = false;
     /// <summary>Who is currently held in the sitting pose.</summary>
     readonly HashSet<int> _posed = new();
     readonly Dictionary<string, Aps> _charAnims = new(StringComparer.OrdinalIgnoreCase);
@@ -2537,7 +2545,7 @@ public partial class Viewer : Node3D
     {
         if (_guestRoot != null && IsInstanceValid(_guestRoot)) _guestRoot.QueueFree();
         _guestRoot = null; _guests = null; _visitors = null; _mouth = null; _gateClosed = false;
-        _actors.Clear(); _drawn.Clear(); _posed.Clear(); _guestPrev.Clear(); _guestDwell.Clear();
+        _actors.Clear(); _drawn.Clear(); _parts.Clear(); _headOnly.Clear(); _posed.Clear(); _guestPrev.Clear(); _guestDwell.Clear();
         _guestPool = null; _guestPoolLaid = -1; _guestPoolAt = -1; _guestAt = null; _guestLabel = null;
         _gateTimer = 0; _guestRng = new Random(1); _guestStage = 0; _guestSince = 0; _guestTestRide = null;
         _parkTicks = 0;
@@ -2881,19 +2889,22 @@ public partial class Viewer : Node3D
             if (!_actors.TryGetValue(id, out var rider)) rider = MakeActor(id);
             if (rider == null) continue;
             rider.Transform = seat.At;
-            Pose(id, sitting: true);
+            Show(id, headOnly: true);
+            if (PoseSeatedRiders) Pose(id, sitting: true);
         }
         foreach (var (id, leg) in _walking)
         {
             if (!_actors.TryGetValue(id, out var walker)) walker = MakeActor(id);
             if (walker == null) continue;
             walker.Transform = leg.At;
+            Show(id, headOnly: false);
             Pose(id, sitting: false);
         }
         foreach (var g in _guests.Guests)
         {
             if (!_actors.TryGetValue(g.Id, out var actor)) actor = MakeActor(g.Id);
             if (actor == null) continue;
+            Show(g.Id, headOnly: false);
             Pose(g.Id, sitting: false);
             var now = Cell(g.Position);
             var was = _guestPrev.TryGetValue(g.Id, out var p) ? p : now;
@@ -2931,10 +2942,38 @@ public partial class Viewer : Node3D
             actor.AddChild(drawn.Root);
             // Feet on the node's origin and centred on it, measured the way VisitorParkView does.
             var (lo, hi) = Park.DrawnBounds(drawn.Root, inParent: true);
-            drawn.Root.Position = new Vector3(-(lo.X + hi.X) / 2, -lo.Y, -(lo.Z + hi.Z) / 2);
+            var feet = new Vector3(-(lo.X + hi.X) / 2, -lo.Y, -(lo.Z + hi.Z) / 2);
+            drawn.Root.Position = feet;
+            // ⭐⭐ A RIDER IS A HEAD. Every kid is three meshes -- girl1head, girl1body, girl1legs --
+            // and ADDHEAD means what it says: the seats are Head fittings, the opcode adds the
+            // head and DELHEAD takes it away, and a rider in a TPW car is a head above the rim,
+            // not a whole child in it. The seat spacing said so first: seats 0.20 apart against a
+            // 0.31-wide body. So the body and legs meshes are kept aside to hide while seated,
+            // and the head's base is measured so it can sit on the seat node.
+            var body = new List<MeshInstance3D>(); string headName = null;
+            void Walk(Node n)
+            {
+                if (n is MeshInstance3D mi)
+                {
+                    if (((string)mi.Name).Contains("head", StringComparison.OrdinalIgnoreCase)) headName ??= ((string)mi.Name).Split('#')[0];
+                    else body.Add(mi);
+                }
+                foreach (var c in n.GetChildren()) Walk(c);
+            }
+            Walk(drawn.Root);
+            var headBase = feet;
+            if (headName != null)
+            {
+                var (hlo, hhi) = Park.DrawnBounds(drawn.Root, inParent: true, onlyNamed: headName);
+                // The head's bounds are measured with the feet offset applied, so the base comes off it.
+                headBase = feet - new Vector3((hlo.X + hhi.X) / 2, hlo.Y, (hlo.Z + hhi.Z) / 2);
+                GD.Print($"[guest] #{id} wears {Leaf(path)}, {hi.Y - lo.Y:F2} tall, {hi.X - lo.X:F2} wide; "
+                       + $"head {headName} {hhi.Y - hlo.Y:F2} tall x {hhi.X - hlo.X:F2} wide, base {hlo.Y:F2} above the feet");
+            }
+            else GD.Print($"[guest] #{id} wears {Leaf(path)}, {hi.Y - lo.Y:F2} tall, {hi.X - lo.X:F2} wide -- NO HEAD MESH FOUND, a rider will show whole");
+            _parts[id] = (feet, headBase, body, headName ?? "(none)");
             _guestRoot.AddChild(actor);
             _actors[id] = actor;
-            GD.Print($"[guest] #{id} wears {Leaf(path)}, {hi.Y - lo.Y:F2} tall, {hi.X - lo.X:F2} wide");
             return actor;
         }
         catch (Exception e)
@@ -2996,6 +3035,19 @@ public partial class Viewer : Node3D
             if (sibRec != null && !Shared(sibRec)) return (sibling, sibRec, $"Load v0 from {Leaf(family)} (own record {(rec == null ? "absent" : "Shared, no tracks")})");
         }
         return (own, null, rec == null ? "no slot 3 record -- bind pose" : "slot 3 Shared and no sibling tracks -- bind pose");
+    }
+
+    /// <summary>Show the whole kid, or its head alone with the head's base on the node.
+    /// ⚠ WHERE THE HEAD SITS ON THE NODE IS INFERRED: "a head above the rim" puts its base at the
+    /// fitting; the console may hang it from its centre or its neck, and that is a picture away.</summary>
+    void Show(int id, bool headOnly)
+    {
+        if (!_parts.TryGetValue(id, out var parts) || !_drawn.TryGetValue(id, out var d) || d.Drawn?.Root == null || !IsInstanceValid(d.Drawn.Root)) return;
+        if (headOnly == _headOnly.Contains(id)) return;
+        bool canHead = headOnly && parts.Head != "(none)";
+        foreach (var mi in parts.Body) if (IsInstanceValid(mi)) mi.Visible = !canHead;
+        d.Drawn.Root.Position = canHead ? parts.HeadBase : parts.Feet;
+        if (canHead) _headOnly.Add(id); else _headOnly.Remove(id);
     }
 
     /// <summary>Hold a rider in its sitting record, or put a walker back in bind pose. Frame 0
@@ -3272,7 +3324,8 @@ public partial class Viewer : Node3D
             foreach (var (id, seat) in _seated)
                 GD.Print($"[guest] {label} rider #{id} in {seat.Where} at world ({seat.At.Origin.X:F2}, {seat.At.Origin.Y:F2}, {seat.At.Origin.Z:F2})"
                        + (_actors.TryGetValue(id, out var body) && body != null ? "" : " -- NO BODY")
-                       + (_drawn.TryGetValue(id, out var dr) ? $"; pose: {(_posed.Contains(id) ? dr.Where : "BIND -- " + dr.Where)}" : ""));
+                       + (_headOnly.Contains(id) ? $"; drawn as a head ({(_parts.TryGetValue(id, out var pt) ? pt.Head : "?")})" : "; drawn WHOLE")
+                       + (PoseSeatedRiders && _drawn.TryGetValue(id, out var dr) ? $"; pose: {(_posed.Contains(id) ? dr.Where : "BIND -- " + dr.Where)}" : ""));
             foreach (var (id, leg) in _walking)
                 GD.Print($"[guest] {label} walker #{id} on {leg.Where} at world ({leg.At.Origin.X:F2}, {leg.At.Origin.Y:F2}, {leg.At.Origin.Z:F2})");
             // ⭐ THE MIRROR COUNT, AS A NUMBER. A kid's mesh must end up with an ODD number of
