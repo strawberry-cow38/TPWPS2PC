@@ -72,6 +72,8 @@ public partial class Viewer : Node3D
     readonly GameCamera _game = new();
     /// <summary>The park's entrance arch, Features/Gates/Gates.mps, one per archive.</summary>
     AnimatedModel _gate;
+    /// <summary>The park's crossing lights, Features/Lights/lights.mps, placed with the gate.</summary>
+    AnimatedModel _lights;
     /// <summary>The park's sky, rebuilt when the archive changes.</summary>
     WorldEnvironment _sky;
     /// <summary>Kept so the sky can be taken away outside park mode and put back without a rebuild.
@@ -767,6 +769,7 @@ public partial class Viewer : Node3D
         if (_current != null) _current.Root.Visible = m == Mode.Models || (m == Mode.Park && _parkRide);
         if (_park != null) _park.Root.Visible = m == Mode.Park;
         if (_gate != null) _gate.Root.Visible = m == Mode.Park;
+        if (_lights != null) _lights.Root.Visible = m == Mode.Park;
         if (_sky != null) _sky.Environment = m == Mode.Park && _skyEnv != null ? _skyEnv : _flatEnv;
         _weather.Root.Visible = m == Mode.Park;
         if (_buildable != null && m != Mode.Park) _buildable.Visible = false;
@@ -5152,6 +5155,8 @@ public partial class Viewer : Node3D
     {
         _gate?.Root.QueueFree();
         _gate = null;
+        _lights?.Root.QueueFree();
+        _lights = null;
         var ride = _lib.Rides.FirstOrDefault(
             r => r.Name.Contains("gates", StringComparison.OrdinalIgnoreCase) && r.Model != null);
         if (ride == null) { GD.PrintErr("[gate] no Gates model in this archive"); return; }
@@ -5243,8 +5248,53 @@ public partial class Viewer : Node3D
                    + (perPark != 0f ? $"  [this park {perPark:+0.00;-0.00}]" : "")
                    + $"\n[gate] front edge now z={hi.Z + dz:F2} -- the road ends at -18.90 and the "
                    + $"booths' back is -16.12, in every park");
+            PlaceEntranceLights(shift, dz);
         }
         catch (Exception ex) { GD.PrintErr($"[gate] {ride.Model.Path}: {ex.Message}"); }
+    }
+
+    /// <summary>⭐⭐ THE CROSSING LIGHTS, WHICH NOTHING HAS EVER PLACED. `/Features/Lights/` (Id
+    /// 1603, 8 meshes) sits in every archive beside the gate and the viewer put only the gate in
+    /// the park -- along with Speaker1-4, Fountain, Statue1/2, Toilet, PelBin, Sign1, Bus, Ferry,
+    /// SeaPlane and Staff, all browsable in the Models tab and none of them standing anywhere.
+    ///
+    /// ⭐ IT TAKES THE GATE'S OWN TRANSFORM, and that is the whole point rather than laziness.
+    /// The lights are authored at x 46.93..49.06 against the gate's 45..51 -- the same frame,
+    /// centred on the same 48 -- and ten units nearer the road (z centre 7.5 against 17.75).
+    /// That relationship is DATA. Applying the gate's shift and dz preserves it, so the lights
+    /// are exactly as right as the gate is: if the gate is a couple of tiles out, they are out
+    /// with it, together, instead of being independently wrong.
+    ///
+    /// ⚠ NOT READ: whether the console places this feature at all, or from what. `lights.sam`
+    /// carries `DontApplyOffset 1` like the gate but, unlike the gate, NO
+    /// `EngineMapOffsetOverride` -- so there is no per-park coordinate in it to follow, and this
+    /// is the authored position plus the entrance offset, not a decode. I put the gate in the sea
+    /// once today by treating a .sam field as a coordinate; this deliberately does not.</summary>
+    void PlaceEntranceLights(float shift, float dz)
+    {
+        _lights?.Root.QueueFree();
+        _lights = null;
+        var feature = _lib.Rides.FirstOrDefault(
+            r => r.Name != null && r.Name.Equals("Lights", StringComparison.OrdinalIgnoreCase) && r.Model != null);
+        if (feature == null) { GD.Print("[lights] no Lights feature in this archive"); return; }
+        try
+        {
+            var lm = new Model(_lib.Read(feature.Model));
+            Aps anim = null; Aps.Record rec = null;
+            if (feature.Animation != null)
+                try { anim = new Aps(_lib.Read(feature.Animation)); rec = anim.Records().FirstOrDefault(); }
+                catch (Exception ex) { GD.PrintErr($"[lights] animation: {ex.Message}"); }
+            _lights = new AnimatedModel(lm, anim, rec, m => TextureNear(feature.Model.Path, m));
+            _lights.SetFrame(0);
+            AddChild(_lights.Root);
+            var (llo, lhi) = Park.DrawnBounds(_lights.Root, inParent: true);
+            _lights.Root.Position += new Vector3(shift, 0f, dz);
+            _lights.Root.Visible = _mode == Mode.Park;
+            GD.Print($"[lights] {feature.Model.Path}: authored x {llo.X:F2}..{lhi.X:F2} z {llo.Z:F2}..{lhi.Z:F2}"
+                   + $"; placed with the gate's own offset ({shift:+0.0;-0.0;0} x, {dz:+0.00;-0.00;0} z)"
+                   + $"; {(rec != null ? $"animation {_lights.Frames} frames, held at 0" : "no animation record")}");
+        }
+        catch (Exception ex) { GD.PrintErr($"[lights] {feature.Model.Path}: {ex.Message}"); }
     }
 
     /// <summary>Print the authored footprint around the park entrance as a map.
