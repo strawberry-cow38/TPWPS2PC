@@ -231,18 +231,11 @@ public partial class Viewer : Node3D
     bool _buildChecked;
     string _wantSegments;
     string _wantCam;
-    /// <summary>Nudge on the gate's z, in units, starting at master's own correction.
-    ///
-    /// ⭐ Fantasy's pad alone put the gate a quarter unit too far from the road, and master — who
-    /// can see the park — fixed it with one press of `]`. So the shipped value is the pad's
-    /// reading plus 0.25, and `[` / `]` still move it from there.
-    ///
-    /// ⚠ THIS IS A JUDGEMENT, NOT AN ANCHOR, and the two numbers agreeing is NOT corroboration:
-    /// the nudge moves the pad path and the constant path by the SAME amount, so of course they
-    /// still agree. What it is: one calibration by the only pair of eyes on the real thing,
-    /// applied to all four parks because the entrance is one prefab (see the anchors in
-    /// findings/, where A_ROAD and ticket_booths are identical in every park).</summary>
-    float _gateNudge = 0.25f;
+    /// <summary>Nudge on the gate's z, in units. ⭐ ZERO now, and it is a DEBUG KNOB rather than
+    /// a shipped constant: the gate's z came out of the disc (see <see cref="LoadGate"/>), so there
+    /// is nothing left to calibrate by eye. Kept because being able to move it and read the number
+    /// off the screen is how the answer got checked in the first place.</summary>
+    float _gateNudge;
     /// <summary>G swaps to the free orbit camera.</summary>
     bool _freeCam;
     /// <summary>Ground height per TILE in world units, the same lookup the game does. Baked when
@@ -5238,26 +5231,9 @@ public partial class Viewer : Node3D
         // control -- if the authored position is the real one, those two must land correctly with
         // nothing moved at all.
         const float AuthoredX = 48f;
-        // ⚠ AND THE MODELS ARE AUTHORED FORWARD OF WHERE THEY STAND. Master, having walked up to
-        // them: "all gates are too far forward (towards the road)". Fantasy's gatebase01 pad says
-        // by how much -- the pad is centred at z -21.00 and Fantasy's gate is authored centred at
-        // z -18.71, so the authoring sits 2.29 toward the road of the pad it belongs on. Its front
-        // edge agrees to within a hundredth (-19.00 against -16.70 + 2.30), because that gate is
-        // exactly as deep as the pad.
-        //
-        // ⚠ IT IS STILL ONE PARK'S WORD. Fantasy is the only world that ships a pad, so where a
-        // pad exists its own z is used outright and elsewhere this offset stands in for it.
-        const float AuthoredZBias = -2.29f;
-        // ⭐ PER-PARK, because the gates are not interchangeable and master calibrates them one
-        // at a time by eye. Each entry is one press of `]` that they asked for in that park and
-        // that park only; anything not listed rides the shared bias above.
-        //   JUNGLE ("LOST KINGDOM"): +0.25, 2026-09-22.
-        float perPark = (_lib.WadName ?? "").Contains("JUNGLE", StringComparison.OrdinalIgnoreCase)
-            ? 0.25f : 0f;
         if (!TerrainBounds("ticket_booths", out var booths))
         { GD.PrintErr("[gate] no ticket_booths -- cannot find this park's entrance axis"); return; }
         float shift = booths.Position.X + booths.Size.X * 0.5f - AuthoredX;
-        bool hasPad = TerrainBounds("gatebase01", out var pad);
 
         // ⭐ "whys there no coord to read?" -- master, and a fair question. A feature is placed by
         // the game, so a position ought to be DATA somewhere. Each WAD carries its own Gates.sam,
@@ -5282,37 +5258,48 @@ public partial class Viewer : Node3D
             _gate = new AnimatedModel(gm, anim, rec, m => TextureNear(ride.Model.Path, m));
             _gate.SetFrame(0);
             AddChild(_gate.Root);
-            // ⚠ Seat it on the pad by its OWN base, not by its centre: the arch is tall and
-            // centring it buries half of it.
+            // ⚠ Measured, not trusted -- the bounds below are what the log prints against the
+            // zone, and that comparison is the whole check.
             var (lo, hi) = Park.DrawnBounds(_gate.Root, inParent: true);
-            // ⚠⚠ THE .SAM'S MAP OFFSET IS **NOT** WHERE THE GATE MESH GOES, AND I SHIPPED IT AS
-            // IF IT WERE. ff8c76e replaced the tuned bias with `MapOffsetY + FootprintHeight`
-            // and put the gate IN THE SEA. Master: "the footprint height/width is the width of
-            // the no-build zone the gate creates around it", and "our gate pos is way off ...
-            // it sits in the sea instead of at the entrance."
+            // ⭐⭐ THE GATE NEEDS NO Z AT ALL, AND THE .SAM SAYS SO. `EngineMapOffsetOverride`
+            // + `EngineFootprint*Override` IS the gate's own authored rectangle, measured against
+            // the four meshes:
             //
-            // ⭐⭐ WHY THE "VALIDATION" WAS WORTHLESS, because this is the lesson. Fantasy's pad
-            // centre is z 21.00 and its .sam gives 16 + 5 = 21, so I called the formula proven.
-            // That is ONE number agreeing ONCE -- n = 1, with no second case able to disagree,
-            // which is the definition of a vacuous control. And the semantics were never checked:
-            // a field that measures a NO-BUILD RADIUS has no business being added to a position,
-            // however well the arithmetic lands. The old bias was -2.29; the "validated" value
-            // was ~19. A twenty-unit jump should have been the tell on its own.
+            //   world     gate authored z      .sam zone z   booths z        road ends
+            //   JUNGLE    17.00 .. 18.50       16 .. 19      14.88..16.12    18.90
+            //   HALLOW    17.00 .. 18.60       16 .. 19      14.88..16.12    18.90
+            //   SPACE     17.00 .. 19.00       15 .. 19      14.88..16.12    18.90
+            //   FANTASY   16.70 .. 20.71       16 .. 21      14.88..16.12    18.90
             //
-            // The authored model is already near its final place; the bias is a small correction
-            // to it, not an absolute coordinate. Restored, and the .sam numbers are kept only as
-            // what master says they are.
-            float dz = (hasPad
-                ? pad.Position.Z + pad.Size.Z * 0.5f - (lo.Z + hi.Z) * 0.5f
-                : AuthoredZBias) + _gateNudge + perPark;
+            // Every gate is authored x 45..51 and every .sam says offset 45 width 6 -- EXACT, four
+            // times. Every gate's z sits inside its own zone, with the zone's HEIGHT varying per
+            // world exactly enough to contain it (5 for Fantasy's 4.01-deep arch, 3 for Jungle's
+            // 1.50). And the zone is the gap between the ticket booths' back (16.12) and the end
+            // of A_ROAD (18.90), both identical in all four parks. Four worlds, three files.
+            //
+            // ⭐ THE CONTROL IS FREE: HALLOW and SPACE have their booths centred on 48, so their
+            // shift is ZERO. If the authored position is the real one they must land correctly
+            // with nothing moved on either axis -- and they do.
+            //
+            // ⚠⚠ SO WHERE DID -2.29 COME FROM? `gatebase01`, and it is not the gate's base.
+            // Fantasy's pad is x 37..43, z 19..23. Its x matches the SHIFTED gate exactly, which
+            // is what made it look like the gate's own pad -- but z 19 is `zEnd`, the first row of
+            // the PARK, and the entrance's own starting path runs x 39..40, z 19..24 straight
+            // over it. The pad is the paving under the path INSIDE the park, in front of the
+            // gate. Centring the gate on it dragged every gate 2.29 units into the park, which is
+            // the "couple of tiles" master kept seeing and kept nudging back.
+            //
+            // ⚠ And ff8c76e's `MapOffsetY + FootprintHeight` put it in the sea, off ONE number
+            // agreeing ONCE: Fantasy's 16 + 5 = 21 against that same pad's centre. n = 1 is not a
+            // control. The table above is what a control looks like.
+            float dz = _gateNudge;
             _gate.Root.Position += new Vector3(shift, 0f, dz);
             _gate.Root.Visible = _mode == Mode.Park;
             GD.Print($"[gate] {ride.Name}: authored x {lo.X:F2}..{hi.X:F2}  y {lo.Y:F2}..{hi.Y:F2}  "
-                   + $"z {lo.Z:F2}..{hi.Z:F2}; shifted {shift:+0.0;-0.0;0} x, {dz:+0.00;-0.00;0} z "
-                   + (hasPad ? "onto its own gatebase01 pad" : "by the offset Fantasy's pad states")
-                   + (_gateNudge != 0f ? $"  [nudged {_gateNudge:+0.00;-0.00}]" : "")
-                   + (perPark != 0f ? $"  [this park {perPark:+0.00;-0.00}]" : "")
-                   + $"\n[gate] front edge now z={hi.Z + dz:F2} -- the road ends at -18.90 and the "
+                   + $"z {lo.Z:F2}..{hi.Z:F2}; shifted {shift:+0.0;-0.0;0} x onto this park's "
+                   + "entrance, and NOTHING in z"
+                   + (_gateNudge != 0f ? $"  [nudged {_gateNudge:+0.00;-0.00} by hand]" : "")
+                   + $"\n[gate] front edge z={hi.Z + dz:F2} -- the road ends at -18.90 and the "
                    + $"booths' back is -16.12, in every park");
             PlaceGateNoBuild(def, lo, hi, shift, dz);
         }

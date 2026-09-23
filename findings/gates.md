@@ -55,3 +55,33 @@ named but not placed, and the shipped position stays the calibrated one.
 extras: Jungle's `BASIC_HOARDING_ENT` z −19.10..−14.90, Fantasy's `gatebase01` z −23.00..−19.00.
 The entrance is one prefab translated in x. ⚠ The authored SKIP map does not record the gate —
 it stands at the plot edge, where skipped only means outside the park.
+
+## ⭐⭐ The gate's z is authored, and the .sam states its rectangle (2026-09-23)
+
+`Gates.sam` ships once per world with `Info.EngineMapOffsetOverrideX/Y` and
+`Info.EngineFootprintWidthOverride/HeightOverride`. Master, on what the footprint means: *"the
+footprint height/width is the width of the no-build zone the gate creates around it"*. Measured
+against the four meshes, that rectangle **is the gate's own authored bounding box**:
+
+| world | gate authored x | gate authored z | .sam offset | .sam footprint | zone |
+|---|---|---|---|---|---|
+| JUNGLE | 45.00..51.00 | 17.00..18.50 | 45, 16 | 6 x 3 | x 45..51, z 16..19 |
+| HALLOW | 45.00..51.00 | 17.00..18.60 | 45, 16 | 6 x 3 | x 45..51, z 16..19 |
+| SPACE | 45.00..51.00 | 17.00..19.00 | 45, 15 | 6 x 4 | x 45..51, z 15..19 |
+| FANTASY | 45.36..51.00 | 16.70..20.71 | 45, 16 | 6 x 5 | x 45..51, z 16..21 |
+
+⭐ The x is **exact in all four**. The z is contained in all four, with the zone's height
+varying per world by exactly enough to hold that world's arch — 5 for Fantasy's 4.01-deep worm,
+3 for Jungle's 1.50-deep arch. And the zone spans the gap between `ticket_booths` (z 14.88..16.12)
+and the end of `A_ROAD` (z 18.90), both of which are identical in every park.
+
+**So the gate takes this park's x shift and NOTHING in z.** The shift is `ticket_booths` centre
+minus 48: −18 JUNGLE, −8 FANTASY, 0 HALLOW, 0 SPACE — whole cells, and the two zeroes are a
+free control: if the authored position is the real one, those two parks must land correctly with
+nothing moved at all.
+
+⚠⚠ **`gatebase01` is not the gate's base.** Fantasy's pad is x 37..43, z 19..23. Its x matches
+the shifted gate exactly, which is what made it look like one — but z 19 is `zEnd`, the park's
+first row, and the entrance's own starting path runs x 39..40, z 19..24 straight over it (see
+findings/paths.md). It is the paving under the path INSIDE the park. Centring the gate on it is
+where the −2.29 bias came from, and it dragged every gate two tiles into the park.
