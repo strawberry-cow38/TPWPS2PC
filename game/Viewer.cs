@@ -2728,7 +2728,31 @@ public partial class Viewer : Node3D
         => new(_guests.Paths.Origin.X + p.X, _park.CellY(cell.X, cell.Z) + p.Y, -(_guests.Paths.Origin.Y + p.Z));
 
     /// <summary>Where each seated rider was last drawn, by guest id, with the seat it sits in.</summary>
-    readonly Dictionary<int, (Transform3D At, string Where)> _seated = new();
+    readonly Dictionary<int, (Transform3D At, string Where, Vector3 Forward, string Part, float PartTop)> _seated = new();
+
+    /// <summary>⭐ THE WALK PATH'S BASIS FOR A WORLD HEADING -- the one known-good facing in the
+    /// viewer (nobody has ever said a walker moonwalks), so it is the reference the seat path is
+    /// measured against. Heading in the viewer's frame: +X across, +Z toward the gate.</summary>
+    static Basis WalkBasis(Vector3 heading) => Basis.Identity.Rotated(Vector3.Up, Mathf.Atan2(heading.X, heading.Z));
+
+    /// <summary>A basis as a rotation: its angle, axis and determinant. ⚠ The determinant is
+    /// printed rather than assumed: a mirror or a squash has no axis, and reporting one for it
+    /// would be the instrument lying.</summary>
+    static (float Degrees, Vector3 Axis, float Det) RotationOf(Basis r)
+    {
+        float det = r.Determinant();
+        float trace = r.X.X + r.Y.Y + r.Z.Z;
+        float angle = Mathf.RadToDeg(Mathf.Acos(Mathf.Clamp((trace - 1f) / 2f, -1f, 1f)));
+        // Columns are r.X, r.Y, r.Z; r.Y.Z is row Z of column Y, i.e. M[2][1].
+        var axis = new Vector3(r.Y.Z - r.Z.Y, r.Z.X - r.X.Z, r.X.Y - r.Y.X);
+        if (axis.LengthSquared() > 1e-8f) axis = axis.Normalized();
+        else axis = new Vector3(Mathf.Sqrt(Mathf.Max(0f, (r.X.X + 1f) / 2f)), Mathf.Sqrt(Mathf.Max(0f, (r.Y.Y + 1f) / 2f)), Mathf.Sqrt(Mathf.Max(0f, (r.Z.Z + 1f) / 2f)));
+        return (angle, axis, det);
+    }
+    static string Describe((float Degrees, Vector3 Axis, float Det) rot)
+        => Mathf.Abs(rot.Det - 1f) > 0.01f ? $"det {rot.Det:F2} -- NOT A ROTATION"
+         : rot.Degrees < 0.5f ? "identity"
+         : $"{rot.Degrees:F1} deg about ({rot.Axis.X:F2}, {rot.Axis.Y:F2}, {rot.Axis.Z:F2}), det {rot.Det:F2}";
     /// <summary>⭐⭐ THE ONE FLIP IN THE SEAT PATH, measured in and not guessed. A seated kid's pose is
     /// ride root x seat basis x THIS, and the census's R = WalkBasis(s)^-1 x B_seat read exactly
     /// 180 degrees about the seat's own up on every rider, at two different tilts, with the walker
@@ -2754,6 +2778,39 @@ public partial class Viewer : Node3D
     /// until one looks right. ⚠ Position and yaw only, never the node's basis: the ride's root carries the
     /// Z mirror and the node its bind scale, and a kid drawn through both came out mirrored and
     /// a tenth the size.</summary>
+    /// <summary>The pose a rider takes in a seat, and the seat's own forward and up in the world,
+    /// from the animated model. ⭐ ONE FUNCTION for riders and for empty seats, so a census over
+    /// every seat of a ride measures exactly what a rider would be drawn with.</summary>
+    bool SeatPose(Model mesh, AnimatedModel model, Transform3D root, Model.Fitting fit,
+                  out Transform3D pose, out Vector3 forward, out Vector3 up)
+    {
+        pose = Transform3D.Identity; forward = Vector3.Zero; up = Vector3.Zero;
+        if (!model.LastWorld.TryGetValue(mesh.NodeOffset(fit.Node), out var w)) return false;
+        // ⭐ THE SEAT IS A POINT ON THE PART (Model.FittingLocal, frame inferred), through the
+        // node's world matrix and then the ride root. The node's three axis rows, each divided by
+        // its own length, are its orientation with the bind scale dropped; that is the rider's
+        // basis in the ride root's space, and root x that x Mirror is a proper transform
+        // assigned whole -- never Euler on a mirrored basis.
+        var seat = System.Numerics.Vector3.Transform(mesh.FittingLocal(fit), w);
+        var seatLocal = new Vector3(seat.X, seat.Y, seat.Z);
+        var ax = new Vector3(w.M11, w.M12, w.M13);
+        var ay = new Vector3(w.M21, w.M22, w.M23);
+        var az = new Vector3(w.M31, w.M32, w.M33);
+        var seatForward = root.Basis * az; var seatUp = root.Basis * ay;
+        forward = seatForward.LengthSquared() > 1e-10f ? seatForward.Normalized() : Vector3.Zero;
+        up = seatUp.LengthSquared() > 1e-10f ? seatUp.Normalized() : Vector3.Zero;
+        if (ax.LengthSquared() > 1e-10f && ay.LengthSquared() > 1e-10f && az.LengthSquared() > 1e-10f)
+            pose = root * new Transform3D(new Basis(ax.Normalized(), ay.Normalized(), az.Normalized()), seatLocal) * Mirror;
+        else
+        {
+            // ⚠ A degenerate axis: the yaw-only reading rather than a squashed basis.
+            var f = seatForward; f.Y = 0;
+            float yaw = f.LengthSquared() > 1e-6f ? Mathf.Atan2(f.X, f.Z) : 0f;
+            pose = new Transform3D(Basis.Identity.Rotated(Vector3.Up, yaw), root * seatLocal);
+        }
+        return true;
+    }
+
     void SeatRiders()
     {
         _seated.Clear();
@@ -2766,53 +2823,26 @@ public partial class Viewer : Node3D
             foreach (var (slot, guest) in ride.Host.Seats)
             {
                 if (mesh.FindFitting(slot + 1, 0x80) is not { Node: >= 0 } fit) continue;
-                if (!model.LastWorld.TryGetValue(mesh.NodeOffset(fit.Node), out var w)) continue;
-                // ⭐ THE SEAT IS A POINT ON THE PART, not the part's origin: the fitting's three
-                // floats are a position normalised inside the mesh's own bounds
-                // (Model.FittingLocal) -- a reading that fits four independent properties, not a
-                // consumer that was walked, so "the frame is inferred" is the caveat that remains.
-                // Through the node's world matrix and then the ride root, as the origin went; drawn
-                // at the origin, three of the crate's riders shared one point.
-                var seat = System.Numerics.Vector3.Transform(mesh.FittingLocal(fit), w);
-                var seatLocal = new Vector3(seat.X, seat.Y, seat.Z);
-                // ⭐⭐ THE WHOLE ROTATION, NOT A YAW. Master, on the banana shot: "i dont think
-                // they're rotating with the ride" -- a banana that swings up and over tips its
-                // riders, and a yaw-only rider stays upright and merely translates, which is why
-                // the carry probe was perfect while the picture read as static. The Head's three
-                // axis rows, each divided by its own length, are its orientation with the bind
-                // scale (m_base's 0.1 and all) dropped; that is the rider's basis in the ride
-                // root's own space.
-                //
-                // ⭐ ROOT x LOCAL x MIRROR, and here is why the last factor is there: the ride root's
-                // GlobalTransform carries the model->world mirror once, and the kid's own
-                // AnimatedModel root carries ITS mirror once, so without taking one back out a
-                // seated kid would be mirrored twice and a walking kid once. The product is a
-                // PROPER transform, assigned whole -- never Euler angles, whose decomposition of a
-                // mirrored basis does not survive the round trip.
-                //
-                // ⚠ Whether the console orients a rider from the seat node at all is unread; what
-                // is known is that yaw alone is wrong, because riders visibly did not tip.
-                var ax = new Vector3(w.M11, w.M12, w.M13);
-                var ay = new Vector3(w.M21, w.M22, w.M23);
-                var az = new Vector3(w.M31, w.M32, w.M33);
-                Transform3D pose;
-                if (ax.LengthSquared() > 1e-10f && ay.LengthSquared() > 1e-10f && az.LengthSquared() > 1e-10f)
-                    pose = root * new Transform3D(new Basis(ax.Normalized(), ay.Normalized(), az.Normalized()), seatLocal) * Mirror;
-                else
-                {
-                    // ⚠ A degenerate axis: the yaw-only reading rather than a squashed basis.
-                    var forward = root.Basis * az;
-                    forward.Y = 0;
-                    float yaw = forward.LengthSquared() > 1e-6f ? Mathf.Atan2(forward.X, forward.Z) : 0f;
-                    pose = new Transform3D(Basis.Identity.Rotated(Vector3.Up, yaw), root * seatLocal);
-                }
+                if (!SeatPose(mesh, model, root, fit, out var pose, out var seatForward, out _)) continue;
                 // ⭐ NAMED, so the log says Head09 and not "node 19" -- and says out loud when a
                 // rider lands on anything that is not a Head, which would be the fitting reading
                 // failing. On Crazy Ape every 0x80 fitting is a Head helper under an arm.
                 string node = mesh.NodeName(fit.Node);
+                // The PART the seat is in: the first mesh up the helper's parent chain (a car, a
+                // crate), and its top in the world -- what a head has to clear to be seen.
+                int pn = fit.Node;
+                for (int guard = 0; pn >= mesh.Meshes.Count && guard < 32; guard++) pn = mesh.NodeParent(pn);
+                string part = pn >= 0 && pn < mesh.Meshes.Count ? mesh.Meshes[pn].Name : "(no mesh above)";
+                float partTop = float.NaN;
+                if (pn >= 0 && pn < mesh.Meshes.Count)
+                {
+                    var (plo, phi) = Park.DrawnBounds(model.Root, inParent: true, onlyNamed: part);
+                    if (phi.Y >= plo.Y) partTop = phi.Y;
+                }
                 _seated[guest] = (pose,
                                   $"{ride.Name} seat {slot} on {(node.Length > 0 ? node : "node " + fit.Node)}"
-                                  + (node.StartsWith("Head", StringComparison.OrdinalIgnoreCase) ? "" : " -- NOT A HEAD"));
+                                  + (node.StartsWith("Head", StringComparison.OrdinalIgnoreCase) ? "" : " -- NOT A HEAD"),
+                                  seatForward, part, partTop);
             }
         }
     }
@@ -2923,7 +2953,7 @@ public partial class Viewer : Node3D
             // ⚠ Assigned as a whole basis, not through Rotation: a kid back from a seat still carries
             // the seat's full basis, and Euler on that is the round trip this codebase already lost.
             if (g.Next is ParkCell next)
-                actor.Basis = Basis.Identity.Rotated(Vector3.Up, Mathf.Atan2(next.X - g.Cell.X, g.Cell.Z - next.Z));
+                actor.Basis = WalkBasis(new Vector3(next.X - g.Cell.X, 0, g.Cell.Z - next.Z));
             else if (actor.Basis.Determinant() < 0 || Mathf.Abs(actor.Basis.Y.Dot(Vector3.Up) - 1f) > 1e-3f)
                 actor.Basis = Basis.Identity;
         }
@@ -3279,11 +3309,24 @@ public partial class Viewer : Node3D
             foreach (var seat in _seated.Values) mean += seat.At.Origin;
             centre = mean / _seated.Count;
         }
-        // ⚠ From the GATE side (yaw 0 puts the eye at +Z), because the ape faces the gate: the
-        // first close-up was of its back, riders and all.
-        _focus = centre; _dist = 7f; _pitch = -0.3f; _yaw = 0f;
-        GD.Print($"[guest] close-up camera: free orbit on ({_focus.X:F1}, {_focus.Y:F1}, {_focus.Z:F1}), {_dist:F0} out, "
-               + $"{Mathf.RadToDeg(-_pitch):F0} degrees down, from the gate side, {_seated.Count} riders in frame");
+        // ⭐ ONE RIDER, FACE ON: the eye is put along ONE seat's forward -- seat 0's if somebody
+        // is in it, else the first rider's -- close in, so the picture is a face or the back of a
+        // head and nothing else. A ring's MEAN forward points nowhere (the Hot Pot gave three
+        // backs of heads), and a swing's crate wall hid King's twice. With no seats, the gate side.
+        float yaw = 0f; float dist = 7f; float pitch = -0.3f;
+        if (_seated.Count > 0)
+        {
+            var pick = _seated.FirstOrDefault(kv => kv.Value.Where.Contains(" seat 0 "));
+            if (pick.Value.Where == null) pick = _seated.First();
+            var f = pick.Value.Forward; f.Y = 0;
+            if (f.LengthSquared() > 1e-6f) yaw = Mathf.Atan2(f.X, f.Z);
+            centre = pick.Value.At.Origin + new Vector3(0, 0.12f, 0);
+            dist = 3.5f; pitch = -0.15f;
+            GD.Print($"[guest] close-up camera: on rider #{pick.Key} in {pick.Value.Where}, eye {dist:F1} out along its seat's forward ({Mathf.Sin(yaw):F2}, 0, {Mathf.Cos(yaw):F2})");
+        }
+        _focus = centre; _dist = dist; _pitch = pitch; _yaw = yaw;
+        GD.Print($"[guest] close-up camera: free orbit on ({_focus.X:F1}, {_focus.Y:F1}, {_focus.Z:F1}), {_dist:F1} out, "
+               + $"{Mathf.RadToDeg(-_pitch):F0} degrees down, {_seated.Count} riders seated");
     }
 
     /// <summary>Wind the park to a tick and put every guest in the log with its cell, its step
@@ -3336,6 +3379,107 @@ public partial class Viewer : Node3D
                        + (_actors.TryGetValue(id, out var body) && body != null ? "" : " -- NO BODY")
                        + (_headOnly.Contains(id) ? $"; drawn as a head ({(_parts.TryGetValue(id, out var pt) ? pt.Head : "?")})" : "; drawn WHOLE")
                        + (PoseSeatedRiders && _drawn.TryGetValue(id, out var dr) ? $"; pose: {(_posed.Contains(id) ? dr.Where : "BIND -- " + dr.Where)}" : ""));
+            // ⭐⭐ THE YAW, AS A NUMBER AND NOT A SQUINT. Master: the rider is 180 out RELATIVE TO ITS
+            // SEAT, and the seat helpers are authored per seat (findings 819c42d: dodgems park at
+            // five angles, the volcano's ring at sixteen), so no flip may be keyed off the ride's
+            // data. The walk path's basis for a heading is known-good, so for each rider the seat's
+            // world forward s is fed to WalkBasis as if it were a heading and
+            // R = WalkBasis(s)^-1 * B_seat is what the seat path does DIFFERENTLY for the same
+            // facing: identity means the two agree; a 180 yaw is the bug exactly; a pitch or a
+            // det -1 means a reading of one of the paths is wrong and NOTHING gets patched.
+            // ⭐⭐ WHERE THE HEAD ACTUALLY LANDED, three numbers on one line. Master: "the heads are
+            // floating above the seats. its as if the body was removed under em" -- and Show()'s
+            // own doc said the base-at-the-fitting reading was a picture away from being wrong.
+            // So per rider: the head mesh's world Y range (and the ALL-VISIBLE bounds beside it --
+            // if the two differ, the body is still being drawn or onlyNamed is not filtering),
+            // the seat helper's world Y, and the top of the part the seat is in. The differences
+            // name the fix; nothing is nudged until they do.
+            foreach (var (id, seat) in _seated)
+            {
+                if (!_actors.TryGetValue(id, out var ra) || ra == null || !IsInstanceValid(ra) || !_parts.TryGetValue(id, out var rp)) continue;
+                var (hl, hh) = Park.DrawnBounds(ra, inParent: true, onlyNamed: rp.Head);
+                var (al, ah) = Park.DrawnBounds(ra, inParent: true);
+                bool headOnlyDrawn = hh.Y >= hl.Y && Mathf.Abs(al.Y - hl.Y) < 1e-3f && Mathf.Abs(ah.Y - hh.Y) < 1e-3f;
+                float helperY = seat.At.Origin.Y;
+                string partTop = float.IsNaN(seat.PartTop) ? "n/a" : seat.PartTop.ToString("F2");
+                GD.Print($"[guest] {label} height: rider #{id} head {rp.Head} Y {hl.Y:F2}..{hh.Y:F2} (all visible {al.Y:F2}..{ah.Y:F2}{(headOnlyDrawn ? "" : " -- NOT JUST THE HEAD")}); "
+                       + $"seat helper Y {helperY:F2}; part {seat.Part} top {partTop}; "
+                       + $"head base - helper {hl.Y - helperY:+0.00;-0.00}"
+                       + (float.IsNaN(seat.PartTop) ? "" : $", helper - part top {helperY - seat.PartTop:+0.00;-0.00}, head top - part top {hh.Y - seat.PartTop:+0.00;-0.00}"));
+            }
+            // ⚠ THE VERDICT IS A DIRECT TEST, not a reading of R's axis: the kid's forward (its
+            // basis Z, the walk convention) against the seat's forward, and the kid's up against
+            // the seat's up. "Backward" is forward = -s with up = seat up -- a half-turn about the
+            // seat's own up whatever the seat's pitch -- which R alone reported as "180 about
+            // (0, 0.98, 0.20)" on a pitched swing, because a yaw-only WalkBasis leaves the seat's
+            // pitch inside R. R is still printed, raw, beside the verdict.
+            static string Facing(Basis kid, Vector3 s, Vector3 up)
+            {
+                if (s.LengthSquared() < 1e-6f) return "seat forward undefined";
+                float f = kid.Z.Normalized().Dot(s), u = up.LengthSquared() > 1e-6f ? kid.Y.Normalized().Dot(up) : 1f;
+                return f > 0.98f && u > 0.98f ? "FACES ITS SEAT" : f < -0.98f && u > 0.98f ? "BACKWARD (half-turn about the seat's up)" : $"other (forward dot {f:F2}, up dot {u:F2})";
+            }
+            int yaw180 = 0, agree = 0, other = 0;
+            foreach (var (id, seat) in _seated)
+            {
+                var sf = seat.Forward; sf.Y = 0;
+                string rstr = sf.LengthSquared() > 1e-6f ? Describe(RotationOf(WalkBasis(sf.Normalized()).Inverse() * seat.At.Basis)) : "undefined";
+                string verdict = Facing(seat.At.Basis, seat.Forward, seat.At.Basis.Y);
+                if (verdict.StartsWith("BACKWARD")) yaw180++; else if (verdict.StartsWith("FACES")) agree++; else other++;
+                GD.Print($"[guest] {label} yaw: rider #{id} seat forward ({seat.Forward.X:F2}, {seat.Forward.Y:F2}, {seat.Forward.Z:F2}); R = {rstr}; {verdict}");
+            }
+            // ⭐⭐ EVERY SEAT OF EVERY RIDE, RIDER OR NOT. R depends on the seat's basis and this
+            // code's composition, not on who sits there, so a ride whose script boards nobody
+            // still gives every seat to the census, and a ride with all its seats parallel
+            // (Crazy Ape: sixteen identical bases) cannot pass off one test as sixteen. Measured
+            // through the same SeatPose a rider is drawn with.
+            foreach (var (ride, model, _, _, _) in _scripted)
+            {
+                if (ride.Host == null || model?.Root == null || !IsInstanceValid(model.Root) || model.LastWorld == null || !_rideMeshes.TryGetValue(ride.Id, out var rm)) continue;
+                var rroot = model.Root.GlobalTransform;
+                int faces = 0, back = 0, odd = 0, seatsSeen = 0; var yaws = new List<int>();
+                for (int slot = 0; slot < ride.Host.HeadSlots; slot++)
+                {
+                    if (rm.FindFitting(slot + 1, 0x80) is not { Node: >= 0 } fit) continue;
+                    if (!SeatPose(rm, model, rroot, fit, out var pose, out var sfw, out var sup)) continue;
+                    seatsSeen++;
+                    string verdict = Facing(pose.Basis, sfw, sup);
+                    if (verdict.StartsWith("FACES")) faces++; else if (verdict.StartsWith("BACKWARD")) back++; else odd++;
+                    var flat = sfw; flat.Y = 0;
+                    yaws.Add(flat.LengthSquared() > 1e-6f ? Mathf.RoundToInt(Mathf.RadToDeg(Mathf.Atan2(flat.X, flat.Z))) : 999);
+                    string rot = flat.LengthSquared() > 1e-6f ? Describe(RotationOf(WalkBasis(flat.Normalized()).Inverse() * pose.Basis)) : "undefined";
+                    GD.Print($"[guest] {label} seat {slot} of {ride.Name} on {rm.NodeName(fit.Node)}: seat forward ({sfw.X:F2}, {sfw.Y:F2}, {sfw.Z:F2}) yaw {yaws[^1]} deg; R = {rot}; {verdict}");
+                }
+                var distinct = yaws.Distinct().OrderBy(y => y).ToList();
+                GD.Print($"[guest] {label} seats of {ride.Name}: {seatsSeen} measured, {faces} face their seat, {back} backward, {odd} other; "
+                       + $"seat yaws {string.Join(" ", distinct)} ({distinct.Count} distinct -- {(distinct.Count > 1 ? "a discriminating ride" : "ALL PARALLEL: one test, not " + seatsSeen)})");
+            }
+            // ⚠ THE CONTROL: a WALKER's own R against its own heading must be identity, or the
+            // instrument is broken and the rider rows mean nothing. Never skipped for seeming
+            // obvious; if nobody is walking at the census, one guest is let in and stepped until
+            // it has a heading, and measured through the same PlaceActors path as every walker.
+            var control = _guests.Guests.FirstOrDefault(g => g.Next is not null && _actors.TryGetValue(g.Id, out var ca) && ca != null && IsInstanceValid(ca));
+            if (control == null && _mouth != null && _mouth.Count > 0)
+            {
+                var pool = GuestPool();
+                if (pool.Count > 0)
+                {
+                    var letIn = _visitors != null ? _visitors.Arrive(_mouth[0], pool[_guestRng.Next(pool.Count)]) : _guests.Spawn(_mouth[0], pool[_guestRng.Next(pool.Count)]);
+                    for (int i = 0; i < 3 && letIn.Next is null; i++) TickPark();
+                    PlaceActors(1f);
+                    if (letIn.Next is not null && _actors.TryGetValue(letIn.Id, out var la) && la != null) control = letIn;
+                }
+            }
+            if (control != null && control.Next is ParkCell cn && _actors.TryGetValue(control.Id, out var cactor))
+            {
+                var h = new Vector3(cn.X - control.Cell.X, 0, control.Cell.Z - cn.Z);
+                var rot = RotationOf(WalkBasis(h).Inverse() * cactor.Basis);
+                GD.Print($"[guest] {label} yaw control: walker #{control.Id} heading ({h.X:F0}, 0, {h.Z:F0}); R = {Describe(rot)}"
+                       + (Describe(rot) == "identity" ? " -- instrument OK" : " -- NOT IDENTITY: INSTRUMENT BROKEN, the rider rows above mean nothing"));
+            }
+            else GD.Print($"[guest] {label} yaw control: NO WALKER could be measured -- the rider rows above are UNVERIFIED");
+            if (_seated.Count > 0)
+                GD.Print($"[guest] {label} yaw: of {_seated.Count} riders, {yaw180} face BACKWARD (a half-turn about their seat's up), {agree} face their seat, {other} other");
             foreach (var (id, leg) in _walking)
                 GD.Print($"[guest] {label} walker #{id} on {leg.Where} at world ({leg.At.Origin.X:F2}, {leg.At.Origin.Y:F2}, {leg.At.Origin.Z:F2})");
             // ⭐ THE MIRROR COUNT, AS A NUMBER. A kid's mesh must end up with an ODD number of
