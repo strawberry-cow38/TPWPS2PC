@@ -918,7 +918,7 @@ public sealed class Park
     /// does not fit. The model is moved so its own XZ centre sits over the footprint's centre and
     /// its base rests on the ground, measured per model rather than trusting the file to be
     /// authored about an origin.</summary>
-    public bool TryPlace(Node3D model, Footprint fp, int id, string name, int x, int y)
+    public bool TryPlace(Node3D model, Footprint fp, int id, string name, int x, int y, int turns = 0)
     {
         if (!CanPlace(fp, x, y)) return false;
 
@@ -938,6 +938,21 @@ public sealed class Park
         // Godot, not a move, and leaves the ride where it was.
         model.GetParent()?.RemoveChild(model);
         _ride.AddChild(model);
+        // ⭐⭐ THE MODEL TURNS WITH ITS FOOTPRINT. The blueprint's cells rotate on R and the hole
+        // they cut in the floor rotates with them -- and the mesh did not, so a ride turned a
+        // quarter stood facing its old way over a hole facing the new one. Master, seeing the two
+        // disagree: "the tiles the ride deletes arent following rotation".
+        //
+        // ⚠ A QUARTER IN GRID TERMS IS +90 DEGREES ABOUT Y IN WORLD TERMS. The footprint's turn
+        // sends grid +x to grid +y; grid +x is world +X and grid +y is world -Z, so it sends world
+        // +X to world -Z, which is what RotateY(+90) does in Godot's right-handed frame.
+        //
+        // ⚠ PRE-MULTIPLIED ONTO THE BASIS, never assigned through Rotation: these models carry
+        // Scale(1,1,-1), and Godot's euler decomposition of a mirrored basis does not survive a
+        // round trip. And BEFORE the bounds are measured, or the centring below would re-centre
+        // the shape it had before it turned.
+        if ((turns & 3) != 0)
+            model.Basis = new Basis(Vector3.Up, Mathf.Pi * 0.5f * (turns & 3)) * model.Basis;
         var (min, max) = DrawnBounds(model, inParent: true);
         var centre = (min + max) * 0.5f;
         model.Position += new Vector3(

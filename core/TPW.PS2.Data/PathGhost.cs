@@ -126,24 +126,46 @@ public sealed class PathGhost
         // answer instead. So a run drawn along path you have already laid shows ONE connect
         // symbol, at its end, not a string of them -- which is what master saw and what the
         // validator says, and I had it wrong in both places.
-        if (had == kind) return last ? Verdict.Already : Verdict.Lay;
+        if (kind == PathTool.Kind.Path)
+        {
+            // ⭐⭐ A CELL THAT IS BOTH IS PATH GROUND. It is the tile a queue run finished on, and
+            // it is drawn from the path table -- so a path run walking over it is walking over its
+            // own path. Treating it as a foreign kind marked the one tile where a queue meets the
+            // network as no-build, and because a refusal latches, every run drawn THROUGH that
+            // junction went red from there on. Master: "the tile where a queue connects to a path
+            // is still marked no-build".
+            if (had is PathTool.Kind.Path or PathTool.Kind.Both) return last ? Verdict.Already : Verdict.Lay;
+            // ⚠⚠ A PATH MAY NOT BE LAID ON A QUEUE. Master's rule, and it replaces the overlap tile
+            // the PSX uses: the two meet by standing NEXT to each other, and the path tile beside
+            // the queue's TIP wears a piece with an arm pointing at it.
+            return Verdict.Refused;
+        }
+        if (had == PathTool.Kind.Queue) return last ? Verdict.Already : Verdict.Lay;
         // ⭐ A queue reaching a path may only join on the run's LAST tile. That tile becomes the
         // one that is both, and it is the only join between a queue and a path network -- so the
         // ghost marks it before the press rather than leaving it to be discovered.
-        if (kind == PathTool.Kind.Queue && had is PathTool.Kind.Path or PathTool.Kind.Both)
-            return last ? Verdict.Joins : Verdict.Refused;
-        // ⚠⚠ A PATH MAY NOT BE LAID ON A QUEUE. Master's rule, and it replaces the overlap tile
-        // the PSX uses: the two meet by standing NEXT to each other, and the path tile beside a
-        // queue wears a piece with an arm pointing at it (PathTool.Links counts the queue).
-        return Verdict.Refused;
+        return last ? Verdict.Joins : Verdict.Refused;
     }
 
-    /// <summary>Lay the whole run. Returns how many cells changed, or 0 when it was refused.</summary>
-    public int Lay(PathTool.Kind kind)
+    /// <summary>Lay the whole run. Returns how many cells changed, or 0 when it was refused.
+    ///
+    /// ⭐⭐ THE RUN'S OWN ORDER IS THE QUEUE'S WIRING. Each cell is handed the bits pointing at the
+    /// cell before it and the cell after it, and those are the only links a queue tile ever gets.
+    /// Master: "the queue is EXACTLY as its drawn with the tool". Deriving them from neighbours --
+    /// which is right for a path network and wrong for a line -- is what made a queue folded back
+    /// on itself read as a slab and two rides' queues fuse where they ran side by side.</summary>
+    public int Lay(PathTool.Kind kind, int owner = 0)
     {
         if (!Layable) return 0;
         int n = 0;
-        foreach (var t in _tiles) if (_tool.Lay(t.X, t.Y, kind)) n++;
+        for (int i = 0; i < _tiles.Count; i++)
+        {
+            var t = _tiles[i];
+            int bits = 0;
+            if (i > 0) bits |= PathTool.BitToward(t.X, t.Y, _tiles[i - 1].X, _tiles[i - 1].Y);
+            if (i < _tiles.Count - 1) bits |= PathTool.BitToward(t.X, t.Y, _tiles[i + 1].X, _tiles[i + 1].Y);
+            if (_tool.Lay(t.X, t.Y, kind, owner, bits)) n++;
+        }
         return n;
     }
 

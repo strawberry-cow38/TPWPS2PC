@@ -29,6 +29,19 @@ public sealed class PathTool
     readonly int[] _pathSprites, _queueSprites;   // list index -> material index
     readonly Kind[] _kind;
     readonly int[] _turns;
+    /// <summary>Which ride a cell belongs to. 0 is a free path that belongs to nobody.</summary>
+    readonly int[] _owner;
+    /// <summary>⭐⭐ A QUEUE'S LINKS ARE THE RUN IT WAS DRAWN AS, and nothing else. These bits are
+    /// written when the cell is laid -- the cell before it and the cell after it in the run -- and
+    /// are never derived from what happens to be next to it afterwards. Master: "the queue is
+    /// EXACTLY as its drawn with the tool"; the PSX build says the same thing from the other side,
+    /// where a queue tile joins only the tile BEHIND it along the run. Without this a queue that
+    /// doubles back beside itself fuses into a slab, and two rides whose queues run side by side
+    /// merge into one.</summary>
+    readonly int[] _run;
+    /// <summary>A ride's entrance or exit cell, and whose it is. A path or that ride's queue wears
+    /// an arm pointing at it.</summary>
+    readonly Dictionary<int, int> _doors = new();
     readonly Dictionary<int, byte> _before = new();
 
     public int Laid { get; private set; }
@@ -42,6 +55,8 @@ public sealed class PathTool
         if (_field == null) { Report = "this terrain carries no authored grid"; return; }
         _kind = new Kind[_field.Count];
         _turns = new int[_field.Count];
+        _owner = new int[_field.Count];
+        _run = new int[_field.Count];
 
         // ⭐ The lists are the material table's own order, filtered by what the name says the tile
         // IS -- not by a world letter. Every world ships the same twenty tiles under the jungle's
@@ -76,8 +91,6 @@ public sealed class PathTool
     public bool CanLay(int x, int y) => Ready && In(x, y) && _field.Buildable(x, y);
 
     public Kind KindAt(int x, int y) => In(x, y) ? _kind[At(x, y)] : Kind.None;
-    bool IsPath(int x, int y) => KindAt(x, y) is Kind.Path or Kind.Both;
-    bool IsQueue(int x, int y) => KindAt(x, y) is Kind.Queue or Kind.Both;
 
     static readonly (int Dx, int Dy, int Bit)[] Ring =
     {
@@ -87,19 +100,114 @@ public sealed class PathTool
         (-1, 0, PathPieces.West),      (-1, -1, PathPieces.NorthWest),
     };
 
-    /// <summary>The eight link bits of a cell, by the game's rule.</summary>
-    int Links(int x, int y, Func<int, int, bool> joins)
+    /// <summary>The ring bit that points from (x,y) at its neighbour (nx,ny), or 0 if that is
+    /// not a neighbour at all.</summary>
+    public static int BitToward(int x, int y, int nx, int ny)
+    {
+        foreach (var (dx, dy, bit) in Ring) if (x + dx == nx && y + dy == ny) return bit;
+        return 0;
+    }
+
+    /// <summary>The bits pointing at a ride door this cell is allowed to use.
+    ///
+    /// ⭐ A DOOR IS A LINK. Master: "paths and queues should have the sprite as if they are
+    /// connected to the entry/exit points" -- the tile outside a ride's door has to look attached
+    /// to it, and the only way a ground tile can look attached to anything is an arm in the piece.
+    /// ⚠ ORTHOGONAL ONLY: a doorway is a side of a square, not a corner of one.
+    /// ⚠ And a QUEUE may only use its OWN ride's doors -- master: "paths should carry a ride ID,
+    /// they should not connect to other rides' queues". A free path (owner 0) may use any, which
+    /// is what lets one path serve every ride in the park.</summary>
+    int DoorBits(int x, int y, int owner, bool queue)
     {
         int bits = 0;
         foreach (var (dx, dy, bit) in Ring)
         {
-            if (!joins(x + dx, y + dy)) continue;
-            // ⚠ A diagonal needs BOTH cells between it and this one. Without that test a path
-            // laid round the outside of a corner reads as a solid block and wears the centre tile.
-            if (dx != 0 && dy != 0 && !(joins(x + dx, y) && joins(x, y + dy))) continue;
+            if (dx != 0 && dy != 0) continue;
+            if (!In(x + dx, y + dy)) continue;
+            if (!_doors.TryGetValue(At(x + dx, y + dy), out int ride)) continue;
+            if (queue && owner != 0 && ride != owner) continue;
             bits |= bit;
         }
         return bits;
+    }
+
+    /// <summary>⭐⭐ IS THIS QUEUE CELL THE END OF ITS RUN? The console's rule, straight across from
+    /// the PSX build: a queue tile with FEWER THAN TWO links is an end. Run links and the door
+    /// count; anything else does not, so a queue lying beside a path is still an end only at the
+    /// tip. This is what master's "paths should only have the connected sprite if they are
+    /// connected at the end of queues" turns into -- the path asks the queue whether it is a tip,
+    /// and joins only if it is.</summary>
+    public bool IsQueueEnd(int x, int y)
+    {
+        if (!In(x, y)) return false;
+        int at = At(x, y);
+        if (_kind[at] is not (Kind.Queue or Kind.Both)) return false;
+        int bits = _run[at] | DoorBits(x, y, _owner[at], queue: true);
+        int n = 0;
+        for (int b = bits; b != 0; b &= b - 1) n++;
+        return n < 2;
+    }
+
+    /// <summary>What a PATH is willing to join: other path, and a queue only at its tip.</summary>
+    bool PathJoins(int x, int y)
+    {
+        if (!In(x, y)) return false;
+        var k = _kind[At(x, y)];
+        if (k is Kind.Path or Kind.Both) return true;
+        return k == Kind.Queue && IsQueueEnd(x, y);
+    }
+
+    /// <summary>The eight link bits of a cell.
+    ///
+    /// ⭐⭐ THE TWO KINDS ARE NOT LINKED THE SAME WAY, and that is the whole of master's complaint
+    /// that "the sprites also shouldnt connect to eachother freely". A PATH is a network and finds
+    /// its neighbours, by the game's own rule (PSX 0x8004E20C). A QUEUE is a LINE and carries the
+    /// links it was drawn with; it finds nothing.</summary>
+    int LinksFor(int x, int y)
+    {
+        int at = At(x, y);
+        var kind = _kind[at];
+        if (kind == Kind.None) return 0;
+        int bits = DoorBits(x, y, _owner[at], queue: kind == Kind.Queue);
+        if (kind == Kind.Queue) return bits | _run[at];
+
+        foreach (var (dx, dy, bit) in Ring)
+        {
+            if (!PathJoins(x + dx, y + dy)) continue;
+            // ⚠ A diagonal needs BOTH cells between it and this one. Without that test a path
+            // laid round the outside of a corner reads as a solid block and wears the centre tile.
+            if (dx != 0 && dy != 0 && !(PathJoins(x + dx, y) && PathJoins(x, y + dy))) continue;
+            bits |= bit;
+        }
+        // A cell that is BOTH is drawn as a path, and it is also the tile a queue run ends on, so
+        // it keeps the arm back down its own queue.
+        if (kind == Kind.Both) bits |= _run[at];
+        return bits;
+    }
+
+    /// <summary>A cell's link bits, for a control to read. ⚠ Bits, not a picture: two queue runs
+    /// a cell apart look identical whether or not they are joined, and only the mask says.</summary>
+    public int LinkBits(int x, int y) => In(x, y) ? LinksFor(x, y) : 0;
+
+    /// <summary>Tell the tool about a ride's entrance or exit cell, so the ground beside it can
+    /// look attached to it.</summary>
+    public void AddDoor(int x, int y, int rideId)
+    {
+        if (!Ready || !In(x, y)) return;
+        _doors[At(x, y)] = rideId;
+        RepickAround(x, y);
+    }
+
+    /// <summary>Pick this cell and everything within two of it again.
+    ///
+    /// ⚠ TWO, NOT ONE. Laying a queue cell changes whether the cell BEFORE it is still a tip, and
+    /// that changes the piece worn by the paths around THAT cell -- which are two away from the one
+    /// that moved. A one-ring repick left a path with an arm pointing at the middle of a queue.</summary>
+    void RepickAround(int x, int y)
+    {
+        for (int dy = -2; dy <= 2; dy++)
+            for (int dx = -2; dx <= 2; dx++)
+                Repick(x + dx, y + dy);
     }
 
     /// <summary>Pick a cell's tile again from what it is now joined to, and write it into the grid.</summary>
@@ -110,14 +218,7 @@ public sealed class PathTool
         if (kind == Kind.None) return;
         // A cell that is both is a path first: the path table carries the queue's shapes too.
         var table = kind == Kind.Queue ? _pieces.Queue : _pieces.Path;
-        // ⭐⭐ A PATH COUNTS AN ADJACENT QUEUE AS A JOIN. Master: the path tile a queue runs up to
-        // "needs to have the texture as if theres a path connection in that direction". It cannot
-        // be laid ON the queue, so the only way the junction can look connected is for the path's
-        // own piece to carry an arm toward it -- which is exactly what the link bits are for.
-        Func<int, int, bool> joins = kind == Kind.Queue
-            ? IsQueue
-            : (x2, y2) => IsPath(x2, y2) || IsQueue(x2, y2);
-        var piece = PathPieces.Choose(table, Links(x, y, joins));
+        var piece = PathPieces.Choose(table, LinksFor(x, y));
         var sprites = piece.List == 2 ? _queueSprites : _pathSprites;
         if (piece.Sprite >= sprites.Length) return;
         _turns[At(x, y)] = piece.Turns;
@@ -126,23 +227,39 @@ public sealed class PathTool
 
     /// <summary>Lay one cell and re-pick it and everything it touches. Returns false when the
     /// game's own rule says nothing may be built there.</summary>
-    public bool Lay(int x, int y, Kind kind = Kind.Path)
+    public bool Lay(int x, int y, Kind kind = Kind.Path, int owner = 0, int runBits = 0)
     {
         if (!CanLay(x, y)) return false;
-        var was = _kind[At(x, y)];
-        if (was == kind || was == Kind.Both) return false;
+        int at = At(x, y);
+        var was = _kind[at];
+        // ⚠ THE RUN BITS GO ON EVEN WHEN NOTHING ELSE CHANGES. A run is laid a segment at a time
+        // and each segment STARTS on the last cell of the one before, so that shared cell is laid
+        // twice -- and the second lay is the one that carries the link onward. Returning early on
+        // "already this kind" before writing them left every corner of a queue unlinked.
+        if (kind == Kind.Queue) _run[at] |= runBits;
+        if (was == kind || was == Kind.Both)
+        {
+            if (runBits != 0) RepickAround(x, y);
+            return false;
+        }
         // ⭐ A queue laid onto a path makes the one cell that is BOTH -- the only join between a
         // path network and a queue run. Reproduced because from outside it is invisible: the two
         // are drawn touching either way, and without it nobody can walk between them.
-        _before.TryAdd(At(x, y), _field.Cells[At(x, y) * 2 + 1]);
-        _kind[At(x, y)] = was == Kind.None ? kind
-                        : (was == Kind.Path && kind == Kind.Queue) || (was == Kind.Queue && kind == Kind.Path)
-                          ? Kind.Both : kind;
+        _before.TryAdd(at, _field.Cells[at * 2 + 1]);
+        _kind[at] = was == Kind.None ? kind
+                  : (was == Kind.Path && kind == Kind.Queue) || (was == Kind.Queue && kind == Kind.Path)
+                    ? Kind.Both : kind;
+        // ⭐ A CELL REMEMBERS WHOSE IT IS -- master: "paths should carry a ride ID". It GATES a
+        // queue (which may only reach its own ride's doors) and it is only a record on a path,
+        // because a path that would not serve every ride is a path no visitor can use.
+        if (owner != 0) _owner[at] = owner;
         Laid++;
-        Repick(x, y);
-        foreach (var (dx, dy, _) in Ring) Repick(x + dx, y + dy);
+        RepickAround(x, y);
         return true;
     }
+
+    /// <summary>Whose queue a cell is, or 0.</summary>
+    public int OwnerAt(int x, int y) => In(x, y) ? _owner[At(x, y)] : 0;
 
     /// <summary>Quarter turns for a cell's ground tile, for the plot to turn its UVs by.</summary>
     public int Turns(int x, int y) => In(x, y) ? _turns[At(x, y)] : 0;
@@ -150,7 +267,8 @@ public sealed class PathTool
     /// <summary>Put back every cell this tool changed. ⚠ Only its own.</summary>
     public void Undo()
     {
-        foreach (var (at, was) in _before) { _field.Cells[at * 2 + 1] = was; _kind[at] = Kind.None; _turns[at] = 0; }
+        foreach (var (at, was) in _before)
+        { _field.Cells[at * 2 + 1] = was; _kind[at] = Kind.None; _turns[at] = 0; _owner[at] = 0; _run[at] = 0; }
         _before.Clear();
         Laid = 0;
     }
@@ -161,8 +279,10 @@ public sealed class PathTool
         if (!In(x, y)) return $"({x},{y}) off the grid";
         if (!_field.Buildable(x, y)) return $"({x},{y}) no-build";
         var kind = _kind[At(x, y)];
-        return kind == Kind.None
-            ? $"({x},{y}) clear"
-            : $"({x},{y}) {kind} links {Links(x, y, kind == Kind.Queue ? IsQueue : IsPath):X2} turns {_turns[At(x, y)]}";
+        if (kind == Kind.None)
+            return _doors.TryGetValue(At(x, y), out int who) ? $"({x},{y}) ride {who}'s door" : $"({x},{y}) clear";
+        return $"({x},{y}) {kind} links {LinksFor(x, y):X2} turns {_turns[At(x, y)]}"
+             + (_owner[At(x, y)] != 0 ? $" of ride {_owner[At(x, y)]}" : "")
+             + (IsQueueEnd(x, y) ? " (tip)" : "");
     }
 }

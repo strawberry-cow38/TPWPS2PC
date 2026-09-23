@@ -1,5 +1,6 @@
 using Godot;
 using System.Collections.Generic;
+using System.Linq;
 using TPW.PS2.Data;
 
 namespace TPWPS2Viewer;
@@ -71,13 +72,32 @@ public sealed class GhostMarkers
     public void Show(PathGhost ghost, Park park)
     {
         if (ghost == null) { Clear(); return; }
-        ShowCells(ghost.Tiles.Select(t => (t.X, t.Y, PathGhost.Marker(t.Verdict))), park);
+        ShowTurnedCells(ghost.Tiles.Select(t => (t.X, t.Y, PathGhost.Marker(t.Verdict), 0)), park);
     }
 
     /// <summary>Draw any set of marked cells. ⭐ The same drawing for a path run and a thing being
     /// put down: both are "these tiles, wearing these markers", and the console draws them with
     /// the same call too.</summary>
     public void ShowCells(IEnumerable<(int X, int Y, int Marker)> cells, Park park)
+        => ShowTurnedCells(cells?.Select(c => (c.X, c.Y, c.Marker, 0)), park);
+
+    /// <summary>The quad's UV corners in the order the vertices come out, matching the plot's own
+    /// floor so a marker and a ground tile turn the same way.</summary>
+    static readonly Vector2[] Uv = { new(0, 0), new(1, 0), new(1, 1), new(0, 1) };
+
+    /// <summary>⭐⭐ WHICH WAY IS UP IN A TILE. Turn 0 lays the texture's top edge along world -Z,
+    /// which is grid +y, and each further turn takes it a quarter round:
+    /// 0 -> grid +y, 1 -> grid -x, 2 -> grid -y, 3 -> grid +x. Derived from the vertex order, not
+    /// guessed: corner a is world (-X,-Z) and wears UV (0,0), so v grows with world +Z.
+    ///
+    /// ⚠ The DIRECTIONAL markers need this -- the entrance and exit arrows are pictures of a way
+    /// to walk, and a ride turned a quarter with its arrows left alone points its visitors at a
+    /// wall. Master: "the arrows for entry/exit arent following the rotation of the ride".</summary>
+    public static int TurnToward(int dx, int dy)
+        => dy > 0 ? 0 : dx < 0 ? 1 : dy < 0 ? 2 : 3;
+
+    /// <summary>Draw marked cells, each with its own quarter turn.</summary>
+    public void ShowTurnedCells(IEnumerable<(int X, int Y, int Marker, int Turns)> cells, Park park)
     {
         foreach (var c in Root.GetChildren()) c.QueueFree();
         if (cells == null || park == null) return;
@@ -100,14 +120,15 @@ public sealed class GhostMarkers
             var b = new Vector3(c.X + half, y, c.Z - half);
             var d = new Vector3(c.X + half, y, c.Z + half);
             var e = new Vector3(c.X - half, y, c.Z + half);
-            void V(Vector3 v, float u, float w)
+            int turn = t.Turns & 3;
+            void V(Vector3 v, int corner)
             {
-                st.SetUV(new Vector2(u, w));
+                st.SetUV(Uv[(corner + turn) & 3]);
                 st.SetNormal(Vector3.Up);
                 st.AddVertex(v);
             }
-            V(a, 0, 0); V(b, 1, 0); V(d, 1, 1);
-            V(a, 0, 0); V(d, 1, 1); V(e, 0, 1);
+            V(a, 0); V(b, 1); V(d, 2);
+            V(a, 0); V(d, 2); V(e, 3);
         }
         foreach (var (id, st) in byMarker)
         {

@@ -110,9 +110,17 @@ public partial class Viewer : Node3D
     PathTool.Kind _toolKind = PathTool.Kind.Path;
     /// <summary>Where the current run started, or -1 when no run is going.</summary>
     int _runX = -1, _runY = -1;
+    /// <summary>Whose run the open tool is laying. ⭐ A queue belongs to the ride it came out of,
+    /// and carries that id into every cell so it can only ever reach that ride's door.</summary>
+    int _toolOwner;
     /// <summary>Where the path out of a just-placed ride's EXIT should start, held while its queue
     /// is being run. ⚠ Cleared once it has been handed over, or the next ride inherits it.</summary>
     (int X, int Y)? _pathFrom;
+    /// <summary>Which ride the pending exit path belongs to, held across the queue tool.</summary>
+    int _pathOwner;
+    /// <summary>One number per thing PUT DOWN. ⚠ Not the definition's id: two of the same ride
+    /// share that, and then one ride's queue would happily walk into the other's door.</summary>
+    int _rideSerial;
     /// <summary>A cell to use instead of the mouse, for captures. Null in normal use.</summary>
     (int X, int Y)? _cursorOverride;
     bool _pickChecked;
@@ -147,6 +155,8 @@ public partial class Viewer : Node3D
     Model _terrainModel;
     bool _pathTest;
     bool _ghostTest;
+    bool _linkTest;
+    bool _placeTest;
     bool _ghostPress;
     bool _animTest;
     bool _buildTest;
@@ -227,6 +237,8 @@ public partial class Viewer : Node3D
             else if (a.StartsWith("--mode=")) _wantMode = a["--mode=".Length..];
             else if (a == "--path-test") _pathTest = true;
             else if (a == "--ghost-test") _ghostTest = true;
+            else if (a == "--link-test") _linkTest = true;
+            else if (a == "--place-test") { _buildTest = true; _placeTest = true; }
             else if (a == "--ghost-press") { _ghostTest = true; _ghostPress = true; }
             else if (a == "--anim-test") _animTest = true;
             else if (a == "--build-test") _buildTest = true;
@@ -1363,6 +1375,7 @@ public partial class Viewer : Node3D
         if (!_paths.Ready) { _paths = null; return; }
         if (_pathTest || System.Environment.GetEnvironmentVariable("TPW_PATH_TEST") == "1") LayTestPath();
         if (_ghostTest || System.Environment.GetEnvironmentVariable("TPW_GHOST_TEST") == "1") ShowTestGhost();
+        if (_linkTest || System.Environment.GetEnvironmentVariable("TPW_LINK_TEST") == "1") CheckLinking();
     }
 
     /// <summary>⭐ A CONTROL RUN, not a feature. It lays a shape that MUST come out wearing one of
@@ -1397,6 +1410,94 @@ public partial class Viewer : Node3D
                            + $"at world {w.X:F1},{w.Z:F1}");
                 }
         RefreshFloor();
+    }
+
+    /// <summary>⭐ A CONTROL FOR THE LINKING RULES, and every case in it has a partner that must
+    /// come out the OTHER way -- an answer that is right everywhere says nothing about whether the
+    /// rule is doing any work.
+    ///
+    /// The four claims under test, in master's words:
+    ///   "the queue is EXACTLY as its drawn with the tool"         -> a folded queue does not fuse
+    ///   "they should not connect to other rides' queues"          -> two runs side by side stay apart
+    ///   "only ... connected at the end of queues"                 -> a path joins the tip, not the middle
+    ///   "connected to the entry/exit points"                      -> a door is an arm
+    ///
+    /// ⚠ Read as LINK BITS, not as a picture. N=01 NE=02 E=04 SE=08 S=10 SW=20 W=40 NW=80, so a
+    /// queue running north-south reads 11 in the middle and 01 or 10 at its ends. A photograph of
+    /// two queue runs a cell apart cannot tell "joined" from "not joined" at all.</summary>
+    void CheckLinking()
+    {
+        if (_paths == null) return;
+        var f = _park.Field;
+        int cx = f.Width / 2 + 8, cy = f.Height / 2 - 6;
+        for (int r = 0; r < 16 && !_paths.CanLay(cx, cy); r++) { cx += 1; if (!_paths.CanLay(cx, cy)) cy += 1; }
+
+        // Ride 1's queue: five cells north to south, laid as one run.
+        var runA = new List<(int X, int Y)>();
+        for (int i = 0; i < 5; i++) runA.Add((cx, cy + i));
+        LayRun(runA, PathTool.Kind.Queue, 1);
+        // Ride 2's queue: five more, ONE CELL EAST of it. Different ride, touching along its
+        // whole length -- if anything derives a queue's links from its neighbours, this is where
+        // the two runs fuse into a slab.
+        var runB = new List<(int X, int Y)>();
+        for (int i = 0; i < 5; i++) runB.Add((cx + 1, cy + i));
+        LayRun(runB, PathTool.Kind.Queue, 2);
+
+        GD.Print("[link] two queues, one cell apart, one run each:");
+        for (int i = 0; i < 5; i++)
+            GD.Print($"[link]   ride1 {_paths.Describe(cx, cy + i)} | ride2 {_paths.Describe(cx + 1, cy + i)}");
+        bool fused = false;
+        for (int i = 0; i < 5; i++)
+        {
+            if ((_paths.LinkBits(cx, cy + i) & PathPieces.East) != 0) fused = true;
+            if ((_paths.LinkBits(cx + 1, cy + i) & PathPieces.West) != 0) fused = true;
+        }
+        GD.Print($"[link] two rides' queues side by side: {(fused ? "FUSED -- they link across" : "apart, as they must be")}");
+
+        // ⭐ THE PARTNER CASE. The same two cells, laid as ONE run that steps east, MUST link --
+        // otherwise "apart" above is just the code never linking anything.
+        int jx = cx + 4, jy = cy + 8;
+        // ⚠ BOTH cells, not just the first. A search that only asked about the near one parked the
+        // run half on a no-build tile, and the control then reported the WIRING as broken when the
+        // only thing broken was where it had put itself.
+        for (int r = 0; r < 24 && !(_paths.CanLay(jx, jy) && _paths.CanLay(jx + 1, jy)); r++) jy += 1;
+        LayRun(new List<(int X, int Y)> { (jx, jy), (jx + 1, jy) }, PathTool.Kind.Queue, 3);
+        bool joined = (_paths.LinkBits(jx, jy) & PathPieces.East) != 0
+                   && (_paths.LinkBits(jx + 1, jy) & PathPieces.West) != 0;
+        GD.Print($"[link] two cells of ONE run at ({jx},{jy}): {_paths.Describe(jx, jy)} | {_paths.Describe(jx + 1, jy)}"
+               + $" -- {(joined ? "linked, as they must be" : "NOT LINKED -- the run order never reached the piece")}");
+
+        // A path beside the queue's MIDDLE and a path beside its TIP.
+        int px = cx - 1;
+        _paths.Lay(px, cy + 2, PathTool.Kind.Path);          // beside the middle of ride 1's queue
+        _paths.Lay(px, cy + 4, PathTool.Kind.Path);          // beside its last cell -- the tip
+        int mid = _paths.LinkBits(px, cy + 2), tip = _paths.LinkBits(px, cy + 4);
+        GD.Print($"[link] path beside the queue's middle {mid:X2}, beside its tip {tip:X2}"
+               + $" -- {((mid & PathPieces.East) == 0 && (tip & PathPieces.East) != 0 ? "one arm, at the tip, as it must be" : "WRONG")}");
+
+        // A door: register one east of a fresh path cell and watch the arm appear.
+        int dx2 = cx + 6, dy2 = cy + 2;
+        for (int r = 0; r < 12 && !(_paths.CanLay(dx2, dy2) && _paths.CanLay(dx2 + 1, dy2)); r++) dy2 += 1;
+        _paths.Lay(dx2, dy2, PathTool.Kind.Path);
+        int before = _paths.LinkBits(dx2, dy2);
+        _paths.AddDoor(dx2 + 1, dy2, 9);
+        int after = _paths.LinkBits(dx2, dy2);
+        GD.Print($"[link] a lone path cell reads {before:X2}; with a ride door to its east {after:X2}"
+               + $" -- {((before & PathPieces.East) == 0 && (after & PathPieces.East) != 0 ? "the door is an arm, as it must be" : "THE DOOR DID NOTHING")}");
+        RefreshFloor();
+    }
+
+    /// <summary>Lay a run the way the ghost does, so the control goes through the same wiring the
+    /// tool does rather than a second one written for the test.</summary>
+    void LayRun(List<(int X, int Y)> run, PathTool.Kind kind, int owner)
+    {
+        for (int i = 0; i < run.Count; i++)
+        {
+            int bits = 0;
+            if (i > 0) bits |= PathTool.BitToward(run[i].X, run[i].Y, run[i - 1].X, run[i - 1].Y);
+            if (i < run.Count - 1) bits |= PathTool.BitToward(run[i].X, run[i].Y, run[i + 1].X, run[i + 1].Y);
+            _paths.Lay(run[i].X, run[i].Y, kind, owner, bits);
+        }
     }
 
     /// <summary>⭐ A CONTROL FOR THE GHOST, not a feature. It lays a short run of real path, then
@@ -1651,11 +1752,12 @@ public partial class Viewer : Node3D
 
     /// <summary>Open or close the path tool. ⭐ Closing ends the run and takes the ghost off the
     /// ground: a ghost left behind reads as laid path.</summary>
-    void OpenTool(PathTool.Kind kind)
+    void OpenTool(PathTool.Kind kind, int owner = 0)
     {
         if (_paths == null) { GD.Print("[path] the tool is off for this park"); return; }
         _toolOpen = true;
         _toolKind = kind;
+        _toolOwner = owner;
         _runX = _runY = -1;
         GD.Print($"[tool] {kind} open -- press to start a run, press again to lay it");
         // The PSX tool plays its first-click sound when it OPENS as well, because opening a queue
@@ -1668,13 +1770,19 @@ public partial class Viewer : Node3D
     /// the exit, the way the console does when a queue is finished.</summary>
     void StartExitPath((int X, int Y) from)
     {
-        _pathFrom = null;
-        if (_paths == null || !_paths.CanLay(from.X, from.Y))
+        int owner = _pathOwner;
+        _pathFrom = null; _pathOwner = 0;
+        // ⚠ BOTH TESTS. `CanLay` is the terrain's own no-build bit and knows nothing about what is
+        // standing there -- an exit facing another ride handed the tool a run beginning inside it,
+        // which is one of the ways the entry-exit hand-over was "a lil broken".
+        if (_paths == null || !_paths.CanLay(from.X, from.Y) || !_park.Vacant(from.X, from.Y))
         {
             Status("no room for a path at the exit");
+            GD.Print($"[build] no exit path: ({from.X},{from.Y}) is {_paths?.Describe(from.X, from.Y) ?? "off"}"
+                   + (_park.Vacant(from.X, from.Y) ? "" : " and something is standing on it"));
             return;
         }
-        OpenTool(PathTool.Kind.Path);
+        OpenTool(PathTool.Kind.Path, owner);
         _runX = from.X; _runY = from.Y;
         _ghostAt = (-1, -1, -1, -1);
         Status($"now the path out -- run it from ({from.X},{from.Y})");
@@ -1689,6 +1797,7 @@ public partial class Viewer : Node3D
         bool wasQueue = _toolOpen && _toolKind == PathTool.Kind.Queue;
         var handOver = wasQueue ? _pathFrom : null;
         _toolOpen = false;
+        _toolOwner = 0;
         _runX = _runY = -1;
         _ghostAt = (-1, -1, -1, -1);
         _ghostView?.Clear();
@@ -1787,6 +1896,79 @@ public partial class Viewer : Node3D
         _place.Clear();
         _cursorOverride = null;
         _ghostView?.Clear();
+    }
+
+    /// <summary>⭐ A CONTROL FOR TURNING, and it is a PICTURE as much as a readout -- what is being
+    /// claimed is that the mesh, the hole it cuts in the floor and the two door arrows all end up
+    /// facing the same way, and no one number says that.
+    ///
+    /// It puts the same ride down at three different quarter turns and leaves a fourth held over
+    /// the cursor so the ghost and its arrows draw. ⚠ The door cells are printed per turn as well,
+    /// because a picture of a square ride cannot tell a turned footprint from an unturned one --
+    /// the door moving is the part that can only be read off the numbers.</summary>
+    void CheckPlacement()
+    {
+        _buildChecked = true;
+        ToggleBuildMenu();
+        ShowBuildCategory("Rides");
+        int chosen = -1;
+        for (int row = 0; row < _buildRows.Count && chosen < 0; row++)
+        {
+            var d = DefinitionFor(_lib.Rides[_buildRows[row]].Model);
+            if (d?.Shape == null) continue;
+            var fp = Park.Footprint.From(d.Shape);
+            // ⚠ BOTH doors and a shape that is NOT square: a square ride turned a quarter looks
+            // exactly like itself, so it would photograph a working rotation and a dead one alike.
+            if (fp.EntryX >= 0 && fp.ExitX >= 0 && fp.Width != fp.Height) chosen = row;
+        }
+        if (chosen < 0) { GD.Print("[place] nothing in Rides has two doors and an oblong shape"); return; }
+
+        var f = _park.Field;
+        int bx = f.Width / 2 - 9, by = f.Height / 2 - 4;
+        for (int t = 0; t < 3; t++)
+        {
+            ArmFromList(chosen);
+            _place.Turn(t);
+            int cx = bx + t * 7, cy = by;
+            _cursorOverride = (cx, cy);
+            var door = _place.DoorFor(cx, cy);
+            var exit = _place.ExitFor(cx, cy);
+            var outD = door is { } d0 ? _place.OutsideOf(d0, cx, cy) : null;
+            var outE = exit is { } d1 ? _place.OutsideOf(d1, cx, cy) : null;
+            GD.Print($"[place] {_place.Display} turned {t * 90} at ({cx},{cy}): "
+                   + $"{_place.Turned.Width}x{_place.Turned.Height} "
+                   + $"entry {door?.ToString() ?? "none"} out {outD?.ToString() ?? "none"} "
+                   + $"turn {(door is { } dd && outD is { } oo ? GhostMarkers.TurnToward(Placement.FacingOf(dd, oo).Dx, Placement.FacingOf(dd, oo).Dy) : -1)} | "
+                   + $"exit {exit?.ToString() ?? "none"} out {outE?.ToString() ?? "none"} "
+                   + $"turn {(exit is { } xd && outE is { } xo ? GhostMarkers.TurnToward(Placement.FacingOf(xd, xo).Dx, Placement.FacingOf(xd, xo).Dy) : -1)}");
+            int before = _park.Placed.Count;
+            PlaceHeld();
+            GD.Print($"[place]   {(_park.Placed.Count > before ? "down" : "REFUSED")}");
+            CloseTool();
+        }
+        // The fourth stays on the cursor, turned once, so the shot carries a live ghost with both
+        // arrows in it.
+        // ⚠ THE PATH TOOL OFF FIRST. Each placement hands over to the queue and then to the exit
+        // path, and an open tool draws its OWN run into the same ghost node every frame -- so the
+        // picture would be two ghosts fighting over one mesh and neither would be evidence.
+        _toolOpen = false; _runX = _runY = -1; _ghostView?.Clear();
+        ArmFromList(chosen);
+        _place.Turn(1);
+        // ⚠ On CLEAR GROUND. A blocked ghost draws every cell red and the doors are then the only
+        // thing in the picture that is not red, which is a much weaker reading than a green shape
+        // with two arrows off its ends.
+        int gx = bx + 21, gy = by + 8;
+        for (int r = 0; r < 20 && !_place.Cells(_park, gx, gy).All(c => c.Ok); r++) gy += 1;
+        _cursorOverride = (gx, gy);
+        _ghostAt = (-1, -1, -1, -1);
+        UpdatePlacementGhost();
+        GD.Print($"[place] holding {_place.Display} turned 90 at ({gx},{gy}) for the picture, "
+               + $"{(_place.Cells(_park, gx, gy).All(c => c.Ok) ? "clear" : "BLOCKED")}");
+        // ⚠ BOTH PANELS OUT OF THE WAY. They cover two thirds of a 1280-wide frame, and the thing
+        // being photographed is where four rides are standing -- hidden DIRECTLY rather than
+        // through the Tab toggle, which drops what is held and would take the ghost with it.
+        if (_buildBox != null) _buildBox.Visible = false;
+        if (_panel != null) _panel.Visible = false;
     }
 
     // ------------------------------------------------------------------ the build menu
@@ -1905,7 +2087,7 @@ public partial class Viewer : Node3D
         if (_ghostAt == (x, y, _place.Turns, 0)) return;
         _ghostAt = (x, y, _place.Turns, 0);
         var cells = _place.Cells(_park, x, y)
-                          .Select(c => (c.X, c.Y, c.Ok ? 24 : 175))
+                          .Select(c => (c.X, c.Y, c.Ok ? 24 : 175, 0))
                           .ToList();
         // ⭐⭐ THE DOORS STICK OUT A TILE. Master: "the path entrance/exit needs to stick out a
         // tile from the blueprint". They mark where the queue and the path will START, which is
@@ -1918,11 +2100,15 @@ public partial class Viewer : Node3D
             var outside = _place.OutsideOf(c, x, y);
             if (outside is not { } o) return;
             cells.RemoveAll(t => t.Item1 == o.X && t.Item2 == o.Y);
-            cells.Add((o.X, o.Y, marker));
+            // ⭐ THE ARROW IS TURNED TO FACE THE DOOR. Both door sprites are drawn against their
+            // tile's top edge with the ride on the other side of it, so the turn that puts that
+            // edge against the door is the one that makes either arrow read right.
+            var (dx, dy) = Placement.FacingOf(c, o);
+            cells.Add((o.X, o.Y, marker, GhostMarkers.TurnToward(dx, dy)));
         }
         Door(_place.DoorFor(x, y), 168);
         Door(_place.ExitFor(x, y), 169);
-        _ghostView.ShowCells(cells, _park);
+        _ghostView.ShowTurnedCells(cells, _park);
         bool ok = _place.Cells(_park, x, y).All(c => c.Ok);
         Status($"{_place.Display} at ({x},{y}) turned {_place.Turns * 90} degrees"
              + (ok ? " -- click to put it down" : " -- BLOCKED"));
@@ -1943,11 +2129,22 @@ public partial class Viewer : Node3D
         var (cx, cy) = _place.CornerFor(x, y);
         var model = LoadPlaceable(_armedRide);
         if (model == null) { Status($"{_place.Display} has no model to place"); return; }
-        if (!_park.TryPlace(model, _place.Turned, _place.Id, _place.Display, cx, cy))
+        if (!_park.TryPlace(model, _place.Turned, _place.Id, _place.Display, cx, cy, _place.Turns))
         {
             Status($"{_place.Display} does not fit there");
             _toolSfx?.Play(ToolSounds.Cue.Refused);
             return;
+        }
+        // ⭐⭐ THE DOORS GO INTO THE PATH TOOL. A ground tile can only look attached to a ride if
+        // its own piece carries an arm that way, and the tool cannot know where a door is unless
+        // it is told -- master: "paths and queues should have the sprite as if they are connected
+        // to the entry/exit points". Registered BEFORE the floor is redrawn so the first draw
+        // already has them. Every ride gets a fresh id so two rides' doors never read as one.
+        int ride = ++_rideSerial;
+        if (_paths != null)
+        {
+            if (_place.DoorFor(x, y) is { } d0) _paths.AddDoor(d0.X, d0.Y, ride);
+            if (_place.ExitFor(x, y) is { } d1) _paths.AddDoor(d1.X, d1.Y, ride);
         }
         // ⭐ The ground under it goes now that the cells are claimed.
         RefreshFloor();
@@ -1968,6 +2165,7 @@ public partial class Viewer : Node3D
         var exitDoor = _place.ExitFor(x, y);
         var queueFrom = entrance is { } e ? _place.OutsideOf(e, x, y) : null;
         _pathFrom = exitDoor is { } xd ? _place.OutsideOf(xd, x, y) : null;
+        _pathOwner = ride;
         _place.Clear();
         _ghostView?.Clear();
         Status($"put {was} down at ({cx},{cy})");
@@ -1977,7 +2175,7 @@ public partial class Viewer : Node3D
         // queue tool's press does exactly that on a ride just placed.
         if (queued && queueFrom is { } q)
         {
-            OpenTool(PathTool.Kind.Queue);
+            OpenTool(PathTool.Kind.Queue, ride);
             _runX = q.X; _runY = q.Y;
             _ghostAt = (-1, -1, -1, -1);
             Status($"{was} is in -- run its queue from ({q.X},{q.Y})");
@@ -2070,7 +2268,7 @@ public partial class Viewer : Node3D
         var last = _ghost.Tiles[^1];
         bool joined = last.Verdict is PathGhost.Verdict.Joins or PathGhost.Verdict.Already;
         bool single = _ghost.Tiles.Count == 1;
-        int laid = _ghost.Lay(_toolKind);
+        int laid = _ghost.Lay(_toolKind, _toolOwner);
         RefreshFloor();
         // ⭐ ONE TILE IS A WHOLE JOB. A run of a single tile is somebody dropping one piece, not
         // starting a line, so it lays and the tool shuts -- master's call. ⚠ Shift keeps it open,
@@ -2079,7 +2277,12 @@ public partial class Viewer : Node3D
         if (single && !Input.IsKeyPressed(Key.Shift))
         {
             _toolSfx?.Play(ToolSounds.Cue.Lay);
-            GD.Print($"[path] laid one tile at ({x},{y}) -- tool closed");
+            // ⭐ ONE TILE CAN STILL BE A CONNECTION. Master: "if the one tile is a link, play the
+            // link sound still". The short-circuit for a single tile was returning before the
+            // joined branch below could say so, which took the cue away from exactly the case it
+            // is for -- dropping one piece into a gap is the most connecting thing the tool does.
+            if (joined) _toolSfx?.Play(ToolSounds.Cue.Connect);
+            GD.Print($"[path] laid one tile at ({x},{y}){(joined ? " -- a connection" : "")} -- tool closed");
             Status($"laid one tile at ({x},{y})");
             CloseTool();
             return;
@@ -2898,7 +3101,7 @@ public partial class Viewer : Node3D
         // and the check is of the wrong camera.
         if (_ghostTest && !_pickChecked && _mode == Mode.Park) CheckMousePicking();
         if (_animTest && !_animChecked && _mode == Mode.Park) CheckParkAnimation();
-        if (_buildTest && !_buildChecked && _mode == Mode.Park) CheckBuildMenu();
+        if (_buildTest && !_buildChecked && _mode == Mode.Park) { if (_placeTest) CheckPlacement(); else CheckBuildMenu(); }
         _weather.Follow(_cam.GlobalPosition);
         if (_weatherWanted is { } wk)
         {

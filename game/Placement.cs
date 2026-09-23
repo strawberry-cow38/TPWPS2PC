@@ -31,14 +31,36 @@ public sealed class Placement
 
     public void Arm(RideDefinition def, string display, int id, Park.Footprint fp)
     {
-        // ⚠⚠ HALF A TURN, ALWAYS. The shape is authored in the game's own frame and the plot draws
-        // in one mirrored on both axes -- the root mirrors Z and the rows are laid out reversed --
-        // so a footprint taken straight from the .sam comes out back to front and upside down.
-        // Master, looking at it: "the placement ghost is 180 degrees rotated from what it should
-        // be". Correcting it HERE means the cells, both doors and the exit's facing all come along;
+        // ⚠⚠ A MIRROR, NOT A HALF TURN. The shape is authored in the game's own frame and the plot
+        // draws in one that is mirrored in Z ONLY -- grid +x is world +X, but grid +y is world -Z,
+        // because the scene root carries Scale(1,1,-1). A reflection in one axis is not a rotation,
+        // and correcting it with a half turn leaves the shape reflected in the OTHER axis:
+        // R180 = flipX . flipY, so applying R180 where flipY was wanted is flipX left over. Master,
+        // looking at what went down: first "the placement ghost is 180 degrees rotated", then --
+        // after the half turn -- "ride entry/exit is mirrored horizontally". Those two readings
+        // together name flipY exactly, and the transform of the plot says the same thing
+        // independently, which is why it is this and not another guess at a quarter turn.
+        //
+        // Correcting it HERE means the cells, both doors and the exit's facing all come along;
         // correcting it in the drawing would leave the doors where they were.
-        Def = def; Display = display; Id = id; Base = Rotate(fp, 2); Turns = 0;
+        Def = def; Display = display; Id = id; Base = MirrorRows(fp); Turns = 0;
         Turned = Base;
+    }
+
+    /// <summary>Flip a footprint top to bottom: row y becomes row h-1-y. ⭐ The doors come with it
+    /// and the exit's FACING flips in y with them -- a facing left alone would point back into the
+    /// ride from a door that had moved to the other side.</summary>
+    static Park.Footprint MirrorRows(Park.Footprint fp)
+    {
+        int w = fp.Width, h = fp.Height;
+        if (w <= 0 || h <= 0) return fp;
+        var cells = new bool[w, h];
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++)
+                cells[x, h - 1 - y] = fp.Cells[x, y];
+        int ey = fp.EntryY >= 0 ? h - 1 - fp.EntryY : -1;
+        int xy = fp.ExitY >= 0 ? h - 1 - fp.ExitY : -1;
+        return new Park.Footprint(w, h, cells, fp.EntryX, ey, fp.ExitX, xy, fp.ExitDX, -fp.ExitDY);
     }
 
     public void Clear() { Def = null; Display = null; Turned = default; Turns = 0; }
@@ -119,6 +141,17 @@ public sealed class Placement
             if (!Inside(fx + dx, fy + dy)) return (cx + fx + dx, cy + fy + dy);
         return null;
     }
+
+    /// <summary>Which way a door's marker arrow points: from the tile OUTSIDE the door back at
+    /// the door itself.
+    ///
+    /// ⭐⭐ BOTH ARROWS POINT AT THE RIDE. Read off the console's own art: `168.tga` is a green
+    /// arrow hugging the tile's top edge pointing out through it, `169.tga` an orange one at the
+    /// same edge pointing back in. So the marked tile is the one outside, its top edge is the
+    /// edge it shares with the ride, and green says "in here" while orange says "out of here" --
+    /// one facing serves both, and the only thing that changes between them is the colour.</summary>
+    public static (int Dx, int Dy) FacingOf((int X, int Y) door, (int X, int Y) outside)
+        => (door.X - outside.X, door.Y - outside.Y);
 
     /// <summary>Turn a footprint a quarter at a time. ⭐ The ENTRY turns with it -- a ride rotated
     /// with its door left where it was would have visitors walking into a wall.</summary>
