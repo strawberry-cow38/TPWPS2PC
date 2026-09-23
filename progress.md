@@ -433,3 +433,12 @@ This closes the previous source-only UI-event gap, not native Windows/visual/inp
 self-update gates. No real Git, engine launch, HTTP update or disc lookup is executed
 by the UI fixture. No renderer/needs core files touched. Update release matrix and
 publish explicit paths after final builds and upstream reconciliation.
+
+UI event audit published as `cab9bab`; final 22 headless window checks and 51 core/
+real-disc checks passed, launcher built, and the worktree was clean at publication.
+No source mutants remain. Next independent candidate: audit engine discovery, which
+currently selects a Godot-named executable without checking whether it can run this
+C# project. Confirm the intended version/mono compatibility policy from source and
+primary engine evidence before tightening it; do not silently invent a patch-version
+restriction. Continue sharing relevant findings with the renderer maintainer. Actual
+Windows/manual gates remain blocked on that platform, not on more fake green tests.
