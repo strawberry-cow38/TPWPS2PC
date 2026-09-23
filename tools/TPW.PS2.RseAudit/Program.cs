@@ -300,5 +300,6 @@ sealed class Audit(Dictionary<string, WadArchive> wads, bool trace)
         public void WalkerPose(int guest, int fromNode, int toNode, int mode, int perMille, int angle) { }
         public void GuestVisible(int guest, bool visible) { }
         public int AnimationRemainingOn(int channel) => -1;
+        public int PlayAnimationSpeed(int slot, int variant, int speedPerMille) => PlayAnimation(slot, variant, false);
     }
 }

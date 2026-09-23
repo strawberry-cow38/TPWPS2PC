@@ -77,7 +77,7 @@ public sealed class ParkRide
 /// <see cref="TickMilliseconds"/> steps and keeps the remainder, so the same sequence of events
 /// comes out at any frame rate. Master's standing rule for this port is console speed with
 /// everything interpolated, and the interpolation belongs to the view.</summary>
-public sealed class ParkSim
+public sealed class ParkSim : IRseDirectory
 {
     /// <summary>The console runs its logic at 25 a second; the RSE's own clock is milliseconds.</summary>
     public const long TickMilliseconds = 40;
@@ -131,9 +131,9 @@ public sealed class ParkSim
             {
                 var bytes = sibling?.Invoke(child);
                 if (bytes == null || bytes.Length == 0) return null;
-                return new RseMachine(new RseProgram(bytes), host, spawn: Spawn);
+                return new RseMachine(new RseProgram(bytes), host, spawn: Spawn, directory: this);
             }
-            machine = new RseMachine(program, host, spawn: sibling == null ? null : Spawn);
+            machine = new RseMachine(program, host, spawn: sibling == null ? null : Spawn, directory: this);
             foreach (var v in RideVariables)
             {
                 // ⚠ VariableIndex throws on a name the program does not declare, so each one is
@@ -241,6 +241,40 @@ public sealed class ParkSim
         int leaving = ride.Get("VAR_LETMEOFF");
         if (leaving != 0) { ride.Leaves(leaving); ride.Set("VAR_LETMEOFF", 0); }
     }
+
+    /// <summary>⭐ EVERY LIVE MACHINE IN THE PARK, children included, which is what the console's
+    /// own instance list holds and therefore what FINDSCRIPTRAND searches.</summary>
+    public IEnumerable<RseMachine> Machines => _rides.SelectMany(r => Chain(r.Machine));
+
+    readonly Dictionary<RseMachine, int> _handles = new();
+    readonly Dictionary<int, RseMachine> _byHandle = new();
+    int _handle;
+
+    /// <summary>⚠ HANDED OUT ON DEMAND AND NEVER REUSED. A handle a script is holding must not
+    /// come to mean a different ride later, which is what recycling the numbers would do.</summary>
+    public int HandleOf(RseMachine machine)
+    {
+        if (machine == null) return 0;
+        if (_handles.TryGetValue(machine, out int h)) return h;
+        _handles[machine] = ++_handle; _byHandle[_handle] = machine;
+        return _handle;
+    }
+
+    /// <summary>⚠ Only a machine that is still in the park. A handle to a ride that has been
+    /// removed resolves to null and SETREMOTEVAR quietly does nothing, as it does on the console
+    /// for an instance that has gone.</summary>
+    public RseMachine ByHandle(int handle) =>
+        _byHandle.TryGetValue(handle, out var m) && Machines.Contains(m) ? m : null;
+
+    /// <summary>A random live machine with this name. ⚠ The NAME is the script's own, set by its
+    /// NAME opcode from its string pool -- not the ride's display name and not its file.</summary>
+    public RseMachine FindRandom(string name)
+    {
+        var all = Machines.Where(m => m.Fault == null
+            && string.Equals(m.Name, name, StringComparison.OrdinalIgnoreCase)).ToArray();
+        return all.Length == 0 ? null : all[_random.Next(all.Length)];
+    }
+    readonly Random _random = new(11);
 
     /// <summary>A machine and everything it has spawned, parents before children. ⚠ The walk is
     /// depth-limited because nothing stops a script spawning a script that spawns it back.</summary>

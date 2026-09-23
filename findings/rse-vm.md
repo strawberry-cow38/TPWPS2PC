@@ -225,10 +225,25 @@ a missing host and the real Space Gates LOOPANIM_CH instruction. No game data is
   requests are surfaced through `IRseHost.TryEffect`/`EffectRequested`, explicitly acknowledged
   by `RsePreviewHost`; a missing or rejecting host faults. Economic/wear/breakdown decisions
   remain host inputs. Breakdown/repair paths are not covered by the demonstrated cycles.
-* These observed instructions deliberately fail on execution: SETOBJPARAM, TRIGANIMSPEED,
-  LOOPANIM_CH, WALKST_FLOAT, WALKFLOATSTAT, WALKFLOATSTOP, FINDSCRIPTRAND, SETREMOTEVAR,
-  HOUR, MIN, SEC and SPARK. Their file operands are decoded; their engine services are not
-  fabricated.
+* **Every one of the 359 `.rse` scripts on this disc now executes**, across all four worlds.
+  No observed instruction is left deliberately failing. The 23 opcode slots that appear in no
+  shipped script are still refused -- their borrowed PC names alone do not validate PS2 semantics.
+
+## The ones this build answers with nothing
+
+Several implemented opcodes do nothing on the console, and are modelled that way rather than
+being given behaviour that would look livelier:
+
+| Opcode | What `SLES_500.32` does |
+|---|---|
+| `TOUR` `BUMP` `COAST` | A selector and one argument; every branch discards it or writes **zero**. `0x1c1260`, `0x1c1370`, `0x1c14e0` |
+| `HOUR` `MIN` `SEC` | Share one case with `0x61`..`0x63`; the body is `LastValue = 0` and a store |
+| `SPARK` | Stores two node ids, resolves their positions into locals and discards them |
+| `SETOBJPARAM` | Walks the instance's own ADDOBJ list at `+0xb0`, which this host does not build |
+
+⚠ Six jungle rides -- Chac Atak, Gorilla Thrilla, Temple Of Gloom (COAST), Dino Karts, Splish
+Splash (BUMP) and Jurassic Tours (TOUR) -- take one guest into `VAR_LETMEON` and then wait
+forever on one of these. That is this executable's behaviour, not a gap in the port.
 
 ## A missing animation is not an error
 

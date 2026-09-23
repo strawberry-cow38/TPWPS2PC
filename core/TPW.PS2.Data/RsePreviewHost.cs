@@ -5,7 +5,7 @@ namespace TPW.PS2.Data;
 /// host; this preview explicitly records them without rendering sound, particles or guest heads.</summary>
 public sealed class RsePreviewHost : IRseHost
 {
-    public sealed record Playback(Animation.Record Record, int Variant, long Start, bool Loop);
+    public sealed record Playback(Animation.Record Record, int Variant, long Start, bool Loop, int Speed = 1000);
     public sealed record Effect(long Time, RseOpcode Opcode, IReadOnlyList<int> Arguments);
     readonly Dictionary<int, Animation.Record[]> _slots;
     Playback _queued;
@@ -21,12 +21,17 @@ public sealed class RsePreviewHost : IRseHost
 
     // 0x1abbb4 -> 0x297b68 converts the float to an unsigned integer by truncation.
     static int Duration(Animation.Record r) => checked((int)(r.DurationFrames * 1000f / Animation.Fps));
+    /// <summary>How long it actually takes on the clock: the record's length divided by the rate
+    /// TRIGANIMSPEED asked for. ⚠ NOT what the opcode hands back to the script -- see
+    /// <see cref="IRseHost.PlayAnimationSpeed"/>.</summary>
+    static int Wall(Playback p) => p.Speed <= 0 ? Duration(p.Record)
+        : checked((int)((long)Duration(p.Record) * 1000 / p.Speed));
     public float Frame
     {
         get
         {
             if (Current == null) return 0;
-            double frame = (Time - Current.Start) * Animation.Fps / 1000d;
+            double frame = (Time - Current.Start) * Animation.Fps / 1000d * Current.Speed / 1000d;
             int duration = Current.Record.DurationFrames;
             return (float)(Current.Loop && duration > 0 ? frame % duration : Math.Min(frame, duration));
         }
@@ -52,20 +57,25 @@ public sealed class RsePreviewHost : IRseHost
     /// it is a service whose answer has now been read.</summary>
     public const int MissingAnimationMilliseconds = 1000;
 
-    public int PlayAnimation(int slot, int variant, bool loop)
+    public int PlayAnimation(int slot, int variant, bool loop) => PlayAnimation(slot, variant, loop, 1000);
+
+    public int PlayAnimationSpeed(int slot, int variant, int speedPerMille) =>
+        PlayAnimation(slot, variant, false, speedPerMille);
+
+    int PlayAnimation(int slot, int variant, bool loop, int speed)
     {
         if (!_slots.TryGetValue(slot, out var records) || variant < 0 || variant >= records.Length)
         {
             // Nothing is started and nothing already playing is disturbed.
             long unfinished = Current is { Loop: false }
-                ? Math.Max(0, Current.Start + Duration(Current.Record) - Time) : 0;
+                ? Math.Max(0, Current.Start + Wall(Current) - Time) : 0;
             return checked((int)unfinished) + MissingAnimationMilliseconds;
         }
         if (loop && Current is { Loop: true } && AnimationSlot == slot && AnimationVariant == variant && _queued == null)
             return Duration(Current.Record);
         long start = Time;
-        if (Current is { Loop: false }) start = Math.Max(start, Current.Start + Duration(Current.Record));
-        var play = new Playback(records[variant], variant, start, loop);
+        if (Current is { Loop: false }) start = Math.Max(start, Current.Start + Wall(Current));
+        var play = new Playback(records[variant], variant, start, loop, speed <= 0 ? 1000 : speed);
         if (start > Time) _queued = play;
         else { Current = play; _queued = null; }
         return checked((int)(start - Time) + Duration(play.Record));

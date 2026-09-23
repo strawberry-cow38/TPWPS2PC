@@ -5142,9 +5142,10 @@ public partial class Viewer : Node3D
             if (_current != null) { _time = _shotFrame < 0 ? 0 : _shotFrame; _current.SetFrame(_time); }
             ++_shotWait;
             // ⭐⭐ A GUEST SHOT IS TWO SHOTS. One frame proves a guest EXISTS; only two prove it
-            // MOVED. The clock is held still under a capture, so the walk is wound by hand: to
-            // three seconds, photographed (`<shot>-a.png`), then to eight, photographed again as
-            // the shot asked for -- and the positions at both are in the log beside each other.
+            // MOVED. The clock is held still under a capture, so the park is wound by hand: to
+            // sixty seconds, photographed (`<shot>-a.png`), then to three minutes, photographed
+            // again as the shot asked for -- and the positions and the rides' census at both are
+            // in the log beside each other.
             // ⚠ The camera is aimed on the first frame: the eye is placed at the TOP of _Process,
             // so a change made down here reaches the picture one frame later than the walk does.
             // ⚠ LATCHED ON THE GATE, NOT ON THE FRAME COUNT: the park may come up a few frames
@@ -5154,9 +5155,9 @@ public partial class Viewer : Node3D
             if (_guestTest && _guests != null)
             {
                 if (_guestStage == 0 && _shotWait >= warm)
-                { GuestTestCamera(); GuestTestStage("A", 75); _guestStage = 1; _guestSince = _shotWait; }
+                { GuestTestCamera(); GuestTestStage("A", 1500); _guestStage = 1; _guestSince = _shotWait; }
                 else if (_guestStage == 1 && _shotWait >= _guestSince + 2)
-                { SaveShot(ShotSibling(_shotPath, "-a")); GuestTestStage("B", 200); _guestStage = 2; _guestSince = _shotWait; }
+                { SaveShot(ShotSibling(_shotPath, "-a")); GuestTestStage("B", 4500); _guestStage = 2; _guestSince = _shotWait; }
                 else if (_guestStage == 2 && _shotWait >= _guestSince + 2) { SaveShot(_shotPath); GetTree().Quit(); }
             }
             else if (_shotWait > (_guestTest ? 600 : warm))

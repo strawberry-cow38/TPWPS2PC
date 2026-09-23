@@ -14,6 +14,17 @@ public interface IRseHost
     /// so a host with a single channel may forward channel 0 and reject the rest.</summary>
     int PlayAnimationOn(int channel, int slot, int variant, bool loop);
 
+    /// <summary>TRIGANIMSPEED: the same one-shot at a rate, in per-mille (1000 is normal, 2000
+    /// twice as fast). `0x1be...`/`0x1bd...`'s handler stores the rate at instance `+0xe4` and
+    /// hands `frameRate * speed / 1000` to `0x1abc80`.
+    ///
+    /// ⚠ THE DURATION IT RETURNS IS UNSCALED. `0x1abc80` computes it from the record's own frame
+    /// count through `0x1a8ac8` (`(end - now) * 33.333`) and never applies the rate; the handler
+    /// separately works out the wall-clock time as `duration * 1000 / speed`. So the number the
+    /// script is handed is the animation's length, not how long it will take -- modelled as
+    /// written, because a script that WAITs on it is waiting the length.</summary>
+    int PlayAnimationSpeed(int slot, int variant, int speedPerMille);
+
     /// <summary>Where one of this script's nodes is, in the space the walk system asks for
     /// (`0x800` for the park, `0x80` for a node on the ride's own model -- `0x1b9388`).
     ///
@@ -43,6 +54,25 @@ public interface IRseHost
     void GuestVisible(int guest, bool visible);
 }
 
+/// <summary>⭐⭐ THE OTHER SCRIPTS IN THE PARK. Two opcodes reach outside one machine entirely:
+/// FINDSCRIPTRAND (`0x1bf0e8`) walks the game's list of LIVE script instances counting the ones
+/// whose name matches a string and returns a random one of them, and SETREMOTEVAR (`0x1bea...`)
+/// writes a variable in whichever instance a handle names. The bus uses both -- it finds a gate
+/// and tells it something -- and neither can be answered by a machine that only knows itself.
+///
+/// ⚠ LIVE, not "declared on the disc". The console searches instances that exist right now, so a
+/// script naming something nobody has built finds nothing and the opcode leaves the result
+/// alone.</summary>
+public interface IRseDirectory
+{
+    /// <summary>A random live machine whose NAME matches, or null when none does.</summary>
+    RseMachine FindRandom(string name);
+    /// <summary>The machine a handle names, or null when it has gone.</summary>
+    RseMachine ByHandle(int handle);
+    /// <summary>The handle for a machine, as FINDSCRIPTRAND would hand it out.</summary>
+    int HandleOf(RseMachine machine);
+}
+
 public enum RseYield { Budget, EndSlice, Unlock, Wait, Animation }
 
 /// <summary>Single-instance, deterministic slice interpreter. The caller supplies game time and
@@ -66,8 +96,10 @@ public sealed class RseMachine
     readonly IRseHost _host;
     readonly Func<int> _random;
     readonly Func<string, RseMachine> _spawn;
+    readonly IRseDirectory _directory;
     readonly Walk[] _walks;
-    short _bounceBase, _bouncing, _bumpRate;
+    short _bounceBase, _bouncing, _bumpRate, _sparkFrom, _sparkTo, _floatA, _floatB;
+    int _floatFor; long _floatFrom;
     byte _turbo;
     int _bounceNode;
     readonly Bouncer[] _bounce;
@@ -110,9 +142,9 @@ public sealed class RseMachine
     public int Bouncing => _bouncing;
 
     public RseMachine(RseProgram program, IRseHost host = null, Func<int> random = null,
-                      Func<string, RseMachine> spawn = null)
+                      Func<string, RseMachine> spawn = null, IRseDirectory directory = null)
     {
-        Program = program; _host = host; _spawn = spawn;
+        Program = program; _host = host; _spawn = spawn; _directory = directory;
         _variables = new int[program.VariableCount]; _stack = new int[program.StackSize];
         _callTop = _stack.Length;
         // 0x1bff78 doubles the declared capacity before allocating.
@@ -262,6 +294,12 @@ public sealed class RseMachine
                     case RseOpcode.STARTSCREAM: case RseOpcode.STOPSCREAM:
                     case RseOpcode.SINGLESCREAM: case RseOpcode.SCREAMLEVEL:
                     case RseOpcode.REPAIREFFECT: case RseOpcode.SETREVERB: case RseOpcode.DIPMUSIC:
+                    // ⚠ SETOBJPARAM belongs here and not with the real opcodes: `0x1bd...` walks
+                    // the instance's OWN list of objects at `+0xb0` -- the things ADDOBJ put
+                    // there -- and sets a parameter on each match. ADDOBJ is a presentation
+                    // request this host records and does not act on, so there is no list to walk
+                    // and nothing for this to find. It is routed, not implemented.
+                    case RseOpcode.SETOBJPARAM:
                         if (!Host().TryEffect(ins.Opcode, a.Select(Value).ToArray()))
                             throw new NotSupportedException($"Host rejected {ins}");
                         break;
@@ -287,6 +325,17 @@ public sealed class RseMachine
 
                     // TRIGANIM with a channel. `0x1bda84` is TRIGANIM's body with the fourth
                     // operand handed to the animation call, and the same -300/floor-300 duration.
+                    // ⚠ The channel is the RAW word here, unlike TRIGANIM_CH which evaluates it
+                    // (`0x1bd6..`: LOOPANIM_CH passes what the fetch returned straight through).
+                    case RseOpcode.LOOPANIM_CH:
+                        if (_loopSlot == V(0) && _loopVariant == V(1)) break;
+                        Host().PlayAnimationOn((int)a[2].Word, V(0), V(1), true);
+                        _loopSlot = V(0); _loopVariant = V(1); _animationUntil = null; break;
+                    case RseOpcode.TRIGANIMSPEED:
+                        LastValue = Math.Max(300, Host().PlayAnimationSpeed(V(0), V(1), V(3)) - 300);
+                        _loopSlot = -1;
+                        Store(2, LastValue, true); _animationUntil = Time + LastValue;
+                        break;
                     case RseOpcode.TRIGANIM_CH:
                         LastValue = Math.Max(300, Host().PlayAnimationOn(V(3), V(0), V(1), false) - 300);
                         _loopSlot = -1;
@@ -306,6 +355,50 @@ public sealed class RseMachine
                     // balloon stand, the gift shop, the steak house, the Super Bog, the arcade --
                     // is blocked on these five and nothing else. A guest goes IN (and stops being
                     // drawn), a timer runs, and they come back out.
+                    // ⭐ FINDSCRIPTRAND(name, dest): count the live scripts with that name, pick
+                    // one at random, hand back its handle. ⚠ NOTHING HAPPENS WHEN NONE MATCH --
+                    // `0x1bf17c` returns before touching the result, so a script looking for
+                    // something nobody has built keeps whatever it had.
+                    case RseOpcode.FINDSCRIPTRAND:
+                        if (a[0].Tag != 0x10) throw new InvalidDataException($"Expected a script name: {ins}");
+                        var found = _directory?.FindRandom(Program.StringAt(a[0].Index));
+                        if (found != null) Result(_directory.HandleOf(found), true);
+                        break;
+                    // SETREMOTEVAR(handle, index, value): a silent no-op for a handle that has
+                    // gone or an index past that script's variable count.
+                    case RseOpcode.SETREMOTEVAR:
+                        Poke(_directory?.ByHandle(V(0)), V(1), V(2)); break;
+
+                    // ⚠⚠ THE CLOCK ALWAYS SAYS ZERO. HOUR, MIN and SEC share one case with three
+                    // unnamed neighbours (`0x61`..`0x63`) and its whole body is `LastValue = 0`
+                    // followed by a store into the destination. Hallow's clock tower asks the
+                    // time and this executable answers midnight; modelled as written, like the
+                    // COAST and BUMP queries, rather than wired to a clock the game never read.
+                    case RseOpcode.HOUR: case RseOpcode.MIN: case RseOpcode.SEC:
+                        Result(0, true); break;
+
+                    // SPARK stores two node ids and resolves their positions into locals it then
+                    // discards (`0x1bf...`). Nothing else happens in this build.
+                    case RseOpcode.SPARK:
+                        _sparkFrom = (short)V(0); _sparkTo = (short)V(1); break;
+
+                    // The float state a zero-g ride hangs on: a duration, two parameters and the
+                    // moment it started. The walk ticker clears the duration once it is up.
+                    case RseOpcode.WALKST_FLOAT:
+                        _floatFor = V(0) * 1000; _floatA = (short)V(1); _floatB = (short)V(2);
+                        _floatFrom = Time; break;
+                    case RseOpcode.WALKFLOATSTAT: Result(_floatFor, true); break;
+                    case RseOpcode.WALKFLOATSTOP:
+                        // ⚠ NOT A STOP. `0x1bee..` rescales the start so the remaining time is
+                        // measured against a duration of 1000 and then sets the duration to 1000;
+                        // it shortens the float, it does not end it.
+                        if (_floatFor != 0)
+                        {
+                            _floatFrom = Time - (Time - _floatFrom) * 1000 / _floatFor;
+                            _floatFor = 1000;
+                        }
+                        break;
+
                     case RseOpcode.LIMBO: LastValue = Limbo(V(0), V(1)); break;
                     case RseOpcode.UNLIMBO: Result(Unlimbo(false), true); break;
                     case RseOpcode.FORCEUNLIMBO:
@@ -509,8 +602,9 @@ public sealed class RseMachine
     // program's variable count, is a silent no-op -- not a fault.
     void Poke(RseMachine other, int index, int value)
     {
+        if (other == null || (uint)index >= (uint)other._variables.Length) return;
+        other._variables[index] = value;
         LastValue = value;
-        if (other != null && (uint)index < (uint)other._variables.Length) other._variables[index] = value;
     }
     void Peek(RseMachine other, RseProgram.Operand destination, int index)
     {
@@ -611,6 +705,9 @@ public sealed class RseMachine
     /// built on that guess would hand every rider straight back without them ever riding.</summary>
     void StepWalks()
     {
+        // `0x1bade8` does this after its slot loop: a float whose time is up simply stops being
+        // one, which is what WALKFLOATSTAT then reports.
+        if (_floatFor != 0 && Time > _floatFrom + _floatFor) _floatFor = 0;
         for (int i = 0; i < _walks.Length; i++)
         {
             ref var w = ref _walks[i];
