@@ -277,3 +277,32 @@ Needs clock reproduction was also run in FANTASY/HALLOW/SPACE: each passes the s
 21 storage checks and fails exactly the same two clock controls as JUNGLE. Local
 helper still uncommitted; no core collision. Keep integrating the peer correction
 when it arrives and proceed with independent plan items in the meantime.
+
+## Needs peer integration completed for this package
+
+Integrated cow tools' `07893c0` clock correction and thought-bubble implementation
+without modifying its core/viewer files. The formerly local helper is now ready to
+publish: 24 independent assertions pass per world, isolated and integrated (96 each).
+The strengthened clock case uses a controlled .25-second period and 1.2 total seconds,
+requiring four actual rises and exact equality at 25/50 Hz away from a period boundary.
+The original one-second check alone would have been vacuous under the new 2.56-second
+default, so it was deliberately strengthened rather than merely accepting green.
+
+Matrix coverage now requires 30 availability, 57 removal, 20 conservation and 24
+needs-lifecycle assertions per world. All pass; full JUNGLE/FANTASY pass, HALLOW/SPACE
+retain only the exact historical retail findings, runner exit 2. All 20 Python matrix
+tests pass with new missing-needs/partial-needs controls. Evidence:
+`tpw-needs-final-07893c0/manifest.json`, `tpw-needs-final-isolated-{WORLD}.log`.
+This closes the pending helper noted above, not all guest/needs/rendering work.
+
+Additional M7 evidence: a separate fresh detached checkout of `34b050b` built all
+22 tracked projects in Release successfully, using the existing NuGet cache. It
+remained Git-clean. This is clean-checkout Linux aarch64 build evidence, not a clean
+machine install or Windows runtime validation; subsequent `07893c0` was not included
+in that pinned build sweep. Manifest: `tpw-clean-build-evidence-34b050b/manifest.json`.
+
+Peer review of launcher receipt: a nonzero build already cannot record success, but
+the original receipt hashes only the main DLL and would miss later changes to sibling
+runtime dependencies. Next narrow package: reproduce that missing-dependency gate,
+then record the managed output manifest rather than only the viewer assembly. Keep
+Windows/manual launch gates explicit and preserve the peer's ongoing render work.

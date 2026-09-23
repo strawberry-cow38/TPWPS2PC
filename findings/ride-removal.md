@@ -106,3 +106,29 @@ per world. Integrated and isolated hashes differ because their corridor coordina
 differ; only same-fixture replay pairs are compared. The full matrix still reports
 only the two unchanged retail findings, runner exit 2. No production core change
 was needed for this additional coverage.
+
+## Needs continuity: independent integration checks
+
+`NeedsLifecycleChecks.cs` exercises the peer's guest-ID side table through boarding,
+actual scripted seating, removal, normal completion, no-ground recovery/restoration,
+retirement, and reused IDs. Frozen chosen rates isolate preservation of all stored
+fields from need arithmetic. Fresh arrivals overwrite stale entries even before a
+later reconciliation step; recreated walking objects must not seed a second person.
+
+The first run against `5395ae3` passed 21 identity/storage assertions but exposed two
+clock defects in every world: a zero-time coordinator call aged needs, and equal
+elapsed time at 25 Hz versus 50 Hz produced different hunger. This was shared with
+the peer maintainer, who corrected the core in `07893c0`; no competing core edit was
+made here.
+
+The final independent suite has 24 assertions per world. Its rate-control case uses
+a chosen .25-second period and deterministic +1 hunger, then checks 1.2 elapsed
+seconds at both frame rates yields exactly four rises. That total avoids floating-
+point boundary ambiguity and explicitly rejects a no-op updater; rates/cadence are
+test controls, not retail measurements. All four worlds pass in both isolated and
+integrated modes. Matrix manifests now require and report this coverage as well.
+Only the two pre-existing retail failures remain in full ParkSimAudit.
+
+These tests do not establish every rate/decision rule, long-stall catch-up behavior,
+thought-bubble visibility, or retail AI parity. Rendering remains the peer's active
+integration scope and requires its own evidence.

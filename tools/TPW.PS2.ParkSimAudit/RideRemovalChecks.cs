@@ -211,5 +211,6 @@ static class RideRemovalChecks
         Check(Returned(clear.Visitors, clear.Guest.Id), "clearing ride instances cannot orphan visitor ownership");
 
         GuestConservationChecks.Run(terrain, sourcePaths, script, animation, capacity, entrance, exit, sibling, headSlots, check);
+        NeedsLifecycleChecks.Run(terrain, sourcePaths, script, animation, capacity, entrance, exit, sibling, headSlots, check);
     }
 }

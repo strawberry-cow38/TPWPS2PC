@@ -26,11 +26,12 @@ ASSEMBLY = PROJECT + '/bin/Release/net8.0/TPW.PS2.ParkSimAudit.dll'
 MAX_LOG_BYTES = 8 * 1024 * 1024
 # Minimum assertions in the current integrated ParkSimAudit. A stale binary or
 # accidentally omitted helper must not turn missing lifecycle coverage into PASS.
-REQUIRED_CHECKS = {'availability': 30, 'removal': 57, 'conservation': 20}
+REQUIRED_CHECKS = {'availability': 30, 'removal': 57, 'conservation': 20, 'needs_lifecycle': 24}
 REQUIRED_WITNESSES = (
     'ok   availability regression exercised',
     'ok   removal regression exercised',
     'ok   conservation: identical fixed-tick inputs reproduce the full sampled lifecycle',
+    'ok   needs lifecycle: clock control actually applies four rises',
 )
 
 
@@ -38,7 +39,7 @@ def classify(world: str, raw_exit: int | None, text: str, *, timed_out: bool = F
              truncated: bool = False, launch_error: str | None = None) -> dict:
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     failures = [line[5:] for line in lines if line.startswith('FAIL ')]
-    counts = {category: sum(line.startswith(f'ok   {category}:') for line in lines)
+    counts = {category: sum(line.startswith(f"ok   {category.replace('_', ' ')}:") for line in lines)
               for category in REQUIRED_CHECKS}
     evidence = {'raw_exit': raw_exit, 'failures': failures,
                 **{f'{category}_checks': count for category, count in counts.items()}}

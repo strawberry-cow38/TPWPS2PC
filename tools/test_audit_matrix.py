@@ -8,7 +8,9 @@ COVERAGE = '\n'.join(['  ok   availability: check'] * 30 +
                      ['  ok   removal: check'] * 57 +
                      ['  ok   removal regression exercised a real non-track ride with seats'] +
                      ['  ok   conservation: check'] * 19 +
-                     ['  ok   conservation: identical fixed-tick inputs reproduce the full sampled lifecycle (100 steps, SHA256 ' + 'A' * 64 + ')'])
+                     ['  ok   conservation: identical fixed-tick inputs reproduce the full sampled lifecycle (100 steps, SHA256 ' + 'A' * 64 + ')'] +
+                     ['  ok   needs lifecycle: check'] * 23 +
+                     ['  ok   needs lifecycle: clock control actually applies four rises rather than passing with no updates'])
 
 
 
@@ -55,20 +57,20 @@ class ClassificationTests(unittest.TestCase):
         self.assertEqual(classify('JUNGLE', 0, '')['status'], 'incomplete_output')
 
     def test_missing_lifecycle_suites_are_not_pass(self):
-        for category in ('availability', 'removal', 'conservation'):
+        for category in ('availability', 'removal', 'conservation', 'needs lifecycle'):
             output = '\n'.join(line for line in COVERAGE.splitlines()
                                if f'ok   {category}:' not in line) + '\nPASS'
             with self.subTest(category=category):
                 self.assertEqual(classify('JUNGLE', 0, output)['status'], 'missing_coverage')
 
     def test_partial_lifecycle_suite_is_not_pass(self):
-        for category in ('removal', 'conservation'):
+        for category in ('removal', 'conservation', 'needs lifecycle'):
             output = COVERAGE.replace(f'  ok   {category}: check\n', '', 1) + '\nPASS'
             with self.subTest(category=category):
                 self.assertEqual(classify('JUNGLE', 0, output)['status'], 'missing_coverage')
 
     def test_missing_removal_or_replay_witness_is_not_pass(self):
-        for witness in ('removal regression exercised', 'identical fixed-tick inputs reproduce'):
+        for witness in ('removal regression exercised', 'identical fixed-tick inputs reproduce', 'clock control actually applies four rises'):
             output = COVERAGE.replace(witness, 'something else') + '\nPASS'
             with self.subTest(witness=witness):
                 self.assertEqual(classify('JUNGLE', 0, output)['status'], 'missing_coverage')
@@ -83,6 +85,7 @@ class ClassificationTests(unittest.TestCase):
         self.assertEqual(row['availability_checks'], 30)
         self.assertEqual(row['removal_checks'], 57)
         self.assertEqual(row['conservation_checks'], 20)
+        self.assertEqual(row['needs_lifecycle_checks'], 24)
 
     def test_suppressed_failure_exit_is_not_pass(self):
         self.assertEqual(classify('HALLOW', 0, known('HALLOW'))['status'], 'unexpected_failure')
