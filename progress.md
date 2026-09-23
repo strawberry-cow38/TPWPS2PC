@@ -472,3 +472,33 @@ random reductions are bounded, aborted removal differs from already-reported com
 Do not use Queued as a waiting-only state: it includes seated riders. No core effect
 wiring was pushed by the peer yet; don't race its files or guess the unknown scale factors.
 Advance independent release validation while the contract is pending.
+
+## Joint ride-effect consumer and no-reseed contract
+
+Peer branch `needs-ride-effects` (`be4a40b`, locally cherry-picked as `0c0981c`) wires
+Needs.Ride beside Rides++ in successful recovery. Main was left untouched while the
+old byte-equality check was revised: real completion is allowed to change specified
+fields, but not reseed a person. The old assertion reproduced exactly one expected red.
+
+New controls pin non-clamping effect inputs and require the exact known deltas, preserve
+all unaffected fields/Cash1234, bound the random reduction, and verify the walking ID/
+Wandering plan. Completed-handback deletion, delayed ground recovery, repeat steps,
+and aborted queued/seated removal are distinguished. 45 needs assertions/world pass
+isolated and integrated. Five broken source variants were rejected (5/5/5/5/3 assertions):
+missing effect, doubled effect, reseed, unconditional completion, Collect-only placement.
+Original source restored; no mutants remain. Review strengthened explicit readmission
+checks and noted that random bounds do not prove distribution/draw count.
+
+The full park matrix retains only the exact two retail findings (exit 2); 20 runner
+Python tests pass, viewer builds, 22 headless UI checks and 76 launcher/disc/engine
+checks pass on the integrated tree. The engine capability package was previously
+published as `131ae51`. Evidence: `tpw-ride-effects-old-invariant.log`,
+`tpw-ride-effects-{WORLD}.log`, `tpw-ride-effect-mutations/manifest.json`,
+`tpw-ride-effects-integrated/manifest.json`.
+
+Pending final publication: fetch/reconcile, run the strengthened final helper, then
+push the peer consumer plus audit commit together so main's new tip is green. Do not
+mistake Queued for waiting or claim the chosen effect scales are decoded retail values.
+A source-summary wording mismatch (Ride mentions toilet emptying while the agreed
+contract leaves Toilet unchanged) was flagged for the needs maintainer, not changed
+silently in its active file.

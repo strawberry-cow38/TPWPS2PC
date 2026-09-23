@@ -16,7 +16,11 @@ static class NeedsLifecycleChecks
                 entrance, exit, out _, sibling: sibling, headSlots: headSlots)
                 ?? throw new InvalidOperationException("Needs fixture script did not start");
             sim.SetOpen(1, true); ride.Set("VAR_BROKEN", 0);
-            var visitors = new ParkVisitors(sim, new GuestWalk(paths)) { Needs = new VisitorNeeds(123) };
+            var visitors = new ParkVisitors(sim, new GuestWalk(paths))
+            {
+                Needs = new VisitorNeeds(123), RideIntensity = 40, RideHappiness = 7,
+                RideSickScale = .5f, RideBoredomScale = .5f,
+            };
             // Freeze CHOSEN rates to isolate storage continuity from arithmetic.
             foreach (string name in visitors.Needs.Rates.Keys.ToArray())
                 visitors.Needs.Rates[name] = new VisitorNeeds.Rate(0, 0, false);
@@ -36,6 +40,22 @@ static class NeedsLifecycleChecks
                   && visitors.Plans[guest.Id].Intent == VisitorIntent.Queued, "fixture transfers guest to ride ownership");
         }
         bool Same(VisitorWants a, VisitorWants b) => a.Equals(b);
+        bool Readmitted(ParkVisitors visitors, int id) => visitors.Walk.Guests.Count(g => g.Id == id) == 1
+            && visitors.Plans.TryGetValue(id, out var plan) && plan.Intent == VisitorIntent.Wandering && plan.RideId == 0;
+        bool HasOneRideEffect(VisitorWants before, VisitorWants after, ParkVisitors visitors)
+        {
+            static byte Clamp(int value) => (byte)Math.Clamp(value, 0, 100);
+            var expected = before with
+            {
+                Happiness = Clamp(before.Happiness + visitors.RideHappiness),
+                Sick = Clamp(before.Sick + (int)(visitors.RideSickScale * (visitors.RideIntensity - 30))),
+                Unknown78 = Clamp(before.Unknown78 - (int)(visitors.RideBoredomScale * visitors.RideIntensity)),
+                Unknown7B = after.Unknown7B, // the specified rand(20) is bounded, not pinned
+            };
+            return Same(expected, after) && after.Unknown7B >= Math.Max(0, before.Unknown7B - 19)
+                && after.Unknown7B <= before.Unknown7B;
+        }
+
 
         var queued = Fresh(); var original = queued.Visitors.Needs.Of(queued.Guest.Id);
         Queue(queued.Visitors, queued.Ride, queued.Guest);
@@ -59,8 +79,53 @@ static class NeedsLifecycleChecks
         for (int i = 0; i < 12000 && !returning.Ride.Left.Contains(returning.Guest.Id); i++) returning.Sim.Advance(.04);
         Check(returning.Ride.Left.Contains(returning.Guest.Id), "real script reports normal completion");
         returning.Sim.SetOpen(1, false); returning.Visitors.Step(0, null);
-        Check(returning.Visitors.Rides == 1 && Same(original, returning.Visitors.Needs.Of(returning.Guest.Id)),
-              "normal completion/readmission does not reseed needs");
+        var afterRide = returning.Visitors.Needs.Of(returning.Guest.Id);
+        Check(returning.Visitors.Rides == 1 && Readmitted(returning.Visitors, returning.Guest.Id)
+              && HasOneRideEffect(original, afterRide, returning.Visitors),
+              "normal completion applies the configured effect once without reseeding unaffected fields");
+        Check(afterRide.Cash == 1234 && afterRide.Happiness == 90 && afterRide.Sick == 76 && afterRide.Unknown78 == 42,
+              "non-clamping completion sentinels distinguish one effect from a double or fresh spawn");
+        returning.Visitors.Step(0, null);
+        Check(returning.Visitors.Rides == 1 && Same(afterRide, returning.Visitors.Needs.Of(returning.Guest.Id)),
+              "subsequent steps neither repeat completion effects nor reroll their random reduction");
+
+        foreach (bool mailbox in new[] { true, false })
+        {
+            var finished = Fresh(); var before = finished.Visitors.Needs.Of(finished.Guest.Id);
+            Queue(finished.Visitors, finished.Ride, finished.Guest); finished.Ride.Set("VAR_STARTNOW", 1);
+            bool Reported() => mailbox ? finished.Ride.Get("VAR_LETMEOFF") == finished.Guest.Id
+                                     : finished.Ride.Left.Contains(finished.Guest.Id);
+            for (int i = 0; i < 12000 && !Reported(); i++) finished.Sim.Advance(.04);
+            Check(Reported(), "completion-removal fixture observes " + (mailbox ? "exit mailbox" : "collected handback"));
+            finished.Sim.Remove(1); finished.Visitors.Step(0, null);
+            var after = finished.Visitors.Needs.Of(finished.Guest.Id);
+            Check(finished.Visitors.Rides == 1 && Readmitted(finished.Visitors, finished.Guest.Id)
+                  && HasOneRideEffect(before, after, finished.Visitors),
+                  "already-reported completion retains its one effect when the ride is removed");
+            finished.Visitors.Step(0, null);
+            Check(Same(after, finished.Visitors.Needs.Of(finished.Guest.Id)) && finished.Visitors.Rides == 1,
+                  "removed completed ride cannot apply its effect again");
+        }
+
+        var delayed = Fresh(); var beforeDelay = delayed.Visitors.Needs.Of(delayed.Guest.Id);
+        int restoredMaterial = delayed.Paths.Field.Material(exit.X, exit.Z);
+        Queue(delayed.Visitors, delayed.Ride, delayed.Guest); delayed.Ride.Set("VAR_STARTNOW", 1);
+        for (int i = 0; i < 12000 && !delayed.Ride.Left.Contains(delayed.Guest.Id); i++) delayed.Sim.Advance(.04);
+        Check(delayed.Ride.Left.Contains(delayed.Guest.Id), "delayed-effect fixture has a genuine script handback");
+        delayed.Sim.SetOpen(1, false);
+        for (int i = 1; i < delayed.Paths.Field.Cells.Length; i += 2) delayed.Paths.Field.Cells[i] = 0;
+        delayed.Paths.SetEntrance(null); delayed.Visitors.Step(0, null);
+        Check(delayed.Visitors.Plans[delayed.Guest.Id].Intent == VisitorIntent.Recovering && delayed.Visitors.Rides == 0
+              && !delayed.Visitors.Walk.Guests.Any(g => g.Id == delayed.Guest.Id) && Same(beforeDelay, delayed.Visitors.Needs.Of(delayed.Guest.Id)),
+              "completed guest awaiting ground keeps its pending effect unapplied until readmission");
+        delayed.Paths.Lay(exit, restoredMaterial); delayed.Visitors.Step(0, null);
+        var afterDelay = delayed.Visitors.Needs.Of(delayed.Guest.Id);
+        Check(delayed.Visitors.Rides == 1 && Readmitted(delayed.Visitors, delayed.Guest.Id)
+              && HasOneRideEffect(beforeDelay, afterDelay, delayed.Visitors),
+              "successful delayed readmission applies the preserved completion effect");
+        delayed.Visitors.Step(0, null);
+        Check(Same(afterDelay, delayed.Visitors.Needs.Of(delayed.Guest.Id)) && delayed.Visitors.Rides == 1,
+              "delayed completion effect is consumed exactly once");
 
         var recovery = Fresh(); original = recovery.Visitors.Needs.Of(recovery.Guest.Id);
         int material = recovery.Paths.Field.Material(entrance.X, entrance.Z);

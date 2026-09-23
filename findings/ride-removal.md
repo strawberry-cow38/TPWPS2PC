@@ -153,3 +153,41 @@ VisitorNeeds is a **per-level spawn template**, not decoded temporal rise-rate d
 Need growth, its selected rates, and cadence remain port policy. This suite audits
 storage/identity and clock consistency; it does not independently establish retail
 need-growth rules. See the corrected source and `findings/visitors.md`.
+
+## Completion effects: continuity does not mean immutability
+
+The needs maintainer proposed wiring an existing Ride effect into completed rides.
+The old completed-return check required byte-for-byte unchanged needs; that correctly
+caught reseeding before any effects existed, but became an invalid invariant once a
+specified ride effect was intentional. It was replaced, not merely disabled.
+
+The jointly agreed contract applies the configured effect exactly once alongside
+Rides++ in successful RecoverGuests readmission. That includes genuine handbacks
+reported before deletion and excludes ordinary aborted removal. A completed guest
+with no available ground retains the pending effect until readmission succeeds.
+Queued is not a waiting-only state: it includes script-owned seated riders, so no
+queue penalty was added to that intent.
+
+The audit pins chosen inputs (intensity 40, happiness +7, sickness/boredom scales .5)
+and non-clamping sentinels. One effect must take Happiness 83→90, Sick 71→76 and
+Unknown78 62→42. Cash remains 1234, outside spawn cash values; Hunger, Thirst, Toilet,
+Litter and Thought are unchanged. Unknown7B must drop by 0..19 with clamping. This
+bounds the stochastic term but does not certify its distribution or RNG-call count.
+Repeat-step equality detects a repeated whole effect or rerolled stored value. The
+checks also require exactly one readmitted walking identity and a Wandering plan.
+
+The suite now has 45 needs assertions per world: normal completion/repeat, both
+reported-deletion boundaries, deferred completion/no-ground recovery, unchanged
+queued/seated aborts and the prior identity/clock controls. All four worlds pass in
+isolated and integrated modes; the exact retail findings remain visible.
+
+Five deliberate source variants were rejected in JUNGLE: no effect, double effect,
+reseed before effect, aborted removals treated as completed, and Collect-only effect
+placement (5/5/5/5/3 failed assertions respectively). Original source was restored.
+A review prompted explicit body/plan checks after successful completion. Peer branch
+`needs-ride-effects` supplied the consumer wiring; it was integrated locally with
+these tests before any green main-branch publication.
+
+All four effect inputs remain chosen policy pending decoding of the ride's own value
+and relevant scale globals. This verifies the agreed managed contract, not the retail
+values or a complete guest-management model.
