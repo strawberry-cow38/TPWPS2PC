@@ -3220,9 +3220,16 @@ public partial class Viewer : Node3D
         while (_parkTicks < start + maxTicks)
         {
             Guest pick = null; float bestClear = 0;
+            // ⚠ NOT THE FIRST KID THROUGH THE GATE: the first frame taken fired on walker #1 still
+            // inside the gateway, and the orbit sat inside a gate post -- beams and sky. And with
+            // nobody else in the park the clearance clause compared against no one and printed
+            // float.MaxValue as if it had passed. So: at least one other guest to be clear OF, and
+            // the walker three cells out from the mouth, on the corridor with nothing in the way.
+            if (_guests.Guests.Count < 2) { TickPark(); PresentScripted(frames: false); continue; }
             foreach (var g in _guests.Guests)
             {
                 if (g.State != GuestState.Walking || g.Next is not ParkCell || g.Fraction < 0.3f || g.Fraction > 0.7f) continue;
+                if (_mouth != null && _mouth.Any(m => Math.Abs(m.X - g.Cell.X) + Math.Abs(m.Z - g.Cell.Z) < 3)) continue;
                 var me = Cell(g.Position); float clear = float.MaxValue;
                 foreach (var o in _guests.Guests) if (o.Id != g.Id) clear = Mathf.Min(clear, (Cell(o.Position) - me).Length());
                 if (clear >= 0.5f && clear > bestClear) { bestClear = clear; pick = g; }
@@ -3234,7 +3241,7 @@ public partial class Viewer : Node3D
                 var at = GuestWorld(Cell(g.Position), g.Cell);
                 var heading = new Vector3(next.X - g.Cell.X, 0, g.Cell.Z - next.Z).Normalized();    // the walk's own mirrored frame, as WalkBasis
                 var side = new Vector3(heading.Z, 0, -heading.X);
-                _freeCam = true; _focus = at + new Vector3(0, 0.3f, 0); _dist = 3f; _pitch = -0.2f; _yaw = Mathf.Atan2(side.X, side.Z);
+                _freeCam = true; _focus = at + new Vector3(0, 0.3f, 0); _dist = 3f; _pitch = -0.35f; _yaw = Mathf.Atan2(side.X, side.Z);
                 double t = _parkTicks * ParkSim.TickMilliseconds / 1000.0;
                 string gait = "bind pose (no walk record)"; string feet = "";
                 if (_walkRec.TryGetValue(g.Id, out var w) && w.Walk != null && _gaitFrom.ContainsKey(g.Id))
@@ -3264,7 +3271,8 @@ public partial class Viewer : Node3D
                     }
                 }
                 GD.Print($"[guest] W t={t:F2}s walker #{g.Id} at {g.Cell} -> {next} fraction {g.Fraction:F2}, heading ({heading.X:F0}, {heading.Z:F0}), "
-                       + $"nearest other guest {bestClear:F2} cells; world ({at.X:F2}, {at.Y:F2}, {at.Z:F2}); gait: {gait}{feet}");
+                       + (bestClear < 1e6f ? $"nearest other guest {bestClear:F2} cells" : "no other guest to compare against")
+                       + $"; {_guests.Guests.Count} guests in the park; world ({at.X:F2}, {at.Y:F2}, {at.Z:F2}); gait: {gait}{feet}");
                 GD.Print($"[guest] W camera: free orbit on ({_focus.X:F2}, {_focus.Y:F2}, {_focus.Z:F2}), {_dist:F0} out, {Mathf.RadToDeg(-_pitch):F0} degrees down, side-on"
                        + " | expected: legs scissored ~0.16 units at gait frames 0/8 and crossing at 4/12, one arm forward -- or feet together and arms down if the gait is not playing");
                 return true;
