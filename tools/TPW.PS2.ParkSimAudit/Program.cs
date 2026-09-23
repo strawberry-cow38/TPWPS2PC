@@ -258,8 +258,14 @@ var trackRidesThatBoarded = boarded.Where(PollsTrack).ToList();
 Console.WriteLine($"  {offered.Count(PollsTrack)} of {offered.Count} rides poll a track subsystem"
                 + $"; {tookNobody.Count} took nobody");
 Check(offered.Any(PollsTrack), "some ride polls TOUR/BUMP/COAST at all -- otherwise the checks below are vacuous");
+// ⚠ THIS IS EXPECTED TO BE RED ON HALLOW, and it is left red ON PURPOSE rather than excluded by
+// name -- a "known exception" filter is exactly where a second defect would hide. The message
+// names the write-up so nobody re-diagnoses it from scratch; if a ride OTHER than Thrill Grill
+// appears here, that is new and worth chasing.
 Check(stuckWithoutTrack.Count == 0, "every ride that boarded nobody is one polling a dead track subsystem"
-    + (stuckWithoutTrack.Count == 0 ? "" : ": " + string.Join(", ", stuckWithoutTrack.Select(r => r.Name))));
+    + (stuckWithoutTrack.Count == 0 ? "" : ": " + string.Join(", ", stuckWithoutTrack.Select(r => r.Name))
+        + " -- KNOWN for Thrill Grill (HALLOW): it ships no .aps, so TRIGWAITANIM at pc 85 waits"
+        + " forever for a slot that can never start. See findings/visitors.md. Anything else here is NEW."));
 Check(trackRidesThatBoarded.Count == 0, "no ride boards guests while polling a subsystem that answers zero"
     + (trackRidesThatBoarded.Count == 0 ? "" : ": " + string.Join(", ", trackRidesThatBoarded.Select(r => r.Name))));
 Check(boarded.Count > 0, $"a queued guest gets on a ride ({boarded.Count} rides boarded one)");
