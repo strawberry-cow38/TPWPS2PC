@@ -227,12 +227,15 @@ public sealed class AnimatedModel
         // tracks are 20 bytes, so past the first it is reading the middle of other tracks and
         // then the key data as if they were track headers. Measured over all 24 characters:
         // 130 of those garbage "tracks" carry a node below the mesh count AND the 0x1000 morph
-        // bit, so Morph() dereferences a garbage header pointer -- past the file or negative
-        // on girl1a's and girl4a's Load v0 (the exception), INSIDE the file on others (a garbage
-        // morph that would deform the head every frame, silently). No record's own 20-byte
-        // table overruns; it is what the wrong stride reads THROUGH it that does. The check on
-        // rec.Skeletal is the record's own flag 0x20, read by the loader (FUN_00167358) -- it
-        // does not depend on the helper-index reading of the bone byte.
+        // bit, so Morph() dereferences a garbage header pointer. ⚠ CORRECTED after simulating
+        // Morph()'s reads byte for byte: EVERY one of those pointers lands outside the file
+        // (negative or past the end), so the failure is always the exception and never a silent
+        // garbage morph -- 93 of the disc's 177 skeletal records throw (girl1a's and girl4a's
+        // Load v0 among them) and 84 never reach a garbage track that passes the test (boy1a's
+        // Load v0). No record's own 20-byte table overruns; it is what the wrong stride reads
+        // THROUGH it that does. The check on rec.Skeletal is the record's own flag 0x20, read by
+        // the loader (FUN_00167358) -- it does not depend on the helper-index reading of the bone
+        // byte.
         if (rec == null || rec.Skeletal) return null;
         for (int i = 0; i < rec.TrackCount; i++)
         {
