@@ -36,15 +36,22 @@ public sealed class ParticleEffect
     /// ⚠ NO CONSUMER READ. This is a two-known-answers test over a binary field, not the
     /// executable's own branch. `+0x58` (a 0..3 enum) and `+0x71` (0 or 32, adjacent and probably
     /// the same flags word) also separate the two and are the next candidates if this is wrong.
-    public bool Additive => (RawAt(0x70) & 4) == 0;
+    public bool Additive => (RawAt(0x70) & 4) != 0;
 
     /// <summary>⚠ CANDIDATE, from the shape of the values: `+0x74` is 100 for Sparks, 300 for
     /// MumboPuff, 800 for ApeSnot and 1500 for Fire and ApeSmoke -- an ordering that matches how
     /// long each of those should hang about, in milliseconds. No consumer read.</summary>
+    [Obsolete("+0x74 is the START SIZE, not a lifetime -- READ from 0x146290/0x220878, drawn " +
+              "width = size/5120 cells. Use ParticleTemplate.StartSize / EndSize, and " +
+              "ParticleTemplate.Life for the lifetime.")]
     public int LifetimeGuess => RawAt(0x74);
 
     /// <summary>⚠ CANDIDATE: `+0x78` is 8 for Sparks, 25 for MumboPuff, 40 for ApeSmoke, 75 for
     /// ApeSnot, 100 for Fire. Read here as how many particles the effect makes.</summary>
+    [Obsolete("+0x78 is the particle's LIFE IN TICKS, not a count -- READ from 0x1888a8. " +
+              "There is no count field: emission is ParticleTemplate.Burst plus the per-quarter " +
+              "Rate bytes, capped by MaxLive and scaled by the retail density. Use " +
+              "ParticleTemplate.ExpectedTotal().")]
     public int CountGuess => RawAt(0x78);
 
     /// <summary>⚠ CANDIDATE: `+0x44`, `+0x48` and `+0x4c` are usually three EQUAL numbers -- 9 for

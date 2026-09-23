@@ -86,29 +86,39 @@ public sealed class RideParticles
         var e = _library?[id];
         if (e == null || e.Ramp.All(c => c == 0)) return null;
 
-        int count = Math.Clamp(e.CountGuess, 4, 120);
-        float life = Math.Clamp(e.LifetimeGuess / 1000f, 0.2f, 4f);
-        float size = Math.Clamp(e.SizeGuess / 64f, 0.05f, 1.5f);
+        // ⭐⭐ THE RECORD IS NOW READ FROM THE CODE THAT RUNS IT (findings/particles.md,
+        // ParticleTemplate). Everything this block used to guess was wrong:
+        //   +0x74 is the START SIZE, not a lifetime      (+0xa6 is the end size)
+        //   +0x78 is the particle's LIFE IN TICKS, not a count; a tick is 31 ms
+        //   there is NO count field at all -- emission is a burst plus per-quarter rate bytes,
+        //   capped by a max-live, and the whole lot scaled by the retail density 400/1024
+        //
+        // ⭐ That last part is master's bug. ApeSnot emits about EIGHT particles over 0.31 s;
+        // this code was drawing SEVENTY-FIVE at once, which is why bursts read as solid paint
+        // however transparent each one was. "piles", exactly.
+        var t = ParticleTemplate.Of(e);
+        int count = Math.Clamp(t.ExpectedTotal(), 1, 200);
+        float life = Math.Clamp(t.Life * ParticleTemplate.TickMilliseconds / 1000f, 0.05f, 8f);
+        // Drawn width is size/5120 CELLS and one cell is one unit here; start and end differ, so
+        // the scale range is the record's own taper rather than an invented 0.5..1 spread.
+        float size0 = t.StartSize / 5120f, size1 = t.EndSize / 5120f;
+        float size = Math.Max(size0, size1);
+        // The emitter's own life decides how long the rate bytes keep firing; a one-shot burst
+        // finishing inside that is the common case. ⚠ 37 effects are IMMORTAL and never stop.
+        float emitterSeconds = t.Immortal ? life
+            : Math.Clamp(t.EmitterLife * ParticleTemplate.TickMilliseconds / 1000f, 0f, 8f);
 
         var p = new CpuParticles3D
         {
             Amount = count,
             Lifetime = life,
             OneShot = true,
-            // ⚠⚠ EXPLOSIVENESS IS MINE, NOT THE DISC'S -- and at 0.65 it was the reason bursts
-            // read as solid paint. Master, asked whether a single particle was translucent or
-            // only the heap: "piles". So the material and the ramp are fine and the EMITTER is
-            // wrong: at 0.65 nearly every particle is born in the same frame at the same point,
-            // so N overlapping quads multiply into an opaque blob no matter how transparent each
-            // one is. Spread over the lifetime they read as a puff.
-            //
-            // ⚠ NOTHING IN THIS BLOCK IS READ FROM THE DISC. Explosiveness, Spread, the initial
-            // velocities, Gravity and the scale range are all invented to look plausible; only
-            // the ramp, the sprite and the three CANDIDATE fields (count/lifetime/size) come from
-            // the file at all. The 320-byte record is mostly unread and the real emission shape
-            // is somewhere in it. Treat this as a placeholder that now errs sparse rather than
-            // solid, not as a decode.
-            Explosiveness = 0.15f,
+            // ⭐ Explosiveness is now DERIVED: the record says how much is a burst at spawn and
+            // how much trickles out over the emitter's life, so the fraction born at once is the
+            // burst's share of the total rather than a number I picked.
+            Explosiveness = t.Burst > 0 && count > 0
+                ? Mathf.Clamp(ParticleTemplate.DensityScaled(t.Burst, ParticleTemplate.RetailDensity) / (float)count, 0f, 1f)
+                : (emitterSeconds <= 0f ? 1f : 0.1f),
             Emitting = false,
             ColorRamp = RampOf(e),
             Direction = Vector3.Up,
@@ -116,8 +126,8 @@ public sealed class RideParticles
             InitialVelocityMin = size * 1.5f,
             InitialVelocityMax = size * 3.5f,
             Gravity = new Vector3(0, -1.5f, 0),
-            ScaleAmountMin = size * 0.5f,
-            ScaleAmountMax = size,
+            ScaleAmountMin = Math.Max(0.01f, Math.Min(size0, size1)),
+            ScaleAmountMax = Math.Max(0.02f, Math.Max(size0, size1)),
             // ⚠⚠ A CpuParticles3D DRAWS A MESH, NOT A TEXTURE. It has no Texture property at all,
             // and with Mesh left null it emits perfectly happily and renders NOTHING -- the
             // counter goes up, the log looks right, the screen stays empty. Found by emitting a
@@ -135,7 +145,13 @@ public sealed class RideParticles
             // ⚠ NOT ADDITIVE FOR EVERYTHING -- see ParticleEffect.Additive. Master, on the live
             // park: "still way too opaque everywhere". Additive blending cannot darken, so it
             // saturates towards white over a bright scene and never reads as translucent.
-            BlendMode = e.Additive ? BaseMaterial3D.BlendModeEnum.Add : BaseMaterial3D.BlendModeEnum.Mix,
+            // ⚠ CANDIDATE, AND THE POLARITY IS NOW THE OTHER WAY ROUND. Bit 2 of +0x70 is READ
+            // as far as draw flag 0x20; what 0x20 means at the GS was not read. It is SET on
+            // Fire, Flames, explosions, Twinkle, Sparkle and ApeSnot and CLEAR on Smoke, Steam,
+            // Splash, Bubbles and MumboPuff -- so on the names it is ADDITIVE, which is the
+            // opposite of what I shipped in 951e184 (that drew Smoke additive and Fire alpha).
+            // A name is not a read; see findings/particles.md.
+            BlendMode = t.AdditiveBit ? BaseMaterial3D.BlendModeEnum.Add : BaseMaterial3D.BlendModeEnum.Mix,
             BillboardMode = BaseMaterial3D.BillboardModeEnum.Particles,
             // ⚠ BillboardMode.Particles drops ScaleAmount unless this is set.
             BillboardKeepScale = true,
