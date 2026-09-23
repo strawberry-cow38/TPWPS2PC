@@ -673,3 +673,42 @@ lived under another name. **Its answer could not be told from its question**: th
 it derived (`stem` up to the last `/`) collapses to the WAD root for the flat paths in some
 archives, so it listed every model in SPACE for WhirliGig and nothing at all for Thrill Grill. It
 was removed rather than tuned. `wad.Find` returning null is measured directly and is the fact.
+
+## ⭐⭐ The five failing rigs are TWO bugs, and the bone indices are not one of them
+
+`SkinAudit` fails five of twenty-four characters on "skinning the bind pose returns the authored
+vertices". Printed side by side with three that pass, the five are not one fault:
+
+```
+                                       worst     single-bone    blended
+boy1a    3 meshes 26 helpers 21 bones    0.016       0.014        0.016   ok
+girl1a   3 meshes 32 helpers 25 bones    0.013       0.009        0.013   ok
+girl3a   3 meshes 34 helpers 28 bones    0.014       0.010        0.014   ok
+girl2a   3 meshes 26 helpers 22 bones    3.909       0.015        3.909   FAIL
+guard    2 meshes 27 helpers 22 bones    5.775       0.029        5.775   FAIL
+handyman 3 meshes 31 helpers 26 bones   59.322       2.690       59.322   FAIL
+boy2a    3 meshes 26 helpers 22 bones  220.697      21.812      220.697   FAIL
+Researcher 3 meshes 30 helpers 24 bones 499.672     499.672      159.904  FAIL
+```
+
+**⭐ BUG ONE: the blend, not the bone mapping.** Four of the five fail on BLENDED vertices while
+their SINGLE-BONE vertices are essentially exact — girl2a 0.015 and guard 0.029 against thresholds
+of 1. **If the bone indices were wrong, the single-bone vertices would be wrong too.** They are
+not. So `node = meshCount + bone` survives this, and the defect is in how several influences are
+combined, not in which bones they name. The audit already checks weights sum to 1 (worst
+`1.0E-006`), so it is not normalisation either — the next suspect is which *second and third* bone
+indices a multi-influence vertex is read as naming.
+
+⚠ Bone COUNT does not explain it: guard fails on a two-bone blend (Head+Neck) while boy1a, girl1a
+and girl3a all pass on two-bone blends. Do not chase "three or more influences".
+
+**⭐ BUG TWO: Researcher's `plackard` is a different fault.** It is the only one whose SINGLE-bone
+error is the worst (499.672, with its blended error a third of that), and it is a prop mesh
+weighted to a single bone, `Bip01 R Hand`. ⭐ The control is `vampire`, which has its own
+`plackard` mesh on the same `Bip01 R Hand` and comes out at **0.023**. So a placard in a hand works
+in general and Researcher's specifically does not — which makes this a per-character data question,
+not a rule question, and it should not be lumped in with the four above.
+
+⚠ Separately and already fixed (`27460fa`): `UseRecord` threw "Index was out of range" on girl1a's
+and girl4a's `Load` v0 by asking for 48-byte texture tracks on a 20-byte skeletal table. That is a
+different failure from these five and is no longer in the tree.
