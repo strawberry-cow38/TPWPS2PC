@@ -2558,6 +2558,29 @@ public partial class Viewer : Node3D
                 _cursorOverride = (mid.X, _park.Field.Height - 3);
                 bool none = SelectUnderCursor();
                 GD.Print($"[select] on empty ground: {(!none && _selected < 0 ? "cleared, as it must be" : "STILL HOLDING ONE")}");
+
+                // ⭐ THE BREATH, MEASURED. Stepped through two seconds in console ticks, the pulse
+                // must sweep 0 .. sin(1) = 0.8415 and repeat every 51.2 ticks (the |sin| halves the
+                // 102.4-tick turn) -- and it must pass through the 0.6958 master's savestate held,
+                // or the chain is not the game's.
+                var probe = new SelectionBox(null);
+                probe.Show(Vector3.Zero, Vector3.One);
+                float lo = 9f, hi = -9f; int peaks = 0; float prev = 0f, prev2 = 0f;
+                bool hitSample = false;
+                for (int t = 0; t < 200; t++)
+                {
+                    probe.Step(1.0 / GameCamera.TicksPerSecond);
+                    float v = probe.Pulse;
+                    lo = Mathf.Min(lo, v); hi = Mathf.Max(hi, v);
+                    if (t > 1 && prev >= prev2 && prev > v) peaks++;
+                    if (Mathf.Abs(v - 0.6958f) < 0.01f) hitSample = true;
+                    prev2 = prev; prev = v;
+                }
+                GD.Print($"[select] pulse over 200 ticks: {lo:F4} .. {hi:F4} (want 0 .. 0.8415), "
+                       + $"{peaks} peaks (want ~3.9 at 51.2 ticks), "
+                       + $"{(hitSample ? "passes through the savestate's 0.6958" : "NEVER REACHES 0.6958")}"
+                       + $" -- {(lo < 0.02f && Mathf.Abs(hi - 0.8415f) < 0.01f && peaks >= 3 && peaks <= 4 && hitSample ? "the game's breath, as it must be" : "WRONG")}");
+                probe.Hide();
                 // Put it back for the picture.
                 _cursorOverride = (mid.X + mid.Fp.Width / 2, mid.Y + mid.Fp.Height / 2);
                 SelectUnderCursor();
@@ -4284,6 +4307,9 @@ public partial class Viewer : Node3D
         // thing. ⚠ Backwards, because a finished one is removed as we go.
         if (_playing && _shotPath == null && _building.Count > 0)
             StepBuilding((float)delta * Aps.Fps);
+        // ⭐ The selection breathes on its own clock, and like the console's it stands still
+        // while the game is paused.
+        if (_playing) _selectView?.Step(delta);
         if (GameCamActive) StepGameCam(delta);
         else
         {

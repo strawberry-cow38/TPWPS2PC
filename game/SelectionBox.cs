@@ -30,10 +30,23 @@ namespace TPWPS2Viewer;
 /// vertices take (1,0) or (0,1), the empty parts of the tile. So the art is stretched from each
 /// corner and fades out along the edges, which is what "a cube with those as the corner" means.
 ///
-/// ⚠ THE OVERHANG PULSES and its driver is NOT read. `o = (DAT_002F0C04 - 0.6) * sx * 0.12`, and
-/// DAT_002F0C04 read 0.6958 in master's savestate -- one sample of something that plainly animates
-/// (0x2F0C00 beside it held a frame count). That value is used as a constant here rather than an
-/// invented oscillation, and it is the only number in this file that is not a reading.
+/// ⭐⭐ AND IT BREATHES, and the whole chain is read. Master: "can u find what animates the box".
+///
+///   0x1B3038  every frame, unless paused:  DAT_002E74A8 += frameTime   (0x1C4920, the SAME getter
+///             the camera at 0x14F820 calls five times, so the same 0x1000-a-tick unit)
+///   0x1B2EE0  angle = (DAT_002E74A8 * 0x28 >> 12) &amp; 0xFFF          -- a 12-bit turn
+///             s     = |(sin12(angle) &lt;&lt; 8) >> 12|                  -- 0..256
+///   0x195998  sin12(a) = (int)(sinf(a / 4096 * 6.283) * 4096)        -- note 6.283, not 2pi
+///   0x2225A0  DAT_002F0C04 = sinf(s / 256)                           -- 0x28C910 IS sinf
+///   0x221E38  o = (DAT_002F0C04 - 0.6) * sx * 0.12
+///
+/// So the pulse is `sinf(|sin(angle)|)`, sweeping 0 .. sin(1) = 0.8415, and the corners move
+/// between 7.2% of the box pulled IN and 2.9% pushed OUT. The angle gains 40 of 4096 a tick: a
+/// full turn every 102.4 ticks, and because of the |sin| the visible breath repeats every HALF of
+/// that -- about once a second at the console's 50. Master's savestate caught it at 0.6958, which
+/// is |sin| = 0.77 on this curve, a sample landing where it should.
+///
+/// ⭐ 0x1B3038 walks THREE slots at 0x397470, so the console can hold up to three boxes at once.
 ///
 /// ⚠ AND THE Y OVERHANG IS COMPUTED FROM sz, NOT sy, in the original: `p = (k - 0.6) * sz * 0.12`.
 /// Kept, because reproducing it is the job and the two are equal on the live sample anyway.</summary>
@@ -67,9 +80,34 @@ public sealed class SelectionBox
         new(0, 0), new(0, 1), new(0, 0), new(1, 0), new(0, 0),
     };
 
-    /// <summary>`DAT_002F0C04` as master's savestate held it. ⚠ The one number here that is a
-    /// sample of something animated rather than a rule.</summary>
-    public const float Pulse = 0.6958f;
+    /// <summary>`DAT_002E74A8`: the box's own clock, in the console's frame-time units (0x1000 a
+    /// tick). ⚠ Advanced from real delta at the console's RATE rather than in whole ticks -- the
+    /// session's rule, console speed interpolated -- so the breath is smooth and exactly as fast.</summary>
+    double _clock;
+    Vector3 _min, _size;
+    bool _shown;
+
+    /// <summary>The pulse, exactly as 0x1B2EE0 -> 0x2225A0 compute it. ⚠ The integer steps are
+    /// kept (s is 0..256), because they are the game's; only the ANGLE is fed continuously.</summary>
+    public float Pulse
+    {
+        get
+        {
+            double angle12 = (_clock * 0x28 / 4096.0) % 4096.0;
+            int s12 = (int)(System.Math.Sin(angle12 / 4096.0 * 6.283) * 4096.0);
+            int s = System.Math.Abs((s12 << 8) >> 12);
+            return (float)System.Math.Sin(s * 0.00390625);
+        }
+    }
+
+    /// <summary>Advance the clock and redraw, while a box is up. ⚠ The console skips the add while
+    /// paused (0x14DD68); the caller does the same by not stepping.</summary>
+    public void Step(double delta)
+    {
+        if (!_shown) return;
+        _clock += delta * GameCamera.TicksPerSecond * GameCamera.FrameTick;
+        Build();
+    }
 
     Material Bracket()
     {
@@ -99,12 +137,20 @@ public sealed class SelectionBox
         return _mat;
     }
 
-    public void Hide() { foreach (var c in Root.GetChildren()) c.QueueFree(); }
+    public void Hide() { _shown = false; Clear(); }
+    void Clear() { foreach (var c in Root.GetChildren()) c.QueueFree(); }
 
     /// <summary>Put the box round a world-space box.</summary>
     public void Show(Vector3 min, Vector3 size)
     {
-        Hide();
+        _min = min; _size = size; _shown = true;
+        Build();
+    }
+
+    void Build()
+    {
+        Clear();
+        var min = _min; var size = _size;
         if (Bracket() is not { } mat || size.X <= 0f || size.Z <= 0f) return;
 
         float k = Pulse - 0.6f;
