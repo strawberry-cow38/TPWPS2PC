@@ -159,6 +159,15 @@ public sealed class Park
     /// meshes are just what it looks like.</summary>
     int[,] _occupied = new int[0, 0];
 
+    /// <summary>Cells nothing may be built on that no RIDE claims -- the park gate's no-build
+    /// zone, and anything else the game reserves rather than fills.
+    ///
+    /// ⚠ DELIBERATELY NOT IN <see cref="_occupied"/>. That array's invariant is "one ride id
+    /// per claimed cell, summing to the placed footprints" (see <see cref="OccupiedCells"/>), and
+    /// a reservation with no ride behind it would read as an overlap and make the one check that
+    /// catches real overlaps cry wolf.</summary>
+    bool[,] _reserved;
+
     readonly List<(int Id, string Name, Footprint Fp, int X, int Y, Node3D Node)> _placed = new();
     public IReadOnlyList<(int Id, string Name, Footprint Fp, int X, int Y, Node3D Node)> Placed => _placed;
 
@@ -585,7 +594,28 @@ public sealed class Park
     /// caller: a placement ghost is routinely dragged off the edge of the plot, and that has to
     /// read as "no" instead of throwing.</summary>
     public bool Vacant(int x, int y)
-        => x >= 0 && y >= 0 && x < Width && y < Height && _occupied[x, y] == 0;
+        => x >= 0 && y >= 0 && x < Width && y < Height && _occupied[x, y] == 0 && !Reserved(x, y);
+
+    /// <summary>Whether a cell is inside a no-build zone.</summary>
+    public bool Reserved(int x, int y)
+        => _reserved != null && x >= 0 && y >= 0 && x < _reserved.GetLength(0) && y < _reserved.GetLength(1)
+           && _reserved[x, y];
+
+    /// <summary>Keep a rectangle clear. Clipped to the plot rather than refused, because a zone
+    /// authored around the gate runs off the edge of the park by design -- most of the gate's own
+    /// no-build rectangle is outside the plot, on the walkway.</summary>
+    public int Reserve(int x0, int y0, int w, int h)
+    {
+        if (Width <= 0 || Height <= 0 || w <= 0 || h <= 0) return 0;
+        _reserved ??= new bool[Width, Height];
+        int n = 0;
+        for (int y = System.Math.Max(0, y0); y < System.Math.Min(Height, y0 + h); y++)
+            for (int x = System.Math.Max(0, x0); x < System.Math.Min(Width, x0 + w); x++)
+                if (!_reserved[x, y]) { _reserved[x, y] = true; n++; }
+        return n;
+    }
+
+    public void ClearReservations() => _reserved = null;
 
     public bool IsPlayable(int x, int y)
     {
@@ -618,7 +648,7 @@ public sealed class Park
         Width = width; Height = height;
         Playable = playable != null && playable.GetLength(0) == width && playable.GetLength(1) == height
             ? playable : null;
-        if (!keep) _occupied = new int[width, height];
+        if (!keep) { _occupied = new int[width, height]; _reserved = null; }
 
         // ⭐ ONE SURFACE PER GROUND MATERIAL. The disc says which ground variant goes on each
         // cell -- byte1 indexes the terrain model's OWN material table -- and laying a single
@@ -947,6 +977,9 @@ public sealed class Park
                 // ride sits on a cell that has no ground under it and hangs over the sea.
                 if (!IsPlayable(x + fx, y + fy)) return false;
                 if (_occupied[x + fx, y + fy] != 0) return false;
+                // ⚠ And a reserved cell refuses just as hard, or the gate's zone is a drawing
+                // rather than a rule.
+                if (Reserved(x + fx, y + fy)) return false;
             }
         return true;
     }

@@ -144,6 +144,12 @@ the same call, draws the park's own entrance into the tile map from a per-park t
 |---|---|
 | `+0x00` | `xStart` — where the cross-corridor begins |
 | `+0x01` | `zRow` — the row it runs along |
+| `+0x06` | `apronX` — the left edge of the clearing at the mouth (`xStart + 1` in every entry) |
+| `+0x07` | `apronZ` — where the clearing starts; `zEnd - 1` in ten entries, `zEnd - 2` in the two at `+0x2B7252` and `+0x2B7264` |
+| `+0x08` | u16 `apronW` — the clearing's width, less two |
+| `+0x0A` | u16 — **unread**; 4, 4, 3, 4 by world |
+| `+0x0C` | u16 `pathRows` — how far the path the park STARTS WITH runs in past the mouth |
+| `+0x0E` | u16 — zero in every entry |
 | `+0x10` | `xCol` — the left column of the two-wide walkway |
 | `+0x11` | `zEnd` — one past its last row |
 
@@ -152,6 +158,59 @@ and the shape it writes:
 - row `zRow`, x from `xStart` to `xCol + 1` → kind `0x0C`, flags `8`
 - columns `xCol` and `xCol + 1`, z from `zRow` to `zEnd - 2` → kind `0x0C`, flags `8`
 - row `zEnd - 1`, both columns → kind **`0x0E`** — the mouth, where it meets the park
+
+## ⭐⭐ The path a blank park is given
+
+Master, playing it: *"a 4 long 2 wide path tile extends into the park from the entrance on a blank
+park."* It is in the same function, and it is laid with the **path layer**, not written into the
+tile map — `0x14E5B0` calls `0x15F4C0` / `0x15F4C8` on four cells:
+
+```
+(xCol,     zEnd + C)   (xCol,     zEnd)
+(xCol + 1, zEnd)       (xCol + 1, zEnd + C)
+```
+
+the walkway's own two columns carried `C` rows further in, where
+`C = (short)(*(u64 *)(entry + 8) >> 32)` — the u16 at `+0x0C`. Rows `zEnd .. zEnd + C`
+inclusive is `C + 1` rows:
+
+| entries | `xCol` | `+0x0C` | rows laid | world |
+|---|---|---|---|---|
+| 0, 1, 2 | 29 | 3 | **4** | JUNGLE — its three slots hold the same four numbers |
+| 3, 4 | 47, 43 | 3 | **4** | |
+| 6, 7 | 39, 37 | 5 | 6 | FANTASY — entry 6 predicts the savestate's walkway cell for cell |
+| 9, 10 | 47, 35 | 4 | 5 | |
+
+⭐ Four for JUNGLE, which is what master counted, and the table says the other worlds are not
+four — so this is the game's number and not a constant fitted to one observation.
+
+⚠ The two unnamed rows are HALLOW and SPACE, and WHICH IS WHICH IS NOT READ HERE. `Gates.sam`
+gives a footprint height of 3 for HALLOW and 4 for SPACE, which would make entries 3–4 HALLOW
+and 9–10 SPACE, and that correspondence holds on JUNGLE (3/3) and FANTASY (5/5) as well —
+but it is a correspondence between two tables, not a reading of either, and nothing depends on it:
+`ParkEntrance.Fit` matches an entry to the grid in front of it and never indexes by world.
+
+**And the clearing around the mouth**, from the loop that follows:
+
+```
+for (i = 1; i <= C - 1; i++) {
+    z = apronZ + i;
+    if (z < zEnd) continue;
+    for (x = apronX - 1; x <= apronX + apronW; x++)
+        map[z][x] = (x == xCol || x == xCol + 1) ? {kind 2, flags 8}      // path
+                                                 : {kind 1, flags 0x23};  // plain park ground
+}
+```
+
+so JUNGLE gets rows 19 and 20 forced to ordinary buildable ground across x 26..33, with the two
+walkway columns as path. ⚠ **READ, NOT APPLIED** — our grid takes buildability from the
+authored bytes, and this overrides them for that block.
+
+⚠ **And one case is read and cannot be applied.** The function ends with
+`if (world == 0 && (park == 0 || park == 2))`, which lays a second run from (32,65) to (35,65) and
+sets bit `0x80` then bit `0x02` on byte 7 of those four cells. It needs the loader's own world and
+park NUMBERS; no file on the disc carries them, and `ParkEntrance` fits an entry against the grid
+instead of indexing by them.
 
 ⭐ **`zRow` is 6 and `zEnd` is 19 in EVERY entry; only x moves.** findings/gates.md reached "the
 entrance is one prefab translated in x" from mesh anchors, and this table says it again from the

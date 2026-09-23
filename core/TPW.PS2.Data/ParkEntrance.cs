@@ -8,7 +8,10 @@ namespace TPW.PS2.Data;
 /// <param name="ZRow">The row that corridor runs along.</param>
 /// <param name="XCol">The left column of the two-wide walkway.</param>
 /// <param name="ZEnd">One past the walkway's last row; its mouth is <c>ZEnd - 1</c>.</param>
-public readonly record struct ParkEntranceEntry(int XStart, int ZRow, int XCol, int ZEnd)
+/// <param name="PathRows">The u16 at +0x0C: how far the path the park STARTS WITH runs into the
+/// park past its mouth. The run covers rows <c>ZEnd</c> to <c>ZEnd + PathRows</c> inclusive, so
+/// the path is <c>PathRows + 1</c> long -- 4 where this is 3. See <see cref="StartingPath"/>.</param>
+public readonly record struct ParkEntranceEntry(int XStart, int ZRow, int XCol, int ZEnd, int PathRows = 0)
 {
     public bool Empty => XStart == 0 && ZRow == 0 && XCol == 0 && ZEnd == 0;
 
@@ -34,6 +37,34 @@ public readonly record struct ParkEntranceEntry(int XStart, int ZRow, int XCol, 
         }
         yield return (XCol, ZEnd - 1, 0x0E);
         yield return (XCol + 1, ZEnd - 1, 0x0E);
+    }
+
+    /// <summary>⭐⭐ THE PATH THE PARK IS GIVEN, inside the plot, past the walkway's mouth.
+    /// Master, playing it: "a 4 long 2 wide path tile extends into the park from the entrance on a
+    /// blank park."
+    ///
+    /// ⭐ READ FROM 0x14E5B0, not measured off a picture. After it has painted the walkway the
+    /// function calls the path layer with FOUR corners:
+    ///
+    ///   0x15F4C0(XCol,     ZEnd + C)   0x15F4C0(XCol,     ZEnd)
+    ///   0x15F4C0(XCol + 1, ZEnd)       0x15F4C0(XCol + 1, ZEnd + C)
+    ///
+    /// each followed by 0x15F4C8 with the same cell -- the two columns of the walkway carried
+    /// <c>C</c> rows further in. <c>C</c> is `(short)(*(u64*)(entry + 8) &gt;&gt; 32)`, the third
+    /// u16 of the record, and it is 3 for JUNGLE's three entries and 5 for FANTASY's (both read
+    /// off a park, not assumed), 3 and 4 for the other two worlds' pairs. Rows
+    /// <c>ZEnd .. ZEnd + C</c> inclusive is <c>C + 1</c> rows: FOUR for JUNGLE, which is the park
+    /// master was looking at.
+    ///
+    /// ⚠ AND ONE CASE IS READ BUT NOT APPLIED. 0x14E5B0 ends with `if (world == 0 &amp;&amp;
+    /// (park == 0 || park == 2))`, which lays a second run from (32,65) to (35,65) and sets bits
+    /// 0x80 then 0x02 on byte 7 of those four cells. It needs the loader's own world and park
+    /// NUMBERS, which no file on the disc carries and which this class deliberately does not have
+    /// -- it FITS an entry against the grid instead. Stated here rather than guessed at.</summary>
+    public IEnumerable<(int X, int Z)> StartingPath()
+    {
+        if (Empty || PathRows < 0) yield break;
+        for (int z = ZEnd; z <= ZEnd + PathRows; z++) { yield return (XCol, z); yield return (XCol + 1, z); }
     }
 }
 
@@ -93,7 +124,9 @@ public sealed class ParkEntrance
         for (int i = 0; i < Entries; i++)
         {
             int o = at + i * Stride;
-            all[i] = new ParkEntranceEntry(elf[o], elf[o + 1], elf[o + 0x10], elf[o + 0x11]);
+            // ⚠ +0x0C is a u16 and the function reads it as one -- `(short)(u64 at +8 >> 32)`.
+            all[i] = new ParkEntranceEntry(elf[o], elf[o + 1], elf[o + 0x10], elf[o + 0x11],
+                                           U16(o + 0x0C));
         }
         // ⚠ A CHECK THAT CAN FAIL, because the alternative is silently painting a walkway across
         // the middle of a park. Every filled entry shares ZRow and ZEnd -- the entrance is one

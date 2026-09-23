@@ -108,6 +108,11 @@ public partial class Viewer : Node3D
     PathGhost _ghost;
     GhostMarkers _ghostView;
     SelectionBox _selectView;
+    /// <summary>⭐ THE GATE'S OWN BOX, and the console can hold three at once (0x1B3038 walks
+    /// three slots at 0x397470), so a second standing box is the hardware's own arrangement and
+    /// not a second system bolted on. This one is not hover-driven: it marks a zone that is
+    /// always there.</summary>
+    SelectionBox _gateBox;
     /// <summary>What is selected in the park, by its index in Park.Placed. ⚠ An INDEX, not an id:
     /// two of the same ride share an id, and a selection means the one you clicked.</summary>
     int _selected = -1;
@@ -478,6 +483,8 @@ public partial class Viewer : Node3D
         AddChild(_ghostView.Root);
         _selectView = new SelectionBox(path => _lib?.ReadGeneric(path));
         AddChild(_selectView.Root);
+        _gateBox = new SelectionBox(path => _lib?.ReadGeneric(path));
+        AddChild(_gateBox.Root);
 
         // ⚠⚠ A full-screen Control swallows mouse events before _UnhandledInput ever sees them.
         // Orbit appeared to work only because the left button is also used by the widgets; a
@@ -798,6 +805,7 @@ public partial class Viewer : Node3D
         if (_current != null) _current.Root.Visible = m == Mode.Models || (m == Mode.Park && _parkRide);
         if (_park != null) _park.Root.Visible = m == Mode.Park;
         if (_gate != null) _gate.Root.Visible = m == Mode.Park;
+        if (_gateBox != null) _gateBox.Root.Visible = m == Mode.Park;
         if (_sky != null) _sky.Environment = m == Mode.Park && _skyEnv != null ? _skyEnv : _flatEnv;
         _weather.Root.Visible = m == Mode.Park;
         if (_buildable != null && m != Mode.Park) _buildable.Visible = false;
@@ -1573,10 +1581,11 @@ public partial class Viewer : Node3D
         _paths = new PathTool(_terrainModel, _pieces);
         // ⭐ The park's own entrance walkway, from the game's table. It joins like path and
         // nothing may be laid on it, so a run brought up to the gate attaches to the way in.
+        var entry = default(ParkEntranceEntry);
         if (_entranceTable != null && _terrainModel.Field is { } fld)
         {
-            var e = _entranceTable.Fit(fld, out string which);
-            if (!e.Empty) _paths.SetWalkway(e.Cells().Select(c => (c.X, c.Z)));
+            entry = _entranceTable.Fit(fld, out string which);
+            if (!entry.Empty) _paths.SetWalkway(entry.Cells().Select(c => (c.X, c.Z)));
             GD.Print($"[path] the park's walkway: {which}");
         }
         _ghost = new PathGhost(_paths) { Occupied = (x, y) => !_park.Vacant(x, y) };
@@ -1593,6 +1602,7 @@ public partial class Viewer : Node3D
         GD.Print($"[path] {_paths.Report}"
                + (_paths.Ready ? $"; {_pieces.Path.Count} path and {_pieces.Queue.Count} queue pieces" : ""));
         if (!_paths.Ready) { _paths = null; return; }
+        LayStartingPath(entry);
         if (_pathTest || System.Environment.GetEnvironmentVariable("TPW_PATH_TEST") == "1") LayTestPath();
         if (_ghostTest || System.Environment.GetEnvironmentVariable("TPW_GHOST_TEST") == "1") ShowTestGhost();
         if (_linkTest || System.Environment.GetEnvironmentVariable("TPW_LINK_TEST") == "1") CheckLinking();
@@ -1601,6 +1611,28 @@ public partial class Viewer : Node3D
         if (_guestTest) GuestTest();
         // ⭐ So a capture can photograph the overlay, which has no key to press.
         if (System.Environment.GetEnvironmentVariable("TPW_WALK_OVERLAY") == "1") ToggleWalkOverlay();
+    }
+
+    /// <summary>The path a blank park comes with: two cells wide, running in from the walkway's
+    /// mouth. Master, playing it: "a 4 long 2 wide path tile extends into the park from the
+    /// entrance on a blank park."
+    ///
+    /// ⭐ THE LENGTH IS THE TABLE'S, from 0x14E5B0's own four calls to the path layer -- see
+    /// <see cref="ParkEntranceEntry.StartingPath"/>. It is 4 rows in JUNGLE and 6 in FANTASY,
+    /// the two worlds an entry has been matched to a real park in, and nothing here rounds it to
+    /// what master happened to count in the one they had open.
+    ///
+    /// ⚠ Laid with the ordinary tool, so it wears the same pieces, joins the walkway and can
+    /// be taken up again -- which is what it is in the game, not scenery.</summary>
+    void LayStartingPath(ParkEntranceEntry entry)
+    {
+        if (entry.Empty || _paths == null) return;
+        var want = entry.StartingPath().ToList();
+        int laid = want.Count(c => _paths.Lay(c.X, c.Z));
+        RefreshFloor();
+        GD.Print($"[path] the park's own path: {laid} of {want.Count} cells laid, "
+               + $"2 wide and {entry.PathRows + 1} long from the mouth at z {entry.ZEnd}"
+               + (laid == want.Count ? "" : " -- SOME REFUSED, the plot may not reach that far"));
     }
 
     /// <summary>⭐ A CONTROL RUN, not a feature. It lays a shape that MUST come out wearing one of
@@ -5282,8 +5314,71 @@ public partial class Viewer : Node3D
                    + (perPark != 0f ? $"  [this park {perPark:+0.00;-0.00}]" : "")
                    + $"\n[gate] front edge now z={hi.Z + dz:F2} -- the road ends at -18.90 and the "
                    + $"booths' back is -16.12, in every park");
+            PlaceGateNoBuild(def, lo, hi, shift, dz);
         }
         catch (Exception ex) { GD.PrintErr($"[gate] {ride.Model.Path}: {ex.Message}"); }
+    }
+
+    /// <summary>The gate's no-build zone -- the rectangle the park keeps clear around its
+    /// entrance -- reserved so nothing can be built in it, and drawn with the game's own box.
+    ///
+    /// ⭐⭐ THE SIZE IS THE .SAM'S, AND IT IS THE ONE THING IN THERE MASTER HAS STATED
+    /// OUTRIGHT: "the footprint height/width is the width of the no-build zone the gate creates
+    /// around it". `Info.EngineFootprintWidthOverride` / `HeightOverride`, which ship per world:
+    ///
+    ///   JUNGLE 6x3 · HALLOW 6x3 · SPACE 6x4 · FANTASY 6x5
+    ///
+    /// ⭐ AND THE WIDTH IS SIX IN ALL FOUR, which is the gate's own authored width -- the
+    /// meshes stand across x 45..51 and `Info.EngineMapOffsetOverrideX` is 45 in all four .sams.
+    /// Two files that know nothing of each other giving the same six cells at the same column is
+    /// what makes this a reading rather than a hope.
+    ///
+    /// ⭐⭐ AND THE COLUMN IS IN THE **AUTHORED** FRAME, NOT THE PARK GRID, WHICH IS
+    /// SETTLED BY A CONTROL. The entrance table gives each park its own walkway column -- JUNGLE
+    /// 29, SPACE 43 and 47, HALLOW 35 and 47, FANTASY 37 and 39 -- while `Gates.sam` ships ONCE
+    /// PER WORLD and says 45 every time. One number cannot be two parks' grid columns, so 45 is
+    /// the frame the gate is drawn in and the runtime moves it to the park, exactly as the mesh
+    /// is moved. The same `shift` is therefore applied here.
+    ///
+    /// ⭐ THE ROW IS NOT SHIFTED, because the entrance table states in its own data that only
+    /// x moves: `ZRow` is 6 and `ZEnd` is 19 in every filled entry of all twelve. And it lands
+    /// where that says it should -- `MapOffsetY + Height` is 19 for JUNGLE, HALLOW and SPACE,
+    /// and 19 is the first row of the park at the entrance (`ZEnd`). Three worlds, two tables,
+    /// one number. FANTASY is 21, two rows further in, and is the odd one out.
+    ///
+    /// ⚠⚠ AND IT STILL DOES NOT PLACE THE MESH. ff8c76e added `MapOffsetY + Height` to
+    /// the gate's z and put it in the sea. The zone is drawn FROM the data and the gate is placed
+    /// by its own measured bounds, so the two are independent -- if the log below shows them
+    /// disagreeing, that is the gate's placement being measured, not the zone being wrong.</summary>
+    void PlaceGateNoBuild(RideDefinition def, Vector3 lo, Vector3 hi, float shift, float dz)
+    {
+        _gateBox?.Hide();
+        _park?.ClearReservations();
+        if (_park == null || _park.Width <= 0) return;
+        int w = def?.NoBuildWidthOverride ?? 0, h = def?.NoBuildHeightOverride ?? 0;
+        if (w <= 0 || h <= 0)
+        {
+            GD.Print("[gate.zone] this Gates.sam states no EngineFootprint override -- no zone");
+            return;
+        }
+        int x0 = (def.MapOffsetX ?? 0) + Mathf.RoundToInt(shift), y0 = def.MapOffsetY ?? 0;
+        int cells = _park.Reserve(x0, y0, w, h);
+        var (centre, rw, rh) = FootprintRect(x0, y0, w, h);
+        // ⚠ Tall enough to enclose the arch: a flat ring on the floor is not what the console
+        // draws, and the box's own shape (a pulled-out cube) only reads as one at height.
+        float tall = Mathf.Max(1f, hi.Y - lo.Y);
+        _gateBox.Show(new Vector3(centre.X - rw * 0.5f, centre.Y, centre.Z - rh * 0.5f),
+                      new Vector3(rw, tall, rh));
+        _gateBox.Root.Visible = _mode == Mode.Park;
+        float gx = (lo.X + hi.X) * 0.5f + shift, gz = (lo.Z + hi.Z) * 0.5f + dz;
+        GD.Print($"[gate.zone] {w}x{h} cells at grid ({x0},{y0}) -- .sam offset ({def.MapOffsetX},"
+               + $"{def.MapOffsetY}) shifted {Mathf.RoundToInt(shift):+0;-0;0} in x\n"
+               + $"[gate.zone] world x {centre.X - rw * 0.5f:F2}..{centre.X + rw * 0.5f:F2}  "
+               + $"z {centre.Z - rh * 0.5f:F2}..{centre.Z + rh * 0.5f:F2}; {cells} of {w * h} cells "
+               + "are on the plot and now refuse a build (the rest are off it, on the walkway)\n"
+               + $"[gate.zone] the gate itself is centred ({gx:F2}, {gz:F2}); the zone is centred "
+               + $"({centre.X:F2}, {centre.Z:F2}) -- off by ({gx - centre.X:+0.00;-0.00;0}, "
+               + $"{gz - centre.Z:+0.00;-0.00;0}). The zone is READ, the gate is TUNED.");
     }
 
     /// <summary>Print the authored footprint around the park entrance as a map.
@@ -6242,6 +6337,7 @@ public partial class Viewer : Node3D
         // while the game is paused.
         if (_mode == Mode.Park) UpdateHover();
         if (_playing) _selectView?.Step(delta);
+        if (_playing && _mode == Mode.Park) _gateBox?.Step(delta);
         if (GameCamActive) StepGameCam(delta);
         else
         {
