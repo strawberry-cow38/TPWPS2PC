@@ -67,7 +67,15 @@ public sealed class EntranceFlags
     /// is not read. Eight is enough for the sine to read as cloth rather than as a hinge.</summary>
     const int Segments = 8;
 
-    readonly List<(Vector3 At, MeshInstance3D Mesh)> _flags = new();
+    readonly List<(Vector3 At, MeshInstance3D Mesh, ArrayMesh Strip)> _flags = new();
+    /// <summary>⚠ REUSED, NOT REBUILT. A SurfaceTool commit per flag per frame is eight meshes
+    /// and eight tool objects a frame for geometry whose SHAPE never changes -- only the vertex
+    /// positions do. The arrays and the ArrayMesh are allocated once and refilled.</summary>
+    Vector3[] _pos;
+    Vector2[] _uv;
+    Vector3[] _norm;
+    int[] _index;
+    Godot.Collections.Array _arrays;
     ShaderMaterial _material;
     double _clock;
 
@@ -103,8 +111,10 @@ public sealed class EntranceFlags
                 MaterialOverride = _material,
                 CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
             };
+            var strip = new ArrayMesh();
+            mi.Mesh = strip;
             Root.AddChild(mi);
-            _flags.Add((at, mi));
+            _flags.Add((at, mi, strip));
         }
         Wave(0d);
         Report = $"{_flags.Count} flags on {where}; {texReport}";
@@ -195,13 +205,44 @@ public sealed class EntranceFlags
 
     void Wave(double time)
     {
+        EnsureArrays();
         for (int i = 0; i < _flags.Count; i++)
         {
-            var (at, mi) = _flags[i];
+            var (at, mi, strip) = _flags[i];
             // ⚠ A PHASE PER FLAG, or eight flags in a row beat as one sheet and read as a bug.
-            mi.Mesh = Strip((float)time * 2.6f + i * 0.7f);
+            Fill((float)time * 2.6f + i * 0.7f);
+            strip.ClearSurfaces();
+            strip.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, _arrays);
             mi.Position = at;
         }
+    }
+
+    void EnsureArrays()
+    {
+        if (_arrays != null) return;
+        int rows = Segments + 1, n = rows * 2;
+        _pos = new Vector3[n];
+        _uv = new Vector2[n];
+        _norm = new Vector3[n];
+        _index = new int[Segments * 6];
+        for (int s = 0; s < rows; s++)
+        {
+            float u = (float)s / Segments;
+            _uv[s * 2] = new Vector2(u, 0f);
+            _uv[s * 2 + 1] = new Vector2(u, 1f);
+            _norm[s * 2] = _norm[s * 2 + 1] = Vector3.Up;
+        }
+        for (int s = 0; s < Segments; s++)
+        {
+            int a = s * 2, b = a + 2, k = s * 6;
+            _index[k] = a; _index[k + 1] = b; _index[k + 2] = a + 1;
+            _index[k + 3] = b; _index[k + 4] = b + 1; _index[k + 5] = a + 1;
+        }
+        _arrays = new Godot.Collections.Array();
+        _arrays.Resize((int)Mesh.ArrayType.Max);
+        _arrays[(int)Mesh.ArrayType.TexUV] = _uv;
+        _arrays[(int)Mesh.ArrayType.Normal] = _norm;
+        _arrays[(int)Mesh.ArrayType.Index] = _index;
     }
 
     /// <summary>One flag, hanging from the pole top and flying in +x.
@@ -211,12 +252,8 @@ public sealed class EntranceFlags
     ///
     /// ⭐ The amplitude grows along the length, because a flag is PINNED at the pole: a uniform
     /// sine swings the fixed edge too and reads as a sheet of tin on a hinge.</summary>
-    static ArrayMesh Strip(float phase)
+    void Fill(float phase)
     {
-        var st = new SurfaceTool();
-        st.Begin(Mesh.PrimitiveType.Triangles);
-        var top = new Vector3[Segments + 1];
-        var bottom = new Vector3[Segments + 1];
         for (int s = 0; s <= Segments; s++)
         {
             float u = (float)s / Segments;
@@ -224,16 +261,9 @@ public sealed class EntranceFlags
             float z = Mathf.Sin(phase - u * 6.0f) * 0.22f * u;
             // A flag also lifts as it flies rather than hanging straight down.
             float lift = Mathf.Sin(phase * 0.8f - u * 2.0f) * 0.05f * u;
-            top[s] = new Vector3(x, lift, z);
-            bottom[s] = new Vector3(x, lift - Height, z * 0.75f);
+            _pos[s * 2] = new Vector3(x, lift, z);
+            _pos[s * 2 + 1] = new Vector3(x, lift - Height, z * 0.75f);
         }
-        for (int s = 0; s < Segments; s++)
-        {
-            float u0 = (float)s / Segments, u1 = (float)(s + 1) / Segments;
-            void V(Vector3 p, float u, float v) { st.SetUV(new Vector2(u, v)); st.SetNormal(Vector3.Up); st.AddVertex(p); }
-            V(top[s], u0, 0f); V(top[s + 1], u1, 0f); V(bottom[s], u0, 1f);
-            V(top[s + 1], u1, 0f); V(bottom[s + 1], u1, 1f); V(bottom[s], u0, 1f);
-        }
-        return st.Commit();
+        _arrays[(int)Mesh.ArrayType.Vertex] = _pos;
     }
 }
