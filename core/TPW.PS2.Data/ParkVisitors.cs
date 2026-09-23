@@ -10,6 +10,9 @@ public enum VisitorIntent
     /// <summary>Standing at the stub, handed to the ride. ⚠ NOT ON THE PATH GRID any more --
     /// the ride's own script owns them from here, through WALKON.</summary>
     Queued,
+    /// <summary>The old ride no longer owns this guest, but no valid ground is available yet.
+    /// The coordinator retains the identity and retries readmission on later steps.</summary>
+    Recovering,
 }
 
 /// <summary>⭐⭐ THE TWO HALVES, JOINED. <see cref="GuestWalk"/> moves people over the park's
@@ -37,6 +40,11 @@ public sealed class ParkVisitors
     /// queued guest has no Guest object at all -- they left the walking layer.</summary>
     public sealed record Plan(int Guest, VisitorIntent Intent, int RideId, ParkCell At);
     readonly Dictionary<int, Plan> _plans = new();
+    // Numeric ride IDs may be reused after deletion. Ownership belongs to the
+    // actual instance, so a replacement cannot silently inherit the old riders.
+    readonly Dictionary<int, ParkRide> _owners = new();
+    sealed record ReturnToPark(ParkCell[] Preferred, bool CompletedRide);
+    readonly Dictionary<int, ReturnToPark> _returning = new();
     public IReadOnlyDictionary<int, Plan> Plans => _plans;
 
     /// <summary>How many guests have finished a ride and walked away from it. The honest measure
@@ -68,7 +76,7 @@ public sealed class ParkVisitors
     public Guest Arrive(ParkCell at, ParkCell to)
     {
         var g = Walk.Spawn(at, to);
-        _plans[g.Id] = new Plan(g.Id, VisitorIntent.Wandering, 0, at);
+        Wander(g.Id, at);
         return g;
     }
 
@@ -76,9 +84,11 @@ public sealed class ParkVisitors
     /// guest is left doing whatever they were doing rather than stuck mid-plan.</summary>
     public bool SendTo(Guest guest, ParkRide ride)
     {
-        if (guest == null || !Takes(ride)) return false;
+        if (guest == null || !Walk.Guests.Contains(guest) || !Takes(ride) || !Sim.Rides.Contains(ride)) return false;
         if (!Walk.Send(guest, ride.Entrance.Value)) return false;
         _plans[guest.Id] = new Plan(guest.Id, VisitorIntent.Heading, ride.Id, guest.Cell);
+        _owners[guest.Id] = ride;
+        _returning.Remove(guest.Id);
         return true;
     }
 
@@ -91,7 +101,9 @@ public sealed class ParkVisitors
     /// guest who arrived this tick joins this tick rather than a frame late.</summary>
     public void Step(double deltaSeconds, Func<ParkCell> wander)
     {
+        ReconcileRemovedRides();
         Collect();
+        RecoverGuests();
         Walk.Advance(deltaSeconds);
         Sim.Advance(deltaSeconds);
         Deliver();
@@ -107,24 +119,86 @@ public sealed class ParkVisitors
     {
         foreach (var ride in Sim.Rides)
         {
-            if (ride.Left.Count == 0) continue;
-            var back = ride.Exit ?? ride.Entrance;
             foreach (int guest in ride.Left)
             {
-                _plans.Remove(guest);
-                if (back is not { } cell) continue;
-                // ⭐ THE SAME PERSON, not a new one. Spawn would issue a fresh id, and then the
-                // guest who queued and the guest who walked away would be different people to
-                // anything counting them -- which is every feature that comes after this one.
-                var g = Walk.Readmit(guest, cell, cell);
-                _plans[g.Id] = new Plan(g.Id, VisitorIntent.Wandering, 0, cell);
-                Rides++;
+                // A stale/repeated mailbox value must not invent a person or
+                // readmit somebody already walking (Readmit itself permits duplicates).
+                if (!_plans.TryGetValue(guest, out var plan) || plan.Intent != VisitorIntent.Queued
+                    || !_owners.TryGetValue(guest, out var owner) || !ReferenceEquals(owner, ride)) continue;
+                QueueReturn(plan, ride, completed: true);
             }
             ride.ClearLeft();
         }
     }
 
-    ParkRide RideOf(Plan plan) => Sim.Rides.FirstOrDefault(r => r.Id == plan.RideId);
+    void Wander(int guest, ParkCell at)
+    {
+        _plans[guest] = new Plan(guest, VisitorIntent.Wandering, 0, at);
+        _owners.Remove(guest);
+        _returning.Remove(guest);
+    }
+
+    void QueueReturn(Plan plan, ParkRide ride, bool completed)
+    {
+        bool stillWaiting = !completed && (ride.Queue.Contains(plan.Guest) || ride.Get("VAR_LETMEON") == plan.Guest);
+        var preferred = new[] { stillWaiting ? ride.Entrance : ride.Exit,
+                                stillWaiting ? ride.Exit : ride.Entrance, (ParkCell?)plan.At }
+            .Where(c => c.HasValue).Select(c => c.Value).Distinct().ToArray();
+        _returning[plan.Guest] = new ReturnToPark(preferred, completed);
+        _plans[plan.Guest] = new Plan(plan.Guest, VisitorIntent.Recovering, 0, preferred[0]);
+        _owners.Remove(plan.Guest);
+    }
+
+    /// <summary>Removal/Clear is a managed-port lifecycle boundary, not a decoded
+    /// console evacuation rule. Heading guests keep their physical walk; only the
+    /// destination's ride intent is cancelled. Ride-owned identities return once.
+    /// Whole-park teardown should discard this coordinator together with its walk.</summary>
+    void ReconcileRemovedRides()
+    {
+        var live = Sim.Rides.ToHashSet();
+        foreach (var (guest, ride) in _owners.ToArray())
+        {
+            if (live.Contains(ride)) continue;
+            if (!_plans.TryGetValue(guest, out var plan)) { _owners.Remove(guest); continue; }
+            var walking = Walk.Guests.FirstOrDefault(g => g.Id == guest);
+            if (plan.Intent == VisitorIntent.Queued)
+            {
+                // A handback already reported by the script is still a completed
+                // ride even if deletion happens before the coordinator collects it.
+                bool completed = ride.Left.Contains(guest) || ride.Get("VAR_LETMEOFF") == guest;
+                QueueReturn(plan, ride, completed);
+            }
+            else if (walking != null) Wander(guest, walking.Cell);
+            else { _plans.Remove(guest); _owners.Remove(guest); }
+        }
+    }
+
+    void RecoverGuests()
+    {
+        ParkCell[] publicGround = null; // lazy, shared across this step if endpoints are gone
+        foreach (var (guest, returning) in _returning.ToArray())
+        {
+            var walking = Walk.Guests.FirstOrDefault(g => g.Id == guest);
+            if (walking == null)
+            {
+                ParkCell? at = returning.Preferred.Where(c => Walk.Paths.Contains(c) && Walk.Paths.Walkable(c))
+                    .Select(c => (ParkCell?)c).FirstOrDefault();
+                if (at == null)
+                {
+                    publicGround ??= Walk.Paths.Cells.Where(Walk.Paths.Open).ToArray();
+                    var origin = returning.Preferred[0];
+                    at = publicGround.OrderBy(c => Math.Abs((long)c.X - origin.X) + Math.Abs((long)c.Z - origin.Z))
+                        .ThenBy(c => c.Z).ThenBy(c => c.X).Select(c => (ParkCell?)c).FirstOrDefault();
+                }
+                if (at == null) continue; // retain explicit ownership, retry when ground is restored
+                walking = Walk.Readmit(guest, at.Value, at.Value);
+            }
+            Wander(guest, walking.Cell); // only relinquish recovery ownership after readmission
+            if (returning.CompletedRide) Rides++;
+        }
+    }
+
+    ParkRide RideOf(Plan plan) => _owners.TryGetValue(plan.Guest, out var ride) && Sim.Rides.Contains(ride) ? ride : null;
 
     /// <summary>A guest who has reached the stub they were heading for joins that ride's queue and
     /// leaves the walking layer.</summary>
@@ -145,7 +219,7 @@ public sealed class ParkVisitors
             // a queue any more and they are just somebody standing in a park.
             if (ride == null || !Takes(ride))
             {
-                _plans[g.Id] = plan with { Intent = VisitorIntent.Wandering, RideId = 0 };
+                Wander(g.Id, g.Cell);
                 continue;
             }
             ride.Join(g.Id);
@@ -167,7 +241,7 @@ public sealed class ParkVisitors
             // people standing still. They go back to Wandering and are re-tasked like anyone else.
             if (g.State is GuestState.NoRoute or GuestState.Stranded
                 && _plans.TryGetValue(g.Id, out var stuck) && stuck.Intent == VisitorIntent.Heading)
-                _plans[g.Id] = stuck with { Intent = VisitorIntent.Wandering, RideId = 0 };
+                Wander(g.Id, g.Cell);
             if (g.State != GuestState.Arrived) continue;
             if (_plans.TryGetValue(g.Id, out var plan) && plan.Intent == VisitorIntent.Heading) continue;
             var rides = Open.ToArray();

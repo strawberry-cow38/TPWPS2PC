@@ -6,8 +6,8 @@ using TPW.PS2.Data;
 //
 // ⚠ IT NEEDS THE OWNER'S DISC. Nothing is committed and nothing is cached.
 
-if (args.Length < 1) { Console.Error.WriteLine("Usage: ParkSimAudit /path/to/disc.bin [WORLD]"); return 2; }
-string world = args.Length > 1 ? args[1].ToUpperInvariant() : "JUNGLE";
+if (args.Length < 1) { Console.Error.WriteLine("Usage: ParkSimAudit /path/to/disc.bin [WORLD] [--removal-only]"); return 2; }
+string world = args.Skip(1).FirstOrDefault(a => !a.StartsWith("--", StringComparison.Ordinal))?.ToUpperInvariant() ?? "JUNGLE";
 int bad = 0;
 void Check(bool ok, string line) { Console.WriteLine((ok ? "  ok   " : "  FAIL ") + line); if (!ok) bad++; }
 
@@ -19,6 +19,12 @@ WadArchive Wad(string name)
 }
 var wad = Wad(world);
 var terrain = new Model(wad.Read(wad.Find("/terrain/terrain_1.mps")));
+if (args.Contains("--removal-only"))
+{
+    Check(RideRemovalChecks.RunIsolated(terrain, wad, Check), "isolated removal fixture was exercised");
+    Console.WriteLine(bad == 0 ? "PASS isolated removal regression (retail entrance integration not exercised)" : $"FAIL: {bad}");
+    return bad == 0 ? 0 : 1;
+}
 var paths = new ParkPaths(terrain);
 
 // The entrance the park comes with, from the game's own table in the owner's executable.
@@ -421,6 +427,7 @@ var loopWalk = new GuestWalk(loopPaths);
 var visitors = new ParkVisitors(loop, loopWalk);
 int loopId = 0;
 bool availabilityChecked = false;
+bool removalChecked = false;
 var onPath = laid.Where(c => loopPaths.Open(c)).ToArray();
 // Three rides hung off the corridor, plus a FOURTH whose queue is out in the grass -- the
 // control. If guests ever queue at that one, "they walked to the queue" is not what happened.
@@ -500,9 +507,17 @@ foreach (var e in wad.Entries.Where(e => e.Path.EndsWith(".rse", StringCompariso
                                           stop, onPath[^1], SLoop, seats, Check);
             availabilityChecked = true;
         }
+        if (!removalChecked && r.Has("VAR_LETMEON") && r.Has("VAR_RIDECLOSED")
+            && r.Has("VAR_BROKEN") && Uses(r, RseOpcode.ADDHEAD) && !PollsTrack(r) && loopPaths.Walkable(stop))
+        {
+            RideRemovalChecks.Run(terrain, loopPaths, wad.Read(e), aps, def.UpgradeCapacity(0) ?? 1,
+                                  stop, onPath[^1], SLoop, seats, Check);
+            removalChecked = true;
+        }
     }
 }
 Check(availabilityChecked, "availability regression exercised a real ride with both availability flags");
+Check(removalChecked, "removal regression exercised a real non-track ride with seats");
 var marooned = loop.Rides.FirstOrDefault(r => r.Name.StartsWith("CONTROL", StringComparison.Ordinal));
 Console.WriteLine($"  {loopId} rides placed, {Math.Max(0, loopId - 1)} on the corridor at {string.Join(", ", stops.Take(Math.Max(0, loopId - 1)))}"
                 + $"; the control's queue is at {unreachable}, off the path");

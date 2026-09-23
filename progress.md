@@ -121,3 +121,46 @@ without reconciling its queued/riding guest ownership. Coordinate `ParkSim.cs` a
 regressions; leave active viewer/placement/particle work alone. This is still a
 proposed next task, not a reported fix or an assertion that the current viewer calls
 that API. If ownership conflicts, advance independent audit coverage instead.
+
+## M3 implementation milestone: guest recovery after ride removal
+
+Implemented in `ParkVisitors.cs`; isolated helper `RideRemovalChecks.cs` and minimal
+ParkSimAudit integration. Details and explicit managed-port policy are recorded in
+`findings/ride-removal.md`. No Viewer, ParkEntrance, particle, placement, or ParkSim
+source changes in this milestone. No claim of console evacuation decoding or a new
+viewer removal feature.
+
+The original regression produced 12 failures before the core fix. Recovery now
+preserves guest IDs across queued/offered/seated removal, Clear, numeric ride-ID
+reuse, missing endpoints and temporarily absent ground. Heading guests keep their
+physical walk. Explicit Recovering ownership retries safely. Already-reported script
+completion remains counted exactly once after readmission; evacuation does not
+invent completion. Review caught and corrected that completion-boundary issue and
+two weak fixtures before the final runs.
+
+Validation after integrating upstream `19e2b0f`:
+* 57 removal assertions per world, all four worlds, both isolated synthetic-corridor
+  and ordinary integrated modes (228 per mode), all pass.
+* 120 availability assertions pass; full JUNGLE/FANTASY pass; HALLOW Thrill Grill and
+  SPACE Moon Buggies retain only their precise original retail failure, raw exit 1
+  each; matrix runner exits 2 as intended.
+* GuestAudit passes JUNGLE/FANTASY/HALLOW/SPACE; 15 matrix-runner Python tests pass.
+* ParkSimAudit Release build passes (12 warnings); Viewer Debug build passes
+  (15 warnings, zero errors). No new rendered deletion/evacuation verification is
+  claimed: this work is engine-free, and a production Viewer removal caller was
+  not established.
+* At upstream `f2ef76e`, HALLOW/SPACE initially crashed with no resolved entrance,
+  reproduced before our changes. Reported to the active entrance maintainer, then
+  pulled their `19e2b0f` correction and reran the full integration successfully.
+
+Local evidence outside Git: `tpw-removal-before.log`,
+`tpw-removal-baseline-f2ef76e/manifest.json`,
+`tpw-removal-final-isolated-{WORLD}.log`,
+`tpw-removal-integrated-19e2b0f/manifest.json`,
+`tpw-removal-guest-{WORLD}.log`, and `tpw-removal-viewer-build.log`.
+
+Next bounded package: multi-guest/multi-ride conservation and deterministic replay
+checks around these lifecycle transitions, including removing one ride while another
+continues running. Start audit-only, demonstrate failures before any additional core
+change, and leave active renderer/placement/entrance/particle work to its maintainer.
+M3 is not complete: queue presentation and rendered lifecycle sign-off remain open.
