@@ -55,11 +55,12 @@ public sealed class ParkVisitors
         _random = random ?? (() => rng.Next());
     }
 
-    /// <summary>A ride a guest could actually go to: open, and with a queue stub to stand on.
+    /// <summary>A ride a guest could actually go to: open, unbroken, and with a queue stub to stand on.
     /// ⚠ A ride whose script never declares VAR_LETMEON cannot take anybody, so it is not a
     /// destination -- offering a guest to one would strand them in a queue forever.</summary>
     public bool Takes(ParkRide ride) =>
-        ride is { Entrance: not null } && ride.Has("VAR_LETMEON") && ride.Fault == null;
+        ride is { Entrance: not null } && ride.Has("VAR_LETMEON")
+        && ride.Get("VAR_RIDECLOSED") == 0 && ride.Get("VAR_BROKEN") == 0 && ride.Fault == null;
 
     public IEnumerable<ParkRide> Open => Sim.Rides.Where(Takes);
 

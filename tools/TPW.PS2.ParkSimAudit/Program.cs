@@ -420,6 +420,7 @@ var loop = new ParkSim(loopPaths);
 var loopWalk = new GuestWalk(loopPaths);
 var visitors = new ParkVisitors(loop, loopWalk);
 int loopId = 0;
+bool availabilityChecked = false;
 var onPath = laid.Where(c => loopPaths.Open(c)).ToArray();
 // Three rides hung off the corridor, plus a FOURTH whose queue is out in the grass -- the
 // control. If guests ever queue at that one, "they walked to the queue" is not what happened.
@@ -492,8 +493,16 @@ foreach (var e in wad.Entries.Where(e => e.Path.EndsWith(".rse", StringCompariso
                      ? (w.M41, w.M42, w.M43) : ((float, float, float)?)null;
             };
         loop.SetOpen(r.Id, true); loopId++;
+        if (!availabilityChecked && r.Has("VAR_RIDECLOSED") && r.Has("VAR_BROKEN")
+            && r.Has("VAR_LETMEON") && loopPaths.Walkable(stop))
+        {
+            VisitorAvailabilityChecks.Run(loopPaths, wad.Read(e), aps, def.UpgradeCapacity(0) ?? 1,
+                                          stop, onPath[^1], SLoop, seats, Check);
+            availabilityChecked = true;
+        }
     }
 }
+Check(availabilityChecked, "availability regression exercised a real ride with both availability flags");
 var marooned = loop.Rides.FirstOrDefault(r => r.Name.StartsWith("CONTROL", StringComparison.Ordinal));
 Console.WriteLine($"  {loopId} rides placed, {Math.Max(0, loopId - 1)} on the corridor at {string.Join(", ", stops.Take(Math.Max(0, loopId - 1)))}"
                 + $"; the control's queue is at {unreachable}, off the path");
