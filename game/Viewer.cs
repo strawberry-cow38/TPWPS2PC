@@ -2751,8 +2751,19 @@ public partial class Viewer : Node3D
     {
         int ticks = _parkClock.Advance(delta);
         for (int i = 0; i < ticks; i++) TickPark();
-        if (_guests != null) PlaceActors(_parkClock.Alpha);
+        // ⚠⚠ PRESENT BEFORE PLACING, NOT AFTER -- THIS ORDER IS THE RIDERS' ONE-FRAME LAG.
+        // PlaceActors -> SeatRiders -> SeatPose reads `model.LastWorld`, and `LastWorld` is only
+        // written by `model.SetFrame()` inside PresentScripted. Placing first therefore seats
+        // every rider on the PREVIOUS frame's ride matrices while the ride mesh draws at the
+        // current one, so the riders trail the arm they are bolted to by exactly one frame.
+        //
+        // ⭐ The tell was that STILLS were always right and only film showed it: WindPark, the
+        // path a screenshot takes, already called PresentScripted() and then PlaceActors(). Two
+        // paths through the same pair in opposite orders, and only the moving one could show the
+        // difference -- which is why this survived every seat-position check we ran. Those checks
+        // measured WHERE a rider was, never WHEN.
         PresentScripted();
+        if (_guests != null) PlaceActors(_parkClock.Alpha);
     }
 
     /// <summary>One console tick of everything that moves in the park.
@@ -3390,7 +3401,7 @@ public partial class Viewer : Node3D
             }
             if (pick != null)
             {
-                PlaceActors(1f); PresentScripted();
+                PresentScripted(); PlaceActors(1f);   // present first: see StepPark
                 var g = pick; var next = g.Next.Value;
                 var at = GuestWorld(Cell(g.Position), g.Cell);
                 var heading = new Vector3(next.X - g.Cell.X, 0, g.Cell.Z - next.Z).Normalized();    // the walk's own mirrored frame, as WalkBasis
@@ -3671,8 +3682,8 @@ public partial class Viewer : Node3D
     {
         if (_guests == null) return;
         while (_parkTicks < tick) { TickPark(); PresentScripted(frames: false); }
+        PresentScripted();                      // present first: see StepPark
         PlaceActors(1f);
-        PresentScripted();
         double t = _parkTicks * ParkSim.TickMilliseconds / 1000.0;
         int moved = 0, comparable = 0; float farthest = 0;
         foreach (var g in _guests.Guests)
@@ -6185,7 +6196,19 @@ public partial class Viewer : Node3D
             if (_soundCensus > 0) { }   // the census ends itself above, after its seconds of real frames
             else if (_rideFilm > 0 && _guestTest && _guests != null)
             {
-                if (_guestStage == 0 && _shotWait >= warm) { RideFilmStart(); _guestStage = 6; }
+                // ⚠⚠ THE CAMERA NEEDS TWO FRAMES TO LAND, AND FRAME 0 WAS BEING SHOT BEFORE IT DID.
+                // RideFilmStart sets _focus/_yaw, but those are turned into `_cam.Transform`
+                // later in _Process, so a capture on the very next tick photographs wherever the
+                // camera WAS -- an empty field, while Crazy Ape's Create animation (215 frames,
+                // ~7 s of a crate opening into an ape) played off-screen. The stage note ten
+                // lines up already says each grab wants two frames, one for the camera and one
+                // for the draw; the film branch was the one place not honouring it.
+                //
+                // ⭐ These warm frames do NOT step the park, so frame k is still exactly park
+                // time start + k/F and the audio alignment is untouched.
+                if (_guestStage == 0 && _shotWait >= warm) { RideFilmStart(); _guestStage = 4; }
+                else if (_guestStage == 4) { RideFilmCamera(); _guestStage = 5; }
+                else if (_guestStage == 5) _guestStage = 6;
                 else if (_guestStage == 6) RideFilmFrame();
             }
             else if (_guestTest && _guests != null)

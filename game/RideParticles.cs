@@ -57,15 +57,26 @@ public sealed class RideParticles
     static Gradient RampOf(ParticleEffect e)
     {
         var g = new Gradient();
-        // ⚠ Gradient starts with two points of its own; they have to go or they blend into the
-        // effect's colours and every burst comes out part white.
-        g.RemovePoint(1);
-        g.RemovePoint(0);
+        // ⚠⚠ A GRADIENT CANNOT BE EMPTIED, AND THE OLD CODE'S COMMENT DESCRIBED AN INTENT IT DID
+        // NOT ACHIEVE. It was `RemovePoint(1); RemovePoint(0);` to clear Godot's two default
+        // points before adding the effect's own -- but `remove_point` refuses at
+        // `points.size() <= 1`, so the SECOND call always failed and left one default point
+        // behind, blended into every burst. It failed loudly in Godot's log
+        // ("Condition \"points.size() <= 1\" is true") and silently in the picture, because an
+        // ERROR is printed and execution carries on.
+        //
+        // ⭐ Assigning Offsets and Colors REPLACES the ramp wholesale, so there is nothing to
+        // remove. Offsets first: it sizes the point array, and Colors then fills it.
+        var offsets = new float[e.Ramp.Length];
+        var colors = new Color[e.Ramp.Length];
         for (int i = 0; i < e.Ramp.Length; i++)
         {
             var (r, gr, b, a) = e.ColourAt((i + 0.5f) / e.Ramp.Length);
-            g.AddPoint(i / (float)(e.Ramp.Length - 1), new Color(r / 255f, gr / 255f, b / 255f, a / 255f));
+            offsets[i] = i / (float)(e.Ramp.Length - 1);
+            colors[i] = new Color(r / 255f, gr / 255f, b / 255f, a / 255f);
         }
+        g.Offsets = offsets;
+        g.Colors = colors;
         return g;
     }
 
