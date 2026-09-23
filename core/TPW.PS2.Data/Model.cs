@@ -577,6 +577,23 @@ public sealed partial class Model
                                            lo.Z + f.Z * (hi.Z - lo.Z));
     }
 
+    /// <summary>How many head slots a ride has, counted the way the loader counts them.
+    ///
+    /// ⚠⚠ NOT "how many `0x80` fittings there are". `0x1bfdf8` walks UP from id 1 and stops at
+    /// the first id with no `0x80` fitting, so the answer is the longest run 1, 2, 3, ... that
+    /// the model actually has -- a gap truncates it. The two agree on every jungle ride, because
+    /// their seat ids happen to run 1..N with no hole, which is exactly the situation in which a
+    /// simpler rule looks right and is not.</summary>
+    public int HeadSlotCount
+    {
+        get
+        {
+            int n = 0;
+            while (FindFitting(n + 1, 0x80) != null) n++;
+            return n;
+        }
+    }
+
     /// <summary>The fitting a script means, or null. ⚠ The mask falls back exactly as `0x1f1f78`
     /// does: a space sharing no bit with `0x3da1f83` is replaced by `0x3da1f82`.</summary>
     public Fitting? FindFitting(int id, uint space)

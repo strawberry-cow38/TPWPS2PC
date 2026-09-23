@@ -296,10 +296,14 @@ foreach (var e in wad.Entries.Where(e => e.Path.EndsWith(".rse", StringCompariso
     // ⭐ THE SEATS ARE THE MODEL'S OWN `0x80` FITTINGS, which is the list ADDHEAD indexes with
     // `slot + 1`. A ride whose model is missing simply seats nobody rather than guessing a number.
     int seats = 0;
+    Model rideModel = null;
     try
     {
         var mps = wad.Find(stem + ".mps");
-        if (mps != null) seats = new Model(wad.Read(mps)).Fittings.Count(f => (f.Flags & 0x80) != 0);
+        // ⚠ The LOADER's count, not the fitting count: 0x1bfdf8 walks up from id 1 and stops at
+        // the first gap. They agree on every jungle ride, which is the situation in which the
+        // simpler rule looks right and is not.
+        if (mps != null) { rideModel = new Model(wad.Read(mps)); seats = rideModel.HeadSlotCount; }
     }
     catch { }
     if (seats == 0) continue;
@@ -308,7 +312,23 @@ foreach (var e in wad.Entries.Where(e => e.Path.EndsWith(".rse", StringCompariso
     var r = loop.Add(loopId + 1, (control ? "CONTROL " : "") + (def.Name ?? stem), stop, 1, 1,
                      wad.Read(e), aps, def.UpgradeCapacity(0) ?? 1,
                      stop, control ? stop : onPath[^1], out _, sibling: SLoop, headSlots: seats);
-    if (r != null) { loop.SetOpen(r.Id, true); loopId++; }
+    if (r != null)
+    {
+        // ⭐⭐ WHERE THE SCRIPT'S NODES ACTUALLY ARE. Without this the host answers "I do not know"
+        // and every WALKON leg runs at the 100 ms floor; with it the durations are the distances
+        // between the ride's own fittings, which is what the console computes. The bind pose is
+        // used because this audit has no renderer -- a viewer would hand it the animated one.
+        var bind = rideModel?.WorldTransforms();
+        if (bind != null)
+            r.Host.NodeSource = (node, space) =>
+            {
+                var f = rideModel.FindFitting(node, (uint)space);
+                if (f is not { Node: >= 0 } hit) return null;
+                return bind.TryGetValue(rideModel.NodeOffset(hit.Node), out var w)
+                     ? (w.M41, w.M42, w.M43) : ((float, float, float)?)null;
+            };
+        loop.SetOpen(r.Id, true); loopId++;
+    }
 }
 var marooned = loop.Rides.FirstOrDefault(r => r.Name.StartsWith("CONTROL", StringComparison.Ordinal));
 Console.WriteLine($"  {loopId} rides placed, 3 on the corridor at {string.Join(", ", stops.Take(3))}"
@@ -336,6 +356,13 @@ Check(loop.Rides.Any(r => r.Machine.Heads.Count > 0), "a ride has seats at all (
 Check(seated.Count > 0, $"a rider is put IN a seat, not just counted ({seated.Count} rides have somebody seated)");
 Check(loop.Rides.All(r => r.Host.Seats.Count <= r.Machine.Heads.Count),
       "no ride seats more people than it has seats");
+// ⭐ AND THE WALKS ARE TIMED, not floored. RseMachine.WalksAreTimed is false when the host could
+// not place a node, in which case every leg took the 100 ms minimum and any figure about how long
+// a ride cycle takes is meaningless. It is the flag that stops a number being quoted.
+var timed = loop.Rides.Where(r => r.Machine.WalksAreTimed).ToList();
+Console.WriteLine($"  {timed.Count} of {loop.Rides.Count} rides timed their walks from real node positions"
+                + $" ({string.Join(", ", timed.Select(r => r.Name))})");
+Check(timed.Count > 0, "a ride's WALKON legs are timed by the distance between its own fittings");
 Check(visitors.Rides > 0, $"a guest comes back OUT of a ride and walks away ({visitors.Rides} did)");
 // ⚠⚠ THE SAME PEOPLE, not the same COUNT. A guest handed to a ride leaves the walking layer and
 // is put back when the script is done, and putting them back as a NEW id would pass every count

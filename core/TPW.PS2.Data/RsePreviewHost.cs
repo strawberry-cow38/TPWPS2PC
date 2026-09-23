@@ -136,11 +136,18 @@ public sealed class RsePreviewHost : IRseHost
         return (float)(p.Loop && duration > 0 ? frame % duration : Math.Min(frame, duration));
     }
 
-    /// <summary>⚠ THE PREVIEW CANNOT PLACE A NODE. The APS gives this host frames, not the park's
-    /// node table, so every walk here runs at the minimum leg time. Said through the return value
-    /// rather than by inventing an origin, so `RseMachine.WalksAreTimed` stays honest.</summary>
+    /// <summary>Where the caller says a node is, or null when it does not know. ⭐ A viewer that
+    /// has the placed model can answer this from `Model.FindFitting(node, space)` and the node's
+    /// world transform; a headless caller leaves it null and every walk runs at the floor, which
+    /// is what <see cref="RseMachine.WalksAreTimed"/> reports.
+    ///
+    /// ⚠ ENGINE-FREE ON PURPOSE. A delegate rather than a model reference, so this file still
+    /// knows nothing about Godot or about how a ride is drawn.</summary>
+    public Func<int, int, (float X, float Y, float Z)?> NodeSource { get; set; }
+
     public bool TryNodePosition(int node, int space, out float x, out float y, out float z)
     {
+        if (NodeSource?.Invoke(node, space) is { } p) { x = p.X; y = p.Y; z = p.Z; return true; }
         x = y = z = 0f;
         return false;
     }
