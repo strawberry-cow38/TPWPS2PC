@@ -558,15 +558,30 @@ public sealed class Park
     }
 
     /// <summary>Lay the park. Empty grass, no ride in it -- rides arrive through TryPlace.</summary>
-    public void Build(int width, int height, bool[,] playable = null)
+    /// <summary>Lay the ground again WITHOUT touching what is standing on it.
+    ///
+    /// ⚠⚠ Every path press used to call Build, and Build EMPTIES THE PARK -- it frees the ride
+    /// node's children, clears the placed list and throws the occupancy grid away. So laying a
+    /// path over a ride did not fail, it DELETED the ride, and laying one anywhere deleted every
+    /// ride in the park. Master saw the deleting; the cause is that one call did two jobs.</summary>
+    public void Rebuild()
+    {
+        if (Width <= 0 || Height <= 0) return;
+        Build(Width, Height, Playable, keep: true);
+    }
+
+    public void Build(int width, int height, bool[,] playable = null, bool keep = false)
     {
         foreach (var c in _ground.GetChildren()) c.QueueFree();
-        foreach (var c in _ride.GetChildren()) c.QueueFree();
-        _placed.Clear();
+        if (!keep)
+        {
+            foreach (var c in _ride.GetChildren()) c.QueueFree();
+            _placed.Clear();
+        }
         Width = width; Height = height;
         Playable = playable != null && playable.GetLength(0) == width && playable.GetLength(1) == height
             ? playable : null;
-        _occupied = new int[width, height];
+        if (!keep) _occupied = new int[width, height];
 
         // ⭐ ONE SURFACE PER GROUND MATERIAL. The disc says which ground variant goes on each
         // cell -- byte1 indexes the terrain model's OWN material table -- and laying a single
@@ -583,6 +598,9 @@ public sealed class Park
             for (int x = 0; x < width; x++)
             {
                 if (!IsPlayable(x, y)) continue;
+                // ⭐ NO GROUND UNDER A PLACED THING. Master's call: a ride takes the tiles it
+                // stands on, so the floor stops there instead of being drawn through its base.
+                if (!Vacant(x, y)) continue;
                 int mat = Field != null && x < Field.Width && y < Field.Height ? Field.Material(x, y) : 0;
                 if (!surfaces.TryGetValue(mat, out var st))
                 {
@@ -924,7 +942,13 @@ public sealed class Park
         var centre = (min + max) * 0.5f;
         model.Position += new Vector3(
             Origin.X + (x + fp.Width * 0.5f) * CellSize - centre.X,
-            BaseY - min.Y,
+            // ⭐⭐ THE MODEL'S OWN ORIGIN GOES ON THE FLOOR, not the bottom of its bounding box.
+            // Lifting a ride until its lowest drawn point rested on the surface pushed every ride
+            // with a buried base UP INTO THE AIR by the depth of that base -- master: "a lot of our
+            // rides are floating (because they have stuff thats usually meant to sit under the
+            // ground surface)". Those parts are meant to be under it, so the origin is the ground
+            // plane and what hangs below it hangs below it.
+            BaseY,
             // ⚠⚠ MINUS, because `centre` is measured IN THE PARENT'S SPACE. `DrawnBounds(model,
             // inParent: true)` starts its walk from `model.Transform`, so the bounds already include
             // the model's own position AND its Scale(1,1,-1). Adding a delta to `Position` shifts

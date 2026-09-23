@@ -31,18 +31,25 @@ public sealed class Placement
 
     public void Arm(RideDefinition def, string display, int id, Park.Footprint fp)
     {
-        Def = def; Display = display; Id = id; Base = fp; Turns = 0;
-        Turned = fp;
+        // ⚠⚠ HALF A TURN, ALWAYS. The shape is authored in the game's own frame and the plot draws
+        // in one mirrored on both axes -- the root mirrors Z and the rows are laid out reversed --
+        // so a footprint taken straight from the .sam comes out back to front and upside down.
+        // Master, looking at it: "the placement ghost is 180 degrees rotated from what it should
+        // be". Correcting it HERE means the cells, both doors and the exit's facing all come along;
+        // correcting it in the drawing would leave the doors where they were.
+        Def = def; Display = display; Id = id; Base = Rotate(fp, 2); Turns = 0;
+        Turned = Base;
     }
 
     public void Clear() { Def = null; Display = null; Turned = default; Turns = 0; }
 
-    /// <summary>A quarter turn, instantly. ⚠ The console only ever turns ONE WAY (+1); there is no
-    /// anticlockwise button, and adding one would be a control the game does not have.</summary>
-    public void Turn()
+    /// <summary>A quarter turn, instantly. ⚠ The console only ever turns ONE WAY -- there is no
+    /// anticlockwise button on it -- but master asked for both, and a port on a keyboard is not
+    /// bound to a pad's button count. Clockwise is +1.</summary>
+    public void Turn(int quarters = 1)
     {
         if (!Active) return;
-        Turns = (Turns + 1) & 3;
+        Turns = (Turns + quarters) & 3;
         Turned = Rotate(Base, Turns);
     }
 

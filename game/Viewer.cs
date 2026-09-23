@@ -510,7 +510,11 @@ public partial class Viewer : Node3D
         var tabs = new HBoxContainer();
         _buildPanel.AddChild(tabs);
         _buildTabs = Array.Empty<Button>();
-        _buildList = new ItemList { SizeFlagsVertical = Control.SizeFlags.ExpandFill, AllowReselect = true };
+        // ⚠⚠ NO KEYBOARD FOCUS. An ItemList with focus swallows every key press -- R, the commas,
+        // WASD, the lot -- so picking a ride left the whole keyboard dead until you clicked the
+        // world again. Master: "the list of rides etc is eating my keyboard control inputs".
+        _buildList = new ItemList { SizeFlagsVertical = Control.SizeFlags.ExpandFill, AllowReselect = true,
+                                    FocusMode = Control.FocusModeEnum.None };
         _buildList.ItemSelected += i => ArmFromList((int)i);
         _buildPanel.AddChild(_buildList);
         _buildBox = buildBox;
@@ -616,8 +620,13 @@ public partial class Viewer : Node3D
             if (!_toolOpen || _toolKind != want) OpenTool(want); else PressTool();
         }
         else if (k.Keycode == Key.Tab && _mode == Mode.Park) ToggleBuildMenu();
-        // ⭐ A quarter turn, one way only -- the console has no anticlockwise button.
-        else if (k.Keycode == Key.Period && _place.Active) { _place.Turn(); _ghostAt = (-1, -1, -1, -1); }
+        // ⭐ R and . turn it clockwise, , turns it back. ⚠ R is the camera's zoom-in elsewhere;
+        // while something is HELD it belongs to the thing being turned, which is the same bargain
+        // the mouse buttons make with the build tools.
+        else if (k.Keycode is Key.R or Key.Period && _place.Active)
+        { _place.Turn(1); _ghostAt = (-1, -1, -1, -1); }
+        else if (k.Keycode == Key.Comma && _place.Active)
+        { _place.Turn(-1); _ghostAt = (-1, -1, -1, -1); }
         else if (k.Keycode == Key.Escape && _place.Active)
         {
             _place.Clear();
@@ -639,7 +648,7 @@ public partial class Viewer : Node3D
         {
             _paths.Undo();
             _runX = _runY = -1;
-            RebuildFloor();
+            RefreshFloor();
             _toolSfx?.Play(ToolSounds.Cue.Undo);
             GD.Print("[path] taken back");
         }
@@ -1341,7 +1350,7 @@ public partial class Viewer : Node3D
         }
         if (_pieces == null) return;
         _paths = new PathTool(_terrainModel, _pieces);
-        _ghost = new PathGhost(_paths);
+        _ghost = new PathGhost(_paths) { Occupied = (x, y) => !_park.Vacant(x, y) };
         // ⚠ Once, not per park: the UI bank is the same file whichever park is up, and decoding it
         // again on every load would be four decodes for nothing.
         if (_toolSfx == null) { _toolSfx = new ToolSounds(_lib, this); GD.Print($"[sfx] {_toolSfx.Report}"); }
@@ -1387,7 +1396,7 @@ public partial class Viewer : Node3D
                     GD.Print($"[path]   ({x,3},{y,3}) -> {_park.Field.Material(x, y),3} turns {_paths.Turns(x, y)} "
                            + $"at world {w.X:F1},{w.Z:F1}");
                 }
-        RebuildFloor();
+        RefreshFloor();
     }
 
     /// <summary>⭐ A CONTROL FOR THE GHOST, not a feature. It lays a short run of real path, then
@@ -1402,7 +1411,7 @@ public partial class Viewer : Node3D
         int cx = f.Width / 2, cy = f.Height / 2;
         for (int r = 0; r < 12 && !_paths.CanLay(cx, cy); r++) { cx += 1; if (!_paths.CanLay(cx, cy)) cy += 1; }
         for (int i = 0; i <= 3; i++) _paths.Lay(cx, cy + i);
-        RebuildFloor();
+        RefreshFloor();
         OpenTool(PathTool.Kind.Path);
         // ⭐ Pin the build cursor to the target cell, so the ghost the frame loop rebuilds is the
         // one printed below rather than a second, different run. A capture has no mouse to put it
@@ -1803,7 +1812,8 @@ public partial class Viewer : Node3D
         foreach (var c in bar.GetChildren()) c.QueueFree();
         _buildTabs = groups.Select(g =>
         {
-            var b = new Button { Text = $"{Title(g.Key)} ({g.Count()})" };
+            var b = new Button { Text = $"{Title(g.Key)} ({g.Count()})",
+                                 FocusMode = Control.FocusModeEnum.None };
             string key = g.Key;
             b.Pressed += () => ShowBuildCategory(key);
             bar.AddChild(b);
@@ -1887,17 +1897,21 @@ public partial class Viewer : Node3D
         var cells = _place.Cells(_park, x, y)
                           .Select(c => (c.X, c.Y, c.Ok ? 24 : 175))
                           .ToList();
-        // ⭐ The two doors, with the console's own markers: 168 the entrance, 169 the exit.
-        if (_place.DoorFor(x, y) is { } door)
+        // ⭐⭐ THE DOORS STICK OUT A TILE. Master: "the path entrance/exit needs to stick out a
+        // tile from the blueprint". They mark where the queue and the path will START, which is
+        // the tile OUTSIDE the shape -- drawn on the shape's own edge they said where the door is
+        // rather than where you are about to be asked to build, and the footprint already shows
+        // its own edge.
+        void Door(( int X, int Y)? cell, int marker)
         {
-            cells.RemoveAll(c => c.Item1 == door.X && c.Item2 == door.Y);
-            cells.Add((door.X, door.Y, 168));
+            if (cell is not { } c) return;
+            var outside = _place.OutsideOf(c, x, y);
+            if (outside is not { } o) return;
+            cells.RemoveAll(t => t.Item1 == o.X && t.Item2 == o.Y);
+            cells.Add((o.X, o.Y, marker));
         }
-        if (_place.ExitFor(x, y) is { } exit)
-        {
-            cells.RemoveAll(c => c.Item1 == exit.X && c.Item2 == exit.Y);
-            cells.Add((exit.X, exit.Y, 169));
-        }
+        Door(_place.DoorFor(x, y), 168);
+        Door(_place.ExitFor(x, y), 169);
         _ghostView.ShowCells(cells, _park);
         bool ok = _place.Cells(_park, x, y).All(c => c.Ok);
         Status($"{_place.Display} at ({x},{y}) turned {_place.Turns * 90} degrees"
@@ -1925,6 +1939,8 @@ public partial class Viewer : Node3D
             _toolSfx?.Play(ToolSounds.Cue.Refused);
             return;
         }
+        // ⭐ The ground under it goes now that the cells are claimed.
+        RefreshFloor();
         _toolSfx?.Play(ToolSounds.Cue.Lay);
         GD.Print($"[build] placed {_place.Display} at ({cx},{cy}) turned {_place.Turns * 90}");
         _ghostAt = (-1, -1, -1, -1);
@@ -2044,7 +2060,7 @@ public partial class Viewer : Node3D
         var last = _ghost.Tiles[^1];
         bool joined = last.Verdict is PathGhost.Verdict.Joins or PathGhost.Verdict.Already;
         int laid = _ghost.Lay(_toolKind);
-        RebuildFloor();
+        RefreshFloor();
         // ⭐⭐ A RUN THAT CONNECTS CLOSES THE TOOL. Master's call, and the PSX report has the same
         // rule from the other build -- its path tool closes itself when a run finishes on existing
         // path, and gives that case its own sound and its own ghost marker. Finishing a path is a
@@ -2350,7 +2366,9 @@ public partial class Viewer : Node3D
             // in the first minute. The camera looks along +(sin, cos), so its right is -(cos, -sin).
             _game.CursorX += (int)((fwd * s - side * c) * pan);
             _game.CursorZ += (int)((fwd * c + side * s) * pan);
-            if (Input.IsKeyPressed(Key.R)) _game.Zoom(-1);
+            // ⚠ R is the turn while something is held; the camera only gets it back when the
+            // cursor is empty.
+            if (Input.IsKeyPressed(Key.R) && !_place.Active) _game.Zoom(-1);
             if (Input.IsKeyPressed(Key.F)) _game.Zoom(1);
             if (Input.IsKeyPressed(Key.Z)) _game.Push(-1);
             if (Input.IsKeyPressed(Key.X)) _game.Push(1);
@@ -2473,17 +2491,27 @@ public partial class Viewer : Node3D
         if (_terrain != null && _park.Field != null)
             _park.TerrainTop = Park.SurfaceHeights(_terrain.Root, _holeOrigin,
                 _park.Field.Width, _park.Field.Height, Park.CellSize);
-        RebuildFloor();
+        BuildFloor();
     }
 
     /// <summary>Lay the plot's floor again from the grid as it stands. ⭐ Cheap and complete: a
     /// path tile changes the cell's ground byte and its neighbours', and the floor is built FROM
     /// those bytes, so re-running it is how a laid tile appears -- no separate path geometry.</summary>
-    void RebuildFloor()
+    /// <summary>Lay the plot for the FIRST time, from the hole the terrain leaves. ⚠ This one
+    /// empties the park, which is right when a park is being loaded and wrong at every other
+    /// moment -- see RefreshFloor.</summary>
+    void BuildFloor()
     {
         if (_holeSize.X <= 1f) { _park.Build(ParkCells, ParkCells); return; }
         _park.Build(Mathf.RoundToInt(_holeSize.X), Mathf.RoundToInt(_holeSize.Y), _holeCells);
     }
+
+    /// <summary>Lay the ground again during play. ⚠⚠ KEEPS what is standing in the park. This runs
+    /// on every path press, and a full Build frees the ride node's children and clears the placed
+    /// list -- so a path press used to delete every ride in the park. ⚠ And pointing the FIRST
+    /// build at this instead was worse: with no size yet it returns having built nothing, so the
+    /// whole plot came up unplayable and every placement read "blocked".</summary>
+    void RefreshFloor() => _park.Rebuild();
 
     /// <summary>The park by itself. ⚠ NO RIDE: opening a map used to stand the archive's first
     /// model in the dead centre of the plot, which reads as content rather than as the debug

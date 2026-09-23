@@ -51,6 +51,12 @@ public sealed class PathGhost
     public bool Layable { get; private set; }
 
     readonly PathTool _tool;
+
+    /// <summary>Whether something is STANDING on a cell. ⚠ The path tool knows the terrain's own
+    /// no-build bit but nothing about what the player has put down since, so the park has to say.
+    /// Without it a run was laid straight across a ride.</summary>
+    public Func<int, int, bool> Occupied { get; set; }
+
     public PathGhost(PathTool tool) { _tool = tool; }
 
     /// <summary>Work out the run from (x0,y0) to (x1,y1).</summary>
@@ -109,6 +115,9 @@ public sealed class PathGhost
     Verdict Judge(int x, int y, PathTool.Kind kind, bool last)
     {
         if (!_tool.CanLay(x, y)) return Verdict.Refused;
+        // ⭐ A RIDE'S TILES ARE NOT GROUND TO BUILD ON. Master: paths "should be invalid on tiles
+        // occupied by rides, they shouldn't delete the rides".
+        if (Occupied?.Invoke(x, y) == true) return Verdict.Refused;
         var had = _tool.KindAt(x, y);
         if (had == PathTool.Kind.None) return Verdict.Lay;
         // ⭐⭐ ONLY THE RUN'S LAST TILE SAYS "already". The console gates that arm on its
@@ -123,8 +132,9 @@ public sealed class PathGhost
         // ghost marks it before the press rather than leaving it to be discovered.
         if (kind == PathTool.Kind.Queue && had is PathTool.Kind.Path or PathTool.Kind.Both)
             return last ? Verdict.Joins : Verdict.Refused;
-        if (kind is PathTool.Kind.Path or PathTool.Kind.Both && had == PathTool.Kind.Queue)
-            return Verdict.Joins;
+        // ⚠⚠ A PATH MAY NOT BE LAID ON A QUEUE. Master's rule, and it replaces the overlap tile
+        // the PSX uses: the two meet by standing NEXT to each other, and the path tile beside a
+        // queue wears a piece with an arm pointing at it (PathTool.Links counts the queue).
         return Verdict.Refused;
     }
 

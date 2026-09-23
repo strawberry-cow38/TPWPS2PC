@@ -110,7 +110,13 @@ public sealed class PathTool
         if (kind == Kind.None) return;
         // A cell that is both is a path first: the path table carries the queue's shapes too.
         var table = kind == Kind.Queue ? _pieces.Queue : _pieces.Path;
-        var joins = kind == Kind.Queue ? (Func<int, int, bool>)IsQueue : IsPath;
+        // ⭐⭐ A PATH COUNTS AN ADJACENT QUEUE AS A JOIN. Master: the path tile a queue runs up to
+        // "needs to have the texture as if theres a path connection in that direction". It cannot
+        // be laid ON the queue, so the only way the junction can look connected is for the path's
+        // own piece to carry an arm toward it -- which is exactly what the link bits are for.
+        Func<int, int, bool> joins = kind == Kind.Queue
+            ? IsQueue
+            : (x2, y2) => IsPath(x2, y2) || IsQueue(x2, y2);
         var piece = PathPieces.Choose(table, Links(x, y, joins));
         var sprites = piece.List == 2 ? _queueSprites : _pathSprites;
         if (piece.Sprite >= sprites.Length) return;
