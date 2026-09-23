@@ -389,3 +389,22 @@ cases (suffix-only match, wrong folder, root-level name, directory named as an a
 That separate narrow fix/test package is being validated; no disc-parser or viewer
 changes are needed. Continue release/manual validation while respecting active renderer
 ownership and the distinction between synthetic fixtures and real-disc verification.
+
+## Launcher disc recognition corrected
+
+Four synthetic false-positive controls failed before the fix: a misleading filename
+suffix, correct basename in the wrong folder, correct basename at root, and a directory
+named as the expected archive. DiscLocator now requires an exact case-insensitive
+`/DATA/JUNGLE.WAD` non-directory entry, matching its documented predicate.
+
+LauncherAudit passes 50 offline assertions and 51 with the optional real-disc-in-place
+check; the existing owner image remains accepted. Launcher builds. Fixtures are
+constructed directory metadata only, not copied disc payload or a claim of complete
+ISO/archive validation. Evidence: `tpw-disc-recognition-before.log`,
+`tpw-disc-recognition-final-offline.log`, `tpw-disc-recognition-final-real.log`.
+
+A concurrent upstream needs-threshold commit (`c0946c4`) arrived before landing these
+packages. Integrate it without overwriting the peer's source/findings, rerun the park
+matrix and launcher audit, and only then push normally. Next independent release
+validation should target actual launcher/UI error paths or a bounded scope agreed with
+the renderer maintainer, not infer visual correctness from these data-layer gates.

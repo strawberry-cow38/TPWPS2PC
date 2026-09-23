@@ -107,3 +107,25 @@ compiles. This still does not attest external engine installations/plugins, nati
 non-DLL dependencies, arbitrary source working-tree modifications, or concurrent
 installers. The manifest verifies current local output against the successful-build
 record; it is not proof of retail correctness or cryptographic publisher identity.
+
+## Disc-recognition predicate follow-up
+
+The launcher described requiring `DATA/JUNGLE.WAD`, but its code accepted any entry
+whose path merely ended with `JUNGLE.WAD`, including directories. Four synthetic
+reader-layout fixtures reproduced false acceptance: `NOTJUNGLE.WAD`, the same name
+under another folder, the same name at disc root, and a directory with the exact name.
+The predicate now requires the exact case-insensitive `/DATA/JUNGLE.WAD` path and a
+non-directory entry. No core disc parser or game data changed.
+
+The new fixtures contain only constructed directory records, not copied game payload.
+They test the predicate, not full ISO conformance or archive integrity. Missing paths,
+empty folders, truncated input and the two positive path/case controls are also checked.
+LauncherAudit passes 50 offline assertions, or 51 with the optional owner's-disc check:
+
+```sh
+dotnet run --project tools/TPW.PS2.LauncherAudit -c Release -- --disc "$DISC"
+```
+
+The real disc is read in place and still recognized. Launcher builds. Broader structural
+validation, alternate sector layouts and target-platform UI testing are not established
+by tightening this filename predicate.

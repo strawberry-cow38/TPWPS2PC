@@ -125,5 +125,10 @@ var absent = await LauncherProcess.RunAsync(Path.Combine(Path.GetTempPath(), Gui
     Array.Empty<string>(), Environment.CurrentDirectory, TimeSpan.FromSeconds(1));
 Check(!absent.Succeeded && absent.ExitCode == null && absent.Error != null,
       "missing executable reports launch failure without inventing a child exit code");
+int discArgument = Array.IndexOf(args, "--disc");
+if (discArgument >= 0 && discArgument + 1 >= args.Length)
+    Check(false, "--disc requires an existing user-supplied path");
+else
+    DiscRecognitionChecks.Run(Check, discArgument >= 0 ? args[discArgument + 1] : null);
 Console.WriteLine(bad == 0 ? "PASS launcher audit" : $"FAIL: {bad}");
 return bad == 0 ? 0 : 1;

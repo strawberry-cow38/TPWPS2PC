@@ -51,7 +51,8 @@ public static class DiscLocator
         {
             using var disc = new Disc(path);
             var files = disc.Files();
-            bool jungle = files.Any(f => f.Path.EndsWith("JUNGLE.WAD", StringComparison.OrdinalIgnoreCase));
+            bool jungle = files.Any(f => !f.IsDirectory
+                && f.Path.Equals("/DATA/JUNGLE.WAD", StringComparison.OrdinalIgnoreCase));
             if (!jungle)
                 return new(DiscStatus.NotADisc, path,
                            $"Readable, but no DATA/JUNGLE.WAD -- {files.Count} entries. Is this Theme Park World?",
