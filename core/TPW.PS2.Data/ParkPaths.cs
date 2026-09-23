@@ -25,39 +25,29 @@ public sealed class ParkPaths
     readonly HashSet<ParkCell> _scenery = new();
     readonly HashSet<ParkCell> _entrance = new();
 
-    /// <summary>⭐⭐ THE GROUND THAT IS WALKABLE BEFORE ANYONE BUILDS ANYTHING -- the bus stop, the
-    /// road up to it and the turnstiles.
+    /// <summary>⭐⭐ THE WALKWAY THE PARK COMES WITH -- the way in from the gate -- READ FROM THE
+    /// GAME'S OWN TABLE at 0x2B71B0 and painted the way 0x14E5B0 paints it. See
+    /// <see cref="ParkEntrance"/>; it is set by <see cref="SetEntrance"/> because the table lives
+    /// in the executable and this class is handed a terrain file.
     ///
-    /// ⚠⚠ THE DISC SHIPS NO PRE-LAID PATH TILES. Measured over jungle's whole grid with the
-    /// classifier's own control beside it (the material table names 16 path and 4 queue tiles, so
-    /// the classifier had something to hit): 3387 drawn cells, 7 distinct materials, all of them
-    /// `jgr_bas*` grass and one `jbr_log1`. ZERO path, ZERO queue. So "the paths that are there
-    /// from the start" are not tiles at all -- they are the entrance PREFAB'S MESH, standing on
-    /// cells the authored grid marks as drawing no ground.
-    ///
-    /// ⚠ NAMED, and the names are anchored: findings/gates.md measured `A_ROAD` and
-    /// `ticket_booths` as IDENTICAL in all four parks -- the entrance is one prefab translated in
-    /// x. So this is a reading of the prefab, not a region drawn by hand per world.
-    ///
-    /// ⚠⚠ AND NO SKIP TEST. I first took only the cells the terrain draws NO ground on, reasoning
-    /// that the plaza is where the grid steps aside for the prefab. It is not: that rule cut the
-    /// corridor in two at z=63 and z=65, where the road runs over ordinary drawn terrain, and a
-    /// walkway with a hole in it is not a walkway. Measured both ways over jungle --
-    ///
-    ///   with the skip test     56 cells, the far end reaches neither the near end nor most of itself
-    ///   without it           147 cells, ALL 147 reachable from the far end, near end included
-    ///
-    /// -- and the shape the second one draws is the thing master described: a three-wide corridor
-    /// through the turnstiles opening onto a fifteen-wide apron at the bus stop. The skip test was
-    /// my own addition and the connectivity is what threw it out.</summary>
-    /// ⚠⚠ AND THIS LIST IS A STAND-IN, NOT THE ENGINE'S RULE. Read out of SLES_500.32 since:
-    /// the runtime tile's byte `+0` is a KIND -- 2 is path and 4 is queue, the same numbers
-    /// PathTool.Kind already carries -- and `0x18E020` answers "a usable path is here" with
-    /// `tile[0] == 2 &amp;&amp; !(flags &amp; 1)`. That is what walkable MEANS to the game. But the load-time
-    /// fill at `0x14E5B0` only ever writes kind 0 or 1, so nothing at all is walkable when a park
-    /// opens, and whatever writes the entrance into the tile map HAS NOT BEEN FOUND. Three mesh
-    /// names are what stands in for it, and they are my choice. See findings/paths.md.</summary>
-    public static readonly string[] EntranceParts = { "A_ROAD", "A_BUS STOP", "ticket_booths" };
+    /// ⚠⚠ THIS REPLACES A GUESS, AND THE GUESS WAS WRONG. Until it was checked against a live
+    /// park, the entrance here was every cell covered by a mesh called `A_ROAD`, `A_BUS STOP` or
+    /// `ticket_booths` -- 147 cells at z 33..47 in FANTASY, against the game's 29 at x 39..40,
+    /// z 6..18. A two-tile walkway, not a fifteen-wide apron, and somewhere else entirely.</summary>
+    public IReadOnlyCollection<ParkCell> EntranceCells => _entrance;
+
+    /// <summary>Paint the park's own entrance into this grid.</summary>
+    public string SetEntrance(ParkEntrance table)
+    {
+        _entrance.Clear();
+        if (table == null) return "no entrance table";
+        var entry = table.Fit(Field, out string report);
+        if (!entry.Empty)
+            foreach (var (x, z, _) in entry.Cells())
+                if (x >= 0 && z >= 0 && x < Field.Width && z < Field.Height) _entrance.Add(new ParkCell(x, z));
+        return $"{report}; {_entrance.Count} cells";
+    }
+
     public IEnumerable<ParkCell> Cells => Enumerable.Range(0, Field.Count)
         .Select(i => new ParkCell(i % Field.Width, i / Field.Width));
 
@@ -80,7 +70,6 @@ public sealed class ParkPaths
         // collision flags. Triangle/square SAT includes thin walls missed by centre samples.
         foreach (var mesh in terrain.Meshes)
         {
-            bool isEntrance = EntranceParts.Any(n => (mesh.Name ?? "").StartsWith(n, StringComparison.OrdinalIgnoreCase));
             var vertices = terrain.Vertices(mesh).Pos.Select(v => Vector3.Transform(v, transforms[mesh.Offset]))
                 .Select(v => new Vector2(v.X - Origin.X, -v.Z - Origin.Y)).ToArray();
             foreach (var triangle in terrain.Triangles(mesh))
@@ -95,7 +84,6 @@ public sealed class ParkPaths
                     var c = new ParkCell(x, z);
                     bool hit = Intersects(p, q, r, new Vector2(x + 0.5f, z + 0.5f));
                     if (hit && !_scenery.Contains(c)) _scenery.Add(c);
-                    if (hit && isEntrance) _entrance.Add(c);
                 }
             }
         }
@@ -104,7 +92,6 @@ public sealed class ParkPaths
 
     /// <summary>Is this one of the park's own entrance cells -- bus stop, road, turnstiles?</summary>
     public bool IsEntrance(ParkCell c) => _entrance.Contains(c);
-    public IReadOnlyCollection<ParkCell> EntranceCells => _entrance;
 
     /// <summary>⭐ PUBLIC GROUND: what a visitor with nowhere particular to be may stand on. Laid
     /// path, or the entrance the park came with. ⚠ NOT a queue -- a queue belongs to its ride, and

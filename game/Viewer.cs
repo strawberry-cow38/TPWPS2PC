@@ -176,6 +176,7 @@ public partial class Viewer : Node3D
     /// laid path comes from the live tool, because ParkPaths copies the cell bytes when it is made
     /// and would show the park as it was when the overlay was first asked for.</summary>
     ParkPaths _walkGrid;
+    ParkEntrance _entranceTable;
     MeshInstance3D _walkView;
     bool _ghostPress;
     bool _animTest;
@@ -1385,7 +1386,15 @@ public partial class Viewer : Node3D
             try
             {
                 var exe = _lib.Executable();
-                if (exe != null) _pieces = PathPieces.ReadExecutable(exe);
+                if (exe != null)
+                {
+                    _pieces = PathPieces.ReadExecutable(exe);
+                    // ⭐ The park's own entrance walkway comes out of the same executable, from the
+                    // table 0x14E5B0 paints it with -- not out of the terrain, which does not
+                    // carry it.
+                    try { _entranceTable = ParkEntrance.ReadExecutable(exe); }
+                    catch (Exception e) { GD.PrintErr($"[walk] the entrance table would not read: {e.Message}"); }
+                }
                 else GD.Print("[path] no SLES_500.32 on this disc -- path laying is off");
             }
             catch (Exception e) { GD.PrintErr($"[path] the piece tables would not read: {e.Message}"); }
@@ -2829,6 +2838,7 @@ public partial class Viewer : Node3D
         {
             try { _walkGrid = new ParkPaths(_terrainModel); }
             catch (Exception e) { GD.PrintErr($"[walk] no sim grid: {e.Message}"); return; }
+            GD.Print($"[walk] entrance: {_walkGrid.SetEntrance(_entranceTable)}");
         }
 
         var by = new Dictionary<int, SurfaceTool>();
@@ -3216,96 +3226,43 @@ public partial class Viewer : Node3D
         GD.Print("[walk] UPPERCASE = the terrain draws no ground there, lowercase = it does");
         foreach (var (nm, mk) in marks.OrderBy(kv => kv.Value)) GD.Print($"[walk]   '{mk}' = {nm}");
 
-        // 5. ⭐ AND WHAT THE SIM WILL ACTUALLY WALK ON, through the same class the sim uses.
+        // 5. ⭐⭐ AND THE GAME'S OWN ENTRANCE, out of the table at 0x2B71B0.
         ParkPaths grid;
         try { grid = new ParkPaths(_terrainModel); }
         catch (Exception e) { GD.PrintErr($"[walk] no park grid: {e.Message}"); return; }
+        GD.Print($"[walk] entrance: {grid.SetEntrance(_entranceTable)}");
+        if (_entranceTable != null)
+            for (int i = 0; i < _entranceTable.All.Count; i++)
+                GD.Print($"[walk]   entry {i,2}: {_entranceTable.All[i]}");
         var ent = grid.EntranceCells.ToList();
-        // ⚠ NAME WHAT MATCHED. An empty set and a set whose names did not match read the same from
-        // a count, and Hallow produced exactly that -- its A_ROAD is in the part legend above and
-        // its entrance came out empty.
-        var matched = _terrainModel.Meshes
-            .Where(m => ParkPaths.EntranceParts.Any(n => (m.Name ?? "").StartsWith(n, StringComparison.OrdinalIgnoreCase)))
-            .Select(m => m.Name).ToList();
-        GD.Print($"[walk] the grid's own origin {grid.Origin.X:F2},{grid.Origin.Y:F2} against the "
-               + $"viewer's hole origin {_holeOrigin.X:F2},{_holeOrigin.Y:F2} -- "
-               + $"{(Mathf.Abs(grid.Origin.X - _holeOrigin.X) < 0.01f && Mathf.Abs(grid.Origin.Y - _holeOrigin.Y) < 0.01f ? "the same" : "THEY DISAGREE")}");
-        GD.Print($"[walk] the entrance parts matched here: "
-               + (matched.Count == 0 ? "NONE" : string.Join(", ", matched)));
         if (ent.Count == 0) { GD.PrintErr("[walk] no entrance cells -- nothing more to say"); return; }
         GD.Print($"[walk] {ent.Count} entrance cells, x {ent.Min(c => c.X)}..{ent.Max(c => c.X)}, "
                + $"z {ent.Min(c => c.Z)}..{ent.Max(c => c.Z)}");
 
-        // ⚠ A CONTROL THAT MUST SAY NO. The embankment is skipped ground too, and it is right
-        // beside the road -- if "not drawn" alone were the rule the whole bank would be walkable.
-        int bank = 0, banked = 0;
-        foreach (var (cell, names) in cover)
-        {
-            if (f.Drawn(cell.X, cell.Y)) continue;
-            // ⚠ The bank ONLY. A cell the road also covers is a road cell that the bank happens to
-            // reach over, and counting it here would be blaming the rule for the overlap.
-            if (!names.Any(n => n.StartsWith("EMBANKMENT", StringComparison.OrdinalIgnoreCase))) continue;
-            if (names.Any(n => ParkPaths.EntranceParts.Any(e => n.StartsWith(e, StringComparison.OrdinalIgnoreCase)))) continue;
-            bank++;
-            if (grid.IsEntrance(new ParkCell(cell.X, cell.Y))) banked++;
-        }
-        GD.Print($"[walk] of {bank} skipped EMBANKMENT cells, {banked} came out walkable -- "
-               + $"{(bank > 0 && banked == 0 ? "none, as it must be" : bank == 0 ? "NO CONTROL -- the bank covers nothing" : "THE BANK IS WALKABLE")}");
+        // ⚠ THE FIT'S OWN PRECONDITION, RESTATED AS A TEST. Every painted cell must be one the
+        // terrain draws no ground on, and the cell past the mouth must be drawn -- a wrong entry
+        // fails both ways round, which is what makes the fit a test rather than a search.
+        int off = ent.Count(c => f.Drawn(c.X, c.Z));
+        GD.Print($"[walk] of {ent.Count} entrance cells, {off} are on DRAWN ground -- "
+               + $"{(off == 0 ? "none, as it must be" : "THE WALKWAY IS ON THE PARK")}");
 
-        // ⚠ AND CONNECTIVITY, which is the whole point: the far end of the entrance must reach the
-        // near end WITHOUT anybody laying a single tile.
+        // ⚠ AND CONNECTIVITY: the far end must reach the near end with nothing laid.
         var outer = ent.OrderByDescending(c => c.Z).First();
         var inner = ent.OrderBy(c => c.Z).First();
         var route = grid.Route(outer, inner, c => grid.Open(c));
-        GD.Print($"[walk] from the far end {outer} to the near end {inner}: "
+        GD.Print($"[walk] from {outer} to {inner}: "
                + $"{(route == null ? "NO ROUTE" : $"{route.Count} cells, as it must be")}");
 
-        // ⚠ And the entrance set as a MAP, because a count and a bounding box cannot tell a
-        // corridor from a scatter, and a route that fails needs to say WHERE it ran out.
-        GD.Print("[walk] the entrance set: 'E' walkable, '#' skipped but not, '.' ordinary ground");
-        for (int z = bz - 6; z <= bz + 14; z++)
+        GD.Print("[walk] the entrance set: 'E' walkable, '#' skipped, '.' ordinary ground");
+        int wz0 = Math.Max(0, ent.Min(c => c.Z) - 2), wz1 = Math.Min(f.Height - 1, ent.Max(c => c.Z) + 3);
+        int wx0 = Math.Max(0, ent.Min(c => c.X) - 6), wx1 = Math.Min(f.Width - 1, ent.Max(c => c.X) + 6);
+        for (int z = wz0; z <= wz1; z++)
         {
-            if (z < 0 || z >= f.Height) continue;
             var row = new System.Text.StringBuilder();
-            for (int x = bx - 10; x <= bx + 10; x++)
-                row.Append(x < 0 || x >= f.Width ? ' '
-                         : grid.IsEntrance(new ParkCell(x, z)) ? 'E' : f.Drawn(x, z) ? '.' : '#');
+            for (int x = wx0; x <= wx1; x++)
+                row.Append(grid.IsEntrance(new ParkCell(x, z)) ? 'E' : f.Drawn(x, z) ? '.' : '#');
             GD.Print($"[walk] z={z,3}  {row}");
         }
-
-        // 6. ⚠⚠ THE A/B THE GAPS DEMAND. The rule above only takes cells the terrain draws NO
-        // ground on -- and the corridor comes out broken at z=63 and z=65, which a continuous
-        // walkway cannot be. The by-part map shows A_ROAD covering z=65 as DRAWN ground, so the
-        // road runs over ordinary terrain there and the skip test is throwing it away. Here is the
-        // same set WITHOUT that test, printed beside it, because "which rule" is a question only a
-        // comparison answers.
-        var loose = new HashSet<(int X, int Y)>();
-        foreach (var (cell, names) in cover)
-            if (names.Any(n => ParkPaths.EntranceParts.Any(e => n.StartsWith(e, StringComparison.OrdinalIgnoreCase))))
-                loose.Add(cell);
-        GD.Print($"[walk] without the no-ground test: {loose.Count} cells "
-               + $"(with it: {ent.Count}); 'E' walkable, '.' not");
-        for (int z = bz - 6; z <= bz + 14; z++)
-        {
-            if (z < 0 || z >= f.Height) continue;
-            var row = new System.Text.StringBuilder();
-            for (int x = bx - 10; x <= bx + 10; x++)
-                row.Append(x < 0 || x >= f.Width ? ' ' : loose.Contains((x, z)) ? 'E' : '.');
-            GD.Print($"[walk] z={z,3}  {row}");
-        }
-        // Does THAT one join up? Same two ends, cardinal steps, inside the loose set.
-        var seen2 = new HashSet<(int X, int Y)>();
-        var q2 = new Queue<(int X, int Y)>();
-        var start = (outer.X, outer.Z);
-        if (loose.Contains(start)) { q2.Enqueue(start); seen2.Add(start); }
-        while (q2.TryDequeue(out var cur))
-            foreach (var (dx, dy) in new[] { (0, 1), (0, -1), (1, 0), (-1, 0) })
-            {
-                var n2 = (cur.Item1 + dx, cur.Item2 + dy);
-                if (loose.Contains(n2) && seen2.Add(n2)) q2.Enqueue(n2);
-            }
-        GD.Print($"[walk] without the no-ground test, {outer} reaches {seen2.Count} of {loose.Count} cells"
-               + $"; the near end {inner} is {(seen2.Contains((inner.X, inner.Z)) ? "REACHED -- the corridor joins up" : "still cut off")}");
     }
 
     /// <summary>Sample the terrain's surface once per tile, because that is the shape of the
