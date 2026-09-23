@@ -429,3 +429,29 @@ Boy3a, Boy4a) carry only flag-0x80 records whose tracks live in Boy1a's file and
 * The bind translations are solved, never read; the five rigs above are reported, not explained.
 * Rotation keys never take the short path across the hemisphere, as in the game; no character
   track on the disc starts after frame 0, so the sampler's lack of a clamp is never exercised.
+
+## Which record is a guest SITTING?
+
+Each kid in `/Chars` ships 16 skeletal records. Composing every one at frame 0 through the bone
+hierarchy and measuring the left leg gives a clean split:
+
+| record | knee bend | thigh, from straight down |
+|--------|-----------|---------------------------|
+| `Idle` v0, v1, v2, v4, v5; `Start`; `Main`; `End`; `Unused1`, `Unused8`; 12; 14 | 74° | 46° |
+| `Idle` v3 | 91° | 43° |
+| **`Load` v0** | 62° | **140°** |
+| **`Load` v1** | 50° | **143°** |
+
+⭐ Fourteen of sixteen hold the leg hanging down at about 46°. Exactly two raise the thigh past
+horizontal, and both are variants of **slot 3**. That is a seated pose, and it is what a rider in
+a ride should be playing rather than the bind pose. The slot being named `Load` -- a guest being
+LOADED onto a ride -- agrees, but the angles are the evidence: the slot-name table is the ride's
+and need not mean the same thing for a character.
+
+⚠ THE ABSOLUTE ANGLES ARE NOT THE POINT, the split is. The "from straight down" reference assumes
+the character's up axis; what is load-bearing is that fourteen records agree with each other to a
+tenth of a degree and two disagree by ninety-odd.
+
+⚠⚠ This rests on `node = meshCount + bone` above. Under `skin.py`'s old "meshes then helpers"
+reading the same measurement is noise, so it is one inference standing on another -- both with
+controls under them, and neither read out of a consumer.
