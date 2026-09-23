@@ -2100,6 +2100,32 @@ public partial class Viewer : Node3D
                        + $" -- spread {(hi - lo) / hi * 100:F2}%"
                        + $" {((hi - lo) / hi < 0.01f ? "-- steady" : "-- IT WOBBLES")}");
             }
+            // ⭐ THE BORDER, AND A CONTROL THAT MUST HIT IT. Driving the cursor far past the plot
+            // and reading it back is the whole test -- "it stops" and "it never moved" look the
+            // same from inside the park, so the pair is: a push OUT must be pinned to the border,
+            // and a push to the middle must land exactly where it was aimed.
+            if (_game.Bounded)
+            {
+                int wasX = _game.CursorX, wasZ = _game.CursorZ;
+                _game.CursorX = (int)((_game.MaxTileX + 500) * GameCamera.TileUnits);
+                _game.CursorZ = (int)((_game.MinTileZ - 500) * GameCamera.TileUnits);
+                _game.ClampCursor();
+                float outX = _game.CursorX / (float)GameCamera.TileUnits;
+                float outZ = _game.CursorZ / (float)GameCamera.TileUnits;
+                float midX = (_game.MinTileX + _game.MaxTileX) * 0.5f;
+                float midZ = (_game.MinTileZ + _game.MaxTileZ) * 0.5f;
+                _game.CursorX = (int)(midX * GameCamera.TileUnits);
+                _game.CursorZ = (int)(midZ * GameCamera.TileUnits);
+                _game.ClampCursor();
+                float inX = _game.CursorX / (float)GameCamera.TileUnits;
+                GD.Print($"[cam] border x {_game.MinTileX:F0}..{_game.MaxTileX:F0} z {_game.MinTileZ:F0}..{_game.MaxTileZ:F0};"
+                       + $" driven 500 out lands at {outX:F0},{outZ:F0}"
+                       + $" -- {(Mathf.Abs(outX - _game.MaxTileX) < 1f && Mathf.Abs(outZ - _game.MinTileZ) < 1f ? "pinned to the border, as it must be" : "NOT PINNED")};"
+                       + $" driven to the middle lands at {inX:F0}"
+                       + $" -- {(Mathf.Abs(inX - midX) < 1f ? "untouched, as it must be" : "CLAMPED WHEN IT SHOULD NOT BE")}");
+                _game.CursorX = wasX; _game.CursorZ = wasZ;
+            }
+            else GD.Print("[cam] this park has no border to test");
             GD.Print($"[cam] a quarter turn lands on {with} of {GameCamera.QuarterTurn}"
                    + $" -- {(with == GameCamera.QuarterTurn ? "square" : "SHORT")},"
                    + $" arriving by {lastStep} {(lastStep <= 1 ? "-- a creep, no pop" : "-- A JUMP")};"
@@ -3618,8 +3644,28 @@ public partial class Viewer : Node3D
         // height easing in from wherever the last park left the camera.
         _game.Reset();
         if (_holeSize.X > 1f)
+        {
             _game.PlaceAt(_holeOrigin.X + _holeSize.X * 0.5f, _holeOrigin.Y + _holeSize.Y * 0.5f);
-        else _game.PlaceAt(_focus.X, _focus.Z);
+            // ⭐⭐ THE MAP'S CAMERA BORDER. The plot rectangle, with a margin so the edge of the
+            // park can be looked AT rather than only stood on -- the camera sits `Behind` back
+            // from its focus, so a cursor pinned exactly to the last cell still shows what is
+            // past it, but a little slack is what stops the far edge feeling walled off.
+            // ⚠ TPW_CAM_MARGIN widens it for looking at things outside the plot.
+            float margin = float.TryParse(System.Environment.GetEnvironmentVariable("TPW_CAM_MARGIN"), out float m) ? m : 4f;
+            _game.MinTileX = _holeOrigin.X - margin;
+            _game.MaxTileX = _holeOrigin.X + _holeSize.X + margin;
+            _game.MinTileZ = _holeOrigin.Y - margin;
+            _game.MaxTileZ = _holeOrigin.Y + _holeSize.Y + margin;
+            GD.Print($"[cam] border x {_game.MinTileX:F0}..{_game.MaxTileX:F0}, "
+                   + $"z {_game.MinTileZ:F0}..{_game.MaxTileZ:F0} (plot + {margin:F0})");
+        }
+        else
+        {
+            // ⚠ No plot, no border: unbounded, so a park the hole-finder could not measure still
+            // pans freely rather than being pinned at a nonsense rectangle.
+            _game.MinTileX = _game.MaxTileX = _game.MinTileZ = _game.MaxTileZ = float.NegativeInfinity;
+            _game.PlaceAt(_focus.X, _focus.Z);
+        }
         // ⭐ A shot run cannot hold a key, so the three axes are settable for renders. This is
         // what makes "the zoom is the pitch" checkable in a picture instead of in a paragraph.
         var set = _wantCam ?? System.Environment.GetEnvironmentVariable("TPW_CAM");
@@ -3663,6 +3709,9 @@ public partial class Viewer : Node3D
             // in the first minute. The camera looks along +(sin, cos), so its right is -(cos, -sin).
             _game.CursorX += (int)((fwd * s - side * c) * pan);
             _game.CursorZ += (int)((fwd * c + side * s) * pan);
+            // ⭐ The map's border. Clamped every tick rather than only when a key is pressed, so a
+            // limit that changes -- a different park -- takes hold on its own.
+            _game.ClampCursor();
             // ⚠ R is the turn while something is held; the camera only gets it back when the
             // cursor is empty.
             if (Input.IsKeyPressed(Key.R) && !_place.Active) _game.Zoom(-1);

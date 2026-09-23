@@ -62,6 +62,31 @@ public sealed class GameCamera
     public int TargetYaw, Yaw;                  // 0x395390, 0x39538C
     public int FocusX, FocusZ;                  // 0x395300, 0x395310 -- 24.8 fixed point
     public int CursorX, CursorZ;                // world units, what the focus chases
+
+    /// <summary>⭐ HOW FAR THE CURSOR MAY BE DRIVEN, in world tiles. Master: "wire the maps' camera
+    /// border limits (where u cant wasd too far away)".
+    ///
+    /// ⚠⚠ THIS IS A CHOICE, NOT A READING, and it is the first thing in this file that is. The
+    /// console's camera does not hold its own cursor: it reads one off an entity at
+    /// `0x3951B0 + 0x2C` (see 0x14F820), and of the 53 functions that touch that object NOT ONE
+    /// clamps against the park's cell dimensions -- so wherever the real limit lives, it is not
+    /// where I looked. The plot's own rectangle is what is used here because it is the border a
+    /// player would name, and it is per-map for free.
+    ///
+    /// ⚠ Unbounded until set, so nothing that does not set it changes behaviour.</summary>
+    public float MinTileX = float.NegativeInfinity, MaxTileX = float.PositiveInfinity;
+    public float MinTileZ = float.NegativeInfinity, MaxTileZ = float.PositiveInfinity;
+    public bool Bounded => !float.IsInfinity(MinTileX);
+
+    /// <summary>Pull the cursor back inside the border. ⚠ On the CURSOR, not the focus: the focus
+    /// chases the cursor, so clamping the thing being chased lets the ease carry the view back
+    /// rather than yanking it.</summary>
+    public void ClampCursor()
+    {
+        if (!Bounded) return;
+        CursorX = Math.Clamp(CursorX, (int)(MinTileX * TileUnits), (int)(MaxTileX * TileUnits));
+        CursorZ = Math.Clamp(CursorZ, (int)(MinTileZ * TileUnits), (int)(MaxTileZ * TileUnits));
+    }
     public int Behind = DefaultBehind;          // 0x395394
     public int Above = DefaultAbove;            // 0x39539C
     public int Dolly;                           // 0x2B73D0
