@@ -2851,6 +2851,8 @@ public partial class Viewer : Node3D
                            + $"the sim's ride has entrance {ride?.Entrance} exit {ride?.Exit}"
                            + $"{(ride == null ? " -- NO SCRIPT STARTED" : ride.Has("VAR_LETMEON") ? "" : " -- declares no VAR_LETMEON, so it takes nobody")}");
                     ConnectExit(o.X, o.Y);
+                    // ⚠ The menu that armed it would otherwise stand over half the picture.
+                    if (_buildBox != null && _buildBox.Visible) ToggleBuildMenu();
                     return;
                 }
         }
@@ -2858,27 +2860,37 @@ public partial class Viewer : Node3D
         GD.Print($"[guest] no site takes Crazy Ape with its queue stub on the network: {tried} cells tried, {fits} fitted, {doors} of those with both doors, none touching");
     }
 
-    /// <summary>The way home from a ride's exit: a straight run from the exit stub to the first
-    /// network cell in any of the four directions, laid through the tool -- what the exit-path
-    /// tool that opens after a placement is for, done by hand because a capture has no hand.</summary>
+    /// <summary>The way home from a ride's exit: the shortest run of layable, empty ground from
+    /// the exit stub to the nearest network cell, laid through the tool -- what the exit-path tool
+    /// that opens after a placement is for, done by hand because a capture has no hand.
+    /// ⚠ A SEARCH, NOT A STRAIGHT LINE: the first version tried the four straight runs and the
+    /// ride's own body blocked every one, so thirty-one riders were handed back onto a stub with
+    /// no way off it.</summary>
     void ConnectExit(int ex, int ey)
     {
         var grid = _guests.Paths;
-        if (grid.Open(new ParkCell(ex, ey)) && ParkPaths.Neighbours(new ParkCell(ex, ey)).Any(grid.Open))
-        { GD.Print($"[guest] the exit stub ({ex},{ey}) already meets the network"); return; }
-        foreach (var (dx, dy) in new[] { (0, 1), (0, -1), (1, 0), (-1, 0) })
-        {
-            var run = new List<(int X, int Y)> { (ex, ey) };
-            for (int i = 1; i <= 12; i++)
+        var start = new ParkCell(ex, ey);
+        if (ParkPaths.Neighbours(start).Any(grid.Open)) { GD.Print($"[guest] the exit stub ({ex},{ey}) already meets the network"); return; }
+        var prev = new Dictionary<ParkCell, ParkCell> { [start] = start };
+        var pending = new Queue<ParkCell>(); pending.Enqueue(start);
+        ParkCell? hit = null;
+        while (hit == null && prev.Count < 600 && pending.TryDequeue(out var c))
+            foreach (var n in ParkPaths.Neighbours(c))
             {
-                int x = ex + dx * i, y = ey + dy * i;
-                if (grid.Open(new ParkCell(x, y))) { LayLeg(run, PathTool.Kind.Path, 0); RefreshFloor();
-                    GD.Print($"[guest] exit path: {run.Count - 1} cells from ({ex},{ey}) to the network at ({x},{y})"); return; }
-                if (!_paths.CanLay(x, y) || !_park.Vacant(x, y)) break;
-                run.Add((x, y));
+                if (prev.ContainsKey(n)) continue;
+                if (grid.Open(n)) { prev[n] = c; hit = n; break; }
+                if (!_paths.CanLay(n.X, n.Z) || !_park.Vacant(n.X, n.Z) || _paths.KindAt(n.X, n.Z) != PathTool.Kind.None) continue;
+                prev[n] = c; pending.Enqueue(n);
             }
-        }
-        GD.Print($"[guest] the exit stub ({ex},{ey}) could not be joined to the network in a straight run -- riders handed back there will be stranded");
+        if (hit is not { } joined)
+        { GD.Print($"[guest] the exit stub ({ex},{ey}) could not be joined to the network -- riders handed back there will be stranded"); return; }
+        var run = new List<(int X, int Y)>();
+        for (var c = prev[joined]; ; c = prev[c]) { run.Add((c.X, c.Z)); if (c == start) break; }
+        run.Reverse();
+        run.Add((joined.X, joined.Z));
+        LayLeg(run, PathTool.Kind.Path, 0);
+        RefreshFloor();
+        GD.Print($"[guest] exit path: {run.Count - 2} cells laid from ({ex},{ey}) to the network at {joined}");
     }
 
     /// <summary>The free camera, inside the park looking back at the gate, so guests walk toward
@@ -2937,7 +2949,7 @@ public partial class Viewer : Node3D
         if (_visitors != null)
         {
             int queued = _visitors.Plans.Values.Count(p => p.Intent == VisitorIntent.Queued);
-            GD.Print($"[guest] {label} t={t:F2}s rides: {_visitors.Boardings} boarded so far, {_visitors.Rides} came back out and walked away, "
+            GD.Print($"[guest] {label} t={t:F2}s rides: {_visitors.Boardings} boarded so far, {_visitors.Rides} came back out, "
                    + $"{queued} queued or riding now, {_guests.Guests.Count} walking");
             foreach (var r in _sim.Rides)
                 GD.Print($"[guest] {label} {r.Name}: queue {r.Queue.Count}, on ride {r.OnRide}, {(r.Running ? "running" : "standing")}, "

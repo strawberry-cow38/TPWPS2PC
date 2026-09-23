@@ -142,12 +142,14 @@ public partial class RideScriptDemo : Node3D
                 if (fx.Opcode != RseOpcode.EVENT && fx.Opcode != RseOpcode.ADDOBJ) return;
                 int kind = fx.Arguments[0], node = fx.Arguments[1], id = fx.Arguments[2];
                 if (kind is not (1 or 2)) return;
-                var at = NodeAt(node);
-                var made = _burst.Emit(id, at);
+                // `0x1bbf28`: kind 1 resolves the node in space 0x100, kind 2 the same with a
+                // direction as well.
+                var at = NodeAt(node, 0x100);
+                var made = at is { } place ? _burst.Emit(id, place) : null;
                 // ⚠ THE POSITION, NOT JUST THE NAME. Two films came back with the counter going up
                 // and nothing on screen, which looks identical whether the burst is invisible or
                 // in the wrong place. (0,0,0) here means the node lookup failed.
-                GD.Print($"[fx] -> {made?.Name ?? "(none)"} id {id} node {node} at {at} "
+                GD.Print($"[fx] -> {made?.Name ?? "(no fitting)"} id {id} node {node} at {at?.ToString() ?? "-"} "
                        + $"life {made?.LifetimeGuess}ms count {made?.CountGuess} size {made?.SizeGuess} "
                        + $"mid {made?.ColourAt(0.5f)}");
                 if (made != null) { _fx++; _lastFx = $"{made.Name} at node {node}"; }
@@ -242,12 +244,19 @@ public partial class RideScriptDemo : Node3D
     /// The symptom: Crazy Ape's `EVENT 2 1 22` lands on the model ORIGIN while its `2 2 22` lands
     /// somewhere plausible, which is what a wrong table looks like when one entry happens to fit.
     /// Left as it is, and said out loud, rather than nudged until a puff appears in a nice spot.</summary>
-    Vector3 NodeAt(int node)
+    Vector3? NodeAt(int node, uint space)
     {
         var drawn = _presenter?.Drawn;
-        if (drawn?.LastWorld == null || node < 0) return Vector3.Zero;
-        int off = _presenter.Model?.NodeOffset(node) ?? -1;
-        if (off < 0 || !drawn.LastWorld.TryGetValue(off, out var w)) return Vector3.Zero;
+        if (drawn?.LastWorld == null || node < 0) return null;
+        // ⭐⭐ THE SCRIPT'S NODE IS A FITTING, FOUND BY ID AND KIND -- not an index. See
+        // Model.Fittings: 0x1f1f78 searches the table at model+0x74 for the entry whose id
+        // matches and whose flags share a bit with the space, and a miss means the instruction
+        // does nothing at all, so a miss here draws nothing rather than falling back to the
+        // origin. (It used to fall back, which is how Crazy Ape's snot ended up at its feet.)
+        var fit = _presenter.Model?.FindFitting(node, space);
+        if (fit is not { Node: >= 0 } f) return null;
+        int off = _presenter.Model.NodeOffset(f.Node);
+        if (!drawn.LastWorld.TryGetValue(off, out var w)) return null;
         return new Vector3(w.M41, w.M42, -w.M43);
     }
 

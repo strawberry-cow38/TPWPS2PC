@@ -500,6 +500,68 @@ public sealed partial class Model
         return chain;
     }
 
+    /// <summary>One of the model's named fittings: a place a script can point at.</summary>
+    /// <param name="Flags">Which KINDS this fitting answers to. A script's node reference carries
+    /// a "space" (`0x80`, `0x100`, `0x200`, `0x800`) and only a fitting sharing a bit with it is
+    /// a match.</param>
+    /// <param name="Id">The number the script uses.</param>
+    /// <param name="Node">The model node it sits on -- for `monkey.mps` these come out as
+    /// `m_arm`, `m_arm1`, `m_crate`, `m_body`, `m_boxes`, `m_shards` and `Head09`.</param>
+    public readonly record struct Fitting(uint Flags, int Id, int Node, float X, float Y, float Z);
+
+    List<Fitting> _fittings;
+
+    /// <summary>⭐⭐ WHAT A SCRIPT MEANS BY A "NODE". `EVENT`, `ADDOBJ`, `WALKON` and `SPARK` all
+    /// name one, and none of them means an index into the node table. `0x1b9388` hands the number
+    /// AND the space to `0x1f1f78`, which SEARCHES this table -- at `+0x74`, `u16` count at
+    /// `+0x36`, twenty bytes an entry -- for the first entry whose id matches and whose flags
+    /// share a bit with the space, and returns THAT ENTRY. No match and the instruction does
+    /// nothing at all.
+    ///
+    /// ⭐ It reads coherently across a whole ride. Crazy Ape's `EVENT 1 5 92` and `1 6 92`
+    /// (BigSmokePuff) and its `EVENT 2 5 1` / `2 6 30` (Sparks, BigSparks) all land on `m_crate`;
+    /// its `ADDOBJ 2 3 16` and `2 4 16` (Smoke2, as it breaks) land on `m_arm`. Smoke and sparks
+    /// off the crate the ape bursts out of, and smoke off its arms when it breaks down.
+    ///
+    /// ⚠ The three floats are NOT understood -- see findings/rse-vm.md. The third is 0.102..0.110
+    /// on every k=2 entry, which no set of points on a ride this shape would be, so they are
+    /// carried and not used.</summary>
+    public IReadOnlyList<Fitting> Fittings
+    {
+        get
+        {
+            if (_fittings != null) return _fittings;
+            _fittings = new List<Fitting>();
+            int count = U16(0x36), table = (int)U32(0x74);
+            if (count <= 0 || table <= 0 || table + count * 20 > D.Length) return _fittings;
+            for (int i = 0; i < count; i++)
+            {
+                int o = table + i * 20;
+                uint flags = U32(o);
+                int id = (int)U32(o + 4), p = (int)U32(o + 12);
+                // ⚠ An entry with no pointer still EXISTS and still answers a search; it simply
+                // has no node behind it. Dropping those would silently renumber the rest.
+                int node = -1; float x = 0, y = 0, z = 0;
+                if (p > 0 && p + 16 <= D.Length)
+                {
+                    node = U16(p + 2);
+                    x = F32(p + 4); y = F32(p + 8); z = F32(p + 12);
+                }
+                _fittings.Add(new Fitting(flags, id, node, x, y, z));
+            }
+            return _fittings;
+        }
+    }
+
+    /// <summary>The fitting a script means, or null. ⚠ The mask falls back exactly as `0x1f1f78`
+    /// does: a space sharing no bit with `0x3da1f83` is replaced by `0x3da1f82`.</summary>
+    public Fitting? FindFitting(int id, uint space)
+    {
+        uint mask = (space & 0x3da1f83) != 0 ? space : 0x3da1f82;
+        foreach (var f in Fittings) if (f.Id == id && (f.Flags & mask) != 0) return f;
+        return null;
+    }
+
     public int NodeOffset(int node) =>
         node < Meshes.Count ? MeshTable + node * 160 : HelperTable + (node - Meshes.Count) * (IsLegacyMd2 ? 0x58 : 0x60);
 

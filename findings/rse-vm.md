@@ -404,12 +404,19 @@ name said all along.
 The four entries whose flags carry `0x100` are ids 1, 5, 9 and 13; every other entry is
 `0x000400f1`. So the space argument picks a KIND of fitting and the node number picks which one.
 
-⚠⚠ STILL UNKNOWN: what the entry's two pointers (at `+0x0c` and `+0x10`) bind to. The position
-comes from a RUNTIME matrix -- `0x1f2978` reads `index * 0x18` into an array hanging off the
-instance at `+0x24`, and takes the translation at `+0x30..0x38` -- so the file-side record must
-say which node the fitting hangs off and where on it, and that has not been read. Until it is, a
-particle cannot be put where the console put it, and `IRseHost.TryNodePosition` has to keep
-answering "I do not know" so that walk durations stay honestly at their floor.
+⭐⭐ THE ENTRY'S FIRST POINTER SAYS WHICH NODE IT SITS ON. It opens on `u16, u16, float x, y, z`,
+and the second `u16` is a node index. Reading Crazy Ape that way is coherent all the way through
+its script: `EVENT 1 5 92` and `1 6 92` (BigSmokePuff) and `EVENT 2 5 1` / `2 6 30` (Sparks,
+BigSparks) all land on `m_crate`, and `ADDOBJ 2 3 16` / `2 4 16` (Smoke2, as it breaks) land on
+`m_arm`. Smoke and sparks off the crate the ape bursts out of; smoke off its arms when it breaks.
+`Model.Fittings` and `Model.FindFitting` implement the search, and the ride preview places its
+particles with them -- node 1's position MOVES between bursts, because the part it sits on is
+animated.
+
+⚠ The three floats are still not understood (see below) and are carried, not used. So a burst is
+on the right PART and not at the right spot on it, and `IRseHost.TryNodePosition` still answers
+"I do not know" rather than turning a node into a plausible number -- walk durations stay
+honestly at their floor.
 
 ### What the fitting record holds, and where the reading stops
 
