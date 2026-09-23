@@ -6130,10 +6130,22 @@ public partial class Viewer : Node3D
         // so anything standing in the park that was not the chosen ride was frozen -- the gate is
         // built WITH its animation and its record and then never asked for a frame. Its doors
         // cannot open if nobody moves its clock.
-        if (_gate != null && _playing && _shotPath == null && _mode == Mode.Park)
+        // ⚠⚠ A GATE OPENS ONCE. This used to wrap -- `_parkTime %= _gate.Frames` -- so the arch
+        // played its opening over and over for as long as the park was on screen. Master, having
+        // watched it in every park: "the gate loops an opening animation. nothing triggers the
+        // animation." Both halves are true: nothing starts it, and nothing stops it either.
+        //
+        // ⭐ It now runs once and HOLDS ITS LAST FRAME, which is the open gate -- the same shape
+        // as StepBuilding twelve lines down, where a ride builds itself and then stays built.
+        // A thing that has finished happening should look like it has happened.
+        //
+        // ⚠ WHAT STARTS IT IS STILL UNREAD. The park has no "opening time" wired to this, so it
+        // opens on load. Whatever the console triggers it from is not decoded, and this is only
+        // the loop half of master's report.
+        if (_gate != null && _playing && _shotPath == null && _mode == Mode.Park
+            && _gate.Frames > 0 && _parkTime < _gate.Frames - 1)
         {
-            _parkTime += (float)delta * Aps.Fps;
-            if (_gate.Frames > 0 && _parkTime >= _gate.Frames) _parkTime %= _gate.Frames;
+            _parkTime = Mathf.Min(_parkTime + (float)delta * Aps.Fps, _gate.Frames - 1);
             _gate.SetFrame(_parkTime);
         }
         // ⭐ A RIDE BUILDING ITSELF runs ONCE and then holds on its last frame, which is the built
