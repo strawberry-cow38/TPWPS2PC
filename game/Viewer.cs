@@ -2876,13 +2876,15 @@ public partial class Viewer : Node3D
                 if (kind is PathTool.Kind.Queue) { Cell(_park.CellCentre(x, y), 2); queue++; }
                 else if (kind is PathTool.Kind.Path or PathTool.Kind.Both) { Cell(_park.CellCentre(x, y), 1); path++; }
             }
-        // ⭐ The entrance through ParkPaths' OWN origin: model X is Origin.X + cell, and the scene
-        // mirrors Z, so world Z is Origin.Y + cell rather than its negative. Checked against the
-        // disc: jungle cell z=61 lands at world -14.5, and findings/gates.md measured
-        // `ticket_booths` at -16.12..-14.88.
+        // ⭐ The entrance at the plot's own cells. ⚠ MINUS on Z: ParkPaths.Origin is in the
+        // terrain MODEL's space and the scene mirrors Z, so a cell's world position is
+        // -(Origin.Y + cellZ). This used to read `+` and agree with the picture, because the row
+        // order was reversed at the other end too and the two errors cancelled -- the blue landed
+        // on the turnstiles for the wrong reason.
         foreach (var c in _walkGrid.EntranceCells)
         {
-            Cell(new Vector3(_walkGrid.Origin.X + c.X + 0.5f, _park.BaseY, _walkGrid.Origin.Y + c.Z + 0.5f), 0);
+            Cell(new Vector3(_walkGrid.Origin.X + c.X + 0.5f, _park.BaseY,
+                             -(_walkGrid.Origin.Y + c.Z + 0.5f)), 0);
             ent++;
         }
         if (by.Count == 0) { GD.Print("[walk] nothing walkable to draw"); return; }
@@ -3076,16 +3078,20 @@ public partial class Viewer : Node3D
         if (!TerrainBounds("ticket_booths", out var booths)) { GD.PrintErr("[skip] no booths"); return; }
         var f = _park.Field;
         int bx = Mathf.RoundToInt(booths.Position.X + booths.Size.X * 0.5f - _holeOrigin.X);
-        int bz = Mathf.RoundToInt(booths.Position.Z + booths.Size.Z * 0.5f - _holeOrigin.Y);
+        // ⚠⚠ THE ROW ORDER, which this line did not apply. Park.Build maps row y to world
+        // `Origin.Y + (H - y - 0.5)`; subtracting Origin.Y alone counts from the far end, so the
+        // booths came out at cell 61 of 76 instead of 15 and every dump below it was of the wrong
+        // end of the park.
+        int bz = f.Height - Mathf.RoundToInt(booths.Position.Z + booths.Size.Z * 0.5f - _holeOrigin.Y);
         GD.Print($"[skip] booths at cell ({bx},{bz}) of {f.Width}x{f.Height}; "
-               + "'.' drawn, '#' skipped, rows are z increasing (into the park)");
+               + "'.' drawn, '#' skipped, rows are z increasing (out of the park)");
         for (int z = bz - 4; z <= bz + 12; z++)
         {
             if (z < 0 || z >= f.Height) continue;
             var row = new System.Text.StringBuilder();
             for (int x = bx - 8; x <= bx + 8; x++)
                 row.Append(x < 0 || x >= f.Width ? ' ' : f.Drawn(x, z) ? '.' : '#');
-            GD.Print($"[skip] z={z,3} (world {_holeOrigin.Y + z,7:F1})  {row}");
+            GD.Print($"[skip] z={z,3} (world {_holeOrigin.Y + (f.Height - z),7:F1})  {row}");
         }
     }
 
@@ -3146,7 +3152,14 @@ public partial class Viewer : Node3D
         // 3. The entrance, cell by cell, with what each one is made of -- the route master named.
         if (!TerrainBounds("ticket_booths", out var booths)) { GD.PrintErr("[walk] no ticket_booths"); return; }
         int bx = Mathf.RoundToInt(booths.Position.X + booths.Size.X * 0.5f - _holeOrigin.X);
-        int bz = Mathf.RoundToInt(booths.Position.Z + booths.Size.Z * 0.5f - _holeOrigin.Y);
+        // ⚠ Row order, as Park.Build applies it: world -> cell counts from the OTHER end.
+        int bz = f.Height - Mathf.RoundToInt(booths.Position.Z + booths.Size.Z * 0.5f - _holeOrigin.Y);
+        // ⭐⭐ A POSITIONAL CONTROL, which is what was missing. The game's table puts the walkway
+        // at z 6..18 with its mouth at 18, so the TICKET BOOTHS -- the thing you walk between --
+        // must land inside that, near its far end. Cell counts cannot see a flipped grid; a
+        // landmark can, and this is the one findings/gates.md already anchored in every park.
+        GD.Print($"[walk] ticket_booths span world z {booths.Position.Z:F1}..{booths.Position.Z + booths.Size.Z:F1}"
+               + $" -> cell z {bz}; the table's walkway is z 6..18");
         var legend = new Dictionary<char, string>();
         GD.Print($"[walk] the entrance, booths at cell ({bx},{bz}); '#' no ground, else a letter per material");
         for (int z = bz - 6; z <= bz + 14; z++)

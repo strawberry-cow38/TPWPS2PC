@@ -19,7 +19,8 @@ public sealed class ParkPaths
 {
     public Model.HeightField Field { get; }
     public IReadOnlyList<string> Materials { get; }
-    /// <summary>Same Z-mirrored plot coordinates used by the park renderer.</summary>
+    /// <summary>The plot's corner in the terrain MODEL's own space. ⚠ Model z, not world Z: the
+    /// scene mirrors Z, so a cell's world position is <c>-(Origin.Y + cellZ)</c>.</summary>
     public Vector2 Origin { get; }
     readonly HashSet<ParkCell> _occupied = new();
     readonly HashSet<ParkCell> _scenery = new();
@@ -64,14 +65,29 @@ public sealed class ParkPaths
         lo += size * 0.001f;
         if (Math.Abs(size.X - f.Width) > 0.001f || Math.Abs(size.Z - f.Height) > 0.001f)
             throw new InvalidDataException("Terrain marker and cell grid disagree");
-        Origin = new Vector2(lo.X, -(lo.Z + size.Z));
+        // ⚠⚠ THE ROW ORDER IS NOT REVERSED HERE, AND IT WAS. `-(lo.Z + size.Z)` with a later
+        // `-v.Z - Origin.Y` counts rows from the FAR end of the plot, so everything this class
+        // rasterised came out at `H - z` -- the opposite end of the park from where it is. The
+        // renderer has never done that (Park.Build maps row 15 to world -15.5, its own comment
+        // says so and cites the ticket booths at model z 14.9..16.1), so the two have disagreed
+        // since this file was written and the entrance hunt walked straight into it: the booths
+        // read as cell z=61 of 76 instead of 15, and a rasterised "entrance" duly appeared at
+        // z 57..71. The game's own table puts it at z 6..18.
+        //
+        // ⚠ The count-based check that let this stand was no check at all: our disc field and the
+        // field in master's savestate agree on 872 skipped cells of 4800, and a MIRRORED array
+        // agrees on that too. Cells are compared by POSITION now (see the booths control in
+        // --walk-audit), because a total cannot see a flip.
+        //
+        // Model z runs 0..H across the plot and cell z is model z, plainly.
+        Origin = new Vector2(lo.X, lo.Z);
         // Conservative footprint of fixed scenery, through the real mesh parent chains. Even a
         // canopy or authored road blocks new construction here; no guessed terrain heights or
         // collision flags. Triangle/square SAT includes thin walls missed by centre samples.
         foreach (var mesh in terrain.Meshes)
         {
             var vertices = terrain.Vertices(mesh).Pos.Select(v => Vector3.Transform(v, transforms[mesh.Offset]))
-                .Select(v => new Vector2(v.X - Origin.X, -v.Z - Origin.Y)).ToArray();
+                .Select(v => new Vector2(v.X - Origin.X, v.Z - Origin.Y)).ToArray();
             foreach (var triangle in terrain.Triangles(mesh))
             {
                 var p = vertices[triangle.A]; var q = vertices[triangle.B]; var r = vertices[triangle.C];
