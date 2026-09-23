@@ -163,3 +163,53 @@ runs in this audit. Synthetic receipt/artifact files are confined to a unique te
 folder. This improves the earlier source-only UI coverage, but does not test native
 mouse input, visual layout, accessibility, Windows file locks, or a real installer/
 self-update handoff. Those target-platform/manual gates remain open.
+
+## Engine discovery: advertised .NET capability, not filename trust
+
+The old selector accepted any Godot-named executable without running a capability
+probe. It also searched the entire path for “console,” so that word in a parent
+folder changed variant selection. A snapshot of the original selector was run beside
+the replacement against synthetic non-executable fixture files: the old code accepted
+a standard-build candidate and misclassified the directory-name case; the replacement
+rejected the former and selected the latter correctly. No fixture executable was run.
+
+Discovery now invokes the selected candidate's `--version` through bounded command
+execution, accepts reported Godot 4 .NET/mono capability, records the response, and
+skips failed/standard/malformed candidates. Console classification uses the executable
+basename. It can prefer a validated requested variant in a later probe directory and
+honestly report a validated fallback. Paths are deduplicated; at most 16 executable
+probes are attempted. Exhaustion is logged as incomplete discovery, not an exhaustive
+negative result. Each probe has a five-second command deadline plus possible cleanup;
+there is deliberately no claim that the entire discovery finishes in five seconds.
+
+Primary engine evidence: the official C# documentation distinguishes the .NET-enabled
+engine from the standard build, and the engine's mono module adds `mono` to its version
+string. Source pointers used for this check:
+
+```text
+https://docs.godotengine.org/en/4.6/tutorials/scripting/c_sharp/c_sharp_basics.html
+https://raw.githubusercontent.com/godotengine/godot/4.6-stable/modules/mono/config.py
+```
+
+The project SDK target remains 4.6.2. This patch does **not** introduce an exact patch-
+version rejection rule: advertised Godot 4/.NET capability is not proof that a given
+engine version can load every project API. The UI logs the reported version and that
+limitation. Full engine/project compatibility and Windows console-wrapper behavior
+still need real launch validation. Default discovery locations remain Windows-specific.
+
+LauncherAudit now has 74 offline assertions, including 24 discovery checks. With the
+optional owner's disc and explicitly selected installed engine, 76 assertions pass;
+the local engine reports `4.6.stable.mono.official.89cea1439`. This last observation is
+only an actual CLI capability check, not current-renderer compatibility sign-off.
+The 22 headless window-event assertions still pass.
+
+```sh
+dotnet run --project tools/TPW.PS2.LauncherAudit -c Release -- \
+  --disc "$DISC" --engine "$EXPLICIT_ENGINE_PATH"
+```
+
+`--engine` executes only the explicitly supplied executable with `--version`; the
+ordinary offline audit never executes its synthetic engine fixtures. A source review
+prompted explicit probe-limit reporting and tighter malformed-prefix checks before
+landing. No engine download, runtime-version upgrade or target change is part of this
+package.

@@ -130,5 +130,18 @@ if (discArgument >= 0 && discArgument + 1 >= args.Length)
     Check(false, "--disc requires an existing user-supplied path");
 else
     DiscRecognitionChecks.Run(Check, discArgument >= 0 ? args[discArgument + 1] : null);
+await GodotDiscoveryChecks.Run(Check);
+int engineArgument = Array.IndexOf(args, "--engine");
+if (engineArgument >= 0)
+{
+    if (engineArgument + 1 >= args.Length) Check(false, "--engine requires an explicitly selected executable path");
+    else
+    {
+        var version = await LauncherProcess.RunAsync(args[engineArgument + 1], new[] { "--version" },
+            Environment.CurrentDirectory, TimeSpan.FromSeconds(5));
+        Check(version.Succeeded && !version.Truncated && GodotLocator.ReportsManagedGodot4(version.Stdout),
+              "engine discovery: explicitly selected real engine advertises Godot 4 .NET capability");
+    }
+}
 Console.WriteLine(bad == 0 ? "PASS launcher audit" : $"FAIL: {bad}");
 return bad == 0 ? 0 : 1;

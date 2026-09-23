@@ -442,3 +442,33 @@ C# project. Confirm the intended version/mono compatibility policy from source a
 primary engine evidence before tightening it; do not silently invent a patch-version
 restriction. Continue sharing relevant findings with the renderer maintainer. Actual
 Windows/manual gates remain blocked on that platform, not on more fake green tests.
+
+## Engine discovery capability gate
+
+Replaced filename-only engine selection with asynchronous bounded `--version` probing.
+The old implementation's standard-build acceptance and console-directory-name bug
+were reproduced against a copied original selector; the new one rejects/selects those
+fixtures correctly. Discovery reports actual .NET/mono capability, preserves console
+preference/fallback metadata, deduplicates candidates, caps probes at 16 and reports
+when that cap prevents checking later candidates. Project target remains 4.6.2; no
+new exact-patch compatibility gate was invented. Full project/engine compatibility
+remains a separate real-launch check.
+
+74 offline LauncherAudit assertions pass; 76 with the owner's disc and explicitly
+selected installed engine. Its actual version output is 4.6.stable.mono.official.89cea1439.
+22 headless window-event checks still pass. Primary engine documentation/source and
+limits are in `findings/launcher-recovery.md`. Local evidence:
+`tpw-engine-baseline-proof.log`, `tpw-engine-discovery-final.log`, `tpw-engine-ui-final.log`.
+
+Integrated peer `01de816` (Litter field rename and semantic corrections) and reran all
+27 needs assertions per world; full matrix retains only the two known retail findings.
+This validates lifecycle regressions, not every newly decoded decision rule.
+
+Next coordinated work: cow tools proposed legitimate ride-completion effects, and
+correctly observed that a no-reseed invariant must allow specified effects. Waiting
+for its hook/input contract before adjusting that suite. Expected shape agreed: effect
+applies once, non-clamping sentinels catch doubles, cash/unaffected fields catch reseed,
+random reductions are bounded, aborted removal differs from already-reported completion.
+Do not use Queued as a waiting-only state: it includes seated riders. No core effect
+wiring was pushed by the peer yet; don't race its files or guess the unknown scale factors.
+Advance independent release validation while the contract is pending.

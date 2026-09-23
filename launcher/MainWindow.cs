@@ -134,7 +134,14 @@ public class MainWindow : Window
                 throw new InvalidOperationException("Environment startup disabled by the isolated host.");
             if (await CheckSelfUpdateAsync()) return;              // may close the window
             Refresh(DiscLocator.Probe());
-            _godot = GodotLocator.Find(console: false);
+            _godot = await GodotLocator.FindAsync(console: false, readVersion: async path =>
+            {
+                var result = await _services.Execute(path, new[] { "--version" }, _baseDir, TimeSpan.FromSeconds(5));
+                return result.Succeeded && !result.Truncated ? result.Stdout : null;
+            }, report: Log);
+            if (_godot.Found)
+                Log($"engine reports {_godot.ReportedVersion}; project SDK target {GodotLocator.RequiredVersion} "
+                    + "(capability checked, full project compatibility still requires launch)");
             await RefreshStateAsync();
         }
         catch (Exception e) { Retry(Mode.Busy, e.Message); }
@@ -151,7 +158,7 @@ public class MainWindow : Window
         if (!_godot.Found)
         {
             SetMode(Mode.Broken, "—",
-                    $"Godot {GodotLocator.RequiredVersion} (mono) not found. Install it and reopen.");
+                    $"No usable Godot 4 .NET build found. Project SDK target: {GodotLocator.RequiredVersion}. Install a compatible .NET build and reopen.");
             return;
         }
         if (!Directory.Exists(Path.Combine(_repoDir, ".git")))
