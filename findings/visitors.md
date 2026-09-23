@@ -1014,7 +1014,10 @@ rather than by plausible names:
 | `+0x74`, `+0x78`, `+0x7B` | ⚠ **not identified** | `+0x74 > 89` triggers `FUN_0020D010(guest, 0)` and `+0x7B < 99` gates the leave check; named by their offsets |
 
 Thresholds, from `FUN_0020C930`: hunger AND thirst both above 90 is checked **before** either single
-want; sick above 92 vomits on one roll in four; happiness below 3 is angry (id 10) and below 5 goes
+want — and the bar for wanting a facility at all is in `FUN_0020F888`, which opens
+`if (need < 0x5b) return 0`: **one shared threshold of 91**, for hunger, thirst and the toilet
+alike, passed in as the need. Three constants that happen to agree would be a coincidence; one
+constant read once is not; sick above 92 vomits on one roll in four; happiness below 3 is angry (id 10) and below 5 goes
 home. The thought ids `+0x40` takes are the sixteen the UI table at `FUN_00216028` names
 `bubbles\tb*.ssh`, and five of them agree with what `0x20C930` writes.
 

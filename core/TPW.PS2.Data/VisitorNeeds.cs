@@ -250,6 +250,10 @@ public sealed class VisitorNeeds
     ///
     ///   hunger &gt; 90 AND thirst &gt; 90   -> id 14, the combined bubble, tested FIRST
     ///   hunger, then thirst, then toilet -> ids 11, 8, 7, each after finding a facility
+    ///        ⭐ and the bar for wanting one is READ, not inferred: `FUN_0020F888` opens with
+    ///        `if (need &lt; 0x5b) return 0` -- a single shared threshold of **91** for all three,
+    ///        which the caller passes the need into. So "&gt; 90" here is the console's number and
+    ///        the same one in each case, rather than three constants that happen to agree.
     ///   sick &gt; 92 (and 1 roll in 4)     -> vomits
     ///   happiness &lt; 3                   -> id 10 and a park alert
     ///   happiness &lt; 5, or cash &lt; 100 -> goes home
