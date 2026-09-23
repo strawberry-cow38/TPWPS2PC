@@ -280,8 +280,11 @@ Check(offered.Any(PollsTrack), "some ride polls TOUR/BUMP/COAST at all -- otherw
 // appears here, that is new and worth chasing.
 Check(stuckWithoutTrack.Count == 0, "every ride that boarded nobody is one polling a dead track subsystem"
     + (stuckWithoutTrack.Count == 0 ? "" : ": " + string.Join(", ", stuckWithoutTrack.Select(r => r.Name))
-        + " -- KNOWN for Thrill Grill (HALLOW): it ships no .aps, so TRIGWAITANIM at pc 85 waits"
-        + " forever for a slot that can never start. See findings/visitors.md. Anything else here is NEW."));
+        + " -- KNOWN for Thrill Grill (HALLOW), and the CONSOLE hangs here too: its only animation"
+        + " (/upgrades/firepit/firepit.aps, not beside its script) holds one record, slot 5, while"
+        + " TRIGWAITANIM at pc 85 asks for slot 4 -- which is in no firepit .aps on the disc. The"
+        + " gate at 0x1bd7d0 has no timeout and nothing can put a missing slot into the channel."
+        + " See findings/visitors.md. Anything else here is NEW."));
 Check(trackRidesThatBoarded.Count == 0, "no ride boards guests while polling a subsystem that answers zero"
     + (trackRidesThatBoarded.Count == 0 ? "" : ": " + string.Join(", ", trackRidesThatBoarded.Select(r => r.Name))));
 Check(boarded.Count > 0, $"a queued guest gets on a ride ({boarded.Count} rides boarded one)");
