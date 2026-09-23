@@ -3,8 +3,11 @@
 2026-09-22. **Ada (guest 101) walks to Orbiter or Bugs TV, queues, is accepted by the ride's real RSSE
 script, comes back through that script's unload mailbox, and walks out.** Both visitor audits
 cover SPACE and FANTASY `terrain_1.mps` and `terrain_2.mps`. The scene renders the disc's character meshes
-and the script-selected ride APS. Characters currently move in their bind pose and disappear
-while on the ride; seat/head attachments and walking gait are not implemented.
+and the script-selected ride APS. Characters disappear while on the ride; seat/head attachments
+are not implemented. Their skeletal animation is (see [Skinned characters](#skinned-characters-2026-09-23)):
+`AnimatedModel` poses a character from any skeletal record of its `.aps`, so a guest walks the
+moment its caller hands it one -- at the time of that note, `Viewer.cs` and `VisitorParkView.cs`
+still constructed their actors with no record and so still showed the bind pose.
 
 This is a bounded managed simulation of one ride and a finite cohort, not a reconstruction of
 the original guest AI. It uses the VM from `rse-runtime` commit `ba028d7`, cherry-picked into
@@ -315,9 +318,11 @@ at 39000ms shows Ada at the exit and Ben, Cy and Dee already walking away.
 * Raised paths, slopes, stairs, bridges, corner heights and original terrain-cell-to-world orientation are not independently validated
   against PS2 execution. The scene uses the existing viewer's mirrored grid and flat Y=0 floor.
   Scenery projection is deliberately conservative; a tree canopy excludes the ground below it.
-* Walking gait/skinning, seat transforms and guest head attachments. `tools/skin.py` documents
-  skin data, but the existing renderer still presents character bind poses. Guests visibly
-  translate along paths; this is not evidence of animated legs or seated riding geometry.
+* Seat transforms and guest head attachments. Skinning itself is done and audited (below), but
+  a guest only animates where its caller passes a skeletal record, and the guest actors did not
+  yet. ⚠ `tools/skin.py` documents the descriptor correctly and its bone-index space and
+  `bind_positions()` check wrongly -- see below. Guests visibly translate along paths; that is
+  not evidence of seated riding geometry.
 * A fully decoded original park-gate/ride-exit link. The demo lays paths explicitly from a
   chosen spawn endpoint to the SAM entrance edge and supplies its own nearby exit portal.
 * Advisor quantities: `advisor:findings/advisor.md` was read, but it explicitly leaves the
@@ -331,3 +336,96 @@ at 39000ms shows Ada at the exit and Ben, Cy and Dee already walking away.
   continuous population replenishment. Removing a path under a moving guest faults explicitly;
   a disconnected route before walking remains blocked. Finite Orbiter and Bugs TV cohorts are audited
   end to end; HALLOW remains a feasibility result pending scenario and rendered audit integration.
+
+## Skinned characters (2026-09-23)
+
+The 20-byte skeletal path is now executed, not just decoded: `core/TPW.PS2.Data/Model.Skin.cs`
+reads the skin at `mesh+0x90`, `core/TPW.PS2.Data/SkeletalPose.cs` samples a skeletal record
+the way the game's sampler does, and `game/AnimatedModel.cs` re-skins every skinned part from
+that pose each frame. `tools/TPW.PS2.SkinAudit` checks it against the disc without Godot:
+
+```sh
+dotnet run --project tools/TPW.PS2.SkinAudit -- /path/to/disc.bin      # or a bare DATA.WAD
+```
+
+### Read out of the executable
+
+* **`FUN_001a8da8`, skeletal half.** One 4x4 per track into a 35-slot stack array indexed by the
+  track's node u16; then every mesh with a non-zero `+0x90` is skinned as `Σ weight × (position ×
+  M[bone])`, the whole affine result scaled by the weight, and written through the `mesh+0x98` run
+  list. **No hierarchy is composed at any point**: a track's rotation and position are the bone's
+  whole transform, and a bone the record does not key keeps whatever its slot held.
+* **Key search**: the first key pair whose later time is at or after `floor(frame)+1`;
+  `t = (frame−t0)/(t1−t0)`; past the last key the last pair at `t = 1`. A channel with fewer than
+  two keys is read from key 0 with no search.
+* **`FUN_00167a48`** (rotation, SLERP over the dot product's `acos`; linear within 0.001 of
+  parallel; an antipodal branch that blends against a perpendicular over π/2 and leaves `w`
+  unblended; normalised on the way out. No short-path sign flip) and **`FUN_00167d18`** (position,
+  plain lerp of the int16 fields).
+* **`FUN_0016f220`** fills the 4x4 sequentially: eight register args into words 0–2, 4–6, 8–9;
+  the ninth (`2yz+2xw`) from the stack into word 10; the position from the stack into words 12,
+  13, 14, and the call site (`0x1a90b8`–`0x1a90d0`) stores it as **(key.x, key.z, key.y)**. ⭐ The
+  Z-up-to-Y-up swap is the game's, for rotation columns and translation alike. The quaternion
+  is (x, y, z, w): the formula's three diagonal terms are `1−2(y²+z²)`, `1−2(x²+z²)`, `1−2(x²+y²)`
+  and the fourth component appears only in cross terms.
+* **`FUN_001a8c30`**, the skeletal record's `small` array: one 8-byte entry per MESH holding an
+  int16 show/hide timeline with the same sign convention as the 48-byte visibility channel.
+  Three records on the disc carry one (FatMechanic 2, hunter 1); none of the kids do. ⚠ Not yet
+  applied by the viewer.
+
+### ⭐⭐ The bone index is a HELPER index
+
+Both the skin's bone byte and the track's node u16 index the same matrix array and neither is
+resolved against the model. On the data it is `node = meshCount + bone`, not `skin.py`'s "meshes
+then helpers": under it the tracks of every kid cover exactly every helper except `Bip01
+Footsteps` and the `Dummy` nodes, the head mesh's two bones become Neck and Head rather than
+Pelvis and Spine, and the bind-pose control below closes to a hundredth of a unit where the other
+reading misses by thousands. `skin.py`'s `bind_positions()` returns world-unit points against
+vertices in the tens of thousands and never reproduced a vertex.
+
+### The bind-pose control, and what it can and cannot hold
+
+The game stores no bind pose. What the audit skins the bind with is a rule **measured** on the
+data (`Model.SkinBindRotation`): a bone's bind rotation in vertex space is `D1 · R · D2` with `R`
+the bone's world rotation relative to `Bip01`'s (basis rows normalised), `D1` the y/z swap and
+`D2` a quarter turn about Y -- exact to 1e-3 on every well-determined bone of 23 of 24 rigs. The
+bind **translations** are not derivable (the hierarchy's translations scale 9,345 : 4,566 :
+2,907 : 33,827 vertex units per unit along one spine), so each (mesh, bone) translation is solved
+by least squares. Under test therefore: the reader's offsets and byte-wide counts, the index
+space, the weights, the run list and the row-vector arithmetic; **not** the translations.
+
+Measured on the disc (24 characters, 81 skinned meshes, threshold 1.0 vertex unit on rigs
+14,000–60,000 units across): **19 rigs close at 0.012–0.053**; five do not, named with their
+errors: boy2a 220.7, handyman 59.3, guard 5.8, girl2a 3.9 -- on all four the single-bone vertices
+close (≤ 0.03, boy2a 21.8) and only blended vertices miss, i.e. those skins are not one rigid
+transform per bone, a mesh edited after it was weighted -- and Researcher 499.7, whose every bone
+is a consistent ~1° (0.02 per element) from the rule, amplified by a placard 13,000 units out on
+the hand. The audit exits FAIL on those five rather than excluding them.
+
+⭐ **The control with nothing solved**: skinning a record's frame 0 straight through the game's
+matrices (keys → `BoneMatrix` → `Deform`) and comparing with the authored vertices. FatMechanic's
+`Start` frame 0 returns its authored mesh to within **1.3 units** with no fitted quantity anywhere
+-- the whole runtime pipeline end to end. Every kid's records start mid-gait, so for them it
+reports only the nearest (3,500 units, an idle).
+
+### The animation, proved the way the walking was
+
+Slot 1 record 0 (16 frames at 30 fps) is the walk on every kid: both feet travel ~6,300 vertex
+units along the forward axis in anti-phase (corr −0.95) with an 800-unit pelvis bob; slot 2's six
+records are idles. Sampled through the game's own search and interpolators, boy1a's `Bip01 L
+Foot` is at (1620, −9512, 5364) at frame 0 and (860, −7464, 11698) at frame 8 -- 6,700 units,
+model (0.049, 0.042, −0.072) → (0.029, 0.095, 0.092) through the mesh's world matrix -- and the
+body's skinned centroid moves with it. 21 of 24 rigs show a bone moving; the other three (Boy2a,
+Boy3a, Boy4a) carry only flag-0x80 records whose tracks live in Boy1a's file and must be given it.
+
+### Not done / not established
+
+* The guest actors in `Viewer.cs` and Ada in `VisitorParkView.cs` are still built with no
+  record; wiring them is the callers' change (`new AnimatedModel(model, aps, walkRecord, tex)` and
+  `SetFrame` on the park clock).
+* The per-mesh show/hide lists (`FUN_001a8c30`) are read but not applied; prop bones some
+  records leave unkeyed (Box01–03 on dino/flower/gnome, the toolboxes, the guns) sit at the
+  identity here where the PS2 has stack garbage -- and, presumably, the list to hide them.
+* The bind translations are solved, never read; the five rigs above are reported, not explained.
+* Rotation keys never take the short path across the hemisphere, as in the game; no character
+  track on the disc starts after frame 0, so the sampler's lack of a clamp is never exercised.

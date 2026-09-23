@@ -360,13 +360,36 @@ Check(marooned != null, "the control ride exists at all (otherwise the check abo
 //
 // ⚠ COUNTED BY THE ARGUMENTS, not just the opcode. "EVENT x4,000" is a number; "EVENT 3 -1 8
 // x812" is a thing to go and identify.
+// ⭐ NAMED, not numbered. The census used to print "EVENT 2 5 22 x49", which is a number to
+// stare at; Tp2.plb turns it into ApeSnot, which is a thing to go and draw. Kinds 1 and 2 index
+// the particle library; kind 3 goes to a different manager whose ids run past its 105, so those
+// are left as numbers rather than given a name they do not have.
+ParticleLibrary fx = null;
+try
+{
+    var pwad = disc.Files().SingleOrDefault(f => f.Path.Equals("/DATA/PARTICLE.WAD", StringComparison.OrdinalIgnoreCase));
+    if (pwad != null)
+    {
+        var pw = new WadArchive(disc.Read(pwad.Extent, pwad.Size));
+        fx = new ParticleLibrary(pw.Read(pw.Find("/Tp2.plb")));
+    }
+}
+catch (Exception e) { Console.WriteLine($"  (no particle library: {e.Message})"); }
+string Named(RseOpcode op, IReadOnlyList<int> a)
+{
+    string plain = $"{op} {string.Join(" ", a)}";
+    if (fx == null || a.Count < 3 || (op != RseOpcode.EVENT && op != RseOpcode.ADDOBJ)) return plain;
+    if (a[0] is not (1 or 2)) return plain;
+    var e = fx[a[2]];
+    return e == null || e.Name.Length == 0 ? plain : $"{plain} ({e.Name})";
+}
 var asked = new Dictionary<string, int>(StringComparer.Ordinal);
 var askedBy = new Dictionary<string, SortedSet<string>>(StringComparer.Ordinal);
 foreach (var (list, tag) in new[] { (sim.Rides, "ride"), (shops.Rides, "shop") })
     foreach (var r in list)
         r.Host.EffectRequested += e =>
         {
-            string key = $"{e.Opcode} {string.Join(" ", e.Arguments)}";
+            string key = Named(e.Opcode, e.Arguments);
             asked[key] = asked.GetValueOrDefault(key) + 1;
             if (!askedBy.TryGetValue(key, out var who)) askedBy[key] = who = new SortedSet<string>(StringComparer.Ordinal);
             who.Add(r.Name);
@@ -379,7 +402,7 @@ foreach (var g in byOpcode)
     Console.WriteLine($"  {g.Key,-14} {g.Sum(kv => kv.Value),6} calls, {g.Count()} distinct argument sets");
 Console.WriteLine("  the twelve most asked-for, with who wants them:");
 foreach (var (key, n) in asked.OrderByDescending(kv => kv.Value).Take(12))
-    Console.WriteLine($"    {key,-28} x{n,-5} {string.Join(", ", askedBy[key].Take(4))}"
+    Console.WriteLine($"    {key,-40} x{n,-5} {string.Join(", ", askedBy[key].Take(4))}"
                     + (askedBy[key].Count > 4 ? $" +{askedBy[key].Count - 4}" : ""));
 Check(asked.Count > 0, $"the park's scripts ask for presentation ({asked.Count} distinct requests)");
 
