@@ -428,7 +428,7 @@ public partial class Viewer : Node3D
         AddChild(_weather.Root);
         _ghostView = new GhostMarkers(path => _lib?.ReadGeneric(path));
         AddChild(_ghostView.Root);
-        _selectView = new SelectionBox();
+        _selectView = new SelectionBox(path => _lib?.ReadGeneric(path));
         AddChild(_selectView.Root);
 
         // ⚠⚠ A full-screen Control swallows mouse events before _UnhandledInput ever sees them.
@@ -2992,13 +2992,9 @@ public partial class Viewer : Node3D
         if (at < 0) { ClearSelection(); return false; }
         _selected = at;
         var sel = _park.Placed[at];
-        // ⭐ The box rises to the MODEL's top, because a footprint has no height and a box one cell
-        // tall round a ride is a line on the floor.
-        float top = _park.BaseY + 4f;
-        if (sel.Node != null && IsInstanceValid(sel.Node))
-            top = Park.DrawnBounds(sel.Node, inParent: true).Max.Y;
-        _selectView.Show(_park, sel.Fp, sel.X, sel.Y, top, new Color(1f, 0.95f, 0.35f, 0.9f));
-        GD.Print($"[select] {sel.Name} at ({sel.X},{sel.Y}) {sel.Fp.Width}x{sel.Fp.Height}, top {top:F1}");
+        _selectView.Show(_park, sel.Fp, sel.X, sel.Y);
+        GD.Print($"[select] {sel.Name} at ({sel.X},{sel.Y}) {sel.Fp.Width}x{sel.Fp.Height}"
+               + $" -- brackets on its four corner cells");
         Status($"{sel.Name} selected -- right click to clear");
         return true;
     }
