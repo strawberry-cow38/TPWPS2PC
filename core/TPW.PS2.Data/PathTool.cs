@@ -240,14 +240,22 @@ public sealed class PathTool
         return n < 2;
     }
 
-    /// <summary>What a PATH is willing to join: other path, and a queue only at its tip.</summary>
-    bool PathJoins(int x, int y)
-    {
-        if (!In(x, y)) return false;
-        var k = _kind[At(x, y)];
-        if (k is Kind.Path or Kind.Both) return true;
-        return k == Kind.Queue && IsQueueEnd(x, y);
-    }
+    /// <summary>What a PATH is willing to join: other path, and nothing else.
+    ///
+    /// ⭐⭐ ADJACENT IS NOT CONNECTED. Master: "the queue should only connect to a path if its
+    /// actually connected, its possible for them to be adjacent, but not connected." A queue that
+    /// merely ends beside a path has not been joined to it -- the player never drew it in -- and a
+    /// queue tip is therefore NOT something a path joins, however close it lies.
+    ///
+    /// ⭐ The real junction needs no special case, because it is already path: running a queue ONTO
+    /// a path cell makes the one cell that is <see cref="Kind.Both"/>, and that cell joins its path
+    /// neighbours here and keeps its run bits back down the queue in <see cref="LinksFor"/>. So a
+    /// connection is drawn exactly when one was made, and never when two things are near.
+    ///
+    /// ⚠ This replaces a tip test that WAS what master asked for one message earlier -- "paths
+    /// should only have the connected sprite if they are connected at the end of queues" -- and
+    /// the refinement is that the end of a queue is not by itself a connection.</summary>
+    bool PathJoins(int x, int y) => In(x, y) && _kind[At(x, y)] is Kind.Path or Kind.Both;
 
     /// <summary>The eight link bits of a cell.
     ///

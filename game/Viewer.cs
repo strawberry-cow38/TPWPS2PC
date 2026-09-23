@@ -1608,8 +1608,24 @@ public partial class Viewer : Node3D
         _paths.Lay(px, cy + 2, PathTool.Kind.Path);          // beside the middle of ride 1's queue
         _paths.Lay(px, cy + 4, PathTool.Kind.Path);          // beside its last cell -- the tip
         int mid = _paths.LinkBits(px, cy + 2), tip = _paths.LinkBits(px, cy + 4);
+        // ⭐⭐ NEITHER, NOW. Master: "its possible for them to be adjacent, but not connected."
+        // A path lying beside a queue -- at its middle or at its very tip -- has not been joined
+        // to it, and must show nothing. The connection is made by running the queue ONTO the path,
+        // which is the pair below.
         GD.Print($"[link] path beside the queue's middle {mid:X2}, beside its tip {tip:X2}"
-               + $" -- {((mid & PathPieces.East) == 0 && (tip & PathPieces.East) != 0 ? "one arm, at the tip, as it must be" : "WRONG")}");
+               + $" -- {((mid & PathPieces.East) == 0 && (tip & PathPieces.East) == 0 ? "neither joins, as it must be" : "WRONG -- adjacent is not connected")}");
+
+        // ⚠ AND THE PARTNER: a queue actually RUN ONTO a path makes the one cell that is BOTH, and
+        // that cell must carry an arm back down the queue. Without this half, "nothing joins" would
+        // be satisfied by a tool that never joins anything.
+        int jx2 = cx - 8, jy2 = cy;
+        for (int r = 0; r < 24 && !(_paths.CanLay(jx2, jy2) && _paths.CanLay(jx2, jy2 + 1)
+                                 && _paths.CanLay(jx2, jy2 + 2)); r++) jy2 += 1;
+        _paths.Lay(jx2, jy2, PathTool.Kind.Path);
+        LayRun(new List<(int X, int Y)> { (jx2, jy2 + 2), (jx2, jy2 + 1), (jx2, jy2) }, PathTool.Kind.Queue, 8);
+        int junction = _paths.LinkBits(jx2, jy2);
+        GD.Print($"[link] a queue run ONTO a path at ({jx2},{jy2}): now {_paths.Describe(jx2, jy2)}"
+               + $" -- {(_paths.KindAt(jx2, jy2) == PathTool.Kind.Both && (junction & PathPieces.South) != 0 ? "BOTH, with an arm back down the queue, as it must be" : "NOT JOINED")}");
 
         // A door: register one east of a fresh path cell and watch the arm appear.
         int dx2 = cx + 6, dy2 = cy + 2;
