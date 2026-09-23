@@ -529,6 +529,12 @@ var walkers = loop.Rides.Where(AsksToWalk).ToList();
 // inside WalkMilliseconds, so it separates the two without a proxy like boardings.
 var flooredWalkers = walkers.Where(r => r.Machine.WalksWereAttempted && !r.Machine.WalksAreTimed).ToList();
 var neverWalked = walkers.Where(r => !r.Machine.WalksWereAttempted).ToList();
+// ⭐ SAY WHAT FRACTION OF THE WORLD THIS COVERED. The loop stands up four rides; the script-level
+// census above sees every ride in the world, and more of them call WALKON than get placed here.
+// Without this line "every ride that calls WALKON timed its legs" reads as a statement about the
+// park when it is a statement about four rides. Coverage is N-of-M or it is not coverage.
+int worldWalkers = sim.Rides.Count(AsksToWalk);
+Console.WriteLine($"  walk timing covered {walkers.Count} of the {worldWalkers} rides in this world that call WALKON");
 Console.WriteLine($"  {walkers.Count} of {loop.Rides.Count} placed rides call WALKON at all;"
                 + $" {walkers.Count - neverWalked.Count} actually ran one"
                 + (neverWalked.Count > 0 ? $" (never walked: {string.Join(", ", neverWalked.Select(r => r.Name))})" : ""));
