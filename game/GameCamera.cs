@@ -92,6 +92,15 @@ public sealed class GameCamera
     public void Zoom(int steps) => Behind = Math.Clamp(Behind + AxisStep * steps, MinBehind, MaxBehind);
     public void Push(int steps) => Dolly = Math.Clamp(Dolly + AxisStep * steps, MinDolly, MaxDolly);
 
+    /// <summary>Send the camera to a tile and let it EASE there. ⭐ Only the cursor moves: the
+    /// focus already chases it an eighth of the way per tick, which is the game's own easing and
+    /// the reason this is not PlaceAt. Snapping the view onto a ride's door the instant it goes
+    /// down would throw away the one thing that tells the player the camera moved at all.</summary>
+    public void GlideTo(float tileX, float tileZ)
+    {
+        CursorX = (int)(tileX * TileUnits); CursorZ = (int)(tileZ * TileUnits);
+    }
+
     /// <summary>Put the camera at a tile without easing into it.</summary>
     public void PlaceAt(float tileX, float tileZ)
     {

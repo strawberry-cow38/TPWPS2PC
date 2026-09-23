@@ -2124,6 +2124,19 @@ public partial class Viewer : Node3D
         Status($"{kind} tool open -- click to start a run");
     }
 
+    /// <summary>Swing the game camera onto a grid cell. ⭐ Through CellCentre, which is the plot's
+    /// own cell-to-world map -- the camera takes world units and one of them is one tile.
+    /// ⚠ Does nothing when the free orbit camera is driving; it is not the game's to move.</summary>
+    void LookAtCell(int x, int y, int quarters = 0)
+    {
+        if (_game == null || !GameCamActive || _park?.Field == null) return;
+        if (quarters != 0) _game.Turn(quarters);
+        var c = _park.CellCentre(x, y);
+        _game.GlideTo(c.X, c.Z);
+        GD.Print($"[cam] looking at cell ({x},{y}) -- world {c.X:F1},{c.Z:F1}"
+               + (quarters != 0 ? $", turned {quarters * 90} degrees" : ""));
+    }
+
     /// <summary>Hand the exit's path over: open the path tool with a run already begun outside
     /// the exit, the way the console does when a queue is finished.</summary>
     void StartExitPath((int X, int Y) from)
@@ -2140,9 +2153,26 @@ public partial class Viewer : Node3D
                    + (_park.Vacant(from.X, from.Y) ? "" : " and something is standing on it"));
             return;
         }
+        // ⭐⭐ ALREADY CONNECTED IS ALREADY DONE. Master: "if the exit path is already touching
+        // another path, dont open the exit path tool." The stub itself is laid with the ride, so
+        // the question is whether anything ELSE beside it is path -- if so the way out already
+        // joins the network and there is nothing to draw.
+        foreach (var (dx, dy) in new[] { (0, 1), (0, -1), (1, 0), (-1, 0) })
+            if (_paths.KindAt(from.X + dx, from.Y + dy) is PathTool.Kind.Path or PathTool.Kind.Both)
+            {
+                Status($"the exit at ({from.X},{from.Y}) already meets a path");
+                GD.Print($"[build] no exit path tool: ({from.X},{from.Y}) already touches path at "
+                       + $"({from.X + dx},{from.Y + dy})");
+                return;
+            }
         OpenTool(PathTool.Kind.Path, owner);
         _runX = from.X; _runY = from.Y;
         _runStack.Add(from);
+        // ⭐⭐ AND THE CAMERA COMES ROUND. Master: "when thats done, rotate the camera around and
+        // focus the camera on the exit tile." A ride's exit is on the far side from its queue, so
+        // a half turn puts the player behind it rather than looking at the back of the ride they
+        // just walked the queue around.
+        LookAtCell(from.X, from.Y, quarters: 2);
         _ghostAt = (-1, -1, -1, -1);
         Status($"now the path out -- run it from ({from.X},{from.Y})");
         GD.Print($"[build] exit path mode from ({from.X},{from.Y})");
@@ -2288,7 +2318,22 @@ public partial class Viewer : Node3D
             GD.Print($"[build] after leaving the queue: tool {(_toolOpen ? _toolKind.ToString() : "shut")}"
                    + $" run from ({_runX},{_runY})"
                    + $" -- {(_toolOpen && _toolKind == PathTool.Kind.Path ? "exit path, as it must be" : "no exit path")}");
+            var exitAt = (_runX, _runY);
             CloseTool();
+
+            // ⚠ AND THE OTHER WAY ROUND, which is master's rule: "if the exit path is already
+            // touching another path, dont open the exit path tool." The SAME exit, with a path
+            // laid beside it, must refuse -- and the line above is its partner, because "it never
+            // opens" would satisfy this one on its own.
+            if (exitAt.Item1 >= 0)
+            {
+                _paths.Lay(exitAt.Item1 + 1, exitAt.Item2, PathTool.Kind.Path);
+                _toolOpen = false;
+                StartExitPath((exitAt.Item1, exitAt.Item2));
+                GD.Print($"[build] with a path beside the exit, the tool is "
+                       + $"{(_toolOpen ? "OPEN -- it should have been skipped" : "shut, as it must be")}");
+                CloseTool();
+            }
 
             // ⚠ AND A CONTROL THAT MUST REFUSE: the same thing hung off the edge of the plot.
             ArmFromList(row);
@@ -2787,6 +2832,9 @@ public partial class Viewer : Node3D
             OpenTool(PathTool.Kind.Queue, ride);
             _runX = q.X; _runY = q.Y;
             _runStack.Add(q);
+            // ⭐ The camera follows the job. Master: "when placing a ride, focus the camera on the
+            // queue stub tile."
+            LookAtCell(q.X, q.Y);
             _ghostAt = (-1, -1, -1, -1);
             Status($"{was} is in -- run its queue from ({q.X},{q.Y})");
             GD.Print($"[build] queue mode from ({q.X},{q.Y}); the exit path will start at "
