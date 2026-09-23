@@ -410,3 +410,20 @@ instance at `+0x24`, and takes the translation at `+0x30..0x38` -- so the file-s
 say which node the fitting hangs off and where on it, and that has not been read. Until it is, a
 particle cannot be put where the console put it, and `IRseHost.TryNodePosition` has to keep
 answering "I do not know" so that walk durations stay honestly at their floor.
+
+### What the fitting record holds, and where the reading stops
+
+Each entry's first pointer opens on `u16, u16, float, float, float`, and the second `u16` reads
+as a NODE INDEX that resolves to real names in `monkey.mps`: `m_arm1`, `m_arm`, `m_crate`,
+`m_body`, `m_boxes`, `m_shards` and `Head09`.
+
+⭐ So the Head and nose names are not a separate list at all -- they are **helper nodes in the
+model's own node table**, which means a fitting can be found by name through the node chain that
+is already read. That is a usable fact on its own.
+
+⚠⚠ THE THREE FLOATS ARE NOT A POSITION AND ARE NOT UNDERSTOOD. They look like one -- values from
+0.1 to 0.97 -- but the third is 0.102..0.110 on **every one of the seventeen** `k=2` entries,
+which no set of attachment points on a ride this shape would be. Read as an offset they would put
+every fitting on one plane. Recorded as observed and left uninterpreted, because the next step
+from here is to start believing a story the numbers do not support: this note exists so the next
+reader does not spend the same hour arriving at the same wrong place.
