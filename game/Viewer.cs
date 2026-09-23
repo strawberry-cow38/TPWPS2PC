@@ -111,6 +111,10 @@ public partial class Viewer : Node3D
     /// <summary>What is selected in the park, by its index in Park.Placed. ⚠ An INDEX, not an id:
     /// two of the same ride share an id, and a selection means the one you clicked.</summary>
     int _selected = -1;
+    /// <summary>What the pointer is over. ⭐ The outline follows the POINTER, and a selection only
+    /// takes over when the pointer is off everything -- master: "wire the outline to be when
+    /// hovering over the ride", then selecting on top of that.</summary>
+    int _hovered = -1;
     /// <summary>Whether the path tool is open. ⭐ On the console a build tool is a MODE you open
     /// and close, not a key you tap: while it is open the ghost follows the cursor and a press
     /// lays a run.</summary>
@@ -2551,13 +2555,34 @@ public partial class Viewer : Node3D
             var mid = _park.Placed.Count > 1 ? _park.Placed[1] : default;
             if (mid.Fp.Width > 0)
             {
+                // ⭐ HOVER FIRST, with no click at all: the outline must appear on the ride and
+                // go again off it. ⚠ Its partner is the empty cell -- "it shows a box" is
+                // satisfied by something that shows one everywhere.
                 _cursorOverride = (mid.X + mid.Fp.Width / 2, mid.Y + mid.Fp.Height / 2);
+                UpdateHover();
+                bool onRide = _hovered == 1;
+                _cursorOverride = (mid.X, _park.Field.Height - 3);
+                UpdateHover();
+                bool offRide = _hovered < 0;
+                GD.Print($"[select] hovering {mid.Name} gives {(onRide ? "its outline" : "NOTHING")}, "
+                       + $"hovering empty ground gives {(offRide ? "none" : "ONE ANYWAY")}"
+                       + $" -- {(onRide && offRide ? "follows the pointer, as it must be" : "WRONG")}");
+
+                _cursorOverride = (mid.X + mid.Fp.Width / 2, mid.Y + mid.Fp.Height / 2);
+                int camWas = _game.CursorX;
                 bool got = SelectUnderCursor();
-                GD.Print($"[select] on {mid.Name}'s own cell: {(got && _selected == 1 ? "selected it, as it must be" : "MISSED")}");
+                // ⚠⚠ AND THE SELECTION MUST SURVIVE ITS OWN CAMERA MOVE. Focusing on a selection
+                // glides the cursor, which is the very thing WASD does to clear one -- so if the
+                // clear were driven by the cursor moving rather than by the keys, a selection
+                // would drop the instant it was made. This is that trap, asked directly.
+                GD.Print($"[select] on {mid.Name}'s own cell: {(got && _selected == 1 ? "selected it" : "MISSED")}"
+                       + $"; camera cursor {camWas} -> {_game.CursorX}"
+                       + $" -- {(got && _selected == 1 ? "still selected after the camera moved, as it must be" : "WRONG")}");
+
                 // Somewhere well clear of all three.
                 _cursorOverride = (mid.X, _park.Field.Height - 3);
                 bool none = SelectUnderCursor();
-                GD.Print($"[select] on empty ground: {(!none && _selected < 0 ? "cleared, as it must be" : "STILL HOLDING ONE")}");
+                GD.Print($"[select] clicking empty ground: {(!none && _selected < 0 ? "cleared, as it must be" : "STILL HOLDING ONE")}");
 
                 // ⭐ THE BREATH, MEASURED. Stepped through two seconds in console ticks, the pulse
                 // must sweep 0 .. sin(1) = 0.8415 and repeat every 51.2 ticks (the |sin| halves the
@@ -2999,21 +3024,35 @@ public partial class Viewer : Node3D
         => _park != null && CursorCell(out int x, out int y) && _park.PlacedAt(x, y) is { } hit
          ? hit.Name : null;
 
-    /// <summary>Select whatever is under the pointer, or clear the selection when nothing is.
-    /// Returns true when something was selected.</summary>
-    bool SelectUnderCursor()
+    /// <summary>Which placed thing covers a cell, by INDEX. ⚠ Not the occupancy id: two of the
+    /// same ride share that, and the pointer is over one of them.</summary>
+    int PlacedIndexAt(int x, int y)
     {
-        if (_park == null || !CursorCell(out int x, out int y)) { ClearSelection(); return false; }
-        int at = -1;
+        if (_park == null) return -1;
         for (int i = 0; i < _park.Placed.Count; i++)
         {
             var p = _park.Placed[i];
             int fx = x - p.X, fy = y - p.Y;
             if (fx < 0 || fy < 0 || fx >= p.Fp.Width || fy >= p.Fp.Height) continue;
-            if (p.Fp.Cells[fx, fy]) { at = i; break; }
+            if (p.Fp.Cells[fx, fy]) return i;
         }
-        if (at < 0) { ClearSelection(); return false; }
-        _selected = at;
+        return -1;
+    }
+
+    /// <summary>Follow the pointer. ⭐ The box is drawn for whatever is under it, and falls back to
+    /// the SELECTION when the pointer is over nothing -- so a selected ride keeps its outline
+    /// while you point elsewhere, and hovering another shows that one instead.</summary>
+    void UpdateHover()
+    {
+        int was = _hovered;
+        _hovered = _park != null && CursorCell(out int x, out int y) ? PlacedIndexAt(x, y) : -1;
+        if (_hovered != was) ShowBoxFor(_hovered >= 0 ? _hovered : _selected);
+    }
+
+    void ShowBoxFor(int at)
+    {
+        if (_selectView == null) return;
+        if (at < 0 || _park == null || at >= _park.Placed.Count) { _selectView.Hide(); return; }
         var sel = _park.Placed[at];
         // ⭐ The box the game draws is a WORLD BOX, so it is given one. X and Z come from the
         // footprint's own world rectangle (min and max, not grid order -- the plot mirrors), and
@@ -3028,9 +3067,23 @@ public partial class Viewer : Node3D
         var min = new Vector3(bx0, _park.BaseY, bz0);
         var size = new Vector3(bx1 - bx0, top - _park.BaseY, bz1 - bz0);
         _selectView.Show(min, size);
-        GD.Print($"[select] {sel.Name} at ({sel.X},{sel.Y}) {sel.Fp.Width}x{sel.Fp.Height}"
-               + $" -- box min {min.X:F1},{min.Y:F1},{min.Z:F1} size {size.X:F1},{size.Y:F1},{size.Z:F1}"
-               + $" (the live console sample was 5,5,5)");
+    }
+
+    /// <summary>Take whatever the pointer is over as the SELECTION, and send the camera to it.
+    /// Master: "wire up selecting with lmb, which focuses the camera on the selected thing."
+    /// Returns true when something was taken.</summary>
+    bool SelectUnderCursor()
+    {
+        UpdateHover();
+        if (_hovered < 0) { ClearSelection(); return false; }
+        _selected = _hovered;
+        var sel = _park.Placed[_selected];
+        ShowBoxFor(_selected);
+        // ⚠ The camera is moved by GLIDING THE CURSOR, which is also what WASD does -- so the
+        // clear-on-move below is driven by the KEYS, not by the cursor having moved. Otherwise
+        // focusing on a selection would immediately drop it.
+        LookAtCell(sel.X + sel.Fp.Width / 2, sel.Y + sel.Fp.Height / 2);
+        GD.Print($"[select] {sel.Name} at ({sel.X},{sel.Y}) {sel.Fp.Width}x{sel.Fp.Height} -- camera to it");
         Status($"{sel.Name} selected -- right click to clear");
         return true;
     }
@@ -3039,7 +3092,7 @@ public partial class Viewer : Node3D
     {
         if (_selected >= 0) { GD.Print("[select] nothing selected"); Status("nothing selected"); }
         _selected = -1;
-        _selectView?.Hide();
+        ShowBoxFor(_hovered);
     }
 
     /// <summary>A press of the open tool. The first starts a run, the second lays it -- and ⭐ the
@@ -3811,6 +3864,11 @@ public partial class Viewer : Node3D
             // ⚠ The side term is NEGATED against the forward one. Taking right as (cos, -sin) of
             // the same angle reads correct and drives A and D the wrong way round -- master hit it
             // in the first minute. The camera looks along +(sin, cos), so its right is -(cos, -sin).
+            // ⭐⭐ MOVING DROPS A SELECTION, TURNING DOES NOT. Master: "moving with a ride
+            // selected will get rid of its selected state. q/e wont." Read off the KEYS rather
+            // than off the cursor having moved, because focusing the camera ON a selection moves
+            // the cursor too and would otherwise drop it the instant it was made.
+            if ((fwd != 0 || side != 0) && _selected >= 0) ClearSelection();
             _game.CursorX += (int)((fwd * s - side * c) * pan);
             _game.CursorZ += (int)((fwd * c + side * s) * pan);
             // ⭐ The map's border. Clamped every tick rather than only when a key is pressed, so a
@@ -4309,6 +4367,7 @@ public partial class Viewer : Node3D
             StepBuilding((float)delta * Aps.Fps);
         // ⭐ The selection breathes on its own clock, and like the console's it stands still
         // while the game is paused.
+        if (_mode == Mode.Park && !_place.Active) UpdateHover();
         if (_playing) _selectView?.Step(delta);
         if (GameCamActive) StepGameCam(delta);
         else
