@@ -36,7 +36,7 @@ public sealed class AnimatedModel
     readonly Model _model;
     readonly Aps _anim;
     readonly Func<string, (ImageTexture Tex, bool Soft)> _texture;
-    readonly List<Aps.TextureTrack> _textureTracks;
+    readonly List<Aps.TextureTrack> _textureTracks = new();
     readonly Dictionary<int, ShaderMaterial> _materials = new();
     readonly int[] _textureIndices;
     readonly List<Part> _parts = new();
@@ -49,6 +49,8 @@ public sealed class AnimatedModel
     List<Aps.SkeletalTrack> _skel;
     /// <summary>True when the selected record drives a biped rather than vertex morph.</summary>
     public bool Skeletal { get; private set; }
+    /// <summary>The record the channels are bound to; null for a model shown in its bind pose.</summary>
+    public Aps.Record Record { get; private set; }
 
     /// <summary>⚠⚠ THE GAME'S SPACE IS LEFT-HANDED AND GODOT'S IS RIGHT-HANDED. Everything under
     /// this node is mirrored in Z to convert, which is why the viewer rendered a mirror image of
@@ -84,45 +86,8 @@ public sealed class AnimatedModel
                          Func<string, (ImageTexture Tex, bool Soft)> texture)
     {
         _model = model; _anim = anim; _texture = texture;
-        _textureTracks = anim?.TextureTracks(rec) ?? new();
         _textureIndices = new int[model.MaterialTextures.Count];
-        foreach (var track in _textureTracks)
-        {
-            if (track.Material >= model.MaterialTextures.Count ||
-                track.Keys.Any(k => k.TextureIndex >= model.MaterialTextures[track.Material].Length))
-                throw new InvalidDataException($"APS texture track targets invalid material/texture: slot {track.Material}");
-        }
-        // ⚠ THE TWO TRACK FORMATS ARE NOT INTERCHANGEABLE. A skeletal record's tracks are 20 bytes,
-        // not 48, so none of the channel readers below may be pointed at one. The characters in
-        // DATA.WAD are skinned to a biped and are shown in their bind pose until the skin is wired;
-        // their morph record (there is exactly one per character) still animates.
-        Skeletal = rec != null && rec.Skeletal;
-        if (rec != null && !rec.Skeletal)
-        {
-            for (int i = 0; i < rec.TrackCount; i++)
-            {
-                int t = anim.TrackAt(rec, i), node = anim.TrackNode(t);
-                var r = anim.Rotation(t); if (r != null) { _rot[node] = r; _rotTrack[node] = t; }
-                var s = anim.Scale(t); if (s != null) _scale[node] = s;
-                // ⚠⚠ THE PATH CHANNEL WAS READ AND THEN NEVER APPLIED. 1,468 of the disc's 6,155
-                // morph-format tracks carry a Catmull-Rom path, and every car, train, boat and
-                // gondola on them was sitting at its rest position. That is what "sub parts are
-                // rotated or positioned wrong" looks like from the outside.
-                var sp = anim.SplineAt(t);
-                if (sp != null)
-                {
-                    _path[node] = sp;
-                    if ((anim.TrackFlags(t) & (uint)Aps.TrackFlag.OrientAlongPath) != 0) _facing.Add(node);
-                }
-            }
-            _vis = anim.Visibility(rec);
-            Frames = Math.Max(rec.DurationFrames, 1);
-        }
-        else if (rec != null)
-        {
-            _skel = anim.SkeletalTracks(rec);
-            Frames = Math.Max(rec.DurationFrames, 1);
-        }
+        UseRecord(rec);
 
         foreach (var mesh in _model.Meshes)
         {
@@ -139,13 +104,8 @@ public sealed class AnimatedModel
                 Tris = tris,
                 AnimMap = _model.AnimVertexMap(mesh),
                 Ancestry = _model.Ancestry(mesh.Index),
+                Morph = MorphFor(rec, mesh.Index),
             };
-            if (rec != null)
-                for (int i = 0; i < rec.TrackCount; i++)
-                {
-                    int t = anim.TrackAt(rec, i);
-                    if (anim.TrackNode(t) == mesh.Index) { p.Morph = anim.Morph(t); break; }
-                }
             BuildSurfaces(p);
             _parts.Add(p);
             var vs = _vis.TryGetValue(mesh.Index, out var vv) ? "vis[" + string.Join(",", vv) + "]" : "always";
@@ -153,10 +113,97 @@ public sealed class AnimatedModel
                      $"morph={(p.Morph != null ? p.Morph.Count.ToString() : "-"),-5} " +
                      $"map={(p.AnimMap != null ? "yes" : "NO "),-4} {vs}");
         }
+        RefreshSummary();
+    }
+
+    /// <summary>Bind a different record of the same `.aps` to the geometry already built. A ride's
+    /// `.rse` asks for a different slot as it runs -- Create, Idle, Load, Start, Main, End, Unload
+    /// -- and the meshes, surfaces and materials are the MODEL's, so they stay; only the channels
+    /// are rebound. The constructor comes through here as well, so a switched model is in the
+    /// state a freshly built one would be in.</summary>
+    public void UseRecord(Aps.Record rec)
+    {
+        var textureTracks = _anim?.TextureTracks(rec) ?? new();
+        foreach (var track in textureTracks)
+        {
+            if (track.Material >= _model.MaterialTextures.Count ||
+                track.Keys.Any(k => k.TextureIndex >= _model.MaterialTextures[track.Material].Length))
+                throw new InvalidDataException($"APS texture track targets invalid material/texture: slot {track.Material}");
+        }
+        Record = rec;
+        // ⚠ EVERY CHANNEL IS EMPTIED BEFORE THE NEW RECORD FILLS IT. They are keyed by node, and a
+        // node the old record drove that the new one leaves alone would otherwise keep its old keys
+        // and carry on moving after the animation changed.
+        _textureTracks.Clear(); _rot.Clear(); _rotTrack.Clear(); _scale.Clear(); _path.Clear(); _facing.Clear();
+        _vis = new(); _skel = null; Frames = 0;
+        // ⭐ _textureIndices is left alone on purpose. It is model-sized and mirrors what each
+        // material is showing NOW, which is the `previous` that TextureTrack.Sample retains before
+        // a track's first key -- the game's own consumer does (0x1a6b60-0x1a6bd4) -- so a slot the
+        // new record never keys keeps its texture across a switch just as it does across a frame.
+        // ⚠ Zeroing it without re-binding the materials would be worse than either choice: SetFrame
+        // skips a slot whose sample equals the mirror, so a track whose first key is 0 would leave
+        // the old texture on screen while the mirror claimed 0.
+        _textureTracks.AddRange(textureTracks);
+        // ⚠ THE TWO TRACK FORMATS ARE NOT INTERCHANGEABLE. A skeletal record's tracks are 20 bytes,
+        // not 48, so none of the channel readers below may be pointed at one. The characters in
+        // DATA.WAD are skinned to a biped and are shown in their bind pose until the skin is wired;
+        // their morph record (there is exactly one per character) still animates.
+        Skeletal = rec != null && rec.Skeletal;
+        if (rec != null && !rec.Skeletal)
+        {
+            for (int i = 0; i < rec.TrackCount; i++)
+            {
+                int t = _anim.TrackAt(rec, i), node = _anim.TrackNode(t);
+                var r = _anim.Rotation(t); if (r != null) { _rot[node] = r; _rotTrack[node] = t; }
+                var s = _anim.Scale(t); if (s != null) _scale[node] = s;
+                // ⚠⚠ THE PATH CHANNEL WAS READ AND THEN NEVER APPLIED. 1,468 of the disc's 6,155
+                // morph-format tracks carry a Catmull-Rom path, and every car, train, boat and
+                // gondola on them was sitting at its rest position. That is what "sub parts are
+                // rotated or positioned wrong" looks like from the outside.
+                var sp = _anim.SplineAt(t);
+                if (sp != null)
+                {
+                    _path[node] = sp;
+                    if ((_anim.TrackFlags(t) & (uint)Aps.TrackFlag.OrientAlongPath) != 0) _facing.Add(node);
+                }
+            }
+            _vis = _anim.Visibility(rec);
+            Frames = Math.Max(rec.DurationFrames, 1);
+        }
+        else if (rec != null)
+        {
+            _skel = _anim.SkeletalTracks(rec);
+            Frames = Math.Max(rec.DurationFrames, 1);
+        }
+        // The morph channel lives on the part, so it is re-pointed in place rather than rebuilt.
+        // ⚠ A part the old record morphed and the new one does not goes back on its bind positions
+        // HERE: SetFrame only rebuilds a part that has a morph, so without this it would stay
+        // frozen at whatever frame the old record left it on.
+        foreach (var p in _parts)
+        {
+            bool morphed = p.Morph != null;
+            p.Morph = MorphFor(rec, p.Mesh.Index);
+            if (morphed && p.Morph == null) RebuildGeometry(p, 0);
+        }
+        RefreshSummary();
+    }
+
+    /// <summary>The record's morph track for a node, or null when it has none.</summary>
+    List<(int[] Times, System.Numerics.Vector3[] Keys)> MorphFor(Aps.Record rec, int node)
+    {
+        if (rec == null) return null;
+        for (int i = 0; i < rec.TrackCount; i++)
+        {
+            int t = _anim.TrackAt(rec, i);
+            if (_anim.TrackNode(t) == node) return _anim.Morph(t);
+        }
+        return null;
+    }
+
+    void RefreshSummary() =>
         Summary = $"{_parts.Count} parts, {Frames} frames, {_model.Materials.Count} materials"
                   + $", {_textureTracks.Count} texture tracks"
                   + (Skeletal ? $", {_skel?.Count ?? 0} bone tracks (bind pose)" : "");
-    }
 
     // ⚠ Culling is owned by the shader's render_mode, not by a material property. It is built
     // into the shader source from TPW_PS2_CULL rather than hardwired -- it used to say
