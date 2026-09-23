@@ -116,6 +116,7 @@ public sealed class RseMachine
     readonly LimboSlot[] _limbo;
     int _limboUsed;
     bool _timedWalk;
+    bool _attemptedWalk;
 
     /// <summary>⭐⭐ A SCRIPT IS NOT ALONE. `SPAWNCHILD` (`0x1be91c`) loads a second program and
     /// hangs it off this one at instance `+0x0c`; `SPAWNSOUND` (`0x1be9b4`) does the same into
@@ -174,6 +175,13 @@ public sealed class RseMachine
     /// handshake is still the game's -- WALKON, the 1-2-3-4 states, WALKGET -- but the TIMING is
     /// not, and anything measuring how long a ride cycle takes must check this first.</summary>
     public bool WalksAreTimed => _timedWalk;
+
+    /// <summary>⚠ WHETHER A WALK WAS EVER TIMED AT ALL, which is the question
+    /// <see cref="WalksAreTimed"/> cannot answer on its own. False there means either "the host
+    /// could not place a node" or "nobody ever walked", and those are opposite verdicts: the
+    /// first is a defect and the second is a ride that seats its riders with ADDHEAD, or one
+    /// nobody reached. A check that conflates them fails on its own control ride.</summary>
+    public bool WalksWereAttempted => _attemptedWalk;
 
     /// <summary>The trampoline: how many are on it (BOUNCING reads instance `+0x6c` through
     /// `0x1bb880`) and the rest height BOUNCESETBASE writes to `+0x6e`, which the bounce ticker
@@ -699,6 +707,7 @@ public sealed class RseMachine
     /// anything under one unit falls to the 100 ms floor. Kept as written.</summary>
     int WalkMilliseconds(int from, int to, int kind)
     {
+        _attemptedWalk = true;
         // The ride-side node of a `kind == 4` walk lives in the model's space, not the park's.
         if (_host != null
             && _host.TryNodePosition(from, 0x800, out float ax, out float ay, out float az)

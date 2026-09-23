@@ -544,3 +544,32 @@ Sixty-seven shops and sideshows, twenty of them walk-in, and the LIMBO correlati
 every world with no exceptions in either direction. The only thing that varies is what the
 restaurant is called. Four independent parks agreeing is worth more than the jungle result alone:
 a bug in the limbo path would have had to reproduce this split four times.
+
+## ⭐⭐ Some rides WALK their riders to their seats; most TELEPORT them there
+
+Thirteen ride models on this disc carry **no park-space (`0x800`) fitting at all** — `monkey`
+(Crazy Ape), `spider`, `volcano`, `bumper`, `cart`, `croccar`, `Bird`, `ape`, `wr_ring` and the
+four go-karts. `WalkMilliseconds` resolves the guest-side node of a walk in space `0x800`, so on
+those rides the lookup cannot succeed and every leg takes the 100 ms floor. Crazy Ape being in
+that list reads as an alarming defect.
+
+It is not one. **A ride only needs a park-space node if its script actually walks somebody.** A
+script that seats its riders with `ADDHEAD` alone never calls `WALKON`; Inca Totem, which passes
+`VAR_ONRIDE` as the destination so the Nth rider walks to the Nth seat, does. Asking the bytecode
+which rides call `WALKON` and requiring exactly those to be timed passes in all four worlds. The
+park owner, who knows the game independently of any of this, says the same thing unprompted: *"yes
+i believe a few teleport them on."*
+
+So "walks at the floor" on Crazy Ape is the correct behaviour of a ride that does not walk.
+
+⚠⚠ **TWO WAYS THIS CHECK LIED BEFORE IT WORKED**, both worth keeping:
+
+1. **It was first written in the script-only census, which runs without any model.** That host has
+   no `NodeSource`, so *every* ride floors, and the check reported eight broken rides that were
+   nothing of the kind. A walk-timing check is meaningless wherever the geometry is absent. It now
+   lives with the rides that were given models.
+2. **"Asked to walk but not timed" fails on its own control ride.** `WalksAreTimed == false` means
+   either "a node would not resolve" or "nobody ever walked", and those are opposite verdicts. The
+   CONTROL ride is placed off the path precisely so nobody reaches it, so it carries `WALKON` in
+   its bytecode, never runs one, and got reported as broken. `RseMachine.WalksWereAttempted`, set
+   inside `WalkMilliseconds` itself, separates the two without a proxy such as boardings.

@@ -395,6 +395,42 @@ var timed = loop.Rides.Where(r => r.Machine.WalksAreTimed).ToList();
 Console.WriteLine($"  {timed.Count} of {loop.Rides.Count} rides timed their walks from real node positions"
                 + $" ({string.Join(", ", timed.Select(r => r.Name))})");
 Check(timed.Count > 0, "a ride's WALKON legs are timed by the distance between its own fittings");
+
+// ⭐⭐ AND THE ONES THAT DID NOT -- IS THAT A DEFECT? `WalkMilliseconds` resolves the guest-side
+// node in park space `0x800`, and thirteen ride models on this disc carry NO `0x800` fitting at
+// all: monkey (Crazy Ape), spider, volcano, bumper, cart, croccar, Bird, ape, wr_ring and the
+// four go-karts. Every leg on those takes the 100 ms minimum.
+//
+// That is only a DEFECT for a ride that actually asks to walk somebody. A script that seats its
+// riders with ADDHEAD alone never calls WALKON and has no use for a park-space node; Inca Totem,
+// which passes VAR_ONRIDE as the destination so the Nth rider walks to the Nth seat, does. So ask
+// the bytecode which rides walk, and require exactly those to be timed.
+//
+// ⚠⚠ THIS CHECK BELONGS HERE AND NOWHERE EARLIER. The script-only census above runs without any
+// model, so its host has no NodeSource and EVERY ride floors -- a copy of this check up there
+// reported eight broken rides that were nothing of the kind. A walk-timing check is meaningless
+// wherever the geometry is absent, so it lives with the rides that were given models.
+//
+// ⚠ It asks the bytecode, not the run: a WALKON on an untaken branch still counts as asking.
+// That direction is conservative -- it can only make a ride look MORE in need of timing.
+bool AsksToWalk(ParkRide r) => ParkSim.Chain(r.Machine)
+    .Any(m => m.Program.Instructions.Any(i => i.Opcode == RseOpcode.WALKON));
+var walkers = loop.Rides.Where(AsksToWalk).ToList();
+// ⚠⚠ ATTEMPTED, not merely asked. `WalksAreTimed == false` means either "a node would not
+// resolve" or "nobody ever walked", and those are opposite verdicts. The CONTROL ride is placed
+// off the path precisely so nobody reaches it, so it calls WALKON in its bytecode, never runs
+// one, and an "asked but not timed" check FAILS ON ITS OWN CONTROL. WalksWereAttempted is set
+// inside WalkMilliseconds, so it separates the two without a proxy like boardings.
+var flooredWalkers = walkers.Where(r => r.Machine.WalksWereAttempted && !r.Machine.WalksAreTimed).ToList();
+var neverWalked = walkers.Where(r => !r.Machine.WalksWereAttempted).ToList();
+Console.WriteLine($"  {walkers.Count} of {loop.Rides.Count} placed rides call WALKON at all;"
+                + $" {walkers.Count - neverWalked.Count} actually ran one"
+                + (neverWalked.Count > 0 ? $" (never walked: {string.Join(", ", neverWalked.Select(r => r.Name))})" : ""));
+foreach (var r in flooredWalkers)
+    Console.WriteLine($"  FLOORED: {r.Name} calls WALKON but no node resolved -- its legs ran at 100 ms");
+Check(walkers.Count > neverWalked.Count, $"some placed ride actually RAN a walk ({walkers.Count - neverWalked.Count} of {walkers.Count} that call WALKON) -- otherwise the check below is vacuous");
+Check(flooredWalkers.Count == 0, "every ride that calls WALKON timed its legs from real node positions"
+    + (flooredWalkers.Count == 0 ? "" : ": " + string.Join(", ", flooredWalkers.Select(r => r.Name))));
 Check(visitors.Rides > 0, $"a guest comes back OUT of a ride and walks away ({visitors.Rides} did)");
 // ⚠⚠ THE SAME PEOPLE, not the same COUNT. A guest handed to a ride leaves the walking layer and
 // is put back when the script is done, and putting them back as a NEW id would pass every count
