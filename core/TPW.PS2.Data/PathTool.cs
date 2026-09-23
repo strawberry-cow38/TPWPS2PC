@@ -39,10 +39,61 @@ public sealed class PathTool
     /// doubles back beside itself fuses into a slab, and two rides whose queues run side by side
     /// merge into one.</summary>
     readonly int[] _run;
-    /// <summary>A ride's entrance or exit cell, and whose it is. A path or that ride's queue wears
-    /// an arm pointing at it.</summary>
-    readonly Dictionary<int, int> _doors = new();
+    /// <summary>A ride's doors: the cell, whose it is, and WHICH door it is.
+    ///
+    /// ⭐⭐ A QUEUE ONLY EVER REACHES AN ENTRANCE. Master: "the queue shouldnt get the connected
+    /// sprite for the 'internal' path tile of the exit" -- a queue that wore an arm toward the way
+    /// out would be drawing a route nobody walks. A PATH may reach either, because a path is what
+    /// people leave by.</summary>
+    readonly Dictionary<int, (int Ride, bool Entrance)> _doors = new();
     readonly Dictionary<int, byte> _before = new();
+
+    /// <summary>⭐⭐ ONE LEG, ONE UNDO. The queue tool's right button steps a run BACK, not out --
+    /// master: "with queues, rmb becomes 'undo last leg' up until the single tile sticking out,
+    /// then it becomes close tool". So every press that lays something records what it found
+    /// there first, and the record is what the step back puts back.
+    ///
+    /// ⚠ NEIGHBOURS ARE NOT RECORDED, they are RE-PICKED. A leg touches the art of everything
+    /// within two cells of it, and journalling all of that would be storing a value that is
+    /// derivable -- the kind of duplicate state that goes stale. Restoring the cells and picking
+    /// their surroundings again reaches the same answer from the rule.</summary>
+    readonly record struct Was(int At, Kind Kind, int Owner, int Run, byte Tile, int Turns);
+    readonly List<List<Was>> _legs = new();
+    List<Was> _leg;
+
+    /// <summary>How many undoable legs have been laid. ⭐ The caller compares this against what it
+    /// was when the tool opened, so a step back can never walk out of its own run and into one
+    /// somebody laid earlier.</summary>
+    public int LegCount => _legs.Count;
+
+    /// <summary>Start recording a leg. Everything laid until the next call goes back together.</summary>
+    public void BeginLeg() { _leg = new List<Was>(); _legs.Add(_leg); }
+
+    /// <summary>Put the most recent leg back. Returns false when there is none.</summary>
+    public bool UndoLeg()
+    {
+        if (_legs.Count == 0) return false;
+        var leg = _legs[^1];
+        _legs.RemoveAt(_legs.Count - 1);
+        if (ReferenceEquals(_leg, leg)) _leg = null;
+        foreach (var w in leg)
+        {
+            if (_kind[w.At] != Kind.None && w.Kind == Kind.None) Laid--;
+            _kind[w.At] = w.Kind; _owner[w.At] = w.Owner; _run[w.At] = w.Run;
+            _field.Cells[w.At * 2 + 1] = w.Tile; _turns[w.At] = w.Turns;
+        }
+        foreach (var w in leg) RepickAround(w.At % _field.Width, w.At / _field.Width);
+        return true;
+    }
+
+    /// <summary>Note what a cell was before it is written. ⚠ ONCE per leg: a cell laid twice in
+    /// one leg must go back to what it was before the leg, not to what it was halfway through.</summary>
+    void Record(int at)
+    {
+        if (_leg == null) return;
+        foreach (var w in _leg) if (w.At == at) return;
+        _leg.Add(new Was(at, _kind[at], _owner[at], _run[at], _field.Cells[at * 2 + 1], _turns[at]));
+    }
 
     public int Laid { get; private set; }
     public bool Ready => _pieces != null && _pathSprites != null;
@@ -124,8 +175,9 @@ public sealed class PathTool
         {
             if (dx != 0 && dy != 0) continue;
             if (!In(x + dx, y + dy)) continue;
-            if (!_doors.TryGetValue(At(x + dx, y + dy), out int ride)) continue;
-            if (queue && owner != 0 && ride != owner) continue;
+            if (!_doors.TryGetValue(At(x + dx, y + dy), out var door)) continue;
+            if (queue && !door.Entrance) continue;
+            if (queue && owner != 0 && door.Ride != owner) continue;
             bits |= bit;
         }
         return bits;
@@ -191,10 +243,10 @@ public sealed class PathTool
 
     /// <summary>Tell the tool about a ride's entrance or exit cell, so the ground beside it can
     /// look attached to it.</summary>
-    public void AddDoor(int x, int y, int rideId)
+    public void AddDoor(int x, int y, int rideId, bool entrance)
     {
         if (!Ready || !In(x, y)) return;
-        _doors[At(x, y)] = rideId;
+        _doors[At(x, y)] = (rideId, entrance);
         RepickAround(x, y);
     }
 
@@ -231,6 +283,7 @@ public sealed class PathTool
     {
         if (!CanLay(x, y)) return false;
         int at = At(x, y);
+        Record(at);
         var was = _kind[at];
         // ⚠ THE RUN BITS GO ON EVEN WHEN NOTHING ELSE CHANGES. A run is laid a segment at a time
         // and each segment STARTS on the last cell of the one before, so that shared cell is laid
@@ -270,6 +323,7 @@ public sealed class PathTool
         foreach (var (at, was) in _before)
         { _field.Cells[at * 2 + 1] = was; _kind[at] = Kind.None; _turns[at] = 0; _owner[at] = 0; _run[at] = 0; }
         _before.Clear();
+        _legs.Clear(); _leg = null;
         Laid = 0;
     }
 
@@ -280,7 +334,8 @@ public sealed class PathTool
         if (!_field.Buildable(x, y)) return $"({x},{y}) no-build";
         var kind = _kind[At(x, y)];
         if (kind == Kind.None)
-            return _doors.TryGetValue(At(x, y), out int who) ? $"({x},{y}) ride {who}'s door" : $"({x},{y}) clear";
+            return _doors.TryGetValue(At(x, y), out var who)
+                 ? $"({x},{y}) ride {who.Ride}'s {(who.Entrance ? "entrance" : "exit")}" : $"({x},{y}) clear";
         return $"({x},{y}) {kind} links {LinksFor(x, y):X2} turns {_turns[At(x, y)]}"
              + (_owner[At(x, y)] != 0 ? $" of ride {_owner[At(x, y)]}" : "")
              + (IsQueueEnd(x, y) ? " (tip)" : "");

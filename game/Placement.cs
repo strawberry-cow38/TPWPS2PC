@@ -24,13 +24,21 @@ public sealed class Placement
     public Park.Footprint Base { get; private set; }
     public int Turns { get; private set; }
 
+    /// <summary>⭐⭐ ONLY A RIDE HAS A QUEUE. Master: "only rides get the queues. sideshows, shops,
+    /// etc have a combined entry/exit node on one tile". So this is the BUILD CATEGORY -- the
+    /// archive folder the thing came out of -- and not a guess read off its .sam. The stand-in it
+    /// replaces ("declares a RideTypeStringIndex and has an entrance") gave a queue to anything
+    /// with a door, which is most of the shops.</summary>
+    public bool IsRide { get; private set; }
+
     public bool Active => Def != null;
 
     /// <summary>The footprint as it currently stands, turned.</summary>
     public Park.Footprint Turned { get; private set; }
 
-    public void Arm(RideDefinition def, string display, int id, Park.Footprint fp)
+    public void Arm(RideDefinition def, string display, int id, Park.Footprint fp, bool isRide = false)
     {
+        IsRide = isRide;
         // ⚠⚠ A MIRROR, NOT A HALF TURN. The shape is authored in the game's own frame and the plot
         // draws in one that is mirrored in Z ONLY -- grid +x is world +X, but grid +y is world -Z,
         // because the scene root carries Scale(1,1,-1). A reflection in one axis is not a rotation,
@@ -63,7 +71,7 @@ public sealed class Placement
         return new Park.Footprint(w, h, cells, fp.EntryX, ey, fp.ExitX, xy, fp.ExitDX, -fp.ExitDY);
     }
 
-    public void Clear() { Def = null; Display = null; Turned = default; Turns = 0; }
+    public void Clear() { Def = null; Display = null; Turned = default; Turns = 0; IsRide = false; }
 
     /// <summary>A quarter turn, instantly. ⚠ The console only ever turns ONE WAY -- there is no
     /// anticlockwise button on it -- but master asked for both, and a port on a keyboard is not
@@ -91,6 +99,35 @@ public sealed class Placement
                 yield return (x, y, park.IsPlayable(x, y) && park.Vacant(x, y));
             }
     }
+
+    /// <summary>The two tiles that stick OUT of the shape -- the one outside the entrance and the
+    /// one outside the exit -- with whether the park will take them.
+    ///
+    /// ⭐⭐ THEY ARE PART OF THE THING. Master: "the entrance/exit tiles that stick out should
+    /// always be created with the ride, and they should be part of the footprint when being
+    /// placed". So the press is gated on them as much as on the body: a ride whose door opens onto
+    /// the sea or onto another ride's wall is a ride nobody can reach, and it must refuse BEFORE
+    /// it goes down rather than leave a stub that cannot be laid afterwards.
+    ///
+    /// ⚠ The entrance's is a QUEUE tile and the exit's is a PATH tile -- they are different kinds
+    /// of ground, which is why they come back labelled rather than as a bare pair.</summary>
+    public IEnumerable<(int X, int Y, bool Entrance, bool Queue, bool Ok)> Stubs(Park park, int cursorX, int cursorY)
+    {
+        foreach (var (door, entrance) in new[] { (DoorFor(cursorX, cursorY), true), (ExitFor(cursorX, cursorY), false) })
+        {
+            if (door is not { } d) continue;
+            if (OutsideOf(d, cursorX, cursorY) is not { } o) continue;
+            // ⭐ A QUEUE ONLY OUTSIDE A RIDE'S ENTRANCE. Everything else -- a shop's counter, a
+            // sideshow's stall -- is a combined node on one tile, and the ground outside it is
+            // ordinary path that people walk both ways over.
+            yield return (o.X, o.Y, entrance, IsRide && entrance,
+                          park.IsPlayable(o.X, o.Y) && park.Vacant(o.X, o.Y));
+        }
+    }
+
+    /// <summary>Whether every tile of it -- body and stubs -- will be taken.</summary>
+    public bool Fits(Park park, int cursorX, int cursorY)
+        => Cells(park, cursorX, cursorY).All(c => c.Ok) && Stubs(park, cursorX, cursorY).All(s => s.Ok);
 
     /// <summary>The entrance tile, turned with the shape. ⚠ Null when the shape does not declare
     /// one: most scenery has no door, and drawing an entrance marker on a tree would be inventing
