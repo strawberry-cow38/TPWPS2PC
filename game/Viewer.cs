@@ -5274,9 +5274,22 @@ public partial class Viewer : Node3D
     {
         _lights?.Root.QueueFree();
         _lights = null;
+        // ⚠ BY MODEL PATH, NOT BY NAME. Matching `Info.Name == "Lights"` found nothing even
+        // though /Features/Lights/lights.mps is right there in the archive -- the catalogue is
+        // keyed in a way that does not surface it under that name (RideCatalogue already warns
+        // that keying by name silently merges entries). The file on the disc is the thing that
+        // certainly exists, so match that.
         var feature = _lib.Rides.FirstOrDefault(
-            r => r.Name != null && r.Name.Equals("Lights", StringComparison.OrdinalIgnoreCase) && r.Model != null);
-        if (feature == null) { GD.Print("[lights] no Lights feature in this archive"); return; }
+            r => r.Model?.Path != null && r.Model.Path.EndsWith("lights.mps", StringComparison.OrdinalIgnoreCase));
+        if (feature == null)
+        {
+            var seen = _lib.Rides.Where(r => r.Model?.Path != null
+                          && r.Model.Path.Contains("/Features/", StringComparison.OrdinalIgnoreCase))
+                      .Select(r => r.Model.Path.Split('/')[^1]).Take(12).ToList();
+            GD.Print($"[lights] no lights.mps in this archive; Features models the catalogue does have: "
+                   + (seen.Count == 0 ? "NONE -- the catalogue carries no Features at all" : string.Join(" ", seen)));
+            return;
+        }
         try
         {
             var lm = new Model(_lib.Read(feature.Model));
