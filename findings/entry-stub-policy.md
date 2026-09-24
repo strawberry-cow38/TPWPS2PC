@@ -84,3 +84,17 @@ An independent source review prompted the fenced-block guard and the required co
 coverage gate. Representative captures have been sent to cow tools for image review; no new
 visual sign-off is claimed in this entry. Callback/geometry evidence, peer image inspection,
 and eventual human gameplay/input/platform testing remain distinct.
+
+Peer source/image review is now complete for the representative Coconut, FANTASY IceCream
+and SPACE Fries captures. SPACE Fries required a left inspection view: the original cyan-
+obstructed frame and the higher view behind a dark tube remain inconclusive, retained evidence.
+The clear view shows one customer on the paving, facing the kiosk, with shop and origin marker
+visible together. A fallback customer can stand further from the hatch than an authored one:
+that is the policy preserving the actual arrival cell, not evidence of a decoded counter point.
+Do not quietly “correct” that distance by inventing missing source coordinates.
+
+Integrated upstream626058a's flag/water changes without replacing them. After rebasing the
+isolated work, the previously published review history was retained by a non-force merge;
+only two append-only documentation conflicts occurred, and the resolved tree was verified
+identical to the pre-merge tree. This is code/integration evidence, not a new visual claim
+about upstream flags or water.

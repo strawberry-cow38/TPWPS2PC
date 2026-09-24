@@ -1320,3 +1320,27 @@ or extracted assets in Git, existing toolchain/cache (not a clean-machine claim)
 tracked projects and retain actual failures/known retail reds. Coordinate the next playable
 feature with cow tools after that checkpoint; outstanding costume/carried-object/queue/track
 limits are not closed by these service-body changes. No bot restart or new scheduler.
+
+## Entry-stub peer approval and upstream integration
+
+Peer reviewed f956fe4's guards/policy and Coconut/FANTASYIceCream images. SPACEFries' initial
+camera was cyan-obstructed, not visual proof. Two same-placement alternative views retain
+all floor/arrival/facing/handback checks; the LEFT view clearly shows the customer, shop and
+marker. Peer approves; high remains obscured by a tube. Keep the observable distance from
+some counters labelled as arrival-stub policy, not a newly decoded console default.
+Captures /tmp/tpw-space-fries-views-20260924; logs ../tpw-space-fries-view-*.log.
+
+Upstream main advanced to626058a (peer flag/water work). Rebased without code conflicts,
+then preserved the already-published candidate ancestry with a non-force merge. The only
+conflicts were two docs: verified our sides were exact prefixes plus final evidence, preserved
+both, and verified the resulting tree equals the pre-merge tree. Integrated branch65b7370
+is pushed; game build and alternative rendered SPACEFries runs pass on that integrated tree.
+No force push, no overwriting peer Viewer changes.
+
+CP6 clean-source checkpoint STARTED, do not duplicate: detached worktree ../tpw-clean-65b7370
+at65b7370, initially Git-clean with no bin/obj/game/.godot. Script ../tpw-clean-build-65b7370.py
+is building all23 tracked projects serially in Release, existing Linux toolchain/NuGet cache.
+Background PID597398; output ../tpw-clean-build-65b7370.log and
+/tmp/tpw-clean-build-65b7370/manifest.json. Check actual completion/results before claims.
+This is NOT clean-machine/native-Windows proof. After build, run appropriate clean-tree gates
+and record the checkpoint; preserve known HALLOW/SPACE retail reds. No restart/new scheduler.
