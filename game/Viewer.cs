@@ -5330,8 +5330,32 @@ public partial class Viewer : Node3D
             var (lo, hi) = Park.DrawnBounds(node, inParent: true);
             if (RayHitsBox(from, dir, lo, hi, out float t) && t < near) { near = t; best = i; }
         }
+        // ⭐⭐ THE GATE COMPETES HERE LIKE EVERYTHING ELSE. Master: "the gate hover hitbox still
+        // lets me hover behind it. why did we invent a new type of selection box instead of using
+        // the one that every other object uses?" -- and the answer was that it had its own test
+        // outside this loop, against the WRONG BOX.
+        //
+        // ⚠⚠ IT WAS HIT-TESTING THE NO-BUILD ZONE. `_gateBounds` is the zone the gate forbids
+        // building in -- several cells wide and `tall` high -- so a ray aimed anywhere on that
+        // side of the park passed through it, including from well behind the gate itself. The
+        // box you SELECT is the zone; the thing you POINT AT is the gate, and those are not the
+        // same volume.
+        //
+        // ⭐ Now it uses the gate model's own drawn bounds, through the same `DrawnBounds` and
+        // the same nearest-hit comparison as every placed object, so it can be occluded by them
+        // and they by it.
+        if (_gate?.Root is { } gateRoot && IsInstanceValid(gateRoot) && gateRoot.Visible)
+        {
+            var (glo, ghi) = Park.DrawnBounds(gateRoot, inParent: true);
+            if (RayHitsBox(from, dir, glo, ghi, out float gt) && gt < near) { near = gt; best = GateIndex; }
+        }
         return best;
     }
+
+    /// <summary>What <see cref="PointedAt"/> returns for the gate. ⚠ Below zero so every
+    /// `at < 0` guard already in this file -- `ShowBoxFor`, the placed-index lookups -- keeps
+    /// treating it as "not a placed object", which it is not.</summary>
+    const int GateIndex = -2;
 
     /// <summary>Slab test. ⚠ A zero component of the direction is handled by the infinities falling
     /// out of the division rather than by a branch -- the branch is where this is usually wrong,
@@ -5406,7 +5430,7 @@ public partial class Viewer : Node3D
         UpdateHover();
         // ⭐ The gate takes the click when the pointer is on it and nothing else is, so selecting
         // it is the same gesture as selecting a ride.
-        if (_hovered < 0 && PointingAtGate())
+        if (_hovered == GateIndex)
         {
             // ⚠⚠ ONE SELECTION AT A TIME. Master: "make sure gate selection boxes and other
             // selection boxes cant exist at the same time." `_gateSelected` and `_selected` were
@@ -5443,12 +5467,9 @@ public partial class Viewer : Node3D
 
     /// <summary>Is the pointer over the gate's no-build zone? ⚠ Its own ray test, because the
     /// gate is not in `Park.Placed` and so `PointedAt` cannot see it.</summary>
-    bool PointingAtGate()
-    {
-        if (_gateBounds is not { } b || _cam == null || _mode != Mode.Park) return false;
-        var m = GetViewport().GetMousePosition();
-        return RayHitsBox(_cam.ProjectRayOrigin(m), _cam.ProjectRayNormal(m), b.Lo, b.Hi, out _);
-    }
+    /// <summary>⭐ One question, one answer: the gate is pointed at when the shared picker says
+    /// it is the nearest thing under the cursor. No second ray, no second box.</summary>
+    bool PointingAtGate() => _gateBounds != null && _mode == Mode.Park && PointedAt() == GateIndex;
 
     /// <summary>Show the gate's zone only while it is pointed at or selected -- master's rule.</summary>
     void UpdateGateBox(bool busy)
