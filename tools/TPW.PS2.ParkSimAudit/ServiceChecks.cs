@@ -138,14 +138,14 @@ static class ServiceChecks
         // ⭐⭐ Two bugs astraclaw's verified getter mapping exposed, both silent: a purchase
         // charged the bare price where the console charges TEN TIMES it (cash is kept in the
         // x10 units the spawn seeds), and it QUENCHED thirst where the console RAISES it.
-        (int Cash, int Hunger, int Thirst, int Toilet, int Litter) Bought(int price, int hunger, int thirst, int cash = 5000)
+        (int Cash, int Hunger, int Thirst, int Toilet, int Litter) Bought(int price, int hunger, int thirst, int cash = 5000, int product = VisitorNeeds.Food)
         {
             var n = new VisitorNeeds(11);
             var w = n.Spawn(1);
             w.Litter = 0;
             w.Cash = cash; w.Hunger = 50; w.Thirst = 50; w.Toilet = 20; w.Sick = 0; w.Happiness = 50;
             n.Set(1, w);
-            n.Buy(1, price, hunger, thirst, happinessEffect: 5, vomitIncrease: 0);
+            n.Buy(1, price, hunger, thirst, happinessEffect: 5, vomitIncrease: 0, product: product);
             var a2 = n.Of(1);
             return (a2.Cash, a2.Hunger, a2.Thirst, a2.Toilet, a2.Litter);
         }
@@ -169,6 +169,23 @@ static class ServiceChecks
         // ⭐ THE BOUNDARY, both sides: 300 is exactly affordable at a price of 30.
         var exact = Bought(price: 30, hunger: 25, thirst: 0, cash: 300);
         Check(exact.Cash == 0 && exact.Hunger == 25, $"exactly enough buys ({exact.Cash} left, hunger {exact.Hunger})");
+
+        // ⭐⭐ THE ARMS. Food and drink are MIRRORS, and a single unconditional rule cannot be
+        // right for both: adding thirst feeds a burger correctly and makes a DRINK SHOP raise the
+        // thirst it exists to quench. Selected on the compiled Product byte.
+        var drink = Bought(price: 30, hunger: 0, thirst: 40, product: VisitorNeeds.Drink);
+        Check(drink.Thirst == 10, $"a drink shop QUENCHES thirst ({drink.Thirst}, was 50)");
+        Check(drink.Toilet == 60, $"and fills the bladder by ITS OWN amount ({drink.Toilet}, was 20)");
+        // ⚠ THE CONTROL THAT SEPARATES THE ARMS. The same numbers on the food arm must do the
+        // opposite to thirst -- if this matched the line above, Product would not be selecting.
+        var asFood = Bought(price: 30, hunger: 0, thirst: 40, product: VisitorNeeds.Food);
+        Check(asFood.Thirst == 90, $"while the food arm RAISES it on the same numbers ({asFood.Thirst})");
+
+        // ⭐ Balloons take no litter and touch no need -- a trinket is not a meal.
+        var balloon = Bought(price: 45, hunger: 0, thirst: 0, product: VisitorNeeds.Trinket);
+        Check(balloon.Litter == 0, $"a balloon drops no litter ({balloon.Litter})");
+        Check(balloon.Hunger == 50 && balloon.Thirst == 50 && balloon.Toilet == 20,
+              $"and leaves every need alone (h{balloon.Hunger} t{balloon.Thirst} b{balloon.Toilet})");
 
         var icecream = Bought(price: 30, hunger: 15, thirst: 5);
         // ⚠⚠ THE SIGN. Ice cream's own thirst is 5, and it must go UP. Subtracting would read 45.

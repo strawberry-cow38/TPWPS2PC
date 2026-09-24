@@ -154,6 +154,11 @@ public sealed class VisitorNeeds
     /// **30** from the image and loaded at `0x20E504`. ⚠ Not the authored `LitterEffect`.</summary>
     public const int LitterBase = 30;
 
+    /// <summary>The compiled `Product` byte, which is the purchase path's switch selector --
+    /// verified against the compiled rows: burger 0, drinks 1, costume 2, balloon 3, ice cream 4,
+    /// gift 6. ⚠ NOT the authored `UsageInfo.ShopType`.</summary>
+    public const int Food = 0, Drink = 1, Costume = 2, Trinket = 3;
+
     /// <summary>⭐⭐ WHY THE COMPILED HAPPINESS IS THE PAYOUT AT DEFAULTS. The console scales it by
     /// `(q1 - q2/15) / 100`, and shop setup explicitly writes **q1 = 100, q2 = 0** at
     /// `0x1D1870/7C` -- so the scale is `(100 - 0)/100 = 1` and a new shop pays its compiled base
@@ -358,36 +363,59 @@ public sealed class VisitorNeeds
     /// that reads oddly and is right: the hunger reduction is subtracted from hunger AND added to
     /// the toilet.</summary>
     public bool Buy(int guest, int price, int hungerReduction, int thirstReduction,
-                    int happinessEffect, int vomitIncrease)
+                    int happinessEffect, int vomitIncrease, int product = Food)
     {
         if (!_byGuest.TryGetValue(guest, out var w)) return false;
         // ⚠⚠ AFFORDABILITY FIRST, AND IN THE SAME x10 UNITS. `0x20E1A0` gates the WHOLE block on
         // `price * 10 <= cash` -- so a guest who cannot afford it does not pay, and does not eat
         // either. Applying the effects and letting cash go negative would feed the park for free
-        // and look like generosity rather than a missing guard. astraclaw asked for this to be
-        // kept with the tenfold debit; they are one change, not two.
+        // and look like generosity rather than a missing guard.
         if (w.Cash < price * 10) return false;
-        // ⚠⚠ TEN TIMES THE PRICE. `0x20E1A0` does `cash += price * -10`, and cash is kept in the
-        // same x10 units the spawn seeds it in (`(rand(300)+200) * 10`). This charged the bare
-        // price and undercharged every purchase by an order of magnitude.
         w.Cash -= price * 10;
-        w.Hunger = Clamp(w.Hunger - hungerReduction);
-        // ⭐ The toilet rises by the HUNGER amount, traced rather than assumed: the default arm
-        // re-reads the same `+0x1ec` getter for `+0x79` that it subtracted from `+0x77`.
-        w.Toilet = Clamp(w.Toilet + hungerReduction);
-        // ⚠⚠ EATING MAKES YOU THIRSTIER -- IT DOES NOT QUENCH YOU. The console ADDS the shop's own
-        // thirst value to `+0x7a` (getter `+0x1e4`); this subtracted it, so every purchase was
-        // slaking a thirst the game intends to create. astraclaw verified the getter mapping
-        // (`+1E4` thirst, `+1EC` hunger) and that ice cream raises thirst by its own 5 rather
-        // than by any function of its hunger 15.
-        w.Thirst = Clamp(w.Thirst + thirstReduction);
-        w.Happiness = Clamp(w.Happiness + happinessEffect);
-        w.Sick = Clamp(w.Sick + vomitIncrease);
-        // ⭐ LITTER, and its base is READ: `DAT_002EEB60` is 30 in the image, loaded at
-        // `0x20E504` and added to `rand(25)`. ⚠ It is NOT the .sam's `LitterEffect` (50 for a
-        // burger) -- I had assumed the authored field and astraclaw found the actual byte, which
-        // is the third time tonight the authored text was not what runs.
-        w.Litter = Clamp(w.Litter + LitterBase + Rand(25));
+
+        // ⭐⭐ THE COMPILED PRODUCT SELECTS THE ARM, and it must: adding thirst unconditionally
+        // feeds a burger correctly and makes a DRINK SHOP raise thirst too, which is the exact
+        // regression astraclaw caught in the previous patch. Food and drink are MIRRORS -- each
+        // lowers the need it serves, raises the other, and adds ITS OWN amount to the bladder.
+        // ⚠ Selected on the compiled `Product` byte, never on the authored `ShopType` and never
+        // on which effect happens to be larger.
+        switch (product)
+        {
+            case Food: case 4: case 5:
+                w.Hunger = Clamp(w.Hunger - hungerReduction);
+                w.Toilet = Clamp(w.Toilet + hungerReduction);
+                w.Thirst = Clamp(w.Thirst + thirstReduction);
+                w.Sick = Clamp(w.Sick + vomitIncrease);
+                w.Happiness = Clamp(w.Happiness + happinessEffect);
+                w.Litter = Clamp(w.Litter + LitterBase + Rand(25));
+                break;
+            case Drink:
+                w.Thirst = Clamp(w.Thirst - thirstReduction);
+                w.Toilet = Clamp(w.Toilet + thirstReduction);
+                w.Hunger = Clamp(w.Hunger + hungerReduction);
+                w.Sick = Clamp(w.Sick + vomitIncrease);
+                w.Happiness = Clamp(w.Happiness + happinessEffect);
+                w.Litter = Clamp(w.Litter + LitterBase + Rand(25));
+                break;
+            case Costume:
+                // ⭐ A costume shop CHANGES WHO YOU ARE: the arm writes `guest[0x7d] = 8`, the
+                // personality index, so the guest leaves wanting a different kind of ride.
+                // ⚠ Index 8 is the row whose length I once used to bound the table at eight.
+                w.PreferredIntensity = Preferences.Length > 8 ? Preferences[8] : w.PreferredIntensity;
+                w.Happiness = Clamp(w.Happiness + happinessEffect);
+                break;
+            case Trinket: case 6:
+                // Balloons and the gift shop: happiness and nothing else. No litter, no needs.
+                w.Happiness = Clamp(w.Happiness + happinessEffect);
+                break;
+            default:
+                // ⚠⚠ ARM 7 IS NOT MODELLED. It does `+0x7a += n / 15` and the getter supplying
+                // `n` has not been identified, so a guest pays and receives NOTHING rather than
+                // receiving a number I made up. Loud by omission; astraclaw's controls will see
+                // it as a shop that does nothing, which is the truth about this port.
+                w.Happiness = Clamp(w.Happiness + happinessEffect);
+                break;
+        }
         _byGuest[guest] = w;
         return true;
     }

@@ -522,8 +522,13 @@ public sealed class ParkVisitors
             // here rather than in a findings file because this is the line that spends it.
             // ⚠ Only a purchase that HAPPENED counts: Buy refuses when the guest cannot afford
             // it, and a counter that ticked anyway would report a trade that never occurred.
+            // ⚠ The COMPILED product picks the arm. A definition with no compiled record falls
+            // back to Food, which is what this did before the arms existed -- stated rather than
+            // silently defaulted, because a drink shop landing on the food arm raises the thirst
+            // it is supposed to quench.
             if (Needs.Buy(guest, def.PricePerUse ?? 0, def.HungerEffect ?? 0, def.ThirstEffect ?? 0,
-                          def.HappinessEffect ?? 0, def.VomitEffect ?? 0)) Purchases++;
+                          def.HappinessEffect ?? 0, def.VomitEffect ?? 0,
+                          def.Compiled?.Product ?? VisitorNeeds.Food)) Purchases++;
             return;
         }
         Needs.Ride(guest, RideIntensity, RideHappiness, RideSickScale, RideBoredomScale);
