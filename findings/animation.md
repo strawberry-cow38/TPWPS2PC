@@ -1477,7 +1477,15 @@ was sampling all 1,468 as Catmull-Rom. Corners that should be square were rounde
 should be straight were bent. The `.rss`-era comment in this file calling `FUN_001ade90` "a textbook
 Catmull-Rom, verbatim" was right about that function and wrong about which paths reach it.
 
-## ⚠⚠ THE `+0x1c` PATH IS NOT IN THE FILE AT ALL
+## RETRACTED: the claim that `+0x1c` has no on-disc data
+
+**September24 correction:** the loader and bus consumer are now traced in
+[bus-model-path-channel.md](bus-model-path-channel.md). MPS header+78 is an authored
+16-byte curve-descriptor table, relocated by169AA0; APS track+1C references float
+progress samples. The old conclusion below confused a relocated pointer with data
+not present in the files. Do not use it as an implementation boundary.
+
+### Historical misreading (retained to identify the reasoning error)
 
 Branch B of the same dispatch:
 
@@ -1489,8 +1497,9 @@ FUN_001ae450(**(void**)(track + 0x1c), now, &frac, *p & 1);
 `track+0x1c` is a pointer **to a pointer**, and the curve itself comes out of a runtime table on the
 player object, indexed by a u16 stored on the NODE. These are the paths the **player lays down** —
 which is why every carrier is a vehicle: `haunt`, `seaplane`, `bus1`, `bus2`, `bellt`, `ferry`,
-`gokarts`. A model viewer has no park, so it has nothing to put them on. **Not a decode gap: there
-is nothing in the file to decode.**
+`gokarts`. A model viewer has no park, so it has nothing to put them on. **RETRACTED:** this was a decode gap, not proof of absence. The loader now establishes
+the on-disc MPS curve and APS progress data; the vehicle census alone never proved
+player-authored runtime paths.
 
 Same tail for both branches, and it confirms two things the viewer now does:
 `if ((state & 4) == 0) node.pos = sampled; else node.pos += sampled;` — the path REPLACES the node's

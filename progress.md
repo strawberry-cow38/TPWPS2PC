@@ -1740,3 +1740,36 @@ incorrectundefined8 grouping; param20semanticsstillunnamed. Global2ABE18 ELFvalu
 (parentread), no directwritecensusdoesNOTexcludealias/factory/block initialization.
 Askedpeer bounded106F80handler andaddress-of-globaltrace, in-memorydisc only; noIRX
 copyrequested/used. Audio workremainscow'slane, buspopulation/visualcontrollerours.
+
+## Bus binding prerequisites and actual renderer blocker — September24 14:45 UTC
+
+This turn3workers tracedcapacity tables,root/section12drawing,entrance-groupcounts.
+Docs bus-capacity-tables.md,bus-native-visual.md,bus-entrance-groups.md. No gameplaycode.
+Capacitytables havepositiveinitializer158CF0 andnormaldenominators12/12,12/13,10/11,11/12;
+not allSAMs/unlocked-only. Need exactscenarioselector/placementordinalbinding next.
+W counts actualintrusiveguestlists via1527C8/152A18, NOT guessedlanes/Walkcount; upstream
+modes14/15 andgroupsmembership/removal stillneedintegration. Activegroupupdates precede
+2EEB9Creset, so do not turnguestA4 into a simplepathfailureflag.
+
+ParentfoundMAINVISUALBLOCKER: Busbodytracks0x200, whileAnimatedModel onlyapplies+10 paths.
+Existing animation.md wronglyclaimed+1Cdataabsent. Corrected loadertrace169B3C->model+78,
+countu16+2C,stride16,168728 relocatespoints. BusMPSfirstdescriptorflags2,45floatXYZpoints.
+APS+1C->pointer->FLOATprogresssamples, nottime-keyarray. ConsumerreadsPARENTnode+52,
+notcurrentmesh+52; bodyparent3D0 flags80000058,index0. Correctedowninitialmeshzerosreading.
+MPSboundidentityrendererroot isidentity; six1476E0floats arecullingbounds notplacement.
+Section12cleanup: decoderUNKNOWN loadsat1AA734 actuallys5(source),nots4(instance), so
+1704F0 restoresbind/source matrix. No needinventrootVisible=false orholdendframe.
+
+Modelpathsamplerboundaries nowdocumented bus-model-path-channel.md:1AE450 interpolates
+percentagefloatssampledperframe, shortestwrapwhenabsdelta>50, exactdurationuseslastsample
+(notonepast). 28CC90confirmedfmod byliteralerrorname37C1B0. Callerfmod(progress+1000,100).
+Curveflags1topology,2Bezier,8linear;45/3=15controlknots butflag1CLEAR=>14spans. Peerclosed-
+loop inference retractedagainstcaller1A8444; don't implement15spansjustbecause45divisible3.
+NEXT boundedproductionwork: finish0x400facing/0x800 interaction thenimplementmodelcurve+
+APSprogress reader AND AnimatedModel consumer withrealbusmotion/controlpaths, notpure
+unusedhelper. Thisalso fixesother96trackcarriers; don'treuse dead+10orientlogicwithoutread.
+Buscontroller/headcountintegration followsactualpathplayback, notanartificialmovingroot.
+
+Peer a90c2db namesaudioselector20 viaAMBSFX.MAPevent6 word12=20,links0..50/51..100;
+retainedexacttargetindexbaseunknown. Cowownsaudio/screams; our0x200reader+facinglane separate.
+All3delegates used thisturn. Branchworkingtreecleanaftercommit; originaldirtyworktreesuperseded.
