@@ -1675,6 +1675,7 @@ public partial class Viewer : Node3D
         _paths = null;
         // ⚠ The walk grid and the guests belong to the park that is going, not the one coming. The
         // grid was never reset before this, so a second map walked the first map's ground.
+        ResetNativeBus();
         ResetGuests();
         _walkGrid = null;
         // ⭐ AND THE SIM WITH IT: it was made on that grid, and its rides stood on that park.
@@ -3191,7 +3192,7 @@ public partial class Viewer : Node3D
     /// <summary>The mouth cells, or null before the gate has been looked for.</summary>
     List<ParkCell> _mouth;
     bool _gateClosed;
-    int _gateTimer, _gateEvery = 50, _guestCap = 12;
+    int _gateEvery = 50, _guestCap = 12; // legacy capture options; only cap0 still disables auto-admission
     /// <summary>⚠ Seeded, so the same park with the same path gets the same crowd every run --
     /// which is what lets a capture's numbers be compared with the last capture's.</summary>
     Random _guestRng = new(1);
@@ -3215,7 +3216,7 @@ public partial class Viewer : Node3D
         _actors.Clear(); _drawn.Clear(); _parts.Clear(); _headOnly.Clear(); _posed.Clear(); _guestPrev.Clear(); _guestDwell.Clear();
         _walkRec.Clear(); _gaitFrom.Clear(); _gaitRec.Clear(); _idles.Clear(); _idleSince.Clear();
         _guestPool = null; _guestPoolLaid = -1; _guestPoolAt = -1; _guestAt = null; _guestLabel = null;
-        _gateTimer = 0; _guestRng = new Random(1); _guestStage = 0; _guestSince = 0; _guestTestRide = null;
+        _guestRng = new Random(1); _guestStage = 0; _guestSince = 0; _guestTestRide = null;
         _parkTicks = 0;
         _parkClock.Reset();
     }
@@ -3255,8 +3256,11 @@ public partial class Viewer : Node3D
     /// them.</summary>
     void StepPark(double delta)
     {
+        _busElapsedMs += delta * 1000;
         int ticks = _parkClock.Advance(delta);
-        for (int i = 0; i < ticks; i++) TickPark();
+        _busClockAdvancedForFrame = true;
+        try { for (int i = 0; i < ticks; i++) TickPark(); }
+        finally { _busClockAdvancedForFrame = false; }
         // ⚠⚠ PRESENT BEFORE PLACING, NOT AFTER -- THIS ORDER IS THE RIDERS' ONE-FRAME LAG.
         // PlaceActors -> SeatRiders -> SeatPose reads `model.LastWorld`, and `LastWorld` is only
         // written by `model.SetFrame()` inside PresentScripted. Placing first therefore seats
@@ -3282,6 +3286,8 @@ public partial class Viewer : Node3D
     void TickPark()
     {
         _parkTicks++;
+        if (_sim == null && _terrainModel?.Field != null && WalkGrid() is {} liveGrid)
+            _sim = new ParkSim(liveGrid);
         // ⭐ One call per EXECUTED tick, so a scenery repeat interval counts park time even when
         // a long frame makes the sim fall behind the wall clock. See RideSounds.AdvanceSim.
         _sounds?.AdvanceSim(ParkSim.TickMilliseconds / 1000.0);
@@ -3312,34 +3318,15 @@ public partial class Viewer : Node3D
         }
         if (_visitors != null)
         {
-            Gate();
             Snapshot();
             _visitors.Step(ConsoleClock.TickSeconds, Wander);
             Retry();
+            TickNativeBus(); // batch admission follows the guest update, not an independent timer
             return;
         }
-        if (OpenGate()) { Gate(); Snapshot(); _guests.Step(); Dawdle(); }
+        if (OpenGate()) { Snapshot(); _guests.Step(); Dawdle(); }
         _sim?.Advance(ConsoleClock.TickSeconds);
-    }
-
-    /// <summary>The gate lets somebody in: one guest per <see cref="_gateEvery"/> ticks while
-    /// there is a laid cell to go to and room for more.</summary>
-    void Gate()
-    {
-        // ⚠ THE WHOLE POPULATION, not the walkers: a queued or riding guest is off the walk, and
-        // counting only the walk let the gate admit a new guest for every one that joined a
-        // queue -- ninety-three boardings and a forty-four-deep queue in three minutes.
-        int population = _guests.Guests.Count
-                       + (_visitors?.Plans.Values.Count(p => p.Intent == VisitorIntent.Queued) ?? 0);
-        if (population >= _guestCap || ++_gateTimer < _gateEvery) return;
-        var pool = GuestPool();
-        if (pool.Count == 0) return;
-        _gateTimer = 0;
-        var at = _mouth[_guests.Guests.Count % _mouth.Count];
-        var to = pool[_guestRng.Next(pool.Count)];
-        var g = _visitors != null ? _visitors.Arrive(at, to) : _guests.Spawn(at, to);
-        GD.Print($"[guest] #{g.Id} in at {at}, bound for {g.Destination}: {g.State}"
-               + (g.Route != null ? $", {g.Route.Count - 1} cells" : $" -- {g.Reason}"));
+        TickNativeBus();
     }
 
     void Snapshot()
@@ -4216,7 +4203,7 @@ public partial class Viewer : Node3D
         // everyone was queued or riding by three minutes and the moved-metric had nobody on the
         // paths to compare. A busier park is a park; a guest who chooses to wander instead of ride
         // would be a behaviour nobody has read, so the cap goes up rather than the policy.
-        _guestCap = 28; _gateEvery = 20; _gateTimer = _gateEvery - 1;
+        _guestCap = 28; _gateEvery = 20; // legacy capture knobs; native bus owns admission timing
         if (!OpenGate()) { GD.Print("[guest] the gate would not open, so there is nobody to photograph"); return; }
         GuestTestRide(xl, z0);
     }
@@ -5274,6 +5261,7 @@ public partial class Viewer : Node3D
         // to the entry/exit points". Registered BEFORE the floor is redrawn so the first draw
         // already has them. Every ride gets a fresh id so two rides' doors never read as one.
         int ride = ++_rideSerial;
+        RegisterBusPlacement(model,ride,_place.Def);
         // ⚠ CAPTURED BEFORE THE PRESS DROPS THE BLUEPRINT, and handed to the sim below: the
         // queue stub is where a guest goes to join this ride and the path stub is where the script
         // hands them back, so a ride that started without them could never take anybody.
