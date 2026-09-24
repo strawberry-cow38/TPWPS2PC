@@ -2698,6 +2698,9 @@ public partial class Viewer : Node3D
         // byte's worth of change.
         _walkGrid.Field.Cells = _terrainModel.Field.Cells;
         GD.Print($"[walk] entrance: {_walkGrid.SetEntrance(_entranceTable)}");
+        // ⭐ The grid now knows the gate's hold, and the gate may already have been placed -- so
+        // apply it here too. Whichever of the two runs last, the park ends up fenced.
+        ReserveGateHold();
         return _walkGrid;
     }
 
@@ -6061,6 +6064,31 @@ public partial class Viewer : Node3D
     /// the gate's z and put it in the sea. The zone is drawn FROM the data and the gate is placed
     /// by its own measured bounds, so the two are independent -- if the log below shows them
     /// disagreeing, that is the gate's placement being measured, not the zone being wrong.</summary>
+    /// <summary>⭐⭐⭐ THE GATE'S ACTUAL NO-BUILD ZONE: the 8x2 on the park's first two rows.
+    /// Master, four times: "gate should be 8x2 (inside the park, the first tiles against that
+    /// middle inset)". Measured on JUNGLE the walkway ends at z 18 and this covers x 26..33,
+    /// z 19..20 -- sixteen cells, with the protected 2x2 of path in the middle of them.
+    ///
+    /// ⚠⚠ IT LIVES HERE AND NOT IN <see cref="PlaceGateNoBuild"/> BECAUSE OF CALL ORDER. That
+    /// runs while the gate is placed, before <see cref="WalkGrid"/> has fitted an entrance, so
+    /// asking it for the hold there got zero cells -- the zone silently never existed while the
+    /// audit, which builds its own grid, went on passing.
+    ///
+    /// ⭐ Idempotent: `Reserve` only sets bits, so calling it from both the gate placement and
+    /// the grid build costs nothing and means neither order can leave the park open.</summary>
+    void ReserveGateHold()
+    {
+        if (_park == null || _park.Width <= 0) return;
+        var grid = _walkGrid;                 // ⚠ NOT WalkGrid(): never build the grid from here
+        if (grid == null || grid.GateHold.Count == 0) return;
+        int n = 0;
+        foreach (var c in grid.GateHold) n += _park.Reserve(c.X, c.Z, 1, 1);
+        if (n > 0)
+            GD.Print($"[gate.zone] the 8x2 inside the park now refuses a build: {n} cells, "
+                   + $"x {grid.GateHold.Min(c => c.X)}..{grid.GateHold.Max(c => c.X)}, "
+                   + $"z {grid.GateHold.Min(c => c.Z)}..{grid.GateHold.Max(c => c.Z)}");
+    }
+
     void PlaceGateNoBuild(RideDefinition def, Vector3 lo, Vector3 hi, float shift, float dz)
     {
         _gateBox?.Hide();
@@ -6076,29 +6104,21 @@ public partial class Viewer : Node3D
         // ⚠⚠ TWO NO-BUILD SYSTEMS HAD GROWN UP SEPARATELY: `ParkPaths.GateHold`, which the audit
         // checks and `game/` never read, and `Park.Reserve`, which the game obeys and the gate
         // hold never reached. They are joined here, from the one geometry, so they cannot drift.
-        // ⚠ The authored `EngineFootprint` rectangle is reserved too, but it is NOT the zone and
-        // is no longer drawn or reported as one. It is 6x3 at MapOffsetY 16 -- rows 16,17,18 --
-        // and the park's first row is 19, so every cell of it is WALKWAY, which was never
-        // buildable anyway. Keeping it costs nothing; presenting it as the gate's no-build area
-        // is what made this look fixed three times over.
-        int approach = 0;
-        if ((def?.NoBuildWidthOverride ?? 0) > 0 && (def?.NoBuildHeightOverride ?? 0) > 0)
-            approach = _park.Reserve((def.MapOffsetX ?? 0) + Mathf.RoundToInt(shift), def.MapOffsetY ?? 0,
-                                     def.NoBuildWidthOverride.Value, def.NoBuildHeightOverride.Value);
-
-        // ⭐⭐⭐ THE ZONE IS THE 8x2, and it is the same cells ParkPaths already holds. Master,
-        // four times now: "gate should be 8x2 (inside the park, the first tiles against that
-        // middle inset)". Reserved, DRAWN and LOGGED from one geometry, so what you see, what
-        // refuses a build and what the audit checks cannot disagree again.
-        if (WalkGrid() is not { } walk || walk.GateHold.Count == 0)
+        // ⚠⚠ THE BOX IS DRAWN FROM THE AUTHORED RECTANGLE, AS IT ALWAYS WAS. Master: "KEEP the
+        // selection box. as it was." A previous attempt drew it from the gate hold instead and
+        // returned early when the walk grid was not built yet -- which, at the moment a gate is
+        // placed, it is not. That removed the box entirely AND reserved nothing. Do not make this
+        // function depend on the grid; the 8x2 is applied in ReserveGateHold, from WalkGrid,
+        // where the fitted entrance is known to exist.
+        int w = def?.NoBuildWidthOverride ?? 0, h = def?.NoBuildHeightOverride ?? 0;
+        if (w <= 0 || h <= 0)
         {
-            GD.Print("[gate.zone] no fitted entrance -- no gate zone");
+            GD.Print("[gate.zone] this Gates.sam states no EngineFootprint override -- no zone");
             return;
         }
-        int x0 = walk.GateHold.Min(c => c.X), y0 = walk.GateHold.Min(c => c.Z);
-        int w = walk.GateHold.Max(c => c.X) - x0 + 1, h = walk.GateHold.Max(c => c.Z) - y0 + 1;
-        int cells = 0;
-        foreach (var c in walk.GateHold) cells += _park.Reserve(c.X, c.Z, 1, 1);
+        int x0 = (def.MapOffsetX ?? 0) + Mathf.RoundToInt(shift), y0 = def.MapOffsetY ?? 0;
+        int cells = _park.Reserve(x0, y0, w, h);
+        ReserveGateHold();
         var (centre, rw, rh) = FootprintRect(x0, y0, w, h);
         // ⚠ Tall enough to enclose the arch: a flat ring on the floor is not what the console
         // draws, and the box's own shape (a pulled-out cube) only reads as one at height.
@@ -6121,13 +6141,12 @@ public partial class Viewer : Node3D
         _gateCell = (x0 + w / 2, y0 + h / 2);
         _gateBox.Root.Visible = false;
         float gx = (lo.X + hi.X) * 0.5f + shift, gz = (lo.Z + hi.Z) * 0.5f + dz;
-        GD.Print($"[gate.zone] {w}x{h} cells at grid ({x0},{y0}) -- the park's own first rows, "
-               + $"from the entrance fit; the .sam's {def?.NoBuildWidthOverride}x{def?.NoBuildHeightOverride} "
-               + $"approach rectangle reserved {approach} further cells of walkway\n"
+        GD.Print($"[gate.zone] {w}x{h} cells at grid ({x0},{y0}) -- .sam offset ({def.MapOffsetX},"
+               + $"{def.MapOffsetY}) shifted {Mathf.RoundToInt(shift):+0;-0;0} in x\n"
                + $"[gate.zone] world x {centre.X - rw * 0.5f:F2}..{centre.X + rw * 0.5f:F2}  "
                + $"z {centre.Z - rh * 0.5f:F2}..{centre.Z + rh * 0.5f:F2}; {cells} of {w * h} cells "
                + "are on the plot and now refuse a build"
-               + (cells == w * h ? "\n" : $"; the other {w * h - cells} are off it\n")
+               + (cells == w * h ? "\n" : $"; the other {w * h - cells} are off it, on the walkway\n")
                + $"[gate.zone] the gate itself is centred ({gx:F2}, {gz:F2}); the zone is centred "
                + $"({centre.X:F2}, {centre.Z:F2}) -- off by ({gx - centre.X:+0.00;-0.00;0}, "
                + $"{gz - centre.Z:+0.00;-0.00;0}). The zone is READ, the gate is TUNED.");
