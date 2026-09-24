@@ -268,6 +268,14 @@ public partial class ShopServiceSmoke : Node3D
                 file.Write(png);
                 Require(camera.GlobalTransform == fixedCamera, "same camera for " + System.IO.Path.GetFileName(path));
                 GD.Print("SHOP SMOKE capture=" + path);
+                var physical=visitors.Walk.Guests.FirstOrDefault(g=>g.Id==guestId) ?? guest;
+                var point=physical.Position;
+                var physicalWorld=(Vector3)Call(viewer,"GuestWorld",new Vector3(point.X,point.Y,point.Z),physical.Cell);
+                var actors=Field<Dictionary<int,Node3D>>(viewer,"_actors");
+                var actorWorld=actors.TryGetValue(guestId,out var actor) && Live(actor) ? actor.GlobalPosition : new Vector3(float.NaN,float.NaN,float.NaN);
+                GD.Print($"SHOP SMOKE POSITION frame={System.IO.Path.GetFileName(path)} cell={physical.Cell} next={physical.Next} progress={physical.Progress} "
+                    + $"physicalWorld={physicalWorld} actorWorld={actorWorld} compiledEntryWorld={standWorld} "
+                    + $"actorMinusPhysical={actorWorld-physicalWorld} actorMinusEntry={actorWorld-standWorld}");
             }
             int Bodies(string phase)
             {

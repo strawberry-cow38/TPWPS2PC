@@ -1434,3 +1434,16 @@ LastWorld (hierarchy track diagnostic absent for this skeletal path); it failed2
 sampler, replaced with actual Record + mesh motion checks, no renderer workaround. Failed
 captures preserved. Need peer review, remaining rendered controls/mutations, then land movement
 only after fresh merge/tests. Tests/code shared by pushed branch, images may be attached.
+
+Movement peer review at765138e: directed-entry guards and literal rotation oracle accepted.
+Image review distinguishes visible displacement/bubble clearing from alignment; requested
+numeric per-capture positions. Added logs: actorMinusPhysical=(0,0,0) throughout; relative to
+independent placed/compiled entry, approach at480/1000 is+0.520004, service0, departure480 is
++0.480003 (worldZ; X drift<0.000002). Normalstartup log ../tpw-terminal-positions.log.
+Render mutations /tmp/tpw-terminal-render-mutations: restoring SAM fractional jump fails only
+service endpoint; freeze gait atframe0 fails actual leg-mesh animation. Both restored.
+Final five-frame/actual-animation runs allpass: JUNGLE4rotations,HALLOW,SPACE,FANTASY,Coconut;
+/tmp/tpw-terminal-reviewed-captures plus JUNGLE../tpw-terminal-fiveframe-jungle-v2.log.
+Plan revised: prioritize traced movement/selection over release sweeps; next investigate actual
+native weighted destination scorer/conditional history, not arbitrary blacklists or more generic
+service tests. Other facility kinds' entrance consumers still need their own trace.
