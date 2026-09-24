@@ -21,10 +21,73 @@ public partial class TextureAnimationAudit : Node
             // Texture-only APS records (no geometry tracks) must have a clock and animate too.
             RunLights(lib);
             RunViewerClock(lib);
+            RunScrollingTextures(lib);
             GD.Print($"TEXTURE BINDING PASS: {_checks} surface checks across five models / four worlds");
             GetTree().Quit(0);
         }
         catch (Exception ex) { GD.PrintErr("TEXTURE BINDING FAIL: " + ex); GetTree().Quit(2); }
+    }
+
+    /// <summary>The scrolling-texture subsystem, end to end in a live Godot.
+    ///
+    /// ⭐⭐ THIS EXISTS FOR ONE FAILURE IN PARTICULAR. The clock is a `global uniform`, and a
+    /// global uniform whose parameter was never registered does not error -- it reads ZERO
+    /// FOREVER, so every moving texture simply stands still and looks exactly like a feature
+    /// that was never written. The data audit cannot see that; only a running engine can.</summary>
+    void RunScrollingTextures(AssetLibrary lib)
+    {
+        Ps2Materials.TextureTime = 0f;
+        Ps2Materials.TextureTime = 4.25f;
+        if (Mathf.Abs(Ps2Materials.TextureTime - 4.25f) > 0.001f)
+            throw new Exception($"texture clock did not round-trip: {Ps2Materials.TextureTime}");
+
+        // The animated shader must actually expose the two knobs the C# sets.
+        var probe = Ps2Materials.Animated(null, false, "cull_back", new Vector2(0f, 0.4f), 0.9f, Vector3.Zero);
+        var names = new System.Collections.Generic.HashSet<string>();
+        foreach (var u in probe.Shader.GetShaderUniformList())
+            names.Add(((Godot.Collections.Dictionary)u)["name"].AsString());
+        foreach (var want in new[] { "uv_scroll", "uv_spin", "water_wave" })
+            if (!names.Contains(want)) throw new Exception($"animated shader has no `{want}` uniform");
+        if ((float)probe.GetShaderParameter("uv_spin") != 0.9f) throw new Exception("uv_spin did not set");
+        // ⭐⭐ THE CHECK THAT MATTERS, and the one the global-uniform version failed: the clock
+        // must ARRIVE AT A MATERIAL. A TextureTime that only remembers its own number is exactly
+        // what a frozen river looks like from the outside.
+        Ps2Materials.TextureTime = 7.5f;
+        if ((float)probe.GetShaderParameter("uv_time") != 7.5f)
+            throw new Exception($"clock did not reach the material: {probe.GetShaderParameter("uv_time")}");
+        _checks += 3;
+
+        // ⭐ The deliverable itself: the JUNGLE Coconut's drink is a centred spiral and must come
+        // out of AnimatedModel with a spin on the surface wearing `cn_nut2a`, and no spin on the
+        // husk beside it. Master: "the 'liquid' in the coconut should twist".
+        lib.OpenWad("/DATA/JUNGLE.WAD");
+        var entry = lib.Wad.Entries.First(e => e.Path.EndsWith("Shops/Coconut/coconut.mps", StringComparison.OrdinalIgnoreCase));
+        var model = new Model(lib.Read(entry));
+        var built = new AnimatedModel(model, null, null, n =>
+        {
+            var img = lib.TextureNear(entry.Path, n);
+            return (img == null ? null : ImageTexture.CreateFromImage(
+                Image.CreateFromData(img.Width, img.Height, false, Image.Format.Rgba8, img.Pixels)), false);
+        });
+        try
+        {
+            if (built.MovingSurfaces == 0) throw new Exception("coconut has no moving surface");
+            int spun = 0, still = 0;
+            foreach (var (mesh, material, node) in built.Surfaces())
+            {
+                string tex = model.Materials[material] ?? "";
+                float spin = node.MaterialOverride is ShaderMaterial sm
+                    && sm.Shader.GetShaderUniformList().Count > 0
+                    && sm.GetShaderParameter("uv_spin").VariantType != Variant.Type.Nil
+                    ? (float)sm.GetShaderParameter("uv_spin") : 0f;
+                if (TextureMotion.IsSwirl(tex)) { if (spin == 0f) throw new Exception($"{tex} does not spin"); spun++; }
+                else { if (spin != 0f) throw new Exception($"{tex} spins and should not"); still++; }
+            }
+            if (spun != 1) throw new Exception($"expected exactly one swirl surface, found {spun}");
+            GD.Print($"SCROLLING TEXTURE PASS: clock round-trips, {spun} swirl and {still} still surfaces on the Coconut");
+            _checks += spun + still;
+        }
+        finally { built.Root.Free(); probe.Dispose(); }
     }
 
     void Run(AssetLibrary lib, string world, string path, int slot, int count, int interval, Func<int, string> name)

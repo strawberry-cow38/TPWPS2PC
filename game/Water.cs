@@ -49,7 +49,11 @@ public sealed class Water
     public int Surfaces => _moving.Count;
     public string Report { get; private set; } = "no water";
 
-    static readonly string[] WaterTextures = { "wr_water", "jri_sur", "jri_lak", "justwater" };
+    /// <summary>⭐⭐ SHARED WITH THE MODELS, and it now includes `dk_water`. The stem list lives in
+    /// <see cref="TextureMotion.WaterStems"/> so the terrain and a placed shop cannot disagree
+    /// about what water is -- they did, and the shadowed water under the jungle bridge is what
+    /// fell through the gap. See that type for the correlation measurement.</summary>
+    static string[] WaterTextures => TextureMotion.WaterStems;
 
     /// <summary>Replace the water surfaces' materials with moving ones. ⚠ Takes the surfaces as
     /// the model built them, so a surface this does not recognise keeps exactly what it had.</summary>
@@ -125,10 +129,7 @@ public sealed class Water
         => float.TryParse(System.Environment.GetEnvironmentVariable(key), out var v) ? v : fallback;
 
     /// <summary>Move it. ⭐ Fed the console's own clock, like everything else that moves.</summary>
-    public void Advance(float seconds)
-    {
-        foreach (var m in _moving) m.SetShaderParameter("water_time", seconds);
-    }
+    public void Advance(float seconds) => Ps2Materials.TextureTime = seconds;
 
     /// <summary>What the surfaces actually hold, and where they are. ⚠ A frame diff that shows
     /// nothing moving cannot tell "the water is not advancing" from "the water is off screen";
@@ -139,8 +140,8 @@ public sealed class Water
         // ⚠ The surfaces no longer all share a scroll, so report the SPREAD rather than the
         // first one -- quoting one material's vector as "the" scroll is how a sea and a river
         // going different ways would read as a single number.
-        float t = (float)_moving[0].GetShaderParameter("water_time");
-        var vectors = _moving.Select(m => (Vector2)m.GetShaderParameter("water_scroll")).ToList();
+        float t = Ps2Materials.TextureTime;
+        var vectors = _moving.Select(m => (Vector2)m.GetShaderParameter("uv_scroll")).ToList();
         var scroll = vectors[0];
         string spread = string.Join(" ", vectors.Select(v => $"({v.X:F3},{v.Y:F3})").Distinct());
         var box = new Aabb();

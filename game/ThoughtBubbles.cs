@@ -148,9 +148,17 @@ public sealed class ThoughtBubbles
                 Billboard = BaseMaterial3D.BillboardModeEnum.Enabled,
                 Shaded = false,
                 Transparent = true,
-                // ⚠ The bubble belongs to the guest under it, so it must not be hidden by the
-                // crowd in front: the console draws them over everything.
-                NoDepthTest = true,
+                // ⚠⚠ DEPTH-TESTED, and the comment this replaces was an UNSOURCED CLAIM. It read
+                // "the console draws them over everything" and cited nothing -- no address, no
+                // capture -- so it was an assumption wearing the voice of a reading. Master,
+                // looking at the running game: "make thought bubbles not render on top of
+                // everything."
+                //
+                // ⭐ A bubble is a thing standing in the park at the guest's position, so the
+                // ride in front of it should occlude it like anything else. What the old flag
+                // bought was never being hidden by the crowd; what it cost was a bubble floating
+                // through solid buildings, which is the more obviously wrong of the two.
+                NoDepthTest = false,
                 TextureFilter = BaseMaterial3D.TextureFilterEnum.Linear,
                 RenderPriority = 2,
                 // ⭐⭐ MIRRORED. Master, looking at one: "the needs bubbles need to be bigger and

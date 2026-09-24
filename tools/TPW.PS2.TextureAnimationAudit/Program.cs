@@ -101,6 +101,52 @@ try
     Console.WriteLine($"Multi-texture choices: {choices - missing}/{choices} decoded through AssetLibrary");
     Console.WriteLine($"APS: {apsFiles} files, {records} texture records, {tracks} tracks, {keys} keys");
     Console.WriteLine($"Sampler: {sampled} distinct boundaries; {paired} track/model range checks; {failures} failures");
+    // ---- Scrolling textures: which surfaces MOVE -------------------------------------------
+    // ⭐⭐ THESE ARE CONTROLS, NOT DECORATION. Every "moves" line below would have PASSED before
+    // the scroll list gained `dk_water`, except the dk_water3 one, which is the defect master
+    // reported: the shadowed water under the jungle bridge stood still while the river it is a
+    // copy of slid underneath it. And every "still" line is the other half -- a rule that calls
+    // everything water is not a rule. A test that only asserts the new behaviour cannot fail for
+    // the old reason.
+    foreach (var (name, moves) in new[] {
+        ("wr_water3.ssh", true), ("dk_water3.ssh", true), ("jri_lak2.ssh", true),
+        ("jri_sur1.ssh", true), ("justwater.ssh", true),
+        ("jbr_log1.ssh", false), ("m_grass.ssh", false), ("jro_mid1.ssh", false),
+        ("flower_1.ssh", false), ("cn_nut.ssh", false), ("cn_stick.ssh", false) })
+        Check(TextureMotion.IsWater(name) == moves, $"water rule {name} should be {(moves ? "water" : "still")}");
+    foreach (var (name, swirls) in new[] {
+        ("cn_nut2a.ssh", true), ("FDrink_Liquid.ssh", true),
+        ("cn_nut.ssh", false), ("wr_water3.ssh", false), ("cn_umber2.ssh", false) })
+        Check(TextureMotion.IsSwirl(name) == swirls, $"swirl rule {name} should be {(swirls ? "swirl" : "still")}");
+    // A swirl twists and does not travel; water travels and does not twist.
+    var nut = TextureMotion.ForModelTexture("cn_nut2a.ssh");
+    Check(nut.Spin != 0f && nut.ScrollU == 0f && nut.ScrollV == 0f, "coconut liquid twists without travelling");
+    var river = TextureMotion.ForModelTexture("dk_water3.ssh");
+    Check(river.Spin == 0f && river.ScrollV != 0f, "dark water travels without twisting");
+    Check(!TextureMotion.ForModelTexture("m_grass.ssh").Moves, "grass does not move");
+
+    // ⭐ The two water textures must be PRESENT AND PAIRED on the jungle terrain, or the rule
+    // above is about a name that no longer exists. This reads the disc rather than trusting it.
+    {
+        lib.OpenWad("/DATA/JUNGLE.WAD");
+        var terrain = lib.Wad.Entries.FirstOrDefault(e => e.Path.EndsWith("terrain_1.mps", StringComparison.OrdinalIgnoreCase));
+        Check(terrain != null, "JUNGLE terrain_1.mps present");
+        if (terrain != null)
+        {
+            var tm = new Model(lib.Read(terrain));
+            bool lit = tm.Materials.Any(m => m != null && m.Contains("wr_water3", StringComparison.OrdinalIgnoreCase));
+            bool dark = tm.Materials.Any(m => m != null && m.Contains("dk_water3", StringComparison.OrdinalIgnoreCase));
+            Check(lit && dark, $"JUNGLE terrain carries both waters (lit {lit}, dark {dark})");
+            // ⭐ NAME WHAT MATCHED, not how many. A bare count passes for the wrong three
+            // materials and reads exactly like the right three.
+            var moving = tm.Materials.Where(m => TextureMotion.IsWater(m)).OrderBy(m => m).ToList();
+            Console.WriteLine($"JUNGLE terrain_1 moving water: {string.Join(", ", moving)}");
+            Check(moving.Count == 3 && moving.Any(m => m.StartsWith("dk_water3", StringComparison.OrdinalIgnoreCase))
+                  && moving.Any(m => m.StartsWith("wr_water3", StringComparison.OrdinalIgnoreCase))
+                  && moving.Any(m => m.StartsWith("jri_lak2", StringComparison.OrdinalIgnoreCase)),
+                $"JUNGLE terrain moving water is [{string.Join(", ", moving)}], expected dk_water3/wr_water3/jri_lak2");
+        }
+    }
     Console.WriteLine("Scope: data, sampler and production resolver. Godot material binding requires game/tests/TextureAnimationAudit.tscn.");
 }
 catch (Exception ex) { Console.Error.WriteLine(ex); return 1; }

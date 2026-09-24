@@ -31,9 +31,10 @@ public static class Ps2Materials
     /// means the grass baked down its sides bleeding into the dirt where two tiles meet. Repeat
     /// buys such a surface nothing and costs it that seam.</param>
     public static Shader Shader(bool soft, string cull, bool rawNormals = true, bool linearFilter = false,
-                                bool clamp = false, bool water = false)
+                                bool clamp = false, bool animated = false)
     {
-        string key = $"{soft}/{cull}/{rawNormals}/{linearFilter}/{clamp}/{water}";
+        string key = $"{soft}/{cull}/{rawNormals}/{linearFilter}/{clamp}/{animated}";
+        EnsureClock();
         if (Shaders.TryGetValue(key, out var found)) return found;
         return Shaders[key] = new Shader { Code = $$"""
 shader_type spatial;
@@ -48,14 +49,19 @@ uniform vec3 ps2_ambient;
 uniform vec3 ps2_directional;
 uniform vec3 ps2_ray;
 varying vec3 ps2_colour;
-{{(water ? """
-// ⭐ WATER. The PSX rolls a flagged sprite by ONE ROW PER FRAME and re-uploads it, which is a V
-// scroll of one texel a frame; `water_scroll` is that, in UV a second. `water_wave` lifts the
-// surface on a travelling sine -- the sea, which the terrain names A_SEA_01..06 itself.
-// ⚠ The scroll's DIRECTION and the wave's size and speed are chosen, not read: the PS2 flag that
-// marks a surface as water has not been found, and neither has anything that states an amplitude.
-uniform float water_time = 0.0;
-uniform vec2 water_scroll = vec2(0.0, 0.0);
+{{(animated ? """
+// ⭐⭐ MOVING TEXTURES. The engine's own name for this is SCROLLING TEXTURES: an attraction can
+// switch it off with `TurnOffScrollingTextures` (0x2e7ccc), the sibling of the frame-replacement
+// player's `TurnOffAnimatingTextures` (0x2e7c90), and a texture carries an `fScrollRate`
+// (0x2acf98) beside its filename. See TextureMotion for the whole reading.
+// `uv_scroll` translates in UV a second; `uv_spin` turns about the texture's MIDDLE, which is
+// where a centred spiral like the coconut's drink has to turn. `water_wave` lifts the surface on
+// a travelling sine -- the sea alone, which the terrain names A_SEA_01..06 itself.
+// ⚠ The scroll's DIRECTION, the spin's rate and the wave's size and speed are chosen, not read:
+// no per-texture rate could be recovered from this disc (TextureMotion says why).
+uniform float uv_time = 0.0;
+uniform vec2 uv_scroll = vec2(0.0, 0.0);
+uniform float uv_spin = 0.0;           // radians a second, about (0.5, 0.5)
 uniform vec3 water_wave = vec3(0.0);   // amplitude, wavelength, speed
 """ : "")}}
 
@@ -68,10 +74,10 @@ void vertex() {
     vec3 raw_normal = {{(rawNormals ? "CUSTOM0.xyz" : "NORMAL * 127.0")}};
     float n_dot_l = max(dot(raw_normal, -local_ray), 0.0);
     ps2_colour = floor(min(vec3(255.0), ps2_ambient * 128.0 + ps2_directional * n_dot_l));
-{{(water ? """
+{{(animated ? """
     if (water_wave.x > 0.0 && water_wave.y > 0.0) {
         vec3 w = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-        float phase = (w.x + w.z) / water_wave.y + water_time * water_wave.z;
+        float phase = (w.x + w.z) / water_wave.y + uv_time * water_wave.z;
         VERTEX.y += water_wave.x * sin(phase);
     }
 """ : "")}}
@@ -96,7 +102,17 @@ vec3 output_colour(vec3 encoded) {
 }
 
 void fragment() {
-    vec2 uv = UV{{(water ? " + water_scroll * water_time" : "")}};
+    vec2 uv = UV;
+{{(animated ? """
+    // ⚠ SPIN FIRST, THEN SCROLL. Rotating an already-scrolled UV turns the scroll's direction
+    // with it, which would make a twisting surface also wander off in a circle.
+    if (uv_spin != 0.0) {
+        float a = uv_spin * uv_time;
+        vec2 c = uv - vec2(0.5);
+        uv = vec2(c.x * cos(a) - c.y * sin(a), c.x * sin(a) + c.y * cos(a)) + vec2(0.5);
+    }
+    uv += uv_scroll * uv_time;
+""" : "")}}
     vec4 c = has_tex ? texture(albedo_tex, uv) : vec4(fallback_colour, 1.0);
     if (c.a < cutout) discard;
     vec3 encoded = floor(clamp(c.rgb * 255.0 * ps2_colour / 128.0, vec3(0.0), vec3(255.0))) / 255.0;
@@ -134,16 +150,80 @@ void fragment() {
     /// material without that flag swapped a translucent surface for an opaque one, which is
     /// exactly what master saw: "river also lost its transparency".</param>
     public static ShaderMaterial Water(ImageTexture texture, bool soft, Vector2 scroll, Vector3 wave)
+        => Animated(texture, soft, "cull_back", scroll, 0f, wave);
+
+    /// <summary>A surface whose TEXTURE moves: a scroll, a twist, or the sea's sine.
+    ///
+    /// ⭐⭐ ONE CLOCK FOR ALL OF THEM. The river is terrain and the coconut's drink is a placed
+    /// shop, built by different code and ticked from different places; every material made here
+    /// is registered so that one assignment to <see cref="TextureTime"/> reaches all of them and
+    /// they stay in phase, with no caller left to forget one.
+    ///
+    /// ⚠⚠ THIS WAS A `global uniform` FOR ABOUT AN HOUR AND THAT VERSION DID NOT WORK. A global
+    /// shader parameter added at runtime read back 0 immediately after being set, which would
+    /// have frozen every moving texture including the river that already worked -- silently, with
+    /// no error. Only the running-engine audit caught it. Per-material uniforms are what the
+    /// water always used; this is that path widened, not a new one taken on trust.</summary>
+    /// <param name="soft">⚠ CARRY THE TRANSLUCENCY THROUGH. `wr_water3` is partly clear on 4031
+    /// of its 4096 texels -- a river is SEE-THROUGH -- and building its moving material without
+    /// that flag is what master saw as "river also lost its transparency".</param>
+    public static ShaderMaterial Animated(ImageTexture texture, bool soft, string cull,
+                                          Vector2 scroll, float spin, Vector3 wave)
     {
         var material = new ShaderMaterial
-        { Shader = Shader(soft, "cull_back", rawNormals: false, linearFilter: Bilinear, water: true) };
+        { Shader = Shader(soft, cull, rawNormals: false, linearFilter: Bilinear, animated: true) };
         material.SetShaderParameter("albedo_tex", texture);
         material.SetShaderParameter("has_tex", texture != null);
-        material.SetShaderParameter("water_scroll", scroll);
+        material.SetShaderParameter("uv_scroll", scroll);
+        material.SetShaderParameter("uv_spin", spin);
         material.SetShaderParameter("water_wave", wave);
+        material.SetShaderParameter("uv_time", _textureTime);
         BindLight(material);
+        Moving.Add(new WeakReference<ShaderMaterial>(material));
         return material;
     }
+
+    /// <summary>Every moving-texture material alive, held WEAKLY and pruned as it is used --
+    /// a park reload throws its materials away, and a strong list here would keep the materials
+    /// of every park ever loaded alive behind it.</summary>
+    static readonly System.Collections.Generic.List<WeakReference<ShaderMaterial>> Moving = new();
+
+    /// <summary>Kept so callers that forced the old global's registration still compile. Now a
+    /// no-op: there is nothing global left to register, which is the whole repair.</summary>
+    public static void EnsureClock() { }
+
+    static float _textureTime;
+
+    /// <summary>Seconds fed to every moving texture. ⭐ Advanced from the console's clock in
+    /// SECONDS, because a scroll and a sine are continuous -- there is nothing to quantise.</summary>
+    public static float TextureTime
+    {
+        get => _textureTime;
+        set
+        {
+            _textureTime = value;
+            for (int i = Moving.Count - 1; i >= 0; i--)
+            {
+                if (Moving[i].TryGetTarget(out var m) && GodotObject.IsInstanceValid(m))
+                    m.SetShaderParameter("uv_time", value);
+                else Moving.RemoveAt(i);
+            }
+        }
+    }
+
+    /// <summary>Enrol a material built elsewhere into the texture clock. ⚠ AnimatedModel builds
+    /// its own ShaderMaterial per surface rather than calling <see cref="Animated"/>, so without
+    /// this a shop's drink would carry a perfectly good `uv_spin` and never be told the time.</summary>
+    public static void Register(ShaderMaterial material)
+    {
+        if (material == null) return;
+        material.SetShaderParameter("uv_time", _textureTime);
+        Moving.Add(new WeakReference<ShaderMaterial>(material));
+    }
+
+    /// <summary>How many moving-texture materials are alive. ⭐ An instrument: water that is not
+    /// moving can be asked whether it has no moving materials or a stopped clock.</summary>
+    public static int MovingMaterials => Moving.Count;
 
     /// <summary>Move every material already standing in a tree onto the current
     /// <see cref="Bilinear"/> setting, and answer how many moved.
