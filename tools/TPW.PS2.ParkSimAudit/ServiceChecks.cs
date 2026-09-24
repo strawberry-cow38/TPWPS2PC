@@ -534,6 +534,23 @@ static class ServiceChecks
             Check(grid.Protected.Count == 4, $"and protects a 2x2 of paths under it ({grid.Protected.Count})");
             Check(grid.Protected.All(c => grid.GateHolds(c)), "every protected path is inside the gate's own hold");
             Check(grid.GateHold.All(c => !grid.CanBuild(c)), "nothing can be built on the gate's ground");
+            // ⭐⭐⭐ AND IT IS INSIDE THE PARK, which is the half that was actually broken and that
+            // none of the checks above could see. Master asked for this zone three times and it
+            // kept "passing": the 8x2 was right, the audit asserted it, and `game/` never read
+            // `GateHold` at all -- the running game reserved the Gates.sam EngineFootprint
+            // instead, a 6x3 at MapOffsetY 16 whose rows are 16,17,18 while the park's first row
+            // is 19. The authored rectangle ENDS where the park BEGINS, so it fences the walkway
+            // approach and leaves the inside open. Two no-build systems, neither wrong on its own
+            // terms, joined to nothing.
+            //
+            // ⚠ The lesson is not about gates: a check that exercises a structure the shipping
+            // path never consults passes forever while the game stays broken. This one at least
+            // pins the geometry to the park rather than to itself.
+            int firstParkRow = grid.EntranceCells.Count == 0 ? -1 : grid.EntranceCells.Max(c => c.Z);
+            Check(firstParkRow >= 0 && grid.GateHold.Min(c => c.Z) >= firstParkRow,
+                  $"the hold starts at the park's own first row ({grid.GateHold.Min(c => c.Z)} vs walkway ending {firstParkRow})");
+            Check(grid.GateHold.All(c => c.Z >= grid.GateHold.Min(c => c.Z)),
+                  "and runs inward from it, never back up the walkway");
             // ⚠⚠ THE CONTROL, STATED AS THE INVARIANT THE BUG ACTUALLY BROKE. The first version
             // asserted `CanLay` outright on those cells and failed -- correctly, and for a reason
             // about the FIXTURE: the mouth is walkway, which was never `Buildable`. What the bug

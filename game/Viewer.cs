@@ -6066,10 +6066,27 @@ public partial class Viewer : Node3D
         _gateBox?.Hide();
         _park?.ClearReservations();
         if (_park == null || _park.Width <= 0) return;
+        // ⭐⭐⭐ THE PARK SIDE, AND IT IS THE ONE MASTER KEEPS ASKING FOR. The authored zone below
+        // is 6x3 at `MapOffsetY` 16 -- rows 16,17,18 -- and `MapOffsetY + Height` is **19, the
+        // park's own first row**. So the .sam's rectangle ends exactly where the park begins: it
+        // is the WALKWAY approach, and the inside of the park was never reserved at all. That is
+        // why you could still build flush against the gate however many times the hold was
+        // "fixed" -- the 8x2 existed, the audit asserted it, and nothing in the game ever asked.
+        //
+        // ⚠⚠ TWO NO-BUILD SYSTEMS HAD GROWN UP SEPARATELY: `ParkPaths.GateHold`, which the audit
+        // checks and `game/` never read, and `Park.Reserve`, which the game obeys and the gate
+        // hold never reached. They are joined here, from the one geometry, so they cannot drift.
+        int inside = 0;
+        if (WalkGrid() is { } walk)
+            foreach (var c in walk.GateHold) inside += _park.Reserve(c.X, c.Z, 1, 1);
+        GD.Print($"[gate.zone] reserved {inside} cells INSIDE the park from the gate hold (8x2)");
+
         int w = def?.NoBuildWidthOverride ?? 0, h = def?.NoBuildHeightOverride ?? 0;
         if (w <= 0 || h <= 0)
         {
-            GD.Print("[gate.zone] this Gates.sam states no EngineFootprint override -- no zone");
+            // ⚠ The authored approach zone is optional; the park-side hold above is not, and it
+            // has already been applied, so this returns rather than abandoning both.
+            GD.Print("[gate.zone] this Gates.sam states no EngineFootprint override -- approach zone only");
             return;
         }
         int x0 = (def.MapOffsetX ?? 0) + Mathf.RoundToInt(shift), y0 = def.MapOffsetY ?? 0;
