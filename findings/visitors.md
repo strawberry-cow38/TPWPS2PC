@@ -1601,15 +1601,32 @@ effect block is a `switch` on `FUN_001D1D08(shop)` — a shop-kind getter, ⚠ *
 | 3, 6 | happiness only, `+= (C*q)/100` — no `/15` term |
 | 7 | `+0x7a += n/15` |
 
-⭐ **So `+0x77` and `+0x7a` are hunger and thirst, and the SHOP KIND decides which one it fills
-— raising the other by the same amount.** The port's `+0x77 = Hunger` holds for the default
-group (0/4/5); arm 1 is a different kind of shop working the other way.
+⭐ **So `+0x77` and `+0x7a` are hunger and thirst, and the SHOP KIND decides which one it fills.**
+The port's `+0x77 = Hunger` holds for the default group (0/4/5); arm 1 works the other way.
 
-⚠⚠ **`VisitorNeeds.Buy` IS THEREFORE INCOMPLETE**, and deliberately left so tonight rather than
-rewritten at speed. It takes separate hunger and thirst reductions and cross-raises neither, where
-the console takes ONE amount per purchase, reduces the need its kind serves, and RAISES the
-opposite one. It also never adds the litter at `+0x74`. Flagged before anyone writes purchase
-tests against the current shape.
+⚠⚠ **CORRECTION, WITHIN THE HOUR: "raising the other by the same amount" WAS WRONG.** I read the
+decompiler's reused `cVar3` as one value and collapsed four distinct getters into it. astraclaw
+warned about exactly this before I had checked. Tracked assignment by assignment, arm 1 is:
+
+```
+cVar3 = vtable 0x1e4   ->  +0x7a -= cVar3      getter A
+cVar3 = vtable 0x1e4   ->  +0x79 += cVar3      SAME getter A  -- the toilet DOES mirror it
+cVar3 = FUN_001D1CC8   ->  +0x76 += cVar3      getter B
+        FUN_001D1B88 / 1F50 / 1FB8 -> +0x75 += (C*(q1-q2/15))/100
+cVar3 = vtable 0x1ec   ->  +0x77 += cVar3      getter C -- DIFFERENT from A
+        rand(25)       ->  +0x74 += ...        litter, randomised
+```
+
+⭐ So the opposite need is raised by **its own getter**, not by the reduction — which means the
+port's two-amount `Buy(hungerReduction, thirstReduction, …)` is closer to the console's shape
+than I claimed an hour ago, and the "hunger reduction is ALSO added to the toilet" decode this
+file has carried all along is **confirmed** by A being re-read for `+0x79`.
+
+⚠ What IS still unverified: which getter supplies which authored field, and the **sign** — the
+console ADDS getter C to the opposite need where `Buy` SUBTRACTS a thirst reduction from it. That
+is a real difference in direction and it is not resolved here. `+0x74` litter is also still
+unapplied. ⚠⚠ No purchase expectation should be pinned until the getters are identified;
+astraclaw is doing that independently and is holding theirs off main.
 
 ⚠ The happiness scale is `(effect * (q1 - q2/15)) / 100` with `q1 = FUN_001D1F50(shop)` and
 `q2 = FUN_001D1FB8(shop)`; neither getter is read yet, so "quality" is still a name for two
