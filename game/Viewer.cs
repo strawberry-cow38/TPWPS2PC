@@ -2941,7 +2941,14 @@ public partial class Viewer : Node3D
     /// own file, or Boy1a's for the boys whose records are Shared) -- with that file and model
     /// beside it so a census can measure the pose it is drawn in. Null when the file has no
     /// slot-1 record with tracks (the adults), which leaves that kid in bind pose and says so.</summary>
-    readonly Dictionary<int, (Aps Anim, Aps.Record Walk, Model Model)> _walkRec = new();
+    readonly Dictionary<int, (Aps Anim, Aps.Record Walk, Aps.Record Idle, Model Model)> _walkRec = new();
+    /// <summary>Every slot-2 record a guest could idle in, and when it last changed.</summary>
+    readonly Dictionary<int, Aps.Record[]> _idles = new();
+    readonly Dictionary<int, int> _idleSince = new();
+    /// <summary>Which record each guest is actually playing, so a change of record restarts the
+    /// clock. ⚠ `_gaitFrom` alone could not tell a walk from an idle and a guest who stopped kept
+    /// the walk's frame counter, so the idle started mid-cycle at whatever the walk had reached.</summary>
+    readonly Dictionary<int, Aps.Record> _gaitRec = new();
     /// <summary>Guests whose walk record is playing, with the park tick their walk began: the
     /// gait's phase is the walk's own, not a clock the guest never started.</summary>
     readonly Dictionary<int, int> _gaitFrom = new();
@@ -3005,7 +3012,7 @@ public partial class Viewer : Node3D
         _guestRoot = null; _guests = null; _visitors = null; _mouth = null; _gateClosed = false;
         _thoughts.Clear();
         _actors.Clear(); _drawn.Clear(); _parts.Clear(); _headOnly.Clear(); _posed.Clear(); _guestPrev.Clear(); _guestDwell.Clear();
-        _walkRec.Clear(); _gaitFrom.Clear();
+        _walkRec.Clear(); _gaitFrom.Clear(); _gaitRec.Clear(); _idles.Clear(); _idleSince.Clear();
         _guestPool = null; _guestPoolLaid = -1; _guestPoolAt = -1; _guestAt = null; _guestLabel = null;
         _gateTimer = 0; _guestRng = new Random(1); _guestStage = 0; _guestSince = 0; _guestTestRide = null;
         _parkTicks = 0;
@@ -3549,7 +3556,7 @@ public partial class Viewer : Node3D
             // ⭐ That is master's "guests lose their animations after leaving a ride", and it is
             // the same shape as the seat-pose lag: state cached against one lifetime, read during
             // another. Clear it where the lifetime actually starts.
-            _gaitFrom.Remove(id); _posed.Remove(id); _headOnly.Remove(id);
+            _gaitFrom.Remove(id); _gaitRec.Remove(id); _idleSince.Remove(id); _posed.Remove(id); _headOnly.Remove(id);
             var (aps, sit, where) = SittingRecord(path);
             var drawn = new AnimatedModel(model, aps, null, m => CharTexture(path, m));
             drawn.SetFrame(0);
@@ -3560,8 +3567,27 @@ public partial class Viewer : Node3D
             // slot 2's six records are idles. A record must be read from the file that holds its
             // tracks, which SittingRecord already chose (own, or Boy1a's for the Shared boys).
             var walk = aps?.Records().FirstOrDefault(r => r.Slot == 1 && r.Skeletal && !r.Shared);
-            _walkRec[id] = (aps, walk, model);
-            GD.Print($"[guest] #{id} walk: " + (walk == null ? $"no slot-1 record with tracks in {where.Split(" from ").Last()} -- bind pose when walking" : $"slot 1 v0, {walk.DurationFrames} frames, {where.Split(" from ").Last()}"));
+            // ⭐⭐ AND THE IDLE, which this comment has described correctly for weeks while the
+            // code left a standing guest in BIND POSE -- arms out, dead still. Master, playtesting:
+            // "we're also missing the idle/wait animations for visitors".
+            //
+            // ⭐ SIX VARIANTS, and spreading the crowd across them is the whole point of there
+            // being six: every guest on variant 0 is a chorus line. Chosen by id so a guest keeps
+            // the same idle across frames and a render is reproducible.
+            //
+            // ⚠⚠ WHICH variant the console would pick is NOT READ. The guest carries a 5-bit
+            // state in `guest[0x38] & 0x1f` -- censused at 4, 11, 12, 13 and 14, with 13 set at
+            // spawn (`FUN_00211A00`) and on every facility exit (`FUN_0020EDD8`), and 11 set by
+            // the walking path (`FUN_0020D628`) -- but those values run past the end of the
+            // slot table, so the field is a STATE and something maps state to record. That table
+            // has not been found, so this picks a variant rather than claiming to know one.
+            var idles = aps?.Records().Where(r => r.Slot == 2 && r.Skeletal && !r.Shared).ToArray()
+                        ?? Array.Empty<Aps.Record>();
+            var idle = idles.Length == 0 ? null : idles[Math.Abs(id) % idles.Length];
+            _idles[id] = idles;
+            _walkRec[id] = (aps, walk, idle, model);
+            GD.Print($"[guest] #{id} walk: " + (walk == null ? $"no slot-1 record with tracks in {where.Split(" from ").Last()} -- bind pose when walking" : $"slot 1 v0, {walk.DurationFrames} frames, {where.Split(" from ").Last()}")
+                   + "; idle: " + (idle == null ? "no slot-2 record with tracks -- bind pose when standing" : $"slot 2 v{Array.IndexOf(idles, idle)} of {idles.Length}, {idle.DurationFrames} frames"));
             var actor = new Node3D { Name = $"Guest_{id}" };
             actor.AddChild(drawn.Root);
             // Feet on the node's origin and centred on it, measured the way VisitorParkView does.
@@ -3676,26 +3702,82 @@ public partial class Viewer : Node3D
     void Gait(int id, bool walking, float alpha)
     {
         if (!_drawn.TryGetValue(id, out var d) || d.Drawn?.Root == null || !IsInstanceValid(d.Drawn.Root)) return;
-        if (!_walkRec.TryGetValue(id, out var w) || w.Walk == null || _posed.Contains(id)) return;
-        if (!walking)
+        if (!_walkRec.TryGetValue(id, out var w) || _posed.Contains(id)) return;
+        // ⭐ ONE RECORD PER STATE, and standing is a state with a record of its own now rather
+        // than the absence of one.
+        if (!walking) Fidget(id, ref w);
+        var want = walking ? w.Walk : w.Idle;
+        if (want == null)
         {
-            if (_gaitFrom.Remove(id)) { d.Drawn.UseRecord(null); d.Drawn.SetFrame(0); }
+            // ⚠ Still the honest fallback: a rig whose file has no record with tracks for this
+            // state goes to bind and the load line above said which rig and which slot.
+            if (_gaitRec.Remove(id)) { _gaitFrom.Remove(id); d.Drawn.UseRecord(null); d.Drawn.SetFrame(0); }
             return;
         }
-        if (!_gaitFrom.ContainsKey(id))
+        if (!_gaitRec.TryGetValue(id, out var playing) || playing != want)
         {
-            try { d.Drawn.UseRecord(w.Walk); }
-            catch (Exception e) { GD.PrintErr($"[guest] #{id} would not take its walk record: {e.Message}"); _walkRec[id] = (w.Anim, null, w.Model); return; }
-            _gaitFrom[id] = _parkTicks;
+            try { d.Drawn.UseRecord(want); }
+            catch (Exception e)
+            {
+                GD.PrintErr($"[guest] #{id} would not take its {(walking ? "walk" : "idle")} record: {e.Message}");
+                // ⚠ Drop only the record that failed, not both: a rig with a bad idle should
+                // still walk. The old line nulled the walk whatever had gone wrong.
+                _walkRec[id] = walking ? (w.Anim, null, w.Idle, w.Model) : (w.Anim, w.Walk, null, w.Model);
+                return;
+            }
+            _gaitRec[id] = want; _gaitFrom[id] = _parkTicks;
         }
         d.Drawn.SetFrame(GaitFrame(id, alpha));
     }
 
+    /// <summary>⭐⭐ A STANDING GUEST CHANGES ITS MIND. `FUN_002106E8` is the console's own idle
+    /// picker and it does not hold one pose:
+    ///
+    /// <code>
+    ///   if (guest[0x2c] + 0x78 &lt; now) { if (state == 0xb) goto pick; }   // 120 ticks
+    ///   else if (state == 0xb) return;                                    // still waiting
+    ///   if (rand(100) &gt; 9) return;                                       // 1 in 10 otherwise
+    /// pick:
+    ///   state = DAT_002EEC18[rand(4) * 4] &amp; 0x1f;
+    /// </code>
+    ///
+    /// ⭐ **FOUR** idle states, and the table really is four long: `FUN_001448E0(4)` bounds it in
+    /// the CODE, and the data agrees -- entries 0..3 are `14, 5, 6, 13` and entry 4 is
+    /// `0x3F800000`, a float 1.0, plainly something else. ⚠ The code's bound is the proof; the
+    /// change of character in the data is only corroboration, because adjacency never bounds a
+    /// table (this repo has been wrong that way before).
+    ///
+    /// ⭐ **120 ticks** is read, and at the park's 25 Hz that is 4.8 seconds.
+    ///
+    /// ⚠⚠ WHAT IS PORTED AND WHAT IS NOT. The COUNT (four) and the INTERVAL (120 ticks) are the
+    /// console's. The 1-in-10 re-roll is deliberately NOT ported: it fires per call of a function
+    /// whose cadence has not been read, and a 10% roll on the wrong clock is a guest flickering
+    /// between poses every few frames -- an invented cadence is the one thing that could make
+    /// this look worse than the frozen pose it replaces.
+    ///
+    /// ⚠ And WHICH picture each state means is still unread -- `guest[0x38] &amp; 0x1f` holds a
+    /// STATE whose values (4, 5, 6, 11, 12, 13, 14) run past the end of the slot table -- so this
+    /// cycles the first four of the six slot-2 variants rather than claiming a mapping.</summary>
+    const int IdleStates = 4, IdleTicks = 120;
+
+    void Fidget(int id, ref (Aps Anim, Aps.Record Walk, Aps.Record Idle, Model Model) w)
+    {
+        if (!_idles.TryGetValue(id, out var choices) || choices.Length < 2) return;
+        if (_idleSince.TryGetValue(id, out int since) && _parkTicks - since < IdleTicks) return;
+        _idleSince[id] = _parkTicks;
+        // Deterministic per guest and per interval, so a film re-runs identically.
+        int pick = Math.Abs(id * 31 + _parkTicks / IdleTicks) % Math.Min(IdleStates, choices.Length);
+        w = (w.Anim, w.Walk, choices[pick], w.Model);
+        _walkRec[id] = w;
+    }
+
     float GaitFrame(int id, float alpha)
     {
-        if (!_gaitFrom.TryGetValue(id, out int from) || !_walkRec.TryGetValue(id, out var w) || w.Walk == null) return 0f;
+        if (!_gaitFrom.TryGetValue(id, out int from) || !_gaitRec.TryGetValue(id, out var rec) || rec == null) return 0f;
         float frame = (_parkTicks - from + alpha) * Aps.Fps / (1000f / ParkSim.TickMilliseconds);
-        return frame % Math.Max(1, w.Walk.DurationFrames);
+        // ⚠ The PLAYING record's length, not the walk's: an idle of a different duration looped
+        // at the walk's length would either cut short or hold its last pose.
+        return frame % Math.Max(1, rec.DurationFrames);
     }
 
     /// <summary>What a guest's gait is doing right now, as text for a census: the record and
@@ -3703,10 +3785,11 @@ public partial class Viewer : Node3D
     /// bones through the game's own matrices and the mesh's world -- in model units.</summary>
     string GaitCensus(int id)
     {
-        if (!_walkRec.TryGetValue(id, out var w) || w.Walk == null || !_gaitFrom.ContainsKey(id)) return "gait: bind pose (no walk record playing)";
+        if (!_walkRec.TryGetValue(id, out var w) || !_gaitRec.TryGetValue(id, out var rec) || rec == null
+            || !_gaitFrom.ContainsKey(id)) return "gait: bind pose (no record playing)";
         float frame = GaitFrame(id, 1f);
-        string text = $"gait: slot 1 frame {frame:F1} of {w.Walk.DurationFrames}, playing since tick {_gaitFrom[id]}";
-        var tracks = w.Anim.SkeletalTracks(w.Walk);
+        string text = $"gait: slot {rec.Slot} frame {frame:F1} of {rec.DurationFrames}, playing since tick {_gaitFrom[id]}";
+        var tracks = w.Anim.SkeletalTracks(rec);
         if (tracks == null || w.Model.Meshes.Count == 0) return text;
         var pose = SkeletalPose.At(tracks, frame, w.Model.HelperCount);
         int lf = -1, rf = -1;

@@ -1870,12 +1870,28 @@ The mechanism is read; **nothing is yet known to register a zone**, so porting t
 would be a loop over an empty list. The litter list (`DAT_003952C0+8`) and the shelter list
 (`DAT_003952BC+8`) are the same shape and the same open question.
 
-⭐⭐ **And `guest[0x6c]` is a decision cooldown, written on completion** — `FUN_0020EDD8` sets
-`guest[0x6c] = now + rand(60) + 60` and `guest[0x2c] = now + rand(300) + 300` as it ends a use,
-and `FUN_0020FB88` tests `guest[0x6c] < now` before choosing a new destination. astraclaw found
-the same mechanism from the selector side (a timer set even when a purchase is refused, plus
-recency penalties rather than a blacklist); this is the write side of it. Two independent routes
-to one mechanism, which is corroboration in a way that agreeing about one artifact is not.
+⚠⚠ **RETRACTED THE SAME DAY, AND THE RETRACTION IS THE INTERESTING PART.** This paragraph said
+`guest[0x6c]` was "a decision cooldown written on completion", that astraclaw had found "the same
+mechanism from the selector side", and that this was **"two independent routes to one mechanism,
+which is corroboration"**.
+
+`FUN_0020EDD8` does write **both** `guest[0x6c] = now + rand(60) + 60` and
+`guest[0x2c] = now + rand(300) + 300` as a use ends — that part holds. But astraclaw traced the
+consumers: **`+0x6C` gates watching an ENTERTAINER** (activity **28** = `0x1C`, the `PoolOfEntertainers`
+list at `DAT_003952BC`, which this file guessed was "shelter"), and the destination re-target gate
+is **`+0x2C`**. Two timers written in one breath, and I matched mine to theirs by which was
+*nearest* rather than by reading either consumer.
+
+⭐⭐ So the "corroboration" was **two different mechanisms asserted to be one**. That is the exact
+failure this repo keeps a note about — agreement is only corroboration when the two routes reach
+the *same* thing — and it is worse than a plain wrong reading, because it borrows someone else's
+correct work to certify a wrong one. ⚠ A timer written beside the timer you want is not the timer
+you want.
+
+⭐ The ONE genuine corroboration from this exchange: astraclaw read the native counter as
+"gameticks/rendertick" behind a default **two-VBLANK** throttle, and on a PAL disc that is
+**25 Hz** — which is the rate `ParkSim.TickMilliseconds` already carried from a different route.
+`VisitorNeeds.SecondsPerTick` now derives from it instead of the 60 Hz it was guessed at.
 
 ### ⭐⭐ The want score, PORTED — and shop quality starts at **100**, which nearly shipped as 0
 
@@ -2020,3 +2036,63 @@ guest afterwards was angry until the park emptied. `FUN_00130978` (condition bac
 ⭐ Porting a punishment whose only cure is an entity the port does not have is worse than porting
 neither. The stand-in reproduces the console's OUTCOME on a timer and is labelled to be deleted
 when staff arrive, with an off switch and a check whose control proves the wear is real.
+
+### Guests idle instead of standing in bind pose (2026-09-24)
+
+`Viewer.Gait` played slot 1 when walking and `UseRecord(null)` otherwise, so a standing guest was
+the **bind pose** — arms out, dead still. This file's own note had said *"slot 2's six records are
+idles"* since the walk landed; the code never used it. ⭐ A fact recorded and not wired is the
+same shape as the dead-port problem `tools/dead_port_audit.py` exists to catch, one level up: the
+knowledge was in a comment instead of a call.
+
+Now one record per state, with the record's **own** duration for the loop (an idle is 16 or 40
+frames against the walk's 16, and looping one at the other's length either cuts it short or holds
+its last pose), and the clock restarts on a change of record rather than carrying the walk's
+frame into the idle. A rig whose file has no record with tracks for a state still falls back to
+bind and says which rig and which slot.
+
+⚠ **WHICH idle is a port choice.** The guest carries a 5-bit state at `guest[0x38] & 0x1f` —
+censused at **4, 11, 12, 13, 14**, with 13 set at spawn (`FUN_00211A00`) and on every facility
+exit (`FUN_0020EDD8`), and 11 set by the walking path (`FUN_0020D628`). Those values run **past
+the end of the slot table**, so the field is a STATE and something maps state to record. That
+table is not found, so the viewer spreads the six variants across guests by id and says so.
+
+⚠ The check covers SELECTION, not playback: it resolves each kid's idle through the viewer's own
+Shared-record rule, with the walk as a control that the resolver works at all. Whether the pose
+visibly moves still needs a render.
+
+### ⭐⭐ The guest's idle STATE machine, found — `FUN_002106E8`
+
+A census of `andi rt, rs, 0x1f` preceded by a load of `+0x38` finds **two** sites in the whole
+image, both in one function:
+
+```c
+FUN_002106E8(guest):
+    if (guest[0x2c] + 0x78 < now) { if ((guest[0x38] & 0x1f) == 0xb) goto pick; }   // 120 ticks
+    else if ((guest[0x38] & 0x1f) == 0xb) return;                                    // still waiting
+    if (FUN_001448E0(100) > 9) return;                                               // 1 in 10
+pick:
+    guest[0x38] = (guest[0x38] & ~0x1f) | (DAT_002EEC18[FUN_001448E0(4) * 4] & 0x1f);
+```
+
+⭐ **Four idle states: `14, 5, 6, 13`.** The count is proved by `FUN_001448E0(4)` in the CODE; the
+data agrees (entry 4 is `0x3F800000`, a float 1.0 — plainly something else) but that is only
+corroboration. ⚠ Adjacency has bounded a table wrongly in this repo before; the code's bound is
+what settles it.
+
+⭐ **State 11 (`0xB`) is the resting/walking default** — set at spawn (`FUN_0020BCD0`) and by the
+walking path (`FUN_0020D628`) — and while a guest is in it the picker waits out the **120-tick**
+timer (4.8 s at the park's 25 Hz) before choosing a fidget. Once fidgeting, each call has a
+1-in-10 chance to choose again.
+
+**Ported:** the count (four) and the interval (120 ticks).
+**Not ported, and this is the interesting refusal:** the **1-in-10 re-roll**, because it fires per
+call of a function whose cadence has not been read. A 10% roll on the wrong clock is a guest
+flickering between poses every few frames — ⭐ an invented cadence is the one thing that could
+make this look *worse* than the frozen pose it replaces, so the read interval carries it instead.
+
+⚠ **STILL UNREAD: state → record.** The state values in use are `4, 5, 6, 11, 12, 13, 14` and the
+animation slot table runs 0..11, so `+0x38` is not a slot and something maps it. Until that turns
+up the viewer cycles the first four of the six slot-2 variants and says so rather than claiming a
+correspondence — 5 and 6 being valid slot numbers is exactly the coincidence that would make a
+wrong mapping look right.
