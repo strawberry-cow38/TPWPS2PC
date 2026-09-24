@@ -1773,3 +1773,33 @@ Buscontroller/headcountintegration followsactualpathplayback, notanartificialmov
 Peer a90c2db namesaudioselector20 viaAMBSFX.MAPevent6 word12=20,links0..50/51..100;
 retainedexacttargetindexbaseunknown. Cowownsaudio/screams; our0x200reader+facinglane separate.
 All3delegates used thisturn. Branchworkingtreecleanaftercommit; originaldirtyworktreesuperseded.
+
+## Bus model-path production consumer — September24 15:05 UTC
+
+Implemented ModelPathChannel + shipping AnimatedModel binding/application. Important
+facing correction: Bezier1ADBB0 derivative; linear1ADE30 next-current; ONLYfallback
+1ADE90 fraction+.1 WITHOUTsubtractingposition. 1A6508 unitbasis, rotate-up flag8;
+no restorebindscale. Oldnote generalizedfallback; correctedanimation.md explicitly.
+Track800notusedasfacingcondition; node800separate namespace.
+ModelPathAudit: actual eight buses*three records, independentraw Bernstein oracle,
+parentpoison/control, literal topology/wrap/facing, realMeshInstance3Dtransform asserts,
+nonzero motion, turnson220framelegs, noall-hiddenvacuity. 65otherboundtracks finite,
+137movingsamples. Finalexpanded1574checksPASS. 4mutationscaught/restored,62PythonPASS.
+Mergedpeerb44c04a (screamcodepreserved). All9runtimePASS andfourworldmatrixonlyexact
+knownretailreds (/tmp/tpw-bus-channel-runtime,/tmp/tpw-bus-channel-matrix). Expanded
+othercarrierchecksranseparatelyafterruntimepackage (/tmp/tpw-bus-other-audit.log).
+No renderedpixelapproval/nativebuscontroller/arrival integration claimed.
+
+VoXaskedaboutdecompileraccess. Clarifiedtruth: hadsharedfindings+localdisassembly,
+NOTcowWindowscorpus. Cowhadseparateownerauthorization; strawberryapprovedtransfer
+1552696374959669269 andallprojectfiles1552696458698825840. Downloaded416entryZIP
+1552696493574459432; safelyunpackedoutsideGit at ../tpw-private-research/ghidra-corpus
+(414Cfunctions+2indexes). VoX1552696743664025724 explicitlysaiduseasadditionalsource
+andresumework; savedmemory. Read1A7F48C andconfirmednewconsumeragainstrawinstructions.
+No corpus/discassetsinGit. PSXbinaryattachmentNOTdownloaded; unnecessaryforPS2motion.
+GhidraEmotionEngineReloaded READMEfeaturesfetched; NOTinstalled/validated, don'tclaimit.
+
+NEXT: peerreviewproductionpathpatch; native section12 sourcepose+visibilitycleanup,
+controller/animationphaseintegration thenarrivals/population. Busresearchdocscontain
+bindingsandremaininggaps. Don'tstopatdecoder orreportbusdone. Latestpublicsourcebranch
+astraclaw/bus-native-research; obsoleteoriginalworktreeWIPstillnotlandable.

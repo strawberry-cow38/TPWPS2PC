@@ -22,6 +22,11 @@ def raw_witness(scene):
     if scene in ('visitor', 'rse'):
         name = 'VISITOR GEOMETRY' if scene == 'visitor' else 'RSE ANIMATION'
         return '\n'.join([f'{name} PASS: summary'] + [f'{name} PASS {case}: tested' for case in audit.CASES])
+    if scene == 'modelpath':
+        return '\n'.join([f'MODEL PATH {w}/{b} record@{r} moves=True turns=True'
+                          for w in ('JUNGLE','HALLOW','SPACE','FANTASY')
+                          for b in ('bus1','bus2') for r in ('88','a4','c0')]
+                         + ['MODEL PATH PASS: 1378 checks, eight buses / four worlds / three records'])
     if scene == 'texture': return 'VIEWER CLOCK PASS: tested\nTEXTURE BINDING PASS: 146 surface checks across five models / four worlds'
     if scene == 'mtr': return 'MTR SURFACES PASS: all four named mesh/material/texture witnesses, geometry and transforms'
     if scene == 'advisor':
@@ -108,6 +113,14 @@ class Classification(unittest.TestCase):
             with self.subTest(scene=scene):
                 self.assertEqual(audit.classify(scene, output(witness(scene)))['status'], 'pass')
                 self.assertNotEqual(audit.classify(scene, output('PASS'))['status'], 'pass')
+
+    def test_modelpath_requires_every_bus_record(self):
+        good = witness('modelpath')
+        for bad in (good.replace('FANTASY/bus2', 'FANTASY/bus1'),
+                    good.replace('record@c0', 'record@88'),
+                    good.replace('moves=True', 'moves=False'),
+                    good.replace('1378 checks', '0 checks')):
+            self.assertEqual(audit.classify('modelpath', output(bad))['status'], 'missing_coverage')
 
     def test_transport_failures_override_green_output(self):
         for key, value, expected in [('raw_exit', 2, 'nonzero_exit'), ('raw_exit', None, 'nonzero_exit'),

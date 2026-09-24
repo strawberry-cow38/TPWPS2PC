@@ -1503,4 +1503,10 @@ player-authored runtime paths.
 
 Same tail for both branches, and it confirms two things the viewer now does:
 `if ((state & 4) == 0) node.pos = sampled; else node.pos += sampled;` — the path REPLACES the node's
-translation by default — and the orient-along-path channel samples the curve again at `frac + 0.1`.
+translation by default. **Facing correction, September24:** the tail dispatches again on curve
+flags at `1A8644`: Bézier (`&2`) calls derivative evaluator `1ADBB0`; linear (`&8`) calls
+`1ADE30` (next point minus current). ONLY the fallback at `1A86A8..D0` samples at
+**segment fraction** `frac + 0.1` (not animation time), without subtracting current position.
+`1A8730` keeps the rotated up axis if track flag8 is set, otherwise uses world Y;
+`1A6508` writes unit right/up/forward axes and does not restore bind scale.
+See `bus-model-path-channel.md` and `ModelPathChannel.cs`.

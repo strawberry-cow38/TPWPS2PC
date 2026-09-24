@@ -57,6 +57,7 @@ public sealed class AnimatedModel
     /// <summary>Nodes currently hidden. ⚠ SURVIVES UseRecord on purpose: see SetFrame.</summary>
     readonly HashSet<int> _hidden = new();
     readonly Dictionary<int, Aps.Path> _path = new();
+    readonly Dictionary<int, ModelPathChannel> _modelPath = new();
     readonly HashSet<int> _facing = new();
     List<Aps.SkeletalTrack> _skel;
     /// <summary>True when the selected record drives a biped rather than vertex morph.</summary>
@@ -164,7 +165,7 @@ public sealed class AnimatedModel
         // ⚠ EVERY CHANNEL IS EMPTIED BEFORE THE NEW RECORD FILLS IT. They are keyed by node, and a
         // node the old record drove that the new one leaves alone would otherwise keep its old keys
         // and carry on moving after the animation changed.
-        _textureTracks.Clear(); _rot.Clear(); _rotTrack.Clear(); _scale.Clear(); _path.Clear(); _facing.Clear();
+        _textureTracks.Clear(); _rot.Clear(); _rotTrack.Clear(); _scale.Clear(); _path.Clear(); _modelPath.Clear(); _facing.Clear();
         _vis = new(); _meshVis = new(); _skel = null; Frames = 0;
         // ⭐ _textureIndices is left alone on purpose. It is model-sized and mirrors what each
         // material is showing NOW, which is the `previous` that TextureTrack.Sample retains before
@@ -191,6 +192,8 @@ public sealed class AnimatedModel
                 // morph-format tracks carry a Catmull-Rom path, and every car, train, boat and
                 // gondola on them was sitting at its rest position. That is what "sub parts are
                 // rotated or positioned wrong" looks like from the outside.
+                var modelPath = ModelPathChannel.Read(_model, _anim, rec, t);
+                if (modelPath != null) _modelPath[node] = modelPath;
                 var sp = _anim.SplineAt(t);
                 if (sp != null)
                 {
@@ -515,10 +518,14 @@ public sealed class AnimatedModel
     /// children with it.</summary>
     Dictionary<int, Matrix4x4> WorldAt(float now)
     {
-        if (_rot.Count == 0 && _scale.Count == 0 && _path.Count == 0) return _model.WorldTransforms();
+        if (_rot.Count == 0 && _scale.Count == 0 && _path.Count == 0 && _modelPath.Count == 0)
+        {
+            OverriddenNodes = new HashSet<int>();
+            return LastWorld = _model.WorldTransforms();
+        }
 
         var locals = _model.LocalTransforms();
-        foreach (var node in _rot.Keys.Concat(_scale.Keys).Concat(_path.Keys).Distinct())
+        foreach (var node in _rot.Keys.Concat(_scale.Keys).Concat(_path.Keys).Concat(_modelPath.Keys).Distinct())
         {
             int off = _model.NodeOffset(node);
             if (!locals.TryGetValue(off, out var bind)) continue;
@@ -570,11 +577,12 @@ public sealed class AnimatedModel
                     L = Renormalise(L, BasisScale(bind));
                 }
             }
+            if (_modelPath.TryGetValue(node, out var modelPath)) L = modelPath.Apply(L, now);
             locals[off] = L;
         }
         var world = _model.WorldTransforms(locals);
         LastWorld = world;
-        OverriddenNodes = new HashSet<int>(_rot.Keys.Concat(_scale.Keys).Concat(_path.Keys));
+        OverriddenNodes = new HashSet<int>(_rot.Keys.Concat(_scale.Keys).Concat(_path.Keys).Concat(_modelPath.Keys));
         // One-shot diagnostic: which node's scale changes between bind and world, and by how much.
         if (System.Environment.GetEnvironmentVariable("TPW_PS2_SCALEDUMP") == "1" && !_dumped)
         {

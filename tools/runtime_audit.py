@@ -22,6 +22,7 @@ SCENES = {
     'texture': 'TextureAnimationAudit', 'mtr': 'MtrAudit',
     'advisor': 'AdvisorBrowserAudit', 'audio': 'RideSoundLifecycleAudit',
     'standing': 'StandingServiceAudit', 'shops': 'CompiledShopViewerAudit',
+    'modelpath': 'ModelPathAudit',
 }
 CASES = [f'{world}/{terrain}' for world in ('FANTASY', 'SPACE', 'HALLOW') for terrain in (1, 2)]
 OUTPUT = Path('game/.godot/mono/temp/bin/Debug')
@@ -55,6 +56,14 @@ def classify(scene: str, run: dict) -> dict:
         counts = [int(m.group(1)) for m in re.finditer(r'^TEXTURE BINDING PASS: (\d+) surface checks across five models / four worlds$', text, re.M)]
         result['surface_checks'] = counts[0] if len(counts) == 1 else 0
         if len(counts) != 1 or counts[0] < 146: return {**result, 'status': 'missing_coverage'}
+    elif scene == 'modelpath':
+        prefixes = ['MODEL PATH PASS:']
+        rows = re.findall(r'^MODEL PATH (JUNGLE|HALLOW|SPACE|FANTASY)/(bus[12]) record@([0-9a-f]+) moves=True turns=(True|False)$', text, re.M)
+        counts = re.findall(r'^MODEL PATH PASS: (\d+) checks, eight buses / four worlds / three records$', text, re.M)
+        result['checks'] = int(counts[0]) if len(counts) == 1 else 0
+        if (len(rows) != 24 or len({(w,b,r) for w,b,r,t in rows}) != 24
+                or len({(w,b) for w,b,r,t in rows}) != 8 or result['checks'] < 1300):
+            return {**result, 'status': 'missing_coverage'}
     elif scene == 'mtr':
         prefixes = ['MTR SURFACES PASS: all four named mesh/material/texture witnesses, geometry and transforms']
     elif scene == 'advisor':
