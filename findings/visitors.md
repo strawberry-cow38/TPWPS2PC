@@ -1631,3 +1631,38 @@ astraclaw is doing that independently and is holding theirs off main.
 ⚠ The happiness scale is `(effect * (q1 - q2/15)) / 100` with `q1 = FUN_001D1F50(shop)` and
 `q2 = FUN_001D1FB8(shop)`; neither getter is read yet, so "quality" is still a name for two
 numbers rather than a decoded quantity.
+
+### ⭐⭐ Two silent purchase bugs, found by verifying the getters (2026-09-24)
+
+astraclaw verified the shop slots — **`+1E4` is the compiled THIRST getter, `+1EC` the HUNGER
+one** — and that ice cream raises thirst by its own 5 rather than by any function of its hunger
+15. Reading the default arm against that mapping makes the whole block plain:
+
+```
++0x77 -= hunger    (0x1ec)     Hunger down
++0x79 += hunger    (0x1ec)     Toilet up by the SAME amount, same getter re-read
++0x76 += vomit     (1d1cc8)    Sick up
++0x75 += (happy * (q1 - q2/15)) / 100
++0x7a += thirst    (0x1e4)     THIRST UP, by the shop's own thirst value
++0x74 += base + rand(25)       Litter
+```
+
+Two things the port had wrong, both silent:
+
+⚠⚠ **A purchase charged the bare price.** `0x20E1A0` does `cash += price * -10`, and cash is kept
+in the same ×10 units the spawn seeds it in (`(rand(300)+200) * 10`). Every purchase undercharged
+by an order of magnitude — a park where nothing costs anything looks exactly like a park that is
+balanced.
+
+⚠⚠ **Eating QUENCHED thirst.** The console ADDS the shop's thirst value; the port subtracted it.
+So a burger was slaking a thirst the game intends to create, which quietly removes the reason
+drink shops exist. ⭐ The bug is invisible in isolation: both directions "work", and only the
+consumer says which.
+
+⭐ The toilet rise is now traced rather than asserted — the default arm re-reads the same `+0x1ec`
+getter for `+0x79` that it subtracted from `+0x77`, which is why "the hunger reduction is ALSO
+added to the toilet" has been right in this file all along.
+
+⚠ `+0x74` litter is still NOT applied. The base is not the `.sam`'s `LitterEffect` (50 for a
+burger against an observed 30), so its source is unidentified, and inventing one is how a wrong
+number acquires a confident comment.

@@ -337,6 +337,10 @@ public sealed class VisitorNeeds
 
     int Roll(Rate r) => r.Base + (r.High ? RollHigh(r.Spread + 1) : RollCentred(r.Spread + 1));
 
+    /// ⚠ <paramref name="thirstReduction"/> keeps its name for its callers and is ADDED, not
+    /// subtracted -- see the body. ⚠ `+0x74` litter (`base + rand(25)`) is still NOT applied:
+    /// the base is not the .sam's `LitterEffect` (50 for a burger against an observed 30), so
+    /// its source is unidentified and inventing one is how a wrong number gets a comment.
     /// <summary>A purchase, with the shop's own DBA effects. ⭐ All four come straight out of
     /// findings/dba.md's decode of the purchase path at `0x20E380..0x20E45C`, including the one
     /// that reads oddly and is right: the hunger reduction is subtracted from hunger AND added to
@@ -345,10 +349,20 @@ public sealed class VisitorNeeds
                     int happinessEffect, int vomitIncrease)
     {
         if (!_byGuest.TryGetValue(guest, out var w)) return;
-        w.Cash -= price;
+        // ⚠⚠ TEN TIMES THE PRICE. `0x20E1A0` does `cash += price * -10`, and cash is kept in the
+        // same x10 units the spawn seeds it in (`(rand(300)+200) * 10`). This charged the bare
+        // price and undercharged every purchase by an order of magnitude.
+        w.Cash -= price * 10;
         w.Hunger = Clamp(w.Hunger - hungerReduction);
+        // ⭐ The toilet rises by the HUNGER amount, traced rather than assumed: the default arm
+        // re-reads the same `+0x1ec` getter for `+0x79` that it subtracted from `+0x77`.
         w.Toilet = Clamp(w.Toilet + hungerReduction);
-        w.Thirst = Clamp(w.Thirst - thirstReduction);
+        // ⚠⚠ EATING MAKES YOU THIRSTIER -- IT DOES NOT QUENCH YOU. The console ADDS the shop's own
+        // thirst value to `+0x7a` (getter `+0x1e4`); this subtracted it, so every purchase was
+        // slaking a thirst the game intends to create. astraclaw verified the getter mapping
+        // (`+1E4` thirst, `+1EC` hunger) and that ice cream raises thirst by its own 5 rather
+        // than by any function of its hunger 15.
+        w.Thirst = Clamp(w.Thirst + thirstReduction);
         w.Happiness = Clamp(w.Happiness + happinessEffect);
         w.Sick = Clamp(w.Sick + vomitIncrease);
         _byGuest[guest] = w;

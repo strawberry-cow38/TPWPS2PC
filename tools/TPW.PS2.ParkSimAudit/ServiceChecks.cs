@@ -134,6 +134,31 @@ static class ServiceChecks
         Check(routed.Completed == 1, $"and rode nothing on the way ({routed.Completed} facility used in total)");
         Check(routed.Toilet == 0, $"arriving with the need answered (toilet {routed.Toilet})");
 
+        // ── what a purchase actually does ────────────────────────────────────────────────────
+        // ⭐⭐ Two bugs astraclaw's verified getter mapping exposed, both silent: a purchase
+        // charged the bare price where the console charges TEN TIMES it (cash is kept in the
+        // x10 units the spawn seeds), and it QUENCHED thirst where the console RAISES it.
+        (int Cash, int Hunger, int Thirst, int Toilet) Bought(int price, int hunger, int thirst)
+        {
+            var n = new VisitorNeeds(11);
+            var w = n.Spawn(1);
+            w.Cash = 5000; w.Hunger = 50; w.Thirst = 50; w.Toilet = 20; w.Sick = 0; w.Happiness = 50;
+            n.Set(1, w);
+            n.Buy(1, price, hunger, thirst, happinessEffect: 5, vomitIncrease: 0);
+            var a2 = n.Of(1);
+            return (a2.Cash, a2.Hunger, a2.Thirst, a2.Toilet);
+        }
+        var burger = Bought(price: 30, hunger: 25, thirst: 0);
+        Check(burger.Cash == 5000 - 300, $"a purchase charges TEN times the price ({5000 - burger.Cash} for a price of 30)");
+        Check(burger.Hunger == 25, $"and feeds the guest ({burger.Hunger}, was 50)");
+        // ⭐ The toilet rises by the HUNGER amount -- the console re-reads the same getter.
+        Check(burger.Toilet == 45, $"filling them fills the bladder by the same amount ({burger.Toilet}, was 20)");
+
+        var icecream = Bought(price: 30, hunger: 15, thirst: 5);
+        // ⚠⚠ THE SIGN. Ice cream's own thirst is 5, and it must go UP. Subtracting would read 45.
+        Check(icecream.Thirst == 55, $"and eating makes them THIRSTIER, not less ({icecream.Thirst}, was 50)");
+        Check(icecream.Hunger == 35, $"while still feeding them ({icecream.Hunger}, was 50)");
+
         // ── an unmet need costs you your mood ─────────────────────────────────────────────────
         // ⭐⭐ `FUN_0020FB88` docks ONE happiness per need at or above its own bar, per period.
         // Until this was wired, ignoring a need cost the guest nothing: they rose, the bubble
