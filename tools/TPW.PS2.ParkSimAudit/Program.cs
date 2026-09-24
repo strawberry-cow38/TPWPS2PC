@@ -12,6 +12,12 @@ int bad = 0;
 void Check(bool ok, string line) { Console.WriteLine((ok ? "  ok   " : "  FAIL ") + line); if (!ok) bad++; }
 
 using var disc = new Disc(args[0]);
+if (args.Contains("--bus-inputs-only"))
+{
+    BusAdmissionChecks.Run(disc,Check);
+    Console.WriteLine(bad==0 ? "PASS native bus source joins and arithmetic (viewer admission not exercised)" : $"FAIL: {bad}");
+    return bad==0?0:1;
+}
 if (args.Contains("--destination-score-only"))
 {
     DestinationScoreChecks.Run(disc, Check);
@@ -570,6 +576,7 @@ CompiledJoinChecks.Run(Wad("DATA"), wad, world, Check);
 MoodChecks.Run(Check);
 PathPriceChecks.Run(terrain, PathPieces.Read(disc), Check);
 ScreamChecks.Run(disc, world, Check);
+BusAdmissionChecks.Run(disc, Check);
 SfxGraphChecks.Run(disc, Check);
 RideValueChecks.Run(Wad("DATA"), wad, world, Check);
 GuestAnimationChecks.Run(Wad("DATA"), Check);

@@ -1865,3 +1865,76 @@ one saturatedsubtraction, NOTinstantbatch; animationsstillrun. Do not"fix"tomatc
 Peerconfirmed unsignedfloatidiom,clockwrap,controllerreplacementinvariant,hiddenpose
 updates,andself-vs-subtreevisibility. Motion ee3e645 review notseparatelyexplicit yet;
 e15540f encompassesitbutdon'tinventpeerviewsnotstated.
+
+## Remaining bus joins closed / admissions work started — September24 16:15 UTC
+
+ThisNEWturn usedall3delegates: categoryordinal producer;normalparkselector;admission
+pressure/minigamegate. Read/findingsbus-catalogue-identity-join.md andbus-admission-pressure.md.
+Allworkersreadonly, nofileswritten. Parentchecked14E290 raw strideHEX36/12 (bewarebare
+summarynotation), nativecataloginitializercountloadstores via/tmp/tpw-bus-table-inputs.log.
+CatalogK->ordinali resolved fornativekind1/3/6/7 bymenuappendpreservesoriginali,
+toolfactorysamei usedkeylookupandbasea2->O97; independentreverse152CD8. NormalworldWAD
++selectedterrain_1/2 mapsw/s positively viaUI369DD00? CORRECT TABLE36DD00,149678,
+17D7E8loaderselector andPARK(s+1)audio control. Jungle0/2specialnotordinarymode.
+Bus1/2selectorsarecomparedvalues1/2 afterstrip8, NOTarbitrarybitmask.
+3953CCactiveattractionminigame object nowidentified. A4stickydeparture-deferral latch
+setwhenphaseid&63 mismatchesdepartureattempt orroutefails, NOTclearedonsuccess;
+perpass2EEB9C countsBEFOREstateupdate, resetAFTERentrancegroupupdates. Portdoesn'tmodel
+it: cannotclaimWalkcount orNeeds orpostupdatesizeequivalent. Eventualbypassmustexplicit
+ratherthanblockallbusforeverclaimfullAIparity. EntrancegroupWalsoseparateunfinished.
+
+NEWUNCOMMITTEDcorefiles NativeBusCatalogue.cs +NativeBusDemand.cs BUILDCLEAN butNOTTESTED
+ORCOMMITTEDYET. Catalogue readskeyarrays/countsfromELF initializer'ssources;type8keysfrom
+validatedADDIUimmediatesratherthanBSSzeros. ExplicitordinaryNativeParkSelection mapsactual
+sourceWAD+terrainstem. Point0 usesbyte0/1table0x2B71B0 stride0x36/0x12; initialmutable
+B/Q from2B9734/30. Counts,ordinals,capacityrequiretestsagainstall8, malformedcontrols.
+Demand implementsnativeAandsignedthreewaymin, butNOTproductionjoined. NextMUSTwireactual
+Viewer/parkconsumer+tests notstopatpurehelpers. ActualGate() stillold50tick/12cap, doNOT
+saybusinpark. Userasked1552711751064223887 andansweredno1552712980393885792. Bothpositive
+identityjoinsareclosednow; admissionpressurelifecycleunimplemented clearlynotmystery.
+
+CurrentruntimeParkRide.Value isdecoded getter. UpgradeTiernotrepresented; standardnew
+instance0 isdecodeddefault, configUpgrades2 notsupported. UseNativeOrder3,6,1,7,4,5,2
+newestfirstforA; capacitycountsunique(type,key), duplicatesdon'traiseceiling. Type8may
+needseparateplacedlist source sinceDestinationIterator excludesit. Viewer_sim.Rides
+onlyscriptedplacements, _park.Placed includesallphysicalobjects; ensureproductionA
+joinsactualplacementsratherthanquietlymissunscriptedfeatures. ExistingArrive(at,to)
+seedsNeedsandclearsgatehistory; at=Point0,to=Point0 avoidsrandompreselectedattraction,
+thenrealnextStepselects. Populationshouldcountallplans/walkidentitiesincludingoffwalk
+servicing, no12capfallback. Point0atXStart/ZRow NOTmouth(XCol,ZEnd-1).
+
+Peerworkinggate8x2again, user's16:04requestdirectedcow; donottakethatlane. Peerlatestmain
+b1839f9/587fc7f stillbrokenperuser16:12; cowownsrepair. Mainchangedaudioea9912f basedon
+clipdurations (overlapconsumerstillnottraced), furtherpending. Ourbranchba625b7basedon
+14db25b beforethese; fetchmergeatmilestonewithoutoverwritingpeerViewer. Keepcorpuslocal.
+
+### Bus input package verification — September24 16:25 UTC
+
+NativeBusCatalogue/NativeBusDemand now TESTED:276source/arithmeticchecks acrossall8
+normalparkselections ineachmatrixworld. /tmp/tpw-bus-input-matrix fullmatrixPASSJ/F,
+onlyexactknownH/Sretailreds; categorynative_bus_admission_inputs minimum276 enforced.
+/tmp/tpw-bus-admissions-inputs-final.log pureinputpass; /tmp/tpw-bus-input-python.log
+63PythonPASS. Fourmutationscaughtsortedkeys1fail,missingbase10five,missingride+20two,
+duplicatescounted8;restored. Initialtestcompileparamsarraytargettypednew fixedexplicit
+Attraction; initialoverfloworacle waswrong (0x10000000*1333hex wrapspositive), replaced
+withliteral0x40000000 productC0000000 /81920 ==-13107, no fittedobservedseed.
+Allcode+findingsbeingcommittedonresearchbranch. ThispackageDOESNOTclaimViewerguestjoin;
+no morepurehelperexpansionnext: createactualViewer.Buspartialwithliveplacementidentity,
+spawncallbackPoint0, nativeclocklifecycle andclearparkteardown. RecordknownA4/entrancegroup
+supportboundaryhonestly; don'tinventfalseequivalentcounts, don'tcallcosmeticbusdone.
+
+Usefulnextintegrationdetailsread: Viewer.PlaceHeld successfulTryPlace givesNode and
+_place.Def (compiledidentity), thenride=++_rideSerial andStartScript mayreturnfalse.
+_park.Placed holds(Id SAMid,Name,Fp,X,Y,Node), NOTruntimeRideId/compiledDBAkey. Mustregister
+Node->(runtimeId,Definition) atshippingplacementbefore/alongsideStartScript tocount
+unscriptedphysicalfeaturesalso; sim.Ridesalonemisses them. Reconcilebylive_park.Placed
+Nodesafterremoval/reset. ForruntimevalueusematchingParkRide.Value; forunscriptedobject
+useNativeRideValue defaults fromidentity; currentupgradetiernormally0unimplementedUI.
+NativeOrder3,6,1,7,4,5,2newestfirst forA; capacityK usesdistinct(type,key),includes8when
+properlyplaced/identified. Capacityreader'ssourcecount/type8immediatesALLverifiedDBAkind.
+NativeParkSelection.Ordinary validatesactualWAD/terrainstem; BusStemrejectsvariant2.
+Point0=entry.XStart,ZRow nativeTABLEBYTE0/1 (0x36/0x12 hex strides). Thisisoutsidegate
+butexistingentrancecorridorcontainsit. CurrentGate() uses mouth+randomgoal; mustreplace
+fornativebatch, notrunboth. CurrentParkVisitors.Arrive(at,to) callsWalk.Spawn, clears
+history/gate, setsWanderplan, seedsNeeds. at=toPoint0 allowsnativeidledecisionnextStep.
+Stageadmissionmustcountplans/offwalkservicing too, notonlyWalk oroldcap12.
