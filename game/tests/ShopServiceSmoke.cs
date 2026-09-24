@@ -7,8 +7,9 @@ namespace TPWPS2Viewer.Tests;
 /// <summary>One real external ice-cream customer, through the Shops menu and Viewer callbacks.
 /// Run with normal Viewer disc/startup arguments, --mode=park --map=JUNGLE and
 /// --shop-shot=/absolute/outsideGit/new-name.png (serving, plus -before/-after).
-/// Optional --map=HALLOW/FANTASY/SPACE selects that world's precisely named ice cream;
-/// the compiled EUR effect contract is required, never substituted by another product.
+/// Default target is named icecream in each world. --shop-target=coconut (JUNGLE),
+/// burger or fries (FANTASY/SPACE) exercises the other coordinate-less cases. Compiled EUR
+/// identities/effects are fixed by named profiles, never substituted by a similar product.
 /// Requires a rendering display. A missing service body is a deferred failure: handback and
 /// captures still run, then exit 2. Captures need visual review, not pixel-level sign-off.</summary>
 public partial class ShopServiceSmoke : Node3D
@@ -83,12 +84,23 @@ public partial class ShopServiceSmoke : Node3D
                 ?? OS.GetEnvironment("TPW_PS2_MAP");
             if (string.IsNullOrWhiteSpace(world)) world = "JUNGLE";
             world = world.ToUpperInvariant();
-            string stem = world switch
+            string targetShop = args.LastOrDefault(a => a.StartsWith("--shop-target="))?["--shop-target=".Length..] ?? "icecream";
+            (string Stem, int Product, int H, int T, int Happy, int V, int Price, bool Missing, string Row) profile = (world, targetShop) switch
             {
-                "JUNGLE" or "FANTASY" => "/Shops/IceCream/IceCream",
-                "HALLOW" or "SPACE" => "/Shops/ices/ices",
-                _ => throw new ArgumentException("use --map=JUNGLE, HALLOW, FANTASY or SPACE; no fuzzy shop fallback")
+                ("JUNGLE", "coconut") => (Stem: "/Shops/Coconut/Coconut", Product: 1, H: 0, T: 40, Happy: 5, V: 10, Price: 30, Missing: true, Row: "2*"),
+                ("FANTASY", "burger") => ("/Shops/sburger/sBurger", 0, 25, 0, 5, 15, 30, true, "*2"),
+                ("FANTASY", "fries") => ("/Shops/fries/Fries", 7, 20, 0, 5, 15, 30, true, "*2"),
+                ("SPACE", "burger") => ("/Shops/burger/Burger", 0, 25, 0, 10, 10, 30, true, "2*"),
+                ("SPACE", "fries") => ("/Shops/fries/fries", 7, 20, 0, 5, 10, 35, true, "*2"),
+                ("JUNGLE", "icecream") => ("/Shops/IceCream/IceCream", 4, 25, 5, 5, 10, 30, false, "2*"),
+                ("FANTASY", "icecream") => ("/Shops/icecream/icecream", 4, 25, 5, 5, 10, 30, true, "2*"),
+                ("HALLOW", "icecream") => ("/Shops/ices/ices", 4, 25, 5, 5, 10, 30, false, "*2"),
+                ("SPACE", "icecream") => ("/Shops/ices/ices", 4, 25, 5, 5, 10, 30, false, "2*"),
+                _ => throw new ArgumentException("unsupported named world/shop target; no fuzzy profile fallback"),
             };
+            string stem = profile.Stem;
+            byte product = (byte)profile.Product;
+            bool coordinateLess = profile.Missing, drink = product == 1;
             // Normal _Ready loads the disc/terrain/UI. These are startup defaults, not a fake
             // Viewer setup; CLI still goes through Viewer, and actual archive is checked below.
             var viewer = new Viewer { Name = "Viewer" };
@@ -116,26 +128,36 @@ public partial class ShopServiceSmoke : Node3D
             {
                 var model = library.Rides[rows[candidateRow]].Model;
                 var d = (RideDefinition)Call(viewer, "DefinitionFor", model);
-                return d?.Compiled?.Product == 4
+                return d?.Compiled?.Product == product
                     && string.Equals(System.IO.Path.ChangeExtension(model.Path, null), stem, StringComparison.OrdinalIgnoreCase)
                     && d.Source.EndsWith(stem + ".sam", StringComparison.OrdinalIgnoreCase);
             }).ToArray();
-            Require(matches.Length == 1, "Shops menu has exactly one precise named compiled product4 model " + stem);
+            Require(matches.Length == 1, "Shops menu has exactly one precise named compiled model " + stem);
             int row = matches[0]; var asset = library.Rides[rows[row]];
             var definition = (RideDefinition)Call(viewer, "DefinitionFor", asset.Model);
-            Require(definition.Sells && definition.HungerEffect == 25 && definition.ThirstEffect == 5
-                && definition.HappinessEffect == 5 && definition.VomitEffect == 10 && definition.PricePerUse == 30,
-                "compiled H25/T5/happy5/V10 price30 (unsupported regional profiles fail explicitly)");
+            Require(definition.Sells && definition.HungerEffect == profile.H && definition.ThirstEffect == profile.T
+                && definition.HappinessEffect == profile.Happy && definition.VomitEffect == profile.V && definition.PricePerUse == profile.Price,
+                "independent named EUR compiled need amounts, happiness/vomit/price (unsupported profiles fail explicitly)");
             Require(definition.Shape != null, "authored shape exists");
             var footprint = Park.Footprint.From(definition.Shape);
-            Require(world != "FANTASY", "this bounded smoke requires authored coordinates; FANTASY ice cream has none");
-            var expectedStand = world switch { "HALLOW" => new Vector2(.4f,.5f), "SPACE" => new Vector2(.7f,.7f), _ => new Vector2(.6f,.4f) };
-            string entryRow = world == "HALLOW" ? "*2" : "2*";
-            Require(footprint.Width == 2 && footprint.Height == 2
-                && definition.Shape.Select(s => s.Trim()).SequenceEqual(new[] { "**", entryRow })
-                && definition.EntryStandX is float sx && Mathf.IsEqualApprox(sx, expectedStand.X)
-                && definition.EntryStandY is float sy && Mathf.IsEqualApprox(sy, expectedStand.Y),
-                "named authored 2x2 entry and per-world stand, not a universal shop default");
+            if (coordinateLess)
+            {
+                Require(footprint.Width == 2 && footprint.Height == 2
+                    && definition.Shape.Select(s => s.Trim()).SequenceEqual(new[] { "**", profile.Row })
+                    && !definition.Fields.ContainsKey("UsageInfo.EntryCellStandPosX")
+                    && !definition.Fields.ContainsKey("UsageInfo.EntryCellStandPosY"),
+                    "named asset is the real coordinate-less 2x2 shop, not a mutated definition");
+            }
+            else
+            {
+                var expectedStand = world switch { "HALLOW" => new Vector2(.4f,.5f), "SPACE" => new Vector2(.7f,.7f), _ => new Vector2(.6f,.4f) };
+                string entryRow = world == "HALLOW" ? "*2" : "2*";
+                Require(footprint.Width == 2 && footprint.Height == 2
+                    && definition.Shape.Select(s => s.Trim()).SequenceEqual(new[] { "**", entryRow })
+                    && definition.EntryStandX is float sx && Mathf.IsEqualApprox(sx, expectedStand.X)
+                    && definition.EntryStandY is float sy && Mathf.IsEqualApprox(sy, expectedStand.Y),
+                    "named authored 2x2 entry and per-world stand, not a universal shop default");
+            }
             Require(asset.Script != null, "named model has real RSE");
             var program = new RseProgram(library.Read(asset.Script));
             Require(!program.Instructions.Any(i => i.Opcode is RseOpcode.LIMBO or RseOpcode.WALKON),
@@ -181,7 +203,7 @@ public partial class ShopServiceSmoke : Node3D
             var stub = ride.Entrance.Value;
             var start = ParkPaths.Neighbours(stub).First(c => grid.Open(c) && corridor.Contains((c.X, c.Z)));
             var guest = visitors.Arrive(start, mouth); int guestId = guest.Id;
-            var initial = new VisitorWants { Hunger = 91, Thirst = 0, Toilet = 10, Happiness = 50,
+            var initial = new VisitorWants { Hunger = (byte)(drink ? 0 : 91), Thirst = (byte)(drink ? 91 : 0), Toilet = 10, Happiness = 50,
                 Sick = 0, Litter = 9, Cash = 1234, PreferredIntensity = 90, Unknown78 = 0, Unknown7B = 0 };
             visitors.Needs.Set(guestId, initial);
             void Present() { Call(viewer, "PresentScripted", true, 1f); Call(viewer, "PlaceActors", 1f); }
@@ -189,8 +211,11 @@ public partial class ShopServiceSmoke : Node3D
 
             // Camera only: transform the real authored entry stand through Placement's row mirror
             // and turns. Do not register a standing pose or synthesize any actor/definition.
-            float px = footprint.EntryX + definition.EntryStandX.Value;
-            float pz = footprint.Height - (footprint.EntryY + definition.EntryStandY.Value);
+            // Coordinate-less fixture frames the ACTUAL arrival stub, not an invented counter
+            // point. The acceptance assertion compares the live body with its retained arrival
+            // object and the floor, and requires the explicit port-policy tag.
+            float px = footprint.EntryX + (coordinateLess ? .5f : definition.EntryStandX.Value);
+            float pz = footprint.Height - (footprint.EntryY + (coordinateLess ? .5f : definition.EntryStandY.Value));
             int width = footprint.Width, height = footprint.Height;
             int ex = footprint.EntryX, ez = footprint.Height - 1 - footprint.EntryY;
             for (int turn = 0; turn < placedTurn; turn++)
@@ -203,7 +228,13 @@ public partial class ShopServiceSmoke : Node3D
             var stubWorld = (Vector3)Call(viewer, "GuestWorld", new Vector3(stub.X + .5f, 0, stub.Z + .5f), stub);
             var camera = Field<Camera3D>(viewer, "_cam");
             var target = standWorld + Vector3.Up * .35f;
+            if (coordinateLess) { standWorld = stubWorld; target = stubWorld + Vector3.Up * .35f; }
             var front = stubWorld - standWorld; front.Y = 0;
+            if (coordinateLess)
+            {
+                var orientation = new Placement(); orientation.Arm(definition, targetShop, 0, footprint); orientation.Turn(placedTurn);
+                front = (Vector3)Call(viewer, "GuestHeading", new Vector3(orientation.Turned.EntryDX, 0, orientation.Turned.EntryDY));
+            }
             Require(front.LengthSquared() > 1e-6f, "actual entry determines camera side even with missing actor");
             string cameraView = args.LastOrDefault(a => a.StartsWith("--shop-camera="))?["--shop-camera=".Length..] ?? "front";
             Vector3 cameraOffset = cameraView switch
@@ -278,8 +309,8 @@ public partial class ShopServiceSmoke : Node3D
             Check(Bodies("BEFORE") == 1 && visitors.Walk.Guests.Count(g => g.Id == guestId) == 1,
                 "BEFORE_ONE_WALKING_BODY");
             var before = visitors.Needs.Of(guestId);
-            Check((before with { Thought = initial.Thought }).Equals(initial) && before.Thought == Thought.Hungry,
-                "BEFORE_SEED_PRESERVED_WITH_PRESENTED_HUNGRY_THOUGHT");
+            Check((before with { Thought = initial.Thought }).Equals(initial) && before.Thought == (drink ? Thought.Thirsty : Thought.Hungry),
+                "BEFORE_SEED_PRESERVED_WITH_PRESENTED_NEED_THOUGHT");
             bool Accepted() => ReferenceEquals(visitors.QueuedOwner(guestId), ride)
                 && !ride.Queue.Contains(guestId) && ride.Get("VAR_LETMEON") != guestId;
             bool serving = false;
@@ -302,35 +333,60 @@ public partial class ShopServiceSmoke : Node3D
             await Capture(shot);
             // Deliberately NOT Require: this is the current discriminating rendering failure.
             Check(Bodies("SERVING") == 1, "MISSING_VISIBLE_SERVICE_BODY (accepted external customer must have exactly one full body)");
-            // Literal authored points, independent of the camera's transform calculation and
-            // production StandingServicePose. Height/facing come from actual placement APIs.
-            var pointOracle = world switch
+            if (coordinateLess)
             {
-                "HALLOW" => new[] { new Vector2(1.4f,.5f), new Vector2(1.5f,1.4f), new Vector2(.6f,1.5f), new Vector2(.5f,.6f) },
-                "SPACE" => new[] { new Vector2(.7f,.3f), new Vector2(1.7f,.7f), new Vector2(1.3f,1.7f), new Vector2(.3f,1.3f) },
-                _ => new[] { new Vector2(.6f,.6f), new Vector2(1.4f,.6f), new Vector2(1.4f,1.4f), new Vector2(.6f,1.4f) },
-            };
-            var placementOracle = new Placement(); placementOracle.Arm(definition, "Ice Cream", 0, footprint); placementOracle.Turn(placedTurn);
-            var entryCell = ride.Origin.Offset(placementOracle.Turned.EntryX, placementOracle.Turned.EntryY);
-            var localPoint = pointOracle[placedTurn];
-            Vector3 expectedPosition = new(grid.Origin.X + ride.Origin.X + localPoint.X,
-                park.CellY(entryCell.X, entryCell.Z), -(grid.Origin.Y + ride.Origin.Z + localPoint.Y));
-            var floorCorner = park.CellCorner(ride.Origin.X, ride.Origin.Z);
-            var floorX = park.CellCorner(ride.Origin.X + 1, ride.Origin.Z) - floorCorner;
-            var floorZ = park.CellCorner(ride.Origin.X, ride.Origin.Z + 1) - floorCorner;
-            var floorPoint = floorCorner + localPoint.X * floorX + localPoint.Y * floorZ;
-            floorPoint.Y = park.CellY(entryCell.X, entryCell.Z);
-            GD.Print($"SHOP SMOKE FRAME legacyOverlayExpected={expectedPosition} actualFloorExpected={floorPoint} "
-                + $"legacyFrameDistance={expectedPosition.DistanceTo(floorPoint):F4} floorX={floorX} floorZ={floorZ}");
-            var inward = new Vector3(-placementOracle.Turned.EntryDX, 0, placementOracle.Turned.EntryDY);
-            var actorsAtService = Field<Dictionary<int,Node3D>>(viewer, "_actors");
-            Check(standing.ContainsKey(guestId) && actorsAtService.TryGetValue(guestId, out var serviceActor)
-                && Live(serviceActor) && serviceActor.Position.DistanceTo(floorPoint) < .002f
-                && serviceActor.Basis.Z.DistanceTo(inward) < .0001f
-                && serviceActor.Basis.Y.DistanceTo(Vector3.Up) < .0001f
-                && Mathf.Abs(serviceActor.Basis.Determinant() - 1) < .0001f,
-                "LIVE_SERVICE_ACTOR_ALIGNS_WITH_ACTUAL_PARK_FLOOR_AND_INWARD_FACING");
+                var registered = Field<Dictionary<ParkRide, (Node3D Root, StandingServicePose Pose)>>(viewer, "_standingPlaces");
+                var actorsAtStub = Field<Dictionary<int,Node3D>>(viewer, "_actors");
+                var arrived = guest.Position;
+                var arrivalPoint = (Vector3)Call(viewer, "GuestWorld", new Vector3(arrived.X, arrived.Y, arrived.Z), guest.Cell);
+                var corner = park.CellCorner(stub.X, stub.Z);
+                var floorStub = corner + .5f * (park.CellCorner(stub.X + 1, stub.Z) - corner)
+                    + .5f * (park.CellCorner(stub.X, stub.Z + 1) - corner);
+                floorStub.Y = park.CellY(stub.X, stub.Z);
+                var fallbackOrientation = new Placement(); fallbackOrientation.Arm(definition, targetShop, 0, footprint); fallbackOrientation.Turn(placedTurn);
+                var fallbackInward = ((Vector3)Call(viewer, "GuestHeading", new Vector3(-fallbackOrientation.Turned.EntryDX, 0,
+                    -fallbackOrientation.Turned.EntryDY))).Normalized();
+                Check(registered.TryGetValue(ride, out var registration) && registration.Pose.IsEntryStubFallback
+                    && actorsAtStub.TryGetValue(guestId, out var held) && Live(held) && guest.Cell == stub
+                    && held.Position.DistanceTo(arrivalPoint) < .002f && held.Position.DistanceTo(floorStub) < .002f
+                    && held.Basis.Z.DistanceTo(fallbackInward) < .0001f && held.Basis.Y.DistanceTo(Vector3.Up) < .0001f
+                    && Mathf.Abs(held.Basis.Determinant() - 1) < .0001f && standing.ContainsKey(guestId)
+                    && !definition.Fields.ContainsKey("UsageInfo.EntryCellStandPosX")
+                    && !definition.Fields.ContainsKey("UsageInfo.EntryCellStandPosY"),
+                    "ENTRY_STUB_POLICY_PRESERVES_ACTUAL_ARRIVAL_WITHOUT_INVENTING_AUTHORED_COORDINATES");
+            }
+            else
+            {
+                // Literal authored points, independent of the camera's transform calculation and
+                // production StandingServicePose. Height/facing come from actual placement APIs.
+                var pointOracle = world switch
+                {
+                    "HALLOW" => new[] { new Vector2(1.4f,.5f), new Vector2(1.5f,1.4f), new Vector2(.6f,1.5f), new Vector2(.5f,.6f) },
+                    "SPACE" => new[] { new Vector2(.7f,.3f), new Vector2(1.7f,.7f), new Vector2(1.3f,1.7f), new Vector2(.3f,1.3f) },
+                    _ => new[] { new Vector2(.6f,.6f), new Vector2(1.4f,.6f), new Vector2(1.4f,1.4f), new Vector2(.6f,1.4f) },
+                };
+                var placementOracle = new Placement(); placementOracle.Arm(definition, "Ice Cream", 0, footprint); placementOracle.Turn(placedTurn);
+                var entryCell = ride.Origin.Offset(placementOracle.Turned.EntryX, placementOracle.Turned.EntryY);
+                var localPoint = pointOracle[placedTurn];
+                Vector3 expectedPosition = new(grid.Origin.X + ride.Origin.X + localPoint.X,
+                    park.CellY(entryCell.X, entryCell.Z), -(grid.Origin.Y + ride.Origin.Z + localPoint.Y));
+                var floorCorner = park.CellCorner(ride.Origin.X, ride.Origin.Z);
+                var floorX = park.CellCorner(ride.Origin.X + 1, ride.Origin.Z) - floorCorner;
+                var floorZ = park.CellCorner(ride.Origin.X, ride.Origin.Z + 1) - floorCorner;
+                var floorPoint = floorCorner + localPoint.X * floorX + localPoint.Y * floorZ;
+                floorPoint.Y = park.CellY(entryCell.X, entryCell.Z);
+                GD.Print($"SHOP SMOKE FRAME legacyOverlayExpected={expectedPosition} actualFloorExpected={floorPoint} "
+                    + $"legacyFrameDistance={expectedPosition.DistanceTo(floorPoint):F4} floorX={floorX} floorZ={floorZ}");
+                var inward = new Vector3(-placementOracle.Turned.EntryDX, 0, placementOracle.Turned.EntryDY);
+                var actorsAtService = Field<Dictionary<int,Node3D>>(viewer, "_actors");
+                Check(standing.ContainsKey(guestId) && actorsAtService.TryGetValue(guestId, out var serviceActor)
+                    && Live(serviceActor) && serviceActor.Position.DistanceTo(floorPoint) < .002f
+                    && serviceActor.Basis.Z.DistanceTo(inward) < .0001f
+                    && serviceActor.Basis.Y.DistanceTo(Vector3.Up) < .0001f
+                    && Mathf.Abs(serviceActor.Basis.Determinant() - 1) < .0001f,
+                    "LIVE_SERVICE_ACTOR_ALIGNS_WITH_ACTUAL_PARK_FLOOR_AND_INWARD_FACING");
 
+            }
             for (int tick = 0; tick < 6000 && visitors.Rides == 0; tick++)
             {
                 Tick(); if (tick % 8 == 0) await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
@@ -342,9 +398,10 @@ public partial class ShopServiceSmoke : Node3D
                 + $"u78={after.Unknown78} u7B={after.Unknown7B} purchases={visitors.Purchases} rides={visitors.Rides} boardings={visitors.Boardings}");
             Check(visitors.Purchases == 1 && visitors.Rides == 1 && visitors.Boardings == 1 && visitors.Relieved == 0,
                 "ONE_REAL_PURCHASE_HANDBACK");
-            Check(after.Hunger == 66 && after.Thirst == 5 && after.Toilet == 35 && after.Sick == 10
-                && after.Happiness == 55 && after.Cash == 934 && after.Litter is >= 39 and <= 63,
-                "PURCHASE_EFFECTS_H66_T5_TOILET35_SICK10_HAPPY55_CASH934_LITTER39_TO63");
+            Check(after.Hunger == (drink ? profile.H : 91 - profile.H) && after.Thirst == (drink ? 91 - profile.T : profile.T)
+                && after.Toilet == 10 + (drink ? profile.T : profile.H) && after.Sick == profile.V
+                && after.Happiness == 50 + profile.Happy && after.Cash == 1234 - 10 * profile.Price && after.Litter is >= 39 and <= 63,
+                "NAMED_PURCHASE_EFFECTS_AND_TENFOLD_COMPILED_PRICE_DEBIT");
             Check(after.PreferredIntensity == initial.PreferredIntensity && after.Unknown78 == initial.Unknown78
                 && after.Unknown7B == initial.Unknown7B, "UNAFFECTED_VALUES_PRESERVED (thought is recomputed, not frozen)");
             Check(guest.Id == guestId && visitors.Plans.Count == 1 && visitors.Plans.ContainsKey(guestId)

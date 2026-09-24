@@ -4,10 +4,36 @@ using TPW.PS2.Data;
 namespace TPWPS2Viewer;
 
 /// <summary>Authored standing point for 1x1 relief facilities and 2x2 shops.
-/// Larger/indoor service paths and missing authored coordinates are not guessed here.
+/// Missing-coordinate shops may separately opt into a labelled actual-arrival-stub policy.
+/// Larger/script-owned service paths and authored coordinates are never guessed here.
 /// Uses Placement's row mirror and quarter turns; no guessed queue spacing.</summary>
 public readonly record struct StandingServicePose(Vector2 CellPoint, ParkCell HeightCell, Vector2I Inward)
 {
+    /// <summary>Port policy: hold at the coordinator's actual arrival cell, not an authored
+    /// counter position. The nullable SAM fields are deliberately left untouched.</summary>
+    public bool IsEntryStubFallback { get; init; }
+
+    /// <summary>Only a small selling shop with BOTH stand keys absent can use this fallback.
+    /// Partial/malformed supplied data is not absence, and larger service modes stay separate.
+    /// The point comes from real placement; it is not a decoded console parser default.</summary>
+    public static bool TryCreateAtEntryStub(RideDefinition definition, int turns, ParkCell? entrance,
+                                            out StandingServicePose pose)
+    {
+        pose = default;
+        if (definition?.Shape == null || !definition.Sells || entrance is not ParkCell cell
+            || definition.Fields.ContainsKey("UsageInfo.EntryCellStandPosX")
+            || definition.Fields.ContainsKey("UsageInfo.EntryCellStandPosY")
+            || definition.Blocks.ContainsKey("UsageInfo.EntryCellStandPosX")
+            || definition.Blocks.ContainsKey("UsageInfo.EntryCellStandPosY")) return false;
+        var fp = Park.Footprint.From(definition.Shape);
+        if (fp.Width != 2 || fp.Height != 2 || fp.EntryX < 0 || fp.EntryY < 0) return false;
+        int dx = fp.EntryDX, dy = -fp.EntryDY;
+        for (int turn = 0; turn < (turns & 3); turn++) (dx, dy) = (-dy, dx);
+        pose = new StandingServicePose(new Vector2(cell.X + .5f, cell.Z + .5f), cell, new Vector2I(-dx, -dy))
+            { IsEntryStubFallback = true };
+        return true;
+    }
+
     public static bool TryCreate(RideDefinition definition, ParkCell origin, int turns, out StandingServicePose pose)
     {
         pose = default;

@@ -3380,14 +3380,17 @@ public partial class Viewer : Node3D
 
     void RegisterStandingService(ParkRide ride, Node3D root, int turns)
     {
-        if (StandingServicePose.TryCreate(ride.Definition, ride.Origin, turns, out var pose))
+        if (StandingServicePose.TryCreate(ride.Definition, ride.Origin, turns, out var pose)
+            || StandingServicePose.TryCreateAtEntryStub(ride.Definition, turns, ride.Entrance, out pose))
             _standingPlaces[ride] = (root, pose);
     }
 
     /// <summary>Small relief facilities and authored 2x2 shops can have standing customers, not seat/WALK poses.
     /// The coordinator owns the identity; a HUSH stack is not required for outside service.
     /// Waiting guests keep the queue-stub position (no invented queue spacing);
-    /// accepted guests use the authored stand point. Facing is presentation policy.</summary>
+    /// accepted guests use the authored stand point where present. For small shops with both
+    /// coordinates absent, keep the actual arrival cell for the whole service: labelled port
+    /// policy, not an inferred counter point or console default. Facing is presentation policy.</summary>
     void StandingRiders()
     {
         _standing.Clear();
@@ -3406,9 +3409,10 @@ public partial class Viewer : Node3D
             // Small outside-service fixtures have neither; larger service modes remain separate.
             if (owner.Host.Seats.Values.Contains(id) || owner.Host.Walkers.ContainsKey(id)) continue;
             bool waiting = owner.Queue.Contains(id) || owner.Get("VAR_LETMEON") == id;
-            Vector3 cell = waiting ? Cell(ParkPaths.Centre(plan.At))
+            bool atArrival = waiting || place.Pose.IsEntryStubFallback;
+            Vector3 cell = atArrival ? Cell(ParkPaths.Centre(plan.At))
                 : new Vector3(place.Pose.CellPoint.X, 0, place.Pose.CellPoint.Y);
-            var heightCell = waiting ? plan.At : place.Pose.HeightCell;
+            var heightCell = atArrival ? plan.At : place.Pose.HeightCell;
             var forward = GuestHeading(new Vector3(place.Pose.Inward.X, 0, place.Pose.Inward.Y));
             _standing[id] = new Transform3D(WalkBasis(forward), GuestWorld(cell, heightCell));
         }

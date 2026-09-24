@@ -99,10 +99,34 @@ def classify(scene: str, run: dict) -> dict:
                      'STANDING SERVICE ok: guest frame maps grid X through the built plot direction',
                      'STANDING SERVICE ok: guest frame maps grid Z through the built plot direction',
                      'STANDING SERVICE ok: guest frame follows changed plot instead of retaining an old origin']
+        fallback_assets = ('JUNGLE/Shops/Coconut/Coconut.sam', 'FANTASY/Shops/sburger/sBurger.sam',
+                           'FANTASY/Shops/fries/Fries.sam', 'FANTASY/Shops/icecream/icecream.sam',
+                           'SPACE/Shops/burger/Burger.sam', 'SPACE/Shops/fries/fries.sam')
+        prefixes += [f'STANDING SERVICE ok: entry-stub fallback: {asset}: {witness}'
+                     for asset in fallback_assets for witness in (
+                         'raw missing pair; eligible footprint; authored-only rejects',
+                         'all four turns use actual stub centre, height and placement inward; fallback tagged',
+                         'fallback leaves both raw keys absent')]
+        fallback_negatives = (
+            'JIceCream: authored coordinates reject fallback',
+            'GiftShop: missing-coordinate 3x3 shop rejects fallback',
+            'Monkey: ordinary ride rejects fallback',
+            'Coconut: null entrance rejects fallback',
+            'Coconut: 2x2 footprint without entry rejects fallback',
+            *[f'Coconut: only UsageInfo.EntryCellStandPos{axis}={value} rejects fallback without filling other coordinate'
+              for axis in ('X', 'Y') for value in ('0.5', 'malformed', 'NaN')],
+            *[f'Coconut: supplied UsageInfo.EntryCellStandPos{axis} block is malformed rather than absent' for axis in ('X', 'Y')])
+        prefixes += ['STANDING SERVICE ok: entry-stub fallback: ' + label for label in fallback_negatives]
+        prefixes += ['STANDING SERVICE ok: entry-stub consumer: ' + label for label in (
+            'actual viewer registration selects tagged policy', 'real coordinator accepts route',
+            'real shop accepts before handback', 'actual body holds retained arrival position',
+            'explicit host hide still wins', 'host reveal restores the one body',
+            'genuine handback restores one walker without a standing duplicate',
+            'entire lifecycle leaves absent authored coordinates absent')]
         summaries = re.findall(r'^STANDING SERVICE PASS: (\d+) checks, 0 failures$', text, re.M)
         checks = sum(line.startswith('STANDING SERVICE ok:') for line in lines)
         result['checks'] = checks
-        if len(summaries) != 1 or int(summaries[0]) != checks or checks < 93:
+        if len(summaries) != 1 or int(summaries[0]) != checks or checks < 132:
             return {**result, 'status': 'missing_coverage'}
     elif scene == 'audio':
         prefixes = ['AUDIO LIFECYCLE ok: 2D eight fast no-evidence polls remain pending',

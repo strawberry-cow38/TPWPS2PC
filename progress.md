@@ -1266,3 +1266,31 @@ If defaults are not established, choose and label a conservative visible-service
 rather than invent an authored position or leave the project idle; validate actual ownership,
 visibility and handback. Keep source tracing bounded to what unlocks those six customers.
 No restart, no extra scheduler, no approval wait. Existing owner continuation remains active.
+
+## CP1/CP2 — coordinate-less arrival-stub policy candidate
+
+Main6fa5c5d confirmed. Peer's default trace did not establish a console default; numeric
+pattern searches/key strings are not proof of compiled absence or a live parser call path.
+Agreed bounded policy: keep customers at the actual arrival stub, explicitly port behavior,
+without authoring fake SAM values. No continuing parser hunt blocks these six customers.
+
+Before fix, new normal-startup --shop-target=coconut fixture reproduced body1→0→1 while its
+real drink purchase succeeded; one missing-body assertion red, exit2. Log
+../tpw-coordinate-less-before.log, captures /tmp/tpw-coordinate-less-before-20260924.
+New TryCreateAtEntryStub/IsEntryStubFallback is separate from authored-only TryCreate. Viewer
+registers authored first and holds fallback at actual plan.At under existing instance/hide/
+seat/WALK guards. Partial/malformed values, larger shops and missing entry remain excluded.
+
+Fixed Coconut passes real visibility/arrival/floor/purchase/handback; earlier all-six rendered
+runs and authoredJUNGLEIceCream control pass in /tmp/tpw-coordinate-less-fixed-20260924.
+Those six predate the tightened final live-facing assertion. Headless metadata31 + actual
+Viewer/RSE fallback consumer8 bring defaultStandingServiceAudit to132, passing. Source review
+caught fenced-block keys being mistaken for absence; now both Fields and Blocks are checked,
+with parsed-input negatives. Runner now requires all8consumer witnesses;57 Python checks pass.
+Initial classifier negative accidentally deleted assertion IDs; corrected to preserve IDs
+and change only the witness, so it really tests coverage rather than ID validation.
+
+Current candidate needs Git peer review, deliberate no-registration/block-guard mutations,
+and final fresh8scene + six named rendered reruns after review-tightening. Only comment/name
+cleanup followed the earlier6renderpass; no final-source six-run claim yet. Share code via
+review branch, not paths/attachments; screenshots may be attached. No restart/new scheduler.
