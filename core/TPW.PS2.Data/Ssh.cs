@@ -46,9 +46,12 @@ public sealed class Ssh
         if (codedWidth == 0 || codedHeight == 0 ||
             codedWidth != Math.Max(16, Width) || codedHeight != Math.Max(16, Height))
             throw new NotSupportedException("GM dimensions do not match a supported SHPS image layout.");
-        // Sub-macroblock images in the fixtures are 8x8 packed into the start of a 16x16 buffer.
-        if ((Width < 16 || Height < 16) && (Width != 8 || Height != 8))
-            throw new NotSupportedException("Only the measured 8x8 sub-macroblock layout is supported.");
+        // Sub-macroblock dimensions. A whole-disc sweep finds exactly 8x8, 8x32, 32x8 and 16x8 (the
+        // 8x8s plus the eight UI.WAD/laptop 9-slice tiles), and every one is measured against the
+        // layout rule in the placement loop below. 8 is therefore the only sub-16 dimension that
+        // exists; any other is unmeasured and is refused rather than guessed at.
+        if ((Width < 16 && Width != 8) || (Height < 16 && Height != 8))
+            throw new NotSupportedException("Only a sub-macroblock dimension of 8 has been measured.");
 
         HasAlpha = (header & 0x08000000) != 0;
         if (HasAlpha != (entry.Type == 0x85))
@@ -79,14 +82,35 @@ public sealed class Ssh
         {
             int x = pixel % Width, y = pixel / Width;
             int sx, sy;
-            if (Width < 16)
+            if (Width < codedWidth)
             {
+                // ⭐ An ENCODER artefact, not a decoder rule. The PS2's only SHPS parser, ctex_ssh::load
+                // (SLES_500.32 @0x235d68, the sole reference to its "SHPS" string), refuses every entry
+                // with a dimension under 16 ("*** ERROR ctex::load - mipmap too small"), so nothing
+                // narrower than a macroblock is ever displayed and the game code cannot settle this
+                // layout; the bytes the encoder wrote are the only authority. It wrote the W*H source
+                // pixels CONTIGUOUSLY into the coded raster (image pixel p at coded pixel p) and left
+                // stale encoder memory after them (near-identical across files of the same shape,
+                // and unrelated to each file's own image).
+                //   Measured (TGA): the three 8x8 pairs AWARD_T_8, PUD_5, Sploo2X3d score RGB MAE
+                //   10.0 / 4.1 / 5.7 read this way against 50.6 / 36.5 / 34.9 for a top-left crop,
+                //   whose rows 4-7 (MAE 60-129) are the stale memory.
+                //   Corroborated without a TGA (8x32): the laptop 9-slice edges are one bevel in two
+                //   orientations. Read this way, L_edge1 and L_edge3 match the profile of the 32x8
+                //   L_edge2 and L_edge4 (which have no layout choice) at luma MAE 0.7 / 3.3; a crop
+                //   scores 34 / 44, and a control pairing of unrelated tiles scores 31.
+                // A single macroblock column (Width < 16) is the only case where this differs from
+                // the macroblock mapping below, and there raster order and GM column order coincide.
                 sx = pixel % codedWidth;
                 sy = pixel / codedWidth;
             }
             else
             {
-                // The decoder lays stream macroblocks across rows; GM traverses image columns.
+                // The decoder lays stream macroblocks across rows; GM traverses image columns. This
+                // is read from the game's uploaders (@0x223fe0, @0x224660, @0x236768): each IMAGE
+                // transfer is a 16-wide strip of the entry's full height at DSAX = 16 * strip. With a
+                // single macroblock row (Height < 16, e.g. 32x8) it is the identity, so the
+                // contiguous rule above and this one agree on every such image.
                 int mb = (x / 16) * (codedHeight / 16) + y / 16;
                 sx = (mb % (codedWidth / 16)) * 16 + x % 16;
                 sy = (mb / (codedWidth / 16)) * 16 + y % 16;
@@ -95,8 +119,15 @@ public sealed class Ssh
             // Nearest 2x2 chroma replication; alpha is handled independently below.
             ConvertIpuRgb(yuv[sy * codedWidth + sx], yuv[codedPixels + chroma],
                 yuv[codedPixels * 5 / 4 + chroma], Pixels.AsSpan(pixel * 4, 3));
-            // Alpha is an independent linear plane, not the IPU macroblock order.
-            // Unlike RGB's packed 8x8 special case, alpha retains the coded row stride.
+            // Alpha is an independent plane at the coded row stride, not the IPU macroblock order,
+            // and for sub-macroblock images it is NOT laid out like the RGB above: the encoder copied
+            // codedWidth bytes per coded row starting at SOURCE row y (stride = image width), so the
+            // image sits top-left and the columns past it repeat the next source row. Read from the
+            // bytes, not inferred: in all six 8-wide alpha files, coded row y columns 8..15 equal row
+            // y+1 columns 0..7 exactly (248 of 248 byte pairs per 8x32 file, 120 of 120 per 8x8), the
+            // byte after the W*H source bytes is 0x44 in all ten sub-16 alpha files, and AWARD_T_8's
+            // TGA alpha matches exactly (MAE 0; the contiguous reading scores 17.3). The 32x8 siblings
+            // corroborate 8x32 the same way as for RGB: profile MAE 0.25 / 0.06 (contiguous: 18 / 20).
             Pixels[pixel * 4 + 3] = HasAlpha ? Clamp(gm[alphaOffset + y * codedWidth + x] * 2) : (byte)255;
         }
     }

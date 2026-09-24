@@ -134,13 +134,57 @@ slider is drawn unconditionally; the additive slider **only when the shop has an
 `*(screen + 0x9cc)` is the selected row and drives both the yellow label and which slider is live
 (0 quality, 1 additive, 2 sale price).
 
+## The interaction, `FUN_001d6f68`
+
+Up/down (`FUN_00181700` bits 0 and 1) move `screen[0x9cc]`, each playing sound `0xd6`, and it
+**wraps**: below 0 goes to the limit, above the limit goes to 0.
+
+⭐⭐ The limit is `FUN_001d1f60(shop) == 0 ? 1 : 2` — **2 rows when the shop has an additive, 1 when
+it does not**. So the additive is skipped by the CURSOR as well as by the drawing; this is the
+third place the same ingredient test appears, after the label and the slider.
+
+Write-back, each frame: `FUN_001d1f58(shop, screen[0xa82])` sets quality, `FUN_001d1fc0(shop,
+screen[0xbba])` sets the additive, and `shop[0xb8] = screen[0xd2c]` sets the sale price. Those
+`+0x2e` offsets inside each widget are its value, which is also what `FUN_001daa88` copies.
+
+⭐ The bar and the sliders are **one widget class**: `FUN_001daa88` (slider) copies its geometry
+into a sub-object and calls `FUN_00115590`, the same painter the bar uses. Their field layout,
+confirmed against both the draw and `FUN_00115530`'s fraction, is `+8` x, `+0xa` y, `+0x14` w,
+`+0x16` h, `+0x18` value (<<16, so `+0x1a` is its integer part), `+0x1c` min, `+0x20` max,
+`+0x2c` the sprite.
+
+## Satisfaction, `FUN_001d1e00`
+
+```
+if (<vtable call> == 0) return 0;
+if (shop[0xb4] == 0) trap(7);
+return min(100, shop[0xb0] / shop[0xb4]);
+```
+
+A **running mean**: an accumulator over a count, clamped to 100. So filling this bar needs the port
+to accumulate a per-customer rating, which it does not yet do — hence the empty bar rather than an
+invented number.
+
+## Cost of goods, `FUN_001d1b08`
+
+```
+base = *(u16*)(dbaPayload + 0x2e)
+return base * ((shop[0xba] >> 2) + 0x4b - (shop[0xac] >> 2)) / 100      ; 0x4b = 75
+```
+
+⭐ Quality is `shop[0xba]` (u16) and the additive `shop[0xac]`. ⚠ The additive's shift rounds
+**toward zero** (`v < 0 ? v + 3 : v` before `>> 2`), where C#'s `>>` rounds toward negative
+infinity — a one-off difference that cannot arise while the slider stays in 0..100, but is a real
+difference in the expression.
+
 ## The art, `UI.WAD/laptop/` (62 files)
 
 | file | what |
 |---|---|
 | `LAPTOP_{JUNGLE,HALLOW,FANTASY,SPACE}`, `LAPTOP_512` | 512x512 chrome, per world |
 | `BARSLIDE` 128x32 + `BARKNOB` 32x32 | yellow track + gold knob — the sliders |
-| `PROG_BAR` 128x32 (ticked) + `PROG_CBIT`/`PROG_VBIT`/`PROG_WBIT` 16x32 | the satisfaction bar and its cyan segments |
+| `PROG_BAR` 128x32 (notched) **or** `BARPROG` 128x32 (smooth) | the satisfaction bar's frame — ⚠ **which one is UNRESOLVED**, see below |
+| `PROG_CBIT`/`PROG_VBIT`/`PROG_WBIT` 16x32 | the cyan cap / cyan body / white segments that fill a bar |
 | `L_corner1-3`, `L_edge1-4`, `L_fill`, `L_Panel1-9`, `L_Panelfill` | the laptop's own inner nine-slice |
 | `BUTTX`, `BUTTCIRCLE`, `BUTTSQUARE`, `BUTTTRIANGLE` | the face-button glyphs |
 | `AWARD_*` | medals and stars |
@@ -160,9 +204,22 @@ the 32 row step. Small (21) and Console (14) would leave holes.
   and **none has a `.tga` sibling**, so there is no shipped reference to validate a layout against.
   Three *8x8* files do (`AWARD_T_8`, `SPACE/PUD_5`, `SPACE/Sploo2X3d`) and are the available
   control. Until this is cracked the laptop's inner nine-slice cannot be drawn.
+* **⚠ Which frame the satisfaction bar uses is NOT established.** There are two 128x32 orange
+  frames, `PROG_BAR` (notched) and `BARPROG` (smooth). The port currently draws `PROG_BAR`, chosen
+  **by name** on the assumption that its notches were the fill-segment dividers — and that
+  assumption is measurably false: the notches sit **11px** apart while the `PROG_*BIT` fill
+  segments are **16px** wide, so they do not correspond. `BARPROG`'s interior measures completely
+  empty. The frame is bound through the laptop **sprite registry** (`DAT_002eeff0`, 62 records of
+  24 bytes — exactly the 62 files in `UI.WAD/laptop/`), which reads all zeros in the image because
+  it is runtime-populated, so the index cannot be resolved statically. Master was asked to point.
 * **Satisfaction is not tracked.** `shop[0xb0]`/`[0xb4]` is decoded but the port does not yet
   accumulate it, so the bar renders empty rather than showing a number that was never computed.
 * **The `Model` window** (147x240 at col 315) is a 3D viewport, not a sprite, and is not yet drawn.
+  ⚠ The scene file's own comment calls it `;3D Spinning model` and **the comment is wrong about the
+  behaviour** — master, who has played it: "the model isnt meant to spin in the viewport. its just
+  a front facing render of it. playing an animation". Which animation is not yet established. An
+  authored comment describes what someone meant, not what shipped; this one would have had the
+  port turning a model that the game holds still.
 * The laptop **sprite registry** at `DAT_002eeff0` — 62 records of 24 bytes, exactly the file count
   in `UI.WAD/laptop/` — reads all zeros in the image, so it is runtime-populated and its
   index-to-file mapping is **not** established. `FUN_00214c20` sets sprite 57 to `0x60ffffff` and
