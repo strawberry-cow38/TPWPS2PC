@@ -2249,8 +2249,34 @@ that genuinely loops looks like here, and **6** scenery events have it.
 ⭐⭐ So looping is a property of the **event**, not the instruction: an event with the
 start/loop/end structure has a middle to sustain and a single-set event does not. `ADDOBJ` still
 means "add an object" -- something persistent that `KILLOBJ tag` can stop.
-⚠ Two-set events stay one-shots: nothing read says which half would sustain, and guessing that is
-how the previous inference got here.
+⚠⚠ **AND THAT RULE WAS WRONG TOO -- THE THIRD IN A ROW.** Master: loudspeakers "are meant to play
+a sound from their respective banks on a timer/random", and ours "just cycl[ed] at the end of each
+sfx". The scenery data says why:
+
+```
+Speaker1  3 sets:  TP BEAST 1 | TP BEAST 4 | TP BEAST 7
+Speaker3  3 sets:  TP CRICKETS 2 | TP FROG 1 | frog3
+Staff     6 sets:  cough | crackle | newspaper | slurp | sniff | tapspoon
+```
+
+⭐⭐ **A SET IS AN ALTERNATIVE, NOT A STAGE.** Those are peers -- a bank to choose from. Treating
+three sets as start/loop/end chained them: play the first, sustain the second forever, then the
+third, which is exactly the cycling reported.
+
+⭐ So every sound event is now a **weighted random pick of one set, played once**, and the
+repetition belongs to the SCRIPT -- which is what a loudspeaker's timer is, and what `ADDOBJ`
+plus a killable tag is for.
+
+⚠⚠ **NOTHING SUSTAINS NOW, INCLUDING THE BUS**, whose four sets really do read as approach /
+stop / idle / pull-away. That is a real loss, taken deliberately: a silent bus is a smaller wrong
+than four loudspeakers screeching without end, and structure alone cannot tell them apart.
+⭐ WHAT WOULD SETTLE IT is already recorded as unread in `findings/sound.md` -- the L2 record's
+`+0x10` flags (0, 4, 6, 8, 0x406, 0xc06) and its `+0xC` word (3300, 4600, 5700, 2300, 1000,
+3200, 4000, 5999), which look very like a repeat interval in milliseconds.
+
+⭐⭐ Three rules for looping in one evening -- the opcode, then the set count, then neither. Every
+one was an inference about STRUCTURE standing in for a FIELD nobody had read, and each survived
+until a person listened to it.
 
 ⭐ The tag semantics still settle the stacking half: `ADDOBJ` names an object and `KILLOBJ tag` /
 `FADEOBJ tag` act on *the* object with that tag — singular, and `RideSounds.Kill` already looks it

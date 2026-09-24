@@ -50,9 +50,7 @@ public sealed class RideSounds
         public bool Finished, Verdict;
         public bool Fading; public float Db;
         /// <summary>A loop still to be started once this (its start clip) has finished.</summary>
-        public Action ThenLoop;
         /// <summary>The end clip to play when this loop is killed.</summary>
-        public Action OnEnd;
     }
 
     readonly Node3D _root;
@@ -192,7 +190,7 @@ public sealed class RideSounds
         // ⚠ Sets of exactly two are left as one-shots: nothing in the data has been read that
         // says which of the two would be the sustaining half, and guessing that is how the last
         // inference got here.
-        bool loop = op == RseOpcode.ADDOBJ && r.Sets >= 3;
+        bool loop = op == RseOpcode.ADDOBJ;   // object lifetime, not sustain -- see below
         // ⭐⭐ ONE LIVE OBJECT PER TAG, AND WITHOUT THIS THEY STACK FOREVER. Master, playing:
         // "loadspeakers and bins are spamming sounds forever ... crazy ape spams a snort sound
         // mid cycle." Reproduced in this repo's own census before touching anything: over one
@@ -224,34 +222,42 @@ public sealed class RideSounds
                 foreach (var v in already) Free(v);
             }
         }
-        var sets = Enumerable.Range(0, r.Sets).Select(i => r.Clips.Where(c => c.Set == i).ToList()).ToList();
+        // ⭐⭐ A SET IS AN ALTERNATIVE, NOT A STAGE. Master: loudspeakers "are meant to play a
+        // sound from their respective banks on a timer/random", and ours "just cycl[ed] at the
+        // end of each sfx". The data is unambiguous once you read the names:
+        //
+        //   Speaker1  3 sets: TP BEAST 1 | TP BEAST 4 | TP BEAST 7
+        //   Speaker3  3 sets: TP CRICKETS 2 | TP FROG 1 | frog3
+        //   Staff     6 sets: cough | crackle | newspaper | slurp | sniff | tapspoon
+        //
+        // Those are peers. Treating three sets as start/loop/end chained them -- play the first,
+        // sustain the second forever, then the third -- which is precisely the cycling that was
+        // reported. ⚠ This is the THIRD rule this file has had for looping: first the opcode,
+        // then the set count, now neither. Each was an inference about structure standing in for
+        // a field nobody had read.
+        //
+        // ⭐ So: pick ONE set at random, then a clip within it by the data's own weights, and
+        // play it once. The repetition is the SCRIPT'S -- that is what a loudspeaker's timer is,
+        // and what `ADDOBJ` plus a tag is for.
+        //
+        // ⚠⚠ NOTHING SUSTAINS ANY MORE, INCLUDING THE BUS, whose four sets really do read as
+        // approach / stop / idle / pull-away. That is a real loss and it is deliberate: a silent
+        // bus is a smaller wrong than four loudspeakers screeching without end, and I cannot tell
+        // the two apart from structure alone. ⭐ WHAT WOULD SETTLE IT is already named in
+        // findings/sound.md as unread -- the L2 record's `+0x10` flags (0, 4, 6, 8, 0x406, 0xc06)
+        // and its `+0xC` word (3300, 4600, 5700, 2300, 1000, 3200, 4000, 5999), which look very
+        // like a repeat interval in milliseconds. Read those and sustain comes back as data.
+        var sets = Enumerable.Range(0, r.Sets).Select(i => r.Clips.Where(c => c.Set == i).ToList())
+                             .Where(l => l.Count > 0).ToList();
+        var bank = sets.Count > 0 ? sets[_rng.Next(sets.Count)] : r.Clips;
+        var chosen = Pick(bank);
+        var stream = chosen == null ? null : Stream(cat, r, chosen, false);
         string place = $"at ({at.X:F1},{at.Y:F1},{at.Z:F1}){(fellBack ? " ROOT (fitting did not resolve)" : "")}{(park == 2 ? " park-2 map" : "")}";
-        if (!loop || sets.Count < 3)
-        {
-            var clip = Pick(sets.Count > 0 ? sets[0] : r.Clips);
-            var wav = clip == null ? null : Stream(cat, r, clip, loop);
-            string line = $"{head} -> {clip?.Bank}[{clip?.Index}] {clip?.Name} {clip?.Milliseconds}ms {(loop ? "LOOP" : "one-shot")} {place}"
-                        + (wav == null ? "  ⚠ NO STREAM (undecodable or missing bank)" : $" {(wav.Stereo ? "stereo" : "mono")} {wav.MixRate}Hz");
-            Census.Add(line); GD.Print(line);
-            if (wav != null) Start(rideId, tag, clip.Name, wav, loop, kind, at, line);
-            return;
-        }
-        // ⚠ Three sets: start, loop, end -- by the names in the data, not by a consumer.
-        var start = Pick(sets[0]); var mid = Pick(sets[1]); var end = Pick(sets[2]);
-        var startWav = start == null ? null : Stream(cat, r, start, false);
-        var midWav = mid == null ? null : Stream(cat, r, mid, true);
-        var endWav = end == null ? null : Stream(cat, r, end, false);
-        string l = $"{head} -> {start?.Name} then LOOP {mid?.Name} (end {end?.Name}) {place}"
-                 + (midWav == null ? "  ⚠ NO STREAM for the loop" : $" {midWav.MixRate}Hz");
-        Census.Add(l); GD.Print(l);
-        Action beginLoop = () =>
-        {
-            if (midWav == null) return;
-            var lv = Start(rideId, tag, mid.Name, midWav, true, kind, at, l);
-            if (endWav != null) lv.OnEnd = () => Start(rideId, 1000, end.Name, endWav, false, kind, at, l);
-        };
-        if (startWav != null) Start(rideId, tag, start.Name, startWav, false, kind, at, l).ThenLoop = beginLoop;
-        else beginLoop();
+        string line = $"{head} -> {chosen?.Bank}[{chosen?.Index}] {chosen?.Name} {chosen?.Milliseconds}ms "
+                    + $"one-shot from {sets.Count} set(s) {place}"
+                    + (stream == null ? "  ⚠ NO STREAM (undecodable or missing bank)" : $" {(stream.Stereo ? "stereo" : "mono")} {stream.MixRate}Hz");
+        Census.Add(line); GD.Print(line);
+        if (stream != null) Start(rideId, tag, chosen.Name, stream, false, kind, at, line);
     }
 
     static bool IsPlaying(Node p) => p is AudioStreamPlayer3D a ? a.Playing : p is AudioStreamPlayer b && b.Playing;
@@ -273,7 +279,7 @@ public sealed class RideSounds
         var hit = _voices.Where(v => v.Ride == rideId && v.Tag == tag).ToList();
         string line = $"[snd] {scriptMs / 1000.0,7:F1}s {ride,-22} KILLOBJ tag {tag,4} -> stops {hit.Count}: {string.Join(", ", hit.Select(v => v.Name))}";
         Census.Add(line); GD.Print(line);
-        foreach (var v in hit) { var end = v.OnEnd; Free(v); end?.Invoke(); }
+        foreach (var v in hit) Free(v);
     }
 
     /// <summary>`FADEOBJ tag`: the same, over half a second. ⚠ The half second is ours.</summary>
@@ -355,14 +361,15 @@ public sealed class RideSounds
             {
                 v.Db -= (float)(delta * 80);
                 Volume(v.Player, v.Db);
-                if (v.Db < -60) { var end = v.OnEnd; Free(v); end?.Invoke(); }
+                if (v.Db < -60) Free(v);
                 continue;
             }
-            if (v.Verdict && (v.Finished || !IsPlaying(v.Player)))
-            {
-                // A finished start clip hands over to its loop; a finished one-shot is dropped.
-                var next = v.ThenLoop; Free(v); next?.Invoke();
-            }
+            // ⚠ `ThenLoop`/`OnEnd` lived here to hand a finished start clip to its loop and to
+            // play a loop's end clip. Both went with the start/loop/end path -- see Cue -- and
+            // are DELETED rather than left assigned-by-nothing, because an unused hook reads like
+            // a decision to the next person. They come back when the map's own repeat field is
+            // read and sustain is restored from data.
+            if (v.Verdict && (v.Finished || !IsPlaying(v.Player))) Free(v);
         }
     }
 
