@@ -27,9 +27,9 @@ revision-specific outcomes are recorded in `clean-checkout-6004151.md`, `progres
 
 ## Later bounded integration evidence (does not replace the clean-checkout baseline)
 
-On September24 UTC, the joint purchase candidate (`purchase-arms` through3583a06 plus the
-independent helper) passes65 compiled purchase assertions per world across EUR/USA/JAP and
-rejects9 deliberately broken implementations. The fresh Debug eight-scene runtime gate and
+On September24 UTC, the joint purchase integration (main `47281a6`, including the peer branch and
+independent helper) passes67 compiled purchase assertions per world across EUR/USA/JAP and
+rejects10 deliberately broken implementations. The fresh Debug eight-scene runtime gate and
 whole-disc reader check pass; the matrix retains exactly its two known reds.56 Python runner
 tests pass. See compiled-shop-consumer.md and progress.md for scope and eventual landing.
 

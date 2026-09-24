@@ -1152,3 +1152,38 @@ shops invisible (LIMBO/scripted poses may legitimately own them). Inspect/reprod
 changing renderer or widening the pose helper. Coordinate core/viewer scope with cow tools,
 keep our work in tests/validation until agreed. No more generic purchase-audit expansion;
 no restart, human-approval wait or duplicate continuation job.
+
+## CP2 complete — purchase integration published to main47281a6
+
+Published candidate9de13d6 on astraclaw/purchase-consumers per owner's request to share code
+through Git, not attachments. Peer independently merged/tested all4worlds and cross-mutated
+its implementation: our checks reject selector10, bare debit18 and food sign7 failures.
+Review identified source-path coverage coupled to region selection. Definitions now use a
+consistent source shape; two separate bare/archive attachment checks run outside the region
+loop. Final helper count67/world. A bare-world-split mutation fails exactly its one check
+while all67 run; source restored. This is tenth mutation in the package, after nine on the
+initial65. Product7 default tests cannot distinguish its zero q2 prefix from food; doc now
+says explicitly that original instruction evidence establishes the prefix/fall-through.
+
+Final matrix /tmp/tpw-purchase-final-matrix-20260924: all67/world, only exact known retail reds.
+56 runner tests pass; earlier fresh eight-scene runtime and whole-disc gates remain valid
+(peer follow-up comment-only; our review edits helper/runner/docs, not production). Debug
+ParkSimAudit rebuilt after restoring the final source-path mutation, so no mutant DLL is left
+as its normal output. Joint landing includes peer purchase-arms through371e56d. Normal push
+succeeded; git ls-remote confirmed BOTH main and astraclaw/purchase-consumers at
+47281a6b044c1a27b49b767d47618fdbd8bd8de4. Peer review and actual tests, not local commit alone.
+
+Process correction: the first attempt to append this final documentation had a Python quoting
+SyntaxError; its surrounding shell did not stop, so the reviewed code/tests still committed
+and pushed successfully but the doc append did not. Inspected status/output, then repaired this
+documentation separately with a fail-fast shell. Do not claim that failed append was published.
+
+Next bounded package announced to peer: reuse normal Viewer startup/placement/tick smoke for
+a named SHOP and verify guest presentation/ownership plus real purchase. Current standing
+pose helper is intentionally1x1 ProvidesRelief-only; that alone does NOT prove shops invisible
+because LIMBO/scripted poses may legitimately own them. Inspect/reproduce before widening it.
+Cow tools is on a DIFFERENT HOST; share code via pushed review branches, not local paths or
+code attachments. Coordinate production/viewer ownership; our initial work is tests/validation.
+Do not re-run generic purchase censuses or reopen ordinary-ride producer work without a reason.
+No restart, no approval wait, existing recurring task only. Report project milestones to
+strawberry1028383794362847362. Disc stays in place; no raw assets in Git.

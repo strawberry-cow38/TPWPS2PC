@@ -144,3 +144,12 @@ in each affected world). Fresh Debug runtime gate: all8scenes pass, including ac
 compiled attachment and standing-service ownership. Whole-disc TPW.PS2.Check exits0.
 Runner tests:56 pass. These are headless/runtime/consumer results, not a newly rendered or
 human-played shop flow; that is the next bounded integration check.
+
+Peer review then decoupled source-path shape from region selection: the final67 assertions
+include independent archive-qualified and bare-world controls even if the region loop changes.
+A tenth mutation disabling only the bare-world split fails exactly that new assertion while
+completing all67. The restored final matrix passes all67 in each world and retains only the
+same two retail reds. Peer independently test-merged the earlier65-check candidate and caught
+three core mutations through our checks (selector10, bare debit18, food sign7 failures).
+Product7's zero-q2 behavior is intentionally indistinguishable from food in these tests;
+its nonzero prefix remains established by instruction evidence, not by this default fixture.
