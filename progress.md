@@ -2472,3 +2472,18 @@ All3delegatesusedthisturn. No extraction/restarts/privatefiles/otherhosts. Cowow
 RMB/listbox/shopinfo; mainmovedto0f2ab51, mergewithoutdroppingtheirUIaftercheckpoint.
 Useraskedprogress22:32; reportedvisible normalrejectionworking, stillnotmain and
 remainingfidelitygaps—not"finished". Nextnative readinessthenrequest/search/feejoins.
+
+
+## Departure landing/review snapshot — September24 22:55
+
+6e37ebc rejected-departure consumer pushedRESEARCH;3bccfc3 mergesmain0f2ab51.
+ALL16actualViewer cases(/tmp/tpw-departure-eight):8accepted651each+8rejected2399each,
+exit0/noerrors/noleaks. Explicit scene-prefixPASS checked, notsubstringBYPASS.
+Cowreviewconfirmedbothorderings; diagnosedfinallymaskinghandlerexception. Fixed
+withoutswallowing: handler-onlyoriginalstack, ack-onlylabel, bothAggregateoriginals;
+6newchecks(59total); restoringoldfinallyfails2thenrestoredPASS. Add remainsstrict
+newguestownershipprecondition, notroutineTryAdd orsilentlydroppingguest.
+Nextpositive: visualreadiness191E10 checksCURRENTlogicalbyte atmodel+4C through
+10EC48, notrequestedbyte+4F.10E910queuesdesiredbyte,10EA38commitsitonlyatplayback
+boundaryselectedby1ACFC0. Table2AAD48mapslogical9->APS1v0,13->APS0v0;
+logical11has8weightedentries, NOTdirectAPS11. Needsactualpresentationconsumerjoin.

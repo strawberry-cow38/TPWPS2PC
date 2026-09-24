@@ -240,7 +240,22 @@ public sealed class NativeEntranceFlow
                 // Native notification may submit an alternate request BEFORE the old
                 // request record is recycled. Acknowledge even stale results, last.
                 try { ApplyResult(result); }
-                finally { _services.AfterResult?.Invoke(result); }
+                catch (Exception handlingFailure)
+                {
+                    try { _services.AfterResult?.Invoke(result); }
+                    catch (Exception acknowledgementFailure)
+                    {
+                        throw new AggregateException("Route result handling and subsequent acknowledgement both failed.",
+                            handlingFailure, acknowledgementFailure);
+                    }
+                    throw; // retain the original handling exception and stack
+                }
+                try { _services.AfterResult?.Invoke(result); }
+                catch (Exception acknowledgementFailure)
+                {
+                    throw new InvalidOperationException("Route result was handled, but acknowledgement failed.",
+                        acknowledgementFailure);
+                }
             }
 
             // One update per membership pass. Saved-next survives registration/unlink;

@@ -70,7 +70,7 @@ unported guard traffic are not silently represented as complete native pressure.
 
 ## Consumer evidence and remaining limits
 
-53 core checks cover actual ParkVisitors/GuestWalk with explicit serials, both
+59 core checks cover actual ParkVisitors/GuestWalk with explicit serials, both
 phase bits, request flags21/23/1, callback-before-record-recycle, sticky timing,
 mode14 pi, native failure boundaries, actual departure cleanup and30 real owned
 sticky contributors. Eight mutations caught: five-bit phase2failures then guard,
@@ -90,3 +90,22 @@ was counted, sticky pressure included the last removal pass, and all slots freed
 The represented activation sequence is explicitly checked NOT to be Guest.Id or
 claimed verified startup history. This is normal rejection behavior, not proof
 of native search, readiness, exact phase origin or every recovery case.
+
+
+## Peer review: preserve failures from both callback and acknowledgement
+
+Cow reviewed6e37ebc and agreed with callback-before-recycle and tally-before-update.
+The managed finally initially replaced a handler exception if acknowledgement also
+threw. Now handler-only rethrows its original exception/stack; acknowledgement-only
+is distinctly wrapped; simultaneous failures aggregate both original exceptions.
+Acknowledgement still runs exactly once, after handling, including stale results.
+Six assertions exercise the three actual callback fault combinations. Restoring the
+old finally causes two diagnostic checks to fail; restored production passes59.
+This is managed failure diagnosis, not an invented native recovery transition.
+
+After merging main0f2ab51, all eight actual Viewer park variants passed BOTH paths:
+accepted651 checks each, rejected2399 each. All16 exited0 with no engine errors or
+resource-leak lines. Exact scene PASS prefixes were independently checked (a loose
+substring PASS would incorrectly match the startup warning's word BYPASS).
+Logs outsideGit: /tmp/tpw-departure-eight. Later acknowledgement-diagnostic change
+has no successful-path behavior change; final consolidated gates recorded in progress.

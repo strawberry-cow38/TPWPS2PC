@@ -28,7 +28,27 @@ static class NativeDepartureChecks
         var table=NativeBusCatalogue.Read(disc,new(0,0));
         C(table.ImageInitialActivationCounter==0,"owner ELF counter image seed read separately from live activation history");
 
-        Success(); Phase32(); Refusal(); Alternate(false); Alternate(true); AlternateRecordFull(); Recovery(); Pressure();
+        Success(); Phase32(); Refusal(); Alternate(false); Alternate(true); AlternateRecordFull(); Recovery(); Pressure(); CallbackFaults();
+
+        void CallbackFaults()
+        {
+            foreach (var (handle, ack) in new[] {(true, false), (false, true), (true, true)})
+            {
+                var f=New();f.Add(63);f.Step(); // first request accepted, callback still pending
+                var handlerError=new Exception("controlled result-handler fault");
+                var ackError=new Exception("controlled acknowledgement fault");
+                f.HandlerFault=handle?handlerError:null;f.AckFault=ack?ackError:null;
+                Exception caught=null;try{f.Step();}catch(Exception error){caught=error;}
+                C(f.Acknowledgements==1&&f.ActiveRequests.Count==0,
+                    $"acknowledgement attempted exactly once after handler fault={handle}, ack fault={ack}");
+                C(handle&&ack ? caught is AggregateException both
+                        &&both.InnerExceptions.Count==2&&ReferenceEquals(both.InnerExceptions[0],handlerError)
+                        &&ReferenceEquals(both.InnerExceptions[1],ackError)
+                    : handle ? ReferenceEquals(caught,handlerError)
+                    : caught is InvalidOperationException onlyAck&&ReferenceEquals(onlyAck.InnerException,ackError),
+                    $"both callback diagnoses preserved and distinguished: handler={handle}, ack={ack}");
+            }
+        }
 
         void Success()
         {
@@ -164,6 +184,7 @@ static class NativeDepartureChecks
         public VisitorWants CapturedRecovery;public Point AtDeparture;public int CashAtDeparture;
         public bool AlternateSawCompletingRecord;
         public bool LeavingStable = true;
+        public Exception HandlerFault,AckFault;public int Acknowledgements;
         readonly List<Flow.RouteResult> results=new();readonly Dictionary<ulong,int> modes=new();
         bool mode9Effects;
         public Fixture(ParkPaths paths,ParkCell start,Action<bool,string> c)
@@ -177,10 +198,11 @@ static class NativeDepartureChecks
                 (_,_,_,_,_)=>throw new InvalidOperationException("detailed requests required"),Pump,
                 _=>true,_=>true,()=>0x4000,_=>{Visits++;return false;},_=>Centre,_=>Rejections++,Walk.StepOwnedNative,
                 trace: trace=>{
+                    if(trace.Event=="route assigned"&&HandlerFault!=null)throw HandlerFault;
                     if(trace.Event=="route assigned"&&trace.Entry.Mode==9){var w=Visitors.Needs.Of(trace.Entry.Guest.Id);CashAtDeparture=w.Cash;}
                 },
                 busPoint:(_,index)=>{if(index!=0)throw new InvalidOperationException("RNG1 must yield0");BusReads++;return Bus;},
-                requestDetailed:Request,afterResult:r=>{ActiveRequests.Remove(r.Token);mode9Effects=false;},
+                requestDetailed:Request,afterResult:r=>{Acknowledgements++;ActiveRequests.Remove(r.Token);mode9Effects=false;if(AckFault!=null)throw AckFault;},
                 recovery:(g,mode)=>{RecoveryModes.Add(mode);CapturedRecovery=Visitors.Needs.Of(g.Id);}));
             Walk.BeforeStep=t=>{Tick=t;Traffic=Flow.Tick(t,0,Traffic);};
         }
