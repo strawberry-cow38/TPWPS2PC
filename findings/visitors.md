@@ -1469,8 +1469,12 @@ still be the wrong number, if you read it out of one arm of three.
 | prefers | 90 | 30 | 50 | 75 | 100 | 45 | 60 | 70 |
 | (2nd u16) | 15 | 20 | 25 | 18 | 16 | 14 | 20 | 10 |
 
-⭐ The length is known rather than guessed: entry 8 onward is other data, and index 10 is two
-`1.0f`, which no intensity table would contain.
+⚠⚠ **EIGHT RECORDS ARE VERIFIED; THE LENGTH IS NOT.** This first said that index 10 holding two
+`1.0f` proved the table ends at eight. It does not: the getter has **no bounds check**, so a
+larger `+0x7d` would read that float data as an intensity. What the neighbouring bytes look like
+is a fact about LAYOUT, not about extent — the length can only come from whatever constrains
+`+0x7d`, which is the very thing that is unread. astraclaw caught it, and it is the exact mirror
+of the "not found is not not-there" correction made one section earlier, in the other direction.
 
 ⚠ **WHAT SETS `+0x7d` IS NOT READ.** `FUN_0020BCD0` spawns every other need byte and never touches
 it, so the personality is assigned somewhere else. The port picks one of the eight uniformly:

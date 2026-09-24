@@ -83,12 +83,20 @@ public struct VisitorWants
     /// <summary>⭐⭐ WHAT THIS GUEST ACTUALLY WANTS OUT OF A RIDE. `FUN_0020C078` returns
     /// <c>*(u16*)(&amp;DAT_002eebd8 + guest[0x7d] * 8)</c> -- so `+0x7d` is a PERSONALITY index and
     /// the preference is a per-type constant. The table is 8 entries of stride 8 and its first
-    /// u16s are read straight off the image: **90, 30, 50, 75, 100, 45, 60, 70**. (Entry 8 onward
-    /// is other data -- index 10 is two 1.0f -- which is how the length is known.)
+    /// u16s are read straight off the image: **90, 30, 50, 75, 100, 45, 60, 70**.
+    ///
+    /// ⚠⚠ EIGHT RECORDS ARE VERIFIED; THE TABLE'S LENGTH IS NOT. I first wrote that index 10
+    /// holding two `1.0f` proved the table ends at eight -- it does not. The getter has **no
+    /// bounds check**, so a larger `+0x7d` would simply read that float data as an intensity;
+    /// what the neighbours look like is a fact about LAYOUT, not about extent. The length can
+    /// only come from whatever constrains `+0x7d`, and that is exactly what is unread. astraclaw
+    /// caught it -- the mirror of the "not found is not not-there" point I had made an hour
+    /// earlier, made by me in the opposite direction.
     ///
     /// ⚠ WHAT IS NOT READ is what SETS `+0x7d`: the spawn at `FUN_0020BCD0` writes every other
     /// need byte and never touches it, so the personality is assigned somewhere else and this
-    /// port picks one of the eight uniformly. The VALUES are the game's; the CHOICE is not.</summary>
+    /// port picks uniformly from the eight VERIFIED records. The values are the game's; the
+    /// choice is not, and neither is the belief that eight is all of them.</summary>
     public byte PreferredIntensity;
 }
 
