@@ -41,7 +41,7 @@ static class CompiledShopPurchaseChecks
             _ => (Stem: "/Shops/costume/Costume", Key: 386u, Price: 50),
         };
         VisitorWants Initial(int cash = 1234) => new() { Cash = cash, Hunger = 80, Thirst = 70, Toilet = 10,
-            Happiness = 20, Sick = 20, Litter = 9, Unknown78 = 62, Unknown7B = 50, PreferredIntensity = 90 };
+            Happiness = 20, Sick = 20, Litter = 9, Unknown78 = 62, Boredom = 50, PreferredIntensity = 90 };
         RideDefinition Definition(string stem, bool bareSource = false)
         {
             var entry = world.Find(stem + ".sam") ?? throw new InvalidDataException("missing " + stem);

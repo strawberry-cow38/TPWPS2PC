@@ -204,7 +204,7 @@ public partial class ShopServiceSmoke : Node3D
             var start = ParkPaths.Neighbours(stub).First(c => grid.Open(c) && corridor.Contains((c.X, c.Z)));
             var guest = visitors.Arrive(start, mouth); int guestId = guest.Id;
             var initial = new VisitorWants { Hunger = (byte)(drink ? 0 : 91), Thirst = (byte)(drink ? 91 : 0), Toilet = 10, Happiness = 50,
-                Sick = 0, Litter = 9, Cash = 1234, PreferredIntensity = 90, Unknown78 = 0, Unknown7B = 0 };
+                Sick = 0, Litter = 9, Cash = 1234, PreferredIntensity = 90, Unknown78 = 0, Boredom = 0 };
             visitors.Needs.Set(guestId, initial);
             void Present() { Call(viewer, "PresentScripted", true, 1f); Call(viewer, "PlaceActors", 1f); }
             void Tick() { Call(viewer, "TickPark"); Present(); }
@@ -395,7 +395,7 @@ public partial class ShopServiceSmoke : Node3D
             var after = visitors.Needs.Of(guestId);
             GD.Print($"SHOP SMOKE AFTER guest={guestId} H={after.Hunger} T={after.Thirst} toilet={after.Toilet} "
                 + $"sick={after.Sick} happy={after.Happiness} cash={after.Cash} litter={after.Litter} pref={after.PreferredIntensity} "
-                + $"u78={after.Unknown78} u7B={after.Unknown7B} purchases={visitors.Purchases} rides={visitors.Rides} boardings={visitors.Boardings}");
+                + $"u78={after.Unknown78} u7B={after.Boredom} purchases={visitors.Purchases} rides={visitors.Rides} boardings={visitors.Boardings}");
             Check(visitors.Purchases == 1 && visitors.Rides == 1 && visitors.Boardings == 1 && visitors.Relieved == 0,
                 "ONE_REAL_PURCHASE_HANDBACK");
             Check(after.Hunger == (drink ? profile.H : 91 - profile.H) && after.Thirst == (drink ? 91 - profile.T : profile.T)
@@ -403,7 +403,7 @@ public partial class ShopServiceSmoke : Node3D
                 && after.Happiness == 50 + profile.Happy && after.Cash == 1234 - 10 * profile.Price && after.Litter is >= 39 and <= 63,
                 "NAMED_PURCHASE_EFFECTS_AND_TENFOLD_COMPILED_PRICE_DEBIT");
             Check(after.PreferredIntensity == initial.PreferredIntensity && after.Unknown78 == initial.Unknown78
-                && after.Unknown7B == initial.Unknown7B, "UNAFFECTED_VALUES_PRESERVED (thought is recomputed, not frozen)");
+                && after.Boredom == initial.Boredom, "UNAFFECTED_VALUES_PRESERVED (thought is recomputed, not frozen)");
             Check(guest.Id == guestId && visitors.Plans.Count == 1 && visitors.Plans.ContainsKey(guestId)
                 && visitors.Walk.Guests.Count == 1 && visitors.Walk.Guests.Single().Id == guestId
                 && visitors.QueuedOwner(guestId) == null && !standing.ContainsKey(guestId), "ORIGINAL_ID_ONE_WALKER_NO_SERVICE_OWNER");

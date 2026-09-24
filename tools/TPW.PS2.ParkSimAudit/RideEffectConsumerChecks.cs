@@ -20,7 +20,7 @@ static class RideEffectConsumerChecks
         foreach (var c in cases)
         {
             var needs = new VisitorNeeds(42);
-            needs.Set(1, new VisitorWants { Happiness = 20, Sick = c.Before, Unknown78 = 90, Unknown7B = 50,
+            needs.Set(1, new VisitorWants { Happiness = 20, Sick = c.Before, Unknown78 = 90, Boredom = 50,
                 Hunger = 17, Thirst = 19, Toilet = 31, Litter = 9, Cash = 1234, Thought = Thought.Good });
             needs.Ride(1, c.Value, defaults.RideHappiness, defaults.RideSickScale, defaults.RideBoredomScale);
             var after = needs.Of(1);

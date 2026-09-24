@@ -514,6 +514,9 @@ public sealed class ParkVisitors
             // ⭐ The console does not collect mess; it WEARS THE FACILITY DOWN by that amount and
             // floors it at zero -- `FUN_00130948`, sole caller the relief path. See ParkRide.Condition.
             used.Wear(soil);
+            // ⭐⭐ THEN READS IT BACK, which is the order the console uses: the guest who fouled
+            // the place can be the one who walks out disgusted. See VisitorNeeds.DirtyLavatory.
+            if (used.Condition < VisitorNeeds.FilthyBelow) Needs.DirtyLavatory(guest);
             Relieved++;
             return;
         }

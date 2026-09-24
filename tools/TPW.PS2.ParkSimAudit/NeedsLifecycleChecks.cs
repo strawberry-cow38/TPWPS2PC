@@ -26,11 +26,18 @@ static class NeedsLifecycleChecks
             // Freeze CHOSEN rates to isolate storage continuity from arithmetic.
             foreach (string name in visitors.Needs.Rates.Keys.ToArray())
                 visitors.Needs.Rates[name] = new VisitorNeeds.Rate(0, 0, false);
+            // ⚠⚠ AND THE MOOD BARS OUT OF REACH, which freezing the rates does NOT cover. This
+            // fixture's guest carries Thirst 96, and the day a THIRST bar appeared at 85 the
+            // continuity cases started failing on a happiness drain working perfectly -- in
+            // checks about whether a seated guest keeps its side-table row. ⭐ A fixture that
+            // pins a need HIGH is a fixture that will one day cross a bar somebody adds later.
+            visitors.Needs.Unknown78Bar = visitors.Needs.SickBar = visitors.Needs.ToiletBar =
+                visitors.Needs.HungerBar = visitors.Needs.ThirstBar = 101;
             var guest = visitors.Arrive(entrance, entrance);
             visitors.Needs.Set(guest.Id, new VisitorWants
             {
                 Happiness = 83, Sick = 61, Hunger = 94, Toilet = 88, Thirst = 96,
-                Litter = 61, Unknown78 = 62, Unknown7B = 63, Cash = 1234, Thought = Thought.Good,
+                Litter = 61, Unknown78 = 62, Boredom = 63, Cash = 1234, Thought = Thought.Good,
                 PreferredIntensity = 0, // explicitly exercise the configurable fallback below
             });
             return (paths, sim, visitors, ride, guest);
@@ -53,10 +60,10 @@ static class NeedsLifecycleChecks
                 Happiness = Clamp(before.Happiness + visitors.RideHappiness),
                 Sick = Clamp(before.Sick + (int)(visitors.RideSickScale * (visitors.RideIntensity - 30))),
                 Unknown78 = Clamp(before.Unknown78 - (int)(visitors.RideBoredomScale * visitors.RideIntensity)),
-                Unknown7B = after.Unknown7B, // the specified rand(20) is bounded, not pinned
+                Boredom = after.Boredom, // the specified rand(20) is bounded, not pinned
             };
-            return Same(expected, after) && after.Unknown7B >= Math.Max(0, before.Unknown7B - 19)
-                && after.Unknown7B <= before.Unknown7B;
+            return Same(expected, after) && after.Boredom >= Math.Max(0, before.Boredom - 19)
+                && after.Boredom <= before.Boredom;
         }
 
 
@@ -181,6 +188,7 @@ static class NeedsLifecycleChecks
 
         var clock = Fresh(); clock.Sim.SetOpen(1, false);
         clock.Visitors.Needs.Rates["hunger"] = new VisitorNeeds.Rate(1, 0, false);
+        clock.Visitors.Needs.SecondsPerTick = .25 / VisitorNeeds.HungerTicks;
         clock.Visitors.Needs.Set(clock.Guest.Id, original with { Hunger = 10 });
         clock.Visitors.Step(0, null);
         Check(clock.Visitors.Needs.Of(clock.Guest.Id).Hunger == 10, "zero elapsed time does not age needs");
@@ -189,7 +197,14 @@ static class NeedsLifecycleChecks
         {
             var f = Fresh(); f.Sim.SetOpen(1, false);
             f.Visitors.Needs.Rates["hunger"] = new VisitorNeeds.Rate(1, 0, false);
+            // ⭐ HUNGER HAS ITS OWN CLOCK NOW, and these cases use hunger as the INSTRUMENT for a
+            // property that is not about hunger at all -- frame-rate independence, park time vs
+            // discarded frame time, the catch-up ceiling. So drive the clock that actually moves
+            // it, sized so one hunger fire still lands every .25 s and every expected value below
+            // is unchanged. ⚠ `HungerTicks` stays `const` on purpose: it is read from the image,
+            // and a test that could edit it would be able to hide a wrong port of it.
             f.Visitors.Needs.SecondsPerRise = .25; // controlled test cadence, not retail rate evidence
+            f.Visitors.Needs.SecondsPerTick = .25 / VisitorNeeds.HungerTicks;
             f.Visitors.Needs.Set(f.Guest.Id, original with { Hunger = 10 });
             for (int i = 0; i < frames; i++) f.Visitors.Step(delta, null);
             return (f.Visitors.Walk.Time, f.Sim.Time, f.Visitors.Needs.Of(f.Guest.Id).Hunger);

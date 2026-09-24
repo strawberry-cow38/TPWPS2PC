@@ -80,7 +80,7 @@ static class GuestDisruptionChecks
                 string needs = string.Join(';', visitors.Needs.All.OrderBy(p => p.Key).Select(p =>
                 {
                     var n = p.Value;
-                    return $"{p.Key}:{n.Cash}:{n.Happiness}:{n.Sick}:{n.Hunger}:{n.Thirst}:{n.Toilet}:{n.Litter}:{n.Unknown78}:{n.Unknown7B}:{(int)n.Thought}:{n.PreferredIntensity}";
+                    return $"{p.Key}:{n.Cash}:{n.Happiness}:{n.Sick}:{n.Hunger}:{n.Thirst}:{n.Toilet}:{n.Litter}:{n.Unknown78}:{n.Boredom}:{(int)n.Thought}:{n.PreferredIntensity}";
                 }));
                 // Hash observed state only, never the input seed or action labels.
                 hash.AppendData(Encoding.UTF8.GetBytes(GuestConservationChecks.Snapshot(visitors) + "|" + needs + "\n"));

@@ -45,7 +45,8 @@ static class ServiceChecks
             // nothing, trips the go-home path and walks out -- and a departed guest's record
             // reads as zeros, which made the closed-lavatory control report "the need was
             // cleared". That is the drain working, arriving in a check about something else.
-            visitors.Needs.BoredomBar = visitors.Needs.SickBar = visitors.Needs.ToiletBar = 101;
+            visitors.Needs.Unknown78Bar = visitors.Needs.SickBar = visitors.Needs.ToiletBar =
+                visitors.Needs.HungerBar = visitors.Needs.ThirstBar = 101;
             // ⚠ FROZEN ON PURPOSE. The need must be the one this case set, not that plus whatever
             // rose during the walk -- otherwise the mess arithmetic below is unpredictable and the
             // assertion would have to be loosened until it stopped saying anything.
@@ -297,7 +298,7 @@ static class ServiceChecks
             var g = visitors.Arrive(exit, exit);
             var w = visitors.Needs.Of(g.Id);
             w.Cash = cash; w.Happiness = happiness;
-            w.Hunger = 0; w.Thirst = 0; w.Toilet = 0; w.Sick = 0; w.Unknown7B = 0;
+            w.Hunger = 0; w.Thirst = 0; w.Toilet = 0; w.Sick = 0; w.Boredom = 0;
             visitors.Needs.Set(g.Id, w);
             for (int i = 0; i < Steps && visitors.WentHome == 0; i++) visitors.Step(Tick, () => exit);
             return (visitors.WentHome, visitors.Needs.All.Count, visitors.Walk.Guests.Count);
@@ -424,15 +425,23 @@ static class ServiceChecks
         }
         var broke3 = Broke();
         Check(broke3.Purchases == 0, $"a guest who cannot afford the shop buys nothing ({broke3.Purchases})");
-        // ⭐ Boredom must CLIMB while they are stuck -- with the rise removed this reads 5 (the
-        // queue's +5 alone), with it, ~32. ⚠ It is NOT asserted to reach the 95 bar: the guest
-        // leaves before that, via the queue's happiness cost, and asserting a number the run does
-        // not reach would only be testing my expectation of it.
-        Check(broke3.Bored >= 20, $"boredom climbs while they are stuck ({broke3.Bored})");
-        // ⚠⚠ AND THIS PASSES WITHOUT THE BOREDOM RISE TOO -- measured, not assumed. The queue's
-        // happiness cost alone grinds them under the go-home floor, so the loop was ALREADY
-        // self-terminating and the boredom rise is not what ends it. Kept as a check that the
-        // loop terminates at all; it is NOT evidence for the change above it.
+        // ⚠⚠ THIS LINE USED TO ASSERT `>= 20` AND THE ASSERTION WAS WRONG TWICE OVER. It was
+        // added alongside a timed rise on `+0x78`, justified by that byte's 95 bar -- and the
+        // bubble chain in `FUN_0020FB88` then showed `+0x78` is NOT boredom (boredom is `+0x7B`,
+        // which the engine points `tbbored` at) AND that nothing in that function raises `+0x78`
+        // on a clock at all. So the rise went, and with it the only thing that made 20 true.
+        //
+        // ⭐ What is left is the queue's own **+5**, which IS read (`FUN_0020C6A8`). Asserting
+        // exactly that keeps the line able to fail -- a port that stops charging for queueing
+        // reads 0 here -- without pretending a number back into existence.
+        Check(broke3.Bored == 5, $"standing in the queue is the only thing that moves +0x78 ({broke3.Bored})");
+        // ⭐⭐ AND THIS IS THE CHECK THAT ACTUALLY MATTERED ALL ALONG -- measured, not assumed:
+        // it passed WITHOUT the boredom rise, which is how the rise was found not to be the fix.
+        // The queue's happiness cost alone grinds them under the go-home floor.
+        // ⚠ Master's "stuck on the stub tile" is a DIFFERENT defect: astraclaw traced it to a
+        // decision timer the console sets on shop completion (even on a refusal) plus recency
+        // penalties in the selector, and to an approach leg that stops one cell short of the
+        // compiled entrance. Neither is this check's business; it only proves no infinite loop.
         Check(broke3.Home == 1, $"and they eventually give up and go home rather than looping forever ({broke3.Home})");
 
         // ── going home over a path that breaks and is mended ─────────────────────────────────
@@ -453,7 +462,7 @@ static class ServiceChecks
             var g = visitors.Arrive(exit, exit);
             var w = visitors.Needs.Of(g.Id);
             w.Cash = 0; w.Happiness = 80;             // broke: they want to leave
-            w.Hunger = 0; w.Thirst = 0; w.Toilet = 0; w.Sick = 0; w.Unknown7B = 0;
+            w.Hunger = 0; w.Thirst = 0; w.Toilet = 0; w.Sick = 0; w.Boredom = 0;
             visitors.Needs.Set(g.Id, w);
 
             var ground = (byte[])paths.Field.Cells.Clone();

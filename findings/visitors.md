@@ -1757,3 +1757,122 @@ plausible, tidy, and wrong, and one decompile of an eight-byte function settled 
 
 ⚠ What MOVES `+0xba` and `+0xac` after setup is still unread, so the port still has no shop
 quality rather than a wrong one.
+
+### ⭐⭐ `FUN_0020FB88` read to the END — and the first read stopped a third of the way in (2026-09-24)
+
+Master said "look at the damn code", so the whole function got read rather than the part that
+answered the question already being asked. It is five phases, each staggered per guest by
+`tick % N == guest[0x14] % N`:
+
+| phase | period | what it does |
+|---|---|---|
+| zones | 8 | `FUN_0014D0A0(pos)` → flag mask; bit 0 `happy += 6`, bit 2 costs happiness and adds sickness |
+| shelter | 8 | if mask bit 1 and `guest[0x6c] < now` and stack depth < 2: push activity, walk to nearest |
+| litter | 64 | every litter within **Manhattan 2**: `happy -= 3`, and `+3` sick if `node[9]` |
+| bars | 64 | **five** `-1` docks |
+| appetite | 50 / 40 | `guest[0x77] += rand(2)` / `guest[0x7a] += rand(2)` |
+| thoughts | 4 (+128) | the bubble chain |
+
+**⚠⚠ THE MOOD DRAIN HAS FIVE TESTS, AND THIS FILE RECORDED THREE.** `DAT_002eeb58` (95) gates
+`+0x77` and `DAT_002eeb5c` (85) gates `+0x7a` — hunger and thirst, the two needs the whole
+feature is about. Three consecutive identical blocks looked like the whole run; they were the
+whole run of what had been scrolled to.
+
+### ⭐⭐ `+0x7B` IS BOREDOM. `+0x78` IS NOT — and this file said the opposite all day
+
+The thought chain calls `FUN_0020F888(guest, guest[0x7B], 0x40, 2, allowed)` and on a hit writes
+bubble id **4**, which is `tbbored` in `FUN_00216028`'s own table. **The engine points the bored
+picture at `+0x7B`.** Three behaviours agree: the bubble; `FUN_0020C930` only *asks* whether to go
+home while `+0x7B` < 99 and leaves unconditionally at 99; and finishing **any** facility use takes
+`rand(20)` off it (`FUN_0020EDD8`, before the per-kind switch).
+
+⚠⚠ So the commit "boredom rises over time" put a timed rise on **`+0x78`**, justified by that
+byte's 95 bar — and `+0x78` is not boredom, and **nothing in `FUN_0020FB88` raises it on a clock**.
+Retracted; only queueing (`+5`, `FUN_0020C6A8`) is a found riser. `+0x78` keeps its offset for a
+name: a meter queueing raises and an exciting ride lowers *by its own intensity*. "Craving
+excitement" fits and is not read.
+
+⭐ The lesson is the one already in this file one level up: **an offset is not a meaning until
+something names it.** Knowing `+0x78`'s arithmetic did not make it boredom, and a threshold on it
+was not evidence about boredom.
+
+### ⭐⭐ The appetite clock, read: 50 and 40 ticks of `rand(2)`
+
+```c
+if (now % DAT_002eeb6c == guest[0x14] % DAT_002eeb6c) guest[0x77] += rand(2);  // 50, hunger
+if (now % DAT_002eeb70 == guest[0x14] % DAT_002eeb70) guest[0x7a] += rand(2);  // 40, thirst
+```
+
+Two invented rates replaced by two read periods. ⚠ Seconds-per-tick is still invented — one
+number instead of five — and **the ratio (thirst 1.25× hunger) survives whatever it turns out to
+be**, which is what the audit asserts.
+
+**Identity, settled from the product switch** (`FUN_001D1D08` selects, and `case 1` is `Drink`):
+that arm does `+0x7a -= ThirstEffect` and `+0x79 += ThirstEffect`, so **`+0x7a` is thirst** and
+the food arm's `+0x77 -= …` makes **`+0x77` hunger**. ⭐ Drinking fills a bladder by exactly what
+it empties a thirst.
+
+### ⭐⭐ The purchase is a WANT SCORE against the price, not just affordability
+
+```c
+score = (base*125/100) * ((thirst*ThirstEff + hunger*HungerEff + 100 - sick*VomitEff
+                          + (100-happiness)*HappyEff) / 100) / 100 * (happiness+100) / 100;
+if (shop[0xb8] < score && shop[0xb8]*10 <= guest[0x60]) { ...buy... }
+```
+
+⭐ So a guest refuses something they can afford but do not want, and the `×10` on cash this port
+already found is right there. ⚠ NOT YET PORTED — recorded here so it is not re-derived.
+
+### ⭐⭐ THE FILTHY-LAVATORY PENALTY EXISTS, and this file called it "not found"
+
+`FUN_0020EDD8`'s lavatory arm, after wearing the facility down, reads the condition **back**:
+
+```c
+sick -= 0x28;                              // 40 — the only cure for sickness found anywhere
+if (FUN_00130938(facility) < 0x32) {       // return facility[0xb4]  —  below 50
+    bubble = 10 (tbangry);  happiness -= 10;  sick += 10;
+}
+```
+
+⚠⚠ The earlier census of `lb`/`lbu` at `+0xB4` could not see it **because the read is inside a
+one-line accessor**. The note at the time said exactly that — *"a getter reached through a vtable
+would be invisible to that census, so this is **not found**, not **not there**"* — and the hedge
+turned out to be load-bearing. ⭐ A negative search needs a control it MUST hit; that one had none.
+
+⭐ It also gives `Condition` its first consumer: `Wear` had no reader, so a cleaner was a feature
+with no effect. Ported with the console's ordering — wear, then read — so the guest who made the
+mess can be the one disgusted by it.
+
+### The thought chain, and a bubble budget of 25
+
+`DAT_002E28D0` is a **global count of bubbles on screen, capped at 0x19 = 25**, with bit 3 of
+`guest[0x34]` meaning "I hold one". Every bubble-setting site takes a slot the same way. The chain
+(first hit wins, `FUN_0020F888` fires at ≥ 91, `FUN_0020F968` at < 10):
+
+| test | bubble | face |
+|---|---|---|
+| toilet `+0x79` ≥ 91 | 7 Toilet | 0 |
+| sick `+0x76` ≥ 91 | 5 Sick | 2 |
+| happiness `+0x75` ≥ 91 | 1 | 1 |
+| happiness < 10 | 3 Sad | 0 |
+| boredom `+0x7B` ≥ 91 | 4 Bored | 0 |
+| happiness 26..74, 1-in-10 | 1 | 1 |
+| happiness ≥ 81 | 0 Happy | 1 |
+
+⭐⭐ **Bubble id 1 is the STRONGER form of id 0, not its opposite** — same field, same face id,
+thresholds 91 over 81, with the sad end taken by 3. This port's enum calls id 1 `VeryUnhappy`;
+the engine's own ladder says it is *very happy*. ⚠ Not renamed yet: the art has not been looked
+at, and the behavioural argument and the picture should agree before the name changes.
+
+⚠ NOT PORTED, and deliberately: `FUN_0014D0A0` walks a list of circular zones (centre shorts at
+`node+8`/`node+12`, **radius²** at `node+16`, flag mask at `node+20`) hung off `DAT_003952A8+8`.
+The mechanism is read; **nothing is yet known to register a zone**, so porting the effects today
+would be a loop over an empty list. The litter list (`DAT_003952C0+8`) and the shelter list
+(`DAT_003952BC+8`) are the same shape and the same open question.
+
+⭐⭐ **And `guest[0x6c]` is a decision cooldown, written on completion** — `FUN_0020EDD8` sets
+`guest[0x6c] = now + rand(60) + 60` and `guest[0x2c] = now + rand(300) + 300` as it ends a use,
+and `FUN_0020FB88` tests `guest[0x6c] < now` before choosing a new destination. astraclaw found
+the same mechanism from the selector side (a timer set even when a purchase is refused, plus
+recency penalties rather than a blacklist); this is the write side of it. Two independent routes
+to one mechanism, which is corroboration in a way that agreeing about one artifact is not.

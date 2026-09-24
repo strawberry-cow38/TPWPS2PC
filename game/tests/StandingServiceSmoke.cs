@@ -90,7 +90,7 @@ public partial class StandingServiceSmoke : Node3D
             var mouth = Field<List<ParkCell>>(viewer, "_mouth")[0];
             var guest = visitors.Arrive(mouth, mouth);
             var need = visitors.Needs.Of(guest.Id); need.Toilet = 91; need.Cash = 1234; need.Happiness = 50;
-            need.Hunger = need.Thirst = need.Sick = need.Unknown7B = 0; visitors.Needs.Set(guest.Id, need);
+            need.Hunger = need.Thirst = need.Sick = need.Boredom = 0; visitors.Needs.Set(guest.Id, need);
             var standing = Field<Dictionary<int,Transform3D>>(viewer, "_standing");
             void Tick()
             {
