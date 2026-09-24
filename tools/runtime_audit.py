@@ -23,6 +23,7 @@ SCENES = {
     'advisor': 'AdvisorBrowserAudit', 'audio': 'RideSoundLifecycleAudit',
     'standing': 'StandingServiceAudit', 'shops': 'CompiledShopViewerAudit',
     'modelpath': 'ModelPathAudit', 'bus': 'NativeBusAudit',
+    'hide_list': 'AnimationHideListAudit',
 }
 CASES = [f'{world}/{terrain}' for world in ('FANTASY', 'SPACE', 'HALLOW') for terrain in (1, 2)]
 OUTPUT = Path('game/.godot/mono/temp/bin/Debug')
@@ -51,6 +52,11 @@ def classify(scene: str, run: dict) -> dict:
     if scene in ('visitor', 'rse'):
         label = 'VISITOR GEOMETRY' if scene == 'visitor' else 'RSE ANIMATION'
         prefixes = [f'{label} PASS {case}:' for case in CASES] + [f'{label} PASS:']
+    elif scene == 'hide_list':
+        prefixes = ['ANIMATION HIDE LIST PASS:']
+        counts = re.findall(r'^ANIMATION HIDE LIST PASS: (\d+) checks; Bouncy constructor, transitions and real RSE presenter$', text, re.M)
+        result['checks'] = int(counts[0]) if len(counts) == 1 else 0
+        if result['checks'] < 234: return {**result, 'status': 'missing_coverage'}
     elif scene == 'texture':
         prefixes = ['VIEWER CLOCK PASS:']
         counts = [int(m.group(1)) for m in re.finditer(r'^TEXTURE BINDING PASS: (\d+) surface checks across five models / four worlds$', text, re.M)]

@@ -31,6 +31,8 @@ def raw_witness(scene):
                           for w in ('JUNGLE','HALLOW','SPACE','FANTASY')
                           for b in ('bus1','bus2') for r in ('88','a4','c0')]
                          + ['MODEL PATH PASS: 1378 checks, eight buses / four worlds / three records'])
+    if scene == 'hide_list':
+        return 'ANIMATION HIDE LIST PASS: 234 checks; Bouncy constructor, transitions and real RSE presenter'
     if scene == 'texture': return 'VIEWER CLOCK PASS: tested\nTEXTURE BINDING PASS: 146 surface checks across five models / four worlds'
     if scene == 'mtr': return 'MTR SURFACES PASS: all four named mesh/material/texture witnesses, geometry and transforms'
     if scene == 'advisor':

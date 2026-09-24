@@ -1938,3 +1938,25 @@ butexistingentrancecorridorcontainsit. CurrentGate() uses mouth+randomgoal; must
 fornativebatch, notrunboth. CurrentParkVisitors.Arrive(at,to) callsWalk.Spawn, clears
 history/gate, setsWanderplan, seedsNeeds. at=toPoint0 allowsnativeidledecisionnextStep.
 Stageadmissionmustcountplans/offwalkservicing too, notonlyWalk oroldcap12.
+## User Belly Bounce index-list fix — September24 16:52 UTC
+
+ISOLATED worktree ../tpw-hide-list branchastraclaw/animation-hide-list basedmain1cf7860
+becausebusresearchhasuncommittedliveViewerbridgeandmustNOTblockthisreportedbuglanding.
+Workerpositiveactivation1ABA10->1AABB0;parentcheckedraw1AAC74..1AAD08. NEWlist sets10,
+oldcleanupclearsoldunprotectedlisted/tracked10. Count/indicesu16. SourceRecordFlags4 is
+NOTincomingplaybackflags8. OrdinaryRSEflags0/1reachbothcleanup/activation. Explicitlist,
+notallmissingtracks: Bouncyjb_floorhasnotrackandnolistentryandMUSTstayvisible.
+CoreAnimationNodeVisibility+actualAnimatedModel.UseRecordconstructor/RSE/simactuator.
+Ordinarymodeown8050 vsancestors20 (notinherit10);hiddenposeevaluationretained. Skeletal/
+sharedformatsnotreadwithordinarystride; legacyMD2excluded. RsePresentercommentscorrected.
+AnimationHideListAudit234checks includesactualegg/shellsurfacevisibility, unlistedfloor,
+cleanup/rehide/protectedcontrast,u16countupperBEEF, actualRseModelPresenterCreate->next.
+Full60s genericRseRidePreview hitunrelatedFIFOunload101/102; scopedtestbeforeunloadwith
+assertionnextrecordactuallyreached, notcatchingerrororclaimingfullcycleverified.
+Five mutationscaughtdropnewhide/dropcleanup/dropProtection/wrongwidth/disconnectactuator.
+Allrestored+rebuilt. /tmp/tpw-hide-list-runtime-final ALL9PASS; fourworldmatrix /tmp/tpw-
+hide-list-matrix exactknown2retailreds; /tmp/tpw-hide-list-python.log61PASS. Needpeerreview
+andnormalpushmain, thenmergeintoBUSworktreecarefully (busAnimatedModelnativeoptin overlaps).
+BusWIPstaysin ../tpw-gate-occupancy Viewer.Bus.cs+Viewer.cs, NOTinthisworktree. Its latest
+build/tmp/tpw-bus-live-build-fixed.log isclean; actualparkadmissionverificationstillneeded.
+CowownsaudioseamadditiveViewer.BusAudio.cs via partialhooks specifiedinchannel, don'toverwrite.

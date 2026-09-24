@@ -667,7 +667,19 @@ public sealed class Park
                 if (!IsPlayable(x, y)) continue;
                 // ⭐ NO GROUND UNDER A PLACED THING. Master's call: a ride takes the tiles it
                 // stands on, so the floor stops there instead of being drawn through its base.
-                if (!Vacant(x, y)) continue;
+                //
+                // ⚠⚠ OCCUPIED ONLY -- **NOT** `Vacant`, which also excludes RESERVED cells.
+                // Master: "the 3x2s either side delete the terrain tiles ... the cyan box IS a
+                // hole in the terrain." It was: a reserved cell got no floor, so the gate's
+                // no-build zone punched the ground out and the sea showed through, in exactly
+                // the shape of the reservation. It only appeared when the hold started reserving
+                // twelve cells INSIDE the park -- before that the one reservation was the .sam's
+                // rectangle out on the walkway, which has no park floor to lose.
+                //
+                // ⭐ A ride standing on a tile and a rule saying you may not build on a tile are
+                // different facts. The first removes the ground; the second must not, or every
+                // no-build zone becomes a pit.
+                if (_occupied[x, y] != 0) continue;
                 int mat = Field != null && x < Field.Width && y < Field.Height ? Field.Material(x, y) : 0;
                 if (!surfaces.TryGetValue(mat, out var st))
                 {

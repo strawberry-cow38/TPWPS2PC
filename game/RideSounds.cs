@@ -127,12 +127,13 @@ public sealed class RideSounds
     Voice Start(int ride, int tag, string name, AudioStreamWav wav, bool loop, int kind, Vector3 at, string line)
     {
         Node player;
-        if (Positional(kind))
+        // ⭐ A followed owner is positional whatever its group says -- see Follow.
+        if (Positional(kind) || FollowsAPoint(ride, tag))
         {
             var p3 = new AudioStreamPlayer3D { Stream = wav, MaxDistance = MaxDistance, Bus = "Master", Name = $"snd{_serial}" };
             // ⚠ POSITION BEFORE AddChild, like the particles: the voice is placed at the transform
             // it enters the tree with.
-            p3.Position = at;
+            p3.Position = FollowedPosition(ride, tag) ?? at;
             _root.AddChild(p3);
             player = p3;
         }
@@ -336,6 +337,31 @@ public sealed class RideSounds
     readonly List<Repeater> _repeats = new();
     public int Repeating => _repeats.Count;
 
+    /// <summary>⭐⭐ OWNERS WHOSE VOICES FOLLOW A MOVING SOURCE. astraclaw needs this for the bus:
+    /// its event is native category 1 -- `AUDIO/GLOBAL/amb` -- which maps to
+    /// <see cref="SoundGroup.GlobalAmbient"/>, and <see cref="Positional"/> deliberately excludes
+    /// ambient because the park's ambient bed is not a point in space. The bus is.
+    ///
+    /// ⚠ So this is a per-OWNER exception, not a change to what ambient means. Register an owner
+    /// and its voices become positional and track the source every frame -- including the clips a
+    /// graph starts later, which is the half a one-shot position would miss. Everything else
+    /// ambient stays exactly as it was. Master's park must not start panning its own atmosphere.</summary>
+    readonly Dictionary<(int Ride, int Tag), Func<Vector3?>> _moving = new();
+
+    /// <summary>Make this owner's voices positional and keep them at <paramref name="source"/>.
+    /// Pass null to stop following; voices already started keep their last position.</summary>
+    public void Follow(int ride, int tag, Func<Vector3?> source)
+    {
+        if (source == null) _moving.Remove((ride, tag));
+        else _moving[(ride, tag)] = source;
+    }
+
+    /// <summary>Where an owner's voices should currently be, or null when it is not following.</summary>
+    public Vector3? FollowedPosition(int ride, int tag)
+        => _moving.TryGetValue((ride, tag), out var f) ? f() : null;
+
+    bool FollowsAPoint(int ride, int tag) => _moving.ContainsKey((ride, tag));
+
     /// <summary>What a numbered sound parameter currently reads for a given ride -- the value the
     /// event's links are tested against. ⭐ Per RIDE, because two rides can be screaming at
     /// different levels at once and a single global would give them each other's. See <see cref="SfxEventMachine"/>.
@@ -498,6 +524,11 @@ public sealed class RideSounds
             var v = _voices[i];
             if (v.Player == null || !GodotObject.IsInstanceValid(v.Player)) { _voices.RemoveAt(i); continue; }
             v.Frames++; v.Elapsed += delta;
+            // ⭐⭐ A MOVING VOICE KEEPS UP. Without this the bus's sound is pinned where the clip
+            // started and the bus drives away from its own engine note. ⚠ Only owners that asked
+            // to follow pay for this lookup.
+            if (v.Player is AudioStreamPlayer3D moving && FollowedPosition(v.Ride, v.Tag) is { } where)
+                moving.Position = where;
             if (v.Frames == 1) v.PlayingAt1 = IsPlaying(v.Player);
             float pos = Position(v.Player);
             if (pos > v.MaxPosition) { v.MaxPosition = pos; if (v.FirstAdvanceFrame < 0) v.FirstAdvanceFrame = v.Frames; }
