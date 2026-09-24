@@ -1,5 +1,11 @@
 # Native bus animation consumer — narrow primary-ELF trace
 
+> **September24 lifecycle correction:** bus state0's section12 request is rejected
+> by the type15 section bounds check before the lower-level cleanup handler.
+> Do not infer source-pose restoration from that rejected request. Native node10
+> is self-hidden, while20 prunes descendants. See `bus-native-lifecycle.md` for
+> the caller/loader/draw proofs and executable consumer controls.
+
 Timeboxed partial result. Read the two requested bus findings first. All new evidence
 below is direct PAL ELF code/data, read only into memory from disc LBA262773,
 Mode2/2352+24, length 0x2b1160; file0x1000 maps to VA0x100000. No binary/assets

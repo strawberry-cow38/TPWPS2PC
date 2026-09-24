@@ -42,6 +42,7 @@ public sealed class AnimatedModel
 
     readonly Model _model;
     readonly Aps _anim;
+    readonly bool _nativeNodeVisibility;
     readonly Func<string, (ImageTexture Tex, bool Soft)> _texture;
     readonly List<Aps.TextureTrack> _textureTracks = new();
     readonly Dictionary<int, ShaderMaterial> _materials = new();
@@ -96,9 +97,14 @@ public sealed class AnimatedModel
     public int BlendSurfaces { get; private set; }
 
     public AnimatedModel(Model model, Aps anim, Aps.Record rec,
-                         Func<string, (ImageTexture Tex, bool Soft)> texture)
+                         Func<string, (ImageTexture Tex, bool Soft)> texture, bool nativeNodeVisibility = false)
     {
         _model = model; _anim = anim; _texture = texture;
+        _nativeNodeVisibility = nativeNodeVisibility;
+        if (nativeNodeVisibility)
+            foreach (int offset in model.LocalTransforms().Keys)
+                if ((BitConverter.ToUInt32(model.D, offset) & 0x10) != 0)
+                    _hidden.Add(model.NodeIndex(offset));
         _textureIndices = new int[model.MaterialTextures.Count];
         UseRecord(rec);
 
@@ -138,6 +144,43 @@ public sealed class AnimatedModel
                      $"map={(p.AnimMap != null ? "yes" : "NO "),-4} {vs}");
         }
         RefreshSummary();
+    }
+
+    /// <summary>Ordinary native flags0 transition, as used by the bus. 1AB938 invokes
+    /// 1AA460 before binding: old-listed, unprotected nodes lose self-hidden0x10.
+    /// This bounded API does not pretend to implement skeletal/index-list cleanup.</summary>
+    public void ActivateNativeRecord(Aps.Record next)
+    {
+        if (!_nativeNodeVisibility) throw new InvalidOperationException("native transition requires native node visibility");
+        if (next == null || next.Skeletal || next.IndexCount != 0 || next.Shared
+            || Record is { Skeletal: true } || Record is { IndexCount: > 0 })
+            throw new InvalidOperationException("unsupported native record transition");
+        if (Record != null)
+            for (int i = 0; i < Record.TrackCount; i++)
+            {
+                int node = _anim.TrackNode(_anim.TrackAt(Record, i));
+                uint flags = BitConverter.ToUInt32(_model.D, _model.NodeOffset(node));
+                if ((flags & 0x80000000) == 0) _hidden.Remove(node);
+            }
+        UseRecord(next);
+        // Activation changes native node flags before the next animation evaluation.
+        // Refresh visibility now, without inventing a frame-zero sample or changing pose.
+        foreach (var part in _parts)
+            foreach (var surface in part.Surfaces) surface.Visible = NativeMeshShown(part);
+    }
+
+    bool NativeMeshShown(Part part)
+    {
+        uint Flags(int node)
+        {
+            uint authored = BitConverter.ToUInt32(_model.D, _model.NodeOffset(node));
+            return (authored & ~0x10u) | (_hidden.Contains(node) ? 0x10u : 0u);
+        }
+        // 22810C own-node mask; 228140 separately prunes descendants with bit0x20.
+        if ((Flags(part.Mesh.Index) & 0x8050) != 0) return false;
+        foreach (int node in part.Ancestry)
+            if (node != part.Mesh.Index && (Flags(node) & 0x20) != 0) return false;
+        return true;
     }
 
     /// <summary>Bind a different record of the same `.aps` to the geometry already built. A ride's
@@ -499,8 +542,12 @@ public sealed class AnimatedModel
             bool shown = true;
             foreach (var node in p.Ancestry ?? new List<int> { p.Mesh.Index })
                 if (_hidden.Contains(node)) { shown = false; break; }
+            if (_nativeNodeVisibility) shown = NativeMeshShown(p);
             foreach (var s in p.Surfaces) s.Visible = shown;
-            if (!shown) continue;
+            // Native node hiding suppresses drawing, not pose evaluation. A subsequent
+            // activation may reveal this mesh before the next sample; its matrix must not
+            // still be the last VISIBLE frame. Keep legacy adapters' skip behavior separate.
+            if (!shown && !_nativeNodeVisibility) continue;
             if ((p.Morph != null || (pose != null && p.Skin != null)) && p.AnimMap != null) RebuildGeometry(p, now, pose);
             var w = world[p.NodeOffset];
             var t = new Transform3D(

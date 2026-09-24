@@ -22,7 +22,7 @@ SCENES = {
     'texture': 'TextureAnimationAudit', 'mtr': 'MtrAudit',
     'advisor': 'AdvisorBrowserAudit', 'audio': 'RideSoundLifecycleAudit',
     'standing': 'StandingServiceAudit', 'shops': 'CompiledShopViewerAudit',
-    'modelpath': 'ModelPathAudit',
+    'modelpath': 'ModelPathAudit', 'bus': 'NativeBusAudit',
 }
 CASES = [f'{world}/{terrain}' for world in ('FANTASY', 'SPACE', 'HALLOW') for terrain in (1, 2)]
 OUTPUT = Path('game/.godot/mono/temp/bin/Debug')
@@ -56,6 +56,12 @@ def classify(scene: str, run: dict) -> dict:
         counts = [int(m.group(1)) for m in re.finditer(r'^TEXTURE BINDING PASS: (\d+) surface checks across five models / four worlds$', text, re.M)]
         result['surface_checks'] = counts[0] if len(counts) == 1 else 0
         if len(counts) != 1 or counts[0] < 146: return {**result, 'status': 'missing_coverage'}
+    elif scene == 'bus':
+        prefixes = [f'NATIVE BUS {w}/{b}: phases, visibility, clocks, wrapper refusal and release gates PASS'
+                    for w in ('JUNGLE','HALLOW','SPACE','FANTASY') for b in ('bus1','bus2')]
+        counts = re.findall(r'^NATIVE BUS PASS: (\d+) checks, eight buses, native controller and model adapter$', text, re.M)
+        result['checks'] = int(counts[0]) if len(counts) == 1 else 0
+        if result['checks'] < 968: return {**result, 'status': 'missing_coverage'}
     elif scene == 'modelpath':
         prefixes = ['MODEL PATH PASS:']
         rows = re.findall(r'^MODEL PATH (JUNGLE|HALLOW|SPACE|FANTASY)/(bus[12]) record@([0-9a-f]+) moves=True turns=(True|False)$', text, re.M)

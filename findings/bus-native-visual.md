@@ -1,5 +1,11 @@
 # Native bus visual integration — four-minute partial return
 
+> **September24 lifecycle correction:** bus state0's section12 request is rejected
+> by the type15 section bounds check before the lower-level cleanup handler.
+> Do not infer source-pose restoration from that rejected request. Native node10
+> is self-hidden, while20 prunes descendants. See `bus-native-lifecycle.md` for
+> the caller/loader/draw proofs and executable consumer controls.
+
 Read all existing bus-native-*.md. New instructions read from the owner disc into
 memory only, LBA262773, 2352-byte sectors +24, size0x2B1160,
 file0x1000 -> VA0x100000, using ../tpw-selector-disasm.py. No extraction,

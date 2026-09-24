@@ -22,6 +22,10 @@ def raw_witness(scene):
     if scene in ('visitor', 'rse'):
         name = 'VISITOR GEOMETRY' if scene == 'visitor' else 'RSE ANIMATION'
         return '\n'.join([f'{name} PASS: summary'] + [f'{name} PASS {case}: tested' for case in audit.CASES])
+    if scene == 'bus':
+        return '\n'.join([f'NATIVE BUS {w}/{b}: phases, visibility, clocks, wrapper refusal and release gates PASS'
+                          for w in ('JUNGLE','HALLOW','SPACE','FANTASY') for b in ('bus1','bus2')]
+                         + ['NATIVE BUS PASS: 968 checks, eight buses, native controller and model adapter'])
     if scene == 'modelpath':
         return '\n'.join([f'MODEL PATH {w}/{b} record@{r} moves=True turns=True'
                           for w in ('JUNGLE','HALLOW','SPACE','FANTASY')
@@ -113,6 +117,11 @@ class Classification(unittest.TestCase):
             with self.subTest(scene=scene):
                 self.assertEqual(audit.classify(scene, output(witness(scene)))['status'], 'pass')
                 self.assertNotEqual(audit.classify(scene, output('PASS'))['status'], 'pass')
+
+    def test_native_bus_requires_every_variant(self):
+        good = witness('bus')
+        for bad in (good.replace('FANTASY/bus2','FANTASY/bus1'), good.replace('968 checks','0 checks')):
+            self.assertEqual(audit.classify('bus',output(bad))['status'],'missing_coverage')
 
     def test_modelpath_requires_every_bus_record(self):
         good = witness('modelpath')

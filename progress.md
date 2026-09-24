@@ -1803,3 +1803,56 @@ NEXT: peerreviewproductionpathpatch; native section12 sourcepose+visibilityclean
 controller/animationphaseintegration thenarrivals/population. Busresearchdocscontain
 bindingsandremaininggaps. Don'tstopatdecoder orreportbusdone. Latestpublicsourcebranch
 astraclaw/bus-native-research; obsoleteoriginalworktreeWIPstillnotlandable.
+
+## Native bus lifecycle adapter and reachability correction — September24 15:42 UTC
+
+All3delegatecallsUSED thisturn: (1) animation clockproducer/instanceflags, (2) initial
+andtransitionvisibility, (3) candidatecontroller. Thirdworker couldNOTwrite/tmp (sandbox
+readonly), returneduncompiledcandidate; parentdidNOTcopyblindly. Parentcaughtitsown
+oldsection12reachabilityerror at17C7B0..E0: busAPSsections=12, request12 rejected bytype15
+wrapperBEFORE1ABC80. Thusstate0soundstopoccursbutNOgraphicsstopcleanup. Enddeparture
+record5:2 remainsheld+hiddenbetweenvisits. Downstreamcleanuptracevalidbutnotthiscall.
+Correctedthreeolderfindingsprominently,newfindings/bus-native-lifecycle.md detailed.
+
+Also establishedself-hidden10 vs subtree-pruning20 (22810C/228140 rawparentchecked).
+Busbodyparentishelper4/3D0 flags80000058; trackedhelper3/370 isLEAF, notbodyparent.
+Nativeinstantiationcopiesauthoredflags. Nativebusmustnotinheritroothelper10: allmeshes
+eligibleinitially. Newopt-in AnimatedModel nativeNodeVisibility + ActivateNativeRecord
+ordinarymorph/index0/flags0only; oldunprotectedlistedmeshhideclearedonordinaryactivation,
+protected/unlistedretain. LegacyRSEUseRecord APIunchanged. Nativehiddennodesstillupdate
+pose, orrestartrevealslastVISIBLEpose; control+mutationcaughtthis, fixedscopedtonative.
+
+NativeBusController core usesactualAPSdurations, cache,newrecordonlyinactive/endhold,
+strictendclamp, after-commandtrafficguard,20/50countdowns,actualbatchgatesandpoint0request.
+NativeBus gameadapterbindsactualAnimatedModel. NotyetwiredtoViewerpark oractualadmissions;
+no newarrivalcap/intervalinvented. Noaudioimplementation. Coreacceptsinjectedanimationms
+andseparatesignednativedelta; hasnoSim.Time substitution. Candidateworker'sgenericqueue
+codeNOTcopied: boundedcontrolleronlyrequestsnewclipsafterinactive/endhold.
+
+HardwareelapsedanimationclockPOSITIVELYtraced:225128timerhandler increments310CA8;
+220C78 delta*10 ->always2F0798,gate2F07B8->2F07A8. 220C68gate; calledpause/resume.
+225FD4pump occursafterconfiguredgameupdate loop, notonepergametick. Nativecountdown397640
+remainsseparate capped16384 clockalreadyread. Parentcheckedraw220C78,22810C,1AB938.
+Factory0x32Fisnotinstanceflags. BusheaderA1 meansnormalinitinstanceflags18clear;
+ordinarynonloopendholdpathvalid. Futureclockadaptermustpreserveelapsedthroughsimstalls
+andpausegate, notunconditionallyunifywithsimclock.
+
+Evidence: NativeBusAuditactualeightresources phase/restart+gates+clocks+surfaces976PASS;
+ModelPathAudit1574PASS. Sixmutationscaughtstrictend,badpercallclock,unreachable-stopmade
+real,inheritedhide,nocleanup,hiddenposefreeze. Allrestoredandrebuilt. Mergedpeer14db25b
+soundgraph beforefullruntime10scenesPASS; /tmp/tpw-native-bus-runtime-final (bus968before
+last8hiddenposechecks), /tmp/tpw-native-bus-reveal-audit.log976after; fourworldmatrixonly
+exactknownretailreds /tmp/tpw-native-bus-matrix-final. Python63PASS. Initialparallelbuild
+attempttooltimedoutandkilledprocessgroup; these-finalrunsusedPopenstart_new_session=True
+andcompleted. Don'tconfuseearlierincompleterundirwithfinalevidence.
+
+NEXT: getcowreviewee3e645pathpatch/lifecyclefollow-up; continueproductionparkjoin while
+notclaimingbusdone. Need exactscenarioselection/catalogordinaljoin fornativebatchcapacity
+ratherthan allSAMs, actualpoint0admission andgroupscounts; see bus-capacity/entrance docs.
+CurrentViewerGate stillinventedoneguest/50ticks/cap12; donotattachbuspurelycosmetically
+andcallitnativearrivals. Keepcowaudio/money filesalone; newViewer.Bus partialcanavoid
+crosslaneoverlapwhenready. Cownewparam20callback(rideId,paramId)needsunique bus sound
+instancekey+native0/51/strict2000 reset; itsgraphtimingstillunread. Their ef39617 param18
+"0correct"claimaskedforinitializerproof; no-settercensusaloneisnotinitialvalueproof.
+PartialdecompilecorpusoutsideGit remainsavailable; actuallyconsulted1A7F48,1AC048,
+1AA460thisturn. Notfullcorpus; noabsenceclaimsfrommissingfunctions.

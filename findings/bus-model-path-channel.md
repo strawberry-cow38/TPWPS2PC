@@ -1,5 +1,11 @@
 # Bus motion channel0x200: authored MPS curve plus APS progress
 
+> **September24 lifecycle correction:** bus state0's section12 request is rejected
+> by the type15 section bounds check before the lower-level cleanup handler.
+> Do not infer source-pose restoration from that rejected request. Native node10
+> is self-hidden, while20 prunes descendants. See `bus-native-lifecycle.md` for
+> the caller/loader/draw proofs and executable consumer controls.
+
 September24 parent trace; owner-disc reads in memory only. This corrects the old
 animation.md conclusion that the path has no on-disc data. Renderer integration and
 evidence are recorded below; the park bus controller is still separate work.
