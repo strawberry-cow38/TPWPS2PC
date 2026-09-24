@@ -1695,3 +1695,37 @@ One originalbroadworker timedout600s; narrower4minuteprimarytrace succeeded. All
 calls used this turn (independentreview, timedoutbusinventory, nativecatalogue). No assets
 were extracted. Local helperdisasm reportsUNKNOWN forCOP1/movz; decode criticalwords
 rather than assuming them. Userbusrequest1552630912481624105 remains active.
+
+## Bus controller/arrival follow-up — September24 afternoon
+
+Three focuseddelegateprimarytraces succeeded thisturn (animationconsumer,arrivalcontroller,
+batchinputs). Newdocs bus-native-animation/arrivals/demand; parent added clock-and-audio.
+ActualPS2chain14BE60->14C308->16B5C0->14AC48->vtable20BCD0 releasesbatch on state2complete.
+Spawnpoint0 is computedONCE beforeloop from same2B71B0entrancetable; allactivatedguests
+getsharedtilecentre. IndependentPS2confirmation ofpeerPSXprediction, noPSXcoords copied.
+Nativeanimationcommands use5:0,5:1,5:2 nonlooping30authoredfps frommsclock; actualcontroller
+is separate. Native4statecycle isnotBus.RSEstatuses. Batchcounts dependontraversedobjects,
+currentupgradetier/value, representedtype/indexceiling andexistingoutsidegroups; notfixed12.
+
+Parentresolvedcontrollerclockproducer11E758: source2ACAB4 +=10000 whennotpaused, then
+11E688 delta<<7 and1C4AA8 cap4000. Therefore saturateddwell20updates,outer50updates,plus
+separatesubtracttick/transition. NOT6400ms/2560ms; noinitial0..199msclaim. ConditionalPAL
+25Hz pacing isknown butnotunconditionalwalltime. Sourceupdatedbeforegamecontrollers.
+
+PS2nativebusAUDIO exists:147BC4->111428 selector1,event6,handle2B73A0;state1param20=0,
+state2/3param20=51, afterstrict>2000msreset0. 147828 movesSAMEsoundhandle through111758
+usinganimatedfitting1/space200. Sentcowaddresses;meaningparam20/remappedbankstillunread.
+No borrowedPSXsoundabsence orbank-as-stage inference. Parentconfirmedtheseinstructions.
+
+Alsoresolvedordinarypersonalityproducer: BOTH16B6F4..FC(batch) and16B77C..8C(single)
+rand8->guest7D. Existinguniform8spawnrule nowhasdirectconsumerproof, notwhole-tableextent.
+CowownsVisitorNeedscommentcorrection; no gameplaychangehere. BusdemandO+126 isalreadyknown
+currenttier, rechecked1178AC and116070/74(config Upgrades) ratherthaninventingagefactor.
+
+Remainingboundedimplementationdependencies: nativecapacitytablepopulation12A/360850(BSS),
+meaning/producers3953D0/D4 groupcounts, active3953CC objectgate andguestA4countmeaning,
+phase1trafficcoordination3953E0, graphicsdraw/section12betweenvisits, exactworld/parkvariant
+andplotframe. Do not implementarrivalcount12/every50again ordeclarefullbusparity. Next choose
+one dependency thatunlocksrealvisualbus+arrivalconsumer ratherthanexpandnakedhelpertests.
+Noassetscopied/extracted; helperdisasmnowdecodesCOP1simpleops/movz/dshift; UNKNOWNsremain
+visible. All3delegatecalls usedthisturn. Originalworktreeprogresspointsatthisactivebranch.
