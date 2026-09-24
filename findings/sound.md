@@ -237,3 +237,13 @@ the assembler; it is a scratch script over the census lines.
   carried raw.
 * Group 10 has no name in any source and is not resolved.
 * `SETREVERB`, `DIPMUSIC` and the scream family are recorded as effects, not map lookups.
+
+## Regression evidence: playback observation and reset lifetime
+
+See `audio-lifecycle.md` for the synthetic actual-Godot 37-check audit, seven rejected
+mutations, and separate real JUNGLE 22/22 cue/voice census. Completion or position
+advancement is sufficient evidence of playback even if the first Playing poll was
+false. No evidence remains pending until the 0.5-second diagnostic window; that window
+is port instrumentation policy, not a decoded console constant. World reset stops old
+voices, releases the world-specific catalogue manager and clears old particle instances
+while retaining their global library holder. Dummy observations do not replace listening.

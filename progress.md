@@ -546,3 +546,25 @@ Peer follow-up `2802335` corrects the needs census label to distinguish WALKING 
 from identities off the walk. Integrated before publishing this audit/docs package;
 recorded capture counts remain those of our c32cb74 run, not an assertion that separate
 live captures have identical arrivals. No population-conservation assertion was changed.
+
+## M4: audio observation and world-effect lifetime regression gate
+
+Integrated peer fixes 1a5d2ab (Finished/position evidence), 4ca1a41 (elapsed diagnostic
+window), 9acf578 (world sound reset) and 8889f2d (clear particle instances, retain library).
+Our synthetic actual-Godot scene now passes37 checks. Before fixes, short/late playback
+produced3 reds, frame-count deadline6, and missing particle reset1. Subagent review
+strengthened actual voice identity, intermediate fading, different-tag isolation and
+exception cleanup rather than accepting count-only assertions.
+
+Seven temporary broken source variants were rejected with3/6/3/4/2/1/1 assertion
+failures; restored production source rebuilt and37pass. Real JUNGLE60s census at4ca1a41
+exits0 with22cues/22resolved/22started and no unresolved/silent voices. Dummy is not
+an audible check. No disc assets extracted, no mutants retained, no core/renderer
+production edits in this audit package. Full commands/limits: findings/audio-lifecycle.md.
+
+Next independent scope: inventory advisor/UI integration against plan M6 and current
+source, establish a narrow producer/scheduling/locale check if feasible; coordinate
+with cow tools before touching its active Viewer/needs/effects files. Do not expand
+this 37-check gate into a claim of full initialized world swaps or long-run memory
+stability. Facility satisfaction, track services, manual/native-Windows gates and
+known HALLOW/SPACE retail findings remain unfinished/explicit.

@@ -73,3 +73,10 @@ Neither the main smoke nor these scenes replace the whole-park matrix: the exact
 HALLOW Thrill Grill and SPACE Moon Buggies retail findings remain explicit there.
 Facility routing/want satisfaction and native Windows/manual release gates remain
 separate unfinished work; do not infer them from successful ride/scene execution.
+
+## Follow-up audio/runtime boundary gate
+
+`audio-lifecycle.md` records 37 synthetic actual-player/reset checks on `8889f2d`,
+seven rejected mutations, and a separate real JUNGLE60s census on `4ca1a41` with
+22 cues/22 resolved/22 started, zero unresolved/silent. This does not change the
+visual-review or audible-output limitations above, or certify full world-swap stability.
