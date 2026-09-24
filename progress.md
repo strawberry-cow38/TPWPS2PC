@@ -1344,3 +1344,38 @@ Background PID597398; output ../tpw-clean-build-65b7370.log and
 /tmp/tpw-clean-build-65b7370/manifest.json. Check actual completion/results before claims.
 This is NOT clean-machine/native-Windows proof. After build, run appropriate clean-tree gates
 and record the checkpoint; preserve known HALLOW/SPACE retail reds. No restart/new scheduler.
+
+## User-priority CP4 — repeated visits and missing window walk; native trace completed
+
+Strawberry08:01 requested ACTUAL game-code investigation of apparent stub trapping/repeated
+shop visits and absent walking-to-window; latest08:09 explicitly rejects speculative fixes.
+This takes priority over finishing CP6 runtime sweep. Clean23projectRelease build at65b7370
+has completed ALL_PASSED true, finalGitclean, no failures; retain that pinned result, don't
+promote it to later main revisions without rerun. Manifest /tmp/tpw-clean-build-65b7370/.
+
+Three bounded read-only executable traces produced findings/native-shop-flow.md. Concrete
+original paths: shopapproach commonwalking→compiledINSIDEentrancecellcentre, notoutsidepath
+stub and notRSEWALKON; unrotatedIceCream/Coconut native(0,0) vsportoutside(0,-1). Native service
+uses arrival/state35→22 and purchase; handbackretainsposition. IndexedSAMschema/loaderfound,
+butthisloaderparsesanddoesNOTretain fourstand/appearancefractions—do notcall our authored
+renderpoints provenretailwindowcoordinates. Actualoriginalwalkpermissionintobuildingcell
+remainsuntraced; never open entirefootprint asshortcut.
+
+Nativecompletion writes60+rand60 and300+rand300 deadlines BEFOREshopBuy; refusalreturnignored.
+State0selection randomarm0 compares now>stored+60+rand300; plusrealweightedselector/history
+penalties exist. Recent-ID writer isconditional/oddforwardcopy, NOTgenericFIFO. Originalclock
+is1C4930/u32[397644], +1perupdateproducer; wall-time cadence NOTproven, don'tpretend40msport
+clockprovesPS2seconds. No affordabilityfilter found in actualresolvedSHOPselector, as opposed
+tomere wantsetterabsence. Moodwork remainspeer's separate scope; it isn't the sole explanation.
+
+PortprobeusingREALcompiledIceCream/RSE, frozenneeds andwanderoption demonstrates bothcases:
+rich1234 completespurchase H91→66 cash934, broke299refuses unchanged; BOTH atWalk.Time4160
+alreadyHeadingtosameshop. One Step(0) advancesBoardings1→2 andsameQueuedOwner withclockunchanged.
+Artifacts ../tpw-native-shop-probe and ../tpw-native-shop-repeat-probe.log. Notneeds-rategrowth,
+notrefusal-only, notwrongkindfixture. No production fix shipped yet for these newlytraced gaps.
+Next: sharethisGittrace withpeer; implementbounded nativecounter/decision scheduling and
+compiledinside-entrywalking with controlledterminal permission, or finishmissingpermission/
+clockproducertrace first. Preserve explicitunknowns, don't replace with guessed cashfilters,
+SAMwindowcoords or arbitrary cooldownseconds. Peer owns mood/zones; coordinate ParkVisitors
+scope before edits. Main currentlya6f5828 locally; fetch before implementation/landing because
+peer reports692f2e9 moodchanges. No bot restart/new scheduler.
