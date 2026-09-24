@@ -2685,7 +2685,11 @@ public partial class Viewer : Node3D
                      int cx, int cy, int w, int h, ParkCell? entrance = null, ParkCell? exit = null,
                      Model mesh = null)
     {
-        if (assets?.Script == null || anim == null || model == null) return false;
+        if (assets?.Script == null || model == null) return false;
+        // Native relief residence is a guest-layer state, and 1309F8 explicitly accepts
+        // missing APS. A static model must not prevent that facility from serving.
+        if (anim == null && !(_place.Def?.CompiledEntry is { Kind: AssetResourceDatabase.AssetKind.Feature } feature
+            && (feature.RawFeatureFlags.GetValueOrDefault() & 1) != 0)) return false;
         _sim ??= new ParkSim(WalkGrid());
         // ⭐ THE SEATS ARE THE MODEL'S 0x80 FITTINGS -- ADDHEAD indexes them by slot + 1 -- so the
         // ride is told how many it has, or it seats nobody however many the script boards.
@@ -2928,7 +2932,7 @@ public partial class Viewer : Node3D
             var (ride, model, anim, slot, variant) = _scripted[i];
             if (model?.Root == null || !GodotObject.IsInstanceValid(model.Root)) { _sounds?.Drop(ride.Id); _scripted.RemoveAt(i); continue; }
             int want = ride.Slot, wantVariant = ride.Variant;
-            if (want < 0) continue;
+            if (want < 0 || anim == null) continue;
             if (want != slot || wantVariant != variant)
             {
                 var rec = anim.Records().Where(r => r.Slot == want).Skip(Math.Max(0, wantVariant)).FirstOrDefault()
@@ -3525,6 +3529,7 @@ public partial class Viewer : Node3D
         var onWalk = _guests.Guests.Select(g => g.Id).ToHashSet();
         foreach (var (id, plan) in _visitors.Plans)
         {
+            if (_visitors.ServiceHidden(id)) continue;
             var owner = _visitors.QueuedOwner(id);
             if (owner == null || !_standingPlaces.TryGetValue(owner, out var place)
                 || !place.Root.IsInsideTree() || onWalk.Contains(id) || _seated.ContainsKey(id) || _walking.ContainsKey(id)) continue;

@@ -30,7 +30,13 @@ public sealed class ParkRide
 
     /// <summary>⭐ A lavatory, by the only mark the game gives one. See
     /// <see cref="RideDefinition.ProvidesRelief"/>.</summary>
-    public bool ProvidesRelief => Definition?.ProvidesRelief ?? false;
+    public bool ProvidesRelief => Definition?.CompiledEntry is { Kind: AssetResourceDatabase.AssetKind.Feature } feature
+        ? (feature.RawFeatureFlags.GetValueOrDefault()&1)!=0 : Definition?.ProvidesRelief ?? false;
+
+    /// <summary>Only validated placed compiled relief facilities use the native guest
+    /// service state. Unplaced/unjoined legacy RSE fixtures retain their old adapter.</summary>
+    public bool NativeRelief => ServiceEntry != null
+        && Definition?.CompiledEntry is { Kind: AssetResourceDatabase.AssetKind.Feature } && ProvidesRelief;
     public bool Sells => Definition?.Sells ?? false;
 
     /// ⚠⚠ LAVATORIES ONLY. `+0xb4` does NOT mean the same thing on every placed object: on a
@@ -103,90 +109,40 @@ public sealed class ParkRide
     /// label anybody read.</summary>
     public int Setting0xAC { get; set; }
 
-    /// <summary>⭐⭐ WHAT THIS RIDE IS WORTH TO A GUEST, and the arithmetic is READ where this
-    /// port used a flat invented 45. `FUN_001B82D0` is the ordinary attraction's `+0x1D4`
-    /// producer -- the very slot `FUN_0020EDD8`'s ride arm calls for the value it measures
-    /// sickness, taste and boredom against:
-    ///
-    /// <code>
-    ///   base = record[0x18];  if (base == 0) return 0;          // the compiled BaseExcitement
-    ///   s = clamp((speed    &lt;&lt; 12) / 100, 0xC00, 0x1400);       // 0.75 .. 1.25 in 12.12
-    ///   d = clamp((duration &lt;&lt; 12) / 5,   0xC00, 0x1400);
-    ///   return min(base * (s * d &gt;&gt; 12) &gt;&gt; 12, 100);
-    /// </code>
-    ///
-    /// ⭐ `record[0x18]` is offset 24, which this port's own compiled parser already calls
-    /// `BaseExcitement` -- two routes to one field. And the vtable slot was verified against the
-    /// image directly: `0x366330 + 0x1D4` is `0x001B82D0` with the `-8` this-adjustment, as are
-    /// the coaster/tour/track/feature rows of the same table.
-    ///
-    /// ⚠⚠ THE SETTINGS' DEFAULTS ARE NOT READ. `FUN_001B82D0` fetches speed and duration through
-    /// a SECOND vtable at object `+0x18`, not the attraction table, so the getters could not be
-    /// resolved from the one address in hand -- and what a freshly placed ride runs at is
-    /// therefore unknown. They default to the TOP of each ride's own compiled range, which is at
-    /// least data-derived: both factors rise with their setting, so max-settings reads the ride
-    /// at its best and the compiled base then means what its name suggests.
-    ///
-    /// ⚠ Measured on the disc, speed is `1..100` on EVERY ride -- so it is a percentage whose
-    /// maximum gives exactly 1.0 and which can only ever pull the value DOWN. Duration ranges
-    /// vary wildly (1..1 on coasters, 10..60 on flat rides), and anything from 7 up saturates
-    /// the 1.25 cap.</summary>
-    /// ⭐⭐ THE DEFAULTS ARE READ AFTER ALL. This file said they were not and chose the top of
-    /// each range; astraclaw traced the default setter at `0x116120`:
-    ///
-    ///   `speed = minSpeed + ((maxSpeed - minSpeed) >> 1)` and `duration = max(1, maxDuration >> 1)`
-    ///
-    /// ⭐ Their worked example reproduces exactly through the formula above -- base 40 with
-    /// speed 1..100 and duration 10..60 gives speed 50, duration 30, and a value of **37**, not
-    /// the raw 40 -- which is the corroboration that the two halves were read consistently.
-    /// ⚠ Reasoning my way to a default and labelling it "not read" is the same mistake shop
-    /// quality caught me in this morning; the second time, somebody else had already read it.
+    // Concrete +1D4 producers and constructor defaults, including family differences.
+    // These operating settings are not assertions about the RSE variable bindings.
     int? _speed, _duration;
-    public int Speed
-    {
-        get => _speed ?? (Tier0 is { } t ? t.MinSpeed + ((t.MaxSpeed - t.MinSpeed) >> 1) : 100);
-        set => _speed = value;
-    }
-    public int Duration
-    {
-        get => _duration ?? (Tier0 is { } t ? Math.Max(1, t.MaxDuration >> 1) : 5);
-        set => _duration = value;
-    }
+    NativeRideValue.State? _valueState;
+    NativeRideValue.State? InitialValueState => _valueState ??= NativeRideValue.CreateDefaultState(Definition?.CompiledEntry);
+    public int Speed { get => _speed ?? InitialValueState?.Speed ?? 100; set => _speed=value; }
+    public int Duration { get => _duration ?? InitialValueState?.Duration ?? 5; set => _duration=value; }
+    public byte CachedTrackWeight { get; set; }
+    int? _prize; ushort? _price, _win;
+    public int SideshowPrizeValue { get => _prize ?? InitialValueState?.SideshowPrizeValue ?? 0; set => _prize=value; }
+    public ushort SideshowPrice { get => _price ?? InitialValueState?.SideshowPrice ?? 0; set => _price=value; }
+    public ushort SideshowWinPercentage { get => _win ?? InitialValueState?.SideshowWinPercentage ?? 0; set => _win=value; }
+    public int? Value => InitialValueState is {} state
+        ? NativeRideValue.Calculate(Definition?.CompiledEntry,state with {Speed=Speed,Duration=Duration,
+            CachedTrackWeight=CachedTrackWeight,SideshowPrizeValue=SideshowPrizeValue,
+            SideshowPrice=SideshowPrice,SideshowWinPercentage=SideshowWinPercentage}) : null;
 
-    AssetResourceDatabase.RideTier? Tier0
-        => Definition?.CompiledEntry is { HasRideTiers: true } e ? e.Tier(0) : null;
-
-    /// <summary>The value, computed the console's way -- see <see cref="Speed"/>. Null when this
-    /// ride has no compiled record to take a base from, so a caller can say so rather than
-    /// receive a plausible zero.</summary>
-    public int? Value
-    {
-        get
-        {
-            var rec = Definition?.CompiledEntry;
-            // ⚠⚠ ORDINARY RIDES ONLY, AND THE FIRST VERSION OF THIS APPLIED IT TO EVERY FAMILY.
-            // `FUN_001B82D0` is the ORDINARY attraction's `+0x1D4`; the same vtable slot is a
-            // DIFFERENT function for each of the others, and this file verified that table
-            // against the image itself before writing the formula:
-            //
-            //   ordinary 0x366330 -> FUN_001B82D0      coaster 0x35B060 -> FUN_001227D8
-            //   tour     0x369F10 -> FUN_001EA038      track   0x36BBF0 -> FUN_00202188
-            //   feature  0x35DC70 -> FUN_001E5A98
-            //
-            // astraclaw named the differences: a coaster's duration has no `/5`, a track ride
-            // adds a cached piece-weight byte, and a sideshow uses a different producer entirely.
-            // ⭐ Having read that five producers exist and then run one of them for all five is
-            // the plainest kind of carelessness, and it is exactly what "refuse rather than
-            // guess" is for -- so the others return null and the caller falls back rather than
-            // receiving a confident wrong number.
-            if (rec == null || rec.Kind != AssetResourceDatabase.AssetKind.Ride) return null;
-            int bass = rec.BaseExcitement;
-            if (bass == 0) return 0;
-            static int Band(int v) => Math.Clamp(v, 0xC00, 0x1400);
-            int s = Band((Speed << 12) / 100), d = Band((Duration << 12) / 5);
-            return Math.Min((int)(((long)bass * ((s * d) >> 12)) >> 12), 100);
-        }
-    }
+    /// <summary>Actual placement rotation; null for old unplaced headless fixtures.
+    /// Used to resolve the compiled inside connection, never the approach stub.</summary>
+    public int? PlacementTurns { get; init; }
+    public ParkCell? DestinationEntry => PlacedDestination.Entry(this);
+    /// <summary>APS section5 must contain EXACTLY two variants for 1309F8 to gate on
+    /// occupancy. This is not a resource kind. Missing APS and counts1/3 do not gate.</summary>
+    public bool ReliefUsesOccupancy { get; init; }
+    /// <summary>Native +2DC checks 2/10/11. The managed open/closed lifecycle maps into
+    /// those states; it is not a full implementation of native construction updates.</summary>
+    public byte DestinationState { get; set; } = 1;
+    /// <summary>Native coaster +148 is false until endpoint closure. A model/script
+    /// existing is not proof that a track is closed.</summary>
+    public bool CoasterTrackClosed { get; set; }
+    public bool DestinationEligible => DestinationState is 2 or 10 or 11
+        && Get("VAR_RIDECLOSED")==0 && Get("VAR_BROKEN")==0
+        && !(Slot==0 && Host.AnimationRemainingOn(0)>0)
+        && (Definition?.CompiledEntry?.Kind != AssetResourceDatabase.AssetKind.Coaster || CoasterTrackClosed);
 
     /// <summary>`+0xBC` and `+0xC0`: what this facility has taken in gross, and what it has made
     /// after the cost of its goods. `FUN_001D18E8` adds the full price to one and the margin to
@@ -342,6 +298,8 @@ public sealed class ParkSim : IRseDirectory
             Entrance = entrance, Exit = exit,
             Machine = machine, Host = host, Variables = declared,
             Definition = definition,
+            PlacementTurns = placementTurns,
+            ReliefUsesOccupancy = animation?.Sections() is {} sections && sections.Count>5 && sections[5].Count==2,
             ServiceEntry = placementTurns is int turns
                 ? ShopEntrance.Inside(definition?.CompiledEntry,origin,turns,width,height,entrance) : null,
         };
@@ -374,7 +332,8 @@ public sealed class ParkSim : IRseDirectory
     /// starts the cycle the script describes.</summary>
     public void SetOpen(int id, bool open)
     {
-        foreach (var r in _rides) if (r.Id == id) r.Set("VAR_RIDECLOSED", open ? 0 : 1);
+        foreach (var r in _rides) if (r.Id == id)
+        { r.Set("VAR_RIDECLOSED", open ? 0 : 1); r.DestinationState=(byte)(open ? 2 : 3); }
     }
 
     /// <summary>Advance by a real delta, in whole ticks, keeping the remainder.</summary>

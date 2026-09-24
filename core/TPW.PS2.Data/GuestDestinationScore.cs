@@ -47,6 +47,15 @@ public static class GuestDestinationScore
         return ReliefTable[index];
     }
 
+    /// <summary>Early-return branches precede history division. A rejected geometry
+    /// must not become a zero-score tie through -1 / historyDivisor.</summary>
+    public static bool Admitted(Candidate candidate,int mapWidth,int mapDepth)
+    {
+        int x=unchecked((short)candidate.Entry.X),z=unchecked((short)candidate.Entry.Z);
+        return x>=0 && z>=0 && x<mapWidth-1 && z<mapDepth-1
+            && (candidate.Kind!=2 || (candidate.Relief && candidate.ReliefAvailable));
+    }
+
     /// <summary>20C138, before runtime-ID history divisions. Product thresholds are
     /// caller parameters because the executable loads them from mutable globals;
     /// 50/55 are their initial values, not a claim they can never change.</summary>
@@ -59,8 +68,7 @@ public static class GuestDestinationScore
             throw new ArgumentOutOfRangeException(nameof(trinketThreshold));
         // Inside connection + origin has already been rotated, then narrowed to s16.
         var entry=new ParkCell(unchecked((short)candidate.Entry.X),unchecked((short)candidate.Entry.Z));
-        if(entry.X<0 || entry.Z<0 || entry.X>=mapWidth-1 || entry.Z>=mapDepth-1) return -1;
-        if(candidate.Kind==2 && (!candidate.Relief || !candidate.ReliefAvailable)) return -1;
+        if(!Admitted(candidate,mapWidth,mapDepth)) return -1;
         int distance=unchecked(Math.Abs(entry.X-guest.X)+Math.Abs(entry.Z-guest.Z));
         int d=100-Math.Clamp(unchecked(distance*100)/(mapWidth+mapDepth),0,100);
         int mismatch=Math.Min(Math.Abs(unchecked(wants.PreferredIntensity-candidate.Value)),50);

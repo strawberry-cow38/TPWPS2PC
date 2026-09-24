@@ -67,7 +67,7 @@ static class RideValueChecks
             Check(Bare(ordinary.Def).Value is > 0, $"an ordinary ride has a value ({Bare(ordinary.Def).Value})");
         else Check(false, "the world ships an ordinary ride to value");
         if (coaster.Def != null)
-            Check(Bare(coaster.Def).Value == null, "a COASTER refuses -- its producer is a different function and is not ported");
+            Check(Bare(coaster.Def).Value is > 0, "a COASTER uses its separately traced producer, not ordinary-only refusal");
         else Check(false, "the world ships a coaster as the control");
         // ⭐⭐ ASSERTED AGAINST THE TRACED SETTER, every ride in the world. ⚠ The check recomputes
         // the formula rather than comparing a stored number, so it fails if `ParkRide` ever

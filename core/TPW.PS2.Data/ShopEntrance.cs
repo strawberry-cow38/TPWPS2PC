@@ -2,13 +2,17 @@ namespace TPW.PS2.Data;
 
 /// <summary>Compiled connection A, in the port placement frame. Native rotations have
 /// the opposite numbering sense; use the same geometric rotation as placement, not a
-/// native rotation number copied unchanged. Refuse a geometry mismatch rather than guessing.</summary>
+/// native rotation number copied unchanged. Refuse a geometry mismatch rather than guessing.
+/// The historical class name predates the traced kind2 relief branch: that branch uses
+/// exactly the same inside connection A and directed terminal permission as kind4 shops.</summary>
 public static class ShopEntrance
 {
     public static ParkCell? Inside(AssetResourceDatabase.Entry record, ParkCell origin,
                                    int turns, int width, int depth, ParkCell? approach)
     {
-        if (record == null || record.Kind != AssetResourceDatabase.AssetKind.Shop || approach == null) return null;
+        bool service=record?.Kind==AssetResourceDatabase.AssetKind.Shop
+            || (record?.Kind==AssetResourceDatabase.AssetKind.Feature && (record.RawFeatureFlags.GetValueOrDefault()&1)!=0);
+        if (!service || approach == null) return null;
         var a=record.ConnectionA;
         int w=record.Width, h=record.Depth, x=a.X, z=a.Z;
         if (!a.IsPresent || x>=w || z>=h || a.Direction>3) return null;

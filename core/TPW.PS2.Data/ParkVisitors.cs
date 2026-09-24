@@ -13,6 +13,9 @@ public enum VisitorIntent
     /// <summary>The old ride no longer owns this guest, but no valid ground is available yet.
     /// The coordinator retains the identity and retries readmission on later steps.</summary>
     Recovering,
+    /// <summary>Accepted native relief service: off the walk and hidden, owned by the
+    /// guest state machine rather than by an RSE handback.</summary>
+    Servicing,
     /// <summary>Had enough, and walking to the gate to go home. ⚠ Still an ordinary walker until
     /// they reach it -- they are drawn, they take up path, and a want can still rise on them.</summary>
     Leaving,
@@ -29,8 +32,8 @@ public enum VisitorIntent
 /// on a seat node, the ticker carries them, WALKOFF sends them out. Two systems each thinking they
 /// own a body is how you get a guest standing in the queue and riding at the same time.
 ///
-/// Selection still uses the port's needs-first/random policy, not the native weighted
-/// scorer. The post-completion destination gate now follows the traced counter expressions;
+/// Compiled physical placements use the traced weighted score and iterator order.
+/// Unplaced synthetic fixtures retain the earlier needs-first/random adapter. The post-completion destination gate now follows the traced counter expressions;
 /// other native AI states remain separate integration work. Compiled placed shops now walk
 /// into the inside entrance and preserve that position across service.
 /// In particular, native shops use common guest walking/service states, not an RSE WALKON
@@ -53,9 +56,16 @@ public sealed class ParkVisitors
     /// what that place was. ⚠ Positional component added deliberately: this record is only ever a
     /// dictionary VALUE and is never compared or Distinct()ed -- the same addition to
     /// ParkEntrance silently changed its equality and cost two worlds their entrance.</summary>
-    sealed record ReturnToPark(ParkCell[] Preferred, bool CompletedRide, ParkRide Ride);
+    sealed record ReturnToPark(ParkCell[] Preferred, bool CompletedRide, ParkRide Ride, uint? CompletedAt = null);
     readonly Dictionary<int, ReturnToPark> _returning = new();
     readonly Dictionary<int, GuestTerminal> _serviceTerminals = new();
+    sealed record ReliefVisit(ParkRide Owner, ReliefServiceClock Clock);
+    readonly Dictionary<int, ReliefVisit> _reliefVisits = new();
+
+    /// <summary>Native guest-state visibility, independent of RSE LIMBO/host visibility.</summary>
+    public bool ServiceHidden(int guest) => _reliefVisits.ContainsKey(guest);
+    public uint? ReliefDeadline(int guest) => _reliefVisits.TryGetValue(guest,out var visit) ? visit.Clock.Deadline : null;
+    bool ReliefBusy(ParkRide ride) => ride.ReliefUsesOccupancy && _reliefVisits.Values.Any(v=>ReferenceEquals(v.Owner,ride));
     public IReadOnlyDictionary<int, Plan> Plans => _plans;
 
     /// <summary>How many guests have finished a ride and walked away from it. The honest measure
@@ -74,6 +84,9 @@ public sealed class ParkVisitors
     ParkCell? Gate => Walk.Paths.EntranceCells.Count == 0 ? null
                     : Walk.Paths.EntranceCells.OrderBy(c => c.Z).ThenBy(c => c.X).First();
 
+    // Runtime instance identity, not reusable display IDs. Native history survives
+    // completion/deletion but is reset on activation and retired with the guest.
+    readonly Dictionary<int, ParkRide[]> _destinationHistory = new();
     readonly Func<int> _random;
     readonly GuestDecisionSchedule _decisions;
     // One monotonic producer for this coordinator: actual executed park ticks, not render
@@ -94,7 +107,7 @@ public sealed class ParkVisitors
     /// ⚠ A ride whose script never declares VAR_LETMEON cannot take anybody, so it is not a
     /// destination -- offering a guest to one would strand them in a queue forever.</summary>
     public bool Takes(ParkRide ride) =>
-        ride is { Entrance: not null } && ride.Has("VAR_LETMEON")
+        ride is { Entrance: not null } && (ride.NativeRelief ? !ReliefBusy(ride) : ride.Has("VAR_LETMEON"))
         && ride.Get("VAR_RIDECLOSED") == 0 && ride.Get("VAR_BROKEN") == 0 && ride.Fault == null;
 
     public IEnumerable<ParkRide> Open => Sim.Rides.Where(Takes);
@@ -145,7 +158,7 @@ public sealed class ParkVisitors
     /// a renderer gating on that would draw nobody at exactly the facility that needs drawing.
     /// Asked for by astraclaw for the standing-service body.</summary>
     public ParkRide QueuedOwner(int guest) =>
-        _plans.TryGetValue(guest, out var plan) && plan.Intent == VisitorIntent.Queued
+        _plans.TryGetValue(guest, out var plan) && plan.Intent is VisitorIntent.Queued or VisitorIntent.Servicing
         && _owners.TryGetValue(guest, out var ride) && Sim.Rides.Contains(ride) ? ride : null;
 
     /// <summary>Put a guest in at the gate and set them wandering.</summary>
@@ -213,6 +226,7 @@ public sealed class ParkVisitors
     public Guest Arrive(ParkCell at, ParkCell to)
     {
         var g = Walk.Spawn(at, to);
+        _destinationHistory.Remove(g.Id);
         _decisions.Forget(g.Id); // a reused identity must not inherit somebody else's deadline
         Wander(g.Id, at);
         Needs?.Spawn(g.Id);
@@ -253,7 +267,10 @@ public sealed class ParkVisitors
         // remainder, so the time that passed for the guests is the ticks they took -- not the
         // delta they were offered.
         int ticks = Walk.Advance(deltaSeconds);
-        Sim.Advance(deltaSeconds);
+        uint startTick=DecisionTick;
+        int parkTicks=Sim.Advance(deltaSeconds);
+        AdvanceRelief(startTick,parkTicks);
+        RecoverGuests();
         Deliver();
         Idle(wander);
         // ⚠⚠ LAST, AND AFTER Idle. `_plans` is the live set -- it still holds guests in
@@ -297,6 +314,8 @@ public sealed class ParkVisitors
             Needs.Reconcile(_plans.Keys);
         }
         _decisions.Reconcile(_plans.Keys);
+        foreach(int stale in _destinationHistory.Keys.Where(id=>!_plans.ContainsKey(id)).ToArray())
+            _destinationHistory.Remove(stale);
         Maintain(deltaSeconds);
     }
 
@@ -456,13 +475,13 @@ public sealed class ParkVisitors
         _returning.Remove(guest);
     }
 
-    void QueueReturn(Plan plan, ParkRide ride, bool completed)
+    void QueueReturn(Plan plan, ParkRide ride, bool completed, uint? completedAt = null)
     {
         bool stillWaiting = !completed && (ride.Queue.Contains(plan.Guest) || ride.Get("VAR_LETMEON") == plan.Guest);
         var preferred = new[] { stillWaiting ? ride.Entrance : ride.Exit,
                                 stillWaiting ? ride.Exit : ride.Entrance, (ParkCell?)plan.At }
             .Where(c => c.HasValue).Select(c => c.Value).Distinct().ToArray();
-        _returning[plan.Guest] = new ReturnToPark(preferred, completed, ride);
+        _returning[plan.Guest] = new ReturnToPark(preferred, completed, ride, completedAt);
         _plans[plan.Guest] = new Plan(plan.Guest, VisitorIntent.Recovering, 0, preferred[0]);
         _owners.Remove(plan.Guest);
     }
@@ -479,7 +498,11 @@ public sealed class ParkVisitors
             if (live.Contains(ride)) continue;
             if (!_plans.TryGetValue(guest, out var plan)) { _owners.Remove(guest); continue; }
             var walking = Walk.Guests.FirstOrDefault(g => g.Id == guest);
-            if (plan.Intent == VisitorIntent.Queued)
+            if (plan.Intent == VisitorIntent.Servicing)
+            {
+                EndRelief(guest,ride,false,null); // deletion reveals at retained entry without relief
+            }
+            else if (plan.Intent == VisitorIntent.Queued)
             {
                 // A handback already reported by the script is still a completed
                 // ride even if deletion happens before the coordinator collects it.
@@ -523,7 +546,7 @@ public sealed class ParkVisitors
                 // 20EDD8 writes G+2C before the kind-specific effect/purchase. This applies
                 // to genuine completion even when Buy refuses; aborted removal is not a use.
                 // G+6C is a DIFFERENT timer (entertainer watching), not this gate.
-                _decisions.Completed(guest, DecisionTick);
+                _decisions.Completed(guest, returning.CompletedAt ?? DecisionTick);
                 // ⭐⭐ THE RIDE CHANGED HOW THEY FEEL, and this is the ONE place that knows a
                 // ride genuinely happened. I first put it in `Collect`, reasoning that a
                 // demolished ride must not pay out a ride's worth of happiness -- astraclaw
@@ -549,8 +572,10 @@ public sealed class ParkVisitors
         _plans.Remove(guest);
         _owners.Remove(guest);
         _returning.Remove(guest);
+        _destinationHistory.Remove(guest);
         _decisions.Forget(guest);
         _serviceTerminals.Remove(guest);
+        _reliefVisits.Remove(guest);
         WentHome++;
     }
 
@@ -580,12 +605,46 @@ public sealed class ParkVisitors
                 Wander(g.Id, g.Cell);
                 continue;
             }
+            if (ride.NativeRelief)
+            {
+                BeginRelief(g,ride,plan);
+                continue;
+            }
             ride.Join(g.Id);
             if (g.OccupiedTerminal is { } terminal) _serviceTerminals[g.Id]=terminal;
             Boardings++;
             _plans[g.Id] = plan with { Intent = VisitorIntent.Queued, At = g.Cell };
             Walk.Remove(g.Id);
         }
+    }
+
+    void BeginRelief(Guest guest, ParkRide ride, Plan plan)
+    {
+        _serviceTerminals[guest.Id]=guest.OccupiedTerminal;
+        _reliefVisits[guest.Id]=new ReliefVisit(ride,new ReliefServiceClock(DecisionTick));
+        _plans[guest.Id]=plan with { Intent=VisitorIntent.Servicing, At=guest.Cell };
+        Boardings++;
+        Walk.Remove(guest.Id);
+        // 130AA0 ->1FAD40 requests shared channel0, slot5, variant1. Do not flush an
+        // unfinished animation or cancel scripts; the native consumer queues normally.
+        ride.Host.PlayAnimationOn(0,5,1,false);
+    }
+
+    void AdvanceRelief(uint startTick,int ticks)
+    {
+        for(int i=1;i<=ticks;i++)
+        {
+            uint tick=unchecked(startTick+(uint)i);
+            foreach(var (guest,visit) in _reliefVisits.ToArray())
+                if(visit.Clock.Advance(tick)) EndRelief(guest,visit.Owner,true,tick);
+        }
+    }
+
+    void EndRelief(int guest,ParkRide ride,bool completed,uint? tick)
+    {
+        if(!_reliefVisits.Remove(guest) || !_plans.TryGetValue(guest,out var plan)) return;
+        if(Sim.Rides.Contains(ride)) ride.Host.PlayAnimationOn(0,5,0,false);
+        QueueReturn(plan,ride,completed,tick);
     }
 
     /// <summary>Anybody standing about picks something to do: a ride if one will take them,
@@ -661,6 +720,16 @@ public sealed class ParkVisitors
                 continue;
             }
             if (action != GuestIdleAction.SelectDestination) continue;
+            // Physical placed candidates use the compiled native consumer. Legacy
+            // unplaced fixtures (no placement rotation) retain their explicit adapter;
+            // a missing join on a placed asset does NOT silently resurrect random choice.
+            if (Needs != null && Needs.Has(g.Id) && Sim.Rides.Any(r=>r.PlacementTurns.HasValue))
+            {
+                var selected=SelectDestination(g);
+                if(selected != null && SendTo(g,selected)) continue;
+                if(wander?.Invoke() is {} next) Walk.Send(g,next);
+                continue;
+            }
             // ⭐⭐ SOMETHING PRESSING BEATS SOMETHING FUN. A guest who needs a lavatory and
             // picks a rollercoaster instead is the whole reason wants looked wired-up but dead:
             // the need rose, the bubble appeared, and then they queued for the Crazy Ape and it
@@ -694,6 +763,36 @@ public sealed class ParkVisitors
             if (rides.Length > 0 && SendTo(g, rides[(int)((uint)_random() % (uint)rides.Length)])) continue;
             if (wander?.Invoke() is { } cell) Walk.Send(g, cell);
         }
+    }
+
+    /// <summary>Shipping placed-candidate selection. Native arithmetic/order/history,
+    /// with explicit existing transport/lifecycle safety boundaries: Takes still refuses
+    /// unsupported script handover and faults. This is not full native guest AI parity.</summary>
+    ParkRide SelectDestination(Guest g)
+    {
+        var w=Needs.Of(g.Id);
+        var wants=new GuestDestinationScore.Wants(w.Hunger,w.Thirst,w.Toilet,w.Sick,w.Happiness,w.PreferredIntensity);
+        if(!_destinationHistory.TryGetValue(g.Id,out var history))
+            _destinationHistory[g.Id]=history=new ParkRide[4];
+        int Score(ParkRide ride)
+        {
+            var input=PlacedDestination.Read(ride,ReliefBusy(ride));
+            if(input is not {} candidate || !GuestDestinationScore.Admitted(candidate,Walk.Paths.Field.Width,Walk.Paths.Field.Height)) return -1;
+            int score=GuestDestinationScore.Evaluate(wants,candidate,g.Cell,Walk.Paths.Field.Width,Walk.Paths.Field.Height);
+            return GuestDestinationScore.WithHistory(score,ride,history);
+        }
+        var chosen=GuestDestinationScore.Choose(PlacedDestination.InNativeOrder(Sim.Rides)
+            .Where(r=>r.DestinationEligible && Takes(r)),Score,_random);
+        if(chosen.Candidate is not {} selected) return null;
+        // These happen on selection, before routing; failed routing does not undo them.
+        if(w.Toilet>=99 && selected.Definition.CompiledEntry.Kind!=AssetResourceDatabase.AssetKind.Feature)
+            GuestDestinationScore.Remember(selected,history);
+        if(chosen.Score<8)
+        {
+            w.Happiness=(byte)Math.Max(0,w.Happiness-5);
+            Needs.Set(g.Id,w);
+        }
+        return selected;
     }
 
     /// <summary>What the place they have just come out of did to them.

@@ -304,6 +304,8 @@ public partial class StandingServiceAudit : Node3D
             Check(!stubDefinition.Fields.ContainsKey("UsageInfo.EntryCellStandPosX")
                   && !stubDefinition.Fields.ContainsKey("UsageInfo.EntryCellStandPosY"),
                   "entry-stub consumer: entire lifecycle leaves absent authored coordinates absent");
+            // Preserve synthetic/uncompiled standing controls; compiled relief has its own lifecycle.
+            await NativeReliefPresentationChecks.Run(viewer, stage, library, terrain, disc, Check);
             sounds.Clear();
             stage.QueueFree(); await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
             await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
