@@ -197,13 +197,36 @@ the 32 row step. Small (21) and Console (14) would leave holes.
 
 ## ⚠ Known gaps
 
-* **Eight `.ssh` images do not decode**: `L_edge1-4`, `L_Panel2`, `L_Panel5`, `L_Panel6c`,
-  `L_Panel7` — every one with a dimension of 8 that is not 8x8. `Ssh.cs` refuses them with
-  *"Only the measured 8x8 sub-macroblock layout is supported"*, an **exclusion** rather than a
-  decode failure. A sweep of all 11 archives finds exactly these 8 such images on the whole disc
-  and **none has a `.tga` sibling**, so there is no shipped reference to validate a layout against.
-  Three *8x8* files do (`AWARD_T_8`, `SPACE/PUD_5`, `SPACE/Sploo2X3d`) and are the available
-  control. Until this is cracked the laptop's inner nine-slice cannot be drawn.
+* ~~Eight `.ssh` images do not decode~~ — **fixed**, and the answer changed what the port should
+  draw. All eight (`L_edge1-4`, `L_Panel2`, `L_Panel5`, `L_Panel6c`, `L_Panel7`) now decode, and
+  they are blue bevel gradients in matched orientation pairs. Zero regression: the 400+ pair
+  scorer returns an identical 3542 of 5764 within tolerance and an identical image-weighted RGB
+  mean of 4.907867, before and after.
+
+  ⭐⭐⭐ **BUT THE GAME NEVER LOADS THEM.** `ctex_ssh::load` at `0x235d68` — the sole reference to
+  the executable's `"SHPS"` string — refuses the whole file if **any** entry is under 16 in either
+  dimension:
+
+  ```
+  if (entryWidth < 0x10 || entryHeight < 0x10) {
+      printf("*** ERROR ctex::load - mipmap too small (%d,%d)\n", w, h);   ; 0x36fe20
+      <cleanup>; return 0;                                                 ; the LOAD FAILS
+  }
+  ```
+
+  So **11 of the 62 laptop files are dead assets on this build**: the eight above plus `L_fill`,
+  `L_Panelfill` and `AWARD_T_8`, all 8x8. The laptop's inner nine-slice therefore **cannot** be
+  drawn from `L_edge*`/`L_fill` on the PS2 — whatever it draws uses only the 30 pieces that are
+  16 or larger. The port should not reinstate them.
+
+  ⭐ This also reframes the decode itself: since no shipped code path ever displays these bytes,
+  the engine **cannot** settle their layout and the encoder's output is the only authority. The
+  rule was established against controls rather than guessed — the three 8x8 files that do have
+  `.tga` partners score RGB MAE 10.0 / 4.1 / 5.7 read contiguously against 50.6 / 36.5 / 34.9 for
+  a top-left crop, and the 8x32 tiles are corroborated against their 32x8 siblings (which have no
+  layout choice) at luma MAE 0.7 / 3.3 where a crop scores 34 / 44 and unrelated tiles score 31.
+  Alpha is a *different* layout from RGB, verified byte-for-byte: coded row `y` columns 8..15
+  equal row `y+1` columns 0..7 in all six 8-wide alpha files (248 of 248 pairs per 8x32).
 * **⚠ Which frame the satisfaction bar uses is NOT established.** There are two 128x32 orange
   frames, `PROG_BAR` (notched) and `BARPROG` (smooth). The port currently draws `PROG_BAR`, chosen
   **by name** on the assumption that its notches were the fill-segment dividers — and that
