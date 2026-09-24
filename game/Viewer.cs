@@ -2698,6 +2698,9 @@ public partial class Viewer : Node3D
         // byte's worth of change.
         _walkGrid.Field.Cells = _terrainModel.Field.Cells;
         GD.Print($"[walk] entrance: {_walkGrid.SetEntrance(_entranceTable)}");
+        // ⭐ The grid now knows the gate's hold, and the gate may already have been placed -- so
+        // apply it here too. Whichever of the two runs last, the park ends up fenced.
+        ReserveGateHold();
         return _walkGrid;
     }
 
@@ -6061,11 +6064,52 @@ public partial class Viewer : Node3D
     /// the gate's z and put it in the sea. The zone is drawn FROM the data and the gate is placed
     /// by its own measured bounds, so the two are independent -- if the log below shows them
     /// disagreeing, that is the gate's placement being measured, not the zone being wrong.</summary>
+    /// <summary>⭐⭐⭐ THE GATE'S ACTUAL NO-BUILD ZONE: the 8x2 on the park's first two rows.
+    /// Master, four times: "gate should be 8x2 (inside the park, the first tiles against that
+    /// middle inset)". Measured on JUNGLE the walkway ends at z 18 and this covers x 26..33,
+    /// z 19..20 -- sixteen cells, with the protected 2x2 of path in the middle of them.
+    ///
+    /// ⚠⚠ IT LIVES HERE AND NOT IN <see cref="PlaceGateNoBuild"/> BECAUSE OF CALL ORDER. That
+    /// runs while the gate is placed, before <see cref="WalkGrid"/> has fitted an entrance, so
+    /// asking it for the hold there got zero cells -- the zone silently never existed while the
+    /// audit, which builds its own grid, went on passing.
+    ///
+    /// ⭐ Idempotent: `Reserve` only sets bits, so calling it from both the gate placement and
+    /// the grid build costs nothing and means neither order can leave the park open.</summary>
+    void ReserveGateHold()
+    {
+        if (_park == null || _park.Width <= 0) return;
+        var grid = _walkGrid;                 // ⚠ NOT WalkGrid(): never build the grid from here
+        if (grid == null || grid.GateHold.Count == 0) return;
+        int n = 0;
+        foreach (var c in grid.GateHold) n += _park.Reserve(c.X, c.Z, 1, 1);
+        if (n > 0)
+            GD.Print($"[gate.zone] the 8x2 inside the park now refuses a build: {n} cells, "
+                   + $"x {grid.GateHold.Min(c => c.X)}..{grid.GateHold.Max(c => c.X)}, "
+                   + $"z {grid.GateHold.Min(c => c.Z)}..{grid.GateHold.Max(c => c.Z)}");
+    }
+
     void PlaceGateNoBuild(RideDefinition def, Vector3 lo, Vector3 hi, float shift, float dz)
     {
         _gateBox?.Hide();
         _park?.ClearReservations();
         if (_park == null || _park.Width <= 0) return;
+        // ⭐⭐⭐ THE PARK SIDE, AND IT IS THE ONE MASTER KEEPS ASKING FOR. The authored zone below
+        // is 6x3 at `MapOffsetY` 16 -- rows 16,17,18 -- and `MapOffsetY + Height` is **19, the
+        // park's own first row**. So the .sam's rectangle ends exactly where the park begins: it
+        // is the WALKWAY approach, and the inside of the park was never reserved at all. That is
+        // why you could still build flush against the gate however many times the hold was
+        // "fixed" -- the 8x2 existed, the audit asserted it, and nothing in the game ever asked.
+        //
+        // ⚠⚠ TWO NO-BUILD SYSTEMS HAD GROWN UP SEPARATELY: `ParkPaths.GateHold`, which the audit
+        // checks and `game/` never read, and `Park.Reserve`, which the game obeys and the gate
+        // hold never reached. They are joined here, from the one geometry, so they cannot drift.
+        // ⚠⚠ THE BOX IS DRAWN FROM THE AUTHORED RECTANGLE, AS IT ALWAYS WAS. Master: "KEEP the
+        // selection box. as it was." A previous attempt drew it from the gate hold instead and
+        // returned early when the walk grid was not built yet -- which, at the moment a gate is
+        // placed, it is not. That removed the box entirely AND reserved nothing. Do not make this
+        // function depend on the grid; the 8x2 is applied in ReserveGateHold, from WalkGrid,
+        // where the fitted entrance is known to exist.
         int w = def?.NoBuildWidthOverride ?? 0, h = def?.NoBuildHeightOverride ?? 0;
         if (w <= 0 || h <= 0)
         {
@@ -6074,6 +6118,7 @@ public partial class Viewer : Node3D
         }
         int x0 = (def.MapOffsetX ?? 0) + Mathf.RoundToInt(shift), y0 = def.MapOffsetY ?? 0;
         int cells = _park.Reserve(x0, y0, w, h);
+        ReserveGateHold();
         var (centre, rw, rh) = FootprintRect(x0, y0, w, h);
         // ⚠ Tall enough to enclose the arch: a flat ring on the floor is not what the console
         // draws, and the box's own shape (a pulled-out cube) only reads as one at height.
@@ -7126,6 +7171,13 @@ public partial class Viewer : Node3D
         // the finances and it is cheap and empty until a ride joins it -- `WalkGrid` is already
         // memoised and shares the terrain's own cell array, so this allocates nothing new.
         if (_sim == null && _mode == Mode.Park && WalkGrid() is { } grid) _sim = new ParkSim(grid);
+        // ⭐⭐ AND THE GATE'S 8x2, RETRIED UNTIL IT TAKES. Both natural call sites can miss it:
+        // WalkGrid may run before the park has dimensions, and PlaceGateNoBuild runs before the
+        // grid is fitted. Master has now reported this zone wrong four times and every one of
+        // them was an ordering miss rather than the geometry. `Reserve` only sets bits and the
+        // log only speaks when it changed something, so this is free after the first success and
+        // silent forever after.
+        if (_mode == Mode.Park) ReserveGateHold();
         var bank = _sim?.Finances;
         _money.Visible = _moneyShadow.Visible = _hudFont != null && _mode == Mode.Park;
         if (_hudFont == null) return;

@@ -254,9 +254,10 @@ public sealed class RideSounds
         if (loop && repeats)
         {
             DropRepeats(rideId, tag);
+            bool byClip = SfxEventMachine.IsGraph(r.Source);
             _repeats.Add(new Repeater { Ride = rideId, Tag = tag, Kind = kind, At = at, Catalogue = cat,
                                         Event = r, IntervalSeconds = r.Word0C / 1000.0,
-                                        Due = r.Word0C / 1000.0, Head = head,
+                                        Due = r.Word0C / 1000.0, Head = head, ByClipLength = byClip,
                                         Set = SfxEventMachine.Start(r.Source) ?? 0 });
         }
         // ⭐⭐ A GRAPH STARTS AT ITS FIRST SET. `FUN_0024C1F0` begins at `event[+8]`, the first
@@ -274,6 +275,10 @@ public sealed class RideSounds
                     + (stream == null ? "  ⚠ NO STREAM (undecodable or missing bank)" : $" {(stream.Stereo ? "stereo" : "mono")} {stream.MixRate}Hz");
         Census.Add(line); GD.Print(line);
         if (stream != null) Start(rideId, tag, chosen.Name, stream, sustains, kind, at, line);
+        // ⭐ and the first advance is due when THAT clip ends, not Word0C later.
+        if (graph && chosen != null)
+            foreach (var t in _repeats)
+                if (t.Ride == rideId && t.Tag == tag && t.ByClipLength) t.Due = chosen.Milliseconds / 1000.0;
     }
 
     /// <summary>⭐⭐ A SOUND OBJECT THAT FIRES AGAIN ON ITS OWN TIMER, which is what master
@@ -304,6 +309,23 @@ public sealed class RideSounds
         /// <summary>⭐ Where <see cref="SfxEventMachine"/> currently is in the event's graph.
         /// Only meaningful when the event IS a graph; a plain repeating event ignores it.</summary>
         public int Set;
+
+        /// <summary>⭐⭐ A GRAPH ADVANCES WHEN ITS CLIP ENDS, NOT ON `Word0C`. Master, playing:
+        /// the litter bin "is meant to make a constant fly buzzing sound. its sound effect is a
+        /// single bzz- as it stands". Its event is `GLOBAL/RIDESFX` 93 -- `wasp000..003`, **44 to
+        /// 118 ms each** -- against a `Word0C` of **3200 ms**, so this port played a 60 ms buzz
+        /// and then three seconds of silence.
+        ///
+        /// ⭐⭐⭐ AND THE DATA PROVES THE RULE, not just the symptom: set1 of that event is
+        /// **`blank.mp2`, NINE MILLISECONDS**, carrying weight 93 against set0's 4172 -- a
+        /// deliberate ~2% silent gap. A nine-millisecond pause is only a pause if the clips
+        /// around it are CONTIGUOUS. The authors wrote a continuous buzz with an occasional
+        /// catch in it, which is meaningless at one clip per 3.2 s.
+        ///
+        /// ⚠ That agrees with the chain in findings/sound.md -- the next clip is started when the
+        /// instance is IDLE -- and is the evidence that chain was missing. What `Word0C` means for
+        /// a graph event is now an open question rather than an answered one.</summary>
+        public bool ByClipLength;
         public int Ride, Tag, Kind;
         public Vector3 At;
         public SoundCatalogue Catalogue;
@@ -318,12 +340,40 @@ public sealed class RideSounds
     /// event's links are tested against. ⭐ Per RIDE, because two rides can be screaming at
     /// different levels at once and a single global would give them each other's. See <see cref="SfxEventMachine"/>.
     ///
-    /// ⚠⚠ ONLY PARAMETER 6 IS SOURCED, and it is the ride scream's level. Every other id falls
-    /// back to 0 because nothing has read where its value comes from -- notably **18**, which 31
-    /// of the disc's 68 graphs branch on and which drives every park's ambient bed. ⭐ For the
-    /// graphs whose links all span `[0..100]` the value cannot change the outcome, so those run
-    /// correctly regardless; the ones with narrow bands are the ones a wrong 0 would misdirect,
-    /// and the audit lists exactly which those are.</summary>
+    /// ⚠ Only parameter 6 is sourced here, and it is the ride scream's level. Everything else
+    /// reads 0.
+    ///
+    /// ⭐⭐ AND FOR **18** -- the big one, which 31 of the disc's 68 graphs branch on and which
+    /// drives every park's ambient bed -- **0 is very probably not a placeholder but the value it
+    /// actually holds.** Censused all 49 call sites of `FUN_00111D40`: the immediates are
+    /// 2,4,6,7,8,9,10,20,22,23, and the eight computed ones resolve to 21 (the tour-ride family,
+    /// whose id is stored at object `+0x74`, set to 21 at `0x1EA914`) and 9/11 (`FUN_001AF330`).
+    /// **Nothing anywhere sets 18.** The census demonstrably finds parameters that ARE set, so
+    /// that negative has a live control.
+    ///
+    /// ⭐ And it barely matters: across all 31 parameter-18 graphs, **256 links are reachable at
+    /// value 0 and 252 at value 50** -- the value gates only four links on the whole disc, the
+    /// `[0..5]` rare variations, and 0 is the setting that ENABLES them. So 0 gives the fullest
+    /// ambience rather than a stuck branch.
+    ///
+    /// ⭐⭐ AND THE INITIALIZER JOIN, which the census alone did NOT give -- astraclaw pushed for
+    /// it and was right to, because "nothing writes it" says nothing about what it STARTS at.
+    /// `FUN_00240970`, where a sound instance is built:
+    ///
+    /// <code>
+    ///   n = paramTable[+0x1c] * 4;        // the table's parameter COUNT, the same field
+    ///   p = alloc(n);                     // FUN_00243840 loops on
+    ///   instance[0x39] = p;               // the per-instance parameter array
+    ///   memset(p, 0, n);                  // &lt;&lt;&lt;&lt; every parameter starts at ZERO
+    /// </code>
+    ///
+    /// So the array is zeroed on allocation and nothing writes 18 afterwards: it **is** 0, rather
+    /// than 0 being this port's stand-in for an unknown.
+    ///
+    /// ⚠ The limit that remains: the census covers call sites of `FUN_00111D40`. A writer that
+    /// reached the parameter array by another route, or an authored default applied after the
+    /// memset, would not have shown up -- nothing seen does either, but that is an absence of
+    /// evidence and is recorded as one.</summary>
     public Func<int, int, int> ParameterValue { get; set; }
 
     /// <summary>The console's own generator for the transition draw, kept separate from
@@ -399,7 +449,8 @@ public sealed class RideSounds
             var t = _repeats[i];
             t.Due -= simSeconds;
             if (t.Due > 0) continue;
-            t.Due += t.IntervalSeconds;
+            // ⭐ A graph's next advance is set from the clip chosen BELOW, once it is known.
+            if (!t.ByClipLength) t.Due += t.IntervalSeconds;
             List<SoundCatalogue.ResolvedClip> bank;
             if (SfxEventMachine.IsGraph(t.Event.Source))
             {
@@ -427,6 +478,10 @@ public sealed class RideSounds
                 bank = pool.Count > 0 ? pool[_rng.Next(pool.Count)] : t.Event.Clips.ToList();
             }
             var pick = Pick(bank.Count > 0 ? bank : t.Event.Clips);
+            // ⚠ A clip of 0 ms would schedule the next advance for the same instant and spin the
+            // loop forever inside one tick; fall back to the event's own interval there.
+            if (t.ByClipLength)
+                t.Due += pick is { Milliseconds: > 0 } ? pick.Milliseconds / 1000.0 : t.IntervalSeconds;
             var wav = pick == null ? null : Stream(t.Catalogue, t.Event, pick, false);
             if (wav != null) Start(t.Ride, t.Tag, pick.Name, wav, false, t.Kind, t.At, t.Head);
         }

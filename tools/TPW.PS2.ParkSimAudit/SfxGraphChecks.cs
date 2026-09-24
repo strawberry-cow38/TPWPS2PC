@@ -141,6 +141,40 @@ static class SfxGraphChecks
         // every four-set event points past the end. Zero out-of-range means the -1 is right.
         Check(oob == 0, $"no link target falls outside its event ({oob} would mean the index base is wrong)");
 
+        // ---- ⭐⭐ THE LITTER BIN, AND WHY A GRAPH CANNOT BE SCHEDULED ON Word0C ---------
+        // Master, playing: the bin "is meant to make a constant fly buzzing sound. its sound
+        // effect is a single bzz- as it stands". PelBin.RSE asks for GlobalRide 93.
+        var rides2 = Map("/AUDIO/GLOBAL/RIDESFX.MAP");
+        var buzz = rides2.ById[93];
+        var clips = buzz.Sets.SelectMany(x => x.Clips).Select(c => c.Milliseconds).ToList();
+        Check(SfxEventMachine.IsGraph(buzz) && buzz.Sets.Count == 2, "the bin's event 93 is a two-set graph");
+        Check(clips.Max() < buzz.Word0C / 10,
+              $"and every clip ({clips.Min()}..{clips.Max()}ms) is a fraction of Word0C ({buzz.Word0C}ms)");
+        // ⭐⭐⭐ THE PROOF THAT CLIPS RUN BACK TO BACK, and it is in the data rather than the code:
+        // set1 is a NINE MILLISECOND blank carrying ~2% of the weight. A 9ms silence is only a
+        // silence if what surrounds it is contiguous -- it is meaningless once per 3.2 seconds.
+        var gap = buzz.Sets.OrderBy(x => x.Clips.Max(c => c.Milliseconds)).First();
+        Check(gap.Clips.Count == 1 && gap.Clips[0].Milliseconds < 20,
+              $"one set is a deliberate {gap.Clips[0].Milliseconds}ms blank -- an authored catch in the buzz");
+        Check(gap.Weight * 20 < buzz.Sets.Sum(x => (long)x.Weight),
+              "and it is rare -- a few percent of the draw, not half of it");
+        // ⭐ THE INVARIANT, not a copy of the figures: walk the graph and measure the DUTY CYCLE.
+        // Scheduled on clip length it is ~100%; scheduled on Word0C it would be ~2%.
+        var r4 = new SfxEventMachine.Rng(3);
+        int at = 0; double sound = 0, wall = 0;
+        for (int i = 0; i < 300; i++)
+        {
+            var pool = buzz.Sets[at].Clips;
+            int ms = pool.Count == 0 ? 0 : pool[i % pool.Count].Milliseconds;
+            sound += ms; wall += ms;                      // clip-length scheduling
+            if (SfxEventMachine.Next(buzz, at, 0, r4) is { } n) at = n; else break;
+        }
+        Check(wall > 0 && sound / wall > 0.95,
+              $"walking it back-to-back the buzz is {sound / wall:P0} sound -- continuous");
+        double onWord0C = sound / (300.0 * buzz.Word0C);
+        Check(onWord0C < 0.10,
+              $"CONTROL: the same walk on Word0C would be {onWord0C:P0} sound -- which is the single bzz master heard");
+
         // ---- ⚠⚠ WHICH GRAPHS DEPEND ON A PARAMETER WE CANNOT SOURCE? -------------------
         // Only parameter 6 has a value in this port (the scream level). A graph whose links all
         // span [0..100] runs correctly whatever the parameter reads, because every link always
@@ -163,8 +197,30 @@ static class SfxGraphChecks
         }
         Check(blindNarrow < blind, $"{blind - blindNarrow} of {blind} graphs on an unsourced parameter have full-range links "
             + "-- those run correctly regardless of its value");
-        Check(blindNarrow > 0, $"⚠ but {blindNarrow} have NARROW bands and would be misdirected by the placeholder 0 "
-            + $"(parameters {string.Join(",", blindParams)}) -- this is the honest gap, not a pass");
+        Check(blindNarrow > 0, $"⚠ {blindNarrow} have NARROW bands, so their behaviour depends on a value we do not source "
+            + $"(parameters {string.Join(",", blindParams)})");
+        // ⭐⭐ BUT FOR PARAMETER 18 -- the ambient beds, the biggest block of graphs -- 0 looks
+        // like the real value rather than a placeholder: nothing on the disc writes 18, and the
+        // value gates only a handful of links anyway. Measured rather than asserted from the
+        // absence alone, because an absence is only as good as the search behind it.
+        int at0 = 0, at50 = 0, p18 = 0;
+        foreach (var f in disc.Files().Where(x => x.Path.ToUpperInvariant().EndsWith("SFX.MAP")))
+        {
+            SfxMap m;
+            try { m = new SfxMap(disc.Read(f.Extent, f.Size)); } catch { continue; }
+            foreach (var e in m.Events.Where(x => SfxEventMachine.IsGraph(x) && x.Word12 == 18))
+            {
+                p18++;
+                foreach (var st in e.Sets)
+                {
+                    at0 += st.Links.Count(l => l.Low <= 0 && 0 <= l.High);
+                    at50 += st.Links.Count(l => l.Low <= 50 && 50 <= l.High);
+                }
+            }
+        }
+        Check(p18 > 25, $"parameter 18 drives {p18} graphs -- every park's ambient bed");
+        Check(at0 >= at50, $"and value 0 reaches MORE of their links than 50 does ({at0} vs {at50}) "
+            + "-- so reading 0 gives the fullest ambience, not a stuck branch");
 
         // ---- ⭐ the weights, and the assumption the uniform draw rests on ----------------
         // Every set of an event carries the same value, and it is an equal share of 0xFFFF. That
