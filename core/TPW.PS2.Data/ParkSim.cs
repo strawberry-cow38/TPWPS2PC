@@ -182,7 +182,14 @@ public sealed class ParkRide
     /// <summary>⭐ One sale, as `FUN_001D18E8` books it. <paramref name="margin"/> may be
     /// negative -- a shop priced below its cost of goods loses money and the console debits the
     /// park for it rather than clamping.</summary>
-    public void Book(int price, int margin) { Takings += price; Profit += margin; }
+    public void Book(int price, int margin) { Takings += price; Profit += margin; Customers++; }
+
+    /// <summary>`+0xb4` on a SHOP: how many customers it has served, unbounded. The sale recorder
+    /// `FUN_001D1E68` does `+0xb4 += 1`, so it counts with the booking above.
+    /// ⚠ On a LAVATORY the same offset is that class's CONDITION -- see <see cref="Condition"/>.
+    /// The offset does not carry its meaning across classes, which this file has been caught by
+    /// once already.</summary>
+    public int Customers { get; private set; }
 
     /// <summary>Use wears it down, floored at zero -- `FUN_00130948`, whose ONLY caller is the
     /// relief path at `0x20ef48`.</summary>

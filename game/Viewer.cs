@@ -234,6 +234,8 @@ public partial class Viewer : Node3D
     /// <summary>`--menu-test`: focus the first placed object and put its menu up, for a capture.</summary>
     bool _menuTest;
     bool _menuShown;
+    /// <summary>`--shop-info-test`: open a shop's info panel, for a capture.</summary>
+    bool _shopInfoTest;
     bool _linkTest;
     bool _placeTest;
     bool _walkAudit;
@@ -312,6 +314,7 @@ public partial class Viewer : Node3D
     /// <summary>The menu a selected object opens. ⚠ Built lazily: it needs both the HUD font and
     /// UI.WAD's panel art, neither of which exists before a disc is open.</summary>
     ObjectMenu _objMenu;
+    ShopPanel _shopPanel;
     Control _uiRoot;
     string _moneyShown;
     Label _toolStatus;
@@ -365,6 +368,7 @@ public partial class Viewer : Node3D
             else if (a == "--path-test") _pathTest = true;
             else if (a == "--ghost-test") _ghostTest = true;
             else if (a == "--menu-test") _menuTest = true;
+            else if (a == "--shop-info-test") { _menuTest = true; _shopInfoTest = true; }
             else if (a == "--link-test") _linkTest = true;
             else if (a == "--place-test") { _buildTest = true; _placeTest = true; }
             else if (a == "--walk-audit") _walkAudit = true;
@@ -775,6 +779,13 @@ public partial class Viewer : Node3D
         // ⭐⭐ AN OPEN MENU EATS ITS KEYS. The console drives this with the d-pad and ✕, so up /
         // down / confirm / cancel, and nothing else sees them while it is up -- otherwise the
         // arrows would still be driving the camera behind the menu.
+        // ⭐ The panel takes Escape before anything else while it is up.
+        if (_shopPanel is { Open: true } && k.Keycode == Key.Escape)
+        {
+            _shopPanel.Hide();
+            Status("details closed");
+            return;
+        }
         if (_objMenu is { Open: true })
         {
             switch (k.Keycode)
@@ -5275,7 +5286,18 @@ public partial class Viewer : Node3D
         var built = LoadPlaceable(_armedRide, out var builtAnim, out var builtMesh);
         var model = built?.Root;
         if (model == null) { Status($"{_place.Display} has no model to place"); return; }
-        if (!_park.TryPlace(model, _place.Turned, _place.Id, _place.Display, cx, cy, _place.Turns))
+        // ⚠⚠ THE PARK'S ID IS THIS PLACEMENT'S RIDE SERIAL, not `_place.Id`.
+        //
+        // `_place.Id` is the CATALOGUE id -- what KIND of thing this is -- so two Balloon Shops
+        // shared one, and `_occupied` could not tell them apart: removing either cleared BOTH
+        // their cells. It also matched nothing in the simulation (which keys on this serial) and
+        // nothing in the path tool (whose queue cells are laid with it below), so deleting a ride
+        // left its sim record and its queue standing while the model vanished.
+        //
+        // ⭐ Allocated HERE rather than after the place so all three agree on one number: the
+        // park's occupancy, the simulation's ride, and the owner stamped on its queue.
+        int ride = ++_rideSerial;
+        if (!_park.TryPlace(model, _place.Turned, ride, _place.Display, cx, cy, _place.Turns))
         {
             Status($"{_place.Display} does not fit there");
             _toolSfx?.Play(ToolSounds.Cue.Refused);
@@ -5286,7 +5308,6 @@ public partial class Viewer : Node3D
         // it is told -- master: "paths and queues should have the sprite as if they are connected
         // to the entry/exit points". Registered BEFORE the floor is redrawn so the first draw
         // already has them. Every ride gets a fresh id so two rides' doors never read as one.
-        int ride = ++_rideSerial;
         RegisterBusPlacement(model,ride,_place.Def);
         // ⚠ CAPTURED BEFORE THE PRESS DROPS THE BLUEPRINT, and handed to the sim below: the
         // queue stub is where a guest goes to join this ride and the path stub is where the script
@@ -5608,8 +5629,25 @@ public partial class Viewer : Node3D
     /// full native list. A ride with no queue reads "Build Queue" for the same reason.</summary>
     IEnumerable<string> MenuEntriesFor(int placed)
     {
+        // ⭐ "Details" is the shop panel's own tab name (`STR_SINGLESHOP_INFORMATION`), so a shop
+        // offers it. ⚠ Only a shop: the panel's rows are Takings/Profit/Quality/Sale Price and a
+        // ride has none of them.
+        if (_shopPanel != null && ShopFor(placed) != null) yield return "Details";
         yield return HasQueueNear(placed) ? "Edit Queue" : "Build Queue";
         yield return "Delete";
+    }
+
+    /// <summary>The simulation's record for a placed object, when it is a SHOP. ⚠ Matched by the
+    /// compiled entry's own kind rather than by name -- a name test would call anything with
+    /// "shop" in its title a shop, and miss the ones without.</summary>
+    ParkRide ShopFor(int placed)
+    {
+        if (_sim == null || placed < 0 || placed >= _park.Placed.Count) return null;
+        int id = _park.Placed[placed].Id;
+        foreach (var r in _sim.Rides)
+            if (r.Id == id && r.Definition?.CompiledEntry?.Kind == AssetResourceDatabase.AssetKind.Shop)
+                return r;
+        return null;
     }
 
     /// <summary>Does a queue already touch this object's footprint? ⚠ Adjacency, not the native
@@ -5634,6 +5672,14 @@ public partial class Viewer : Node3D
             case "Build Queue":
                 ResumeQueue();
                 break;
+            case "Details":
+                var shop = ShopFor(_selected);
+                if (shop != null)
+                {
+                    _shopPanel.ShowFor(shop, _park.Placed[_selected].Name);
+                    Status($"{_park.Placed[_selected].Name} -- details");
+                }
+                break;
             case "Delete":
                 DeleteSelected();
                 break;
@@ -5648,11 +5694,60 @@ public partial class Viewer : Node3D
         if (_objMenu == null) { GD.PrintErr("[menu] --menu-test: no menu (font or UI.WAD art missing)"); _menuShown = true; return; }
         if (_park == null || _park.Placed.Count == 0) return;   // wait for something to be placed
         _menuShown = true;
-        _selected = 0;
-        ShowBoxFor(0);
-        var entries = MenuEntriesFor(0).ToList();
+        // ⭐ For the shop capture, pick a PLACED SHOP rather than whatever is first -- the panel
+        // has nothing to say about a ride.
+        int want = 0;
+        if (_shopInfoTest)
+        {
+            // ⚠ The ordinary place test only FIT-TESTS a shop; nothing is left standing. So put
+            // one down here through the real arm-and-place path rather than a synthetic record --
+            // a panel drawn from a fixture would not prove the live one works.
+            for (int i = 0; i < _park.Placed.Count; i++) if (ShopFor(i) != null) { want = -2; break; }
+            if (want != -2)
+            {
+                int row = -1;
+                ShowBuildCategory("Shops");
+                for (int i = 0; i < _buildRows.Count && row < 0; i++)
+                {
+                    var d = DefinitionFor(_lib.Rides[_buildRows[i]].Model);
+                    if (d?.Shape != null && Park.Footprint.From(d.Shape).EntryX >= 0) row = i;
+                }
+                if (row >= 0)
+                {
+                    ArmFromList(row);
+                    var f = _park.Field;
+                    int sx = f.Width / 2 - 6, sy = f.Height / 2 + 6;
+                    for (int r = 0; r < 24 && !_place.Fits(_park, sx, sy); r++) sy++;
+                    // ⭐ `_cursorOverride` is the file's own headless hook -- "a capture has no
+                    // mouse ... so a headless render exercises the same path as a press does".
+                    if (_place.Fits(_park, sx, sy))
+                    {
+                        var had = _cursorOverride;
+                        _cursorOverride = (sx, sy);
+                        try { PlaceHeld(); } finally { _cursorOverride = had; }
+                    }
+                }
+            }
+            want = -1;
+            for (int i = 0; i < _park.Placed.Count && want < 0; i++) if (ShopFor(i) != null) want = i;
+            if (want < 0)
+            {
+                GD.PrintErr($"[shop] --shop-info-test: still no shop among {_park.Placed.Count} placed; kinds: "
+                    + string.Join(", ", _park.Placed.Select(pp => pp.Name)));
+                _menuShown = true; return;
+            }
+        }
+        _selected = want;
+        ShowBoxFor(want);
+        var entries = MenuEntriesFor(want).ToList();
         _objMenu.Show(entries, new Vector2(160, 150));
-        GD.Print($"[menu] --menu-test: {_park.Placed[0].Name} -> {string.Join(" / ", entries)}");
+        GD.Print($"[menu] --menu-test: {_park.Placed[want].Name} -> {string.Join(" / ", entries)}");
+        if (_shopInfoTest)
+        {
+            _objMenu.Hide();
+            _shopPanel.ShowFor(ShopFor(want), _park.Placed[want].Name);
+            GD.Print($"[shop] --shop-info-test: panel up for {_park.Placed[want].Name}");
+        }
     }
 
     /// <summary>Open the queue tool ON the selected ride, continuing from where its queue was
@@ -6711,6 +6806,7 @@ public partial class Viewer : Node3D
             // ⭐ And the menu goes with it. Master: "the dialogue should close when you move like
             // the selection box does" -- it belongs to the selection, so it cannot outlive it.
             if ((fwd != 0 || side != 0) && _objMenu is { Open: true }) _objMenu.Hide();
+            if ((fwd != 0 || side != 0) && _shopPanel is { Open: true }) _shopPanel.Hide();
             if ((fwd != 0 || side != 0) && (_selected >= 0 || _gateSelected)) ClearSelection();
             _game.CursorX += (int)((fwd * s - side * c) * pan);
             _game.CursorZ += (int)((fwd * c + side * s) * pan);
@@ -7301,6 +7397,22 @@ public partial class Viewer : Node3D
                     _uiRoot.AddChild(_objMenu);
                     _objMenu.Activated += OnObjectMenu;
                     GD.Print("[menu] object menu ready (UI.WAD panel art + Large.bff)");
+                }
+                // ⭐ SMALL.bff for the panel, not the money face. Large.bff's glyphs are taller
+                // than this panel's own 14-unit row spacing, so its rows collided -- and a screen
+                // of small stats is what Small.bff is for.
+                FontText small = null;
+                try
+                {
+                    var sbff = _lib?.ReadGeneric("/Fonts/European/Small.bff");
+                    if (sbff != null) small = new FontText(new BitmapFont(sbff));
+                }
+                catch (Exception ex) { GD.PrintErr($"[shop] Small.bff would not load: {ex.Message}"); }
+                _shopPanel = ShopPanel.Create(_lib, small ?? _hudFont);
+                if (_shopPanel != null)
+                {
+                    _uiRoot.AddChild(_shopPanel);
+                    GD.Print("[shop] info panel ready (260x180 at y=210, centred, scaled off 512)");
                 }
             }
         }
