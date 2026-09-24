@@ -699,6 +699,48 @@ catch (Exception e) { Console.WriteLine($"  (no sound catalogue: {e.Message})");
     return (b, b == null ? 0 : 2);
 }
 string Clips(SoundCatalogue.Resolved r) => string.Join("|", r.Clips.Select(c => c.Name).Distinct());
+
+// ⭐⭐ THE GUEST'S OWN SOUNDS, and the point is that they resolve through the SAME index the
+// ride scripts use. `FUN_00111428(audio, 7, id, &pos, handle, 0)` is the engine's positional
+// one-shot, and its second argument is the KIND -- the same 3..11 `OBJ_SOUND_*` group number
+// this audit already maps to one `*SFX.MAP` each. So an id the guest code passes is an EVENT
+// ID, not some separate engine numbering, which is what this file previously recorded as
+// unresolved.
+//
+// ⚠ THE CONTROL IS THE LAVATORY. `FUN_0020EDD8`'s relief arm plays **53**, and the kids map is
+// already known to hold 48..53 as EVT_BOG1..EVT_BOG5 and EVT_DOORSKWEEK1 -- so if 53 does not
+// come back as a door or a toilet, the kind-7 reading is wrong and every other row here is
+// meaningless. A lookup with no control cannot tell "resolved" from "resolved to anything".
+// ⚠ SWEPT OVER EVERY GROUP, because the first version assumed the `7` these calls pass IS the
+// OBJ_SOUND group number and THE CONTROL FAILED: the lavatory's own id did not resolve under 7
+// either, and 53 is known to live in the kids map, which is group 6. `FUN_00111428`'s second
+// argument selects a table INSIDE that function, so it is a category in some other numbering.
+foreach (var (sfxId, sfxWhat) in new[] { (53, "lavatory relief, FUN_0020EDD8 -- THE CONTROL"),
+                                         (208, "shop visit complete, FUN_0020E1A0 tail"),
+                                         (205, "guest very unhappy"), (129, "guest very happy") })
+{
+    var found = new List<string>();
+    foreach (int grp in new[] { 3, 4, 5, 6, 7, 8, 9, 11 })
+    {
+        var (h, pk) = ResolveEither(grp, sfxId);
+        if (h != null) found.Add($"group {grp}({(SoundGroup)grp}) park {pk} -> {Clips(h)}");
+    }
+    Console.WriteLine($"  guest sfx: id {sfxId} ({sfxWhat}): "
+                    + (found.Count == 0 ? "NO GROUP RESOLVES IT" : string.Join("; ", found)));
+}
+// ⭐⭐ ASSERTED, not just printed. A line of output nobody compares against anything is a number
+// to stare at; these are the ids the port now PLAYS, so they have to keep resolving.
+{
+    string Kids(int id) => ResolveEither(6, id).Hit is { } h ? Clips(h) : "(unresolved)";
+    // ⚠ THE CONTROL FIRST, and it is a real one: the lavatory's id must come back as a DOOR. If
+    // group 6 ever stops being the guests' map this reads as some ride's clip and the row below
+    // it -- the one the game actually plays at a shop -- would be wrong in the same breath.
+    Check(Kids(53).Contains("door", StringComparison.OrdinalIgnoreCase),
+          $"CONTROL: the lavatory's own event 53 is a door in the kids map ({Kids(53)})");
+    Check(Kids(ParkVisitors.ShopSoundEvent).Contains("cash", StringComparison.OrdinalIgnoreCase),
+          $"a shop rings a till -- event {ParkVisitors.ShopSoundEvent} is {Kids(ParkVisitors.ShopSoundEvent)}");
+    Check(ParkVisitors.ShopSoundGroup == 6, "and it is read from the guests' own group, not the staff one that failed");
+}
 string Named(RseOpcode op, IReadOnlyList<int> a)
 {
     string plain = $"{op} {string.Join(" ", a)}";

@@ -341,6 +341,36 @@ public sealed class ParkVisitors
     /// margin would be the whole price. That is not a decision this can make honestly, so an
     /// unjoined shop books its takings and NO margin, and the park is not paid for it. Better a
     /// visible zero than invented income.</summary>
+    /// <summary>⭐⭐ THE SOUND A SHOP MAKES, and it is the console's own clip rather than one
+    /// chosen here. `FUN_0020E1A0` ends with
+    /// `FUN_00111428(audio, 7, 0xD0, &amp;guestPos, guest+0x90, 0)` -- the same positional one-shot
+    /// the lavatory arm uses with `0x35` and the mood paths use with `0xCD` and `0x81`.
+    ///
+    /// ⭐ `0xD0` = **208**, and in `GLOBAL/KIDSSFX.MAP` that event is **`cashD2b.vag`** -- a cash
+    /// register. Four ids were resolved together and every clip matches its context: 53 (relief)
+    /// is `dooropen1.mp2`, 205 (very unhappy) is `cry1/kidsad1/kidsad2/scared1`, 129 (very happy)
+    /// is `huh1.vag`. Names nobody here chose, agreeing four times over.
+    ///
+    /// ⚠⚠ THE FIRST ATTEMPT AT THIS WAS WRONG AND THE CONTROL CAUGHT IT. `FUN_00111428`'s second
+    /// argument is **7**, and this port already maps 3..11 to the `OBJ_SOUND_*` groups, so 7 was
+    /// read as the group. It is not: under group 7 (`GlobalStaff`) the LAVATORY's own id did not
+    /// resolve either, and 53 is known to live in the kids map. That argument selects a table
+    /// inside `FUN_00111428` in some other numbering; the group these ids actually live in is
+    /// **6**, found by sweeping. ⭐ A lookup whose control fails tells you nothing about its
+    /// target, which is the only reason a guessed clip was not shipped.
+    ///
+    /// ⚠⚠ AND IT IS NOT "ON A PURCHASE". The call sits at the function's COMMON EXIT, after the
+    /// purchase block closes -- reached whether the guest bought anything or walked away. Master
+    /// asked for a sound "when a purchase is made"; the console plays it on a completed shop
+    /// VISIT, and following the game was the instruction, so that is what fires. Said out loud
+    /// because it is a visible difference from the words of the request.</summary>
+    public const int ShopSoundGroup = 6, ShopSoundEvent = 208;
+
+    /// <summary>Raised when a guest finishes at a shop, bought or not -- see
+    /// <see cref="ShopSoundEvent"/>. ⚠ A plain delegate because this assembly has no audio and
+    /// must not grow one; the viewer owns playback.</summary>
+    public Action<int, int, ParkCell> ShopVisited;
+
     void Take(ParkRide shop, RideDefinition def)
     {
         int price = def.PricePerUse ?? 0;
@@ -666,6 +696,13 @@ public sealed class ParkVisitors
                 Purchases++;
                 Take(used, def);
             }
+            // ⚠ OUTSIDE the `if`, deliberately: the console's call is at the common exit, so a
+            // guest who looked and left still makes the shop ring. See ShopSoundEvent.
+            // ⚠ The guest's own cell where they still have one -- the console positions the
+            // effect at the GUEST, not the building -- falling back to the shop's service entry
+            // (or its origin) for a guest the walk has already handed away.
+            ShopVisited?.Invoke(guest, used.Id, Walk.Guests.FirstOrDefault(g => g.Id == guest)?.Cell
+                                                 ?? used.ServiceEntry ?? used.Entrance ?? used.Origin);
             return;
         }
         Needs.Ride(guest, RideIntensity, RideHappiness, RideSickScale, RideBoredomScale);

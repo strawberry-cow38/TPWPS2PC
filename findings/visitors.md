@@ -2161,3 +2161,38 @@ bytes, applied to a field instead of a file.
 ⭐ So the term is now ported, and the same expression is **also the cost of goods**: turning the
 slider up makes a sale cheaper to supply *and* less attractive to buy, while quality does the
 opposite. That is the whole shop economy, and half of it was missing.
+
+### ⭐⭐ A shop rings a till — and the control caught a wrong reading first (2026-09-24)
+
+Master: *"make sure shops are playing a sound when a purchase is made (follow the real game)."*
+
+`FUN_0020E1A0` ends with `FUN_00111428(audio, 7, 0xD0, &guestPos, guest+0x90, 0)` — the same
+positional one-shot the lavatory arm uses with `0x35`, and the mood paths with `0xCD` / `0x81`.
+
+**`0xD0` = 208, and `GLOBAL/KIDSSFX.MAP` event 208 is `cashD2b.vag`.** A cash register. Four ids
+resolved together and every clip matches its context, which is the corroboration:
+
+| id | where it is played | clip |
+|---|---|---|
+| 53 | `FUN_0020EDD8` relief arm | `dooropen1.mp2` |
+| **208** | **`FUN_0020E1A0` tail** | **`cashD2b.vag`** |
+| 205 | very unhappy (`FUN_0020F968`) | `scared1 / cry1 / kidsad1 / kidsad2` |
+| 129 | very happy (`FUN_0020FB88`) | `huh1.vag` |
+
+⚠⚠ **THE FIRST READING WAS WRONG AND ITS CONTROL SAID SO.** `FUN_00111428`'s second argument is
+**7**, and this port already maps 3..11 to the `OBJ_SOUND_*` groups, so 7 was read as the group.
+Under group 7 (`GlobalStaff`) **the lavatory's own id did not resolve either** — and 53 is known
+to live in the kids map. That argument selects a table *inside* `FUN_00111428`, in some other
+numbering; the group these ids actually live in is **6**, found by sweeping every group.
+
+⭐ A lookup whose control fails tells you nothing about its target. Without 53 in that sweep the
+result for 208 would have read "no such event", and the honest-looking conclusion would have been
+"the console plays nothing here" — the exact opposite of the truth.
+
+⚠⚠ **AND IT IS NOT "ON A PURCHASE".** The call sits at the function's **common exit**, after the
+purchase block closes, so it is reached whether the guest bought anything or walked away. The
+instruction was to follow the game, so the port fires it on a completed shop **visit** and says so
+rather than quietly matching the words of the request instead of its source.
+
+⚠ `guest+0x90`, `+0x94`, `+0x98` are three effect handles the guest keeps; only the fact that the
+shop call stores into `+0x90` is used here.

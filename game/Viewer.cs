@@ -3098,12 +3098,24 @@ public partial class Viewer : Node3D
         _parkTicks++;
         if (_visitors == null && _sim != null && OpenGate())
         {
+            // ⭐⭐ SHOPS RING UP. `FUN_0020E1A0` ends with a positional one-shot of event 208,
+            // which is `cashD2b.vag` in the kids map -- a cash register, the console's own clip.
+            // ⚠ It fires on a completed VISIT, not only on a sale, because that call sits at the
+            // function's common exit; see ParkVisitors.ShopSoundEvent.
             _visitors = new ParkVisitors(_sim, _guests)
             {
                 // ⭐ The wants, from the executable's own spawn distributions. Seeded only on
                 // Arrive and reconciled against the live plans -- see VisitorNeeds.
                 Needs = new VisitorNeeds(seed: 20260923),
             };
+            // ⚠ The sim assembly has no audio and must not grow one, so playback is wired here.
+            // `RseOpcode.EVENT` is the one-shot arm of Cue -- only ADDOBJ loops -- and the shop's
+            // own id attributes the voice so `Drop` still tidies up when it is demolished.
+            _visitors.ShopVisited = (guest, shopId, at) => _sounds?.Cue(
+                shopId, _sim.Rides.FirstOrDefault(r => r.Id == shopId)?.Name ?? "shop",
+                _parkTicks * ParkSim.TickMilliseconds, RseOpcode.EVENT,
+                ParkVisitors.ShopSoundGroup, -1, ParkVisitors.ShopSoundEvent, 0,
+                Cell(ParkPaths.Centre(at)));
             GD.Print($"[guest] guests now visit rides; the sim and the walk share one grid: {ReferenceEquals(_sim.Paths, _guests.Paths)}");
             GD.Print($"[want] {_thoughts.Load(path => _lib?.ReadGeneric(path))}"
                    + $"; cam={System.Environment.GetEnvironmentVariable("TPW_WANT_CAM")}"
