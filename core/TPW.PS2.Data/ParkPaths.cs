@@ -88,10 +88,16 @@ public sealed class ParkPaths
                     if (!Contains(c)) continue;
                     _protected.Add(c); held++;
                 }
-            // ⚠ One tile beyond the 2x2 on every side, clipped rather than refused: the gate
-            // stands at the plot's edge, so part of its skirt is off the map by construction.
-            for (int x = entry.XCol - 1; x <= entry.XCol + 2; x++)
-                for (int z = entry.ZEnd - 2; z <= entry.ZEnd + 1; z++)
+            // ⚠ Clipped rather than refused: the gate stands at the plot's edge, so part of its
+            // skirt is off the map by construction.
+            //
+            // ⭐ Master, after seeing the first version: "expand into the park by 1 tile and to
+            // the sides by 1 tile each side." So TWO tiles either side of the 2x2 in x, and the
+            // parkward edge reaches `ZEnd + 2`. ⚠ Parkward is INCREASING z -- the walkway runs
+            // down to its mouth at `ZEnd - 1` and the first cell the park gives a path to is
+            // `ZEnd` -- so the extra tile goes on that side, not back up the walkway.
+            for (int x = entry.XCol - 2; x <= entry.XCol + 3; x++)
+                for (int z = entry.ZEnd - 2; z <= entry.ZEnd + 2; z++)
                 {
                     // ⚠⚠ NOT `_occupied`. The first version put these in it, and `CanLay`
                     // consults `_occupied` -- so the gate's own skirt refused the entrance path
