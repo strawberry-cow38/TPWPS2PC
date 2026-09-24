@@ -2301,3 +2301,24 @@ byteleport/deletingthem or guessguestIDserial. This ismeaningfullyconnectednow, 
 experimentalservices/rejectionhold are explicit blockers, not a request to merge main.
 No restarts/extraction/privatefiles. CowownsUV/bubblesandcamera; latestmaincamera
 52e576e should be merged aftercurrentrenderedgates (notduringclearingbuild).
+
+Final incoming checkpoint evidence after raw fee-order correction and camera merge:
+`cc9422d` implementation, followed by merge of main52e576e. Raw210BD4 requires a
+SEPARATE class-fee read aftersum/RNG, so success readsfeeTHREEtimes; guestcashreload
+is afterfinance210D38. Corrected before final gates; changed-class-fee mutation
+caught2failures (usingoldquote despiteperformingallreads).23feechecks now required.
+/tmp/tpw-incoming-release-matrix:109flow+23fee eachworld, J/Fpass, ONLYexact2retailreds.
+/tmp/tpw-incoming-release-runtime all11PASS;63PythonPASS.
+/tmp/tpw-incoming-release-viewers: ALL8actual experimentalViewer world/variant runs
+PASS649each, exit0/noerrors/noleaks; fee10 fixture +actualbusbornidentity, notmainparity.
+MergedCameraTurnAudit independentlyPASS10. Earlier /tmp/tpw-incoming-eight-viewers
+alsoall8pass butfinalrelease-viewers is the post-fee-correction/post-camera evidence.
+ResearchbranchONLY; no default release/main merge. Default entrance remainsbypassed.
+
+NEXT positive lead already read: findings/native-route-slot-pool.md. Capacity is
+literal1000 at192770, NOT2047 inferredfrom11bitlinks.192728 reset clearsONLYallocated
+bit, hint37E118=0 and free2E2924=1000;192768 forwardscanalloc,1927F8 singlefree
+minhint,192840 chainfree. Slotarray3AE1B8 stride4. No guards ondoublefree/cycles in
+these bodies. Need actual sharedpool/cursor/requestservice consumers andreset/
+partialfailure timing, notanotherunusedcounter. Readiness anddeparture remainother
+releaseblockers. All3delegatesusedthisturn; no moreuntilnewturn. No pendingbuilds.
