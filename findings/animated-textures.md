@@ -291,6 +291,74 @@ the Godot audit passes again. `dotnet build game/TPWPS2Viewer.csproj` succeeds. 
   clock and user-selected record.
 * The ten unresolved multi-texture choices above remain unresolved. Their intended aliases
   or external library sources have not been established.
-* UV scrolling is a separate problem; frame replacement does not claim to implement it.
+* The per-texture `fScrollRate` VALUES are not recovered. See "Scrolling textures" below for what
+  the executable does state and where the search stopped.
 * Validation is static executable analysis plus port data/material audits, not a PS2 trace
   or side-by-side pixel/timing comparison with the original executable.
+
+
+## Scrolling textures: the engine's own name for the feature
+
+Frame replacement above is one subsystem. **Scrolling textures are a different one**, and the
+executable names both, side by side, in the attraction schema:
+
+| ELF address | Field |
+|---|---|
+| `0x2e7c90` | `TurnOffAnimatingTextures` |
+| `0x2e7ccc` | `TurnOffScrollingTextures` |
+
+An attraction can switch scrolling off, so scrolling is **on by default** and is not the APS
+texture player. That is the whole argument that this describes something the game does rather
+than something the port wanted.
+
+The parameter itself is per **texture**, not per material. `SLES_500.32` carries a reflection
+schema of 60-byte field descriptors whose names sit at a uniform `0x3c` stride; one run of four
+describes a texture record and the array of them:
+
+| ELF address | Field |
+|---|---|
+| `0x2acf20` | `pcTextureFilename` |
+| `0x2acf5c` | `bIsSelfIlluminating` |
+| `0x2acf98` | `fScrollRate` |
+| `0x2acfd4` | `asTextureData` |
+
+A texture therefore carries a filename, a self-illuminating flag and a **scroll rate**. This is
+why no "this surface is water" flag was ever found on the MPS material descriptor: there is none
+to find, and the search was looking at the wrong object.
+
+### What was ruled out, each with a control
+
+* **The MPS material descriptor does not mark water.** Dumping all 81 descriptors of JUNGLE
+  `terrain_1.mps`: `byte1` is `03` for `wr_water3` **and for `flower_1`**, and `00` for
+  `dk_water3` and `jri_lak2`. That field is alpha, not water. `byte0` is `a0` for `jri_lak2`,
+  `jbr_log1` and `jpa_str1` alike. Control set: `m_grass`, `jro_mid1`, `flower_1`, `jbr_log1`.
+* **No name test in code.** A register-tracking sweep (`tools/re/xref.py`) finds **zero**
+  `lui`/`addiu` materialisations of `justwater.ssh` (`0x36e8b4`) or `water2.ssh` (`0x365168`),
+  and zero data words equal to either address. The control, `0x2abe18`, returns **eight**
+  references from the same sweep, so the tool discriminates. Those names live in an
+  index-addressed table.
+
+### Not established
+
+`asTextureData`'s neighbours are `asCrossSectionPoints1..12`, `asCarTypes`, `asPylonControls` and
+`sCoasterType`, so the record belongs to the **coaster/track** definition. No `.sam` ships on this
+disc — the only authored files are three `.dba` — and the per-texture rates were not recovered
+from any of them. **Which** textures move is read off the disc; **how fast** is still the PSX's
+measured one-row-a-frame. `TurnOffScrollingTextures` is not yet consulted per attraction.
+
+### What the port does with this
+
+`core/TPW.PS2.Data/TextureMotion.cs` holds one per-texture rule shared by the terrain and by
+placed models, because the engine's parameter is per texture.
+
+* **`dk_water3` was missing from the water list, and that was a real defect.** Decoded, it
+  correlates with `wr_water3` at **r = 0.9946** at zero offset, at a mean luminance ratio of
+  **0.321**: it is the same ripple texture in shadow, texel for texel. Control, `wr_water3`
+  against an unrelated texture: **r = 0.012**. It is worn by `surface15`, `surface27`,
+  `Object12`, `RIVERBED_03B` and `RIVERBED_04B` — the shadowed water under the jungle bridge, and
+  on two of those meshes it sits beside `wr_water3` on the same surface. Since surfaces split per
+  material, half of each river surface scrolled and half stood still.
+* **Swirl textures twist rather than travel.** `cn_nut2a` (JUNGLE Coconut) and `FDrink_Liquid`
+  (FANTASY drinks) both decode to a spiral centred in its own frame, which is art drawn to be
+  turned about that centre. The rotation is applied about UV `(0.5, 0.5)`, before the scroll.
+* ⚠ The spin **rate**, the scroll **direction** and the sea's wave are still chosen, not read.

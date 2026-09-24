@@ -7279,10 +7279,14 @@ public partial class Viewer : Node3D
         // ⭐ On the console's clock like everything else that moves, and in SECONDS because a
         // scroll and a sine are continuous -- there is nothing to quantise to a tick and nothing
         // to interpolate between.
-        if (_water != null && _mode == Mode.Park)
+        // ⭐⭐ ADVANCED WHETHER OR NOT THIS PARK HAS WATER. The clock now drives every moving
+        // texture, not just the river: a park with no water still has shops whose drink swirls,
+        // and gating the tick on `_water != null` would freeze them on exactly those maps.
+        if (_mode == Mode.Park)
         {
             _waterTime += (float)delta;
-            _water.Advance(_waterTime);
+            Ps2Materials.TextureTime = _waterTime;
+            _water?.Advance(_waterTime);
         }
         if (_place.Active) UpdatePlacementGhost();
         else if (_toolOpen) UpdateGhost();

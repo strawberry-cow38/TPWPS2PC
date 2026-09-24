@@ -375,16 +375,40 @@ public sealed class AnimatedModel
         }
     }
 
+    /// <summary>The animated-UV variant of the model shader. ⚠⚠ `rawNormals: true`, matching
+    /// BlendShader/ViewerShader above. The terrain's water asks for `false` because the ground is
+    /// built with byte normals; handing a MODEL the terrain's variant relights it, so a coconut
+    /// that started twisting would also change colour and the twist would get the blame.</summary>
+    static Shader MovingShader(bool soft) => Ps2Materials.Shader(
+        soft, CullRenderMode, rawNormals: true, linearFilter: Ps2Materials.Bilinear, animated: true);
+
     void SetTexture(ShaderMaterial material, int slot, int index)
     {
-        var (tex, soft) = slot >= 0 && slot < _model.MaterialTextures.Count
-            ? _texture(_model.MaterialTextures[slot][index]) : (null, false);
-        material.Shader = soft ? BlendShader : ViewerShader;
+        string name = slot >= 0 && slot < _model.MaterialTextures.Count
+            ? _model.MaterialTextures[slot][index] : null;
+        var (tex, soft) = name != null ? _texture(name) : (null, false);
+        // ⭐ A TEXTURE carries its own motion, so this is decided by the name the model asked for
+        // rather than by which model is wearing it -- the engine's `fScrollRate` sits beside
+        // `pcTextureFilename`, not on the material. See TextureMotion.
+        var motion = TextureMotion.ForModelTexture(name);
+        material.Shader = motion.Moves ? MovingShader(soft) : (soft ? BlendShader : ViewerShader);
+        if (motion.Moves)
+        {
+            material.SetShaderParameter("uv_scroll", new Godot.Vector2(motion.ScrollU, motion.ScrollV));
+            material.SetShaderParameter("uv_spin", motion.Spin);
+            Ps2Materials.Register(material);
+            MovingSurfaces++;
+        }
         if (soft) BlendSurfaces++;
         material.SetShaderParameter("albedo_tex", tex);
         material.SetShaderParameter("has_tex", tex != null);
         Ps2Materials.BindLight(material);
     }
+
+    /// <summary>How many of this model's surfaces wear a moving texture. ⭐ An instrument: a
+    /// coconut that reports 0 has not matched its swirl, which is a different fault from a
+    /// clock that is not advancing.</summary>
+    public int MovingSurfaces { get; private set; }
 
     void BuildSurfaces(Part p)
     {
