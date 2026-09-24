@@ -198,3 +198,15 @@ V*tier term is zero; its contribution is floor((40+rand10)/2),20..24. Do not sil
 change this into V or an age factor because the unused118470 return looks suggestive.
 118470 was independently reread: manager time minus u16[O+124], returned without a
 store to126. Its discarded return is not the tier producer.
+
+### PSX prediction checked, not transplanted
+
+Peer supplied a PSX trace in which the ride's +20 term is gated by age<=1 day.
+Parent checked the PS2 instructions after that prediction:16B864 calls118470;
+16B868 (delay slot) unconditionally assigns s4=20. 16B86C loads the vtable,
+16B874 overwrites v0 with its+1D4 target, and16B878 calls it. There is no branch
+on the age return in this interval. 118470 itself has no store/side effect that
+could turn this into an age-conditioned bonus. Thus **PS2 unconditionally adds
+both20 and tier*value for kinds1/3/6/7** in this routine. Preserve the difference.
+The nonempty-list base10 and three-way count min do agree across the two independently
+read binaries. The PSX example's tuningB=100 is not the PS2 ELF initializerB=0.

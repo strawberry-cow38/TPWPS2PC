@@ -1729,3 +1729,14 @@ andplotframe. Do not implementarrivalcount12/every50again ordeclarefullbusparity
 one dependency thatunlocksrealvisualbus+arrivalconsumer ratherthanexpandnakedhelpertests.
 Noassetscopied/extracted; helperdisasmnowdecodesCOP1simpleops/movz/dshift; UNKNOWNsremain
 visible. All3delegatecalls usedthisturn. Originalworktreeprogresspointsatthisactivebranch.
+
+Peer PSXfollow-up predictions independentlychecked onPS2: base10 and3-wayminagree.
+Ride+20agegate DOES NOT carryover:16B864 helperreturn discarded,16B868 delay-slot
+s4=20 unconditional, v0 overwrittenbeforevaluecall; noagebranch. Parentconfirmed and
+sentpeer1552685410247778386. PreservePS2difference, don'trepairtoPSXbehavior.
+
+Peer audio111D40 signature resolved(audio,handle,selector,value), despiteGhidra's
+incorrectundefined8 grouping; param20semanticsstillunnamed. Global2ABE18 ELFvalue0
+(parentread), no directwritecensusdoesNOTexcludealias/factory/block initialization.
+Askedpeer bounded106F80handler andaddress-of-globaltrace, in-memorydisc only; noIRX
+copyrequested/used. Audio workremainscow'slane, buspopulation/visualcontrollerours.
