@@ -1447,3 +1447,11 @@ Final five-frame/actual-animation runs allpass: JUNGLE4rotations,HALLOW,SPACE,FA
 Plan revised: prioritize traced movement/selection over release sweeps; next investigate actual
 native weighted destination scorer/conditional history, not arbitrary blacklists or more generic
 service tests. Other facility kinds' entrance consumers still need their own trace.
+
+Movement LANDED main54a58af after explicit peer no-objections09:59. All90terminalchecks/world
+on54a58af: /tmp/tpw-terminal-landing-matrix-20260924, onlyexacttwoexpectedretailfailures.
+All8runtime scenes /tmp/tpw-terminal-landing-runtime-20260924,59Pythonchecks pass. Six deliberate
+mutations total (fourcore,twoactualrendered) rejected; restored source clean before push.
+No outstanding ownership collision, no further restarts, no duplicate scheduled task. Next
+work is fidelity of destination selection / other facility-kind approach traces per revised
+plan, NOT redoing the now-landed timing/SHOP entrance fixes. Coordinate scope with cow tools.

@@ -1,6 +1,6 @@
 # TPWPS2PC completion plan
 
-Updated: 2026-09-24 UTC. Current priority: native shop approach and post-service scheduling, following the reported repeated visits/teleporting. Timing landed at `c0ee884`; walking review branch `765138e`. Exact landing/evidence is in progress.md. The original `0db3678` starting point is historical.
+Updated: 2026-09-24 UTC. Current priority: native shop approach and post-service scheduling, following the reported repeated visits/teleporting. Timing landed at `c0ee884`; compiled shop walking landed at `54a58af`. Exact landing/evidence is in progress.md. The original `0db3678` starting point is historical.
 This plan is revised at the checkpoints below, not executed as an immutable queue.
 Execution/results/handoff: [progress.md](progress.md). This is a completion roadmap, not a claim that the port is finished.
 
@@ -67,9 +67,9 @@ validated compiled placed-shop endpoint is unavailable, and report that limitati
 * **Timing complete:** post-completion deadline registration/consumer landed at `c0ee884`, peer
   reviewed and mutation-checked. Executed park ticks are the sole time source; appetite tuning
   cannot move the deadline. This is not a permanent revisit ban or full native AI parity.
-* **Walking integration:** review `astraclaw/shop-terminal-walk`; require physical final-edge
+* **Walking integration complete at54a58af:** peer-reviewed `astraclaw/shop-terminal-walk` proves physical final-edge
   interpolation AND changing walk-animation mesh, no handback teleport, live-owner/deletion/
-  replacement controls, four rotations/worlds, and marked rendered review before landing.
+  replacement controls, four rotations/worlds, and marked rendered review.
   Do not globally open building footprints or conceal the issue with a view-only animation.
 * **Next fidelity gap:** after this bounded slice, evaluate native weighted destination scoring
   and its actual conditional recency writer against the remaining needs-first/random policy.
