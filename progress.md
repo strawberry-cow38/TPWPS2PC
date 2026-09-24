@@ -1524,3 +1524,15 @@ Mutations /tmp/tpw-idle-arm-mutations: restoreglobalgate=>3corefailsANDactualren
 departurefails; Forgetdeadlineonmovement=>7fails. Allrestored/rebuilt. Sourcesnotyetlanded.
 Next:pushreviewbranch,mergepeerupdates,retest,landboundedgatefix. Thenactualnative relief
 consumer, thenrequestedbusresearch. Do NOT claimallscenery/rideSFXrepeats sharethiscause.
+
+Idle-movement peerreviewd3accb0: noobjections; checked stateArrived guardpreventsrepathjitter,
+unusedrand300stillconsumed, occupiedterminalclearsatapproach, deadlinepersistswhilemoving.
+Mergedpeer d79eac5 as30a1e24; corematrix /tmp/tpw-idle-merged-matrix-20260924 expectedonlyretailreds.
+Runtime7scenespass, audioaudittestthrowsafter24checks becausepeerremovedVoice.OnEnd callback.
+Updated AUDIT ONLY toassertactualplayerstop/owner-tagretirement/fade instead ofdeletedendclip
+callback; namedreflectionerrorsnowidentifyremovedmember. SyntheticloopPCM isalifetimefixture,
+notanassertionaboutretailADDOBJbanks. Adapted35checks pass /tmp/tpw-idle-audio-adapted-20260924;
+removingKilltagfilterfails2checks /tmp/tpw-audio-adapted-scope-mutation. Source restored.
+Peernew14b8bc2 repeatsoundflag/timer policy isseparate, correlationnotyetnativeconsumerproof;
+warnedpeer thatrepeatdeadlines mustfollowEXECUTEDsimtime, notrenderdelta, while diagnostic
+voiceobservation staysrealtime. Do not claimthatourresidencefixsolvesbin/speakerlooping.

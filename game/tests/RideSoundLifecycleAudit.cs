@@ -14,10 +14,13 @@ public partial class RideSoundLifecycleAudit : Node3D
         GD.Print((ok ? "AUDIO LIFECYCLE ok: " : "AUDIO LIFECYCLE FAIL: ") + $"[{++_checks}] {message}");
         if (!ok) _bad++;
     }
-    static T Field<T>(object value, string name) => (T)value.GetType().GetField(name).GetValue(value);
-    static void Set(object value, string name, object field) => value.GetType().GetField(name).SetValue(value, field);
+    static FieldInfo Member(object value,string name) => value.GetType().GetField(name)
+        ?? throw new MissingMemberException(value.GetType().Name+"."+name+" — renamed or removed?");
+    static T Field<T>(object value, string name) => (T)Member(value,name).GetValue(value);
+    static void Set(object value, string name, object field) => Member(value,name).SetValue(value, field);
     static object Start(RideSounds sounds, AudioStreamWav stream, int ride = 1, int tag = 10, bool loop = false, bool positional = false)
-        => typeof(RideSounds).GetMethod("Start", BindingFlags.Instance | BindingFlags.NonPublic)
+        => (typeof(RideSounds).GetMethod("Start", BindingFlags.Instance | BindingFlags.NonPublic)
+            ?? throw new MissingMemberException("RideSounds.Start — renamed or removed?"))
             .Invoke(sounds, new object[] { ride, tag, "synthetic PCM", stream, loop, positional ? (int)SoundGroup.LocalRide : -1, Vector3.Zero, "synthetic lifecycle fixture" });
     static AudioStreamWav Wave(bool loop)
     {
@@ -106,48 +109,49 @@ public partial class RideSoundLifecycleAudit : Node3D
             var a = Start(scoped, loopWave, 1, 10, true);
             var b = Start(scoped, loopWave, 1, 11, true);
             var c = Start(scoped, loopWave, 2, 10, true);
-            int aEnds = 0, bEnds = 0, cEnds = 0;
-            Set(a, "OnEnd", (Action)(() => aEnds++)); Set(b, "OnEnd", (Action)(() => bEnds++));
-            Set(c, "OnEnd", (Action)(() => cEnds++));
+            // Synthetic sustained PCM keeps voices live for teardown controls; this is NOT
+            // a claim that ADDOBJ or a multi-set retail event must loop. The old stage/end
+            // callback model was removed; inspect actual player lifetime/ownership instead.
             scoped.Kill(1, "synthetic ride", 10, 0);
-            Check(scoped.Live == 2 && aEnds == 1 && bEnds == 0 && cEnds == 0
+            Check(scoped.Live == 2
                   && Field<Node>(a, "Player").IsQueuedForDeletion()
-                  && !Field<Node>(b, "Player").IsQueuedForDeletion() && !Field<Node>(c, "Player").IsQueuedForDeletion(), "Kill affects only the requested ride/tag and invokes its ending once");
+                  && !((AudioStreamPlayer)Field<Node>(a,"Player")).Playing
+                  && ((AudioStreamPlayer)Field<Node>(b,"Player")).Playing && ((AudioStreamPlayer)Field<Node>(c,"Player")).Playing
+                  && !Field<Node>(b, "Player").IsQueuedForDeletion() && !Field<Node>(c, "Player").IsQueuedForDeletion(), "Kill stops only the requested live ride/tag player");
             scoped.Kill(1, "synthetic ride", 10, 0);
-            Check(scoped.Live == 2 && aEnds == 1 && bEnds == 0 && cEnds == 0
+            Check(scoped.Live == 2
                   && Field<Node>(a, "Player").IsQueuedForDeletion()
-                  && !Field<Node>(b, "Player").IsQueuedForDeletion() && !Field<Node>(c, "Player").IsQueuedForDeletion(), "repeated Kill does not repeat an ending");
+                  && !Field<Node>(b, "Player").IsQueuedForDeletion() && !Field<Node>(c, "Player").IsQueuedForDeletion(), "repeated Kill cannot retire another voice");
             scoped.Drop(1);
-            Check(scoped.Live == 1 && aEnds == 1 && bEnds == 0 && cEnds == 0
-                  && Field<Node>(b, "Player").IsQueuedForDeletion() && !Field<Node>(c, "Player").IsQueuedForDeletion(), "ride removal drops its remaining voices without spawning end effects");
+            Check(scoped.Live == 1
+                  && Field<Node>(b, "Player").IsQueuedForDeletion() && !Field<Node>(c, "Player").IsQueuedForDeletion(), "ride removal drops its remaining voices and preserves other owners");
             scoped.Clear();
-            Check(scoped.Live == 0 && aEnds == 1 && bEnds == 0 && cEnds == 0
-                  && Field<Node>(c, "Player").IsQueuedForDeletion(), "world clear removes remaining voices without end effects");
+            Check(scoped.Live == 0
+                  && Field<Node>(c, "Player").IsQueuedForDeletion(), "world clear removes all remaining voices");
 
             var fading = new RideSounds(this, null, null);
             var fade = Start(fading, loopWave, 3, 20, true);
             var otherRide = Start(fading, loopWave, 4, 20, true);
             var otherTag = Start(fading, loopWave, 3, 21, true);
-            int fadeEnds = 0; Set(fade, "OnEnd", (Action)(() => fadeEnds++));
             fading.Fade(3, "synthetic ride", 20, 0);
-            Check(fading.Live == 3 && fadeEnds == 0 && !Field<Node>(fade, "Player").IsQueuedForDeletion(),
+            Check(fading.Live == 3 && !Field<Node>(fade, "Player").IsQueuedForDeletion(),
                   "Fade is not an immediate Kill");
             float initialVolume = ((AudioStreamPlayer)Field<Node>(fade, "Player")).VolumeDb;
             fading.Step(.4);
-            Check(fading.Live == 3 && fadeEnds == 0
+            Check(fading.Live == 3
                   && ((AudioStreamPlayer)Field<Node>(fade, "Player")).VolumeDb < initialVolume
                   && !Field<bool>(otherRide, "Fading") && !Field<bool>(otherTag, "Fading"),
                   "fade reduces volume over time without affecting another ride or tag");
             fading.Step(.4);
-            Check(fading.Live == 2 && fadeEnds == 1
+            Check(fading.Live == 2
                   && Field<Node>(fade, "Player").IsQueuedForDeletion()
                   && !Field<Node>(otherRide, "Player").IsQueuedForDeletion()
                   && !Field<Node>(otherTag, "Player").IsQueuedForDeletion(), "fade completes once and leaves other ride/tag voices alone");
             fading.Step(.1);
-            Check(fading.Live == 2 && fadeEnds == 1
+            Check(fading.Live == 2
                   && Field<Node>(fade, "Player").IsQueuedForDeletion()
                   && !Field<Node>(otherRide, "Player").IsQueuedForDeletion()
-                  && !Field<Node>(otherTag, "Player").IsQueuedForDeletion(), "finished fade cannot repeat its ending");
+                  && !Field<Node>(otherTag, "Player").IsQueuedForDeletion(), "finished fade cannot retire another voice");
             fading.Clear();
 
             // Exercise the real Viewer reset entry point without running _Ready,
