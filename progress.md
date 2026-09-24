@@ -17,8 +17,7 @@ state0/state5 failure recovery and non-controller pressure population remain ope
 call this complete native entrance parity or quietly enable it for normal play.
 The old `tpw-ride-eligibility` checkout and scheduler's `81d112c` note are stale.
 No restarts. No reimplementation of the shipped destination scoring, relief, shop
-walking, Bouncy hide-list, gate or path-price work. Cow owns the current animated
-texture / thought-bubble rendering requests; leave those files to them.
+walking, Bouncy hide-list, gate or path-price work. Cow owns the current RMB/listbox and shop-info UI work; leave those files to them.
 
 Bus integration and smoothing are already shipped. Normal Viewer startup/real
 placement/first admission/map reload passed in **all eight starting parks**,2039
@@ -2487,3 +2486,18 @@ Nextpositive: visualreadiness191E10 checksCURRENTlogicalbyte atmodel+4C through
 10EC48, notrequestedbyte+4F.10E910queuesdesiredbyte,10EA38commitsitonlyatplayback
 boundaryselectedby1ACFC0. Table2AAD48mapslogical9->APS1v0,13->APS0v0;
 logical11has8weightedentries, NOTdirectAPS11. Needsactualpresentationconsumerjoin.
+
+Final reviewed gates COMPLETE: cf70714 callback diagnosis fix, thenmainf23427c
+DOCSONLY merge. /tmp/tpw-departure-reviewed-matrix all59departurechecks/world,
+J/Fpass ONLYexactThrillGrill/MoonBuggiesretailreds; runtimeall11PASS. Earlier63Python
+PASS andALL16actualrenderedscenes retained. No latestsourceconsumerchangessince
+gatesexceptdocs. Researchbranchonly; do notmergeenableasnativecomplete.
+Nextboundedpackage: join native guest logical-animation dispatcher to ACTUAL actor
+and movementreadiness. findings/native-guest-animation-readiness.md hasrawtable,
+currentvsrequestedbytes, weightedvariants, boundaryandflagcaveats. Avoidunusedhelper:
+actualrenderedsameguestmustWAITwhilecurrentnot9/13 thenmoveafterrealtransition;
+cross-controls9<->13permitmotion,novisual!=zerohandle. Nativecaller/requestflags,
+initialization,clockandupdateorderstillneedreadingbeforeimplementation. Do not
+justcopydesiredbyte, useactorVisible, orrenameAPSslots9/13. Keepdefaultgaitunchanged
+untilexplicitoptinconsumerproven. CowactiveViewer.csUI; prefernewpartialseam and
+coordinatepreciselybeforetouchingitsgaitsection. Userapprovedcontinuing, no pause.
