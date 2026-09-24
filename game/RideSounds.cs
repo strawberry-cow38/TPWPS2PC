@@ -318,12 +318,24 @@ public sealed class RideSounds
     /// event's links are tested against. ⭐ Per RIDE, because two rides can be screaming at
     /// different levels at once and a single global would give them each other's. See <see cref="SfxEventMachine"/>.
     ///
-    /// ⚠⚠ ONLY PARAMETER 6 IS SOURCED, and it is the ride scream's level. Every other id falls
-    /// back to 0 because nothing has read where its value comes from -- notably **18**, which 31
-    /// of the disc's 68 graphs branch on and which drives every park's ambient bed. ⭐ For the
-    /// graphs whose links all span `[0..100]` the value cannot change the outcome, so those run
-    /// correctly regardless; the ones with narrow bands are the ones a wrong 0 would misdirect,
-    /// and the audit lists exactly which those are.</summary>
+    /// ⚠ Only parameter 6 is sourced here, and it is the ride scream's level. Everything else
+    /// reads 0.
+    ///
+    /// ⭐⭐ AND FOR **18** -- the big one, which 31 of the disc's 68 graphs branch on and which
+    /// drives every park's ambient bed -- **0 is very probably not a placeholder but the value it
+    /// actually holds.** Censused all 49 call sites of `FUN_00111D40`: the immediates are
+    /// 2,4,6,7,8,9,10,20,22,23, and the eight computed ones resolve to 21 (the tour-ride family,
+    /// whose id is stored at object `+0x74`, set to 21 at `0x1EA914`) and 9/11 (`FUN_001AF330`).
+    /// **Nothing anywhere sets 18.** The census demonstrably finds parameters that ARE set, so
+    /// that negative has a live control.
+    ///
+    /// ⭐ And it barely matters: across all 31 parameter-18 graphs, **256 links are reachable at
+    /// value 0 and 252 at value 50** -- the value gates only four links on the whole disc, the
+    /// `[0..5]` rare variations, and 0 is the setting that ENABLES them. So 0 gives the fullest
+    /// ambience rather than a stuck branch.
+    ///
+    /// ⚠ The limit of that: it means no `FUN_00111D40` call site writes 18. A different writer
+    /// into the per-instance parameter array would not have been found by this census.</summary>
     public Func<int, int, int> ParameterValue { get; set; }
 
     /// <summary>The console's own generator for the transition draw, kept separate from

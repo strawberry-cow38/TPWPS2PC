@@ -163,8 +163,30 @@ static class SfxGraphChecks
         }
         Check(blindNarrow < blind, $"{blind - blindNarrow} of {blind} graphs on an unsourced parameter have full-range links "
             + "-- those run correctly regardless of its value");
-        Check(blindNarrow > 0, $"⚠ but {blindNarrow} have NARROW bands and would be misdirected by the placeholder 0 "
-            + $"(parameters {string.Join(",", blindParams)}) -- this is the honest gap, not a pass");
+        Check(blindNarrow > 0, $"⚠ {blindNarrow} have NARROW bands, so their behaviour depends on a value we do not source "
+            + $"(parameters {string.Join(",", blindParams)})");
+        // ⭐⭐ BUT FOR PARAMETER 18 -- the ambient beds, the biggest block of graphs -- 0 looks
+        // like the real value rather than a placeholder: nothing on the disc writes 18, and the
+        // value gates only a handful of links anyway. Measured rather than asserted from the
+        // absence alone, because an absence is only as good as the search behind it.
+        int at0 = 0, at50 = 0, p18 = 0;
+        foreach (var f in disc.Files().Where(x => x.Path.ToUpperInvariant().EndsWith("SFX.MAP")))
+        {
+            SfxMap m;
+            try { m = new SfxMap(disc.Read(f.Extent, f.Size)); } catch { continue; }
+            foreach (var e in m.Events.Where(x => SfxEventMachine.IsGraph(x) && x.Word12 == 18))
+            {
+                p18++;
+                foreach (var st in e.Sets)
+                {
+                    at0 += st.Links.Count(l => l.Low <= 0 && 0 <= l.High);
+                    at50 += st.Links.Count(l => l.Low <= 50 && 50 <= l.High);
+                }
+            }
+        }
+        Check(p18 > 25, $"parameter 18 drives {p18} graphs -- every park's ambient bed");
+        Check(at0 >= at50, $"and value 0 reaches MORE of their links than 50 does ({at0} vs {at50}) "
+            + "-- so reading 0 gives the fullest ambience, not a stuck branch");
 
         // ---- ⭐ the weights, and the assumption the uniform draw rests on ----------------
         // Every set of an event carries the same value, and it is an equal share of 0xFFFF. That
