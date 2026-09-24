@@ -7,11 +7,11 @@ static class GuestConservationChecks
 {
     // Queue, offer, seats and exit mailbox can overlap within a single script's
     // handover. Union those representations per ride, but never across rides.
-    static HashSet<int> Bodies(ParkRide ride) => ride.Queue.Concat(ride.Left)
+    internal static HashSet<int> Bodies(ParkRide ride) => ride.Queue.Concat(ride.Left)
         .Concat(ride.Host.Seats.Values).Append(ride.Get("VAR_LETMEON"))
         .Append(ride.Get("VAR_LETMEOFF")).Where(id => id > 0).ToHashSet();
 
-    static string Census(ParkVisitors visitors, HashSet<int> expected)
+    internal static string Census(ParkVisitors visitors, HashSet<int> expected)
     {
         if (!expected.SetEquals(visitors.Plans.Keys)) return "plan identity set changed";
         if (visitors.Walk.Guests.Any(g => !expected.Contains(g.Id))) return "unknown walking identity";
@@ -49,7 +49,7 @@ static class GuestConservationChecks
         return null;
     }
 
-    static string Snapshot(ParkVisitors visitors)
+    internal static string Snapshot(ParkVisitors visitors)
     {
         var sim = visitors.Sim;
         return $"{sim.Time}/{visitors.Walk.Time}/{visitors.Boardings}/{visitors.Rides}|"

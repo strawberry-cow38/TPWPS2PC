@@ -674,3 +674,33 @@ queue/needs semantics or edit peer-owned Viewer/needs/effects wiring. If coverag
 exists, choose a different genuine gap rather than duplicating tests. Coordinate any
 production finding before modifying shared core files. Current manual/native-Windows/
 listening and unsupported gameplay gates remain explicit, not declared complete.
+
+## M3: repeated disruption/identity/needs replay
+
+Added audit-local GuestDisruptionChecks, reusing the existing ownership census and
+observed-state snapshot. Three independent instances of one real script,16 identities,
+12 cycles of close/break/occupied removal/immediate-ID replacement/Clear/no-ground/
+restore/redispatch. Review strengthened phase-local recovery/occupancy/handback checks,
+monotonic counters, and late corruption failing exactly at the injected sample.
+
+21new checks/world pass. Unaltered replay samples: JUNGLE4968,FANTASY5848,HALLOW5468,
+SPACE5072; two identical replays match, altered-delta digest differs (clocks included,
+not claimed as full discrete-outcome sensitivity). Each phase restores all16 identities.
+Four temporary ParkVisitors mutants (numeric-only owner, aborted completion, late
+counter reset, late needs reseed) all fail the new gate; original source restored.
+No production bug found or core change landed. A fixed-wait fixture assumption failed
+on longer routes; corrected it to wait for actual arrival per GuestWalk.Send's intended
+mid-edge refusal, independently confirmed by peer. No production rule weakened.
+
+Final matrix:30availability/57removal/20conservation/45needs/21disruption per world;
+JUNGLE/FANTASY pass, exact HALLOW/SPACE reds remain raw1/runner2. Matrix now requires
+new coverage+witnesses;49 combined Python tests pass. Evidence and limitations:
+findings/guest-disruption-replay.md and scratch tpw-disruption-matrix-path.txt/
+tpw-disruption-mutations/manifest.json. Audit files only; no Viewer/needs/effects edits.
+
+Next independent scope: inspect existing GuestAudit route/topology checks before
+expanding them; focus on explicit movement contracts (mid-edge retarget refusal,
+NoRoute versus Stranded, destination changes and rerouting) using independent small
+graph controls if gaps exist. Do not duplicate covered tests or invent retail walking
+speed/AI. Coordinate any actual core finding before changes. Facility/track/advisor
+integration and native/manual release gates remain separate unfinished work.

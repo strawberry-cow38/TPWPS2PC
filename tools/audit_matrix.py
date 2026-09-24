@@ -26,13 +26,16 @@ ASSEMBLY = PROJECT + '/bin/Release/net8.0/TPW.PS2.ParkSimAudit.dll'
 MAX_LOG_BYTES = 8 * 1024 * 1024
 # Minimum assertions in the current integrated ParkSimAudit. A stale binary or
 # accidentally omitted helper must not turn missing lifecycle coverage into PASS.
-REQUIRED_CHECKS = {'availability': 30, 'removal': 57, 'conservation': 20, 'needs_lifecycle': 45}
+REQUIRED_CHECKS = {'availability': 30, 'removal': 57, 'conservation': 20, 'needs_lifecycle': 45, 'disruption': 21}
 REQUIRED_WITNESSES = (
     'ok   availability regression exercised',
     'ok   removal regression exercised',
     'ok   conservation: identical fixed-tick inputs reproduce the full sampled lifecycle',
     'ok   needs lifecycle: clock control actually applies four rises',
     'ok   needs lifecycle: normal completion applies the configured effect once',
+    'ok   disruption: identical disruption inputs replay the entire observed ledger',
+    'ok   disruption: late-run negative control catches changed cash through ordinary per-step sampling',
+    'ok   disruption: late-run negative control catches orphan needs through ordinary per-step sampling',
 )
 
 

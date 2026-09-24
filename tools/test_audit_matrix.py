@@ -11,7 +11,11 @@ COVERAGE = '\n'.join(['  ok   availability: check'] * 30 +
                      ['  ok   conservation: identical fixed-tick inputs reproduce the full sampled lifecycle (100 steps, SHA256 ' + 'A' * 64 + ')'] +
                      ['  ok   needs lifecycle: check'] * 43 +
                      ['  ok   needs lifecycle: clock control actually applies four rises rather than passing with no updates',
-                      '  ok   needs lifecycle: normal completion applies the configured effect once without reseeding unaffected fields'])
+                      '  ok   needs lifecycle: normal completion applies the configured effect once without reseeding unaffected fields'] +
+                     ['  ok   disruption: check'] * 18 +
+                     ['  ok   disruption: identical disruption inputs replay the entire observed ledger',
+                      '  ok   disruption: late-run negative control catches changed cash through ordinary per-step sampling',
+                      '  ok   disruption: late-run negative control catches orphan needs through ordinary per-step sampling'])
 
 
 
@@ -20,6 +24,14 @@ def known(world):
 
 
 class ClassificationTests(unittest.TestCase):
+    def test_missing_disruption_coverage_cannot_pass(self):
+        text = COVERAGE.replace('  ok   disruption: check', '', 1) + '\nPASS'
+        self.assertEqual(classify('JUNGLE', 0, text)['status'], 'missing_coverage')
+
+    def test_disruption_count_without_late_control_cannot_pass(self):
+        text = COVERAGE.replace('late-run negative control catches changed cash through ordinary per-step sampling', 'other check') + '\nPASS'
+        self.assertEqual(classify('JUNGLE', 0, text)['status'], 'missing_coverage')
+
     def test_clean_worlds_pass(self):
         for world in ('JUNGLE', 'FANTASY'):
             self.assertEqual(classify(world, 0, COVERAGE + '\nPASS')['status'], 'pass')

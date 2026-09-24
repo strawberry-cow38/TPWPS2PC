@@ -191,3 +191,12 @@ these tests before any green main-branch publication.
 All four effect inputs remain chosen policy pending decoding of the ride's own value
 and relevant scale globals. This verifies the agreed managed contract, not the retail
 values or a complete guest-management model.
+
+## Repeated-disruption follow-up
+
+`guest-disruption-replay.md` adds 21 permanent checks per world over twelve repeated
+occupied-removal/replacement/Clear/no-ground/restore cycles with sixteen preserved
+identities. It requires phase-local instance ownership and exact script-reported
+completion accounting, plus matching replay and late corruption controls. Four
+broken production variants are rejected; original production source is unchanged.
+The whole-world matrix retains only the exact two retail failures.
