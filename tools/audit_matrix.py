@@ -26,8 +26,13 @@ ASSEMBLY = PROJECT + '/bin/Release/net8.0/TPW.PS2.ParkSimAudit.dll'
 MAX_LOG_BYTES = 8 * 1024 * 1024
 # Minimum assertions in the current integrated ParkSimAudit. A stale binary or
 # accidentally omitted helper must not turn missing lifecycle coverage into PASS.
-REQUIRED_CHECKS = {'availability': 30, 'removal': 57, 'conservation': 20, 'needs_lifecycle': 50, 'disruption': 21, 'service_routing': 5, 'departure_recovery': 6, 'ride_effect_consumer': 33, 'compiled_purchase': 67, 'decision_scheduling': 25, 'terminal_walking': 90}
+REQUIRED_CHECKS = {'availability': 30, 'removal': 57, 'conservation': 20, 'needs_lifecycle': 50, 'disruption': 21, 'service_routing': 5, 'departure_recovery': 6, 'ride_effect_consumer': 33, 'compiled_purchase': 67, 'decision_scheduling': 28, 'terminal_walking': 90, 'post_service_movement': 18}
 REQUIRED_WITNESSES = (
+    'ok   post service movement: relief1234 ordinary arm walks away before the facility deadline',
+    'ok   post service movement: shop1234 ordinary arm walks away before the facility deadline',
+    'ok   post service movement: shop299 ordinary arm walks away before the facility deadline',
+    'ok   decision scheduling: native arm1 remains available before facility deadline and consumes both draws',
+
     'ok   terminal walking: cash1234 coordinator cannot board from the stub',
     'ok   terminal walking: cash299 real handback retains inside position after success or refusal',
     'ok   terminal walking: remove50 actual same-ID replacement cannot inherit an inside guest',

@@ -55,6 +55,20 @@ choice—such as presenting an invented track system as the target experience—
 to the humans rather than claiming that an autonomous technical review settled it. Existing pause/stop instructions
 still take priority; checkpoints are not authority to ignore them.
 
+## Current user-priority queue (September24 10:55 follow-up)
+
+1. **Fix the newly reproduced residence regression first.** The previous gate suppressed
+   native state0 arm1 ordinary movement as well as arm0 facility selection. Require automatic
+   departure from an open facility, not a fixture issuing explicit Send. Preserve the facility
+   deadline while walking; distinguish repeat service sounds from unrelated mood events.
+2. Resume the bounded native relief phase below (inside approach,522-update deadline,
+   phase-correct hide/reveal), with the newly resolved one-handler-per-dispatch ordering.
+3. **Research the bus next, before further scorer implementation.** Explicit request from
+   strawberry at10:40:56 UTC, message1552630912481624105, acknowledged. Use actual code/data;
+   current native service work and the urgent residence regression take precedence until done.
+4. Then return to the decoded weighted scorer and operating-state bindings, not guessed
+   anti-repeat blacklists. Cow tools owns the active sound/bubble/feature-animation fixes.
+
 ## Latest CP4 correction — native relief state and decoded selector (September24)
 
 The post-walking trace found a real contradiction, not another optional polish task:

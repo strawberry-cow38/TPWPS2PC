@@ -30,12 +30,30 @@ static class DecisionSchedulingChecks
         gate.Reconcile(Array.Empty<int>());
         Check(gate.Count == 0, "all retired identities release scheduling storage");
 
+        int moveDraws=0;
+        var movement=new GuestDecisionSchedule(()=>{ moveDraws++; return 1; });
+        movement.Completed(44,100);
+        Check(movement.NextAction(44,100)==GuestIdleAction.None && moveDraws==1,
+              "ordinary movement cannot gain an action from a zero-time call");
+        Check(movement.NextAction(44,101)==GuestIdleAction.Move && moveDraws==3,
+              "native arm1 remains available before facility deadline and consumes both draws");
+        Check(movement.Count==1 && !movement.CanSelect(44,102),
+              "ordinary movement does not forget the facility deadline or become a visit");
+
         string stem = worldName is "HALLOW" or "SPACE" ? "/Shops/ices/ices" : "/Shops/IceCream/IceCream";
         var definition = RideDefinition.Parse(Encoding.ASCII.GetString(world.Read(world.Find(stem+".sam"))),
                                              "/DATA/"+worldName+".WAD"+stem+".sam");
         var compiled = new CompiledAssets(new AssetResourceDatabase(data.Read(data.Find("/arsdb.dba"))), TextDatabase.Load(data,"eur"));
         Check(compiled.Attach(new[]{definition},out _) == 1 && definition.Compiled?.Product == 4 && definition.PricePerUse == 30,
               "real named compiled shop fixture is not accidentally a ride");
+        {
+            string folder=stem[..(stem.LastIndexOf('/')+1)];
+            var aps=world.Find(stem+".aps") ?? world.Entries.Single(e=>e.Path.StartsWith(folder,StringComparison.OrdinalIgnoreCase)
+                && !e.Path[folder.Length..].Contains('/') && e.Path.EndsWith(".aps",StringComparison.OrdinalIgnoreCase));
+            byte[] Sibling(string name)=>world.Find(folder+name) is {} e ? world.Read(e) : null;
+            PostServiceMovementChecks.Run(terrain,source,entrance,exit,world.Read(world.Find(stem+".rse")),
+                new Animation(world.Read(aps)),definition,Sibling,check);
+        }
         foreach (int cash in new[]{1234,299})
         {
             var paths = new ParkPaths(terrain); source.Field.Cells.CopyTo(paths.Field.Cells,0);

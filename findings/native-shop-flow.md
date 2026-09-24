@@ -317,3 +317,64 @@ requests animation through1ABC80: channel0 slot5, variant1 on entry, variant0 on
 speed1.0. Existing rse-vm.md establishes that animation consumer independently. This is
 not a proof that native guest service is governed by the script's VAR_LETMEON handshake.
 The service-state/occupancy/presentation integration is now a separate bounded task.
+
+## Correction: destination cooldown is not an ordinary-movement cooldown
+
+The residence symptom was reported again on September24 at10:55 UTC: guests cycle
+through service but tend to remain at the facility. The landed destination gate stopped
+zero-time re-entry, but its consumer did `if (!CanSelect) continue` BEFORE ordinary
+wandering. That was too broad. The previous rendered departure fixture explicitly sent
+the guest out: it proved the walking leg/endpoint, not autonomous action selection.
+
+Native20C930 draws rand6 at20CA80 and rand300 at20CA8C. Table36C940 has these arms:
+
+| Arm | Entry | Action / extra condition |
+|---|---|---|
+|0 |20CAC4 |facility selection; strict deadline or existing target, then state6 |
+|1 |20CC00 |ordinary movement initiation; NO destination deadline |
+|2 |20CC3C |nearby-object interaction with its own probability/distance conditions |
+|3 |20CEDC |litter byte>=90 ->20D010(G,0) |
+|4 |20CF00 |sickness>=93 and rand4==0; state29, own now+15 deadline |
+|5 |20CFB4 |happiness/probability predicate ->20D010(G,1) |
+
+Only arm0 compares unsignednow againstG+2C+60+rand300. Arm1 sets low animation-state
+bits13, pushes the prior state and enters1. Dispatcher2117D8 invokes state1 through its
+virtual target1920B8, which clears the stack and sets5. Dispatcher2117E8 invokes state5
+through1913B8, the ordinary movement planner. The parent independently reread the arm
+table,20CC00..38 and1920B8..C4 words. No later guessed cooldown is needed to permit movement.
+
+The full1913B8 planner is NOT a random-global-cell selection: it uses current-cell kinds,
+connectivity and local exploration, with separate exceptional fallback branches. The port
+retains its existing public-walk policy for that planner and the already-validated directed
+escape edge for an occupied terminal. The correction integrates the native **action/gate
+boundary**, not every planner branch, all six state0 actions or their intermediate states.
+Initial guests without a completion gate retain the existing port selection policy.
+
+`GuestDecisionSchedule.NextAction` distinguishes Move, SelectDestination and None, with
+one attempt per observed executed-park counter. Movement does not forget the facility
+deadline. Missing-time calls still cannot buy extra random actions. Existing native-style
+unsigned strict comparison and shared injected coordinator stream are unchanged.
+
+Regression: real toilet completion, successful compiled IceCream purchase and refused
+purchase, with controlled arm1. Before fix all have120executed ticks/zero walking steps.
+After fix they walk two real edges before the facility deadline. Then the fixture switches
+to arm0 and proves the original deadline still blocks re-admission/payment/visit sounds.
+Mood sounds are kept distinct: a legitimate happy event129 is not another toilet visit.
+Restoring the broad gate fails all3movement assertions; clearing the deadline on movement
+fails7assertions. The normal-startup rendered probe's `--shop-auto-depart` mode leaves the
+shop open and issues NO explicit Send; it also rejects the old broad gate. Default explicit
+mode remains a separate physical-egress control, not an autonomous-behavior claim.
+
+### Service dispatcher timing clarification for the pending relief integration
+
+Dispatcher2113A8 reads stateG+37 once at211760 and uses table36CB90. State35 entry36CC1C
+calls20E160 at211894; after that handler returns,21189C branches to epilogue211950,
+not a state reread. State22 entry36CBE8 calls20EDD8 at211854 on a later dispatcher
+invocation. Thus strict-deadline expiry and service-effect completion are distinct guest
+updates. This establishes dispatcher order, not a guarantee that no outer scheduler can
+call it twice in one global update. The bounded port will use executed park updates.
+
+Common20EDD8 initially selects state23, whose20F4D8 handler can start a facility-exit
+route for the families that retain that state. **Do not generalize that to SHOP/relief**:
+their concrete tails clear the target/state (e.g.20F0A8..B4 for relief). Retained position
+at completion does not imply permanent residence: state0 ordinary movement remains active.

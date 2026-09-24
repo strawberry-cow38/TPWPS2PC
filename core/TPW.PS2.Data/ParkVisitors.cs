@@ -649,7 +649,18 @@ public sealed class ParkVisitors
             // Native state-0 arm0 uses strict now > saved + 60 + rand300. This is the
             // post-completion destination gate only, not the full weighted native chooser.
             // Going home above still has priority; no affordability veto is invented here.
-            if (!_decisions.CanSelect(g.Id, DecisionTick)) continue;
+            var action = _decisions.NextAction(g.Id, DecisionTick);
+            if (action == GuestIdleAction.Move)
+            {
+                // Native state0 arm1 -> states1/5 runs even before the destination deadline.
+                // The full 1913B8 local planner is not ported; use our existing public walk
+                // policy, but an occupied terminal must first leave through its directed edge.
+                if (g.OccupiedTerminal is { } terminal && g.Cell == terminal.Entry)
+                    Walk.Send(g, terminal.Approach);
+                else if (wander?.Invoke() is { } destination) Walk.Send(g, destination);
+                continue;
+            }
+            if (action != GuestIdleAction.SelectDestination) continue;
             // ⭐⭐ SOMETHING PRESSING BEATS SOMETHING FUN. A guest who needs a lavatory and
             // picks a rollercoaster instead is the whole reason wants looked wired-up but dead:
             // the need rose, the bubble appeared, and then they queued for the Crazy Ape and it

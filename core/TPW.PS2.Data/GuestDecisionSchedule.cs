@@ -3,6 +3,10 @@ using System.Collections.Generic;
 
 namespace TPW.PS2.Data
 {
+    /// <summary>The two decoded state0 actions integrated here. Other native arms are
+    /// not silently turned into destination picks or invented movement.</summary>
+    public enum GuestIdleAction { None, SelectDestination, Move }
+
     /// <summary>
     /// Post-completion destination-selection gate, in caller-supplied counter units.
     /// This is not the full native AI; cadence is the caller's responsibility and
@@ -42,13 +46,18 @@ namespace TPW.PS2.Data
         /// A true result does not clear the gate: call Forget only after routing
         /// succeeds, so failed routing retains the original completion deadline.
         /// </summary>
-        public bool CanSelect(int guest, uint now)
+        public bool CanSelect(int guest, uint now) => NextAction(guest, now) == GuestIdleAction.SelectDestination;
+
+        /// <summary>20C930 gates only arm0. Arm1 starts ordinary movement independently
+        /// of that deadline; this remains a bounded adapter, not all six native actions.
+        /// Missing gates preserve the port's pre-completion selection policy.</summary>
+        public GuestIdleAction NextAction(int guest, uint now)
         {
             Gate gate;
             if (!gates.TryGetValue(guest, out gate))
-                return true;
+                return GuestIdleAction.SelectDestination;
             if (gate.LastTick == now)
-                return false;
+                return GuestIdleAction.None;
 
             gate.LastTick = now;
             gates[guest] = gate;
@@ -58,7 +67,8 @@ namespace TPW.PS2.Data
             uint extra = Draw(300u);
             uint threshold = unchecked(gate.Deadline + 60u + extra);
             // Deliberately plain unsigned comparison, NOT signed elapsed-time math.
-            return arm == 0u && now > threshold;
+            if (arm == 1u) return GuestIdleAction.Move;
+            return arm == 0u && now > threshold ? GuestIdleAction.SelectDestination : GuestIdleAction.None;
         }
 
         public void Forget(int guest)

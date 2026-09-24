@@ -366,12 +366,25 @@ public partial class ShopServiceSmoke : Node3D
             {
                 Tick(); if (tick % 8 == 0) await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
             }
-            sim.SetOpen(ride.Id, false); Present(); // closure must not prevent leaving the occupied terminal
+            bool autoDepart=args.Contains("--shop-auto-depart");
+            if (!autoDepart) sim.SetOpen(ride.Id, false);
+            Present();
             var returned=visitors.Walk.Guests.Single(g=>g.Id==guestId);
             Check(returned.Cell==entryCell && returned.Next==null,"HANDBACK_RETAINS_ENTRY_NO_STUB_TELEPORT");
-            Require(visitors.Walk.Send(returned,start),"explicit departure has a public route through the same doorway");
-            Tick();
-            Check(returned.Next==stub && returned.Progress>0,"DEPARTURE_WALKS_REVERSE_EDGE_AFTER_CLOSURE");
+            if (autoDepart)
+            {
+                long completedClock=sim.Time;
+                for(int i=0;i<120 && returned.Next==null;i++)Tick();
+                Check(sim.Time-completedClock<120*ParkSim.TickMilliseconds && returned.Next==stub && returned.Progress>0,
+                    "AUTOMATIC_IDLE_ARM_LEAVES_OPEN_SHOP_BEFORE_RESELECTION_DEADLINE");
+                Require(returned.Next==stub,"automatic departure really traverses the doorway without an explicit Send");
+            }
+            else
+            {
+                Require(visitors.Walk.Send(returned,start),"explicit departure has a public route through the same doorway");
+                Tick();
+            }
+            Check(returned.Next==stub && returned.Progress>0,"DEPARTURE_WALKS_REVERSE_EDGE");
             for(int i=0;i<11;i++)Tick();
             await Capture(departureShot);
             for(int i=0;i<38;i++)Tick();

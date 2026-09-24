@@ -1492,3 +1492,35 @@ controls,6decisive instructionwords; separatelyreadfinalvtablepairs, hideforward
 speed/durationbridges andresourceanimationnotification. No codebuild rerunclaimed fordocs-only.
 Nextboundedproductionpackageperupdatedplan: actualnative relief lifecycle+insidewalk, notmore
 script-basedvisibilityinference. Keep the remaining bridge/enumeration questions bounded. Coordinate peerwhoownsmoney/economy/idle.
+
+
+## Urgent residence follow-up / bus queued — September24 10:55 onward
+
+User explicitly queued bus research1552630912481624105 (strawberry1028383794362847362,
+10:40:56UTC) for aftercurrentwork; acknowledged afterreliefintegration,beforefurtherscorer.
+Subsequent10:55shop/toiletcycling report takespriority overnewreliefconsumer. No pause.
+Reliefimplementation NOT started; priorresearchfindings remain, so do not claim native522
+service/hide is shipped. CowownsnewvisitorSFX, looping/scenerySFX, bubbleanchor and backwards
+featureanimations. Ourworkingbase pulled e574dbd; peerreportsdeee27e/edbf263later,fetchbeforeland.
+
+First broad delegate timedout600s with no result; narrow read succeeded:35handler20E160
+returns todispatcherepilogue afterstate22write;22completionnextdispatch, notsameinvocation.
+Third traceplusparentwordread resolvesnewactualbug: state0arm1ordinarymovement is NOT gated
+bydestinationdeadline. Ourbroad Idle earlycontinue was wrong. Native1->5->1913B8localplanner;
+portstillusesexistingpublicWander+BFS,but nowonlyselectionarm0obeysdeadline.
+
+Redfirst reproduction on e574dbd: realrelief,successfulIceCream1234,refusedIceCream299.
+120executedticks,allzeroStepsatservicecell. Threegenuine assertionfailures, notbuild-failedgreen.
+New PostServiceMovementChecks18/world plus3puregates(DecisionScheduling28) nowpass.
+Controlledarm1walkstwopublicedges,thenarm0cannotbypassremainingdeadline or buy/playvisitagain.
+One fixturecorrection: initiallycountedALLsoundsasvisits; legitimatehappysound129duringwalk
+madeitred. Nowcounts51/53/208visitcues separately and logsallsoundIDs; no productionmute.
+
+Normalstartup ShopServiceSmoke --shop-auto-depart keepsshopOPEN andissuesNOexplicitSend.
+All4worlds pass /tmp/tpw-idle-auto-captures (plusframeposition andactualleganimationchecks).
+Existing8runtime /tmp/tpw-idle-arm-runtime-20260924 pass. Corematrix
+/tmp/tpw-idle-arm-matrix-20260924 onlyexacttwoexpectedretailreds;60Pythonpass.
+Mutations /tmp/tpw-idle-arm-mutations: restoreglobalgate=>3corefailsANDactualrenderedauto-
+departurefails; Forgetdeadlineonmovement=>7fails. Allrestored/rebuilt. Sourcesnotyetlanded.
+Next:pushreviewbranch,mergepeerupdates,retest,landboundedgatefix. Thenactualnative relief
+consumer, thenrequestedbusresearch. Do NOT claimallscenery/rideSFXrepeats sharethiscause.
