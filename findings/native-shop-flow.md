@@ -378,3 +378,19 @@ Common20EDD8 initially selects state23, whose20F4D8 handler can start a facility
 route for the families that retain that state. **Do not generalize that to SHOP/relief**:
 their concrete tails clear the target/state (e.g.20F0A8..B4 for relief). Retained position
 at completion does not imply permanent residence: state0 ordinary movement remains active.
+
+
+### Follow-up: resource predicate is APS metadata, not a resource-kind enum
+
+The earlier unresolved `resource statekind2` interpretation is corrected by the full
+loader chain in native-selection-eligibility.md. 1309F8 and1FAD40 examine APS section5
+record count, exactly2. Only that pair enables occupied/available gating and slot5
+variant1/0 notification. Missing APS or count1/3 returns available, not busy.
+The integrated relief branch preserves that distinction; large toilets can service
+multiple guest identities while their individual522-update clocks remain independent.
+
+The state35 clock and next-dispatch completion are integrated on the review branch,
+including native hide/reveal and retained physical inside position. This replaces the
+old no-LIMBO-implies-visible inference. Runtime tests use real art and live ownership;
+normal-startup captures cover all four worlds. No visual review is implied by a passing
+rendered assertion or generated screenshot.

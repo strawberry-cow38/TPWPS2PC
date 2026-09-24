@@ -8,6 +8,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+import re
 from unittest import mock
 
 import runtime_audit as audit
@@ -38,7 +39,7 @@ def raw_witness(scene):
              'COMPILED SHOP VIEWER ok: re-index does not retain SPACE',
              'COMPILED SHOP VIEWER PASS: 18 checks, 0 failures'])
     if scene == 'standing':
-        return '\n'.join(['STANDING SERVICE ok: tested'] * 62 + [
+        return '\n'.join(['STANDING SERVICE ok: tested'] * 82 + [
             'STANDING SERVICE ok: real script accepts customer before satisfaction',
             'STANDING SERVICE ok: explicit host hiding suppresses standing body',
             "STANDING SERVICE ok: same numeric ride ID does not inherit removed owner's customer",
@@ -76,7 +77,8 @@ def raw_witness(scene):
                 'explicit host hide still wins', 'host reveal restores the one body',
                 'genuine handback restores one walker without a standing duplicate',
                 'entire lifecycle leaves absent authored coordinates absent')],
-            'STANDING SERVICE PASS: 132 checks, 0 failures' ])
+            *['STANDING SERVICE ok: native relief presentation: DURING service body is absent after two process frames, not just invisible', 'STANDING SERVICE ok: native relief presentation: +523 enters finishing only, still no body or relief', 'STANDING SERVICE ok: native relief presentation: +524 reveals SAME original guest identity and completes exactly once'],
+            'STANDING SERVICE PASS: 155 checks, 0 failures' ])
     return '\n'.join(['AUDIO LIFECYCLE ok: tested'] * 31 + [
         'AUDIO LIFECYCLE ok: 2D eight fast no-evidence polls remain pending',
         'AUDIO LIFECYCLE ok: 3D eight fast no-evidence polls remain pending',
@@ -166,12 +168,27 @@ class Classification(unittest.TestCase):
         self.assertEqual(len(consumer_lines), 8)
         for line in consumer_lines:
             self.assertEqual(audit.classify('standing', output(text.replace('entry-stub consumer: ' + line.split('entry-stub consumer: ', 1)[1], 'unrelated filler')))['status'], 'missing_coverage')
-        old = '\n'.join(line for line in text.splitlines() if 'entry-stub consumer:' not in line).replace('132 checks', '124 checks')
+        old = '\n'.join(line for line in text.splitlines() if 'entry-stub consumer:' not in line).replace('155 checks', '147 checks')
+        n = 0
+        renumbered = []
+        for line in old.splitlines():
+            if line.startswith('STANDING SERVICE ok:'):
+                n += 1
+                line = re.sub(r'\[\d+\]', f'[{n}]', line, count=1)
+            renumbered.append(line)
+        old = '\n'.join(renumbered)
         self.assertEqual(audit.classify('standing', output(old))['status'], 'missing_coverage')
+
+    def test_native_relief_render_witnesses_cannot_be_replaced_by_filler(self):
+        text = witness('standing')
+        for line in text.splitlines():
+            if 'native relief presentation:' in line:
+                changed=text.replace('native relief presentation: '+line.split('native relief presentation: ',1)[1], 'unrelated filler')
+                self.assertEqual(audit.classify('standing', output(changed))['status'], 'missing_coverage')
 
     def test_standing_requires_actual_placement_lifecycle_and_matching_count(self):
         text = witness('standing')
-        for damaged in [text.replace('132 checks', '131 checks'),
+        for damaged in [text.replace('155 checks', '154 checks'),
                         text.replace('placed quarter turn 2 completes real relief without reseeding', 'unrelated assertion'),
                         text.replace('explicit host hiding suppresses standing body', 'unrelated assertion'),
                         text.replace('external shop quarter turn 0 uses literal authored 2x2 geometry', 'unrelated assertion'),

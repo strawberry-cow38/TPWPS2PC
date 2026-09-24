@@ -1,9 +1,13 @@
 """Classifier negative controls. No real disc, build, credentials or external service."""
 import unittest
 
-from audit_matrix import EXPECTED, classify
+from audit_matrix import EXPECTED, classify, REQUIRED_CHECKS, REQUIRED_WITNESSES
 
-COVERAGE = '\n'.join(['  ok   post service movement: check'] * 15 +
+COVERAGE = '\n'.join([f'  ok   {category.replace("_", " ")}: filler'
+                        for category, count in REQUIRED_CHECKS.items() if category.startswith('native_')
+                        for _ in range(count)] +
+                     ['  '+w for w in REQUIRED_WITNESSES if w.startswith('ok   native ')] +
+                     ['  ok   post service movement: check'] * 15 +
                      ['  ok   post service movement: relief1234 ordinary arm walks away before the facility deadline', '  ok   post service movement: shop1234 ordinary arm walks away before the facility deadline', '  ok   post service movement: shop299 ordinary arm walks away before the facility deadline'] +
                      ['  ok   terminal walking: check'] * 86 +
                      ['  ok   terminal walking: cash1234 coordinator cannot board from the stub', '  ok   terminal walking: cash299 real handback retains inside position after success or refusal', '  ok   terminal walking: remove50 actual same-ID replacement cannot inherit an inside guest', '  ok   terminal walking: turn3 real approach leg has interpolated walking progress'] +

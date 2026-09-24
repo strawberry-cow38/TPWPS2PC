@@ -1610,3 +1610,37 @@ Merged peer through e98ee1e (money/gate/cost); own financial invariant updated t
 balance instead ofobsoletezero. Do not overwrite peer path-cost work. Before landing:
 mutation production scorer/residence/visibility, peer review, merged runtime, null-APS
 render and fourworldcontrols, docs/minimumcoverage. Bus queued next.
+
+Final integration verification before peer sign-off:
+* /tmp/tpw-native-final-matrix: all4 worlds,43score/25actual-choice/78relief/70value
+  checks EACH; only exact documented raw retail failures remain. Runner now requires
+  these counts and named fresh/need90/sickness/construction witnesses.
+* /tmp/tpw-native-final-runtime: all8 scenes PASS, standing155 includes23 real body/
+  bubble/native-phase checks. /tmp/tpw-native-final-python.log:61 testsPASS. Initial
+  runner self-test changes exposed stale132 counts and assertion-ID holes; repaired
+  those fixture generators, not production assertions.
+* /tmp/tpw-native-relief-four: normal startup rendered smoke PASS in JUNGLE/FANTASY/
+  HALLOW/SPACE, actual UI placement + native choice + physical approach/hidden service/
+  same-position reveal/egress; PNGs produced, not visually signed off.
+* /tmp/tpw-native-consumer-mutations: bypassnative5reds, invented91veto4,
+  eraseneednegatives6, universaltoiletoccupancy1, nonstrictdeadline9, same-dispatch
+  completion8. Every source restored and rebuilt.
+* /tmp/tpw-native-visibility-mutation: removing the production ServiceHidden render
+  guard fails4 native presentation assertions (body,bubble,+522,+523). Restored/rebuilt.
+
+CORRECTION to prior particle diagnosis: emitter is under a detached Viewer in OUR
+headless fixture, not a proved production reuse bug. Normal-startup all4 runs show no
+engine errors. Fixed fixture by initializing the real particle holder before moving
+Viewer children to the live test stage. No particleproductioncode changed. Cow told
+explicitly in1552668666615828541 not to act on initial diagnosis.
+
+Parent independently checked raw eligibility words1309F8/1E1E48/120530. Also corrected
+native slot5 enter/exit notifications to run ONLY for the exact-two APS pair, as1FAD40
+does, rather than requesting them on every relief facility. Core/native marker tests
+preserve concurrent large/no-pair relief behavior.
+
+Still NOT on main: awaiting peer review already requested forf9a8b2a. Keep branch pushed,
+fetch/reconcile any newer economy/path commits before landing. Don't repeat completed
+gates unnecessarily; next check is review changes then normal push, followed by bus.
+The dirty original ../tpw-ride-eligibility WIP is superseded by this integrated branch,
+not separate pending feature work; preserve until main incorporates this branch.

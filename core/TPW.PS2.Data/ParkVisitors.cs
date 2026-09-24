@@ -627,7 +627,7 @@ public sealed class ParkVisitors
         Walk.Remove(guest.Id);
         // 130AA0 ->1FAD40 requests shared channel0, slot5, variant1. Do not flush an
         // unfinished animation or cancel scripts; the native consumer queues normally.
-        ride.Host.PlayAnimationOn(0,5,1,false);
+        if(ride.ReliefUsesOccupancy) ride.Host.PlayAnimationOn(0,5,1,false);
     }
 
     void AdvanceRelief(uint startTick,int ticks)
@@ -643,7 +643,7 @@ public sealed class ParkVisitors
     void EndRelief(int guest,ParkRide ride,bool completed,uint? tick)
     {
         if(!_reliefVisits.Remove(guest) || !_plans.TryGetValue(guest,out var plan)) return;
-        if(Sim.Rides.Contains(ride)) ride.Host.PlayAnimationOn(0,5,0,false);
+        if(Sim.Rides.Contains(ride) && ride.ReliefUsesOccupancy) ride.Host.PlayAnimationOn(0,5,0,false);
         QueueReturn(plan,ride,completed,tick);
     }
 

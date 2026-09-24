@@ -2,9 +2,9 @@
 
 Static instruction/dataflow evidence from SLES_500.32, read in memory from the owner's
 MODE2/2352 disc. SHA256 `231771d7f39cc29e7573ce62f437af15d97737a64c1d1c49df8404ead0b7577a`.
-No executable/assets extracted. This is not a console execution capture. The managed
-coordinator still uses its needs-first/random selector as of946a89a; these findings
-are the next consumer specification, not a claim that this behavior already ships.
+No executable/assets extracted. This is not a console execution capture. The native-destination-scoring review branch integrates this consumer for physical
+compiled placements. Unplaced synthetic fixtures retain the older adapter; see the
+integration boundary at the end. This is not a full native guest-state scheduler.
 
 ## Calling frame and score equation: 20C138
 
@@ -220,3 +220,32 @@ wrong map edge, enable taste for zero value). Those checks do NOT exercise ParkV
 The coordinator still needs the actual candidate producer/eligibility/identity/ordering
 integration; this helper's passing checks are not evidence that fresh visitors have
 stopped selecting toilets through the shipping path.
+
+
+## Placed consumer integration boundary
+
+The review branch routes physical placements through PlacedDestination and
+ParkVisitors.SelectDestination: compiled inside connection A, concrete +1D4 producer,
+compiled needs getters/relief bit, native family/newest-first iteration and sequential
+choice. History uses ParkRide instance identity (not reused numeric IDs), resets on
+Arrive, and is reaped with retired plans. Remember and the below8 happiness cost happen
+before routing, without rollback on route failure. Early geometry/availability rejection
+returns before history division, so invalid-1 cannot be divided into a zero tie.
+
+NativeDestinationChecks exercises the actual Idle caller with named, identity-joined
+small toilets in all four worlds. Fresh low-need guests reject them; need90 and sickness90
+can select them. These controls reject both the old selector and the interim urgency
+filter. The audit is not an image-based inference about guest needs.
+
+Limits remain explicit:
+* Native eligible state values2/10/11 are represented, with coaster closure separate.
+  Managed Open/Closed/script-construction/broken mapping is a lifecycle adapter, not the
+  full native state updater. VM faults and unsupported handover remain capability filters.
+* ParkRide tracks the value producers' current settings and traced constructor defaults;
+  this does not wire every native management/control or track-cache recomputation path.
+  Coaster closure must be supplied by an actual closed track, never assumed from a model.
+* Physical placement missing a compiled join cannot silently use random selection/value45.
+  Legacy unplaced headless fixtures have no placement rotation and keep their old adapter;
+  their unchanged routing checks are not proof of the new placed consumer.
+* State0 arms beyond selection/ordinary movement, local navigation, full shared RNG order,
+  savegame activation order and complete service transport are not claimed as native parity.

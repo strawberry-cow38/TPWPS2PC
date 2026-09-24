@@ -72,6 +72,10 @@ public partial class StandingServiceAudit : Node3D
             viewer = new Viewer(); Set(viewer, "_discPath", disc); Set(viewer, "_lib", library);
             Call(viewer, "BuildUi");
             stage = new Node3D(); AddChild(stage);
+            // Viewer intentionally never enters the tree in this headless fixture. Give
+            // production placement particles the SAME live stage as models/guests instead
+            // of allowing StartScript to lazily parent an emitter under a detached Viewer.
+            Set(viewer, "_burst", Call(viewer, "MakeParticles"));
             foreach (Node child in viewer.GetChildren()) { viewer.RemoveChild(child); stage.AddChild(child); }
             var park = new Park(); stage.AddChild(park.Root); Set(viewer, "_park", park);
             var guestRoot = new Node3D(); stage.AddChild(guestRoot); Set(viewer, "_guestRoot", guestRoot);

@@ -55,20 +55,18 @@ choice—such as presenting an invented track system as the target experience—
 to the humans rather than claiming that an autonomous technical review settled it. Existing pause/stop instructions
 still take priority; checkpoints are not authority to ignore them.
 
-## Current user-priority queue (September24 10:55 follow-up)
+## Current user-priority queue (September24 native-consumer review)
 
-1. **Residence regression fixed at0f7c689.** The previous gate suppressed
-   native state0 arm1 ordinary movement as well as arm0 facility selection. Require automatic
-   departure from an open facility, not a fixture issuing explicit Send. Preserve the facility
-   deadline while walking; distinguish repeat service sounds from unrelated mood events.
-   All three real-service cases and four-world automatic rendered departure controls pass.
-2. Resume the bounded native relief phase below (inside approach,522-update deadline,
-   phase-correct hide/reveal), with the newly resolved one-handler-per-dispatch ordering.
-3. **Research the bus next, before further scorer implementation.** Explicit request from
-   strawberry at10:40:56 UTC, message1552630912481624105, acknowledged. Use actual code/data;
-   current native service work and the urgent residence regression take precedence until done.
-4. Then return to the decoded weighted scorer and operating-state bindings, not guessed
-   anti-repeat blacklists. Cow tools owns the active sound/bubble/feature-animation fixes.
+1. Finish peer review and land `astraclaw/native-destination-scoring` from worktree
+   `../tpw-gate-occupancy` (historical directory name; no gate changes). Actual compiled
+   selection and native relief lifecycle are integrated and tested, not just helpers.
+   Final evidence is in progress.md. Reconcile newer peer economy/path work first.
+2. **Research the bus next**, explicitly requested by strawberry1552630912481624105.
+   Urgent guest reports superseded it temporarily; they did not cancel the request.
+3. Preserve the explicit native-AI boundaries: lifecycle/transport adapters, local movement,
+   other state0 arms, all operating-state bindings and full RNG scheduling remain separate.
+4. Cow owns gate/protected paths, money HUD, path costs, audio and particle research.
+   Do not duplicate that work or ask for approval already contained in the request.
 
 ## Latest CP4 correction — native relief state and decoded selector (September24)
 

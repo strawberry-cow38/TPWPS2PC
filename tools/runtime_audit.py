@@ -123,10 +123,11 @@ def classify(scene: str, run: dict) -> dict:
             'explicit host hide still wins', 'host reveal restores the one body',
             'genuine handback restores one walker without a standing duplicate',
             'entire lifecycle leaves absent authored coordinates absent')]
+        prefixes += ['STANDING SERVICE ok: native relief presentation: DURING service body is absent after two process frames, not just invisible', 'STANDING SERVICE ok: native relief presentation: +523 enters finishing only, still no body or relief', 'STANDING SERVICE ok: native relief presentation: +524 reveals SAME original guest identity and completes exactly once']
         summaries = re.findall(r'^STANDING SERVICE PASS: (\d+) checks, 0 failures$', text, re.M)
         checks = sum(line.startswith('STANDING SERVICE ok:') for line in lines)
         result['checks'] = checks
-        if len(summaries) != 1 or int(summaries[0]) != checks or checks < 132:
+        if len(summaries) != 1 or int(summaries[0]) != checks or checks < 155:
             return {**result, 'status': 'missing_coverage'}
     elif scene == 'audio':
         prefixes = ['AUDIO LIFECYCLE ok: 2D eight fast no-evidence polls remain pending',
