@@ -150,6 +150,18 @@ public sealed class VisitorNeeds
     /// agree. <see cref="Decide"/>'s `&gt; 90` is this same number; routing uses it too.</summary>
     public const int Urgent = 91;
 
+    /// <summary>The litter a purchase leaves before its random part -- `DAT_002EEB60`, read as
+    /// **30** from the image and loaded at `0x20E504`. ⚠ Not the authored `LitterEffect`.</summary>
+    public const int LitterBase = 30;
+
+    /// <summary>⭐⭐ WHY THE COMPILED HAPPINESS IS THE PAYOUT AT DEFAULTS. The console scales it by
+    /// `(q1 - q2/15) / 100`, and shop setup explicitly writes **q1 = 100, q2 = 0** at
+    /// `0x1D1870/7C` -- so the scale is `(100 - 0)/100 = 1` and a new shop pays its compiled base
+    /// exactly. astraclaw verified the defaults. ⚠ It stays a DEFAULT, not a constant: whatever
+    /// moves q1 and q2 later is unread, so this port has no shop quality at all rather than a
+    /// wrong one.</summary>
+    public const int QualityDefaultNumerator = 100;
+
     /// <summary>The first eight verified preferred-intensity records at `DAT_002eebd8`;
     /// this is the port's selection set, not a proved bound on the original table.
     /// See <see cref="VisitorWants.PreferredIntensity"/>.</summary>
@@ -345,10 +357,16 @@ public sealed class VisitorNeeds
     /// findings/dba.md's decode of the purchase path at `0x20E380..0x20E45C`, including the one
     /// that reads oddly and is right: the hunger reduction is subtracted from hunger AND added to
     /// the toilet.</summary>
-    public void Buy(int guest, int price, int hungerReduction, int thirstReduction,
+    public bool Buy(int guest, int price, int hungerReduction, int thirstReduction,
                     int happinessEffect, int vomitIncrease)
     {
-        if (!_byGuest.TryGetValue(guest, out var w)) return;
+        if (!_byGuest.TryGetValue(guest, out var w)) return false;
+        // ⚠⚠ AFFORDABILITY FIRST, AND IN THE SAME x10 UNITS. `0x20E1A0` gates the WHOLE block on
+        // `price * 10 <= cash` -- so a guest who cannot afford it does not pay, and does not eat
+        // either. Applying the effects and letting cash go negative would feed the park for free
+        // and look like generosity rather than a missing guard. astraclaw asked for this to be
+        // kept with the tenfold debit; they are one change, not two.
+        if (w.Cash < price * 10) return false;
         // ⚠⚠ TEN TIMES THE PRICE. `0x20E1A0` does `cash += price * -10`, and cash is kept in the
         // same x10 units the spawn seeds it in (`(rand(300)+200) * 10`). This charged the bare
         // price and undercharged every purchase by an order of magnitude.
@@ -365,7 +383,13 @@ public sealed class VisitorNeeds
         w.Thirst = Clamp(w.Thirst + thirstReduction);
         w.Happiness = Clamp(w.Happiness + happinessEffect);
         w.Sick = Clamp(w.Sick + vomitIncrease);
+        // ⭐ LITTER, and its base is READ: `DAT_002EEB60` is 30 in the image, loaded at
+        // `0x20E504` and added to `rand(25)`. ⚠ It is NOT the .sam's `LitterEffect` (50 for a
+        // burger) -- I had assumed the authored field and astraclaw found the actual byte, which
+        // is the third time tonight the authored text was not what runs.
+        w.Litter = Clamp(w.Litter + LitterBase + Rand(25));
         _byGuest[guest] = w;
+        return true;
     }
 
     /// <summary>What a guest is thinking, and therefore which bubble is over their head.

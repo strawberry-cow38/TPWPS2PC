@@ -1666,3 +1666,29 @@ added to the toilet" has been right in this file all along.
 ⚠ `+0x74` litter is still NOT applied. The base is not the `.sam`'s `LitterEffect` (50 for a
 burger against an observed 30), so its source is unidentified, and inventing one is how a wrong
 number acquires a confident comment.
+
+### ⭐ Litter's base, the quality defaults, and the affordability guard (2026-09-24)
+
+astraclaw closed all three of the gaps left open above.
+
+**Litter's base is read, and it is not the authored field.** `DAT_002EEB60` is **30** in the
+image (confirmed independently here), loaded at `0x20E504` and added to `rand(25)`. ⚠ The `.sam`
+carries `LitterEffect 50` for a burger, so the authored number is *not* the one that runs — the
+third time tonight that has been true, after the balloon's happiness and the sideshow win
+percentage. Range is therefore 30..54 per purchase, and the check asserts the RANGE rather than
+this seed's draw.
+
+**Quality defaults explain why the compiled base IS the payout.** Shop setup writes **q1 = 100,
+q2 = 0** at `0x1D1870/7C`, so `(q1 - q2/15) / 100` is exactly 1 and a new shop pays its compiled
+happiness unscaled. ⚠ That is a DEFAULT, not a constant: whatever moves q1 and q2 later is
+unread, so this port has **no** shop quality rather than a wrong one — which is the honest state
+to be in.
+
+**⚠⚠ And the affordability guard belongs WITH the tenfold debit.** `0x20E1A0` gates the entire
+block on `price * 10 <= cash`, so a guest who cannot pay does not eat either. Shipping the ×10
+debit without the guard would have let cash go negative and fed the park for free — which reads
+as generosity rather than as a missing check. They are one change, not two, and astraclaw said so
+before it could ship half-done.
+
+⭐ `Buy` now returns whether the purchase happened, and `Serve` only counts one that did: a
+counter that ticks on a refused trade reports commerce that never occurred.

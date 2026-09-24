@@ -138,21 +138,37 @@ static class ServiceChecks
         // ⭐⭐ Two bugs astraclaw's verified getter mapping exposed, both silent: a purchase
         // charged the bare price where the console charges TEN TIMES it (cash is kept in the
         // x10 units the spawn seeds), and it QUENCHED thirst where the console RAISES it.
-        (int Cash, int Hunger, int Thirst, int Toilet) Bought(int price, int hunger, int thirst)
+        (int Cash, int Hunger, int Thirst, int Toilet, int Litter) Bought(int price, int hunger, int thirst, int cash = 5000)
         {
             var n = new VisitorNeeds(11);
             var w = n.Spawn(1);
-            w.Cash = 5000; w.Hunger = 50; w.Thirst = 50; w.Toilet = 20; w.Sick = 0; w.Happiness = 50;
+            w.Litter = 0;
+            w.Cash = cash; w.Hunger = 50; w.Thirst = 50; w.Toilet = 20; w.Sick = 0; w.Happiness = 50;
             n.Set(1, w);
             n.Buy(1, price, hunger, thirst, happinessEffect: 5, vomitIncrease: 0);
             var a2 = n.Of(1);
-            return (a2.Cash, a2.Hunger, a2.Thirst, a2.Toilet);
+            return (a2.Cash, a2.Hunger, a2.Thirst, a2.Toilet, a2.Litter);
         }
         var burger = Bought(price: 30, hunger: 25, thirst: 0);
         Check(burger.Cash == 5000 - 300, $"a purchase charges TEN times the price ({5000 - burger.Cash} for a price of 30)");
         Check(burger.Hunger == 25, $"and feeds the guest ({burger.Hunger}, was 50)");
         // ⭐ The toilet rises by the HUNGER amount -- the console re-reads the same getter.
         Check(burger.Toilet == 45, $"filling them fills the bladder by the same amount ({burger.Toilet}, was 20)");
+
+        // ⭐ LITTER: base 30 (DAT_002EEB60) plus rand(25), so a purchase always drops at least 30
+        // and never more than 54. Asserting the RANGE rather than a value keeps the random part
+        // random instead of pinning this seed's draw.
+        Check(burger.Litter >= 30 && burger.Litter <= 54,
+              $"a purchase drops litter: base 30 + rand(25) ({burger.Litter})");
+
+        // ⚠⚠ AFFORDABILITY, IN x10 UNITS AND BEFORE THE EFFECTS. A guest who cannot pay must not
+        // eat either -- applying effects and letting cash go negative feeds the park for free.
+        var broke2 = Bought(price: 30, hunger: 25, thirst: 0, cash: 299);
+        Check(broke2.Cash == 299, $"a guest who cannot afford it is not charged ({broke2.Cash})");
+        Check(broke2.Hunger == 50, $"and is not fed either ({broke2.Hunger}, unchanged)");
+        // ⭐ THE BOUNDARY, both sides: 300 is exactly affordable at a price of 30.
+        var exact = Bought(price: 30, hunger: 25, thirst: 0, cash: 300);
+        Check(exact.Cash == 0 && exact.Hunger == 25, $"exactly enough buys ({exact.Cash} left, hunger {exact.Hunger})");
 
         var icecream = Bought(price: 30, hunger: 15, thirst: 5);
         // ⚠⚠ THE SIGN. Ice cream's own thirst is 5, and it must go UP. Subtracting would read 45.

@@ -520,9 +520,10 @@ public sealed class ParkVisitors
             // SHOP'S QUALITY before adding, and quality is not modelled here at all -- so a
             // guest currently receives the unscaled base. astraclaw read the consumer; recorded
             // here rather than in a findings file because this is the line that spends it.
-            Needs.Buy(guest, def.PricePerUse ?? 0, def.HungerEffect ?? 0, def.ThirstEffect ?? 0,
-                      def.HappinessEffect ?? 0, def.VomitEffect ?? 0);
-            Purchases++;
+            // ⚠ Only a purchase that HAPPENED counts: Buy refuses when the guest cannot afford
+            // it, and a counter that ticked anyway would report a trade that never occurred.
+            if (Needs.Buy(guest, def.PricePerUse ?? 0, def.HungerEffect ?? 0, def.ThirstEffect ?? 0,
+                          def.HappinessEffect ?? 0, def.VomitEffect ?? 0)) Purchases++;
             return;
         }
         Needs.Ride(guest, RideIntensity, RideHappiness, RideSickScale, RideBoredomScale);
