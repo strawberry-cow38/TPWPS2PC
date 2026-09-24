@@ -230,6 +230,18 @@ public sealed class VisitorNeeds
         ["thirst"] = new Rate(0, 2, High: true),
         ["toilet"] = new Rate(0, 1, High: true),
         ["sick"] = new Rate(0, 0, High: false),
+        // ⭐⭐ BOREDOM RISES, AND ITS ABSENCE WAS A REAL BUG. `Rise` raised every other need and
+        // skipped `+0x78`, so it only ever moved when a guest queued -- and a guest who could not
+        // buy anything therefore never got bored, never crossed `BoredomBar`, never lost the
+        // happiness that `Fret` docks, and never reached the go-home threshold. They walked to a
+        // shop they could not afford FOREVER. Master saw it as "guests stuck on the stub tile".
+        //
+        // ⭐ That the console raises it is evidenced rather than assumed: `FUN_0020FB88` docks
+        // happiness when `+0x78` is at or above 95, and a threshold on a value that never
+        // increases is dead code -- the console is plainly not dead there.
+        // ⚠ The RATE is invented like every other rate in this table; only the fact of the rise
+        // is established.
+        ["bored"] = new Rate(0, 1, High: false),
         ["litter"] = new Rate(0, 1, High: false),
     };
 
@@ -354,6 +366,7 @@ public sealed class VisitorNeeds
             w.Thirst = Clamp(w.Thirst + Roll(Rates["thirst"]));
             w.Toilet = Clamp(w.Toilet + Roll(Rates["toilet"]));
             w.Sick = Clamp(w.Sick + Roll(Rates["sick"]));
+            w.Unknown78 = Clamp(w.Unknown78 + Roll(Rates["bored"]));
             w.Litter = Clamp(w.Litter + Roll(Rates["litter"]));
             _byGuest[guest] = w;
         }

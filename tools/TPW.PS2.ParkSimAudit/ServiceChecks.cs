@@ -376,6 +376,65 @@ static class ServiceChecks
         Check(unqueued.Peak78 == 0, $"a guest with no queue to stand in pays nothing ({unqueued.Peak78})");
         Check(unqueued.LowHappy == 100, $"and keeps their patience ({unqueued.LowHappy})");
 
+        // ── the guest who cannot afford anything ─────────────────────────────────────────────
+        // ⭐⭐ MASTER'S BUG, AS A CHECK. A guest with more than the go-home floor (100) but less
+        // than a purchase (price * 10) can neither buy nor leave -- so they walked to the shop,
+        // were refused, kept the identical need, and walked straight back. Forever. Master saw it
+        // as guests "stuck on the stub path tile and repeatedly visiting the shop".
+        //
+        // ⚠ THE FIX IS NOT A CASH FILTER. The console does not test cash when choosing what it
+        // wants (three call sites in FUN_0020C930, none reads +0x60). It lets boredom rise until
+        // the mood drain grinds the guest down and they go home on their own -- and OUR boredom
+        // never rose, because `Rise` skipped it. This asserts the loop terminates.
+        (int Home, int Purchases, int Bored) Broke()
+        {
+            var paths = new ParkPaths(terrain);
+            sourcePaths.Field.Cells.CopyTo(paths.Field.Cells, 0);
+            paths.SetEntrance(entranceTable);
+            var visitors = new ParkVisitors(new ParkSim(paths), new GuestWalk(paths)) { Needs = new VisitorNeeds(1234) };
+            // ⚠⚠ A SHOP DEFINITION, NOT THE RIDE'S. The first version of this check handed the
+            // ride's own definition to the fixture, so `Serve` took the RIDE branch: nothing was
+            // ever sold (making `Purchases == 0` pass vacuously) and `Ride()` SUBTRACTED the
+            // boredom this check is about, pinning it near zero on every visit. It reproduced a
+            // guest happily riding a free ride forever, not a guest who cannot afford lunch.
+            // Synthesised rather than loaded because this fixture has no WadArchive to read one.
+            var shopDef = RideDefinition.Parse(
+                "Info.Name\t\"unaffordable shop\"\n" +
+                "UsageInfo.ShopType\t2\n" +
+                "UsageInfo.InitPricePerUse\t30\n" +
+                "UsageInfo.HungerEffect\t25\n", "synthetic/shop.sam");
+            var shop = visitors.Sim.Add(1, "unaffordable shop", corridor[0], 1, 1, rideScript, rideAps,
+                                        1, corridor[0], exit, out string fault,
+                                        sibling: rideSibling, headSlots: rideSeats, definition: shopDef)
+                       ?? throw new InvalidOperationException(fault);
+            visitors.Sim.SetOpen(shop.Id, true); shop.Set("VAR_BROKEN", 0);
+            var g = visitors.Arrive(exit, exit);
+            var w = visitors.Needs.Of(g.Id);
+            // Hungry, and holding strictly between the go-home floor and the price of a meal.
+            w.Hunger = 100; w.Cash = 250; w.Happiness = 60; w.Unknown78 = 0;
+            w.Thirst = 0; w.Toilet = 0; w.Sick = 0;
+            visitors.Needs.Set(g.Id, w);
+            int peakBored = 0;
+            for (int i = 0; i < 40000 && visitors.WentHome == 0; i++)
+            {
+                visitors.Step(Tick, () => exit);
+                if (visitors.Needs.Has(g.Id)) peakBored = Math.Max(peakBored, visitors.Needs.Of(g.Id).Unknown78);
+            }
+            return (visitors.WentHome, visitors.Purchases, peakBored);
+        }
+        var broke3 = Broke();
+        Check(broke3.Purchases == 0, $"a guest who cannot afford the shop buys nothing ({broke3.Purchases})");
+        // ⭐ Boredom must CLIMB while they are stuck -- with the rise removed this reads 5 (the
+        // queue's +5 alone), with it, ~32. ⚠ It is NOT asserted to reach the 95 bar: the guest
+        // leaves before that, via the queue's happiness cost, and asserting a number the run does
+        // not reach would only be testing my expectation of it.
+        Check(broke3.Bored >= 20, $"boredom climbs while they are stuck ({broke3.Bored})");
+        // ⚠⚠ AND THIS PASSES WITHOUT THE BOREDOM RISE TOO -- measured, not assumed. The queue's
+        // happiness cost alone grinds them under the go-home floor, so the loop was ALREADY
+        // self-terminating and the boredom rise is not what ends it. Kept as a check that the
+        // loop terminates at all; it is NOT evidence for the change above it.
+        Check(broke3.Home == 1, $"and they eventually give up and go home rather than looping forever ({broke3.Home})");
+
         // ── going home over a path that breaks and is mended ─────────────────────────────────
         // ⭐⭐ THE ONE-WAY DOOR. A `Leaving` guest whose path was dug up under them stayed stuck
         // FOREVER -- not because anything was stale, but because they left a state with no way
