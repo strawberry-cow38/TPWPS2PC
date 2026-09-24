@@ -62,6 +62,42 @@ static class ScreamChecks
         Check(SoundCatalogue.MapFor((SoundGroup)7, world, 1) != "/AUDIO/GLOBAL/KIDSSFX.MAP",
               "CONTROL: the native number 7 would have picked a different map");
 
+        // ---- ⭐ IS ANY OF THIS REACHABLE? A feature validated only by unit checks can be dead
+        // code and stay green forever. Census the world's own scripts for the four opcodes.
+        {
+            var e = disc.Files().Single(f => f.Path.Equals($"/DATA/{world}.WAD", StringComparison.OrdinalIgnoreCase));
+            var wad = new WadArchive(disc.Read(e.Extent, e.Size));
+            int start = 0, stop = 0, single = 0, level = 0, unlevelled = 0, carriers = 0;
+            foreach (var entry in wad.Entries.Where(x => x.Path.EndsWith(".rse", StringComparison.OrdinalIgnoreCase)))
+            {
+                RseProgram prog;
+                try { prog = new RseProgram(wad.Read(entry)); } catch { continue; }
+                bool any = false;
+                foreach (var ins in prog.Instructions)
+                {
+                    switch (ins.Opcode)
+                    {
+                        case RseOpcode.STARTSCREAM: start++; any = true; break;
+                        case RseOpcode.STOPSCREAM: stop++; any = true; break;
+                        case RseOpcode.SCREAMLEVEL: level++; any = true; break;
+                        case RseOpcode.SINGLESCREAM:
+                            single++; any = true;
+                            // the second operand decides levelled vs the missing-else path
+                            if (ins.Operands.Count > 1 && ins.Operands[1].Immediate < 0) unlevelled++;
+                            break;
+                    }
+                }
+                if (any) carriers++;
+            }
+            Check(start > 0 && single > 0, $"{world}'s own scripts DO ask for screams -- {carriers} rides, "
+                + $"START {start}, STOP {stop}, SINGLE {single}, LEVEL {level}");
+            // ⭐⭐ AND THE ARM THAT CARRIES THE CONSOLE BUG IS THE COMMON ONE. Across the disc 58 of
+            // 60 SINGLESCREAMs pass a negative second operand, so FUN_001BA440's missing `else` is
+            // what the game does nearly every time -- not an edge case worth a shrug.
+            Check(unlevelled * 2 > single, $"and most one-shots take the unlevelled arm ({unlevelled} of {single}) "
+                + "-- the overlapping-voices path is the NORMAL one");
+        }
+
         // ---- and do these events actually exist on the owner's disc? ---------------------
         var cat = new SoundCatalogue(disc, world, 1);
         int miss = 0; var absent = new List<string>();
