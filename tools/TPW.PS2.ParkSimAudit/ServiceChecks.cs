@@ -484,6 +484,41 @@ static class ServiceChecks
             }
             return (Run(auto: false), Run(auto: true));
         }
+        // ⭐⭐ A GUEST WITH NO NEEDS MUST NOT VISIT A LAVATORY. The random "something to do" pick
+        // drew from every open facility, lavatories included, so a guest who had just arrived
+        // queued for the toilet -- repeatedly, in a park with little else built.
+        // ⚠ THE CONTROL IS THE SAME PARK WITH A FULL BLADDER: if that one does not get relieved,
+        // this check is passing because routing is broken rather than because the filter works.
+        (int Idle, int Bursting) ToiletOnly()
+        {
+            int Run(byte toilet)
+            {
+                var paths = new ParkPaths(terrain);
+                sourcePaths.Field.Cells.CopyTo(paths.Field.Cells, 0);
+                paths.SetEntrance(entranceTable);
+                var visitors = new ParkVisitors(new ParkSim(paths), new GuestWalk(paths)) { Needs = new VisitorNeeds(99) };
+                foreach (string key in visitors.Needs.Rates.Keys.ToArray())
+                    visitors.Needs.Rates[key] = new VisitorNeeds.Rate(0, 0, false);
+                visitors.Needs.Unknown78Bar = visitors.Needs.SickBar = visitors.Needs.ToiletBar =
+                    visitors.Needs.HungerBar = visitors.Needs.ThirstBar = 101;
+                var loo = visitors.Sim.Add(1, "fixture toilet", corridor[0], 1, 1, toiletScript, toiletAps,
+                                           1, corridor[0], exit, out string fault,
+                                           sibling: toiletSibling, definition: toiletDef)
+                          ?? throw new InvalidOperationException(fault);
+                visitors.Sim.SetOpen(loo.Id, true); loo.Set("VAR_BROKEN", 0);
+                var g = visitors.Arrive(exit, exit);
+                var w = visitors.Needs.Of(g.Id);
+                w.Toilet = toilet; w.Hunger = 0; w.Thirst = 0; w.Sick = 0; w.Happiness = 100;
+                visitors.Needs.Set(g.Id, w);
+                for (int i = 0; i < 3000; i++) visitors.Step(Tick, () => exit);
+                return visitors.Relieved;
+            }
+            return (Run(0), Run(100));
+        }
+        var loneLoo = ToiletOnly();
+        Check(loneLoo.Idle == 0, $"a guest with an empty bladder never visits the only lavatory in the park ({loneLoo.Idle})");
+        Check(loneLoo.Bursting > 0, $"CONTROL: the same park DOES relieve a desperate one ({loneLoo.Bursting})");
+
         var loos = Handyman();
         Check(loos.Clean == 100, $"a worn lavatory is serviced back to 100 ({loos.Clean})");
         Check(loos.Dirty == 0, $"and the CONTROL shows the wear was real -- unserviced it stays filthy ({loos.Dirty})");

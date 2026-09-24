@@ -671,7 +671,26 @@ public sealed class ParkVisitors
             bool onErrand = false;
             foreach (var errand in Errand(g)) if (SendTo(g, errand)) { onErrand = true; break; }
             if (onErrand) continue;
-            var rides = Open.ToArray();
+            // ⚠⚠ NOT LAVATORIES. `Open` is everything placed and working, and the random "go do
+            // something" pick was drawing from all of it -- so a guest who had just walked in the
+            // gate with no needs at all would queue for a toilet, and with few things built they
+            // would do it again and again. Master: "guests are still spam using the toilets
+            // despite having NO NEED (they just entered the park)".
+            //
+            // ⭐ A lavatory is only ever an ERRAND: `Errand` above already routes to one when the
+            // need crosses its threshold, which is the ONLY reason to visit. That is not a guess
+            // about the console's chooser -- it is what `UsageInfo.ProvidesRelief` means, and the
+            // same distinction this file already draws in `Serve`.
+            // ⚠ Shops stay in: a guest may wander to one speculatively, and the want score
+            // already refuses the purchase if they do not actually want it.
+            //
+            // ⚠⚠ INTERIM, AND MEANT TO BE DELETED. astraclaw is porting the console's actual
+            // weighted scorer, in which a relief facility takes NEGATIVE terms at low toilet and
+            // sickness and so loses to the chooser's own starting zero -- no exclusion needed,
+            // because the numbers do it. This blunt filter exists because master is playtesting
+            // now and every guest in the park was queueing for the loo. Replace it with the
+            // scorer rather than building on it.
+            var rides = Open.Where(r => !r.ProvidesRelief).ToArray();
             if (rides.Length > 0 && SendTo(g, rides[(int)((uint)_random() % (uint)rides.Length)])) continue;
             if (wander?.Invoke() is { } cell) Walk.Send(g, cell);
         }
