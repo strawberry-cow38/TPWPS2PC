@@ -62,9 +62,31 @@ public partial class CameraTurnAudit : Node
                 }
                 return worst;
             }
-            for (int every = 6; every <= 20; every += 2)
+            // ⭐⭐ AT EVERY RATE, INCLUDING EVERY SINGLE FRAME. This is the guarantee the console
+            // does NOT give: on 0x14F820 anything closer than six frames apart reverses. Master
+            // asked for it twice ("still happens if i spam"), so the target is kept unwrapped and
+            // the ease always runs toward it. An earlier version of this test asserted exactly
+            // this and FAILED at frame 2, which is how the console's threshold got measured.
+            for (int every = 1; every <= 20; every++)
                 if (Worst(every) < 0)
                     throw new Exception($"a press every {every} frames turned back by {Worst(every)}");
+            _checks++;
+
+            // ⭐ And spamming must actually GO somewhere: four presses is four quarters, a whole
+            // turn, not four presses collapsing into one.
+            var four = new GameCamera(); four.Reset();
+            for (int i = 0; i < 4; i++) { four.Turn(1); four.Step(Frame, Ground); }
+            for (int f = 0; f < 400 && four.Yaw != four.TargetYaw; f++) four.Step(Frame, Ground);
+            if (four.Yaw != 0)
+                throw new Exception($"four quarters should land back at 0, landed at {four.Yaw}");
+            _checks++;
+
+            // ⭐ Three presses is three quarters, and it must arrive the way it was asked.
+            var three = new GameCamera(); three.Reset();
+            for (int i = 0; i < 3; i++) { three.Turn(1); three.Step(Frame, Ground); }
+            for (int f = 0; f < 400 && three.Yaw != three.TargetYaw; f++) three.Step(Frame, Ground);
+            if (three.Yaw != 3 * GameCamera.QuarterTurn)
+                throw new Exception($"three quarters landed at {three.Yaw}, not {3 * GameCamera.QuarterTurn}");
             _checks++;
 
             // ⭐ A single press, the overwhelmingly common case, must land a clean quarter forward.
@@ -101,8 +123,8 @@ public partial class CameraTurnAudit : Node
             _checks++;
 
             GD.Print($"CAMERA TURN PASS: {_checks} checks; a frame's presses latch to one quarter per "
-                   + "direction, a single press settles exactly one quarter on, and presses 6+ frames "
-                   + "apart never reverse (faster than that is the console's own behaviour)");
+                   + "direction, a single press settles exactly one quarter on, spam queues whole "
+                   + "quarters, and NO press rate reverses");
             GetTree().Quit(0);
         }
         catch (Exception ex) { GD.PrintErr("CAMERA TURN FAIL: " + ex); GetTree().Quit(2); }
