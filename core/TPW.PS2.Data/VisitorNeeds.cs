@@ -353,10 +353,18 @@ public sealed class VisitorNeeds
         public const int Flush = 51;        // 0x211710  flush.vag
         public const int LavatoryDoor = 53; // 0x20F0A0  dooropen1.mp2
         public const int VeryHappy = 129;   // 0x2102D4  huh1.vag
+        /// <summary>`0x2105FC`, `yawn2a/yawn3a`. ⚠⚠ NOT BOREDOM -- this file said so out loud
+        /// and it was wrong. The site sets bubble **9**, which `FUN_00216028` calls
+        /// `tbqueuebad`: it is the moment a guest gives up on a QUEUE. A yawn fits that even
+        /// better, but the earlier claim that it "corroborates the boredom byte" was an
+        /// attribution made from proximity rather than from the code around it.
+        /// ⚠ NOT WIRED: this port has no queue-abandonment for it to fire from.</summary>
         public const int Yawn = 126;        // 0x2105FC  yawn2a/yawn3a
+        /// <summary>`0x20CFA4`: sick &gt; 92 and a 1-in-4 roll, then activity `0x1D` for 15 ticks.</summary>
         public const int Sick = 204;        // 0x20CFA4  puke3/puke4/sick1a
         public const int VeryUnhappy = 205; // 0x20FA14  scared1/cry1/kidsad1/kidsad2
         public const int ShopTill = 208;    // 0x20EAD8  cashD2b.vag
+        /// <summary>`0x20CA60`: happiness &lt; 3, with bubble 10 (`tbangry`).</summary>
         public const int Mixed = 307;       // 0x20CA60  angry4/kidsad1/huh1
     }
 
@@ -764,6 +772,23 @@ public sealed class VisitorNeeds
         else if (toiletNearby && w.Toilet >= Urgent) t = Thought.Toilet;
         else if (w.Happiness < 25) t = Thought.Sad;
         else if (w.Happiness > 75) t = Thought.Happy;
+        // ⭐⭐ TWO MORE OF THE EIGHT, ATTRIBUTED AND NOW WIRED -- and both land on thresholds
+        // this method ALREADY had, which is the pleasant part: the decode and the port agree
+        // without either being adjusted to fit.
+        //
+        //   `0x20CFA4`  sick > 92, one time in four -> activity 0x1D, a 15-tick action, and
+        //               `puke3 | puke4 | sick1a`. The guest is being sick.
+        //   `0x20CA60`  happiness < 3 -> bubble 10 (`tbangry`) and `angry4 | kidsad1 | huh1`.
+        //
+        // ⚠ Raised only on a CHANGE of thought: this runs whenever a guest re-decides, and a
+        // guest who is still sick is not newly sick. The console's own sickness arm rolls
+        // 1-in-4 as well, which this does not model -- one sound per onset is the closer of the
+        // two wrongs to a guest retching once rather than on every re-evaluation.
+        if (w.Thought != t)
+        {
+            if (t == Thought.Sick) Sounded?.Invoke(guest, Sounds.Sick);
+            else if (t == Thought.Angry) Sounded?.Invoke(guest, Sounds.Mixed);
+        }
         w.Thought = t;
         _byGuest[guest] = w;
         return t;

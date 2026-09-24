@@ -2940,7 +2940,13 @@ public partial class Viewer : Node3D
             float at = ride.Frame + alpha * (ParkSim.TickMilliseconds * Aps.Fps / 1000f);
             // ⭐ Reversed, not re-timed: the same frame count, walked from the end, so a build
             // takes exactly as long as the authored record does.
-            if (PlaysBackwards(ride.Name))
+            // ⚠⚠ ONLY THE CREATE, NOT EVERYTHING THIS ASSET PLAYS. The first version reversed
+            // every record belonging to a named asset, and master saw the result immediately:
+            // "the animation ur reversing is Main. slot 1 is the one before that." The toilet's
+            // script asks for slot 5 (`Main`) constantly and slot 0 (the build) once -- so the
+            // name match alone turned its whole idle backwards. ⭐ The BUILD is the backwards
+            // one; gate on the slot the fallback selected.
+            if (want == 1 && PlaysBackwards(ride.Name))
             {
                 var playing = anim.Records().FirstOrDefault(r => r.Slot == want);
                 if (playing is { DurationFrames: > 0 }) at = Math.Max(0f, playing.DurationFrames - at);
