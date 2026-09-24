@@ -1428,3 +1428,50 @@ distinction that cost this repo a wrong "paths are free" finding once already.
 Ported as `ParkRide.Condition` (0..100, `Wear`, `Service`), with `ParkVisitors.Soil` kept as a
 `100 - Condition` VIEW because two audits read it. ⭐ Keeping the console's direction means a
 cleaner is `= 100` rather than `-= something`.
+
+### ⚠⚠ A ride only turns a stomach above 55 — the port was CURING sickness (2026-09-24)
+
+astraclaw read the consumer rather than the constant and found the gate at `0x20F248`:
+
+```c
+if (0x37 < lVar9) {                       // ride value > 55
+    guest[0x76] += DAT_002eeb30 * (iVar10 - 0x1e) * 0x1000 >> 0x18;
+}                                          // ...and NO other arm
+```
+
+There is no lower branch. Below 56 sickness is left **exactly alone**. This file previously said
+"sickness is measured against 30, so an intensity below that settles the stomach" — the 30 is
+real, but it is the pivot INSIDE the term, not a threshold around it, and the port was therefore
+**subtracting** sickness on every gentle ride, its own default of 45 included. ⭐ Knowing a
+constant is not knowing what it does; only the consumer says that.
+
+### ⭐⭐ And happiness is BANDED BY TASTE, not flat
+
+The same function, just above the gate:
+
+```
+lVar9/iVar10 = the RIDE's value        iVar5 = FUN_0020C078(guest) = what this guest LIKES
+uVar7        = |iVar5 - iVar10|        the mismatch
+  |diff| <= 20  -> happiness += DAT_002eeb44 = 15
+  |diff| <  51  -> happiness += DAT_002eeb40 = 10
+  otherwise     -> happiness += DAT_002eeb3c = 5
+```
+
+So the flat **15** recorded earlier today is only the BEST band. ⚠ A number read correctly can
+still be the wrong number, if you read it out of one arm of three.
+
+`FUN_0020C078` is four instructions: `*(u16*)(&DAT_002eebd8 + guest[0x7d] * 8)`. So `+0x7d` is a
+**personality index** and the preference is a per-type constant. The table is 8 entries of stride
+8 and its first u16s are read off the image:
+
+| idx | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
+|---|---|---|---|---|---|---|---|---|
+| prefers | 90 | 30 | 50 | 75 | 100 | 45 | 60 | 70 |
+| (2nd u16) | 15 | 20 | 25 | 18 | 16 | 14 | 20 | 10 |
+
+⭐ The length is known rather than guessed: entry 8 onward is other data, and index 10 is two
+`1.0f`, which no intensity table would contain.
+
+⚠ **WHAT SETS `+0x7d` IS NOT READ.** `FUN_0020BCD0` spawns every other need byte and never touches
+it, so the personality is assigned somewhere else. The port picks one of the eight uniformly:
+**the values are the game's, the choice is not**, and the second u16 has no consumer yet either.

@@ -151,8 +151,14 @@ public sealed class ParkVisitors
     ///
     /// ⚠⚠ ALL FOUR ARE CHOSEN. `FUN_0020EDD8` reads the ride's own value and three globals
     /// (`DAT_002EEB30/34/44`), and neither has been decoded -- so these stand in, carrying the
-    /// console's SHAPE only: sickness is measured against **30**, so an intensity below that
-    /// settles the stomach and above it turns one.
+    /// console's SHAPE only.
+    ///
+    /// ⚠⚠ AND THIS USED TO SAY "an intensity below 30 settles the stomach", WHICH IS BACKWARDS.
+    /// Nothing settles a stomach: `0x20F248` branches PAST the sickness term unless the ride's
+    /// value is above 55, with no other arm. The 30 is real but it is the pivot inside the term,
+    /// not a threshold around it -- so the port was CURING sickness on every gentle ride, at its
+    /// own default of 45 included. astraclaw found it by reading the consumer rather than the
+    /// constant, which is the difference between knowing a number and knowing what it does.
     ///
     /// ⭐ Exposed as properties so an audit can set them and assert the exact arithmetic,
     /// rather than having to know a constant buried in a method.</summary>

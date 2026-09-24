@@ -79,6 +79,17 @@ public struct VisitorWants
 
     /// <summary>`+0x40`, the id the thought bubble is drawn from.</summary>
     public Thought Thought;
+
+    /// <summary>⭐⭐ WHAT THIS GUEST ACTUALLY WANTS OUT OF A RIDE. `FUN_0020C078` returns
+    /// <c>*(u16*)(&amp;DAT_002eebd8 + guest[0x7d] * 8)</c> -- so `+0x7d` is a PERSONALITY index and
+    /// the preference is a per-type constant. The table is 8 entries of stride 8 and its first
+    /// u16s are read straight off the image: **90, 30, 50, 75, 100, 45, 60, 70**. (Entry 8 onward
+    /// is other data -- index 10 is two 1.0f -- which is how the length is known.)
+    ///
+    /// ⚠ WHAT IS NOT READ is what SETS `+0x7d`: the spawn at `FUN_0020BCD0` writes every other
+    /// need byte and never touches it, so the personality is assigned somewhere else and this
+    /// port picks one of the eight uniformly. The VALUES are the game's; the CHOICE is not.</summary>
+    public byte PreferredIntensity;
 }
 
 /// <summary>The visitors' wants: hunger, thirst, the toilet, and how they feel about it.
@@ -124,6 +135,26 @@ public sealed class VisitorNeeds
     /// function -- so 91 is a single shared threshold rather than three constants that happen to
     /// agree. <see cref="Decide"/>'s `&gt; 90` is this same number; routing uses it too.</summary>
     public const int Urgent = 91;
+
+    /// <summary>The eight personalities' preferred ride intensities, off `DAT_002eebd8`.
+    /// See <see cref="VisitorWants.PreferredIntensity"/>.</summary>
+    public static readonly byte[] Preferences = { 90, 30, 50, 75, 100, 45, 60, 70 };
+
+    /// <summary>⭐⭐ A RIDE ONLY TURNS A STOMACH IF IT IS FIERCE ENOUGH, and the bar is READ:
+    /// `0x20F248` branches PAST the sickness term unless the ride's own value is above 55, and
+    /// there is no other arm -- below it sickness is left exactly alone.
+    ///
+    /// ⚠⚠ THIS CLASS USED TO SAY THE OPPOSITE. "Sickness is measured against 30, so an intensity
+    /// below that settles the stomach" -- it does not; nothing here ever settles a stomach, and
+    /// the port was quietly CURING sickness on every gentle ride, including at its own default of
+    /// 45. Found by astraclaw reading the consumer rather than the constant. The 30 is real, but
+    /// it is the pivot INSIDE the term, not a threshold around it.</summary>
+    public const int SickeningIntensity = 56;
+
+    /// <summary>How much happiness a ride gives, by how badly it matched the rider's taste --
+    /// `|preferred - intensity|` against the console's own two bands, paying `DAT_002eeb44/40/3c`
+    /// = **15 / 10 / 5**. ⭐ So the flat 15 this port used was only the best case.</summary>
+    public static int RideHappinessFor(int mismatch) => mismatch < 21 ? 15 : mismatch < 51 ? 10 : 5;
 
     /// <summary>⭐⭐ AN UNMET NEED MAKES A GUEST UNHAPPY, and the rule is READ rather than shaped
     /// here. `FUN_0020FB88` runs three identical tests over the guest and docks **one happiness
@@ -224,6 +255,7 @@ public sealed class VisitorNeeds
             Toilet = Clamp(Rand(100) * Rand(100) / 100),
             Thirst = Clamp(Rand(100) * Rand(100) / 100),
             Unknown7B = Clamp(Rand(50)),
+            PreferredIntensity = Preferences[Rand(Preferences.Length)],
             Thought = Thought.Normal,
         };
         _byGuest[guest] = w;
@@ -356,7 +388,8 @@ public sealed class VisitorNeeds
     /// <summary>Getting off a ride, as `FUN_0020EDD8` has it.
     ///
     /// ⭐ THE SHAPE IS READ. Happiness up; sickness by the ride's own value measured against **30**,
-    /// so a gentle ride settles the stomach and a fierce one turns it; `+0x78` down by that value;
+    /// and ONLY when the ride is above 55 -- a gentle one leaves it alone, it is never
+    /// settled; `+0x78` down by that value;
     /// `+0x7B` down by `rand(20)`.
     ///
     /// ⚠ AND IT LEAVES THE TOILET ALONE, although `FUN_0020EDD8` empties it in the same breath.
@@ -370,11 +403,20 @@ public sealed class VisitorNeeds
     ///
     /// ⚠ The three scale factors are globals (`DAT_002EEB30/34/44`) that have NOT been read, so
     /// they are arguments here rather than constants invented inside.</summary>
+    /// ⚠ <paramref name="happinessGain"/> is now a FALLBACK: when the guest has a preference
+    /// the band is computed from the mismatch instead -- see <see cref="RideHappinessFor"/>.
     public void Ride(int guest, int intensity, int happinessGain, float sickScale, float boredomScale)
     {
         if (!_byGuest.TryGetValue(guest, out var w)) return;
-        w.Happiness = Clamp(w.Happiness + happinessGain);
-        w.Sick = Clamp(w.Sick + (int)(sickScale * (intensity - 30)));
+        // ⭐ Happiness by how well the ride matched them, not a flat payout.
+        int gain = w.PreferredIntensity > 0
+                 ? RideHappinessFor(Math.Abs(w.PreferredIntensity - intensity))
+                 : happinessGain;
+        w.Happiness = Clamp(w.Happiness + gain);
+        // ⭐⭐ GATED, and the gate is the whole correction: below 56 the console branches past
+        // this entirely. It never subtracts -- a gentle ride leaves a stomach exactly as it was.
+        if (intensity >= SickeningIntensity)
+            w.Sick = Clamp(w.Sick + (int)(sickScale * (intensity - 30)));
         w.Unknown78 = Clamp(w.Unknown78 - (int)(boredomScale * intensity));
         w.Unknown7B = Clamp(w.Unknown7B - Rand(20));
         _byGuest[guest] = w;

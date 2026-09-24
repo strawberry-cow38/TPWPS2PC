@@ -168,6 +168,37 @@ static class ServiceChecks
         Check(100 - wretched.Happy >= (100 - bursting.Happy) * 2,
               $"three unmet needs cost about three times as much ({100 - wretched.Happy} vs {100 - bursting.Happy})");
 
+        // ── what a ride does to a stomach ─────────────────────────────────────────────────────
+        // ⭐⭐ THE GATE, and the case that was silently WRONG: the port applied the sickness term
+        // unconditionally, so every gentle ride -- including at the default intensity of 45 --
+        // CURED sickness instead of leaving it alone. `0x20F248` branches past the term unless
+        // the ride is above 55, and has no other arm. Found by astraclaw.
+        (int Sick, int Happy) Rode(int intensity, byte startSick, byte preferred)
+        {
+            var needs = new VisitorNeeds(3);
+            var w = needs.Spawn(1);
+            w.Sick = startSick; w.Happiness = 50; w.PreferredIntensity = preferred;
+            needs.Set(1, w);
+            needs.Ride(1, intensity, happinessGain: 15, sickScale: 1212f / 4096f, boredomScale: 1f);
+            return (needs.Of(1).Sick, needs.Of(1).Happiness);
+        }
+
+        // ⭐ BOTH SIDES OF THE BAR, one below and one above, or the check cannot tell a gate from
+        // a constant. 55 is the last value that must do nothing; 56 the first that must not.
+        Check(Rode(55, 40, 60).Sick == 40, $"a ride of 55 leaves a stomach exactly alone ({Rode(55, 40, 60).Sick}, was 40)");
+        Check(Rode(45, 40, 60).Sick == 40, $"and so does the port's own default of 45 ({Rode(45, 40, 60).Sick})");
+        Check(Rode(56, 40, 60).Sick > 40, $"a ride of 56 turns it ({Rode(56, 40, 60).Sick})");
+        // ⚠ THE REGRESSION IN ONE LINE. Ungated, intensity 45 gives 40 + 0.296*(45-30) = 44 -- but
+        // the OLD bug cured instead: the port's sign made gentle rides subtract. Either way it moves,
+        // and "does not move" is the only correct answer.
+        Check(Rode(20, 40, 60).Sick == 40, $"and a very gentle ride neither turns NOR settles it ({Rode(20, 40, 60).Sick})");
+
+        // ⭐⭐ HAPPINESS IS BANDED BY TASTE, not flat: |preferred - intensity| against 21 and 51,
+        // paying the console's own 15 / 10 / 5.
+        Check(Rode(60, 0, 60).Happy == 65, $"a ride that matches the rider pays 15 ({Rode(60, 0, 60).Happy - 50})");
+        Check(Rode(90, 0, 60).Happy == 60, $"a middling mismatch pays 10 ({Rode(90, 0, 60).Happy - 50})");
+        Check(Rode(100, 0, 20).Happy == 55, $"and a bad one pays 5 ({Rode(100, 0, 20).Happy - 50})");
+
         // ── going home ────────────────────────────────────────────────────────────────────────
         // ⭐⭐ `WantsToGoHome` WAS DECODED, DOCUMENTED, CHECKED FOR ITS ARITHMETIC AND CALLED FROM
         // NOWHERE. Dead code is indistinguishable from a working feature unless something asks
