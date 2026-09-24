@@ -1536,3 +1536,22 @@ removingKilltagfilterfails2checks /tmp/tpw-audio-adapted-scope-mutation. Source 
 Peernew14b8bc2 repeatsoundflag/timer policy isseparate, correlationnotyetnativeconsumerproof;
 warnedpeer thatrepeatdeadlines mustfollowEXECUTEDsimtime, notrenderdelta, while diagnostic
 voiceobservation staysrealtime. Do not claimthatourresidencefixsolvesbin/speakerlooping.
+
+
+Residence correction LANDED main0f7c689, peer reviewed, preserving23b2944 bubble/audio/feature
+work. Final4worldmatrix /tmp/tpw-idle-final-matrix-20260924:28decision,18postservicemovement,
+90terminalchecks/world;onlyexacttwoexpectedretailfailures. All8runtime scenes
+/tmp/tpw-idle-final-runtime-20260924 pass;60Pythonchecks. Finalmergednormalstartupautomatic
+JUNGLEdeparture (open shop, no explicit Send) /tmp/tpw-idle-landing-auto and
+../tpw-idle-landing-auto.log passes. Earlierall4worldauto runs /tmp/tpw-idle-auto-captures.
+Upstream14b8bc2 speaker-census usedJUNGLE236..239 everywhere, producing3NEWworldfailures;
+heldlanding,reportedtopeer,mergedtheir23b2944correction; didNOTwaiveasretailfailure.
+User-facingreport explicitlylimitsfix tooverbroadgate, not a permanent anti-revisit rule.
+
+NEXT: currentnative relief phase remainsUNIMPLEMENTED (insidewalk,hide,strict522deadline,
+next-dispatchcompletion,reveal,sameposition,resource slot5variant1/0). Busresearch queued by
+strawberry1552630912481624105 immediately aftercurrentwork, beforefurtherscorer. Peer isactive
+onsounds/bubbles/featurecreation; stayoffthoseexceptagreedservicevisibilityconsumer. Bus research
+should include actualsoundeventconsumer/flags/timer rather thanrepeat any prior guessedstage
+interpretations; peer'srepeatflag0x400/word0C policyislabelledcorrelation, notnativeconsumerread.
+Do not repeat completedtiming/movement work orrestartbot; existingcroncontinuesoriginalplan.

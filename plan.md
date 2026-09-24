@@ -57,10 +57,11 @@ still take priority; checkpoints are not authority to ignore them.
 
 ## Current user-priority queue (September24 10:55 follow-up)
 
-1. **Fix the newly reproduced residence regression first.** The previous gate suppressed
+1. **Residence regression fixed at0f7c689.** The previous gate suppressed
    native state0 arm1 ordinary movement as well as arm0 facility selection. Require automatic
    departure from an open facility, not a fixture issuing explicit Send. Preserve the facility
    deadline while walking; distinguish repeat service sounds from unrelated mood events.
+   All three real-service cases and four-world automatic rendered departure controls pass.
 2. Resume the bounded native relief phase below (inside approach,522-update deadline,
    phase-correct hide/reveal), with the newly resolved one-handler-per-dispatch ordering.
 3. **Research the bus next, before further scorer implementation.** Explicit request from
