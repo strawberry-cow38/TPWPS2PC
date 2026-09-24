@@ -74,10 +74,10 @@ public sealed class ParkVisitors
 
     readonly Func<int> _random;
     readonly GuestDecisionSchedule _decisions;
-    // Native deadlines count guest updates. Share the needs/mood producer's actual counter,
-    // not a second guessed frequency or render-call count. Needs-free fixtures use the walk
-    // updates instead. SecondsPerTick remains the port's chosen wall-time mapping.
-    uint DecisionTick => unchecked((uint)(Needs?.UpdateTicks ?? (Walk.Time / GuestWalk.TickMilliseconds)));
+    // One monotonic producer for this coordinator: actual executed park ticks, not render
+    // calls, offered delta, or the needs component's independently adjustable test rate.
+    // This is the port's clock mapping, not proof of unconditional native wall-time pacing.
+    uint DecisionTick => unchecked((uint)(Sim.Time / ParkSim.TickMilliseconds));
 
     public ParkVisitors(ParkSim sim, GuestWalk walk, Func<int> random = null)
     {

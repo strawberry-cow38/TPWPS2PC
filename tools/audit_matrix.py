@@ -28,6 +28,7 @@ MAX_LOG_BYTES = 8 * 1024 * 1024
 # accidentally omitted helper must not turn missing lifecycle coverage into PASS.
 REQUIRED_CHECKS = {'availability': 30, 'removal': 57, 'conservation': 20, 'needs_lifecycle': 50, 'disruption': 21, 'service_routing': 5, 'departure_recovery': 6, 'ride_effect_consumer': 33, 'compiled_purchase': 67, 'decision_scheduling': 25}
 REQUIRED_WITNESSES = (
+    'ok   decision scheduling: cash299 park deadline survives eightfold appetite rate change',
     'ok   decision scheduling: strict boundary rejects stored300 plus extra60 equality',
     'ok   decision scheduling: cash1234 zero-time calls cannot reboard the same shop',
     'ok   decision scheduling: cash299 zero-time calls cannot reboard the same shop',

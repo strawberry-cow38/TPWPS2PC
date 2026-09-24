@@ -199,8 +199,7 @@ not a claim that the native kind7 arm itself checks an owner pointer.
 
 GuestDecisionSchedule implements the traced `now+300+rand300` completion deadline
 and strict `now > deadline+60+rand300` on decision arm0. ParkVisitors registers it
-before Serve, so a refused purchase is delayed too. It shares VisitorNeeds.UpdateTicks
-(or the walking counter when needs are absent), never advances on Step(0), preserves
+before Serve, so a refused purchase is delayed too. It counts executed ParkSim ticks exclusively, never advances on Step(0), preserves
 the deadline when routing fails, and retires state with ownership. Successful explicit
 SendTo remains an explicit override. Go-home handling remains ahead of this gate.
 
@@ -213,3 +212,9 @@ Independent checks use real named/compiled IceCream and both successful1234/refu
 cash fixtures. They require real handback, no zero-time reboarding, strict counter
 boundaries, and eventual permitted revisit. Four mutations (missing registration,
 missing consumer, non-strict comparison, repeated same-tick lottery) are rejected.
+
+Peer review caught that the initial candidate used the adjustable needs counter. The
+landed gate instead uses ParkSim.Time/TickMilliseconds only; appetite-rate test overrides
+and attaching/replacing a needs component cannot switch the deadline's source. Both real
+purchase fixtures now change appetite to eightfold speed during the waiting interval and
+still require the same park-tick deadline. The native unsigned comparison is unchanged.

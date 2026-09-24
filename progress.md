@@ -1399,3 +1399,14 @@ footprints and no visual-only lerp. Native handback retainsinsideposition. Prese
 liveowner, mid-edge, demolition/replacement and egress invariants. Do not call current
 SAMfractions/fallbackstub positions decoded native window endpoints. They are superseded
 only when actual movement consumer is wired and checked. No movement fix shipped yet.
+
+Timing peer review resolved before landing: sole clock is now executed ParkSim.Time ticks,
+NOT adjustable VisitorNeeds.UpdateTicks. Removed the unused accessor. Both successful/refused
+fixtures change appetite cadence8x while waiting and preserve the same deadline. Clock-coupling
+mutation rejects both rate controls. Full matrix /tmp/tpw-decision-clock-final-20260924 retains
+only the exact two retail reds;25scheduling checks/world. Peer approved lifecycle/zero-time
+boundary; requested this clock correction. Shared injected RNG and native unsigned comparison
+retained, not split/replaced for test convenience. Movement candidate is temporarily in Git
+stash 'compiled terminal movement candidate pending timing clock review'; restore after timing
+landing. It is NOT discarded or shipped: real approach/egress tests pass, rendered JUNGLE smoke
+passes, but review/mutations/otherworldrendered checks remain before movement landing.

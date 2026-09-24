@@ -56,7 +56,7 @@ static class DecisionSchedulingChecks
             uint completedAt=0;
             for(int tick=0;tick<6000 && v.Rides==0;tick++)
             {
-                completedAt=unchecked((uint)v.Needs.UpdateTicks);
+                completedAt=unchecked((uint)(sim.Time / ParkSim.TickMilliseconds));
                 v.Step(.04,()=>exit);
             }
             Check(v.Rides==1 && v.Boardings==1 && v.Purchases==(cash==1234?1:0)
@@ -64,13 +64,14 @@ static class DecisionSchedulingChecks
                   $"cash{cash} actual handback distinguishes successful and refused purchase");
             Check(v.Plans[g.Id].Intent==VisitorIntent.Wandering && v.QueuedOwner(g.Id)==null,
                   $"cash{cash} completion does not immediately retarget a destination");
-            long clock=v.Needs.UpdateTicks;
+            long clock=(sim.Time / ParkSim.TickMilliseconds);
             for(int i=0;i<20;i++) v.Step(0,()=>exit);
-            Check(v.Needs.UpdateTicks==clock && v.Boardings==1 && v.Plans[g.Id].Intent==VisitorIntent.Wandering,
+            Check((sim.Time / ParkSim.TickMilliseconds)==clock && v.Boardings==1 && v.Plans[g.Id].Intent==VisitorIntent.Wandering,
                   $"cash{cash} zero-time calls cannot reboard the same shop");
-            while(unchecked((uint)v.Needs.UpdateTicks)<=unchecked(completedAt+360u)) v.Step(.04,()=>exit);
+            v.Needs.SecondsPerTick=.005; // 8x appetite speed must NOT accelerate destination scheduling
+            while(unchecked((uint)(sim.Time / ParkSim.TickMilliseconds))<unchecked(completedAt+360u)) v.Step(.04,()=>exit);
             Check(v.Boardings==1 && v.Plans[g.Id].Intent==VisitorIntent.Wandering,
-                  $"cash{cash} counter deadline gates reselection independently of needs growth");
+                  $"cash{cash} park deadline survives eightfold appetite rate change");
             for(int i=0;i<8 && v.Boardings==1;i++) v.Step(.04,()=>exit);
             Check(v.Boardings==2 && ReferenceEquals(v.QueuedOwner(g.Id),ride),
                   $"cash{cash} eligible later decision can revisit instead of a permanent blacklist");

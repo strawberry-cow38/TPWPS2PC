@@ -3,7 +3,8 @@ import unittest
 
 from audit_matrix import EXPECTED, classify
 
-COVERAGE = '\n'.join(['  ok   decision scheduling: check'] * 21 +
+COVERAGE = '\n'.join(['  ok   decision scheduling: check'] * 20 +
+                     ['  ok   decision scheduling: cash299 park deadline survives eightfold appetite rate change'] +
                      ['  ok   decision scheduling: strict boundary rejects stored300 plus extra60 equality', '  ok   decision scheduling: cash1234 zero-time calls cannot reboard the same shop', '  ok   decision scheduling: cash299 zero-time calls cannot reboard the same shop', '  ok   decision scheduling: cash299 eligible later decision can revisit instead of a permanent blacklist'] +
                      ['  ok   compiled purchase: check'] * 59 +
                      ['  ok   compiled purchase: bare-world source path attaches the named shop independently of region loop',
