@@ -785,19 +785,21 @@ public partial class Viewer : Node3D
             float step = Input.IsKeyPressed(Key.Shift) ? 0.25f : 0.05f;
             // ⭐⭐ THE FLAGS NOW, NOT THE GATE. Master: "can u replace the gate nudge tool with
             // the flag nudge tool?" -- the gate is settled (their -2.0 on JUNGLE is the default
-            // below), so the keys move to the thing that still needs an eye on it. The flags'
-            // anchor y is the one number in that file that came from a rule of thumb
-            // (`p.Y > top * 0.6f`) rather than out of the executable.
-            _flags.NudgeY += k.Keycode == Key.Bracketright ? step : -step;
+            // below), so the keys move to the thing that still needs an eye on it.
+            // ⚠ ON Z, the same axis the gate tool moved. I first wired it to Y because the
+            // pole-height heuristic is the least-evidenced number in EntranceFlags -- master was
+            // positioning them along the entrance, not raising them. "Which number I trust least"
+            // is not the same question as "which number is being looked at".
+            _flags.NudgeZ += k.Keycode == Key.Bracketright ? step : -step;
             // ⚠ Rounded, or repeated float additions drift into 0.15000000000000002 and the log
             // becomes unreadable at exactly the moment it is being used to write a number down.
-            _flags.NudgeY = Mathf.Round(_flags.NudgeY * 1000f) / 1000f;
+            _flags.NudgeZ = Mathf.Round(_flags.NudgeZ * 1000f) / 1000f;
             // ⚠⚠ ON SCREEN, NOT DOWN A TERMINAL. Master: "i also dont see where my nudge is
             // being printed?" -- because GD.Print goes to a console nobody playing the game has in
             // front of them. This panel was built for exactly that ("every refusal already printed
             // a reason to the console, which nobody playing the game can see") and I still wrote
             // the ONE number master is meant to read off and hand back into the console alone.
-            string line = $"flag height {_flags.NudgeY:+0.00;-0.00;0}  ({(step > 0.1f ? "coarse" : "fine")}"
+            string line = $"flag nudge z {_flags.NudgeZ:+0.00;-0.00;0}  ({(step > 0.1f ? "coarse" : "fine")}"
                         + ", shift for the other)";
             Status(line);
             GD.Print($"[flags] {line}");
@@ -5176,6 +5178,8 @@ public partial class Viewer : Node3D
     /// <summary>The gate zone's world box, for the hover test. ⚠ Null until a gate is placed;
     /// the no-build zone only exists once <see cref="PlaceGateNoBuild"/> has read one.</summary>
     (Vector3 Lo, Vector3 Hi)? _gateBounds;
+    /// <summary>The zone's middle cell, for click-to-focus.</summary>
+    (int X, int Y)? _gateCell;
     /// <summary>The gate has been clicked. ⭐ Separate from <see cref="_selected"/>, which is an
     /// index into `Park.Placed` -- the gate is not a placed ride and has no index.</summary>
     bool _gateSelected;
@@ -5215,8 +5219,12 @@ public partial class Viewer : Node3D
         {
             _gateSelected = true;
             UpdateGateBox(false);
-            GD.Print("[select] the gate's no-build zone");
-            Status("gate no-build zone selected -- right click to clear");
+            // ⭐ AND IT FOCUSES, like a ride does. Master: "give gate the click-to-focus and move
+            // away to unfocus like rides get." The camera goes to the zone's own cells, so the
+            // gesture is the same one selecting anything else in the park already is.
+            if (_gateCell is { } gc) LookAtCell(gc.X, gc.Y);
+            GD.Print("[select] the gate's no-build zone -- camera to it");
+            Status("gate selected -- move away or right click to clear");
             return true;
         }
         _gateSelected = false;
@@ -5690,13 +5698,22 @@ public partial class Viewer : Node3D
         // ⚠ Tall enough to enclose the arch: a flat ring on the floor is not what the console
         // draws, and the box's own shape (a pulled-out cube) only reads as one at height.
         float tall = Mathf.Max(1f, hi.Y - lo.Y);
-        var boxAt = new Vector3(centre.X - rw * 0.5f, centre.Y, centre.Z - rh * 0.5f);
+        // ⭐⭐ THE BOX MOVES WITH THE GATE. Master: "move the selection box of the gate to
+        // actually match the gate's new position." The zone's cells are READ from the .sam and
+        // its x already carries `shift`, but the gate itself is then nudged along z -- so the box
+        // sat where the zone was authored while the arch stood somewhere else, and the log has
+        // been printing that gap as "off by" for as long as the nudge has existed. Reporting a
+        // mismatch is not the same as not having one.
+        // ⚠ The RESERVATION is untouched: which cells refuse a build is authored data, and only
+        // the drawn box follows the eye-tuned gate.
+        var boxAt = new Vector3(centre.X - rw * 0.5f, centre.Y, centre.Z - rh * 0.5f + dz);
         var boxSize = new Vector3(rw, tall, rh);
         _gateBox.Show(boxAt, boxSize);
         // ⭐ THE ZONE IS NOW A SELECTION, NOT A PERMANENT FIXTURE. Master: "the selection box
         // should only be with the gate hovered/selected." It was drawn for the whole time the
         // park was open, which made a build restriction look like scenery.
         _gateBounds = (boxAt, boxAt + boxSize);
+        _gateCell = (x0 + w / 2, y0 + h / 2);
         _gateBox.Root.Visible = false;
         float gx = (lo.X + hi.X) * 0.5f + shift, gz = (lo.Z + hi.Z) * 0.5f + dz;
         GD.Print($"[gate.zone] {w}x{h} cells at grid ({x0},{y0}) -- .sam offset ({def.MapOffsetX},"
@@ -6123,7 +6140,7 @@ public partial class Viewer : Node3D
             // selected will get rid of its selected state. q/e wont." Read off the KEYS rather
             // than off the cursor having moved, because focusing the camera ON a selection moves
             // the cursor too and would otherwise drop it the instant it was made.
-            if ((fwd != 0 || side != 0) && _selected >= 0) ClearSelection();
+            if ((fwd != 0 || side != 0) && (_selected >= 0 || _gateSelected)) ClearSelection();
             _game.CursorX += (int)((fwd * s - side * c) * pan);
             _game.CursorZ += (int)((fwd * c + side * s) * pan);
             // ⭐ The map's border. Clamped every tick rather than only when a key is pressed, so a
@@ -6890,7 +6907,7 @@ public partial class Viewer : Node3D
                             // ⭐ And it drops a selection before it opens anything, the same
                             // bargain it already makes with a held blueprint: reaching for cancel
                             // means cancel THAT, not start something else underneath it.
-                            else if (_selected >= 0) ClearSelection();
+                            else if (_selected >= 0 || _gateSelected) ClearSelection();
                             else OpenTool(PathTool.Kind.Path);
                         }
                         else if (_place.Active) PlaceHeld();
