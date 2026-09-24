@@ -17,7 +17,7 @@ public partial class AdvisorBrowserAudit : Node3D
     void Check(bool ok, string message)
     {
         _checks++;
-        GD.Print((ok ? "ADVISOR BROWSER ok: " : "ADVISOR BROWSER FAIL: ") + message);
+        GD.Print((ok ? "ADVISOR BROWSER ok: " : "ADVISOR BROWSER FAIL: ") + $"[{_checks}] {message}");
         if (!ok) _bad++;
     }
     async Task WaitSeconds(double seconds) => await ToSignal(GetTree().CreateTimer(seconds), SceneTreeTimer.SignalName.Timeout);

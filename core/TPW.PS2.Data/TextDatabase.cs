@@ -62,7 +62,7 @@ public sealed class TextDatabase
         {
             int o = System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(d.AsSpan(4 + i * 4));
             if (o != expected || o >= d.Length)
-                throw new InvalidDataException($"Text table row {i}: offset must follow the preceding directory/string");
+                throw new InvalidDataException($"Text table row {i}: offset {o}, expected {expected}; shared/overlapping strings, reordered rows or padding are outside the checked profile");
             int e = Array.IndexOf(d, (byte)0, o);
             if (e < 0) throw new InvalidDataException($"Text table row {i}: missing NUL terminator");
             outp[i] = System.Text.Encoding.Latin1.GetString(d, o, e - o);

@@ -66,8 +66,9 @@ def classify(world: str, raw_exit: int | None, text: str, *, timed_out: bool = F
     return {**evidence, 'status': 'unexpected_failure'}
 
 
-def run_process(command: list[str], *, repo: Path, log: Path, timeout: float) -> dict:
-    env = dict(os.environ, MSBUILDDISABLENODEREUSE='1', DOTNET_CLI_USE_MSBUILD_SERVER='0',
+def run_process(command: list[str], *, repo: Path, log: Path, timeout: float,
+                environment: dict | None = None) -> dict:
+    env = dict(os.environ if environment is None else environment, MSBUILDDISABLENODEREUSE='1', DOTNET_CLI_USE_MSBUILD_SERVER='0',
                DOTNET_CLI_TELEMETRY_OPTOUT='1')
     started = time.monotonic()
     timed_out, launch_error, raw_exit = False, None, None

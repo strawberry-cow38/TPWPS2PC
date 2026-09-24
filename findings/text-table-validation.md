@@ -83,3 +83,8 @@ semantically altered but structurally valid translation or unsupported executabl
 dotnet run --project tools/TPW.PS2.AdvisorAudit -- --text-self-test --extreme-counts
 dotnet run --project tools/TPW.PS2.AdvisorAudit -- "$DISC"
 ```
+
+Peer follow-up: noncontiguous-offset errors now print actual/expected offsets and
+explicitly mention shared/overlapping strings, reordered rows or padding as unsupported
+by this checked profile. A different build with string deduplication is not automatically
+a damaged disc; the compatibility boundary is now visible in the diagnostic itself.

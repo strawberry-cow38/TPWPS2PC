@@ -8,10 +8,10 @@ namespace TPWPS2Viewer.Tests;
 /// This tests playback evidence and lifecycle, not audible quality or retail sound policy.</summary>
 public partial class RideSoundLifecycleAudit : Node3D
 {
-    int _bad;
+    int _bad, _checks;
     void Check(bool ok, string message)
     {
-        GD.Print((ok ? "AUDIO LIFECYCLE ok: " : "AUDIO LIFECYCLE FAIL: ") + message);
+        GD.Print((ok ? "AUDIO LIFECYCLE ok: " : "AUDIO LIFECYCLE FAIL: ") + $"[{++_checks}] {message}");
         if (!ok) _bad++;
     }
     static T Field<T>(object value, string name) => (T)value.GetType().GetField(name).GetValue(value);

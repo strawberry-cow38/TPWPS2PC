@@ -618,3 +618,32 @@ source/build provenance. Leave LightingAudit's real framebuffer gate separate: n
 label a headless run a pixel pass. No scene behavior/Viewer/needs/particle changes,
 no screenshots or proprietary asset output required. This makes the new permanent
 runtime gates actually easy to run together rather than relying on remembered commands.
+
+## M7: reproducible six-scene headless runtime runner
+
+Added tools/runtime_audit.py and27 runtime unit controls (47 combined with20 matrix
+controls). Always fresh Debug Rebuild, explicit mono engine/disc paths, sanitized TPW
+environment, named PASS/minimum coverage, zero exit plus clean error/leak output.
+Default six-scene gate passes actual Godot4.6/Dummy: visitor6cases,RSE6cases,texture146+
+clock,MTR4witnesses,browser45,audio37. Lighting framebuffer remains a separate real-render gate.
+
+Review fixed provenance gaps: ignored source files can compile and must be hashed;
+linked tools sources are included; actual executing runner/helper recorded separately
+from --repo; all output DLL/deps/runtimeconfig files hashed; before/after drift invalidates
+success. Advisor/audio logging gains assertion IDs so repeated lines cannot inflate
+coverage. Successful subsets have full_gate_passed=false, distinct from all_six_passed.
+No production Viewer/needs/effects changes. Existing matrix helper's optional explicit
+environment is backward-compatible; its log cap still bounds reads, not disk writes.
+
+Peer text-table feedback also applied: offset errors name shared/reordered/padded
+layouts outside the checked profile rather than implying every rejection is corruption.
+Evidence/limits/reproduction: findings/runtime-audit-runner.md; project scratch pointer
+tpw-runtime-evidence-path.txt, runtime unit log. Retain exact known park-matrix reds.
+
+Next bounded M7 item: test the current published source from a NEW detached clean
+worktree with this runtime runner, no copied disc/assets or inherited Godot build cache.
+Use installed toolchain and existing NuGet cache, and disclose that cache reuse rather
+than calling it a cold/offline install. Inspect before creating/removing anything;
+do not delete worktrees or artifacts destructively without confirmation. If clean
+source cannot build/run, reproduce and fix only the packaging/build issue, coordinating
+before touching peer-owned files. No bot restarts or harness work.

@@ -86,3 +86,10 @@ visual-review or audible-output limitations above, or certify full world-swap st
 `advisor-browser-audit.md` records 45 actual-control callback/metadata/PCM/lifetime
 checks and six rejected mutations on production `6aacf63`. This is deliberately not
 Viewer startup, physical input, layout/glyph inspection or a park-driven advisor.
+
+## Reproducible headless runner
+
+`tools/runtime_audit.py` now fresh-builds and runs the six headless-safe scenes together,
+recording named coverage, raw statuses and source/dependency/log fingerprints. See
+`runtime-audit-runner.md`. All six pass in the measured combined run; a selected subset
+is explicitly not a full-gate pass. Lighting/framebuffer and listening gates remain separate.
