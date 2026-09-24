@@ -687,6 +687,13 @@ public partial class Viewer : Node3D
                                    StretchMode = TextureRect.StretchModeEnum.Keep,
                                    TextureFilter = CanvasItem.TextureFilterEnum.Nearest };
         _money.SetAnchorsPreset(Control.LayoutPreset.TopLeft);
+        // ⚠ Added BEFORE the text so it draws behind it.
+        _moneyShadow = new TextureRect { MouseFilter = Control.MouseFilterEnum.Ignore, Visible = false,
+                                         StretchMode = TextureRect.StretchModeEnum.Keep,
+                                         TextureFilter = CanvasItem.TextureFilterEnum.Nearest,
+                                         Modulate = MoneyShadowTint };
+        _moneyShadow.SetAnchorsPreset(Control.LayoutPreset.TopLeft);
+        ui.AddChild(_moneyShadow);
         ui.AddChild(_money);
 
         // ⭐⭐ THE TOOL SAYS WHAT IT THINKS, ON SCREEN. Every refusal already printed a reason to
@@ -6884,7 +6891,7 @@ public partial class Viewer : Node3D
     ///   balance = FUN_00100688(park) / 10;                   // the units, in the HUD itself
     ///   if (balance &lt; 1) FUN_001388E8(t, 200, 0x82, 0);      // amber when broke
     ///   else             FUN_001388E8(t, 0xff, 0xff, 0);     // yellow otherwise
-    ///   FUN_0020B258(ctx, 2, 2);                             // scale 2 x 2
+    ///   FUN_0020B258(ctx, 2, 2);                             // DROP SHADOW at +2,+2
     ///   FUN_0020A958(ctx, 1);                                // font index 1
     ///   FUN_00142908(buf, balance);                          // "-$1,234"
     ///   FUN_00138798(t, buf, 0x26, 0x32, 10, 1);             // x 38, y 50
@@ -6916,9 +6923,21 @@ public partial class Viewer : Node3D
     /// same relative size at any window size, instead of drifting as the window grows.
     /// ⚠ The console frame itself is the one number still not read: 512x448 is the usual PS2
     /// text space and every constant here sits inside it, but no traced line states it.
-    const int MoneyX = 0x26, MoneyY = 0x32, MoneyScale = 2, MoneyFontIndex = 1;
+    /// ⚠⚠ `FUN_0020B258(ctx, 2, 2)` IS NOT A SCALE, which this file called it and master saw
+    /// at once: "the position is perfect. i think our scale is off tho." It sets three fields,
+    /// and `FUN_0020ACF8` shows what they are --
+    /// `if (ctx[5] != 0) draw(glyph, x + ctx[0], y + ctx[1], colour + 8)` -- so `ctx[5] = 1`
+    /// turns a DROP SHADOW on and `ctx[0]`/`ctx[1]` are its offset. The text itself is drawn at
+    /// **1:1**; two fields holding 2 looked like a scale and were an offset.
+    /// ⭐ Position being right while size was wrong is exactly the shape that says the FRAME is
+    /// correct and one constant inside it is not -- which is why that report was so useful.
+    const int MoneyX = 0x26, MoneyY = 0x32, MoneyShadow = 2, MoneyFontIndex = 1;
     const float ConsoleUiWidth = 512f, ConsoleUiHeight = 448f;
     static readonly Color MoneyNormal = new(1f, 1f, 0f), MoneyBroke = new(200 / 255f, 130 / 255f, 0f);
+    /// ⚠ The shadow is drawn in palette slot `colour + 8`, and what that slot holds is not read.
+    /// Black at half alpha is a shadow's usual job; marked rather than claimed.
+    static readonly Color MoneyShadowTint = new(0f, 0f, 0f, 0.55f);
+    TextureRect _moneyShadow;
 
     void ShowMoney()
     {
@@ -6927,7 +6946,7 @@ public partial class Viewer : Node3D
         // opened yet reads $0 rather than vanishing, because a missing readout looks like a
         // broken one.
         var bank = _sim?.Finances;
-        _money.Visible = _hudFont != null;
+        _money.Visible = _moneyShadow.Visible = _hudFont != null;
         if (_hudFont == null) return;
         // ⚠ Integer division toward zero, and the sign carried explicitly: the console's own
         // rounding of a negative balance has not been read, and -5 tenths reading as "0" with no
@@ -6935,7 +6954,7 @@ public partial class Viewer : Node3D
         // ⭐ `Money.Format` is `FUN_00142908`/`FUN_00142B68`: the sign, then '$', then the digits
         // with commas every three -- and the /10 the finance screen applies to every figure.
         string want = Money.Format(bank?.Balance ?? 0);
-        if (want != _moneyShown) { _moneyShown = want; _money.Texture = _hudFont.Render(want); }
+        if (want != _moneyShown) { _moneyShown = want; _money.Texture = _moneyShadow.Texture = _hudFont.Render(want); }
         // ⭐ The console's own test is on the DIVIDED figure, and it is `< 1` -- not `< 0`, so a
         // park holding less than one unit is already showing the warning colour.
         _money.Modulate = bank == null || bank.Balance / 10 < 1 ? MoneyBroke : MoneyNormal;
@@ -6945,8 +6964,10 @@ public partial class Viewer : Node3D
         _money.Position = new Vector2(MoneyX / ConsoleUiWidth * view.X, MoneyY / ConsoleUiHeight * view.Y);
         // ⚠ ONE factor for the glyphs, from the height: scaling x and y independently would
         // stretch the letters on any window whose aspect differs from the console's.
+        // ⭐ 1:1 in console pixels -- the 2 that used to be here was the shadow's offset.
         float k = view.Y / ConsoleUiHeight;
-        _money.Scale = new Vector2(MoneyScale * k, MoneyScale * k);
+        _money.Scale = _moneyShadow.Scale = new Vector2(k, k);
+        _moneyShadow.Position = _money.Position + new Vector2(MoneyShadow * k, MoneyShadow * k);
     }
 
     public override void _Process(double delta)
