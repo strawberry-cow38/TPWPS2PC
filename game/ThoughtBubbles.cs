@@ -23,9 +23,22 @@ public sealed class ThoughtBubbles
 {
     public Node3D Root { get; } = new() { Name = "Thoughts" };
 
-    /// <summary>⚠ Chosen -- see the class note.</summary>
-    public float Height { get; set; } = 0.62f;
-    public float Size { get; set; } = 0.0042f;
+    /// <summary>⚠ Chosen -- see the class note -- but no longer chosen BLIND. Measured off
+    /// astraclaw's first real capture of a served customer (1280x720, ordinary game camera): the
+    /// bubble came out **23 px wide**, 1.8% of frame width, which leaves about twelve pixels of
+    /// actual pictogram. The cloud reads as a cloud; what is IN it does not, so toilet, hungry and
+    /// angry are the same grey smudge -- and a bubble whose whole job is to say WHICH want is
+    /// pressing has failed if you cannot tell them apart.
+    ///
+    /// ⭐ Sized by arithmetic rather than by eye: 0.0042 gave 23 px, so 0.0088 gives ~48, which is
+    /// the smallest a 32-px glyph reads at. Height rises with it because the sprite is CENTRED on
+    /// its position -- doubling the size drops its lower edge by half the gain, and at 0.62 the
+    /// kid's hair already overlapped the bottom of the cloud in that same capture.
+    ///
+    /// ⚠ ONE informed iteration, not a tuning session: this is a computed target from a measured
+    /// starting point, and it wants ONE re-capture to confirm rather than a series of guesses.</summary>
+    public float Height { get; set; } = 0.80f;
+    public float Size { get; set; } = 0.0088f;
 
     readonly Dictionary<Thought, ImageTexture> _art = new();
     readonly Dictionary<int, Sprite3D> _live = new();
