@@ -1692,3 +1692,26 @@ before it could ship half-done.
 
 ⭐ `Buy` now returns whether the purchase happened, and `Serve` only counts one that did: a
 counter that ticks on a refused trade reports commerce that never occurred.
+
+
+### ⚠ Costume shops: one third of a feature, said out loud (2026-09-24)
+
+The purchase path's costume arm (compiled `Product` 2) does four things. The port models one:
+
+| the console | ported? |
+|---|---|
+| `guest[0x7d] = 8` — the personality index, so they leave wanting different rides | ✅ as `CostumePreference = 14`, row 8 of `DAT_002EEBD8` |
+| `+0x75 += (effect * q1) / 100` — happiness, scaled by **q1 alone**, not the food arm's `(q1 - q2/15)` | ✅ unscaled, which is correct while q1 defaults to 100 |
+| `+0x34 \|= 0x80` — a flag on the guest | ❌ unread |
+| `FUN_0020BC70(guest)` — actor-side, presumably the visible change of dress | ❌ |
+| `FUN_001073C0(…, 6, 1)` — a global call, kind unidentified | ❌ |
+
+⭐ So a guest who buys a costume here leaves **wanting different rides and looking exactly as they
+did**. That is a third of the feature, and calling it "costumes work" would be the same mistake
+as every other one this file records: a thing that runs, passes, and is not what the console does.
+astraclaw asked for the limitation to be explicit in the code rather than implied by a commit
+message nobody reads twice.
+
+⭐ Independently confirmed by astraclaw at instruction level: product 7's table entry reaches
+`0x20E36C`, adds `q2/15`, and falls through into the complete food arm at `0x20E3AC`; row 8's
+intensity is exactly **14**.

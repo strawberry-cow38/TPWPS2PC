@@ -420,7 +420,20 @@ public sealed class VisitorNeeds
                 // that array is what ordinary spawning draws from, and whether a new guest can
                 // BE personality 8 is a separate, unverified policy.
                 w.PreferredIntensity = CostumePreference;
+                // ⚠ The costume arm's happiness scales by q1 ALONE -- `(effect * q1) / 100`, not
+                // the food arm's `(q1 - q2/15)`. q1 defaults to 100, so unscaled is correct at a
+                // new shop and wrong the moment quality moves, like everywhere else.
                 w.Happiness = Clamp(w.Happiness + happinessEffect);
+                // ⚠⚠ THIS IS PART OF THE COSTUME FEATURE, NOT THE WHOLE OF IT, and saying so is
+                // the point -- a documented boundary is a TODO wearing a hat, so here is the hat
+                // off. The console's arm also:
+                //   `+0x34 |= 0x80`            a flag on the guest, unread
+                //   `FUN_0020BC70(guest)`      actor-side, presumably the visible change of dress
+                //   `FUN_001073C0(…, 6, 1)`    a global call, kind unidentified
+                // None of those are modelled. So a guest here leaves wanting different rides and
+                // looking exactly as they did, which is a THIRD of the feature -- not "costumes
+                // work". astraclaw asked for this limitation to be explicit rather than implied
+                // by a commit message nobody will read again.
                 break;
             case Trinket: case 6:
                 // Balloons and the gift shop: happiness and nothing else. No litter, no needs.
