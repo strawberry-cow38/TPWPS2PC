@@ -3,7 +3,10 @@ import unittest
 
 from audit_matrix import EXPECTED, classify
 
-COVERAGE = '\n'.join(['  ok   departure recovery: check'] * 5 +
+COVERAGE = '\n'.join(['  ok   ride effect consumer: check'] * 31 +
+                     ['  ok   ride effect consumer: value 55, sickness 20 becomes 20',
+                      '  ok   ride effect consumer: preference 30, value 81 awards band 5'] +
+                     ['  ok   departure recovery: check'] * 5 +
                      ['  ok   departure recovery: repaired departure resumes and reaches the gate'] +
                      ['  ok   service routing: check'] * 4 +
                      ['  ok   service routing: unreachable nearest does not degrade urgent errand to the distracting ride'] +
@@ -13,9 +16,10 @@ COVERAGE = '\n'.join(['  ok   departure recovery: check'] * 5 +
                      ['  ok   removal regression exercised a real non-track ride with seats'] +
                      ['  ok   conservation: check'] * 19 +
                      ['  ok   conservation: identical fixed-tick inputs reproduce the full sampled lifecycle (100 steps, SHA256 ' + 'A' * 64 + ')'] +
-                     ['  ok   needs lifecycle: check'] * 43 +
+                     ['  ok   needs lifecycle: check'] * 47 +
                      ['  ok   needs lifecycle: clock control actually applies four rises rather than passing with no updates',
-                      '  ok   needs lifecycle: normal completion applies the configured effect once without reseeding unaffected fields'] +
+                      '  ok   needs lifecycle: normal completion applies the configured effect once without reseeding unaffected fields',
+                      '  ok   needs lifecycle: completion preserves nonzero preference and applies its middle band instead of fallback7'] +
                      ['  ok   disruption: check'] * 18 +
                      ['  ok   disruption: identical disruption inputs replay the entire observed ledger',
                       '  ok   disruption: late-run negative control catches changed cash through ordinary per-step sampling',
@@ -28,6 +32,11 @@ def known(world):
 
 
 class ClassificationTests(unittest.TestCase):
+    def test_missing_effect_consumer_or_preference_lifecycle_is_not_green(self):
+        for label in ('ride effect consumer:', 'completion preserves nonzero preference'):
+            text = '\n'.join(line for line in COVERAGE.splitlines() if label not in line) + '\nPASS'
+            self.assertEqual(classify('JUNGLE', 0, text)['status'], 'missing_coverage')
+
     def test_missing_departure_helper_is_not_green(self):
         text = '\n'.join(line for line in COVERAGE.splitlines() if 'departure recovery:' not in line) + '\nPASS'
         self.assertEqual(classify('JUNGLE', 0, text)['status'], 'missing_coverage')
@@ -111,7 +120,7 @@ class ClassificationTests(unittest.TestCase):
         self.assertEqual(row['availability_checks'], 30)
         self.assertEqual(row['removal_checks'], 57)
         self.assertEqual(row['conservation_checks'], 20)
-        self.assertEqual(row['needs_lifecycle_checks'], 45)
+        self.assertEqual(row['needs_lifecycle_checks'], 50)
 
     def test_suppressed_failure_exit_is_not_pass(self):
         self.assertEqual(classify('HALLOW', 0, known('HALLOW'))['status'], 'unexpected_failure')

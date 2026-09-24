@@ -144,18 +144,19 @@ public sealed class VisitorNeeds
     /// agree. <see cref="Decide"/>'s `&gt; 90` is this same number; routing uses it too.</summary>
     public const int Urgent = 91;
 
-    /// <summary>The eight personalities' preferred ride intensities, off `DAT_002eebd8`.
+    /// <summary>The first eight verified preferred-intensity records at `DAT_002eebd8`;
+    /// this is the port's selection set, not a proved bound on the original table.
     /// See <see cref="VisitorWants.PreferredIntensity"/>.</summary>
     public static readonly byte[] Preferences = { 90, 30, 50, 75, 100, 45, 60, 70 };
 
     /// <summary>⭐⭐ A RIDE ONLY TURNS A STOMACH IF IT IS FIERCE ENOUGH, and the bar is READ:
-    /// `0x20F248` branches PAST the sickness term unless the ride's own value is above 55, and
+    /// The comparison at `0x20F248` and branch at `0x20F24C` skip sickness below56, and
     /// there is no other arm -- below it sickness is left exactly alone.
     ///
     /// ⚠⚠ THIS CLASS USED TO SAY THE OPPOSITE. "Sickness is measured against 30, so an intensity
     /// below that settles the stomach" -- it does not; nothing here ever settles a stomach, and
-    /// the port was quietly CURING sickness on every gentle ride, including at its own default of
-    /// 45. Found by astraclaw reading the consumer rather than the constant. The 30 is real, but
+    /// the port reduced sickness below30 and added it at30..55, including default45.
+    /// Found by astraclaw reading the consumer rather than the constant. The 30 is real, but
     /// it is the pivot INSIDE the term, not a threshold around it.</summary>
     public const int SickeningIntensity = 56;
 
@@ -409,8 +410,9 @@ public sealed class VisitorNeeds
     /// ⭐ Untouched here, and the contract depends on it: `Cash`, `Hunger`, `Thirst`, `Toilet`,
     /// `Litter` and `Thought`. Cash is the tripwire a continuity check watches for a reseed.
     ///
-    /// ⚠ The three scale factors are globals (`DAT_002EEB30/34/44`) that have NOT been read, so
-    /// they are arguments here rather than constants invented inside.</summary>
+    /// The image constants are now read: sickness1212/4096, boredom4096/4096 and happiness
+    /// bands15/10/5. Scale arguments remain explicit port/test parameters; no claim is made
+    /// that arbitrary overrides preserve the executable's fixed-point overflow semantics.</summary>
     /// ⚠ <paramref name="happinessGain"/> is now a FALLBACK: when the guest has a preference
     /// the band is computed from the mismatch instead -- see <see cref="RideHappinessFor"/>.
     public void Ride(int guest, int intensity, int happinessGain, float sickScale, float boredomScale)

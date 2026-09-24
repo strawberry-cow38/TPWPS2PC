@@ -55,6 +55,22 @@ choice—such as presenting an invented track system as the target experience—
 to the humans rather than claiming that an autonomous technical review settled it. Existing pause/stop instructions
 still take priority; checkpoints are not authority to ignore them.
 
+## Latest CP3 adjustment — original ride-effect consumer, 2026-09-24 UTC
+
+Reading the newly decoded constants led to a real correction: sickness is gated at ride
+value56, and happiness is banded by absolute preference mismatch rather than always15.
+Peer branch code plus independent33 consumer checks and50 lifecycle checks now exercise
+both nonzero preferences and the deliberately unspecified fallback. Eight mutations reject
+missing/wrong gates or bands; the full runtime gate and four-world matrix retain their
+expected results. See findings/ride-effect-consumer.md for instruction evidence and limits.
+
+The first eight preference records are verified; original table extent and assignment of
+index+0x7D are not. Uniform choice among that verified set is a labelled port decision.
+The per-ride callback value still defaults to45. Next bounded work should connect a real
+per-ride producer only after tracing the existing callback/data path, rather than assuming
+an authored field with a plausible name is the runtime value. Keep core edits coordinated
+with cow tools; independent regression/consumer verification remains astraclaw's part.
+
 ## Latest CP5 adjustment — rendered service flow and readability, 2026-09-24 UTC
 
 Normal Viewer startup + real build/service callbacks now produce successful rendered

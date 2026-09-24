@@ -18,7 +18,9 @@ static class NeedsLifecycleChecks
             sim.SetOpen(1, true); ride.Set("VAR_BROKEN", 0);
             var visitors = new ParkVisitors(sim, new GuestWalk(paths))
             {
-                Needs = new VisitorNeeds(123), RideIntensity = 40, RideHappiness = 7,
+                // Above the original consumer's56 sickness gate; keep the exactly-once
+                // arithmetic observable, not a passing zero-effect comparison.
+                Needs = new VisitorNeeds(123), RideIntensity = 60, RideHappiness = 7,
                 RideSickScale = .5f, RideBoredomScale = .5f,
             };
             // Freeze CHOSEN rates to isolate storage continuity from arithmetic.
@@ -27,8 +29,9 @@ static class NeedsLifecycleChecks
             var guest = visitors.Arrive(entrance, entrance);
             visitors.Needs.Set(guest.Id, new VisitorWants
             {
-                Happiness = 83, Sick = 71, Hunger = 94, Toilet = 88, Thirst = 96,
+                Happiness = 83, Sick = 61, Hunger = 94, Toilet = 88, Thirst = 96,
                 Litter = 61, Unknown78 = 62, Unknown7B = 63, Cash = 1234, Thought = Thought.Good,
+                PreferredIntensity = 0, // explicitly exercise the configurable fallback below
             });
             return (paths, sim, visitors, ride, guest);
         }
@@ -83,11 +86,29 @@ static class NeedsLifecycleChecks
         Check(returning.Visitors.Rides == 1 && Readmitted(returning.Visitors, returning.Guest.Id)
               && HasOneRideEffect(original, afterRide, returning.Visitors),
               "normal completion applies the configured effect once without reseeding unaffected fields");
-        Check(afterRide.Cash == 1234 && afterRide.Happiness == 90 && afterRide.Sick == 76 && afterRide.Unknown78 == 42,
+        Check(afterRide.Cash == 1234 && afterRide.Happiness == 90 && afterRide.Sick == 76 && afterRide.Unknown78 == 32,
               "non-clamping completion sentinels distinguish one effect from a double or fresh spawn");
         returning.Visitors.Step(0, null);
         Check(returning.Visitors.Rides == 1 && Same(afterRide, returning.Visitors.Needs.Of(returning.Guest.Id)),
               "subsequent steps neither repeat completion effects nor reroll their random reduction");
+
+        // A real completed/readmitted guest with an explicit nonzero preference exercises
+        // the banded consumer rather than the intentionally unspecified fallback fixture.
+        var tasted = Fresh();
+        var tasteBefore = tasted.Visitors.Needs.Of(tasted.Guest.Id); tasteBefore.PreferredIntensity = 90;
+        tasted.Visitors.Needs.Set(tasted.Guest.Id, tasteBefore);
+        Queue(tasted.Visitors, tasted.Ride, tasted.Guest);
+        for (int i = 0; i < 6000 && !tasted.Ride.Left.Contains(tasted.Guest.Id); i++) tasted.Sim.Advance(.04);
+        Check(tasted.Ride.Left.Contains(tasted.Guest.Id), "preference fixture receives a genuine script completion");
+        tasted.Sim.SetOpen(1, false); tasted.Visitors.Step(0, null);
+        var tasteAfter = tasted.Visitors.Needs.Of(tasted.Guest.Id);
+        Check(tasted.Visitors.Rides == 1 && Readmitted(tasted.Visitors, tasted.Guest.Id)
+              && tasteAfter.PreferredIntensity == 90 && tasteAfter.Happiness == 93
+              && tasteAfter.Sick == 76 && tasteAfter.Unknown78 == 32 && tasteAfter.Cash == 1234,
+              "completion preserves nonzero preference and applies its middle band instead of fallback7");
+        tasted.Visitors.Step(0, null);
+        Check(tasted.Visitors.Rides == 1 && Same(tasteAfter, tasted.Visitors.Needs.Of(tasted.Guest.Id)),
+              "preference-dependent completion is not repeated or reseeded on later steps");
 
         foreach (bool mailbox in new[] { true, false })
         {

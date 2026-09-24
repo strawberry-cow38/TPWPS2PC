@@ -957,3 +957,70 @@ Capture-driver landing gate rerun at6b0ff1f plus this driver: all7 runtime scene
 /tmp/tpw-smoke-integration-matrix-20260924 covers the same core1121263 integration with
 only the exact known retail reds; intervening bubble commits are comment-only. No images
 or asset bytes staged. Smoke methods stay outside the headless default scene set.
+
+## Ride-effect consumer gate mismatch reproduced (WIP, not pushed)
+
+13f6980 integrated cleanly: peer now stores ParkRide.Condition and exposes Soil as
+100-Condition for live relief facilities. Do not treat that view as unbounded cumulative
+soil or invent a cleaning consumer; core remains peer-owned.
+
+Read-only delegate checked FUN_0020EDD8 directly in original SLES_500.32, in memory from
+the disc. Initial concern was negative fixed-point rounding; the real finding is a
+missing gate. 0x20F248: slti v0,s0,56; 0x20F24C: bne v0,zero,0x20F28C skips the entire
+sickness block when ride value<56. Thus gentle rides DO NOT reduce sickness through this
+consumer. Negative-rounding concern is unreachable; do NOT fix it with floor alone.
+0x20F258 subtracts30; 0x20F25C loads1212; 0x20F264 mult, 0x20F268 sll12, 0x20F26C sra24;
+positive result added/clamped at100. Boredom4096 uses its own block outside sickness gate.
+Image constants1212/4096 independently verified; callback value sourcing is still separate.
+
+New local RideEffectConsumerChecks.cs has24 checks, invoked beside service helpers in
+ParkSimAudit Program.cs. Literal cases cover0,26,29,30,45,55,56,57,58,100 and upper clamp;
+other effects must still happen below56. JUNGLE baseline at13f6980 has EXACTLY4 reds:
+value0 Sick20->12 instead20;26 Sick1->0 instead1;45 Sick20->24 instead20;55 Sick20->27
+instead20. Others pass. Log tpw-ride-effect-consumer-before.log. No core changes made.
+
+Local NeedsLifecycleChecks fixture moved from intensity40 to60 (above the real gate),
+Sick sentinel71->61 and expected boredom42->32. Final sickness stays76, happiness90,
+cash1234. A double effect remains non-clamping (Sick91, happiness97, boredom2), preserving
+exactly-once discrimination. After that fixture correction only the4 new consumer reds
+remain; lifecycle45 checks still pass. Do not weaken existing continuity expectations.
+
+Peer was asked to own the conditional sickness guard and correct the gentle-ride comment.
+If existing main's below-gate lifecycle expectation goes red, stage peer change on a branch
+until this test update lands with it; never push a known-red integration. Next resume:
+check peer response/upstream, verify24 checks and existing45/world, run mutation controls
+for missing/off-by-one gate and accidentally gated whole effect, then current seven-scene
+and four-world gates with known retail reds unchanged. Add runner required coverage/docs,
+explicit-path commit/push only once green. Existing owner recurrence remains; no restart.
+
+## Ride-effect branch integrated and verified; pending landing
+
+Fetched/fast-forwarded peer ride-sickness-gate2027a5b then0ce3bf7 in the isolated branch;
+main remains13f6980 until our green integration lands. A second independent disc review
+confirmed absolute mismatch and happiness bands0..20=>15,21..50=>10,51+=>5, plus the
+sickness>=56 gate. It rejected a doc overclaim: first8 preference records verified does
+NOT prove original table length; getter has no bounds check. Peer corrected that in
+0ce3bf7. I corrected remaining stale comments (globals are read; default45 added4 sickness,
+not a cure; RideHappiness is fallback, not always flat15). No extra production logic edits.
+
+RideEffectConsumerChecks now33: original24 plus9 explicit nonzero-preference/band-edge
+cases with fallback7 deliberately unequal to15/10/5. NeedsLifecycleChecks explicitly
+sets preference0 for legacy configurable-effect fixtures; a second genuine completed /
+readmitted case sets preference90 and verifies middle-band happy93, Sick76, boredom32,
+cash1234, preference continuity and no double payout. Total needs lifecycle50. Disruption
+ledger includes PreferredIntensity. Matrix requires33 consumer/50 lifecycle and named
+witnesses;53 Python tests pass.
+
+8 production mutations rejected: missing gate(4 targeted failures), gate55(1), gate57(2),
+whole-effect gate(11), flat happiness(10), lower-band edge(2), upper-band edge(2), missing
+absolute mismatch(3). All source restored. Logs tpw-ride-effect-mutant-*.log and JSON
+summaries in scratch; the local source backup is tpw-ride-effect-mutations-original.cs.
+TPW.PS2.Check on real disc exits0. Full final functional gates:
+/tmp/tpw-ride-consumer-matrix-20260924 has all4worlds'33/50 checks and only exact known
+retail reds; /tmp/tpw-ride-consumer-runtime-20260924 all7pass, standing74.
+
+Next: verify branch/main haven't moved, commit explicit audit/doc paths (core edits are
+comment-only atop peer logic), push normal main and notify peer. Then choose the next
+bounded consumer gap from the updated plan—not another generic census. Per-ride value
+sourcing and original personality assignment remain genuine gaps; do not pretend constants
+alone implement them. No restart, no duplicate recurring task, no permission hold.
