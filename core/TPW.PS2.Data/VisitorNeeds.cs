@@ -93,8 +93,14 @@ public struct VisitorWants
     /// caught it -- the mirror of the "not found is not not-there" point I had made an hour
     /// earlier, made by me in the opposite direction.
     ///
-    /// ⚠ WHAT IS NOT READ is what SETS `+0x7d`: the spawn at `FUN_0020BCD0` writes every other
-    /// need byte and never touches it, so the personality is assigned somewhere else and this
+    /// ⭐⭐ AND INDEX 8 IS REACHABLE, SO THE TABLE IS NOT EIGHT ENTRIES. The purchase path's
+    /// shop-kind arm 2 does `guest[0x7d] = 8` outright (`0x20e6b8`), and there are **five** `sb`
+    /// writes to `+0x7d` in the guest range. So the row I dismissed as "other data" is a row the
+    /// game can select, and my "eight verified records" was a FLOOR, not a count -- which is
+    /// exactly what astraclaw said when they refused to let adjacency bound the table.
+    ///
+    /// ⚠ WHAT IS NOT READ is what sets `+0x7d` AT SPAWN: `FUN_0020BCD0` writes every other
+    /// need byte and never touches it, so the starting personality comes from elsewhere and this
     /// port picks uniformly from the eight VERIFIED records. The values are the game's; the
     /// choice is not, and neither is the belief that eight is all of them.</summary>
     public byte PreferredIntensity;

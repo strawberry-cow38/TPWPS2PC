@@ -1469,6 +1469,11 @@ still be the wrong number, if you read it out of one arm of three.
 | prefers | 90 | 30 | 50 | 75 | 100 | 45 | 60 | 70 |
 | (2nd u16) | 15 | 20 | 25 | 18 | 16 | 14 | 20 | 10 |
 
+⭐⭐ **RESOLVED, AND AGAINST ME: THE TABLE IS LONGER THAN EIGHT.** The purchase path's
+shop-kind arm 2 sets `guest[0x7d] = 8` outright at `0x20e6b8`, and five `sb` writes to `+0x7d`
+exist in the guest range. So the row I dismissed as "other data" is one the game can select. The
+original note below stands as written because the reasoning in it is the point.
+
 ⚠⚠ **EIGHT RECORDS ARE VERIFIED; THE LENGTH IS NOT.** This first said that index 10 holding two
 `1.0f` proved the table ends at eight. It does not: the getter has **no bounds check**, so a
 larger `+0x7d` would read that float data as an intensity. What the neighbouring bytes look like
@@ -1580,3 +1585,32 @@ passes rather than a tidied one.
 ⚠ Method note: the run that "confirmed" the fix printed `FAILs: 0` from a log containing a
 **compile error** — the grep counted failures in a file with no audit output at all. A green from
 a run that never happened. The loop now refuses a zero-check run explicitly.
+
+
+### ⭐⭐ The purchase path switches on SHOP KIND, and the arms are mirrored (2026-09-24)
+
+Chasing astraclaw's quality note into `FUN_0020E1A0` turned up more than the scale. The whole
+effect block is a `switch` on `FUN_001D1D08(shop)` — a shop-kind getter, ⚠ **not verified to be
+`UsageInfo.ShopType`** — and the arms are not variations on one behaviour:
+
+| arm | what it does to the guest |
+|---|---|
+| 0, 4, 5 | `+0x77 -= A`; `+0x7a += A`; `+0x79 += A`; `+0x76 += A`; `+0x75 += (C*(q1-q2/15))/100`; `+0x74 += …` |
+| 1 | **the mirror**: `+0x7a -= A`; `+0x77 += A`; the rest as above |
+| 2 | `+0x7d = 8`; `+0x34 |= 0x80`; calls `FUN_0020BC70`; happiness `+= (C*q)/100` |
+| 3, 6 | happiness only, `+= (C*q)/100` — no `/15` term |
+| 7 | `+0x7a += n/15` |
+
+⭐ **So `+0x77` and `+0x7a` are hunger and thirst, and the SHOP KIND decides which one it fills
+— raising the other by the same amount.** The port's `+0x77 = Hunger` holds for the default
+group (0/4/5); arm 1 is a different kind of shop working the other way.
+
+⚠⚠ **`VisitorNeeds.Buy` IS THEREFORE INCOMPLETE**, and deliberately left so tonight rather than
+rewritten at speed. It takes separate hunger and thirst reductions and cross-raises neither, where
+the console takes ONE amount per purchase, reduces the need its kind serves, and RAISES the
+opposite one. It also never adds the litter at `+0x74`. Flagged before anyone writes purchase
+tests against the current shape.
+
+⚠ The happiness scale is `(effect * (q1 - q2/15)) / 100` with `q1 = FUN_001D1F50(shop)` and
+`q2 = FUN_001D1FB8(shop)`; neither getter is read yet, so "quality" is still a name for two
+numbers rather than a decoded quantity.
