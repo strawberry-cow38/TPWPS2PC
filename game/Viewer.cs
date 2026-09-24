@@ -2803,6 +2803,12 @@ public partial class Viewer : Node3D
         // at the ride root for node -1 (the console's own reading of a negative node: 0x1b9388
         // takes the instance's position through 0x1b9220) or at the named fitting.
         _sounds ??= MakeSounds(); _burst ??= MakeParticles();
+        // ⭐ Where a sound parameter's value comes from. ⚠ A LAMBDA over the ride list, not a
+        // captured figure: the level changes every time SCREAMLEVEL fires.
+        if (_sounds != null) _sounds.ParameterValue ??= (rideId, param) =>
+            param == RideScreams.LevelSelector
+                ? _sim?.Rides.FirstOrDefault(r => r.Id == rideId)?.ScreamLevel ?? 0
+                : 0;
         if (_sounds != null || _burst != null) ride.Host.EffectRequested += fx => OnRideEffect(ride, model, fx);
         // ⭐⭐ THE SCRIPT ASKS WHERE ITS NODES ARE, and the placed model answers -- the ANIMATED one,
         // LastWorld through the ride root, not the bind pose -- so WALKON's legs take the real
@@ -2895,6 +2901,7 @@ public partial class Viewer : Node3D
                     if (ride.ScreamHandle != 0) break;          // already screaming; the console guards on inst[0xD0]
                     if (RideScreams.StartId(a[0]) is not int sid) break;   // nobody aboard
                     ride.ScreamHandle = sid;
+                    ride.ScreamLevel = RideScreams.Level(a[1], ride.Setting0xC0);
                     _sounds.Cue(ride.Id, ride.Name, fx.Time, fx.Opcode, (int)RideScreams.Group, -1, sid,
                                 RideScreams.Tag, model.Root.GlobalPosition);
                     GD.Print($"[scream] {fx.Time / 1000.0,7:F1}s {ride.Name,-22} START riders {a[0]} -> evt {sid}"
@@ -2905,15 +2912,22 @@ public partial class Viewer : Node3D
                     if (ride.ScreamHandle != 0)
                     {
                         _sounds?.Kill(ride.Id, ride.Name, RideScreams.Tag, fx.Time);
-                        ride.ScreamHandle = 0;
+                        ride.ScreamHandle = 0; ride.ScreamLevel = 0;
                     }
                     break;
                 case RseOpcode.SCREAMLEVEL when a.Count >= 1:
                     // The console still writes the handle back, so a level on a silent ride is a
                     // no-op rather than a start.
                     if (ride.ScreamHandle != 0)
+                    {
+                        // ⭐⭐ THIS NOW DOES SOMETHING. The scream events (0x47..0x4A) declare
+                        // `word12 = 6` and band their links 0-25 / 26-50 / 51-75 / 76-100, so the
+                        // level chooses which of four tiers of screaming plays -- it is a clip
+                        // selector, not a volume. See SfxEventMachine.
+                        ride.ScreamLevel = RideScreams.Level(a[0], ride.Setting0xC0);
                         GD.Print($"[scream] {fx.Time / 1000.0,7:F1}s {ride.Name,-22} LEVEL -> "
-                               + $"{RideScreams.Level(a[0], ride.Setting0xC0)} on parameter {RideScreams.LevelSelector} (carried, not applied)");
+                               + $"{ride.ScreamLevel} on parameter {RideScreams.LevelSelector}");
+                    }
                     break;
                 case RseOpcode.SINGLESCREAM when a.Count >= 2:
                 {

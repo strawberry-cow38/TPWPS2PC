@@ -188,8 +188,13 @@ public sealed class SoundCatalogue
     /// <summary><paramref name="Word0C"/> and <paramref name="Flags"/> are the L2 record's own
     /// `+0xC` and `+0x10`, carried through so a consumer can be written against them rather than
     /// against the shape of the sets -- which is what three wrong looping rules were built on.</summary>
+    /// <summary>⭐ <paramref name="Source"/> is the parsed event, carried so the LINKS survive.
+    /// <see cref="Clips"/> flattens every set into one list (each clip remembers its
+    /// <see cref="ResolvedClip.Set"/>), which is enough to group them into pools but throws away
+    /// the transitions between those pools -- and the transitions are the whole machine. See
+    /// <see cref="SfxEventMachine"/>. Null only for a caller that built a Resolved by hand.</summary>
     public sealed record Resolved(SoundGroup Group, int Id, string Map, IReadOnlyList<ResolvedClip> Clips,
-                                  int Sets, int Word0C = 0, int Flags = 0);
+                                  int Sets, int Word0C = 0, int Flags = 0, SfxMap.Event Source = null);
 
     readonly Disc _disc;
     readonly Dictionary<string, Disc.Entry> _files;
@@ -267,7 +272,7 @@ public sealed class SoundCatalogue
                 string file = bankName == null ? $"bank{c.Bank}?" : bankName.Replace('\\', '/').Split('/')[^1].ToUpperInvariant() + "HD.SDT";
                 clips.Add(new ResolvedClip(s, file, c.Sound, sound?.Name ?? "??", c.Milliseconds, c.Threshold));
             }
-        return new Resolved(group, id, path, clips, ev.Sets.Count, ev.Word0C, ev.Flags);
+        return new Resolved(group, id, path, clips, ev.Sets.Count, ev.Word0C, ev.Flags, ev);
     }
 
     /// <summary>The bank a resolved clip lives in, for whoever decodes it. Null when the bank

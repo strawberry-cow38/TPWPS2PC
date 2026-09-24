@@ -132,6 +132,12 @@ public sealed class ParkRide
     /// ⚠ The console also mirrors it into `inst + 0x48`; nothing here reads that copy.</summary>
     public int ScreamHandle { get; set; }
 
+    /// <summary>The scream's current level, 0..100, as `STARTSCREAM`/`SCREAMLEVEL` computed it --
+    /// `clamp((operand + Setting0xC0) / 2, 0, 100)`. It is sound parameter
+    /// <see cref="RideScreams.LevelSelector"/>, and the scream event's own links band on it, so
+    /// this is what decides which tier of screaming plays. ⚠ Zero when nothing is screaming.</summary>
+    public int ScreamLevel { get; set; }
+
     // Concrete +1D4 producers and constructor defaults, including family differences.
     // These operating settings are not assertions about the RSE variable bindings.
     int? _speed, _duration;

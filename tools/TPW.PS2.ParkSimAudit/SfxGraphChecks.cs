@@ -141,6 +141,31 @@ static class SfxGraphChecks
         // every four-set event points past the end. Zero out-of-range means the -1 is right.
         Check(oob == 0, $"no link target falls outside its event ({oob} would mean the index base is wrong)");
 
+        // ---- ⚠⚠ WHICH GRAPHS DEPEND ON A PARAMETER WE CANNOT SOURCE? -------------------
+        // Only parameter 6 has a value in this port (the scream level). A graph whose links all
+        // span [0..100] runs correctly whatever the parameter reads, because every link always
+        // matches. The ones with NARROW bands are the ones a placeholder 0 would misdirect, so
+        // they are counted here rather than left as a footnote -- if the number grows, somebody
+        // added a graph whose driver is still unknown.
+        int blind = 0, blindNarrow = 0;
+        var blindParams = new SortedSet<int>();
+        foreach (var f in disc.Files().Where(x => x.Path.ToUpperInvariant().EndsWith("SFX.MAP")))
+        {
+            SfxMap m;
+            try { m = new SfxMap(disc.Read(f.Extent, f.Size)); } catch { continue; }
+            foreach (var e in m.Events)
+            {
+                if (!SfxEventMachine.IsGraph(e) || e.Word12 == RideScreams.LevelSelector) continue;
+                blind++;
+                if (e.Sets.Any(st => st.Links.Any(l => l.Low > 0 || l.High < 100)))
+                { blindNarrow++; blindParams.Add(e.Word12); }
+            }
+        }
+        Check(blindNarrow < blind, $"{blind - blindNarrow} of {blind} graphs on an unsourced parameter have full-range links "
+            + "-- those run correctly regardless of its value");
+        Check(blindNarrow > 0, $"⚠ but {blindNarrow} have NARROW bands and would be misdirected by the placeholder 0 "
+            + $"(parameters {string.Join(",", blindParams)}) -- this is the honest gap, not a pass");
+
         // ---- ⭐ the weights, and the assumption the uniform draw rests on ----------------
         // Every set of an event carries the same value, and it is an equal share of 0xFFFF. That
         // is why the weighted draw comes out uniform on this disc. If a map ever breaks this the

@@ -256,9 +256,15 @@ public sealed class RideSounds
             DropRepeats(rideId, tag);
             _repeats.Add(new Repeater { Ride = rideId, Tag = tag, Kind = kind, At = at, Catalogue = cat,
                                         Event = r, IntervalSeconds = r.Word0C / 1000.0,
-                                        Due = r.Word0C / 1000.0, Head = head });
+                                        Due = r.Word0C / 1000.0, Head = head,
+                                        Set = SfxEventMachine.Start(r.Source) ?? 0 });
         }
-        var bank = sets.Count > 0 ? sets[_rng.Next(sets.Count)] : r.Clips;
+        // ⭐⭐ A GRAPH STARTS AT ITS FIRST SET. `FUN_0024C1F0` begins at `event[+8]`, the first
+        // set, and only moves on through the links. Choosing a random set here -- which is what
+        // this did -- plays the bus's pull-away before its approach.
+        bool graph = SfxEventMachine.IsGraph(r.Source);
+        var bank = graph && sets.Count > 0 ? sets[0]
+                 : sets.Count > 0 ? sets[_rng.Next(sets.Count)] : r.Clips;
         var chosen = Pick(bank);
         var stream = chosen == null ? null : Stream(cat, r, chosen, sustains);
         string place = $"at ({at.X:F1},{at.Y:F1},{at.Z:F1}){(fellBack ? " ROOT (fitting did not resolve)" : "")}{(park == 2 ? " park-2 map" : "")}";
@@ -295,6 +301,9 @@ public sealed class RideSounds
 
     sealed class Repeater
     {
+        /// <summary>⭐ Where <see cref="SfxEventMachine"/> currently is in the event's graph.
+        /// Only meaningful when the event IS a graph; a plain repeating event ignores it.</summary>
+        public int Set;
         public int Ride, Tag, Kind;
         public Vector3 At;
         public SoundCatalogue Catalogue;
@@ -304,6 +313,24 @@ public sealed class RideSounds
     }
     readonly List<Repeater> _repeats = new();
     public int Repeating => _repeats.Count;
+
+    /// <summary>What a numbered sound parameter currently reads for a given ride -- the value the
+    /// event's links are tested against. ⭐ Per RIDE, because two rides can be screaming at
+    /// different levels at once and a single global would give them each other's. See <see cref="SfxEventMachine"/>.
+    ///
+    /// ⚠⚠ ONLY PARAMETER 6 IS SOURCED, and it is the ride scream's level. Every other id falls
+    /// back to 0 because nothing has read where its value comes from -- notably **18**, which 31
+    /// of the disc's 68 graphs branch on and which drives every park's ambient bed. ⭐ For the
+    /// graphs whose links all span `[0..100]` the value cannot change the outcome, so those run
+    /// correctly regardless; the ones with narrow bands are the ones a wrong 0 would misdirect,
+    /// and the audit lists exactly which those are.</summary>
+    public Func<int, int, int> ParameterValue { get; set; }
+
+    /// <summary>The console's own generator for the transition draw, kept separate from
+    /// <see cref="_rng"/> so clip choice and set choice do not consume each other's numbers.</summary>
+    readonly SfxEventMachine.Rng _graphRng = new(1);
+
+    int ParamOf(int ride, SfxMap.Event ev) => ev == null ? 0 : (ParameterValue?.Invoke(ride, ev.Word12) ?? 0);
 
     void DropRepeats(int ride, int tag)
         => _repeats.RemoveAll(t => t.Ride == ride && (tag < 0 || t.Tag == tag));
@@ -373,9 +400,33 @@ public sealed class RideSounds
             t.Due -= simSeconds;
             if (t.Due > 0) continue;
             t.Due += t.IntervalSeconds;
-            var pool = Enumerable.Range(0, t.Event.Sets).Select(k => t.Event.Clips.Where(c => c.Set == k).ToList())
-                                 .Where(l => l.Count > 0).ToList();
-            var pick = Pick(pool.Count > 0 ? pool[_rng.Next(pool.Count)] : t.Event.Clips);
+            List<SoundCatalogue.ResolvedClip> bank;
+            if (SfxEventMachine.IsGraph(t.Event.Source))
+            {
+                // ⭐⭐ FOLLOW THE LINKS. The set that plays next is drawn among the links whose
+                // band contains the parameter, weighted by the target's own weight -- not picked
+                // at random from all of them, which is what this used to do and which played the
+                // bus's four sets (approach / stop / idle / pull-away) in any order at all.
+                var next = SfxEventMachine.Next(t.Event.Source, t.Set, ParamOf(t.Ride, t.Event.Source), _graphRng);
+                if (next == null)
+                {
+                    // ⭐ No link's band contains the value: the console STOPS here, and so does
+                    // this -- the repeater retires rather than looping on its last set forever.
+                    string done = $"[snd] {t.Head} graph ended at set {t.Set} (no band holds {ParamOf(t.Ride, t.Event.Source)})";
+                    Census.Add(done); GD.Print(done);
+                    _repeats.RemoveAt(i);
+                    continue;
+                }
+                t.Set = next.Value;
+                bank = t.Event.Clips.Where(c => c.Set == t.Set).ToList();
+            }
+            else
+            {
+                var pool = Enumerable.Range(0, t.Event.Sets).Select(k => t.Event.Clips.Where(c => c.Set == k).ToList())
+                                     .Where(l => l.Count > 0).ToList();
+                bank = pool.Count > 0 ? pool[_rng.Next(pool.Count)] : t.Event.Clips.ToList();
+            }
+            var pick = Pick(bank.Count > 0 ? bank : t.Event.Clips);
             var wav = pick == null ? null : Stream(t.Catalogue, t.Event, pick, false);
             if (wav != null) Start(t.Ride, t.Tag, pick.Name, wav, false, t.Kind, t.At, t.Head);
         }
