@@ -171,7 +171,28 @@ public sealed class RideSounds
             return;
         }
         Resolved++;
-        bool loop = op == RseOpcode.ADDOBJ;
+        // ⚠⚠ "ADDOBJ MEANS LOOP" WAS AN INFERENCE AND IT IS WRONG. findings/sound.md said so in
+        // its own words -- "a reading of the scripts ... not of the object list at instance
+        // +0xb0, which has not been walked" -- and master heard the consequence: bins and
+        // loudspeakers humming forever, with no guest anywhere near them.
+        //
+        // ⭐⭐ THE DATA SETTLES IT, AND NAMES ITSELF. `End.RSE` does
+        // `ADDOBJ group 9 evt 186` and that event resolves to ONE set holding **`WinOneShot.mp2`**
+        // -- a clip the authors called a one-shot, played on an endless loop by this port because
+        // of the opcode it arrived on. Its neighbours are the same shape: a firework burst and a
+        // `woooosh`, one set each. Meanwhile `bus.RSE`'s `ADDOBJ` resolves to FOUR sets --
+        // `mk_bus_1 | nl_bus_stop | nl_bus_idle | pullaway3b` -- an approach, an idle to sit on,
+        // and a pull-away. That is what a thing that genuinely loops looks like in this data.
+        //
+        // ⭐ So looping is a property of the EVENT, not of the instruction: an event with the
+        // start/loop/end structure has a middle to sustain, and a single-set event does not.
+        // `ADDOBJ` still means "add an object" -- something persistent that `KILLOBJ tag` can
+        // stop -- which is exactly what the tag semantics say and costs nothing to keep.
+        //
+        // ⚠ Sets of exactly two are left as one-shots: nothing in the data has been read that
+        // says which of the two would be the sustaining half, and guessing that is how the last
+        // inference got here.
+        bool loop = op == RseOpcode.ADDOBJ && r.Sets >= 3;
         // ⭐⭐ ONE LIVE OBJECT PER TAG, AND WITHOUT THIS THEY STACK FOREVER. Master, playing:
         // "loadspeakers and bins are spamming sounds forever ... crazy ape spams a snort sound
         // mid cycle." Reproduced in this repo's own census before touching anything: over one

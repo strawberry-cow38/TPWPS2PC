@@ -2231,7 +2231,28 @@ JUNGLE run there are **46 `ADDOBJ` against 14 `KILLOBJ`**, and Crazy Ape's `boil
 re-issued at **7.1s, 20.2s, 33.2s, 46.3s and 59.4s**. Each started another looping voice on top of
 the last.
 
-⭐ The script language settles the right behaviour: `ADDOBJ` names an object and `KILLOBJ tag` /
+⚠⚠ **AND THE FIRST FIX WAS AIMED AT THE WRONG THING.** Deduping by tag stopped voices STACKING,
+which was real, but master's actual complaint survived it: *"the sound is looping"*, on bins and
+loudspeakers, with no guest anywhere near them.
+
+⭐⭐ **"`ADDOBJ` MEANS LOOP" WAS AN INFERENCE, AND `findings/sound.md` SAID SO IN ITS OWN WORDS** --
+"a reading of the scripts ... not of the object list at instance `+0xb0`, which has not been
+walked". The data disproves it and names itself doing so: `End.RSE` does `ADDOBJ group 9 evt 186`,
+and that event resolves to ONE set holding **`WinOneShot.mp2`**. A clip the authors called a
+one-shot, played endlessly because of the opcode it arrived on. Its neighbours are the same
+shape -- a firework burst, a `woooosh` -- one set each. **8 such scenery events in JUNGLE alone.**
+
+⭐ Against that, `bus.RSE`'s `ADDOBJ` resolves to **four** sets: `mk_bus_1 | nl_bus_stop |
+nl_bus_idle | pullaway3b` -- an approach, an idle to sit on, a pull-away. That is what something
+that genuinely loops looks like here, and **6** scenery events have it.
+
+⭐⭐ So looping is a property of the **event**, not the instruction: an event with the
+start/loop/end structure has a middle to sustain and a single-set event does not. `ADDOBJ` still
+means "add an object" -- something persistent that `KILLOBJ tag` can stop.
+⚠ Two-set events stay one-shots: nothing read says which half would sustain, and guessing that is
+how the previous inference got here.
+
+⭐ The tag semantics still settle the stacking half: `ADDOBJ` names an object and `KILLOBJ tag` /
 `FADEOBJ tag` act on *the* object with that tag — singular, and `RideSounds.Kill` already looks it
 up that way. Re-adding a live tag restarts that object; it does not create a second one.
 ⚠⚠ NOT a decoded rule: the console's object list at instance `+0xb0` has never been walked. What
