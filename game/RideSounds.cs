@@ -254,9 +254,10 @@ public sealed class RideSounds
         if (loop && repeats)
         {
             DropRepeats(rideId, tag);
+            bool byClip = SfxEventMachine.IsGraph(r.Source);
             _repeats.Add(new Repeater { Ride = rideId, Tag = tag, Kind = kind, At = at, Catalogue = cat,
                                         Event = r, IntervalSeconds = r.Word0C / 1000.0,
-                                        Due = r.Word0C / 1000.0, Head = head,
+                                        Due = r.Word0C / 1000.0, Head = head, ByClipLength = byClip,
                                         Set = SfxEventMachine.Start(r.Source) ?? 0 });
         }
         // ⭐⭐ A GRAPH STARTS AT ITS FIRST SET. `FUN_0024C1F0` begins at `event[+8]`, the first
@@ -274,6 +275,10 @@ public sealed class RideSounds
                     + (stream == null ? "  ⚠ NO STREAM (undecodable or missing bank)" : $" {(stream.Stereo ? "stereo" : "mono")} {stream.MixRate}Hz");
         Census.Add(line); GD.Print(line);
         if (stream != null) Start(rideId, tag, chosen.Name, stream, sustains, kind, at, line);
+        // ⭐ and the first advance is due when THAT clip ends, not Word0C later.
+        if (graph && chosen != null)
+            foreach (var t in _repeats)
+                if (t.Ride == rideId && t.Tag == tag && t.ByClipLength) t.Due = chosen.Milliseconds / 1000.0;
     }
 
     /// <summary>⭐⭐ A SOUND OBJECT THAT FIRES AGAIN ON ITS OWN TIMER, which is what master
@@ -304,6 +309,23 @@ public sealed class RideSounds
         /// <summary>⭐ Where <see cref="SfxEventMachine"/> currently is in the event's graph.
         /// Only meaningful when the event IS a graph; a plain repeating event ignores it.</summary>
         public int Set;
+
+        /// <summary>⭐⭐ A GRAPH ADVANCES WHEN ITS CLIP ENDS, NOT ON `Word0C`. Master, playing:
+        /// the litter bin "is meant to make a constant fly buzzing sound. its sound effect is a
+        /// single bzz- as it stands". Its event is `GLOBAL/RIDESFX` 93 -- `wasp000..003`, **44 to
+        /// 118 ms each** -- against a `Word0C` of **3200 ms**, so this port played a 60 ms buzz
+        /// and then three seconds of silence.
+        ///
+        /// ⭐⭐⭐ AND THE DATA PROVES THE RULE, not just the symptom: set1 of that event is
+        /// **`blank.mp2`, NINE MILLISECONDS**, carrying weight 93 against set0's 4172 -- a
+        /// deliberate ~2% silent gap. A nine-millisecond pause is only a pause if the clips
+        /// around it are CONTIGUOUS. The authors wrote a continuous buzz with an occasional
+        /// catch in it, which is meaningless at one clip per 3.2 s.
+        ///
+        /// ⚠ That agrees with the chain in findings/sound.md -- the next clip is started when the
+        /// instance is IDLE -- and is the evidence that chain was missing. What `Word0C` means for
+        /// a graph event is now an open question rather than an answered one.</summary>
+        public bool ByClipLength;
         public int Ride, Tag, Kind;
         public Vector3 At;
         public SoundCatalogue Catalogue;
@@ -427,7 +449,8 @@ public sealed class RideSounds
             var t = _repeats[i];
             t.Due -= simSeconds;
             if (t.Due > 0) continue;
-            t.Due += t.IntervalSeconds;
+            // ⭐ A graph's next advance is set from the clip chosen BELOW, once it is known.
+            if (!t.ByClipLength) t.Due += t.IntervalSeconds;
             List<SoundCatalogue.ResolvedClip> bank;
             if (SfxEventMachine.IsGraph(t.Event.Source))
             {
@@ -455,6 +478,10 @@ public sealed class RideSounds
                 bank = pool.Count > 0 ? pool[_rng.Next(pool.Count)] : t.Event.Clips.ToList();
             }
             var pick = Pick(bank.Count > 0 ? bank : t.Event.Clips);
+            // ⚠ A clip of 0 ms would schedule the next advance for the same instant and spin the
+            // loop forever inside one tick; fall back to the event's own interval there.
+            if (t.ByClipLength)
+                t.Due += pick is { Milliseconds: > 0 } ? pick.Milliseconds / 1000.0 : t.IntervalSeconds;
             var wav = pick == null ? null : Stream(t.Catalogue, t.Event, pick, false);
             if (wav != null) Start(t.Ride, t.Tag, pick.Name, wav, false, t.Kind, t.At, t.Head);
         }
