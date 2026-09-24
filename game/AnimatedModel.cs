@@ -31,6 +31,10 @@ public sealed class AnimatedModel
         public List<Godot.Vector3> Normal;
         public List<Model.Triangle> Tris;
         public int[] AnimMap;
+        /// <summary>Vertex -> UV-group, from the run list at mesh +0x9c.</summary>
+        public int[] UvMap;
+        /// <summary>One key list per UV group, for the record now playing, or null.</summary>
+        public List<Aps.UvKey[]> UvKeys;
         /// <summary>The mesh's skin, or null for a mesh that is not skinned (every ride part).</summary>
         public Model.Skin Skin;
         public List<(int[] Times, System.Numerics.Vector3[] Keys)> Morph;
@@ -107,6 +111,7 @@ public sealed class AnimatedModel
                 if ((BitConverter.ToUInt32(model.D, offset) & 0x10) != 0)
                     _hidden.Add(model.NodeIndex(offset));
         _textureIndices = new int[model.MaterialTextures.Count];
+        FindUvDrivenMaterials();
         UseRecord(rec);
 
         foreach (var mesh in _model.Meshes)
@@ -123,6 +128,7 @@ public sealed class AnimatedModel
                 Normal = nor.Select(v => new Godot.Vector3(v.X, v.Y, v.Z)).ToList(),
                 Tris = tris,
                 AnimMap = _model.AnimVertexMap(mesh),
+                UvMap = _model.UvVertexMap(mesh),
                 Ancestry = _model.Ancestry(mesh.Index),
                 Morph = MorphFor(rec, mesh.Index),
             };
@@ -136,6 +142,7 @@ public sealed class AnimatedModel
                           + (p.AnimMap == null ? "nothing" : (p.AnimMap.Max() + 1).ToString()) + " -- not skinned");
                 p.Skin = null;
             }
+            BindUvTrack(p, rec);
             BuildSurfaces(p);
             _parts.Add(p);
             var vs = _vis.TryGetValue(mesh.Index, out var vv) ? "vis[" + string.Join(",", vv) + "]" : "always";
@@ -188,6 +195,9 @@ public sealed class AnimatedModel
         // that breaks it. It threw for girl1a (25 tracks) and girl4a (24) and not for girl2a (22)
         // or boy1a (22), which is the shape of an overrun: whether it lands past the end depends
         // on how many tracks the record has, so it looks like a per-character quirk.
+        // ⚠ The UV keys belong to the RECORD, so they must follow a record change; binding them
+        // only in the constructor would leave a shop animating its Create keys forever.
+        foreach (var p in _parts) BindUvTrack(p, rec);
         var textureTracks = rec is { Skeletal: true } ? new() : _anim?.TextureTracks(rec) ?? new();
         foreach (var track in textureTracks)
         {
@@ -472,6 +482,65 @@ public sealed class AnimatedModel
         return 0f;
     }
 
+    /// <summary>Attach this part's UV keyframes for the record now playing.
+    ///
+    /// ⚠ The run list and the track must AGREE: the mesh's +0x9c list has to name exactly as many
+    /// groups as the track has entries, or an entry index would address a group that does not
+    /// exist. For `cn_stall` both are 49 over 68 vertices. A mismatch means this is not the list
+    /// the track meant, so the keys are dropped rather than guessed at.</summary>
+    void BindUvTrack(Part p, Aps.Record rec)
+    {
+        p.UvKeys = null;
+        if (_anim == null || rec == null || rec.Skeletal || rec.Tracks == 0 || p.UvMap == null) return;
+        for (int t = 0; t < rec.TrackCount; t++)
+        {
+            int off = _anim.TrackAt(rec, t);
+            if ((_anim.TrackFlags(off) & 0x10000) == 0) continue;
+            if (!string.Equals(_model.NodeName(_anim.TrackNode(off)), p.Mesh.Name,
+                               StringComparison.OrdinalIgnoreCase)) continue;
+            var keys = _anim.UvTrack(off);
+            if (keys != null && p.UvMap.Max() + 1 == keys.Count) p.UvKeys = keys;
+            return;
+        }
+    }
+
+    /// <summary>Materials whose UVs the disc animates with authored keys.
+    ///
+    /// ⚠⚠ COMPUTED FROM THE MODEL, NOT FROM `_parts`, AND THAT IS THE WHOLE POINT. `BuildSurfaces`
+    /// runs inside the constructor's mesh loop and `_parts.Add` happens AFTER it, so a version of
+    /// this that walked `_parts` saw an empty list, reported "not key-driven", and let the shader
+    /// spin the swirl on top of its own keyframes. The audit caught it; it is the same ordering
+    /// trap `SpinPivot` already had to dodge.
+    ///
+    /// ⭐ Any record counts, not just the one playing: a material animated in one record must not
+    /// carry a shader spin that would still be running during another.</summary>
+    readonly System.Collections.Generic.HashSet<int> _uvDriven = new();
+
+    void FindUvDrivenMaterials()
+    {
+        if (_anim == null) return;
+        foreach (var rec in _anim.Records())
+        {
+            if (rec.Skeletal || rec.Tracks == 0) continue;
+            for (int t = 0; t < rec.TrackCount; t++)
+            {
+                int off = _anim.TrackAt(rec, t);
+                if ((_anim.TrackFlags(off) & 0x10000) == 0) continue;
+                string node = _model.NodeName(_anim.TrackNode(off)) ?? "";
+                foreach (var mesh in _model.Meshes)
+                {
+                    if (!string.Equals(mesh.Name, node, StringComparison.OrdinalIgnoreCase)) continue;
+                    var map = _model.UvVertexMap(mesh);
+                    var keys = _anim.UvTrack(off);
+                    if (map == null || keys == null || map.Max() + 1 != keys.Count) continue;
+                    foreach (var tri in _model.Triangles(mesh)) _uvDriven.Add(tri.Material);
+                }
+            }
+        }
+    }
+
+    bool UvDriven(int material) => _uvDriven.Contains(material);
+
     void SetTexture(ShaderMaterial material, int slot, int index)
     {
         string name = slot >= 0 && slot < _model.MaterialTextures.Count
@@ -481,6 +550,10 @@ public sealed class AnimatedModel
         // rather than by which model is wearing it -- the engine's `fScrollRate` sits beside
         // `pcTextureFilename`, not on the material. See TextureMotion.
         var motion = TextureMotion.ForModelTexture(name);
+        // ⭐⭐ KEYS WIN. A material the disc animates by keyframes gets the ordinary shader: the
+        // motion is already in its vertices, and turning it again in the shader would compound
+        // the two. The name-matched fallback is only for a surface the data does not cover.
+        if (UvDriven(slot)) motion = TextureMotion.Still;
         material.Shader = motion.Moves ? MovingShader(soft) : (soft ? BlendShader : ViewerShader);
         if (motion.Moves)
         {
@@ -547,6 +620,20 @@ public sealed class AnimatedModel
             var ev = p.Morph.Select(v => Sample(v.Times, v.Keys, now)).ToArray();
             pos = p.AnimMap.Select(i => ev[i]).ToList();
         }
+        // ⭐⭐ AUTHORED UV KEYFRAMES, the game's real moving-texture channel. One sample per
+        // GROUP, fanned out to vertices through the +0x9c run list -- the same shape the position
+        // paths above use, because the console walks one run list per channel.
+        var uv = p.Uv;
+        if (p.UvKeys != null && p.UvMap != null)
+        {
+            var sampled = new Godot.Vector2[p.UvKeys.Count];
+            for (int i = 0; i < sampled.Length; i++)
+            {
+                var (u, v) = Aps.SampleUv(p.UvKeys[i], now);
+                sampled[i] = new Godot.Vector2(u, v);
+            }
+            uv = p.UvMap.Select(i => sampled[i]).ToList();
+        }
         int si = 0;
         foreach (var grp in p.Tris.GroupBy(t => t.Material))
         {
@@ -569,7 +656,7 @@ public sealed class AnimatedModel
                 // needed now that the file's flag is read.
                 foreach (var idx in new[] { t.A, t.C, t.B })
                 {
-                    st.SetUV(p.Uv[idx]);
+                    st.SetUV(uv[idx]);
                     // ⭐ The model's OWN normal, not one derived from triangle order.
                     st.SetNormal(p.Normal[idx]);
                     var raw = p.Normal[idx] * 127f;
@@ -580,7 +667,7 @@ public sealed class AnimatedModel
                 if (!two) continue;
                 foreach (var idx in new[] { t.A, t.B, t.C })  // back copy
                 {
-                    st.SetUV(p.Uv[idx]);
+                    st.SetUV(uv[idx]);
                     var raw = -p.Normal[idx] * 127f;
                     st.SetCustom(0, new Color(Mathf.Round(raw.X), Mathf.Round(raw.Y), Mathf.Round(raw.Z), 0));
                     st.SetNormal(-p.Normal[idx]);                 // ⚠ flipped, or it lights inside-out
@@ -670,7 +757,10 @@ public sealed class AnimatedModel
             foreach (var surface in p.Surfaces) surface.Visible = shown;
             // Native hiding is a draw state, not a reason to freeze evaluated pose.
             if (!shown && !_ordinaryVisibility && !_nativeNodeVisibility) continue;
-            if ((p.Morph != null || (pose != null && p.Skin != null)) && p.AnimMap != null) RebuildGeometry(p, now, pose);
+            // ⚠ `|| p.UvKeys != null` -- a part whose ONLY animation is its UVs has no morph and
+            // no skin, so the old gate skipped it and it would never have been rebuilt at all.
+            if (((p.Morph != null || (pose != null && p.Skin != null)) && p.AnimMap != null)
+                || p.UvKeys != null) RebuildGeometry(p, now, pose);
             var w = world[p.NodeOffset];
             var t = new Transform3D(
                 new Godot.Basis(new Godot.Vector3(w.M11, w.M12, w.M13),
