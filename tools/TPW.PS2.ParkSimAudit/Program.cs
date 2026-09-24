@@ -778,6 +778,22 @@ foreach (var bs in wad.Entries.Where(e => e.Path.EndsWith(".rse", StringComparis
                         + string.Join(" ", ins4.Operands.Select(o => o.Index)));
 }
 
+// ⭐ WHAT KINDS DOES THE COMPILED DIRECTORY HOLD, and do any of them look like a path? Master
+// asked what paths and queues cost; the tool debits a per-tool figure and where that figure comes
+// from is not yet traced, so this asks whether the DBA prices them as assets the way it prices
+// features.
+try
+{
+    var dbaE = Wad("DATA").Entries.FirstOrDefault(e => e.Path.Equals("/arsdb.dba", StringComparison.OrdinalIgnoreCase));
+    if (dbaE != null)
+    {
+        var db2 = new AssetResourceDatabase(Wad("DATA").Read(dbaE));
+        var byKind = db2.Entries.GroupBy(e => e.Kind).OrderBy(g => (int)g.Key);
+        Console.WriteLine("  dba kinds: " + string.Join("  ", byKind.Select(g => $"{(int)g.Key}:{g.Key}={g.Count()}")));
+    }
+}
+catch (Exception e) { Console.WriteLine($"  (dba kind census failed: {e.Message})"); }
+
 // ⭐⭐ CAN THE GAME'S OWN FONT ACTUALLY DRAW THE MONEY? The readout composes glyphs out of
 // `Console.bff`, so a character the formatter can produce but the font has no glyph for would
 // render as a HOLE -- silently, and only visible to somebody looking at the screen. Every
