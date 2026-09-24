@@ -777,6 +777,32 @@ foreach (var bs in wad.Entries.Where(e => e.Path.EndsWith(".rse", StringComparis
                         + string.Join(" ", ins4.Operands.Select(o => o.Index)));
 }
 
+// ⭐⭐ CAN THE GAME'S OWN FONT ACTUALLY DRAW THE MONEY? The readout composes glyphs out of
+// `Console.bff`, so a character the formatter can produce but the font has no glyph for would
+// render as a HOLE -- silently, and only visible to somebody looking at the screen. Every
+// character `Money.Format` can emit is checked against the font's own lookup.
+try
+{
+    var fontEntry = Wad("DATA").Entries.FirstOrDefault(e => e.Path.Equals("/Fonts/European/Console.bff", StringComparison.OrdinalIgnoreCase));
+    Check(fontEntry != null, "the disc carries /Fonts/European/Console.bff");
+    if (fontEntry != null)
+    {
+        var hud = new BitmapFont(Wad("DATA").Read(fontEntry));
+        var need = new SortedSet<char>("$,-0123456789");
+        var absent = need.Where(c => !hud.TryGetGlyph(c, out _)).ToArray();
+        Check(absent.Length == 0, $"every character the money format emits has a glyph ({new string(need.ToArray())})"
+                                + (absent.Length == 0 ? "" : $"; MISSING {new string(absent)}"));
+        // ⚠ THE CONTROL: the lookup must be capable of saying NO, or the line above passes for a
+        // font that claims to have everything.
+        Check(!hud.TryGetGlyph('\u0001', out _), "CONTROL: and the lookup refuses a code the font does not carry");
+        // ⭐ Every glyph the money needs must also have pixels -- a zero-size descriptor is a
+        // legal glyph and an invisible one.
+        var blank = need.Where(c => hud.TryGetGlyph(c, out var g) && (g.Width == 0 || g.Height == 0) && c != ' ').ToArray();
+        Check(blank.Length == 0, $"and each of them has pixels" + (blank.Length == 0 ? "" : $"; BLANK {new string(blank)}"));
+    }
+}
+catch (Exception e) { Check(false, $"the money font loads: {e.Message}"); }
+
 // ⭐⭐ WHICH PARTICLE EFFECTS DOES A SCRIPT ASK FOR, AND DOES THE LIBRARY ANSWER? Master: "we
 // are missing a lot of particle effects. mainly the ones produced when something is built."
 // Kinds 1 and 2 index the particle library, so "missing" is either an id the library has no

@@ -301,7 +301,12 @@ public partial class Viewer : Node3D
     /// <summary>The terrain file the park tab asked for, or null for the first one.</summary>
     string _wantTerrain;
     Label _info;
-    Label _money;
+    /// <summary>⚠ A TEXTURE, NOT A LABEL. The money is composed from the game's own BFF glyphs --
+    /// see <see cref="FontText"/> -- because "a counter in Godot's default font" is not the
+    /// money display, which is what master said and was right about.</summary>
+    TextureRect _money;
+    FontText _hudFont;
+    string _moneyShown;
     Label _toolStatus;
     HSlider _scrub;
 
@@ -676,13 +681,11 @@ public partial class Viewer : Node3D
         // ⭐⭐ THE PARK'S MONEY, ON SCREEN. Master: "wire up the money ui from the game code."
         // ⚠ Anchored top-CENTRE on purpose: the left panel and the right build panel both reach
         // the top edge, so either corner would sit under a widget the moment a tab is open.
-        _money = new Label { MouseFilter = Control.MouseFilterEnum.Ignore, Visible = false,
-                             HorizontalAlignment = HorizontalAlignment.Center };
+        _money = new TextureRect { MouseFilter = Control.MouseFilterEnum.Ignore, Visible = false,
+                                   StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+                                   TextureFilter = CanvasItem.TextureFilterEnum.Nearest };
         _money.SetAnchorsPreset(Control.LayoutPreset.CenterTop);
-        _money.OffsetLeft = -140; _money.OffsetRight = 140; _money.OffsetTop = 8;
-        _money.AddThemeFontSizeOverride("font_size", 28);
-        _money.AddThemeColorOverride("font_outline_color", new Color(0, 0, 0));
-        _money.AddThemeConstantOverride("outline_size", 8);
+        _money.OffsetLeft = -160; _money.OffsetRight = 160; _money.OffsetTop = 8; _money.OffsetBottom = 8 + MoneyHeight;
         ui.AddChild(_money);
 
         // ⭐⭐ THE TOOL SAYS WHAT IT THINKS, ON SCREEN. Every refusal already printed a reason to
@@ -3168,6 +3171,15 @@ public partial class Viewer : Node3D
                 0, $"guest {guest}", _parkTicks * ParkSim.TickMilliseconds, RseOpcode.EVENT,
                 ParkVisitors.ShopSoundGroup, -1, eventId, 0, Cell(ParkPaths.Centre(at)));
             GD.Print($"[guest] guests now visit rides; the sim and the walk share one grid: {ReferenceEquals(_sim.Paths, _guests.Paths)}");
+            // ⭐ The game's own face for the money, from the fonts this repo already decoded.
+            if (_hudFont == null)
+                try
+                {
+                    var bff = _lib?.ReadGeneric("/Fonts/European/Console.bff");
+                    if (bff != null) { _hudFont = new FontText(new BitmapFont(bff)); GD.Print("[hud] Console.bff loaded for the money readout"); }
+                    else GD.PrintErr("[hud] /Fonts/European/Console.bff not found -- money readout stays hidden");
+                }
+                catch (Exception e) { GD.PrintErr($"[hud] Console.bff would not load: {e.Message}"); }
             GD.Print($"[want] {_thoughts.Load(path => _lib?.ReadGeneric(path))}"
                    + $"; cam={System.Environment.GetEnvironmentVariable("TPW_WANT_CAM")}"
                    + $" shot={System.Environment.GetEnvironmentVariable("TPW_WANT_SHOT")}");
@@ -6864,19 +6876,26 @@ public partial class Viewer : Node3D
     /// ⚠⚠ AND IT READS THE LIVE BALANCE EVERY FRAME rather than keeping one of its own. A UI
     /// copy of a number the sim owns is a second source of truth that drifts silently the first
     /// time something credits the park without telling the UI.</summary>
+    /// <summary>⚠ CHOSEN. The console's own HUD coordinates are constants this port has not
+    /// read (`DAT_002B5CF4` and friends feed the finance screen's rows); the SCALE here is a
+    /// legibility choice, not a decode. What IS the game's is the glyphs, the advances, the
+    /// format and the units.</summary>
+    const int MoneyHeight = 40;
+
     void ShowMoney()
     {
         if (_money == null) return;
         var bank = _sim?.Finances;
-        _money.Visible = bank != null;
-        if (bank == null) return;
+        _money.Visible = bank != null && _hudFont != null;
+        if (bank == null || _hudFont == null) return;
         // ⚠ Integer division toward zero, and the sign carried explicitly: the console's own
         // rounding of a negative balance has not been read, and -5 tenths reading as "0" with no
         // minus would hide an overdraft.
-        int shown = bank.Balance / 10;
-        _money.Text = (bank.Balance < 0 ? "-" : "") + Math.Abs(shown).ToString("N0");
-        _money.AddThemeColorOverride("font_color",
-            bank.Balance < 0 ? new Color(1f, 0.45f, 0.45f) : new Color(1f, 0.95f, 0.6f));
+        // ⭐ `Money.Format` is `FUN_00142908`/`FUN_00142B68`: the sign, then '$', then the digits
+        // with commas every three -- and the /10 the finance screen applies to every figure.
+        string want = Money.Format(bank.Balance);
+        if (want != _moneyShown) { _moneyShown = want; _money.Texture = _hudFont.Render(want); }
+        _money.Modulate = bank.Balance < 0 ? new Color(1f, 0.45f, 0.45f) : new Color(1f, 0.95f, 0.6f);
     }
 
     public override void _Process(double delta)
