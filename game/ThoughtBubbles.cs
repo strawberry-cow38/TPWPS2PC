@@ -75,12 +75,19 @@ public sealed class ThoughtBubbles
     /// was catching the kid's blond hair as well as the cloud. Re-measured with a blue-biased
     /// white that hair cannot satisfy. An instrument that flatters the before-picture understates
     /// the very problem it is there to find.</summary>
-    public float Height { get; set; } = 0.80f;
+    /// ⭐⭐ THIS IS NOW THE HEAD, NOT THE CENTRE. Master: "align them so the dot (bottom right)
+    /// is aligned with their head." The sprite used to be CENTRED on this point, so the cloud
+    /// floated with its tail pointing at nothing in particular; <see cref="Show"/> now anchors
+    /// the quad's bottom-right corner here instead (see the Offset line), which is where the
+    /// tail-dot sits once <see cref="Sprite3D.FlipH"/> has mirrored the art.
+    /// ⚠ CHOSEN, like every other number in this file: the kid models are roughly 0.7 units tall
+    /// and nothing read says where the console hangs a bubble. `TPW_WANT_HEIGHT` overrides it.</summary>
+    public float Height { get; set; } = 0.70f;
     /// ⭐ Master asked for bigger after seeing one in play: 0.0088 measured 34 px of cloud in the
     /// inspection close-up, so 0.0140 puts it near 54 -- a little over half again. ⚠ A STEP, not
     /// a settled value: they said "bigger" without a number, so this is a legible increment they
     /// can push further rather than my guess at where they want to stop.
-    public float Size { get; set; } = 0.0140f;
+    public float Size { get; set; } = 0.0200f;
 
     readonly Dictionary<Thought, ImageTexture> _art = new();
     readonly Dictionary<int, Sprite3D> _live = new();
@@ -163,17 +170,33 @@ public sealed class ThoughtBubbles
                 // size and height: if someone later finds the console's own draw path, this is
                 // the line to check against it.
                 FlipH = true,
+                // ⭐⭐ ANCHOR THE TAIL CORNER, NOT THE MIDDLE. `Centered` puts the quad's centre on
+                // the node, which is why the cloud hovered with its tail aimed at empty air.
+                // `Offset` is in TEXTURE PIXELS in the sprite's own plane -- so it billboards with
+                // the sprite, which a world-space shift could not do -- and Godot builds the quad
+                // with +X right and +Y up, so moving it left and up by half its size drops the
+                // BOTTOM-RIGHT corner onto the node's position.
+                //
+                // ⚠ `FlipH` mirrors the UVs, not the geometry, so it does NOT flip this offset:
+                // the corner reasoned about here is the quad's, and the art's tail is drawn into
+                // that corner by the flip. Getting that backwards would move the bubble a whole
+                // width in the wrong direction, which is the one mistake worth naming.
+                Centered = true,
             };
             Root.AddChild(sprite);
             _live[guest] = sprite;
         }
         sprite.Texture = tex;
+        // Half the texture, in texture pixels -- see the Offset note where the sprite is built.
+        sprite.Offset = new Vector2(-tex.GetWidth() / 2f, tex.GetHeight() / 2f);
         // ⭐ AN A/B, not a setting. A bubble that does not appear could be mis-sized, mis-placed
         // or not drawn at all, and those need different fixes -- driving the size to something
         // absurd tells the three apart in one render. See feedback: prove the instrument can move.
         var over = System.Environment.GetEnvironmentVariable("TPW_WANT_SIZE");
         sprite.PixelSize = over != null && float.TryParse(over, out var px) ? px : Size;
-        sprite.Position = at + new Vector3(0f, Height, 0f);
+        var hOver = System.Environment.GetEnvironmentVariable("TPW_WANT_HEIGHT");
+        sprite.Position = at + new Vector3(0f,
+            hOver != null && float.TryParse(hOver, out var hy) ? hy : Height, 0f);
         sprite.Visible = true;
         // ⚠ ONE LINE, ONCE. A picture with no bubble in it cannot tell "nobody wants anything"
         // from "the sprite is somewhere else"; this says where the first one actually went.
