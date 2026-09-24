@@ -326,10 +326,58 @@ gates the whole of `FUN_00110B60`.
 ⚠ Two red herrings in this area, both `0x14`: the object's allocation size is `0x14` bytes and the
 parameter records are `0x14` bytes. Neither has anything to do with selector 20.
 
-### What this does NOT establish
+### ⭐⭐⭐ ANSWERED: selector 20 is event 6's own link-branch variable
 
-- **What selector 20 controls.** It resolves through a runtime table, and the value pair `{0, 51}`
-  is not evidence of a meaning. It stays unnamed until the bus sound's own parameter table is read.
+Read out of the data the prediction pointed at. Two steps.
+
+**1. `a1` is the audio-category id, and the mapping is in the static initialiser `FUN_001120D8`.**
+The registry at `0x2ABE38` is eleven `{dir, name, handle, id, used}` records of five words; `a1` is
+matched against `record[3]`. ⚠ The registry lives in BSS, so the image's copy is all zeros -- the
+values must be read from the initialiser's writes, not from the data.
+
+| `a1` | category | | `a1` | category |
+|---|---|---|---|---|
+| 0 | `AUDIO/GLOBAL/ui` | | 6 | `AUDIO/RIDES/trck` |
+| **1** | **`AUDIO/GLOBAL/amb`** | | 7 | `AUDIO/GLOBAL/kids` |
+| 2 | `AUDIO/GLOBAL/ride` | | 8 | `AUDIO/GLOBAL/staf` |
+| 3 | `AUDIO/RIDES/bump` | | 9 | `AUDIO/RIDES/fprc` |
+| 4 | `AUDIO/RIDES/grc` | | 10 | `AUDIO/RIDES/fpwt` |
+| 5 | `AUDIO/RIDES/wtr` | | | |
+
+⭐ **The control that pins this table**: `a1 = 7` gives `kids`, and this port already recorded
+`FUN_00111428(audio, 7, 0xD0, ...)` resolving event 208 to `cashD2b.vag` in `GLOBAL/KIDSSFX.MAP`
+(findings/visitors.md). Two independent routes to the same category. ⚠ It is therefore the AUDIO
+CATEGORY namespace and **not** the `SoundCatalogue`/RSE group namespace, which uses different
+numbers -- a mismatch that has already caused one wrong reading in this port.
+
+**2. The event names its own parameter.** `/AUDIO/GLOBAL/AMBSFX.MAP` event 6 -- the bus:
+
+```
+event 6: flags 0406  word0C 0FA0  word12 0014  sets 4
+  set 0  sound 22  667 ms  bank 1   -> target 2 for 51..100,  target 1 for 0..50
+  set 1  sound 20 1730 ms  bank 1   -> target 3 for 0..100
+  set 2  sound 19  234 ms  bank 1   -> target 3 for 51..100,  target 4 for 0..50
+  set 3  sound 17 2274 ms  bank 1   -> target 1 for 0..100
+```
+
+`word12 = 0x14 = **20**`, and the links split at exactly **0..50 / 51..100** -- which is why the bus
+writes **0** and **51**: 51 is the first value of the high band, not a tuned number. Setting
+parameter 20 to 51 steers the chain into the high-range targets and back to 0 into the low ones.
+
+⭐⭐ **The control, and it is the strong kind.** Over 153 events in five categories: **141 have
+`word12 == 0`, and not one of those has a range-limited link.** Of the twelve with a non-zero
+`word12`, nine are values the call sites actually pass, and eight of those nine do have
+range-limited links. A field that were noise would put branching links on some of the 141.
+
+⚠ Three events carry `word12 = 19`, a value no call site passes as an immediate. That is
+consistent rather than contradictory: eight of the 49 call sites compute `a2` instead of loading a
+constant, and were not resolved.
+
+⚠ What this does NOT say: that selector 20 means anything outside event 6. It is per-event by
+construction, and 20 only because that is the id this event was authored with. The set-index base
+of the link `target` field was not checked, so the exact cycle above is the parser's numbering.
+
+### What this does NOT establish
 - **That the table is absent from the executable.** A 20-byte-stride search for a static table whose
   word 0 carries those ids found nothing — ⚠ **but the same search with a decoy id set also found
   nothing, so it discriminates nothing and proves nothing.** The table is most likely built at
