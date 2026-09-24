@@ -525,14 +525,27 @@ static class ServiceChecks
             // ⭐ Eight across by two deep, on the park's first two rows -- master's third and
             // clearest statement: "gate should be 8x2 (inside the park, the first tiles against
             // that middle inset.)"
-            Check(grid.GateHold.Count == 16, $"the gate holds eight by two inside the park ({grid.GateHold.Count} cells)");
+            // ⭐ Twelve, not sixteen: the 8x2 MINUS the 2x2 of entrance path inside it. Master,
+            // with a screenshot: "make the 4pp tiles exempt from the no-build zone" -- they are
+            // the path guests walk in on, and refusing a build there while the player can still
+            // legitimately change them is what left a hole in the zone.
+            Check(grid.GateHold.Count == 12,
+                  $"the gate holds eight by two less the four path tiles ({grid.GateHold.Count} cells)");
+            Check(grid.GateHold.Count + grid.Protected.Count == 16,
+                  "and hold plus protected is still the whole 8x2");
             // ⚠ THE SHAPE, not just the count -- 16 cells is also a 4x4, which is what this was
             // two revisions ago. Spans, so a clipped or mis-centred block cannot pass.
             Check(grid.GateHold.Max(c => c.X) - grid.GateHold.Min(c => c.X) == 7
                && grid.GateHold.Max(c => c.Z) - grid.GateHold.Min(c => c.Z) == 1,
                   "and it is eight across by two deep, not merely sixteen cells");
             Check(grid.Protected.Count == 4, $"and protects a 2x2 of paths under it ({grid.Protected.Count})");
-            Check(grid.Protected.All(c => grid.GateHolds(c)), "every protected path is inside the gate's own hold");
+            // ⚠ INVERTED, deliberately: this used to assert the protected paths were INSIDE the
+            // hold. They are exempt from it now, and the two flags mean different things --
+            // Protected is un-deleteable, GateHold is un-buildable.
+            Check(grid.Protected.All(c => !grid.GateHolds(c)), "the protected paths are exempt from the no-build hold");
+            Check(grid.Protected.All(c => grid.CanBuild(c) || grid.Kind(c) != ParkPathKind.None
+                                       || !grid.Field.Buildable(c.X, c.Z)),
+                  "and nothing else in this port refuses them on the hold's account");
             Check(grid.GateHold.All(c => !grid.CanBuild(c)), "nothing can be built on the gate's ground");
             // ⭐⭐⭐ AND IT IS INSIDE THE PARK, which is the half that was actually broken and that
             // none of the checks above could see. Master asked for this zone three times and it

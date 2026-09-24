@@ -110,6 +110,14 @@ public sealed class ParkPaths
                     // BUILD on the gate's ground; walking and path-laying across the threshold
                     // are the entrance's whole purpose.
                     var c = new ParkCell(x, z);
+                    // ⭐⭐ THE FOUR PROTECTED PATH TILES ARE EXEMPT. Master, with a picture:
+                    // "if i update the pp's it makes a hole in the 8x2. make the 4pp tiles exempt
+                    // from the no-build zone." They are the park's own entrance path -- the thing
+                    // the gate exists to let guests walk down -- so refusing a build on them and
+                    // then having the player legitimately change them is what punched the hole.
+                    // ⚠ They keep <see cref="Protected"/>, which is a DIFFERENT flag and the one
+                    // they were given for: un-deleteable, not un-buildable.
+                    if (_protected.Contains(c)) continue;
                     if (!Contains(c) || !_gateHold.Add(c)) continue;
                     gate++;
                 }
