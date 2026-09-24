@@ -1332,3 +1332,63 @@ retry that was missing.
 
 Check: break the corridor under a departing guest, confirm they CANNOT reach the gate, mend it,
 confirm they do. Mutation with the shipped clause restored reddens the second line only.
+
+## ⭐⭐ Four invented constants replaced by read ones, and the mess sink found (2026-09-24)
+
+Chasing "what READS `+0x78`" turned into the best return of the night. Method: census every
+`lb`/`lbu` at offset `0x78` in the executable (22 across the whole binary, 20 inside the guest
+code range), then decompile the functions containing them. Most were read-modify-write — the need
+rising or falling. **One was a branch**, and that was the consumer.
+
+### The rule: an unmet need docks your mood — `FUN_0020FB88`
+
+```c
+if (DAT_002eeb4c <= guest[0x78]) guest[0x75]--;   // boredom, 95
+if (DAT_002eeb50 <= guest[0x76]) guest[0x75]--;   // sickness, 85
+if (DAT_002eeb54 <= guest[0x79]) guest[0x75]--;   // toilet,   90
+```
+
+Three separate globals, three **independent** tests, each clamped at zero. ⚠ Not an else-if chain:
+somebody bored AND sick AND bursting loses three. The check that distinguishes them asserts the
+triple costs ~3x the single (18 vs 6 measured; an else-if mutation reads 6 vs 6).
+
+⭐ This is what makes needs MATTER. Before it, ignoring a need cost a guest nothing, so a park with
+no lavatory was indistinguishable from a good one until they left for an unrelated reason.
+
+⭐ `+0x76` is confirmed **Sick** by `FUN_0020EDD8` adding the ride's sickness term to it.
+
+### `FUN_0020EDD8`'s three globals, read
+
+| global | image | what it is | the port had |
+|---|---|---|---|
+| `DAT_002eeb44` | **15** | flat happiness gain from a ride | 8, invented |
+| `DAT_002eeb30` | **1212** | `sick += 1212*(intensity-30)*0x1000>>0x18` = `(i-30) * 1212/4096` = 0.2959 | 0.25, invented |
+| `DAT_002eeb34` | **4096** | `boredom -= 4096*intensity*0x1000>>0x18`; 4096*4096 is exactly 2^24 so the shift cancels — **boredom falls by the intensity itself**, scale 1.0 | 0.5, invented |
+
+⭐ The `0x1e` = **30** pivot in the sickness term is the same 30 this file already recorded from a
+separate reading. Two routes to one number is corroboration; one route twice would not be.
+
+⚠ **READ FROM THE IMAGE**, which is the weaker reading — this port's own rule is that an image is
+not authority for a runtime global. Unlike the classic case these are non-zero, sit in an ordered
+run (95/85/90, then 85/90/95 following), and land exactly where thresholds belong on a 0..100
+need. A savestate would settle it. `RideIntensity` remains a port invention and probably should
+not be a global at all: it is the ride's own `UsageInfo.ExcitementLevel`.
+
+### ⭐⭐ And the mess sink, which this file recorded as NOT FOUND
+
+`FUN_0020EDD8` lines 133-137, in the same function as the ride effects:
+
+```c
+if (guest[0x79] < 0x3d) guest[0x79] = 0;                      // under 61: nothing to leave
+else { FUN_00130948(facility, (guest[0x79] - 0x3c) * 2 / 3);  // (toilet-60)*2/3 -> THE FACILITY
+       guest[0x79] = 0; }
+```
+
+So the amount was already decoded and **the destination is `FUN_00130948(facility, soil)`** — the
+mess is handed to the building, exactly as the port's accumulator guessed, through a call that
+had simply never been looked for. ⚠ `FUN_00130948` itself is NOT yet read: what the facility does
+with it (a dirtiness counter, a handyman job) is still open, and it is a long way from the visitor
+code, so it is probably the building/scenery layer rather than the guest layer.
+
+⚠ Worth noting the shape: relief lives in the SAME function as the ride effects, branching on the
+kind of facility — which is the console doing what `ParkVisitors.Serve` now does.

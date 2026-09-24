@@ -154,9 +154,27 @@ public sealed class ParkVisitors
     /// ⭐ Exposed as properties so an audit can set them and assert the exact arithmetic,
     /// rather than having to know a constant buried in a method.</summary>
     public int RideIntensity { get; set; } = 45;
-    public int RideHappiness { get; set; } = 8;
-    public float RideSickScale { get; set; } = 0.25f;
-    public float RideBoredomScale { get; set; } = 0.5f;
+
+    /// ⭐⭐ THREE OF THESE ARE NOW READ, NOT CHOSEN. `FUN_0020EDD8`'s three globals were decoded
+    /// by reading them out of the executable's image at the addresses the decompile names:
+    ///
+    ///   `DAT_002eeb44` = **15**   -> happiness gain, flat. Was 8, invented.
+    ///   `DAT_002eeb30` = **1212** -> sick += 1212 * (intensity - 30) * 0x1000 >> 0x18,
+    ///                                i.e. (intensity - 30) * 1212/4096 = 0.2959. Was 0.25.
+    ///   `DAT_002eeb34` = **4096** -> boredom -= 4096 * intensity * 0x1000 >> 0x18. 4096*4096 is
+    ///                                exactly 2^24, so the shift cancels it: boredom falls by the
+    ///                                intensity ITSELF, scale 1.0. Was 0.5.
+    ///
+    /// ⭐ The 30 in the sickness term is the same 30 this class already documented from a separate
+    /// reading of the pivot -- two routes to the same number, which is what makes it a corroboration
+    /// rather than a second guess.
+    ///
+    /// ⚠ READ FROM THE IMAGE, which is the weaker reading; a savestate would confirm them against
+    /// a running machine. <see cref="RideIntensity"/> alone is still a port invention: it is the
+    /// RIDE's own value and belongs in the .sam (`UsageInfo.ExcitementLevel`), not in a global.
+    public int RideHappiness { get; set; } = 15;
+    public float RideSickScale { get; set; } = 1212f / 4096f;
+    public float RideBoredomScale { get; set; } = 1f;
 
     public Guest Arrive(ParkCell at, ParkCell to)
     {

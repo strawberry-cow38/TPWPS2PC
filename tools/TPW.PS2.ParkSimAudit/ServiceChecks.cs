@@ -40,6 +40,12 @@ static class ServiceChecks
             // which would make the departure cases below pass while testing nothing at all.
             paths.SetEntrance(entranceTable);
             var visitors = new ParkVisitors(new ParkSim(paths), new GuestWalk(paths)) { Needs = new VisitorNeeds(4242) };
+            // ⚠⚠ AND THE MOOD BARS PUT OUT OF REACH, for the same reason as the rates. An unmet
+            // need now DOCKS HAPPINESS, so a guest held at toilet 100 to test service drains to
+            // nothing, trips the go-home path and walks out -- and a departed guest's record
+            // reads as zeros, which made the closed-lavatory control report "the need was
+            // cleared". That is the drain working, arriving in a check about something else.
+            visitors.Needs.BoredomBar = visitors.Needs.SickBar = visitors.Needs.ToiletBar = 101;
             // ⚠ FROZEN ON PURPOSE. The need must be the one this case set, not that plus whatever
             // rose during the walk -- otherwise the mess arithmetic below is unpredictable and the
             // assertion would have to be loosened until it stopped saying anything.
@@ -123,6 +129,40 @@ static class ServiceChecks
         Check(routed.Relieved == 1, $"a desperate guest walks PAST closer rides to the lavatory ({routed.Relieved} served)");
         Check(routed.Completed == 1, $"and rode nothing on the way ({routed.Completed} facility used in total)");
         Check(routed.Toilet == 0, $"arriving with the need answered (toilet {routed.Toilet})");
+
+        // ── an unmet need costs you your mood ─────────────────────────────────────────────────
+        // ⭐⭐ `FUN_0020FB88` docks ONE happiness per need at or above its own bar, per period.
+        // Until this was wired, ignoring a need cost the guest nothing: they rose, the bubble
+        // appeared, and a park with no lavatory in it was indistinguishable from a good one.
+        (int Happy, int Left) Mood(byte toilet, byte sick, byte bored)
+        {
+            var paths = new ParkPaths(terrain);
+            sourcePaths.Field.Cells.CopyTo(paths.Field.Cells, 0);
+            paths.SetEntrance(entranceTable);
+            var visitors = new ParkVisitors(new ParkSim(paths), new GuestWalk(paths)) { Needs = new VisitorNeeds(8) };
+            foreach (string key in visitors.Needs.Rates.Keys.ToArray())
+                visitors.Needs.Rates[key] = new VisitorNeeds.Rate(0, 0, false);
+            var g = visitors.Arrive(exit, exit);
+            var w = visitors.Needs.Of(g.Id);
+            w.Cash = 5000; w.Happiness = 100;
+            w.Toilet = toilet; w.Sick = sick; w.Unknown78 = bored; w.Hunger = 0; w.Thirst = 0;
+            visitors.Needs.Set(g.Id, w);
+            for (int i = 0; i < 400; i++) visitors.Step(Tick, () => exit);
+            return (visitors.Needs.Has(g.Id) ? visitors.Needs.Of(g.Id).Happiness : -1, visitors.WentHome);
+        }
+
+        var patient = Mood(toilet: 0, sick: 0, bored: 0);
+        var bursting = Mood(toilet: 95, sick: 0, bored: 0);
+        var wretched = Mood(toilet: 95, sick: 90, bored: 99);
+        // ⭐ THE CONTROL FIRST: with nothing over a bar, nothing may move -- otherwise "happiness
+        // falls" would pass for any drain at all, including one that fires unconditionally.
+        Check(patient.Happy == 100, $"a guest with no unmet need keeps their mood ({patient.Happy})");
+        Check(bursting.Happy < 100, $"one need over its bar wears it down ({bursting.Happy})");
+        // ⚠⚠ THREE TESTS, NOT AN ELSE-IF: the console docks once PER need, so somebody bored AND
+        // sick AND bursting must fall roughly three times as fast. Asserting only "it falls"
+        // cannot tell the chain from the sum.
+        Check(100 - wretched.Happy >= (100 - bursting.Happy) * 2,
+              $"three unmet needs cost about three times as much ({100 - wretched.Happy} vs {100 - bursting.Happy})");
 
         // ── going home ────────────────────────────────────────────────────────────────────────
         // ⭐⭐ `WantsToGoHome` WAS DECODED, DOCUMENTED, CHECKED FOR ITS ARITHMETIC AND CALLED FROM

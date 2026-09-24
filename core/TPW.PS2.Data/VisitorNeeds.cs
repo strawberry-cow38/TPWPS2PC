@@ -125,6 +125,27 @@ public sealed class VisitorNeeds
     /// agree. <see cref="Decide"/>'s `&gt; 90` is this same number; routing uses it too.</summary>
     public const int Urgent = 91;
 
+    /// <summary>⭐⭐ AN UNMET NEED MAKES A GUEST UNHAPPY, and the rule is READ rather than shaped
+    /// here. `FUN_0020FB88` runs three identical tests over the guest and docks **one happiness
+    /// for each need at or above its own threshold**, clamped at zero:
+    ///
+    /// <code>
+    ///   if (DAT_002eeb4c &lt;= guest[0x78]) guest[0x75]--;   // boredom, 95
+    ///   if (DAT_002eeb50 &lt;= guest[0x76]) guest[0x75]--;   // sickness, 85
+    ///   if (DAT_002eeb54 &lt;= guest[0x79]) guest[0x75]--;   // toilet,   90
+    /// </code>
+    ///
+    /// ⭐ Three separate globals rather than one shared bar -- unlike <see cref="Urgent"/>, which
+    /// IS one number for three needs. Worth keeping distinct: they are different questions.
+    ///
+    /// ⚠ THE VALUES ARE READ FROM THE IMAGE, not from a running machine. That is the weaker of
+    /// the two readings -- see the port's own rule that an image is not authority for a runtime
+    /// global -- but unlike the classic case these are non-zero, sit in an ordered run, and land
+    /// exactly where thresholds belong on a 0..100 need. A savestate would settle it.</summary>
+    public int BoredomBar { get; set; } = 95;
+    public int SickBar { get; set; } = 85;
+    public int ToiletBar { get; set; } = 90;
+
     /// <summary>How fast each need rises per step, in the console's own `base + roll(spread + 1)`
     /// shape. ⚠ THE NUMBERS ARE CHOSEN, the shape is not -- see the class note.</summary>
     public sealed record Rate(byte Base, byte Spread, bool High);
@@ -216,6 +237,28 @@ public sealed class VisitorNeeds
     /// ⚠ Zero seconds ages nobody -- a step that moves no clock must not move a need either --
     /// and the caller still reconciles afterwards, because a guest can be retired on a zero-time
     /// step.</summary>
+    /// <summary>What an unmet need does to a mood -- see <see cref="BoredomBar"/>. One point of
+    /// happiness per need over its bar, per period, floored at zero.
+    ///
+    /// ⭐ This is what makes the needs MATTER. They rose, the bubbles appeared, the guest walked
+    /// to a shop -- and ignoring one cost them nothing at all, so a park with no lavatory was
+    /// indistinguishable from a good one until the guest happened to go home for another reason.
+    /// ⚠ Three independent tests, NOT an else-if chain: the console docks a guest once per need,
+    /// so somebody bored AND bursting loses two.</summary>
+    void Fret()
+    {
+        foreach (int guest in _byGuest.Keys.ToArray())
+        {
+            var w = _byGuest[guest];
+            int drop = (w.Unknown78 >= BoredomBar ? 1 : 0)
+                     + (w.Sick >= SickBar ? 1 : 0)
+                     + (w.Toilet >= ToiletBar ? 1 : 0);
+            if (drop == 0) continue;
+            w.Happiness = Clamp(w.Happiness - drop);
+            _byGuest[guest] = w;
+        }
+    }
+
     /// <returns>How many rise periods elapsed, so a caller can charge a per-period cost of its
     /// own on the SAME clock -- the queue's, which only <see cref="ParkVisitors"/> knows who owes.
     /// ⭐ Returning it beats exposing the accumulator: there is still exactly one clock.</returns>
@@ -227,7 +270,7 @@ public sealed class VisitorNeeds
         // ⚠ One rise per elapsed period, not one per call: a long step owes several.
         int rises = (int)(_sinceRise / SecondsPerRise);
         _sinceRise -= rises * SecondsPerRise;
-        for (int i = 0; i < rises; i++) Rise();
+        for (int i = 0; i < rises; i++) { Rise(); Fret(); }
         return rises;
     }
 
