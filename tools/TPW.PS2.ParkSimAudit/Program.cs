@@ -552,6 +552,7 @@ if (looEntry.Entry != null && serviceRide is { } notALoo && corridorStops.Count 
 }
 CompiledJoinChecks.Run(Wad("DATA"), wad, world, Check);
 MoodChecks.Run(Check);
+PathPriceChecks.Run(terrain, PathPieces.Read(disc), Check);
 RideValueChecks.Run(Wad("DATA"), wad, world, Check);
 GuestAnimationChecks.Run(Wad("DATA"), Check);
 CompiledShopPurchaseChecks.Run(terrain, loopPaths, corridorStops[0], onPath[^1], Wad("DATA"), wad, world, Check);
