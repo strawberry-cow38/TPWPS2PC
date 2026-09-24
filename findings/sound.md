@@ -442,6 +442,43 @@ native 0/1/2 are ui/amb/ride where the script side is 9/8/5.
 tool's per-tile price — a **different class**, and the collision is noted in both places so neither
 reading gets "confirmed" by the other.
 
-⚠ The level is **carried and logged, not applied**. It is sound parameter 6, and this file already
-establishes that a parameter id means whatever the event's own table says it means; turning it into
-a volume would invent the one thing that trace refused to guess.
+### ⭐ Is any of it reachable? Censused over every script on the disc
+
+359 `.rse` parsed, **60 contain a scream opcode, across 55 named rides** — `acorn`, `bumper`,
+`Ghostshp`, `Haunt`, `gforce`, `fwheel` and so on. Not a corner feature.
+
+| | JUNGLE | HALLOW | FANTASY | SPACE | total |
+|---|---|---|---|---|---|
+| `STOPSCREAM` | 24 | 30 | 24 | 32 | **110** |
+| `SCREAMLEVEL` | 17 | 27 | 22 | 32 | **98** |
+| `SINGLESCREAM` | 16 | 15 | 13 | 16 | **60** |
+| `STARTSCREAM` | 12 | 15 | 12 | 16 | **55** |
+
+⭐ **Twice as many stops as starts** — the scripts stop defensively on several exit paths, which is
+why `STOPSCREAM` on a ride that is not screaming has to be a no-op and not an error.
+
+The operand shapes the authors actually wrote (`v5` is `VAR_ONRIDE` in these scripts, matching
+findings/scripts.md's `STARTSCREAM VAR_ONRIDE 20`):
+
+```
+58x  SINGLESCREAM v5 -1        4x  STARTSCREAM  v12 20      1x  SINGLESCREAM v5 90
+44x  STARTSCREAM  v5 20        1x  SINGLESCREAM v5 100      1x  STARTSCREAM  v2 100
+ 5x  STARTSCREAM  v5 70        1x  STARTSCREAM  v5 10
+```
+
+⭐⭐⭐ **58 of the 60 `SINGLESCREAM`s pass −1**, so `FUN_001BA440`'s missing `else` is not an edge
+case — it is what the game does **nearly every time a ride plays a one-shot scream**. Reproducing
+the overlap is therefore load-bearing for sounding right, not a curiosity.
+
+### ⚠⚠ The biggest thing still missing here
+
+**The level is carried and logged, NOT applied**, and `SCREAMLEVEL` is the second most common of
+the four opcodes — 98 uses against 55 `STARTSCREAM`s. So the port starts and stops the right voices
+and then ignores the channel the scripts work hardest to drive.
+
+That is deliberate rather than unfinished: the level is sound parameter 6, and this file establishes
+that a parameter id means whatever the **event's own table** says it means. Mapping it to volume
+would invent the one thing the trace refused to guess. ⭐ What would settle it is reading the
+parameter records of the scream events themselves (`KIDSSFX.MAP` ids `0x47..0x4A`) the way
+`AMBSFX.MAP` event 6 settled the bus — `word12` names the parameter, and the link bands say what
+crossing it does. That is the next job on this, and it is a data read, not another trace.

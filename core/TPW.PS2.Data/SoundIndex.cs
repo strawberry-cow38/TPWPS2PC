@@ -51,9 +51,34 @@ public sealed class SfxMap
         public List<Clip> Clips { get; } = new();
         public List<Link> Links { get; } = new();
         /// <summary>The 26 bytes of the 42-byte record between the counts and the pointers. Two
-        /// byte pairs read as percentages (`64 64`, `55 55`, `3f 3f` and `32 32`) and the loader
-        /// adjusts `+0x1e` in place; nothing here has been walked to a consumer.</summary>
+        /// byte pairs read as percentages (`64 64`, `55 55`, `3f 3f` and `32 32`).
+        /// ⭐ This used to end "the loader adjusts `+0x1e` in place; nothing here has been walked
+        /// to a consumer" -- the consumer is now found. See <see cref="Weight"/>.</summary>
         public byte[] Raw { get; init; } = Array.Empty<byte>();
+
+        /// <summary>The set's draw weight, read by the transition chooser as
+        /// `*(int *)(target + 0x1e)` (`FUN_0024C1F0`, see <see cref="SfxEventMachine"/>). The
+        /// file's L3 record is 42 bytes with <see cref="Raw"/> spanning `[0x0C, 0x26)`, so the
+        /// runtime's `+0x1e` is `Raw[0x12]`; the runtime's `+0x26` links pointer is the record's
+        /// last word, which the loader relocates.
+        /// ⚠ It only bites where one set has SEVERAL links whose bands overlap -- with disjoint
+        /// bands exactly one link can match and the weight cancels.
+        ///
+        /// ⭐⭐ ON THIS DISC EVERY SET OF AN EVENT CARRIES THE SAME VALUE, AND IT IS AN EQUAL
+        /// SHARE OF `0xFFFF`: `0x47` has 37 sets of 1771 (= 65,527), `0x48` four of 16383
+        /// (= 65,532), `RIDESFX` 69 three of 21845 (= 65,535). So the draw is **uniform among the
+        /// matching links** here -- the weighting machinery exists and this disc never uses it to
+        /// bias anything. The weighted form is kept because it is what the console computes.
+        ///
+        /// ⚠⚠ AND THE VALUE IS NOT ALWAYS STORED THIS WAY. `FUN_0024B8D0` walks the sets and, when
+        /// a flag on the load context (`+0x30`) is set, replaces `+0x1e` with `stored - previous`
+        /// -- i.e. it differences a CUMULATIVE series into per-set weights, exactly as the clip
+        /// `Threshold` field is cumulative. That path does not apply to these maps: their values
+        /// are equal rather than ascending, and **six of the 68 graphs have a DECREASING series**,
+        /// which a running total cannot be. Differencing them would hand all the weight to set 0
+        /// and make every draw pick it. Read the raw value, and check this assumption if a map
+        /// from another build ever turns up.</summary>
+        public uint Weight => Raw.Length >= 0x16 ? BinaryPrimitives.ReadUInt32LittleEndian(Raw.AsSpan(0x12)) : 0;
     }
     public sealed class Event
     {
@@ -163,8 +188,13 @@ public sealed class SoundCatalogue
     /// <summary><paramref name="Word0C"/> and <paramref name="Flags"/> are the L2 record's own
     /// `+0xC` and `+0x10`, carried through so a consumer can be written against them rather than
     /// against the shape of the sets -- which is what three wrong looping rules were built on.</summary>
+    /// <summary>⭐ <paramref name="Source"/> is the parsed event, carried so the LINKS survive.
+    /// <see cref="Clips"/> flattens every set into one list (each clip remembers its
+    /// <see cref="ResolvedClip.Set"/>), which is enough to group them into pools but throws away
+    /// the transitions between those pools -- and the transitions are the whole machine. See
+    /// <see cref="SfxEventMachine"/>. Null only for a caller that built a Resolved by hand.</summary>
     public sealed record Resolved(SoundGroup Group, int Id, string Map, IReadOnlyList<ResolvedClip> Clips,
-                                  int Sets, int Word0C = 0, int Flags = 0);
+                                  int Sets, int Word0C = 0, int Flags = 0, SfxMap.Event Source = null);
 
     readonly Disc _disc;
     readonly Dictionary<string, Disc.Entry> _files;
@@ -242,7 +272,7 @@ public sealed class SoundCatalogue
                 string file = bankName == null ? $"bank{c.Bank}?" : bankName.Replace('\\', '/').Split('/')[^1].ToUpperInvariant() + "HD.SDT";
                 clips.Add(new ResolvedClip(s, file, c.Sound, sound?.Name ?? "??", c.Milliseconds, c.Threshold));
             }
-        return new Resolved(group, id, path, clips, ev.Sets.Count, ev.Word0C, ev.Flags);
+        return new Resolved(group, id, path, clips, ev.Sets.Count, ev.Word0C, ev.Flags, ev);
     }
 
     /// <summary>The bank a resolved clip lives in, for whoever decodes it. Null when the bank
