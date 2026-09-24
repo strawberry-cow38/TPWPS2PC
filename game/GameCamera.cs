@@ -110,10 +110,41 @@ public sealed class GameCamera
     {
         Above = DefaultAbove; Behind = DefaultBehind;
         TargetYaw = Yaw = 0; Dolly = 0;
+        _turnLeft = _turnRight = false;
         _started = false;
     }
 
-    public void Turn(int quarters) => TargetYaw += QuarterTurn * quarters;
+    // ⚠⚠ ONE QUARTER PER DIRECTION PER FRAME, AND SURPLUS IS DROPPED. Master: "if i spam either
+    // q and e, sometimes ill go backwards on my rotation".
+    //
+    // ⭐ The reversal itself is the CONSOLE'S: `0x14f820` adds a quarter to the target and then
+    // eases along the SHORT way round, so a target more than half a turn ahead comes back the
+    // other side. What was ours is how easily the target got that far. The console tests its pad
+    // bits ONCE per frame inside that same function -- `if (pad & 0x1000) target += 0x400;` and
+    // the mirror for the other direction -- and those bits must be newly-pressed edges, because a
+    // held level would add a quarter every frame and spin the camera at seven revolutions a
+    // second. So the hardware cannot deliver more than one quarter per direction per frame, and
+    // a second press inside one frame is simply lost.
+    //
+    // ⚠ The port instead added a quarter per KEY EVENT, and nothing eases between two events in
+    // the same frame, so a burst stacked straight onto the target and sailed past the half turn.
+    // Latching the way the pad does restores the console's ceiling without touching the ease.
+    bool _turnLeft, _turnRight;
+
+    public void Turn(int quarters)
+    {
+        if (quarters < 0) _turnLeft = true;
+        else if (quarters > 0) _turnRight = true;
+    }
+
+    /// <summary>Consume this frame's latched turns, as the two independent `if`s at 0x14f820 do --
+    /// pressing both ways in one frame cancels out rather than one winning.</summary>
+    void ApplyLatchedTurns()
+    {
+        if (_turnRight) TargetYaw += QuarterTurn;
+        if (_turnLeft) TargetYaw -= QuarterTurn;
+        _turnLeft = _turnRight = false;
+    }
     public void Zoom(int steps) => Behind = Math.Clamp(Behind + AxisStep * steps, MinBehind, MaxBehind);
     public void Push(int steps) => Dolly = Math.Clamp(Dolly + AxisStep * steps, MinDolly, MaxDolly);
 
@@ -175,6 +206,9 @@ public sealed class GameCamera
     public void Step(int frameTime, Func<int, int, int> groundAt)
     {
         frameTime = Math.Min(frameTime, 0x4000);
+        // ⭐ BEFORE the wrap, exactly where 0x14f820 reads its pad bits: the wrap that follows is
+        // the same one, and it is what keeps the accumulated target inside a turn.
+        ApplyLatchedTurns();
         TargetYaw = Wrap(TargetYaw);
 
         // ⚠ The yaw's two-step eighth, exactly as 0x14F820 has it: a half step to find the

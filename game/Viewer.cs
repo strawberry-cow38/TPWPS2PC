@@ -759,7 +759,10 @@ public partial class Viewer : Node3D
     {
         if (e is InputEventKey { Pressed: true, Keycode: Key.F3 } && _panel != null)
             _panel.Visible = !_panel.Visible;
-        if (e is not InputEventKey { Pressed: true } k) return;
+        // ⚠ `Echo: false`. The comment on the turn keys below already said "turning is an EVENT,
+        // not a held key", but nothing enforced it: a held key repeats at the OS rate and every
+        // repeat counted as another press. That is the other half of master's backwards rotation.
+        if (e is not InputEventKey { Pressed: true, Echo: false } k) return;
         if (k.Keycode == Key.G)
         {
             _freeCam = !_freeCam;
