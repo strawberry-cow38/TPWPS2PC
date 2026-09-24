@@ -11,9 +11,8 @@ walking, Bouncy hide-list, gate or path-price work. Cow owns the current animate
 texture / thought-bubble rendering requests; leave those files to them.
 
 Bus integration has passed normal Viewer startup/real placement/first admission/
-map reload in **all eight starting parks**,2039 assertions each. Main landing is
-pending final combined gate; use the latest appended evidence section below for
-exact results, not the old milestone headers. Peer reviewed8b0bba9, no blocker;
+map reload in **all eight starting parks**,2039 assertions each. The release snapshot below is ready for normal fast-forward main integration;
+use it for exact results, not the old milestone headers. Peer reviewed8b0bba9, no blocker;
 requested explicit permissive-bypass language for missing entrance/departure inputs.
 `findings/bus-viewer-integration.md` describes scope and reproduction. After bus
 landing, the next native behavior package is the entrance-group/departure-pressure
@@ -2059,3 +2058,30 @@ freesViewer andallows100msaudio retirement, samefixturecleanupasStanding.
 changesONLYtheBusViewerSmoketeardown, notshippingcodeoranyof11auditedscenes.
 All8renderedstartingparksalready2039PASS each; runfreshGLall8afterthiscommit for
 finalcleanexit evidence. No screenshot/listeningapproval; noforgottenmutations.
+
+
+## Bus main landing snapshot — September24 17:43 UTC
+
+Release candidate code6aede08 (onlydocumentationchangesfollow). Final fresh GL
+normalViewer matrix `/tmp/tpw-bus-release-eight-viewers/manifest.json`: ALL8cases
+exit0,2039checks each, noERROR/leak/resourcewarnings; driver `/tmp/tpw-bus-release-
+eight-driver.log`. Bothvariantsactuallyselected andeachreloadsotherterrain. Model,
+phase, realplacedidentity andactualadmittedguest tested, noinjectedguest. The
+threeboundlogger fromc17589e isvisible in `/tmp/tpw-bus-release-viewer-clean.log`.
+
+Final other gates: ALL11runtime PASS atc17589e;4worldmatrix PASSJ/F andonlyexact
+knownH/Sretailreds;63PythonPASS. Finalcode6aede08 only addsBusViewerSmokecleanup to
+thatcore; all8livegate thenreranagainst6aede08. Productionandtestmutationsrestored.
+Peer reviewed8b0bba9 andacceptedwithnonblockingboundsobservability, nowimplemented.
+Cow soundcommits065031a/1639088 preservedascherry-picks andbridge9a32a4f preserved.
+
+NEXT: nativeentrance-group/departure-pressurelifecycle from already-read
+bus-entrance-groups.md andbus-admission-pressure.md. Do NOTguesscountsfromwalkers or
+pathcells. CurrentzeroBYPASSESbacklogreductionanddepartureveto; busyparksmayoveradmit.
+Minigamesabsent, upgradetierUInotimplemented, audiooverlapschedulerstillnotproven;
+nohumanvisual/listeningapproval. Thisisaworkingbusintegration, notcompletegameparity.
+
+Keepactiveworktree`tpw-gate-occupancy` (despitehistoricalname); oldride-eligibility
+checkoutisstaledirtywork. Cowownsnewanimatedtexture/thought-bubblelane. Authorized
+partialGhidracorpusislocaloutsideGit`../tpw-private-research/ghidra-corpus`; useasan
+additionalsource, checksignaturesagainstMIPS. Noassetextraction, norestarts.

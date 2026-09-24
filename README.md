@@ -7,7 +7,7 @@ This is a **work-in-progress PS2-data-driven viewer and managed park simulation*
 reverse-engineering evidence and executable audits. It is not a complete replacement for the
 retail game. Readers, live consumers, tested behavior and remaining guesses are separate claims.
 
-## Current development status — 2026-09-23
+## Current development status — 2026-09-24
 
 Start with [the completion plan](plan.md), [the latest progress ledger](progress.md), and
 [the release/validation checklist](findings/release-checklist.md). The original research notebook
@@ -18,6 +18,13 @@ ride handoffs, closed/broken-ride eligibility, ride-removal recovery, and guest-
 storage. Needs rise rates/cadence are chosen port policy, not measured retail behavior. Track
 services, full park-management behavior, advisor producers and several format fields remain
 incomplete; rendering changes need separate visual checks.
+
+The park's bus now uses its decoded animation/controller, scenario-specific catalogue and
+batch admission calculation, with moving audio and map-lifetime cleanup. The original fixed
+arrival timer is removed. Normal startup/placement/drop-off/reload tests cover all eight parks.
+**Entrance-backlog reduction and the native departure-pressure veto are still bypassed** because
+the corresponding guest lifecycles are unported; busy-park admission is not yet native-equivalent.
+See [the bus integration evidence and boundaries](findings/bus-viewer-integration.md).
 
 The integrated park matrix currently passes JUNGLE/FANTASY and deliberately retains the exact
 HALLOW Thrill Grill and SPACE Moon Buggies retail findings. An expected retail failure is not
