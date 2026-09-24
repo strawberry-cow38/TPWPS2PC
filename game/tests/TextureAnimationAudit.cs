@@ -57,13 +57,17 @@ public partial class TextureAnimationAudit : Node
             throw new Exception($"clock did not reach the material: {probe.GetShaderParameter("uv_time")}");
         _checks += 3;
 
-        // ⭐ The deliverable itself: the JUNGLE Coconut's drink is a centred spiral and must come
-        // out of AnimatedModel with a spin on the surface wearing `cn_nut2a`, and no spin on the
-        // husk beside it. Master: "the 'liquid' in the coconut should twist".
+        // ⭐⭐ THE DELIVERABLE, and it is now the AUTHORED KEYS rather than a shader spin.
+        // Master: "the 'liquid' in the coconut should twist". The disc says how: a 0x10000 track
+        // on cn_stall whose keys trace a circle. So the test is that the MESH UVs actually move
+        // between frames -- a shader uniform proves nothing about what is drawn.
         lib.OpenWad("/DATA/JUNGLE.WAD");
         var entry = lib.Wad.Entries.First(e => e.Path.EndsWith("Shops/Coconut/coconut.mps", StringComparison.OrdinalIgnoreCase));
+        var apsEntry = lib.Wad.Entries.First(e => e.Path.EndsWith("Shops/Coconut/coconut.aps", StringComparison.OrdinalIgnoreCase));
         var model = new Model(lib.Read(entry));
-        var built = new AnimatedModel(model, null, null, n =>
+        var anim = new Aps(lib.Read(apsEntry));
+        var main = anim.Records().First(r => r.Slot == 5);
+        var built = new AnimatedModel(model, anim, main, n =>
         {
             var img = lib.TextureNear(entry.Path, n);
             return (img == null ? null : ImageTexture.CreateFromImage(
@@ -71,33 +75,47 @@ public partial class TextureAnimationAudit : Node
         });
         try
         {
-            if (built.MovingSurfaces == 0) throw new Exception("coconut has no moving surface");
-            int spun = 0, still = 0;
+            // The swirl must NOT also be turned by the shader: the keys carry the whole motion.
             foreach (var (mesh, material, node) in built.Surfaces())
             {
-                string tex = model.Materials[material] ?? "";
-                float spin = node.MaterialOverride is ShaderMaterial sm
-                    && sm.Shader.GetShaderUniformList().Count > 0
+                if (!TextureMotion.IsSwirl(model.Materials[material] ?? "")) continue;
+                if (node.MaterialOverride is ShaderMaterial sm
                     && sm.GetShaderParameter("uv_spin").VariantType != Variant.Type.Nil
-                    ? (float)sm.GetShaderParameter("uv_spin") : 0f;
-                if (TextureMotion.IsSwirl(tex))
-                {
-                    if (spin == 0f) throw new Exception($"{tex} does not spin");
-                    // ⚠⚠ THE PIVOT, AND THIS IS THE CHECK THAT WOULD HAVE CAUGHT THE REAL BUG.
-                    // A spin with the wrong centre still "spins" -- it just swings the patch
-                    // around a point outside itself, which is what master saw and what an
-                    // "is it rotating?" assertion happily passes. cn_nut2a is mapped to
-                    // U 1.000..1.999 / V 0.000..0.999, so its centre is (1.5, 0.5), NOT (0.5,0.5).
-                    var pivot = (Vector2)((ShaderMaterial)node.MaterialOverride).GetShaderParameter("uv_spin_center");
-                    if (pivot.DistanceTo(new Vector2(1.5f, 0.5f)) > 0.01f)
-                        throw new Exception($"{tex} pivots at {pivot}, expected the patch centre (1.5, 0.5)");
-                    spun++;
-                }
-                else { if (spin != 0f) throw new Exception($"{tex} spins and should not"); still++; }
+                    && (float)sm.GetShaderParameter("uv_spin") != 0f)
+                    throw new Exception("the swirl is key-driven and must not also spin in the shader");
             }
-            if (spun != 1) throw new Exception($"expected exactly one swirl surface, found {spun}");
-            GD.Print($"SCROLLING TEXTURE PASS: clock round-trips, {spun} swirl and {still} still surfaces on the Coconut");
-            _checks += spun + still;
+
+            Godot.Vector2[] UvOf(string meshName, int material)
+            {
+                var node = built.SurfaceFor(meshName, material);
+                var arr = (Godot.Collections.Array)((ArrayMesh)node.Mesh).SurfaceGetArrays(0);
+                return (Godot.Vector2[])arr[(int)Mesh.ArrayType.TexUV];
+            }
+            int swirl = model.Materials.FindIndex(m => TextureMotion.IsSwirl(m ?? ""));
+            if (swirl < 0) throw new Exception("coconut has no swirl material");
+
+            built.SetFrame(0f);
+            var at0 = (Godot.Vector2[])UvOf("cn_stall", swirl).Clone();
+            built.SetFrame(20f);
+            var at20 = UvOf("cn_stall", swirl);
+            if (at0.Length != at20.Length) throw new Exception("UV array changed length between frames");
+            float moved = 0f;
+            for (int i = 0; i < at0.Length; i++) moved = Mathf.Max(moved, at0[i].DistanceTo(at20[i]));
+            // 20 frames at 4.8 deg/frame is 96 deg around a radius-0.5 circle: a long way.
+            if (moved < 0.1f)
+                throw new Exception($"coconut UVs barely moved between frames 0 and 20 (max {moved:F4})");
+
+            // ⚠ AND IT MUST COME BACK. The record is 75 frames and the keys close on their first
+            // value, so frame 75 has to equal frame 0 -- a UV that drifts would pass the test above.
+            built.SetFrame(75f);
+            var at75 = UvOf("cn_stall", swirl);
+            float drift = 0f;
+            for (int i = 0; i < at0.Length; i++) drift = Mathf.Max(drift, at0[i].DistanceTo(at75[i]));
+            if (drift > 0.002f) throw new Exception($"coconut UVs do not close the loop at frame 75 (drift {drift:F4})");
+
+            GD.Print($"SCROLLING TEXTURE PASS: clock round-trips; coconut UVs move {moved:F3} by frame 20 "
+                   + $"and close to {drift:F4} at frame 75, key-driven with no shader spin");
+            _checks += 3;
         }
         finally { built.Root.Free(); probe.Dispose(); }
     }

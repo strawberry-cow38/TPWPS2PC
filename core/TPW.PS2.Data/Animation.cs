@@ -222,6 +222,76 @@ public sealed class Animation
         ? new Quaternion(I16(o + 2) / 32768f, I16(o + 4) / 32768f, I16(o + 6) / 32768f, I16(o) / 32768f)
         : new Quaternion(I16(o) / 32768f, I16(o + 2) / 32768f, I16(o + 4) / 32768f, I16(o + 6) / 32768f);
 
+    /// <summary>One vertex-group's UV keyframes on the 0x10000 channel.</summary>
+    public readonly record struct UvKey(int Time, float U, float V);
+
+    /// <summary>⭐⭐ THE MOVING-TEXTURE CHANNEL, and the port's real one. `TrackFlag` still calls
+    /// bit 0x10000 `Unknown0x24` after the payload pointer at <c>track + 0x24</c>, which is the
+    /// only non-zero field in a track of this kind.
+    ///
+    /// Layout, read off the consumer <c>0x1ad378</c> (reached from <c>0x1a7f48</c>, which ends by
+    /// testing the track's <c>+4 &amp; 0x10000</c>):
+    ///
+    /// <code>
+    /// t+0x04  u32   entry count
+    /// t+0x08  ptr   entries, 4 bytes each: u16 start, u16 keyCount
+    /// t+0x10  ptr   key times, u16, indexed by start
+    /// t+0x14  ptr   key values, two floats (u,v), indexed by start
+    /// </code>
+    ///
+    /// Sizes close to the byte on `coconut.aps`: 49 entries x 4 runs from 0x12fc exactly to the
+    /// times at 0x13c0; 280 times x 2 exactly to the values at 0x15f0; 280 values x 8 to EOF.
+    ///
+    /// ⭐ An ENTRY is a vertex GROUP, not a vertex: <see cref="Model.UvVertexMap"/> maps the mesh's
+    /// vertices onto these entries through the run list at mesh +0x9c.</summary>
+    public List<UvKey[]> UvTrack(int track)
+    {
+        if ((TrackFlags(track) & 0x10000) == 0) return null;
+        int h = (int)U32(track + 0x24);
+        if (h == 0) return null;
+        int n = (int)U32(h + 4);
+        int entries = (int)U32(h + 8), times = (int)U32(h + 0x10), values = (int)U32(h + 0x14);
+        if (n <= 0 || entries == 0 || times == 0 || values == 0) return null;
+        var outList = new List<UvKey[]>(n);
+        for (int i = 0; i < n; i++)
+        {
+            int start = U16(entries + i * 4), count = U16(entries + i * 4 + 2);
+            var keys = new UvKey[count];
+            for (int k = 0; k < count; k++)
+            {
+                int j = start + k;
+                keys[k] = new UvKey(U16(times + j * 2), F32(values + j * 8), F32(values + j * 8 + 4));
+            }
+            outList.Add(keys);
+        }
+        return outList;
+    }
+
+    /// <summary>Sample one group's UV at a time in APS frames.
+    ///
+    /// ⭐ LINEAR, because the consumer is: it finds the first key whose time exceeds now, takes
+    /// <c>f = (now - t[k-1]) / (t[k] - t[k-1])</c> and lerps the two UV pairs. There is NO easing
+    /// on this channel, unlike the rotation channel's curve index.
+    ///
+    /// ⚠ Past the last key the consumer falls back to index <c>count-2</c> with f = 1, which is
+    /// the last key exactly; that is what the hold below reproduces.</summary>
+    public static (float U, float V) SampleUv(UvKey[] keys, float frame)
+    {
+        if (keys == null || keys.Length == 0) return (0f, 0f);
+        for (int k = 0; k < keys.Length; k++)
+        {
+            if (frame >= keys[k].Time) continue;
+            if (k == 0) return (keys[0].U, keys[0].V);
+            var a = keys[k - 1]; var b = keys[k];
+            int span = b.Time - a.Time;
+            if (span <= 0) return (b.U, b.V);
+            float f = (frame - a.Time) / span;
+            return (a.U + (b.U - a.U) * f, a.V + (b.V - a.V) * f);
+        }
+        var last = keys[^1];
+        return (last.U, last.V);
+    }
+
     public uint TrackFlags(int track) => U32(track + 4);
     public int TrackNode(int track) => U16(track);
     public int TrackAt(Record rec, int i) => rec.Tracks + i * 0x30;

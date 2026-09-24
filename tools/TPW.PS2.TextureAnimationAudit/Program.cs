@@ -147,6 +147,85 @@ try
                 $"JUNGLE terrain moving water is [{string.Join(", ", moving)}], expected dk_water3/wr_water3/jri_lak2");
         }
     }
+    // ---- The 0x10000 UV-animation channel ---------------------------------------------------
+    // ⭐⭐ THIS IS THE REAL MOVING-TEXTURE MECHANISM and every line here would have failed before
+    // it was found: the port animated nothing from this channel at all.
+    {
+        lib.OpenWad("/DATA/JUNGLE.WAD");
+        (Model M, Animation A, string Mesh)[] Load(string stem)
+        {
+            var me = lib.Wad.Entries.First(e => e.Path.Contains(stem, StringComparison.OrdinalIgnoreCase)
+                && e.Path.EndsWith(".mps", StringComparison.OrdinalIgnoreCase));
+            var ae = lib.Wad.Entries.First(e => e.Path.Contains(stem, StringComparison.OrdinalIgnoreCase)
+                && e.Path.EndsWith(".aps", StringComparison.OrdinalIgnoreCase));
+            return new[] { (new Model(lib.Read(me)), new Animation(lib.Read(ae)), (string)null) };
+        }
+
+        // ⭐ THE FOUNTAIN IS THE CONTROL FOR MASTER'S REPORT. Its water is flagged in its own data
+        // and matches NO texture-name rule, so a name-based port animates it never. If this
+        // passes and the fountain still stands still, the fault is downstream of the data.
+        foreach (var (stem, node) in new[] {
+            ("Shops/Coconut/coconut", "cn_stall"), ("Features/Fountain/fountain", "wf_water"),
+            ("Features/MamFount/mamfount", "mf_water1") })
+        {
+            var (model, aps, _) = Load(stem)[0];
+            bool found = false;
+            foreach (var rec in aps.Records())
+            {
+                if (rec.Skeletal || rec.Tracks == 0) continue;
+                for (int t = 0; t < rec.TrackCount; t++)
+                {
+                    int off = aps.TrackAt(rec, t);
+                    if ((aps.TrackFlags(off) & 0x10000) == 0) continue;
+                    if (!string.Equals(model.NodeName(aps.TrackNode(off)), node, StringComparison.OrdinalIgnoreCase)) continue;
+                    var uvk = aps.UvTrack(off);
+                    Check(uvk != null && uvk.Count > 0, $"{stem}: {node} 0x10000 track decodes");
+                    var mesh = model.Meshes.FirstOrDefault(x => string.Equals(x.Name, node, StringComparison.OrdinalIgnoreCase));
+                    Check(mesh != null && mesh.UvAnimList != 0, $"{stem}: {node} has a +0x9c run list");
+                    var map = mesh == null ? null : model.UvVertexMap(mesh);
+                    Check(map != null, $"{stem}: {node} +0x9c run list decodes");
+                    if (uvk != null && map != null)
+                        Check(map.Max() + 1 == uvk.Count,
+                            $"{stem}: {node} run list names {map.Max() + 1} groups, track has {uvk.Count} entries");
+                    found = true;
+                    break;
+                }
+                if (found) break;
+            }
+            Check(found, $"{stem}: {node} carries a 0x10000 track");
+            // ⚠ SAY SO OUT LOUD. A Check that never runs prints nothing and passes, which is
+            // exactly how a "verified" fountain would stand still.
+            Console.WriteLine($"UV channel: {stem} node '{node}' 0x10000 track {(found ? "FOUND" : "MISSING")}");
+        }
+
+        // ⭐ The Coconut's drink is a CIRCLE about the patch centre, and the sampler must trace it.
+        {
+            var (model, aps, _) = Load("Shops/Coconut/coconut")[0];
+            var main = aps.Records().First(r => r.Slot == 5);
+            int track = aps.TrackAt(main, 0);
+            var cocoKeys = aps.UvTrack(track);
+            var moving = cocoKeys.Where(k => k.Length > 10).ToList();
+            Check(moving.Count > 0, $"Coconut has moving UV groups ({moving.Count} of {cocoKeys.Count})");
+            foreach (var k in moving)
+            {
+                double cu = 1.5, cv = 0.5;
+                var radii = k.Select(x => Math.Sqrt((x.U - cu) * (x.U - cu) + (x.V - cv) * (x.V - cv))).ToList();
+                Check(radii.All(r => Math.Abs(r - 0.5) < 0.01), $"Coconut UV group is a circle of r=0.5 about (1.5,0.5)");
+                // The loop closes: first and last key are the same point.
+                Check(Math.Abs(k[0].U - k[^1].U) < 1e-4 && Math.Abs(k[0].V - k[^1].V) < 1e-4,
+                    "Coconut UV loop closes on its first key");
+            }
+            // The sampler must LERP, not step: halfway between two keys sits on the chord.
+            var g = moving[0];
+            var (mu, mv) = Animation.SampleUv(g, (g[0].Time + g[1].Time) / 2f);
+            Check(Math.Abs(mu - (g[0].U + g[1].U) / 2f) < 1e-4 && Math.Abs(mv - (g[0].V + g[1].V) / 2f) < 1e-4,
+                "SampleUv interpolates linearly between keys");
+            var (su, sv) = Animation.SampleUv(g, g[0].Time);
+            Check(Math.Abs(su - g[0].U) < 1e-6, "SampleUv returns the key exactly at its own time");
+            Console.WriteLine($"UV channel: Coconut {moving.Count} moving groups of {cocoKeys.Count}, "
+                + $"{g.Length} keys, circle r=0.5 about (1.5,0.5), linear sampler verified");
+        }
+    }
     Console.WriteLine("Scope: data, sampler and production resolver. Godot material binding requires game/tests/TextureAnimationAudit.tscn.");
 }
 catch (Exception ex) { Console.Error.WriteLine(ex); return 1; }

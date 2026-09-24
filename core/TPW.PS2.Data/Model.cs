@@ -17,6 +17,12 @@ public sealed partial class Model
         public uint Parent;                     // ⚠ an ABSOLUTE FILE OFFSET, into either table
         public int Offset;                      // this entry's own file offset
         public uint GroupTable, BatchTable, AnimVertexList;
+        /// <summary>⭐⭐ THE SECOND RUN LIST, at mesh +0x9c, and it is NOT the one at +0x98.
+        /// The UV-animation channel (APS track flag 0x10000) walks this one: for `cn_stall` it
+        /// resolves to 49 runs over the mesh's 68 vertices, matching that track's 49 entries
+        /// exactly, while +0x98 gives 30 runs and belongs to morph/skin. It is the only mesh in
+        /// the Coconut carrying a +0x9c list, and the only one with a 0x10000 track.</summary>
+        public uint UvAnimList;
         public Vector3 BoundsMin, BoundsMax;
     }
 
@@ -227,6 +233,7 @@ public sealed partial class Model
                 GroupTable = U32(o + 0x68),
                 BatchTable = U32(o + 0x6C),
                 AnimVertexList = U32(o + 0x98),
+                UvAnimList = U32(o + 0x9c),
                 BoundsMin = new Vector3(F32(o + 0x70), F32(o + 0x74), F32(o + 0x78)),
                 BoundsMax = new Vector3(F32(o + 0x80), F32(o + 0x84), F32(o + 0x88)),
             };
@@ -386,12 +393,20 @@ public sealed partial class Model
     /// address. Addresses step 12 bytes -- three words, one vertex -- so an address's RANK among the
     /// sorted unique addresses is its strip-vertex index. Runs matched animated-vertex counts on
     /// 7 of 7 meshes, and this field is 0 for exactly the meshes with no vertex stream.</summary>
-    public int[] AnimVertexMap(Mesh m)
+    public int[] AnimVertexMap(Mesh m) => RunMap(m.AnimVertexList, m.VertexCount);
+
+    /// <summary>The same run decoding against the UV channel's list at mesh +0x9c. ⭐ One vertex
+    /// maps to one ENTRY of the 0x10000 track; a run covers every vertex sharing a UV value, which
+    /// is why a 68-vertex mesh needs only 49 entries.</summary>
+    public int[] UvVertexMap(Mesh m) => RunMap(m.UvAnimList, m.VertexCount);
+
+    /// <summary>Decode a run list: per vertex, which GROUP it belongs to. A slot's bit 1 means
+    /// "the next slot continues this group", exactly as the consumer at 0x1ad378 walks it.</summary>
+    int[] RunMap(uint list, int nv)
     {
-        if (m.AnimVertexList == 0) return null;
-        int nv = m.VertexCount;
+        if (list == 0) return null;
         var ent = new ushort[nv];
-        for (int k = 0; k < nv; k++) ent[k] = U16((int)m.AnimVertexList + k * 2);
+        for (int k = 0; k < nv; k++) ent[k] = U16((int)list + k * 2);
         var rank = ent.Select(e => e & 0xfffc).Distinct().OrderBy(x => x)
                       .Select((s, i) => (s, i)).ToDictionary(t => t.s, t => t.i);
         if (rank.Count != nv) return null;
