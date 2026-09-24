@@ -26,7 +26,7 @@ ASSEMBLY = PROJECT + '/bin/Release/net8.0/TPW.PS2.ParkSimAudit.dll'
 MAX_LOG_BYTES = 8 * 1024 * 1024
 # Minimum assertions in the current integrated ParkSimAudit. A stale binary or
 # accidentally omitted helper must not turn missing lifecycle coverage into PASS.
-REQUIRED_CHECKS = {'availability': 30, 'removal': 57, 'conservation': 20, 'needs_lifecycle': 50, 'disruption': 21, 'service_routing': 5, 'departure_recovery': 6, 'ride_effect_consumer': 33, 'compiled_purchase': 67, 'decision_scheduling': 28, 'terminal_walking': 90, 'post_service_movement': 18, 'native_destination_score': 43, 'native_destination_consumer': 29, 'native_relief': 78, 'native_ride_value': 70, 'native_bus_admission_inputs': 276}
+REQUIRED_CHECKS = {'availability': 30, 'removal': 57, 'conservation': 20, 'needs_lifecycle': 50, 'disruption': 21, 'service_routing': 5, 'departure_recovery': 6, 'ride_effect_consumer': 33, 'compiled_purchase': 67, 'decision_scheduling': 28, 'terminal_walking': 90, 'post_service_movement': 18, 'native_destination_score': 43, 'native_destination_consumer': 29, 'native_relief': 78, 'native_ride_value': 70, 'native_bus_admission_inputs': 278}
 REQUIRED_WITNESSES = (
     'ok   native destination consumer: actual idle selector need0/sick0 rejects relief',
     'ok   native destination consumer: actual idle selector need90/sick0 chooses relief',

@@ -57,6 +57,11 @@ static class BusAdmissionChecks
         Check(Score(new NativeBusDemand.Attraction(5,0,37,0))==38,"sideshow adds value without ride extra20");
         int before=draws;Score(new NativeBusDemand.Attraction(3,0,0,0),new NativeBusDemand.Attraction(2,0,0,0));Check(draws-before==2,"one random draw per enumerated object");
         Check(NativeBusDemand.Batch(20,0,81920,0,25,0)==1,"actual one-shop score yields one passenger at defaults");
+        var backlog=NativeBusDemand.Bounds(140,0,81920,15,25,0);
+        Check(backlog==new NativeBusDemand.BatchBounds(8,5,25) && backlog.Requested==5,
+            "nonempty entrance group binds BELOW20, exposes all three actual bounds");
+        Check(NativeBusDemand.Bounds(140,0,81920,0,25,0).Requested==8,
+            "zeroed unported entrance input is permissive: eight instead of five, not neutral");
         Check(NativeBusDemand.Batch(10000,0,81920,0,25,24)==1,"headroom bounds the batch");
         Check(NativeBusDemand.Batch(10000,0,81920,19,100,0)==1,"native entrance lists bound the batch");
         Check(NativeBusDemand.Batch(10000,0,81920,20,100,0)==0,"full entrance lists deny batch");

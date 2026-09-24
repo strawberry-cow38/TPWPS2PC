@@ -313,6 +313,10 @@ public partial class StandingServiceAudit : Node3D
             sounds.Clear();
             stage.QueueFree(); await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
             await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            // Clear stops the fixture's voices and the frames above free their nodes, but
+            // headless process frames can outrun the Dummy audio thread. Let its pending
+            // stop/fade mix retire AudioStreamPlaybackWAV references before engine shutdown.
+            await ToSignal(GetTree().CreateTimer(.1), SceneTreeTimer.SignalName.Timeout);
             GD.Print(_bad == 0 ?  $"STANDING SERVICE PASS: {_checks} checks, 0 failures" : $"STANDING SERVICE FAIL: {_bad}"); GetTree().Quit(_bad == 0 ? 0 : 2);
         }
         catch (Exception ex) { GD.PrintErr("STANDING SERVICE ERROR: " + ex); GetTree().Quit(2); }

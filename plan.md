@@ -1,6 +1,6 @@
 # TPWPS2PC completion plan
 
-Updated: 2026-09-24 UTC. Current priority: native shop approach and post-service scheduling, following the reported repeated visits/teleporting. Timing landed at `c0ee884`; compiled shop walking landed at `54a58af`. Exact landing/evidence is in progress.md. The original `0db3678` starting point is historical.
+Updated: 2026-09-24 UTC. Current priority: finish native bus integration/release verification, then native entrance-group and departure-pressure guest lifecycle. Destination scoring, relief, shop walking and Bouncy's explicit hide-list activation are shipped; do not redo them. Exact commits, evidence and remaining boundaries are in progress.md. Cow tools owns the active animated-texture/thought-bubble rendering requests. The original `0db3678` starting point is historical.
 This plan is revised at the checkpoints below, not executed as an immutable queue.
 Execution/results/handoff: [progress.md](progress.md). This is a completion roadmap, not a claim that the port is finished.
 

@@ -1,8 +1,28 @@
 # TPWPS2PC progress / AI handoff
 
-Updated: 2026-09-23. Roadmap: [plan.md](plan.md).
+Updated: 2026-09-24 UTC. Roadmap: [plan.md](plan.md).
 
-## Current milestone and next action
+## Current handoff — supersedes the historical sections below
+
+Active checkout: `../tpw-gate-occupancy`, branch `astraclaw/bus-native-research`.
+The old `tpw-ride-eligibility` checkout and scheduler's `81d112c` note are stale.
+No restarts. No reimplementation of the shipped destination scoring, relief, shop
+walking, Bouncy hide-list, gate or path-price work. Cow owns the current animated
+texture / thought-bubble rendering requests; leave those files to them.
+
+Bus integration has passed normal Viewer startup/real placement/first admission/
+map reload in **all eight starting parks**,2039 assertions each. Main landing is
+pending final combined gate; use the latest appended evidence section below for
+exact results, not the old milestone headers. Peer reviewed8b0bba9, no blocker;
+requested explicit permissive-bypass language for missing entrance/departure inputs.
+`findings/bus-viewer-integration.md` describes scope and reproduction. After bus
+landing, the next native behavior package is the entrance-group/departure-pressure
+lifecycle, not another cosmetic bus or another replacement timing heuristic.
+
+Historical ledger follows; later entries supersede earlier worktree/next-action
+statements. The lower-level findings retain their dates and original evidence.
+
+## Historical starting milestone and next action
 
 M0 is published on remote main through `4090631`: plan, handoff ledger, and integrated ride-availability fix.
 M1 now includes a standalone audit matrix runner and a real rendered JUNGLE guest smoke. Full visual sign-off and broader audit/scene coverage remain open.
@@ -1997,3 +2017,31 @@ admission inputs are ZERO with a startup warning, NOT claimed native equivalence
 No attraction minigame session exists. Upgrade tier defaults0; actual upgrade UI
 unimplemented. Dedicated elapsed-ms/quantized active clock is separate from executed
 countdown ticks; exact console pump/pause-edge timing is not a hardware-emulation claim.
+
+## Final bus release verification work — September24 17:36 UTC
+
+All8normalstartingmaps passed2039checks each: `/tmp/tpw-live-bus-*-v2.log` (park1)
+and `/tmp/tpw-live-bus-*-park2-retry.log` (park2). The first park2 launch raced a
+runtime clean build and could not load its C# class; those failedlaunchsessions
+were terminated, not counted as passes. Retry after build used6759903 including
+cow's bridge/path-cursor changes and both sound seam commits. No visual/listening
+approval claimed. Two LIVE negative controls caught: omitPlaceHeld registration
+failsbeforetick; shiftactualspawnonecell failsnewbornPoint0. Logs `/tmp/tpw-bus-
+mutation-gl-registration.log` /`...-spawn.log`, both exit2. Restored/rebuilt. Initial
+Vulkan mutation printedexpectedassertion buthungonshutdown150s; notcountedaspass;
+GL compatibility runprovedbothfailures. No production mutation remains.
+
+Combined11-scene run `/tmp/tpw-live-bus-runtime-final` first returned one unexpected
+StandingService ObjectDBshutdownleak, despite155checksPASS. Investigated rather
+thanwhitelisted: 28AudioStreamPlaybackWAV+7AudioStreamWAV, noNodes. Worker baseline
+6/12verboseleaked, add100msafterstage/voicecleanup20/20clean, removeonlywait4/10leak,
+restore20verbose+5normalclean. Full logs at sibling scratch1492558787561914542093/tmp;
+`leak-evidence.txt`listsactualreferencecounts. OnlyStandingServiceAuditteardownchanged.
+
+Peer8b0bba9review acceptedlivehookup, butcorrectlyflaggedunportedzeroasPERMISSIVE:
+startupwarningnowexplicitly saysbypassesbacklogreductionanddepartureveto. Bounds
+areloggedfromsameNativeBusDemand.Bounds usedtoadmit, notduplicateddiagnosticarithmetic.
+Two extra inputcontrols=278total: scorebound8/group5/headroom25=>5 andzero-group=>8.
+This doesnotfixbacklogbehavior. Needs itsreal lifecycle next, noinventedcounter.
+Finalfreshgatespendingafterthiscommit; oldmatrixalready J/Fpass/exactH/Sknownreds,
+63Pythonpasses. Keepthisdistinction untilfreshgatescomplete andmainispushed.

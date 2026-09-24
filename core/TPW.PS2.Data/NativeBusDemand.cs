@@ -21,13 +21,22 @@ public static class NativeBusDemand
         }
         return any?unchecked((int)total):0;
     }
-    public static int Batch(int score,int offset,int divisor,int entranceGroupCount,
-        int ceiling,int population,bool loadsOfKids=false)
+    public readonly record struct BatchBounds(int Demand,int Entrance,int Headroom)
+    {
+        public int Requested => Math.Min(Math.Min(Demand,Entrance),Headroom);
+    }
+    public static BatchBounds Bounds(int score,int offset,int divisor,int entranceGroupCount,
+        int ceiling,int population)
     {
         if(divisor==0) throw new DivideByZeroException("native bus denominator");
         int scoreBound=unchecked(unchecked(score+offset)*0x1333)/divisor;
         int groupBound=unchecked(20-entranceGroupCount);
-        return loadsOfKids ? Math.Min(20,groupBound)
-            : Math.Min(Math.Min(scoreBound,groupBound),unchecked(ceiling-population));
+        return new(scoreBound,groupBound,unchecked(ceiling-population));
+    }
+    public static int Batch(int score,int offset,int divisor,int entranceGroupCount,
+        int ceiling,int population,bool loadsOfKids=false)
+    {
+        var bounds=Bounds(score,offset,divisor,entranceGroupCount,ceiling,population);
+        return loadsOfKids ? Math.Min(20,bounds.Entrance) : bounds.Requested;
     }
 }

@@ -67,7 +67,7 @@ public partial class Viewer
             _nativeBus.Root.Name="NativeBus";
             AddChild(_nativeBus.Root); // authored model/world coordinates; one root Z conversion
             GD.Print($"[bus] loaded {key} -> {stem}; point0={_busCatalogue.Point0}; catalog={_busCatalogue.TotalEntries}");
-            GD.Print("[bus] boundary: native entrance-group queues and sticky departure-deferral pressure are not yet represented by the guest adapter; their admission counters are currently zero. No attraction-minigame session exists in this port.");
+            GD.Print("[bus] boundary: UNPORTED entrance-group queues and sticky departure-deferral pressure. Zero inputs BYPASS the backlog reduction (entrance bound stays20) and departure-pressure veto; busy-park admissions can exceed native. No attraction-minigame session exists in this port.");
             return true;
         }
         catch(Exception e)
@@ -149,13 +149,16 @@ public partial class Viewer
         int score=NativeBusDemand.Score(ordered,n=>_guestRng.Next(n));
         int ceiling=_busCatalogue.Ceiling(objects.Select(o=>(o.Kind,o.Key)));
         int population=_visitors.Plans.Keys.Concat(_guests.Guests.Select(g=>g.Id)).Distinct().Count();
-        int requested=NativeBusDemand.Batch(score,_busCatalogue.DemandOffset,_busCatalogue.DemandDivisor,
+        // Zero is a permissive bypass, not a neutral contribution. Native entrance groups
+        // are not Walk.Guests or path occupancy; do not substitute either as a guessed count.
+        var bounds=NativeBusDemand.Bounds(score,_busCatalogue.DemandOffset,_busCatalogue.DemandDivisor,
             entranceGroupCount:0,ceiling,population);
+        int requested=bounds.Requested;
         var at=_busCatalogue.Point0;
         int admitted=0;
         if(_guests.Paths.Open(at))
             for(int i=0;i<requested;i++) { _visitors.Arrive(at,at);admitted++; }
         _busAdmitted+=admitted;
-        GD.Print($"[bus.arrivals] {BusClock}ms request={_busBatches} score={score} ceiling={ceiling} population={population} requested={requested} admitted={admitted} point0={at}");
+        GD.Print($"[bus.arrivals] {BusClock}ms request={_busBatches} score={score} ceiling={ceiling} population={population} bounds[demand={bounds.Demand},entrance={bounds.Entrance},headroom={bounds.Headroom}] requested={requested} admitted={admitted} point0={at}");
     }
 }
