@@ -578,6 +578,7 @@ PathPriceChecks.Run(terrain, PathPieces.Read(disc), Check);
 ScreamChecks.Run(disc, world, Check);
 BusAdmissionChecks.Run(disc, Check);
 SfxGraphChecks.Run(disc, Check);
+BridgeChecks.Run(terrain, PathPieces.Read(disc), world, Check);
 RideValueChecks.Run(Wad("DATA"), wad, world, Check);
 GuestAnimationChecks.Run(Wad("DATA"), Check);
 CompiledShopPurchaseChecks.Run(terrain, loopPaths, corridorStops[0], onPath[^1], Wad("DATA"), wad, world, Check);

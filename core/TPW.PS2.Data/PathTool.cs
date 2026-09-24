@@ -28,6 +28,7 @@ public sealed class PathTool
     readonly PathPieces _pieces;
     readonly int[] _pathSprites, _queueSprites;   // list index -> material index
     readonly Kind[] _kind;
+    readonly HashSet<int> _bridge = new();
     readonly int[] _turns;
     /// <summary>Which ride a cell belongs to. 0 is a free path that belongs to nobody.</summary>
     readonly int[] _owner;
@@ -118,6 +119,14 @@ public sealed class PathTool
         _pieces = pieces;
         if (_field == null) { Report = "this terrain carries no authored grid"; return; }
         _kind = new Kind[_field.Count];
+        // ⭐ The park's own bridge, read from the terrain's materials at construction -- authored
+        // ground, not something the player laid, so it is seeded once and never written.
+        for (int c = 0; c < _field.Count; c++)
+        {
+            int m = _field.Cells[c * 2 + 1];
+            if (m > 0 && m < terrain.Materials.Count && ParkPaths.IsBridgeDeck(terrain.Materials[m]))
+                _bridge.Add(c);
+        }
         _turns = new int[_field.Count];
         _owner = new int[_field.Count];
         _run = new int[_field.Count];
@@ -158,9 +167,20 @@ public sealed class PathTool
     /// <summary>⭐ The engine's own rule, from the tile-map fill at 0x14E700: a cell is unbuildable
     /// exactly when its authored byte0 bit 0 is set, which is the same bit that says the terrain
     /// draws no ground there.</summary>
-    public bool CanLay(int x, int y) => Ready && In(x, y) && _field.Buildable(x, y) && !_walkway.Contains(At(x, y));
+    // ⚠ The bridge refuses a lay for the same reason the walkway does: it is already the park's
+    // own path and nothing new goes on top of it.
+    public bool CanLay(int x, int y) => Ready && In(x, y) && _field.Buildable(x, y)
+                                     && !_walkway.Contains(At(x, y)) && !_bridge.Contains(At(x, y));
 
-    public Kind KindAt(int x, int y) => In(x, y) ? _kind[At(x, y)] : Kind.None;
+    /// <summary>⭐⭐ THE BRIDGE READS AS PATH. Master: it "should count as path tiles ... and have
+    /// paths connect to it." It is authored into the terrain rather than laid, so it is not in
+    /// `_kind` -- which is why a run drawn up to it used to see bare ground and wear an end cap
+    /// instead of joining.</summary>
+    public Kind KindAt(int x, int y)
+        => !In(x, y) ? Kind.None : _bridge.Contains(At(x, y)) ? Kind.Path : _kind[At(x, y)];
+
+    /// <summary>Whether this cell is the park's own authored bridge.</summary>
+    public bool IsBridge(int x, int y) => In(x, y) && _bridge.Contains(At(x, y));
 
     /// <summary>Is this one of the park's own entrance cells?</summary>
     public bool IsWalkway(int x, int y) => In(x, y) && _walkway.Contains(At(x, y));
@@ -255,7 +275,10 @@ public sealed class PathTool
     /// ⚠ This replaces a tip test that WAS what master asked for one message earlier -- "paths
     /// should only have the connected sprite if they are connected at the end of queues" -- and
     /// the refinement is that the end of a queue is not by itself a connection.</summary>
-    bool PathJoins(int x, int y) => In(x, y) && _kind[At(x, y)] is Kind.Path or Kind.Both;
+    // ⭐ The bridge counts as path for linking, so a run laid up to it wears an arm pointing at
+    // it rather than an end cap.
+    bool PathJoins(int x, int y)
+        => In(x, y) && (_bridge.Contains(At(x, y)) || _kind[At(x, y)] is Kind.Path or Kind.Both);
 
     /// <summary>The eight link bits of a cell.
     ///
