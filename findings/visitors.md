@@ -2196,3 +2196,68 @@ rather than quietly matching the words of the request instead of its source.
 
 ⚠ `guest+0x90`, `+0x94`, `+0x98` are three effect handles the guest keeps; only the fact that the
 shop call stores into `+0x90` is used here.
+
+### ⭐⭐ All eight guest sounds, and the one-per-tag stacking bug (2026-09-24)
+
+A `jal` census of the two effect entry points over the guest code (`0x209000..0x213000`) finds
+**eight** call sites, and the `a2` immediate at each gives its id — **8 of 8 recovered**, so this
+is a complete list of that range rather than a sample:
+
+| id | site | clip in `GLOBAL/KIDSSFX.MAP` |
+|---|---|---|
+| 51 | `0x211710` | `flush.vag` |
+| **53** | `0x20F0A0` | `dooropen1.mp2` — **the control** |
+| 126 | `0x2105FC` | `yawn2a / yawn3a` |
+| 129 | `0x2102D4` | `huh1.vag` |
+| 204 | `0x20CFA4` | `puke3 / puke4 / sick1a` |
+| 205 | `0x20FA14` | `scared1 / cry1 / kidsad1 / kidsad2` |
+| 208 | `0x20EAD8` | `cashD2b.vag` |
+| 307 | `0x20CA60` | `angry4 / kidsad1 / huh1` |
+
+⭐ Every clip matches its site, which is what makes the group-6 reading evidence rather than a
+lookup that happened to return something: `puke` at a sickness site, `flush` at a toilet one, a
+till at the shop. Eight independent agreements.
+
+⚠ Wired: the till, the two lavatory ones, and the mood pair, all raised from the arms that set
+the corresponding bubble. **Not yet attributed**: 126, 204 and 307 — their containing functions
+(`FUN_00210428`, `FUN_0020C930`, `FUN_0020C930`) are identified but the moment inside them is
+not, and a sound played at the wrong moment is worse than one not played.
+
+### ⚠⚠ A looping sound object stacked on every re-issue
+
+Master: *"loadspeakers and bins are spamming sounds forever ... crazy ape spams a snort sound mid
+cycle."* Reproduced from this repo's own cue census before changing anything — over one 60-second
+JUNGLE run there are **46 `ADDOBJ` against 14 `KILLOBJ`**, and Crazy Ape's `boil000/boil002` is
+re-issued at **7.1s, 20.2s, 33.2s, 46.3s and 59.4s**. Each started another looping voice on top of
+the last.
+
+⭐ The script language settles the right behaviour: `ADDOBJ` names an object and `KILLOBJ tag` /
+`FADEOBJ tag` act on *the* object with that tag — singular, and `RideSounds.Kill` already looks it
+up that way. Re-adding a live tag restarts that object; it does not create a second one.
+⚠⚠ NOT a decoded rule: the console's object list at instance `+0xb0` has never been walked. What
+is certain is that five overlapping snorts is not something the game does.
+⚠ Loops only — one-shots must still overlap, or two guests cannot be sick at once.
+
+⚠ And master's framing ("assuming fps = tps") was tested and is **not** the cause: equal simulated
+time at two different step sizes produces an identical number of trigger periods. The spam is one
+event firing repeatedly, not a clock running fast.
+
+### The ride's value, read — `FUN_001B82D0`
+
+```c
+base = record[0x18];  if (base == 0) return 0;      // the compiled BaseExcitement
+s = clamp((speed    << 12) / 100, 0xC00, 0x1400);   // 0.75 .. 1.25
+d = clamp((duration << 12) / 5,   0xC00, 0x1400);
+return min(base * (s * d >> 12) >> 12, 100);
+```
+
+⭐ Verified against the image independently of the trace that named it: `0x366330 + 0x1D4` is
+`0x001B82D0` with the `-8` this-adjustment, and the coaster/tour/track/feature rows of the same
+table reproduce exactly. `record[0x18]` is offset 24, which this port's parser already calls
+`BaseExcitement`.
+
+⚠ The SETTINGS' defaults are not read — the getters go through a second vtable at object `+0x18`
+which is not in hand. Measured on the disc, speed is `1..100` on every ride (so it is a percentage
+whose maximum gives exactly 1.0 and can only pull the value down) while duration ranges vary from
+`1..1` to `10..60`, and anything from 7 up saturates the 1.25 cap. Replaces the invented flat 45;
+that constant now applies only to a ride with no compiled record at all.

@@ -337,6 +337,29 @@ public sealed class VisitorNeeds
     readonly HashSet<int> _holdingBubble = new();
     public int BubblesHeld => _holdingBubble.Count;
 
+    /// <summary>⭐⭐ THE GUEST'S OWN SOUNDS, raised as (guest, event id) for a coordinator to place
+    /// and a viewer to play. Every id is the console's: a census of `jal` to the two effect entry
+    /// points over the guest code found **eight** call sites, and all eight resolve in
+    /// `GLOBAL/KIDSSFX.MAP` to a clip that matches its site. See <see cref="Sounds"/>.
+    /// ⚠ This assembly has no audio and must not grow one.</summary>
+    public Action<int, int> Sounded;
+
+    /// <summary>The eight, with the address that plays each and the clip it resolves to.
+    /// ⭐ `Yawn` is the quiet triumph here: it is played from the code around `+0x7B`, the byte
+    /// this file identified as boredom from the bubble table -- a yawn is exactly what boredom
+    /// sounds like, and nobody chose that name. Independent corroboration of an offset.</summary>
+    public static class Sounds
+    {
+        public const int Flush = 51;        // 0x211710  flush.vag
+        public const int LavatoryDoor = 53; // 0x20F0A0  dooropen1.mp2
+        public const int VeryHappy = 129;   // 0x2102D4  huh1.vag
+        public const int Yawn = 126;        // 0x2105FC  yawn2a/yawn3a
+        public const int Sick = 204;        // 0x20CFA4  puke3/puke4/sick1a
+        public const int VeryUnhappy = 205; // 0x20FA14  scared1/cry1/kidsad1/kidsad2
+        public const int ShopTill = 208;    // 0x20EAD8  cashD2b.vag
+        public const int Mixed = 307;       // 0x20CA60  angry4/kidsad1/huh1
+    }
+
     readonly Dictionary<int, VisitorWants> _byGuest = new();
     readonly Random _rng;
 
@@ -531,6 +554,15 @@ public sealed class VisitorNeeds
             {
                 if (_holdingBubble.Count >= BubbleBudget) continue;
                 _holdingBubble.Add(guest);
+            }
+            // ⭐ The console plays these from the SAME arms that set the bubble, so they are
+            // raised here rather than invented at some other moment. ⚠ Only on a CHANGE: the
+            // ladder re-runs every 128 ticks and a guest who is still happy is not newly happy.
+            if (w.Thought != picked.Value)
+            {
+                if (picked == Thought.Happy || picked == Thought.VeryUnhappy) Sounded?.Invoke(guest, Sounds.VeryHappy);
+                else if (picked == Thought.Sad) Sounded?.Invoke(guest, Sounds.VeryUnhappy);
+                else if (picked == Thought.Bored) Sounded?.Invoke(guest, Sounds.Yawn);
             }
             w.Thought = picked.Value;
             _byGuest[guest] = w;
@@ -809,6 +841,12 @@ public sealed class VisitorNeeds
         w.Toilet = 0;
         w.Sick = Clamp(w.Sick - ToiletSicknessRelief);
         _byGuest[guest] = w;
+        // ⚠ TWO SOUNDS, TWO SITES. `0x211710` plays the flush and `0x20F0A0` the door, at
+        // different moments in the console's relief lifecycle; this port has one moment, so both
+        // are raised together and the order is the port's. Flush then door is at least the order
+        // a person would do them in.
+        Sounded?.Invoke(guest, Sounds.Flush);
+        Sounded?.Invoke(guest, Sounds.LavatoryDoor);
         return soil;
     }
 

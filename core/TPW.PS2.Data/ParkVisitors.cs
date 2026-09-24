@@ -154,7 +154,21 @@ public sealed class ParkVisitors
     /// beside the walking layer rather than on it, and must not be re-rolled when the person comes
     /// back off a rollercoaster (agreed with astraclaw while they were landing the removal
     /// lifecycle, 2026-09-23). Null leaves the park exactly as it was before needs existed.</summary>
-    public VisitorNeeds Needs { get; set; }
+    VisitorNeeds _needs;
+    /// <summary>⚠ Subscribing on the SETTER rather than in the constructor: `Needs` is assigned
+    /// by the caller after construction in every fixture and in the viewer, so a constructor
+    /// hook would attach to nothing. The old instance is unsubscribed so a replaced table does
+    /// not keep firing sounds for guests it no longer owns.</summary>
+    public VisitorNeeds Needs
+    {
+        get => _needs;
+        set
+        {
+            if (_needs != null) _needs.Sounded -= ForwardSound;
+            _needs = value;
+            if (_needs != null) _needs.Sounded += ForwardSound;
+        }
+    }
 
     /// <summary>What a ride does to a rider, applied ONCE on genuine completion.
     ///
@@ -366,10 +380,24 @@ public sealed class ParkVisitors
     /// because it is a visible difference from the words of the request.</summary>
     public const int ShopSoundGroup = 6, ShopSoundEvent = 208;
 
-    /// <summary>Raised when a guest finishes at a shop, bought or not -- see
-    /// <see cref="ShopSoundEvent"/>. ⚠ A plain delegate because this assembly has no audio and
-    /// must not grow one; the viewer owns playback.</summary>
-    public Action<int, int, ParkCell> ShopVisited;
+    /// <summary>⭐ EVERY guest sound, as (guest, event id, where). Raised for a finished shop
+    /// visit here and forwarded from <see cref="VisitorNeeds.Sounded"/> for the mood and relief
+    /// ones, so a viewer wires ONE handler rather than five. ⚠ A plain delegate because this
+    /// assembly has no audio and must not grow one.</summary>
+    public Action<int, int, ParkCell> GuestSound;
+
+    /// <summary>⚠ Placing a sound is the coordinator's job because only it knows where a guest
+    /// is: <see cref="VisitorNeeds"/> raises (guest, event) and this adds the cell. Forwarded to
+    /// the same hook the shop till uses, so a viewer wires one handler and not five.</summary>
+    void ForwardSound(int guest, int eventId)
+    {
+        // ⚠ No body, no place to play it. A guest the walk has already handed away is mid-service
+        // and the console's own call is at the GUEST, so dropping the sound is better than
+        // playing it at the gate -- a cry from the entrance for somebody inside a ride is worse
+        // than silence, and it would be the kind of thing nobody traces back.
+        var g = Walk.Guests.FirstOrDefault(x => x.Id == guest);
+        if (g != null) GuestSound?.Invoke(guest, eventId, g.Cell);
+    }
 
     void Take(ParkRide shop, RideDefinition def)
     {
@@ -701,11 +729,17 @@ public sealed class ParkVisitors
             // ⚠ The guest's own cell where they still have one -- the console positions the
             // effect at the GUEST, not the building -- falling back to the shop's service entry
             // (or its origin) for a guest the walk has already handed away.
-            ShopVisited?.Invoke(guest, used.Id, Walk.Guests.FirstOrDefault(g => g.Id == guest)?.Cell
-                                                 ?? used.ServiceEntry ?? used.Entrance ?? used.Origin);
+            GuestSound?.Invoke(guest, VisitorNeeds.Sounds.ShopTill,
+                               Walk.Guests.FirstOrDefault(g => g.Id == guest)?.Cell
+                               ?? used.ServiceEntry ?? used.Entrance ?? used.Origin);
             return;
         }
-        Needs.Ride(guest, RideIntensity, RideHappiness, RideSickScale, RideBoredomScale);
+        // ⭐⭐ THE RIDE'S OWN VALUE, where this used a flat invented 45. `ParkRide.Value` is
+        // `FUN_001B82D0`'s arithmetic over the compiled base and the speed/duration settings.
+        // ⚠ `RideIntensity` survives as the fallback for a ride with no compiled record -- the
+        // audits build bare rides from a script alone -- and is still an invention, now confined
+        // to the case where there is genuinely nothing to read.
+        Needs.Ride(guest, used?.Value ?? RideIntensity, RideHappiness, RideSickScale, RideBoredomScale);
     }
 
     /// <summary>Where a guest with something pressing on their mind is trying to get to, or null

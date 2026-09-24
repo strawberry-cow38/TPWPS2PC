@@ -3111,11 +3111,11 @@ public partial class Viewer : Node3D
             // ⚠ The sim assembly has no audio and must not grow one, so playback is wired here.
             // `RseOpcode.EVENT` is the one-shot arm of Cue -- only ADDOBJ loops -- and the shop's
             // own id attributes the voice so `Drop` still tidies up when it is demolished.
-            _visitors.ShopVisited = (guest, shopId, at) => _sounds?.Cue(
-                shopId, _sim.Rides.FirstOrDefault(r => r.Id == shopId)?.Name ?? "shop",
-                _parkTicks * ParkSim.TickMilliseconds, RseOpcode.EVENT,
-                ParkVisitors.ShopSoundGroup, -1, ParkVisitors.ShopSoundEvent, 0,
-                Cell(ParkPaths.Centre(at)));
+            // ⚠ Ride id 0: these belong to a GUEST, not a ride, so `Drop(rideId)` on a demolished
+            // ride must never take them. ⭐ One-shots (`EVENT`), so two guests can be sick at once.
+            _visitors.GuestSound = (guest, eventId, at) => _sounds?.Cue(
+                0, $"guest {guest}", _parkTicks * ParkSim.TickMilliseconds, RseOpcode.EVENT,
+                ParkVisitors.ShopSoundGroup, -1, eventId, 0, Cell(ParkPaths.Centre(at)));
             GD.Print($"[guest] guests now visit rides; the sim and the walk share one grid: {ReferenceEquals(_sim.Paths, _guests.Paths)}");
             GD.Print($"[want] {_thoughts.Load(path => _lib?.ReadGeneric(path))}"
                    + $"; cam={System.Environment.GetEnvironmentVariable("TPW_WANT_CAM")}"

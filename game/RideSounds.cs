@@ -172,6 +172,37 @@ public sealed class RideSounds
         }
         Resolved++;
         bool loop = op == RseOpcode.ADDOBJ;
+        // ⭐⭐ ONE LIVE OBJECT PER TAG, AND WITHOUT THIS THEY STACK FOREVER. Master, playing:
+        // "loadspeakers and bins are spamming sounds forever ... crazy ape spams a snort sound
+        // mid cycle." Reproduced in this repo's own census before touching anything: over one
+        // 60-second JUNGLE run there are **46 ADDOBJ against 14 KILLOBJ**, and Crazy Ape's
+        // `boil000/boil002` -- the snort -- is re-issued at 7.1s, 20.2s, 33.2s, 46.3s and 59.4s.
+        // Each one started ANOTHER looping voice on top of the last, so by a minute in there are
+        // five snorts running together and it grows without bound.
+        //
+        // ⭐ The script language settles what the right behaviour is: `ADDOBJ` names an object
+        // and `KILLOBJ tag` / `FADEOBJ tag` act on "the object with that tag" -- singular, and
+        // this file's own Kill already looks it up that way. An instruction that re-adds a tag
+        // that is already live is restarting that object, not creating a second one.
+        //
+        // ⚠⚠ NOT A DECODED RULE. The console keeps its objects in a list at instance `+0xb0`
+        // which nobody has walked, so whether IT replaces or stacks is unread. What IS certain is
+        // that the current behaviour is wrong -- five overlapping snorts is not a thing the game
+        // does -- and one-per-tag is the reading the tag semantics support.
+        //
+        // ⚠ LOOPS ONLY. A one-shot is allowed to overlap itself: two guests can cry at once, and
+        // a cycle's worth of clangs are meant to pile up. Only an endless voice needs replacing.
+        if (loop)
+        {
+            var already = _voices.Where(v => v.Ride == rideId && v.Tag == tag).ToList();
+            if (already.Count > 0)
+            {
+                string dup = $"{head} -> replaces {already.Count} live voice(s) on the same tag: "
+                           + string.Join(", ", already.Select(v => v.Name));
+                Census.Add(dup); GD.Print(dup);
+                foreach (var v in already) Free(v);
+            }
+        }
         var sets = Enumerable.Range(0, r.Sets).Select(i => r.Clips.Where(c => c.Set == i).ToList()).ToList();
         string place = $"at ({at.X:F1},{at.Y:F1},{at.Z:F1}){(fellBack ? " ROOT (fitting did not resolve)" : "")}{(park == 2 ? " park-2 map" : "")}";
         if (!loop || sets.Count < 3)

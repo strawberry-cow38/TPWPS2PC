@@ -550,6 +550,7 @@ if (looEntry.Entry != null && serviceRide is { } notALoo && corridorStops.Count 
 }
 CompiledJoinChecks.Run(Wad("DATA"), wad, world, Check);
 MoodChecks.Run(Check);
+RideValueChecks.Run(Wad("DATA"), wad, world, Check);
 GuestAnimationChecks.Run(Wad("DATA"), Check);
 CompiledShopPurchaseChecks.Run(terrain, loopPaths, corridorStops[0], onPath[^1], Wad("DATA"), wad, world, Check);
 TerminalWalkingChecks.Run(terrain, Wad("DATA"), wad, world, Check);
@@ -715,9 +716,13 @@ string Clips(SoundCatalogue.Resolved r) => string.Join("|", r.Clips.Select(c => 
 // OBJ_SOUND group number and THE CONTROL FAILED: the lavatory's own id did not resolve under 7
 // either, and 53 is known to live in the kids map, which is group 6. `FUN_00111428`'s second
 // argument selects a table INSIDE that function, so it is a category in some other numbering.
-foreach (var (sfxId, sfxWhat) in new[] { (53, "lavatory relief, FUN_0020EDD8 -- THE CONTROL"),
-                                         (208, "shop visit complete, FUN_0020E1A0 tail"),
-                                         (205, "guest very unhappy"), (129, "guest very happy") })
+// ⭐⭐ EVERY effect call in the guest code (0x209000..0x213000), found by censusing `jal` to the
+// two entry points and reading the `a2` immediate at each site. Eight, not the four first noticed.
+foreach (var (sfxId, sfxWhat) in new[] { (53, "0x20F0A0 lavatory relief -- THE CONTROL"),
+                                         (208, "0x20EAD8 shop visit complete"),
+                                         (205, "0x20FA14 very unhappy"), (129, "0x2102D4 very happy"),
+                                         (307, "0x20CA60"), (204, "0x20CFA4"),
+                                         (126, "0x2105FC"), (51, "0x211710") })
 {
     var found = new List<string>();
     foreach (int grp in new[] { 3, 4, 5, 6, 7, 8, 9, 11 })

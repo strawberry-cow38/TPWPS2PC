@@ -103,6 +103,53 @@ public sealed class ParkRide
     /// label anybody read.</summary>
     public int Setting0xAC { get; set; }
 
+    /// <summary>⭐⭐ WHAT THIS RIDE IS WORTH TO A GUEST, and the arithmetic is READ where this
+    /// port used a flat invented 45. `FUN_001B82D0` is the ordinary attraction's `+0x1D4`
+    /// producer -- the very slot `FUN_0020EDD8`'s ride arm calls for the value it measures
+    /// sickness, taste and boredom against:
+    ///
+    /// <code>
+    ///   base = record[0x18];  if (base == 0) return 0;          // the compiled BaseExcitement
+    ///   s = clamp((speed    &lt;&lt; 12) / 100, 0xC00, 0x1400);       // 0.75 .. 1.25 in 12.12
+    ///   d = clamp((duration &lt;&lt; 12) / 5,   0xC00, 0x1400);
+    ///   return min(base * (s * d &gt;&gt; 12) &gt;&gt; 12, 100);
+    /// </code>
+    ///
+    /// ⭐ `record[0x18]` is offset 24, which this port's own compiled parser already calls
+    /// `BaseExcitement` -- two routes to one field. And the vtable slot was verified against the
+    /// image directly: `0x366330 + 0x1D4` is `0x001B82D0` with the `-8` this-adjustment, as are
+    /// the coaster/tour/track/feature rows of the same table.
+    ///
+    /// ⚠⚠ THE SETTINGS' DEFAULTS ARE NOT READ. `FUN_001B82D0` fetches speed and duration through
+    /// a SECOND vtable at object `+0x18`, not the attraction table, so the getters could not be
+    /// resolved from the one address in hand -- and what a freshly placed ride runs at is
+    /// therefore unknown. They default to the TOP of each ride's own compiled range, which is at
+    /// least data-derived: both factors rise with their setting, so max-settings reads the ride
+    /// at its best and the compiled base then means what its name suggests.
+    ///
+    /// ⚠ Measured on the disc, speed is `1..100` on EVERY ride -- so it is a percentage whose
+    /// maximum gives exactly 1.0 and which can only ever pull the value DOWN. Duration ranges
+    /// vary wildly (1..1 on coasters, 10..60 on flat rides), and anything from 7 up saturates
+    /// the 1.25 cap.</summary>
+    public int Speed { get; set; } = 100;
+    public int Duration { get; set; } = 5;
+
+    /// <summary>The value, computed the console's way -- see <see cref="Speed"/>. Null when this
+    /// ride has no compiled record to take a base from, so a caller can say so rather than
+    /// receive a plausible zero.</summary>
+    public int? Value
+    {
+        get
+        {
+            int bass = Definition?.CompiledEntry?.BaseExcitement ?? 0;
+            if (Definition?.CompiledEntry == null) return null;
+            if (bass == 0) return 0;
+            static int Band(int v) => Math.Clamp(v, 0xC00, 0x1400);
+            int s = Band((Speed << 12) / 100), d = Band((Duration << 12) / 5);
+            return Math.Min((int)(((long)bass * ((s * d) >> 12)) >> 12), 100);
+        }
+    }
+
     /// <summary>`+0xBC` and `+0xC0`: what this facility has taken in gross, and what it has made
     /// after the cost of its goods. `FUN_001D18E8` adds the full price to one and the margin to
     /// the other on every sale, whichever way the margin goes.</summary>

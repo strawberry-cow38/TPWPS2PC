@@ -235,6 +235,33 @@ static class MoodChecks
             Check(threw, "a negative credit is refused rather than silently draining the park");
         }
 
+        // ── is the shop's sound trigger on the SIM clock or the caller's? ─────────────────
+        // ⭐⭐ MASTER'S REPORT, TURNED INTO A MEASUREMENT: "things that make sounds are making
+        // sounds assuming fps = tps, so they are spamming sounds." Reading the code and not
+        // finding an fps-driven trigger proves nothing -- so count the trigger over EQUAL SIM
+        // TIME at two different step sizes. Same count = tick-driven; a count that scales with
+        // the number of calls = frame-driven, which is the defect.
+        //
+        // ⚠ This measures the RATE OF THE TRIGGER, not how often a guest chooses to shop. A
+        // guest re-entering a shop repeatedly would raise BOTH numbers equally and this check
+        // would still pass -- correctly, because that is a different defect in a different lane.
+        {
+            int Fire(double step, int steps)
+            {
+                var n = Still();
+                n.Unknown78Bar = n.SickBar = n.ToiletBar = n.HungerBar = n.ThirstBar = 101;
+                int fired = 0;
+                // The sound rides VisitorNeeds' clock through ParkVisitors.Serve, so the clock
+                // discipline that matters here is the needs step the coordinator drives.
+                for (int i = 0; i < steps; i++) fired += n.Step(step);
+                return fired;
+            }
+            // 4.0 s of simulated time, reached two ways.
+            int slow = Fire(0.04, 100), fast = Fire(0.02, 200);
+            Check(slow == fast, $"equal sim time yields equal rise periods however many calls it took ({slow} vs {fast})");
+            Check(slow > 0, $"and the clock actually advanced ({slow}) -- a frozen clock would pass the line above");
+        }
+
         // ⚠ THE CONTROL THAT MATTERS: `+0x78` is NOT raised by the clock. Nothing in
         // `FUN_0020FB88` raises it -- queueing is its only riser found -- and a rise put there on
         // the strength of its 95 bar was this port's mistake for two commits.
