@@ -70,6 +70,21 @@ base effects still need the documented runtime quality modifier or an explicit p
 do not confuse a correct lookup with full retail outcome parity. Keep any unresolved ordinary
 producer work bounded to an independently identified concrete class/dispatch chain.
 
+## CP2/CP6 adjustment — coordinate-less policy and integration checkpoint
+
+The six shops without stand keys now have a labelled arrival-stub policy: preserve the actual
+position reached by the guest, without writing guessed authored values. Both scalar Fields
+and fenced Blocks count as supplied data, so malformed keys are not silently treated as absent.
+Authored positions retain priority; real host ownership/hiding still wins.132 standing checks,
+actual fallback-consumer witnesses and six normal-startup runs cover this bounded behavior.
+
+Original parser/default semantics remain unknown. Peer code/images have been shared; absent
+image feedback is not invented sign-off. Human input/camera/platform testing remains at the
+end as the owner requested. Stop expanding this finished policy's audit family. Next take a
+CP6 clean-source integration/build checkpoint (the prior all-project evidence predates many
+changes), then select the next playable gap together with cow tools. Do not substitute that
+Linux/cache-backed checkpoint for native Windows or real-audio qualification.
+
 ## CP5/CP4 adjustment — visible shop customers and the actual park frame
 
 Normal viewer placement exposed a missing customer that headless purchase arithmetic could

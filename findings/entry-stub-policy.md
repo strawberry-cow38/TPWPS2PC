@@ -66,3 +66,21 @@ five. The default icecream target remains available in all four worlds: FANTASY 
 this policy; JUNGLE/HALLOW/SPACE retain their authored positions. Output paths must be new
 and outside Git. Markers and alternate inspection cameras are diagnostic overlays/views,
 not gameplay artwork or evidence of native input/camera usability.
+
+## Final automated evidence
+
+The final fresh eight-scene gate passes with132 standing assertions and57 Python runner
+checks. Normal-startup rendered runs pass for all six named coordinate-less shops and the
+still-authored JUNGLE IceCream control, including live inward/up/unit-basis checks. The
+Coconut baseline failed only the missing-body assertion before the policy was wired.
+
+Three restored-source mutations demonstrate separate boundaries: deleting Viewer fallback
+registration fails3 actual-consumer assertions while metadata still passes; treating fenced
+blocks as absence fails2 parsed-input assertions; inventing a quarter-cell counter offset
+fails the live arrival-position assertion. Each run completes132 assertions and exits2,
+not a compile failure or an empty check run. Source and Debug output were restored afterward.
+
+An independent source review prompted the fenced-block guard and the required consumer
+coverage gate. Representative captures have been sent to cow tools for image review; no new
+visual sign-off is claimed in this entry. Callback/geometry evidence, peer image inspection,
+and eventual human gameplay/input/platform testing remain distinct.

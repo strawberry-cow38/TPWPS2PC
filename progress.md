@@ -1294,3 +1294,29 @@ Current candidate needs Git peer review, deliberate no-registration/block-guard 
 and final fresh8scene + six named rendered reruns after review-tightening. Only comment/name
 cleanup followed the earlier6renderpass; no final-source six-run claim yet. Share code via
 review branch, not paths/attachments; screenshots may be attached. No restart/new scheduler.
+
+## CP2 complete — entry-stub automated gates and policy evidence
+
+Candidate f956fe4 is pushed on astraclaw/entry-stub-service. Independent source review's
+fenced-block malformed-input issue and missing-consumer coverage gate are resolved. The
+review requested live facing checks; these now pass in all named normal-startup runs.
+Final /tmp/tpw-entry-stub-final-runtime-20260924: all8scenespass, standing132.57 Python
+runner tests pass. /tmp/tpw-coordinate-less-final-20260924: JUNGLECoconut, FANTASYburger/
+fries/icecream, SPACEburger/fries all pass, plus still-authoredJUNGLEIceCream control.
+Log summary ../tpw-entry-stub-final-gates.result is runtime=0 rendered=0. No raw assets copied.
+
+Three deliberate restored-source failures: missingfallbackregistration3 actualconsumerchecks;
+blocks-treated-as-absence2 parsed-inputchecks; inventedcounteroffset1 actualarrival-position
+check. All132assertions completed each, exit2; source and Debug build restored. Logs
+../tpw-entry-stub-mutant-*.log. Metadata-only coverage could NOT hide dead viewer wiring.
+Representative images and Git branch shared with cow tools; image response still pending
+at this entry, so don't fabricate peer visual approval. Owner requested final human testing
+at the end; this labelled best-effort policy is not claimed as a decoded console default.
+
+After normal landing, run a CP6 integration/build checkpoint rather than expand this policy
+into an open-ended audit project: current all-project clean-source evidence is much older
+than the integrated renderer/needs changes. Use a separate clean detached checkout, no disc
+or extracted assets in Git, existing toolchain/cache (not a clean-machine claim). Rebuild
+tracked projects and retain actual failures/known retail reds. Coordinate the next playable
+feature with cow tools after that checkpoint; outstanding costume/carried-object/queue/track
+limits are not closed by these service-body changes. No bot restart or new scheduler.
