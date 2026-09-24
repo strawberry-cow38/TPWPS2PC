@@ -42,16 +42,69 @@ public sealed class ParkPaths
     /// z 6..18. A two-tile walkway, not a fifteen-wide apron, and somewhere else entirely.</summary>
     public IReadOnlyCollection<ParkCell> EntranceCells => _entrance;
 
+    /// <summary>⭐⭐ THE GATE'S OWN GROUND, master's rule: "give the gate an occupancy over the
+    /// tiles it sits on, + 1 on each side. mark a 2x2 of paths (right under the gate) as
+    /// un-deleteable."
+    ///
+    /// ⭐ Anchored on READ data rather than the gate model's position: the entrance table gives
+    /// the walkway's column pair (`XCol`, `XCol + 1`) and `ZEnd`, whose mouth is `ZEnd - 1`. The
+    /// 2x2 is those two columns across the threshold -- the mouth row and the first row inside
+    /// the park -- which is the ground a gate straddles by construction. The occupancy is that
+    /// rectangle grown by one on every side.
+    ///
+    /// ⚠ The occupancy is SEPARATE from the authored no-build zone the `.sam` carries, which is
+    /// a different and much larger rectangle that mostly lies outside the plot. Both exist; this
+    /// one is about the tiles the gate stands on.
+    /// ⚠ `Protected` is a flag with no consumer yet -- master: "we dont have delete, but just
+    /// give them that flag" -- so it is deliberately inert rather than wired to nothing.</summary>
+    public IReadOnlyCollection<ParkCell> Protected => _protected;
+    readonly HashSet<ParkCell> _protected = new();
+    public bool IsProtected(ParkCell c) => _protected.Contains(c);
+
+    /// <summary>The gate's own ground: its 2x2 grown by one on each side. ⚠ Blocks BUILDING
+    /// only -- <see cref="CanLay"/> must still accept these cells or nobody can walk in.</summary>
+    public IReadOnlyCollection<ParkCell> GateHold => _gateHold;
+    readonly HashSet<ParkCell> _gateHold = new();
+    public bool GateHolds(ParkCell c) => _gateHold.Contains(c);
+
     /// <summary>Paint the park's own entrance into this grid.</summary>
     public string SetEntrance(ParkEntrance table)
     {
         _entrance.Clear();
+        _protected.Clear();
+        _gateHold.Clear();
         if (table == null) return "no entrance table";
         var entry = table.Fit(Field, _walkwayColumn, out string report);
         if (!entry.Empty)
             foreach (var (x, z, _) in entry.Cells())
                 if (x >= 0 && z >= 0 && x < Field.Width && z < Field.Height) _entrance.Add(new ParkCell(x, z));
-        return $"{report}; {_entrance.Count} cells";
+        int gate = 0, held = 0;
+        if (!entry.Empty)
+        {
+            for (int x = entry.XCol; x <= entry.XCol + 1; x++)
+                for (int z = entry.ZEnd - 1; z <= entry.ZEnd; z++)
+                {
+                    var c = new ParkCell(x, z);
+                    if (!Contains(c)) continue;
+                    _protected.Add(c); held++;
+                }
+            // ⚠ One tile beyond the 2x2 on every side, clipped rather than refused: the gate
+            // stands at the plot's edge, so part of its skirt is off the map by construction.
+            for (int x = entry.XCol - 1; x <= entry.XCol + 2; x++)
+                for (int z = entry.ZEnd - 2; z <= entry.ZEnd + 1; z++)
+                {
+                    // ⚠⚠ NOT `_occupied`. The first version put these in it, and `CanLay`
+                    // consults `_occupied` -- so the gate's own skirt refused the entrance path
+                    // and the departure fixture came back "no initial route". The audit caught
+                    // it before it reached anyone. ⭐ What master asked for is that you cannot
+                    // BUILD on the gate's ground; walking and path-laying across the threshold
+                    // are the entrance's whole purpose.
+                    var c = new ParkCell(x, z);
+                    if (!Contains(c) || !_gateHold.Add(c)) continue;
+                    gate++;
+                }
+        }
+        return $"{report}; {_entrance.Count} cells; gate holds {gate} cells and protects {held} paths";
     }
 
     public IEnumerable<ParkCell> Cells => Enumerable.Range(0, Field.Count)
@@ -120,7 +173,8 @@ public sealed class ParkPaths
     /// letting anyone walk it would make every queue a shortcut.</summary>
     public bool Open(ParkCell c) => Contains(c) && (IsEntrance(c) || Kind(c) == ParkPathKind.Path);
     public bool SceneryBlocks(ParkCell c) => _scenery.Contains(c);
-    public bool CanBuild(ParkCell c) => Contains(c) && Field.Buildable(c.X, c.Z) && !_occupied.Contains(c) && !_scenery.Contains(c);
+    public bool CanBuild(ParkCell c) => Contains(c) && Field.Buildable(c.X, c.Z)
+                                     && !_occupied.Contains(c) && !_scenery.Contains(c) && !_gateHold.Contains(c);
     /// <summary>Does this triangle cover the cell at (x,z)? ⚠ PUBLIC so an audit can build the same
     /// coverage the constructor does instead of a looser one -- a control that rasterises by
     /// BOUNDING BOX and compares itself against an exact set reports disagreements that are its

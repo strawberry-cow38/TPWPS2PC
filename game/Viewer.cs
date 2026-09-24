@@ -6908,28 +6908,44 @@ public partial class Viewer : Node3D
     /// = **-80**, y = **69**, advances by `DAT_002B62F8` each frame and latches at `0x2D` = 45.
     /// A slide-in. Not ported: what sets that flag is unread, and an animation on the wrong
     /// trigger is worse than the static placement the other branch uses.</summary>
-    const int MoneyX = 0x26, MoneyY = 0x32, MoneyScale = 2, MoneyFontIndex = 1, ConsoleUiWidth = 512;
+    /// ⭐⭐ MASTER'S RULE FOR CARRYING CONSOLE COORDINATES OVER: "its definitely scaled and
+    /// positioned for the resolution of the console. measure in percentages of screen real
+    /// estate and the consoles resolution, and apply it dynamically for our window."
+    /// So x, y and the glyph scale are all expressed as FRACTIONS of the console's own frame and
+    /// multiplied back out by this viewport -- which keeps the readout in the same place and the
+    /// same relative size at any window size, instead of drifting as the window grows.
+    /// ⚠ The console frame itself is the one number still not read: 512x448 is the usual PS2
+    /// text space and every constant here sits inside it, but no traced line states it.
+    const int MoneyX = 0x26, MoneyY = 0x32, MoneyScale = 2, MoneyFontIndex = 1;
+    const float ConsoleUiWidth = 512f, ConsoleUiHeight = 448f;
     static readonly Color MoneyNormal = new(1f, 1f, 0f), MoneyBroke = new(200 / 255f, 130 / 255f, 0f);
 
     void ShowMoney()
     {
         if (_money == null) return;
+        // ⭐ ALWAYS ON, master's rule -- "money should always be visible". A park that has not
+        // opened yet reads $0 rather than vanishing, because a missing readout looks like a
+        // broken one.
         var bank = _sim?.Finances;
-        _money.Visible = bank != null && _hudFont != null;
-        if (bank == null || _hudFont == null) return;
+        _money.Visible = _hudFont != null;
+        if (_hudFont == null) return;
         // ⚠ Integer division toward zero, and the sign carried explicitly: the console's own
         // rounding of a negative balance has not been read, and -5 tenths reading as "0" with no
         // minus would hide an overdraft.
         // ⭐ `Money.Format` is `FUN_00142908`/`FUN_00142B68`: the sign, then '$', then the digits
         // with commas every three -- and the /10 the finance screen applies to every figure.
-        string want = Money.Format(bank.Balance);
+        string want = Money.Format(bank?.Balance ?? 0);
         if (want != _moneyShown) { _moneyShown = want; _money.Texture = _hudFont.Render(want); }
         // ⭐ The console's own test is on the DIVIDED figure, and it is `< 1` -- not `< 0`, so a
         // park holding less than one unit is already showing the warning colour.
-        _money.Modulate = bank.Balance / 10 < 1 ? MoneyBroke : MoneyNormal;
-        // ⭐ (38, 50) in the console's UI space, and its 2x scale, both carried to this viewport.
-        float k = GetViewport().GetVisibleRect().Size.X / ConsoleUiWidth;
-        _money.Position = new Vector2(MoneyX * k, MoneyY * k);
+        _money.Modulate = bank == null || bank.Balance / 10 < 1 ? MoneyBroke : MoneyNormal;
+        // ⭐ As FRACTIONS of the console's frame, multiplied out by this viewport: the same
+        // place and the same share of the screen at any window size.
+        var view = GetViewport().GetVisibleRect().Size;
+        _money.Position = new Vector2(MoneyX / ConsoleUiWidth * view.X, MoneyY / ConsoleUiHeight * view.Y);
+        // ⚠ ONE factor for the glyphs, from the height: scaling x and y independently would
+        // stretch the letters on any window whose aspect differs from the console's.
+        float k = view.Y / ConsoleUiHeight;
         _money.Scale = new Vector2(MoneyScale * k, MoneyScale * k);
     }
 

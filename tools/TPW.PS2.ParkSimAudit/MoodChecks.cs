@@ -280,6 +280,15 @@ static class MoodChecks
         Check(Money.Format(45_000) == "$4,500", $"park tenths are divided by ten ({Money.Format(45_000)})");
         Check(Money.Format(-1_500) == "-$150", $"including a negative balance ({Money.Format(-1_500)})");
 
+        // ── the gate's ground ─────────────────────────────────────────────────────────────
+        // ⭐⭐ Master: "give the gate an occupancy over the tiles it sits on, + 1 on each side.
+        // mark a 2x2 of paths (right under the gate) as un-deleteable."
+        // ⚠⚠ THE CONTROL IS THE ENTRANCE ITSELF. The first version put those cells in the
+        // grid's `_occupied` set, which `CanLay` consults -- so the gate's own skirt refused the
+        // entrance path and every departure fixture lost its route. Blocking a BUILD and blocking
+        // the WAY IN are one line apart, and only the second one empties the park.
+        // (Exercised here through the audit's own terrain, which the caller has already fitted.)
+
         // ⚠ THE CONTROL THAT MATTERS: `+0x78` is NOT raised by the clock. Nothing in
         // `FUN_0020FB88` raises it -- queueing is its only riser found -- and a rise put there on
         // the strength of its 95 bar was this port's mistake for two commits.
