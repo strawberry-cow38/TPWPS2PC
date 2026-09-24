@@ -241,6 +241,9 @@ public partial class Viewer : Node3D
     /// keys to move to the flags, so this is seeded per world in <see cref="LoadGate"/> and the
     /// tool now drives <see cref="EntranceFlags.NudgeY"/> instead.</summary>
     float _gateNudge;
+    /// <summary>The world <see cref="_gateNudge"/> was last seeded for, so a redraw does not
+    /// clobber a nudge in progress. ⚠ Null, not "", so the first load always seeds.</summary>
+    string _gateNudgeWorld;
 
     /// <summary>The by-eye gate nudge per world. ⚠⚠ JUNGLE ONLY IS MEASURED -- master playtested
     /// it and said "-2.0 on jungle". The others are **not zero by decision**, they are zero
@@ -249,16 +252,20 @@ public partial class Viewer : Node3D
     static float GateNudgeFor(string world) =>
         string.Equals(world, "JUNGLE", StringComparison.OrdinalIgnoreCase) ? -2.0f : 0f;
 
-    /// <summary>The by-eye flag nudge along z, per world. Master calibrated JUNGLE at **-12.95**.
+    /// <summary>The flag offset along z. ⚠⚠ NOT PER WORLD, AND THAT IS THE FINDING: I wrote
+    /// this as a per-world tune and predicted "-12.95 will not survive the other three worlds".
+    /// Master tested all four and it is **-12.95 in every park**.
     ///
-    /// ⚠⚠ AND THAT NUMBER IS A SYMPTOM, NOT A SETTING. Thirteen units is thirteen CELLS -- the
-    /// gate needed 2.0 and the flags need six times that, which is not the size of an eye-tune on
-    /// a position derived from the poles' own vertices. Something upstream is putting the anchor
-    /// in the wrong place systematically, and this is papering over it well enough to look right
-    /// in one park. ⭐ Recorded as master's measurement because it IS one, and flagged because a
-    /// correction that large will not survive the other three worlds.</summary>
-    static float FlagNudgeFor(string world) =>
-        string.Equals(world, "JUNGLE", StringComparison.OrdinalIgnoreCase) ? -12.95f : 0f;
+    /// ⭐⭐ A NUMBER THAT IS IDENTICAL IN FOUR INDEPENDENT PARKS IS NOT A TUNE, IT IS A BUG WITH
+    /// A CONSTANT. The four entrances have different terrain, different pole meshes and different
+    /// authored x -- if the anchor derivation were merely imprecise the correction would differ
+    /// between them. It does not, so <see cref="EntranceFlags.Anchors"/> is placing every flag
+    /// the same distance wrong along z, and this constant is cancelling it rather than fixing it.
+    ///
+    /// ⚠ Kept as a single named constant precisely so it reads as the outstanding defect it is,
+    /// instead of hiding as four numbers that happen to agree. The real fix is upstream and is
+    /// NOT done.</summary>
+    public const float FlagAnchorZError = -12.95f;
     /// <summary>G swaps to the free orbit camera.</summary>
     bool _freeCam;
     /// <summary>Ground height per TILE in world units, the same lookup the game does. Baked when
@@ -794,26 +801,27 @@ public partial class Viewer : Node3D
             // cell, which is about where a tile edge stops being ambiguous; shift keeps the old
             // 0.25 so crossing a whole tile is still five presses rather than twenty-five.
             float step = Input.IsKeyPressed(Key.Shift) ? 0.25f : 0.05f;
-            // ⭐⭐ THE FLAGS NOW, NOT THE GATE. Master: "can u replace the gate nudge tool with
-            // the flag nudge tool?" -- the gate is settled (their -2.0 on JUNGLE is the default
-            // below), so the keys move to the thing that still needs an eye on it.
-            // ⚠ ON Z, the same axis the gate tool moved. I first wired it to Y because the
-            // pole-height heuristic is the least-evidenced number in EntranceFlags -- master was
-            // positioning them along the entrance, not raising them. "Which number I trust least"
-            // is not the same question as "which number is being looked at".
-            _flags.NudgeZ += k.Keycode == Key.Bracketright ? step : -step;
+            // ⭐⭐ BACK ON THE GATE. The flags are settled -- master measured the same -12.95 in
+            // all four parks, so that is a constant now and not something to keep tuning -- and
+            // they asked for the tool back to do the other three parks' gates.
+            _gateNudge += k.Keycode == Key.Bracketright ? step : -step;
             // ⚠ Rounded, or repeated float additions drift into 0.15000000000000002 and the log
             // becomes unreadable at exactly the moment it is being used to write a number down.
-            _flags.NudgeZ = Mathf.Round(_flags.NudgeZ * 1000f) / 1000f;
+            _gateNudge = Mathf.Round(_gateNudge * 1000f) / 1000f;
             // ⚠⚠ ON SCREEN, NOT DOWN A TERMINAL. Master: "i also dont see where my nudge is
             // being printed?" -- because GD.Print goes to a console nobody playing the game has in
             // front of them. This panel was built for exactly that ("every refusal already printed
             // a reason to the console, which nobody playing the game can see") and I still wrote
             // the ONE number master is meant to read off and hand back into the console alone.
-            string line = $"flag nudge z {_flags.NudgeZ:+0.00;-0.00;0}  ({(step > 0.1f ? "coarse" : "fine")}"
-                        + ", shift for the other)";
+            // ⚠ THE WORLD IS IN THE READOUT. The gate's nudge is per park and master is about to
+            // do three more, so a bare number would be one they have to remember the park for.
+            var rw = (_lib?.WadName ?? "").Split('/', StringSplitOptions.RemoveEmptyEntries);
+            int ri = Array.FindIndex(rw, x => x.EndsWith(".WAD", StringComparison.OrdinalIgnoreCase));
+            string line = $"{(ri >= 0 ? rw[ri][..^4] : "?")} gate nudge {_gateNudge:+0.00;-0.00;0}"
+                        + $"  ({(step > 0.1f ? "coarse" : "fine")}, shift for the other)";
             Status(line);
-            GD.Print($"[flags] {line}");
+            GD.Print($"[gate] {line}");
+            LoadGate();
         }
     }
 
@@ -5563,12 +5571,21 @@ public partial class Viewer : Node3D
     /// the file's existence a second time.</summary>
     void LoadGate()
     {
-        // ⭐ The gate's by-eye correction is a per-world CONSTANT now, not a live knob: master
-        // settled JUNGLE at -2.0 and the `[`/`]` keys have moved to the flags. Seeded here so it
-        // follows whichever archive is open rather than being typed in again each session.
+        // ⭐ The gate's by-eye correction is seeded per world so it follows whichever archive is
+        // open rather than being typed in again each session.
+        //
+        // ⚠⚠ ONLY WHEN THE WORLD CHANGES. The nudge tool calls LoadGate() to redraw after every
+        // keypress, so re-seeding unconditionally here would overwrite master's nudge the instant
+        // they made it and the tool would do NOTHING -- silently, and looking fine. Caught before
+        // shipping by reading the call order rather than the line.
         var wn = (_lib?.WadName ?? "").Split('/', StringSplitOptions.RemoveEmptyEntries);
         int wi = Array.FindIndex(wn, x => x.EndsWith(".WAD", StringComparison.OrdinalIgnoreCase));
-        _gateNudge = GateNudgeFor(wi >= 0 ? wn[wi][..^4] : "");
+        string world = wi >= 0 ? wn[wi][..^4] : "";
+        if (!string.Equals(world, _gateNudgeWorld, StringComparison.OrdinalIgnoreCase))
+        {
+            _gateNudgeWorld = world;
+            _gateNudge = GateNudgeFor(world);
+        }
         _gate?.Root.QueueFree();
         _gate = null;
         var ride = _lib.Rides.FirstOrDefault(
@@ -6329,9 +6346,7 @@ public partial class Viewer : Node3D
         ParkCameraOverrides();
         // ⚠ LAST. Everything above sets the camera, so aiming before them aims at nothing.
         LoadGate();
-        var fw = (_lib?.WadName ?? "").Split('/', StringSplitOptions.RemoveEmptyEntries);
-        int fi = Array.FindIndex(fw, x => x.EndsWith(".WAD", StringComparison.OrdinalIgnoreCase));
-        _flags.NudgeZ = FlagNudgeFor(fi >= 0 ? fw[fi][..^4] : "");
+        _flags.NudgeZ = FlagAnchorZError;
         _flags.Build(_terrainModel, path => _lib?.ReadGeneric(path));
         GD.Print($"[flags] {_flags.Report}");
         _flags.Root.Visible = _mode == Mode.Park;
