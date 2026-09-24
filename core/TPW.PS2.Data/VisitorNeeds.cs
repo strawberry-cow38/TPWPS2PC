@@ -350,7 +350,12 @@ public sealed class VisitorNeeds
     /// sounds like, and nobody chose that name. Independent corroboration of an offset.</summary>
     public static class Sounds
     {
-        public const int Flush = 51;        // 0x211710  flush.vag
+        /// <summary>`flush.vag`, named at `0x211710` -- ⚠⚠ in an arm that CANNOT RUN. The
+        /// counter gating it is a byte that wraps to 0 before reaching the 410 the branch tests
+        /// (astraclaw: `LBU 2113BC`, `ANDI 0xFF 2113CC`, `SB 2113D4`). Kept as a NAME because
+        /// the clip plainly exists and something must play it; not raised by this port, because
+        /// nothing read says when. ⚠ A site that names an id is not evidence it is reached.</summary>
+        public const int Flush = 51;        // 0x211710, unreachable arm
         public const int LavatoryDoor = 53; // 0x20F0A0  dooropen1.mp2
         public const int VeryHappy = 129;   // 0x2102D4  huh1.vag
         /// <summary>`0x2105FC`, `yawn2a/yawn3a`. ⚠⚠ NOT BOREDOM -- this file said so out loud
@@ -866,11 +871,23 @@ public sealed class VisitorNeeds
         w.Toilet = 0;
         w.Sick = Clamp(w.Sick - ToiletSicknessRelief);
         _byGuest[guest] = w;
-        // ⚠ TWO SOUNDS, TWO SITES. `0x211710` plays the flush and `0x20F0A0` the door, at
-        // different moments in the console's relief lifecycle; this port has one moment, so both
-        // are raised together and the order is the port's. Flush then door is at least the order
-        // a person would do them in.
-        Sounded?.Invoke(guest, Sounds.Flush);
+        // ⚠⚠ THE FLUSH IS GONE, AND IT WAS NEVER READ. This raised `Sounds.Flush` beside the
+        // door on the strength of `0x211710` being a call site that names id 51. astraclaw
+        // checked the arm that reaches it: the counter feeding it is a **byte** (`LBU` at
+        // `2113BC`, `ANDI 0xFF` at `2113CC`, `SB` at `2113D4`), it starts at 1 and wraps to 0
+        // long before the 410 that branch wants. **That arm is dead.** The reachable cues from
+        // that counter are 53, 52, 48, 50 and 49 at counts 2, 18, 38, 58 and 170 -- the door,
+        // the other door, and the three noises -- and 51 is not among them.
+        //
+        // ⭐ So a call site that NAMES an id is not proof the id is ever played there. That is
+        // the same error as attributing a sound by which function it sits near, which this file
+        // made twice today; this is the third face of it -- reachability, not just position.
+        //
+        // ⚠ The door (53) IS in the reachable set and stays. ⚠ It may DOUBLE with a facility
+        // whose own script plays these: `Toilet.rse` carries `EVENT group 6` for all six ids,
+        // while `SupBog.rse` -- the JUNGLE lavatory -- carries none. Whoever owns the relief
+        // lifecycle should decide which source wins; raising it here is the only source for the
+        // facilities that have no script events of their own.
         Sounded?.Invoke(guest, Sounds.LavatoryDoor);
         return soil;
     }
