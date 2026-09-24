@@ -81,6 +81,14 @@ public partial class CameraTurnAudit : Node
                 throw new Exception($"four quarters should land back at 0, landed at {four.Yaw}");
             _checks++;
 
+            // ⭐ The ceiling: however hard it is spammed, the camera never owes more than one turn.
+            var capped = new GameCamera(); capped.Reset();
+            for (int f = 0; f < 30; f++) { for (int i = 0; i < 5; i++) capped.Turn(1); capped.Step(Frame, Ground); }
+            int owed = capped.TargetYaw - capped.Yaw;
+            if (owed > GameCamera.MaxPendingTurn || owed < -GameCamera.MaxPendingTurn)
+                throw new Exception($"after heavy spam the camera still owes {owed}, over the {GameCamera.MaxPendingTurn} cap");
+            _checks++;
+
             // ⭐ Three presses is three quarters, and it must arrive the way it was asked.
             var three = new GameCamera(); three.Reset();
             for (int i = 0; i < 3; i++) { three.Turn(1); three.Step(Frame, Ground); }
@@ -122,9 +130,71 @@ public partial class CameraTurnAudit : Node
                 throw new Exception($"a press survived Reset and moved the target to {stale.TargetYaw}");
             _checks++;
 
+            // ⭐⭐ NO FLASHBACKS. Master: "sometimes the camera has a flashback of where it was
+            // once oriented for a split second".
+            //
+            // The invariant is exact, not statistical: PoseAt(1) is built from `_cur`, and after
+            // the next Step that same pose IS `_prev`, so PoseAt(0) must land on the identical
+            // point. Any whole-turn bookkeeping that shifts one without the other shows up here
+            // as a jump, which is precisely what a one-frame flashback is.
+            //
+            // ⚠ It spams hard enough to wind the yaw past TWO turns, because one turn was already
+            // survivable -- PoseAt used to correct by exactly one, so a single turn of drift hid
+            // the fault and only a deeper wind-up exposed it.
+            var glitch = new GameCamera(); glitch.Reset();
+            // ⚠ WARM UP FIRST. Before the first Step the camera is not posed at all and PoseAt
+            // hands back whatever the fields happen to hold, which is a startup artifact and not
+            // the fault being hunted. Measuring it would have "reproduced" the bug on frame 0
+            // forever and hidden whether the real one was still there.
+            glitch.Step(Frame, Ground);
+            float worstJump = 0f;
+            int worstFrame = -1;
+            for (int f = 0; f < 200; f++)
+            {
+                if (f < 40) for (int i = 0; i < 3; i++) glitch.Turn(1);   // wind it well past two turns
+                var endOfTick = glitch.PoseAt(1f);
+                glitch.Step(Frame, Ground);
+                var startOfNext = glitch.PoseAt(0f);
+                float jump = Mathf.Max(endOfTick.Eye.DistanceTo(startOfNext.Eye),
+                                       endOfTick.Look.DistanceTo(startOfNext.Look));
+                if (jump > worstJump) { worstJump = jump; worstFrame = f; }
+            }
+            if (worstJump > 0.001f)
+                throw new Exception($"camera jumped {worstJump:F4} at frame {worstFrame} across a tick boundary -- a flashback");
+            _checks++;
+
+            // ⭐⭐ MASTER'S ACTUAL REPRO: "happens when i move after spamming q/e". Moving to a
+            // cell that has a facing calls Face() (Viewer.cs), which OVERWRITES a target the
+            // player's presses were still working through, while GlideTo drags the focus at the
+            // same time. Both at once is the case the earlier checks never covered.
+            var moved = new GameCamera(); moved.Reset();
+            moved.Step(Frame, Ground);
+            float movedJump = 0f; int movedFrame = -1;
+            var aims = new (float X, float Z)[] { (1, 0), (0, 1), (-1, 0), (0, -1), (1, 1), (-1, -1) };
+            for (int f = 0; f < 300; f++)
+            {
+                if (f % 20 < 6) for (int i = 0; i < 4; i++) moved.Turn(1);       // spam
+                if (f % 20 == 6)                                                 // then move
+                {
+                    var aim = aims[(f / 20) % aims.Length];
+                    moved.Face(aim.X, aim.Z);
+                    moved.GlideTo(8 + (f % 5) * 3, 5 + (f % 7) * 2);
+                }
+                var endOfTick = moved.PoseAt(1f);
+                moved.Step(Frame, Ground);
+                var startOfNext = moved.PoseAt(0f);
+                float jump = Mathf.Max(endOfTick.Eye.DistanceTo(startOfNext.Eye),
+                                       endOfTick.Look.DistanceTo(startOfNext.Look));
+                if (jump > movedJump) { movedJump = jump; movedFrame = f; }
+            }
+            if (movedJump > 0.001f)
+                throw new Exception($"moving after spamming jumped {movedJump:F4} at frame {movedFrame} -- the flashback");
+            _checks++;
+
             GD.Print($"CAMERA TURN PASS: {_checks} checks; a frame's presses latch to one quarter per "
                    + "direction, a single press settles exactly one quarter on, spam queues whole "
-                   + "quarters, and NO press rate reverses");
+                   + "quarters, NO press rate reverses, and no tick boundary jumps even when Face and "
+                   + "GlideTo interrupt a spam");
             GetTree().Quit(0);
         }
         catch (Exception ex) { GD.PrintErr("CAMERA TURN FAIL: " + ex); GetTree().Quit(2); }
