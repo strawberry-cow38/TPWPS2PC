@@ -431,6 +431,47 @@ public sealed class AnimatedModel
             : new Godot.Vector2(0.5f, 0.5f);
     }
 
+    /// <summary>The authored turn rate, in radians a second, for a material whose texture twists.
+    ///
+    /// ⭐⭐ READ, NOT CHOSEN. The game does not scroll this procedurally: it ships PER-VERTEX UV
+    /// KEYFRAMES on an APS track whose flag is 0x10000 -- the channel this port's own enum still
+    /// calls `Unknown0x24`, with its payload pointer at track+0x24. Decoding the Coconut's track
+    /// shows those keys trace a CIRCLE: centre (1.4987, 0.4980), radius 0.4975..0.5005 across all
+    /// 24 keys, with the angle rising monotonically and returning to its start at the last key.
+    /// So the motion is exactly a rotation about the patch centre, and its SPEED is the record's
+    /// own authored length -- one full turn per loop.
+    ///
+    /// ⭐ Which is why no global rate was ever findable: the speed is per object. The Coconut's
+    /// Main record is 75 frames (2.5s at 30fps, 2.513 rad/s); the Fountain's is 50 (1.667s).
+    ///
+    /// ⚠ This still drives a shader rotation rather than replaying the keys vertex by vertex. The
+    /// keys ARE a circle to within 0.3% of the radius, so the visible result matches; what it does
+    /// not reproduce is any authored EASING between keys.</summary>
+    float AuthoredSpin(int material)
+    {
+        if (_anim == null) return 0f;
+        foreach (var rec in _anim.Records())
+        {
+            if (rec.Skeletal || rec.Tracks == 0 || rec.DurationFrames <= 0) continue;
+            for (int t = 0; t < rec.TrackCount; t++)
+            {
+                int off = _anim.TrackAt(rec, t);
+                if ((_anim.TrackFlags(off) & 0x10000) == 0) continue;
+                // ⚠ The track names a NODE; only accept it if that node's mesh actually draws
+                // this material, or a model with two twisting parts would take the wrong rate.
+                string node = _model.NodeName(_anim.TrackNode(off)) ?? "";
+                foreach (var mesh in _model.Meshes)
+                {
+                    if (!string.Equals(mesh.Name, node, StringComparison.OrdinalIgnoreCase)) continue;
+                    bool draws = false;
+                    foreach (var tri in _model.Triangles(mesh)) if (tri.Material == material) { draws = true; break; }
+                    if (draws) return Mathf.Tau / (rec.DurationFrames / (float)Aps.Fps);
+                }
+            }
+        }
+        return 0f;
+    }
+
     void SetTexture(ShaderMaterial material, int slot, int index)
     {
         string name = slot >= 0 && slot < _model.MaterialTextures.Count
@@ -444,8 +485,10 @@ public sealed class AnimatedModel
         if (motion.Moves)
         {
             material.SetShaderParameter("uv_scroll", new Godot.Vector2(motion.ScrollU, motion.ScrollV));
-            material.SetShaderParameter("uv_spin", motion.Spin);
-            if (motion.Spin != 0f) material.SetShaderParameter("uv_spin_center", SpinPivot(slot));
+            // ⭐ Prefer the rate the disc states over the fallback in TextureMotion.
+            float spin = motion.Spin != 0f ? (AuthoredSpin(slot) is var a and > 0f ? a : motion.Spin) : 0f;
+            material.SetShaderParameter("uv_spin", spin);
+            if (spin != 0f) material.SetShaderParameter("uv_spin_center", SpinPivot(slot));
             Ps2Materials.Register(material);
             MovingSurfaces++;
         }

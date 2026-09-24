@@ -332,11 +332,13 @@ to find, and the search was looking at the wrong object.
   `terrain_1.mps`: `byte1` is `03` for `wr_water3` **and for `flower_1`**, and `00` for
   `dk_water3` and `jri_lak2`. That field is alpha, not water. `byte0` is `a0` for `jri_lak2`,
   `jbr_log1` and `jpa_str1` alike. Control set: `m_grass`, `jro_mid1`, `flower_1`, `jbr_log1`.
-* **No name test in code.** A register-tracking sweep (`tools/re/xref.py`) finds **zero**
-  `lui`/`addiu` materialisations of `justwater.ssh` (`0x36e8b4`) or `water2.ssh` (`0x365168`),
-  and zero data words equal to either address. The control, `0x2abe18`, returns **eight**
-  references from the same sweep, so the tool discriminates. Those names live in an
-  index-addressed table.
+* ~~No name test in code.~~ **THIS WAS WRONG AND THE ERROR IS THE LESSON.** The sweep was run
+  against `0x36e8b4`, where a regex happened to match, while the string's slot starts at
+  `0x36e8b0`. At the correct address `justwater.ssh` has a reference: `0x2210b8` materialises it
+  into `a1`. An address four bytes off turned a live reference into "absent", the control fired
+  anyway because it was a different address, and the false negative was written up as a finding.
+  (`justwater.ssh` is the front-end's water, loaded from `data/generic/weather/` beside
+  `raindrop.ssh`; `water2.ssh` is a Coaster1 track texture under `Data\Jungle\Rides\Coaster1\GTexture\`.)
 
 ### Not established
 
@@ -362,3 +364,64 @@ placed models, because the engine's parameter is per texture.
   (FANTASY drinks) both decode to a spiral centred in its own frame, which is art drawn to be
   turned about that centre. The rotation is applied about UV `(0.5, 0.5)`, before the scroll.
 * ⚠ The spin **rate**, the scroll **direction** and the sea's wave are still chosen, not read.
+
+
+## ⭐⭐ The actual mechanism: APS track flag `0x10000`
+
+`fScrollRate` above is the coaster track's authored field. It is **not** how the park's moving
+textures work. Those are an **APS animation channel**: track flag **`0x10000`**, which this port's
+own `Animation.TrackFlag` enum still calls `Unknown0x24` -- named after the payload pointer at
+**`track + 0x24`**, the only non-zero field in a pure track of this kind.
+
+The flag appears on exactly the surfaces that move, and on nothing else:
+
+| Asset | Node | Track flags |
+|---|---|---|
+| `Shops/Coconut` | `cn_stall` (the mesh wearing `cn_nut2a`) | `0x10000` |
+| `Features/Fountain` | `wf_water`, `wf_fall` | `0x10000`, `0x11000` |
+| `Features/MamFount` | `mf_water1`, `mf_water2` | `0x10000` |
+| `Rides/Wateride` | `TRACK`, `EXIT`, +4 more | `0x10000` |
+
+The scripts drive it: `Coconut.RSE` and `Fountain.RSE` both run **`LOOPANIM 5 0`** -- loop the
+`Main` record. **The speed is that record's authored length**, which is why no single global rate
+was ever findable: Coconut `Main` is 75 frames, Fountain `Main` is 50.
+
+### Payload layout, read from the consumer
+
+`0x1a7f48` ends by testing the track's `+4 & 0x10000` and calling **`0x1ad378`** with the track in
+`a1`. That consumer reads, with `t = track + 0x24`:
+
+| Offset | Meaning |
+|---|---|
+| `t + 0x04` | entry count |
+| `t + 0x08` | entries, 4 bytes each: `u16 start`, `u16 keyCount` |
+| `t + 0x10` | key times, `u16`, indexed by `start` |
+| `t + 0x14` | key values, **two floats (u, v)** per key, indexed by `start` |
+
+It selects the bracketing keys by time, computes
+`f = (now - t[k-1]) / (t[k] - t[k-1])`, **linearly interpolates** the two UV pairs, and writes
+`(value * 4095)` as `s16` into the vertex's texture-coordinate slot. There is **no easing**
+on this channel.
+
+Sizes check out independently on `coconut.aps`: 49 entries x 4 = 196 bytes running exactly from
+`0x12fc` to the times at `0x13c0`; 280 times x 2 = 560 bytes running exactly to the values at
+`0x15f0`; and 2,240 bytes of values to EOF = 280 pairs x 8, one per key.
+
+### The Coconut's drink is a measured circle
+
+Decoding its keys: centre **(1.4987, 0.4980)**, radius **0.4975..0.5005** across all 24 keys,
+angle rising monotonically and closing the loop at the last key. The centre is exactly the
+patch centre measured off the mesh -- `cn_nut2a` is mapped to **U 1.000..1.999, V 0.000..0.999**,
+the SECOND tile of a repeating texture, so its centre is `(1.5, 0.5)` and **not** `(0.5, 0.5)`.
+
+The angular rate is constant: **4.8 deg/frame** (14.4 deg over 3 frames, 19.2 over 4), giving
+360 deg in exactly 75 frames = **2.513 rad/s** at `Fps = 30`.
+
+### What the port does
+
+`AnimatedModel.AuthoredSpin` reads the record's own `DurationFrames` and turns the material at
+`2*pi / (frames / 30)`, about the pivot measured from the mesh's UV bounds. Because the keys are
+LERPed at a constant angular rate, a constant-rate rotation matches them to within 0.1% of the
+radius (the chord sag over a 2.4 deg step). **Not** reproduced: replaying the keys vertex by
+vertex, which is what a surface whose `0x10000` track is not a circle would need -- `wf_fall`
+carries `VertexMorph` alongside it and has not been checked for circularity.

@@ -25,6 +25,15 @@ namespace TPW.PS2.Data;
 /// subsystem from frame replacement. Those two names are the whole argument that this file
 /// describes something real rather than something desirable.
 ///
+/// ⭐⭐ SUPERSEDED IN PART, AND READ THE NOTE: `fScrollRate` is the COASTER TRACK's authored
+/// field and is NOT how the park's moving textures work. Those are an APS animation channel --
+/// track flag `0x10000`, payload at `track + 0x24`, per-vertex UV keyframes linearly interpolated
+/// by `0x1ad378`. The Coconut's keys are a measured circle about (1.5, 0.5) turning a constant
+/// 4.8 degrees a frame, i.e. one revolution per its 75-frame `Main` record. So the RATE IS READ
+/// after all, per object, from the record's own length -- see `AnimatedModel.AuthoredSpin` and
+/// findings/animated-textures.md. `SwirlRadiansPerSecond` below is only the fallback for a model
+/// that has no such track.
+///
 /// ⚠⚠ WHAT IS NOT READ: the `fScrollRate` VALUES. `asTextureData` belongs to the coaster/track
 /// schema (its neighbours are `asCrossSectionPoints1..12`, `asCarTypes`, `sCoasterType`), and no
 /// `.sam` ships on this disc -- the only authored files are three `.dba`. The texture names
@@ -45,8 +54,10 @@ public readonly record struct TextureMotion(float ScrollU, float ScrollV, float 
     public const float ScrollTexelsPerTick = 1f;
     public const float AssumedTextureHeight = 64f;
 
-    /// <summary>⚠ CHOSEN, and deliberately slow: a swirl that spins fast reads as a drill rather
-    /// than a drink. Radians a second.</summary>
+    /// <summary>⚠ FALLBACK ONLY, for a swirl with no `0x10000` track to state its own rate.
+    /// The Coconut does have one and turns at 2.513 rad/s (one turn per 75 frames at 30fps);
+    /// this 0.9 was a guess and was about 2.8x too slow, which is exactly the kind of number
+    /// that survives because it "looks fine". Radians a second.</summary>
     public const float SwirlRadiansPerSecond = 0.9f;
 
     /// <summary>Texture-name stems whose surface is moving water.
