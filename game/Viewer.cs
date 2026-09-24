@@ -7171,6 +7171,13 @@ public partial class Viewer : Node3D
         // the finances and it is cheap and empty until a ride joins it -- `WalkGrid` is already
         // memoised and shares the terrain's own cell array, so this allocates nothing new.
         if (_sim == null && _mode == Mode.Park && WalkGrid() is { } grid) _sim = new ParkSim(grid);
+        // ⭐⭐ AND THE GATE'S 8x2, RETRIED UNTIL IT TAKES. Both natural call sites can miss it:
+        // WalkGrid may run before the park has dimensions, and PlaceGateNoBuild runs before the
+        // grid is fitted. Master has now reported this zone wrong four times and every one of
+        // them was an ordering miss rather than the geometry. `Reserve` only sets bits and the
+        // log only speaks when it changed something, so this is free after the first success and
+        // silent forever after.
+        if (_mode == Mode.Park) ReserveGateHold();
         var bank = _sim?.Finances;
         _money.Visible = _moneyShadow.Visible = _hudFont != null && _mode == Mode.Park;
         if (_hudFont == null) return;
