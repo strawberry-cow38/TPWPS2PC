@@ -18,9 +18,22 @@ happened: DAT_002ABE18 read as unwritten when it is written three times.
 stores, every `lui`+`addiu` that materialises an address into a0 for a call reads as "unreferenced".
 That happened too: COutput_SPU2's own error strings looked like dead data.
 
-⚠ AND THE RULE THAT OUTRANKS BOTH: a negative from this tool is a claim about this tool. Give every
+⚠⚠ DEFECT THREE, and it took a third person to find: MIPS HAS A BRANCH DELAY SLOT. The
+instruction after `jr`/`jal` runs BEFORE the transfer, so killing registers at the transfer throws
+away what its own delay slot needs. A counter written back on the way out --
+`lw; addiu; jr ra; sw` -- had its STORE vanish, and 0x2AA73C read as "loaded, never stored".
+Fixing it also added a hit to this file's own documented control at 0x2abe18, so the tool was
+under-reporting even on the example it shipped with.
+
+⚠ AND THE RULE THAT OUTRANKS ALL THREE: a negative from this tool is a claim about this tool. Give every
 search a control that MUST hit -- a nearby address you already know is referenced -- and believe
-the negative only when the control fires. See findings/ and the memory on negative searches.
+the negative only when the control fires.
+
+⚠⚠ AND A CONTROL FIRING IS STILL NOT ENOUGH IF THE QUERY IS WRONG. On 2026-09-24 a sweep for
+`justwater.ssh` at 0x36e8b4 -- where a regex happened to match -- returned nothing while its
+control fired, and "no name test in code" went into a findings doc. The string's SLOT starts at
+0x36e8b0, four bytes earlier, and the reference is real (0x2210b8). Take a string's address by
+scanning back to the preceding NUL, never from where a pattern matched. See findings/ and the memory on negative searches.
 """
 import struct
 import sys
@@ -40,6 +53,20 @@ def sweep(image, want, lo=0x100000, hi=None):
     """Yield (pc, mnemonic, address, dest_reg, base_reg) for every reference into `want`."""
     hi = hi if hi is not None else BASE + len(image)
     val, hits = {}, []
+    # ⚠⚠ DEFECT THREE (found 2026-09-24, by astraclaw, while tracing guest activation IDs):
+    # MIPS HAS A BRANCH DELAY SLOT, so the instruction AFTER a `jr`/`jal` executes BEFORE the
+    # transfer takes effect. Applying the register kill AT the transfer therefore throws away the
+    # state its own delay slot still needs. The real shape this hid:
+    #
+    #     1093b4  lw    v0, -0x58c4(v1)    <- the sweep saw this
+    #     1093bc  addiu v0, v0, 1
+    #     1093c0  jr    ra                  <- old code cleared every register HERE
+    #     1093c4  sw    v0, -0x58c4(v1)    <- ...so this STORE read as nothing at all
+    #
+    # A counter incremented and written back on the way out of a function is a completely ordinary
+    # thing for a compiler to emit, and it made 0x2AA73C read as "loaded, never stored".
+    # ⭐ The kill is DEFERRED by one instruction instead.
+    pending = None
     for off in range(lo - BASE, min(hi, BASE + len(image)) - BASE - 3, 4):
         w = struct.unpack_from('<I', image, off)[0]
         pc = off + BASE
@@ -65,13 +92,19 @@ def sweep(image, want, lo=0x100000, hi=None):
             if op in LOADS: val.pop(rt, None)
         elif op == 0x00:
             f = w & 0x3f
-            if f in (0x08, 0x09): val.clear()            # jr / jalr
+            if f in (0x08, 0x09): pending = 'all'        # jr / jalr -- AFTER its delay slot
             elif f == 0x2d and rt == 0 and rs in val: val[rd] = val[rs]   # daddu rd,rs,zero = move
             else: val.pop(rd, None)
         elif op == 0x03:                                 # DEFECT ONE: caller-saved only
-            for r in CALLER_SAVED: val.pop(r, None)
+            pending = 'caller'                           # ...and AFTER its delay slot, as above
         elif op not in (0x02,0x04,0x05,0x06,0x07,0x14,0x15,0x16,0x17):
             val.pop(rt, None)
+        # Apply a transfer's register kill only once its delay slot has been read.
+        if pending is not None and not (op == 0x00 and (w & 0x3f) in (0x08, 0x09)) and op != 0x03:
+            if pending == 'all': val.clear()
+            else:
+                for r in CALLER_SAVED: val.pop(r, None)
+            pending = None
     return hits
 
 
