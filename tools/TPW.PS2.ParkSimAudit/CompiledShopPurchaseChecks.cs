@@ -42,11 +42,11 @@ static class CompiledShopPurchaseChecks
         };
         VisitorWants Initial(int cash = 1234) => new() { Cash = cash, Hunger = 80, Thirst = 70, Toilet = 10,
             Happiness = 20, Sick = 20, Litter = 9, Unknown78 = 62, Unknown7B = 50, PreferredIntensity = 90 };
-        RideDefinition Definition(string stem, string region)
+        RideDefinition Definition(string stem, bool bareSource = false)
         {
             var entry = world.Find(stem + ".sam") ?? throw new InvalidDataException("missing " + stem);
-            // Both documented source-path shapes reach the same attachment implementation.
-            string prefix = region == "usa" ? worldName : "/DATA/" + worldName + ".WAD";
+            // Path-shape controls below are independent of the regional purchase loop.
+            string prefix = bareSource ? worldName : "/DATA/" + worldName + ".WAD";
             return RideDefinition.Parse(Encoding.ASCII.GetString(world.Read(entry)), prefix + entry.Path);
         }
         (ParkVisitors Visitors, VisitorWants After, int Id) Purchase(string stem, RideDefinition definition, int cash = 1234)
@@ -82,6 +82,16 @@ static class CompiledShopPurchaseChecks
             sim.SetOpen(1, false);
             return (visitors, visitors.Needs.Of(guest.Id), guest.Id);
         }
+        var pathCompiled = new CompiledAssets(new AssetResourceDatabase(data.Read(data.Find("/arsdb.dba"))),
+                                              TextDatabase.Load(data, "eur"));
+        foreach (bool bare in new[] { false, true })
+        {
+            var shaped = Definition(named.Stem, bare);
+            Check(pathCompiled.Attach(new[] { shaped }, out var shapeReport) == 1
+                  && shaped.Compiled == pathCompiled.For(worldName, named.Stem + ".sam")?.Shop
+                  && shaped.HappinessEffect == 10 && shaped.PricePerUse == named.Price,
+                  $"{(bare ? "bare-world" : "archive-qualified")} source path attaches the named shop independently of region loop ({shapeReport})");
+        }
         var arms = new VisitorNeeds(419);
         arms.Set(1, Initial()); arms.Set(2, Initial());
         Check(arms.Buy(1, 30, 11, 17, 5, 3, 0) && arms.Buy(2, 30, 11, 17, 5, 3, 1),
@@ -96,10 +106,10 @@ static class CompiledShopPurchaseChecks
             var db = new AssetResourceDatabase(data.Read(data.Find(dbName) ?? throw new InvalidDataException(dbName)));
             var text = TextDatabase.Load(data, region) ?? throw new InvalidDataException("missing text " + region);
             var compiled = new CompiledAssets(db, text);
-            var a = Definition(named.Stem, region); var ice = Definition(iceStem, region);
-            var drink = Definition(drinkCase.Stem, region);
-            var fries = Definition(friesCase.Stem, region);
-            var costume = Definition(costumeCase.Stem, region);
+            var a = Definition(named.Stem); var ice = Definition(iceStem);
+            var drink = Definition(drinkCase.Stem);
+            var fries = Definition(friesCase.Stem);
+            var costume = Definition(costumeCase.Stem);
             Check(compiled.For(worldName, named.Stem + ".sam") is { } row && row.Key == named.Key && row.Shop != null,
                   $"{region} named shop resolves to key {named.Key}, not a matching effect profile");
             Check(compiled.For(worldName, iceStem + ".sam") is { } iceRow && iceRow.Key == iceKey && iceRow.Shop != null,

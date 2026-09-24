@@ -4,7 +4,9 @@ import unittest
 from audit_matrix import EXPECTED, classify
 
 COVERAGE = '\n'.join(['  ok   compiled purchase: check'] * 59 +
-                     ['  ok   compiled purchase: product alone reverses the transfer and selects its own bladder amount',
+                     ['  ok   compiled purchase: bare-world source path attaches the named shop independently of region loop',
+                      '  ok   compiled purchase: archive-qualified source path attaches the named shop independently of region loop',
+                      '  ok   compiled purchase: product alone reverses the transfer and selects its own bladder amount',
                       '  ok   compiled purchase: usa ice cream keeps its regional hunger 15/vomit 15',
                       '  ok   compiled purchase: eur product7 falls through to all food effects at initial q2 zero',
                       '  ok   compiled purchase: jap costume handback changes preference to14 without reseeding or food effects',
@@ -45,7 +47,9 @@ class ClassificationTests(unittest.TestCase):
             self.assertEqual(classify('JUNGLE', 0, text + '\nPASS')['status'], 'missing_coverage')
 
     def test_purchase_count_cannot_replace_regional_or_transaction_witness(self):
-        for witness in ('usa ice cream keeps its regional hunger 15/vomit 15',
+        for witness in ('bare-world source path attaches the named shop independently of region loop',
+                        'archive-qualified source path attaches the named shop independently of region loop',
+                        'usa ice cream keeps its regional hunger 15/vomit 15',
                         'product7 falls through to all food effects at initial q2 zero',
                         'costume handback changes preference to14 without reseeding or food effects',
                         '299 cash refuses the 300-unit sale', 'exactly300 cash buys once'):
@@ -137,7 +141,7 @@ class ClassificationTests(unittest.TestCase):
 
     def test_lifecycle_counts_recorded_in_manifest_row(self):
         row = classify('JUNGLE', 0, COVERAGE + '\nPASS')
-        self.assertEqual(row['compiled_purchase_checks'], 65)
+        self.assertEqual(row['compiled_purchase_checks'], 67)
         self.assertEqual(row['availability_checks'], 30)
         self.assertEqual(row['removal_checks'], 57)
         self.assertEqual(row['conservation_checks'], 20)

@@ -79,7 +79,7 @@ broad “purchase path complete” claims: retain the verified initial q1=100/q2
 full symbolic identity and explicit regional values, then validate real handbacks per product.
 
 Current bounded package combines cow tools' `purchase-arms` implementation with our independent
-65 checks per world: named balloon/ice-cream/drink/fries/costume consumers across all3regions,
+67 checks per world: named balloon/ice-cream/drink/fries/costume consumers across all3regions,
 opposite-transfer controls, affordability299/300 and post-completion stability. Original
 instruction evidence and limitations are in findings/compiled-shop-consumer.md. Product7's
 q2/15 prefix falls through into food; costume index8 resolves intensity14 but does not yet
@@ -159,7 +159,7 @@ The original `699a9b1` review has been revised after actual service and compiled
 
 | Area | What we now know | Plan adjustment |
 |---|---|---|
-| Baseline and automated gates (M0/M1) | Published matrix now includes65 compiled-purchase checks/world; the current fresh Debug eight-scene runner passes. The all23-project clean-checkout evidence remains pinned to `6004151`. | Maintain/reuse these gates. Do not repeatedly rebuild them as a substitute for feature delivery. Earlier framebuffer/capture evidence keeps its own revision. |
+| Baseline and automated gates (M0/M1) | Published matrix now includes67 compiled-purchase checks/world; the current fresh Debug eight-scene runner passes. The all23-project clean-checkout evidence remains pinned to `6004151`. | Maintain/reuse these gates. Do not repeatedly rebuild them as a substitute for feature delivery. Earlier framebuffer/capture evidence keeps its own revision. |
 | Reader evidence (M2) | Unknown DBA storage is preserved, not fully interpreted; malformed compiled text is now rejected with real regional compatibility checks. | Follow a reader gap when it blocks a chosen consumer or a reproduced defect. Do not turn preservation coverage into a semantic-completion claim. |
 | Guest lifecycle (M3) | Removal, needs continuity and disruption/replay are guarded; interrupted departure recovery was subsequently fixed and rejects the old stuck-guest implementation. Purchase handbacks retain their own counter and side-table controls. | Defer the proposed standalone expansion of walking-contract audits. Reopen it for a concrete movement bug or a chosen feature that depends on an uncovered boundary. |
 | Effects/audio (M4) | Joint fixes have real voice/cue and synthetic lifecycle controls, including world-owned state cleanup. | Keep those regression gates; do not call Dummy playback an audible-quality or complete engine-layer result. |

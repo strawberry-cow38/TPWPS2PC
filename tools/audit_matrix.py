@@ -26,8 +26,10 @@ ASSEMBLY = PROJECT + '/bin/Release/net8.0/TPW.PS2.ParkSimAudit.dll'
 MAX_LOG_BYTES = 8 * 1024 * 1024
 # Minimum assertions in the current integrated ParkSimAudit. A stale binary or
 # accidentally omitted helper must not turn missing lifecycle coverage into PASS.
-REQUIRED_CHECKS = {'availability': 30, 'removal': 57, 'conservation': 20, 'needs_lifecycle': 50, 'disruption': 21, 'service_routing': 5, 'departure_recovery': 6, 'ride_effect_consumer': 33, 'compiled_purchase': 65}
+REQUIRED_CHECKS = {'availability': 30, 'removal': 57, 'conservation': 20, 'needs_lifecycle': 50, 'disruption': 21, 'service_routing': 5, 'departure_recovery': 6, 'ride_effect_consumer': 33, 'compiled_purchase': 67}
 REQUIRED_WITNESSES = (
+    'ok   compiled purchase: bare-world source path attaches the named shop independently of region loop',
+    'ok   compiled purchase: archive-qualified source path attaches the named shop independently of region loop',
     'ok   compiled purchase: product alone reverses the transfer and selects its own bladder amount',
     'ok   compiled purchase: usa ice cream keeps its regional hunger 15/vomit 15',
     'ok   compiled purchase: eur product7 falls through to all food effects at initial q2 zero',

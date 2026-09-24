@@ -51,7 +51,8 @@ toilet increases by T, hunger increases by H, with the remaining food/drink effe
 
 Product 7 jumps to `0x20E36C`: it first adds q2/15 to thirst, then **falls through** at
 `0x20E3AC` into the whole food arm. It is not a happy-only or unimplemented no-op branch.
-At initial q2=0 the extra increment is zero. For future non-default quality, retain the two
+At initial q2=0 the extra increment is zero. The test cannot distinguish this prefix from
+plain food; the original instruction trace, not a zero-q2 test, establishes its existence. For future non-default quality, retain the two
 sequential thirst updates/caps rather than combining them without proof.
 
 Litter uses the initial image byte **30** at `0x2EEB60`, loaded at `0x20E504`, plus the
@@ -124,18 +125,18 @@ Transaction-time cash299 refuses an ice-cream price30 without any effects or cou
 buys once. Cash is set after routing so a future route affordability filter cannot vacuously
 pass the handback guard test. Later ticks must not pay or reseed an already completed purchase.
 
-There are65 independent-helper assertions per world:21 for each region plus2 same-input
-selector controls. The matrix requires the count and named region/transaction/arm witnesses;
+There are67 independent-helper assertions per world:21 for each region plus2 same-input
+selector controls and2 explicit source-path attachment checks independent of region choice. The matrix requires the count and named region/transaction/arm witnesses;
 an omitted helper or stale binary is not allowed to look green. Known HALLOW Thrill Grill
 and SPACE Moon Buggies failures remain separate, unchanged retail-data findings.
 
 ## Regression evidence for this package
 
-The65 checks pass in each of JUNGLE/FANTASY/HALLOW/SPACE. Nine restored-source mutations
+The initial65 checks pass in each of JUNGLE/FANTASY/HALLOW/SPACE. Nine restored-source mutations
 are rejected through the new helper itself (not compiler failure or unrelated assertions):
 bare-price debit18 failures; food subtracts thirst7; drinks use food4; balloon gains litter3;
 costume preference omitted3; product7 omitted3; missing affordability3; strict rather than
-inclusive affordability3; Serve ignores compiled Product9. Each mutated run completed all65
+inclusive affordability3; Serve ignores compiled Product9. Each initial mutated run completed all65
 assertions; original source and the normal build were restored afterward.
 
 The four-world matrix retains only the two exact retail findings (matrix exit2, raw exit1
