@@ -242,13 +242,29 @@ public sealed class ParkVisitors
     /// route service results and native inputs; this is not an automatic admission policy.</summary>
     public bool BeginEntranceRoute(Guest guest, object owner,
         IReadOnlyList<NativeGuestMotion.Point> waypoints, NativeMotionInputs inputs)
+        => AssignEntranceRoute(guest, owner, waypoints, inputs) == GuestWalk.NativeAssignment.Assigned;
+
+    bool MayOwnEntrance(Guest guest) => guest != null && _plans.TryGetValue(guest.Id, out var plan)
+        && plan.Intent is VisitorIntent.Wandering or VisitorIntent.Entering && !_owners.ContainsKey(guest.Id);
+
+    public GuestWalk.NativeAssignment AssignEntranceRoute(Guest guest, object owner,
+        IReadOnlyList<NativeGuestMotion.Point> waypoints, NativeMotionInputs inputs)
     {
-        if (guest == null || !_plans.TryGetValue(guest.Id, out var plan)
-            || plan.Intent is not (VisitorIntent.Wandering or VisitorIntent.Entering)
-            || _owners.ContainsKey(guest.Id) || !Walk.BeginNativeRoute(guest, owner, waypoints, inputs))
-            return false;
-        _plans[guest.Id] = new Plan(guest.Id, VisitorIntent.Entering, 0, guest.Cell);
-        return true;
+        if (!MayOwnEntrance(guest)) return GuestWalk.NativeAssignment.Refused;
+        var result = Walk.AssignNativeRoute(guest, owner, waypoints, inputs);
+        if (result != GuestWalk.NativeAssignment.Refused)
+            _plans[guest.Id] = new Plan(guest.Id, VisitorIntent.Entering, 0, guest.Cell);
+        return result;
+    }
+
+    public GuestWalk.NativeAssignment AssignDirectEntranceRoute(Guest guest, object owner,
+        Func<NativeGuestMotion.Point> target, NativeMotionInputs inputs)
+    {
+        if (!MayOwnEntrance(guest)) return GuestWalk.NativeAssignment.Refused;
+        var result = Walk.AssignDirectNativeRoute(guest, owner, target, inputs);
+        if (result != GuestWalk.NativeAssignment.Refused)
+            _plans[guest.Id] = new Plan(guest.Id, VisitorIntent.Entering, 0, guest.Cell);
+        return result;
     }
 
     /// <summary>Explicit research-controller/map teardown. Not a native departure callback.

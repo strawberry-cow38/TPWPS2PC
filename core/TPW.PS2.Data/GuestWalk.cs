@@ -171,13 +171,15 @@ public sealed partial class GuestWalk
 
     public void Clear()
     {
-        foreach (var guest in _guests) guest.NativeMotion = null;
+        foreach (var guest in _guests) { guest.NativeMotion?.Route.Dispose(); guest.NativeMotion = null; }
+        NativeRoutes.Reset(); // actor chains released before global pool reset; no stale live handles
         _guests.Clear(); _live.Clear(); _liveIdCounts.Clear(); Time = 0; _carry = 0; _lastId = 0;
     }
     public void Remove(int id)
     {
         foreach (var guest in _guests.Where(g => g.Id == id))
         {
+            guest.NativeMotion?.Route.Dispose();
             guest.NativeMotion = null;
             _live.Remove(guest);
         }

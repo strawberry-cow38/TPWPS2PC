@@ -36,7 +36,7 @@ public partial class Viewer
             n => _guestRng.Next(n),
             _ => new Point(unchecked((short)(stage.X + _guestRng.Next(256))), stage.Z),
             queue, RequestEntranceRoute, PumpEntranceRoutes,
-            _ => true, // explicit UNBOUNDED direct-slot adapter, not native pool capacity
+            _ => true, // no extra admission gate; actual allocation is GuestWalk.NativeRoutes (1000 shared slots)
             _ => true, // explicit model-readiness bypass, not a decoded ready-state join
             () => 0x4000,
             g => NativeEntranceAcceptance.TryCharge(_entranceVisitors.Needs, g.Id, _sim.Finances,
@@ -47,7 +47,7 @@ public partial class Viewer
                 _entranceRejected++;
                 GD.Print($"[entrance.experimental] guest {g.Id} rejected: HELD under owner; native departure serial/producer unported");
             },
-            _guests.StepOwnedNative));
+            _guests.StepOwnedNative, exitCandidates: ExperimentalEntranceExitCandidates));
         _entrancePriorTick = _guests.BeforeStep;
         _entranceTickHook = tick => {
             _entrancePriorTick?.Invoke(tick);
@@ -55,7 +55,7 @@ public partial class Viewer
         };
         _guests.BeforeStep = _entranceTickHook;
         GD.Print($"[entrance.experimental] OPT-IN controller: actual bus identities -> two incoming groups -> fee -> normal handoff. point1={_busCatalogue.StagingPoint} point2={_busCatalogue.IncomingQueuePoint}");
-        GD.Print("[entrance.experimental] NON-PARITY ADAPTERS: deferred-next-tick public BFS, unlimited route slots, readiness bypass; ordinary constructor fee seed only; second staging class absent; rejects held, departure-pressure still bypassed. Not release-ready.");
+        GD.Print("[entrance.experimental] NON-PARITY ADAPTERS: deferred-next-tick public BFS/search resources, readiness bypass; ordinary constructor fee seed only; second staging class absent; rejects held, departure-pressure still bypassed. Not release-ready.");
     }
 
     bool RequestEntranceRoute(ulong token, Guest guest, int mode, Point from, Point target)
@@ -66,13 +66,8 @@ public partial class Viewer
         var cells = _entranceWalk.Route(sourceCell, targetCell);
         // This adapter submits now and delivers no earlier than the NEXT route pump.
         // BFS/resource/time budget is port policy; it is not the native18D7F8 planner.
-        var points = cells == null ? null : cells.Skip(1).Select(EntranceCentre).ToList();
-        if (points != null)
-        {
-            if (points.Count == 0) points.Add(quantized);
-            else points[^1] = quantized;
-        }
-        _entranceResults.Enqueue(new(token, guest, points?.ToArray(),
+        var points = cells == null ? null : NativeRouteOutput.FromCells(cells, quantized).ToArray();
+        _entranceResults.Enqueue(new(token, guest, points,
             cells == null ? "experimental public BFS found no path" : null));
         return true;
     }
@@ -95,6 +90,12 @@ public partial class Viewer
 
     Point? ExperimentalEntranceExit(Guest guest)
     {
+        foreach (var point in ExperimentalEntranceExitCandidates(guest)) return point;
+        return null;
+    }
+
+    IEnumerable<Point> ExperimentalEntranceExitCandidates(Guest guest)
+    {
         // Narrow reachable-case join: a released incoming HEAD is exactly point2,
         // whose corridor receives native flag8 in14E958..9BC. Do not equate every
         // IsEntrance cell with that native flag byte or allow arbitrary start poses.
@@ -105,13 +106,12 @@ public partial class Viewer
         for (int i = 0; i < 50; i++)
         {
             var c = new ParkCell(x, z + i);
-            if (!_entranceWalk.Paths.Contains(c)) return null; // explicit managed bounds safety
+            if (!_entranceWalk.Paths.Contains(c)) yield break; // explicit managed bounds safety
             // PathTool's real ground sprites represent kinds2/13. Exclude the
             // bridge policy and phantom entrance corridor from this goal-kind join.
             if (!_entranceWalk.Paths.IsBridge(c) && _entranceWalk.Paths.Kind(c) == ParkPathKind.Path)
-                return EntranceCentre(c);
+                yield return EntranceCentre(c); // allocation is attempted between candidates, not after choosing one
         }
-        return null;
     }
 
     void ResetExperimentalEntrance()

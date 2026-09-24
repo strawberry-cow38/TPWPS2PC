@@ -12,6 +12,12 @@ int bad = 0;
 void Check(bool ok, string line) { Console.WriteLine((ok ? "  ok   " : "  FAIL ") + line); if (!ok) bad++; }
 
 using var disc = new Disc(args[0]);
+if (args.Contains("--native-route-pool-only"))
+{
+    NativeRoutePoolChecks.Run(disc,Check);
+    Console.WriteLine(bad==0 ? "PASS shared output pool through cursor/walk/entrance (native search and readiness still separate)" : $"FAIL: {bad}");
+    return bad==0?0:1;
+}
 if (args.Contains("--native-entrance-flow-only"))
 {
     NativeEntranceFlowChecks.Run(disc,Check);
@@ -602,6 +608,7 @@ NativeGuestRouteChecks.Run(Check);
 NativeWalkConsumerChecks.Run(disc,Check);
 NativeEntranceFlowChecks.Run(disc,Check);
 NativeEntranceAcceptanceChecks.Run(Check);
+NativeRoutePoolChecks.Run(disc,Check);
 SfxGraphChecks.Run(disc, Check);
 BridgeChecks.Run(terrain, PathPieces.Read(disc), world, Check);
 RideValueChecks.Run(Wad("DATA"), wad, world, Check);

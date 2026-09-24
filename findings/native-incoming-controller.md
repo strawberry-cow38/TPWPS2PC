@@ -45,7 +45,9 @@ visible and is a reason not to enable the experiment for normal play.
 
 1. Route search uses existing public BFS and delivers its result at a later pump.
    The native planner's priority, graph, timed budget, cancellation and global
-   slot capacity are NOT implemented. Direct allocation is explicitly unbounded.
+   search-node/request resources are NOT implemented. OUTPUT allocation now uses
+   GuestWalk's shared1000-slot pool and the real packed cursor; see
+   native-route-slot-pool.md. Unported legacy walkers/guards do not consume it.
 2. Model-animation readiness is explicitly bypassed. Speed/delta arithmetic is
    native, but the model9/13 readiness join remains open.
 3. The ordinary constructor entrance-fee seed150 is used, with saved scenario/UI
@@ -72,14 +74,14 @@ Viewer bus births, update ticks, counts, money and actors now consume it.
 
 ## Evidence and tests
 
-`NativeEntranceFlowChecks` currently109 checks through real ParkVisitors and
+`NativeEntranceFlowChecks` currently113 checks through real ParkVisitors and
 GuestWalk, with explicit controlled services. Includes both groups, phase/head
 blocking, same identity, refused/failed requests, stale callbacks, accepted
 retry/no repeated fee, rejected ownership, teardown, batch12 broadcast, and
 selection against actual pre-existing counts10 versus11. No private state edits
 force success. `NativeEntranceAcceptanceChecks` adds23 checks for integer bounds,
 strict cash equality, low32 overflow, RNG ordering and equal credit/debit of the
-reread fee. Existing76 cursor and75 actuator controls remain required.
+reread fee. Existing76 cursor and87 actuator controls remain required.
 
 `NativeEntranceFlowSmoke` uses ordinary Viewer loading, actual build-menu placement
 of a positive-value attraction, actual bus admission and the rendered actors.

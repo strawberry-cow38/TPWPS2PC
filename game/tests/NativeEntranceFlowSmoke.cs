@@ -73,12 +73,15 @@ public partial class NativeEntranceFlowSmoke : Node3D
             var bodies=batch.ToDictionary(g=>g.Id,g=>actors[g.Id]);
             var sim=Field<ParkSim>(viewer,"_sim");int income=sim.Finances.TotalIncome;
             Set(viewer,"_guestCap",0); // isolate this real batch, never manually spawn/remove a guest
-            int peak=0,staging=0;
+            Check(walk.NativeRoutes.Available==NativeRoutePool.Capacity,
+                "bus birth takes an empty lease, not an unsubmitted route allocation");
+            int peak=0,staging=0,peakSlots=0;
             for(int i=0;i<2500&&batch.Any(flow.Owns);i++)
             {
                 Call(viewer,"StepPark",.04);
                 peak=Math.Max(peak,flow.Counts.Group0+flow.Counts.Group1);
                 staging=Math.Max(staging,flow.StagingPending);
+                peakSlots=Math.Max(peakSlots,walk.NativeRoutes.AllocatedCount);
                 Check(batch.All(g=>walk.Guests.Any(live=>ReferenceEquals(g,live))),"same bus-born identities survive each incoming update");
                 Check(batch.All(g=>ReferenceEquals(actors[g.Id],bodies[g.Id])),"same actual rendered actors survive movement/group transfer");
                 if(i%16==0)await ToSignal(GetTree(),SceneTree.SignalName.ProcessFrame);
@@ -88,6 +91,8 @@ public partial class NativeEntranceFlowSmoke : Node3D
             Check(Field<int>(viewer,"_entranceRejected")==0&&Field<int>(viewer,"_entranceAccepted")==batch.Length,"fee10 positive-value fixture accepted exactly this batch");
             Check(batch.All(g=>visitors.Needs.Of(g.Id).Cash==cash[g.Id]-10),"each guest charged once, including retries/queue reposition");
             Check(sim.Finances.TotalIncome-income==batch.Length*10,"actual park finance receives exactly the corresponding entrance money");
+            Check(peakSlots>0 && walk.NativeRoutes.Available==NativeRoutePool.Capacity,
+                "actual rendered guest consumed and returned the park's shared output slots");
             Check(flow.Counts==(0,0)&&flow.StagingPending==0,"completed incoming batch leaves no counted memberships or staging pressure");
             Check(batch.All(g=>!g.HasNativeRoute),"normal visitor owner receives same guests after centre handoff");
             Call(viewer,"ResetNativeBus");

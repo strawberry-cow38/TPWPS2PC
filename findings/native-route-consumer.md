@@ -43,10 +43,11 @@ handoff must retain its owner rather than teleport. Bounds failure is latched an
 left for the owner to resolve. These two guard policies are managed integration
 constraints, **not claims about all native failure and cancellation callbacks**.
 
-The cursor owns a copied waypoint array, not the native global route-slot pool.
-`SlotIndex` is a local array index, not a native pool handle. Allocation limits,
-request scheduling, route selection, cancellation and full movement-purpose
-callbacks remain outside this class.
+The initial cursor used a copied array. This is now superseded by the actual
+shared output-pool consumer documented in native-route-slot-pool.md: SlotIndex
+is a real handle, targets/links live in the packed table and retirement frees one.
+Search resources, request scheduling, full route selection and native indirect
+cancellation callbacks remain separate from output ownership.
 
 ## Discriminating tests through production consumers
 

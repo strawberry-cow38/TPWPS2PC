@@ -1,8 +1,11 @@
-# Native route-slot pool — resource producer for the next integration
+# Native route-slot pool — producer and actual cursor/entrance consumer
 
 September24,2026; owner PAL ELF read in RAM, no extraction. This is a positive
-raw-instruction trace, not a ported/shared allocator yet. The experimental route
-service still has unlimited direct slots and managed waypoint arrays.
+raw-instruction trace. The research branch now connects NativeRoutePool through
+GuestWalk, NativeGuestRoute and the experimental incoming controller: actual
+1000-slot output allocation/retirement/retry, not a counter beside arrays. Native
+search-node/request resources, global disable/reinit and other walker families
+remain separate gaps; see the implementation checkpoint below.
 
 ## Capacity is1000, NOT the11-bit link range
 
@@ -131,3 +134,63 @@ Direct-call scan controls included18D47C->192768,191DC8/192884->1927F8,
 Negatives concern aligned direct J/JAL in text[100000,2A420C), not all indirect
 calls or separate table mutation. Next code must connect shared output ownership
 to the actual cursor/request consumer, with these partial-failure boundaries.
+
+
+## 18D358 output selection: do not symmetrize the root
+
+Processing starts at the detached goal, previous direction0xFFFF, and follows
+parent+8 through the ROOT inclusive. Nonroot direction uses parent minus current
+unsigned-byte cells: dx!=0 -> dx>0?6:2; otherwise dz>0?0:4. Root direction is0.
+Equal direction skips emission; different direction allocates/prepends. The first
+emission uses exact requested endpoint through192560; later emissions use current
+node centre. Root is skipped ONLY if previous direction is already0. A singleton
+search chain emits one endpoint, not zero and not an extra root centre. Zero-length
+nonroot edges arecode4; diagonals use dx sign, not a diagonal/collinearity test.
+
+Positive controls18D420/474/478,18D5A4..604: loop ends after root, not before it.
+NativeRouteOutput.FromCells applies this selection to the existing BFS result.
+That preserves the observed output conversion but does NOT establish native
+search/parent-choice parity. Empty successful search output is refused as managed
+safety; a deliberate empty owner lease while waiting is a different operation.
+
+## Research implementation checkpoint
+
+NativeRoutePool stores the REAL packed output words, allocation bit, links and
+coordinates. GuestWalk owns one pool for its native routes; NativeGuestRoute
+adopts its exclusively owned head, reads targets there, and holds no substitute
+waypoint-array cursor. Isolated cursor tests use a private pool explicitly.
+SlotIndex is now an actual handle, not a local array ordinal. Reverse-prepend
+allocation means the first waypoint of a fresh two-point route useshandle1 then0;
+eleven old combined cursor assertions were corrected for that representation
+change without weakening position/phase assertions.
+
+Replacement disposes old output before building new; failure rolls back only
+private new output, retains the same guest/owner/coordinate and reports Exhausted
+separately from an ownership refusal. Request consumers restore their retry state
+on exhaustion. Direct allocation takes the slot BEFORE invoking its target
+factory: mode16's1532D8 RNG must not be consumed when allocation fails. Direct
+mode13 candidate enumeration and allocation interleave in the SAME tick, so a
+failed first candidate does not prematurely end the native scan.
+
+Arrival retains a live slot; the later retirement saves next and frees ONE.
+Bounds failure, replacement, removal and explicit teardown free the whole owned
+remainder. Clear frees actor-owned chains before reset. Public malformed-link,
+double-free, cycle and stale-reset checks are labeled managed safety, not native
+branches. TryBuild's private prepend is linear; it does not repeat the public
+SetNext whole-tail safety check for each newly allocated slot.
+
+NativeRoutePoolChecks has1082 checks, including all1000 allocations and actual
+GuestWalk/entrance resource exhaustion, retry, owner isolation, direct helper
+ordering and same-tick candidate iteration. Actual Viewer smoke now asserts its
+real guest consumes and returns the shared pool (651 checks in JUNGLE).
+Six mutations were caught: corrupt free count34failures; omit partial rollback
+8failures then safety guard; omit retirement free9; symmetrize root8; eager direct
+helper5; eagerly materialize exit candidates2 then guard. The batch command timed
+out during its final restored baseline, NOT as a passing test; source restoration
+was checked and a separate restored run passed all1082 afterward.
+
+This removes the unlimited OUTPUT-slot adapter, not all resource placeholders.
+BFS/search budget/2000-node ownership/10 pending native records/readiness and the
+normal/rejected departure producer remain unported. Only currently native-owned
+routes share this pool; unported guards/legacy ordinary walking are not silently
+counted as if they had native slots. Do not announce full native pathfinder parity.

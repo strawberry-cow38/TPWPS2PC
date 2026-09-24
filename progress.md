@@ -9,8 +9,9 @@ Bus and requested smoothing are already on main through98b5249; do not redo them
 This research branch now includes the full INCOMING controller through actual
 experimental Viewer bus births, staging/groups, fee credit/debit and actor handoff.
 It is OPT-IN `--experimental-native-entrance`, NOT a default/main release: public BFS,
-unlimited route slots, readiness bypass and constructor-only fee seed are explicit
-adapters. Rejected guests are HELD because native departure/serial/pressure remains
+unported native search/request resources, readiness bypass and constructor-only fee
+seed are explicit adapters. Output routes now use a real shared1000-slot pool; read
+the latest snapshot and native-route-slot-pool.md, not older unlimited-slot notes. Rejected guests are HELD because native departure/serial/pressure remains
 unported. See latest snapshot and findings/native-incoming-controller.md. Do NOT
 call this complete native entrance parity or quietly enable it for normal play.
 The old `tpw-ride-eligibility` checkout and scheduler's `81d112c` note are stale.
@@ -2380,3 +2381,39 @@ bindingsperuser21:01. Merged0fc2cc7gatedoccorrection; no codechangefromthatmerge
 Readonlydelegatesused3thisreviewturn, noneleftuntilnewturn. Earlierreviewgates
 pass113flow/87actuator/23fee,11runtime+upstreamtexture,63Python,Jungle649rendered.
 Researchbranchstillnotdefault/main; sourcepoolnextstepsareinlatestpoolfindings.
+
+
+## Shared output route-pool consumer — September24 research branch
+
+Actual NativeRoutePool->NativeGuestRoute->GuestWalk->NativeEntranceFlow->Viewer
+connection now replaces unlimited copied-array routes for native-owned guests.
+Packed1000slots, nativeallocationhint/freecount, reverse-prependlinking, partial
+rollback, oldroutefreedBEFOREreplacement, exhaustion!=ownerrefusal. Sameguest/
+owner/positionretainedemptyduringretry. DirectallocationBEFOREtargetfactory/RNG;
+mode13lazycandidatestryallocbetweenyields inSAMEtick. Arrivaldoesnotfree; next
+retirementfreesONEsavedlink; invalidbounds/replacement/remove/clearfreeownedchain.
+Clearactorchainsbeforepoolreset; managedinvalidlink/doublefree/cycle/epochguards
+areexplicitSAFETY, notclaimsretailchecks. Privatebuilderlinear(notN-squaredtails).
+
+NativeRouteOutput18D358selectionappliedtoexistingBFS: walkbackwardsINCLUDINGroot,
+rootdirection0 vsnonrootdxsign6/2 ordz0/4, previousFFFF; emitonchange, firstexact
+endpoint thennodecentres; reverse. RootNOTunconditionallyskipped; singleton1slot.
+Thisportsoutputtransform, NOTnativepathsearch. Elevenoldcursorassertionsfailed
+ONLYlocalindexassumptions; nowactualreverseallocatedhandleexpectations preserve
+allposition/phaseassertions. Noordinalfacadekeptbesiderealpool.
+
+1082newchecks throughactualpool/walk/controller inclfullcapacity,partialfailure,
+replacementlosesoldroute, directfactorynoRNGwhenfull, same-ticklatergoalretry.
+6mutationscaught34/8+guard/9/8/5/2+guard; scriptoutertimeoutduringRESTOREonly,
+sourcesrestoredchecked,separaterestored1082PASS /tmp/tpw-pool-restored.log.
+JungleactualViewer651PASS /tmp/tpw-pool-final-viewer.log nowassertsrealpoolused
+andfullyreturnedbybusguest. Old76cursor/87actuator/113flow/23fee pass. Fullmatrix
+/tmp/tpw-pool-final-matrix alreadyJ/Fpass ONLYexactThrillGrill/MoonBuggiesreds;
+runtime11/Python runningascheckpointwritten, inspectexitfilesbeforeclaiming.
+
+STILLNOTMAIN: native searchnodes2000/requestrecords10/budget/readinessunported,
+guards+ordinarylegacywalkersnotaccountedinpool, constructorfeeoverrides/RNGunjoined,
+REJECTEDGUESTSHELD untilproperdepartureproducer. Userapprovedkeeponit; nextvisible
+priorityproperleaving/rejection, notgeometry. Needreadiness/nativepathservicealso
+closedbeforedefaultparityrelease. All3delegatesusedthispoolturn. Noextraction/
+privatefiles/otherhosts/restarts. CowownsselectedrideX/listboxUI; don'teditlane.

@@ -60,18 +60,18 @@ static class NativeGuestRouteChecks
         Point second = new(192, 192);
         var multi = new NativeGuestRoute(start, new[] { end, second });
         Check(multi.Step(127, 0x4000, 4, 4, true) == Outcome.Pending
-            && State(multi, end, end, 2, 0), "intermediate arrival does not spend leftover step on next target");
+            && State(multi, end, end, 2, 1), "intermediate arrival does not spend leftover step on next target");
         Check(multi.Step(127, 0x4000, 4, 4, true) == Outcome.Pending
-            && State(multi, end, second, 3, 1) && multi.FacingQuarterTurns == 1,
-            "intermediate release advances local slot only, with no movement or facing change");
+            && State(multi, end, second, 3, 0) && multi.FacingQuarterTurns == 1,
+            "intermediate release follows the saved pool successor only, with no movement or facing change");
         Check(multi.Step(127, 0x4000, 0, 0, false) == Outcome.Pending
-            && State(multi, end, second, 3, 1) && multi.FacingQuarterTurns == 1,
+            && State(multi, end, second, 3, 0) && multi.FacingQuarterTurns == 1,
             "unready live slot freezes all state before facing or bounds checks");
         Check(multi.Step(15, 0x4000, 4, 4, true) == Outcome.Pending
-            && State(multi, new(192, 143), second, 3, 1) && multi.FacingQuarterTurns == 0,
+            && State(multi, new(192, 143), second, 3, 0) && multi.FacingQuarterTurns == 0,
             "next ready step uses only its own budget, not either preceding update");
         Check(multi.Step(127, 0x4000, 4, 4, true) == Outcome.Pending
-            && State(multi, second, second, 2, 1), "second waypoint also retains slot on arrival");
+            && State(multi, second, second, 2, 0), "second waypoint also retains slot on arrival");
         Check(multi.Step(127, 0x4000, 4, 4, true) == Outcome.Pending
             && State(multi, second, null, 3, -1), "second slot releases without completing");
         Check(multi.Step(127, 0x4000, 4, 4, true) == Outcome.Pending
@@ -96,18 +96,18 @@ static class NativeGuestRouteChecks
         var queue = new NativeGuestRoute(queueStart, queuePoints);
         for (int i = 0; i < queuePoints.Length; i++)
         {
-            Check(queue.CurrentTarget == queuePoints[i] && queue.SlotIndex == i
+            Check(queue.CurrentTarget == queuePoints[i] && queue.SlotIndex == queuePoints.Length - 1 - i
                 && queue.ExecutionState == 3, $"64-unit queue point {i} keeps quarter-cell position");
             Check(queue.Step(15, 0x4000, 128, 128, true) == Outcome.Pending
                 && queue.Position == new Point(queueStart.X, (short)(queueStart.Z - i * 64 - 15))
                 && queue.ExecutionState == 3, $"queue segment {i} takes 15 raw units first");
             for (int j = 0; j < 3; j++) queue.Step(15, 0x4000, 128, 128, true);
             Check(queue.Step(15, 0x4000, 128, 128, true) == Outcome.Pending
-                && State(queue, queuePoints[i], queuePoints[i], 2, i),
+                && State(queue, queuePoints[i], queuePoints[i], 2, queuePoints.Length - 1 - i),
                 $"queue segment {i} arrives on fifth step, clamping final four units");
             Check(queue.Step(127, 0x4000, 128, 128, true) == Outcome.Pending
                 && State(queue, queuePoints[i], i + 1 < queuePoints.Length ? queuePoints[i + 1] : null,
-                    3, i + 1 < queuePoints.Length ? i + 1 : -1),
+                    3, i + 1 < queuePoints.Length ? queuePoints.Length - 2 - i : -1),
                 $"queue segment {i} release never carries movement");
         }
 
@@ -168,7 +168,7 @@ static class NativeGuestRouteChecks
         Check(copy.CurrentTarget == new Point(128, 192), "caller replacement and resizing cannot change active target");
         copy.Step(127, 0x4000, 4, 4, true);
         copy.Step(127, 0x4000, 4, 4, true);
-        Check(State(copy, new(128, 192), new(192, 256), 3, 1),
+        Check(State(copy, new(128, 192), new(192, 256), 3, 0),
             "later target also snapshotted and quantized at construction");
         Check(input.Count == 1 && input[0] == new Point(0, 0), "stepping never writes caller list");
     }

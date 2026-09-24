@@ -6,7 +6,7 @@ namespace TPW.PS2.Data;
 /// <summary>
 /// Research-only incoming entrance controller (native-entrance-lifecycle.md).
 /// Owns existing identities through ParkVisitors, not a pathfinder, admission default,
-/// native slot pool or departure implementation. Call once per Walk tick, BEFORE the
+/// search-node/request pool or departure implementation. Output slots are shared through Walk. Call once per Walk tick, BEFORE the
 /// experimental bus consumer. The ordinary Walk loop MUST NOT also step these leases.
 /// All calls and services are single-threaded; callbacks must not reenter mutations.
 /// </summary>
@@ -20,7 +20,7 @@ public sealed class NativeEntranceFlow
         Staged = 0x2E, CrossStaging = 0x2F
     }
 
-    /// <summary>Failure is explicit; a successful empty waypoint array is legal.
+    /// <summary>Failure is explicit; a successful request requires at least its endpoint slot.
     /// Pump transfers a snapshot, not a completion delegate callable during Request.</summary>
     public sealed record RouteResult(ulong Token, Guest Guest, Point[]? Waypoints, string? Failure)
     {
@@ -45,8 +45,10 @@ public sealed class NativeEntranceFlow
     /// available results; the controller materializes/copies the whole batch first.
     /// StepOwnedNative must step exactly the named guest under the supplied owner.
     /// Accept owns the fee/value calculation and charge, and is invoked at most once.
-    /// ExitGoal owns the native scan/policy, including candidate progression on failed
-    /// TryDirect allocations; a null result retries on a later tick without charging.
+    /// ExitCandidates supplies the scan lazily; allocation attempts interleave with
+    /// candidates in the SAME update. ExitGoal is the single-candidate compatibility
+    /// service when no candidate iterator is supplied. TryDirect is an injected gate,
+    /// not a fake capacity counter: actual slots come from Walk.NativeRoutes.
     /// Reject is a one-shot boundary notification, NOT permission to release the lease.
     /// Trace is optional, observational, and must not throw.
     /// </summary>
@@ -62,6 +64,7 @@ public sealed class NativeEntranceFlow
         public Func<int> Delta { get; }
         public Func<Guest, bool> Accept { get; }
         public Func<Guest, Point?> ExitGoal { get; }
+        public Func<Guest, IEnumerable<Point>> ExitCandidates { get; }
         public Action<Guest> Reject { get; }
         public Action<Guest, object> StepOwnedNative { get; }
         public Action<TraceEvent>? Trace { get; }
@@ -71,7 +74,8 @@ public sealed class NativeEntranceFlow
             Func<IEnumerable<RouteResult>> pump, Func<Point, bool> tryDirect,
             Func<Guest, bool> ready, Func<int> delta, Func<Guest, bool> accept,
             Func<Guest, Point?> exitGoal, Action<Guest> reject,
-            Action<Guest, object> stepOwnedNative, Action<TraceEvent>? trace = null)
+            Action<Guest, object> stepOwnedNative, Action<TraceEvent>? trace = null,
+            Func<Guest, IEnumerable<Point>>? exitCandidates = null)
         {
             Random = random ?? throw new ArgumentNullException(nameof(random));
             StagingTarget = stagingTarget ?? throw new ArgumentNullException(nameof(stagingTarget));
@@ -83,6 +87,7 @@ public sealed class NativeEntranceFlow
             Delta = delta ?? throw new ArgumentNullException(nameof(delta));
             Accept = accept ?? throw new ArgumentNullException(nameof(accept));
             ExitGoal = exitGoal ?? throw new ArgumentNullException(nameof(exitGoal));
+            ExitCandidates = exitCandidates ?? (g => ExitGoal(g) is {} p ? new[] { p } : Array.Empty<Point>());
             Reject = reject ?? throw new ArgumentNullException(nameof(reject));
             StepOwnedNative = stepOwnedNative ?? throw new ArgumentNullException(nameof(stepOwnedNative));
             Trace = trace;
@@ -285,7 +290,7 @@ public sealed class NativeEntranceFlow
             || e.Stopped || e.State != State.Pending || e.Token != result.Token) return;
         if (!Live(e)) { Forget(e); return; }
         e.Token = null; // consume exactly once, including failure
-        if (!result.Succeeded)
+        if (!result.Succeeded || result.Waypoints!.Length == 0)
         {
             e.State = e.Mode == 15 ? State.RequestStaging : State.RequestQueue;
             e.Failure = result.Failure ?? "Route service returned no waypoints.";
@@ -323,14 +328,46 @@ public sealed class NativeEntranceFlow
 
     void Assign(Entry e, int mode, IReadOnlyList<Point> waypoints)
     {
-        // The real actuator validates/copies/quantizes BEFORE mutating its lease.
-        // No shadow cursor and no pretend-success when another subsystem owns it.
-        if (!_visitors.BeginEntranceRoute(e.Guest, _owner, waypoints, e.Inputs))
+        var result = _visitors.AssignEntranceRoute(e.Guest, _owner, waypoints, e.Inputs);
+        if (result == GuestWalk.NativeAssignment.Refused)
             throw new InvalidOperationException("Entrance route replacement unexpectedly refused.");
+        if (result == GuestWalk.NativeAssignment.Exhausted)
+        {
+            // 18D488->18D574 rolls back private output, notification2 restores retry.
+            // Old route was already disposed; empty owner lease prevents ordinary AI stealing.
+            e.State = mode == 15 ? State.RequestStaging : State.RequestQueue;
+            e.Failure = "shared output pool exhausted while building route";
+            Trace("route output exhausted; retry state restored", e);
+            return;
+        }
         e.Mode = mode;
         e.State = State.Moving;
         e.Failure = null;
         Trace("route assigned", e);
+    }
+
+    bool AssignDirect(Entry e, int mode, Point probe, Func<Point> target)
+    {
+        // Each native direct path disposes its previous chain BEFORE allocation.
+        // The injected gate remains useful for controlled failures but is NOT the pool.
+        if (!_visitors.BeginEntranceRoute(e.Guest, _owner, Array.Empty<Point>(), e.Inputs))
+            throw new InvalidOperationException("Entrance direct replacement could not retain its owner.");
+        if (mode != 16) e.Mode = mode; // mode16 writes only AFTER successful allocation
+        if (!_services.TryDirect(probe)) { Trace($"mode{mode} allocation refused", e); return false; }
+        var result = _visitors.AssignDirectEntranceRoute(e.Guest, _owner,
+            () => { e.Mode = mode; return target(); }, e.Inputs);
+        if (result == GuestWalk.NativeAssignment.Refused)
+            throw new InvalidOperationException("Entrance direct assignment unexpectedly refused.");
+        if (result == GuestWalk.NativeAssignment.Exhausted)
+        {
+            e.Failure = "shared output pool exhausted for direct route";
+            Trace($"mode{mode} allocation exhausted", e);
+            return false;
+        }
+        e.State = State.Moving;
+        e.Failure = null;
+        Trace("route assigned", e);
+        return true;
     }
 
     void Request(Entry e, int mode, Point target)
@@ -401,20 +438,19 @@ public sealed class NativeEntranceFlow
                 break;
             case State.CrossStaging:
                 var current = Motion(e).Position;
-                // Native allocation precedes the call to 1532D8. TryDirect is an
-                // allocation test, not the actuator: for mode16 it receives current
-                // as a placeholder, then successful allocation consumes staging RNG.
-                if (!_services.TryDirect(current)) { Trace("mode16 allocation refused", e); break; }
-                var staging = _services.StagingTarget(e.Guest);
-                Assign(e, 16, new[] { new Point(current.X, staging.Z) });
+                AssignDirect(e, 16, current, () =>
+                {
+                    // Native allocation succeeds BEFORE this helper consumes even its unused random-X.
+                    var staging = _services.StagingTarget(e.Guest);
+                    return new Point(current.X, staging.Z);
+                });
                 break;
             case State.RequestQueue:
                 Request(e, 11, Register(e)); // membership BEFORE submission, even on refusal
                 break;
             case State.Reposition:
                 var queue = QueuePoint(e);
-                if (!_services.TryDirect(queue)) { Trace("mode12 allocation refused", e); break; }
-                Assign(e, 12, new[] { queue });
+                AssignDirect(e, 12, queue, () => queue);
                 break;
             case State.Evaluate:
                 e.Group = -1;
@@ -437,10 +473,14 @@ public sealed class NativeEntranceFlow
                 else Trace("accepted once; awaiting exit goal", e);
                 break;
             case State.Accepted:
-                var goal = _services.ExitGoal(e.Guest);
-                if (goal == null) { Trace("no exit goal; acceptance not repeated", e); break; }
-                if (!_services.TryDirect(goal.Value)) { Trace("mode13 allocation refused", e); break; }
-                Assign(e, 13, new[] { goal.Value });
+                bool found = false;
+                // 2110D8 loops to the NEXT candidate on failed allocation in this SAME update.
+                foreach (var goal in _services.ExitCandidates(e.Guest))
+                {
+                    found = true;
+                    if (AssignDirect(e, 13, goal, () => goal)) break;
+                }
+                if (!found) Trace("no exit goal; acceptance not repeated", e);
                 break;
             // Pending is asynchronous wait; Rejected is deliberately held rather
             // than inventing departure phase/serial/tally or full departure logic.
