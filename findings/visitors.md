@@ -1876,3 +1876,48 @@ and `FUN_0020FB88` tests `guest[0x6c] < now` before choosing a new destination. 
 the same mechanism from the selector side (a timer set even when a purchase is refused, plus
 recency penalties rather than a blacklist); this is the write side of it. Two independent routes
 to one mechanism, which is corroboration in a way that agreeing about one artifact is not.
+
+### ⭐⭐ The want score, PORTED — and shop quality starts at **100**, which nearly shipped as 0
+
+Every accessor in `0x20E1A0`'s purchase gate resolved, and each one lands on a field this port's
+own compiled-record parser already names — two independent routes to one layout:
+
+| call | reads | this port calls it |
+|---|---|---|
+| `FUN_001D1B08` | `record[0x2e]` × `((quality>>2) + 75 - (customers>>2))` / 100 | `BaseCostOfGoods` |
+| `FUN_001D1D08` | `record[0x30]` | `Product` |
+| `FUN_001D1B88` | `record[0x34]` | `HappinessEffect` |
+| `FUN_001D1CC8` | `record[0x36]` | `VomitIncrease` |
+| `FUN_001D1F50` / `FUN_001D1F58` | `shop[0xba]` get / set | **quality** |
+| `FUN_001D1FB8` | `shop[0xac]` | **customer count**, not a second quality |
+
+⚠ `[0x2e]` is parsed here as `BaseCostOfGoods`; what the executable does with it is scale a
+**desire**, not a cost.
+
+**⚠⚠ AND THE PORT ALMOST SHIPPED QUALITY AS 0.** The reasoning written into the code was that 0
+is "the console's own arithmetic on an unset field". It is not unset: `FUN_001D16C8`, which
+builds a shop from its compiled record, calls `FUN_001D1F58(shop, 100)` two lines after writing
+the price. At 0 the base falls to three quarters and **no guest ever buys anything** — measured,
+a guest at hunger 80 scores 25 against a price of 30.
+
+⭐ The audit caught it as **nine failing purchase cases**, which is the only reason the reasoning
+was re-examined rather than believed. A plausible argument for a default is not evidence about
+the default, and "it's the natural value of an unset field" is the shape that argument takes
+every time it is wrong.
+
+**How the real value was found**, and the method is worth keeping: a census of `sb`/`sh`/`sw` at
+`+0xBA` over the whole image found exactly **one** store in game code (plus one in a serializer),
+**with `+0xB4` as a control that had to hit its three known sites and did**. Then a census of
+encoded `jal` to that setter gave three call sites — construction, savegame restore, and one
+unread. ⭐ Two censuses, each with a control, beat reading around the neighbourhood hoping to
+trip over it.
+
+⚠ **The customer term is still NOT passed.** `(customers >> 2)` is subtracted from the base, so
+at 300 lifetime customers a shop's base reaches zero and it never sells again. Nothing read so
+far resets it for a shop (the lavatory arm zeroes `+0xAC`; shops have no equivalent yet). A term
+that only ever falls would hand this port a slow silent shop death and call it fidelity.
+
+⚠ **The happiness payout scaling is also NOT ported**, for the same reason in reverse: the drink
+arm pays `HappinessEffect * (quality - customers/15) / 100`, which at quality 100 is
+`HappinessEffect` exactly — so the unscaled value this port already pays is right *today* and
+becomes wrong the moment quality moves. Recorded so it is wired the day quality has a mover.

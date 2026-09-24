@@ -108,6 +108,39 @@ static class MoodChecks
             Check(w.Hunger > 0, $"and hunger actually moves (got {w.Hunger}) -- a frozen need would 'pass' the line above");
         }
 
+        // ── wanting it, not just affording it ──────────────────────────────────────────────
+        // ⭐⭐ THE CASE THAT REJECTS THE OLD BEHAVIOUR IS THE SATED ONE. A port with only an
+        // affordability test passes "a hungry guest buys" perfectly and fails here, because it
+        // sells a burger to somebody who just ate. Same shop, same money, only the appetite
+        // differs -- which is what makes this a test of the WANT and not of the wallet.
+        {
+            // Fries as the disc has them: price 30, base 20, hunger 25, vomit 10, happiness 5.
+            const int Price = 30, Base = 20, Hun = 25, Thi = 0, Hap = 5, Vom = 10;
+            bool Sell(byte hunger, byte thirst, int cash, int baseValue = Base, int quality = 100)
+            {
+                var n = Still();
+                n.Set(1, new VisitorWants { Hunger = hunger, Thirst = thirst, Sick = 20,
+                                            Happiness = 20, Cash = cash });
+                return n.Buy(1, Price, Hun, Thi, Hap, Vom, VisitorNeeds.Food, baseValue, quality);
+            }
+            Check(Sell(80, 70, 1234), "a hungry guest with money buys");
+            Check(!Sell(0, 0, 1234), "a SATED guest with the same money refuses -- the want gate");
+            Check(!Sell(80, 70, 200), "and a hungry guest without the money still cannot");
+
+            // ⚠⚠ THE FALLBACK MUST STAY LIVE. Two facilities per world never join a compiled
+            // record, and a zero base means "unknown", not "worthless" -- if this ever starts
+            // refusing, every unjoined shop in the game silently stops trading.
+            Check(Sell(0, 0, 1234, baseValue: 0), "a shop with no compiled record skips the gate rather than refusing everyone");
+
+            // ⭐⭐ AND QUALITY 100 IS LOAD-BEARING, measured the hard way: at 0 the base falls to
+            // three quarters and the hungry guest above scores 25 against a price of 30. This
+            // port nearly shipped that, with a comment explaining why 0 was principled.
+            Check(!Sell(80, 70, 1234, quality: 0), "at quality 0 even a hungry guest cannot afford to want it -- which is why 100 is not a detail");
+            Check(VisitorNeeds.WantScore(new VisitorWants { Hunger = 80, Thirst = 70, Sick = 20, Happiness = 20 },
+                                         Base, 100, Hun, Thi, Hap, Vom) == 36,
+                  "the score reproduces the console's integer arithmetic exactly (36 for the fries case)");
+        }
+
         // ⚠ THE CONTROL THAT MATTERS: `+0x78` is NOT raised by the clock. Nothing in
         // `FUN_0020FB88` raises it -- queueing is its only riser found -- and a rise put there on
         // the strength of its 95 bar was this port's mistake for two commits.

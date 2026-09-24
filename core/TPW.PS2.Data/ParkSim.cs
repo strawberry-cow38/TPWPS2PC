@@ -50,11 +50,32 @@ public sealed class ParkRide
     /// of zero. Keeping its direction means a cleaner is `= 100` rather than `-= something`, and
     /// a future "how dirty is this" reading does not have to know what full looked like.
     ///
-    /// ⚠ NOTHING READS IT BACK YET, here or on the console as far as a census of `lb`/`lbu` at
-    /// `+0xb4` can tell -- every site is the constructor, the placer, the depletion or the reset.
-    /// A getter reached through a vtable would be invisible to that census, so this is "not
-    /// found", not "not there".</summary>
+    /// ⭐⭐ AND IT IS READ BACK AFTER ALL, which an earlier note here said it was not. The
+    /// reader is `FUN_00130938` -- a one-line `return facility[0xb4]` -- called by the lavatory
+    /// arm of `FUN_0020EDD8` right after the wear: below **50** the guest loses 10 happiness,
+    /// gains 10 sickness and gets the angry bubble. ⚠ The census that missed it looked for `lb`
+    /// and `lbu` AT the offset, and this read is inside an accessor, so it could not have found
+    /// it. The note hedged correctly ("not found, not not-there") and the hedge was the only
+    /// thing standing between that census and a wrong finding.</summary>
     public int Condition { get; private set; } = 100;
+
+    /// <summary>`+0xBA`, the shop's quality, which `FUN_001D1B08` folds into how much a guest
+    /// wants what it sells: `(quality &gt;&gt; 2) + 75`.
+    ///
+    /// ⭐⭐ IT STARTS AT **100**, and finding that out was the whole exercise. `FUN_001D16C8`,
+    /// which builds a shop from its compiled record, calls the setter `FUN_001D1F58(shop, 100)`
+    /// two lines after writing the price -- so `(100 &gt;&gt; 2) + 75` = **100** and a new shop's
+    /// base is its `BaseCostOfGoods` exactly.
+    ///
+    /// ⚠⚠ THIS PORT ALMOST SHIPPED IT AS 0, with a comment arguing that 0 was "the console's own
+    /// arithmetic on an unset field". It is not an unset field; it is explicitly initialised, and
+    /// at 0 the base falls to three quarters and **NO GUEST EVER BUYS ANYTHING** -- measured: a
+    /// guest at hunger 80 scored 25 against a price of 30. ⭐ The audit caught it as nine failing
+    /// purchase cases, which is the only reason the reasoning got re-examined instead of shipped.
+    ///
+    /// ⚠ What MOVES it afterwards is still unread. One setter, three call sites: this
+    /// construction, the savegame restore (`FUN_001D1A58`) and `0x1D7070`.</summary>
+    public int Quality { get; set; } = 100;
 
     /// <summary>Use wears it down, floored at zero -- `FUN_00130948`, whose ONLY caller is the
     /// relief path at `0x20ef48`.</summary>

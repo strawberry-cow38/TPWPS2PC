@@ -463,14 +463,70 @@ public sealed class VisitorNeeds
     /// findings/dba.md's decode of the purchase path at `0x20E380..0x20E45C`, including the one
     /// that reads oddly and is right: the hunger reduction is subtracted from hunger AND added to
     /// the toilet.</summary>
+    /// <summary>⭐⭐ HOW BADLY THIS GUEST WANTS THIS THING, which is what the console weighs
+    /// against the price. Read whole from `0x20E1A0` and its accessors:
+    ///
+    /// <code>
+    ///   base   = record[0x2e] * ((quality &gt;&gt; 2) + 75 - (customers &gt;&gt; 2)) / 100   // FUN_001D1B08
+    ///   desire = thirst*ThirstReduction/100 + hunger*HungerReduction/100 + 100
+    ///          - sick*VomitIncrease/100 + (100-happiness)*HappinessEffect/100
+    ///   score  = base * 125/100 * desire/100 * (happiness+100)/100
+    /// </code>
+    ///
+    /// ⭐ Every accessor in it resolved against this port's OWN compiled-record parser, which is
+    /// the corroboration that matters: `FUN_001D1D08` reads `record[0x30]` and the parser calls
+    /// that `Product`; `FUN_001D1B88` reads `[0x34]` = `HappinessEffect`; `FUN_001D1CC8` reads
+    /// `[0x36]` = `VomitIncrease`. Two independent routes to one layout.
+    /// ⚠ And it renames one thing by implication: `[0x2e]` is parsed as `BaseCostOfGoods`, and
+    /// what the executable does with it is scale a DESIRE, not a cost.
+    ///
+    /// ⚠⚠ THE CUSTOMER TERM IS DELIBERATELY NOT PASSED. `FUN_001D1FB8` reads the shop's running
+    /// customer count at `+0xAC` and the formula SUBTRACTS a quarter of it -- so at 300 lifetime
+    /// customers the base reaches zero and the shop never sells again. The console must reset or
+    /// decay that counter and **nothing found so far does it** (the lavatory arm zeroes `+0xAC`,
+    /// shops have no equivalent yet read). Porting a term that only ever falls would hand this
+    /// port a slow, silent shop death and call it fidelity. It goes in when its reset is read.
+    ///
+    /// ⚠ Quality (`+0xBA`) IS passed, and is 0 until something sets it -- which is the console's
+    /// own arithmetic on an unset field, `(0 &gt;&gt; 2) + 75`, not a fallback invented here.</summary>
+    public static int WantScore(VisitorWants w, int baseValue, int quality,
+                                int hungerReduction, int thirstReduction,
+                                int happinessEffect, int vomitIncrease)
+    {
+        int bass = baseValue * ((quality >> 2) + 75) / 100;
+        int desire = w.Thirst * thirstReduction / 100
+                   + w.Hunger * hungerReduction / 100
+                   + 100
+                   - w.Sick * vomitIncrease / 100
+                   + (100 - w.Happiness) * happinessEffect / 100;
+        return bass * 125 / 100 * desire / 100 * (w.Happiness + 100) / 100;
+    }
+
+    /// <param name="baseValue">`record[0x2e]`, the compiled `BaseCostOfGoods`. ⚠⚠ ZERO MEANS
+    /// UNKNOWN AND SKIPS THE WANT TEST, on purpose and loudly: the identity join has known
+    /// failures (two facilities per world do not resolve), and a shop whose record is missing
+    /// would otherwise score 0, refuse everyone, and read exactly like a broken want system.
+    /// A definition that never joined should behave as it did before the gate existed.</param>
     public bool Buy(int guest, int price, int hungerReduction, int thirstReduction,
-                    int happinessEffect, int vomitIncrease, int product = Food)
+                    int happinessEffect, int vomitIncrease, int product = Food,
+                    int baseValue = 0, int quality = 0)
     {
         if (!_byGuest.TryGetValue(guest, out var w)) return false;
-        // ⚠⚠ AFFORDABILITY FIRST, AND IN THE SAME x10 UNITS. `0x20E1A0` gates the WHOLE block on
-        // `price * 10 <= cash` -- so a guest who cannot afford it does not pay, and does not eat
-        // either. Applying the effects and letting cash go negative would feed the park for free
-        // and look like generosity rather than a missing guard.
+        // ⭐⭐ WANTING IT COMES FIRST, AND THE PORT HAD NO SUCH TEST. `0x20E1A0` gates the whole
+        // block on `price < score && price * 10 <= cash` -- TWO conditions, and this had one. A
+        // guest who could afford something bought it however little they wanted it, so a park of
+        // burger vans fed people who were not hungry. See <see cref="WantScore"/>.
+        if (System.Environment.GetEnvironmentVariable("TPW_WANT_TRACE") != null)
+            System.Console.Error.WriteLine($"[want] price={price} base={baseValue} q={quality} "
+              + $"hun={w.Hunger}/{hungerReduction} thi={w.Thirst}/{thirstReduction} "
+              + $"sick={w.Sick}/{vomitIncrease} hap={w.Happiness}/{happinessEffect} "
+              + $"score={WantScore(w, baseValue, quality, hungerReduction, thirstReduction, happinessEffect, vomitIncrease)}");
+        if (baseValue > 0 && price >= WantScore(w, baseValue, quality,
+                                                hungerReduction, thirstReduction,
+                                                happinessEffect, vomitIncrease)) return false;
+        // ⚠⚠ AFFORDABILITY SECOND, AND IN THE SAME x10 UNITS. A guest who cannot afford it does
+        // not pay, and does not eat either. Applying the effects and letting cash go negative
+        // would feed the park for free and look like generosity rather than a missing guard.
         if (w.Cash < price * 10) return false;
         w.Cash -= price * 10;
 
