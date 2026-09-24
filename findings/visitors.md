@@ -2231,7 +2231,54 @@ JUNGLE run there are **46 `ADDOBJ` against 14 `KILLOBJ`**, and Crazy Ape's `boil
 re-issued at **7.1s, 20.2s, 33.2s, 46.3s and 59.4s**. Each started another looping voice on top of
 the last.
 
-⭐ The script language settles the right behaviour: `ADDOBJ` names an object and `KILLOBJ tag` /
+⚠⚠ **AND THE FIRST FIX WAS AIMED AT THE WRONG THING.** Deduping by tag stopped voices STACKING,
+which was real, but master's actual complaint survived it: *"the sound is looping"*, on bins and
+loudspeakers, with no guest anywhere near them.
+
+⭐⭐ **"`ADDOBJ` MEANS LOOP" WAS AN INFERENCE, AND `findings/sound.md` SAID SO IN ITS OWN WORDS** --
+"a reading of the scripts ... not of the object list at instance `+0xb0`, which has not been
+walked". The data disproves it and names itself doing so: `End.RSE` does `ADDOBJ group 9 evt 186`,
+and that event resolves to ONE set holding **`WinOneShot.mp2`**. A clip the authors called a
+one-shot, played endlessly because of the opcode it arrived on. Its neighbours are the same
+shape -- a firework burst, a `woooosh` -- one set each. **8 such scenery events in JUNGLE alone.**
+
+⭐ Against that, `bus.RSE`'s `ADDOBJ` resolves to **four** sets: `mk_bus_1 | nl_bus_stop |
+nl_bus_idle | pullaway3b` -- an approach, an idle to sit on, a pull-away. That is what something
+that genuinely loops looks like here, and **6** scenery events have it.
+
+⭐⭐ So looping is a property of the **event**, not the instruction: an event with the
+start/loop/end structure has a middle to sustain and a single-set event does not. `ADDOBJ` still
+means "add an object" -- something persistent that `KILLOBJ tag` can stop.
+⚠⚠ **AND THAT RULE WAS WRONG TOO -- THE THIRD IN A ROW.** Master: loudspeakers "are meant to play
+a sound from their respective banks on a timer/random", and ours "just cycl[ed] at the end of each
+sfx". The scenery data says why:
+
+```
+Speaker1  3 sets:  TP BEAST 1 | TP BEAST 4 | TP BEAST 7
+Speaker3  3 sets:  TP CRICKETS 2 | TP FROG 1 | frog3
+Staff     6 sets:  cough | crackle | newspaper | slurp | sniff | tapspoon
+```
+
+⭐⭐ **A SET IS AN ALTERNATIVE, NOT A STAGE.** Those are peers -- a bank to choose from. Treating
+three sets as start/loop/end chained them: play the first, sustain the second forever, then the
+third, which is exactly the cycling reported.
+
+⭐ So every sound event is now a **weighted random pick of one set, played once**, and the
+repetition belongs to the SCRIPT -- which is what a loudspeaker's timer is, and what `ADDOBJ`
+plus a killable tag is for.
+
+⚠⚠ **NOTHING SUSTAINS NOW, INCLUDING THE BUS**, whose four sets really do read as approach /
+stop / idle / pull-away. That is a real loss, taken deliberately: a silent bus is a smaller wrong
+than four loudspeakers screeching without end, and structure alone cannot tell them apart.
+⭐ WHAT WOULD SETTLE IT is already recorded as unread in `findings/sound.md` -- the L2 record's
+`+0x10` flags (0, 4, 6, 8, 0x406, 0xc06) and its `+0xC` word (3300, 4600, 5700, 2300, 1000,
+3200, 4000, 5999), which look very like a repeat interval in milliseconds.
+
+⭐⭐ Three rules for looping in one evening -- the opcode, then the set count, then neither. Every
+one was an inference about STRUCTURE standing in for a FIELD nobody had read, and each survived
+until a person listened to it.
+
+⭐ The tag semantics still settle the stacking half: `ADDOBJ` names an object and `KILLOBJ tag` /
 `FADEOBJ tag` act on *the* object with that tag — singular, and `RideSounds.Kill` already looks it
 up that way. Re-adding a live tag restarts that object; it does not create a second one.
 ⚠⚠ NOT a decoded rule: the console's object list at instance `+0xb0` has never been walked. What

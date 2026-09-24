@@ -735,6 +735,55 @@ foreach (var (sfxId, sfxWhat) in new[] { (53, "0x20F0A0 lavatory relief -- THE C
     Console.WriteLine($"  guest sfx: id {sfxId} ({sfxWhat}): "
                     + (found.Count == 0 ? "NO GROUP RESOLVES IT" : string.Join("; ", found)));
 }
+// ⭐⭐ WHY DOES A BIN HUM FOREVER? Master: "loadspeakers and bins are spamming sounds forever ...
+// the sound is looping." This port decides a voice loops from the OPCODE -- `ADDOBJ` loops,
+// `EVENT` is a one-shot -- and findings/sound.md is explicit that this is "a reading of the
+// scripts ... not of the object list at instance +0xb0, which has not been walked". So it is an
+// inference, and a bin humming forever is evidence against it. This lists what the scenery
+// actually asks for, with the SET COUNT, because a start/loop/end event and a single-clip one
+// are different things being forced down the same path.
+foreach (var featEntry in wad.Entries
+             .Where(e => e.Path.EndsWith(".rse", StringComparison.OrdinalIgnoreCase)
+                      && e.Path.Contains("/Features/", StringComparison.OrdinalIgnoreCase))
+             .Take(40))
+{
+    RseProgram prog;
+    try { prog = new RseProgram(wad.Read(featEntry)); } catch { continue; }
+    foreach (var ins in prog.Instructions)
+    {
+        if (ins.Opcode is not (RseOpcode.EVENT or RseOpcode.ADDOBJ)) continue;
+        var ops = ins.Operands.Select(o => o.Index).ToArray();
+        if (ops.Length < 3 || !SoundCatalogue.IsSoundGroup(ops[0])) continue;
+        var (h, pk) = ResolveEither(ops[0], ops[2]);
+        Console.WriteLine($"  scenery sfx: {System.IO.Path.GetFileName(featEntry.Path),-20} {ins.Opcode,-7}"
+                        + $" group {ops[0]} evt {ops[2],3} tag {(ops.Length > 3 ? ops[3] : 1000),4}"
+                        + (h == null ? "  (unresolved)" : $"  sets {h.Sets}  {Clips(h)}"));
+    }
+}
+
+// ⭐⭐ THE RULE'S PREMISE, ASSERTED. `RideSounds` now loops a scenery voice only when its event
+// carries the start/loop/end structure, and that rule is worth nothing if the data does not
+// actually distinguish the two. ⚠ THE CONTROL IS THE BUS: something must genuinely loop, or the
+// new rule would just mean "nothing ever sustains" and would be trivially satisfied.
+{
+    int oneShot = 0, sustained = 0;
+    foreach (var fe in wad.Entries.Where(e => e.Path.EndsWith(".rse", StringComparison.OrdinalIgnoreCase)
+                                           && e.Path.Contains("/Features/", StringComparison.OrdinalIgnoreCase)))
+    {
+        RseProgram pr; try { pr = new RseProgram(wad.Read(fe)); } catch { continue; }
+        foreach (var ins in pr.Instructions.Where(i => i.Opcode == RseOpcode.ADDOBJ))
+        {
+            var ops = ins.Operands.Select(o => o.Index).ToArray();
+            if (ops.Length < 3 || !SoundCatalogue.IsSoundGroup(ops[0])) continue;
+            var (h, _) = ResolveEither(ops[0], ops[2]);
+            if (h == null) continue;
+            if (h.Sets >= 3) sustained++; else oneShot++;
+        }
+    }
+    Check(oneShot > 0, $"scenery adds sound objects whose event has NO sustaining set ({oneShot}) -- these must not loop");
+    Check(sustained > 0, $"CONTROL: and some DO carry start/loop/end, so the rule still lets things sustain ({sustained})");
+}
+
 // ⭐⭐ ASSERTED, not just printed. A line of output nobody compares against anything is a number
 // to stare at; these are the ids the port now PLAYS, so they have to keep resolving.
 {

@@ -69,22 +69,39 @@ public sealed class CompiledAssets
     /// world plus WAD-RELATIVE path, so the split happens here rather than at each call site.</summary>
     public int Attach(IEnumerable<RideDefinition> definitions, out string report)
     {
-        var shops = definitions.Where(d => d.ShopType != null).ToArray();
-        int attached = 0;
+        // ⚠⚠ THIS USED TO JOIN SHOPS ONLY, and that made a whole feature dead without a word.
+        // `ParkRide.Value` reads `Definition.CompiledEntry` for a ride's excitement -- and a
+        // placed RIDE never had one, so `Value` returned null and the consumer fell back to the
+        // invented 45 forever. astraclaw found it.
+        //
+        // ⭐⭐ AND THE CHECK THAT SHOULD HAVE CAUGHT IT LOOKED THE RECORD UP ITSELF instead of
+        // going through this method -- the identical mistake this very docstring already warns
+        // about two paragraphs up, made again one file over. A check that reaches around the
+        // shipping path tests the lookup, never the wiring.
+        //
+        // ⚠ The SHOP settings are still shop-only, because `Entry.Shop` is null for anything
+        // else; what is now universal is `CompiledEntry`, which is what the ride value needs.
+        var all = definitions.Where(d => d != null).ToArray();
+        var shops = all.Where(d => d.ShopType != null).ToArray();
+        int attached = 0, rides = 0;
         var missed = new List<string>();
-        foreach (var d in shops)
+        foreach (var d in all)
         {
             var (world, path) = Split(d.Source);
-            if (path == null) { missed.Add(d.Source); continue; }
+            if (path == null) { if (d.ShopType != null) missed.Add(d.Source); continue; }
             var entry = For(world, path);
-            if (entry?.Shop is { } shop) { d.Compiled = shop; d.CompiledEntry = entry; attached++; }
+            if (entry == null) { if (d.ShopType != null) missed.Add(d.Source); continue; }
+            d.CompiledEntry = entry;
+            if (d.ShopType == null) { rides++; continue; }
+            if (entry.Shop is { } shop) { d.Compiled = shop; attached++; }
             else missed.Add(d.Source);
         }
         // ⚠ "0 joined, 0 missed" is exactly what an EMPTY input looks like and it reads as
         // success. Name that case, so an ordering bug cannot hide inside a tidy line again.
-        report = shops.Length == 0
-            ? "NOTHING TO JOIN -- no definition declared a shop block"
-            : $"{attached} of {shops.Length} shops joined"
+        report = all.Length == 0
+            ? "NOTHING TO JOIN -- no definitions were handed in"
+            : (shops.Length == 0 ? "no definition declared a shop block" : $"{attached} of {shops.Length} shops joined")
+              + $"; {rides} non-shop definitions carry a compiled record"
               + (missed.Count == 0 ? "" : $"; MISSED {string.Join(" ", missed.Take(4))}");
         return attached;
     }
