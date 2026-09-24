@@ -482,3 +482,41 @@ would invent the one thing the trace refused to guess. ⭐ What would settle it 
 parameter records of the scream events themselves (`KIDSSFX.MAP` ids `0x47..0x4A`) the way
 `AMBSFX.MAP` event 6 settled the bus — `word12` names the parameter, and the link bands say what
 crossing it does. That is the next job on this, and it is a data read, not another trace.
+
+
+## ⭐⭐ A sound parameter starts at zero, and parameter 18 is never written
+
+Two halves, and the second is the one that matters -- a census of writers says nothing about a
+field's initial value, which is the distinction astraclaw insisted on before this could be called
+answered.
+
+**The initializer.** `FUN_00240970`, building a sound instance:
+
+```
+n = paramTable[+0x1c] * 4;      // the table's parameter COUNT -- the same field FUN_00243840
+p = alloc(n);                   // loops on when it resolves a selector to a slot
+instance[+0xE4] = p;            // the per-instance parameter array (word 0x39)
+memset(p, 0, n);                // every parameter starts at ZERO
+```
+
+That `+0x1c` being the same count field the selector resolver loops on is what ties this array to
+that table rather than to some other allocation of the same shape.
+
+**The writers.** All 49 call sites of `FUN_00111D40(audio, handle, selector, value)` censused:
+
+| how the selector arrives | values |
+|---|---|
+| immediate | 2, 4, 6, 7, 8, 9, 10, 20, 22, 23 |
+| `lw a2, 0x74(s3)` -- tour-ride family, id stored on the object, set to 21 at `0x1EA914` | 21 |
+| `move a2, s2` -- `FUN_001AF330` | 9, 11 |
+
+**Nothing writes 18.** ⭐ The census finds ten parameters that ARE written, so that is a negative
+with a live control rather than one empty search.
+
+**So parameter 18 reads 0**, and it is the value the console holds rather than a port placeholder.
+⭐ It also barely matters: across the 31 graphs that branch on 18, **256 links are reachable at 0
+and 252 at 50** -- it gates four links on the whole disc, the `[0..5]` rare variations, and 0 is
+the setting that enables them.
+
+⚠ What is still not proven: that no OTHER route writes the array, and that nothing applies an
+authored default after the memset. Neither was seen; neither was exhaustively searched for.

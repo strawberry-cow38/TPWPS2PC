@@ -334,8 +334,24 @@ public sealed class RideSounds
     /// `[0..5]` rare variations, and 0 is the setting that ENABLES them. So 0 gives the fullest
     /// ambience rather than a stuck branch.
     ///
-    /// ⚠ The limit of that: it means no `FUN_00111D40` call site writes 18. A different writer
-    /// into the per-instance parameter array would not have been found by this census.</summary>
+    /// ⭐⭐ AND THE INITIALIZER JOIN, which the census alone did NOT give -- astraclaw pushed for
+    /// it and was right to, because "nothing writes it" says nothing about what it STARTS at.
+    /// `FUN_00240970`, where a sound instance is built:
+    ///
+    /// <code>
+    ///   n = paramTable[+0x1c] * 4;        // the table's parameter COUNT, the same field
+    ///   p = alloc(n);                     // FUN_00243840 loops on
+    ///   instance[0x39] = p;               // the per-instance parameter array
+    ///   memset(p, 0, n);                  // &lt;&lt;&lt;&lt; every parameter starts at ZERO
+    /// </code>
+    ///
+    /// So the array is zeroed on allocation and nothing writes 18 afterwards: it **is** 0, rather
+    /// than 0 being this port's stand-in for an unknown.
+    ///
+    /// ⚠ The limit that remains: the census covers call sites of `FUN_00111D40`. A writer that
+    /// reached the parameter array by another route, or an authored default applied after the
+    /// memset, would not have shown up -- nothing seen does either, but that is an absence of
+    /// evidence and is recorded as one.</summary>
     public Func<int, int, int> ParameterValue { get; set; }
 
     /// <summary>The console's own generator for the transition draw, kept separate from
