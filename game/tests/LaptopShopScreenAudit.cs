@@ -144,13 +144,51 @@ public partial class LaptopShopScreenAudit : Node
                   "control: an unnamed world falls back to chrome that is actually present");
 
             // ---- the widget art the screen draws with -----------------------------------------
-            foreach (var art in new[] { "/laptop/PROG_BAR.ssh", "/laptop/PROG_CBIT.ssh", "/laptop/PROG_VBIT.ssh",
-                                        "/laptop/BARSLIDE.ssh", "/laptop/BARKNOB.ssh" })
+            foreach (var art in new[] { "/laptop/BARPROG.ssh", "/laptop/PROG_BAR.ssh", "/laptop/PROG_CBIT.ssh",
+                                        "/laptop/PROG_VBIT.ssh", "/laptop/BARSLIDE.ssh", "/laptop/BARKNOB.ssh" })
             {
                 bool ok = false;
                 try { var b = library.ReadUi(art); ok = b != null && new Ssh(b).Width > 0; } catch { }
                 Check(ok, $"{art} is present and decodes");
             }
+
+            // ⚠⚠ THE CHECK THAT REJECTS THE BUG THAT SHIPPED. The satisfaction bar was drawn with
+            // PROG_BAR, chosen by name. The two candidate frames are the same size and colour and
+            // differ only in their INTERIOR, so nothing but the alpha distinguishes them: BARPROG
+            // is one continuous trough, PROG_BAR is an eleven-cell gauge. A tiled fill belongs in
+            // the first. Reinstating PROG_BAR would fail here.
+            int Cells(string art)
+            {
+                var img = new Ssh(library.ReadUi(art));
+                int runs = 0; bool inRun = false;
+                for (int x = 0; x < img.Width; x++)
+                {
+                    bool clear = img.Pixels[((img.Height / 2) * img.Width + x) * 4 + 3] <= 16;
+                    if (clear && !inRun) runs++;
+                    inRun = clear;
+                }
+                return runs;
+            }
+            int trough = Cells("/laptop/BARPROG.ssh"), notched = Cells("/laptop/PROG_BAR.ssh");
+            int slide = Cells("/laptop/BARSLIDE.ssh");
+            Check(trough == 1, $"BARPROG is ONE continuous trough (got {trough} interior runs)");
+            Check(notched > 1, $"control: PROG_BAR is a multi-cell gauge, not a trough (got {notched})");
+            Check(slide == trough, $"BARSLIDE matches BARPROG's interior ({slide} vs {trough}) -- a matched pair");
+
+            // ⚠ And the fill bits are NOT as wide as their images: stretching a 10-wide cap into a
+            // 16-wide slot is what made the first attempt look broken.
+            var cap = new Ssh(library.ReadUi("/laptop/PROG_CBIT.ssh"));
+            var body = new Ssh(library.ReadUi("/laptop/PROG_VBIT.ssh"));
+            int Opaque(Ssh i)
+            {
+                int last = -1;
+                for (int x = 0; x < i.Width; x++)
+                    for (int y = 0; y < i.Height; y++)
+                        if (i.Pixels[(y * i.Width + x) * 4 + 3] > 128) { last = x; break; }
+                return last + 1;
+            }
+            Check(Opaque(cap) == 10, $"PROG_CBIT is opaque over 10 of its 16 columns (got {Opaque(cap)})");
+            Check(Opaque(body) == 16, $"PROG_VBIT fills all 16 (got {Opaque(body)}) -- it is the tile, the cap is not");
 
             // ⭐ The face, corroborated by the step rather than chosen: Large.bff's line advance
             // must FIT the row step, and the other two faces must be the ones that leave holes.

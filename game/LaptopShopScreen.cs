@@ -89,7 +89,10 @@ public sealed partial class LaptopShopScreen : Control
         var layout = SceneLayout.Parse(sce);
 
         var chrome = Load(ShopScreen.ChromeFor(world)) ?? Load("/laptop/LAPTOP_512.ssh");
-        var barFrame = Load("/laptop/PROG_BAR.ssh");
+        // ⭐ BARPROG, not PROG_BAR: the smooth trough, measured to have the same continuous
+        // interior as BARSLIDE. PROG_BAR is an eleven-cell notched gauge and belongs to a
+        // different widget -- see DrawBar.
+        var barFrame = Load("/laptop/BARPROG.ssh");
         var barCap = Load("/laptop/PROG_CBIT.ssh");
         var barBody = Load("/laptop/PROG_VBIT.ssh");
         var track = Load("/laptop/BARSLIDE.ssh");
@@ -243,27 +246,43 @@ public sealed partial class LaptopShopScreen : Control
         DrawTextureRect(tex, new Rect2(new Vector2(x, at.Y), new Vector2(w, tex.GetHeight() * s)), false, tint);
     }
 
-    /// <summary>The satisfaction bar: the orange ticked frame with cyan segments packed into it.
-    /// ⭐ `PROG_CBIT` is the rounded leading cap and `PROG_VBIT` the square body, which is why the
-    /// first segment is drawn from a different sprite than the rest.</summary>
+    /// <summary>The satisfaction bar: `BARPROG`'s smooth trough, filled with `PROG_CBIT`'s rounded
+    /// cap followed by `PROG_VBIT` tiles.
+    ///
+    /// ⚠⚠ THIS WAS `PROG_BAR` (the NOTCHED frame) AND THAT WAS WRONG. Master, on the first
+    /// version: "im not sure if the satisfaction bar is meant to be notched" -- then, on my A/B:
+    /// "its pretty messed up. check again". Both were right, for two separate reasons:
+    ///
+    /// ⭐ The frames are structurally different, measured off their own alpha at the middle row.
+    /// `BARPROG`'s interior is ONE continuous run, columns 3..124 -- and `BARSLIDE`'s is the
+    /// identical run, which is what makes them a matched pair (one takes a fill, one a knob).
+    /// `PROG_BAR`'s interior is ELEVEN separate cells at a pitch of 11, each 10 wide. A tiled
+    /// fill cannot go in an eleven-cell gauge; those cells want one sprite each.
+    ///
+    /// ⚠ And the fill sprites are NOT 16 wide despite being 16-wide images: `PROG_CBIT` is opaque
+    /// only over columns 0..9 (a rounded cap) and `PROG_WBIT` over 0..12. Stretching a 10-wide cap
+    /// across a 16-wide slot -- which is what the first attempt did -- leaves its empty tail
+    /// showing as a gap, which is the "messed up" master saw. Each bit is drawn at its OWN width
+    /// and the SOURCE is clipped when the fill ends mid-tile; the destination is never squashed.</summary>
     void DrawBar(Rect2 r, int value, float s)
     {
+        // Measured off the art: 128 columns, trough interior 3..124, cap 10 wide, body 16.
+        const float ArtWidth = 128f, InnerX = 3f, InnerWidth = 122f, CapCols = 10f, BitCols = 16f;
+        float unit = r.Size.X / ArtWidth;
         float fraction = Mathf.Clamp(value / (float)ShopScreen.SatisfactionMax, 0f, 1f);
-        if (fraction > 0f && _barCap != null && _barBody != null)
-        {
-            // The fill sits inside the frame's rounded ends; one segment is the art's own 16 wide
-            // against its 128, i.e. an eighth of the bar.
-            float inset = r.Size.X / 16f;
-            var inner = new Rect2(r.Position + new Vector2(inset, 0), new Vector2(r.Size.X - inset * 2, r.Size.Y));
-            float filled = inner.Size.X * fraction;
-            float seg = inner.Size.X / 8f;
-            for (float x = 0; x < filled; x += seg)
+        float filled = InnerWidth * fraction;
+        if (_barCap != null && _barBody != null)
+            for (float at = 0f; at < filled; )
             {
-                float w = Mathf.Min(seg, filled - x);
-                var tex = x <= 0f ? _barCap : _barBody;
-                DrawTextureRect(tex, new Rect2(inner.Position + new Vector2(x, 0), new Vector2(w, inner.Size.Y)), false);
+                bool cap = at <= 0f;
+                var tex = cap ? _barCap : _barBody;
+                float cols = cap ? CapCols : BitCols;
+                float take = Mathf.Min(cols, filled - at);
+                DrawTextureRectRegion(tex,
+                    new Rect2(r.Position.X + (InnerX + at) * unit, r.Position.Y, take * unit, r.Size.Y),
+                    new Rect2(0, 0, take, tex.GetHeight()));
+                at += cols;
             }
-        }
         DrawTextureRect(_barFrame, r, false);
     }
 
