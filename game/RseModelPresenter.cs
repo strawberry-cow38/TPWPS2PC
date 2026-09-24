@@ -29,8 +29,10 @@ public sealed class RseModelPresenter : IDisposable
     /// the NODE, and a record with no visibility track for it touches nothing).
     ///
     /// ⚠ That is why Crazy Ape's smashed crate and its shards came back the moment the ride left
-    /// its Create animation: rebuilt model, blank state, everything visible. `UseRecord` re-points
-    /// the channels in place and leaves the state alone, which is what the PS2 does.</summary>
+    /// its Create animation: rebuilt model, blank state, everything visible. `UseRecord` keeps the object but applies the explicit native transition: old-listed
+    /// unprotected nodes are revealed, new index-listed nodes are hidden. Protected/unlisted
+    /// state survives. Previously this code retained everything and ignored the hide lists;
+    /// that happened to preserve the crate but left Bouncy's egg/shell permanently visible.</summary>
     public void Update(RsePreviewHost host)
     {
         var record = host.Current?.Record;

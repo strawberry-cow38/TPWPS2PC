@@ -60,7 +60,7 @@ public sealed class Animation
     {
         Offset = r, Flags = U32(r), DurationFrames = checked((int)U32(r + 4)),
         TrackCount = U16(r + 8), SmallCount = U16(r + 0x0A),
-        IndexCount = (int)U32(r + 0x0C), Tracks = (int)U32(r + 0x10),
+        IndexCount = U16(r + 0x0C), Tracks = (int)U32(r + 0x10),
         Small = (int)U32(r + 0x14), Index = (int)U32(r + 0x18),
     };
 

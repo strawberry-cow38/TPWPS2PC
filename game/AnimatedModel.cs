@@ -56,6 +56,7 @@ public sealed class AnimatedModel
     Dictionary<int, int[]> _meshVis = new();
     /// <summary>Nodes currently hidden. ⚠ SURVIVES UseRecord on purpose: see SetFrame.</summary>
     readonly HashSet<int> _hidden = new();
+    bool _ordinaryVisibility;
     readonly Dictionary<int, Aps.Path> _path = new();
     readonly HashSet<int> _facing = new();
     List<Aps.SkeletalTrack> _skel;
@@ -137,6 +138,7 @@ public sealed class AnimatedModel
                      $"map={(p.AnimMap != null ? "yes" : "NO "),-4} {vs}");
         }
         RefreshSummary();
+        RefreshOrdinaryVisibility();
     }
 
     /// <summary>Bind a different record of the same `.aps` to the geometry already built. A ride's
@@ -159,6 +161,12 @@ public sealed class AnimatedModel
             if (track.Material >= _model.MaterialTextures.Count ||
                 track.Keys.Any(k => k.TextureIndex >= _model.MaterialTextures[track.Material].Length))
                 throw new InvalidDataException($"APS texture track targets invalid material/texture: slot {track.Material}");
+        }
+        if (!_model.IsLegacyMd2 && (AnimationNodeVisibility.Ordinary(rec) || _ordinaryVisibility))
+        {
+            if (!_ordinaryVisibility) AnimationNodeVisibility.Initialize(_model, _hidden);
+            _ordinaryVisibility = true;
+            AnimationNodeVisibility.Transition(_model, _anim, Record, rec, _hidden);
         }
         Record = rec;
         // ⚠ EVERY CHANNEL IS EMPTIED BEFORE THE NEW RECORD FILLS IT. They are keyed by node, and a
@@ -221,6 +229,7 @@ public sealed class AnimatedModel
             if ((morphed && p.Morph == null) || (posed && p.Skin != null && _skel == null)) RebuildGeometry(p, 0);
         }
         RefreshSummary();
+        RefreshOrdinaryVisibility();
     }
 
     /// <summary>The record's morph track for a node, or null when it has none.</summary>
@@ -247,6 +256,14 @@ public sealed class AnimatedModel
             if (_anim.TrackNode(t) == node) return _anim.Morph(t);
         }
         return null;
+    }
+
+    void RefreshOrdinaryVisibility()
+    {
+        if (!_ordinaryVisibility) return;
+        foreach (var part in _parts)
+            foreach (var surface in part.Surfaces)
+                surface.Visible = AnimationNodeVisibility.Shown(_model, part.Mesh.Index, _hidden);
     }
 
     void RefreshSummary() =>
@@ -496,8 +513,9 @@ public sealed class AnimatedModel
             bool shown = true;
             foreach (var node in p.Ancestry ?? new List<int> { p.Mesh.Index })
                 if (_hidden.Contains(node)) { shown = false; break; }
+            if (_ordinaryVisibility) shown = AnimationNodeVisibility.Shown(_model, p.Mesh.Index, _hidden);
             foreach (var s in p.Surfaces) s.Visible = shown;
-            if (!shown) continue;
+            if (!shown && !_ordinaryVisibility) continue;
             if ((p.Morph != null || (pose != null && p.Skin != null)) && p.AnimMap != null) RebuildGeometry(p, now, pose);
             var w = world[p.NodeOffset];
             var t = new Transform3D(

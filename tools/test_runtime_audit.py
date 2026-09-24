@@ -22,6 +22,8 @@ def raw_witness(scene):
     if scene in ('visitor', 'rse'):
         name = 'VISITOR GEOMETRY' if scene == 'visitor' else 'RSE ANIMATION'
         return '\n'.join([f'{name} PASS: summary'] + [f'{name} PASS {case}: tested' for case in audit.CASES])
+    if scene == 'hide_list':
+        return 'ANIMATION HIDE LIST PASS: 234 checks; Bouncy constructor, transitions and real RSE presenter'
     if scene == 'texture': return 'VIEWER CLOCK PASS: tested\nTEXTURE BINDING PASS: 146 surface checks across five models / four worlds'
     if scene == 'mtr': return 'MTR SURFACES PASS: all four named mesh/material/texture witnesses, geometry and transforms'
     if scene == 'advisor':

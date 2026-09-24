@@ -1495,3 +1495,47 @@ is nothing in the file to decode.**
 Same tail for both branches, and it confirms two things the viewer now does:
 `if ((state & 4) == 0) node.pos = sampled; else node.pos += sampled;` — the path REPLACES the node's
 translation by default — and the orient-along-path channel samples the curve again at `frac + 0.1`.
+
+## Explicit record hide lists — positive activation consumer (September24 2026)
+
+User's Bouncy/Belly Bounce repro: shell06 and egg remain drawn during Create.
+The disjoint index-list/track census did not establish what the list DOES. The
+new-record consumer now does:1ABA10 calls1AABB0 unless incoming playback flags&8.
+1AAC74 reads record+18 pointer,1AAC80 reads **u16 count at+0C**;1AACAC reads each
+u16 index. Resolve meshes at model+48 strideA0 and helpers at+4C stride60 using
+meshCount at+30.1AACDC..E0 skips nodes protected by80000000;1AACE8..EC sets10.
+Draw228110's own-node mask8050 makes that node hidden. Child-pruning20 is separate.
+No source record-flags predicate turns this list into a track-presence heuristic.
+
+Ordinary activation1AB938..958 first cleans old-listed, unprotected index AND track
+nodes through1AA460 when incomingflags&C==0, then initializes timing1A8920, then
+activates the NEW list. First activation has no old cleanup but still hides the
+new list. Protected/unlisted state is retained, not blanket-reset. Ordinary RSE
+TRIGANIM/WAITANIM/TRIGWAITANIM/speed/channel calls supply0;LOOPANIM supplies1.
+Both take these list operations. Internal deferred flags8 have a separate maintenance
+path1AADB8; this patch does not claim full queued-player timing parity.
+
+Core AnimationNodeVisibility implements these ordinary-format list/flag operations.
+Animation.ReadRecord's IndexCount is nowu16, matching both consumers. Skeletal/shared
+tracks are NOT read at ordinary stride30. The SHIPPED AnimatedModel.UseRecord applies
+it at construction and every normal RSE/sim binding, including its caller in
+RseModelPresenter. Fixing only the bus research branch's ActivateNativeRecord would
+have left Bouncy unchanged. Ordinary rendering now separates own-hidden10 from
+ancestor subtree-pruning20 and evaluates hidden poses, not only visible ones.
+
+AnimationHideListAudit uses actual Bouncy geometry and the actual RSE presenter:
+- constructor hides named egg/shell surfaces before any frame sample;
+- jb_floor has NEITHER a track NOR a hide-list entry and must remain visible;
+- removing the explicit list reveals the egg/shell, and restoring it hides them;
+- a visible protected shell is not hidden by the list while unprotected egg still is;
+- upper halfword BEef at record+0E does not turn19 into a huge count;
+- real script traverses Create and the next record with both meshes still hidden.
+Five mutations (drop hide, drop cleanup, drop protection, wrong count width,
+disconnect viewer actuator) fail. Tests are geometry/state evidence, not a claim
+that a human visually reviewed a screenshot.
+
+Fixture scope: the generic RseRidePreview helper assumes FIFO unloading; running
+Bouncy through a full60s cycle hit its unrelated "101, expected102" validation.
+The new regression deliberately tests Create→first later record, before that
+unload-model boundary, and asserts the transition occurred rather than swallowing
+an exception or pretending to verify the full ride cycle.
