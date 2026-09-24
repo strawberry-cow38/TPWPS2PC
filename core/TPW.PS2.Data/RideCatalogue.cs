@@ -109,7 +109,24 @@ public sealed class RideDefinition
     /// have NOT been decoded, these do not stand in for anything.
     ///
     /// ⚠ ABSENT IS NOT ZERO, hence <c>int?</c>. A ride with no HungerEffect is not a shop that
-    /// feeds you nothing; it is not a shop. Only 23 of 251 .sam files carry the shop block.</summary>
+    /// feeds you nothing; it is not a shop. Only 23 of 251 .sam files carry the shop block.
+    ///
+    /// ⚠⚠ AND THE .sam IS THE AUTHORED SOURCE, NOT WHAT SHIPS. A compiled DBA (`/arsdb.dba` and
+    /// its two regional siblings) sits between this text and the running game, and they DISAGREE.
+    /// Measured over every shop on the disc: 8 of 9 distinct effect tuples appear verbatim in the
+    /// compiled data, and one does not --
+    ///
+    ///   the balloon-shop class says `HappinessEffect 15` in HALLOW, JUNGLE and SPACE
+    ///   (`vampshop` 2205, `Balloon` 1209, `droid` 3202), and **no compiled row at that price and
+    ///   cost carries 15 in any of the three regional DBAs** -- every one reads **10**, which is
+    ///   also what FANTASY's own `fatfairy` .sam says.
+    ///
+    /// So these accessors are right about what was AUTHORED and can be wrong about what the
+    /// console reads. astraclaw hit the same split from the other end on sideshow win percentage
+    /// (a uniform `InitChanceOfLoosing 75` against a compiled 33) -- ⭐ the rule is that agreement
+    /// has to be checked PER FIELD, not assumed from one file that matched. `AssetResourceDatabase`
+    /// already reads the compiled block; joining it to these definitions is the fix and is not
+    /// done.</summary>
     public int? HungerEffect => Int("UsageInfo.HungerEffect");
     public int? ThirstEffect => Int("UsageInfo.ThirstEffect");
     public int? VomitEffect => Int("UsageInfo.VomitEffect");

@@ -1479,3 +1479,36 @@ of the "not found is not not-there" correction made one section earlier, in the 
 ⚠ **WHAT SETS `+0x7d` IS NOT READ.** `FUN_0020BCD0` spawns every other need byte and never touches
 it, so the personality is assigned somewhere else. The port picks one of the eight uniformly:
 **the values are the game's, the choice is not**, and the second u16 has no consumer yet either.
+
+### ⚠⚠ The `.sam` is the authored source; the compiled DBA is what ships — and they disagree
+
+astraclaw found it on sideshows (`InitChanceOfLoosing` is a uniform **75** across all 23 .sam,
+while ARC2X3's compiled record says win percentage **33** in all three regional DBAs). That is a
+field this port never used, so the question was whether the same split touches the shop effects
+tonight's purchase path DOES use. Measured, rather than assumed:
+
+**8 of 9 distinct shop effect tuples appear verbatim in the compiled data. One does not.**
+
+| world | file | id | `.sam` HappinessEffect |
+|---|---|---|---|
+| FANTASY | `fatfairy` | 4205 | 10 |
+| HALLOW | `vampshop` | 2205 | **15** |
+| JUNGLE | `Balloon` | 1209 | **15** |
+| SPACE | `droid` | 3202 | **15** |
+
+Every compiled row at price 45 / cost 30 with that profile reads **10**, in `arsdb`, `arsusdb` and
+`arsjapdb` alike. So three worlds' authored text claims 15 and the shipped data says 10.
+
+⚠ `ParkVisitors.Serve` passes the `.sam` value, so balloon-type shops currently pay 15 where the
+console pays 10. Small in itself; the POINT is that "the data files are ground truth" — the
+premise most of today's work rests on — is true of what was AUTHORED and not always of what RUNS.
+
+⭐ **Agreement has to be checked per field.** One file matching proves one field in one file.
+`AssetResourceDatabase` already decodes the compiled shop block (`HungerReduction`,
+`ThirstReduction`, `HappinessEffect`, `VomitIncrease`); joining it to `RideDefinition` is the fix
+and is NOT done — flagged in the accessor rather than left to be discovered by someone wondering
+why a balloon costs the wrong happiness.
+
+⚠ Method note: the first pass of this comparison hard-coded the 17 DBA rows that survived a
+`head -30` and reported two mismatches. Both were artefacts of the truncated set. Re-run against
+all 96 shop rows across the three regional files, exactly one survives.
