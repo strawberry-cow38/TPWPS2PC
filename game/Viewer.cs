@@ -1727,7 +1727,19 @@ public partial class Viewer : Node3D
             if (!entry.Empty) _paths.SetWalkway(entry.Cells().Select(c => (c.X, c.Z)));
             GD.Print($"[path] the park's walkway: {which}");
         }
-        _ghost = new PathGhost(_paths) { Occupied = (x, y) => !_park.Vacant(x, y) };
+        _ghost = new PathGhost(_paths)
+        {
+            Occupied = (x, y) => !_park.Vacant(x, y),
+            // ⚠ A LAMBDA, NOT THE FIGURE. The ghost is built before the sim is, so reading
+            // `_sim.Finances.Balance` here would freeze a null park's zero into the tool and every
+            // run would draw refused.
+            // ⭐ A park that spends freely gets no gate: `ParkFinances.Unlimited` is the console's
+            // `park[8]`, and with it set the debit never refuses. ⚠ Whether the GHOST's own test
+            // at 0x8004F360 consults that flag as well was not read -- what is read is that the
+            // test exists and what it compares -- so the flag is honoured here on the ground that
+            // a ghost refusing a purchase the till would allow is the worse of the two errors.
+            Balance = () => _sim?.Finances is { Unlimited: false } f ? f.Balance : int.MaxValue,
+        };
         // ⭐ The blueprint asks the tool what is already on a cell, so a stub can tell path from
         // queue. Through a lambda, because _paths is rebuilt with every park.
         _place.GroundAt = (x, y) => _paths?.KindAt(x, y) ?? PathTool.Kind.None;
@@ -5587,7 +5599,21 @@ public partial class Viewer : Node3D
         bool joined = last.Verdict is PathGhost.Verdict.Joins or PathGhost.Verdict.Already;
         bool single = _ghost.Tiles.Count == 1;
         _paths.BeginLeg();
+        int cost = PathPrices.Tenths(_ghost.RunPounds);
         int laid = _ghost.Lay(_toolKind, _toolOwner);
+        // ⭐⭐ THE RUN IS CHARGED ONCE, ON THE PRESS. The console lays the segment (0x8001BD30),
+        // plays the lay sound, and only then spends the run's total through the same helper the
+        // placement tools use -- `0x8001D448` for the path tool, `0x8001E0E0` for the queue's --
+        // so the money moves per press, not per tile and not per cursor move.
+        // ⚠ `RunPounds` is read BEFORE the lay: laying is what makes the tiles stop counting as
+        // changed, so asking afterwards would charge nothing.
+        if (cost > 0 && _sim != null)
+        {
+            _sim.Finances.Debit(cost);
+            GD.Print($"[money] {laid} tile{(laid == 1 ? "" : "s")} of "
+                   + $"{(_toolKind == PathTool.Kind.Queue ? "queue" : "path")} cost {Money.Format(cost)}; "
+                   + $"the park holds {Money.Format(_sim.Finances.Balance)}");
+        }
         _runStack.Add(_ghost.End);
         RefreshFloor();
         // ⭐ ONE TILE IS A WHOLE JOB. A run of a single tile is somebody dropping one piece, not

@@ -568,6 +568,7 @@ if (looEntry.Entry != null && serviceRide is { } notALoo && corridorStops.Count 
 }
 CompiledJoinChecks.Run(Wad("DATA"), wad, world, Check);
 MoodChecks.Run(Check);
+PathPriceChecks.Run(terrain, PathPieces.Read(disc), Check);
 RideValueChecks.Run(Wad("DATA"), wad, world, Check);
 GuestAnimationChecks.Run(Wad("DATA"), Check);
 CompiledShopPurchaseChecks.Run(terrain, loopPaths, corridorStops[0], onPath[^1], Wad("DATA"), wad, world, Check);
@@ -797,6 +798,14 @@ foreach (var bs in wad.Entries.Where(e => e.Path.EndsWith(".rse", StringComparis
         Console.WriteLine($"  build head: {leaf3,-12} {ins4.Address,4}: {ins4.Opcode} "
                         + string.Join(" ", ins4.Operands.Select(o => o.Index)));
 }
+
+// ⭐ Does the disc carry path definitions of its own? The price lives on a path-material object
+// at +0x10 and the compiled directory has no path kind, so the next candidate is a data file.
+foreach (var pe2 in Wad("DATA").Entries
+             .Where(e => e.Path.Contains("path", StringComparison.OrdinalIgnoreCase)
+                      || e.Path.Contains("queue", StringComparison.OrdinalIgnoreCase))
+             .Take(14))
+    Console.WriteLine($"  path asset: {pe2.Path}");
 
 // ⭐ WHAT KINDS DOES THE COMPILED DIRECTORY HOLD, and do any of them look like a path? Master
 // asked what paths and queues cost; the tool debits a per-tool figure and where that figure comes

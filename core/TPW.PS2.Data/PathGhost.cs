@@ -57,6 +57,17 @@ public sealed class PathGhost
     /// Without it a run was laid straight across a ride.</summary>
     public Func<int, int, bool> Occupied { get; set; }
 
+    /// <summary>What the park's till holds, in tenths. ⭐ A run is priced as it is drawn and the
+    /// ghost goes red where the money stops -- see <see cref="PathPrices"/>. Leave it null and
+    /// there is no money gate at all, which is what every fixture that is not testing money
+    /// wants.</summary>
+    public Func<int> Balance { get; set; }
+
+    /// <summary>What this run would cost, in pounds, counting only the tiles that actually
+    /// change. ⭐ The press charges <c>PathPrices.Tenths(RunPounds)</c>, which is the console's
+    /// own "put the total in +8 and spend total * 10".</summary>
+    public int RunPounds { get; private set; }
+
     public PathGhost(PathTool tool) { _tool = tool; }
 
     /// <summary>Work out the run from (x0,y0) to (x1,y1).</summary>
@@ -95,12 +106,22 @@ public sealed class PathGhost
         run.Add((x1, y1));   // ⚠ the end tile is judged last: only it may wear a connect symbol
 
         bool refused = false;
+        RunPounds = 0;
+        int till = Balance?.Invoke() ?? 0;
         for (int i = 0; i < run.Count; i++)
         {
             var (x, y) = run[i];
             var v = Judge(x, y, kind, last: i == run.Count - 1);
+            // ⭐⭐ MONEY IS JUDGED AGAINST THE TOTAL THE RUN HAD BEFORE THIS TILE, and only then
+            // does this tile's price go on -- the console checks at 0x8004F3F4 and accumulates at
+            // 0x8004F4AC, in that order, so a run reaches one tile further than checking after
+            // would let it. ⚠ A refused tile is never charged for, and neither is one that
+            // changes nothing, which is why the accumulate sits on the else arm.
+            if (v != Verdict.Refused && Balance != null && !PathPrices.CanAfford(till, RunPounds))
+                v = Verdict.Refused;
             if (refused) v = Verdict.Refused;
             else if (v == Verdict.Refused) refused = true;
+            else if (PathPrices.Charges(_tool.KindAt(x, y), kind)) RunPounds += PathPrices.Pounds(kind);
             _tiles.Add(new Cell(x, y, v));
         }
         Layable = !refused && _tiles.Count > 0;
@@ -108,10 +129,15 @@ public sealed class PathGhost
 
     /// <summary>What the game's validator would say about one tile.
     ///
-    /// ⚠ NOT ALL OF IT. The console also refuses on MONEY (`cash - price*10 &lt; 1`), on an object
-    /// standing on the tile, and on a ride's own entrance and exit tiles. There is no money and no
-    /// ride placement in the viewer yet, so those arms are absent rather than wrong -- a tile this
-    /// says Lay to might still be refused by the game for a reason not modelled here.</summary>
+    /// ⚠ NOT ALL OF IT, AND MONEY IS NOT HERE. The money arm is now modelled, but it belongs to
+    /// the RUN rather than to one tile -- a tile is unaffordable only in the context of everything
+    /// drawn before it -- so it lives in <see cref="Set"/> against <see cref="Balance"/>. What is
+    /// still absent is a ride's own entrance and exit tiles, so a tile this says Lay to might
+    /// still be refused by the game for a reason not modelled here.
+    ///
+    /// ⚠ The caveat here used to say the money test was `cash - price*10 &lt; 1`. Read off
+    /// `0x80050014`, which returns `*a &lt;= *b`, the refusal is `balance - total*10 &lt;= 0` --
+    /// the same boundary, and now stated as the instruction states it.</summary>
     Verdict Judge(int x, int y, PathTool.Kind kind, bool last)
     {
         if (!_tool.CanLay(x, y)) return Verdict.Refused;

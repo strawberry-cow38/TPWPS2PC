@@ -273,3 +273,85 @@ play. The reference is a real gap in the disc and a defect nobody can see.
 
 ⚠ Not established: whether the game falls back to something for it, or whether `jpa_que4` was
 simply never authored. Only that no file of that stem ships.
+
+## ⭐⭐ What a tile costs: path £10, queue £25
+
+**READ, but out of the PSX executable, not this one.** Two builds were traced here; they agree on
+the mechanism and only one of them gives up the numbers.
+
+### The PS2 side (READ, and traced first)
+
+The path tool is a global object. There are two of them, `0x389328` and `0x3890D0`, given their
+vtables (`0x35AC48`, `0x35ACD0`) by the static initialiser at `0x11E2C0`; the two vtables are
+identical but for one slot each, which is what makes them siblings rather than one class. Nothing
+else in `0x100000..0x300000` touches either object, so the tool is only ever reached through a
+pointer.
+
+```
+FUN_0011AD60 / FUN_0011CEB0   the two tools' activate handlers
+    tool[0x3c] := *(u16 *)(P + 0xD0)        P = (tool[0x14])->vtable[slot 10](tool[0x14] + adj)
+0x11B2D4                      tool[0x08] := tool[0x3c]      (and sw zero,8 on the other arm)
+FUN_0011B898                  FUN_00100750(FUN_001005D8(), *(int *)(tool + 8) * 10)
+```
+
+So **the price is a field, spent ×10** — the tenths the till holds. `FUN_00100750` is the debit
+whose twelve call sites are the whole game's spending.
+
+⚠ **What the PS2 image does NOT give is the number.** `P + 0xD0` is filled at load by a scenario
+path nobody has traced; there is no `sw` of an immediate into it anywhere in the image, and with
+no savestate there is nothing to read `0x3890D8` / `0x389330` out of at runtime. Three earlier
+attempts to corner it went wrong in instructive ways: a scan for `sw rX, 8(rY)` that had not
+excluded `sp` returned a stack message struct's command id `0x13` as "price 19"; a `lui` xref
+scan with a 40-byte lookahead reported the tool globals as unreferenced, which they are not; and
+a world-relative probe for offset `0x794 + 0xD0` returned nothing **and so did its control**,
+which is the only reason it was not believed.
+
+### The PSX side (READ, and it has the figures)
+
+`TPW.BIN` carved from the disc image (ISO9660 lba 205194, 1,065,308 bytes, load `0x80010000`) and
+disassembled:
+
+```
+0x8001b580  jal 0x8001b600 ; addiu a0,zero,10      path  price := 10     -> gp+192
+0x8001b588  jal 0x8001b618 ; addiu a0,zero,25      queue price := 25     -> gp+196
+            getters 0x8001b60c / 0x8001b624
+            run accumulator gp+208: set 0x8001b630, add 0x8001b63c, read 0x8001b654
+```
+
+`0x8004F360`, the ghost, prices and gates each tile as the run is drawn:
+
+| what | where | what it says |
+|---|---|---|
+| which price | `0x8004F3A4` | kind **2** or **13** → path; kind **4** → queue; anything else keeps the 0 of `0x8004F368` |
+| the gate | `0x8004F3F4`–`0x8004F438` | `bank − total×10` (`0x8004FFBC`) against 0 via `0x80050014`, which is `*a <= *b`; non-zero **refuses** |
+| the ×10 | `0x8005002C` | `((n << 2) + n) << 1` — a pounds figure becomes the money the till holds |
+| what is charged | `0x8004F484`–`0x8004F4AC` | skipped when the cell is already that kind, when it is `13` and a path is being laid, or when the validator refused it |
+| reset | `0x8001B27C` | `setRunTotal(0)` as the run is re-walked, so the total is per ghost, not per session |
+| charged | `0x8001D448` / `0x8001E0E0` | on the press, after the lay sound, through the same spend helper the placement tools use |
+
+Two things worth stating separately, because both are one step from being got wrong:
+
+- **The gate is `≤ 0`, not `< 0`.** `0x80050014` is `lw; lw; slt v0,v0,v1; xori v0,v0,1` — it
+  returns `*a <= *b`, and a non-zero answer branches to the refusal. You may spend down to a
+  pound and never to nothing.
+- **The total checked is the one BEFORE this tile.** The check is at `0x8004F3F4` and the
+  accumulate at `0x8004F4AC`, in that order, so a run reaches exactly one tile further than a
+  check-after ordering would let it.
+
+### Why the two builds corroborate each other
+
+The PSX tool "puts the total in its **+8**" and spends **total × 10**; the PS2 tool puts its price
+in **`tool + 0x08`** and spends `tool[8] * 10`. Same field offset, same multiplier, different
+compilers, and the PS2 half was read before this file was opened. And the PSX price chooser's tile
+kinds — **2 and 13 path, 4 queue** — are the same three numbers §2 of this file already recorded
+from the PS2 chooser at `0x1E6950`, which takes the path table for kinds 13 and 2 and the queue
+table otherwise. Two independent readings of two binaries meeting on the same three constants is
+what makes this more than one trace.
+
+⚠ **So the figures are the PSX build's.** Ported as `PathPrices`, with the PS2's own mechanism
+around them. What would replace this paragraph is a PS2 savestate: `0x3890D8` and `0x389330` hold
+the two numbers while the game is running.
+
+⚠ Not read: whether the ghost's money test also consults the spend-anything flag (`park[8]`,
+`ParkFinances.Unlimited`) the way the debit does. The port honours the flag on the ground that a
+ghost refusing a purchase the till would allow is the worse of the two errors.
