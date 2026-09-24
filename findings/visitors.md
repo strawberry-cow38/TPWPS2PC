@@ -1043,3 +1043,57 @@ scan finds the single caller of `FUN_00211A00` (`0x160410`) and of the selection
 (`0x225F7C`), both independently known to be called. A plain word-search for those addresses finds
 nothing either, and that search is worthless: it finds nothing for the known-called functions too,
 because `jal` encodes its target in 26 bits and not as a literal word.
+
+
+## ⭐⭐ Toilets: the authored service data, and the two paths it splits into (2026-09-24)
+
+Investigated with astraclaw while a toilet feature's scope was open. Nothing below is implemented.
+
+**The disc says which buildings satisfy the toilet need.** `UsageInfo.ProvidesRelief 1` appears on
+exactly **two `.sam` per world, all four worlds** — "Small Toilet" and "Super Toilet", eight in
+total, and on nothing else anywhere. So the discriminator is authored, not a name match or an id
+list. `/Features/Toilet/Toilet.sam` also carries `Info.IsChoosable 1` ("People CAN use this", where
+the gate's is 0), a model, an `.rse`, and authored stand positions:
+
+```
+UsageInfo.EntryCellStandPosX 0.5   Y 0.8
+UsageInfo.ExitCellAppearPosX 0.5   Y 0.8
+Info.Shape  ->  a single `2`
+```
+
+⭐ `Park.Footprint.From` already reads `'2'` as the ENTRY cell, so the toilet parses to a 1x1
+footprint with `EntryX >= 0` — the predicate `IsEntranceCapable` tests — and the 1x1 case is the
+one its "every small square shop" tie-break was written for.
+
+### ⭐ The eight are TWO service paths, split exactly by size
+
+Using the LIMBO rule this file already establishes above:
+
+| | LIMBO | WALKON | `.aps` |
+|---|---|---|---|
+| Small Toilet, all four worlds | **no** | no | yes |
+| Super Toilet · JUNGLE, HALLOW, SPACE | yes | no | yes |
+| Super Toilet · FANTASY | yes | **yes** | **no** |
+
+So a Small Toilet takes nobody inside and walks nobody in: the guest is serviced standing at the
+entry cell. FANTASY's Super Toilet is alone on two axes — the only WALKON and the only one
+missing its animation.
+
+⚠ **METHOD, because the first attempt was worthless.** Grepping the `.rse` bytes for the string
+"LIMBO" returns "no" for every file on the disc — `.rse` is compiled bytecode and that search can
+never say yes. Redone through `rse.disassemble` with BOTH controls: positive **17/17** (every shop
+this file lists as LIMBO-bearing comes back yes) and negative **284/308** (the detector can say no).
+A "no" on the Small Toilets means something only after both.
+
+### ⚠ The gap is a VISIBLE BODY, not a cleared need
+
+`ParkVisitors.Deliver` ends its boarding branch with `Walk.Remove(g.Id)`, and `Viewer.PlaceActors`
+draws a guest only if they are in one of three sets: the walking layer, `_seated` (a `0x80` seat
+fitting), or `_walking` (a scripted WALK pose). A Small Toilet's script provides **none** of the
+three — no LIMBO to hide them legitimately, no WALKON to pose them, no seat — so a guest handed to
+one would blink out at the entry cell and blink back on handback.
+
+⭐ The irony worth keeping: the Small Toilet looks like the easy path BECAUSE it has no LIMBO and
+no WALKON, and that absence is exactly what makes it need new drawing code. The Super Toilet's
+LIMBO would hide the guest and be honest about it. Found by astraclaw from the code; not yet
+reproduced at runtime.
