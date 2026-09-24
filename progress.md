@@ -4,15 +4,19 @@ Updated: 2026-09-24 UTC. Roadmap: [plan.md](plan.md).
 
 ## Current handoff — supersedes the historical sections below
 
-Active checkout: `../tpw-gate-occupancy`, branch `astraclaw/bus-native-research`.
+Active checkout: `../tpw-gate-occupancy`, branch `astraclaw/native-entrance-flow`.
+Bus and requested smoothing are already on main through98b5249; do not redo them.
+This new branch contains a native coordinate arithmetic foundation and entrance
+research, NOT a deployed entrance flow. Existing GuestWalk behavior is unchanged.
 The old `tpw-ride-eligibility` checkout and scheduler's `81d112c` note are stale.
 No restarts. No reimplementation of the shipped destination scoring, relief, shop
 walking, Bouncy hide-list, gate or path-price work. Cow owns the current animated
 texture / thought-bubble rendering requests; leave those files to them.
 
-Bus integration has passed normal Viewer startup/real placement/first admission/
-map reload in **all eight starting parks**,2039 assertions each. The release snapshot below is ready for normal fast-forward main integration;
-use it for exact results, not the old milestone headers. Peer reviewed8b0bba9, no blocker;
+Bus integration and smoothing are already shipped. Normal Viewer startup/real
+placement/first admission/map reload passed in **all eight starting parks**,2039
+assertions each. The release snapshots below are historical evidence, not a pending
+bus-landing task; use the newest entrance-foundation entry for current work. Peer reviewed8b0bba9, no blocker;
 requested explicit permissive-bypass language for missing entrance/departure inputs.
 `findings/bus-viewer-integration.md` describes scope and reproduction. After bus
 landing, the next native behavior package is the entrance-group/departure-pressure
@@ -2133,3 +2137,64 @@ Last upstream reconciliation: cowd9792f9 removesduplicatewaterclockupdate, merge
 688eb40. Freshbuild +affectedTexture/NativeBusheadlessscenesPASS `/tmp/tpw-bus-
 present-lastmerge`; actualViewerpresentation57PASSclean `/tmp/tpw-bus-present-
 lastmerge-smoke.log`. Noowning/interferingwithcowUVfix; mainpushnormalfast-forward.
+
+
+## Native entrance foundation — September24 18:40 UTC, BRANCH ONLY
+
+Activebranch `astraclaw/native-entrance-flow` basedmaind34c196; samehistorical
+`tpw-gate-occupancy`worktree. Mainhasbus+smoothing98b5249andcowUVchanges; theseareDONE.
+Researchclosedactualentrymodechain, intrusivegroupownership,stagingcoordinator,
+feeacceptanceordering andsignedquarter-cellroute/motionrepresentation. Newnotes:
+`findings/native-entrance-lifecycle.md`, `findings/native-guest-motion.md`. Older
+bus-group/admissionnotesmarkedwithcorrections. Bothcountedqueuesareincoming,
+N+28isreuseddirectionthengroup. Literal20DC94SLTI11, notDBAattractioncapacity.
+
+Primarymotionread192560/1924D0 and191E98: signed16coords/256, slotroundstonearest64
+with+32bias andpreserves87FFflags/links; signedN7Cminimum5; low32(speed*delta)>>14,
+axesclampedindependently, nofractionalcarry, boundscheckedbeforeBOTHcoordinatewrites.
+Normal15..29speed fromactivation, separatetemplateprofile160410/211A00 notbuspath.
+AtWaypoint !=routecomplete: state2withslot->free/advance->state3noslot->state2->purpose.
+No invented alternate1532D8endpoints: helperignoresselector; incomingmode16canbethe
+samequantizedcoordinate asmode15arrival, butstillhasslot/dispatchsteps.
+
+`NativeGuestMotion.cs` implementsONLYnumericoperations. NOTcalledbyGuestWalk or
+Viewer yet; deliberatelyno claimthatqueues/speeds/admissionlimitsarefixed. Dedicated
+`--guest-motion-only` andfullParkSimAuditrun55controls, matrixrequires55category.
+`/tmp/tpw-native-motion-restored.log`55PASS. Fourmutationscaught5/5/15/12 failures
+(roundingbias/minimumspeed/shift/bounds), restored. Reviewnonblocking; correctly
+flaggednegativecelltestcannotdiscriminatesignedintermediatevsunsigned+shortwrap,
+soitslabelnowassertsonlytheresult. Addedmixed-axisboundscontrolstorejectpartialcommit.
+63PythonPASS `/tmp/tpw-native-entrance-foundation-python-final.log`.
+Original4worldmatrixwith51checkswasgreenexceptexact2retailreds; final55matrixrunning
+`/tmp/tpw-native-entrance-foundation-final`. No game/rendererchangeinthisfoundation.
+
+NEXT REQUIRED: actual ID-owned native entrance/route lifecycle using thesepoints,
+notmoreunconnectedarithmetic. KeeporiginalmainGuestWalkuntoucheduntiltheadapter
+canpreservependingrequests, slots/terminalhandoff, entrance/stagingmembership,
+feeacceptance andnative-decisionordering. Entryrequestpump151928 isINSIDEeachsubstep,
+beforegroupupdates151954 andactive14BE60; requestsissuedlaterarenotcompletedbythe
+alreadyfinishedpump. Pumpbudget195E28()+100unitisnotseconds. PublicBFSchoice/resource
+capacity/modelreadinessremainexplicitportboundaries; nofake"exactnativepathfinder".
+
+SeparateE trafficcoordinator ismissinginViewer too: P3953D8/R3953DC gatebroadcast9
+fromE0->1 episode; busstate2ownsE2. CountedWqueuesandsticky+A4tallyareotherinputs.
+14B368structurallyunlinksanyembeddedowner butcountrepairviaindirect20BFD0callbacks
+stillunread. State0departurewrite20CA70continuesintoRNG6/RNG300switch, notearlyreturn;
+currentWantsToGoHomecontinueisnotfullnativeproducer. Don'tderivepressurefromit.
+
+Cowownsscroll/UV/fountain/bubblelane. Sharedpositiveconsumer1A87B8->1AD378 from
+corpus+raw helpedtheircoconutdecoder; warnedthatlinearlylerped19.2degUVkeys differ
+fromconstant-angularshader by~1.4%radiusathalfway (conditional, inspectactualsample).
+Do notoverwrite theirAnimatedModel/Materials edits. PrivateCcorpusoutsideGit remains
+additionalsource; noassets/executableextraction, nootherbox/privatebotfiles, norestarts.
+
+
+Entrancefoundation final gate: `/tmp/tpw-native-entrance-foundation-final` passes
+JUNGLE/FANTASY andretainsONLYexactThrillGrill/MoonBuggiesreds, 55newarithmeticchecks
+ineachworld. 63PythonPASS; fourmutationsrestored. Read-onlyreviewnoblockingnumeric
+mismatch, buttestlabelsign-extensionclarifiedandmixed-axisout-of-boundscontrolsadded.
+PushingRESEARCHBRANCHONLY, notmain; nochangeinshippingentry/GuestWalkbehavior.
+NextlegmustjoinfullID/state/slotownershipandorderedroutecallbacks, notkeepadding
+standalonehelpers. Native route-graphwalker remainsmissing; ordinaryBFS/resource
+readinessadaptersneedexplicitboundaries. Cowmain6bfae54introducesAPSUVratework;
+keepitsfiles, andletcowcompleteper-vertexUVreplayafteruserfountainreport.

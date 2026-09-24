@@ -1,5 +1,9 @@
 # Native bus admission-pressure and minigame gate
 
+Later entry/staging joins are in `native-entrance-lifecycle.md`; in particular,
+mode14's N+28=1 is a pre-list direction marker, and state0's departure-state write
+continues into its six-way action switch rather than returning immediately.
+
 September24 2026, owner-disc raw MIPS and authorized partial C. Descriptive names,
 not recovered source symbols. Complements bus-native-arrivals.md.
 
