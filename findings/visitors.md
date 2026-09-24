@@ -1097,3 +1097,96 @@ one would blink out at the entry cell and blink back on handback.
 no WALKON, and that absence is exactly what makes it need new drawing code. The Super Toilet's
 LIMBO would hide the guest and be honest about it. Found by astraclaw from the code; not yet
 reproduced at runtime.
+
+## ⭐⭐ The wants are AUTHORED: the game ships its own effect table, commented (2026-09-24)
+
+Master asked for visitor wants "looking at the actual game's code". The code turned out to be the
+least of it — **the data files carry the numbers with the developers' own comments beside them.**
+Census of every `UsageInfo.*` integer over all **251 `.sam`** on the disc:
+
+| key | files | range | the comment IN THE DATA |
+|---|---|---|---|
+| `HappinessEffect` | 23 | 5..20 | `//How much happiness to add` |
+| `ThirstEffect` | 23 | 0..40 | `//How much thirst to deduct` |
+| `HungerEffect` | 23 | 0..25 | `//How much hunger to deduct` |
+| `VomitEffect` | 23 | 0..15 | `//How much vomit to add` |
+| `LitterEffect` | 23 | 0..50 | `//How much litter to add` |
+| `FatigueEffect` | 1 | 5 | `reduce fatigue by this amount` |
+| `ProvidesRelief` | 7 | 1 | — the lavatory flag |
+| `HoldsLitter` | 4 | 1 | — a bin |
+| `ProvidesSecurity` | 4 | 1 | `The camera has a security effect` |
+| `ChillsYouOut` | 3 | 1 | — |
+| `SpecialIngredient` | 23 | 0..4 | `SALT=2`, and `FAT=1` on the Burger Shop |
+| `Info.WhichUIType` | 7 | 1..4 | `0=rides, 1=shops, 2=sideshows, 3=features` |
+
+So a Burger Shop deducting 25 hunger is not a number anyone here chose. ⭐ This is the line between
+these and `ParkVisitors.RideIntensity` and friends: those stay invented **only** because the
+globals behind them (`DAT_002EEB30/34/44`) have not been decoded. These never needed inventing.
+
+⚠ **7 vs the 8 counted in the section above, and both are right.** 8 is per-world instances; 7 is
+distinct paths. `/Features/loo/loo.sam` (FANTASY) and `/features/loo/loo.sam` (SPACE) differ only
+in case and collapse under a case-insensitive key. Say which you are counting.
+
+### ⭐⭐ `VAR_WORNON` is an OCCUPANCY LATCH, not a mess counter — and the correlation is what misled me
+
+Exactly **7 of 277** scripts declare `VAR_WORNON`, and they are **precisely** the 7 `.sam` with
+`ProvidesRelief` — nothing on either side of the difference. A correlation that clean over 277
+samples looked conclusive, and the conclusion drawn from it ("this is where the mess goes") was
+wrong. Resolving the references says what it actually does:
+
+```
+Toilet.rse   12  TEST  VAR_WORNON        SupBog.rse  16  TEST  VAR_WORNON
+             26  COPY  VAR_WORNON 1                  30  COPY  VAR_WORNON 1
+             31  TEST  VAR_WORNON                    35  TEST  VAR_WORNON
+             37  COPY  VAR_WORNON 0                  43  COPY  VAR_WORNON 0
+```
+
+Test, claim with 1, release with 0: a **single-occupancy latch the script owns**. Writing soil into
+it would have fought the script for the cubicle. ⭐ The correlation was real and the reading of it
+was not — a variable only toilets have is a variable about *being a toilet*, which is not the same
+as being about *dirt*.
+
+And the toilet's whole guest protocol is two more lines, which is worth having:
+
+```
+Toilet.rse   48  COPY  VAR_PEEPID  VAR_LETMEON      stash who came in
+            108  COPY  VAR_LETMEOFF VAR_PEEPID      hand that same one back
+```
+
+⚠⚠ **METHOD, and it took three goes.** (1) `symbols()` returned `[]` for both toilets — I was one
+step from reporting "the toilets declare no `VAR_LETMEON`, so they need a service path of their
+own". The control killed it: `Monkey.rse` came back with all 16, and re-run properly **both
+toilets declare `VAR_LETMEON`**. A toilet IS a ride to the engine. (2) Searching the disassembly
+text for `VAR_WORNON` found nothing — but the control found nothing for `VAR_ONRIDE` in Crazy Ape
+either, and that ride certainly uses it. The disassembler prints variables as `v<N>`; the search
+was blind. (3) Resolving `v<N>` by position was ambiguous until `RseProgram` settled it:
+`VariableNames` holds exactly `VariableCount` entries and the ride name lives in a separate
+`_strings` block, so python's list carries one extra leading element and **`v0` is the first
+variable**. Confirmed numerically per file (header count == list length − 1) and behaviourally —
+under that mapping Crazy Ape reads `ADD VAR_ONRIDE 1` / `ADD VAR_ONRIDE -1`, which is exactly what
+`ParkRide`'s existing note records `king.RSE` doing.
+
+### What this bought, and what it did not
+
+Wired (`ParkVisitors`): a guest whose hunger, thirst or toilet crosses **91** — `FUN_0020F888`'s
+single shared bar, the same one that raises the bubble — walks to the nearest facility whose
+authored data answers it, in the console's own hunger→thirst→toilet tie order, instead of picking
+a ride at random. On the way out, `Serve` applies the effect for **what the place is**: a lavatory
+runs `UseToilet`, a shop runs the decoded purchase path with its OWN `.sam` numbers, anything else
+is a ride.
+
+⚠ **`LitterEffect` is authored and is NOT applied.** 23 shops declare it and the guest has a
+`Litter` field, but the decoded purchase path (`0x20E380..0x20E45C`, findings/dba.md) does exactly
+four things and littering is not one of them. Applying it anyway would be inventing a cadence and
+calling it a decode. Same for `FatigueEffect`, which has no field at all yet.
+
+⚠ **Where the console puts the mess is still not found**, and it is not `VAR_WORNON` (above). The
+amount `(need-60)*2/3` is decoded; the sink is the port's own accumulator and drives nothing.
+
+⭐ **Teeth** (`tools/TPW.PS2.ParkSimAudit/ServiceChecks.cs`, 15 checks, green in all four worlds
+against four different lavatories). Both mutations were run and each reddens exactly the line
+written for it: delete the `Errand` call and *only* "rode nothing on the way" fails (8 facilities
+used instead of 1); dispatch on "did they complete something" instead of on what the place is and
+*only* the two RIDE-control lines fail. ⚠ The single-toilet case cannot see routing at all — with
+one facility in the park the random fallback reaches it anyway — which is why the routing case
+puts 7 closer rides between the guest and the lavatory and asserts they used exactly one.

@@ -43,7 +43,12 @@ public sealed class ParkVisitors
     // Numeric ride IDs may be reused after deletion. Ownership belongs to the
     // actual instance, so a replacement cannot silently inherit the old riders.
     readonly Dictionary<int, ParkRide> _owners = new();
-    sealed record ReturnToPark(ParkCell[] Preferred, bool CompletedRide);
+    /// <summary>⚠ <paramref name="Ride"/> is the place they were IN, kept because `_owners` is
+    /// cleared the moment they start coming back and <see cref="RecoverGuests"/> still has to ask
+    /// what that place was. ⚠ Positional component added deliberately: this record is only ever a
+    /// dictionary VALUE and is never compared or Distinct()ed -- the same addition to
+    /// ParkEntrance silently changed its equality and cost two worlds their entrance.</summary>
+    sealed record ReturnToPark(ParkCell[] Preferred, bool CompletedRide, ParkRide Ride);
     readonly Dictionary<int, ReturnToPark> _returning = new();
     public IReadOnlyDictionary<int, Plan> Plans => _plans;
 
@@ -71,6 +76,36 @@ public sealed class ParkVisitors
         && ride.Get("VAR_RIDECLOSED") == 0 && ride.Get("VAR_BROKEN") == 0 && ride.Fault == null;
 
     public IEnumerable<ParkRide> Open => Sim.Rides.Where(Takes);
+
+    /// <summary>⭐⭐ WHAT A PLACE IS FOR, and every one of these is read rather than decided here:
+    /// `UsageInfo.ProvidesRelief` marks a lavatory (exactly 7 .sam files across the four worlds,
+    /// and the SAME 7 scripts are the only ones declaring VAR_WORNON -- 7 of 277, no exceptions
+    /// either way), and the shop effects carry the developers' own comments, e.g.
+    /// <c>UsageInfo.HungerEffect 25 //How much hunger to deduct</c>.
+    ///
+    /// ⚠ A FACILITY MUST ALSO BE ABLE TO TAKE SOMEBODY. Being a toilet is not enough -- a closed
+    /// or broken one is not an answer to anything, so each goes through <see cref="Takes"/> and a
+    /// guest is never sent to a door that will not open.</summary>
+    public bool Relieves(ParkRide r) => Takes(r) && r.ProvidesRelief;
+    public bool Feeds(ParkRide r) => Takes(r) && (r.Definition?.HungerEffect ?? 0) > 0;
+    public bool Waters(ParkRide r) => Takes(r) && (r.Definition?.ThirstEffect ?? 0) > 0;
+
+    /// <summary>How many guests have been served, by kind. ⭐ Counters rather than a bool, because
+    /// "the toilet worked" and "the toilet worked once per visit" are different claims and an
+    /// audit should be able to tell them apart.</summary>
+    public int Relieved { get; private set; }
+    public int Purchases { get; private set; }
+
+    readonly Dictionary<int, int> _soil = new();
+
+    /// <summary>Mess left in each lavatory, by ride id, from <see cref="VisitorNeeds.UseToilet"/>.
+    ///
+    /// ⚠⚠ THE SINK IS THE PORT'S; the amount is not. `(toilet - 60) * 2 / 3` is decoded, but where
+    /// the console PUTS it has not been found -- and it is NOT VAR_WORNON, which was the obvious
+    /// guess and is wrong: the toilet scripts TEST it, COPY 1 into it and COPY 0 back out, so it
+    /// is a single-occupancy latch the script owns and writing mess into it would fight the
+    /// script. Until the real channel turns up this accumulates here and drives nothing.</summary>
+    public IReadOnlyDictionary<int, int> Soil => _soil;
 
     /// <summary>Put a guest in at the gate and set them wandering.</summary>
     /// <summary>⭐⭐ THE VISITORS' WANTS, and they are seeded HERE AND NOWHERE ELSE. Readmission
@@ -187,7 +222,7 @@ public sealed class ParkVisitors
         var preferred = new[] { stillWaiting ? ride.Entrance : ride.Exit,
                                 stillWaiting ? ride.Exit : ride.Entrance, (ParkCell?)plan.At }
             .Where(c => c.HasValue).Select(c => c.Value).Distinct().ToArray();
-        _returning[plan.Guest] = new ReturnToPark(preferred, completed);
+        _returning[plan.Guest] = new ReturnToPark(preferred, completed, ride);
         _plans[plan.Guest] = new Plan(plan.Guest, VisitorIntent.Recovering, 0, preferred[0]);
         _owners.Remove(plan.Guest);
     }
@@ -251,7 +286,7 @@ public sealed class ParkVisitors
                 // ⚠ This CHANGES needs -- that is the feature -- so a continuity check asserts
                 // these effects happened exactly once, not that the record is untouched. Cash is
                 // the reseed tripwire: nothing on this path touches it.
-                Needs?.Ride(guest, RideIntensity, RideHappiness, RideSickScale, RideBoredomScale);
+                Serve(guest, returning.Ride);
             }
         }
     }
@@ -302,9 +337,88 @@ public sealed class ParkVisitors
                 Wander(g.Id, g.Cell);
             if (g.State != GuestState.Arrived) continue;
             if (_plans.TryGetValue(g.Id, out var plan) && plan.Intent == VisitorIntent.Heading) continue;
+            // ⭐⭐ SOMETHING PRESSING BEATS SOMETHING FUN. A guest who needs a lavatory and
+            // picks a rollercoaster instead is the whole reason wants looked wired-up but dead:
+            // the need rose, the bubble appeared, and then they queued for the Crazy Ape and it
+            // rose some more. The errand is tried first and only falls through when nothing is
+            // urgent or nowhere answers it.
+            if (Errand(g) is { } errand && SendTo(g, errand)) continue;
             var rides = Open.ToArray();
             if (rides.Length > 0 && SendTo(g, rides[(int)((uint)_random() % (uint)rides.Length)])) continue;
             if (wander?.Invoke() is { } cell) Walk.Send(g, cell);
         }
     }
+
+    /// <summary>What the place they have just come out of did to them.
+    ///
+    /// ⭐⭐ THE NUMBERS ARE THE GAME'S OWN. A shop's effects are read off its .sam, so a Burger
+    /// Shop deducts the 25 hunger IT declares rather than a constant chosen here -- which is the
+    /// difference between this and <see cref="RideIntensity"/> and friends, and those stay
+    /// invented only because the globals behind them have not been decoded.
+    ///
+    /// ⚠ ONE KIND EACH, and a lavatory is tested FIRST: nothing in the game both relieves and
+    /// sells, but if a mod ever did, relief is the need with a hard threshold behind it.
+    ///
+    /// ⚠ `UsageInfo.LitterEffect` IS AUTHORED AND IS NOT APPLIED HERE. The guest has a Litter
+    /// field and 23 shops declare the effect, but the decoded purchase path
+    /// (`0x20E380..0x20E45C`, findings/dba.md) does exactly four things and littering is not one
+    /// of them. Applying it anyway would be inventing a cadence and calling it a decode; it waits
+    /// for the litter path. Same for FatigueEffect, which has no field at all yet.</summary>
+    void Serve(int guest, ParkRide used)
+    {
+        if (Needs == null || !Needs.Has(guest)) return;
+        if (used != null && used.ProvidesRelief)
+        {
+            int soil = Needs.UseToilet(guest);
+            if (soil > 0) _soil[used.Id] = _soil.TryGetValue(used.Id, out var had) ? had + soil : soil;
+            Relieved++;
+            return;
+        }
+        if (used?.Definition is { Sells: true } def)
+        {
+            Needs.Buy(guest, def.PricePerUse ?? 0, def.HungerEffect ?? 0, def.ThirstEffect ?? 0,
+                      def.HappinessEffect ?? 0, def.VomitEffect ?? 0);
+            Purchases++;
+            return;
+        }
+        Needs.Ride(guest, RideIntensity, RideHappiness, RideSickScale, RideBoredomScale);
+    }
+
+    /// <summary>Where a guest with something pressing on their mind is trying to get to, or null
+    /// if nothing is pressing or nowhere answers it.
+    ///
+    /// ⭐⭐ THE BAR IS THE CONSOLE'S ONE BAR. `FUN_0020F888` opens `if (need &lt; 0x5b) return 0`
+    /// -- 91, the same number for hunger, thirst and toilet, and the same one
+    /// <see cref="VisitorNeeds.Decide"/> puts the bubble up at. So a guest walks to a facility
+    /// exactly when they are thinking about it, rather than on a second threshold invented here.
+    ///
+    /// ⚠ THE ORDER IS THE CONSOLE'S, hunger then thirst then toilet, and it only breaks TIES:
+    /// the most pressing need wins, and `&gt;` rather than `&gt;=` keeps the earlier one on a draw.</summary>
+    ParkRide Errand(Guest g)
+    {
+        if (Needs == null || !Needs.Has(g.Id)) return null;
+        var w = Needs.Of(g.Id);
+        ParkRide best = null;
+        int worst = VisitorNeeds.Urgent - 1;
+        foreach (var (need, answers) in new (int, Func<ParkRide, bool>)[]
+                 { (w.Hunger, Feeds), (w.Thirst, Waters), (w.Toilet, Relieves) })
+        {
+            if (need <= worst) continue;
+            if (Nearest(g.Cell, answers) is not { } found) continue;
+            best = found;
+            worst = need;
+        }
+        return best;
+    }
+
+    /// <summary>The closest place that answers <paramref name="answers"/>. ⚠ Manhattan on the
+    /// QUEUE STUB, not the building: the stub is where they are actually walking to, and a big
+    /// ride's origin can be several cells from its door. Ties break on id so a park full of
+    /// identical toilets still routes the same way twice.</summary>
+    ParkRide Nearest(ParkCell from, Func<ParkRide, bool> answers) =>
+        Sim.Rides.Where(r => answers(r))
+            .OrderBy(r => Math.Abs((long)r.Entrance.Value.X - from.X)
+                        + Math.Abs((long)r.Entrance.Value.Z - from.Z))
+            .ThenBy(r => r.Id)
+            .FirstOrDefault();
 }

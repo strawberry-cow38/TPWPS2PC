@@ -100,6 +100,45 @@ public sealed class RideDefinition
     public int? MaxCapacity => Int("UsageInfo.MaxCapacity");
     public int? PricePerUse => Int("UsageInfo.InitPricePerUse");
     public int? CostOfGoods => Int("UsageInfo.InitCostOfGoods");
+
+    /// <summary>⭐⭐ WHAT THIS FACILITY DOES TO A VISITOR'S WANTS, and it is AUTHORED -- the data
+    /// files carry these with the developers' own comments beside them, e.g. the Burger Shop's
+    /// <c>UsageInfo.HungerEffect\t25\t//How much hunger to deduct</c>. So the numbers a guest
+    /// feels are read off the disc rather than chosen here, which is what separates this from
+    /// <see cref="ParkVisitors.RideIntensity"/> and friends -- those stand in for globals that
+    /// have NOT been decoded, these do not stand in for anything.
+    ///
+    /// ⚠ ABSENT IS NOT ZERO, hence <c>int?</c>. A ride with no HungerEffect is not a shop that
+    /// feeds you nothing; it is not a shop. Only 23 of 251 .sam files carry the shop block.</summary>
+    public int? HungerEffect => Int("UsageInfo.HungerEffect");
+    public int? ThirstEffect => Int("UsageInfo.ThirstEffect");
+    public int? VomitEffect => Int("UsageInfo.VomitEffect");
+    public int? LitterEffect => Int("UsageInfo.LitterEffect");
+    public int? HappinessEffect => Int("UsageInfo.HappinessEffect");
+    public int? FatigueEffect => Int("UsageInfo.FatigueEffect");
+    public int? ShopType => Int("UsageInfo.ShopType");
+
+    /// <summary>⭐ THE TOILET FLAG, and the only thing that marks one. Seven .sam files across the
+    /// four worlds set it and every one of them is a lavatory (Small/Super Toilet, Loo, Royal Loo,
+    /// Big Loo, and the two haunted ones); nothing else in the game sets it, and it is never any
+    /// value but 1. A guest's Toilet need is answered by this and by nothing else.</summary>
+    public bool ProvidesRelief => Int("UsageInfo.ProvidesRelief") == 1;
+
+    /// <summary>⚠ READ BUT NOT YET ACTED ON -- listed so the next person finds them without
+    /// re-censusing the disc. A bin (4 files) and whatever `ChillsYouOut` relaxes (3) have no
+    /// consumer yet; `ProvidesSecurity` (4) is the camera.</summary>
+    public bool HoldsLitter => Int("UsageInfo.HoldsLitter") == 1;
+    public bool ChillsYouOut => Int("UsageInfo.ChillsYouOut") == 1;
+    public bool ProvidesSecurity => Int("UsageInfo.ProvidesSecurity") == 1;
+
+    /// <summary>Which UI category the game files it under, from the data's own comment on
+    /// `Info.WhichUIType`: <c>0=rides, 1=shops, 2=sideshows, 3=features</c>.</summary>
+    public int? UiType => Int("Info.WhichUIType");
+
+    /// <summary>A shop in the sense that matters to a hungry visitor: it says what buying from it
+    /// does. ⚠ Deliberately NOT <c>UiType == 1</c> -- the effect block is what the purchase path
+    /// consumes, so a thing that declares effects is a shop whatever drawer the UI puts it in.</summary>
+    public bool Sells => HungerEffect.HasValue || ThirstEffect.HasValue;
     public int? ResearchGroup => Int("Research.Group");
 
     /// <summary>Capacity at upgrade tier <paramref name="tier"/> (0, 1, 2). The PSX port reads the

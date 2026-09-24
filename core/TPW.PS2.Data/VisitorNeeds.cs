@@ -119,6 +119,12 @@ public sealed class VisitorNeeds
 {
     public const byte Full = 100;
 
+    /// <summary>⭐⭐ THE ONE BAR FOR WANTING SOMETHING, and it is READ: `FUN_0020F888` opens with
+    /// `if (need &lt; 0x5b) return 0` and the caller passes hunger, thirst or toilet into the same
+    /// function -- so 91 is a single shared threshold rather than three constants that happen to
+    /// agree. <see cref="Decide"/>'s `&gt; 90` is this same number; routing uses it too.</summary>
+    public const int Urgent = 91;
+
     /// <summary>How fast each need rises per step, in the console's own `base + roll(spread + 1)`
     /// shape. ⚠ THE NUMBERS ARE CHOSEN, the shape is not -- see the class note.</summary>
     public sealed record Rate(byte Base, byte Spread, bool High);
@@ -279,12 +285,12 @@ public sealed class VisitorNeeds
     {
         if (!_byGuest.TryGetValue(guest, out var w)) return Thought.Normal;
         var t = Thought.Normal;
-        if (w.Hunger > 90 && w.Thirst > 90) t = Thought.HungryAndThirsty;
+        if (w.Hunger >= Urgent && w.Thirst >= Urgent) t = Thought.HungryAndThirsty;
         else if (w.Sick > 92) t = Thought.Sick;
         else if (w.Happiness < 3) t = Thought.Angry;
-        else if (foodNearby && w.Hunger > 90) t = Thought.Hungry;
-        else if (drinkNearby && w.Thirst > 90) t = Thought.Thirsty;
-        else if (toiletNearby && w.Toilet > 90) t = Thought.Toilet;
+        else if (foodNearby && w.Hunger >= Urgent) t = Thought.Hungry;
+        else if (drinkNearby && w.Thirst >= Urgent) t = Thought.Thirsty;
+        else if (toiletNearby && w.Toilet >= Urgent) t = Thought.Toilet;
         else if (w.Happiness < 25) t = Thought.Sad;
         else if (w.Happiness > 75) t = Thought.Happy;
         w.Thought = t;

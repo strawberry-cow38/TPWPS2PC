@@ -19,6 +19,17 @@ public sealed class ParkRide
     public ParkCell? Entrance { get; init; }
     public ParkCell? Exit { get; init; }
 
+    /// <summary>The ride's own .sam, and with it everything the game authored about what this
+    /// thing does to a visitor. ⚠ NULLABLE and must stay so: the audits build bare rides from a
+    /// script alone, and a ride with no definition is a ride that satisfies no want -- not a
+    /// crash, and not a ride that satisfies every want.</summary>
+    public RideDefinition Definition { get; init; }
+
+    /// <summary>⭐ A lavatory, by the only mark the game gives one. See
+    /// <see cref="RideDefinition.ProvidesRelief"/>.</summary>
+    public bool ProvidesRelief => Definition?.ProvidesRelief ?? false;
+    public bool Sells => Definition?.Sells ?? false;
+
     public RseMachine Machine { get; init; }
     public RsePreviewHost Host { get; init; }
 
@@ -111,7 +122,8 @@ public sealed class ParkSim : IRseDirectory
     public ParkRide Add(int id, string name, ParkCell origin, int width, int height,
                         byte[] script, Animation animation, int capacity,
                         ParkCell? entrance, ParkCell? exit, out string fault,
-                        Func<string, byte[]> sibling = null, int headSlots = 0)
+                        Func<string, byte[]> sibling = null, int headSlots = 0,
+                        RideDefinition definition = null)
     {
         fault = null;
         if (script == null || script.Length == 0) { fault = "no script"; return null; }
@@ -149,6 +161,7 @@ public sealed class ParkSim : IRseDirectory
             Id = id, Name = name, Origin = origin, Width = width, Height = height,
             Entrance = entrance, Exit = exit,
             Machine = machine, Host = host, Variables = declared,
+            Definition = definition,
         };
         // ⭐ The opening state the console's own demo uses: a capacity from the ride's .sam, one
         // cycle, and CLOSED until something opens it. A ride that starts open runs to nobody.

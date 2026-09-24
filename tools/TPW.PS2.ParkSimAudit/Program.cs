@@ -427,6 +427,7 @@ var loopWalk = new GuestWalk(loopPaths);
 var visitors = new ParkVisitors(loop, loopWalk);
 int loopId = 0;
 bool availabilityChecked = false;
+(byte[] Script, Animation Aps, RideDefinition Def, Func<string, byte[]> Sibling, int Seats)? serviceRide = null;
 bool removalChecked = false;
 var onPath = laid.Where(c => loopPaths.Open(c)).ToArray();
 // Three rides hung off the corridor, plus a FOURTH whose queue is out in the grass -- the
@@ -506,6 +507,9 @@ foreach (var e in wad.Entries.Where(e => e.Path.EndsWith(".rse", StringCompariso
             VisitorAvailabilityChecks.Run(loopPaths, wad.Read(e), aps, def.UpgradeCapacity(0) ?? 1,
                                           stop, onPath[^1], SLoop, seats, Check);
             availabilityChecked = true;
+            // ⭐ The same vetted ride doubles as the service checks' NOT-a-toilet control: it is
+            // known to take a guest and hand them back, which is exactly what that control needs.
+            serviceRide = (wad.Read(e), aps, def, (Func<string, byte[]>)SLoop, seats);
         }
         if (!removalChecked && r.Has("VAR_LETMEON") && r.Has("VAR_RIDECLOSED")
             && r.Has("VAR_BROKEN") && Uses(r, RseOpcode.ADDHEAD) && !PollsTrack(r) && loopPaths.Walkable(stop))
@@ -516,6 +520,32 @@ foreach (var e in wad.Entries.Where(e => e.Path.EndsWith(".rse", StringCompariso
         }
     }
 }
+// ⭐⭐ THE WANT LOOP, against the game's own lavatory. Looked up by the authored flag rather than
+// by name: `UsageInfo.ProvidesRelief` is what the port routes on, so the fixture is chosen the
+// same way the feature chooses, and a world whose toilet is called something unexpected is still
+// covered. ⚠ /Features/, not /Rides/ -- the census loop above never walks this folder.
+var looEntry = wad.Entries
+    .Where(x => x.Path.EndsWith(".sam", StringComparison.OrdinalIgnoreCase))
+    .Select(x => (Entry: x, Def: RideDefinition.Parse(System.Text.Encoding.ASCII.GetString(wad.Read(x)), x.Path)))
+    .Where(x => x.Def.ProvidesRelief && wad.Find(x.Entry.Path[..^4] + ".rse") != null)
+    .OrderBy(x => x.Entry.Path, StringComparer.OrdinalIgnoreCase)
+    .FirstOrDefault();
+if (looEntry.Entry != null && serviceRide is { } notALoo && corridorStops.Count >= 4)
+{
+    string lstem = looEntry.Entry.Path[..^4];
+    string ldir2 = lstem[..(lstem.LastIndexOf('/') + 1)];
+    Animation laps = null;
+    try { var ae = wad.Find(lstem + ".aps"); if (ae != null) laps = new Animation(wad.Read(ae)); } catch { }
+    byte[] LSib(string child)
+    {
+        var c2 = wad.Entries.FirstOrDefault(x => x.Path.Equals(ldir2 + child, StringComparison.OrdinalIgnoreCase));
+        return c2 == null ? null : wad.Read(c2);
+    }
+    ServiceChecks.Run(terrain, loopPaths, corridorStops.ToArray(), onPath[^1],
+                      wad.Read(wad.Find(lstem + ".rse")), laps, looEntry.Def, LSib,
+                      notALoo.Script, notALoo.Aps, notALoo.Def, notALoo.Sibling, notALoo.Seats, Check);
+}
+Check(looEntry.Entry != null, $"the world ships a lavatory to exercise ({looEntry.Entry?.Path ?? "none found"})");
 Check(availabilityChecked, "availability regression exercised a real ride with both availability flags");
 Check(removalChecked, "removal regression exercised a real non-track ride with seats");
 var marooned = loop.Rides.FirstOrDefault(r => r.Name.StartsWith("CONTROL", StringComparison.Ordinal));

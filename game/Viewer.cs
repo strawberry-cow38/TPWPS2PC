@@ -1677,10 +1677,19 @@ public partial class Viewer : Node3D
             GetTree().Quit();
             return;
         }
+        // ⭐⭐ WHETHER THERE IS ONE TO GO TO, and the console asks this before it puts the
+        // bubble up: `FUN_0020F888` looks for a facility and only then sets the thought. These
+        // used to be hardcoded true, so a park with no lavatory in it still filled up with guests
+        // thinking about one -- a want the player was given no way to answer. Asked once a frame
+        // rather than per guest: it is a question about the PARK, and asking it per guest was
+        // 1500 catalogue walks a frame for one bool.
+        bool food = _visitors.Sim.Rides.Any(_visitors.Feeds);
+        bool drink = _visitors.Sim.Rides.Any(_visitors.Waters);
+        bool loo = _visitors.Sim.Rides.Any(_visitors.Relieves);
         foreach (var g in _guests.Guests)
         {
             if (!needs.Has(g.Id)) continue;
-            var want = needs.Decide(g.Id, foodNearby: true, drinkNearby: true, toiletNearby: true);
+            var want = needs.Decide(g.Id, foodNearby: food, drinkNearby: drink, toiletNearby: loo);
             // ⚠⚠ GLOBAL, NOT LOCAL. The actors live under the guest root and the bubbles under
             // their own node, so an actor's `Position` is in a DIFFERENT space -- a bubble placed
             // from it lands wherever the two frames differ, which for a mirrored park is across
@@ -2583,7 +2592,8 @@ public partial class Viewer : Node3D
         }
         var ride = _sim.Add(id, _place.Display ?? Leaf(assets.Name), new ParkCell(cx, cy), w, h,
                             _lib.Read(assets.Script), anim, _place.Def?.UpgradeCapacity(0) ?? 1,
-                            entrance, exit, out string fault, sibling: Sibling, headSlots: headSlots);
+                            entrance, exit, out string fault, sibling: Sibling, headSlots: headSlots,
+                            definition: _place.Def);
         if (ride == null) { GD.PrintErr($"[sim] {Leaf(assets.Name)} script would not start: {fault}"); return false; }
         _scripted.Add((ride, model, anim, -1, -1));
         if (mesh != null) _rideMeshes[id] = mesh;
