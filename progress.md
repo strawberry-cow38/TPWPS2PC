@@ -2349,3 +2349,18 @@ resetcallers149C08/init and18C4C0/globaldisable-reinitialize-enable path; NOTonl
 onceperpark. Pendingcancel18DB70cleanssearchrequests notcompletedactoroutput;
 liveindirectcallerunclosed. Needactualpool/curor/requestconsumer next, notunusedhelper.
 No pendingbuilds, no extractedassets, no restarts. Readonlydelegateused1thisreviewturn.
+
+User20:48 said keepgoing, thenasked20:49 whetherturnstilesresearched/maybenamed
+somethingelse. NEW near-termpriority: identifyphysicalturnstile/boothmechanism,
+NOTjustmorepathallocatorinternals. Answeredpartly(admissionlogic), andaskedwhich
+part: themedarchdoors vs smallerbarriers/boothsinfront. Readonlyworker foundnative
+Gatescontrollerasset489/category0E, init15178C->13C600/13C650->3953E4, update13C780
+usesparkopen14E538 andsection5records1(open)/0(close). Realtrigger, NOTperguest.
+Saved findings/native-gates-controller.md. ticket_booths staticterraincandidate,
+no correspondingordinaryAPS/morph/UVchannelsfound, NOTproofno proceduralmechanism.
+Cowclaimeddoor01/02turnstiles andRSEdrivesit; clarifiedthoseclaimsprovisionaluntil
+actualconsumer/useridentification. TheyownXbuttonselectedrideGIZMOresearch, leaveit.
+Currentreviewpatch2c1d59b mergedmain e96412b(fountainaudit); freshupstreamTexture
+runtimeauditPASS /tmp/tpw-review-upstream-texture. Reviewchanges readyto push.
+Poolreset/builderresearchsavedbut don'tignoreuserturnstileclarificationnextturn.
+Readonlydelegatesused2thisreviewturn. No pendingbuilds/restarts/extraction.
