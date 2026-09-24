@@ -2688,8 +2688,10 @@ public partial class Viewer : Node3D
         var ride = _sim.Add(id, _place.Display ?? Leaf(assets.Name), new ParkCell(cx, cy), w, h,
                             _lib.Read(assets.Script), anim, _place.Def?.UpgradeCapacity(0) ?? 1,
                             entrance, exit, out string fault, sibling: Sibling, headSlots: headSlots,
-                            definition: _place.Def);
+                            definition: _place.Def, placementTurns: _place.Turns);
         if (ride == null) { GD.PrintErr($"[sim] {Leaf(assets.Name)} script would not start: {fault}"); return false; }
+        if (_place.Def?.CompiledEntry?.Kind == AssetResourceDatabase.AssetKind.Shop && ride.ServiceEntry == null)
+            GD.PrintErr($"[guest] {ride.Name}: compiled entrance does not match placed footprint/stub; native approach unavailable");
         RegisterStandingService(ride, model.Root, _place.Turns);
         _scripted.Add((ride, model, anim, -1, -1));
         if (mesh != null) _rideMeshes[id] = mesh;
@@ -3446,7 +3448,8 @@ public partial class Viewer : Node3D
     /// <summary>Small relief facilities and authored 2x2 shops can have standing customers, not seat/WALK poses.
     /// The coordinator owns the identity; a HUSH stack is not required for outside service.
     /// Waiting guests keep the queue-stub position (no invented queue spacing);
-    /// accepted guests use the authored stand point where present. For small shops with both
+    /// compiled shop guests retain the inside cell they physically reached. Other accepted
+    /// guests use the authored stand point where present. For uncompiled small shops with both
     /// coordinates absent, keep the actual arrival cell for the whole service: labelled port
     /// policy, not an inferred counter point or console default. Facing is presentation policy.</summary>
     void StandingRiders()
@@ -3467,7 +3470,9 @@ public partial class Viewer : Node3D
             // Small outside-service fixtures have neither; larger service modes remain separate.
             if (owner.Host.Seats.Values.Contains(id) || owner.Host.Walkers.ContainsKey(id)) continue;
             bool waiting = owner.Queue.Contains(id) || owner.Get("VAR_LETMEON") == id;
-            bool atArrival = waiting || place.Pose.IsEntryStubFallback;
+            // A compiled terminal customer actually walked here. Keep that position for
+            // service; substituting a SAM fraction would reintroduce a visible teleport.
+            bool atArrival = owner.ServiceEntry != null || waiting || place.Pose.IsEntryStubFallback;
             Vector3 cell = atArrival ? Cell(ParkPaths.Centre(plan.At))
                 : new Vector3(place.Pose.CellPoint.X, 0, place.Pose.CellPoint.Y);
             var heightCell = atArrival ? plan.At : place.Pose.HeightCell;

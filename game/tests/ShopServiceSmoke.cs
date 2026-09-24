@@ -1,3 +1,4 @@
+using Aps = TPW.PS2.Data.Animation;
 using System.Reflection;
 using Godot;
 using TPW.PS2.Data;
@@ -76,9 +77,10 @@ public partial class ShopServiceSmoke : Node3D
             string Suffix(string suffix) => System.IO.Path.Combine(output.FullName,
                 System.IO.Path.GetFileNameWithoutExtension(shot) + suffix + ".png");
             string beforeShot = Suffix("-before"), afterShot = Suffix("-after");
-            var shots = new[] { beforeShot, shot, afterShot };
+            string approachShot=Suffix("-approach"), departureShot=Suffix("-departure");
+            var shots = new[] { beforeShot, approachShot, shot, departureShot, afterShot };
             Require(shots.All(p => !System.IO.Path.Exists(p) && new System.IO.FileInfo(p).LinkTarget == null),
-                "all three capture paths are new");
+                "all five capture paths are new");
 
             string world = args.LastOrDefault(a => a.StartsWith("--map="))?["--map=".Length..]
                 ?? OS.GetEnvironment("TPW_PS2_MAP");
@@ -209,33 +211,20 @@ public partial class ShopServiceSmoke : Node3D
             void Present() { Call(viewer, "PresentScripted", true, 1f); Call(viewer, "PlaceActors", 1f); }
             void Tick() { Call(viewer, "TickPark"); Present(); }
 
-            // Camera only: transform the real authored entry stand through Placement's row mirror
-            // and turns. Do not register a standing pose or synthesize any actor/definition.
-            // Coordinate-less fixture frames the ACTUAL arrival stub, not an invented counter
-            // point. The acceptance assertion compares the live body with its retained arrival
-            // object and the floor, and requires the explicit port-policy tag.
-            float px = footprint.EntryX + (coordinateLess ? .5f : definition.EntryStandX.Value);
-            float pz = footprint.Height - (footprint.EntryY + (coordinateLess ? .5f : definition.EntryStandY.Value));
-            int width = footprint.Width, height = footprint.Height;
-            int ex = footprint.EntryX, ez = footprint.Height - 1 - footprint.EntryY;
-            for (int turn = 0; turn < placedTurn; turn++)
-            {
-                (px, pz) = (height - pz, px); (ex, ez) = (height - 1 - ez, ex);
-                (width, height) = (height, width);
-            }
-            var standWorld = (Vector3)Call(viewer, "GuestWorld",
-                new Vector3(ride.Origin.X + px, 0, ride.Origin.Z + pz), ride.Origin.Offset(ex, ez));
-            var stubWorld = (Vector3)Call(viewer, "GuestWorld", new Vector3(stub.X + .5f, 0, stub.Z + .5f), stub);
-            var camera = Field<Camera3D>(viewer, "_cam");
-            var target = standWorld + Vector3.Up * .35f;
-            if (coordinateLess) { standWorld = stubWorld; target = stubWorld + Vector3.Up * .35f; }
-            var front = stubWorld - standWorld; front.Y = 0;
-            if (coordinateLess)
-            {
-                var orientation = new Placement(); orientation.Arm(definition, targetShop, 0, footprint); orientation.Turn(placedTurn);
-                front = (Vector3)Call(viewer, "GuestHeading", new Vector3(orientation.Turned.EntryDX, 0, orientation.Turned.EntryDY));
-            }
-            Require(front.LengthSquared() > 1e-6f, "actual entry determines camera side even with missing actor");
+            // Independent placement-derived inside cell; do not use the production compiled
+            // transform as its own oracle. Both must agree before interpreting any picture.
+            var placementOracle=new Placement(); placementOracle.Arm(definition,targetShop,0,footprint); placementOracle.Turn(placedTurn);
+            var entryCell=ride.Origin.Offset(placementOracle.Turned.EntryX,placementOracle.Turned.EntryY);
+            Require(ride.ServiceEntry==entryCell && entryCell!=stub,"compiled entrance agrees with independent placed entry, not outside stub");
+            var corner=park.CellCorner(entryCell.X,entryCell.Z);
+            var standWorld=corner+.5f*(park.CellCorner(entryCell.X+1,entryCell.Z)-corner)
+                +.5f*(park.CellCorner(entryCell.X,entryCell.Z+1)-corner);
+            standWorld.Y=park.CellY(entryCell.X,entryCell.Z);
+            var stubWorld=(Vector3)Call(viewer,"GuestWorld",new Vector3(stub.X+.5f,0,stub.Z+.5f),stub);
+            var camera=Field<Camera3D>(viewer,"_cam");
+            var target=standWorld+Vector3.Up*.35f;
+            var front=stubWorld-standWorld;front.Y=0;
+            Require(front.LengthSquared()>1e-6f,"real one-cell approach determines camera side");
             string cameraView = args.LastOrDefault(a => a.StartsWith("--shop-camera="))?["--shop-camera=".Length..] ?? "front";
             Vector3 cameraOffset = cameraView switch
             {
@@ -313,12 +302,38 @@ public partial class ShopServiceSmoke : Node3D
                 "BEFORE_SEED_PRESERVED_WITH_PRESENTED_NEED_THOUGHT");
             bool Accepted() => ReferenceEquals(visitors.QueuedOwner(guestId), ride)
                 && !ride.Queue.Contains(guestId) && ride.Get("VAR_LETMEON") != guestId;
-            bool serving = false;
+            bool serving = false, witnessedApproach = false;
+            Vector3[] earlyLegVertices=null;
+            bool animatedLegs=false;
             for (int tick = 0; tick < 6000 && !serving && visitors.Rides == 0; tick++)
             {
                 Tick(); serving = Accepted();
+                if (guest.Cell==stub && guest.Next==entryCell && guest.Progress>0)
+                {
+                    witnessedApproach=true;
+                    Check(visitors.Boardings==0 && visitors.Walk.Guests.Contains(guest),"APPROACH_REMAINS_WALKING_NOT_SERVICE");
+                    var actor=Field<Dictionary<int,Node3D>>(viewer,"_actors").GetValueOrDefault(guestId);
+                    var p=guest.Position;
+                    var expected=(Vector3)Call(viewer,"GuestWorld",new Vector3(p.X,p.Y,p.Z),guest.Cell);
+                    Check(Live(actor) && actor.Position.DistanceTo(expected)<.002f,"LIVE_BODY_FOLLOWS_REAL_APPROACH_PROGRESS");
+                    var drawn=Field<Dictionary<int,(AnimatedModel Drawn,Aps.Record Sit,string Where)>>(viewer,"_drawn")[guestId].Drawn;
+                    var expectedWalk=Field<Dictionary<int,(Aps Anim,Aps.Record Walk,Aps.Record Idle,Model Model)>>(viewer,"_walkRec")[guestId].Walk;
+                    Check(expectedWalk!=null && ReferenceEquals(drawn.Record,expectedWalk) && drawn.Skeletal && drawn.Frames>0,
+                        "LIVE_APPROACH_SAMPLES_ACTUAL_WALK_ANIMATION");
+                    var legVertices=Meshes(actor).Where(m=>((string)m.Name).Contains("legs",StringComparison.OrdinalIgnoreCase))
+                        .SelectMany(m=>m.Mesh.SurfaceGetArrays(0)[(int)Mesh.ArrayType.Vertex].AsVector3Array()).ToArray();
+                    if (guest.Progress==40) earlyLegVertices=legVertices;
+                    if (guest.Progress==480)
+                    {
+                        animatedLegs=earlyLegVertices?.Length>0 && legVertices.Length==earlyLegVertices.Length
+                            && !earlyLegVertices.SequenceEqual(legVertices);
+                        await Capture(approachShot);
+                    }
+                }
                 if (tick % 8 == 0) await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
             }
+            Require(witnessedApproach,"actual last-cell walking leg was observed before boarding");
+            Check(animatedLegs,"APPROACH_LEG_MESH_ACTUALLY_ANIMATES_NOT_BIND_POSE_TRANSLATION");
             Require(serving, "accepted actual owner is named shop, not queue or VAR_LETMEON offer");
             bool hidden = ride.Host.Visibility.TryGetValue(guestId, out var visibility) && !visibility.Visible;
             bool seat = ride.Host.Seats.Values.Contains(guestId), walk = ride.Host.Walkers.ContainsKey(guestId);
@@ -333,65 +348,25 @@ public partial class ShopServiceSmoke : Node3D
             await Capture(shot);
             // Deliberately NOT Require: this is the current discriminating rendering failure.
             Check(Bodies("SERVING") == 1, "MISSING_VISIBLE_SERVICE_BODY (accepted external customer must have exactly one full body)");
-            if (coordinateLess)
-            {
-                var registered = Field<Dictionary<ParkRide, (Node3D Root, StandingServicePose Pose)>>(viewer, "_standingPlaces");
-                var actorsAtStub = Field<Dictionary<int,Node3D>>(viewer, "_actors");
-                var arrived = guest.Position;
-                var arrivalPoint = (Vector3)Call(viewer, "GuestWorld", new Vector3(arrived.X, arrived.Y, arrived.Z), guest.Cell);
-                var corner = park.CellCorner(stub.X, stub.Z);
-                var floorStub = corner + .5f * (park.CellCorner(stub.X + 1, stub.Z) - corner)
-                    + .5f * (park.CellCorner(stub.X, stub.Z + 1) - corner);
-                floorStub.Y = park.CellY(stub.X, stub.Z);
-                var fallbackOrientation = new Placement(); fallbackOrientation.Arm(definition, targetShop, 0, footprint); fallbackOrientation.Turn(placedTurn);
-                var fallbackInward = ((Vector3)Call(viewer, "GuestHeading", new Vector3(-fallbackOrientation.Turned.EntryDX, 0,
-                    -fallbackOrientation.Turned.EntryDY))).Normalized();
-                Check(registered.TryGetValue(ride, out var registration) && registration.Pose.IsEntryStubFallback
-                    && actorsAtStub.TryGetValue(guestId, out var held) && Live(held) && guest.Cell == stub
-                    && held.Position.DistanceTo(arrivalPoint) < .002f && held.Position.DistanceTo(floorStub) < .002f
-                    && held.Basis.Z.DistanceTo(fallbackInward) < .0001f && held.Basis.Y.DistanceTo(Vector3.Up) < .0001f
-                    && Mathf.Abs(held.Basis.Determinant() - 1) < .0001f && standing.ContainsKey(guestId)
-                    && !definition.Fields.ContainsKey("UsageInfo.EntryCellStandPosX")
-                    && !definition.Fields.ContainsKey("UsageInfo.EntryCellStandPosY"),
-                    "ENTRY_STUB_POLICY_PRESERVES_ACTUAL_ARRIVAL_WITHOUT_INVENTING_AUTHORED_COORDINATES");
-            }
-            else
-            {
-                // Literal authored points, independent of the camera's transform calculation and
-                // production StandingServicePose. Height/facing come from actual placement APIs.
-                var pointOracle = world switch
-                {
-                    "HALLOW" => new[] { new Vector2(1.4f,.5f), new Vector2(1.5f,1.4f), new Vector2(.6f,1.5f), new Vector2(.5f,.6f) },
-                    "SPACE" => new[] { new Vector2(.7f,.3f), new Vector2(1.7f,.7f), new Vector2(1.3f,1.7f), new Vector2(.3f,1.3f) },
-                    _ => new[] { new Vector2(.6f,.6f), new Vector2(1.4f,.6f), new Vector2(1.4f,1.4f), new Vector2(.6f,1.4f) },
-                };
-                var placementOracle = new Placement(); placementOracle.Arm(definition, "Ice Cream", 0, footprint); placementOracle.Turn(placedTurn);
-                var entryCell = ride.Origin.Offset(placementOracle.Turned.EntryX, placementOracle.Turned.EntryY);
-                var localPoint = pointOracle[placedTurn];
-                Vector3 expectedPosition = new(grid.Origin.X + ride.Origin.X + localPoint.X,
-                    park.CellY(entryCell.X, entryCell.Z), -(grid.Origin.Y + ride.Origin.Z + localPoint.Y));
-                var floorCorner = park.CellCorner(ride.Origin.X, ride.Origin.Z);
-                var floorX = park.CellCorner(ride.Origin.X + 1, ride.Origin.Z) - floorCorner;
-                var floorZ = park.CellCorner(ride.Origin.X, ride.Origin.Z + 1) - floorCorner;
-                var floorPoint = floorCorner + localPoint.X * floorX + localPoint.Y * floorZ;
-                floorPoint.Y = park.CellY(entryCell.X, entryCell.Z);
-                GD.Print($"SHOP SMOKE FRAME legacyOverlayExpected={expectedPosition} actualFloorExpected={floorPoint} "
-                    + $"legacyFrameDistance={expectedPosition.DistanceTo(floorPoint):F4} floorX={floorX} floorZ={floorZ}");
-                var inward = new Vector3(-placementOracle.Turned.EntryDX, 0, placementOracle.Turned.EntryDY);
-                var actorsAtService = Field<Dictionary<int,Node3D>>(viewer, "_actors");
-                Check(standing.ContainsKey(guestId) && actorsAtService.TryGetValue(guestId, out var serviceActor)
-                    && Live(serviceActor) && serviceActor.Position.DistanceTo(floorPoint) < .002f
-                    && serviceActor.Basis.Z.DistanceTo(inward) < .0001f
-                    && serviceActor.Basis.Y.DistanceTo(Vector3.Up) < .0001f
-                    && Mathf.Abs(serviceActor.Basis.Determinant() - 1) < .0001f,
-                    "LIVE_SERVICE_ACTOR_ALIGNS_WITH_ACTUAL_PARK_FLOOR_AND_INWARD_FACING");
-
-            }
+            var actorsAtService=Field<Dictionary<int,Node3D>>(viewer,"_actors");
+            var inward=((Vector3)Call(viewer,"GuestHeading",new Vector3(-placementOracle.Turned.EntryDX,0,-placementOracle.Turned.EntryDY))).Normalized();
+            Check(standing.ContainsKey(guestId) && actorsAtService.TryGetValue(guestId,out var held)
+                && Live(held) && guest.Cell==entryCell && held.Position.DistanceTo(standWorld)<.002f
+                && held.Basis.Z.DistanceTo(inward)<.0001f && held.Basis.Y.DistanceTo(Vector3.Up)<.0001f,
+                "LIVE_SERVICE_BODY_RETAINS_PHYSICALLY_REACHED_COMPILED_ENTRY");
             for (int tick = 0; tick < 6000 && visitors.Rides == 0; tick++)
             {
                 Tick(); if (tick % 8 == 0) await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
             }
-            sim.SetOpen(ride.Id, false); Present(); // prevent a second visit, only after physical handback
+            sim.SetOpen(ride.Id, false); Present(); // closure must not prevent leaving the occupied terminal
+            var returned=visitors.Walk.Guests.Single(g=>g.Id==guestId);
+            Check(returned.Cell==entryCell && returned.Next==null,"HANDBACK_RETAINS_ENTRY_NO_STUB_TELEPORT");
+            Require(visitors.Walk.Send(returned,start),"explicit departure has a public route through the same doorway");
+            Tick();
+            Check(returned.Next==stub && returned.Progress>0,"DEPARTURE_WALKS_REVERSE_EDGE_AFTER_CLOSURE");
+            for(int i=0;i<11;i++)Tick();
+            await Capture(departureShot);
+            for(int i=0;i<38;i++)Tick();
             var after = visitors.Needs.Of(guestId);
             GD.Print($"SHOP SMOKE AFTER guest={guestId} H={after.Hunger} T={after.Thirst} toilet={after.Toilet} "
                 + $"sick={after.Sick} happy={after.Happiness} cash={after.Cash} litter={after.Litter} pref={after.PreferredIntensity} "

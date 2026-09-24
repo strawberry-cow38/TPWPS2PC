@@ -18,6 +18,9 @@ public sealed class ParkRide
     /// <summary>The door cells, in park coordinates, or null where the shape declares none.</summary>
     public ParkCell? Entrance { get; init; }
     public ParkCell? Exit { get; init; }
+    /// <summary>Inside compiled shop entrance, only for a validated placed footprint.
+    /// Entrance remains the public approach stub; synthetic unplaced fixtures omit this.</summary>
+    public ParkCell? ServiceEntry { get; init; }
 
     /// <summary>The ride's own .sam, and with it everything the game authored about what this
     /// thing does to a visitor. ⚠ NULLABLE and must stay so: the audits build bare rides from a
@@ -215,7 +218,7 @@ public sealed class ParkSim : IRseDirectory
                         byte[] script, Animation animation, int capacity,
                         ParkCell? entrance, ParkCell? exit, out string fault,
                         Func<string, byte[]> sibling = null, int headSlots = 0,
-                        RideDefinition definition = null)
+                        RideDefinition definition = null, int? placementTurns = null)
     {
         fault = null;
         if (script == null || script.Length == 0) { fault = "no script"; return null; }
@@ -254,6 +257,8 @@ public sealed class ParkSim : IRseDirectory
             Entrance = entrance, Exit = exit,
             Machine = machine, Host = host, Variables = declared,
             Definition = definition,
+            ServiceEntry = placementTurns is int turns
+                ? ShopEntrance.Inside(definition?.CompiledEntry,origin,turns,width,height,entrance) : null,
         };
         // ⭐ The opening state the console's own demo uses: a capacity from the ride's .sam, one
         // cycle, and CLOSED until something opens it. A ride that starts open runs to nobody.

@@ -20,6 +20,10 @@ public enum GuestState { Walking, Arrived, NoRoute, Stranded }
 public sealed class Guest
 {
     public int Id { get; init; }
+    // Destination permission and occupied-cell escape permission are separate: a guest may
+    // route from one shop to another, and deletion revokes entry but not physical egress.
+    internal GuestTerminal TargetTerminal { get; set; }
+    internal GuestTerminal OccupiedTerminal { get; set; }
     public ParkCell Cell { get; internal set; }
     public ParkCell? Next { get; internal set; }
     public int Progress { get; internal set; }
@@ -53,9 +57,10 @@ public sealed class Guest
 /// <summary>Guests walking the park's paths: in at the gate, along the public ground, to
 /// somewhere. The engine-free layer under whatever draws them.
 ///
-/// ⚠⚠ THE ROUTING IS OURS, NOT THE CONSOLE'S. The PS2's guest pathfinder has not been read out
-/// of SLES_500.32 -- not how it searches, not what a turn costs, not how fast anybody walks, not
-/// what a guest does when the path is dug out from under it. What IS the game's here is the
+/// The general BFS, equal costs, speed and demolition recovery remain port policy.
+/// The compiled shop entrance's directed destination-only permission is now traced in
+/// SLES_500.32 (findings/native-shop-flow.md); GuestTerminal adapts that specific boundary.
+/// This is not a reconstruction of the entire native pathfinder. Other decoded input is the
 /// GROUND: <see cref="ParkPaths.Open"/> is the kind-2 path tile plus the 0x0C/0x0E entrance
 /// walkway, both read from the executable (findings/paths.md), so a guest stands only where the
 /// console would let one stand. On that ground this class runs a plain breadth-first search over
@@ -149,11 +154,37 @@ public sealed class GuestWalk
     public bool Send(Guest g, ParkCell to)
     {
         if (g.Next != null) return false;
+        g.TargetTerminal = null;
         g.Destination = to; g.Progress = 0; g.Reason = null;
         if (g.Cell == to) { g.State = GuestState.Arrived; return true; }
         if (!Assign(g)) { g.State = GuestState.NoRoute; g.Reason = $"no route from {g.Cell} to {to}"; return false; }
         g.State = GuestState.Walking;
         return true;
+    }
+
+    /// <summary>Route through public ground and the named approach, then exactly one
+    /// entrance edge. Failure leaves the existing walk and permissions untouched.</summary>
+    public bool SendToTerminal(Guest g, GuestTerminal terminal)
+    {
+        if (g == null || !_guests.Contains(g) || g.Next != null || terminal == null || !terminal.CanEnter) return false;
+        var route = RouteFor(g.Cell, terminal.Entry, g.OccupiedTerminal, terminal);
+        if (route == null) return false;
+        g.TargetTerminal=terminal; g.Destination=terminal.Entry;
+        g.Route=route; g.RouteIndex=0; g.Progress=0; g.Reason=null;
+        g.State=g.Cell==g.Destination ? GuestState.Arrived : GuestState.Walking;
+        return true;
+    }
+
+    /// <summary>Return the same serviced identity at the entry it actually reached, even
+    /// after demolition. No arbitrary building spawn: caller must retain that visit's token.</summary>
+    public Guest ReadmitTerminal(int id, GuestTerminal terminal)
+    {
+        if (terminal == null || !Paths.Contains(terminal.Entry) || _guests.Any(g=>g.Id==id))
+            throw new ArgumentException("Invalid terminal readmission or duplicate identity");
+        var guest=new Guest { Id=id, Cell=terminal.Entry, Destination=terminal.Entry,
+            State=GuestState.Arrived, OccupiedTerminal=terminal };
+        _guests.Add(guest);
+        return guest;
     }
 
     /// <summary>The shortest walk over open ground from one cell to another, both included; null
@@ -172,9 +203,17 @@ public sealed class GuestWalk
     /// never THROUGH one (the rule VisitorSimulation already walks Ada by). Those two exemptions
     /// are the only differences from ParkPaths' search -- the neighbour order and the open test
     /// are its own.</summary>
-    public IReadOnlyList<ParkCell> Route(ParkCell from, ParkCell to)
+    public IReadOnlyList<ParkCell> Route(ParkCell from, ParkCell to) => RouteFor(from,to,null,null);
+
+    IReadOnlyList<ParkCell> RouteFor(ParkCell from, ParkCell to, GuestTerminal occupied, GuestTerminal target)
     {
-        if (!Paths.Contains(from) || !Paths.Walkable(to)) return null;
+        if (!Paths.Contains(from) || !Paths.Contains(to)) return null;
+        // A replacement at identical coordinates cannot inherit an occupied old doorway.
+        // The person must physically leave it before accepting a different owner's visit.
+        if (occupied != null && from==occupied.Entry && target != null && to==from
+            && !ReferenceEquals(occupied.Owner,target.Owner)) return null;
+        bool terminalEnd=target != null && to==target.Entry && target.CanEnter;
+        if (!terminalEnd && !Paths.Walkable(to) && !(occupied != null && from==to && to==occupied.Entry)) return null;
         var previous = new Dictionary<ParkCell, ParkCell> { [from] = from };
         var pending = new Queue<ParkCell>(); pending.Enqueue(from);
         while (pending.TryDequeue(out var c))
@@ -186,9 +225,21 @@ public sealed class GuestWalk
                 result.Reverse(); return result.AsReadOnly();
             }
             foreach (var next in ParkPaths.Neighbours(c))
-                if ((Paths.Open(next) || next == to) && previous.TryAdd(next, c)) pending.Enqueue(next);
+                if (Edge(c,next,to,occupied,target) && previous.TryAdd(next,c)) pending.Enqueue(next);
         }
         return null;
+    }
+
+    bool Edge(ParkCell from, ParkCell to, ParkCell destination, GuestTerminal occupied, GuestTerminal target)
+    {
+        if (!Paths.Contains(to)) return false;
+        if (occupied != null && from==occupied.Entry)
+            return to==occupied.Approach && Paths.Walkable(to);
+        if (target != null && to==target.Entry)
+            return to==destination && from==target.Approach && target.CanEnter && Paths.Walkable(from);
+        if (occupied != null && to==occupied.Entry) return false; // never transit a private cell
+        if (target != null && to==target.Approach && target.CanEnter) return Paths.Walkable(to);
+        return Paths.Open(to) || (to==destination && Paths.Walkable(to));
     }
 
     /// <summary>Advance by a real delta, in whole ticks, keeping the remainder -- the same carry
@@ -224,6 +275,10 @@ public sealed class GuestWalk
                 if (g.Progress < UnitsPerCell) continue;
                 // ⭐ A whole cell: land on it, and carry the rest of the tick into the next edge.
                 g.Cell = g.Next.Value; g.Next = null; g.Progress = 0; g.RouteIndex++; g.Steps++;
+                if (g.OccupiedTerminal != null && g.Cell==g.OccupiedTerminal.Approach)
+                    g.OccupiedTerminal=null;
+                if (g.TargetTerminal != null && g.Cell==g.TargetTerminal.Entry)
+                    g.OccupiedTerminal=g.TargetTerminal;
                 if (g.Cell == g.Destination) g.State = GuestState.Arrived;
             }
         }
@@ -256,14 +311,14 @@ public sealed class GuestWalk
     /// <summary>May this guest step onto this cell: open ground, or its own destination if that
     /// is merely walkable -- the queue-tile exemption Route makes, applied at the moment of the
     /// step so a stub is not read as "the way ahead has gone".</summary>
-    bool Standable(Guest g, ParkCell c) => Paths.Open(c) || (c == g.Destination && Paths.Walkable(c));
+    bool Standable(Guest g, ParkCell c) => Edge(g.Cell,c,g.Destination,g.OccupiedTerminal,g.TargetTerminal);
 
     /// <summary>A fresh route from where the guest stands. ⚠ On failure the OLD route is left in
     /// place: a stranded guest's record says what it was walking when the way went, which is what
     /// a census wants to print.</summary>
     bool Assign(Guest g)
     {
-        var route = Route(g.Cell, g.Destination);
+        var route = RouteFor(g.Cell, g.Destination, g.OccupiedTerminal, g.TargetTerminal);
         if (route == null) return false;
         g.Route = route; g.RouteIndex = 0;
         return true;

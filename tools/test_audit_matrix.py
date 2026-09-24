@@ -3,7 +3,9 @@ import unittest
 
 from audit_matrix import EXPECTED, classify
 
-COVERAGE = '\n'.join(['  ok   decision scheduling: check'] * 20 +
+COVERAGE = '\n'.join(['  ok   terminal walking: check'] * 86 +
+                     ['  ok   terminal walking: cash1234 coordinator cannot board from the stub', '  ok   terminal walking: cash299 real handback retains inside position after success or refusal', '  ok   terminal walking: remove50 actual same-ID replacement cannot inherit an inside guest', '  ok   terminal walking: turn3 real approach leg has interpolated walking progress'] +
+                     ['  ok   decision scheduling: check'] * 20 +
                      ['  ok   decision scheduling: cash299 park deadline survives eightfold appetite rate change'] +
                      ['  ok   decision scheduling: strict boundary rejects stored300 plus extra60 equality', '  ok   decision scheduling: cash1234 zero-time calls cannot reboard the same shop', '  ok   decision scheduling: cash299 zero-time calls cannot reboard the same shop', '  ok   decision scheduling: cash299 eligible later decision can revisit instead of a permanent blacklist'] +
                      ['  ok   compiled purchase: check'] * 59 +
@@ -44,6 +46,13 @@ def known(world):
 
 
 class ClassificationTests(unittest.TestCase):
+    def test_terminal_walking_count_and_physical_witnesses_required(self):
+        for text in ('\n'.join(x for x in COVERAGE.splitlines() if 'terminal walking:' not in x),
+                     COVERAGE.replace('  ok   terminal walking: check\n', '', 1),
+                     COVERAGE.replace('cash1234 coordinator cannot board from the stub', 'unrelated check'),
+                     COVERAGE.replace('remove50 actual same-ID replacement cannot inherit an inside guest', 'unrelated check')):
+            self.assertEqual(classify('JUNGLE', 0, text + '\nPASS')['status'], 'missing_coverage')
+
     def test_decision_schedule_coverage_and_witnesses_required(self):
         for text in ('\n'.join(x for x in COVERAGE.splitlines() if 'decision scheduling:' not in x),
                      COVERAGE.replace('  ok   decision scheduling: check\n', '', 1),

@@ -218,3 +218,41 @@ landed gate instead uses ParkSim.Time/TickMilliseconds only; appetite-rate test 
 and attaching/replacing a needs component cannot switch the deadline's source. Both real
 purchase fixtures now change appetite to eightfold speed during the waiting interval and
 still require the same park-tick deadline. The native unsigned comparison is unchanged.
+
+## Port integration: compiled shop entrance walking
+
+Placed shops now retain the identity-joined DBA entry as well as its effect block.
+ShopEntrance rotates connection A into the placement frame, validates dimensions and
+checks that its directed outside neighbour is the actual placement stub. A mismatch
+is reported by the Viewer, not repaired with a guessed coordinate. Only placed shops
+with this validated compiled geometry opt into the new terminal route; bare synthetic
+RSE fixtures and uncompiled definitions retain their explicitly older adapter.
+
+GuestWalk routes to that directed terminal through public ground, keeping the customer
+on its normal interpolated walk and walk animation until inside-cell arrival. The
+coordinator cannot board from the stub. Outside-service rendering holds the physically
+reached cell centre rather than substituting a SAM stand fraction. Thus the previous
+six coordinate-less shop stub fallback is superseded for validated compiled shops;
+missing SAM fractions no longer decide their endpoint. Relief-facility placement is
+not silently changed: the traced consumer here is SHOP/kind4, not every facility kind.
+
+Completion (including refusal) readmits at the same inside cell. Later movement leaves
+via its approach edge. Closure/deletion revokes entry, not the occupied guest's escape
+route. Committed edges finish continuously; removal before entry, mid-edge and queued
+retains identity/needs without granting a service. Same-ID replacements do not inherit
+the old occupied doorway. These lifetime/escape tokens are conservative port policy;
+the native route arm establishes directed terminal permission, not these C# tokens.
+
+Remaining boundaries: public BFS/equal costs, one-cell/second speed, RSE service timing,
+queue capacity choreography, and post-delay destination scoring are still port adapters.
+Do not call the walking patch a complete recreation of native guest AI. In particular,
+matching the inside endpoint does not prove native stride, gait/state mapping or duration.
+
+Validation: 90 terminal checks/world, including literal four-rotation geometry, actual
+compiled shop success/refusal, entry/exit movement, directional and wrong-owner controls,
+and real coordinator demolition at three lifecycle phases. Deliberate stub-routing,
+missing-terminal-permission, handback-teleport and owner-inheritance mutations fail.
+Normal-startup rendered shop runs use actual menu placement, sampled walk-record/leg-mesh
+motion, actor-to-floor positions and retained identity. The smoke emits before/approach/
+service/departure/after frames; departure is an explicit fixture command, not a claim that
+native completion immediately orders a walk out. Visual review is a separate gate.

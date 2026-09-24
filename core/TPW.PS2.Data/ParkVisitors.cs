@@ -5,7 +5,7 @@ public enum VisitorIntent
 {
     /// <summary>Going nowhere in particular, along the paths.</summary>
     Wandering,
-    /// <summary>Walking to a ride's queue stub.</summary>
+    /// <summary>Walking to a ride stub or a compiled shop's inside entrance.</summary>
     Heading,
     /// <summary>Standing at the stub, handed to the ride. ⚠ NOT ON THE PATH GRID any more --
     /// the ride's own script owns them from here, through WALKON.</summary>
@@ -31,7 +31,8 @@ public enum VisitorIntent
 ///
 /// Selection still uses the port's needs-first/random policy, not the native weighted
 /// scorer. The post-completion destination gate now follows the traced counter expressions;
-/// other native states and the shop's inside-entry walking path are separate integration work.
+/// other native AI states remain separate integration work. Compiled placed shops now walk
+/// into the inside entrance and preserve that position across service.
 /// In particular, native shops use common guest walking/service states, not an RSE WALKON
 /// handshake merely because this managed adapter currently connects them through scripts.
 /// See findings/native-shop-flow.md for proven consumer paths and remaining boundaries.</summary>
@@ -54,6 +55,7 @@ public sealed class ParkVisitors
     /// ParkEntrance silently changed its equality and cost two worlds their entrance.</summary>
     sealed record ReturnToPark(ParkCell[] Preferred, bool CompletedRide, ParkRide Ride);
     readonly Dictionary<int, ReturnToPark> _returning = new();
+    readonly Dictionary<int, GuestTerminal> _serviceTerminals = new();
     public IReadOnlyDictionary<int, Plan> Plans => _plans;
 
     /// <summary>How many guests have finished a ride and walked away from it. The honest measure
@@ -208,7 +210,12 @@ public sealed class ParkVisitors
     public bool SendTo(Guest guest, ParkRide ride)
     {
         if (guest == null || !Walk.Guests.Contains(guest) || !Takes(ride) || !Sim.Rides.Contains(ride)) return false;
-        if (!Walk.Send(guest, ride.Entrance.Value)) return false;
+        if (ride.ServiceEntry is ParkCell entry)
+        {
+            var terminal=new GuestTerminal(ride,ride.Entrance.Value,entry,()=>Sim.Rides.Contains(ride) && Takes(ride));
+            if (!Walk.SendToTerminal(guest,terminal)) return false;
+        }
+        else if (!Walk.Send(guest, ride.Entrance.Value)) return false;
         _plans[guest.Id] = new Plan(guest.Id, VisitorIntent.Heading, ride.Id, guest.Cell);
         _owners[guest.Id] = ride;
         _returning.Remove(guest.Id);
@@ -432,6 +439,11 @@ public sealed class ParkVisitors
         foreach (var (guest, returning) in _returning.ToArray())
         {
             var walking = Walk.Guests.FirstOrDefault(g => g.Id == guest);
+            if (walking == null && _serviceTerminals.TryGetValue(guest,out var terminal))
+            {
+                walking=Walk.ReadmitTerminal(guest,terminal);
+                _serviceTerminals.Remove(guest);
+            }
             if (walking == null)
             {
                 ParkCell? at = returning.Preferred.Where(c => Walk.Paths.Contains(c) && Walk.Paths.Walkable(c))
@@ -480,6 +492,7 @@ public sealed class ParkVisitors
         _owners.Remove(guest);
         _returning.Remove(guest);
         _decisions.Forget(guest);
+        _serviceTerminals.Remove(guest);
         WentHome++;
     }
 
@@ -499,7 +512,9 @@ public sealed class ParkVisitors
             // wherever they happened to be standing. Caught by the agent wiring this into the
             // viewer, where it would have looked like teleporting into a queue.
             var ride = RideOf(plan);
-            if (ride != null && g.Cell != ride.Entrance) continue;
+            if (ride != null && g.Cell != (ride.ServiceEntry ?? ride.Entrance)) continue;
+            if (ride?.ServiceEntry != null && (g.Next != null || g.Progress != 0
+                || !ReferenceEquals(g.OccupiedTerminal?.Owner,ride))) continue;
             // ⚠ THE RIDE MAY HAVE GONE, or closed, or broken, while they walked. Then this is not
             // a queue any more and they are just somebody standing in a park.
             if (ride == null || !Takes(ride))
@@ -508,6 +523,7 @@ public sealed class ParkVisitors
                 continue;
             }
             ride.Join(g.Id);
+            if (g.OccupiedTerminal is { } terminal) _serviceTerminals[g.Id]=terminal;
             Boardings++;
             _plans[g.Id] = plan with { Intent = VisitorIntent.Queued, At = g.Cell };
             Walk.Remove(g.Id);

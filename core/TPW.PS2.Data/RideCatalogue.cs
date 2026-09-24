@@ -131,6 +131,8 @@ public sealed class RideDefinition
     /// ⭐ Set by whoever HAS the DBA (see <see cref="CompiledAssets"/>); parsing text alone can
     /// never fill it, which is why it is a property rather than a parse result.</summary>
     public AssetResourceDatabase.ShopSettings Compiled { get; set; }
+    /// <summary>The same identity-joined payload, retained for compiled entrance geometry.</summary>
+    public AssetResourceDatabase.Entry CompiledEntry { get; set; }
 
     /// ⭐⭐ COMPILED FIRST, AUTHORED SECOND. Where a compiled record is attached its numbers win,
     /// because they are the ones the console loads -- the balloon shop authors 15 happiness in

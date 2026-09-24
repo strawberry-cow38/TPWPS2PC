@@ -76,7 +76,8 @@ public sealed class CompiledAssets
         {
             var (world, path) = Split(d.Source);
             if (path == null) { missed.Add(d.Source); continue; }
-            if (For(world, path)?.Shop is { } shop) { d.Compiled = shop; attached++; }
+            var entry = For(world, path);
+            if (entry?.Shop is { } shop) { d.Compiled = shop; d.CompiledEntry = entry; attached++; }
             else missed.Add(d.Source);
         }
         // ⚠ "0 joined, 0 missed" is exactly what an EMPTY input looks like and it reads as

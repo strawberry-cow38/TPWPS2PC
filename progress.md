@@ -1410,3 +1410,27 @@ retained, not split/replaced for test convenience. Movement candidate is tempora
 stash 'compiled terminal movement candidate pending timing clock review'; restore after timing
 landing. It is NOT discarded or shipped: real approach/egress tests pass, rendered JUNGLE smoke
 passes, but review/mutations/otherworldrendered checks remain before movement landing.
+
+Timing LANDED mainc0ee884 with peer moneyUIce87955 preserved. Final integrated4world matrix
+/tmp/tpw-decision-money-merged-20260924 and8runtime /tmp/tpw-decision-money-runtime-20260924
+pass except exacttwoexpectedretailreds. No arbitrary permanent shop blacklist added.
+
+Movement candidate restored from stash and now wired end-to-end (not yet main): compiled
+DBA entry geometry, GuestTerminal directed permission, actual GuestWalk final edge, held
+inside-position during service, same-position handback, physical reverse egress. Source
+permission only for matching live owner; demolition retains escape, same-ID replacement
+cannot inherit. 90checks/world in /tmp/tpw-terminal-final-matrix-20260924; all expected outcomes.
+Four core mutations fail: stub consumer8, permission45, handback teleport4, replacement1
+(these counts predate15extra demolition assertions). Runtime8pass at
+/tmp/tpw-terminal-runtime-v2-20260924; Python59pass. An earlier runtime attempt failed build
+(missing Aps alias in a new smoke assertion), recorded, fixed; NOT a passing runtime run.
+
+Rendered normalstartup earlier8runs pass acrossJUNGLE4rotations/HALLOW/SPACE/FANTASY/Coconut
+in /tmp/tpw-terminal-smoke-20260924. New five-frame smoke also verifies actual walk record AND
+changing leg vertices while moving through the last edge, not merely translating a bind pose.
+JUNGLE pass in ../tpw-terminal-fiveframe-jungle-v2.log, images
+/tmp/tpw-terminal-final-captures/jungle-v2*.png. Initial added animation assertion wrongly used
+LastWorld (hierarchy track diagnostic absent for this skeletal path); it failed24times. Read
+sampler, replaced with actual Record + mesh motion checks, no renderer workaround. Failed
+captures preserved. Need peer review, remaining rendered controls/mutations, then land movement
+only after fresh merge/tests. Tests/code shared by pushed branch, images may be attached.
