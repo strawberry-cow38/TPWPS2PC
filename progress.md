@@ -2108,3 +2108,23 @@ incomingguests. Parentverified1532D8ignoresselectorargumentandusespointtable+2/+
 withrandomxadd0..255 AFTERheightsample. Donotinherit"group1meansdeparture".
 Fullworkertracehasmoreentryfee/pathrequest/acceptance lifecycle details towriteup
 wheninterpolationlands; re-readpositiveaddresses ratherthan guessing groupcounts.
+
+## Bus smoothing landing evidence — September24 18:06 UTC
+
+Mergedwithcow05480ec; ALL11runtimePASS `/tmp/tpw-bus-present-runtime`, fourworld
+matrix J/Fpass +ONLYknownH/Sreds `/tmp/tpw-bus-present-matrix`. ActualmergedViewer
+presentation57PASSclean `/tmp/tpw-bus-present-merged.log`; realadmission/reload2039
+PASSclean `/tmp/tpw-bus-present-arrivals.log`, firstbatchunchanged405ticks/16200ms.
+63PythonPASS `/tmp/tpw-bus-present-python-final.log`; initialself-testfailurewas
+thenegativewitnessstillreplacingold968countafterpositivefixturebecame1088, corrected.
+No productionmutationleft. Isolatedread-onlyreviewfoundnoblockingtransition/clock/
+callback/audioorderingdefects; cowwasaskedbutbusywithuser'scoconutUVcorrection.
+
+ThislandsONLYrequestedbuspresentationenhancement; entrancecounterbehaviorunchanged.
+Resumeentry/departuretraceaftercheckinguserplaytest/prioritymessages. Usecritical
+mode16correctionabove; nativeentryworkertracealsoidentifiedstate24->210AB0 route
+requestmode15, coordinator14BCC0 event9 state2E->2F, mode16choosescountedgroup, state25
+210C98 fee/acceptanceAFTERheadrelease. Cashmustbestrictlygreaterthan100D20(F+0);
+210B38acceptanceclass mustbe>-2; charge100D28 onlyonacceptance, notroute-retries.
+Detailedvalueproducer/pathslot/cancellationsemanticsstillneedconsumerwork; doNOT
+replacecurrentbypasswithguessedqueuecounts. Noeditsincowtexture/bubblelane.

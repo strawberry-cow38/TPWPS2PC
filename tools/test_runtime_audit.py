@@ -124,7 +124,7 @@ class Classification(unittest.TestCase):
 
     def test_native_bus_requires_every_variant(self):
         good = witness('bus')
-        for bad in (good.replace('FANTASY/bus2','FANTASY/bus1'), good.replace('968 checks','0 checks')):
+        for bad in (good.replace('FANTASY/bus2','FANTASY/bus1'), good.replace('1088 checks','0 checks')):
             self.assertEqual(audit.classify('bus',output(bad))['status'],'missing_coverage')
 
     def test_modelpath_requires_every_bus_record(self):
