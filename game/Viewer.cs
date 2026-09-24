@@ -249,8 +249,12 @@ public partial class Viewer : Node3D
     /// it and said "-2.0 on jungle". The others are **not zero by decision**, they are zero
     /// because nobody has looked yet, and a single number copied across four worlds is exactly
     /// the kind of guess this port keeps having to undo. They stay 0 until someone looks at them.</summary>
-    static float GateNudgeFor(string world) =>
-        string.Equals(world, "JUNGLE", StringComparison.OrdinalIgnoreCase) ? -2.0f : 0f;
+    /// <summary>The gate's z correction. ⚠⚠ NOT PER WORLD EITHER: master tested all four and it
+    /// is **-2.0 in every park**, exactly as the flags' -12.95 was. ⭐ Two independent by-eye
+    /// corrections, each constant across four parks with different terrain and different authored
+    /// offsets, are two SYSTEMATIC errors in how this port places entrance furniture -- not eight
+    /// tuning values. Named so they read as the defects they are; neither is actually fixed.</summary>
+    public const float GateZError = -2.0f;
 
     /// <summary>The flag offset along z. ⚠⚠ NOT PER WORLD, AND THAT IS THE FINDING: I wrote
     /// this as a per-world tune and predicted "-12.95 will not survive the other three worlds".
@@ -5240,6 +5244,14 @@ public partial class Viewer : Node3D
         // it is the same gesture as selecting a ride.
         if (_hovered < 0 && PointingAtGate())
         {
+            // ⚠⚠ ONE SELECTION AT A TIME. Master: "make sure gate selection boxes and other
+            // selection boxes cant exist at the same time." `_gateSelected` and `_selected` were
+            // independent, so selecting a ride and then the gate left BOTH boxes drawn -- two
+            // answers to "what is selected", which is the same mistake the tool/blueprint rule
+            // already exists to prevent.
+            _selected = -1;
+            _shownBox = -1;
+            ShowBoxFor(-1);
             _gateSelected = true;
             UpdateGateBox(false);
             // ⭐ AND IT FOCUSES, like a ride does. Master: "give gate the click-to-focus and move
@@ -5250,7 +5262,8 @@ public partial class Viewer : Node3D
             Status("gate selected -- move away or right click to clear");
             return true;
         }
-        _gateSelected = false;
+        // ⭐ And taking a ride drops the gate, the other half of the same rule.
+        if (_gateSelected) { _gateSelected = false; UpdateGateBox(false); }
         if (_hovered < 0) { ClearSelection(); return false; }
         _selected = _hovered;
         var sel = _park.Placed[_selected];
@@ -5588,7 +5601,7 @@ public partial class Viewer : Node3D
         if (!string.Equals(world, _gateNudgeWorld, StringComparison.OrdinalIgnoreCase))
         {
             _gateNudgeWorld = world;
-            _gateNudge = GateNudgeFor(world);
+            _gateNudge = GateZError;
         }
         _gate?.Root.QueueFree();
         _gate = null;

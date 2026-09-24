@@ -76,7 +76,11 @@ public sealed class ThoughtBubbles
     /// white that hair cannot satisfy. An instrument that flatters the before-picture understates
     /// the very problem it is there to find.</summary>
     public float Height { get; set; } = 0.80f;
-    public float Size { get; set; } = 0.0088f;
+    /// ⭐ Master asked for bigger after seeing one in play: 0.0088 measured 34 px of cloud in the
+    /// inspection close-up, so 0.0140 puts it near 54 -- a little over half again. ⚠ A STEP, not
+    /// a settled value: they said "bigger" without a number, so this is a legible increment they
+    /// can push further rather than my guess at where they want to stop.
+    public float Size { get; set; } = 0.0140f;
 
     readonly Dictionary<Thought, ImageTexture> _art = new();
     readonly Dictionary<int, Sprite3D> _live = new();
@@ -142,6 +146,19 @@ public sealed class ThoughtBubbles
                 NoDepthTest = true,
                 TextureFilter = BaseMaterial3D.TextureFilterEnum.Linear,
                 RenderPriority = 2,
+                // ⭐⭐ MIRRORED. Master, looking at one: "the needs bubbles need to be bigger and
+                // mirrored horizontally." The cloud's tail and the asymmetric glyphs -- the WC
+                // sign's two figures, the litter, the arrow-ish ones -- come out the wrong way
+                // round without this.
+                //
+                // ⚠ AND THE CAUSE MAY NOT BE THE BUBBLE. These are the first ASYMMETRIC `.ssh`
+                // art this port has looked at closely: a texture of grass or wood is mirrored
+                // just as wrongly and nobody can tell. So flipping here fixes what master sees
+                // and does NOT establish that the decoder is right for everything else -- if the
+                // flip is in `Ssh`, every sign, face and logo on the disc is reversed too and
+                // this line is papering over it. Worth one asymmetric non-bubble texture to find
+                // out; not done.
+                FlipH = true,
             };
             Root.AddChild(sprite);
             _live[guest] = sprite;
