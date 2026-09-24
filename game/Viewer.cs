@@ -6957,6 +6957,15 @@ public partial class Viewer : Node3D
         // being loaded inside the block that first creates the visitor coordinator, which does
         // not run until the gate opens.
         if (_hudFont == null && _lib != null && _mode == Mode.Park) LoadHudFont();
+        // ⭐⭐ THE PARK HAS MONEY BEFORE IT HAS A SHOP. Master: "the 30k doesn't 'apply' until u
+        // place a shop. ur probably not initializing the money system until we get a shop." They
+        // were right: `_sim` is created lazily by `StartScript`, so until something was placed
+        // there was no `ParkFinances` at all and the readout fell back to its own $0.
+        //
+        // ⚠ Created here rather than moving `StartScript`'s line, because the sim is what OWNS
+        // the finances and it is cheap and empty until a ride joins it -- `WalkGrid` is already
+        // memoised and shares the terrain's own cell array, so this allocates nothing new.
+        if (_sim == null && _mode == Mode.Park && WalkGrid() is { } grid) _sim = new ParkSim(grid);
         var bank = _sim?.Finances;
         _money.Visible = _moneyShadow.Visible = _hudFont != null && _mode == Mode.Park;
         if (_hudFont == null) return;
@@ -6965,11 +6974,13 @@ public partial class Viewer : Node3D
         // minus would hide an overdraft.
         // ⭐ `Money.Format` is `FUN_00142908`/`FUN_00142B68`: the sign, then '$', then the digits
         // with commas every three -- and the /10 the finance screen applies to every figure.
-        string want = Money.Format(bank?.Balance ?? 0);
+        // ⚠ The fallback is the OPENING balance, not zero: a park whose sim has not been built
+        // yet has not spent anything, and showing $0 made a full park look bankrupt.
+        string want = Money.Format(bank?.Balance ?? ParkFinances.OpeningBalance);
         if (want != _moneyShown) { _moneyShown = want; _money.Texture = _moneyShadow.Texture = _hudFont.Render(want); }
         // ⭐ The console's own test is on the DIVIDED figure, and it is `< 1` -- not `< 0`, so a
         // park holding less than one unit is already showing the warning colour.
-        _money.Modulate = bank == null || bank.Balance / 10 < 1 ? MoneyBroke : MoneyNormal;
+        _money.Modulate = (bank?.Balance ?? ParkFinances.OpeningBalance) / 10 < 1 ? MoneyBroke : MoneyNormal;
         // ⭐ As FRACTIONS of the console's frame, multiplied out by this viewport: the same
         // place and the same share of the screen at any window size.
         var view = GetViewport().GetVisibleRect().Size;
