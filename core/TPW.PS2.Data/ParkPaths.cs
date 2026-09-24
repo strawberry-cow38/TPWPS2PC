@@ -191,7 +191,10 @@ public sealed class ParkPaths
     /// letting anyone walk it would make every queue a shortcut.</summary>
     public bool Open(ParkCell c) => Contains(c) && (IsEntrance(c) || Kind(c) == ParkPathKind.Path);
     public bool SceneryBlocks(ParkCell c) => _scenery.Contains(c);
-    public bool CanBuild(ParkCell c) => Contains(c) && Field.Buildable(c.X, c.Z)
+    // ⚠ `!IsBridge` -- master: the bridge "should be unbuildable". Its cells carry byte0 bit 0
+    // CLEAR, so the terrain's own no-build bit says they are fair game; the refusal is the
+    // bridge's, not the ground's.
+    public bool CanBuild(ParkCell c) => Contains(c) && Field.Buildable(c.X, c.Z) && !IsBridge(c)
                                      && !_occupied.Contains(c) && !_scenery.Contains(c) && !_gateHold.Contains(c);
     /// <summary>Does this triangle cover the cell at (x,z)? ⚠ PUBLIC so an audit can build the same
     /// coverage the constructor does instead of a looser one -- a control that rasterises by
@@ -213,6 +216,24 @@ public sealed class ParkPaths
         }
         return true;
     }
+    /// <summary>⭐⭐ THE BRIDGE DECK. Master: "theres a bridge on the jungle 1 map. it should
+    /// count as path tiles, be unbuildable, and have paths connect to it."
+    ///
+    /// ⚠⚠ DELIBERATELY NOT PART OF <see cref="Classify"/>. That function feeds the sprite tables,
+    /// and `PathTool` refuses to start unless it yields **exactly sixteen path and four queue**
+    /// materials -- so classifying the bridge as path would take the count to seventeen and
+    /// disable the path tool outright. The bridge is a separate fact about a cell: walkable and
+    /// linkable like path, but not a path SPRITE and never laid or drawn as one.
+    ///
+    /// ⭐ Searched all eight parks: the only bridge on the disc is JUNGLE park 1's, four cells at
+    /// x 32..35 z 65, material `jbr_log1` -- a log deck -- beside a terrain mesh named `BRIDGE`.
+    /// `jbr_tnk1` and `jbr_rai1` are in that world's material table and painted on no cell; they
+    /// are the tank and the RAILING, which is why this matches the deck and not the prefix. A new
+    /// world's bridge would need its deck material adding here rather than inheriting a guess.</summary>
+    public static bool IsBridgeDeck(string material)
+        => Regex.IsMatch(Path.GetFileNameWithoutExtension(material ?? ""), @"^[a-z]br_log\d+$",
+                         RegexOptions.IgnoreCase);
+
     public static ParkPathKind Classify(string material)
     {
         var m = Regex.Match(Path.GetFileNameWithoutExtension(material),
@@ -240,11 +261,21 @@ public sealed class ParkPaths
     ///
     /// The projection stays where it belongs, in <see cref="CanBuild"/>, which is what decides
     /// whether something NEW may go down.</summary>
+    /// <summary>Whether this cell is the park's own bridge -- authored, not built.</summary>
+    public bool IsBridge(ParkCell c)
+        => Contains(c) && IsBridgeDeck(Materials.Count > Field.Material(c.X, c.Z)
+                                      ? Materials[Field.Material(c.X, c.Z)] : null);
+
     public ParkPathKind Kind(ParkCell c)
     {
         if (!Contains(c)) return ParkPathKind.None;
         int material = Field.Material(c.X, c.Z);
-        return material == 0 || material >= Materials.Count ? ParkPathKind.None : Classify(Materials[material]);
+        if (material == 0 || material >= Materials.Count) return ParkPathKind.None;
+        // ⭐ The bridge reads as PATH here even though it is not a path sprite: it is ground a
+        // guest may stand on and a network a laid path joins. See IsBridgeDeck for why it does
+        // not go through Classify.
+        if (IsBridgeDeck(Materials[material])) return ParkPathKind.Path;
+        return Classify(Materials[material]);
     }
     /// <summary>Anything a visitor can legitimately be standing on: public ground or a queue.</summary>
     public bool Walkable(ParkCell c) => IsEntrance(c) || Kind(c) != ParkPathKind.None;
