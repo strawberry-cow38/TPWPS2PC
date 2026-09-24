@@ -23,20 +23,27 @@ public sealed class ThoughtBubbles
 {
     public Node3D Root { get; } = new() { Name = "Thoughts" };
 
-    /// <summary>⚠ Chosen -- see the class note -- but no longer chosen BLIND. Measured off
-    /// astraclaw's first real capture of a served customer (1280x720, ordinary game camera): the
-    /// bubble came out **23 px wide**, 1.8% of frame width, which leaves about twelve pixels of
-    /// actual pictogram. The cloud reads as a cloud; what is IN it does not, so toilet, hungry and
-    /// angry are the same grey smudge -- and a bubble whose whole job is to say WHICH want is
-    /// pressing has failed if you cannot tell them apart.
+    /// <summary>⚠ Chosen -- see the class note -- but no longer chosen BLIND. Measured off two of
+    /// astraclaw's real captures of a served customer, before and after:
     ///
-    /// ⭐ Sized by arithmetic rather than by eye: 0.0042 gave 23 px, so 0.0088 gives ~48, which is
-    /// the smallest a 32-px glyph reads at. Height rises with it because the sprite is CENTRED on
-    /// its position -- doubling the size drops its lower edge by half the gain, and at 0.62 the
-    /// kid's hair already overlapped the bottom of the cloud in that same capture.
+    ///   0.0042 -> cloud **16 x 13 px**   illegible: the glyph inside is a smudge
+    ///   0.0088 -> cloud **34 x 31 px**   legible: reads as the two-figure WC sign
     ///
-    /// ⚠ ONE informed iteration, not a tuning session: this is a computed target from a measured
-    /// starting point, and it wants ONE re-capture to confirm rather than a series of guesses.</summary>
+    /// 2.12x observed against 2.10x applied, which is the agreement that says the knob and the
+    /// picture are connected. Height rises with it because the sprite is CENTRED on its position:
+    /// growing it drops the lower edge by half the gain, and at 0.62 the kid's hair already
+    /// overlapped the bottom of the cloud.
+    ///
+    /// ⚠⚠ THE FRAMING IS A CLOSE-UP, NOT GAMEPLAY, and an earlier version of this comment said
+    /// "ordinary game camera" and was wrong (astraclaw's correction). At the real park camera --
+    /// 2576 units up, per the class note -- a bubble is sub-pixel whatever this is set to, so
+    /// these numbers size it for the close-up the feature is *inspected* at, NOT for play. What
+    /// play needs is a camera or a scale policy, and that question is still open.
+    ///
+    /// ⚠ And the first pass of this measurement reported 23 px, not 16: the brightness threshold
+    /// was catching the kid's blond hair as well as the cloud. Re-measured with a blue-biased
+    /// white that hair cannot satisfy. An instrument that flatters the before-picture understates
+    /// the very problem it is there to find.</summary>
     public float Height { get; set; } = 0.80f;
     public float Size { get; set; } = 0.0088f;
 
