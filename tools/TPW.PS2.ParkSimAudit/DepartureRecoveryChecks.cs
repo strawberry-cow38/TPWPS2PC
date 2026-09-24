@@ -23,7 +23,7 @@ static class DepartureRecoveryChecks
         foreach (string key in visitors.Needs.Rates.Keys.ToArray()) visitors.Needs.Rates[key] = new VisitorNeeds.Rate(0,0,false);
         var guest = visitors.Arrive(start, start);
         var want = visitors.Needs.Of(guest.Id); want.Cash = 0; want.Happiness = 80;
-        want.Hunger = want.Thirst = want.Toilet = want.Sick = want.Unknown7B = 0;
+        want.Hunger = want.Thirst = want.Toilet = want.Sick = want.Boredom = 0;
         visitors.Needs.Set(guest.Id, want); visitors.Step(0, null);
         Check(visitors.Plans[guest.Id].Intent == VisitorIntent.Leaving, "guest actually commits to leaving before disruption");
         paths.Field.Cells[index] = 0;

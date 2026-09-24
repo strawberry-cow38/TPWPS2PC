@@ -266,7 +266,89 @@ public sealed class ParkVisitors
                         for (int i = 0; i < rises; i++) Needs.Queue(guest);
             Needs.Reconcile(_plans.Keys);
         }
+        Maintain(deltaSeconds);
     }
+
+    /// <summary>⚠⚠ SOMEBODY HAS TO CLEAN THE LAVATORIES, and shipping the punishment without the
+    /// cure made the park unplayable within minutes.
+    ///
+    /// Every use wears a facility down by up to 26 (`(toilet-60)*2/3`) from a starting 100, and
+    /// `VisitorNeeds.DirtyLavatory` then costs the NEXT guest 10 happiness and 10 sickness below
+    /// 50. With nothing to undo it that is a **one-way ratchet**: three visits and a lavatory is
+    /// filthy forever, every guest afterwards is angry, their happiness grinds to the go-home
+    /// floor and the park empties. Master saw exactly that on the first playtest after the
+    /// penalty landed -- "they just infinitely use the toilet, get mad, and then leave".
+    ///
+    /// ⭐ THE CONSOLE HAS A HANDYMAN. `FUN_00130978` -- condition back to 100, plus a timestamp
+    /// -- has exactly ONE caller, `0x1456D8`, which is a STAFF MEMBER finishing a clean: it bumps
+    /// the staff's own `+0x53`/`+0x54` stats, resets the facility, then clears their goal stack
+    /// and activity the same way a guest's ride exit does. Staff are a whole entity this port
+    /// does not have.
+    ///
+    /// ⚠⚠ SO THIS IS A STAND-IN AND IS LABELLED AS ONE. The console's OUTCOME is reproduced
+    /// (lavatories get cleaned, so dirt is a recurring cost rather than a death spiral); WHO
+    /// cleans them is stubbed until staff exist, and the cadence is invented. ⭐ The alternative
+    /// was dropping the dirt penalty entirely, which would have thrown away something that IS
+    /// read to avoid modelling something that is not.
+    ///
+    /// ⚠ Deliberately unconditional, like `FUN_00130978`: it sets 100, it does not top up by a
+    /// little. A handyman either visited or did not.</summary>
+    public double SecondsPerService { get; set; } = 45;
+    double _sinceService;
+
+    /// <summary>⭐⭐ THE PARK GETS PAID. `FUN_001D18E8` is the shop's till and it books a sale in
+    /// three places at once:
+    ///
+    /// <code>
+    ///   margin = shop[0xb8] - FUN_001D1B08(shop);        // price - the cost of its goods
+    ///   if (margin &lt; 1)  FUN_00100698(park, -margin * 10);          // a LOSS: debit the park
+    ///   else             FUN_001007D8(park, kind, margin * 10);      // credit, filed by kind
+    ///   shop[0xbc] += price;   shop[0xc0] += margin;
+    /// </code>
+    ///
+    /// ⭐ So `BaseCostOfGoods` is doing double duty and BOTH readings of it are right: it scales
+    /// how much a guest wants the thing (<see cref="VisitorNeeds.WantScore"/>) AND it is the
+    /// shop's cost per sale. A field named for one job and used for two is exactly the kind of
+    /// thing that makes a value-based join look wrong.
+    ///
+    /// ⭐ The x10 is the same x10 the guest is charged, so the park's money and the guest's are
+    /// in the same units -- which is the check that the two halves were read consistently.
+    ///
+    /// ⚠ THE CATEGORY IS NOT PASSED. The console takes it from a vtable call on the facility and
+    /// switches on 4 and 5; nothing read so far says which kind is which number, and filing
+    /// income under a guessed heading is worse than filing it under none. The money lands in the
+    /// balance either way -- that is <see cref="ParkFinances.Credit"/>'s first act, before the
+    /// switch -- so nothing is lost but the breakdown.
+    ///
+    /// ⚠ A sale whose definition never joined a compiled record has no cost of goods, so its
+    /// margin would be the whole price. That is not a decision this can make honestly, so an
+    /// unjoined shop books its takings and NO margin, and the park is not paid for it. Better a
+    /// visible zero than invented income.</summary>
+    void Take(ParkRide shop, RideDefinition def)
+    {
+        int price = def.PricePerUse ?? 0;
+        if (def.Compiled is not { } record) { shop.Book(price, 0); return; }
+        int margin = price - record.BaseCostOfGoods;
+        shop.Book(price, margin);
+        if (margin < 1) Sim.Finances.Debit(-margin * 10);
+        else Sim.Finances.Credit(margin * 10);
+    }
+
+    void Maintain(double deltaSeconds)
+    {
+        if (!AutoService || deltaSeconds <= 0) return;
+        _sinceService += deltaSeconds;
+        if (_sinceService < SecondsPerService) return;
+        _sinceService = 0;
+        foreach (var ride in Sim.Rides)
+            if (ride.ProvidesRelief && ride.Condition < 100) { ride.Service(); Serviced++; }
+    }
+
+    /// <summary>⚠ Off switches the stand-in off, for a check that wants to watch dirt accumulate
+    /// -- and for the day staff arrive, when this should be deleted rather than left switched
+    /// off. An unused knob reads like a decision.</summary>
+    public bool AutoService { get; set; } = true;
+    public int Serviced { get; private set; }
 
     /// <summary>Guests the scripts have finished with go back on the path at the ride's exit.
     ///
@@ -514,6 +596,9 @@ public sealed class ParkVisitors
             // ⭐ The console does not collect mess; it WEARS THE FACILITY DOWN by that amount and
             // floors it at zero -- `FUN_00130948`, sole caller the relief path. See ParkRide.Condition.
             used.Wear(soil);
+            // ⭐⭐ THEN READS IT BACK, which is the order the console uses: the guest who fouled
+            // the place can be the one who walks out disgusted. See VisitorNeeds.DirtyLavatory.
+            if (used.Condition < VisitorNeeds.FilthyBelow) Needs.DirtyLavatory(guest);
             Relieved++;
             return;
         }
@@ -529,9 +614,19 @@ public sealed class ParkVisitors
             // back to Food, which is what this did before the arms existed -- stated rather than
             // silently defaulted, because a drink shop landing on the food arm raises the thirst
             // it is supposed to quench.
+            // ⭐⭐ AND THE COMPILED BASE GOES IN, which is what turns "can they afford it" into
+            // "do they want it". ⚠ `?? 0` is not a silent default here -- zero is the documented
+            // signal for "this definition never joined a compiled record", and VisitorNeeds.Buy
+            // skips the want test rather than refusing everyone. Two facilities per world really
+            // do fail to join.
             if (Needs.Buy(guest, def.PricePerUse ?? 0, def.HungerEffect ?? 0, def.ThirstEffect ?? 0,
                           def.HappinessEffect ?? 0, def.VomitEffect ?? 0,
-                          def.Compiled?.Product ?? VisitorNeeds.Food)) Purchases++;
+                          def.Compiled?.Product ?? VisitorNeeds.Food,
+                          def.Compiled?.BaseCostOfGoods ?? 0, used.Quality))
+            {
+                Purchases++;
+                Take(used, def);
+            }
             return;
         }
         Needs.Ride(guest, RideIntensity, RideHappiness, RideSickScale, RideBoredomScale);

@@ -45,7 +45,8 @@ static class ServiceChecks
             // nothing, trips the go-home path and walks out -- and a departed guest's record
             // reads as zeros, which made the closed-lavatory control report "the need was
             // cleared". That is the drain working, arriving in a check about something else.
-            visitors.Needs.BoredomBar = visitors.Needs.SickBar = visitors.Needs.ToiletBar = 101;
+            visitors.Needs.Unknown78Bar = visitors.Needs.SickBar = visitors.Needs.ToiletBar =
+                visitors.Needs.HungerBar = visitors.Needs.ThirstBar = 101;
             // ⚠ FROZEN ON PURPOSE. The need must be the one this case set, not that plus whatever
             // rose during the walk -- otherwise the mess arithmetic below is unpredictable and the
             // assertion would have to be loosened until it stopped saying anything.
@@ -297,7 +298,7 @@ static class ServiceChecks
             var g = visitors.Arrive(exit, exit);
             var w = visitors.Needs.Of(g.Id);
             w.Cash = cash; w.Happiness = happiness;
-            w.Hunger = 0; w.Thirst = 0; w.Toilet = 0; w.Sick = 0; w.Unknown7B = 0;
+            w.Hunger = 0; w.Thirst = 0; w.Toilet = 0; w.Sick = 0; w.Boredom = 0;
             visitors.Needs.Set(g.Id, w);
             for (int i = 0; i < Steps && visitors.WentHome == 0; i++) visitors.Step(Tick, () => exit);
             return (visitors.WentHome, visitors.Needs.All.Count, visitors.Walk.Guests.Count);
@@ -376,6 +377,117 @@ static class ServiceChecks
         Check(unqueued.Peak78 == 0, $"a guest with no queue to stand in pays nothing ({unqueued.Peak78})");
         Check(unqueued.LowHappy == 100, $"and keeps their patience ({unqueued.LowHappy})");
 
+        // ── the guest who cannot afford anything ─────────────────────────────────────────────
+        // ⭐⭐ MASTER'S BUG, AS A CHECK. A guest with more than the go-home floor (100) but less
+        // than a purchase (price * 10) can neither buy nor leave -- so they walked to the shop,
+        // were refused, kept the identical need, and walked straight back. Forever. Master saw it
+        // as guests "stuck on the stub path tile and repeatedly visiting the shop".
+        //
+        // ⚠ THE FIX IS NOT A CASH FILTER. The console does not test cash when choosing what it
+        // wants (three call sites in FUN_0020C930, none reads +0x60). It lets boredom rise until
+        // the mood drain grinds the guest down and they go home on their own -- and OUR boredom
+        // never rose, because `Rise` skipped it. This asserts the loop terminates.
+        (int Home, int Purchases, int Bored) Broke()
+        {
+            var paths = new ParkPaths(terrain);
+            sourcePaths.Field.Cells.CopyTo(paths.Field.Cells, 0);
+            paths.SetEntrance(entranceTable);
+            var visitors = new ParkVisitors(new ParkSim(paths), new GuestWalk(paths)) { Needs = new VisitorNeeds(1234) };
+            // ⚠⚠ A SHOP DEFINITION, NOT THE RIDE'S. The first version of this check handed the
+            // ride's own definition to the fixture, so `Serve` took the RIDE branch: nothing was
+            // ever sold (making `Purchases == 0` pass vacuously) and `Ride()` SUBTRACTED the
+            // boredom this check is about, pinning it near zero on every visit. It reproduced a
+            // guest happily riding a free ride forever, not a guest who cannot afford lunch.
+            // Synthesised rather than loaded because this fixture has no WadArchive to read one.
+            var shopDef = RideDefinition.Parse(
+                "Info.Name\t\"unaffordable shop\"\n" +
+                "UsageInfo.ShopType\t2\n" +
+                "UsageInfo.InitPricePerUse\t30\n" +
+                "UsageInfo.HungerEffect\t25\n", "synthetic/shop.sam");
+            var shop = visitors.Sim.Add(1, "unaffordable shop", corridor[0], 1, 1, rideScript, rideAps,
+                                        1, corridor[0], exit, out string fault,
+                                        sibling: rideSibling, headSlots: rideSeats, definition: shopDef)
+                       ?? throw new InvalidOperationException(fault);
+            visitors.Sim.SetOpen(shop.Id, true); shop.Set("VAR_BROKEN", 0);
+            var g = visitors.Arrive(exit, exit);
+            var w = visitors.Needs.Of(g.Id);
+            // Hungry, and holding strictly between the go-home floor and the price of a meal.
+            w.Hunger = 100; w.Cash = 250; w.Happiness = 60; w.Unknown78 = 0;
+            w.Thirst = 0; w.Toilet = 0; w.Sick = 0;
+            visitors.Needs.Set(g.Id, w);
+            int peakBored = 0;
+            for (int i = 0; i < 40000 && visitors.WentHome == 0; i++)
+            {
+                visitors.Step(Tick, () => exit);
+                if (visitors.Needs.Has(g.Id)) peakBored = Math.Max(peakBored, visitors.Needs.Of(g.Id).Unknown78);
+            }
+            return (visitors.WentHome, visitors.Purchases, peakBored);
+        }
+        var broke3 = Broke();
+        Check(broke3.Purchases == 0, $"a guest who cannot afford the shop buys nothing ({broke3.Purchases})");
+        // ⚠⚠ THIS LINE USED TO ASSERT `>= 20` AND THE ASSERTION WAS WRONG TWICE OVER. It was
+        // added alongside a timed rise on `+0x78`, justified by that byte's 95 bar -- and the
+        // bubble chain in `FUN_0020FB88` then showed `+0x78` is NOT boredom (boredom is `+0x7B`,
+        // which the engine points `tbbored` at) AND that nothing in that function raises `+0x78`
+        // on a clock at all. So the rise went, and with it the only thing that made 20 true.
+        //
+        // ⭐ What is left is the queue's own **+5**, which IS read (`FUN_0020C6A8`).
+        //
+        // ⚠⚠ AND THE FIRST REPLACEMENT ASSERTED `== 5`, WHICH WAS THE JUNGLE NUMBER AND NOT AN
+        // INVARIANT. HALLOW and FANTASY read 0 -- their fixture geometry never puts the guest in
+        // a queue at all -- so a rule fitted to one world's observation failed in two others. ⭐
+        // Replacing an overclaim with a number I had just watched go by is the same mistake in a
+        // smaller font.
+        //
+        // What IS invariant: the ONLY thing that moves `+0x78` is the queue, in steps of 5. A
+        // timed rise coming back reads as a large, non-multiple value. ⚠ "It moves at all" is
+        // NOT this case's job and must not be asserted here -- the queue case above owns that,
+        // with its own no-ride control.
+        Check(broke3.Bored % 5 == 0 && broke3.Bored <= 50,
+              $"nothing but the queue's +5 moves +0x78 ({broke3.Bored})");
+        // ⭐⭐ AND THIS IS THE CHECK THAT ACTUALLY MATTERED ALL ALONG -- measured, not assumed:
+        // it passed WITHOUT the boredom rise, which is how the rise was found not to be the fix.
+        // The queue's happiness cost alone grinds them under the go-home floor.
+        // ⚠ Master's "stuck on the stub tile" is a DIFFERENT defect: astraclaw traced it to a
+        // decision timer the console sets on shop completion (even on a refusal) plus recency
+        // penalties in the selector, and to an approach leg that stops one cell short of the
+        // compiled entrance. Neither is this check's business; it only proves no infinite loop.
+        Check(broke3.Home == 1, $"and they eventually give up and go home rather than looping forever ({broke3.Home})");
+
+        // ── somebody cleans the lavatories ──────────────────────────────────────────────────
+        // ⭐⭐ THE RATCHET CHECK. Wear costs condition, condition below 50 costs the next guest
+        // 10 happiness, and with no handyman that is permanent -- every guest angry forever and
+        // the park empties. Master saw it on the first playtest. This asserts recovery, and the
+        // CONTROL asserts the dirt is real when the stand-in is switched off, so a check that
+        // simply never wore anything could not pass both.
+        (int Dirty, int Clean) Handyman()
+        {
+            var paths = new ParkPaths(terrain);
+            sourcePaths.Field.Cells.CopyTo(paths.Field.Cells, 0);
+            paths.SetEntrance(entranceTable);
+
+            int Run(bool auto)
+            {
+                var visitors = new ParkVisitors(new ParkSim(paths), new GuestWalk(paths))
+                    { Needs = new VisitorNeeds(1234), AutoService = auto };
+                var loo = visitors.Sim.Add(1, "fixture toilet", corridor[0], 1, 1, toiletScript, toiletAps,
+                                           1, corridor[0], exit, out string fault,
+                                           sibling: toiletSibling, definition: toiletDef)
+                          ?? throw new InvalidOperationException(fault);
+                visitors.Sim.SetOpen(loo.Id, true);
+                loo.Wear(100);
+                if (loo.Condition != 0) throw new InvalidOperationException("fixture failed to soil the lavatory");
+                // Past one service period, whichever way the switch is set.
+                for (int i = 0; i < (int)(visitors.SecondsPerService / Tick) + 10; i++)
+                    visitors.Step(Tick, () => exit);
+                return loo.Condition;
+            }
+            return (Run(auto: false), Run(auto: true));
+        }
+        var loos = Handyman();
+        Check(loos.Clean == 100, $"a worn lavatory is serviced back to 100 ({loos.Clean})");
+        Check(loos.Dirty == 0, $"and the CONTROL shows the wear was real -- unserviced it stays filthy ({loos.Dirty})");
+
         // ── going home over a path that breaks and is mended ─────────────────────────────────
         // ⭐⭐ THE ONE-WAY DOOR. A `Leaving` guest whose path was dug up under them stayed stuck
         // FOREVER -- not because anything was stale, but because they left a state with no way
@@ -394,7 +506,7 @@ static class ServiceChecks
             var g = visitors.Arrive(exit, exit);
             var w = visitors.Needs.Of(g.Id);
             w.Cash = 0; w.Happiness = 80;             // broke: they want to leave
-            w.Hunger = 0; w.Thirst = 0; w.Toilet = 0; w.Sick = 0; w.Unknown7B = 0;
+            w.Hunger = 0; w.Thirst = 0; w.Toilet = 0; w.Sick = 0; w.Boredom = 0;
             visitors.Needs.Set(g.Id, w);
 
             var ground = (byte[])paths.Field.Cells.Clone();

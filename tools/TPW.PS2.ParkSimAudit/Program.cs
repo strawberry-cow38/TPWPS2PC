@@ -549,6 +549,7 @@ if (looEntry.Entry != null && serviceRide is { } notALoo && corridorStops.Count 
                       notALoo.Script, notALoo.Aps, notALoo.Def, notALoo.Sibling, notALoo.Seats, Check);
 }
 CompiledJoinChecks.Run(Wad("DATA"), wad, world, Check);
+MoodChecks.Run(Check);
 CompiledShopPurchaseChecks.Run(terrain, loopPaths, corridorStops[0], onPath[^1], Wad("DATA"), wad, world, Check);
 Check(looEntry.Entry != null, $"the world ships a lavatory to exercise ({looEntry.Entry?.Path ?? "none found"})");
 Check(availabilityChecked, "availability regression exercised a real ride with both availability flags");
