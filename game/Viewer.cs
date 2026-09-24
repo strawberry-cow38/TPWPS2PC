@@ -2360,20 +2360,47 @@ public partial class Viewer : Node3D
         var from = _cam.ProjectRayOrigin(screen);
         var dir = _cam.ProjectRayNormal(screen);
         if (Mathf.Abs(dir.Y) < 1e-5f) return false;
-        // ⚠ The plot's OWN floor height, not y=0: the park sits on the terrain, so aiming at the
-        // world plane lands a cell or two out wherever the floor is not at zero.
-        float t = (_park.BaseY - from.Y) / dir.Y;
-        if (t <= 0f) return false;                       // the floor is behind the camera
-        var hit = from + dir * t;
-        var want = new Vector2(hit.X, hit.Z);
+
+        // ⭐⭐ SOLVE FOR THE HEIGHT THE TILE IS ACTUALLY AT. Master: "mouse raycast for elevated
+        // tiles should be on the actual elevated tile's position, not where it would be if the
+        // map was flat." It was: one intersection against a single horizontal plane at `BaseY`,
+        // so a raised cell was picked as though it lay flat. With the camera looking down and in,
+        // the ray reaches a raised surface EARLIER than the flat plane, so the flat answer is
+        // always a cell or more too far away -- and consistently in the same direction, which is
+        // why it reads as an offset rather than as noise.
+        //
+        // ⭐ Iterate instead: land on a plane, ask which cell that is, then re-cast at THAT
+        // cell's own height and see whether it still names itself. `CellY` returns only `BaseY`
+        // or `BaseY + Step`, so this settles in at most a couple of passes; the cap is a
+        // guarantee of termination, not an expectation.
         float best = float.MaxValue;
-        for (int y = 0; y < f.Height; y++)
-            for (int x = 0; x < f.Width; x++)
-            {
-                var c = _park.CellCentre(x, y);
-                float d = want.DistanceSquaredTo(new Vector2(c.X, c.Z));
-                if (d < best) { best = d; bx = x; by = y; }
-            }
+        float plane = _park.BaseY;
+        int cx = -1, cy = -1;
+        for (int pass = 0; pass < 4; pass++)
+        {
+            float t = (plane - from.Y) / dir.Y;
+            if (t <= 0f) return false;                   // that surface is behind the camera
+            var hit = from + dir * t;
+            var want = new Vector2(hit.X, hit.Z);
+            best = float.MaxValue; cx = cy = -1;
+            for (int y = 0; y < f.Height; y++)
+                for (int x = 0; x < f.Width; x++)
+                {
+                    var c = _park.CellCentre(x, y);
+                    float d = want.DistanceSquaredTo(new Vector2(c.X, c.Z));
+                    if (d < best) { best = d; cx = x; cy = y; }
+                }
+            if (cx < 0) return false;
+            float actual = _park.CellY(cx, cy);
+            // ⭐ Self-consistent: the cell we landed on sits at the height we cast against, so
+            // the ray really does meet that tile's surface there.
+            if (Mathf.IsEqualApprox(actual, plane)) break;
+            // ⚠ Otherwise cast again at the height it claims. If two cells trade places across
+            // passes the loop ends on the raised one, which is the right tie-break: a raised tile
+            // stands in front of the flat one from any camera that can see both.
+            plane = actual;
+        }
+        bx = cx; by = cy;
         return best <= Park.CellSize * Park.CellSize;
     }
 
