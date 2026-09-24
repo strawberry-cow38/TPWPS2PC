@@ -1,0 +1,299 @@
+using System.Reflection;
+using Godot;
+using TPW.PS2.Data;
+
+namespace TPWPS2Viewer.Tests;
+
+/// <summary>One real external ice-cream customer, through the Shops menu and Viewer callbacks.
+/// Run with normal Viewer disc/startup arguments, --mode=park --map=JUNGLE and
+/// --shop-shot=/absolute/outsideGit/new-name.png (serving, plus -before/-after).
+/// Optional --map=HALLOW/FANTASY/SPACE selects that world's precisely named ice cream;
+/// the compiled EUR effect contract is required, never substituted by another product.
+/// Requires a rendering display. A missing service body is a deferred failure: handback and
+/// captures still run, then exit 2. Captures need visual review, not pixel-level sign-off.</summary>
+public partial class ShopServiceSmoke : Node3D
+{
+    const BindingFlags Hidden = BindingFlags.Instance | BindingFlags.NonPublic;
+    static FieldInfo Member(string name) => typeof(Viewer).GetField(name, Hidden) ?? throw new MissingMemberException("Viewer." + name);
+    static T Field<T>(Viewer v, string name) => (T)Member(name).GetValue(v);
+    static void Set(Viewer v, string name, object value) => Member(name).SetValue(v, value);
+    static object Call(Viewer v, string name, params object[] args)
+    {
+        var method = typeof(Viewer).GetMethod(name, Hidden) ?? throw new MissingMemberException("Viewer." + name);
+        var parameters = method.GetParameters();
+        if (args.Length < parameters.Length)
+            args = args.Concat(parameters.Skip(args.Length).Select(p => p.HasDefaultValue ? p.DefaultValue
+                : throw new ArgumentException("Missing required argument for Viewer." + name))).ToArray();
+        return method.Invoke(v, args);
+    }
+    static void Require(bool condition, string label)
+    {
+        if (!condition) throw new InvalidOperationException(label);
+        GD.Print("SHOP SMOKE ok: " + label);
+    }
+
+    int _failures;
+    void Check(bool condition, string flag)
+    {
+        if (condition) GD.Print("SHOP SMOKE ok: " + flag);
+        else { _failures++; GD.PrintErr("SHOP SMOKE ASSERT FAIL: " + flag); }
+    }
+
+    // Inspect the actual scene tree after FramePostDraw, not the sim's sprite policy or a
+    // stale dictionary entry awaiting QueueFree. A head alone is not a service body.
+    static bool Live(Node node) => node != null && IsInstanceValid(node)
+        && node.IsInsideTree() && !node.IsQueuedForDeletion();
+    static IEnumerable<MeshInstance3D> Meshes(Node node)
+    {
+        foreach (var child in node.GetChildren())
+        {
+            if (!Live(child)) continue;
+            if (child is MeshInstance3D mesh) yield return mesh;
+            foreach (var nested in Meshes(child)) yield return nested;
+        }
+    }
+
+    public override async void _Ready()
+    {
+        try
+        {
+            Require(DisplayServer.GetName() != "headless", "rendering display, not headless fake initialization");
+            var args = OS.GetCmdlineArgs().Concat(OS.GetCmdlineUserArgs()).ToArray();
+            string shot = args.LastOrDefault(a => a.StartsWith("--shop-shot="))?["--shop-shot=".Length..]
+                ?? throw new ArgumentException("--shop-shot requires an absolute new PNG outside Git");
+            if (!System.IO.Path.IsPathFullyQualified(shot)
+                || !string.Equals(System.IO.Path.GetExtension(shot), ".png", StringComparison.OrdinalIgnoreCase))
+                throw new ArgumentException("absolute .png capture path required");
+            shot = System.IO.Path.GetFullPath(shot);
+            var output = new System.IO.DirectoryInfo(System.IO.Path.GetDirectoryName(shot));
+            if (!output.Exists) throw new ArgumentException("create the output directory before running");
+            // Reject symlink ancestry as well: lexical 'outside Git' must not write into assets.
+            for (var parent = output; parent != null; parent = parent.Parent)
+                if (parent.LinkTarget != null || System.IO.File.Exists(System.IO.Path.Combine(parent.FullName, ".git"))
+                    || System.IO.Directory.Exists(System.IO.Path.Combine(parent.FullName, ".git")))
+                    throw new ArgumentException("capture output must be outside Git and symlink ancestry");
+            string Suffix(string suffix) => System.IO.Path.Combine(output.FullName,
+                System.IO.Path.GetFileNameWithoutExtension(shot) + suffix + ".png");
+            string beforeShot = Suffix("-before"), afterShot = Suffix("-after");
+            var shots = new[] { beforeShot, shot, afterShot };
+            Require(shots.All(p => !System.IO.Path.Exists(p) && new System.IO.FileInfo(p).LinkTarget == null),
+                "all three capture paths are new");
+
+            string world = args.LastOrDefault(a => a.StartsWith("--map="))?["--map=".Length..]
+                ?? OS.GetEnvironment("TPW_PS2_MAP");
+            if (string.IsNullOrWhiteSpace(world)) world = "JUNGLE";
+            world = world.ToUpperInvariant();
+            string stem = world switch
+            {
+                "JUNGLE" or "FANTASY" => "/Shops/IceCream/IceCream",
+                "HALLOW" or "SPACE" => "/Shops/ices/ices",
+                _ => throw new ArgumentException("use --map=JUNGLE, HALLOW, FANTASY or SPACE; no fuzzy shop fallback")
+            };
+            // Normal _Ready loads the disc/terrain/UI. These are startup defaults, not a fake
+            // Viewer setup; CLI still goes through Viewer, and actual archive is checked below.
+            var viewer = new Viewer { Name = "Viewer" };
+            Set(viewer, "_wantMap", world); Set(viewer, "_wantMode", "park"); Set(viewer, "_guestCap", 0);
+            AddChild(viewer); viewer.SetProcess(false);
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            var park = Field<Park>(viewer, "_park"); var library = Field<AssetLibrary>(viewer, "_lib");
+            var terrain = Field<Model>(viewer, "_terrainModel");
+            var entrances = Field<ParkEntrance>(viewer, "_entranceTable");
+            Require(park?.Field != null && terrain != null && entrances != null && library != null,
+                "normal startup loaded real park, library and entrance");
+            Require(string.Equals(System.IO.Path.GetFileNameWithoutExtension(library.WadName), world,
+                StringComparison.OrdinalIgnoreCase), "actual archive matches requested world " + world);
+            Require(park.Placed.Count == 0, "empty fixture before construction");
+            var entry = entrances.Fit(terrain.Field, ParkEntrance.WalkwayColumnFromPoles(terrain), out _);
+            Require(!entry.Empty, "authored entrance fits");
+            var corridor = new List<(int X, int Y)>();
+            for (int z = entry.ZEnd; z < entry.ZEnd + 8; z++) corridor.Add((entry.XCol, z));
+            Call(viewer, "LayLeg", corridor, PathTool.Kind.Path, 0); Call(viewer, "RefreshFloor");
+            Require((bool)Call(viewer, "OpenGate"), "normal guest layer opened");
+            var grid = Field<GuestWalk>(viewer, "_guests").Paths;
+            Call(viewer, "ToggleBuildMenu"); Call(viewer, "ShowBuildCategory", "Shops");
+            var rows = Field<List<int>>(viewer, "_buildRows");
+            var matches = Enumerable.Range(0, rows.Count).Where(candidateRow =>
+            {
+                var model = library.Rides[rows[candidateRow]].Model;
+                var d = (RideDefinition)Call(viewer, "DefinitionFor", model);
+                return d?.Compiled?.Product == 4
+                    && string.Equals(System.IO.Path.ChangeExtension(model.Path, null), stem, StringComparison.OrdinalIgnoreCase)
+                    && d.Source.EndsWith(stem + ".sam", StringComparison.OrdinalIgnoreCase);
+            }).ToArray();
+            Require(matches.Length == 1, "Shops menu has exactly one precise named compiled product4 model " + stem);
+            int row = matches[0]; var asset = library.Rides[rows[row]];
+            var definition = (RideDefinition)Call(viewer, "DefinitionFor", asset.Model);
+            Require(definition.Sells && definition.HungerEffect == 25 && definition.ThirstEffect == 5
+                && definition.HappinessEffect == 5 && definition.VomitEffect == 10 && definition.PricePerUse == 30,
+                "compiled H25/T5/happy5/V10 price30 (unsupported regional profiles fail explicitly)");
+            Require(definition.Shape != null, "authored shape exists");
+            var footprint = Park.Footprint.From(definition.Shape);
+            Require(footprint.Width == 2 && footprint.Height == 2
+                && definition.Shape.Select(s => s.Trim()).SequenceEqual(new[] { "**", "2*" })
+                && definition.EntryStandX is float sx && Mathf.IsEqualApprox(sx, .6f)
+                && definition.EntryStandY is float sy && Mathf.IsEqualApprox(sy, .4f),
+                "authored 2x2 **;2* stand .6/.4, not the existing 1x1 relief slice");
+            Require(asset.Script != null, "named model has real RSE");
+            var program = new RseProgram(library.Read(asset.Script));
+            Require(!program.Instructions.Any(i => i.Opcode is RseOpcode.LIMBO or RseOpcode.WALKON),
+                "named external shop RSE has no LIMBO or WALKON");
+            GD.Print($"SHOP SMOKE fixture world={world} model={asset.Model.Path} definition={definition.Source} script={asset.Script.Path}");
+
+            var blueprint = Field<Placement>(viewer, "_place");
+            bool placed = false; int placedTurn = -1;
+            for (int turn = 0; turn < 4 && !placed; turn++)
+            {
+                Call(viewer, "ArmFromList", row); blueprint.Turn(turn);
+                for (int z = entry.ZEnd; z < entry.ZEnd + 8 && !placed; z++)
+                    for (int x = entry.XCol - 4; x <= entry.XCol + 4 && !placed; x++)
+                    {
+                        if (!blueprint.Fits(park, x, z)) continue;
+                        var stubs = blueprint.Stubs(park, x, z).Where(s => s.Entrance).ToArray();
+                        if (stubs.Length != 1 || !ParkPaths.Neighbours(new(stubs[0].X, stubs[0].Y))
+                            .Any(c => grid.Open(c) && corridor.Contains((c.X, c.Z)))) continue;
+                        int count = park.Placed.Count;
+                        Set(viewer, "_cursorOverride", (x, z));
+                        try { Call(viewer, "PlaceHeld"); }
+                        finally { Set(viewer, "_cursorOverride", null); }
+                        placed = park.Placed.Count == count + 1;
+                        if (placed) placedTurn = turn;
+                    }
+            }
+            Require(placed && park.Placed.Count == 1, "actual Shops PlaceHeld constructed one shop beside laid corridor");
+            Call(viewer, "CloseTool"); Call(viewer, "TickPark");
+            var visitors = Field<ParkVisitors>(viewer, "_visitors");
+            var sim = Field<ParkSim>(viewer, "_sim"); var ride = sim.Rides.Single();
+            Require(ReferenceEquals(ride.Definition, definition) && ride.Machine != null && ride.Host != null
+                && ride.Entrance != null && ride.Fault == null, "placed shop owns its real definition, script and entrance");
+            Require(visitors.Plans.Count == 0 && visitors.Walk.Guests.Count == 0, "automatic arrivals disabled");
+            foreach (string key in visitors.Needs.Rates.Keys.ToArray()) visitors.Needs.Rates[key] = new VisitorNeeds.Rate(0, 0, false);
+            visitors.Needs.SecondsPerRise = 1_000_000;
+            var mouth = Field<List<ParkCell>>(viewer, "_mouth")[0];
+            // Start on the laid corridor beside the entrance, for the same-camera BEFORE control.
+            // Arrival supplies identity only; hunger chooses/routes to the actual shop in TickPark.
+            var stub = ride.Entrance.Value;
+            var start = ParkPaths.Neighbours(stub).First(c => grid.Open(c) && corridor.Contains((c.X, c.Z)));
+            var guest = visitors.Arrive(start, mouth); int guestId = guest.Id;
+            var initial = new VisitorWants { Hunger = 91, Thirst = 0, Toilet = 10, Happiness = 50,
+                Sick = 0, Litter = 9, Cash = 1234, PreferredIntensity = 90, Unknown78 = 0, Unknown7B = 0 };
+            visitors.Needs.Set(guestId, initial);
+            void Present() { Call(viewer, "PresentScripted", true, 1f); Call(viewer, "PlaceActors", 1f); }
+            void Tick() { Call(viewer, "TickPark"); Present(); }
+
+            // Camera only: transform the real authored entry stand through Placement's row mirror
+            // and turns. Do not register a standing pose or synthesize any actor/definition.
+            float px = footprint.EntryX + definition.EntryStandX.Value;
+            float pz = footprint.Height - (footprint.EntryY + definition.EntryStandY.Value);
+            int width = footprint.Width, height = footprint.Height;
+            int ex = footprint.EntryX, ez = footprint.Height - 1 - footprint.EntryY;
+            for (int turn = 0; turn < placedTurn; turn++)
+            {
+                (px, pz) = (height - pz, px); (ex, ez) = (height - 1 - ez, ex);
+                (width, height) = (height, width);
+            }
+            var standWorld = (Vector3)Call(viewer, "GuestWorld",
+                new Vector3(ride.Origin.X + px, 0, ride.Origin.Z + pz), ride.Origin.Offset(ex, ez));
+            var stubWorld = (Vector3)Call(viewer, "GuestWorld", new Vector3(stub.X + .5f, 0, stub.Z + .5f), stub);
+            var camera = Field<Camera3D>(viewer, "_cam");
+            var target = standWorld + Vector3.Up * .35f;
+            var front = stubWorld - standWorld; front.Y = 0;
+            Require(front.LengthSquared() > 1e-6f, "actual entry determines camera side even with missing actor");
+            camera.GlobalPosition = target + front.Normalized() * 4.5f + Vector3.Up * 2.3f;
+            camera.LookAt(target); camera.MakeCurrent();
+            Field<Control>(viewer, "_panel").Visible = false;
+            var fixedCamera = camera.GlobalTransform;
+            Require(!camera.IsPositionBehind(target) && GetViewport().GetVisibleRect().HasPoint(camera.UnprojectPosition(target)),
+                "camera frames actual shop service point");
+            GD.Print($"SHOP SMOKE placement origin={ride.Origin} turn={placedTurn} entry={stub} standWorld={standWorld} start={start}");
+
+            async System.Threading.Tasks.Task Capture(string path)
+            {
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+                using var image = GetViewport().GetTexture().GetImage();
+                // CreateNew also guards against a file appearing after initial validation.
+                using var file = new System.IO.FileStream(path, System.IO.FileMode.CreateNew, System.IO.FileAccess.Write);
+                var png = image.SavePngToBuffer(); Require(png.Length > 0, "rendered PNG buffer");
+                file.Write(png);
+                Require(camera.GlobalTransform == fixedCamera, "same camera for " + System.IO.Path.GetFileName(path));
+                GD.Print("SHOP SMOKE capture=" + path);
+            }
+            int Bodies(string phase)
+            {
+                var root = Field<Node3D>(viewer, "_guestRoot");
+                var actors = Field<Dictionary<int, Node3D>>(viewer, "_actors");
+                var live = root.GetChildren().OfType<Node3D>().Where(n => Live(n) && n.IsVisibleInTree()).ToArray();
+                var own = live.Where(n => n.Name == $"Guest_{guestId}").ToArray();
+                bool HasBody(Node3D n) => Meshes(n).Any(m => m.Mesh != null && m.IsVisibleInTree()
+                    && (m.Layers & camera.CullMask) != 0
+                    && !((string)m.Name).Contains("head", StringComparison.OrdinalIgnoreCase));
+                int bodies = own.Count(HasBody);
+                bool projected = own.Any(n => !camera.IsPositionBehind(n.GlobalPosition + Vector3.Up * .2f)
+                    && GetViewport().GetVisibleRect().HasPoint(camera.UnprojectPosition(n.GlobalPosition + Vector3.Up * .2f)));
+                GD.Print($"SHOP SMOKE {phase} guest={guestId} liveActors={live.Length} ownActors={own.Length} "
+                    + $"visibleBodies={bodies} totalBodies={live.Count(HasBody)} projected={projected} "
+                    + $"dictionaryLive={actors.TryGetValue(guestId, out var a) && Live(a)} walkers={visitors.Walk.Guests.Count}");
+                Check(live.Length == own.Length, phase + " no unrelated guest actors");
+                if (bodies > 0) Check(projected, phase + " body projects into capture");
+                return bodies;
+            }
+
+            Present(); await Capture(beforeShot);
+            Check(Bodies("BEFORE") == 1 && visitors.Walk.Guests.Count(g => g.Id == guestId) == 1,
+                "BEFORE_ONE_WALKING_BODY");
+            var before = visitors.Needs.Of(guestId);
+            Check((before with { Thought = initial.Thought }).Equals(initial) && before.Thought == Thought.Hungry,
+                "BEFORE_SEED_PRESERVED_WITH_PRESENTED_HUNGRY_THOUGHT");
+            bool Accepted() => ReferenceEquals(visitors.QueuedOwner(guestId), ride)
+                && !ride.Queue.Contains(guestId) && ride.Get("VAR_LETMEON") != guestId;
+            bool serving = false;
+            for (int tick = 0; tick < 6000 && !serving && visitors.Rides == 0; tick++)
+            {
+                Tick(); serving = Accepted();
+                if (tick % 8 == 0) await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            }
+            Require(serving, "accepted actual owner is named shop, not queue or VAR_LETMEON offer");
+            bool hidden = ride.Host.Visibility.TryGetValue(guestId, out var visibility) && !visibility.Visible;
+            bool seat = ride.Host.Seats.Values.Contains(guestId), walk = ride.Host.Walkers.ContainsKey(guestId);
+            bool seatedPose = ((System.Collections.IDictionary)Member("_seated").GetValue(viewer)).Contains(guestId);
+            bool walkingPose = ((System.Collections.IDictionary)Member("_walking").GetValue(viewer)).Contains(guestId);
+            var standing = Field<Dictionary<int, Transform3D>>(viewer, "_standing");
+            GD.Print($"SHOP SMOKE SERVING accepted={Accepted()} explicitHostHide={hidden} hostSeat={seat} hostWalk={walk} "
+                + $"seatPose={seatedPose} walkPose={walkingPose} standingPose={standing.ContainsKey(guestId)} purchases={visitors.Purchases}");
+            Check(!hidden && !seat && !walk && !seatedPose && !walkingPose, "EXTERNAL_SERVICE_NO_HIDE_SEAT_OR_WALK");
+            Check(visitors.Purchases == 0 && visitors.Rides == 0 && !visitors.Walk.Guests.Any(g => g.Id == guestId),
+                "ACCEPTED_BEFORE_PURCHASE_OFF_WALK");
+            await Capture(shot);
+            // Deliberately NOT Require: this is the current discriminating rendering failure.
+            Check(Bodies("SERVING") == 1, "MISSING_VISIBLE_SERVICE_BODY (accepted external customer must have exactly one full body)");
+
+            for (int tick = 0; tick < 6000 && visitors.Rides == 0; tick++)
+            {
+                Tick(); if (tick % 8 == 0) await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            }
+            sim.SetOpen(ride.Id, false); Present(); // prevent a second visit, only after physical handback
+            var after = visitors.Needs.Of(guestId);
+            GD.Print($"SHOP SMOKE AFTER guest={guestId} H={after.Hunger} T={after.Thirst} toilet={after.Toilet} "
+                + $"sick={after.Sick} happy={after.Happiness} cash={after.Cash} litter={after.Litter} pref={after.PreferredIntensity} "
+                + $"u78={after.Unknown78} u7B={after.Unknown7B} purchases={visitors.Purchases} rides={visitors.Rides} boardings={visitors.Boardings}");
+            Check(visitors.Purchases == 1 && visitors.Rides == 1 && visitors.Boardings == 1 && visitors.Relieved == 0,
+                "ONE_REAL_PURCHASE_HANDBACK");
+            Check(after.Hunger == 66 && after.Thirst == 5 && after.Toilet == 35 && after.Sick == 10
+                && after.Happiness == 55 && after.Cash == 934 && after.Litter is >= 39 and <= 63,
+                "PURCHASE_EFFECTS_H66_T5_TOILET35_SICK10_HAPPY55_CASH934_LITTER39_TO63");
+            Check(after.PreferredIntensity == initial.PreferredIntensity && after.Unknown78 == initial.Unknown78
+                && after.Unknown7B == initial.Unknown7B, "UNAFFECTED_VALUES_PRESERVED (thought is recomputed, not frozen)");
+            Check(guest.Id == guestId && visitors.Plans.Count == 1 && visitors.Plans.ContainsKey(guestId)
+                && visitors.Walk.Guests.Count == 1 && visitors.Walk.Guests.Single().Id == guestId
+                && visitors.QueuedOwner(guestId) == null && !standing.ContainsKey(guestId), "ORIGINAL_ID_ONE_WALKER_NO_SERVICE_OWNER");
+            Check(ride.Fault == null, "REAL_SCRIPT_NO_FAULT");
+            await Capture(afterShot);
+            Check(Bodies("AFTER") == 1, "AFTER_ONE_VISIBLE_WALKING_BODY");
+            viewer.QueueFree(); await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            GD.Print($"SHOP SMOKE {(_failures == 0 ? "PASS" : "FAIL")} failures={_failures} (rendered captures require visual review)");
+            GetTree().Quit(_failures == 0 ? 0 : 2);
+        }
+        catch (Exception ex) { GD.PrintErr("SHOP SMOKE FAIL: " + ex); GetTree().Quit(2); }
+    }
+}
