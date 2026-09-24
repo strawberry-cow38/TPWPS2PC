@@ -2775,11 +2775,20 @@ public partial class Viewer : Node3D
         //
         // ⚠⚠ THE SPAWNER IS NOT FOUND, AND THIS IS THEREFORE A PORT CHOICE. None of those ids
         // appears as a literal near either effect entry point anywhere in the image, so the call
-        // computes or table-looks-up its id. What IS read is the SHAPE of the console's other
-        // size-varied effect family: `FUN_001B94B8` picks a ride scream by footprint -- 1, then
-        // under 4, then under 8, then larger -- so the four Create variants are chosen the same
-        // way here. ⚠ That parallel is a reading of a DIFFERENT function; it is the most
-        // grounded guess available, not the rule.
+        // computes or table-looks-up its id.
+        //
+        // ⚠⚠ AND THE PARALLEL THAT ONCE JUSTIFIED THE FOOTPRINT IS FALSE. This said the four
+        // variants were sized the way `FUN_001B94B8` sizes a ride scream -- 1, under 4, under 8,
+        // larger. Reading that function instead of the note about it shows the thresholds are the
+        // RIDER COUNT, not the footprint (see RideScreams). So the console's "other size-varied
+        // effect family" is not sized by footprint at all, and this choice now has NO console
+        // grounding of any kind: it is footprint because a bigger building plausibly wants a
+        // bigger puff, and that is the whole of the argument. Left as it is rather than quietly
+        // swapped, because changing what the game does is master's call and not a footnote.
+        //
+        // ⚠ Separately: effect ids 79..82 here are PARTICLE ids from `Tp2.plb`. Sound events
+        // 79..82 also exist, in `KIDSSFX.MAP`, where they are the 2-3-rider levelled scream row.
+        // Same numbers, different namespaces, no relation.
         int cells = Math.Max(1, w * h);
         int puff = cells == 1 ? 79 : cells < 4 ? 80 : cells < 8 ? 81 : 82;
         if (_burst?.Emit(puff, Cell(ParkPaths.Centre(new ParkCell(cx, cy)))) is { } spark)
@@ -2872,6 +2881,61 @@ public partial class Viewer : Node3D
                     int tag = fx.Opcode == RseOpcode.ADDOBJ && a.Count > 3 ? a[3] : 1000;
                     _sounds.Cue(ride.Id, ride.Name, fx.Time, fx.Opcode, a[0], node, a[2], tag,
                                 at ?? model.Root.GlobalPosition, fellBack: at == null && node >= 0);
+                    break;
+                }
+                // ⭐⭐ THE RIDE SCREAM. Read in RideScreams -- which voices, chosen by how many
+                // people are aboard, and the console's own missing-else in the one-shot path.
+                // ⚠ The LEVEL is carried and logged, NOT applied: it is sound parameter 6, and
+                // findings/sound.md establishes that a parameter id means whatever the event's own
+                // table says it means. Turning it into a volume would be inventing the one thing
+                // this trace deliberately refused to guess.
+                case RseOpcode.STARTSCREAM when a.Count >= 2:
+                {
+                    if (_sounds == null || model?.Root == null || !IsInstanceValid(model.Root)) return;
+                    if (ride.ScreamHandle != 0) break;          // already screaming; the console guards on inst[0xD0]
+                    if (RideScreams.StartId(a[0]) is not int sid) break;   // nobody aboard
+                    ride.ScreamHandle = sid;
+                    _sounds.Cue(ride.Id, ride.Name, fx.Time, fx.Opcode, (int)RideScreams.Group, -1, sid,
+                                RideScreams.Tag, model.Root.GlobalPosition);
+                    GD.Print($"[scream] {fx.Time / 1000.0,7:F1}s {ride.Name,-22} START riders {a[0]} -> evt {sid}"
+                           + $", level {RideScreams.Level(a[1], ride.Setting0xC0)} on parameter {RideScreams.LevelSelector} (carried, not applied)");
+                    break;
+                }
+                case RseOpcode.STOPSCREAM:
+                    if (ride.ScreamHandle != 0)
+                    {
+                        _sounds?.Kill(ride.Id, ride.Name, RideScreams.Tag, fx.Time);
+                        ride.ScreamHandle = 0;
+                    }
+                    break;
+                case RseOpcode.SCREAMLEVEL when a.Count >= 1:
+                    // The console still writes the handle back, so a level on a silent ride is a
+                    // no-op rather than a start.
+                    if (ride.ScreamHandle != 0)
+                        GD.Print($"[scream] {fx.Time / 1000.0,7:F1}s {ride.Name,-22} LEVEL -> "
+                               + $"{RideScreams.Level(a[0], ride.Setting0xC0)} on parameter {RideScreams.LevelSelector} (carried, not applied)");
+                    break;
+                case RseOpcode.SINGLESCREAM when a.Count >= 2:
+                {
+                    if (_sounds == null || model?.Root == null || !IsInstanceValid(model.Root)) return;
+                    var where = model.Root.GlobalPosition;
+                    if (a[1] >= 0)
+                    {
+                        int one = RideScreams.LevelledSingleId(a[0], a[1], ride.Setting0xC0);
+                        _sounds.Cue(ride.Id, ride.Name, fx.Time, fx.Opcode, (int)RideScreams.Group, -1, one,
+                                    RideScreams.SingleTag, where);
+                        GD.Print($"[scream] {fx.Time / 1000.0,7:F1}s {ride.Name,-22} SINGLE riders {a[0]} band -> evt {one}");
+                    }
+                    else
+                    {
+                        // ⚠⚠ FOUR VOICES FOR ONE RIDER, ON PURPOSE. See RideScreams.UnlevelledSingleIds.
+                        var ids = RideScreams.UnlevelledSingleIds(a[0]);
+                        foreach (int one in ids)
+                            _sounds.Cue(ride.Id, ride.Name, fx.Time, fx.Opcode, (int)RideScreams.Group, -1, one,
+                                        RideScreams.SingleTag, where);
+                        GD.Print($"[scream] {fx.Time / 1000.0,7:F1}s {ride.Name,-22} SINGLE riders {a[0]} unlevelled -> "
+                               + $"{ids.Count} overlapping: {string.Join(", ", ids)}");
+                    }
                     break;
                 }
                 case RseOpcode.KILLOBJ when a.Count >= 1: _sounds?.Kill(ride.Id, ride.Name, a[0], fx.Time); break;

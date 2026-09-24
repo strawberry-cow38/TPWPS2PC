@@ -390,3 +390,58 @@ of the link `target` field was not checked, so the exact cycle above is the pars
   exact shape a constructor uses. With caller-saved registers alone cleared, three stores appear at
   `0x110AAC`, `0x110B14` and `0x110B20`. astraclaw called for a control before the negative was
   believed and was right to. A negative from a sweep is a claim about the sweep until it is.
+
+## ⭐⭐ The ride scream (`STARTSCREAM` / `STOPSCREAM` / `SINGLESCREAM` / `SCREAMLEVEL`)
+
+The scripts have always asked for these four and this port has always refused them. Read out of the
+opcode dispatcher `FUN_001BCFA8` and the three functions it calls, and implemented in
+`RideScreams`.
+
+```
+case 0x56 STARTSCREAM a b   handle = FUN_001B94B8(inst[0xD0], a, b, inst[0xC0], x,y,z)
+                            inst[0xD0] = inst[0x48] = handle
+case 0x57 STOPSCREAM        reads inst[0xD0], stops it, writes 0 back
+case 0x58 SINGLESCREAM a b  b >= 0 ? FUN_001B98B0(a, b, inst[0xC0], x,y,z)
+                                   : FUN_001BA440(a, x,y,z)
+case 0x59 SCREAMLEVEL l     inst[0xD0] = FUN_001B96D8(inst[0xD0], l, inst[0xC0])
+```
+
+⚠⚠ **THE THRESHOLD IS THE RIDER COUNT, NOT THE FOOTPRINT**, and two places in this repo said
+footprint — findings/visitors.md's note and the audit's own effect label — both now corrected.
+`FUN_001B94B8` tests `param_2`, which case 0x56 takes from `STARTSCREAM`'s first operand, and the
+scripts write `STARTSCREAM VAR_ONRIDE 20`. Its guard is `handle == 0 && param_2 != 0`: a placed
+ride's footprint is never zero, a rider count is. Screams are sized to the **crowd**.
+
+| riders | looping id | levelled one-shot row | unlevelled one-shot |
+|---|---|---|---|
+| 1 | `0x47` | `0x4B`+band | `0x69, 0x6A, 0x6C, 0x6D` |
+| 2–3 | `0x48` | `0x4F`+band | `0x6A, 0x6C, 0x6D` |
+| 4–7 | `0x49` | `0x53`+band | `0x6C, 0x6D` |
+| 8+ | `0x4A` | `0x57`+band | `0x6D` |
+
+`band = min((b + c) / 50, 3)`, giving a contiguous 4x4 table `0x4B..0x5A`. The level is
+`clamp((a + b) / 2, 0, 100)` on **sound parameter 6**, where the second term is the ride's own
+`inst + 0xC0` — a u16 whose meaning is **not read**, carried as `ParkRide.Setting0xC0` and
+defaulting to 0.
+
+⚠⚠ **`FUN_001BA440` IS A CONSOLE BUG AND THE PORT REPRODUCES IT.** Its four arms are `if`s with no
+`else` and no early return — the only `return` is past the last one — so **one rider fires four
+overlapping voice lines**, two or three fire three, four to seven fire two, and only eight-plus
+plays a single one. `SINGLESCREAM VAR_ONRIDE -1` is exactly the call that reaches it. And `0x6B` is
+skipped by the cascade entirely (`0x69, 0x6A, 0x6C, 0x6D`), so id 107 is never played here at all.
+The audit asserts the bug, so "fixing" it into an if/else chain fails three checks.
+
+⚠⚠ **NAMESPACE, AND IT IS THE EASY THING TO GET WRONG.** The native calls pass
+`FUN_00111428(audio, **7**, id, …)` and native category 7 is `AUDIO/GLOBAL/kids` — but this port's
+`SoundGroup` is the **script-side** `OBJ_SOUND_*` numbering, where the same file is **6**. Carrying
+the 7 across selects `STAFSFX.MAP` and every scream resolves to a staff line or to nothing; the
+audit has a control that rejects exactly that. The two namespaces are not an offset apart either:
+native 0/1/2 are ui/amb/ride where the script side is 9/8/5.
+
+⚠ `inst + 0xD0` is the live scream handle. findings/paths.md reads a u16 at `+0xD0` as the path
+tool's per-tile price — a **different class**, and the collision is noted in both places so neither
+reading gets "confirmed" by the other.
+
+⚠ The level is **carried and logged, not applied**. It is sound parameter 6, and this file already
+establishes that a parameter id means whatever the event's own table says it means; turning it into
+a volume would invent the one thing that trace refused to guess.

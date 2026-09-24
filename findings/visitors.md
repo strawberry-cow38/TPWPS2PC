@@ -2392,9 +2392,15 @@ emits one at placement as a **labelled port choice**, with the variant chosen by
 1 cell, under 4, under 8, larger -- because that is the shape the console uses for its other
 size-varied effect family (below). ⚠ That is a reading of a DIFFERENT function, not this one.
 
-⭐ **Found on the way: the ride scream.** `FUN_001B94B8` picks an effect by footprint on exactly
-those thresholds and spawns it at the object -- and ids `0x47..0x4A` resolve to `scr2l*`, `scr4l*`
-and `scr8l*` plus the `kid-l*` voice lines. Screams sized to the ride. This port has none.
+⭐ **Found on the way: the ride scream.** `FUN_001B94B8` picks an effect on exactly those
+thresholds and spawns it at the object -- and ids `0x47..0x4A` resolve to `scr2l*`, `scr4l*` and
+`scr8l*` plus the `kid-l*` voice lines.
+
+⚠⚠ **CORRECTED 2026-09-24: "by footprint" was wrong -- the thresholds are the RIDER COUNT.** The
+function tests `param_2`, which the opcode dispatcher `FUN_001BCFA8` case 0x56 takes straight from
+`STARTSCREAM`'s first operand, and the scripts write `STARTSCREAM VAR_ONRIDE 20`. Its guard is
+`handle == 0 && param_2 != 0`: a placed ride's footprint is never zero, a rider count is. Screams
+sized to the CROWD, not to the ride. Implemented in `RideScreams`; see findings/sound.md.
 
 ⚠ And a reading retired: `FUN_00111428`'s second argument is **not** a sound group or a particle
 kind. Its values across the image are 7, 8, 1, 12, 2, 3, 6, 13, 4, 9, 11, and id 175 -- a SOUND --
