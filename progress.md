@@ -11,8 +11,9 @@ experimental Viewer bus births, staging/groups, fee credit/debit and actor hando
 It is OPT-IN `--experimental-native-entrance`, NOT a default/main release: public BFS,
 unported native search/request resources, readiness bypass and constructor-only fee
 seed are explicit adapters. Output routes now use a real shared1000-slot pool; read
-the latest snapshot and native-route-slot-pool.md, not older unlimited-slot notes. Rejected guests are HELD because native departure/serial/pressure remains
-unported. See latest snapshot and findings/native-incoming-controller.md. Do NOT
+the latest snapshot and native-route-slot-pool.md, not older unlimited-slot notes. Normal rejected guests now walk out to point0 and retire under the explicit
+represented-activation phase adapter. Native startup/clock origin, ordinary
+state0/state5 failure recovery and non-controller pressure population remain open. See latest snapshot and findings/native-incoming-controller.md. Do NOT
 call this complete native entrance parity or quietly enable it for normal play.
 The old `tpw-ride-eligibility` checkout and scheduler's `81d112c` note are stale.
 No restarts. No reimplementation of the shipped destination scoring, relief, shop
@@ -2433,3 +2434,41 @@ No-slotbranch precedesreadiness. Do NOTinferreadinessfromactorvisibility orinven
 APSslot9/13 mapping: thesearelogicalcontrolIDs, actualvisualgetterjoinstillneeded.
 Sourceoutputselection/directallocationcomplete,3delegatesusedthispoolturn.
 Userapprovedcontinuing; nextvisiblegoalproperrejecteddeparture, notmoregeometry.
+
+
+## Rejected departure consumer — September24 WIP checkpoint
+
+Normalrejections nowactualmode14->stagingoutgoing->mode16->mode9->realdeparture,
+notpermanenthold. NativeFlow.Add optionalserial; nullkeepslegacyexplicitboundary.
+ViewerNativeActivationSequence seededfromownerELF2AA73C throughNativeBusCatalogue
+ImageInitialActivationCounter, consumesactualrepresentedPLACEDobjects+GUESTbirths,
+NOTmeshes/pooledstorage/bustrips. PersistsViewerparkresets. OriginWARNEDunverified
+nativehistory +portexecutedtickorigin, NOTGuest.Id phase; nofullparityclaim. Positive
+extra nativefamiliesballoons/litter/allstaff, noUIprerequisitedemonstrated. Source
+findings/native-activation-serial.md. Actualstartup/save/compositehistoryunclosed.
+
+Flowflags21initialdeparture,23immediateasyncfallback,1finalpoint0; RNG1consumed.
+Async14fallbackrefusalstays0B/notoken; alternatefailurestate0; mode9failurestate5
+withsignedhappiness/unknown78effects. OwnerheldatTHOSEunportedrecoveryboundaries,
+notnormalreject. Deferredstickysetonlyphase/initialrefusal; tallyBEFOREactive
+dispatch, includesfinalremovedpass. Experimentbususesownedcohortpressure; normal
+legacydepartures/guardsnotcompletepopulation. Directmode16allocbeforehelperRNG;
+outgoingdoesNOTjoinincominggroup1. Mode14headingpi20DC6Cnowexplicit; replacement
+preservesexistingnativeheading. CallbackackAfterResultAFTERhandling(notbefore
+alternate request), preservingcurrentrecordoccupancy. DeferredBFSstillnotnative
+search/resourceplanner. Sourcefindings/native-rejected-departure.md.
+
+Firstconsumerbugfound: AssignEntranceRoute resetLeavingplanbacktoEntering, so
+CompleteNativeDeparture correctlyrefused. PreserveownedLeavingthroughbothroute
+assignmentpaths; keptfinalguardstrong. Bodytestsincludeplancontinuity.
+53departurechecksPASS;8mutationscaught2+guard/5/10/2/2/1/1/1 andrestored. Actual
+NativeRejectedDepartureSmoke JUNGLE2399PASS:2realplacements(thusserial!=Guest.Id),
+realbuscohort3, explicitmaxfee cashrejection, sameguest/actoruntilbuspoint0, nofee,
+WentHome ratherthanDiscard, realplan/needs/rendercleanup, sharedpoolreturned, last
+stickypressurecountthen0. Existingacceptedflowmustremain651, matrixcurrently
+/tmp/tpw-departure-final-matrix onlyexact2retailreds, all11runtime/63PythonPASS.
+Finaleight-park BOTHaccepted+rejected scenes stilltorunaftermainmerge.
+All3delegatesusedthisturn. No extraction/restarts/privatefiles/otherhosts. Cowowns
+RMB/listbox/shopinfo; mainmovedto0f2ab51, mergewithoutdroppingtheirUIaftercheckpoint.
+Useraskedprogress22:32; reportedvisible normalrejectionworking, stillnotmain and
+remainingfidelitygaps—not"finished". Nextnative readinessthenrequest/search/feejoins.

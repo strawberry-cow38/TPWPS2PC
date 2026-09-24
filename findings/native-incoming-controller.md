@@ -35,9 +35,10 @@ Native state transitions and exact quarter-cell cursor are documented in
   row to ordinary selection at a cell centre, without teleporting or respawning.
 
 The bus's entrance bound reads the two actual list lengths in this opt-in mode.
-Its sticky departure input remains zero; actual rejection currently HOLDS the
-lease and prints that the departure producer is missing. That is deliberately
-visible and is a reason not to enable the experiment for normal play.
+Its sticky departure input now includes the owned rejected cohort with native
+before-dispatch timing. Normal rejected guests follow the outgoing journey and
+retire at point0; exact startup phase and ordinary failure recovery remain bounded
+adapters. See native-rejected-departure.md, not the older hold-only checkpoint.
 
 ## Explicit service boundaries; do not call this native pathfinder parity
 
@@ -63,9 +64,11 @@ visible and is a reason not to enable the experiment for normal play.
    excluding the port's bridge-as-Path policy. It does not substitute IsEntrance
    for the complete native tile flag array or support arbitrary loaded start
    coordinates. Out-of-grid stops are managed safety rather than raw native reads.
-5. The second native staging-object family remains unjoined. Shared base-object
-   activation serial, ordinary decision continuation and departure routing/tally
-   still need their complete producers; guest ID is not a serial substitute.
+5. Guard staging remains unjoined. A shared represented-activation sequence now
+   supplies rejected departures; native startup/restore history and absolute tick
+   origin are not verified. Normal rejection routing/tally is connected, but
+   ordinary departure/decision continuation and failed-route recovery remain open.
+   Guest.Id is not substituted for the shared serial.
 6. Unexpected disappeared guests and explicit map reset use labeled managed
    ownership cleanup. Native indirect destruction callbacks remain unread.
 

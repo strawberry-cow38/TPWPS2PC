@@ -286,7 +286,7 @@ static class NativeEntranceFlowChecks
             f.Step();
             Check(f.Obs(g) is { State: Flow.State.Pending, InQueue: true }
                 && f.Obs(g).PendingToken != failedToken && f.Flow.Counts == (1, 0)
-                && f.Events.Count(e => e.Trace.Event == "asynchronous route failure; retry state restored") == 1,
+                && f.Events.Count(e => e.Trace.Event == "mode11 event2; retry queue") == 1,
                 "async failure consumes token once, retries from queue state same pass, no duplicate membership");
             // Duplicate old failure and success must not replace the new pending route.
             f.Results.Insert(0, new Flow.RouteResult(failedToken.Value, g, null, "duplicate failure"));

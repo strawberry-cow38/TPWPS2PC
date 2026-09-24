@@ -335,7 +335,7 @@ static class NativeRoutePoolChecks
             async.Step();
             check(async.Obs(guest) is { State: Flow.State.RequestQueue, InQueue: true, PendingToken: null, Stopped: false }
                 && async.Flow.Counts == (1, 0) && async.Flow.Position(guest) == before && guest.HasNativeRoute
-                && async.Events.Any(e => e.Trace.Event == "route output exhausted; retry state restored")
+                && async.Events.Any(e => e.Trace.Event == "mode11 event2; retry queue")
                 && async.Walk.NativeRoutes.Available == 0 && competing.All(async.Walk.NativeRoutes.IsAllocated),
                 "async output exhaustion restores retry state with membership and precise empty lease retained");
             for (int i = 0; i < 3; i++) async.Step();

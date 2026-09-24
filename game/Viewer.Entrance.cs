@@ -10,6 +10,28 @@ public partial class Viewer
     // OPT-IN RESEARCH ADAPTER. Never silently replace the documented main behavior:
     // the route finder, pool/readiness and departure producer are not fully ported.
     bool _experimentalEntrance;
+    NativeActivationSequence _nativeActivations; // process/viewer lifetime; NOT reset on each park
+    readonly HashSet<int> _entranceRequestFlags = new();
+    bool ExperimentalEntranceRequested => _experimentalEntrance
+        || OS.GetCmdlineUserArgs().Contains("--experimental-native-entrance");
+
+    NativeActivationSequence ActivationSequence()
+    {
+        if (_nativeActivations != null) return _nativeActivations;
+        var table = _busCatalogue ?? NativeBusCatalogue.Read(_lib.Disc,
+            NativeParkSelection.Ordinary(_lib.WadName, _terrainPath));
+        _nativeActivations = new NativeActivationSequence(table.ImageInitialActivationCounter,
+            "owner ELF initial counter plus represented port activations ONLY; native startup/restore history unverified");
+        GD.Print($"[entrance.serial] phase adapter: seed={_nativeActivations.NextSerial}; {_nativeActivations.Origin}");
+        return _nativeActivations;
+    }
+
+    void ActivateExperimentalPlacement(Node3D node, RideDefinition definition)
+    {
+        if (!ExperimentalEntranceRequested) return;
+        uint serial = ActivationSequence().Activate($"placed:{definition?.CompiledEntry?.Kind}");
+        node.SetMeta("represented_activation_serial", (long)serial);
+    }
     Flow _entranceFlow;
     GuestWalk _entranceWalk;
     ParkVisitors _entranceVisitors;
@@ -26,7 +48,7 @@ public partial class Viewer
 
     void EnsureExperimentalEntrance()
     {
-        _experimentalEntrance |= OS.GetCmdlineUserArgs().Contains("--experimental-native-entrance");
+        _experimentalEntrance |= ExperimentalEntranceRequested;
         if (!_experimentalEntrance || _entranceFlow != null || _visitors == null || !EnsureNativeBus()) return;
         _entranceWalk = _guests;
         _entranceVisitors = _visitors;
@@ -45,9 +67,18 @@ public partial class Viewer
             ExperimentalEntranceExit,
             g => {
                 _entranceRejected++;
-                GD.Print($"[entrance.experimental] guest {g.Id} rejected: HELD under owner; native departure serial/producer unported");
+                GD.Print($"[entrance.experimental] guest {g.Id} rejected: native outgoing journey under represented-activation phase adapter");
             },
-            _guests.StepOwnedNative, exitCandidates: ExperimentalEntranceExitCandidates));
+            _guests.StepOwnedNative, exitCandidates: ExperimentalEntranceExitCandidates,
+            busPoint: (g, index) => index == 0 ? EntranceCentre(_busCatalogue.Point0)
+                : throw new InvalidOperationException("Ordinary departure RNG(1) must select point0."),
+            requestDetailed: request => {
+                _entranceRequestFlags.Add(request.Flags);
+                // Flags reach the adapter but native 0x21/0x23 search policy is not yet reproduced by BFS.
+                return RequestEntranceRoute(request.Token, request.Guest, request.Mode, request.From, request.Target);
+            },
+            recovery: (g, mode) => GD.Print($"[entrance.experimental] guest {g.Id}: mode{mode} native failure recovery state reached; ordinary recovery remains unported, owner retained")));
+
         _entrancePriorTick = _guests.BeforeStep;
         _entranceTickHook = tick => {
             _entrancePriorTick?.Invoke(tick);
@@ -55,7 +86,7 @@ public partial class Viewer
         };
         _guests.BeforeStep = _entranceTickHook;
         GD.Print($"[entrance.experimental] OPT-IN controller: actual bus identities -> two incoming groups -> fee -> normal handoff. point1={_busCatalogue.StagingPoint} point2={_busCatalogue.IncomingQueuePoint}");
-        GD.Print("[entrance.experimental] NON-PARITY ADAPTERS: deferred-next-tick public BFS/search resources, readiness bypass; ordinary constructor fee seed only; second staging class absent; rejects held, departure-pressure still bypassed. Not release-ready.");
+        GD.Print("[entrance.experimental] NON-PARITY ADAPTERS: deferred-next-tick public BFS/search resources, readiness bypass; ordinary constructor fee seed only; guard staging absent; represented-activation phase only; ordinary departure/recovery and full native pressure population unported. Not release-ready.");
     }
 
     bool RequestEntranceRoute(ulong token, Guest guest, int mode, Point from, Point target)
@@ -120,6 +151,7 @@ public partial class Viewer
             _entranceWalk.BeforeStep = _entrancePriorTick;
         _entranceFlow?.Clear((_, _) => { }, (g, owner) => _entranceVisitors.DiscardEntranceGuest(g, owner));
         _entranceResults.Clear();
+        _entranceRequestFlags.Clear();
         _entranceFlow = null; _entranceWalk = null; _entranceVisitors = null;
         _entrancePriorTick = _entranceTickHook = null;
         _entranceAccepted = _entranceRejected = 0;

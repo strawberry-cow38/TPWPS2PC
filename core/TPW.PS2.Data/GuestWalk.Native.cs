@@ -45,7 +45,9 @@ public sealed partial class GuestWalk
 
     void InstallNative(Guest guest, object owner, NativeMotionInputs inputs, Point start, int head, Point? last)
     {
-        var route = new NativeGuestRoute(start, NativeRoutes, head);
+        var route = new NativeGuestRoute(start, NativeRoutes, head,
+            guest.NativeMotion?.Route.FacingQuarterTurns ?? 0); // route assignment does not reset native facing
+
         guest.NativeMotion = new NativeWalkLease(owner, route, inputs);
         guest.Route = null; guest.RouteIndex = head; guest.Progress = 0; guest.Reason = null;
         guest.State = GuestState.Walking;
@@ -102,6 +104,14 @@ public sealed partial class GuestWalk
             return NativeAssignment.Assigned;
         }
         catch { NativeRoutes.FreeOne(head); throw; } // managed exception safety, not a native callback branch
+    }
+
+    /// <summary>Explicit native heading write, e.g. mode14 completion20DC6C sets pi.</summary>
+    public void SetNativeFacing(Guest guest, object owner, int quarterTurns)
+    {
+        if (NativeRouteState(guest, owner) == null)
+            throw new InvalidOperationException("Facing write requires the current route owner.");
+        guest.NativeMotion.Route.SetFacing(quarterTurns);
     }
 
     public NativeMotionSnapshot? NativeRouteState(Guest guest, object owner)

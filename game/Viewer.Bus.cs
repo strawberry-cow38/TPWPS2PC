@@ -42,6 +42,7 @@ public partial class Viewer
     void RegisterBusPlacement(Node3D node,int runtimeId,RideDefinition definition)
     {
         _busPlacements.Add((node,runtimeId,definition));
+        ActivateExperimentalPlacement(node, definition);
         if(definition?.CompiledEntry==null)
             GD.Print($"[bus] placed object {runtimeId} has no compiled identity; omitted from native demand/catalog representation");
     }
@@ -119,7 +120,7 @@ public partial class Viewer
         // This is deliberately NOT elapsed-ms delta: animation catches elapsed time,
         // countdowns count the updates actually executed by the park owner.
         _busTraffic=_nativeBus.Update(now,0x4000,_busTraffic,
-            open:_visitors!=null && !_gateClosed,specialObjectAbsent:true,flaggedGuestCount:0);
+            open:_visitors!=null && !_gateClosed,specialObjectAbsent:true,flaggedGuestCount:_entranceFlow?.DeparturePressure ?? 0);
         UpdateBusAudio();
     }
 
@@ -170,8 +171,9 @@ public partial class Viewer
         if(_guests.Paths.Open(at))
             for(int i=0;i<requested;i++)
             {
+                uint? activationSerial = _entranceFlow == null ? null : ActivationSequence().Activate("guest");
                 var guest = _visitors.Arrive(at,at);
-                _entranceFlow?.Add(guest, checked((sbyte)(15 + _guestRng.Next(15))));
+                _entranceFlow?.Add(guest, checked((sbyte)(15 + _guestRng.Next(15))), activationSerial);
                 admitted++;
             }
         _busAdmitted+=admitted;

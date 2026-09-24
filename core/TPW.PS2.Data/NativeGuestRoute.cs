@@ -33,12 +33,13 @@ public sealed class NativeGuestRoute : IDisposable
 
     /// <summary>Adopt an exclusively owned prepared chain. Actual GuestWalk routes all
     /// use its shared pool; this constructor never allocates or duplicates that chain.</summary>
-    internal NativeGuestRoute(Point start, NativeRoutePool pool, int head)
+    internal NativeGuestRoute(Point start, NativeRoutePool pool, int head, int facingQuarterTurns = 0)
     {
         Pool = pool ?? throw new ArgumentNullException(nameof(pool));
         if (head != -1 && !pool.IsAllocated(head))
             throw new InvalidOperationException("Cannot adopt an unallocated route head.");
         generation = pool.ResetGeneration;
+        FacingQuarterTurns = facingQuarterTurns;
         Position = start;
         SlotIndex = head;
     }
@@ -47,6 +48,12 @@ public sealed class NativeGuestRoute : IDisposable
     {
         if (SlotIndex >= 0 && generation != Pool.ResetGeneration)
             throw new InvalidOperationException("Managed safety: pool reset while a route still owned slots.");
+    }
+
+    internal void SetFacing(int quarterTurns)
+    {
+        if ((uint)quarterTurns > 3) throw new ArgumentOutOfRangeException(nameof(quarterTurns));
+        FacingQuarterTurns = quarterTurns;
     }
 
     public void Dispose()

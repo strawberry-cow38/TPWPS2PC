@@ -244,27 +244,51 @@ public sealed class ParkVisitors
         IReadOnlyList<NativeGuestMotion.Point> waypoints, NativeMotionInputs inputs)
         => AssignEntranceRoute(guest, owner, waypoints, inputs) == GuestWalk.NativeAssignment.Assigned;
 
-    bool MayOwnEntrance(Guest guest) => guest != null && _plans.TryGetValue(guest.Id, out var plan)
-        && plan.Intent is VisitorIntent.Wandering or VisitorIntent.Entering && !_owners.ContainsKey(guest.Id);
+    bool MayOwnEntrance(Guest guest, object owner) => guest != null && _plans.TryGetValue(guest.Id, out var plan)
+        && (plan.Intent is VisitorIntent.Wandering or VisitorIntent.Entering
+            || plan.Intent == VisitorIntent.Leaving && Walk.NativeRouteState(guest, owner) != null)
+        && !_owners.ContainsKey(guest.Id);
 
     public GuestWalk.NativeAssignment AssignEntranceRoute(Guest guest, object owner,
         IReadOnlyList<NativeGuestMotion.Point> waypoints, NativeMotionInputs inputs)
     {
-        if (!MayOwnEntrance(guest)) return GuestWalk.NativeAssignment.Refused;
+        if (!MayOwnEntrance(guest, owner)) return GuestWalk.NativeAssignment.Refused;
         var result = Walk.AssignNativeRoute(guest, owner, waypoints, inputs);
         if (result != GuestWalk.NativeAssignment.Refused)
-            _plans[guest.Id] = new Plan(guest.Id, VisitorIntent.Entering, 0, guest.Cell);
+            _plans[guest.Id] = new Plan(guest.Id,
+                _plans[guest.Id].Intent == VisitorIntent.Leaving ? VisitorIntent.Leaving : VisitorIntent.Entering,
+                0, guest.Cell);
         return result;
     }
 
     public GuestWalk.NativeAssignment AssignDirectEntranceRoute(Guest guest, object owner,
         Func<NativeGuestMotion.Point> target, NativeMotionInputs inputs)
     {
-        if (!MayOwnEntrance(guest)) return GuestWalk.NativeAssignment.Refused;
+        if (!MayOwnEntrance(guest, owner)) return GuestWalk.NativeAssignment.Refused;
         var result = Walk.AssignDirectNativeRoute(guest, owner, target, inputs);
         if (result != GuestWalk.NativeAssignment.Refused)
-            _plans[guest.Id] = new Plan(guest.Id, VisitorIntent.Entering, 0, guest.Cell);
+            _plans[guest.Id] = new Plan(guest.Id,
+                _plans[guest.Id].Intent == VisitorIntent.Leaving ? VisitorIntent.Leaving : VisitorIntent.Entering,
+                0, guest.Cell);
         return result;
+    }
+
+    /// <summary>Departure keeps the same route owner and visitor identity; it is not a
+    /// handoff to legacy WantsToGoHome or permission to skip the native outgoing journey.</summary>
+    public void MarkNativeDeparture(Guest guest, object owner)
+    {
+        if (Walk.NativeRouteState(guest, owner) == null || !_plans.ContainsKey(guest.Id))
+            throw new InvalidOperationException("Departure requires the current live route owner.");
+        _plans[guest.Id] = new Plan(guest.Id, VisitorIntent.Leaving, 0, guest.Cell);
+    }
+
+    public void CompleteNativeDeparture(Guest guest, object owner)
+    {
+        if (!_plans.TryGetValue(guest.Id, out var plan) || plan.Intent != VisitorIntent.Leaving
+            || Walk.NativeRouteState(guest, owner) is not { Finished: true, Failed: false, SlotIndex: -1 })
+            throw new InvalidOperationException("Native departure must complete its route before removal.");
+        ShowOut(guest.Id);
+        Needs?.Reconcile(_plans.Keys);
     }
 
     /// <summary>Explicit research-controller/map teardown. Not a native departure callback.
