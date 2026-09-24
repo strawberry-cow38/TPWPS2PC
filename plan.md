@@ -55,6 +55,27 @@ choice—such as presenting an invented track system as the target experience—
 to the humans rather than claiming that an autonomous technical review settled it. Existing pause/stop instructions
 still take priority; checkpoints are not authority to ignore them.
 
+## Latest CP5 adjustment — rendered service flow and readability, 2026-09-24 UTC
+
+Normal Viewer startup + real build/service callbacks now produce successful rendered
+small-toilet captures in all four worlds. Directly inspected JUNGLE crops confirm the
+standing body/doorway/handback relationship and the correct WC icon after close-up tuning.
+The default camera actually projects the full icon quad to11.46px at1280x720: its raw
+2576 altitude is divided by256, not2576 Godot tiles. Do not reuse that unit error or the
+peer's superseded23px opaque-mask measurement.
+
+Owner explicitly requests best-effort autonomous choices with human testing collected
+at the end, not permission waits. A proposed48–64px screen clamp was rejected after peer
+measurement put the whole hut at approximately32×45px in that park-view capture. Retain
+world scaling: indicator far away, readable artwork close up. This is chosen port policy,
+not a decoded rule or the only possible UI design. No unused scaling solver is shipped.
+
+Next bounded work: review newly decoded needs-effect constants and their consumer arithmetic
+against the actual executable, while preserving peer ownership of core files. Avoid replacing
+one speculative value with another or claiming image data equals runtime confirmation.
+Keep crowding/zoom/DPI/interaction/native platform checks on the final human checklist.
+See findings/service-smoke.md for scope, direct crop review and exact camera evidence.
+
 ## Latest checkpoint — CP2/CP5, 2026-09-24 UTC
 
 This supersedes the courtesy-approval hold in the older CP1 preflight below: owner

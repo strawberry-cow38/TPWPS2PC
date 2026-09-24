@@ -895,3 +895,65 @@ A separate test driver can create a real Viewer, let normal initialization run, 
 existing Features build callbacks/cursor override, and frame the actual standing customer.
 Do not call an uninspected PNG visual proof; direct inspection/manual sign-off is still open.
 Core needs/visitor files remain peer-owned; no restart or duplicate continuation needed.
+
+## Normal-startup rendered service flow + direct crop inspection
+
+Added game/tests/StandingServiceSmoke.cs/.tscn (capture driver, not part of the headless
+seven-scene default). It invokes normal Viewer._Ready with its real tree, Features
+arm/place and path callbacks; controlled production ticks route and serve a seeded
+customer. Four worlds passed this flow and wrote serving/after1280x720 captures.
+JUNGLE subsequently also passed actual texture-byte binding to tbtoilet and default-pose
+projection/capture. Viewer._Process is intentionally stopped after startup; this is not
+an unmodified real-time/input-latency test. Dummy audio; no extraction/raw asset files.
+
+Important visual-access correction: tool-posted images appear to this model as paths,
+but another sender's reattached images reach the image input. Cow reattached crops and
+I directly inspected them: full body in doorway during service; out on path after,
+doorway empty. Small icon ambiguous/crowded hair; revised crop after547fba2 clearly WC
+figures with clearance. VoX also recognized it when zoomed in. Only those crops reviewed,
+not all full frames/worlds. Cow corrected its mask: opaque16x13 before,34x31 after, not23px.
+Independent disc review confirmed real id7->tbtoilet entry and alpha layout; final live
+sprite pixels equal the managed decode. Do not claim independent full RGB validation.
+
+New real measurement corrects a second mistaken comment: GameCamera.Build divides by
+TileUnits256. Default Above2576->10.0625 Godot units, Behind1760->6.875; not2576 tiles up.
+Actual normal pose, panned onto serving guest, FOV75/dolly0 projects the full sprite quad
+11.46px. Crop tuning doesn't solve this. Owner explicitly said no approval waits; human
+testing goes at the end. Agreed provisional port choice48–64px readable range with head
+clearance; cow owns bubble code, I own projection/capture checks. No guessed retail claim.
+
+Upstream integrated through be8e0cb, including1121263 unmet-need effects/read constants,
+547fba2 bubble tuning and subsequent comment corrections. Gates at this integrated tree:
+/tmp/tpw-smoke-integration-runtime-20260924 all7pass/standing74;
+/tmp/tpw-smoke-integration-matrix-20260924 only the two exact known retail reds, routing5
+and recovery6/world. Smoke evidence: /tmp/tpw-service-smoke-20260924 (first JUNGLE),
+/tmp/tpw-service-smoke-worlds-20260924 (other3), /tmp/tpw-service-smoke-bubble-20260924,
+/tmp/tpw-service-smoke-final-20260924 (texture binding), /tmp/tpw-service-camera-20260924
+(default pose). All remain outside Git. PNGs posted only as generated scene captures.
+
+Next: land capture driver/docs with explicit paths, then integrate peer readability policy
+on a tested branch if it changes position contracts; update StandingServiceAudit's actual
+bubble expectations rather than weakening them. Capture close-up/default pose with source,
+camera and texture-bound measurements; use reattached crops for direct inspection. Keep
+working while human review waits, no owner pings for already-authorized choices, no restart.
+
+## CP5 re-evaluation: reject the provisional screen clamp, retain world scaling
+
+Peer6b0ff1f inspected the default-pose capture: reports opaque cloud10x8px and hut roughly
+32x45px. A52px cloud would be wider than the building. Our provisional48–64px target is
+SUPERSEDED, not pending implementation. Agreed to retain world scaling with indicator-far /
+readable-near behavior, explicitly port policy. Other UI designs remain possible; geometry
+does not uniquely prove this one or decode retail rendering. Peer removed its unshipped
+solver rather than leave a dormant feature. No approval stall and no more sizing loop.
+
+Updated plan/findings accordingly. Next independent bounded task after landing the smoke:
+review recently changed needs-effect constants and consumer arithmetic against executable
+instructions (especially signed/rounding/clamping edges); do not edit peer core concurrently
+or assume a bug from a formula comment. Preserve current all-seven and known-red matrix
+results; keep crowding/DPI/zoom/platform questions for the final human checklist.
+
+Capture-driver landing gate rerun at6b0ff1f plus this driver: all7 runtime scenes pass
+(standing74) in /tmp/tpw-smoke-landing-runtime-20260924;52 Python tests pass. The earlier
+/tmp/tpw-smoke-integration-matrix-20260924 covers the same core1121263 integration with
+only the exact known retail reds; intervening bubble commits are comment-only. No images
+or asset bytes staged. Smoke methods stay outside the headless default scene set.
