@@ -299,15 +299,20 @@ public sealed class VisitorNeeds
     /// **40**, each by `rand(2)`. Those periods are READ, so expressing them needs a clock that
     /// ticks -- and putting them on it replaces TWO invented rates with ONE invented number.
     ///
-    /// ⚠ AND THIS IS THAT ONE INVENTED NUMBER. 60 Hz is a guess at a PS2 guest tick, not a
-    /// reading; nothing yet found says how often the console runs this. What IS read is the
-    /// RATIO -- thirst fires 1.25x as often as hunger -- and the ratio survives whatever the
-    /// tick turns out to be.
+    /// ⭐⭐ AND IT IS NOT INVENTED ANY MORE -- IT IS THE PARK'S OWN TICK. This shipped for an hour
+    /// as a guessed 60 Hz. astraclaw then read the native counter: it is driven by
+    /// "gameticks/rendertick", default 1, behind a default **two-VBLANK** render throttle -- and
+    /// this is a **PAL** disc (`SLES_500.32`), so two VBLANKs of a 50 Hz field rate is **25 Hz**.
     ///
-    /// ⚠ At 60 Hz a need fills in roughly 2.5 park minutes, which is close to the pace the old
-    /// invented rates gave, so the change is a fidelity fix rather than a rebalance. Said out
-    /// loud because "I improved the model" is exactly how a silent difficulty change ships.</summary>
-    public double SecondsPerTick { get; set; } = 1d / 60d;
+    /// ⭐ Which is the number <see cref="ParkSim.TickMilliseconds"/> already carries, arrived at
+    /// independently ("the console runs its logic at 25 a second"). Two routes to one rate is
+    /// corroboration; deriving from it rather than restating it means the same native clock can
+    /// never end up with two different port rates, which is exactly what astraclaw asked for.
+    ///
+    /// ⚠ THIS IS A REAL PACE CHANGE, said out loud: 40 ms against the guessed 16.7 makes hunger
+    /// and thirst fill about 2.4x slower than the hour they spent at 60 Hz. "I improved the
+    /// model" is how a silent difficulty change ships.</summary>
+    public double SecondsPerTick { get; set; } = ParkSim.TickMilliseconds / 1000d;
     /// <summary>`DAT_002EEB6C` and `DAT_002EEB70`, read from the image.</summary>
     public const int HungerTicks = 50, ThirstTicks = 40;
     /// <summary>`FUN_0020FB88` refreshes a guest's mood bubble on `tick % 0x7f == guest % 0x7f`.
