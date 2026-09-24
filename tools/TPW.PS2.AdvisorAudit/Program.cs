@@ -3,12 +3,15 @@ using TPW.PS2.Data;
 using Op = TPW.PS2.Data.AdvisorRules.Op;
 using Result = TPW.PS2.Data.AdvisorRules.Result;
 
+if (args.Length > 0 && args[0] == "--text-self-test")
+    return TextTableChecks.Run(args.Contains("--extreme-counts")) == 0 ? 0 : 1;
+
 if (args.Length == 0)
 {
-    Console.Error.WriteLine("usage: dotnet run --project tools/TPW.PS2.AdvisorAudit -- <disc.bin> [--headers=file] [--opcodes=file] [--elf=file] [--list-rules]");
+    Console.Error.WriteLine("usage: dotnet run --project tools/TPW.PS2.AdvisorAudit -- <disc.bin> [--headers=file] [--opcodes=file] [--elf=file] [--list-rules]\n       or: --text-self-test [--extreme-counts]");
     return 2;
 }
-int failures = 0;
+int failures = TextTableChecks.Run(extremeCounts: true);
 void Check(bool ok, string message) { if (!ok) { failures++; Console.Error.WriteLine("FAIL " + message); } }
 void Reject(Action action, string message)
 {

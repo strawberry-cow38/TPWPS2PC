@@ -432,3 +432,12 @@ replacement of live speech, the known missing-lip defect, non-advisor state clea
 and active playback teardown. Six deliberately broken production variants fail.
 See `advisor-browser-audit.md` for evidence, reproduction and scope restrictions.
 This is not a park-driven advisor, Japanese glyph renderer or animated-mouth test.
+
+### Compiled-text reader hardening
+
+`TextDatabase.ParseTable` now enforces the same contiguous directory/NUL/whole-buffer
+profile already checked independently for the real regional tables. The old reader
+silently accepted several malformed layouts and allocated from an unchecked count.
+73 permanent synthetic checks plus the unchanged real-disc audit pass; six broken
+variants are rejected. See `text-table-validation.md`; Latin1 preservation and missing
+language behavior are unchanged, and this is not Japanese glyph integration.

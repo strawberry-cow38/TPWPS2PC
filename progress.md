@@ -593,3 +593,28 @@ already independently checks exact contiguous strings and full-byte consumption 
 all regional real tables, so retain that real-disc gate. Coordinate scope with peer;
 leave its Viewer/needs/effects files untouched. No guessed gameplay semantics or
 new advisor scheduling implementation is authorized by merely calling the VM decoded.
+
+## Compiled-text parser: malformed inputs now fail explicitly
+
+Reproduced21 failures in61 initial synthetic checks:12 malformed inputs silently
+accepted,9 incidental exception types. ParseTable now bounds count before allocation,
+requires contiguous valid offsets/NULs and exact whole-buffer consumption, preserving
+Latin1 bytes, empty rows and whitespace. No Load missing-file policy change.
+Final73 checks pass including literal multibyte-offset fixtures and bounded-allocation
+controls. Six mutations fail4/2/3/1/3/13; originals restored. Subagent review found no
+parser correctness issues and contributed boundary fixtures. Existing28 regional
+compiled-table checks and full AdvisorAudit stay green; rebuilt browser45/audio37 pass.
+Evidence/reproduction: findings/text-table-validation.md. No disc extraction.
+
+Also applied peer feedback to AdvisorBrowserAudit reflection diagnostics: renamed
+members now identify themselves. A deliberately renamed lookup exits2 with the named
+MissingMemberException, and the original audit source/build is restored. Its UI-parent
+boundary caveat is documented rather than hidden.
+
+Next bounded independent M7 item: consolidate the existing headless-safe Godot scene
+audits into a reproducible runtime runner/manifest with unit-tested failure handling,
+fresh build by default, explicit engine/disc paths, named PASS/exit/error checks and
+source/build provenance. Leave LightingAudit's real framebuffer gate separate: never
+label a headless run a pixel pass. No scene behavior/Viewer/needs/particle changes,
+no screenshots or proprietary asset output required. This makes the new permanent
+runtime gates actually easy to run together rather than relying on remembered commands.

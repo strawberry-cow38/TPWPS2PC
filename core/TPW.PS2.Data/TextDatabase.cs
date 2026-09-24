@@ -44,16 +44,31 @@ public sealed class TextDatabase
     public string? Text(string language, int row) =>
         Languages.TryGetValue(language, out var t) && row >= 0 && row < t.Length ? t[row] : null;
 
+    /// <summary>Read the checked on-disc profile: a contiguous offset directory followed
+    /// by contiguous NUL-terminated Latin1 rows, consuming the entire buffer.
+    /// Reject malformed structure before using its count for an allocation.</summary>
     public static string[] ParseTable(byte[] d)
     {
-        int n = BitConverter.ToInt32(d, 0);
+        ArgumentNullException.ThrowIfNull(d);
+        if (d.Length < 4) throw new InvalidDataException("Text table is missing its row count");
+        int n = System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(d);
+        // Every row needs a four-byte offset and at least its terminating NUL.
+        // Division before multiplication also keeps the directory arithmetic in range.
+        if (n < 0 || n > (d.Length - 4) / 5)
+            throw new InvalidDataException("Text table row count exceeds its directory/payload");
+        int expected = 4 + 4 * n;
         var outp = new string[n];
         for (int i = 0; i < n; i++)
         {
-            int o = BitConverter.ToInt32(d, 4 + i * 4);
+            int o = System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(d.AsSpan(4 + i * 4));
+            if (o != expected || o >= d.Length)
+                throw new InvalidDataException($"Text table row {i}: offset must follow the preceding directory/string");
             int e = Array.IndexOf(d, (byte)0, o);
-            outp[i] = System.Text.Encoding.Latin1.GetString(d, o, (e < 0 ? d.Length : e) - o);
+            if (e < 0) throw new InvalidDataException($"Text table row {i}: missing NUL terminator");
+            outp[i] = System.Text.Encoding.Latin1.GetString(d, o, e - o);
+            expected = e + 1;
         }
+        if (expected != d.Length) throw new InvalidDataException("Text table has unconsumed trailing bytes");
         return outp;
     }
 

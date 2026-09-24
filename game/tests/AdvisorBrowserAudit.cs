@@ -10,8 +10,10 @@ public partial class AdvisorBrowserAudit : Node3D
 {
     const BindingFlags Hidden = BindingFlags.Instance | BindingFlags.NonPublic;
     int _checks, _bad;
-    static T Field<T>(Viewer viewer, string name) => (T)typeof(Viewer).GetField(name, Hidden).GetValue(viewer);
-    static void Set(Viewer viewer, string name, object value) => typeof(Viewer).GetField(name, Hidden).SetValue(viewer, value);
+    static FieldInfo Member(string name) => typeof(Viewer).GetField(name, Hidden)
+        ?? throw new MissingMemberException($"Viewer.{name} — renamed or removed?");
+    static T Field<T>(Viewer viewer, string name) => (T)Member(name).GetValue(viewer);
+    static void Set(Viewer viewer, string name, object value) => Member(name).SetValue(viewer, value);
     void Check(bool ok, string message)
     {
         _checks++;
@@ -47,9 +49,11 @@ public partial class AdvisorBrowserAudit : Node3D
             var texts = new[] { "eur", "usa", "jap" }.ToDictionary(s => s, s => TextDatabase.Load(data, s));
             viewer = new Viewer();
             Set(viewer, "_lib", lib); Set(viewer, "_discPath", disc); Set(viewer, "_text", texts["eur"]);
-            typeof(Viewer).GetMethod("BuildUi", Hidden).Invoke(viewer, null);
+            (typeof(Viewer).GetMethod("BuildUi", Hidden)
+                ?? throw new MissingMemberException("Viewer.BuildUi — renamed or removed?")).Invoke(viewer, null);
             // Enter the real controls and players into the tree without invoking the
             // unrelated park/model startup or Viewer._Process. All callbacks remain real.
+            // This boundary must be revisited if callbacks acquire a Viewer-ancestor dependency.
             stage = new Node3D(); AddChild(stage);
             foreach (Node child in viewer.GetChildren()) { viewer.RemoveChild(child); stage.AddChild(child); }
             var tabs = Field<TabBar>(viewer, "_tabs");

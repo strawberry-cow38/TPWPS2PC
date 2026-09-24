@@ -90,3 +90,9 @@ TPW_PS2_DISC="$DISC" "$GODOT" --headless --audio-driver Dummy --path game \
   res://tests/AdvisorBrowserAudit.tscn
 dotnet run --project tools/TPW.PS2.AdvisorAudit -- "$DISC"
 ```
+
+Peer follow-up: reflection lookups now throw a named MissingMemberException if a
+Viewer field or BuildUi method disappears. An intentionally renamed lookup exits2
+and names `Viewer._renamed_bank_audit`, instead of a bare NullReferenceException;
+the original fixture is restored/rebuilt. The reparenting boundary must be revisited
+if callbacks ever acquire a Viewer-ancestor dependency, not silently worked around.
