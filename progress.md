@@ -2242,3 +2242,11 @@ walkers or path cells, or assume synchronous BFS equals native request schedulin
 Cow owns UV/fountain/bubbles and now Q/E rotation bug on ANOTHER host. Keep their
 changes; xref518a16f fixes JAL/JR delay-slot register liveness after our raw control.
 No restarts, no private bot files, owner disc read in place.
+
+Post-checkpoint merge b836966 incorporates main518a16f (xref-only changes).
+RAM-only owner ELF sweep now finds BOTH1093B4 load and1093C4 delay-slot store
+for2AA73C; control asserted. Postmerge actual Viewer smoke113 PASS, exit0, no
+errors/leaks: /tmp/tpw-native-route-postmerge-smoke.log. Clean worktree before
+this evidence append; pushing research branch, not main. Next: complete the
+incoming controller, with acceptance/staging/order; don't redo actuator tests as
+if that alone resolved the shipping backlog bypass.
