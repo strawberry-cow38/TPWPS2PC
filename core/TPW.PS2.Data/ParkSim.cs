@@ -77,6 +77,17 @@ public sealed class ParkRide
     /// construction, the savegame restore (`FUN_001D1A58`) and `0x1D7070`.</summary>
     public int Quality { get; set; } = 100;
 
+    /// <summary>`+0xBC` and `+0xC0`: what this facility has taken in gross, and what it has made
+    /// after the cost of its goods. `FUN_001D18E8` adds the full price to one and the margin to
+    /// the other on every sale, whichever way the margin goes.</summary>
+    public int Takings { get; private set; }
+    public int Profit { get; private set; }
+
+    /// <summary>⭐ One sale, as `FUN_001D18E8` books it. <paramref name="margin"/> may be
+    /// negative -- a shop priced below its cost of goods loses money and the console debits the
+    /// park for it rather than clamping.</summary>
+    public void Book(int price, int margin) { Takings += price; Profit += margin; }
+
     /// <summary>Use wears it down, floored at zero -- `FUN_00130948`, whose ONLY caller is the
     /// relief path at `0x20ef48`.</summary>
     public void Wear(int amount) => Condition = Math.Max(0, Condition - Math.Max(0, amount));
@@ -160,6 +171,10 @@ public sealed class ParkSim : IRseDirectory
 
     readonly List<ParkRide> _rides = new();
     public IReadOnlyList<ParkRide> Rides => _rides;
+
+    /// <summary>⭐⭐ THE PARK'S MONEY. See <see cref="ParkFinances"/> -- until this existed a
+    /// guest's cash was debited and went nowhere at all.</summary>
+    public ParkFinances Finances { get; } = new();
 
     public ParkSim(ParkPaths paths) { Paths = paths; }
 

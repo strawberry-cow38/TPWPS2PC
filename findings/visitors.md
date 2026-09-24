@@ -1963,3 +1963,60 @@ Worth recording because both are shapes that recur:
 `== 5`, **which was the JUNGLE number rather than an invariant** — HALLOW and FANTASY read 0,
 because their fixture geometry never queues. Now asserts what is actually invariant (only the
 queue moves `+0x78`, in steps of 5) and leaves "it moves at all" to the case that owns it.
+
+### ⭐⭐ THE PARK'S TILL, FOUND — and this file said the search was "still open" (2026-09-24)
+
+The earlier note was right that `0x20E1A0` debits the guest with no credit beside it. The credit is
+one level down, in the shop's own till, and it books a sale in three places:
+
+```c
+FUN_001D18E8(shop):
+    margin = shop[0xb8] - FUN_001D1B08(shop);        // price - cost of goods
+    if (margin < 1)  FUN_00100698(park, -margin * 10);        // a LOSS: debit the park
+    else             FUN_001007D8(park, kind, margin * 10);   // credit, FILED BY KIND
+    shop[0xbc] += price;    shop[0xc0] += margin;
+```
+
+**The park object** (`FUN_001005D8` returns the singleton, `0x12F4` bytes):
+
+| call | what it does |
+|---|---|
+| `FUN_00100750(park, n)` | `park[4] += n`; income totals `+0x12D8`/`+0x12DC`; income graph `+0x2FC + (period%0x90)*4`; clears the overdrawn warning when the balance comes back positive |
+| `FUN_00100698(park, n)` | **refuses** if `park[8] == 0 && park[4] < n`; else `park[4] -= n`; spend totals `+0x12E4`/`+0x12D4`; spending graph `+0xBFC + (period%0x90)*4` |
+| `FUN_001007D8(park, kind, n)` | the plain credit, **then** files it in a per-kind ring and total (switches on 4 and 5) |
+
+⭐⭐ **Why the plain credit had no shop caller**, which is what stalled the earlier search: the shop
+path calls the **categorised** wrapper, not the credit itself. A `jal` census of `FUN_00100750`
+finds twelve sites and none of them is a shop. The control (`FUN_00100698`, which
+`findings/dba.md` already placed on the upgrade path at `0x1162FC`) hit, so the census was sound —
+it was looking for the wrong function.
+
+⭐⭐ **And `BaseCostOfGoods` does two jobs, both real.** It scales how badly a guest wants the thing
+(`FUN_001D1B08` feeding the want score) *and* it is the shop's cost per sale. A field named for one
+job and used for two is exactly what makes a value-based join look wrong.
+
+⭐ The `×10` is the same `×10` the guest is charged, which is the cross-check that the two halves
+were read in the same units: the park earns strictly less than the guest paid, and more than
+nothing. The audit asserts that as a control rather than just asserting the number.
+
+⚠ NOT PORTED, and said rather than silently dropped:
+- **the category**, because nothing read says which facility kind is 4 and which is 5, and filing
+  income under a guessed heading is worse than filing it under none. The balance is unaffected —
+  the categorised wrapper credits *first*, then files.
+- **the two 144-slot graphs**, because the period counter at `park[0x12BC]` has no traced advance,
+  and 144 slots of zero advanced by a clock nobody found is not a feature.
+- **the starting balance**, because park setup is untraced. Opens at zero; the caller sets it.
+
+⚠ An unjoined shop has no cost of goods, so it books its takings and **no** margin and the park is
+not paid — a visible zero rather than invented income.
+
+### ⚠⚠ And the dirt penalty was a one-way ratchet (same day, master's playtest)
+
+`DirtyLavatory` shipped without a cleaner, so three uses soiled a lavatory permanently and every
+guest afterwards was angry until the park emptied. `FUN_00130978` (condition back to 100) has
+**exactly one caller**, `0x1456D8` — a **staff member** finishing a clean, bumping their own
+`+0x53`/`+0x54` and then clearing their goal stack exactly as a guest's ride exit does.
+
+⭐ Porting a punishment whose only cure is an entity the port does not have is worse than porting
+neither. The stand-in reproduces the console's OUTCOME on a timer and is labelled to be deleted
+when staff arrive, with an off switch and a check whose control proves the wear is real.

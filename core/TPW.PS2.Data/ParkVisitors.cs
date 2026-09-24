@@ -296,6 +296,44 @@ public sealed class ParkVisitors
     public double SecondsPerService { get; set; } = 45;
     double _sinceService;
 
+    /// <summary>⭐⭐ THE PARK GETS PAID. `FUN_001D18E8` is the shop's till and it books a sale in
+    /// three places at once:
+    ///
+    /// <code>
+    ///   margin = shop[0xb8] - FUN_001D1B08(shop);        // price - the cost of its goods
+    ///   if (margin &lt; 1)  FUN_00100698(park, -margin * 10);          // a LOSS: debit the park
+    ///   else             FUN_001007D8(park, kind, margin * 10);      // credit, filed by kind
+    ///   shop[0xbc] += price;   shop[0xc0] += margin;
+    /// </code>
+    ///
+    /// ⭐ So `BaseCostOfGoods` is doing double duty and BOTH readings of it are right: it scales
+    /// how much a guest wants the thing (<see cref="VisitorNeeds.WantScore"/>) AND it is the
+    /// shop's cost per sale. A field named for one job and used for two is exactly the kind of
+    /// thing that makes a value-based join look wrong.
+    ///
+    /// ⭐ The x10 is the same x10 the guest is charged, so the park's money and the guest's are
+    /// in the same units -- which is the check that the two halves were read consistently.
+    ///
+    /// ⚠ THE CATEGORY IS NOT PASSED. The console takes it from a vtable call on the facility and
+    /// switches on 4 and 5; nothing read so far says which kind is which number, and filing
+    /// income under a guessed heading is worse than filing it under none. The money lands in the
+    /// balance either way -- that is <see cref="ParkFinances.Credit"/>'s first act, before the
+    /// switch -- so nothing is lost but the breakdown.
+    ///
+    /// ⚠ A sale whose definition never joined a compiled record has no cost of goods, so its
+    /// margin would be the whole price. That is not a decision this can make honestly, so an
+    /// unjoined shop books its takings and NO margin, and the park is not paid for it. Better a
+    /// visible zero than invented income.</summary>
+    void Take(ParkRide shop, RideDefinition def)
+    {
+        int price = def.PricePerUse ?? 0;
+        if (def.Compiled is not { } record) { shop.Book(price, 0); return; }
+        int margin = price - record.BaseCostOfGoods;
+        shop.Book(price, margin);
+        if (margin < 1) Sim.Finances.Debit(-margin * 10);
+        else Sim.Finances.Credit(margin * 10);
+    }
+
     void Maintain(double deltaSeconds)
     {
         if (!AutoService || deltaSeconds <= 0) return;
@@ -584,7 +622,11 @@ public sealed class ParkVisitors
             if (Needs.Buy(guest, def.PricePerUse ?? 0, def.HungerEffect ?? 0, def.ThirstEffect ?? 0,
                           def.HappinessEffect ?? 0, def.VomitEffect ?? 0,
                           def.Compiled?.Product ?? VisitorNeeds.Food,
-                          def.Compiled?.BaseCostOfGoods ?? 0, used.Quality)) Purchases++;
+                          def.Compiled?.BaseCostOfGoods ?? 0, used.Quality))
+            {
+                Purchases++;
+                Take(used, def);
+            }
             return;
         }
         Needs.Ride(guest, RideIntensity, RideHappiness, RideSickScale, RideBoredomScale);

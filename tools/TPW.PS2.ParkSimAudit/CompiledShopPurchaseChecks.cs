@@ -132,6 +132,23 @@ static class CompiledShopPurchaseChecks
             Check(bought.After.Hunger == 80 && bought.After.Thirst == 70 && bought.After.Toilet == 10
                   && bought.After.Sick == 20 && bought.After.Litter == 9 && bought.After.PreferredIntensity == 90,
                   $"{region} named purchase preserves unrelated needs and preference");
+            // ⭐⭐ AND THE PARK GETS PAID, which it did not until now -- the guest's money was
+            // debited and simply vanished. `FUN_001D18E8` credits the MARGIN, not the price:
+            // the cost of goods is a real cost, so a 30 sale on a 20 base earns the park 100 in
+            // the same x10 units the guest is charged in.
+            var shopRecord = a.Compiled ?? throw new InvalidDataException("named shop lost its compiled record");
+            int margin = (named.Price - shopRecord.BaseCostOfGoods) * 10;
+            Check(bought.Visitors.Sim.Finances.Balance == margin,
+                  $"{region} the park earns the MARGIN, not the price ({bought.Visitors.Sim.Finances.Balance} for a {named.Price} sale on a {shopRecord.BaseCostOfGoods} base)");
+            // ⚠ THE CONTROL THAT STOPS THIS BEING A TAUTOLOGY: the guest's x10 debit and the
+            // park's x10 credit are read from different functions, and if they had been read in
+            // different units this would be the line that noticed. The park must earn strictly
+            // LESS than the guest paid, and more than nothing.
+            Check(margin > 0 && margin < 10 * named.Price,
+                  $"{region} and it is strictly between nothing and what the guest paid ({margin} of {10 * named.Price})");
+            var till = bought.Visitors.Sim.Rides[0];
+            Check(till.Takings == named.Price && till.Profit == named.Price - shopRecord.BaseCostOfGoods,
+                  $"{region} the shop books gross {till.Takings} and margin {till.Profit} separately");
             var dessert = Purchase(iceStem, ice);
             Check(dessert.Visitors.Purchases == 1 && dessert.Visitors.Rides == 1 && dessert.Visitors.Boardings == 1,
                   $"{region} ice cream genuinely completes one scripted purchase");
