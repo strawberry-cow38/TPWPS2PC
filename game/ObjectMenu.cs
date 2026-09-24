@@ -171,6 +171,24 @@ public sealed partial class ObjectMenu : Control
 
     public new void Hide() { Open = false; Visible = false; _entries.Clear(); QueueRedraw(); }
 
+    /// <summary>Point the highlight at whatever row the pointer is over. ⭐ Master: "the blue
+    /// text should be the currently hovered option. else: black." So the highlight follows the
+    /// MOUSE, not a keyboard cursor -- answers false when the pointer is off the rows so the
+    /// caller can leave the last choice standing rather than flickering.</summary>
+    public bool HoverAt(Vector2 global)
+    {
+        if (!Open || _entries.Count == 0) return false;
+        var local = global - Position;
+        float rowH = RowStep * Scale;
+        float top = (SheetInset + Pad / 2f) * Scale;
+        var size = Measure();
+        if (local.X < 0 || local.X > size.X) return false;
+        int row = (int)Mathf.Floor((local.Y - top) / rowH);
+        if (row < 0 || row >= _entries.Count) return false;
+        if (row != _index) { _index = row; QueueRedraw(); }
+        return true;
+    }
+
     public void Move(int delta)
     {
         if (!Open || _entries.Count == 0) return;

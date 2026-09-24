@@ -5632,8 +5632,7 @@ public partial class Viewer : Node3D
         {
             case "Edit Queue":
             case "Build Queue":
-                OpenTool(PathTool.Kind.Queue);
-                Status("queue tool -- lay a queue to the ride's entrance");
+                ResumeQueue();
                 break;
             case "Delete":
                 DeleteSelected();
@@ -5656,6 +5655,37 @@ public partial class Viewer : Node3D
         GD.Print($"[menu] --menu-test: {_park.Placed[0].Name} -> {string.Join(" / ", entries)}");
     }
 
+    /// <summary>Open the queue tool ON the selected ride, continuing from where its queue was
+    /// left. ⭐ Master: "edit queue should start the queue at the stage it was at when it was
+    /// laid, same queue placing mechanics as laying it for the first time."
+    ///
+    /// ⭐⭐ So it is the SAME tool, not an editor: `OpenTool` with the ride as owner, and then the
+    /// run is seeded at the queue's free tip so the next press continues it. Setting `_runX/_runY`
+    /// is exactly the state `PressTool` leaves behind after a first click, which is why the
+    /// mechanics are identical rather than merely similar.</summary>
+    void ResumeQueue()
+    {
+        if (_selected < 0 || _selected >= _park.Placed.Count) return;
+        var ride = _park.Placed[_selected];
+        OpenTool(PathTool.Kind.Queue, ride.Id);
+        var tip = _paths?.QueueEnd(ride.Id);
+        if (tip is { } t)
+        {
+            _runX = t.X; _runY = t.Y;
+            _runStack.Add((t.X, t.Y));
+            _ghostAt = (-1, -1, -1, -1);
+            GD.Print($"[menu] queue for {ride.Name} resumes at ({t.X},{t.Y})");
+            Status($"queue continues from ({t.X},{t.Y}) -- click to lay");
+        }
+        else
+        {
+            // ⚠ No queue yet, so there is no tip to continue from: this is the first run, and the
+            // tool is already in exactly the state it would be for one.
+            GD.Print($"[menu] {ride.Name} has no queue yet -- starting one");
+            Status("click to start this ride's queue");
+        }
+    }
+
     /// <summary>Delete the selected object. ⭐ Drops it from the park AND the simulation: a ride
     /// left in `ParkSim` with no model is one guests keep walking to.</summary>
     void DeleteSelected()
@@ -5663,13 +5693,18 @@ public partial class Viewer : Node3D
         if (_selected < 0 || _selected >= _park.Placed.Count) { Status("nothing selected"); return; }
         var p = _park.Placed[_selected];
         string name = p.Name;
+        // ⭐⭐ THE QUEUE GOES WITH IT. Master: "deletes the ride including the queue. (but not
+        // exit paths + combo entry/exits)" -- ClearQueue takes Kind.Queue cells owned by this
+        // ride and leaves Path and Both alone, so the park's walkable network survives.
+        int queueCells = _paths?.ClearQueue(p.Id) ?? 0;
         _sim?.Remove(p.Id);
         if (!_park.Remove(p.Id)) { Status($"could not delete {name}"); return; }
+        if (queueCells > 0) RefreshFloor();
         ClearSelection();
         _shownBox = -1;
         ShowBoxFor(-1);
-        GD.Print($"[menu] deleted {name} (id {p.Id})");
-        Status($"deleted {name}");
+        GD.Print($"[menu] deleted {name} (id {p.Id}); {queueCells} queue cells with it");
+        Status(queueCells > 0 ? $"deleted {name} and its queue" : $"deleted {name}");
     }
 
     bool SelectUnderCursor()
@@ -6673,6 +6708,9 @@ public partial class Viewer : Node3D
             // selected will get rid of its selected state. q/e wont." Read off the KEYS rather
             // than off the cursor having moved, because focusing the camera ON a selection moves
             // the cursor too and would otherwise drop it the instant it was made.
+            // ⭐ And the menu goes with it. Master: "the dialogue should close when you move like
+            // the selection box does" -- it belongs to the selection, so it cannot outlive it.
+            if ((fwd != 0 || side != 0) && _objMenu is { Open: true }) _objMenu.Hide();
             if ((fwd != 0 || side != 0) && (_selected >= 0 || _gateSelected)) ClearSelection();
             _game.CursorX += (int)((fwd * s - side * c) * pan);
             _game.CursorZ += (int)((fwd * c + side * s) * pan);
@@ -7517,6 +7555,11 @@ public partial class Viewer : Node3D
     {
         if (e is InputEventMouseMotion mm)
         {
+            // ⭐ The highlight follows the POINTER while the menu is up -- master: "the blue text
+            // should be the currently hovered option. else: black." Pointing off the rows leaves
+            // the last one lit rather than clearing it, so the highlight never flickers to
+            // nothing while the mouse crosses the frame.
+            if (_objMenu is { Open: true }) _objMenu.HoverAt(mm.Position);
             bool lDown = (mm.ButtonMask & MouseButtonMask.Left) != 0;
             bool rDown = (mm.ButtonMask & MouseButtonMask.Right) != 0;
             bool mDown = (mm.ButtonMask & MouseButtonMask.Middle) != 0;

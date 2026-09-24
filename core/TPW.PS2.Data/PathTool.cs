@@ -384,6 +384,56 @@ public sealed class PathTool
         return true;
     }
 
+    /// <summary>Take out one ride's QUEUE and nothing else. Answers how many cells went.
+    ///
+    /// ⭐⭐ `Kind.Queue` ONLY, and that exclusion is master's: "deletes the ride including the
+    /// queue. (but not exit paths + combo entry/exits)". A `Kind.Path` cell is park path -- an
+    /// exit route people walk on -- and `Kind.Both` is the one cell where a queue meets a path,
+    /// the combo entry/exit. Neither belongs to the ride being demolished, and tearing them up
+    /// would cut the park's walkable network at the exact place it joins.
+    ///
+    /// ⚠ The ORIGINAL GROUND goes back with the cell. `Lay` stashes the tile it overwrote in
+    /// `_before`; dropping the kind without restoring that leaves queue paving drawn on bare
+    /// ground with nothing logically there -- the reverse of the invisible no-build patch.</summary>
+    public int ClearQueue(int rideId)
+    {
+        if (rideId == 0 || !Ready) return 0;
+        var cleared = new List<(int X, int Y)>();
+        for (int y = 0; y < _field.Height; y++)
+            for (int x = 0; x < _field.Width; x++)
+            {
+                int at = At(x, y);
+                if (_kind[at] != Kind.Queue || _owner[at] != rideId) continue;
+                Record(at);
+                if (_before.TryGetValue(at, out var ground))
+                {
+                    _field.Cells[at * 2 + 1] = ground;
+                    _before.Remove(at);
+                }
+                _kind[at] = Kind.None; _owner[at] = 0; _run[at] = 0; _turns[at] = 0;
+                Laid--;
+                cleared.Add((x, y));
+            }
+        // ⚠ AFTER the whole sweep, not inside it: a neighbour repicked while the rest of the run
+        // is still standing would choose its sprite against cells about to vanish.
+        foreach (var (x, y) in cleared) RepickAround(x, y);
+        return cleared.Count;
+    }
+
+    /// <summary>The free end of a ride's queue -- where laying it left off -- or null.
+    /// ⭐ For resuming: master wants Edit Queue to "start the queue at the stage it was at when
+    /// it was laid", which means the next press continues from the tip rather than starting a
+    /// fresh run somewhere else.</summary>
+    public (int X, int Y)? QueueEnd(int rideId)
+    {
+        if (rideId == 0 || !Ready) return null;
+        for (int y = 0; y < _field.Height; y++)
+            for (int x = 0; x < _field.Width; x++)
+                if (_kind[At(x, y)] == Kind.Queue && _owner[At(x, y)] == rideId && IsQueueEnd(x, y))
+                    return (x, y);
+        return null;
+    }
+
     /// <summary>Whose queue a cell is, or 0.</summary>
     public int OwnerAt(int x, int y) => In(x, y) ? _owner[At(x, y)] : 0;
 
