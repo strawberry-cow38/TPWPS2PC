@@ -1714,10 +1714,24 @@ public partial class Viewer : Node3D
         if (_parkTicks - _lastWantCensus < 250) return;
         _lastWantCensus = _parkTicks;
         var held = _guests.Guests.Where(g => needs.Has(g.Id)).Select(g => needs.Of(g.Id)).ToList();
-        if (held.Count == 0) { GD.Print("[want] nobody in the park"); return; }
+        if (held.Count == 0)
+        {
+            // ⚠⚠ SAY WHAT WAS COUNTED. This used to print "nobody in the park", and it is a
+            // census of WALKING guests -- everyone handed to a ride has left the walk, so a full
+            // park mid-ride reads as empty. astraclaw, from a smoke run: 68 boardings, 40 returns,
+            // 28 still queued or riding at 180s, and my line still said nobody. It cost me
+            // several renders today: I read it as the park emptying and went hunting for a frame
+            // with people in it, when the people were on the ride.
+            int elsewhere = needs.All.Count;
+            GD.Print($"[want] no WALKING guests to draw a bubble over"
+                   + (elsewhere == 0 ? "; and nobody in the park at all"
+                                     : $"; {elsewhere} still have needs -- queued or riding, off the walk"));
+            return;
+        }
         var tally = held.GroupBy(v => v.Thought).OrderByDescending(x => x.Count())
                         .Select(x => $"{x.Key} {x.Count()}");
-        GD.Print($"[want] t={_parkTicks * ParkSim.TickMilliseconds / 1000.0:F1}s {held.Count} guests: "
+        GD.Print($"[want] t={_parkTicks * ParkSim.TickMilliseconds / 1000.0:F1}s {held.Count} WALKING"
+               + (needs.All.Count > held.Count ? $" (+{needs.All.Count - held.Count} off the walk)" : "") + ": "
                + string.Join(", ", tally)
                + $"  | hunger {held.Min(v => v.Hunger)}..{held.Max(v => v.Hunger)}"
                + $"  thirst {held.Min(v => v.Thirst)}..{held.Max(v => v.Thirst)}"
