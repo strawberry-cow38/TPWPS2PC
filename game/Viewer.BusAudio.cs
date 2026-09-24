@@ -20,7 +20,15 @@ public partial class Viewer
     const SoundGroup BusSoundGroup = SoundGroup.GlobalAmbient;
     const int BusSoundEvent = 6, BusParameterId = 20;
 
-    bool _busAudioLive, _busParameterChained;
+    bool _busAudioLive;
+
+    /// <summary>⚠⚠ WHICH SOUND LAYER WAS CHAINED, not merely whether one was. astraclaw caught
+    /// this: `MakePathTool` destroys and rebuilds `_sounds` on a map reload, so a bool survives
+    /// the thing it was describing and the NEW layer never gets parameter 20 -- the bus would go
+    /// on playing with its parameter stuck at whatever the fresh accessor returns for an unknown
+    /// id, which is 0. Holding the instance makes it self-heal: a different object is a different
+    /// answer, so the chain is rebuilt exactly when it is gone.</summary>
+    RideSounds _busChainedOn;
 
     /// <summary>⚠ A PORT CHOICE, AND THE ONLY ONE HERE. The controller's states are 0 idle,
     /// 1 approach, 2 at the stop, 3 departing; the sound starts when it leaves 0 and stops when
@@ -52,12 +60,15 @@ public partial class Viewer
     partial void UpdateBusAudio()
     {
         if (_sounds == null || !_busAudioLive) return;
+        // ⚠ Re-chain as well as re-follow: a reload can replace the sound layer mid-visit, and
+        // both registrations live on the instance rather than on the bus.
+        ChainBusParameter();
         // ⚠ Re-assert the follow source: a park rebuild can clear the sound layer underneath us,
         // and a silently unfollowed voice would pin the bus's engine where it last was.
         _sounds.Follow(BusSoundOwner, BusSoundTag, BusSoundPosition);
     }
 
-    partial void ResetBusAudio() => StopBusAudio();
+    partial void ResetBusAudio() { StopBusAudio(); _busChainedOn = null; }
 
     void StopBusAudio()
     {
@@ -75,8 +86,8 @@ public partial class Viewer
     /// 2 and 3 and back to 0 after a strict 2000 active milliseconds.</summary>
     void ChainBusParameter()
     {
-        if (_busParameterChained || _sounds == null) return;
-        _busParameterChained = true;
+        if (_sounds == null || ReferenceEquals(_busChainedOn, _sounds)) return;
+        _busChainedOn = _sounds;
         var previous = _sounds.ParameterValue;
         _sounds.ParameterValue = (ride, parameter) =>
             ride == BusSoundOwner && parameter == BusParameterId
