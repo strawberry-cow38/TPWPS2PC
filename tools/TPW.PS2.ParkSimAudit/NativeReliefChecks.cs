@@ -173,7 +173,7 @@ static class NativeReliefChecks
                       && !v.ServiceHidden(guest.Id) && v.ReliefDeadline(guest.Id) == null
                       && returned?.Cell == entry && returned.Next == null && returned.Progress == 0,
                       stem + " +524 closed-midservice finishes and readmits same identity inside");
-                Check(SameNeeds(v.Needs.Of(guest.Id),expected) && ride.Condition == 74 && v.Sim.Finances.Balance == 0,
+                Check(SameNeeds(v.Needs.Of(guest.Id),expected) && ride.Condition == 74 && v.Sim.Finances.Balance == ParkFinances.OpeningBalance,
                       stem + " handback relieves bladder/sickness once, preserves cash and all other needs");
                 Ticks(v, 30); v.Step(0, null);
                 Check(v.Rides == 1 && v.Relieved == 1 && SameNeeds(v.Needs.Of(guest.Id),expected) && ride.Condition == 74,

@@ -27,6 +27,14 @@ WadArchive Wad(string name)
 }
 var wad = Wad(world);
 var terrain = new Model(wad.Read(wad.Find("/terrain/terrain_1.mps")));
+if (args.Contains("--native-consumer-only"))
+{
+    NativeDestinationChecks.Run(terrain,Wad("DATA"),wad,world,Check);
+    NativeReliefChecks.Run(terrain,Wad("DATA"),wad,world,Check);
+    Console.WriteLine(bad == 0 ? "PASS native destination and relief consumers" : $"FAIL: {bad}");
+    return bad == 0 ? 0 : 1;
+}
+
 if (args.Contains("--removal-only"))
 {
     Check(RideRemovalChecks.RunIsolated(terrain, wad, Check), "isolated removal fixture was exercised");

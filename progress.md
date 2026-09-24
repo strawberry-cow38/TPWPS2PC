@@ -1576,3 +1576,37 @@ Remaining production package must integrate concrete getter inputs, signed score
 instance identity/history lifecycle, eligibility and real inside entrance. No guessed
 91 threshold or generic random fallback for joined retail candidates. Keep relief WIP
 in ../tpw-ride-eligibility untouched. Bus remains queued after urgent guest fixes.
+
+## Native selection/residence integrated, review pending — September24 13:12 UTC
+
+79cd95e adds shipping compiled candidate selection, concrete family value getters,
+native iterator order, per-active-guest instance history and selection-time penalty.
+Native relief residence integrated too: actual inside approach, hidden522 counter,
+next-dispatch completion, retained-position reveal/egress. Corrected1309F8 resource
+meaning: APS section5 count EXACTLY2, not resource class2; larger/no-APS facilities
+are not forced single-occupant. See findings/native-selection-eligibility.md.
+The original unconditional busy fixture was wrong for all4 large toilets and now
+asserts both metadata and correct admission rather than universal exclusion.
+
+Physical placements (PlacementTurns supplied) use native score. Unplaced synthetic
+fixtures retain legacy routing; joined retail candidates never fall back to45 or
+nearest-urgent selection. Missing compiled/invalid geometry cannot resurrect random
+selection. Native state2/10/11 predicate is represented, but managed lifecycle remains
+an explicit adapter to open/closed/script construction/broken, not native state updater.
+Coaster selection requires TrackClosed; track cache and sideshow operating fields are
+represented with traced constructor defaults, but live native control bindings remain
+separate. This is not complete guest-AI parity. Never describe these limits as absent
+from the disc.
+
+Core /tmp/tpw-native-score-integration-second and after upstream merge
+/tmp/tpw-native-score-merged pass all4 worlds except exact2known raw retail failures.
+Runtime /tmp/tpw-native-score-runtime-first: shopsPASS; standing155 assertions PASS,
+but gate rejects3 legitimate engine errors from RideParticles.Emit reusing outside-tree
+emitter. Reported to cow1552666870891421798; do not waive. Fresh normal-startup JUNGLE
+StandingServiceSmoke /tmp/tpw-native-relief-smoke.log PASS, captures /tmp/tpw-native-
+relief-smoke*.png; +522hidden/+523finishing/+524sameidentitysameposition, physicalegress.
+Captures NOT visually signed off. Native lifecycle production mutations/review pending.
+Merged peer through e98ee1e (money/gate/cost); own financial invariant updated toopening
+balance instead ofobsoletezero. Do not overwrite peer path-cost work. Before landing:
+mutation production scorer/residence/visibility, peer review, merged runtime, null-APS
+render and fourworldcontrols, docs/minimumcoverage. Bus queued next.
