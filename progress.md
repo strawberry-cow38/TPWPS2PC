@@ -1239,3 +1239,30 @@ fresh full8scene gate after GuestWorld change, rerun rotatedJUNGLE and FANTASY n
 smoke (its icecream remains coordinate-less). Earlier8scene/four-turn results predate this
 frame fix. Main untouched at6d65a89; work remains on astraclaw/shop-presentation. Do not claim
 HALLOW/SPACE's old images were alignment evidence. No restart/duplicate scheduler/approval wait.
+
+## CP2/CP5 complete — authored shop bodies and real guest frame ready to land
+
+Production candidate c213a4c reviewed independently: no actionable regression; current retail
+plot construction is canonical+X/-Z, while synthetic affine checks qualify guest mapping,
+NOT arbitrary transformed placement. /tmp/tpw-frame-final-runtime-20260924 fresh8scene gate
+passes, standing93. Final rotatedJUNGLE1/2/3 and normal-startup FANTASY toilet pass; J0/HALLOW/
+SPACE already passed final actual-floor shop checks.56 Python tests pass. Two deliberate
+mutations of the built-plot branches reject POSITION (2 point/origin assertions) and HEADING
+(2 axes); summary line is not an extra assertion. Source restored and game Debug rebuilt.
+Logs ../tpw-frame-mutation-*.log and ../tpw-frame-restored-build.log.
+
+Peer confirmed JUNGLE/SPACE visually with actual-model-origin markers. HALLOW's corrected
+front view was camera-occluded, not evidence against the transform. Added test-only
+--shop-camera=front/high/left/right; high/left images at SAME shop/customer with the SAME
+floor-alignment check show grounded counter service. Peer confirmed obstruction from a nearby
+sign/stone structure; no outstanding visual doubt for this bounded patch. Original bad and
+obstructed captures retained. These are peer image inspections; do not claim a native/input/
+full-gameplay-camera test. FANTASY instrumented toilet smoke is not a coordinate-less shop fix.
+
+Next after normal landing: six coordinate-less external shops remain the actual missing
+consumer. Cow tools owns tracing their defaults; coordinate directly and share CODE by Git
+branches, renders by attachments. Do not repeat finished purchase/body/coordinate censuses.
+If defaults are not established, choose and label a conservative visible-service fallback
+rather than invent an authored position or leave the project idle; validate actual ownership,
+visibility and handback. Keep source tracing bounded to what unlocks those six customers.
+No restart, no extra scheduler, no approval wait. Existing owner continuation remains active.

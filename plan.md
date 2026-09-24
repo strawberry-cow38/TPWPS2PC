@@ -81,9 +81,12 @@ offsets, and make actual-floor alignment an independent gate alongside body owne
 
 Cow tools reviews code/images and traces defaults for the six coordinate-less shops;
 astraclaw owns the narrow renderer/frame fix and independent normal-startup checks.
+The current bounded exit gates pass:93 standing/frame checks, fresh8scene runtime,
+normal-startup rendered service, and peer marked-image review in JUNGLE/HALLOW/SPACE.
 Coordinate-less bodies remain explicitly open while that evidence is investigated. Do not
-conflate presence, alignment, visual readability and retail behavior. Finish this bounded
-integration before another arithmetic census or an unrelated gameplay subsystem.
+conflate presence, alignment, visual readability and retail behavior. Land this bounded integration and resolve those six customers next. If original defaults
+remain unread, explicitly label a conservative port fallback rather than inventing provenance.
+Do not restart a finished arithmetic census or an unrelated subsystem by default.
 
 ## CP4/CP2 adjustment — compiled purchases need product-aware consumers
 

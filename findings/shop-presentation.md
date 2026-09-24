@@ -106,3 +106,28 @@ HALLOW and SPACE service/handback pass against the actual park-floor oracle. Opt
 not a point derived from the guest. It is an overlay, not disc artwork or gameplay UI.
 These captures are for renewed peer inspection, not an assertion that a marker alone proves
 correct authored counter alignment. Later all-turn/full-gate outcomes are in progress.md.
+
+## Final review and gate outcome
+
+The frame-corrected production code passes the fresh eight-scene runtime gate, including
+93 standing checks. Rotated JUNGLE runs (all four turns across the final set), HALLOW/SPACE
+shop runs and a FANTASY normal-startup toilet service/handback pass. The FANTASY shop remains
+excluded for missing authored coordinates; a toilet pass is not shop coverage.56 Python
+runner tests pass. Disabling built-plot position conversion fails the two literal point/origin
+checks; disabling direction conversion fails both axis checks. Source and build were restored.
+
+Peer visual review with the independent magenta placed-model-origin landmark confirms JUNGLE
+and SPACE counter placement. HALLOW's first frame after the fix was still inconclusive because
+the inspection camera intersected a park sign/stone structure. Three diagnostic views kept the
+same shop, guest and floor assertion while changing only the camera. Peer inspection of high
+and left views confirms a grounded customer at the correct counter; the obstruction, not the
+customer/model relationship, changes with viewpoint. Original obstructed captures remain in
+the evidence. `--shop-camera=front|high|left|right` records these viewpoints and keeps each
+run's before/serving/after camera identical. These are not gameplay-camera usability claims.
+
+A separate source review found no actionable regression in the frame conversion. Its affine
+synthetic tests establish guest mapping, not placement support for arbitrary rotated/non-unit
+plots: current retail construction uses the canonical +X/-Z frame, while Park.TryPlace still
+has its own narrower Origin/Height placement contract. No universal transform/retail-parity
+claim follows from these checks. Broader input, camera/crowding, platform and listening gates
+remain for the final human pass.

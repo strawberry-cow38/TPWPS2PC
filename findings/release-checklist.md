@@ -37,6 +37,17 @@ Selected small-toilet service/handback and revised WC-icon crops were also direc
 see service-smoke.md. That is narrower than general rendered shop/costume correctness or the
 full human release checklist. Do not replace absent native-platform/listening evidence with it.
 
+## Authored external-shop and guest-frame follow-up
+
+The reviewed renderer candidate `c213a4c` plus its diagnostic-camera fixture update fixes
+missing authored2x2-shop bodies and raw-overlay displacement of ordinary guests. Fresh
+8scene runtime gate passes with93 standing/frame assertions; normal-startup shop runs cover
+four JUNGLE turns and HALLOW/SPACE, plus a FANTASY toilet smoke. Marked-image peer review
+confirms the three supported shop views; HALLOW required alternate inspection views because
+the first camera intersected terrain scenery. See shop-presentation.md for the retained failed
+evidence, scope and precise limits. Six shops without authored stand coordinates stay open.
+These results do not replace the earlier all-project clean-checkout or native Windows gates.
+
 ## Expected retail findings — keep them visible
 
 * **HALLOW / Thrill Grill:** its script waits for an animation slot missing from the

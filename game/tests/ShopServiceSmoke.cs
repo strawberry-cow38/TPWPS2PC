@@ -205,8 +205,18 @@ public partial class ShopServiceSmoke : Node3D
             var target = standWorld + Vector3.Up * .35f;
             var front = stubWorld - standWorld; front.Y = 0;
             Require(front.LengthSquared() > 1e-6f, "actual entry determines camera side even with missing actor");
-            camera.GlobalPosition = target + front.Normalized() * 4.5f + Vector3.Up * 2.3f;
+            string cameraView = args.LastOrDefault(a => a.StartsWith("--shop-camera="))?["--shop-camera=".Length..] ?? "front";
+            Vector3 cameraOffset = cameraView switch
+            {
+                "front" => front.Normalized() * 4.5f + Vector3.Up * 2.3f,
+                "high" => front.Normalized() * 5f + Vector3.Up * 8f,
+                "left" => front.Normalized().Rotated(Vector3.Up, -.8f) * 5f + Vector3.Up * 3.5f,
+                "right" => front.Normalized().Rotated(Vector3.Up, .8f) * 5f + Vector3.Up * 3.5f,
+                _ => throw new ArgumentException("--shop-camera must be front, high, left or right"),
+            };
+            camera.GlobalPosition = target + cameraOffset;
             camera.LookAt(target); camera.MakeCurrent();
+            GD.Print($"SHOP SMOKE camera={cameraView} eye={camera.GlobalPosition} target={target}; diagnostic viewpoint, not default gameplay camera");
             Field<Control>(viewer, "_panel").Visible = false;
             if (args.Contains("--shop-markers"))
             {
