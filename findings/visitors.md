@@ -2288,6 +2288,13 @@ object is persistent and the SOUND SYSTEM owes the timer. That is exactly what t
 `+0xC` is the interval in **milliseconds**: 4300 for the speakers and staff, 3200 for the bin,
 4000 for the bus, 3000 for the fountain. ⭐ Every case matches what the object IS.
 
+⚠ TWO of the checks written for this were fitted to JUNGLE and failed the moment the four-world
+gate ran them: first JUNGLE's speaker event ids (236..239) asserted in every world, then "no
+feature has slot 0" (SPACE has one) and "some feature has slot 1" (only JUNGLE). ⭐⭐ That is the
+second and third time in one evening a number watched going by was promoted to an invariant. The
+fix each time was to assert the PROPERTY -- the flag partitions the events; the scripts ask for a
+slot almost nothing carries -- which holds anywhere without naming an id.
+
 ⚠ This is a **correlation over ~20 events read off a field**, not a consumer walked in the
 executable -- the bit may carry more than "repeats". But it is the first of the four rules with
 any data under it at all, and it is asserted both ways: the six things that should repeat carry
@@ -2301,13 +2308,37 @@ sequence this file claimed to be sacrificing. There was nothing to sacrifice.
 flag.** The first three were inferences about STRUCTURE standing in for a FIELD, each survived
 until a person listened to it, and the field was sitting parsed in the codebase throughout.
 
-### Features have no Create animation (2026-09-24)
+### ⚠⚠ "Features have no Create animation" -- WRONG, and wrong in a way this file warned about
 
-Master: "all features are missing their create animations (if they even had any.)" **They had
-none.** Slot 0 is `Create`; of the **18** feature `.aps` in JUNGLE, **0** carry a slot-0 record --
-`5x5rck`, `camera`, `fountain`, `Gates`, `lavspurt`, `lights`, `mamfount`, `pelbin`, `s_plant`,
-`seaplane` and the rest. Consistent with the Super Bog, already recorded here as having nothing in
-slot 0 because a portaloo does not build itself. Nothing is missing from the port.
+Master asked whether features even had create animations. This said **no**: slot 0 is `Create`,
+and 0 of 18 feature `.aps` in JUNGLE carry one. Master corrected it in a line: *"slot 1 for toilet
+and s_plant are the create animations."*
+
+⭐ The mistake is one already recorded two sections up, about characters: **the slot-name table is
+the RIDE's** and "need not mean the same thing for a character". It does not mean the same thing
+for a **feature** either. Asking "does slot 0 exist" answered a question about rides.
+
+**What the data actually says**, once you look at every world instead of one:
+
+| world | feature `.aps` | carry slot 0 | carry slot 1 | typical |
+|---|---|---|---|---|
+| JUNGLE | 18 | 0 | 2 (`s_plant`, the toilet) | 5 |
+| FANTASY | 15 | 0 | **0** | 5 |
+| SPACE | 24 | 1 | **0** | 5 |
+| HALLOW | 18 | 0 | **0** | 5 |
+
+⚠⚠ So "features keep their create in slot 1" is **not a rule** -- it is true of the two assets
+master named and of nothing else on the disc. The first fix generalised it to every feature, which
+would have put a silent fallback on 57 assets that do not want one. ⭐ Two names are not a rule;
+this repo has a note about taking master's spec literally and this is what it is for.
+
+⭐ What IS invariant, and what the port's fallback exists for: **30 feature scripts open
+`WAITANIM 0 0` while almost nothing carries a slot 0.** The console must resolve that request some
+other way; this port falls back for the two named assets and says so.
+
+⚠ And master's other instruction -- "the small toilet and small tree's animations are baked
+backwards ... reverse em when playing em" -- is applied to the same two, matched by name. Nothing
+in a record says which way round it was authored.
 
 ⭐ The tag semantics still settle the stacking half: `ADDOBJ` names an object and `KILLOBJ tag` /
 `FADEOBJ tag` act on *the* object with that tag — singular, and `RideSounds.Kill` already looks it

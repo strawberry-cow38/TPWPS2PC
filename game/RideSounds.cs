@@ -355,14 +355,22 @@ public sealed class RideSounds
     /// nothing is being consumed. In SECONDS, so it means the same thing at any frame rate.</summary>
     public const double ObservationWindow = 0.5;
 
-    public void Step(double delta)
+    /// <summary>⭐⭐ REPEATS ADVANCE ON EXECUTED SIM TIME, NOT ON THE RENDER CLOCK, and the two
+    /// are genuinely different: `ParkSim` caps catch-up at **eight** ticks, so a two-second stall
+    /// advances the park by 0.32 s while handing <see cref="Step"/> the whole two seconds. Driving
+    /// a 4.3-second speaker off that delta makes it fire on wall time during a stutter and drift
+    /// away from everything else in the park.
+    ///
+    /// ⭐ Called once per executed tick, so the interval counts sim time by construction rather
+    /// than by arithmetic that could be wrong. astraclaw drew the boundary: repeat SCHEDULING is
+    /// game time; the playback-start observation in <see cref="Step"/> is real elapsed time,
+    /// because "did the mixer accept this voice" is a question about the machine, not the park.</summary>
+    public void AdvanceSim(double simSeconds)
     {
-        // ⚠ The interval is the EVENT's own, so a 4.3 s speaker stays 4.3 s at any frame rate --
-        // it counts seconds, not calls.
         for (int i = _repeats.Count - 1; i >= 0; i--)
         {
             var t = _repeats[i];
-            t.Due -= delta;
+            t.Due -= simSeconds;
             if (t.Due > 0) continue;
             t.Due += t.IntervalSeconds;
             var pool = Enumerable.Range(0, t.Event.Sets).Select(k => t.Event.Clips.Where(c => c.Set == k).ToList())
@@ -371,6 +379,13 @@ public sealed class RideSounds
             var wav = pick == null ? null : Stream(t.Catalogue, t.Event, pick, false);
             if (wav != null) Start(t.Ride, t.Tag, pick.Name, wav, false, t.Kind, t.At, t.Head);
         }
+    }
+
+    /// <summary>⚠ REAL elapsed time, on purpose: everything below judges whether the engine and
+    /// the mixer actually took a voice, which is a fact about the machine. See
+    /// <see cref="AdvanceSim"/> for the half that belongs to the park's clock.</summary>
+    public void Step(double delta)
+    {
 
         for (int i = _voices.Count - 1; i >= 0; i--)
         {

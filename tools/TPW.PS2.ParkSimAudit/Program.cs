@@ -762,43 +762,108 @@ foreach (var featEntry in wad.Entries
     }
 }
 
+// ⭐ WHICH ANIMATION SLOT DOES A FEATURE'S SCRIPT ASK FOR? Master says slot 1 is the create for
+// the toilet and s_plant. Before changing any playback, read what the script requests -- if it
+// already asks for 1, nothing is missing and the fault is elsewhere.
+foreach (var fr in wad.Entries.Where(e => e.Path.EndsWith(".rse", StringComparison.OrdinalIgnoreCase)
+                                       && e.Path.Contains("/Features/", StringComparison.OrdinalIgnoreCase)))
+{
+    string leaf = System.IO.Path.GetFileNameWithoutExtension(fr.Path);
+    if (!leaf.Contains("plant", StringComparison.OrdinalIgnoreCase)
+     && !leaf.Contains("toilet", StringComparison.OrdinalIgnoreCase)
+     && !leaf.Contains("bog", StringComparison.OrdinalIgnoreCase)) continue;
+    RseProgram pg; try { pg = new RseProgram(wad.Read(fr)); } catch { continue; }
+    foreach (var ins in pg.Instructions)
+        if (ins.Opcode.ToString().Contains("ANIM"))
+            Console.WriteLine($"  feature anim: {leaf,-12} {ins.Address,4}: {ins.Opcode} "
+                            + string.Join(" ", ins.Operands.Select(o => o.Index)));
+}
+
 // ⭐⭐ THE REPEAT FLAG, ASSERTED AGAINST WHAT THE OBJECTS ARE. `RideSounds` now decides repetition
 // from the L2 record's `+0x10` flag and its `+0xC` interval rather than from the shape of the
 // sets -- the fourth rule, and the first read off a field. This pins the correlation that
 // justified it, both ways, because a flag that is set on everything or nothing explains nothing.
 {
-    (string File, int Evt)[] shouldRepeat = { ("Speaker1", 236), ("Speaker2", 237), ("Speaker3", 238),
-                                              ("Speaker4", 239), ("Staff", 188), ("PelBin", 93) };
-    (string File, int Evt)[] shouldNot = { ("End", 186), ("End", 202), ("Toilet", 51), ("Toilet", 53) };
-    int repeatOk = 0, onceOk = 0;
-    foreach (var (name, evt) in shouldRepeat)
-        foreach (int grp in new[] { 3, 4, 5, 6, 7, 8, 9, 11 })
-            if (ResolveEither(grp, evt).Hit is { } h && (h.Flags & 0x400) != 0 && h.Word0C > 0) { repeatOk++; break; }
-    foreach (var (name, evt) in shouldNot)
-        foreach (int grp in new[] { 3, 4, 5, 6, 7, 8, 9, 11 })
-            if (ResolveEither(grp, evt).Hit is { } h2) { if ((h2.Flags & 0x400) == 0) onceOk++; break; }
-    Check(repeatOk == shouldRepeat.Length,
-          $"every loudspeaker, the staff and the bin carry the repeat flag with an interval ({repeatOk} of {shouldRepeat.Length})");
-    Check(onceOk == shouldNot.Length,
-          $"CONTROL: the fireworks, the mortar and the toilet's own events do NOT ({onceOk} of {shouldNot.Length})");
+    // ⚠⚠ THE FIRST VERSION NAMED JUNGLE'S EVENT IDS (236..239, 188, 93) AND RAN THEM IN EVERY
+    // WORLD, where they mean nothing -- FANTASY, HALLOW and SPACE each matched 2 of 6. That is
+    // the SECOND check tonight fitted to one world's observation; the first was a boredom figure
+    // astraclaw's four-world gate caught the same way. ⭐ A number I have just watched go by is
+    // not an invariant, and running it everywhere is how that gets found out.
+    //
+    // ⭐⭐ So assert the PROPERTY instead: the flag must PARTITION this world's scenery events --
+    // some carry it, some do not -- and every event that carries it must name an interval. A
+    // flag set on everything, or on nothing, or one with no interval behind it, all fail. That
+    // holds in any world without naming a single id.
+    int flagged = 0, plain = 0, flaggedNoInterval = 0;
+    foreach (var fe2 in wad.Entries.Where(e => e.Path.EndsWith(".rse", StringComparison.OrdinalIgnoreCase)
+                                            && e.Path.Contains("/Features/", StringComparison.OrdinalIgnoreCase)))
+    {
+        RseProgram pr2; try { pr2 = new RseProgram(wad.Read(fe2)); } catch { continue; }
+        foreach (var ins2 in pr2.Instructions.Where(i2 => i2.Opcode == RseOpcode.ADDOBJ))
+        {
+            var o2 = ins2.Operands.Select(o => o.Index).ToArray();
+            if (o2.Length < 3 || !SoundCatalogue.IsSoundGroup(o2[0])) continue;
+            var (h3, _) = ResolveEither(o2[0], o2[2]);
+            if (h3 == null) continue;
+            if ((h3.Flags & 0x400) != 0) { flagged++; if (h3.Word0C <= 0) flaggedNoInterval++; }
+            else plain++;
+        }
+    }
+    Check(flagged > 0 && plain > 0,
+          $"the repeat flag PARTITIONS this world's scenery sound objects ({flagged} repeat, {plain} do not)");
+    Check(flaggedNoInterval == 0,
+          $"and every repeating object names an interval ({flaggedNoInterval} without)");
+    // ⭐ The named case, only where the ids were actually verified against the clips.
+    if (world == "JUNGLE")
+    {
+        int named = 0;
+        foreach (int evt in new[] { 236, 237, 238, 239, 188, 93 })
+            foreach (int grp in new[] { 3, 4, 5, 6, 7, 8, 9, 11 })
+                if (ResolveEither(grp, evt).Hit is { } hh && (hh.Flags & 0x400) != 0) { named++; break; }
+        Check(named == 6, $"JUNGLE: all four loudspeakers, the staff and the bin are among them ({named} of 6)");
+    }
 }
 
 // ⭐⭐ DO FEATURES HAVE A CREATE ANIMATION AT ALL? Master: "all features are missing their create
 // animations (if they even had any)". Slot 0 is `Create` -- harvested over 352 script pairs, see
 // findings/animation.md -- so this is answerable from the data rather than by staring at a park.
 {
-    int withCreate = 0, without = 0; var missing = new List<string>();
+    int withCreate = 0, without = 0, withZero = 0, asksForZero = 0; var missing = new List<string>();
+    foreach (var fr in wad.Entries.Where(e => e.Path.EndsWith(".rse", StringComparison.OrdinalIgnoreCase)
+                                           && e.Path.Contains("/Features/", StringComparison.OrdinalIgnoreCase)))
+    {
+        RseProgram pg; try { pg = new RseProgram(wad.Read(fr)); } catch { continue; }
+        if (pg.Instructions.Any(i => i.Opcode == RseOpcode.WAITANIM
+                                  && i.Operands.Count > 0 && i.Operands[0].Index == 0)) asksForZero++;
+    }
     foreach (var fa in wad.Entries.Where(e => e.Path.EndsWith(".aps", StringComparison.OrdinalIgnoreCase)
                                            && e.Path.Contains("/Features/", StringComparison.OrdinalIgnoreCase)))
     {
         TPW.PS2.Data.Animation ap;
         try { ap = new TPW.PS2.Data.Animation(wad.Read(fa)); } catch { continue; }
-        bool has = ap.Records().Any(r => r.Slot == 0);
-        if (has) withCreate++;
-        else { without++; if (missing.Count < 10) missing.Add(System.IO.Path.GetFileNameWithoutExtension(fa.Path)); }
+        // ⚠⚠ SLOT 0 IS "Create" FOR A RIDE. This file already records that the slot-name table
+        // is the RIDE'S and "need not mean the same thing for a character" -- and it does not
+        // mean the same thing for a FEATURE either. Reporting slot 0 alone produced a confident
+        // "features never had create animations", which master corrected in one line: slot 1 is.
+        var slots = ap.Records().Select(r => r.Slot).Distinct().OrderBy(x => x).ToArray();
+        if (slots.Contains(0)) withZero++;
+        if (slots.Contains(1)) withCreate++; else without++;
+        if (missing.Count < 12)
+            missing.Add($"{System.IO.Path.GetFileNameWithoutExtension(fa.Path)}[{string.Join(",", slots)}]");
     }
-    Console.WriteLine($"  feature create: {withCreate} of {withCreate + without} feature .aps carry a slot-0 Create"
-                    + (missing.Count == 0 ? "" : $"; WITHOUT: {string.Join(" ", missing)}"));
+    Console.WriteLine($"  feature create: {withCreate} of {withCreate + without} feature .aps carry a slot-1 record"
+                    + (missing.Count == 0 ? "" : $"; slots: {string.Join(" ", missing)}"));
+    // ⭐⭐ THE MISMATCH, PINNED. Every feature script opens `WAITANIM 0 0` while no feature .aps
+    // carries a slot 0 -- which is why the build request played nothing. The viewer falls back to
+    // slot 1; this asserts the condition that fallback exists for, so if the data ever stops
+    // disagreeing with itself somebody is told rather than leaving dead compensation in place.
+    // ⚠⚠ TWO WORLD-FITTED VERSIONS OF THIS CHECK FAILED BEFORE THIS ONE. First "no feature has
+    // slot 0" (SPACE has one); then "some feature has slot 1" (only JUNGLE does -- FANTASY,
+    // SPACE and HALLOW are slot 5 throughout). ⭐ What is actually invariant is the MISMATCH the
+    // fallback exists for: scripts ask for a slot that almost nothing carries.
+    Check(asksForZero > 0 && withZero * 4 < asksForZero,
+          $"feature scripts ask for slot 0 ({asksForZero}) while almost no feature .aps carries one ({withZero}); "
+        + $"{withCreate} carry slot 1 in this world");
 }
 
 // ⭐⭐ THE RULE'S PREMISE, ASSERTED. `RideSounds` now loops a scenery voice only when its event
