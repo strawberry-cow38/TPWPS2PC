@@ -395,9 +395,35 @@ public sealed class ParkVisitors
             // here, so somebody Heading for a ride whose path was dug up under them stayed
             // Stranded forever with a plan nobody would ever complete -- a slowly filling pool of
             // people standing still. They go back to Wandering and are re-tasked like anyone else.
+            // ⚠⚠ AND `Leaving` STRANDS THE SAME WAY -- I added the intent and did not extend
+            // this, so a guest walking out when the path broke under them stayed stuck even after
+            // it was repaired and a route existed again. astraclaw reproduced it. It is the
+            // one-way-door shape: nothing is stale, the guest simply left a state with no path
+            // back, and every snapshot of them looks individually fine.
+            //
+            // ⭐ RESETTING THE PLAN IS NOT ENOUGH, which is why the original fix was half a fix:
+            // `Wander` rewrites the plan but leaves the WALK state Stranded, and the `!= Arrived`
+            // guard below then skips them forever -- so they swapped one stuck state for another.
+            // Sending them to the cell they already stand on marks them Arrived (GuestWalk.Send
+            // returns early when there is nowhere to go), and the ordinary re-task takes it from
+            // there -- including retrying the gate, because WantsToGoHome is still true.
+            // ⚠⚠ KEYED ON THE STATE, NOT THE INTENT, and keying it on the intent is what kept
+            // this broken through TWO fixes. The original matched `Heading`; I extended it to
+            // `Leaving` and the guest STILL never came back, because by then their plan said
+            // neither: the first failed attempt had already reset them to Wandering, and a
+            // Wandering guest who is NoRoute matched nothing and was skipped forever. The intent
+            // says what they were trying to do, which is exactly the thing that has already been
+            // lost by the time they are stuck. Being unable to move is a fact about the STATE.
             if (g.State is GuestState.NoRoute or GuestState.Stranded
-                && _plans.TryGetValue(g.Id, out var stuck) && stuck.Intent == VisitorIntent.Heading)
+                && _plans.TryGetValue(g.Id, out var stuck)
+                && stuck.Intent is VisitorIntent.Wandering or VisitorIntent.Heading or VisitorIntent.Leaving)
+            {
                 Wander(g.Id, g.Cell);
+                // Standing still on ground that exists again is Arrived, and the ordinary
+                // re-task below does the rest. On ground that is still gone this fails and they
+                // are tried again next tick, which is the retry the bug was missing.
+                Walk.Send(g, g.Cell);
+            }
             if (g.State != GuestState.Arrived) continue;
             if (_plans.TryGetValue(g.Id, out var plan) && plan.Intent == VisitorIntent.Heading) continue;
             // ⭐⭐ AND HAVING HAD ENOUGH BEATS BOTH. `WantsToGoHome` was decoded, documented

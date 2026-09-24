@@ -219,6 +219,43 @@ static class ServiceChecks
         Check(unqueued.Peak78 == 0, $"a guest with no queue to stand in pays nothing ({unqueued.Peak78})");
         Check(unqueued.LowHappy == 100, $"and keeps their patience ({unqueued.LowHappy})");
 
+        // ── going home over a path that breaks and is mended ─────────────────────────────────
+        // ⭐⭐ THE ONE-WAY DOOR. A `Leaving` guest whose path was dug up under them stayed stuck
+        // FOREVER -- not because anything was stale, but because they left a state with no way
+        // back: the stranded-recovery clause only matched `Heading`, and resetting the plan alone
+        // leaves the WALK state Stranded so the `!= Arrived` guard skips them for good. Every
+        // snapshot of that guest looks individually fine, which is why it needs a DURATION to see.
+        // Reproduced by astraclaw; this is the permanent one on my side of the line.
+        (int Home, int Stuck) Detour()
+        {
+            var paths = new ParkPaths(terrain);
+            sourcePaths.Field.Cells.CopyTo(paths.Field.Cells, 0);
+            paths.SetEntrance(entranceTable);
+            var visitors = new ParkVisitors(new ParkSim(paths), new GuestWalk(paths)) { Needs = new VisitorNeeds(5150) };
+            foreach (string key in visitors.Needs.Rates.Keys.ToArray())
+                visitors.Needs.Rates[key] = new VisitorNeeds.Rate(0, 0, false);
+            var g = visitors.Arrive(exit, exit);
+            var w = visitors.Needs.Of(g.Id);
+            w.Cash = 0; w.Happiness = 80;             // broke: they want to leave
+            w.Hunger = 0; w.Thirst = 0; w.Toilet = 0; w.Sick = 0; w.Unknown7B = 0;
+            visitors.Needs.Set(g.Id, w);
+
+            var ground = (byte[])paths.Field.Cells.Clone();
+            for (int i = 0; i < 60; i++) visitors.Step(Tick, () => exit);   // set off for the gate
+            // dig the corridor out from under them
+            for (int i = 0; i < paths.Field.Cells.Length; i++) paths.Field.Cells[i] = 0;
+            for (int i = 0; i < 600 && visitors.WentHome == 0; i++) visitors.Step(Tick, () => exit);
+            int strandedWhileBroken = visitors.WentHome == 0 ? 1 : 0;
+            // mend it
+            ground.CopyTo(paths.Field.Cells, 0);
+            for (int i = 0; i < 6000 && visitors.WentHome == 0; i++) visitors.Step(Tick, () => exit);
+            return (visitors.WentHome, strandedWhileBroken);
+        }
+
+        var detour = Detour();
+        Check(detour.Stuck == 1, $"a guest cannot reach the gate while the path is dug up ({detour.Stuck})");
+        Check(detour.Home == 1, $"and gets there once it is mended ({detour.Home} went home)");
+
         var content = Leave(cash: 5000, happiness: 80);
         Check(content.Home == 0, $"a solvent, happy guest stays ({content.Home} went home)");
         Check(content.Walkers == 1, $"and is still walking about ({content.Walkers})");

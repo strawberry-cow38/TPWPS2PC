@@ -1307,3 +1307,28 @@ constant — one chosen number instead of two, and a guest who waits twice as lo
 `BitmapFont.TryGetGlyph`, `Lighting.Modulate`, `Model.Skin.SkinBindRotation`,
 `ParkPaths.SceneryBlocks`. ⚠ Candidates, not verdicts — the tool matches on identifier and cannot
 see a call through a delegate or interface. Listed so the next person starts from a shortlist.
+
+### ⚠⚠ The stranded-recovery was keyed on INTENT, and that kept it broken through two fixes
+
+astraclaw reproduced it against the new go-home flow: a `Leaving` guest whose path was dug up under
+them stayed stuck even after it was repaired and a route existed again.
+
+⭐ **It is the one-way door** — nothing stale, nothing wrong in the data; the guest left a state
+with no path back, so every snapshot of them looks individually fine and only a DURATION shows it.
+
+**Fix one (wrong):** extend the clause from `Heading` to `Heading or Leaving`. Still stuck, and the
+reason is the lesson: by the time the guest is wedged their plan says **neither**, because the
+first failed attempt already reset them to `Wandering` — and a Wandering guest who is `NoRoute`
+matched nothing and was skipped forever by the `!= Arrived` guard.
+
+⭐⭐ **The intent says what they were TRYING to do, which is exactly what has been lost by the time
+they are stuck. Being unable to move is a fact about the STATE.** Keyed on state now.
+
+⚠ And resetting the plan was never enough on its own: `Wander` rewrites the plan but leaves the
+walk state `Stranded`, so the original `Heading` fix swapped one stuck state for another. The
+guest is now also sent to the cell they already stand on, which `GuestWalk.Send` answers with
+`Arrived` — and on ground that is still gone it fails and they are retried next tick, which is the
+retry that was missing.
+
+Check: break the corridor under a departing guest, confirm they CANNOT reach the gate, mend it,
+confirm they do. Mutation with the shipped clause restored reddens the second line only.
