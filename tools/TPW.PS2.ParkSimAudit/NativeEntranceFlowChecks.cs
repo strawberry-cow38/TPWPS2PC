@@ -56,6 +56,7 @@ static class NativeEntranceFlowChecks
         StaleIdentity();
         Rejected();
         Teardown();
+        DiscardCensus();
 
         void Accepted()
         {
@@ -346,6 +347,28 @@ static class NativeEntranceFlowChecks
                 && ReferenceEquals(f.Walk.Guests.Single(), g),
                 "unhappy rejected identity cannot be stolen by ordinary home/wander AI; no charge or reseed");
             f.Audit();
+        }
+
+        void DiscardCensus()
+        {
+            var f = New(); f.HoldResults = true;
+            var a = f.Add(15); var b = f.Add(15);
+            f.Step();
+            int cancelled = 0;
+            f.Flow.Clear((_, _) => cancelled++, f.Visitors.DiscardEntranceGuest);
+            Check(cancelled == 2 && f.Visitors.DiscardedEntranceGuests == 2
+                && f.Visitors.WentHome == 0 && f.AcceptCalls == 0,
+                "explicit teardown counts discards separately from departures and admission attempts");
+            Check(!f.Walk.IsLive(a) && !f.Walk.IsLive(b) && !f.Visitors.Plans.Any()
+                && !f.Visitors.Needs.Has(a.Id) && !f.Visitors.Needs.Has(b.Id)
+                && f.Flow.Position(a) == null && f.Flow.Position(b) == null,
+                "discard accounting corresponds to real plan/needs/identity/coordinate removal");
+            f.Flow.Clear((_, _) => cancelled++, f.Visitors.DiscardEntranceGuest);
+            Check(f.Visitors.DiscardedEntranceGuests == 2 && cancelled == 2,
+                "repeat clear cannot double count discarded identities");
+            var fresh = f.Add(15);
+            Check(f.Flow.Position(fresh) == f.Centre && f.Flow.Position(a) == null,
+                "integer source coordinate is exposed only for the current live flow identity");
         }
 
         void Teardown()

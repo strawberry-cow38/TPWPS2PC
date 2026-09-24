@@ -23,7 +23,7 @@ if (args.Contains("--native-route-consumer-only"))
 {
     NativeGuestRouteChecks.Run(Check);
     NativeWalkConsumerChecks.Run(disc,Check);
-    Console.WriteLine(bad==0 ? "PASS native route through GuestWalk/ParkVisitors (full entrance controller not yet connected)" : $"FAIL: {bad}");
+    Console.WriteLine(bad==0 ? "PASS native route through GuestWalk/ParkVisitors (controller is a separate opt-in experimental consumer)" : $"FAIL: {bad}");
     return bad==0?0:1;
 }
 if (args.Contains("--guest-motion-only"))

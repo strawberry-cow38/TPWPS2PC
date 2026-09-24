@@ -37,7 +37,7 @@ public sealed partial class GuestWalk
         ArgumentNullException.ThrowIfNull(inputs.Speed);
         ArgumentNullException.ThrowIfNull(inputs.Delta);
         ArgumentNullException.ThrowIfNull(inputs.AnimationReady);
-        if (guest == null || !_guests.Contains(guest) || _guests.Count(g => g.Id == guest.Id) != 1)
+        if (!UniqueLive(guest))
             return false;
         var old = guest.NativeMotion;
         if (old != null ? !ReferenceEquals(old.Owner, owner) : guest.Next != null)
@@ -56,7 +56,7 @@ public sealed partial class GuestWalk
 
     public NativeMotionSnapshot? NativeRouteState(Guest guest, object owner)
     {
-        if (guest == null || !_guests.Contains(guest) || guest.NativeMotion is not { } lease
+        if (!IsLive(guest) || guest.NativeMotion is not { } lease
             || !ReferenceEquals(lease.Owner, owner)) return null;
         var r = lease.Route;
         return new(r.Position, r.ExecutionState, r.SlotIndex, r.Finished, r.Failed);

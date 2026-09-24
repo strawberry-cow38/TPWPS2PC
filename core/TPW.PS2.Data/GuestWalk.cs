@@ -113,9 +113,25 @@ public sealed partial class GuestWalk
     int _lastId;
 
     readonly List<Guest> _guests = new();
-    public IReadOnlyList<Guest> Guests => _guests;
+    readonly HashSet<Guest> _live = new(ReferenceEqualityComparer.Instance);
+    readonly Dictionary<int, int> _liveIdCounts = new();
+    public IReadOnlyList<Guest> Guests { get; }
+    /// <summary>Constant-time reference identity, not a numeric ID which can be reused.</summary>
+    public bool IsLive(Guest guest) => guest != null && _live.Contains(guest);
+    internal bool UniqueLive(Guest guest) => IsLive(guest) && _liveIdCounts[guest.Id] == 1;
 
-    public GuestWalk(ParkPaths paths) { Paths = paths ?? throw new ArgumentNullException(nameof(paths)); }
+    public GuestWalk(ParkPaths paths)
+    {
+        Paths = paths ?? throw new ArgumentNullException(nameof(paths));
+        Guests = _guests.AsReadOnly(); // mutations must maintain ordered list and liveness index together
+    }
+
+    void AddLive(Guest guest)
+    {
+        _guests.Add(guest);
+        _live.Add(guest);
+        _liveIdCounts[guest.Id] = _liveIdCounts.GetValueOrDefault(guest.Id) + 1;
+    }
 
     /// <summary>Put a guest down at <paramref name="at"/> -- open ground, or it is the caller's
     /// mistake and throws -- bound for <paramref name="to"/>. The route is found now: a guest with
@@ -128,7 +144,7 @@ public sealed partial class GuestWalk
         // through it. Leaving it is the start exemption in Route.
         if (!Paths.Walkable(at)) throw new ArgumentException($"A guest cannot be put down at {at}: not walkable ground");
         var guest = new Guest { Id = ++_lastId, Cell = at, Destination = to, State = GuestState.Walking };
-        _guests.Add(guest);
+        AddLive(guest);
         if (!Assign(guest)) { guest.State = GuestState.NoRoute; guest.Reason = $"no route from {at} to {to}"; }
         else if (at == to) guest.State = GuestState.Arrived;
         return guest;
@@ -147,7 +163,7 @@ public sealed partial class GuestWalk
     {
         if (!Paths.Walkable(at)) throw new ArgumentException($"A guest cannot be put down at {at}: not walkable ground");
         var guest = new Guest { Id = id, Cell = at, Destination = to, State = GuestState.Walking };
-        _guests.Add(guest);
+        AddLive(guest);
         if (!Assign(guest)) { guest.State = GuestState.NoRoute; guest.Reason = $"no route from {at} to {to}"; }
         else if (at == to) guest.State = GuestState.Arrived;
         return guest;
@@ -156,12 +172,17 @@ public sealed partial class GuestWalk
     public void Clear()
     {
         foreach (var guest in _guests) guest.NativeMotion = null;
-        _guests.Clear(); Time = 0; _carry = 0; _lastId = 0;
+        _guests.Clear(); _live.Clear(); _liveIdCounts.Clear(); Time = 0; _carry = 0; _lastId = 0;
     }
     public void Remove(int id)
     {
-        foreach (var guest in _guests.Where(g => g.Id == id)) guest.NativeMotion = null;
+        foreach (var guest in _guests.Where(g => g.Id == id))
+        {
+            guest.NativeMotion = null;
+            _live.Remove(guest);
+        }
         _guests.RemoveAll(g => g.Id == id);
+        _liveIdCounts.Remove(id);
     }
 
     /// <summary>Give a guest somewhere new to go, from where it stands. False when it cannot get
@@ -197,11 +218,11 @@ public sealed partial class GuestWalk
     /// after demolition. No arbitrary building spawn: caller must retain that visit's token.</summary>
     public Guest ReadmitTerminal(int id, GuestTerminal terminal)
     {
-        if (terminal == null || !Paths.Contains(terminal.Entry) || _guests.Any(g=>g.Id==id))
+        if (terminal == null || !Paths.Contains(terminal.Entry) || _liveIdCounts.ContainsKey(id))
             throw new ArgumentException("Invalid terminal readmission or duplicate identity");
         var guest=new Guest { Id=id, Cell=terminal.Entry, Destination=terminal.Entry,
             State=GuestState.Arrived, OccupiedTerminal=terminal };
-        _guests.Add(guest);
+        AddLive(guest);
         return guest;
     }
 

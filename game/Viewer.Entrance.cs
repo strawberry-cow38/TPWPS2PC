@@ -99,7 +99,7 @@ public partial class Viewer
         // whose corridor receives native flag8 in14E958..9BC. Do not equate every
         // IsEntrance cell with that native flag byte or allow arbitrary start poses.
         var basePoint = EntranceCentre(_busCatalogue.IncomingQueuePoint);
-        if (guest.Position.X != basePoint.X / 256f || guest.Position.Z != basePoint.Z / 256f)
+        if (_entranceFlow.Position(guest) != basePoint)
             throw new InvalidOperationException("Experimental mode13 scan requires the proven incoming-head point2.");
         int x = basePoint.X >> 8, z = basePoint.Z >> 8;
         for (int i = 0; i < 50; i++)

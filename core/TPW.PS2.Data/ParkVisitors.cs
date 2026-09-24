@@ -79,6 +79,8 @@ public sealed class ParkVisitors
     /// <summary>How many guests have gone home. ⭐ Counted because "the park empties" and "the
     /// park never fills" look identical in a population graph and need different fixes.</summary>
     public int WentHome { get; private set; }
+    /// <summary>Explicit entrance/controller teardown, NOT departures or paid admissions.</summary>
+    public int DiscardedEntranceGuests { get; private set; }
 
     /// <summary>Where a guest who has had enough walks to. ⚠ The park's own entrance cells, which
     /// are also its exit -- the game has one gate. Null-safe: with no entrance registered nobody
@@ -256,6 +258,7 @@ public sealed class ParkVisitors
         if (Walk.NativeRouteState(guest, owner) == null)
             throw new InvalidOperationException("Entrance teardown requires its current owner.");
         ShowOut(guest.Id, countDeparture: false);
+        DiscardedEntranceGuests++;
         Needs?.Reconcile(_plans.Keys);
     }
 

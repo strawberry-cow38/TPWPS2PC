@@ -36,6 +36,40 @@ static class NativeWalkConsumerChecks
         // 0x4000 is the native fixed-point delta, not decimal 4000 or seconds.
         var inputs = new NativeMotionInputs(() => { speeds++; return 15; },
             () => { deltas++; return 0x4000; }, () => { readiness++; return ready; });
+        var identities = new GuestWalk(paths);
+        var born = identities.Spawn(start, start);
+        Check(identities.IsLive(born) && !identities.IsLive(null)
+            && !identities.IsLive(new Guest { Id = born.Id }), "liveness indexes exact spawned reference, not just ID");
+        var duplicate = identities.Readmit(born.Id, start, start);
+        Check(identities.IsLive(born) && identities.IsLive(duplicate) && identities.Guests.Count == 2,
+            "ordinary Readmit preserves both duplicate references rather than overwriting an ID dictionary");
+        Check(!identities.BeginNativeRoute(born, owner, new[] { centre }, inputs)
+            && !identities.BeginNativeRoute(duplicate, owner, new[] { centre }, inputs),
+            "duplicate numeric identities still refuse native route ownership");
+        identities.Remove(born.Id);
+        Check(!identities.IsLive(born) && !identities.IsLive(duplicate) && identities.Guests.Count == 0,
+            "Remove removes every matching live reference and identity count");
+        var readmitted = identities.Readmit(born.Id, start, start);
+        Check(identities.IsLive(readmitted) && !identities.IsLive(born), "reused ID cannot revive old liveness");
+        Check(identities.BeginNativeRoute(readmitted, owner, new[] { centre }, inputs),
+            "removed duplicate count cannot block a fresh unique readmission");
+        identities.Clear();
+        Check(!identities.IsLive(readmitted) && !readmitted.HasNativeRoute, "Clear removes liveness and lease together");
+        var identityTerminal = new GuestTerminal(new ParkRide { Id = 91 }, start, neighbour, () => true);
+        var returned = identities.ReadmitTerminal(50, identityTerminal);
+        Check(identities.IsLive(returned) && identities.Guests.Count == 1, "terminal readmission also enters liveness index");
+        bool terminalDuplicate = false;
+        try { identities.ReadmitTerminal(50, identityTerminal); } catch (ArgumentException) { terminalDuplicate = true; }
+        Check(terminalDuplicate && identities.IsLive(returned) && identities.Guests.Count == 1,
+            "terminal duplicate refusal leaves ordered and indexed identity intact");
+        identities.Clear();
+        Check(!identities.IsLive(returned), "terminal identity also vanishes from index on Clear");
+        var resetIdentity = identities.Spawn(start, start);
+        Check(resetIdentity.Id == born.Id && identities.IsLive(resetIdentity) && !identities.IsLive(born),
+            "counter reset reuses number without resurrecting old object");
+        Check(identities.Guests is ICollection<Guest> exposed && exposed.IsReadOnly,
+            "public ordered guest view cannot bypass index maintenance");
+
         var walk = new GuestWalk(paths);
         var guest = walk.Spawn(start, start);
         var terminal = new GuestTerminal(new ParkRide { Id = 17 }, start, neighbour, () => true);

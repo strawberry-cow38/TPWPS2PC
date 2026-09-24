@@ -2322,3 +2322,30 @@ minhint,192840 chainfree. Slotarray3AE1B8 stride4. No guards ondoublefree/cycles
 these bodies. Need actual sharedpool/cursor/requestservice consumers andreset/
 partialfailure timing, notanotherunusedcounter. Readiness anddeparture remainother
 releaseblockers. All3delegatesusedthisturn; no moreuntilnewturn. No pendingbuilds.
+
+Peer review follow-up September24: cowacceptedgroup/activeordering; parentraw14DA98/
+14DAA4/14DAB4 provesnativePREPEND. RepeatedLive.Any +NativeRouteState.Contains now
+O(1)referenceHashSet. SeparateIDmultiplicities preserveexistingReadmitduplicate
+semantics/uniqueleaseguard. All3birthsites+Remove/Clear maintainindices; readonly
+Guests view preventsoutsideindexbypass. 87actuator checks,113flow,23fee. Integer
+Flow.Position now suppliesmode13headprecondition; nofloattolerance. Explicit
+DiscardedEntranceGuests census (notWentHome or anewnativecounter), testedrealplan/
+needs/identityremoval andrepeatClear. 3mutationscaught2failureseach/restored.
+Gates /tmp/tpw-review-final-matrix onlyexact2retailreds; all11runtimePASS;63Python;
+/tmp/tpw-review-viewer.log actualJUNGLE649PASS clean. These are reviewhardening,
+not changes todefault/main parity or removalofexperimentalroute/departurebypasses.
+
+User20:43 asked whatresearchwasfor; answeredplainlyguesttrafficAFTERbusdropoff,
+queues/price/backlog/leaving, bus+smoothalreadyshipped. Mustkeepfutureupdateson
+visibleoutcome, notjustinternalcheckcounts. TheydidNOTpause/changeourtask. Cow
+ownsride-Xmenu researchnowandfountain/camera; main1b62cd0 addsfountainruntimeaudit.
+
+Read-onlyworker closedpoolproducer details, savednative-route-slot-pool.md:
+output1000/search2000/requestrecords10 DISTINCTresources.18D358 directioncompressed
+backwardparent builder disposesOLDroutefirst, prependsprivatepartialchain, rolls
+backpartialvia18D574->192840 onallocfailure, publishonly18D650success. Cursor191D78
+savesnext/freeONE/publishnext; invalidposition191E98 freesWHOLEchain192038. Two
+resetcallers149C08/init and18C4C0/globaldisable-reinitialize-enable path; NOTonly
+onceperpark. Pendingcancel18DB70cleanssearchrequests notcompletedactoroutput;
+liveindirectcallerunclosed. Needactualpool/curor/requestconsumer next, notunusedhelper.
+No pendingbuilds, no extractedassets, no restarts. Readonlydelegateused1thisreviewturn.

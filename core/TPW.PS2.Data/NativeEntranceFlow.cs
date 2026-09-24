@@ -138,6 +138,10 @@ public sealed class NativeEntranceFlow
     /// only be stepped through the supplied StepOwnedNative callback.</summary>
     public bool Owns(Guest guest) => guest != null && _entries.ContainsKey(guest);
 
+    /// <summary>Source fixed-point position under the current owner, never a rendering float.</summary>
+    public Point? Position(Guest guest) => guest != null && _entries.TryGetValue(guest, out var e) && Live(e)
+        ? Motion(e).Position : null;
+
     public IReadOnlyList<Observation> Observations =>
         Array.AsReadOnly(_allocated.Select(Snapshot).ToArray());
 
@@ -259,7 +263,7 @@ public sealed class NativeEntranceFlow
         finally { _busy = false; }
     }
 
-    bool Live(Entry e) => _visitors.Walk.Guests.Any(g => ReferenceEquals(g, e.Guest));
+    bool Live(Entry e) => _visitors.Walk.IsLive(e.Guest);
 
     void RemoveVanished()
     {

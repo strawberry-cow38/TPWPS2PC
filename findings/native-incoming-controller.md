@@ -97,3 +97,25 @@ The initial period16 mutation PASSED: both first releases were after tick16 and
 the test stopped before the next half-period. Extending observation through the
 ready replacement head's half-period caught it. Record this as a test correction,
 not evidence that the first passing test had protected the scheduler.
+
+## Peer-review follow-up
+
+Native released heads really prepend:14DA98 loads old head,14DAA4 writes it to
+new.next,14DAB4 installs new head. The same-tick priority is not a managed guess.
+Repeated liveness scans were removed via GuestWalk reference-identity HashSet and
+separate ID multiplicities (ordinary Readmit historically permits duplicates).
+Spawn, Readmit, ReadmitTerminal, Remove and Clear maintain both ordered view and
+indices; public view is read-only. Native route owner lookups use the same index,
+not another hidden linear Contains scan. Identity checks now87; controller113.
+
+Mode13's head precondition now compares source fixed-point Points, never rendering
+floats. Previously short/256 was exactly representable, so no observed float drift
+bug was fixed; this change expresses the correct invariant and avoids depending
+on the render conversion. No tolerance accepts a non-head position.
+
+Explicit DiscardEntranceGuest increments DiscardedEntranceGuests separately from
+WentHome and removes actual plan/needs/lease. This is a teardown census, not a
+new native counter or proof of a global admission conservation equation; a guest
+could already have paid before reset. Repeated Clear cannot count twice. Three
+mutations (missing liveness Clear, terminal registration, discard count) each
+produced two failures and were restored.
