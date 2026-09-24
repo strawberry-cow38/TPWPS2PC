@@ -256,3 +256,64 @@ Normal-startup rendered shop runs use actual menu placement, sampled walk-record
 motion, actor-to-floor positions and retained identity. The smoke emits before/approach/
 service/departure/after frames; departure is an explicit fixture command, not a claim that
 native completion immediately orders a walk out. Visual review is a separate gate.
+
+## Correction: kind2 relief also walks inside, then hides at the guest layer
+
+This supersedes the earlier inference that a Small Toilet's lack of RSE LIMBO establishes
+that the console leaves its customer visible. The script-layer negative is still true;
+the visibility conclusion was not. All of the following is original guest code, independent
+of whether the facility script contains LIMBO/WALKON. No new relief consumer is landed by
+this documentation change.
+
+Approach20DD70 distinguishes kinds3/7/6/1 into a different endpoint branch. Both kind2
+FEATURE and kind4 SHOP fall through20DE98 to rotated inside connectionA (1E1760), add
+placed origin+74, and select cell-centre coordinates at20E024..3C. Only kind5 takes the
+special edge-offset arm at20DF78..80. Kind2/kind4 request common walking18DA78 with mask1,
+finalarg0. There is no kind2 outside-helper or SAMfraction substitution in this branch.
+
+Feature finaltable35DC70 +2B4->1E1708 validates connectionA just like SHOP. Feature
+placement130510 ->1E1238 ->1E2840 ->1E2AD0 marks that entrance as kind7 and creates its
+directional link. The existing destination-only terminal permission therefore extends
+to validated relief features identified by kind2 AND compiledpayload+2Ebit0—not to every
+feature as a service facility.
+
+Arrival20D628 waits for routeindexG+30==-1. Kind2 table36CA24 dispatches20D6C0:
+
+```
+C = targetP - 8
+if virtual_1DC(P)==0 or 1309F8(C)==0:
+    clear target/stack; state=0; return
+G.deadline(+2C) = now + 0x20A             // 522 producer executions
+clear stack; state=35; G+80=1
+save current X/Z to G+58/G+5C
+animation/state low bits=14
+guest.virtual_2C(false)                  // HIDE
+C+AC=1
+130AA0(C,1)                              // resource animation notification
+```
+
+Parent independently checked the raw instructions:20D708 is2442020A (ADDIU522),20D710
+stores the deadline,20D774 zeros a1,20D788 loads visibility target,20D78C JALR applies
+adjustment in20D790 delay slot. Guest36CCE0 +2C resolves192C10, which clears actor visibility
+bit0 and forwards the same false to model virtual+AC. There is no indoors flag condition
+around this relief hide. A correct relief integration needs a distinct service phase, not
+just the SHOP purchase branch with different effects.
+
+State35->20E160 transitions to22 only when unsignednow>deadline (strict, not >=).
+Completion20EDD8 reveals in its common prologue, writes post-service deadlines, then
+kind2 table36CAC4->20EEE8 rechecks relief support and applies its effects. It reveals again
+at20F028..34, clearsC+AC at20F038, calls130AA0(C,0) at20F040, then clears target/stack/state.
+No G+24/26 position write occurs in normal relief completion; it retains the inside position.
+The saved coordinates are not restored there, nor is connectionB/ExitAppearPos consumed.
+
+Availability1309F8 is NOT simply `C+AC==0` for every feature. Only its special resource
+state branch returnsC+AC XOR1; other inspected branches return1. If the relief getter
+becomesfalse before completion, the literal branch skips relief occupancy release and
+jumps to target/state-clear. Record the branch rather than silently generalizing cleanup.
+
+Additional resource notification trace:130AA0 follows C+10 ->index at+14 ->global2EAAD0
+and calls1FAD40 when the resource exists. 1FAD40 checks resource-linked statekind2 and
+requests animation through1ABC80: channel0 slot5, variant1 on entry, variant0 on completion,
+speed1.0. Existing rse-vm.md establishes that animation consumer independently. This is
+not a proof that native guest service is governed by the script's VAR_LETMEON handshake.
+The service-state/occupancy/presentation integration is now a separate bounded task.

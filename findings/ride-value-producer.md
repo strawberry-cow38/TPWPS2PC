@@ -1,6 +1,9 @@
 # Ride-value producer trace: family identity matters
 
-Partial evidence from the owner's SLES_500.32 image, read in memory from the disc.
+Evidence from the owner's SLES_500.32 image, read in memory from the disc.
+**September24 follow-up below resolves the concrete ordinary/feature/track/tour/coaster
+final tables and callbacks.** The earlier unresolved base-table discussion records why
+that additional trace was necessary; it is no longer the latest producer boundary.
 No runtime producer is wired by this finding. It specifically prevents replacing the
 chosen global45 with a plausible-looking SAM field and calling that retail parity.
 
@@ -83,3 +86,136 @@ happiness10 in all three DBAs. Droid's price/cost is50/35, others45/30. Ice-crea
 Even compiled fields are not always final outcomes: the documented happiness consumer at
 0x20E450 scales the base by shop quality. Test the join and the port's explicit default
 separately; do not claim raw base10 proves every live console purchase pays10.
+
+
+## Final-family follow-up: pool construction closes the base-vtable gap
+
+Static code/dataflow, not a live-console capture. Parent independently reread paired
+slots and decisive stores/arithmetic words from the original hashed image. No assets
+or executable extracted. P denotes the placed-base pointer, C the complete object.
+For ordinary/feature/tour/track C=P-8; for the traced coaster pool object C=P.
+
+| Kind | Final table | +1D4 ride value (adjust,target) | +1DC relief | +1E4/+1EC needs |
+|---|---|---|---|---|
+|3 ordinary |366330 |-8,1B82D0 |0,116030 ->0 |0,118A78 /0,118A80 ->0 |
+|1 coaster |35B060 |0,1227D8 |0,116030 ->0 |same zero pair |
+|7 tour |369F10 |-8,1EA038 |0,116030 ->0 |same zero pair |
+|6 track |36BBF0 |-8,202188 |0,116030 ->0 |same zero pair |
+|2 feature |35DC70 |0,1E5A98 ->0 |-8,130780 |0,1E5AA8 /0,1E5AB0 ->0 |
+
+The adjustment is the signed halfword four bytes before the function pointer.
+FFF8 is-8, not a large positive displacement. Zero targets explicitly setv0=0 in
+JR RA delay slots. This is not a census of adjacent plausible-looking tables.
+
+### Concrete construction/allocation provenance
+
+Compiled family dispatcher12B1B8 uses jump table35C320 indexed kind-1. Kind1/2/3/6/7
+select category key lists at+68/+80/+08/+38/+20 respectively. Matching pool allocators
+and final initializer slots establish these concrete families:
+
+| Family | Allocator | Pool global | Final +154 initializer | Key lookup |
+|---|---|---|---|---|
+| ordinary |149FF0 |39528C |-8,1B7A98 |1B7AD0->12B360 (+08) |
+| feature |14A620 |3952A0 |-8,1302D8 |130310->12B478 (+80) |
+| coaster |14A4A0 |395298 |0,11FAE0 |11FB2C->12B440 (+68) |
+| tour |14A0B8 |395290 |-8,1E8F28 |1E8F60->12B398 (+20) |
+| track |14A180 |395294 |-8,1FFDA8 |1FFDE0->12B3D0 (+38) |
+
+Ordinary standalone constructor1B8EE0 installs base35A560 at1B8F24, then replaces
+that same field with366330 at1B8F58. Actual pool construction147EB0 does likewise:
+147F38 stores base,147F68 stores final366330. At the final store s0=C+110 and the
+instruction is `AE15FF08` (SW s5,-F8(s0)), i.e.C+18. Pool stride140, pointer published
+147FDC. Allocator149FF0 dispatches initializer at14A080..8C, then writes kind3 via
+1E1D60. Placement126964 reaches that allocator after ordinary key lookup12694C.
+
+Feature pool calls base1E0E60 at14848C and stores final35DC70 atC+18 at148494,
+strideC0; publishes3952A0 at148504. Allocation14A620 dispatches final initializer
+and writes kind2 at14A6C4/C8. Placement126F34 reaches it after feature key126F1C.
+Standalone130CB8 independently installs35DC70.
+
+Coaster pool replaces base35A560 (148208) with35B060 at148248. Tour replaces its
+base with369F10 at148074. Track pool calls154DA0 at14813C: base35A560 store154E04,
+final36BBF0 store154E3C atC+18. Later36B670 stores belong to embedded track pieces,
+not replacements of the attraction table. Final shared+15C initializer1E0F30 sets
+placement/kind/index and does not overwrite these final tables.
+
+This proves the statically reachable pool-created families; it does not claim every
+other table is unreachable or that a particular instance was observed on-console.
+
+### Actual computed ride values (ordinary/tour/coaster/track)
+
+All read signed compiled baseB atpayload+18 through resource accessor+5C->1E1420,
+not the SAM text. Operating getters resolve in all four tables as:
+
+*+2F4 ->118398 (adjust0), returns signedP+E8: speedS.
+*+304 ->1183E8 (adjust0), returns signedP+F0: durationD.
+
+For C=P-8, those are C+F0 and C+F8. Do not confuse complete/base-relative offsets.
+Define `Q(x)=clamp(x,0xC00,0x1400)` and preserve signed32 low-word arithmetic:
+
+```
+A = Q(trunc((S << 12)/100))
+Z = Q(trunc((D << 12)/5))       // ordinary, tour, track
+Z = Q(D << 12)                // coaster: NO /5
+M = low32(A*Z) >> 12
+value = minSigned(100, low32(B_effective*M) >> 12)
+```
+
+Right shifts are arithmetic; there is no final lower clamp. Ordinary/coaster/track
+return0 early when B==0. Tour runs arithmetic even then. For ordinary/tour/coaster,
+B_effective=B. Track adds `(u8[C+1D1] >>1)`, AFTER the base-zero early return.
+
+Evidence: ordinary1B8300 loadsB,1B8318/1C early-out,1B8354 /100,1B837C /5,
+1B83A4/A8 multiplier product/shift,1B83AC/B0 base product/shift,1B83B4/B8 upper100.
+Coaster122804 load,12281C/20 early-out,122854..58 /100,12285C direct duration shift,
+12289C..B0 products/cap. Tour1EA070 load,1EA0B4/B8 /100,1EA0BC..EC /5,
+1EA118..130 products/cap. Track2021BC load,2021D4/D8 early-out,2021E0 bonus byte,
+2021E8 halve,2021F8 add,202270..284 products/cap.
+
+Conditional hand-computable example: Belly Bounce compiled tier0 B40, speedbounds1..100,
+maxDuration60 -> initialS50,D30 ->A3072,Z5120,M3840 ->value37. Not raw40 and not
+port-global45. This is a conditional prediction of that initial state, not a live
+callback observation or a guarantee that later settings remain unchanged.
+
+### Live settings, initializers, and bridge boundary
+
+Setters+30C->118378 and+31C->1183C8 write P+E8/P+F0 at118384/1183D4. Control
+updates1D5124..138 and1D5170..184 call them. Restore116BA8 reads speedu16 record+8A
+and durationu8 record+8D and calls setters116C18/116C48; save116AA0 writes those at
+116AEC/116AFC. These are mutable operating settings, not permanent base-excitement data.
+
+Default setter116120 computes:
+`speed=minSpeed+((maxSpeed-minSpeed)>>1)` and `duration=max(1,maxDuration>>1)`.
+Tier getters use currentbyteP+126 and34-byte stride (minSpeed payload+38+34*tier,
+maxDuration payload+44+34*tier; see1178B0..D0,1179D0..F0).
+
+Parent follow-up on forwarding: speed setter calls118240; it reads P+E8 then routes
+through resource wrapper1FA818 ->1C0DE8 ->1C1068. Duration118310 reads P+F0 and
+routes through1FA858 ->1C0DE8 ->1C0E28 with argumentindex3. The exact speed scaling/
+script-variable binding at the final bridge is not established here. Current managed
+ParkSim starts VAR_DURATION=1; do NOT assume that it represents the same operating
+setting as the native defaultD. Resolve this before treating current script variables
+as faithful score/ride-effect inputs or overwriting them en masse.
+
+Track byteC+1D1 is cached runtime state. Recompute200C20 clears it, reads piececount
+C+26F8, iterates stride108 fromC+1D8 and calls1FE9B0 (signedpiecebyte+EC). Table36BB20
+weights rawcodes20..23/40..51 by4,24..31/36..39 by2, all others by1. SB at200CB0
+wraps accumulation modulo256. Init1FFF3C clears it; caller200BF8 triggers recompute.
+Do not substitute an unbounded piece count or silently ignore its update lifecycle.
+
+### Relief support is compiled classification, not condition
+
+Feature130780 reads payloadbyte+2E at1307B4 and ANDs1 at1307C0, returning the result
+at1307CC. `AssetResourceDatabase.RawFeatureFlags &1` is therefore this callback.
+Kind2 alone is insufficient: scenery in the same family returns0. This getter does
+not inspect cleanliness, price, occupancy or quality. The feature's value/thirst/hunger
+callbacks are zero. Native relief arrival and hiding are documented separately in
+native-shop-flow.md; no-LIMBO in a script does not answer visibility at the guest layer.
+
+Further bridge boundary checked directly after the family trace:1C1068 gates on global
+2E9818/non-null machine and stores speed with SH at machine+C0 (not a named ordinary
+script variable). 1C0E28 validates nonnegative variable index against machine+8C and
+stores into the word array atmachine+1C. Duration's caller passes index3 unchanged.
+Binding index3 to a specific retail variable/managed script API and reproducing the
+separate speed/time-scaling field still require their consumer checks; an identical
+integer alone does not prove current managed VAR_DURATION/animation timing parity.

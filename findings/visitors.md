@@ -600,15 +600,21 @@ comparison is `B_walk(s).Inverse() * B_seat` for a seat whose world forward is `
 the two paths agree, a 180° yaw means one flip in the seat path, and anything else means one of the
 two readings is wrong. Script: `tools`-adjacent `yaw.py` (scratchpad), fittings via `Model.Fittings`.
 
-## ⭐⭐ A shop takes you INSIDE only if its script contains LIMBO — and the split is exact
+## RSE-adapter visibility census — not the complete native service path
+
+**September24 correction:** this section observes the managed RSE host, not every layer of
+native guest visibility. Guest arrival/completion code also hides/reveals through virtual+2C.
+In particular, accepted relief service hides unconditionally at20D784..790 even when its RSE
+contains no LIMBO. See [native-shop-flow.md](native-shop-flow.md). The earlier exclusive
+"only if LIMBO" interpretation is withdrawn; opcode presence is still a valid script fact.
 
 Sixteen jungle shops and sideshows, three guests queued at each, 120 s. **Five take a guest inside
 and eleven take nobody**, and the old check (`at least one shop took somebody in`) passed anyway —
 the five that worked carried it and the eleven were never questioned.
 
-Asking the bytecode settles it. LIMBO is what a shop IS (`0x1bbb30` -> `0x1fa2c8` hides the guest),
-so a script that does not contain the opcode was never going to hide anybody. The correlation is
-perfect, both directions, with no exceptions:
+In this RSE-only run, LIMBO (`0x1bbb30` -> `0x1fa2c8`) is the host's hide request.
+The observed correlation is exact within that adapter; it does not exclude a hide from
+native guest state-machine code outside the interpreter:
 
 ```
 LIMBO in script: yes -> went inside 3/3   Balloon Shop, Costume Shop, Gift Shop,
@@ -619,13 +625,12 @@ LIMBO in script: no  -> went inside 0/3   Burger, Drinks, Fries, Ice Cream,
 ```
 
 **The five you enter are rooms; the eleven you do not are food counters and standing sideshows.**
-That is authored behaviour, not a defect — the thing the weak check could not tell you. All
-sixteen still hand every guest back out, so a food stall serves you and returns you without ever
-taking you off the map, which is what a food stall does.
+This is the scripts' observed behavior, not proof of the complete console service path.
+All sixteen still hand guests back in the adapter. Whether native guest code also hides them
+must be answered from its consumer, not inferred from missing opcodes.
 
 The audit now checks the two directions that cannot be timing artefacts: **nobody is hidden by a
-shop whose script never asks for LIMBO** (nothing else can make a guest vanish, so this fails hard
-either way round) and **every shop that took somebody in is one that asks**, plus a non-vacuity
+shop whose script never asks for LIMBO** (a statement about this RSE host, not other native visibility owners) and **every shop that took somebody in is one that asks**, plus a non-vacuity
 guard that some shop carries the opcode at all. "Carries LIMBO but hid nobody in 120 s" is printed
 as a note and not a failure, because an untaken branch is not a bug.
 
@@ -634,7 +639,7 @@ reach; a shop that spawns a LIMBO-carrying child only on a later branch would re
 exactly why the hard failure is the *hid-without-asking* direction.
 
 **⭐⭐ THE SAME FIVE IN EVERY WORLD.** The audit passes on all four, and the walk-in set is not a
-jungle quirk — it is the game's design, five archetypes repeated per park:
+jungle quirk — the same five scripted archetypes repeat per park:
 
 | world | shops + sideshows | carry LIMBO | the five |
 |---|---|---|---|
@@ -1047,7 +1052,11 @@ because `jal` encodes its target in 26 bits and not as a literal word.
 
 ## ⭐⭐ Toilets: the authored service data, and the two paths it splits into (2026-09-24)
 
-Investigated with astraclaw while a toilet feature's scope was open. Nothing below is implemented.
+Historical pre-implementation investigation with astraclaw. The later managed service/body
+adapter was implemented, but **its visible-Small-Toilet justification is now retracted**:
+compiled kind2 relief walks to its inside entrance, hides at guest arrival, waits522 updates
+with a strict deadline test, and reveals at the same position. See native-shop-flow.md for
+instruction addresses. The old census below records script properties, not native visibility.
 
 **The disc says which buildings satisfy the toilet need.** `UsageInfo.ProvidesRelief 1` appears on
 exactly **two `.sam` per world, all four worlds** — "Small Toilet" and "Super Toilet", eight in
@@ -1065,9 +1074,10 @@ Info.Shape  ->  a single `2`
 footprint with `EntryX >= 0` — the predicate `IsEntranceCapable` tests — and the 1x1 case is the
 one its "every small square shop" tie-break was written for.
 
-### ⭐ The eight are TWO service paths, split exactly by size
+### Historical script partition, not a proof of two native visibility paths
 
-Using the LIMBO rule this file already establishes above:
+The early census used the RSE-only correlation above. Its inference about native service
+visibility was invalid even if every opcode-presence observation was correct:
 
 | | LIMBO | WALKON | `.aps` |
 |---|---|---|---|
@@ -1075,9 +1085,10 @@ Using the LIMBO rule this file already establishes above:
 | Super Toilet · JUNGLE, HALLOW, SPACE | yes | no | yes |
 | Super Toilet · FANTASY | yes | **yes** | **no** |
 
-So a Small Toilet takes nobody inside and walks nobody in: the guest is serviced standing at the
-entry cell. FANTASY's Super Toilet is alone on two axes — the only WALKON and the only one
-missing its animation.
+The previous conclusion "Small Toilet is serviced standing outside" does NOT follow.
+Native common walking supplies its approach without WALKON, and native relief arrival
+supplies its hide without LIMBO. The FANTASY script/animation outlier is a separate asset
+observation, not evidence against that guest-state consumer.
 
 ⚠ **METHOD, because the first attempt was worthless.** Grepping the `.rse` bytes for the string
 "LIMBO" returns "no" for every file on the disc — `.rse` is compiled bytecode and that search can
@@ -1085,18 +1096,21 @@ never say yes. Redone through `rse.disassemble` with BOTH controls: positive **1
 this file lists as LIMBO-bearing comes back yes) and negative **284/308** (the detector can say no).
 A "no" on the Small Toilets means something only after both.
 
-### ⚠ The gap is a VISIBLE BODY, not a cleared need
+### Historical managed body gap — native visibility must be phase-correct
 
 `ParkVisitors.Deliver` ends its boarding branch with `Walk.Remove(g.Id)`, and `Viewer.PlaceActors`
 draws a guest only if they are in one of three sets: the walking layer, `_seated` (a `0x80` seat
 fitting), or `_walking` (a scripted WALK pose). A Small Toilet's script provides **none** of the
-three — no LIMBO to hide them legitimately, no WALKON to pose them, no seat — so a guest handed to
-one would blink out at the entry cell and blink back on handback.
+three — no script-requested hide, WALK pose or seat — so the managed adapter dropped the
+body on handover. That diagnosis located the adapter's ownership gap, not the console's
+intended accepted-service visibility. Missing RSE LIMBO is not a license to draw during
+native relief service.
 
-⭐ The irony worth keeping: the Small Toilet looks like the easy path BECAUSE it has no LIMBO and
-no WALKON, and that absence is exactly what makes it need new drawing code. The Super Toilet's
-LIMBO would hide the guest and be honest about it. Found by astraclaw from the code; not yet
-reproduced at runtime.
+The corrected task is phase-specific: walk visibly into the compiled entrance, hide only
+when native relief service accepts the customer, and reveal at the reached position on
+completion. The old standing-body patch kept the guest visible but did not implement this
+native service state machine. Preserve that correction rather than calling the old patch
+fully faithful because its managed lifecycle checks passed.
 
 ## ⭐⭐ The wants are AUTHORED: the game ships its own effect table, commented (2026-09-24)
 

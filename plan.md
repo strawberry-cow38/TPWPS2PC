@@ -55,6 +55,39 @@ choice—such as presenting an invented track system as the target experience—
 to the humans rather than claiming that an autonomous technical review settled it. Existing pause/stop instructions
 still take priority; checkpoints are not authority to ignore them.
 
+## Latest CP4 correction — native relief state and decoded selector (September24)
+
+The post-walking trace found a real contradiction, not another optional polish task:
+**Small Toilet having no RSE LIMBO does not establish native visibility.** Guest arrival
+explicitly hides accepted kind2 relief customers and starts a522-update deadline. The
+old visible-standing-toilet explanation is retracted in findings/visitors.md; see the
+address-backed replacement in findings/native-shop-flow.md.
+
+Decision: **split and reorder**, not infer a new rule from the scripts again.
+
+1. Next bounded production package: validated compiled relief inside-entry walking,
+   native accepted-service hide/deadline/reveal/retained-position lifecycle. Keep occupancy
+   and availability distinct from SHOP purchases. Use executed park ticks, not a new
+   seconds constant. Resource notification is slot5 variant1/0 through1ABC80; verify
+   its real presentation consumer rather than leaving a correct timer with no animation.
+   Explicitly handle demolition, refusal/occupied entries, zero-time calls and missing
+   presentation data; no loss/duplication or premature relief on a script-only handback.
+2. The scorer equation, exact lookup tables and conditional non-FIFO history writer are
+   now decoded in findings/native-destination-score.md. Final ordinary/coaster/tour/track
+   value getters and compiled relief support are decoded in ride-value-producer.md.
+   Port selection only with known producers/runtime identity and controlled enumeration;
+   do not silently wire SAM excitement, a constant45, or a guessed four-visit FIFO.
+3. Operating-speed/duration script bridge remains a specific integration seam: speed writes
+   machine+C0, duration writes variable index3. Resolve the current managed binding before
+   claiming native operating state. Renderer/script adapters and missing APS are separate
+   from the now-read native guest service mechanism.
+
+Astro owns coordinator/entrances/scorer; cow tools retains money/economy/idle and existing
+needs effects. Share pushed branches and independent controls. The stopping condition for
+this research package is recorded equations/provenance/corrections, not another speculative
+runtime change. Next turn should implement the bounded relief consumer or resolve its
+specific bridge—not repeat the table census or ask humans to remember retail behavior.
+
 ## Current CP4/CP5 decision — original movement and selection, not cosmetic patches
 
 The user's repeated-visit/teleport report changed the priority: finish this consumer flow before

@@ -1455,3 +1455,40 @@ mutations total (fourcore,twoactualrendered) rejected; restored source clean bef
 No outstanding ownership collision, no further restarts, no duplicate scheduled task. Next
 work is fidelity of destination selection / other facility-kind approach traces per revised
 plan, NOT redoing the now-landed timing/SHOP entrance fixes. Coordinate scope with cow tools.
+
+## CP4 native score / final producers / relief correction — September24 after10:00
+
+No pause/completion request. Main946a89a code clean; three read-only native traces completed,
+with parent independent raw-word/vtable/lookup verification against original image SHA256.
+No disc/executable/asset extraction. This package changes findings/plan, NOT gameplay yet.
+
+NEW findings/native-destination-score.md contains implementable20C138 equation, literal
+121wordneedtable and22wordrelieftable, SHOPspecialization, signed/unsigned/truncation rules,
+strict thresholds, weighteddenominator13+E+BW, actualequal-score chooser behavior and history.
+History INITIALIZATION20BF38..50 resetsFFFFFFFF on every guestactivation/reuse. Writer20C8D8
+really maps[a,b,c,d]->[new,a,a,a], only atselection when signedToilet>=99 andkind!=2; no FIFO
+repair permitted. IDs are runtimeobjectserialsP+0C via1093B0, not reused numericrideIDs/DBAkeys.
+Full candidate enumeration ordering remains tobe traced before claiming wholechooserparity.
+
+Updated ride-value-producer.md: final ordinary366330->-8/1B82D0 proven through actualpool
+constructor replacingbase35A560; feature35DC70->relief130780 compiledbyte2Ebit0; coaster35B060,
+tour369F10,track36BBF0 concretefamilyallocatorsresolved. OperatingS=P+E8,D=P+F0; Q12speed/100,
+duration/5 (coasterno/5), clips3072..5120, product>>12, baseproduct>>12 cap100. Trackadds cached
+u8C+1D1/2 afterbasezeroearlyout. Defaultsetting116120 is midpointspeed, max(1,maxDuration/2).
+Do NOTwirecurrentVAR_DURATION1 asnativeD: forwarding118310->1FA858->1C0E28 writesvariableindex3;
+speed118240->1FA818->1C1068 writessignedhalfwordmachine+C0. Finalmanagedbinding/scalingunresolved.
+
+CRITICAL correctionnative-shop-flow.md + visitors.md: kind2FEATURE takes SAMEinsideAcentre
+approach/directedkind7terminal asSHOP. Acceptedrelief then unconditionallyhides throughguest
+virtual2C at20D784..790, setsdeadline now+522 (raw2442020A), state35;20E160 strictnow>deadline
+advancesto22;20EDD8reveals/relieves/clearsoccupancy and retainsinsideposition. NoRSELIMBO does
+NOTimplyvisiblecustomer; priorstandingSmallToiletjustificationretracted, peeracknowledged.
+130AA0->1FAD40 invokes1ABC80 channel0slot5variant1onentry/0exit forresourcekind2. Availability
+1309F8 isconditionalresourcepredicate, NOTalwaysC+AC==0; portmustlabelanysimplification.
+No native relief state integration landed yet; currentRSEadapterstillcontrolsservice/body.
+
+Parentverified all121+22documentedtablewords againstdisc, thresholds50/55,9literal lookup
+controls,6decisive instructionwords; separatelyreadfinalvtablepairs, hideforwarder192C10,
+speed/durationbridges andresourceanimationnotification. No codebuild rerunclaimed fordocs-only.
+Nextboundedproductionpackageperupdatedplan: actualnative relief lifecycle+insidewalk, notmore
+script-basedvisibilityinference. Keep the remaining bridge/enumeration questions bounded. Coordinate peerwhoownsmoney/economy/idle.
