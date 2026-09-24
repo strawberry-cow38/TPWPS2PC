@@ -2128,3 +2128,8 @@ requestmode15, coordinator14BCC0 event9 state2E->2F, mode16choosescountedgroup, 
 210B38acceptanceclass mustbe>-2; charge100D28 onlyonacceptance, notroute-retries.
 Detailedvalueproducer/pathslot/cancellationsemanticsstillneedconsumerwork; doNOT
 replacecurrentbypasswithguessedqueuecounts. Noeditsincowtexture/bubblelane.
+
+Last upstream reconciliation: cowd9792f9 removesduplicatewaterclockupdate, merged
+688eb40. Freshbuild +affectedTexture/NativeBusheadlessscenesPASS `/tmp/tpw-bus-
+present-lastmerge`; actualViewerpresentation57PASSclean `/tmp/tpw-bus-present-
+lastmerge-smoke.log`. Noowning/interferingwithcowUVfix; mainpushnormalfast-forward.
