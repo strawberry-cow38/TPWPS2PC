@@ -151,13 +151,17 @@ public sealed class ThoughtBubbles
                 // sign's two figures, the litter, the arrow-ish ones -- come out the wrong way
                 // round without this.
                 //
-                // ⚠ AND THE CAUSE MAY NOT BE THE BUBBLE. These are the first ASYMMETRIC `.ssh`
-                // art this port has looked at closely: a texture of grass or wood is mirrored
-                // just as wrongly and nobody can tell. So flipping here fixes what master sees
-                // and does NOT establish that the decoder is right for everything else -- if the
-                // flip is in `Ssh`, every sign, face and logo on the disc is reversed too and
-                // this line is papering over it. Worth one asymmetric non-bubble texture to find
-                // out; not done.
+                // ⭐⭐ AND THE DECODER IS NOT AT FAULT -- CHECKED, because the alternative was
+                // serious. If `Ssh` mirrored, every asymmetric texture on the disc (signs, faces,
+                // logos) would be reversed and this line would be papering over it. So:
+                //   decoded `tbhungry.ssh` straight off the disc -> cloud tail at bottom-LEFT
+                //   the in-game render BEFORE this flip            -> cloud tail at bottom-LEFT
+                // The pipeline reproduces the art faithfully. This flip is therefore a DELIBERATE
+                // DEVIATION from the disc on master's instruction -- presumably the console draws
+                // them mirrored -- and not a correction of a decode bug.
+                // ⚠ Which means it is a port choice with no decoded backing, like the bubble's
+                // size and height: if someone later finds the console's own draw path, this is
+                // the line to check against it.
                 FlipH = true,
             };
             Root.AddChild(sprite);
