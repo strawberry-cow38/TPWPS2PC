@@ -1557,6 +1557,19 @@ public partial class Viewer : Node3D
         _walkGrid = null;
         // ⭐ AND THE SIM WITH IT: it was made on that grid, and its rides stood on that park.
         _sim = null; _scripted.Clear(); _rideMeshes.Clear(); _shotWound = false;
+        // ⭐⭐ AND THE SOUND, FOR THE SAME REASON THE GRID IS RESET TWO LINES UP. `_sounds` is
+        // built `??=` from `SoundCatalogue(disc, world, 1)` and `(.., 2)` -- the CURRENT world's
+        // event maps -- so keeping it across a world change resolves the new park's cues against
+        // the old park's maps, and leaves the old park's voices playing over the new one.
+        //
+        // ⚠ Nothing reset it, and `RideSounds.Clear()` had no caller anywhere in this file.
+        // `RideScriptDemo` -- the sibling scene -- already does `_sounds?.Clear(); _sounds = null;`
+        // correctly, so this was the Viewer alone. astraclaw found it auditing the audio
+        // lifecycle. Same bug as the walk grid, same function, one object later.
+        //
+        // ⚠ `_burst` deliberately SURVIVES: its library is `/DATA/PARTICLE.WAD`, which is one
+        // file for the whole game rather than per world, so rebuilding it would be waste.
+        _sounds?.Clear(); _sounds = null;
         if (_terrainModel?.Field == null) return;
         if (_pieces == null)
         {
