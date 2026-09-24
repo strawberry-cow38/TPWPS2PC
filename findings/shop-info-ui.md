@@ -214,12 +214,28 @@ the 32 row step. Small (21) and Console (14) would leave holes.
   it is runtime-populated, so the index cannot be resolved statically. Master was asked to point.
 * **Satisfaction is not tracked.** `shop[0xb0]`/`[0xb4]` is decoded but the port does not yet
   accumulate it, so the bar renders empty rather than showing a number that was never computed.
-* **The `Model` window** (147x240 at col 315) is a 3D viewport, not a sprite, and is not yet drawn.
-  ⚠ The scene file's own comment calls it `;3D Spinning model` and **the comment is wrong about the
-  behaviour** — master, who has played it: "the model isnt meant to spin in the viewport. its just
-  a front facing render of it. playing an animation". Which animation is not yet established. An
-  authored comment describes what someone meant, not what shipped; this one would have had the
-  port turning a model that the game holds still.
+* **The `Model` window** (147x240 at col 315) is not drawn yet. ⚠⚠ And it is **not a 3D viewport**:
+
+  ```
+  FUN_0017e150(screen + 0x950, obj)  ->  FUN_00144068(widget + 0x38, *(u32*)(obj + 0x58))
+  FUN_0017e190(screen + 0x950)       ->  FUN_002127e8(widget + 0x38, x, y, 0x60)   ; place
+                                         FUN_00212828(widget + 0x38, w, h)          ; size
+                                         FUN_00212838(widget + 0x38)                ; draw
+  ```
+
+  ⭐⭐ Those are **the same three sprite calls `FUN_00115590` uses to draw the satisfaction bar**.
+  The UI side of this element is a flat **sprite blit**, of a handle taken off the shop object at
+  `+0x58`, into the authored rect at depth `0x60`. Nothing here turns a model or steps a skeleton.
+
+  ⚠ The scene file's own comment calls it `;3D Spinning model` and **the comment is wrong about
+  the behaviour** — master, who has played it: "the model isnt meant to spin in the viewport. its
+  just a front facing render of it. playing an animation". The decompilation agrees with master
+  and not with the comment. An authored comment says what someone meant, not what shipped.
+
+  ⚠ WHAT IS STILL UNREAD: what *fills* that sprite. A front-facing render of the model playing an
+  animation has to be produced somewhere upstream and handed to `obj + 0x58`; that producer, and
+  which animation it plays, are not traced. So the port needs a render-to-texture whose contents
+  are not yet specified — knowing the UI blits a sprite does not tell you what is in it.
 * The laptop **sprite registry** at `DAT_002eeff0` — 62 records of 24 bytes, exactly the file count
   in `UI.WAD/laptop/` — reads all zeros in the image, so it is runtime-populated and its
   index-to-file mapping is **not** established. `FUN_00214c20` sets sprite 57 to `0x60ffffff` and
