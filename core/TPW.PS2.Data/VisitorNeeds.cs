@@ -438,6 +438,10 @@ public sealed class VisitorNeeds
     /// every guest 150 times to apply at most three rolls each is the same answer at 50x the
     /// cost. ⚠ The rolls are still applied INDIVIDUALLY (n draws of `rand(2)`, not one draw
     /// times n) because the console draws once per fire and the distributions differ.</summary>
+    /// <summary>Actually executed native-style guest updates, shared with destination scheduling.
+    /// SecondsPerTick is still an explicit port cadence; this does not prove a PS2 wall rate.</summary>
+    public long UpdateTicks => _tick;
+
     void Appetite(double seconds)
     {
         _sinceTick += seconds;

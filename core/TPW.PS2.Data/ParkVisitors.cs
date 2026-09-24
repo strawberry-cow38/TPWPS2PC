@@ -29,11 +29,12 @@ public enum VisitorIntent
 /// on a seat node, the ticker carries them, WALKOFF sends them out. Two systems each thinking they
 /// own a body is how you get a guest standing in the queue and riding at the same time.
 ///
-/// ⚠⚠ WHOM TO VISIT AND HOW LONG TO DAWDLE ARE OURS. The console's guest AI has not been read:
-/// there is no needs model, no money, no happiness, no queue-length judgement here, and the ride
-/// a guest picks is picked at random from the ones they can reach. What IS the game's is
-/// everything either side of it -- the routing over real laid path, and the whole boarding
-/// handshake through VAR_LETMEON/VAR_LETMEOFF that the scripts define.</summary>
+/// Selection still uses the port's needs-first/random policy, not the native weighted
+/// scorer. The post-completion destination gate now follows the traced counter expressions;
+/// other native states and the shop's inside-entry walking path are separate integration work.
+/// In particular, native shops use common guest walking/service states, not an RSE WALKON
+/// handshake merely because this managed adapter currently connects them through scripts.
+/// See findings/native-shop-flow.md for proven consumer paths and remaining boundaries.</summary>
 public sealed class ParkVisitors
 {
     public GuestWalk Walk { get; }
@@ -72,6 +73,11 @@ public sealed class ParkVisitors
                     : Walk.Paths.EntranceCells.OrderBy(c => c.Z).ThenBy(c => c.X).First();
 
     readonly Func<int> _random;
+    readonly GuestDecisionSchedule _decisions;
+    // Native deadlines count guest updates. Share the needs/mood producer's actual counter,
+    // not a second guessed frequency or render-call count. Needs-free fixtures use the walk
+    // updates instead. SecondsPerTick remains the port's chosen wall-time mapping.
+    uint DecisionTick => unchecked((uint)(Needs?.UpdateTicks ?? (Walk.Time / GuestWalk.TickMilliseconds)));
 
     public ParkVisitors(ParkSim sim, GuestWalk walk, Func<int> random = null)
     {
@@ -79,6 +85,7 @@ public sealed class ParkVisitors
         Walk = walk ?? throw new ArgumentNullException(nameof(walk));
         var rng = new Random(7);
         _random = random ?? (() => rng.Next());
+        _decisions = new GuestDecisionSchedule(_random);
     }
 
     /// <summary>A ride a guest could actually go to: open, unbroken, and with a queue stub to stand on.
@@ -190,6 +197,7 @@ public sealed class ParkVisitors
     public Guest Arrive(ParkCell at, ParkCell to)
     {
         var g = Walk.Spawn(at, to);
+        _decisions.Forget(g.Id); // a reused identity must not inherit somebody else's deadline
         Wander(g.Id, at);
         Needs?.Spawn(g.Id);
         return g;
@@ -204,6 +212,7 @@ public sealed class ParkVisitors
         _plans[guest.Id] = new Plan(guest.Id, VisitorIntent.Heading, ride.Id, guest.Cell);
         _owners[guest.Id] = ride;
         _returning.Remove(guest.Id);
+        _decisions.Forget(guest.Id); // route succeeded; explicit SendTo remains an explicit command
         return true;
     }
 
@@ -266,6 +275,7 @@ public sealed class ParkVisitors
                         for (int i = 0; i < rises; i++) Needs.Queue(guest);
             Needs.Reconcile(_plans.Keys);
         }
+        _decisions.Reconcile(_plans.Keys);
         Maintain(deltaSeconds);
     }
 
@@ -437,6 +447,10 @@ public sealed class ParkVisitors
             if (returning.CompletedRide)
             {
                 Rides++;
+                // 20EDD8 writes G+2C before the kind-specific effect/purchase. This applies
+                // to genuine completion even when Buy refuses; aborted removal is not a use.
+                // G+6C is a DIFFERENT timer (entertainer watching), not this gate.
+                _decisions.Completed(guest, DecisionTick);
                 // ⭐⭐ THE RIDE CHANGED HOW THEY FEEL, and this is the ONE place that knows a
                 // ride genuinely happened. I first put it in `Collect`, reasoning that a
                 // demolished ride must not pay out a ride's worth of happiness -- astraclaw
@@ -462,6 +476,7 @@ public sealed class ParkVisitors
         _plans.Remove(guest);
         _owners.Remove(guest);
         _returning.Remove(guest);
+        _decisions.Forget(guest);
         WentHome++;
     }
 
@@ -553,6 +568,11 @@ public sealed class ParkVisitors
                 // No route to the gate: they stay in the park and try again next tick rather
                 // than standing still forever with a plan nobody completes.
             }
+            // Stop the proven completion -> Heading -> Queued loop on a zero-time call.
+            // Native state-0 arm0 uses strict now > saved + 60 + rand300. This is the
+            // post-completion destination gate only, not the full weighted native chooser.
+            // Going home above still has priority; no affordability veto is invented here.
+            if (!_decisions.CanSelect(g.Id, DecisionTick)) continue;
             // ⭐⭐ SOMETHING PRESSING BEATS SOMETHING FUN. A guest who needs a lavatory and
             // picks a rollercoaster instead is the whole reason wants looked wired-up but dead:
             // the need rose, the bubble appeared, and then they queued for the Crazy Ape and it
