@@ -85,6 +85,16 @@ public sealed class RideParticles
     {
         var e = _library?[id];
         if (e == null || e.Ramp.All(c => c == 0)) return null;
+        // ⚠⚠ NOT WHILE THE HOLDER IS OUT OF THE TREE. `Emitting = true` makes Godot ask for the
+        // node's global transform, and a node whose ANCESTOR chain is detached answers that with
+        // `get_global_transform: !is_inside_tree()` -- an engine error, not an exception, so it
+        // scrolls past and the burst silently never happens.
+        //
+        // ⭐ astraclaw's rendered audit caught it against the construction puff, which fires from
+        // ride placement -- and placement runs in scenes that build their park before the holder
+        // is attached. The check belongs HERE rather than at that one call site: every caller has
+        // the same exposure and only this function knows what it is about to touch.
+        if (_root == null || !GodotObject.IsInstanceValid(_root) || !_root.IsInsideTree()) return null;
 
         // ⭐⭐ THE RECORD IS NOW READ FROM THE CODE THAT RUNS IT (findings/particles.md,
         // ParticleTemplate). Everything this block used to guess was wrong:

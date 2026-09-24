@@ -778,6 +778,14 @@ foreach (var bs in wad.Entries.Where(e => e.Path.EndsWith(".rse", StringComparis
                         + string.Join(" ", ins4.Operands.Select(o => o.Index)));
 }
 
+// ⭐ Does the disc carry path definitions of its own? The price lives on a path-material object
+// at +0x10 and the compiled directory has no path kind, so the next candidate is a data file.
+foreach (var pe2 in Wad("DATA").Entries
+             .Where(e => e.Path.Contains("path", StringComparison.OrdinalIgnoreCase)
+                      || e.Path.Contains("queue", StringComparison.OrdinalIgnoreCase))
+             .Take(14))
+    Console.WriteLine($"  path asset: {pe2.Path}");
+
 // ⭐ WHAT KINDS DOES THE COMPILED DIRECTORY HOLD, and do any of them look like a path? Master
 // asked what paths and queues cost; the tool debits a per-tool figure and where that figure comes
 // from is not yet traced, so this asks whether the DBA prices them as assets the way it prices
