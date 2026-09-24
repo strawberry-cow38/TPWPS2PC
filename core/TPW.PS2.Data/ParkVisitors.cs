@@ -107,6 +107,22 @@ public sealed class ParkVisitors
     /// script. Until the real channel turns up this accumulates here and drives nothing.</summary>
     public IReadOnlyDictionary<int, int> Soil => _soil;
 
+    /// <summary>The ride a guest is CURRENTLY inside or queued for, or null. For the renderer:
+    /// a guest who is Queued has been taken off the walking layer, so this is the only handle on
+    /// where their body should be drawn.
+    ///
+    /// ⭐ THE LIVE OBJECT, NOT AN ID. Ride ids are reused as rides are demolished and replaced, so
+    /// an id held across a frame can name a different ride than the one the guest went into; this
+    /// hands back the instance and only while the sim still holds it.
+    ///
+    /// ⚠ AND `Machine.GuestIds` IS NOT THE SAME QUESTION. A Small Toilet's script never HUSHes
+    /// anybody -- it has no LIMBO at all -- so its guest never appears in the machine's list, and
+    /// a renderer gating on that would draw nobody at exactly the facility that needs drawing.
+    /// Asked for by astraclaw for the standing-service body.</summary>
+    public ParkRide QueuedOwner(int guest) =>
+        _plans.TryGetValue(guest, out var plan) && plan.Intent == VisitorIntent.Queued
+        && _owners.TryGetValue(guest, out var ride) && Sim.Rides.Contains(ride) ? ride : null;
+
     /// <summary>Put a guest in at the gate and set them wandering.</summary>
     /// <summary>⭐⭐ THE VISITORS' WANTS, and they are seeded HERE AND NOWHERE ELSE. Readmission
     /// after a ride keeps a guest's id but builds a NEW <see cref="Guest"/>, so needs must live
@@ -342,7 +358,11 @@ public sealed class ParkVisitors
             // the need rose, the bubble appeared, and then they queued for the Crazy Ape and it
             // rose some more. The errand is tried first and only falls through when nothing is
             // urgent or nowhere answers it.
-            if (Errand(g) is { } errand && SendTo(g, errand)) continue;
+            // ⚠ Down the list until one takes them, so an unreachable near one is skipped
+            // rather than ending the errand -- see Errand.
+            bool onErrand = false;
+            foreach (var errand in Errand(g)) if (SendTo(g, errand)) { onErrand = true; break; }
+            if (onErrand) continue;
             var rides = Open.ToArray();
             if (rides.Length > 0 && SendTo(g, rides[(int)((uint)_random() % (uint)rides.Length)])) continue;
             if (wander?.Invoke() is { } cell) Walk.Send(g, cell);
@@ -394,31 +414,37 @@ public sealed class ParkVisitors
     ///
     /// ⚠ THE ORDER IS THE CONSOLE'S, hunger then thirst then toilet, and it only breaks TIES:
     /// the most pressing need wins, and `&gt;` rather than `&gt;=` keeps the earlier one on a draw.</summary>
-    ParkRide Errand(Guest g)
+    /// ⚠⚠ EVERY CANDIDATE, NEAREST FIRST -- NOT the nearest one. This returned a single ride,
+    /// and a guest whose closest lavatory had no walkable route to it gave up on the errand
+    /// entirely and took a random ride instead, with the need still burning. The one nearby that
+    /// happens to be cut off must not hide the three that are not. Found in review by astraclaw.
+    IEnumerable<ParkRide> Errand(Guest g)
     {
-        if (Needs == null || !Needs.Has(g.Id)) return null;
+        if (Needs == null || !Needs.Has(g.Id)) return Array.Empty<ParkRide>();
         var w = Needs.Of(g.Id);
-        ParkRide best = null;
+        Func<ParkRide, bool> chosen = null;
         int worst = VisitorNeeds.Urgent - 1;
         foreach (var (need, answers) in new (int, Func<ParkRide, bool>)[]
                  { (w.Hunger, Feeds), (w.Thirst, Waters), (w.Toilet, Relieves) })
         {
             if (need <= worst) continue;
-            if (Nearest(g.Cell, answers) is not { } found) continue;
-            best = found;
+            // ⚠ Must still be a want something in this park ANSWERS, or a guest who is merely
+            // hungrier than they are desperate would claim the errand and then walk nowhere,
+            // shadowing the toilet they could actually have reached.
+            if (!Sim.Rides.Any(answers)) continue;
+            chosen = answers;
             worst = need;
         }
-        return best;
+        return chosen == null ? Array.Empty<ParkRide>() : Ordered(g.Cell, chosen);
     }
 
     /// <summary>The closest place that answers <paramref name="answers"/>. ⚠ Manhattan on the
     /// QUEUE STUB, not the building: the stub is where they are actually walking to, and a big
     /// ride's origin can be several cells from its door. Ties break on id so a park full of
     /// identical toilets still routes the same way twice.</summary>
-    ParkRide Nearest(ParkCell from, Func<ParkRide, bool> answers) =>
+    IEnumerable<ParkRide> Ordered(ParkCell from, Func<ParkRide, bool> answers) =>
         Sim.Rides.Where(r => answers(r))
             .OrderBy(r => Math.Abs((long)r.Entrance.Value.X - from.X)
                         + Math.Abs((long)r.Entrance.Value.Z - from.Z))
-            .ThenBy(r => r.Id)
-            .FirstOrDefault();
+            .ThenBy(r => r.Id);
 }

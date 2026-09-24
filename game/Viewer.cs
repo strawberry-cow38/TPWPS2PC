@@ -1660,6 +1660,12 @@ public partial class Viewer : Node3D
     /// whatever else writes `+0x40`, are unread: "the console never shows a want it cannot meet"
     /// would be a claim about code I have not looked at. The want is shown, and this says why.
     ///
+    /// ⚠⚠ AND IT WAS BRIEFLY CHANGED TO ASK THE PARK, WHICH WAS WRONG. Once facilities became
+    /// real and routable it looked obvious to gate the bubble on one existing -- but that is the
+    /// same unread claim as above, made with no new evidence, and it would have taken every
+    /// hunger bubble out of any park with no shop in it. Routing is a separate question and
+    /// already only picks facilities that exist. Caught in review by astraclaw.
+    ///
     /// ⚠ Only WALKING guests get one. A guest handed to a ride has no body of ours to hang it
     /// on, and a seated rider is drawn as a head on the ride's own node.</summary>
     void PlaceThoughts()
@@ -1677,19 +1683,10 @@ public partial class Viewer : Node3D
             GetTree().Quit();
             return;
         }
-        // ⭐⭐ WHETHER THERE IS ONE TO GO TO, and the console asks this before it puts the
-        // bubble up: `FUN_0020F888` looks for a facility and only then sets the thought. These
-        // used to be hardcoded true, so a park with no lavatory in it still filled up with guests
-        // thinking about one -- a want the player was given no way to answer. Asked once a frame
-        // rather than per guest: it is a question about the PARK, and asking it per guest was
-        // 1500 catalogue walks a frame for one bool.
-        bool food = _visitors.Sim.Rides.Any(_visitors.Feeds);
-        bool drink = _visitors.Sim.Rides.Any(_visitors.Waters);
-        bool loo = _visitors.Sim.Rides.Any(_visitors.Relieves);
         foreach (var g in _guests.Guests)
         {
             if (!needs.Has(g.Id)) continue;
-            var want = needs.Decide(g.Id, foodNearby: food, drinkNearby: drink, toiletNearby: loo);
+            var want = needs.Decide(g.Id, foodNearby: true, drinkNearby: true, toiletNearby: true);
             // ⚠⚠ GLOBAL, NOT LOCAL. The actors live under the guest root and the bubbles under
             // their own node, so an actor's `Position` is in a DIFFERENT space -- a bubble placed
             // from it lands wherever the two frames differ, which for a mirrored park is across
