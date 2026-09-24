@@ -23,6 +23,14 @@ public sealed class NativeBus
             Model.ActivateNativeRecord, Model.SetFrame, stateCommand, arrivalBatch);
     }
 
+    /// <summary>Sample between park ticks using the same authored curve, facing, wheels and
+    /// visibility channel. No matrix blending across records and no simulation advancement.</summary>
+    public void Present(uint activeMilliseconds, float fractionalMilliseconds = 0)
+    {
+        if (Controller.Active)
+            Model.SetFrame(Controller.PresentationFrame(activeMilliseconds, fractionalMilliseconds));
+    }
+
     public int Update(uint activeMilliseconds, int countdownDelta, int traffic,
         bool open, bool specialObjectAbsent, int flaggedGuestCount) =>
         Controller.Update(activeMilliseconds,countdownDelta,traffic,open,specialObjectAbsent,flaggedGuestCount);

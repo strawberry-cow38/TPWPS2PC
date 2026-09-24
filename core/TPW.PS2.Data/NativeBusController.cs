@@ -46,6 +46,19 @@ public sealed class NativeBusController
     static float UnsignedFloat(uint v) => v <= int.MaxValue ? (float)(int)v : (float)(int)((v >> 1) | (v & 1)) * 2;
     public static float ElapsedFrames(uint clock, uint start) => UnsignedFloat(unchecked(clock - start)) * 30 / 1000;
 
+    /// <summary>Renderer-only fractional sampling of the current authored record. This does
+    /// not execute Update, change Frame/EndHold, consume countdowns or invoke callbacks.
+    /// It may reach the record endpoint before the next simulation tick, but cannot bind
+    /// the next record or admit guests. Held/rejected state0 retains its existing pose.</summary>
+    public float PresentationFrame(uint activeMilliseconds, float fractionalMilliseconds = 0)
+    {
+        if (!float.IsFinite(fractionalMilliseconds) || fractionalMilliseconds < 0 || fractionalMilliseconds > 1)
+            throw new ArgumentOutOfRangeException(nameof(fractionalMilliseconds));
+        if (!Active || EndHold) return Frame;
+        return Math.Min(Record.DurationFrames,
+            ElapsedFrames(activeMilliseconds, startClock) + fractionalMilliseconds * (30f / 1000));
+    }
+
     void ApplyState(uint clock)
     {
         if (appliedState == State) return;

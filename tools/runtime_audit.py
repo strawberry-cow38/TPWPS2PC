@@ -65,9 +65,11 @@ def classify(scene: str, run: dict) -> dict:
     elif scene == 'bus':
         prefixes = [f'NATIVE BUS {w}/{b}: phases, visibility, clocks, wrapper refusal and release gates PASS'
                     for w in ('JUNGLE','HALLOW','SPACE','FANTASY') for b in ('bus1','bus2')]
+        prefixes += [f'NATIVE BUS {w}/{b}: fractional presentation, endpoint clamp and unchanged simulation PASS'
+                     for w in ('JUNGLE','HALLOW','SPACE','FANTASY') for b in ('bus1','bus2')]
         counts = re.findall(r'^NATIVE BUS PASS: (\d+) checks, eight buses, native controller and model adapter$', text, re.M)
         result['checks'] = int(counts[0]) if len(counts) == 1 else 0
-        if result['checks'] < 968: return {**result, 'status': 'missing_coverage'}
+        if result['checks'] < 1088: return {**result, 'status': 'missing_coverage'}
     elif scene == 'modelpath':
         prefixes = ['MODEL PATH PASS:']
         rows = re.findall(r'^MODEL PATH (JUNGLE|HALLOW|SPACE|FANTASY)/(bus[12]) record@([0-9a-f]+) moves=True turns=(True|False)$', text, re.M)

@@ -98,6 +98,15 @@ public partial class Viewer
         return _nativeBus.Root.GlobalTransform*new Vector3(Quantize(p.X),Quantize(p.Y),Quantize(p.Z));
     }
 
+    void PresentNativeBus()
+    {
+        if (_nativeBus == null) return;
+        // Deliberately do not use the ten-ms quantized simulation BusClock for rendering.
+        // The active elapsed clock is shared, but presentation retains its fractional ms.
+        double whole = Math.Floor(_busElapsedMs);
+        _nativeBus.Present(unchecked((uint)(long)whole), (float)(_busElapsedMs - whole));
+    }
+
     void TickNativeBus()
     {
         if(!_busClockAdvancedForFrame) _busElapsedMs+=ParkSim.TickMilliseconds; // explicit fixed-time capture winding

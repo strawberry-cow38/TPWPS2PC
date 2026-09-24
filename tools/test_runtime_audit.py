@@ -25,7 +25,9 @@ def raw_witness(scene):
     if scene == 'bus':
         return '\n'.join([f'NATIVE BUS {w}/{b}: phases, visibility, clocks, wrapper refusal and release gates PASS'
                           for w in ('JUNGLE','HALLOW','SPACE','FANTASY') for b in ('bus1','bus2')]
-                         + ['NATIVE BUS PASS: 968 checks, eight buses, native controller and model adapter'])
+                         + [f'NATIVE BUS {w}/{b}: fractional presentation, endpoint clamp and unchanged simulation PASS'
+                            for w in ('JUNGLE','HALLOW','SPACE','FANTASY') for b in ('bus1','bus2')]
+                         + ['NATIVE BUS PASS: 1088 checks, eight buses, native controller and model adapter'])
     if scene == 'modelpath':
         return '\n'.join([f'MODEL PATH {w}/{b} record@{r} moves=True turns=True'
                           for w in ('JUNGLE','HALLOW','SPACE','FANTASY')

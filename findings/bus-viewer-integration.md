@@ -102,3 +102,28 @@ removing only that wait reproduced the same35-object signature4/10 times; with t
 wait restored,20 verbose and5 ordinary runs were clean. Leak classification and
 production audio code remain unchanged; this delay is test teardown policy, not
 console sound timing.
+
+## Requested high-frame-rate presentation — 2026-09-24
+
+The live bus initially sampled its animated model only on `TickPark`, causing
+25Hz-looking motion even when the window rendered faster. The owner's request
+for interpolation is a rendering enhancement, not a newly decoded console rate.
+`StepPark` now samples the current bus record on **every rendered park frame**,
+including calls with zero executed ticks. It uses the same active elapsed clock,
+retaining fractional milliseconds instead of the simulation's ten-ms quantization.
+The existing APS percentage/MPS curve evaluator interpolates body travel, facing
+and wheel channels; no unrelated world-matrix blend crosses record boundaries.
+
+`NativeBusController.PresentationFrame` is read-only: it cannot spend a countdown,
+change authoritative Frame/EndHold/state, bind another record, emit an audio-state
+callback, or request a guest batch. It clamps at the authored endpoint and retains
+an already-held endpoint. New records use their own start clock; wrapping uint
+clock arithmetic remains unchanged. Pause advances neither clock nor pose.
+
+`BusPresentationSmoke` exercises the ACTUAL `Viewer.StepPark` callback. Before the
+fix it fails at the first10ms zero-tick frame because the real body matrix does not
+move. Afterward57checks pass: both `LastWorld` and live surface transforms move on
+two zero-tick frames, simulation/phase/countdowns/admissions/bindings stay unchanged,
+and the next tick does not move the bus backwards. `NativeBusAudit` adds the same
+read-only/boundary checks for all8assets (1088checks total), including far-future
+rendering that cannot complete a phase or release passengers, and clock wrap.

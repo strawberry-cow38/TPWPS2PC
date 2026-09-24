@@ -112,6 +112,66 @@ public partial class NativeBusAudit : Node
         exact.Update(100,0,0,true,true,0);Check(exact.Frame==3 && !exact.EndHold,"exact length is not completed");
         exact.Update(101,0,0,true,true,0);Check(exact.EndHold && exact.Frame==3,"strict endpoint samples clamped length");
         Check(NativeBusController.ElapsedFrames(0,uint.MaxValue-99)==3,"unsigned millisecond wrap");
+        Presentation(model,anim,name);
         GD.Print($"NATIVE BUS {name}: phases, visibility, clocks, wrapper refusal and release gates PASS");
     }
+    void Presentation(TPW.PS2.Data.Model model,Aps anim,string name)
+    {
+        int commands=0,batches=0;
+        var bus=new NativeBus(model,anim,_=>(null,false),0,1000,(_,_)=>commands++,_=>batches++);
+        AddChild(bus.Root);
+        try
+        {
+            var c=bus.Controller;
+            int node=model.NodeOffset(0);
+            var initial=bus.Model.LastWorld[node];
+            bus.Present(1000,.5f);
+            Check(bus.Model.LastWorld[node]==initial && commands==1 && !c.Active,
+                "inactive presentation does not invent an animation or command");
+            bus.Update(1000,0x4000,0,true,true,0); // state0 ->1
+            bus.Update(1000,0x4000,0,true,true,0); // bind approach
+            bus.Update(2000,0x4000,0,true,true,0); // frame30
+            Check(c.Frame==30 && c.AppliedState==1,"presentation control starts on moving approach");
+            object Snapshot()=>(c.State,c.AppliedState,c.Frame,c.EndHold,c.Record,
+                c.OuterRemaining,c.DwellRemaining,c.RejectedCommands,commands,batches);
+            var simulation=Snapshot();
+            var before=bus.Model.LastWorld[node];
+            Check(Math.Abs(c.PresentationFrame(2010,.5f)-30.315f)<.0001f,
+                "fractional render time samples authored thirty-fps frame independently");
+            bus.Present(2010,.5f);
+            var middle=bus.Model.LastWorld[node];
+            Check(middle!=before,"presentation moves real body matrix without a tick");
+            Check(Snapshot().Equals(simulation),"presentation cannot change controller/countdowns/callbacks");
+            bus.Present(2020);
+            var end=bus.Model.LastWorld[node];
+            Check(end!=middle,"second render sample moves between the same two park ticks");
+            bus.Present(2020);
+            Check(bus.Model.LastWorld[node]==end && Snapshot().Equals(simulation),
+                "same-time render is stable and consumes nothing");
+            Check(c.PresentationFrame(1000000)==220,"render frame clamps to authored endpoint");
+            bus.Present(1000000);
+            Check(Snapshot().Equals(simulation) && batches==0 && commands==2,
+                "even a far-future render cannot finish a phase or admit a batch");
+            bus.Update(8334,0x4000,0,true,true,0); // true simulation completion
+            Check(c.EndHold && c.Frame==220 && c.State==2,"simulation alone completes the first phase");
+            var held=bus.Model.LastWorld[node];
+            bus.Present(9000,.75f);
+            Check(bus.Model.LastWorld[node]==held && c.PresentationFrame(9000,.75f)==220,
+                "held endpoint does not extrapolate through wait/record boundary");
+            var previous=c.Record;
+            bus.Update(9000,0x4000,0,true,true,0); // actual next record bind
+            bus.Present(9000);
+            Check(c.Record!=previous && ReferenceEquals(bus.Model.Record,c.Record)
+                && c.PresentationFrame(9000)==0,"new phase starts from its own clock/record, not old frame220");
+            Check(commands==3 && batches==0,"all render calls preserve native command/batch counts");
+        }
+        finally { bus.Root.Free(); }
+        var wrapped=new NativeBusController(anim,0,uint.MaxValue-99,_=>{},_=>{},(_,_)=>{},_=>{});
+        wrapped.Update(uint.MaxValue-99,0x4000,0,true,true,0);
+        wrapped.Update(uint.MaxValue-99,0x4000,0,true,true,0);
+        Check(Math.Abs(wrapped.PresentationFrame(0,.5f)-3.015f)<.0001f,
+            "fractional renderer respects unsigned native clock wrap");
+        GD.Print($"NATIVE BUS {name}: fractional presentation, endpoint clamp and unchanged simulation PASS");
+    }
+
 }

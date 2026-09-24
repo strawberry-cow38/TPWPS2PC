@@ -3272,6 +3272,7 @@ public partial class Viewer : Node3D
         // difference -- which is why this survived every seat-position check we ran. Those checks
         // measured WHERE a rider was, never WHEN.
         PresentScripted(alpha: _parkClock.Alpha);
+        PresentNativeBus(); // including rendered frames in which the park executes no tick
         if (_guests != null) PlaceActors(_parkClock.Alpha);
     }
 

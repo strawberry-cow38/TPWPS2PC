@@ -2085,3 +2085,26 @@ Keepactiveworktree`tpw-gate-occupancy` (despitehistoricalname); oldride-eligibil
 checkoutisstaledirtywork. Cowownsnewanimatedtexture/thought-bubblelane. Authorized
 partialGhidracorpusislocaloutsideGit`../tpw-private-research/ghidra-corpus`; useasan
 additionalsource, checksignaturesagainstMIPS. Noassetextraction, norestarts.
+
+## Owner bus interpolation request — September24 18:00 UTC
+
+BusISonmaineb67e78. Newrequest1552738005935067238 takespriorityoverentrancework.
+Implementedpresentation-only currentrecordfractionalsampling on everyStepPark,
+includingzeroexecutedtickframes. Controller.PresentationFrame readonly/clamped;
+NativeBus.Present usesexistingAPS/MPS interpolatorsforbody/facing/wheels. Noextra
+simulationupdates, callbacks, countdownoradmissions. Heldendpoints/newrecordclocks
+remainseparate. ActualViewerBusPresentationSmokefailsBEFOREatfirstzero-tickmatrix
+movement, thenpasses57checksAFTER. /tmp/tpw-bus-present-{before,after}.log.
+All8NativeBusAuditnow1088checks includingclamp/no-phase-sideeffects/clockwrap.
+Freshmergedgatespending. Cowmain05480ec animatedtextures/thoughtbubbledepth should
+bepreserved; no same-hostcleanup, weareonseparateLinuxhost.
+
+Entrance research pausedforthisuserrequest, NOTabandoned. Read-onlyworker traced
+fullentrychain; importantcorrection independentlycheckedraw20DC28..20DCD8:
+N+28=0/1aftermodes15/14ispre-crossingDIRECTION, notyetcountedlistmembership.
+Mode16completionreadsoldN+28: zero->rand(2), storesnewN+28, choosesothergroupif
+1527B0count>=11, setsstate2A; nonzero->state30departure. BOTHcountedgroupscancontain
+incomingguests. Parentverified1532D8ignoresselectorargumentandusespointtable+2/+3
+withrandomxadd0..255 AFTERheightsample. Donotinherit"group1meansdeparture".
+Fullworkertracehasmoreentryfee/pathrequest/acceptance lifecycle details towriteup
+wheninterpolationlands; re-readpositiveaddresses ratherthan guessing groupcounts.
