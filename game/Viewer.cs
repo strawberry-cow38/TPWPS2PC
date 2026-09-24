@@ -2715,6 +2715,36 @@ public partial class Viewer : Node3D
                 x => x.Path.Equals(dir + child, StringComparison.OrdinalIgnoreCase));
             return e == null ? null : _lib.Read(e);
         }
+        // ⭐⭐ IT COSTS MONEY. Master: "now wire up placement costs for everything."
+        // `FUN_0012BC10` reads the cost by family -- `record[0x50]` for the tiered kinds,
+        // `record[0x20]` for the rest -- and `FUN_00126408` charges `cost * 10` through the
+        // park debit, then plays effect **31**.
+        //
+        // ⭐ REFUSED BEFORE PLACING, not charged afterwards: `FUN_00197F48` is the build UI's own
+        // guard and it tests `balance - cost * 10 < 0` and plays **175** (`the cannot-afford
+        // cue`) rather than letting the placement through. The debit itself also refuses, so a
+        // park cannot be driven negative by building.
+        //
+        // ⚠ A definition that never joined a compiled record has NO cost rather than a free one,
+        // so it is placed without charge and says so -- silently giving away unjoined assets is
+        // how a missing join turns into a gameplay exploit nobody traces back.
+        int? price = _place.Def?.PlacementCost;
+        if (price is { } due)
+        {
+            if (!_sim.Finances.Debit(due))
+            {
+                GD.Print($"[money] {Leaf(assets.Name)} costs {Money.Format(due)} and the park holds "
+                       + $"{Money.Format(_sim.Finances.Balance)} -- refused");
+                Status($"{_place.Display ?? Leaf(assets.Name)} costs {Money.Format(due)} -- not enough money");
+                _sounds?.Cue(0, "build", _parkTicks * ParkSim.TickMilliseconds, RseOpcode.EVENT,
+                             UiSoundGroup, -1, CannotAffordSound, 0, Cell(ParkPaths.Centre(new ParkCell(cx, cy))));
+                return false;
+            }
+            GD.Print($"[money] {Leaf(assets.Name)} cost {Money.Format(due)}; the park holds {Money.Format(_sim.Finances.Balance)}");
+            _sounds?.Cue(0, "build", _parkTicks * ParkSim.TickMilliseconds, RseOpcode.EVENT,
+                         UiSoundGroup, -1, PurchaseSound, 0, Cell(ParkPaths.Centre(new ParkCell(cx, cy))));
+        }
+        else GD.Print($"[money] {Leaf(assets.Name)} has no compiled record, so no placement cost is known -- placed free");
         var ride = _sim.Add(id, _place.Display ?? Leaf(assets.Name), new ParkCell(cx, cy), w, h,
                             _lib.Read(assets.Script), anim, _place.Def?.UpgradeCapacity(0) ?? 1,
                             entrance, exit, out string fault, sibling: Sibling, headSlots: headSlots,
@@ -6934,6 +6964,15 @@ public partial class Viewer : Node3D
     /// **1:1**; two fields holding 2 looked like a scale and were an offset.
     /// ⭐ Position being right while size was wrong is exactly the shape that says the FRAME is
     /// correct and one constant inside it is not -- which is why that report was so useful.
+    /// <summary>`FUN_00126408` plays 31 on a purchase; `FUN_00197F48` plays 175 when the park
+    /// cannot afford what is being placed.
+    /// ⭐⭐ BOTH ARE **GROUP 9, `GlobalUi`** -- not the guests' group 6 -- and the clips say so
+    /// themselves: 31 is `BUTTON01.vag` and 175 is **`blnl_error1.vag`**, a file with "error" in
+    /// its name. ⚠ The first wiring passed group 6 out of habit, which would have resolved to
+    /// whatever the kids' map happens to hold at those ids. A sound's GROUP is part of its
+    /// address, not a default.</summary>
+    const int PurchaseSound = 31, CannotAffordSound = 175, UiSoundGroup = 9;
+
     const int MoneyX = 0x26, MoneyY = 0x32, MoneyShadow = 2, MoneyFontIndex = 1;
     const float ConsoleUiWidth = 512f, ConsoleUiHeight = 512f;
     static readonly Color MoneyNormal = new(1f, 1f, 0f), MoneyBroke = new(200 / 255f, 130 / 255f, 0f);

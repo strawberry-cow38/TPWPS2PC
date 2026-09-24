@@ -720,7 +720,8 @@ string Clips(SoundCatalogue.Resolved r) => string.Join("|", r.Clips.Select(c => 
 // argument selects a table INSIDE that function, so it is a category in some other numbering.
 // ⭐⭐ EVERY effect call in the guest code (0x209000..0x213000), found by censusing `jal` to the
 // two entry points and reading the `a2` immediate at each site. Eight, not the four first noticed.
-foreach (var (sfxId, sfxWhat) in new[] { (71, "0x1B94B8 build, footprint 1"), (72, "build, footprint <4"),
+foreach (var (sfxId, sfxWhat) in new[] { (31, "0x00126408 PLACEMENT bought"), (175, "0x00197F48 cannot afford"),
+                                         (71, "0x1B94B8 build, footprint 1"), (72, "build, footprint <4"),
                                          (73, "build, footprint <8"), (74, "build, footprint 8+"),
                                          (53, "0x20F0A0 lavatory relief -- THE CONTROL"),
                                          (208, "0x20EAD8 shop visit complete"),

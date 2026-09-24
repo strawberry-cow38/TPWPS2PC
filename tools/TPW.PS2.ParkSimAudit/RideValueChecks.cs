@@ -63,6 +63,32 @@ static class RideValueChecks
         ParkRide Bare(RideDefinition d) => new() { Definition = d };
         var ordinary = rides.FirstOrDefault(r => r.Def.CompiledEntry?.Kind == AssetResourceDatabase.AssetKind.Ride);
         var coaster  = rides.FirstOrDefault(r => r.Def.CompiledEntry?.Kind == AssetResourceDatabase.AssetKind.Coaster);
+        // ⭐⭐ PLACEMENT COSTS, over every joined definition in the world. `FUN_0012BC10` reads
+        // record[0x50] for the tiered families and record[0x20] for the rest, and `FUN_00126408`
+        // charges ten times it. ⚠ Checked as a POPULATION, not one example: the two fields sit
+        // 48 bytes apart, so a definition taking the wrong branch reads some neighbouring word
+        // and would look like a plausible price on any single ride.
+        var priced = rides.Where(r => r.Def.CompiledEntry != null).ToArray();
+        int costed = priced.Count(r => r.Def.PlacementCost is > 0);
+        Check(priced.Length > 0 && costed == priced.Length,
+              $"every joined ride has a placement cost ({costed} of {priced.Length})");
+        // ⚠ THE CONTROL: an unjoined definition must say UNKNOWN rather than free.
+        var bare = RideDefinition.Parse("Info.Name\t\"nothing\"\n", "synthetic/none.sam");
+        Check(bare.PlacementCost == null, "and a definition with no compiled record has no cost, rather than a free one");
+        // ⚠⚠ A FLOOR OF 1000 WAS FITTED TO JUNGLE AND FAILED IN SPACE, where something costs
+        // 500 tenths -- fifty dollars, perfectly reasonable for a small feature. That is the
+        // FOURTH check tonight written against one world's numbers. ⭐ What the check is really
+        // for is a branch reading the WRONG WORD, 48 bytes from the right one, and that failure
+        // shows as zero, negative, or astronomical -- never as a slightly-low price. So assert
+        // THAT, and let the data say what a thing is worth.
+        var costs = priced.Select(r => r.Def.PlacementCost ?? 0).ToArray();
+        Check(costs.All(c => c > 0 && c < 100_000_000),
+              $"and every cost is a positive, non-absurd figure ({costs.Min()}..{costs.Max()} tenths)");
+        // ⚠ AND BOTH BRANCHES ARE EXERCISED, or the family split is untested: a world ships
+        // tiered rides and untiered features, and each must produce a cost.
+        Check(priced.Any(r => r.Def.CompiledEntry.HasRideTiers) && priced.Any(r => !r.Def.CompiledEntry.HasRideTiers),
+              "and both the tiered and untiered cost fields are exercised");
+
         if (ordinary.Def != null)
             Check(Bare(ordinary.Def).Value is > 0, $"an ordinary ride has a value ({Bare(ordinary.Def).Value})");
         else Check(false, "the world ships an ordinary ride to value");
