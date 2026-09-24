@@ -234,11 +234,20 @@ public partial class Viewer : Node3D
     bool _buildChecked;
     string _wantSegments;
     string _wantCam;
-    /// <summary>Nudge on the gate's z, in units. ⭐ ZERO now, and it is a DEBUG KNOB rather than
-    /// a shipped constant: the gate's z came out of the disc (see <see cref="LoadGate"/>), so there
-    /// is nothing left to calibrate by eye. Kept because being able to move it and read the number
-    /// off the screen is how the answer got checked in the first place.</summary>
+    /// <summary>Nudge on the gate's z, in units -- the by-eye correction on top of the z that
+    /// comes out of the disc.
+    ///
+    /// ⭐ NO LONGER A LIVE KNOB. Master settled JUNGLE at **-2.0** and asked for the `[`/`]`
+    /// keys to move to the flags, so this is seeded per world in <see cref="LoadGate"/> and the
+    /// tool now drives <see cref="EntranceFlags.NudgeY"/> instead.</summary>
     float _gateNudge;
+
+    /// <summary>The by-eye gate nudge per world. ⚠⚠ JUNGLE ONLY IS MEASURED -- master playtested
+    /// it and said "-2.0 on jungle". The others are **not zero by decision**, they are zero
+    /// because nobody has looked yet, and a single number copied across four worlds is exactly
+    /// the kind of guess this port keeps having to undo. They stay 0 until someone looks at them.</summary>
+    static float GateNudgeFor(string world) =>
+        string.Equals(world, "JUNGLE", StringComparison.OrdinalIgnoreCase) ? -2.0f : 0f;
     /// <summary>G swaps to the free orbit camera.</summary>
     bool _freeCam;
     /// <summary>Ground height per TILE in world units, the same lookup the game does. Baked when
@@ -774,20 +783,24 @@ public partial class Viewer : Node3D
             // cell, which is about where a tile edge stops being ambiguous; shift keeps the old
             // 0.25 so crossing a whole tile is still five presses rather than twenty-five.
             float step = Input.IsKeyPressed(Key.Shift) ? 0.25f : 0.05f;
-            _gateNudge += k.Keycode == Key.Bracketright ? step : -step;
+            // ⭐⭐ THE FLAGS NOW, NOT THE GATE. Master: "can u replace the gate nudge tool with
+            // the flag nudge tool?" -- the gate is settled (their -2.0 on JUNGLE is the default
+            // below), so the keys move to the thing that still needs an eye on it. The flags'
+            // anchor y is the one number in that file that came from a rule of thumb
+            // (`p.Y > top * 0.6f`) rather than out of the executable.
+            _flags.NudgeY += k.Keycode == Key.Bracketright ? step : -step;
             // ⚠ Rounded, or repeated float additions drift into 0.15000000000000002 and the log
             // becomes unreadable at exactly the moment it is being used to write a number down.
-            _gateNudge = Mathf.Round(_gateNudge * 1000f) / 1000f;
+            _flags.NudgeY = Mathf.Round(_flags.NudgeY * 1000f) / 1000f;
             // ⚠⚠ ON SCREEN, NOT DOWN A TERMINAL. Master: "i also dont see where my nudge is
             // being printed?" -- because GD.Print goes to a console nobody playing the game has in
             // front of them. This panel was built for exactly that ("every refusal already printed
             // a reason to the console, which nobody playing the game can see") and I still wrote
             // the ONE number master is meant to read off and hand back into the console alone.
-            string line = $"gate nudge {_gateNudge:+0.00;-0.00;0}  ({(step > 0.1f ? "coarse" : "fine")}"
+            string line = $"flag height {_flags.NudgeY:+0.00;-0.00;0}  ({(step > 0.1f ? "coarse" : "fine")}"
                         + ", shift for the other)";
             Status(line);
-            GD.Print($"[gate] {line}");
-            LoadGate();
+            GD.Print($"[flags] {line}");
         }
     }
 
@@ -5151,10 +5164,21 @@ public partial class Viewer : Node3D
         // ⭐⭐ NOT WHILE SOMETHING ELSE OWNS THE CURSOR. Master: "selection boxes shouldnt show
         // with path or a blueprint on ur cursor." Both of those draw their own ghost on the tile
         // under the pointer, and a selection outline on top of it is two answers to one question.
-        _hovered = _toolOpen || _place.Active ? -1 : PointedAt();
-        int want = _toolOpen || _place.Active ? -1 : (_hovered >= 0 ? _hovered : _selected);
+        bool busy = _toolOpen || _place.Active;
+        _hovered = busy ? -1 : PointedAt();
+        int want = busy ? -1 : (_hovered >= 0 ? _hovered : _selected);
         if (_hovered != was || want != _shownBox) { _shownBox = want; ShowBoxFor(want); }
+        // ⭐ The gate's zone follows the same rule as a ride's box: the pointer first, a click
+        // second, and NEITHER while a tool or blueprint owns the cursor.
+        UpdateGateBox(busy);
     }
+
+    /// <summary>The gate zone's world box, for the hover test. ⚠ Null until a gate is placed;
+    /// the no-build zone only exists once <see cref="PlaceGateNoBuild"/> has read one.</summary>
+    (Vector3 Lo, Vector3 Hi)? _gateBounds;
+    /// <summary>The gate has been clicked. ⭐ Separate from <see cref="_selected"/>, which is an
+    /// index into `Park.Placed` -- the gate is not a placed ride and has no index.</summary>
+    bool _gateSelected;
 
     /// <summary>Which index the box is currently drawn for, so it is not rebuilt every frame.</summary>
     int _shownBox = -1;
@@ -5185,6 +5209,17 @@ public partial class Viewer : Node3D
     bool SelectUnderCursor()
     {
         UpdateHover();
+        // ⭐ The gate takes the click when the pointer is on it and nothing else is, so selecting
+        // it is the same gesture as selecting a ride.
+        if (_hovered < 0 && PointingAtGate())
+        {
+            _gateSelected = true;
+            UpdateGateBox(false);
+            GD.Print("[select] the gate's no-build zone");
+            Status("gate no-build zone selected -- right click to clear");
+            return true;
+        }
+        _gateSelected = false;
         if (_hovered < 0) { ClearSelection(); return false; }
         _selected = _hovered;
         var sel = _park.Placed[_selected];
@@ -5198,10 +5233,30 @@ public partial class Viewer : Node3D
         return true;
     }
 
+    /// <summary>Is the pointer over the gate's no-build zone? ⚠ Its own ray test, because the
+    /// gate is not in `Park.Placed` and so `PointedAt` cannot see it.</summary>
+    bool PointingAtGate()
+    {
+        if (_gateBounds is not { } b || _cam == null || _mode != Mode.Park) return false;
+        var m = GetViewport().GetMousePosition();
+        return RayHitsBox(_cam.ProjectRayOrigin(m), _cam.ProjectRayNormal(m), b.Lo, b.Hi, out _);
+    }
+
+    /// <summary>Show the gate's zone only while it is pointed at or selected -- master's rule.</summary>
+    void UpdateGateBox(bool busy)
+    {
+        if (_gateBox?.Root == null) return;
+        bool show = !busy && _mode == Mode.Park && _gateBounds != null
+                 && (_gateSelected || PointingAtGate());
+        if (_gateBox.Root.Visible != show) _gateBox.Root.Visible = show;
+    }
+
     void ClearSelection()
     {
-        if (_selected >= 0) { GD.Print("[select] nothing selected"); Status("nothing selected"); }
+        if (_selected >= 0 || _gateSelected) { GD.Print("[select] nothing selected"); Status("nothing selected"); }
         _selected = -1;
+        _gateSelected = false;
+        UpdateGateBox(false);
         _shownBox = _hovered;
         ShowBoxFor(_hovered);
     }
@@ -5489,6 +5544,12 @@ public partial class Viewer : Node3D
     /// the file's existence a second time.</summary>
     void LoadGate()
     {
+        // ⭐ The gate's by-eye correction is a per-world CONSTANT now, not a live knob: master
+        // settled JUNGLE at -2.0 and the `[`/`]` keys have moved to the flags. Seeded here so it
+        // follows whichever archive is open rather than being typed in again each session.
+        var wn = (_lib?.WadName ?? "").Split('/', StringSplitOptions.RemoveEmptyEntries);
+        int wi = Array.FindIndex(wn, x => x.EndsWith(".WAD", StringComparison.OrdinalIgnoreCase));
+        _gateNudge = GateNudgeFor(wi >= 0 ? wn[wi][..^4] : "");
         _gate?.Root.QueueFree();
         _gate = null;
         var ride = _lib.Rides.FirstOrDefault(
@@ -5629,9 +5690,14 @@ public partial class Viewer : Node3D
         // ⚠ Tall enough to enclose the arch: a flat ring on the floor is not what the console
         // draws, and the box's own shape (a pulled-out cube) only reads as one at height.
         float tall = Mathf.Max(1f, hi.Y - lo.Y);
-        _gateBox.Show(new Vector3(centre.X - rw * 0.5f, centre.Y, centre.Z - rh * 0.5f),
-                      new Vector3(rw, tall, rh));
-        _gateBox.Root.Visible = _mode == Mode.Park;
+        var boxAt = new Vector3(centre.X - rw * 0.5f, centre.Y, centre.Z - rh * 0.5f);
+        var boxSize = new Vector3(rw, tall, rh);
+        _gateBox.Show(boxAt, boxSize);
+        // ⭐ THE ZONE IS NOW A SELECTION, NOT A PERMANENT FIXTURE. Master: "the selection box
+        // should only be with the gate hovered/selected." It was drawn for the whole time the
+        // park was open, which made a build restriction look like scenery.
+        _gateBounds = (boxAt, boxAt + boxSize);
+        _gateBox.Root.Visible = false;
         float gx = (lo.X + hi.X) * 0.5f + shift, gz = (lo.Z + hi.Z) * 0.5f + dz;
         GD.Print($"[gate.zone] {w}x{h} cells at grid ({x0},{y0}) -- .sam offset ({def.MapOffsetX},"
                + $"{def.MapOffsetY}) shifted {Mathf.RoundToInt(shift):+0;-0;0} in x\n"

@@ -81,6 +81,17 @@ public sealed class EntranceFlags
 
     public string Report { get; private set; } = "not built";
 
+    /// <summary>By-eye height offset on every flag, in units, driven by the `[`/`]` tool.
+    ///
+    /// ⭐ THIS IS THE AXIS WORTH NUDGING, and the reason is in the code above: `AnchorY` and
+    /// `BaseZ` are READ from `0x149A70..0x149BC0` and only x moves per park -- but WHICH vertices
+    /// count as "the pole" is the heuristic `p.Y > top * 0.6f`, so the height the flag ends up at
+    /// is the one number here that came from a rule of thumb rather than the executable.
+    ///
+    /// ⚠ An OFFSET, never a replacement: the read anchor still does the work and this rides on
+    /// top, so a nudge of 0 is exactly the behaviour before the tool existed.</summary>
+    public float NudgeY { get; set; }
+
     /// <summary>Stand the flags on this park's poles. <paramref name="terrain"/> is the park's own
     /// terrain model; <paramref name="read"/> fetches a shared asset out of DATA.WAD.</summary>
     public void Build(Model terrain, Func<string, byte[]> read)
@@ -213,7 +224,8 @@ public sealed class EntranceFlags
             Fill((float)time * 2.6f + i * 0.7f);
             strip.ClearSurfaces();
             strip.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, _arrays);
-            mi.Position = at;
+            // ⭐ The by-eye height rides on the read anchor -- see NudgeY.
+            mi.Position = at + new Vector3(0f, NudgeY, 0f);
         }
     }
 
