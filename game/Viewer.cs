@@ -1696,10 +1696,17 @@ public partial class Viewer : Node3D
         }
         _thoughts.Sweep(visibleGuests.ToHashSet());
 
-        // ⭐ AND A CAMERA THAT FINDS ONE. A bubble is a third of a guest's height, and the game
-        // camera sits 2576 units up -- so at the park view it is sub-pixel and "no bubble in the
-        // picture" says nothing at all. This points the free camera at somebody who actually wants
-        // something, which is the only framing in which the feature can be photographed.
+        // ⭐ AND A CAMERA THAT FINDS ONE. A bubble is a third of a guest's height, so at the park
+        // view it is small and "no bubble in the picture" says little. This points the free camera
+        // at somebody who actually wants something, which is a framing the feature is legible in.
+        //
+        // ⚠⚠ THIS USED TO SAY "the camera sits 2576 units up -- so it is SUB-PIXEL", and both
+        // halves were wrong. `GameCamera` holds its pose in RAW units and `Build` divides by
+        // `TileUnits` (256), so the reset pose is 10.06 Godot units up and ~12.2 of slant range,
+        // where a bubble is small but plainly visible. I had taken a raw-unit constant out of a
+        // comment and used it as a Godot distance; astraclaw caught it. The tell was there to be
+        // noticed -- 2576 units over a park with ONE-unit cells is two and a half thousand tiles
+        // of altitude.
         if (System.Environment.GetEnvironmentVariable("TPW_WANT_CAM") == "1")
         {
             var who = _guests.Guests.FirstOrDefault(

@@ -34,11 +34,23 @@ public sealed class ThoughtBubbles
     /// growing it drops the lower edge by half the gain, and at 0.62 the kid's hair already
     /// overlapped the bottom of the cloud.
     ///
-    /// ⚠⚠ THE FRAMING IS A CLOSE-UP, NOT GAMEPLAY, and an earlier version of this comment said
-    /// "ordinary game camera" and was wrong (astraclaw's correction). At the real park camera --
-    /// 2576 units up, per the class note -- a bubble is sub-pixel whatever this is set to, so
-    /// these numbers size it for the close-up the feature is *inspected* at, NOT for play. What
-    /// play needs is a camera or a scale policy, and that question is still open.
+    /// ⚠⚠ THE FRAMING IS A CLOSE-UP, NOT GAMEPLAY, so these numbers size the bubble for the
+    /// pose the feature is *inspected* at, not for play. What play needs is still open.
+    ///
+    /// ⚠⚠ AND "SUB-PIXEL AT PARK VIEW" WAS WRONG BY A FACTOR OF 256 -- twice, in this comment and
+    /// in the class note above it. `GameCamera` keeps its pose in RAW GAME UNITS and `Build`
+    /// divides by `TileUnits` (256) on the way out, so the reset pose `EyeY = 0xA10` is **10.06
+    /// Godot units** up, not 2576, with `Behind = 0x6E0` = 6.875 -- about **12.2 units** of slant
+    /// range to a guest. At that distance a bubble is small but nowhere near sub-pixel, and
+    /// "however big you make it, it vanishes" simply does not follow. astraclaw caught it.
+    ///
+    /// ⭐ I had taken a raw-unit constant out of a comment and used it as a Godot distance. The
+    /// tell was available and ignored: 2576 units of altitude over a park whose cells are ONE
+    /// unit across would put the camera two and a half thousand tiles up.
+    ///
+    /// ⚠ What is still NOT known is the projected size at the default pose, and it cannot be got
+    /// from the close-up captures -- their camera pose is not recorded, so there is no ratio to
+    /// scale by. It needs ONE capture at the reset pose, measured rather than judged.
     ///
     /// ⚠ And the first pass of this measurement reported 23 px, not 16: the brightness threshold
     /// was catching the kid's blond hair as well as the cloud. Re-measured with a blue-biased
