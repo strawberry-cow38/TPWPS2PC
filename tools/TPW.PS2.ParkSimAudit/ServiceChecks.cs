@@ -157,6 +157,68 @@ static class ServiceChecks
         Check(miserable.Home == 1, $"so does a thoroughly miserable one ({miserable.Home})");
 
         // ⭐ THE CONTROL. Without this, "everyone leaves immediately" passes all three above.
+        // ── waiting in a queue ────────────────────────────────────────────────────────────────
+        // ⭐⭐ `VisitorNeeds.Queue` -- decoded off `FUN_0020C6A8`, eighteen references from these
+        // checks, and CALLED FROM NOWHERE until now, so standing in a queue was free. Found by
+        // tools/dead_port_audit.py. ⚠ PEAK, not final: `Ride` SUBTRACTS from the same byte that
+        // `Queue` adds to, so a completed ride can erase the evidence -- the sign difference is
+        // what makes the two separable, and sampling the high-water mark is what survives it.
+        (int Peak78, int LowHappy) Wait(bool withRide)
+        {
+            var paths = new ParkPaths(terrain);
+            sourcePaths.Field.Cells.CopyTo(paths.Field.Cells, 0);
+            paths.SetEntrance(entranceTable);
+            var visitors = new ParkVisitors(new ParkSim(paths), new GuestWalk(paths)) { Needs = new VisitorNeeds(31) };
+            foreach (string key in visitors.Needs.Rates.Keys.ToArray())
+                visitors.Needs.Rates[key] = new VisitorNeeds.Rate(0, 0, false);
+            if (withRide)
+            {
+                var r = visitors.Sim.Add(1, "queue fixture", corridor[0], 1, 1, rideScript, rideAps,
+                                         rideDef.UpgradeCapacity(0) ?? 1, corridor[0], exit, out string fault,
+                                         sibling: rideSibling, headSlots: rideSeats, definition: rideDef)
+                        ?? throw new InvalidOperationException("queue fixture would not start: " + fault);
+                visitors.Sim.SetOpen(r.Id, true);
+                r.Set("VAR_BROKEN", 0);
+                // ⚠⚠ ONE SEAT, AND THAT IS THE WHOLE POINT. With an idle ride and a single guest
+                // the handover happens within a tick or two and NOBODY EVER WAITS a rise period,
+                // so the first version of this check read 0 and would have read 0 however right
+                // the code was. A queue needs more people than seats before it is a queue.
+                r.Set("VAR_CAPACITY", 1);
+            }
+            var ids = new List<int>();
+            for (int i = 0; i < 8; i++)
+            {
+                var g = visitors.Arrive(exit, exit);
+                ids.Add(g.Id);
+                var w = visitors.Needs.Of(g.Id);
+                w.Cash = 5000; w.Happiness = 100; w.Unknown78 = 0;
+                w.Hunger = 0; w.Thirst = 0; w.Toilet = 0; w.Sick = 0;
+                visitors.Needs.Set(g.Id, w);
+            }
+            int peak = 0, low = 100;
+            for (int i = 0; i < 4000; i++)
+            {
+                visitors.Step(Tick, () => exit);
+                foreach (int id in ids)
+                {
+                    if (!visitors.Needs.Has(id)) continue;
+                    var n = visitors.Needs.Of(id);
+                    peak = Math.Max(peak, n.Unknown78);
+                    low = Math.Min(low, n.Happiness);
+                }
+            }
+            return (peak, low);
+        }
+
+        var waited = Wait(withRide: true);
+        Check(waited.Peak78 > 0, $"standing in a queue costs the guest something ({waited.Peak78} boredom at its peak)");
+        Check(waited.LowHappy < 100, $"and wears their patience down ({waited.LowHappy} happiness at its lowest)");
+        // ⭐ THE CONTROL. Same park, same clock, nothing to queue for: if this also moved, the
+        // effect would be the ordinary needs rise and not the queue at all.
+        var unqueued = Wait(withRide: false);
+        Check(unqueued.Peak78 == 0, $"a guest with no queue to stand in pays nothing ({unqueued.Peak78})");
+        Check(unqueued.LowHappy == 100, $"and keeps their patience ({unqueued.LowHappy})");
+
         var content = Leave(cash: 5000, happiness: 80);
         Check(content.Home == 0, $"a solvent, happy guest stays ({content.Home} went home)");
         Check(content.Walkers == 1, $"and is still walking about ({content.Walkers})");

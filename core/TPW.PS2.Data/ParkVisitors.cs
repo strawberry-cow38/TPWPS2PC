@@ -212,7 +212,29 @@ public sealed class ParkVisitors
         // way, because a guest can be retired on a step that moved no clock at all.
         if (Needs != null)
         {
-            Needs.Step(ticks * GuestWalk.TickMilliseconds / 1000.0);
+            int rises = Needs.Step(ticks * GuestWalk.TickMilliseconds / 1000.0);
+            // ⭐⭐ WAITING IN A QUEUE COSTS SOMETHING, and it did not until now. `VisitorNeeds.Queue`
+            // was decoded off `FUN_0020C6A8` -- happiness down, `+0x78` up -- documented, carried
+            // eighteen references from the checks, and was CALLED FROM NOWHERE: queueing was free.
+            // Found by tools/dead_port_audit.py one commit after WantsToGoHome, which is the same
+            // shape and the reason that tool now exists in this port too.
+            //
+            // ⚠ THE CADENCE IS CHOSEN, THE EFFECT IS NOT. How often the console charges this has
+            // not been read. Rather than invent a second clock it rides the one the needs already
+            // use, so there is still exactly one chosen constant (`SecondsPerRise`) instead of two
+            // -- and a guest who waits twice as long pays twice, which is the part that matters.
+            // ⚠⚠ STILL IN THE QUEUE, NOT MERELY `Queued`. That intent covers BOTH waiting at
+            // the stub and being aboard -- the ride owns them from WALKON onwards without the
+            // plan changing -- so charging on the intent alone billed riders a waiting cost and
+            // mutated a seated guest's record. The needs-lifecycle checks caught it: "seated
+            // guest retains its entire side-table state" went red. The ride's own queue is the
+            // honest test, because the script removes them from it when it takes them.
+            if (rises > 0)
+                foreach (var (guest, plan) in _plans)
+                    if (plan.Intent == VisitorIntent.Queued
+                        && _owners.TryGetValue(guest, out var waitingAt)
+                        && waitingAt.Queue.Contains(guest))
+                        for (int i = 0; i < rises; i++) Needs.Queue(guest);
             Needs.Reconcile(_plans.Keys);
         }
     }

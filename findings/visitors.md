@@ -1269,3 +1269,41 @@ redden while the control stays green.
 ride path subtracts `rand(20)` — so its `>= 99` clause cannot currently fire, and departures come
 from the cash and happiness clauses alone. The rise for it is the same unfound rise as the other
 needs.
+
+## ⭐⭐ Queueing was free, and a tool found it in one run (2026-09-24)
+
+Straight after `WantsToGoHome`, I ported `tools/dead_port_audit.py` from the PSX port — whose own
+docstring already records this exact class of bug there, including *"the idle pass was ported and
+never called ... so NOBODY EVER LEFT and the park filled with maximally miserable people"*. Both
+ports lost the ability to go home, independently, and neither build nor audit noticed.
+
+It reported **8 candidates** for the PS2 port (the PSX one had 87), and the gameplay one was
+`VisitorNeeds.Queue`: decoded off `FUN_0020C6A8` (happiness down, `+0x78` up), **18 references
+from the checks, zero call sites anywhere.** Standing in a queue cost a guest nothing.
+
+⚠⚠ **And the obvious wiring was wrong in a way only the existing audit caught.** Charging every
+guest whose plan reads `Queued` bills *riders* a waiting cost: that intent covers both waiting at
+the stub AND being aboard, because the ride owns them from WALKON onward without the plan
+changing. Two `needs lifecycle` checks went red — "seated guest retains its entire side-table
+state". The honest test is the ride's OWN queue, which the script empties when it takes somebody.
+
+⚠⚠ **Then my check read 0 and would have read 0 however right the code was.** One guest and an
+idle ride hand over within a tick or two, so nobody is ever in a queue at a rise boundary. **A
+queue is not a queue until there are more people than seats** — the fixture now sets capacity to 1
+and puts eight guests in. Peak boredom 100, happiness floor 0, against a control (no ride to
+queue for) that stays 0/100. Mutation: disable the charge and exactly the two positive lines
+redden.
+
+⭐ The emergent behaviour is the game working: a long queue wears patience down, and a guest under
+5 happiness then trips the go-home path and leaves. Two features that were each inert a commit ago
+now compose into "badly-run park loses its visitors".
+
+⚠ The cadence is CHOSEN, the effect is not. How often the console charges waiting has not been
+read, so it rides the needs' existing `SecondsPerRise` rather than introducing a second invented
+constant — one chosen number instead of two, and a guest who waits twice as long still pays twice.
+
+### The other seven candidates, unexamined
+`KanjiTable.CodeForSlot` / `TryGetImageOrdinal`, `AssetResourceDatabase.Tier`,
+`BitmapFont.TryGetGlyph`, `Lighting.Modulate`, `Model.Skin.SkinBindRotation`,
+`ParkPaths.SceneryBlocks`. ⚠ Candidates, not verdicts — the tool matches on identifier and cannot
+see a call through a delegate or interface. Listed so the next person starts from a shortlist.

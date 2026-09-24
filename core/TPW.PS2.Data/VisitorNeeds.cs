@@ -216,15 +216,19 @@ public sealed class VisitorNeeds
     /// ⚠ Zero seconds ages nobody -- a step that moves no clock must not move a need either --
     /// and the caller still reconciles afterwards, because a guest can be retired on a zero-time
     /// step.</summary>
-    public void Step(double seconds)
+    /// <returns>How many rise periods elapsed, so a caller can charge a per-period cost of its
+    /// own on the SAME clock -- the queue's, which only <see cref="ParkVisitors"/> knows who owes.
+    /// ⭐ Returning it beats exposing the accumulator: there is still exactly one clock.</returns>
+    public int Step(double seconds)
     {
-        if (seconds <= 0d) return;
+        if (seconds <= 0d) return 0;
         _sinceRise += seconds;
-        if (_sinceRise < SecondsPerRise) return;
+        if (_sinceRise < SecondsPerRise) return 0;
         // ⚠ One rise per elapsed period, not one per call: a long step owes several.
         int rises = (int)(_sinceRise / SecondsPerRise);
         _sinceRise -= rises * SecondsPerRise;
         for (int i = 0; i < rises; i++) Rise();
+        return rises;
     }
 
     void Rise()
