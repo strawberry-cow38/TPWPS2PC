@@ -6076,21 +6076,29 @@ public partial class Viewer : Node3D
         // ⚠⚠ TWO NO-BUILD SYSTEMS HAD GROWN UP SEPARATELY: `ParkPaths.GateHold`, which the audit
         // checks and `game/` never read, and `Park.Reserve`, which the game obeys and the gate
         // hold never reached. They are joined here, from the one geometry, so they cannot drift.
-        int inside = 0;
-        if (WalkGrid() is { } walk)
-            foreach (var c in walk.GateHold) inside += _park.Reserve(c.X, c.Z, 1, 1);
-        GD.Print($"[gate.zone] reserved {inside} cells INSIDE the park from the gate hold (8x2)");
+        // ⚠ The authored `EngineFootprint` rectangle is reserved too, but it is NOT the zone and
+        // is no longer drawn or reported as one. It is 6x3 at MapOffsetY 16 -- rows 16,17,18 --
+        // and the park's first row is 19, so every cell of it is WALKWAY, which was never
+        // buildable anyway. Keeping it costs nothing; presenting it as the gate's no-build area
+        // is what made this look fixed three times over.
+        int approach = 0;
+        if ((def?.NoBuildWidthOverride ?? 0) > 0 && (def?.NoBuildHeightOverride ?? 0) > 0)
+            approach = _park.Reserve((def.MapOffsetX ?? 0) + Mathf.RoundToInt(shift), def.MapOffsetY ?? 0,
+                                     def.NoBuildWidthOverride.Value, def.NoBuildHeightOverride.Value);
 
-        int w = def?.NoBuildWidthOverride ?? 0, h = def?.NoBuildHeightOverride ?? 0;
-        if (w <= 0 || h <= 0)
+        // ⭐⭐⭐ THE ZONE IS THE 8x2, and it is the same cells ParkPaths already holds. Master,
+        // four times now: "gate should be 8x2 (inside the park, the first tiles against that
+        // middle inset)". Reserved, DRAWN and LOGGED from one geometry, so what you see, what
+        // refuses a build and what the audit checks cannot disagree again.
+        if (WalkGrid() is not { } walk || walk.GateHold.Count == 0)
         {
-            // ⚠ The authored approach zone is optional; the park-side hold above is not, and it
-            // has already been applied, so this returns rather than abandoning both.
-            GD.Print("[gate.zone] this Gates.sam states no EngineFootprint override -- approach zone only");
+            GD.Print("[gate.zone] no fitted entrance -- no gate zone");
             return;
         }
-        int x0 = (def.MapOffsetX ?? 0) + Mathf.RoundToInt(shift), y0 = def.MapOffsetY ?? 0;
-        int cells = _park.Reserve(x0, y0, w, h);
+        int x0 = walk.GateHold.Min(c => c.X), y0 = walk.GateHold.Min(c => c.Z);
+        int w = walk.GateHold.Max(c => c.X) - x0 + 1, h = walk.GateHold.Max(c => c.Z) - y0 + 1;
+        int cells = 0;
+        foreach (var c in walk.GateHold) cells += _park.Reserve(c.X, c.Z, 1, 1);
         var (centre, rw, rh) = FootprintRect(x0, y0, w, h);
         // ⚠ Tall enough to enclose the arch: a flat ring on the floor is not what the console
         // draws, and the box's own shape (a pulled-out cube) only reads as one at height.
@@ -6113,12 +6121,13 @@ public partial class Viewer : Node3D
         _gateCell = (x0 + w / 2, y0 + h / 2);
         _gateBox.Root.Visible = false;
         float gx = (lo.X + hi.X) * 0.5f + shift, gz = (lo.Z + hi.Z) * 0.5f + dz;
-        GD.Print($"[gate.zone] {w}x{h} cells at grid ({x0},{y0}) -- .sam offset ({def.MapOffsetX},"
-               + $"{def.MapOffsetY}) shifted {Mathf.RoundToInt(shift):+0;-0;0} in x\n"
+        GD.Print($"[gate.zone] {w}x{h} cells at grid ({x0},{y0}) -- the park's own first rows, "
+               + $"from the entrance fit; the .sam's {def?.NoBuildWidthOverride}x{def?.NoBuildHeightOverride} "
+               + $"approach rectangle reserved {approach} further cells of walkway\n"
                + $"[gate.zone] world x {centre.X - rw * 0.5f:F2}..{centre.X + rw * 0.5f:F2}  "
                + $"z {centre.Z - rh * 0.5f:F2}..{centre.Z + rh * 0.5f:F2}; {cells} of {w * h} cells "
                + "are on the plot and now refuse a build"
-               + (cells == w * h ? "\n" : $"; the other {w * h - cells} are off it, on the walkway\n")
+               + (cells == w * h ? "\n" : $"; the other {w * h - cells} are off it\n")
                + $"[gate.zone] the gate itself is centred ({gx:F2}, {gz:F2}); the zone is centred "
                + $"({centre.X:F2}, {centre.Z:F2}) -- off by ({gx - centre.X:+0.00;-0.00;0}, "
                + $"{gz - centre.Z:+0.00;-0.00;0}). The zone is READ, the gate is TUNED.");
