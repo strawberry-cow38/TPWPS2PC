@@ -2096,3 +2096,54 @@ animation slot table runs 0..11, so `+0x38` is not a slot and something maps it.
 up the viewer cycles the first four of the six slot-2 variants and says so rather than claiming a
 correspondence — 5 and 6 being valid slot numbers is exactly the coincidence that would make a
 wrong mapping look right.
+
+### ⭐⭐ The money UI: the units are READ, and `+0xAC` was not what this file said (2026-09-24)
+
+**The display divides by ten**, and two independent routes say so:
+
+1. The shop management screen (`0x1D6D28`) builds its price control with **min 1, max 500** and
+   seeds it from `shop[0xb8]` **unscaled** — so `shop[0xb8]` is the number the PLAYER sees. The
+   purchase path charges `price * 10` and the till credits `margin * 10` into `park[4]`, so the
+   balance is in **tenths of the player's unit**.
+2. The statistics dispatcher `FUN_0010DE38` case `0x30` graphs the balance as `balance / 1000`
+   clamped to ±30000 — a finance graph in **thousands of the displayed unit**.
+
+⚠ **NO CURRENCY SYMBOL EXISTS TO COPY.** Every `%d` format string in the image and every `STR_`
+key on the disc was searched: the only money text is advisor messages (`STR_ADVMES_CASH_LOW`).
+No HUD label, no format string, no symbol — which fits a console HUD drawing digits as sprites.
+An invented £ or $ would be the only untraced thing on screen, so the readout is the number.
+
+⭐ Every caller of the balance getter `FUN_00100688` (16 of them) is an affordability test or the
+overdraft warning; none formats it. That is why the search for "the HUD readout" kept landing on
+`balance - cost*10 < 0`.
+
+⭐ `FUN_00100470`, the park constructor, sets **`park[8] = 1`** — the very flag the debit tests —
+so a park nothing has loaded into **spends freely**. `ParkFinances.Unlimited` defaults to that
+rather than to a cautious `false` that nothing in the executable asks for. It never writes
+`park[4]`, so the opening balance comes with the scenario: still untraced.
+
+### ⚠⚠ `+0xAC` IS A PLAYER SLIDER, NOT A CUSTOMER COUNT — and that reversed a refusal
+
+This file said `+0xAC` was "the shop's running customer count" and the want score therefore
+**left its term out**, on the reasoning that a term which only ever falls would kill every shop by
+its 300th sale. Both halves were wrong:
+
+```c
+FUN_001D1FC0(shop, v):  shop[0xac] = v;          // a plain SETTER
+0x1D7070 (shop screen): shop[0xb8]      = ui[0xd2c];     // price, clamped 1..500
+                        FUN_001D1F58(shop, ui[0xa82]);   // quality
+                        FUN_001D1FC0(shop, ui[0xbba]);   // this, clamped 0..100
+```
+
+⭐ **Three controls on one screen**, all the player's. A counter nobody increments and the player
+types into is not a counter. The real customer count is `+0xB4`: `FUN_001D1E00` returns
+`shop[0xb0] / shop[0xb4]` clamped to 100, the average-satisfaction rating already decoded here.
+
+⭐⭐ The mistake was **carrying a meaning ACROSS OFFSETS by analogy** — `+0xB4` really is a
+customer count, so `+0xAC` "must be one too". One line of the setter settles what an hour of
+inference had backwards, which is this repo's own rule about reading the parser rather than the
+bytes, applied to a field instead of a file.
+
+⭐ So the term is now ported, and the same expression is **also the cost of goods**: turning the
+slider up makes a sale cheaper to supply *and* less attractive to buy, while quality does the
+opposite. That is the whole shop economy, and half of it was missing.

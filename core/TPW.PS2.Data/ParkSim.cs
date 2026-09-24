@@ -73,9 +73,32 @@ public sealed class ParkRide
     /// guest at hunger 80 scored 25 against a price of 30. ⭐ The audit caught it as nine failing
     /// purchase cases, which is the only reason the reasoning got re-examined instead of shipped.
     ///
-    /// ⚠ What MOVES it afterwards is still unread. One setter, three call sites: this
-    /// construction, the savegame restore (`FUN_001D1A58`) and `0x1D7070`.</summary>
+    /// ⭐⭐ AND WHAT MOVES IT IS **THE PLAYER**. `0x1D7070` -- the third call site, left as "still
+    /// unread" for an hour -- is the shop management screen writing back:
+    /// `FUN_001D1F58(shop, ui[0xa82])`, beside `shop[0xb8] = ui[0xd2c]` (the price) and
+    /// `FUN_001D1FC0(shop, ui[0xbba])`. Three controls on one screen. ⭐ The screen's setup
+    /// (`0x1D6D28`) clamps each to 0..100 and the price to **1..500**.</summary>
     public int Quality { get; set; } = 100;
+
+    /// <summary>`+0xAC`, the shop screen's **other** 0..100 control, default 0.
+    ///
+    /// ⚠⚠ THIS FILE CALLED IT "the shop's running customer count" AND IT IS NOT ONE.
+    /// `FUN_001D1FC0` is a plain setter and the shop screen drives it from a UI control -- a
+    /// counter nobody increments and the player types into is not a counter. ⭐ The real customer
+    /// count is `+0xB4`: `FUN_001D1E00` returns `shop[0xb0] / shop[0xb4]` clamped to 100, which
+    /// is the average-satisfaction rating this repo already decoded (`+0xB0` accumulates
+    /// satisfaction, `+0xB4` counts who it was delivered to).
+    ///
+    /// ⭐ The mistake was carrying a meaning ACROSS OFFSETS by analogy -- `+0xB4` really is a
+    /// customer count, so `+0xAC` "must be one too". Reading the setter settles in one line what
+    /// an hour of inference got backwards, which is this repo's own rule about parsers and bytes.
+    ///
+    /// **What it does:** it is subtracted, quartered, from the want base and therefore from the
+    /// COST too -- `record[0x2e] * ((quality &gt;&gt; 2) + 75 - (this &gt;&gt; 2)) / 100` is both. So
+    /// turning it up makes a sale cheaper to supply and less attractive to buy. ⚠ Named for its
+    /// offset rather than that behaviour: "cutting corners" fits the arithmetic and is not a
+    /// label anybody read.</summary>
+    public int Setting0xAC { get; set; }
 
     /// <summary>`+0xBC` and `+0xC0`: what this facility has taken in gross, and what it has made
     /// after the cost of its goods. `FUN_001D18E8` adds the full price to one and the margin to

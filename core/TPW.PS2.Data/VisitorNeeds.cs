@@ -587,11 +587,11 @@ public sealed class VisitorNeeds
     ///
     /// ⚠ Quality (`+0xBA`) IS passed, and is 0 until something sets it -- which is the console's
     /// own arithmetic on an unset field, `(0 &gt;&gt; 2) + 75`, not a fallback invented here.</summary>
-    public static int WantScore(VisitorWants w, int baseValue, int quality,
+    public static int WantScore(VisitorWants w, int baseValue, int quality, int setting0xAC,
                                 int hungerReduction, int thirstReduction,
                                 int happinessEffect, int vomitIncrease)
     {
-        int bass = baseValue * ((quality >> 2) + 75) / 100;
+        int bass = baseValue * ((quality >> 2) + 75 - (setting0xAC >> 2)) / 100;
         int desire = w.Thirst * thirstReduction / 100
                    + w.Hunger * hungerReduction / 100
                    + 100
@@ -607,7 +607,7 @@ public sealed class VisitorNeeds
     /// A definition that never joined should behave as it did before the gate existed.</param>
     public bool Buy(int guest, int price, int hungerReduction, int thirstReduction,
                     int happinessEffect, int vomitIncrease, int product = Food,
-                    int baseValue = 0, int quality = 0)
+                    int baseValue = 0, int quality = 0, int setting0xAC = 0)
     {
         if (!_byGuest.TryGetValue(guest, out var w)) return false;
         // ⭐⭐ WANTING IT COMES FIRST, AND THE PORT HAD NO SUCH TEST. `0x20E1A0` gates the whole
@@ -618,8 +618,8 @@ public sealed class VisitorNeeds
             System.Console.Error.WriteLine($"[want] price={price} base={baseValue} q={quality} "
               + $"hun={w.Hunger}/{hungerReduction} thi={w.Thirst}/{thirstReduction} "
               + $"sick={w.Sick}/{vomitIncrease} hap={w.Happiness}/{happinessEffect} "
-              + $"score={WantScore(w, baseValue, quality, hungerReduction, thirstReduction, happinessEffect, vomitIncrease)}");
-        if (baseValue > 0 && price >= WantScore(w, baseValue, quality,
+              + $"score={WantScore(w, baseValue, quality, setting0xAC, hungerReduction, thirstReduction, happinessEffect, vomitIncrease)}");
+        if (baseValue > 0 && price >= WantScore(w, baseValue, quality, setting0xAC,
                                                 hungerReduction, thirstReduction,
                                                 happinessEffect, vomitIncrease)) return false;
         // ⚠⚠ AFFORDABILITY SECOND, AND IN THE SAME x10 UNITS. A guest who cannot afford it does

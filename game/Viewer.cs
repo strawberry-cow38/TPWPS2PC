@@ -282,6 +282,7 @@ public partial class Viewer : Node3D
     /// <summary>The terrain file the park tab asked for, or null for the first one.</summary>
     string _wantTerrain;
     Label _info;
+    Label _money;
     Label _toolStatus;
     HSlider _scrub;
 
@@ -652,6 +653,18 @@ public partial class Viewer : Node3D
         _buildList.ItemSelected += i => ArmFromList((int)i);
         _buildPanel.AddChild(_buildList);
         _buildBox = buildBox;
+
+        // ⭐⭐ THE PARK'S MONEY, ON SCREEN. Master: "wire up the money ui from the game code."
+        // ⚠ Anchored top-CENTRE on purpose: the left panel and the right build panel both reach
+        // the top edge, so either corner would sit under a widget the moment a tab is open.
+        _money = new Label { MouseFilter = Control.MouseFilterEnum.Ignore, Visible = false,
+                             HorizontalAlignment = HorizontalAlignment.Center };
+        _money.SetAnchorsPreset(Control.LayoutPreset.CenterTop);
+        _money.OffsetLeft = -140; _money.OffsetRight = 140; _money.OffsetTop = 8;
+        _money.AddThemeFontSizeOverride("font_size", 28);
+        _money.AddThemeColorOverride("font_outline_color", new Color(0, 0, 0));
+        _money.AddThemeConstantOverride("outline_size", 8);
+        ui.AddChild(_money);
 
         // ⭐⭐ THE TOOL SAYS WHAT IT THINKS, ON SCREEN. Every refusal already printed a reason to
         // the console, which nobody playing the game can see -- so a click over the panel, or one
@@ -6743,8 +6756,43 @@ public partial class Viewer : Node3D
         _dist = Mathf.Max((hi - lo).Length() * 0.85f, 1e-3f);
     }
 
+    /// <summary>⭐⭐ THE UNITS ARE READ, WHICH IS THE WHOLE QUESTION A MONEY DISPLAY ASKS.
+    /// The shop management screen (`0x1D6D28`) builds its price control with **min 1, max 500**
+    /// and seeds it from `shop[0xb8]` unscaled -- so `shop[0xb8]` is what the PLAYER sees. The
+    /// purchase path then charges `price * 10` and the till credits `margin * 10` into
+    /// `park[4]`. The park's balance is therefore in **tenths of the player's unit**, and the
+    /// display divides by ten to get back to it.
+    ///
+    /// ⭐ Corroborated by a second route: the statistics dispatcher `FUN_0010DE38` case `0x30`
+    /// puts the balance on a graph as `balance / 1000` clamped to +/-30000 -- i.e. the graph is
+    /// in **thousands of the displayed unit**, which is what a park's finance graph would be.
+    ///
+    /// ⚠ NO CURRENCY SYMBOL, because there is not one to copy. A search of the whole image and
+    /// disc for money text found only advisor messages (`STR_ADVMES_CASH_LOW`) -- no HUD label,
+    /// no format string, no symbol -- which fits a console HUD that draws digits as sprites. An
+    /// invented pound or dollar sign would be the only untraced thing on screen.
+    ///
+    /// ⚠⚠ AND IT READS THE LIVE BALANCE EVERY FRAME rather than keeping one of its own. A UI
+    /// copy of a number the sim owns is a second source of truth that drifts silently the first
+    /// time something credits the park without telling the UI.</summary>
+    void ShowMoney()
+    {
+        if (_money == null) return;
+        var bank = _sim?.Finances;
+        _money.Visible = bank != null;
+        if (bank == null) return;
+        // ⚠ Integer division toward zero, and the sign carried explicitly: the console's own
+        // rounding of a negative balance has not been read, and -5 tenths reading as "0" with no
+        // minus would hide an overdraft.
+        int shown = bank.Balance / 10;
+        _money.Text = (bank.Balance < 0 ? "-" : "") + Math.Abs(shown).ToString("N0");
+        _money.AddThemeColorOverride("font_color",
+            bank.Balance < 0 ? new Color(1f, 0.45f, 0.45f) : new Color(1f, 0.95f, 0.6f));
+    }
+
     public override void _Process(double delta)
     {
+        ShowMoney();
         // ⚠ The camera is placed FIRST, before any early return. It used to sit below the capture
         // branch, so a --shot run photographed the origin and produced a perfectly black frame with
         // a perfectly correct UI beside it -- the geometry was fine the whole time.

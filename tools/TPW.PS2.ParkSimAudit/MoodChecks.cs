@@ -116,12 +116,12 @@ static class MoodChecks
         {
             // Fries as the disc has them: price 30, base 20, hunger 25, vomit 10, happiness 5.
             const int Price = 30, Base = 20, Hun = 25, Thi = 0, Hap = 5, Vom = 10;
-            bool Sell(byte hunger, byte thirst, int cash, int baseValue = Base, int quality = 100)
+            bool Sell(byte hunger, byte thirst, int cash, int baseValue = Base, int quality = 100, int ac = 0)
             {
                 var n = Still();
                 n.Set(1, new VisitorWants { Hunger = hunger, Thirst = thirst, Sick = 20,
                                             Happiness = 20, Cash = cash });
-                return n.Buy(1, Price, Hun, Thi, Hap, Vom, VisitorNeeds.Food, baseValue, quality);
+                return n.Buy(1, Price, Hun, Thi, Hap, Vom, VisitorNeeds.Food, baseValue, quality, ac);
             }
             Check(Sell(80, 70, 1234), "a hungry guest with money buys");
             Check(!Sell(0, 0, 1234), "a SATED guest with the same money refuses -- the want gate");
@@ -136,8 +136,14 @@ static class MoodChecks
             // three quarters and the hungry guest above scores 25 against a price of 30. This
             // port nearly shipped that, with a comment explaining why 0 was principled.
             Check(!Sell(80, 70, 1234, quality: 0), "at quality 0 even a hungry guest cannot afford to want it -- which is why 100 is not a detail");
+            // ⭐⭐ THE SECOND SLIDER, which this port left out on a wrong reading (it was called a
+            // running customer count; `FUN_001D1FC0` is a setter and the shop screen drives it).
+            // Turning it up cuts the cost of goods AND the appeal, so the same hungry guest who
+            // buys at 0 must refuse at 100 -- and that is the whole point of it being a lever.
+            Check(Sell(80, 70, 1234, ac: 0), "the second shop slider at 0 leaves the sale exactly as it was");
+            Check(!Sell(80, 70, 1234, ac: 100), "and at 100 it cuts the appeal until the same guest refuses");
             Check(VisitorNeeds.WantScore(new VisitorWants { Hunger = 80, Thirst = 70, Sick = 20, Happiness = 20 },
-                                         Base, 100, Hun, Thi, Hap, Vom) == 36,
+                                         Base, 100, 0, Hun, Thi, Hap, Vom) == 36,
                   "the score reproduces the console's integer arithmetic exactly (36 for the fries case)");
         }
 
@@ -205,6 +211,28 @@ static class MoodChecks
             for (int g = 1; g <= 20; g++) few.Set(g, new VisitorWants { Toilet = 95, Happiness = 50 });
             few.Step(few.SecondsPerTick * VisitorNeeds.MoodTicks * 2);
             Check(few.BubblesHeld == 20, $"under the budget every guest gets one (got {few.BubblesHeld})");
+        }
+
+        // ── the park's money ───────────────────────────────────────────────────────────────
+        {
+            var bank = new ParkFinances();
+            // ⭐ The constructor's `park[8] = 1` means a park nothing has loaded into spends
+            // freely. ⚠ The control is the other arm: with the flag cleared a debit it cannot
+            // afford must REFUSE and take nothing, which is the whole point of the flag existing.
+            Check(bank.Unlimited, "a fresh park spends freely, as FUN_00100470 leaves it");
+            Check(bank.Debit(500) && bank.Balance == -500, $"and an unaffordable debit goes through ({bank.Balance})");
+            var budget = new ParkFinances { Unlimited = false, Balance = 100 };
+            Check(!budget.Debit(500) && budget.Balance == 100,
+                  $"with the flag cleared it refuses and takes NOTHING ({budget.Balance})");
+            Check(budget.Debit(100) && budget.Balance == 0, "and an affordable one still goes through");
+            budget.Credit(250, category: 4);
+            Check(budget.Balance == 250 && budget.TotalIncome == 250 && budget.IncomeByCategory[4] == 250,
+                  "a credit lands in the balance, the lifetime total and its category at once");
+            // ⚠ A credit is not a negative debit: the console has two functions and only one of
+            // them can refuse, so routing a negative through the wrong door would skip that test.
+            bool threw = false;
+            try { budget.Credit(-1); } catch (ArgumentOutOfRangeException) { threw = true; }
+            Check(threw, "a negative credit is refused rather than silently draining the park");
         }
 
         // ⚠ THE CONTROL THAT MATTERS: `+0x78` is NOT raised by the clock. Nothing in
