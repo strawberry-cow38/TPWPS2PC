@@ -131,8 +131,30 @@ public sealed class ParkRide
     /// maximum gives exactly 1.0 and which can only ever pull the value DOWN. Duration ranges
     /// vary wildly (1..1 on coasters, 10..60 on flat rides), and anything from 7 up saturates
     /// the 1.25 cap.</summary>
-    public int Speed { get; set; } = 100;
-    public int Duration { get; set; } = 5;
+    /// ⭐⭐ THE DEFAULTS ARE READ AFTER ALL. This file said they were not and chose the top of
+    /// each range; astraclaw traced the default setter at `0x116120`:
+    ///
+    ///   `speed = minSpeed + ((maxSpeed - minSpeed) >> 1)` and `duration = max(1, maxDuration >> 1)`
+    ///
+    /// ⭐ Their worked example reproduces exactly through the formula above -- base 40 with
+    /// speed 1..100 and duration 10..60 gives speed 50, duration 30, and a value of **37**, not
+    /// the raw 40 -- which is the corroboration that the two halves were read consistently.
+    /// ⚠ Reasoning my way to a default and labelling it "not read" is the same mistake shop
+    /// quality caught me in this morning; the second time, somebody else had already read it.
+    int? _speed, _duration;
+    public int Speed
+    {
+        get => _speed ?? (Tier0 is { } t ? t.MinSpeed + ((t.MaxSpeed - t.MinSpeed) >> 1) : 100);
+        set => _speed = value;
+    }
+    public int Duration
+    {
+        get => _duration ?? (Tier0 is { } t ? Math.Max(1, t.MaxDuration >> 1) : 5);
+        set => _duration = value;
+    }
+
+    AssetResourceDatabase.RideTier? Tier0
+        => Definition?.CompiledEntry is { HasRideTiers: true } e ? e.Tier(0) : null;
 
     /// <summary>The value, computed the console's way -- see <see cref="Speed"/>. Null when this
     /// ride has no compiled record to take a base from, so a caller can say so rather than
@@ -141,8 +163,24 @@ public sealed class ParkRide
     {
         get
         {
-            int bass = Definition?.CompiledEntry?.BaseExcitement ?? 0;
-            if (Definition?.CompiledEntry == null) return null;
+            var rec = Definition?.CompiledEntry;
+            // ⚠⚠ ORDINARY RIDES ONLY, AND THE FIRST VERSION OF THIS APPLIED IT TO EVERY FAMILY.
+            // `FUN_001B82D0` is the ORDINARY attraction's `+0x1D4`; the same vtable slot is a
+            // DIFFERENT function for each of the others, and this file verified that table
+            // against the image itself before writing the formula:
+            //
+            //   ordinary 0x366330 -> FUN_001B82D0      coaster 0x35B060 -> FUN_001227D8
+            //   tour     0x369F10 -> FUN_001EA038      track   0x36BBF0 -> FUN_00202188
+            //   feature  0x35DC70 -> FUN_001E5A98
+            //
+            // astraclaw named the differences: a coaster's duration has no `/5`, a track ride
+            // adds a cached piece-weight byte, and a sideshow uses a different producer entirely.
+            // ⭐ Having read that five producers exist and then run one of them for all five is
+            // the plainest kind of carelessness, and it is exactly what "refuse rather than
+            // guess" is for -- so the others return null and the caller falls back rather than
+            // receiving a confident wrong number.
+            if (rec == null || rec.Kind != AssetResourceDatabase.AssetKind.Ride) return null;
+            int bass = rec.BaseExcitement;
             if (bass == 0) return 0;
             static int Band(int v) => Math.Clamp(v, 0xC00, 0x1400);
             int s = Band((Speed << 12) / 100), d = Band((Duration << 12) / 5);
