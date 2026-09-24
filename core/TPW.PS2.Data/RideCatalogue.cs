@@ -148,9 +148,19 @@ public sealed class RideDefinition
     public float? ExitAppearX => Float("UsageInfo.ExitCellAppearPosX");
     public float? ExitAppearY => Float("UsageInfo.ExitCellAppearPosY");
 
-    /// <summary>⭐⭐ WHO DRAWS THE PERSON, and the data says it in those words:
-    /// `UsageInfo.RideHandlesSprite 1  If the script handles the person sprite`. Where this is 1
-    /// the SCRIPT owns the body and a renderer drawing its own would double it.
+    /// <summary>⭐⭐ WHO DRAWS THE PERSON **ON THE CONSOLE**, in the data's own words:
+    /// `UsageInfo.RideHandlesSprite 1  If the script handles the person sprite`.
+    ///
+    /// ⚠⚠ AND IT IS NOT A VISIBILITY RULE FOR THIS PORT. I first wrote that a renderer drawing
+    /// its own body where this is 1 "would double it" -- wrong, and wrong in the way that matters:
+    /// that is a statement about the console's script renderer, not about ours. `RseMachine`
+    /// routes ADDOBJ to `Host().TryEffect` and its own comment says so plainly -- *"ADDOBJ is a
+    /// presentation request this host records and does not act on"*. So in THIS port a script
+    /// with the flag set draws nothing at all, and suppressing our own body on it would make the
+    /// guest invisible at exactly the three Small Toilets that set it -- the very bug being
+    /// fixed. The flag records authored OWNERSHIP; what our renderer must do is a separate
+    /// question, answered by what our host actually implements. Caught by astraclaw, who declined
+    /// to turn it into a visibility shortcut on my say-so.
     ///
     /// ⚠⚠ THREE-STATE ON PURPOSE, hence `bool?`. Among the seven lavatories three say 1, one
     /// (`horloo`) says **0** explicitly, and three omit it -- and Crazy Ape omits it too, so

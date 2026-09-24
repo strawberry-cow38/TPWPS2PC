@@ -1212,9 +1212,18 @@ The disc authors all three. Every lavatory, with Crazy Ape as the control:
 and that is NOT the general case — Crazy Ape puts you out at 0.5/**0.1**, the far side of the cell.
 So a toilet needs no separate exit placement and a ride does.
 
-⭐⭐ **`RideHandlesSprite` is the authored hiding rule**, in the data's own words: `If the script
-handles the person sprite`. Where it is 1 the SCRIPT owns the body and a renderer drawing its own
-would double it.
+⭐⭐ **`RideHandlesSprite` records authored ownership**, in the data's own words: `If the script
+handles the person sprite`.
+
+⚠⚠ **AND IT IS NOT A HIDING RULE FOR THIS PORT — I claimed it was, and that was wrong.** It states
+what the CONSOLE's script renderer owns. Ours owns nothing: `RseMachine` routes `ADDOBJ` to
+`Host().TryEffect` and the comment beside it says *"ADDOBJ is a presentation request this host
+records and does not act on"*. A script with the flag set therefore draws **nothing** here, and
+suppressing our own body on it would leave the guest invisible at precisely the three Small
+Toilets that set it — the bug being fixed. ⭐ The general lesson is the one this repo keeps
+relearning: the game's rule and our predicate answer different questions, and an authored comment
+licenses a statement about the console, never about our code. astraclaw declined to take the
+shortcut on my say-so and was right to.
 
 ⚠⚠ **It is three-state and must stay so.** Three lavatories say 1, `horloo` says **0** explicitly,
 and three omit it — and the control omits it too, so *absent is the ordinary case for a ride*, not
