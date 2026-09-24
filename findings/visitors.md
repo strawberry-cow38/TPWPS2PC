@@ -1392,3 +1392,39 @@ code, so it is probably the building/scenery layer rather than the guest layer.
 
 ⚠ Worth noting the shape: relief lives in the SAME function as the ride effects, branching on the
 kind of facility — which is the console doing what `ParkVisitors.Serve` now does.
+
+### ⭐⭐ The mess sink, read — and it runs the OTHER WAY (2026-09-24)
+
+`FUN_00130948(facility, amount)`, the call the relief path makes, is four lines:
+
+```c
+facility[0xb4] -= amount;   // clamped at 0
+```
+
+⚠⚠ **It SUBTRACTS.** The earlier note here said the mess is "handed to the building", which is the
+right call and the wrong direction: the console keeps a **condition** on the facility that use
+depletes toward a floor of zero, rather than a mess that accumulates upward. Arithmetically the
+same; structurally the opposite, and the difference shows the moment you want to clean one.
+
+Every site of `+0xb4` accounts for itself:
+
+| site | what it does |
+|---|---|
+| `FUN_001302d8` | constructor: `+0xb4 = 100`, `+0xb0/a8/ac = 0` |
+| `FUN_00130678` | placement: `+0xb4` from the template's byte `0xe`, clamped 0..100 |
+| `FUN_00130948` | **use wears it down**, floored at 0 — sole caller `0x20ef48`, the relief path |
+| `FUN_00130978` | `+0xb4 = 100` **and stamps a time at `+0xa8`** — so this is a SERVICING, not an init |
+
+⭐ That last one is the shape of the whole feature: a toilet gets dirty in proportion to how
+desperate its customer was, and something comes along and resets it. The cleaner's hook already
+exists and is named.
+
+⚠ **NOTHING READS IT BACK**, as far as a census of `lb`/`lbu` at `+0xb4` can see — every site is
+the constructor, the placer, the depletion or the reset. So a filthy lavatory currently costs
+nobody anything on the console either, as far as this reading goes. ⚠ A getter reached through a
+vtable would be invisible to that census, so this is **not found**, not **not there** — the same
+distinction that cost this repo a wrong "paths are free" finding once already.
+
+Ported as `ParkRide.Condition` (0..100, `Wear`, `Service`), with `ParkVisitors.Soil` kept as a
+`100 - Condition` VIEW because two audits read it. ⭐ Keeping the console's direction means a
+cleaner is `= 100` rather than `-= something`.

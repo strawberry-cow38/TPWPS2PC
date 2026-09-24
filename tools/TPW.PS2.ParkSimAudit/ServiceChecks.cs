@@ -30,7 +30,7 @@ static class ServiceChecks
         Check(!rideDef.ProvidesRelief, $"the control ride's .sam does NOT ({rideDef.Name})");
 
         /// <summary>One park, one guest, one facility, run to completion.</summary>
-        (int Toilet, int Relieved, int Boardings, int Completed, int Soil) Visit(
+        (int Toilet, int Relieved, int Boardings, int Completed, int Soil, int Condition) Visit(
             bool relief, bool open, byte startingNeed, int distractors = 0)
         {
             var paths = new ParkPaths(terrain);
@@ -92,7 +92,7 @@ static class ServiceChecks
 
             for (int i = 0; i < Steps && visitors.Relieved == 0; i++) visitors.Step(Tick, () => exit);
             return (visitors.Needs.Of(guest.Id).Toilet, visitors.Relieved, visitors.Boardings, visitors.Rides,
-                    visitors.Soil.TryGetValue(ride.Id, out var s) ? s : 0);
+                    visitors.Soil.TryGetValue(ride.Id, out var s) ? s : 0, ride.Condition);
         }
 
         // ── the case the feature exists for ────────────────────────────────────────────────────
@@ -103,6 +103,10 @@ static class ServiceChecks
         // ⭐ (100-60)*2/3 = 26, from the decoded soil arithmetic -- asserted as the number rather
         // than "> 0", because "> 0" passes for any formula at all.
         Check(relieved.Soil == 26, $"the mess is the decoded (need-60)*2/3 = 26 ({relieved.Soil})");
+        // ⭐ AND IT IS THE FACILITY THAT WORE DOWN, not a tally beside it: the console keeps a
+        // condition at `+0xb4` that use depletes toward zero and a service call resets to 100.
+        // Asserting both halves catches a `Soil` view that stops tracking the field it is a view of.
+        Check(relieved.Condition == 74, $"the lavatory's own condition fell 100 -> 74 ({relieved.Condition})");
 
         // ── negative: nowhere to go ───────────────────────────────────────────────────────────
         var shut = Visit(relief: true, open: false, startingNeed: 100);

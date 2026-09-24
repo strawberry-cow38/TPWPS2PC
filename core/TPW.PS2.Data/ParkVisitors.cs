@@ -109,16 +109,19 @@ public sealed class ParkVisitors
     public int Relieved { get; private set; }
     public int Purchases { get; private set; }
 
-    readonly Dictionary<int, int> _soil = new();
 
-    /// <summary>Mess left in each lavatory, by ride id, from <see cref="VisitorNeeds.UseToilet"/>.
+/// <summary>How worn each lavatory is, by ride id -- a VIEW over
+    /// <see cref="ParkRide.Condition"/> rather than a tally of its own.
     ///
-    /// ⚠⚠ THE SINK IS THE PORT'S; the amount is not. `(toilet - 60) * 2 / 3` is decoded, but where
-    /// the console PUTS it has not been found -- and it is NOT VAR_WORNON, which was the obvious
-    /// guess and is wrong: the toilet scripts TEST it, COPY 1 into it and COPY 0 back out, so it
-    /// is a single-occupancy latch the script owns and writing mess into it would fight the
-    /// script. Until the real channel turns up this accumulates here and drives nothing.</summary>
-    public IReadOnlyDictionary<int, int> Soil => _soil;
+    /// ⚠ The port used to accumulate this upward in a side table, which is the same arithmetic
+    /// the wrong way round: the console keeps a CONDITION on the facility that use depletes
+    /// toward zero (`+0xb4`, `FUN_00130948`). Now that the field lives where the console puts it,
+    /// this is simply `100 - Condition` -- kept because two audits read it, and because "how
+    /// dirty" is the question a caller actually asks.
+    ///
+    /// ⚠ Absent means UNWORN, not unknown: a facility at full condition has no entry.</summary>
+    public IReadOnlyDictionary<int, int> Soil =>
+        Sim.Rides.Where(r => r.Condition < 100).ToDictionary(r => r.Id, r => 100 - r.Condition);
 
     /// <summary>The ride a guest is CURRENTLY inside or queued for, or null. For the renderer:
     /// a guest who is Queued has been taken off the walking layer, so this is the only handle on
@@ -497,7 +500,9 @@ public sealed class ParkVisitors
         if (used != null && used.ProvidesRelief)
         {
             int soil = Needs.UseToilet(guest);
-            if (soil > 0) _soil[used.Id] = _soil.TryGetValue(used.Id, out var had) ? had + soil : soil;
+            // ⭐ The console does not collect mess; it WEARS THE FACILITY DOWN by that amount and
+            // floors it at zero -- `FUN_00130948`, sole caller the relief path. See ParkRide.Condition.
+            used.Wear(soil);
             Relieved++;
             return;
         }

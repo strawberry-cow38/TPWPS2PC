@@ -30,6 +30,30 @@ public sealed class ParkRide
     public bool ProvidesRelief => Definition?.ProvidesRelief ?? false;
     public bool Sells => Definition?.Sells ?? false;
 
+    /// <summary>⭐⭐ THE FACILITY'S CONDITION, `+0xb4` on the console's own facility record, and
+    /// this is its representation rather than an equivalent of mine. It starts at **100**
+    /// (`FUN_001302d8` constructs it there, `FUN_00130678` places it from the ride template's
+    /// byte 0xe), FALLS with use, and is reset to 100 by `FUN_00130978` -- which also stamps a
+    /// time at `+0xa8`, so that call is a SERVICING, not an initialisation.
+    ///
+    /// ⚠ The port first modelled this as mess ACCUMULATING upward, which is arithmetically the
+    /// same and structurally the wrong way round: the console depletes a condition toward a floor
+    /// of zero. Keeping its direction means a cleaner is `= 100` rather than `-= something`, and
+    /// a future "how dirty is this" reading does not have to know what full looked like.
+    ///
+    /// ⚠ NOTHING READS IT BACK YET, here or on the console as far as a census of `lb`/`lbu` at
+    /// `+0xb4` can tell -- every site is the constructor, the placer, the depletion or the reset.
+    /// A getter reached through a vtable would be invisible to that census, so this is "not
+    /// found", not "not there".</summary>
+    public int Condition { get; private set; } = 100;
+
+    /// <summary>Use wears it down, floored at zero -- `FUN_00130948`, whose ONLY caller is the
+    /// relief path at `0x20ef48`.</summary>
+    public void Wear(int amount) => Condition = Math.Max(0, Condition - Math.Max(0, amount));
+
+    /// <summary>Put it back to new. ⭐ The console's `FUN_00130978`; the hook a cleaner wants.</summary>
+    public void Service() => Condition = 100;
+
     public RseMachine Machine { get; init; }
     public RsePreviewHost Host { get; init; }
 
