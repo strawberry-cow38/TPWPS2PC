@@ -286,6 +286,14 @@ public partial class BusViewerSmoke : Node3D
             Check(Placements(viewer).Count == 0 && Objects(viewer).Count == 0
                 && Field<int>(viewer, "_busAdmitted") == 0,
                 "second empty park inherits neither placed demand nor first-park admissions");
+            // Retire the second park's active bus voice before closing the whole engine.
+            // Scene frames alone can outrun Dummy audio's pending stopped playbacks.
+            Call(viewer, "ResetNativeBus");
+            Field<RideSounds>(viewer, "_sounds")?.Clear();
+            viewer.QueueFree();
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            await ToSignal(GetTree().CreateTimer(.1), SceneTreeTimer.SignalName.Timeout);
             GD.Print($"BUS VIEWER SMOKE PASS world={world} map={map} checks={_checks}");
             GetTree().Quit(0);
         }

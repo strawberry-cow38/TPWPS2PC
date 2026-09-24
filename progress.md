@@ -2045,3 +2045,17 @@ Two extra inputcontrols=278total: scorebound8/group5/headroom25=>5 andzero-group
 This doesnotfixbacklogbehavior. Needs itsreal lifecycle next, noinventedcounter.
 Finalfreshgatespendingafterthiscommit; oldmatrixalready J/Fpass/exactH/Sknownreds,
 63Pythonpasses. Keepthisdistinction untilfreshgatescomplete andmainispushed.
+
+## Bus release candidate — September24 17:40 UTC
+
+Fresh gate at c17589e: `/tmp/tpw-bus-release-runtime/manifest.json` ALL11PASS,
+including Standing155, ModelPath1574, NativeBus976, HideList234. Fresh4worldmatrix
+`/tmp/tpw-bus-release-matrix` J/Fpass, ONLYexactknownThrillGrill/MoonBuggiesreds,
+278nativebusinputchecks/world. `/tmp/tpw-bus-release-python.log`63PASS.
+Final normalViewerJungle with bounds logging passed2039andexit0; initially quitwith
+activebusvoicesgivingObjectDB warning. Smoke nowexplicitlyresetsbus/clearsaudio/
+freesViewer andallows100msaudio retirement, samefixturecleanupasStanding.
+`/tmp/tpw-bus-release-viewer-clean.log` exit0,2039PASS,noerror/leak. Thisfinaldelta
+changesONLYtheBusViewerSmoketeardown, notshippingcodeoranyof11auditedscenes.
+All8renderedstartingparksalready2039PASS each; runfreshGLall8afterthiscommit for
+finalcleanexit evidence. No screenshot/listeningapproval; noforgottenmutations.
