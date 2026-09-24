@@ -137,6 +137,19 @@ public sealed class GameCamera
         else if (quarters > 0) _turnRight = true;
     }
 
+    /// <summary>How far the camera may ever be behind the player's presses: ONE FULL TURN.
+    ///
+    /// ⭐⭐ MASTER'S CALL -- "we could also just clamp the q/e speed tbh". Without a ceiling a
+    /// determined spam winds the target up several turns, and then the camera is still grinding
+    /// through them long after the keys stopped, which is both unresponsive and the thing that
+    /// made the pose bookkeeping below have to cope with multi-turn folds at all.
+    ///
+    /// ⭐ A whole turn is the largest cap that can never wind past one revolution, so the fold at
+    /// the end of a turn is always at most a single turn -- which is exactly what the interpolator
+    /// is able to reason about. Tightening it further is a one-constant change if it still feels
+    /// sluggish.</summary>
+    public const int MaxPendingTurn = TurnUnits;
+
     /// <summary>Consume this frame's latched turns, as the two independent `if`s at 0x14f820 do --
     /// pressing both ways in one frame cancels out rather than one winning.</summary>
     void ApplyLatchedTurns()
@@ -144,6 +157,11 @@ public sealed class GameCamera
         if (_turnRight) TargetYaw += QuarterTurn;
         if (_turnLeft) TargetYaw -= QuarterTurn;
         _turnLeft = _turnRight = false;
+        // ⚠ Clamp what is still owed, not the press: a press that would exceed the ceiling is
+        // simply dropped, the way the pad drops a second press inside one frame.
+        int pending = TargetYaw - Yaw;
+        if (pending > MaxPendingTurn) TargetYaw = Yaw + MaxPendingTurn;
+        else if (pending < -MaxPendingTurn) TargetYaw = Yaw - MaxPendingTurn;
     }
     public void Zoom(int steps) => Behind = Math.Clamp(Behind + AxisStep * steps, MinBehind, MaxBehind);
     public void Push(int steps) => Dolly = Math.Clamp(Dolly + AxisStep * steps, MinDolly, MaxDolly);
@@ -161,7 +179,7 @@ public sealed class GameCamera
         if (worldX == 0f && worldZ == 0f) return;
         double a = Math.Atan2(worldX, worldZ);
         if (a < 0) a += Math.Tau;
-        TargetYaw = (int)Math.Round(a * TurnUnits / Math.Tau) & (TurnUnits - 1);
+        TargetYaw = Nearest((int)Math.Round(a * TurnUnits / Math.Tau) & (TurnUnits - 1), Yaw);
     }
 
     /// <summary>Send the camera to a tile and let it EASE there. ⭐ Only the cursor moves: the
@@ -179,6 +197,17 @@ public sealed class GameCamera
         CursorX = (int)(tileX * TileUnits); CursorZ = (int)(tileZ * TileUnits);
         FocusX = CursorX << 8; FocusZ = CursorZ << 8;
         _started = false;
+    }
+
+    /// <summary>The turn of <paramref name="target"/> nearest to <paramref name="reference"/>.
+    /// ⭐ This is where "the shortest way round" now lives: an ABSOLUTE aim picks its nearest
+    /// equivalent once, instead of the ease re-deciding the direction every frame.</summary>
+    static int Nearest(int target, int reference)
+    {
+        int d = (target - reference) % TurnUnits;
+        if (d < -TurnUnits / 2) d += TurnUnits;
+        else if (d > TurnUnits / 2) d -= TurnUnits;
+        return reference + d;
     }
 
     /// <summary>Wrap into [0, 0x1000) the way 0x14F820 does, with its own rounding.</summary>
@@ -209,17 +238,28 @@ public sealed class GameCamera
         // ⭐ BEFORE the wrap, exactly where 0x14f820 reads its pad bits: the wrap that follows is
         // the same one, and it is what keeps the accumulated target inside a turn.
         ApplyLatchedTurns();
-        TargetYaw = Wrap(TargetYaw);
 
+        // ⚠⚠ A DELIBERATE DIVERGENCE FROM 0x14F820, MADE ON MASTER'S CALL. The console wraps the
+        // target into one turn and then lets the ease pick the SHORT way every frame, so a target
+        // more than half a turn ahead comes back the other side -- its own wrap does
+        // `yaw += 0x1000; diff -= 0x1000`, which is visually a turn backwards. Simulated on the
+        // console's exact integer arithmetic, presses closer than six frames apart reverse.
+        // Master, twice: "sometimes ill go backwards on my rotation" ... "still happens if i spam".
+        //
+        // ⭐ So the target is kept UNWRAPPED relative to the yaw and the ease always runs toward
+        // it. Spamming one way now queues that many quarters and turns through them, which is what
+        // the press meant. The shortest-way choice has moved to `Face`, where an absolute aim
+        // picks its nearest equivalent ONCE instead of being re-decided mid-turn.
+        //
+        // ⭐⭐ IDENTICAL TO THE CONSOLE FOR EVERYTHING THE CONSOLE CAN DO: the two adjustments
+        // removed here only ever fired when the target was more than half a turn ahead, and the
+        // pad cannot get it there. Below that the arithmetic that follows is bit-for-bit 0x14F820.
+        //
         // ⚠ The yaw's two-step eighth, exactly as 0x14F820 has it: a half step to find the
         // difference, then a full one with it. One step alone is a different curve.
         int diff = TargetYaw - Yaw;
-        if (diff < -0x800) { diff += TurnUnits; Yaw -= TurnUnits; }
-        else if (diff > 0x800) { Yaw += TurnUnits; diff -= TurnUnits; }
         int half = Eighth(diff) * frameTime >> 13;
         int mid = TargetYaw - (Yaw + half);
-        if (mid < -0x800) { mid += TurnUnits; Yaw -= TurnUnits; }
-        else if (mid > 0x800) { Yaw += TurnUnits; mid -= TurnUnits; }
         int step = Eighth(mid) * frameTime >> 12;
         Yaw += step;
         // ⚠⚠ THE INTEGER EASE STARVES AT THE TAIL. Each step is an EIGHTH of what is left,
@@ -231,6 +271,28 @@ public sealed class GameCamera
         // pleasant". It CREEPS instead: one unit a tick, 4096 to a turn, so the last fraction of a
         // degree arrives over a few ticks and no frame moves more than the ease already would.
         if (SnapWhenStarved && step == 0 && Yaw != TargetYaw) Yaw += Math.Sign(TargetYaw - Yaw);
+        // ⭐ Once the turn has landed, fold both back into one turn together. Keeping the pair in
+        // step is the whole trick: normalising only one of them would manufacture the very gap
+        // this removed, and letting them run free would drift for a long session.
+        //
+        // ⚠⚠ AND THE STORED POSES FOLD WITH THEM. Master: "sometimes the camera has a flashback of
+        // where it was once oriented for a split second". This fold runs BEFORE `_prev = _cur`
+        // below, so the pose about to become `_prev` still held the UNWRAPPED yaw while the new
+        // one holds the folded value -- a gap of a whole number of turns. PoseAt only ever
+        // corrected by ONE, so after enough spamming to wind up two turns the interpolator swept
+        // a full revolution inside a single frame. Shifting the poses by the same whole turns is
+        // invisible (Build takes the yaw modulo a turn) and keeps the pair continuous.
+        if (Yaw == TargetYaw)
+        {
+            int folded = ((Yaw % TurnUnits) + TurnUnits) % TurnUnits;
+            if (folded != Yaw)
+            {
+                int shift = folded - Yaw;               // a whole number of turns
+                Yaw = TargetYaw = folded;
+                _prev = _prev with { Yaw = _prev.Yaw + shift };
+                _cur = _cur with { Yaw = _cur.Yaw + shift };
+            }
+        }
 
         // The focus chases the cursor: eight times the distance, clamped, over 1024.
         // Same starvation, same cure, and the same refusal to jump: the focus creeps the last
@@ -285,11 +347,12 @@ public sealed class GameCamera
     {
         if (!_posed) return (Eye, Look, Up);
         t = Math.Clamp(t, 0f, 1f);
-        int from = _prev.Yaw;
-        // ⚠ The shortest way round. A tick may have unwrapped the yaw by a whole turn, and lerping
-        // across that gap would spin the camera the long way in a single frame.
-        if (from - _cur.Yaw > TurnUnits / 2) from -= TurnUnits;
-        else if (_cur.Yaw - from > TurnUnits / 2) from += TurnUnits;
+        // ⚠⚠ THE SHORTEST WAY ROUND, BY MODULO, NOT BY ONE SUBTRACTION. A tick can unwrap the yaw
+        // by SEVERAL turns, and the old pair of ifs could only ever undo one of them -- anything
+        // further left a whole-revolution sweep inside one frame, which is what a "flashback" of
+        // an old orientation looks like. The cause is fixed above; this stays as the backstop,
+        // because an interpolator that can only half-correct is a trap for the next caller too.
+        int from = Nearest(_prev.Yaw, _cur.Yaw);
         static int L(int a, int b, float f) => a + (int)Math.Round((b - a) * f);
         return Build(new Pose(
             L(from, _cur.Yaw, t), L(_prev.FocusX, _cur.FocusX, t), L(_prev.FocusZ, _cur.FocusZ, t),
