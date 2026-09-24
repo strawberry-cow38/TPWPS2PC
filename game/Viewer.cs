@@ -164,6 +164,40 @@ public partial class Viewer : Node3D
     /// same model by hand would have two clocks fighting over one mesh.</summary>
     ParkSim _sim;
     readonly List<(ParkRide Ride, AnimatedModel Model, Aps Anim, int Slot, int Variant)> _scripted = new();
+
+    /// <summary>⭐⭐ FEATURES KEEP THEIR CREATE IN SLOT **1**, AND THEIR SCRIPTS ASK FOR **0**.
+    /// Read off the disc: every feature script opens `WAITANIM 0 0`, and no feature `.aps` in
+    /// JUNGLE carries a slot-0 record at all -- `s_plant` has exactly one record and it is slot 1.
+    /// So the build request lands on an empty slot and nothing plays, which is what master saw as
+    /// "all features are missing their create animations".
+    ///
+    /// ⚠ WHY THE DATA DISAGREES WITH ITSELF IS NOT READ. The console must map that request some
+    /// other way -- `WAITANIM 0` on a feature may mean "the first record" rather than literally
+    /// slot 0 -- and this port falls back instead of decoding it. Labelled, not decoded.
+    ///
+    /// ⚠⚠ AND THIS FILE TOLD MASTER THE OPPOSITE AN HOUR AGO: "features never had create
+    /// animations, 0 of 18". That census asked for slot 0 because the RIDE'S table calls slot 0
+    /// `Create` -- and findings/visitors.md already records that the slot-name table is the
+    /// ride's and "need not mean the same thing for a character". It does not mean the same
+    /// thing for a feature either. Master corrected it in one line.</summary>
+    /// ⚠⚠ NARROWED TO THE TWO ASSETS MASTER NAMED. The first version applied this to every
+    /// feature, which over-read "slot 1 for toilet and s_plant" into a rule about features in
+    /// general -- and the other three worlds contradict it flatly: NO feature `.aps` in FANTASY,
+    /// SPACE or HALLOW carries a slot 1 at all, they are slot 5 (`Main`) throughout. Only
+    /// JUNGLE's `s_plant` has one. ⭐ Master gave two names, not a rule; taking the rule would
+    /// have put a silent fallback on 57 assets that do not want one.
+    static int CreateSlotFor(Aps anim, int want, string name)
+        => PlaysBackwards(name) && anim != null && !anim.Records().Any(r => r.Slot == want)
+           && anim.Records().Any(r => r.Slot == 1) ? 1 : want;
+
+    /// <summary>⚠ MASTER'S INSTRUCTION, NOT A DECODE: "the small toilet and small tree's
+    /// animations are baked backwards for some reason, not our fault, just how they were made,
+    /// so reverse em when playing em." Matched on the asset's own leaf name, because that is the
+    /// only thing distinguishing them -- nothing in the record says which way round it was
+    /// authored, and inventing a flag for it would be the fourth structure-guess of the evening.</summary>
+    static readonly string[] BackwardsAssets = { "s_plant", "toilet" };
+    static bool PlaysBackwards(string name)
+        => BackwardsAssets.Any(a => name?.Contains(a, StringComparison.OrdinalIgnoreCase) == true);
     /// <summary>The voices the scripted rides ask for; see <see cref="RideSounds"/>.</summary>
     RideSounds _sounds;
     /// <summary>`--sound-census=N`: run the park for N seconds in REAL frames rather than winding
@@ -2889,7 +2923,7 @@ public partial class Viewer : Node3D
         {
             var (ride, model, anim, slot, variant) = _scripted[i];
             if (model?.Root == null || !GodotObject.IsInstanceValid(model.Root)) { _sounds?.Drop(ride.Id); _scripted.RemoveAt(i); continue; }
-            int want = ride.Slot, wantVariant = ride.Variant;
+            int want = CreateSlotFor(anim, ride.Slot, ride.Name), wantVariant = ride.Variant;
             if (want < 0) continue;
             if (want != slot || wantVariant != variant)
             {
@@ -2902,7 +2936,16 @@ public partial class Viewer : Node3D
                        + $" ({rec?.DurationFrames ?? 0} frames)" + (ride.Fault != null ? $" FAULT {ride.Fault}" : ""));
                 _scripted[i] = (ride, model, anim, want, wantVariant);
             }
-            if (frames) model.SetFrame(ride.Frame + alpha * (ParkSim.TickMilliseconds * Aps.Fps / 1000f));
+            if (!frames) continue;
+            float at = ride.Frame + alpha * (ParkSim.TickMilliseconds * Aps.Fps / 1000f);
+            // ⭐ Reversed, not re-timed: the same frame count, walked from the end, so a build
+            // takes exactly as long as the authored record does.
+            if (PlaysBackwards(ride.Name))
+            {
+                var playing = anim.Records().FirstOrDefault(r => r.Slot == want);
+                if (playing is { DurationFrames: > 0 }) at = Math.Max(0f, playing.DurationFrames - at);
+            }
+            model.SetFrame(at);
         }
     }
 
@@ -3096,6 +3139,9 @@ public partial class Viewer : Node3D
     void TickPark()
     {
         _parkTicks++;
+        // ⭐ One call per EXECUTED tick, so a scenery repeat interval counts park time even when
+        // a long frame makes the sim fall behind the wall clock. See RideSounds.AdvanceSim.
+        _sounds?.AdvanceSim(ParkSim.TickMilliseconds / 1000.0);
         if (_visitors == null && _sim != null && OpenGate())
         {
             // ⭐⭐ SHOPS RING UP. `FUN_0020E1A0` ends with a positional one-shot of event 208,
