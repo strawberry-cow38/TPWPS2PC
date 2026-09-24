@@ -61,7 +61,8 @@ varying vec3 ps2_colour;
 // no per-texture rate could be recovered from this disc (TextureMotion says why).
 uniform float uv_time = 0.0;
 uniform vec2 uv_scroll = vec2(0.0, 0.0);
-uniform float uv_spin = 0.0;           // radians a second, about (0.5, 0.5)
+uniform float uv_spin = 0.0;           // radians a second, about uv_spin_center
+uniform vec2 uv_spin_center = vec2(0.5, 0.5);
 uniform vec3 water_wave = vec3(0.0);   // amplitude, wavelength, speed
 """ : "")}}
 
@@ -107,9 +108,11 @@ void fragment() {
     // ⚠ SPIN FIRST, THEN SCROLL. Rotating an already-scrolled UV turns the scroll's direction
     // with it, which would make a twisting surface also wander off in a circle.
     if (uv_spin != 0.0) {
+        // ⚠ ABOUT THE PATCH'S OWN CENTRE. A texture patch need not start at UV zero -- the
+        // Coconut's drink lives at U 1..2 -- so a hardwired (0.5, 0.5) pivots outside it.
         float a = uv_spin * uv_time;
-        vec2 c = uv - vec2(0.5);
-        uv = vec2(c.x * cos(a) - c.y * sin(a), c.x * sin(a) + c.y * cos(a)) + vec2(0.5);
+        vec2 c = uv - uv_spin_center;
+        uv = vec2(c.x * cos(a) - c.y * sin(a), c.x * sin(a) + c.y * cos(a)) + uv_spin_center;
     }
     uv += uv_scroll * uv_time;
 """ : "")}}
@@ -176,6 +179,7 @@ void fragment() {
         material.SetShaderParameter("has_tex", texture != null);
         material.SetShaderParameter("uv_scroll", scroll);
         material.SetShaderParameter("uv_spin", spin);
+        material.SetShaderParameter("uv_spin_center", new Vector2(0.5f, 0.5f));
         material.SetShaderParameter("water_wave", wave);
         material.SetShaderParameter("uv_time", _textureTime);
         BindLight(material);

@@ -382,6 +382,55 @@ public sealed class AnimatedModel
     static Shader MovingShader(bool soft) => Ps2Materials.Shader(
         soft, CullRenderMode, rawNormals: true, linearFilter: Ps2Materials.Bilinear, animated: true);
 
+    readonly System.Collections.Generic.Dictionary<int, Godot.Vector2> _pivot = new();
+
+    /// <summary>Where a spinning texture TURNS: the midpoint of the UV box every triangle wearing
+    /// this material actually occupies.
+    ///
+    /// ⚠⚠ THIS IS NOT (0.5, 0.5), AND ASSUMING IT WAS IS THE BUG MASTER CAUGHT. The Coconut's
+    /// drink is mapped to **U 1.000..1.999**, V 0.000..0.999 -- the SECOND tile of a repeating
+    /// texture, not the first. Its real centre is (1.5, 0.5). Pivoting at (0.5, 0.5) put the
+    /// pivot a whole tile away and entirely OUTSIDE the patch, so the liquid swung around a
+    /// distant point instead of turning on the spot. Master: "ur rotating via the corner, not
+    /// the center".
+    ///
+    /// ⭐ So the pivot is MEASURED off the mesh. A texture patch can sit anywhere in UV space and
+    /// nothing says it starts at zero -- which is exactly the kind of thing this port keeps
+    /// having to stop assuming.
+    ///
+    /// ⭐ Computed on demand and cached, so a terrain with 145 meshes and no swirl at all never
+    /// pays for it.</summary>
+    Godot.Vector2 SpinPivot(int material)
+    {
+        if (_pivot.TryGetValue(material, out var had)) return had;
+        float u0 = float.MaxValue, u1 = float.MinValue, v0 = float.MaxValue, v1 = float.MinValue;
+        bool any = false;
+        foreach (var mesh in _model.Meshes)
+        {
+            var tris = _model.Triangles(mesh);
+            if (tris.Count == 0) continue;
+            bool uses = false;
+            foreach (var t in tris) if (t.Material == material) { uses = true; break; }
+            if (!uses) continue;
+            var (_, uv, _) = _model.Vertices(mesh);
+            foreach (var t in tris)
+            {
+                if (t.Material != material) continue;
+                foreach (int i in new[] { t.A, t.B, t.C })
+                {
+                    if (i < 0 || i >= uv.Count) continue;
+                    var c = uv[i];
+                    u0 = System.Math.Min(u0, c.X); u1 = System.Math.Max(u1, c.X);
+                    v0 = System.Math.Min(v0, c.Y); v1 = System.Math.Max(v1, c.Y);
+                    any = true;
+                }
+            }
+        }
+        return _pivot[material] = any
+            ? new Godot.Vector2((u0 + u1) * 0.5f, (v0 + v1) * 0.5f)
+            : new Godot.Vector2(0.5f, 0.5f);
+    }
+
     void SetTexture(ShaderMaterial material, int slot, int index)
     {
         string name = slot >= 0 && slot < _model.MaterialTextures.Count
@@ -396,6 +445,7 @@ public sealed class AnimatedModel
         {
             material.SetShaderParameter("uv_scroll", new Godot.Vector2(motion.ScrollU, motion.ScrollV));
             material.SetShaderParameter("uv_spin", motion.Spin);
+            if (motion.Spin != 0f) material.SetShaderParameter("uv_spin_center", SpinPivot(slot));
             Ps2Materials.Register(material);
             MovingSurfaces++;
         }

@@ -80,7 +80,19 @@ public partial class TextureAnimationAudit : Node
                     && sm.Shader.GetShaderUniformList().Count > 0
                     && sm.GetShaderParameter("uv_spin").VariantType != Variant.Type.Nil
                     ? (float)sm.GetShaderParameter("uv_spin") : 0f;
-                if (TextureMotion.IsSwirl(tex)) { if (spin == 0f) throw new Exception($"{tex} does not spin"); spun++; }
+                if (TextureMotion.IsSwirl(tex))
+                {
+                    if (spin == 0f) throw new Exception($"{tex} does not spin");
+                    // ⚠⚠ THE PIVOT, AND THIS IS THE CHECK THAT WOULD HAVE CAUGHT THE REAL BUG.
+                    // A spin with the wrong centre still "spins" -- it just swings the patch
+                    // around a point outside itself, which is what master saw and what an
+                    // "is it rotating?" assertion happily passes. cn_nut2a is mapped to
+                    // U 1.000..1.999 / V 0.000..0.999, so its centre is (1.5, 0.5), NOT (0.5,0.5).
+                    var pivot = (Vector2)((ShaderMaterial)node.MaterialOverride).GetShaderParameter("uv_spin_center");
+                    if (pivot.DistanceTo(new Vector2(1.5f, 0.5f)) > 0.01f)
+                        throw new Exception($"{tex} pivots at {pivot}, expected the patch centre (1.5, 0.5)");
+                    spun++;
+                }
                 else { if (spin != 0f) throw new Exception($"{tex} spins and should not"); still++; }
             }
             if (spun != 1) throw new Exception($"expected exactly one swirl surface, found {spun}");
