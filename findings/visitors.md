@@ -1190,3 +1190,37 @@ used instead of 1); dispatch on "did they complete something" instead of on what
 *only* the two RIDE-control lines fail. ⚠ The single-toilet case cannot see routing at all — with
 one facility in the park the random fallback reaches it anyway — which is why the routing case
 puts 7 closer rides between the guest and the lavatory and asserts they used exactly one.
+
+### ⭐⭐ The authored answers to "where does the body stand, and who draws it" (2026-09-24)
+
+astraclaw reproduced the missing-body problem in a real scene — the guest actor is removed the
+moment service ownership transfers — and went looking for positions, handback and hiding rules.
+The disc authors all three. Every lavatory, with Crazy Ape as the control:
+
+| `.sam` | `RideHandlesSprite` | Entry stand X/Y | Exit appear X/Y | other |
+|---|---|---|---|---|
+| `toilet` (Small) | **1** | 0.5 / 0.8 | 0.5 / 0.8 | |
+| `loo` (Small) | **1** | 0.5 / 0.6 | 0.5 / 0.6 | |
+| `royaloo` | **1** | 0.5 / 0.5 | 0.5 / 0.5 | |
+| `horloo` (Small) | **0** | 0.5 / 0.7 | 0.5 / 0.7 | |
+| `supbog` (Super) | absent | 0.5 / 0.9 | 0.5 / 0.9 | |
+| `horsuloo` | absent | 0.5 / 0.9 | 0.5 / 0.9 | |
+| `loo_big` | absent | 0.5 / 0.9 | 0.5 / 0.9 | `RequiresTeleport 1` |
+| *Crazy Ape (control)* | *absent* | *0.5 / 0.9* | *0.5 / **0.1*** | |
+
+⭐ **A lavatory hands you back where you went in.** Entry and exit are the same point on all seven,
+and that is NOT the general case — Crazy Ape puts you out at 0.5/**0.1**, the far side of the cell.
+So a toilet needs no separate exit placement and a ride does.
+
+⭐⭐ **`RideHandlesSprite` is the authored hiding rule**, in the data's own words: `If the script
+handles the person sprite`. Where it is 1 the SCRIPT owns the body and a renderer drawing its own
+would double it.
+
+⚠⚠ **It is three-state and must stay so.** Three lavatories say 1, `horloo` says **0** explicitly,
+and three omit it — and the control omits it too, so *absent is the ordinary case for a ride*, not
+a quiet "no". Folding absent into false cannot tell the Haunted Loo's deliberate 0 from a ride
+that never mentioned the question, and those are different instructions to a renderer. Exposed as
+`bool?` for exactly that reason.
+
+⚠ The stand positions differ per lavatory (0.5/0.5 through 0.5/0.9), so a constant would be wrong
+for six of the seven.

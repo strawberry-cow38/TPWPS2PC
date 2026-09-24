@@ -135,6 +135,35 @@ public sealed class RideDefinition
     /// `Info.WhichUIType`: <c>0=rides, 1=shops, 2=sideshows, 3=features</c>.</summary>
     public int? UiType => Int("Info.WhichUIType");
 
+    /// <summary>⭐⭐ WHERE A GUEST STANDS WHILE THE PLACE SERVES THEM, as a fraction of the cell.
+    /// Authored on 108 `.sam`, and the lavatories DIFFER from each other -- 0.5/0.5 on the Royal
+    /// Loo through 0.5/0.9 on the Super Toilet -- so a constant here would be wrong for six of the
+    /// seven.
+    ///
+    /// ⭐ AND A LAVATORY HANDS THEM BACK WHERE THEY WENT IN: entry and exit are the same point on
+    /// all seven, which is NOT the general case -- Crazy Ape enters at 0.5/0.9 and appears at
+    /// 0.5/0.1, the far side of the cell.</summary>
+    public float? EntryStandX => Float("UsageInfo.EntryCellStandPosX");
+    public float? EntryStandY => Float("UsageInfo.EntryCellStandPosY");
+    public float? ExitAppearX => Float("UsageInfo.ExitCellAppearPosX");
+    public float? ExitAppearY => Float("UsageInfo.ExitCellAppearPosY");
+
+    /// <summary>⭐⭐ WHO DRAWS THE PERSON, and the data says it in those words:
+    /// `UsageInfo.RideHandlesSprite 1  If the script handles the person sprite`. Where this is 1
+    /// the SCRIPT owns the body and a renderer drawing its own would double it.
+    ///
+    /// ⚠⚠ THREE-STATE ON PURPOSE, hence `bool?`. Among the seven lavatories three say 1, one
+    /// (`horloo`) says **0** explicitly, and three omit it -- and Crazy Ape omits it too, so
+    /// absent is simply the ordinary case rather than a quiet "no". A reader that folds absent
+    /// into false cannot tell the Haunted Loo's deliberate 0 from a ride that never mentioned it,
+    /// and those are different instructions to a renderer.</summary>
+    public bool? RideHandlesSprite => Int("UsageInfo.RideHandlesSprite") is { } v ? v == 1 : null;
+
+    /// <summary>`This ride needs the kid to teleport to initial location` (the data's words).
+    /// ⚠ Set on `loo_big` alone of the seven lavatories.</summary>
+    public bool RequiresTeleport => Int("UsageInfo.RequiresTeleport") == 1;
+    public bool IsIndoors => Int("UsageInfo.ISIndoors") == 1;
+
     /// <summary>A shop in the sense that matters to a hungry visitor: it says what buying from it
     /// does. ⚠ Deliberately NOT <c>UiType == 1</c> -- the effect block is what the purchase path
     /// consumes, so a thing that declares effects is a shop whatever drawer the UI puts it in.</summary>
