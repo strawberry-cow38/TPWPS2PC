@@ -2364,3 +2364,19 @@ Currentreviewpatch2c1d59b mergedmain e96412b(fountainaudit); freshupstreamTextur
 runtimeauditPASS /tmp/tpw-review-upstream-texture. Reviewchanges readyto push.
 Poolreset/builderresearchsavedbut don'tignoreuserturnstileclarificationnextturn.
 Readonlydelegatesused2thisreviewturn. No pendingbuilds/restarts/extraction.
+
+
+Userclarification20:57/21:00: meansBOOTHSOUTFRONT, knowsstaticmesh; questionwas
+BEHAVIOR, notanimation. Replied21:03corequeue/payment/crossingalreadyresearched
+atboothpoint, notarch; rejecteddepartureunported. DO NOTkeepchasingmovingparts
+oraskwhichpartagain. Savedfindings/native-booth-admission.md. PositiveJungle
+queue/paymentpoint29.5,15.5 insideboothbounds; nativeinitializedpathgoal29.5,19.5
+afterkind0C/0E->2 scan, conditionalunchangedtiles+allocation. PayBEFOREcrossing,
+mode13completionstate0nofee. Secondstagingfamily3952AC isGUARDS positivelyvia
+Load_ReadGuards160448->14AF30/string361368/1416D0, notboothattendants. Guardtraffic
+unported. No provenadmission-specificaudiovisualcue; noabsenceclaimneeded.
+Resumeincoming/departure/pathresource work, notgeometrydetour. CowownsGIZMO
+bindingsperuser21:01. Merged0fc2cc7gatedoccorrection; no codechangefromthatmerge.
+Readonlydelegatesused3thisreviewturn, noneleftuntilnewturn. Earlierreviewgates
+pass113flow/87actuator/23fee,11runtime+upstreamtexture,63Python,Jungle649rendered.
+Researchbranchstillnotdefault/main; sourcepoolnextstepsareinlatestpoolfindings.

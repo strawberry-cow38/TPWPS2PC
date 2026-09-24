@@ -43,9 +43,10 @@ wall/roof materials. That locates the entrance structure; it does not prove whic
 part is a turnstile or link individual admission to a moving barrier. Centre-post
 meshes near the bus plaza are a different location, not a name-based substitute.
 
-User was asked whether they mean the large themed arch doors or smaller barriers/
-booths in front. Await that clarification before claiming this answered the
-physical-turnstile request. No turnstile runtime changes made by this research.
+User clarified they mean the BOOTHS OUT FRONT and already know they are static.
+The relevant behavioral answer is now in native-booth-admission.md. Do not continue
+treating arch doors or speculative moving barriers as the requested research.
+No gate/booth runtime changes were made by this visual-controller trace.
 
 The opening unfinished placement header in gates.md is historical: its later
 2026-09-23 authored-z section supersedes that earlier coordinate question.
