@@ -1574,6 +1574,7 @@ public partial class Viewer : Node3D
         // park's rides, and keeping the holder kept them too. Cache retained, instances cleared.
         _sounds?.Clear(); _sounds = null;
         _burst?.Clear();
+        _standingPlaces.Clear(); _standing.Clear();
         if (_terrainModel?.Field == null) return;
         if (_pieces == null)
         {
@@ -1651,7 +1652,7 @@ public partial class Viewer : Node3D
                + (laid == want.Count ? "" : " -- SOME REFUSED, the plot may not reach that far"));
     }
 
-    /// <summary>Put each walking guest's want over their head.
+    /// <summary>Put each walking or standing-service guest's want over their head.
     ///
     /// ⚠ THE FACILITY FLAGS ARE PASSED TRUE, and that is a decision worth stating. The one path
     /// that has been READ (`0x20C930` case 0) sets the hungry/thirsty/toilet thought only after
@@ -1666,8 +1667,8 @@ public partial class Viewer : Node3D
     /// hunger bubble out of any park with no shop in it. Routing is a separate question and
     /// already only picks facilities that exist. Caught in review by astraclaw.
     ///
-    /// ⚠ Only WALKING guests get one. A guest handed to a ride has no body of ours to hang it
-    /// on, and a seated rider is drawn as a head on the ride's own node.</summary>
+    /// Walking and outside-service guests have full bodies to anchor a bubble. Hidden,
+    /// seated and unresolved scripted-walk guests do not gain a fabricated standing anchor.</summary>
     void PlaceThoughts()
     {
         if (_visitors?.Needs is not { } needs || !_thoughts.Ready) return;
@@ -1683,19 +1684,17 @@ public partial class Viewer : Node3D
             GetTree().Quit();
             return;
         }
-        foreach (var g in _guests.Guests)
+        var visibleGuests = _guests.Guests.Select(g => g.Id).Concat(_standing.Keys).Distinct().ToArray();
+        foreach (int id in visibleGuests)
         {
-            if (!needs.Has(g.Id)) continue;
-            var want = needs.Decide(g.Id, foodNearby: true, drinkNearby: true, toiletNearby: true);
-            // ⚠⚠ GLOBAL, NOT LOCAL. The actors live under the guest root and the bubbles under
-            // their own node, so an actor's `Position` is in a DIFFERENT space -- a bubble placed
-            // from it lands wherever the two frames differ, which for a mirrored park is across
-            // the map. Asking for the world position is the only form that cannot be wrong.
-            if (_actors.TryGetValue(g.Id, out var actor) && IsInstanceValid(actor))
-                _thoughts.Show(g.Id, want, actor.GlobalPosition);
-            else _thoughts.Hide(g.Id);
+            if (!needs.Has(id)) continue;
+            var want = needs.Decide(id, foodNearby: true, drinkNearby: true, toiletNearby: true);
+            // Both walking and outside-service bodies use world-space bubble anchors.
+            if (_actors.TryGetValue(id, out var actor) && IsInstanceValid(actor))
+                _thoughts.Show(id, want, actor.GlobalPosition);
+            else _thoughts.Hide(id);
         }
-        _thoughts.Sweep(_guests.Guests.Select(g => g.Id).ToHashSet());
+        _thoughts.Sweep(visibleGuests.ToHashSet());
 
         // ⭐ AND A CAMERA THAT FINDS ONE. A bubble is a third of a guest's height, and the game
         // camera sits 2576 units up -- so at the park view it is sub-pixel and "no bubble in the
@@ -2592,6 +2591,7 @@ public partial class Viewer : Node3D
                             entrance, exit, out string fault, sibling: Sibling, headSlots: headSlots,
                             definition: _place.Def);
         if (ride == null) { GD.PrintErr($"[sim] {Leaf(assets.Name)} script would not start: {fault}"); return false; }
+        RegisterStandingService(ride, model.Root, _place.Turns);
         _scripted.Add((ride, model, anim, -1, -1));
         if (mesh != null) _rideMeshes[id] = mesh;
         // ⭐⭐ AND ITS SOUNDS. The same EffectRequested the particles would use; the voice stands
@@ -3302,18 +3302,59 @@ public partial class Viewer : Node3D
         }
     }
 
+    readonly Dictionary<ParkRide, (Node3D Root, StandingServicePose Pose)> _standingPlaces = new();
+    readonly Dictionary<int, Transform3D> _standing = new();
+
+    void RegisterStandingService(ParkRide ride, Node3D root, int turns)
+    {
+        if (StandingServicePose.TryCreate(ride.Definition, ride.Origin, turns, out var pose))
+            _standingPlaces[ride] = (root, pose);
+    }
+
+    /// <summary>A 1x1 relief facility has a standing customer, not a seat/WALK pose.
+    /// The coordinator owns the identity; small-toilet scripts do not HUSH it.
+    /// Waiting guests keep the queue-stub position (no invented queue spacing);
+    /// accepted guests use the authored stand point. Facing is presentation policy.</summary>
+    void StandingRiders()
+    {
+        _standing.Clear();
+        if (_visitors == null || _sim == null || _guests == null) return;
+        foreach (var ride in _standingPlaces.Keys.ToArray())
+            if (!_sim.Rides.Contains(ride) || !IsInstanceValid(_standingPlaces[ride].Root)
+                || _standingPlaces[ride].Root.IsQueuedForDeletion()) _standingPlaces.Remove(ride);
+        var onWalk = _guests.Guests.Select(g => g.Id).ToHashSet();
+        foreach (var (id, plan) in _visitors.Plans)
+        {
+            var owner = _visitors.QueuedOwner(id);
+            if (owner == null || !_standingPlaces.TryGetValue(owner, out var place)
+                || !place.Root.IsInsideTree() || onWalk.Contains(id) || _seated.ContainsKey(id) || _walking.ContainsKey(id)) continue;
+            if (owner.Host.Visibility.TryGetValue(id, out var visibility) && !visibility.Visible) continue;
+            // Never substitute a standing pose for an unresolved scripted leg or seat.
+            // Authored small toilets have neither; larger service modes remain separate.
+            if (owner.Host.Seats.Values.Contains(id) || owner.Host.Walkers.ContainsKey(id)) continue;
+            bool waiting = owner.Queue.Contains(id) || owner.Get("VAR_LETMEON") == id;
+            Vector3 cell = waiting ? Cell(ParkPaths.Centre(plan.At))
+                : new Vector3(place.Pose.CellPoint.X, 0, place.Pose.CellPoint.Y);
+            var heightCell = waiting ? plan.At : place.Pose.HeightCell;
+            var forward = new Vector3(place.Pose.Inward.X, 0, -place.Pose.Inward.Y);
+            _standing[id] = new Transform3D(WalkBasis(forward), GuestWorld(cell, heightCell));
+        }
+    }
+
     void PlaceActors(float alpha)
     {
-        PlaceThoughts();
         SeatRiders();
         WalkRiders();
+        StandingRiders();
         // ⭐ Whoever has left the walk -- handed to a ride -- loses their body this frame unless a
         // seat has them. The script has them now; a kid standing in the queue AND riding would be
         // two bodies for one guest, which is exactly what the total handover exists to prevent.
-        // A queued guest not yet seated has no body at all.
+        // Standing relief-service guests have an explicit full-body pose below; other
+        // unseated queues still require their own presentation contract.
         var alive = new HashSet<int>(_guests.Guests.Select(g => g.Id));
         alive.UnionWith(_seated.Keys);
         alive.UnionWith(_walking.Keys);
+        alive.UnionWith(_standing.Keys);
         foreach (int id in _actors.Keys.Where(id => !alive.Contains(id)).ToArray())
         {
             if (_actors[id] is { } gone && IsInstanceValid(gone)) gone.QueueFree();
@@ -3336,6 +3377,15 @@ public partial class Viewer : Node3D
             Pose(id, sitting: false);
             Gait(id, walking: true, alpha);
         }
+        foreach (var (id, at) in _standing)
+        {
+            if (!_actors.TryGetValue(id, out var customer)) customer = MakeActor(id);
+            if (customer == null) continue;
+            customer.Transform = at;
+            Show(id, headOnly: false);
+            Pose(id, sitting: false);
+            Gait(id, walking: false, alpha);
+        }
         foreach (var g in _guests.Guests)
         {
             if (!_actors.TryGetValue(g.Id, out var actor)) actor = MakeActor(g.Id);
@@ -3354,6 +3404,7 @@ public partial class Viewer : Node3D
             else if (actor.Basis.Determinant() < 0 || Mathf.Abs(actor.Basis.Y.Dot(Vector3.Up) - 1f) > 1e-3f)
                 actor.Basis = Basis.Identity;
         }
+        PlaceThoughts(); // use this frame's actual standing/walking transforms
     }
 
     /// <summary>A body for a guest: one of the disc's eight kids, by id, stood on its feet at the

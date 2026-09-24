@@ -30,6 +30,14 @@ def raw_witness(scene):
             'ADVISOR BROWSER ok: teardown begins with speech still active',
             'ADVISOR BROWSER ok: all replaced/active speech streams retire',
             'ADVISOR BROWSER PASS: 45 checks, 0 failures'])
+    if scene == 'standing':
+        return '\n'.join(['STANDING SERVICE ok: tested'] * 62 + [
+            'STANDING SERVICE ok: real script accepts customer before satisfaction',
+            'STANDING SERVICE ok: explicit host hiding suppresses standing body',
+            "STANDING SERVICE ok: same numeric ride ID does not inherit removed owner's customer",
+            'STANDING SERVICE ok: satisfied guest clears visible toilet thought',
+            *[f'STANDING SERVICE ok: placed quarter turn {turn} completes real relief without reseeding' for turn in range(4)],
+            'STANDING SERVICE PASS: 70 checks, 0 failures'])
     return '\n'.join(['AUDIO LIFECYCLE ok: tested'] * 31 + [
         'AUDIO LIFECYCLE ok: 2D eight fast no-evidence polls remain pending',
         'AUDIO LIFECYCLE ok: 3D eight fast no-evidence polls remain pending',
@@ -41,7 +49,7 @@ def raw_witness(scene):
 
 def witness(scene):
     text = raw_witness(scene)
-    if scene in ('advisor', 'audio'):
+    if scene in ('advisor', 'audio', 'standing'):
         number = 0
         lines = []
         for line in text.splitlines():
@@ -102,9 +110,16 @@ class Classification(unittest.TestCase):
             self.assertIn(audit.classify('audio', output(text))['status'], ('missing_coverage', 'duplicate_or_missing_assertion_ids'))
 
     def test_duplicate_assertion_line_cannot_replace_another_check(self):
-        for scene in ('advisor', 'audio'):
+        for scene in ('advisor', 'audio', 'standing'):
             text = witness(scene).replace('ok: [2] tested', 'ok: [1] tested')
             self.assertEqual(audit.classify(scene, output(text))['status'], 'duplicate_or_missing_assertion_ids')
+
+    def test_standing_requires_actual_placement_lifecycle_and_matching_count(self):
+        text = witness('standing')
+        for damaged in [text.replace('70 checks', '69 checks'),
+                        text.replace('placed quarter turn 2 completes real relief without reseeding', 'unrelated assertion'),
+                        text.replace('explicit host hiding suppresses standing body', 'unrelated assertion')]:
+            self.assertEqual(audit.classify('standing', output(damaged))['status'], 'missing_coverage')
 
     def test_source_snapshot_includes_ignored_and_linked_sources(self):
         with tempfile.TemporaryDirectory(dir='/tmp' if os.name == 'posix' else None) as temp:
@@ -191,8 +206,8 @@ class MainControls(unittest.TestCase):
 
     def test_default_full_suite_is_distinguished_from_subset(self):
         code, manifest, _ = self.exercise(full=True)
-        self.assertEqual(code, 0); self.assertEqual(manifest['status'], 'all_six_passed')
-        self.assertTrue(manifest['full_gate_passed']); self.assertEqual(len(manifest['results']), 6)
+        self.assertEqual(code, 0); self.assertEqual(manifest['status'], 'all_scenes_passed')
+        self.assertTrue(manifest['full_gate_passed']); self.assertEqual(len(manifest['results']), len(audit.SCENES))
 
     def test_invalid_engine_never_builds_or_runs_scenes(self):
         code, manifest, calls = self.exercise(invalid_engine=True)

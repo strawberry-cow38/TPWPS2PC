@@ -21,6 +21,7 @@ SCENES = {
     'visitor': 'VisitorAudit', 'rse': 'RseAnimationAudit',
     'texture': 'TextureAnimationAudit', 'mtr': 'MtrAudit',
     'advisor': 'AdvisorBrowserAudit', 'audio': 'RideSoundLifecycleAudit',
+    'standing': 'StandingServiceAudit',
 }
 CASES = [f'{world}/{terrain}' for world in ('FANTASY', 'SPACE', 'HALLOW') for terrain in (1, 2)]
 OUTPUT = Path('game/.godot/mono/temp/bin/Debug')
@@ -38,14 +39,14 @@ def classify(scene: str, run: dict) -> dict:
     if run.get('raw_exit') != 0: return {**result, 'status': 'nonzero_exit'}
     if failures: return {**result, 'status': 'error_output'}
     prefixes = []
-    if scene in ('advisor', 'audio'):
-        label = 'ADVISOR BROWSER' if scene == 'advisor' else 'AUDIO LIFECYCLE'
+    if scene in ('advisor', 'audio', 'standing'):
+        label = {'advisor': 'ADVISOR BROWSER', 'audio': 'AUDIO LIFECYCLE', 'standing': 'STANDING SERVICE'}[scene]
         numbered = [re.fullmatch(re.escape(label) + r' ok: \[(\d+)\] (.+)', line)
                     for line in lines if line.startswith(label + ' ok:')]
         ids = [int(match.group(1)) for match in numbered if match]
         if len(ids) != len(numbered) or ids != list(range(1, len(ids) + 1)):
             return {**result, 'status': 'duplicate_or_missing_assertion_ids'}
-        lines = [re.sub(r'^(ADVISOR BROWSER|AUDIO LIFECYCLE) ok: \[\d+\] ', r'\1 ok: ', line) for line in lines]
+        lines = [re.sub(r'^(ADVISOR BROWSER|AUDIO LIFECYCLE|STANDING SERVICE) ok: \[\d+\] ', r'\1 ok: ', line) for line in lines]
     if scene in ('visitor', 'rse'):
         label = 'VISITOR GEOMETRY' if scene == 'visitor' else 'RSE ANIMATION'
         prefixes = [f'{label} PASS {case}:' for case in CASES] + [f'{label} PASS:']
@@ -65,6 +66,18 @@ def classify(scene: str, run: dict) -> dict:
         checks = sum(line.startswith('ADVISOR BROWSER ok:') for line in lines)
         result['checks'] = checks
         if len(summaries) != 1 or int(summaries[0]) != checks or checks < 45:
+            return {**result, 'status': 'missing_coverage'}
+    elif scene == 'standing':
+        prefixes = ['STANDING SERVICE ok: real script accepts customer before satisfaction',
+                    'STANDING SERVICE ok: explicit host hiding suppresses standing body',
+                    'STANDING SERVICE ok: same numeric ride ID does not inherit removed owner',
+                    'STANDING SERVICE ok: satisfied guest clears visible toilet thought']
+        prefixes += [f'STANDING SERVICE ok: placed quarter turn {turn} completes real relief without reseeding'
+                     for turn in range(4)]
+        summaries = re.findall(r'^STANDING SERVICE PASS: (\d+) checks, 0 failures$', text, re.M)
+        checks = sum(line.startswith('STANDING SERVICE ok:') for line in lines)
+        result['checks'] = checks
+        if len(summaries) != 1 or int(summaries[0]) != checks or checks < 70:
             return {**result, 'status': 'missing_coverage'}
     elif scene == 'audio':
         prefixes = ['AUDIO LIFECYCLE ok: 2D eight fast no-evidence polls remain pending',
@@ -170,7 +183,7 @@ def main(argv=None) -> int:
         temp.replace(path)
 
     def finish(status, code=1):
-        manifest.update(status=status, runner_exit=code, full_gate_passed=status == 'all_six_passed'); save()
+        manifest.update(status=status, runner_exit=code, full_gate_passed=status == 'all_scenes_passed'); save()
         print(f'{status}; runner_exit={code}; {path}', flush=True)
         return code
 
@@ -212,7 +225,7 @@ def main(argv=None) -> int:
         if file_hash(disc) != manifest['disc_sha256'] or file_hash(engine) != manifest['engine_sha256']:
             return finish('input_changed_during_run')
         if any(r['status'] != 'pass' for r in manifest['results']): return finish('failed_scenes')
-        return finish('all_six_passed' if set(selected) == set(SCENES) else 'selected_scenes_passed', 0)
+        return finish('all_scenes_passed' if set(selected) == set(SCENES) else 'selected_scenes_passed', 0)
     except (OSError, ValueError, subprocess.SubprocessError) as ex:
         manifest['runner_error'] = f'{type(ex).__name__}: {ex}'
         return finish('runner_error')

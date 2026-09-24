@@ -541,6 +541,7 @@ if (looEntry.Entry != null && serviceRide is { } notALoo && corridorStops.Count 
         var c2 = wad.Entries.FirstOrDefault(x => x.Path.Equals(ldir2 + child, StringComparison.OrdinalIgnoreCase));
         return c2 == null ? null : wad.Read(c2);
     }
+    ServiceRoutingChecks.Run(terrain, wad.Read(wad.Find(lstem + ".rse")), laps, looEntry.Def, LSib, Check);
     ServiceChecks.Run(terrain, loopPaths, entrance, corridorStops.ToArray(), onPath[^1],
                       wad.Read(wad.Find(lstem + ".rse")), laps, looEntry.Def, LSib,
                       notALoo.Script, notALoo.Aps, notALoo.Def, notALoo.Sibling, notALoo.Seats, Check);

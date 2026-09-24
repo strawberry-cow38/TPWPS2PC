@@ -1,6 +1,6 @@
 # Reproducible headless runtime audit gate
 
-`tools/runtime_audit.py` makes the six existing headless-safe Godot scenes a fresh-build
+`tools/runtime_audit.py` makes the seven headless-safe Godot scenes a fresh-build
 runtime gate. It does not replace `tools/lighting-check.py`, the whole-park matrix,
 physical UI testing, listening, or manual visual review.
 
@@ -15,7 +15,7 @@ python3 -m unittest discover -s tools -p 'test_*audit*.py'
 ## Contract
 
 The default gate runs VisitorAudit, RseAnimationAudit, TextureAnimationAudit, MtrAudit,
-AdvisorBrowserAudit and RideSoundLifecycleAudit. It probes the supplied engine for a
+AdvisorBrowserAudit, RideSoundLifecycleAudit and StandingServiceAudit. It probes the supplied engine for a
 mono version, records .NET SDK version, and always runs `dotnet build -c Debug -t:Rebuild`
 for the viewer. Debug is the assembly configuration these Godot scene launches load.
 There is no skip-build switch. It does not invoke editor import or capture screenshots.
@@ -27,14 +27,16 @@ SCRIPT ERROR or native resource-leak diagnostics. Ordinary warnings are retained
 not automatically fatal. Visitor and RSE require all six FANTASY/SPACE/HALLOW terrain
 witnesses; textures require at least146 surface checks plus the viewer clock witness.
 Advisor45/audio37 minimums also require named important lifecycle/locale witnesses.
+Standing70 requires matching totals, visibility/ownership witnesses, and real placed
+service completion at all four rotations; see standing-service.md for its boundaries.
 
-Advisor/audio checks now print sequential assertion IDs. Repeated log lines cannot
+Advisor/audio/standing checks print sequential assertion IDs. Repeated log lines cannot
 replace omitted assertions while inflating totals. This is a logging-only change to
 those scenes, not altered test behavior or a proof against deliberately forged logs.
 MTR retains its existing all-four-witness summary contract.
 
-Exit0 means every **selected** scene passed. Only `status=all_six_passed` with
-`full_gate_passed=true` certifies this runner's complete six-scene set. A successful
+Exit0 means every **selected** scene passed. Only `status=all_scenes_passed` with
+`full_gate_passed=true` certifies this runner's complete seven-scene set. A successful
 subset explicitly records `selected_scenes_passed` and `full_gate_passed=false`.
 Exit1 preserves failure evidence. Argument errors exit2 before starting the gate.
 
@@ -86,3 +88,10 @@ actual source/output fingerprints and raw per-scene results, not just these coun
 The known HALLOW Thrill Grill/SPACE Moon Buggies reds belong to the separate whole-park
 matrix and remain explicit. These successful geometry/runtime cases neither erase them
 nor establish playable track services, full advisor integration or native audio quality.
+
+## Standing-service extension, September24 UTC2026
+
+The seven-scene gate passes after integrating peer c7eb67f with the standing-service
+patch. StandingServiceAudit adds70 checks; all51 Python classifier/orchestration tests
+pass. The original six-scene evidence above remains tied to its original revision.
+New result status is `all_scenes_passed`, not the historical `all_six_passed`.

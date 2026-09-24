@@ -784,3 +784,66 @@ runtime-placement evidence and CP1 scope/interface agreement, then independent t
 for that agreed slice. This bounded preflight is complete: do not repeat its census or
 fill a dependency wait with generic audits. Check new messages; absent new evidence or
 approval, keep the dependency explicit without periodic duplicate progress messages.
+
+## CP1 correction / CP2 active: resume under standing authorization, no courtesy hold
+
+VoX's unmentioned02:33 message challenged the unnecessary stop; the later explicit
+restart/resume requests reaffirm execution. The approval hold was our over-deferral,
+not a real product blocker. Do NOT keep waiting on that stale note. Listen-all is now
+the bot default (own-code435f989,345tests2skipped), restart completed and verified; no
+further bot restart needed. Recent history was checked to recover the missed context.
+
+TPW pulled753a4f1 then73be234. Peer implemented service definitions/routing/Serve, fixed
+unreachable-nearest fallback and thought-gating after review, and exposed authoritative
+QueuedOwner(guest). Peer explicitly handed Viewer.cs to astraclaw; core remains theirs.
+Current worktree WIP (NOT landed): game/StandingServicePose.cs, game/Viewer.cs narrow
+standing-body integration, game/tests/StandingServiceAudit.cs/.tscn. A real Godot actor
+probe reproduced disappearance at handover (one assertion red); the initial fix retains
+the same actor (four assertions green). It is a real PlaceActors/coordinator scene probe,
+not yet a physical placement or full visual sign-off. Production placement registers
+immutable authored small-toilet geometry/turns against the actual ride instance.
+
+Continue this WIP: complete four-rotation authored-point, active service, visibility/
+seat/WALK precedence, handback/needs/cash and removal/reused-ID checks; include the
+standing guest in thought/bubble presentation without fabricating limbo visibility.
+Check actual placement path using the existing cursor override if practical. No main
+push until relevant gates/mutations/peer review pass. Need a permanent unreachable-
+nearest routing control in a separate audit helper (peer supplied discriminating shape:
+closer disconnected toilet + farther reachable toilet + distracting rides; assert no
+wrong ride first, not merely eventual relief). Leave peer ServiceChecks/core untouched.
+Local logs tpw-standing-before.log and tpw-standing-after.log record red/initial green.
+
+## CP2/CP5: standing small-toilet flow implemented and tested
+
+Supersedes the WIP/approval-pending notes above. Integrated upstream through c7eb67f,
+including peer departure and queue effects; preserved their files. Viewer now registers
+immutable authored small-relief geometry against actual ParkRide instances, keeps waiting
+and accepted customers drawn, respects host hide/seat/WALK ownership, and anchors thoughts
+after actual transforms. RideHandlesSprite is metadata, NOT a port visibility switch.
+
+StandingServiceAudit:70 checks green with real JUNGLE assets/coordinator/renderer methods.
+Actual PlaceHeld (cursor override) creates model/script/stub and completes a real customer
+service at all4 rotations. Tests cover body/legs, orientation, needs/cash, soil, bubbles,
+hiding, handback, removal/ID reuse. Unready Viewer/audit stage and Dummy audio are explicit;
+no normal-startup, screenshot inspection, listening or native-platform sign-off claimed.
+Five production mutations rejected against earlier62-check suite; later8 checks add actual
+body/legs and inward-facing witnesses. Read-only subagent found no concrete production bug.
+
+Separate ServiceRoutingChecks:5/world, with a truly nearer disconnected toilet, reachable
+farther toilet and distracting attraction. Nearest-only mutation causes3 failures; restored
+all4worlds pass. Existing known HALLOW/SPACE retail failures remain raw1/matrix2, not green.
+Runner now requires routing coverage; seven-scene runtime gate requires70 numbered standing
+checks and named real-placement/visibility/ownership witnesses.51 Python tests pass.
+Evidence: /tmp/tpw-standing-runtime-20260924b and /tmp/tpw-standing-parks-20260924; these runs
+precede the final matrix minimum/docs edits, so final landing will rerun current runners.
+Mutation logs in project scratch tpw-standing-mutant-*.log and tpw-service-routing-mutant.log.
+
+Next: finish peer review / final current-tree gates, explicit-path commit and normal push.
+Then normal-viewer rendered/manual smoke when inspectable and review peer departure/queue
+integration. No restart, no permission hold, no repeated metadata census. Active recurring
+owner continuation already exists; do not add another. Core/ServiceChecks remain peer-owned.
+
+Final current-tree landing gates: /tmp/tpw-standing-runtime-final-20260924 has all7
+scenes passing (standing70); /tmp/tpw-standing-parks-final-20260924 records5 routing
+checks/world with only the two exact known retail reds;51 Python tests pass. A focused
+production/test patch was sent to cow tools for peer review. No unrelated source changed.

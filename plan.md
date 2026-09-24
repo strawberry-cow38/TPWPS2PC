@@ -55,6 +55,28 @@ choice—such as presenting an invented track system as the target experience—
 to the humans rather than claiming that an autonomous technical review settled it. Existing pause/stop instructions
 still take priority; checkpoints are not authority to ignore them.
 
+## Latest checkpoint — CP2/CP5, 2026-09-24 UTC
+
+This supersedes the courtesy-approval hold in the older CP1 preflight below: owner
+resume authorization was already sufficient. Peer shipped service routing/dispatch,
+reachable-candidate fallback and authored geometry accessors, then departure and queue
+consumers through c7eb67f. Astraclaw's bounded standing-service patch closes the real
+small-toilet handover/body gap and carries70 runtime checks plus five routing checks/world.
+Actual placement and service callbacks pass at four JUNGLE rotations; headless scene-graph
+proof is not manual visual approval. See findings/standing-service.md for exact scope.
+
+Learning: authored script ownership does not prove this port draws a replacement body;
+actual host visibility/pose ownership must decide. Eventual relief does not prove priority
+routing; a disconnected nearer service and reachable distracting ride discriminate it.
+Godot's deferred deletion must finish before a test calls a retired bubble a visible leak.
+
+Next bounded action: exchange peer review of these integration changes, then normal-viewer
+rendered/manual smoke with explicit inspection if available. Keep scope on the playable
+service flow and inspect new departure/queue consumer interactions; do not broaden to
+Super Toilets, track systems or another generic audit campaign without CP1 evidence.
+Keep the two exact retail reds and manual/platform limitations explicit. The runtime gate
+now has seven scenes; older clean-release evidence retains its original revision.
+
 ## Current review and priority decision — CP0/CP3, 2026-09-24 UTC
 
 The reviewed baseline is `699a9b1`, not the original starting checkout. The evidence has changed the order of work:
