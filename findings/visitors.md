@@ -2060,3 +2060,39 @@ table is not found, so the viewer spreads the six variants across guests by id a
 ⚠ The check covers SELECTION, not playback: it resolves each kid's idle through the viewer's own
 Shared-record rule, with the walk as a control that the resolver works at all. Whether the pose
 visibly moves still needs a render.
+
+### ⭐⭐ The guest's idle STATE machine, found — `FUN_002106E8`
+
+A census of `andi rt, rs, 0x1f` preceded by a load of `+0x38` finds **two** sites in the whole
+image, both in one function:
+
+```c
+FUN_002106E8(guest):
+    if (guest[0x2c] + 0x78 < now) { if ((guest[0x38] & 0x1f) == 0xb) goto pick; }   // 120 ticks
+    else if ((guest[0x38] & 0x1f) == 0xb) return;                                    // still waiting
+    if (FUN_001448E0(100) > 9) return;                                               // 1 in 10
+pick:
+    guest[0x38] = (guest[0x38] & ~0x1f) | (DAT_002EEC18[FUN_001448E0(4) * 4] & 0x1f);
+```
+
+⭐ **Four idle states: `14, 5, 6, 13`.** The count is proved by `FUN_001448E0(4)` in the CODE; the
+data agrees (entry 4 is `0x3F800000`, a float 1.0 — plainly something else) but that is only
+corroboration. ⚠ Adjacency has bounded a table wrongly in this repo before; the code's bound is
+what settles it.
+
+⭐ **State 11 (`0xB`) is the resting/walking default** — set at spawn (`FUN_0020BCD0`) and by the
+walking path (`FUN_0020D628`) — and while a guest is in it the picker waits out the **120-tick**
+timer (4.8 s at the park's 25 Hz) before choosing a fidget. Once fidgeting, each call has a
+1-in-10 chance to choose again.
+
+**Ported:** the count (four) and the interval (120 ticks).
+**Not ported, and this is the interesting refusal:** the **1-in-10 re-roll**, because it fires per
+call of a function whose cadence has not been read. A 10% roll on the wrong clock is a guest
+flickering between poses every few frames — ⭐ an invented cadence is the one thing that could
+make this look *worse* than the frozen pose it replaces, so the read interval carries it instead.
+
+⚠ **STILL UNREAD: state → record.** The state values in use are `4, 5, 6, 11, 12, 13, 14` and the
+animation slot table runs 0..11, so `+0x38` is not a slot and something maps it. Until that turns
+up the viewer cycles the first four of the six slot-2 variants and says so rather than claiming a
+correspondence — 5 and 6 being valid slot numbers is exactly the coincidence that would make a
+wrong mapping look right.

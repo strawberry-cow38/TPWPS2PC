@@ -67,5 +67,11 @@ static class GuestAnimationChecks
         var boy = Load("/Chars/Boy1a/boy1a.mps");
         int variants = boy?.Records().Count(r => r.Slot == 2 && r.Skeletal && !r.Shared) ?? 0;
         Check(variants > 1, $"boy1a carries more than one idle variant to spread a crowd across ({variants})");
+        // ⭐⭐ AND ENOUGH OF THEM TO CYCLE. `FUN_002106E8` picks among **four** idle states
+        // (`FUN_001448E0(4)` over `DAT_002EEC18`), and the viewer cycles a standing guest through
+        // that many every 120 ticks. ⚠ With fewer than four records the cycle would quietly
+        // collapse to however many exist -- still correct, but no longer the console's count, and
+        // nobody would notice from a screenshot.
+        Check(variants >= 4, $"and enough to cycle the console's four idle states ({variants})");
     }
 }
