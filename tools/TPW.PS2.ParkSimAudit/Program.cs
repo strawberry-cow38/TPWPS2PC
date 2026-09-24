@@ -569,6 +569,7 @@ if (looEntry.Entry != null && serviceRide is { } notALoo && corridorStops.Count 
 CompiledJoinChecks.Run(Wad("DATA"), wad, world, Check);
 MoodChecks.Run(Check);
 PathPriceChecks.Run(terrain, PathPieces.Read(disc), Check);
+ScreamChecks.Run(disc, world, Check);
 RideValueChecks.Run(Wad("DATA"), wad, world, Check);
 GuestAnimationChecks.Run(Wad("DATA"), Check);
 CompiledShopPurchaseChecks.Run(terrain, loopPaths, corridorStops[0], onPath[^1], Wad("DATA"), wad, world, Check);
@@ -742,8 +743,12 @@ string Clips(SoundCatalogue.Resolved r) => string.Join("|", r.Clips.Select(c => 
 // ⭐⭐ EVERY effect call in the guest code (0x209000..0x213000), found by censusing `jal` to the
 // two entry points and reading the `a2` immediate at each site. Eight, not the four first noticed.
 foreach (var (sfxId, sfxWhat) in new[] { (31, "0x00126408 PLACEMENT bought"), (175, "0x00197F48 cannot afford"),
-                                         (71, "0x1B94B8 build, footprint 1"), (72, "build, footprint <4"),
-                                         (73, "build, footprint <8"), (74, "build, footprint 8+"),
+                                         // ⚠ CORRECTED: these are the ride SCREAM, and the threshold is the
+                                         // RIDER COUNT, not the footprint. FUN_001B94B8 tests the value
+                                         // STARTSCREAM takes from VAR_ONRIDE and guards on `!= 0`; a placed
+                                         // ride's footprint is never 0. See RideScreams.
+                                         (71, "0x1B94B8 scream, 1 rider"), (72, "scream, 2-3 riders"),
+                                         (73, "scream, 4-7 riders"), (74, "scream, 8+ riders"),
                                          (53, "0x20F0A0 lavatory relief -- THE CONTROL"),
                                          (208, "0x20EAD8 shop visit complete"),
                                          (205, "0x20FA14 very unhappy"), (129, "0x2102D4 very happy"),

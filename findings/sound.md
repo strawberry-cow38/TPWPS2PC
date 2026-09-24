@@ -247,3 +247,201 @@ false. No evidence remains pending until the 0.5-second diagnostic window; that 
 is port instrumentation policy, not a decoded console constant. World reset stops old
 voices, releases the world-specific catalogue manager and clears old particle instances
 while retaining their global library holder. Dummy observations do not replace listening.
+
+## ⭐⭐ The sound-parameter call contract (`FUN_00111D40`), and why "parameter 20" has no engine-side answer
+
+Traced 2026-09-24 after astraclaw found the bus state handler setting a parameter on a live sound
+handle. **The parameter is still unnamed, deliberately** — see §"what this does NOT establish".
+
+### The chain, end to end (READ)
+
+```
+FUN_00111D40(audio, handle, selector, value)          a thin forwarder
+    audio  = *DAT_002ABE18 -> word 0 of a 5-word struct = the sound object
+    -> vtable 0x3706C8, slot +0x44 = FUN_002413E0(audio, handle, selector, value)
+         if handle == 0            -> 0        (nothing)
+         if selector == 0          -> handle   (no-op; selector 0 is not a parameter)
+         if (handle & DAT_00342EDC) == 0   -> FUN_00244568  (a SINGLE voice)
+              -> FUN_00247920 -> vtable slot +0x64 of the voice, called (selector, value)
+         else                              (a COMPOSITE/GROUP handle)
+              index  = handle & ~DAT_00342EDC, bounds-checked against audio[0xD4]
+              member = audio[0xD0][index]
+              slot   = FUN_00243840(paramTable, selector)
+              member[0x39][slot] = value ;  FUN_00242138(paramTable, member)
+```
+
+⚠⚠ **Ghidra's signature for `FUN_00111D40` is WRONG and will mislead anyone who trusts it.** It
+renders as `(int *, undefined8, undefined1)` — three parameters, no selector — because it types the
+handle as 64-bit and swallows `a2`/`a3`. The call sites disagree, and so does a wrapper:
+
+```
+0x147BD4  lw    a1,0x73A0(s1)     ; handle          FUN_00111E08(x, v)
+0x147BDC  addiu a2,zero,20        ; selector          -> FUN_00111D40(x, DAT_002AC178, 2, v)
+0x147BE0  jal   0x111D40
+0x147BE4  daddu a3,zero,zero      ; value
+```
+
+Two independent witnesses to four arguments. The same collapse affects `FUN_00244568` and
+`FUN_00247920` further down the chain.
+
+### ⭐⭐ A selector is an id in the SOUND'S OWN table, not an engine property
+
+`FUN_00243840(table, selector)` is a **linear search**: a count at `table+0x1C`, an array at
+`table+0x20` of **five-word records**, matching `record[0] == selector`, returning the record's
+index. The value is then written into the instance's own array (`member[0x39]`) at that index.
+
+So there is no engine-side `switch (selector)` anywhere, and looking for one is the wrong search.
+**What a selector means is defined by the parameter table belonging to the sound being played** —
+for the bus, the sound created as group 1, event 6. That is also why the selector space is sparse
+and uneven rather than a dense enum.
+
+### The selector space, censused (READ)
+
+All 49 call sites of `FUN_00111D40`, grouped by the `a2` selector, with the values each passes:
+
+| selector | sites | values seen |
+|---|---|---|
+| 2 | 1 | not immediate |
+| 4 | 3 | not immediate |
+| 6 | 7 | 0 |
+| 7 | 13 | 0, 20, 60 |
+| 8 | 5 | 0 |
+| 9 | 1 | 0 |
+| 10 | 1 | 100 |
+| **20** | **4** | **0, 51** |
+| 22 | 4 | not immediate |
+| 23 | 2 | 100 |
+
+⭐ **All four selector-20 sites are `0x147980`, `0x147BE0`, `0x147C28`, `0x147C90` — every one inside
+the bus handler.** Nothing else in the image uses it, so there is no sibling caller to learn from.
+
+### Where the object comes from
+
+`FUN_00110A78` builds it: `new(0x14)` → `FUN_00110A20` (which only zeroes five words — **no vtable**,
+so `DAT_002ABE18` is a plain struct, not a polymorphic object) → stored in `DAT_002ABE18`. Word 0 is
+then filled by `FUN_00110B60` → `FUN_0023FBA0` → `new(0xE0)` → `FUN_0023FC30`, and it is
+`FUN_0023FC30` that writes `*obj = &DAT_003706C8`, the vtable above. `FUN_00230260("DisableSound")`
+gates the whole of `FUN_00110B60`.
+
+⚠ Two red herrings in this area, both `0x14`: the object's allocation size is `0x14` bytes and the
+parameter records are `0x14` bytes. Neither has anything to do with selector 20.
+
+### ⭐⭐⭐ ANSWERED: selector 20 is event 6's own link-branch variable
+
+Read out of the data the prediction pointed at. Two steps.
+
+**1. `a1` is the audio-category id, and the mapping is in the static initialiser `FUN_001120D8`.**
+The registry at `0x2ABE38` is eleven `{dir, name, handle, id, used}` records of five words; `a1` is
+matched against `record[3]`. ⚠ The registry lives in BSS, so the image's copy is all zeros -- the
+values must be read from the initialiser's writes, not from the data.
+
+| `a1` | category | | `a1` | category |
+|---|---|---|---|---|
+| 0 | `AUDIO/GLOBAL/ui` | | 6 | `AUDIO/RIDES/trck` |
+| **1** | **`AUDIO/GLOBAL/amb`** | | 7 | `AUDIO/GLOBAL/kids` |
+| 2 | `AUDIO/GLOBAL/ride` | | 8 | `AUDIO/GLOBAL/staf` |
+| 3 | `AUDIO/RIDES/bump` | | 9 | `AUDIO/RIDES/fprc` |
+| 4 | `AUDIO/RIDES/grc` | | 10 | `AUDIO/RIDES/fpwt` |
+| 5 | `AUDIO/RIDES/wtr` | | | |
+
+⭐ **The control that pins this table**: `a1 = 7` gives `kids`, and this port already recorded
+`FUN_00111428(audio, 7, 0xD0, ...)` resolving event 208 to `cashD2b.vag` in `GLOBAL/KIDSSFX.MAP`
+(findings/visitors.md). Two independent routes to the same category. ⚠ It is therefore the AUDIO
+CATEGORY namespace and **not** the `SoundCatalogue`/RSE group namespace, which uses different
+numbers -- a mismatch that has already caused one wrong reading in this port.
+
+**2. The event names its own parameter.** `/AUDIO/GLOBAL/AMBSFX.MAP` event 6 -- the bus:
+
+```
+event 6: flags 0406  word0C 0FA0  word12 0014  sets 4
+  set 0  sound 22  667 ms  bank 1   -> target 2 for 51..100,  target 1 for 0..50
+  set 1  sound 20 1730 ms  bank 1   -> target 3 for 0..100
+  set 2  sound 19  234 ms  bank 1   -> target 3 for 51..100,  target 4 for 0..50
+  set 3  sound 17 2274 ms  bank 1   -> target 1 for 0..100
+```
+
+`word12 = 0x14 = **20**`, and the links split at exactly **0..50 / 51..100** -- which is why the bus
+writes **0** and **51**: 51 is the first value of the high band, not a tuned number. Setting
+parameter 20 to 51 steers the chain into the high-range targets and back to 0 into the low ones.
+
+⭐⭐ **The control, and it is the strong kind.** Over 153 events in five categories: **141 have
+`word12 == 0`, and not one of those has a range-limited link.** Of the twelve with a non-zero
+`word12`, nine are values the call sites actually pass, and eight of those nine do have
+range-limited links. A field that were noise would put branching links on some of the 141.
+
+⚠ Three events carry `word12 = 19`, a value no call site passes as an immediate. That is
+consistent rather than contradictory: eight of the 49 call sites compute `a2` instead of loading a
+constant, and were not resolved.
+
+⚠ What this does NOT say: that selector 20 means anything outside event 6. It is per-event by
+construction, and 20 only because that is the id this event was authored with. The set-index base
+of the link `target` field was not checked, so the exact cycle above is the parser's numbering.
+
+### What this does NOT establish
+- **That the table is absent from the executable.** A 20-byte-stride search for a static table whose
+  word 0 carries those ids found nothing — ⚠ **but the same search with a decoy id set also found
+  nothing, so it discriminates nothing and proves nothing.** The table is most likely built at
+  runtime from the sound data; that is a expectation, not a reading.
+- **The single-voice path.** Only the composite path was read to the parameter array. The single
+  path ends at vtable slot `+0x64` of the voice object, which was not followed.
+- ⚠ A previous version of this trace reported that `DAT_002ABE18` "is never written anywhere in the
+  image". **That was false, and it was an instrument defect**: the cross-reference sweep cleared
+  every register on `jal`, which throws away a `lui` held in a saved register across a call — the
+  exact shape a constructor uses. With caller-saved registers alone cleared, three stores appear at
+  `0x110AAC`, `0x110B14` and `0x110B20`. astraclaw called for a control before the negative was
+  believed and was right to. A negative from a sweep is a claim about the sweep until it is.
+
+## ⭐⭐ The ride scream (`STARTSCREAM` / `STOPSCREAM` / `SINGLESCREAM` / `SCREAMLEVEL`)
+
+The scripts have always asked for these four and this port has always refused them. Read out of the
+opcode dispatcher `FUN_001BCFA8` and the three functions it calls, and implemented in
+`RideScreams`.
+
+```
+case 0x56 STARTSCREAM a b   handle = FUN_001B94B8(inst[0xD0], a, b, inst[0xC0], x,y,z)
+                            inst[0xD0] = inst[0x48] = handle
+case 0x57 STOPSCREAM        reads inst[0xD0], stops it, writes 0 back
+case 0x58 SINGLESCREAM a b  b >= 0 ? FUN_001B98B0(a, b, inst[0xC0], x,y,z)
+                                   : FUN_001BA440(a, x,y,z)
+case 0x59 SCREAMLEVEL l     inst[0xD0] = FUN_001B96D8(inst[0xD0], l, inst[0xC0])
+```
+
+⚠⚠ **THE THRESHOLD IS THE RIDER COUNT, NOT THE FOOTPRINT**, and two places in this repo said
+footprint — findings/visitors.md's note and the audit's own effect label — both now corrected.
+`FUN_001B94B8` tests `param_2`, which case 0x56 takes from `STARTSCREAM`'s first operand, and the
+scripts write `STARTSCREAM VAR_ONRIDE 20`. Its guard is `handle == 0 && param_2 != 0`: a placed
+ride's footprint is never zero, a rider count is. Screams are sized to the **crowd**.
+
+| riders | looping id | levelled one-shot row | unlevelled one-shot |
+|---|---|---|---|
+| 1 | `0x47` | `0x4B`+band | `0x69, 0x6A, 0x6C, 0x6D` |
+| 2–3 | `0x48` | `0x4F`+band | `0x6A, 0x6C, 0x6D` |
+| 4–7 | `0x49` | `0x53`+band | `0x6C, 0x6D` |
+| 8+ | `0x4A` | `0x57`+band | `0x6D` |
+
+`band = min((b + c) / 50, 3)`, giving a contiguous 4x4 table `0x4B..0x5A`. The level is
+`clamp((a + b) / 2, 0, 100)` on **sound parameter 6**, where the second term is the ride's own
+`inst + 0xC0` — a u16 whose meaning is **not read**, carried as `ParkRide.Setting0xC0` and
+defaulting to 0.
+
+⚠⚠ **`FUN_001BA440` IS A CONSOLE BUG AND THE PORT REPRODUCES IT.** Its four arms are `if`s with no
+`else` and no early return — the only `return` is past the last one — so **one rider fires four
+overlapping voice lines**, two or three fire three, four to seven fire two, and only eight-plus
+plays a single one. `SINGLESCREAM VAR_ONRIDE -1` is exactly the call that reaches it. And `0x6B` is
+skipped by the cascade entirely (`0x69, 0x6A, 0x6C, 0x6D`), so id 107 is never played here at all.
+The audit asserts the bug, so "fixing" it into an if/else chain fails three checks.
+
+⚠⚠ **NAMESPACE, AND IT IS THE EASY THING TO GET WRONG.** The native calls pass
+`FUN_00111428(audio, **7**, id, …)` and native category 7 is `AUDIO/GLOBAL/kids` — but this port's
+`SoundGroup` is the **script-side** `OBJ_SOUND_*` numbering, where the same file is **6**. Carrying
+the 7 across selects `STAFSFX.MAP` and every scream resolves to a staff line or to nothing; the
+audit has a control that rejects exactly that. The two namespaces are not an offset apart either:
+native 0/1/2 are ui/amb/ride where the script side is 9/8/5.
+
+⚠ `inst + 0xD0` is the live scream handle. findings/paths.md reads a u16 at `+0xD0` as the path
+tool's per-tile price — a **different class**, and the collision is noted in both places so neither
+reading gets "confirmed" by the other.
+
+⚠ The level is **carried and logged, not applied**. It is sound parameter 6, and this file already
+establishes that a parameter id means whatever the event's own table says it means; turning it into
+a volume would invent the one thing that trace refused to guess.

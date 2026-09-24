@@ -115,6 +115,23 @@ public sealed class ParkRide
     /// label anybody read.</summary>
     public int Setting0xAC { get; set; }
 
+    /// <summary>`inst + 0xC0`, a u16 the scream arithmetic averages with the script's own operand
+    /// -- `FUN_001B96D8` computes `clamp((operand + this) / 2, 0, 100)` and `FUN_001B98B0` bands
+    /// on `(operand + this) / 50`. See <see cref="RideScreams"/>.
+    ///
+    /// ⚠⚠ WHAT IT IS HAS NOT BEEN READ, and it is named after its offset for the same reason
+    /// <see cref="Setting0xAC"/> is: a plausible name would be a guess wearing a label. It
+    /// defaults to 0, which makes the level exactly half the script's operand -- the arithmetic
+    /// is faithful and the unknown is one line to replace when somebody reads the writer.</summary>
+    public int Setting0xC0 { get; set; }
+
+    /// <summary>`inst + 0xD0`: the handle of the scream currently looping on this ride, or 0.
+    /// `STARTSCREAM` only starts one when this is 0 (`FUN_001B94B8` guards on it), `STOPSCREAM`
+    /// clears it, and `SCREAMLEVEL` adjusts the sound it names -- so this is what stops a ride
+    /// stacking a new scream every time the script goes round.
+    /// ⚠ The console also mirrors it into `inst + 0x48`; nothing here reads that copy.</summary>
+    public int ScreamHandle { get; set; }
+
     // Concrete +1D4 producers and constructor defaults, including family differences.
     // These operating settings are not assertions about the RSE variable bindings.
     int? _speed, _duration;
