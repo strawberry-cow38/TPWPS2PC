@@ -86,10 +86,19 @@ def classify(scene: str, run: dict) -> dict:
                      for turn in range(4)]
         prefixes += [f'STANDING SERVICE ok: placed quarter turn {turn} authored stand is nearer its real stub than its mirror'
                      for turn in range(4)]
+        prefixes += [f'STANDING SERVICE ok: external shop quarter turn {turn} uses literal authored 2x2 geometry'
+                     for turn in range(4)]
+        prefixes += [f'STANDING SERVICE ok: external shop quarter turn {turn} samples its transformed entry cell height'
+                     for turn in range(4)]
+        prefixes += [f'STANDING SERVICE ok: external shop quarter turn {turn} faces inward from actual placement entry'
+                     for turn in range(4)]
+        prefixes += ['STANDING SERVICE ok: ordinary ride does not become a standing shop']
+        prefixes += ['STANDING SERVICE ok: coordinate-less external shop does not invent authored stand geometry',
+                     'STANDING SERVICE ok: larger LIMBO shop does not receive the small-shop standing fallback']
         summaries = re.findall(r'^STANDING SERVICE PASS: (\d+) checks, 0 failures$', text, re.M)
         checks = sum(line.startswith('STANDING SERVICE ok:') for line in lines)
         result['checks'] = checks
-        if len(summaries) != 1 or int(summaries[0]) != checks or checks < 74:
+        if len(summaries) != 1 or int(summaries[0]) != checks or checks < 89:
             return {**result, 'status': 'missing_coverage'}
     elif scene == 'audio':
         prefixes = ['AUDIO LIFECYCLE ok: 2D eight fast no-evidence polls remain pending',

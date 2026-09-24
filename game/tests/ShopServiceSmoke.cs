@@ -128,11 +128,14 @@ public partial class ShopServiceSmoke : Node3D
                 "compiled H25/T5/happy5/V10 price30 (unsupported regional profiles fail explicitly)");
             Require(definition.Shape != null, "authored shape exists");
             var footprint = Park.Footprint.From(definition.Shape);
+            Require(world != "FANTASY", "this bounded smoke requires authored coordinates; FANTASY ice cream has none");
+            var expectedStand = world switch { "HALLOW" => new Vector2(.4f,.5f), "SPACE" => new Vector2(.7f,.7f), _ => new Vector2(.6f,.4f) };
+            string entryRow = world == "HALLOW" ? "*2" : "2*";
             Require(footprint.Width == 2 && footprint.Height == 2
-                && definition.Shape.Select(s => s.Trim()).SequenceEqual(new[] { "**", "2*" })
-                && definition.EntryStandX is float sx && Mathf.IsEqualApprox(sx, .6f)
-                && definition.EntryStandY is float sy && Mathf.IsEqualApprox(sy, .4f),
-                "authored 2x2 **;2* stand .6/.4, not the existing 1x1 relief slice");
+                && definition.Shape.Select(s => s.Trim()).SequenceEqual(new[] { "**", entryRow })
+                && definition.EntryStandX is float sx && Mathf.IsEqualApprox(sx, expectedStand.X)
+                && definition.EntryStandY is float sy && Mathf.IsEqualApprox(sy, expectedStand.Y),
+                "named authored 2x2 entry and per-world stand, not a universal shop default");
             Require(asset.Script != null, "named model has real RSE");
             var program = new RseProgram(library.Read(asset.Script));
             Require(!program.Instructions.Any(i => i.Opcode is RseOpcode.LIMBO or RseOpcode.WALKON),
@@ -140,9 +143,13 @@ public partial class ShopServiceSmoke : Node3D
             GD.Print($"SHOP SMOKE fixture world={world} model={asset.Model.Path} definition={definition.Source} script={asset.Script.Path}");
 
             var blueprint = Field<Placement>(viewer, "_place");
+            string turnArg = args.LastOrDefault(a => a.StartsWith("--shop-turn="))?["--shop-turn=".Length..];
+            int? requestedTurn = turnArg == null ? null : int.Parse(turnArg);
+            Require(requestedTurn == null || requestedTurn is >= 0 and <= 3, "requested turn is in 0..3");
             bool placed = false; int placedTurn = -1;
             for (int turn = 0; turn < 4 && !placed; turn++)
             {
+                if (requestedTurn is int requested && turn != requested) continue;
                 Call(viewer, "ArmFromList", row); blueprint.Turn(turn);
                 for (int z = entry.ZEnd; z < entry.ZEnd + 8 && !placed; z++)
                     for (int x = entry.XCol - 4; x <= entry.XCol + 4 && !placed; x++)
@@ -224,9 +231,10 @@ public partial class ShopServiceSmoke : Node3D
                 var actors = Field<Dictionary<int, Node3D>>(viewer, "_actors");
                 var live = root.GetChildren().OfType<Node3D>().Where(n => Live(n) && n.IsVisibleInTree()).ToArray();
                 var own = live.Where(n => n.Name == $"Guest_{guestId}").ToArray();
-                bool HasBody(Node3D n) => Meshes(n).Any(m => m.Mesh != null && m.IsVisibleInTree()
+                bool HasPart(Node3D n, string part) => Meshes(n).Any(m => m.Mesh != null && m.IsVisibleInTree()
                     && (m.Layers & camera.CullMask) != 0
-                    && !((string)m.Name).Contains("head", StringComparison.OrdinalIgnoreCase));
+                    && ((string)m.Name).Contains(part, StringComparison.OrdinalIgnoreCase));
+                bool HasBody(Node3D n) => HasPart(n, "body") && HasPart(n, "legs");
                 int bodies = own.Count(HasBody);
                 bool projected = own.Any(n => !camera.IsPositionBehind(n.GlobalPosition + Vector3.Up * .2f)
                     && GetViewport().GetVisibleRect().HasPoint(camera.UnprojectPosition(n.GlobalPosition + Vector3.Up * .2f)));
@@ -234,7 +242,11 @@ public partial class ShopServiceSmoke : Node3D
                     + $"visibleBodies={bodies} totalBodies={live.Count(HasBody)} projected={projected} "
                     + $"dictionaryLive={actors.TryGetValue(guestId, out var a) && Live(a)} walkers={visitors.Walk.Guests.Count}");
                 Check(live.Length == own.Length, phase + " no unrelated guest actors");
-                if (bodies > 0) Check(projected, phase + " body projects into capture");
+                if (bodies > 0)
+                {
+                    Check(projected, phase + " body projects into capture");
+                    Check(own.Length == 1, phase + " exactly one live actor for the original identity");
+                }
                 return bodies;
             }
 
@@ -266,6 +278,27 @@ public partial class ShopServiceSmoke : Node3D
             await Capture(shot);
             // Deliberately NOT Require: this is the current discriminating rendering failure.
             Check(Bodies("SERVING") == 1, "MISSING_VISIBLE_SERVICE_BODY (accepted external customer must have exactly one full body)");
+            // Literal authored points, independent of the camera's transform calculation and
+            // production StandingServicePose. Height/facing come from actual placement APIs.
+            var pointOracle = world switch
+            {
+                "HALLOW" => new[] { new Vector2(1.4f,.5f), new Vector2(1.5f,1.4f), new Vector2(.6f,1.5f), new Vector2(.5f,.6f) },
+                "SPACE" => new[] { new Vector2(.7f,.3f), new Vector2(1.7f,.7f), new Vector2(1.3f,1.7f), new Vector2(.3f,1.3f) },
+                _ => new[] { new Vector2(.6f,.6f), new Vector2(1.4f,.6f), new Vector2(1.4f,1.4f), new Vector2(.6f,1.4f) },
+            };
+            var placementOracle = new Placement(); placementOracle.Arm(definition, "Ice Cream", 0, footprint); placementOracle.Turn(placedTurn);
+            var entryCell = ride.Origin.Offset(placementOracle.Turned.EntryX, placementOracle.Turned.EntryY);
+            var localPoint = pointOracle[placedTurn];
+            Vector3 expectedPosition = new(grid.Origin.X + ride.Origin.X + localPoint.X,
+                park.CellY(entryCell.X, entryCell.Z), -(grid.Origin.Y + ride.Origin.Z + localPoint.Y));
+            var inward = new Vector3(-placementOracle.Turned.EntryDX, 0, placementOracle.Turned.EntryDY);
+            var actorsAtService = Field<Dictionary<int,Node3D>>(viewer, "_actors");
+            Check(standing.ContainsKey(guestId) && actorsAtService.TryGetValue(guestId, out var serviceActor)
+                && Live(serviceActor) && serviceActor.Position.DistanceTo(expectedPosition) < .0001f
+                && serviceActor.Basis.Z.DistanceTo(inward) < .0001f
+                && serviceActor.Basis.Y.DistanceTo(Vector3.Up) < .0001f
+                && Mathf.Abs(serviceActor.Basis.Determinant() - 1) < .0001f,
+                "LIVE_SERVICE_ACTOR_USES_AUTHORED_POSITION_HEIGHT_AND_UPRIGHT_INWARD_FACING");
 
             for (int tick = 0; tick < 6000 && visitors.Rides == 0; tick++)
             {

@@ -3,16 +3,19 @@ using TPW.PS2.Data;
 
 namespace TPWPS2Viewer;
 
-/// <summary>Authored standing point for the bounded 1x1 relief-service slice.
+/// <summary>Authored standing point for 1x1 relief facilities and 2x2 shops.
+/// Larger/indoor service paths and missing authored coordinates are not guessed here.
 /// Uses Placement's row mirror and quarter turns; no guessed queue spacing.</summary>
 public readonly record struct StandingServicePose(Vector2 CellPoint, ParkCell HeightCell, Vector2I Inward)
 {
     public static bool TryCreate(RideDefinition definition, ParkCell origin, int turns, out StandingServicePose pose)
     {
         pose = default;
-        if (definition?.ProvidesRelief != true || definition.Shape == null) return false;
+        if (definition?.Shape == null) return false;
         var fp = Park.Footprint.From(definition.Shape);
-        if (fp.Width != 1 || fp.Height != 1 || fp.EntryX < 0 || fp.EntryY < 0) return false;
+        bool smallRelief = definition.ProvidesRelief && fp.Width == 1 && fp.Height == 1;
+        bool smallShop = definition.Sells && fp.Width == 2 && fp.Height == 2;
+        if ((!smallRelief && !smallShop) || fp.EntryX < 0 || fp.EntryY < 0) return false;
         var sx = definition.EntryStandX;
         var sy = definition.EntryStandY;
         if (sx is not float x || sy is not float y || !float.IsFinite(x) || !float.IsFinite(y)) return false;

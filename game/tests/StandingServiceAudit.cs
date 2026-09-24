@@ -25,6 +25,31 @@ public partial class StandingServiceAudit : Node3D
             var wad = library.Wad;
             var terrain = new Model(wad.Read(wad.Find("/terrain/terrain_1.mps")));
             var definition = RideDefinition.Parse(System.Text.Encoding.ASCII.GetString(wad.Read(wad.Find("/Features/Toilet/Toilet.sam"))), "toilet");
+            RideDefinition Shop(string path) => RideDefinition.Parse(
+                System.Text.Encoding.ASCII.GetString(wad.Read(wad.Find(path))), path);
+            var ice = Shop("/Shops/IceCream/IceCream.sam");
+            var shopOrigin = new ParkCell(10, 20);
+            // Independent literal oracle for the 2x2 **;2* shape, entry .6/.4.
+            // The 1x1 cycle cannot prove the dimensions/entry-cell part of this transform.
+            var shopPoints = new[] { new Vector2(.6f,.6f), new Vector2(1.4f,.6f), new Vector2(1.4f,1.4f), new Vector2(.6f,1.4f) };
+            var shopCells = new[] { new ParkCell(10,20), new ParkCell(11,20), new ParkCell(11,21), new ParkCell(10,21) };
+            for (int turn = 0; turn < 4; turn++)
+            {
+                bool created = StandingServicePose.TryCreate(ice, shopOrigin, turn, out var pose);
+                Check(created && pose.CellPoint.DistanceTo(new Vector2(10,20) + shopPoints[turn]) < .0001f,
+                      $"external shop quarter turn {turn} uses literal authored 2x2 geometry");
+                Check(created && pose.HeightCell == shopCells[turn],
+                      $"external shop quarter turn {turn} samples its transformed entry cell height");
+                var oriented = new Placement(); oriented.Arm(ice, "Ice Cream", 0, Park.Footprint.From(ice.Shape)); oriented.Turn(turn);
+                Check(created && pose.Inward == new Vector2I(-oriented.Turned.EntryDX, -oriented.Turned.EntryDY),
+                      $"external shop quarter turn {turn} faces inward from actual placement entry");
+            }
+            Check(!StandingServicePose.TryCreate(Shop("/Shops/Coconut/Coconut.sam"), shopOrigin, 0, out _),
+                  "coordinate-less external shop does not invent authored stand geometry");
+            Check(!StandingServicePose.TryCreate(Shop("/Shops/Balloon/Balloon.sam"), shopOrigin, 0, out _),
+                  "larger LIMBO shop does not receive the small-shop standing fallback");
+            Check(!StandingServicePose.TryCreate(Shop("/Rides/Monkey/Monkey.sam"), shopOrigin, 0, out _),
+                  "ordinary ride does not become a standing shop");
             var paths = new ParkPaths(terrain);
             int material = Enumerable.Range(1, paths.Materials.Count - 1).First(i => ParkPaths.Classify(paths.Materials[i]) == ParkPathKind.Path);
             var origin = paths.Cells.First(c => Enumerable.Range(0, 3).All(i => paths.CanLay(c.Offset(i, 0))));

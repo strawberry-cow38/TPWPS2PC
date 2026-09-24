@@ -45,7 +45,13 @@ def raw_witness(scene):
             'STANDING SERVICE ok: satisfied guest clears visible toilet thought',
             *[f'STANDING SERVICE ok: placed quarter turn {turn} completes real relief without reseeding' for turn in range(4)],
             *[f'STANDING SERVICE ok: placed quarter turn {turn} authored stand is nearer its real stub than its mirror' for turn in range(4)],
-            'STANDING SERVICE PASS: 74 checks, 0 failures'])
+            *[f'STANDING SERVICE ok: external shop quarter turn {turn} uses literal authored 2x2 geometry' for turn in range(4)],
+            *[f'STANDING SERVICE ok: external shop quarter turn {turn} samples its transformed entry cell height' for turn in range(4)],
+            *[f'STANDING SERVICE ok: external shop quarter turn {turn} faces inward from actual placement entry' for turn in range(4)],
+            'STANDING SERVICE ok: ordinary ride does not become a standing shop',
+            'STANDING SERVICE ok: coordinate-less external shop does not invent authored stand geometry',
+            'STANDING SERVICE ok: larger LIMBO shop does not receive the small-shop standing fallback',
+            'STANDING SERVICE PASS: 89 checks, 0 failures'])
     return '\n'.join(['AUDIO LIFECYCLE ok: tested'] * 31 + [
         'AUDIO LIFECYCLE ok: 2D eight fast no-evidence polls remain pending',
         'AUDIO LIFECYCLE ok: 3D eight fast no-evidence polls remain pending',
@@ -131,9 +137,14 @@ class Classification(unittest.TestCase):
 
     def test_standing_requires_actual_placement_lifecycle_and_matching_count(self):
         text = witness('standing')
-        for damaged in [text.replace('74 checks', '73 checks'),
+        for damaged in [text.replace('89 checks', '88 checks'),
                         text.replace('placed quarter turn 2 completes real relief without reseeding', 'unrelated assertion'),
-                        text.replace('explicit host hiding suppresses standing body', 'unrelated assertion')]:
+                        text.replace('explicit host hiding suppresses standing body', 'unrelated assertion'),
+                        text.replace('external shop quarter turn 0 uses literal authored 2x2 geometry', 'unrelated assertion'),
+                        text.replace('coordinate-less external shop does not invent authored stand geometry', 'unrelated assertion'),
+                        text.replace('external shop quarter turn 0 samples its transformed entry cell height', 'unrelated assertion'),
+                        text.replace('external shop quarter turn 0 faces inward from actual placement entry', 'unrelated assertion'),
+                        text.replace('ordinary ride does not become a standing shop', 'unrelated assertion')]:
             self.assertEqual(audit.classify('standing', output(damaged))['status'], 'missing_coverage')
 
     def test_source_snapshot_includes_ignored_and_linked_sources(self):

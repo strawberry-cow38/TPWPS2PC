@@ -1187,3 +1187,29 @@ code attachments. Coordinate production/viewer ownership; our initial work is te
 Do not re-run generic purchase censuses or reopen ordinary-ride producer work without a reason.
 No restart, no approval wait, existing recurring task only. Report project milestones to
 strawberry1028383794362847362. Disc stays in place; no raw assets in Git.
+
+## CP5 — external shop body reproduced; narrow fix on review branch
+
+After purchase landing, baseline6d65a89 normal Viewer startup + actual Shops construction
+reproduced IceCream body1→0→1 through accepted service/handback. No actual host-hide/seat/WALK
+applied. Real purchase succeeded, so this is precisely a renderer gap headless arithmetic
+cannot see. New optional ShopServiceSmoke scene was pushed atba7bdea on
+astraclaw/shop-presentation (not main). First fixture also wrongly froze Thought; corrected
+to require preserved seed plus actual Hungry presentation, leaving one genuine body failure.
+Logs ../tpw-shop-smoke-baseline-v2.log; captures /tmp/tpw-shop-smoke-baseline-v2-20260924.
+
+Production change only expands StandingServicePose to authored2x2Sells, alongside1x1relief;
+Viewer edits are explanatory comments. Six coordinate-less shops stay unsupported, larger
+LIMBO/ordinary rides excluded, real host ownership gates untouched. StandingServiceAudit now89
+with15 literal geometry/negative controls; runtime runner names all new witnesses.56 Python
+checks pass. First fixed rendered runs: JUNGLE all4turns plusHALLOW/SPACE firstfittingturn,
+each one visible body during acceptance, correct transaction and exactly one returning walker.
+Captures /tmp/tpw-shop-smoke-fixed-20260924; no visual review claimed yet.
+
+Independent source review found two real test gaps, now tightened: a single non-head mesh
+could count legs-only as full body, and projected visibility alone did not assert the live
+shop actor's authored transform. The smoke now requires torso+legs, one actor, literal
+per-world position, placement-derived height/facing and upright basis. Final JUNGLEturn0
+passes (../tpw-shop-smoke-final.log); otherfinalruns/fullruntimegate pending at this entry.
+Share source by pushed branch per owner; captures may be attached for peer visual inspection.
+Next finish peer review/final gates and land normally; no restart or duplicate scheduler.

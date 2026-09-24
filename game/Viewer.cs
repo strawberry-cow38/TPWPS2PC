@@ -3359,8 +3359,8 @@ public partial class Viewer : Node3D
             _standingPlaces[ride] = (root, pose);
     }
 
-    /// <summary>A 1x1 relief facility has a standing customer, not a seat/WALK pose.
-    /// The coordinator owns the identity; small-toilet scripts do not HUSH it.
+    /// <summary>Small relief facilities and authored 2x2 shops can have standing customers, not seat/WALK poses.
+    /// The coordinator owns the identity; a HUSH stack is not required for outside service.
     /// Waiting guests keep the queue-stub position (no invented queue spacing);
     /// accepted guests use the authored stand point. Facing is presentation policy.</summary>
     void StandingRiders()
@@ -3378,7 +3378,7 @@ public partial class Viewer : Node3D
                 || !place.Root.IsInsideTree() || onWalk.Contains(id) || _seated.ContainsKey(id) || _walking.ContainsKey(id)) continue;
             if (owner.Host.Visibility.TryGetValue(id, out var visibility) && !visibility.Visible) continue;
             // Never substitute a standing pose for an unresolved scripted leg or seat.
-            // Authored small toilets have neither; larger service modes remain separate.
+            // Small outside-service fixtures have neither; larger service modes remain separate.
             if (owner.Host.Seats.Values.Contains(id) || owner.Host.Walkers.ContainsKey(id)) continue;
             bool waiting = owner.Queue.Contains(id) || owner.Get("VAR_LETMEON") == id;
             Vector3 cell = waiting ? Cell(ParkPaths.Centre(plan.At))
@@ -3397,7 +3397,7 @@ public partial class Viewer : Node3D
         // ⭐ Whoever has left the walk -- handed to a ride -- loses their body this frame unless a
         // seat has them. The script has them now; a kid standing in the queue AND riding would be
         // two bodies for one guest, which is exactly what the total handover exists to prevent.
-        // Standing relief-service guests have an explicit full-body pose below; other
+        // Standing outside-service guests have an explicit full-body pose below; other
         // unseated queues still require their own presentation contract.
         var alive = new HashSet<int>(_guests.Guests.Select(g => g.Id));
         alive.UnionWith(_seated.Keys);
