@@ -111,6 +111,25 @@ public sealed class AssetLibrary : IDisposable
         return e == null ? null : _generic.Read(e);
     }
 
+    WadArchive _ui;
+
+    /// <summary>Read a file out of `UI.WAD` without disturbing the WAD a park is using.
+    /// ⚠ <see cref="ReadGeneric"/> only ever opens DATA.WAD, and the panel art lives in UI.WAD --
+    /// calling OpenWad for it would swap the archive the loaded park is still reading from.</summary>
+    public byte[] ReadUi(string pathContains)
+    {
+        if (_ui == null)
+        {
+            var f = WadFiles().FirstOrDefault(
+                x => x.Path.EndsWith("UI.WAD", StringComparison.OrdinalIgnoreCase));
+            if (f == null) return null;
+            _ui = new WadArchive(_disc.Read(f.Extent, f.Size));
+        }
+        var e = _ui.Entries.FirstOrDefault(
+            x => !WadArchive.IsAlias(x) && x.Path.EndsWith(pathContains, StringComparison.OrdinalIgnoreCase));
+        return e == null ? null : _ui.Read(e);
+    }
+
     public void OpenWad(string path)
     {
         var f = _disc.Files().First(x => x.Path.Equals(path, StringComparison.OrdinalIgnoreCase));

@@ -996,6 +996,25 @@ public sealed class Park
         return true;
     }
 
+    /// <summary>Take a placed object back out: free its cells, drop its record, free its model.
+    ///
+    /// ⚠⚠ THE CELLS ARE CLEARED BY ID, not by walking the footprint from (x,y). Those agree today,
+    /// but a footprint is a mask and a stale or rotated one would leave cells claimed by a ride
+    /// that is gone -- an invisible no-build patch with nothing standing on it. Sweeping for the
+    /// id cannot leave one behind.</summary>
+    public bool Remove(int id)
+    {
+        int at = _placed.FindIndex(p => p.Id == id);
+        if (at < 0) return false;
+        var gone = _placed[at];
+        _placed.RemoveAt(at);
+        for (int y = 0; y < Height; y++)
+            for (int x = 0; x < Width; x++)
+                if (_occupied[x, y] == id) _occupied[x, y] = 0;
+        gone.Node?.QueueFree();
+        return true;
+    }
+
     /// <summary>Put a ride in the park at cell (x, y). Returns false and changes nothing if it
     /// does not fit. The model is moved so its own XZ centre sits over the footprint's centre and
     /// its base rests on the ground, measured per model rather than trusting the file to be
