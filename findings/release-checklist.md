@@ -1,6 +1,7 @@
 # Current validation and release checklist
 
-Updated 2026-09-23. Evidence baseline through `81d112c`; later changes require reruns.
+Updated September 23 US Eastern / September 24 UTC 2026. Clean-checkout build/runtime baseline
+`6004151`; rows retain their own earlier evidence where not rerun. Later code requires reruns.
 This is an engineering checklist, **not a release or retail-parity declaration**.
 The authoritative running handoff is `progress.md`; implementation scope is `plan.md`.
 
@@ -8,19 +9,20 @@ The authoritative running handoff is `progress.md`; implementation scope is `pla
 
 | Gate | Actual evidence | Limit |
 |---|---|---|
-| Fresh-checkout builds | All 22 tracked projects built in Release at pinned `34b050b`; resulting tree Git-clean | Linux aarch64 with existing NuGet cache; not a clean-machine install; later `07893c0` needs changes were not in that sweep |
-| Integrated park audits | At `6455861`, 30 availability + 57 removal + 20 conservation + 24 needs assertions per world; JUNGLE/FANTASY full pass | HALLOW/SPACE retain exact findings below; no implication that every system is complete |
-| Matrix classifier | 20 Python tests, including missing/partial coverage and misleading known-failure names | Classifies the recorded audit contract, not arbitrary runtime correctness |
-| Launcher failure paths | 40 offline assertions through `81d112c`, including real harmless process fixtures | Windows real update/relaunch not exercised; headless window-event coverage is listed separately |
-| Launcher window event paths | 22 headless actual-window assertions, four deliberately broken implementations rejected | Fake external commands/processes; no native Windows input, visual or update sign-off |
-| Needs continuity | Guest-ID state preserved across queue, actual seated ride, completion, deletion, delayed readmission, retirement and ID reuse | Normal frame-rate/zero-time checks, not all long-stall timing; rise rates/cadence remain chosen |
-| DBA unknown storage | 172,992 one-bit probes across EUR/USA/JAP, original golden checks unchanged | Preservation evidence only; specialised semantics remain partial |
-| Current Godot runtime scenes | Four headless scene audits pass; corrected lighting gate passes both software renderers and rejects its shader mutation at `c32cb74` plus audit fix | Specific scene/backend evidence, not all API/version/platform compatibility; see runtime-smoke.md |
-| Current JUNGLE rendered smoke | Real viewer exits zero; at 180s, 68 cumulative boardings/40 returns/28 ride-owned identities; four 1280x720 captures generated | Captures not visually reviewed; Dummy audio; bubble logs not proof of on-screen readability |
+| Fresh-checkout builds | All 23 tracked projects built in Release at pinned `6004151`; initial tree had no bin/obj/.godot, final tree Git-clean | Linux aarch64, .NET SDK 9.0.119 and existing NuGet cache; not a clean-machine/native-Windows install |
+| Integrated park audits | At clean `6004151`, 30 availability + 57 removal + 20 conservation + 45 needs assertions per world; JUNGLE/FANTASY full pass | HALLOW/SPACE retain exact findings below; no implication that every system is complete |
+| Matrix/runtime classifiers | 47 Python tests at `6004151`: 20 matrix + 27 runtime, including partial/duplicate coverage, misleading failures and provenance drift | Classifies recorded contracts, not arbitrary runtime correctness |
+| Launcher failure paths | 76 assertions at clean `6004151`, including real harmless process fixtures and explicit disc/engine probes | Windows real update/relaunch not exercised; headless window-event coverage is listed separately |
+| Launcher window event paths | 22 headless actual-window assertions rerun at clean `6004151`; earlier four broken implementations rejected | Fake external commands/processes; no native Windows input, visual or update sign-off |
+| Needs continuity | Guest-ID state preserved across queue, actual seated ride, completion, deletion, delayed readmission, retirement and ID reuse | Includes frame-rate/zero-time/capped-stall clocks and exact-once completion effects; not exhaustive long-run testing; rates/cadence remain chosen |
+| DBA unknown storage | Prior 172,992 one-bit probes across EUR/USA/JAP, original golden checks unchanged | Not rerun in this clean sweep; preservation only, specialised semantics remain partial |
+| Clean-checkout Godot runtime | All six headless-safe scenes pass at `6004151` after fresh Debug Rebuild, without an inherited project/Godot cache | Godot 4.6 mono, SDK 4.6.2, Dummy audio; not framebuffer/listening evidence |
+| Lighting framebuffer gate | Both software renderers pass and reject the shader mutation at `c32cb74` plus audit fix | Earlier measured baseline, not rerun or promoted to `6004151`; see runtime-smoke.md |
+| JUNGLE rendered smoke at `c32cb74` | Real viewer exits zero; at 180s, 68 cumulative boardings/40 returns/28 ride-owned identities; four 1280x720 captures generated | Captures not visually reviewed; Dummy audio; bubble logs not proof of on-screen readability |
 | Earlier rendered guest smoke | Actual Godot/Xvfb run at `4090631`; runtime boarding/seating counters and four generated captures | Captures were pixel-checked, not visually signed off; predate current renderer/needs bubbles |
 
 Recorded logs/manifests are local build artifacts outside Git. Reproduction commands and
-revision-specific outcomes are recorded in `progress.md`, `ride-removal.md` and
+revision-specific outcomes are recorded in `clean-checkout-6004151.md`, `progress.md`, `ride-removal.md` and
 `launcher-recovery.md`. Do not substitute a newer untested commit name for these baselines.
 
 ## Expected retail findings — keep them visible

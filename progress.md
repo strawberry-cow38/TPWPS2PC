@@ -647,3 +647,30 @@ than calling it a cold/offline install. Inspect before creating/removing anythin
 do not delete worktrees or artifacts destructively without confirmation. If clean
 source cannot build/run, reproduce and fix only the packaging/build issue, coordinating
 before touching peer-owned files. No bot restarts or harness work.
+
+## M7: genuinely clean published-source checkout gate
+
+Created detached tpw-release-check-6004151 at exact published6004151. Initial Git status
+clean and no bin/obj/.godot directories. No project/Godot cache or disc assets copied.
+Actual installed SDK is9.0.119 targetingnet8; Godot4.6mono and projectSDK4.6.2. Existing
+NuGet cache reused, so do not call this a cold-machine or offline installation.
+
+Fresh Debug runner: all six scenes pass. All23 tracked projects then build Release.
+Clean checkout also passes47 Python tests, launcher76, headless launcher UI22 and full
+AdvisorAudit including73textchecks. Four-world matrix has30availability/57removal/
+20conservation/45needs per world: JUNGLE/FANTASY pass, exact HALLOW/SPACE retail reds
+remain raw1/runner2. Final tree Git-clean. No packaging/build bug found; no production
+fix or cleanup/restart performed. Detached worktree/evidence retained.
+
+Updated release checklist with exact6004151 evidence and retained earlier lighting/
+rendered/DBA baselines rather than pretending they were rerun. See findings/clean-checkout-
+6004151.md and scratch tpw-clean-6004151-result.json plus its referenced manifests/logs.
+
+Next independent M3 validation: inspect existing ConservationChecks/ride-removal helpers
+and extend deterministic long-run disruption/replay coverage where a concrete invariant
+is missing. Prefer audit-local fixtures and real scripts, preserving exact guest identity,
+plans/owners/walking/recovering accounting, with replay controls. Do not invent console
+queue/needs semantics or edit peer-owned Viewer/needs/effects wiring. If coverage already
+exists, choose a different genuine gap rather than duplicating tests. Coordinate any
+production finding before modifying shared core files. Current manual/native-Windows/
+listening and unsupported gameplay gates remain explicit, not declared complete.
