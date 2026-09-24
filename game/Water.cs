@@ -128,8 +128,10 @@ public sealed class Water
     static float Env(string key, float fallback)
         => float.TryParse(System.Environment.GetEnvironmentVariable(key), out var v) ? v : fallback;
 
-    /// <summary>Move it. ⭐ Fed the console's own clock, like everything else that moves.</summary>
-    public void Advance(float seconds) => Ps2Materials.TextureTime = seconds;
+    // ⚠ THERE IS NO `Advance` HERE ANY MORE, DELIBERATELY. Water no longer owns the clock: every
+    // moving texture in the park shares `Ps2Materials.TextureTime`, terrain and placed models
+    // alike, so a second entry point that set the same clock would just walk the same material
+    // list twice a frame and invite the two to drift apart in a later edit.
 
     /// <summary>What the surfaces actually hold, and where they are. ⚠ A frame diff that shows
     /// nothing moving cannot tell "the water is not advancing" from "the water is off screen";
