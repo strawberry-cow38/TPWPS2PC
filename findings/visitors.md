@@ -2370,3 +2370,33 @@ which is not in hand. Measured on the disc, speed is `1..100` on every ride (so 
 whose maximum gives exactly 1.0 and can only pull the value down) while duration ranges vary from
 `1..1` to `10..60`, and anything from 7 up saturates the 1.25 cap. Replaces the invented flat 45;
 that constant now applies only to a ride with no compiled record at all.
+
+### ⭐⭐ Construction particles: they exist, nothing asks for them (2026-09-24)
+
+Master: *"we are missing a lot of particle effects. mainly the ones produced when something is
+built."* `Tp2.plb` names them without ambiguity:
+
+```
+75 Destroy1  76 Destroy2  77 Destroy3  78 Destroy4
+79 Create1   80 Create2   81 Create3   82 Create4        89 Upgrade
+```
+
+⭐ A census of every `EVENT`/`ADDOBJ` particle request in **every script on the disc** finds 33
+distinct (kind, id) pairs, all 33 resolving — and **none of them is any of the above**. The
+library holds 105 effects and 72 named ones have no script caller at all. So the construction
+puff is the game's to spawn, which is precisely why this port never showed one.
+
+⚠⚠ **THE SPAWNER IS NOT FOUND.** None of those ids appears as a literal near either effect entry
+point anywhere in the image, so the call computes its id or reads it from a table. The port now
+emits one at placement as a **labelled port choice**, with the variant chosen by footprint --
+1 cell, under 4, under 8, larger -- because that is the shape the console uses for its other
+size-varied effect family (below). ⚠ That is a reading of a DIFFERENT function, not this one.
+
+⭐ **Found on the way: the ride scream.** `FUN_001B94B8` picks an effect by footprint on exactly
+those thresholds and spawns it at the object -- and ids `0x47..0x4A` resolve to `scr2l*`, `scr4l*`
+and `scr8l*` plus the `kid-l*` voice lines. Screams sized to the ride. This port has none.
+
+⚠ And a reading retired: `FUN_00111428`'s second argument is **not** a sound group or a particle
+kind. Its values across the image are 7, 8, 1, 12, 2, 3, 6, 13, 4, 9, 11, and id 175 -- a SOUND --
+appears under both 1 and 2. Whatever it selects, it is not the `OBJ_SOUND_*` numbering, which the
+failed control this evening had already shown.

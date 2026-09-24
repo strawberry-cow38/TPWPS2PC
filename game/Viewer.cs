@@ -180,19 +180,9 @@ public partial class Viewer : Node3D
     /// `Create` -- and findings/visitors.md already records that the slot-name table is the
     /// ride's and "need not mean the same thing for a character". It does not mean the same
     /// thing for a feature either. Master corrected it in one line.</summary>
-    /// <summary>⚠ MASTER'S INSTRUCTION, NOT A DECODE: "the small toilet and small tree's
-    /// animations are baked backwards ... so reverse em when playing em."
-    ///
-    /// ⭐⭐ NO NAME MATCHING, because the data already identifies them. Exactly two feature
-    /// `.aps` on the whole disc carry a slot 1 -- `s_plant` and `Toilet`, master's two -- and
-    /// `RsePreviewHost` only ever selects slot 1 as the fallback for a create request nothing
-    /// else can answer. So "the slot-1 record, played as a create" IS those two assets.
-    ///
-    /// ⚠⚠ THE NAME VERSION WAS BROKEN IN BOTH DIRECTIONS and shipped anyway: it matched file
-    /// stems against DISPLAY names, so "Small Tree" never matched `s_plant` -- the tree was never
-    /// reversed at all -- while "Super Toilet" DID match "toilet" and should not have. Two bugs
-    /// that cancel to "looks half right", which is the worst way for a thing to be wrong.</summary>
-    static bool ReverseCreate(int slot) => slot == 1;
+    // ⚠ The backwards-create handling lived here. Retired: master checked the console and
+    // "in the real game that animation never plays", so there is nothing to reverse. See
+    // RsePreviewHost.PlayAnimation.
     /// <summary>The voices the scripted rides ask for; see <see cref="RideSounds"/>.</summary>
     RideSounds _sounds;
     /// <summary>`--sound-census=N`: run the park for N seconds in REAL frames rather than winding
@@ -2719,6 +2709,25 @@ public partial class Viewer : Node3D
                             entrance, exit, out string fault, sibling: Sibling, headSlots: headSlots,
                             definition: _place.Def, placementTurns: _place.Turns);
         if (ride == null) { GD.PrintErr($"[sim] {Leaf(assets.Name)} script would not start: {fault}"); return false; }
+        // ⭐⭐ THE CONSTRUCTION PUFF. Master: "we are missing a lot of particle effects. mainly
+        // the ones produced when something is built." `Tp2.plb` names them outright --
+        // **`79:Create1`, `80:Create2`, `81:Create3`, `82:Create4`**, with `Destroy1..4` and
+        // `Upgrade` beside them -- and a census of every `EVENT`/`ADDOBJ` particle request in
+        // every script on the disc shows **no script asks for any of them**. They are the game's
+        // to spawn, which is exactly why this port never showed one.
+        //
+        // ⚠⚠ THE SPAWNER IS NOT FOUND, AND THIS IS THEREFORE A PORT CHOICE. None of those ids
+        // appears as a literal near either effect entry point anywhere in the image, so the call
+        // computes or table-looks-up its id. What IS read is the SHAPE of the console's other
+        // size-varied effect family: `FUN_001B94B8` picks a ride scream by footprint -- 1, then
+        // under 4, then under 8, then larger -- so the four Create variants are chosen the same
+        // way here. ⚠ That parallel is a reading of a DIFFERENT function; it is the most
+        // grounded guess available, not the rule.
+        int cells = Math.Max(1, w * h);
+        int puff = cells == 1 ? 79 : cells < 4 ? 80 : cells < 8 ? 81 : 82;
+        if (_burst?.Emit(puff, Cell(ParkPaths.Centre(new ParkCell(cx, cy)))) is { } spark)
+            GD.Print($"[fx] {ride.Name}: built ({w}x{h}={cells} cells) -> Create{puff - 78} {spark.Name}");
+
         if (_place.Def?.CompiledEntry?.Kind == AssetResourceDatabase.AssetKind.Shop && ride.ServiceEntry == null)
             GD.PrintErr($"[guest] {ride.Name}: compiled entrance does not match placed footprint/stub; native approach unavailable");
         RegisterStandingService(ride, model.Root, _place.Turns);
@@ -2941,11 +2950,6 @@ public partial class Viewer : Node3D
             // script asks for slot 5 (`Main`) constantly and slot 0 (the build) once -- so the
             // name match alone turned its whole idle backwards. ⭐ The BUILD is the backwards
             // one; gate on the slot the fallback selected.
-            if (ReverseCreate(want))
-            {
-                var playing = anim.Records().FirstOrDefault(r => r.Slot == want);
-                if (playing is { DurationFrames: > 0 }) at = Math.Max(0f, playing.DurationFrames - at);
-            }
             model.SetFrame(at);
         }
     }

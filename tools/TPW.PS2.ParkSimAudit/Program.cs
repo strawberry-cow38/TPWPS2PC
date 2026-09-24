@@ -720,7 +720,9 @@ string Clips(SoundCatalogue.Resolved r) => string.Join("|", r.Clips.Select(c => 
 // argument selects a table INSIDE that function, so it is a category in some other numbering.
 // ⭐⭐ EVERY effect call in the guest code (0x209000..0x213000), found by censusing `jal` to the
 // two entry points and reading the `a2` immediate at each site. Eight, not the four first noticed.
-foreach (var (sfxId, sfxWhat) in new[] { (53, "0x20F0A0 lavatory relief -- THE CONTROL"),
+foreach (var (sfxId, sfxWhat) in new[] { (71, "0x1B94B8 build, footprint 1"), (72, "build, footprint <4"),
+                                         (73, "build, footprint <8"), (74, "build, footprint 8+"),
+                                         (53, "0x20F0A0 lavatory relief -- THE CONTROL"),
                                          (208, "0x20EAD8 shop visit complete"),
                                          (205, "0x20FA14 very unhappy"), (129, "0x2102D4 very happy"),
                                          (307, "0x20CA60"), (204, "0x20CFA4"),
@@ -760,6 +762,60 @@ foreach (var featEntry in wad.Entries
                         + (h == null ? "  (unresolved)"
                            : $"  sets {h.Sets} w0C {h.Word0C,5} flags 0x{h.Flags:x4}  {Clips(h)}"));
     }
+}
+
+// ⭐ WHAT IS IN A RIDE'S BUILD SECTION? A script runs from address 0; whatever it does before
+// its first LOOPANIM is the construction phase. Print that prefix for a couple of rides, so
+// "missing build particles" can be answered from what is actually there.
+foreach (var bs in wad.Entries.Where(e => e.Path.EndsWith(".rse", StringComparison.OrdinalIgnoreCase)
+                                       && e.Path.Contains("/Rides/", StringComparison.OrdinalIgnoreCase)).Take(2))
+{
+    RseProgram bp; try { bp = new RseProgram(wad.Read(bs)); } catch { continue; }
+    string leaf3 = System.IO.Path.GetFileNameWithoutExtension(bs.Path);
+    foreach (var ins4 in bp.Instructions.Take(18))
+        Console.WriteLine($"  build head: {leaf3,-12} {ins4.Address,4}: {ins4.Opcode} "
+                        + string.Join(" ", ins4.Operands.Select(o => o.Index)));
+}
+
+// ⭐⭐ WHICH PARTICLE EFFECTS DOES A SCRIPT ASK FOR, AND DOES THE LIBRARY ANSWER? Master: "we
+// are missing a lot of particle effects. mainly the ones produced when something is built."
+// Kinds 1 and 2 index the particle library, so "missing" is either an id the library has no
+// entry for, or an event the port never reaches. This separates those two.
+{
+    var wanted = new SortedDictionary<(int Kind, int Id), (int Count, string Name, HashSet<string> Files)>();
+    foreach (var pe in wad.Entries.Where(e => e.Path.EndsWith(".rse", StringComparison.OrdinalIgnoreCase)))
+    {
+        RseProgram pp; try { pp = new RseProgram(wad.Read(pe)); } catch { continue; }
+        foreach (var ins3 in pp.Instructions)
+        {
+            if (ins3.Opcode is not (RseOpcode.EVENT or RseOpcode.ADDOBJ)) continue;
+            var a3 = ins3.Operands.Select(o => o.Index).ToArray();
+            if (a3.Length < 3 || a3[0] is not (1 or 2)) continue;
+            var key = (a3[0], a3[2]);
+            if (!wanted.TryGetValue(key, out var cur))
+                cur = (0, fx?[a3[2]]?.Name ?? "", new HashSet<string>());
+            cur.Files.Add(System.IO.Path.GetFileNameWithoutExtension(pe.Path));
+            wanted[key] = (cur.Count + 1, cur.Name, cur.Files);
+        }
+    }
+    // ⭐⭐ WHAT DOES THE LIBRARY HOLD THAT NO SCRIPT ASKS FOR? If a construction puff exists, it
+    // is spawned by the GAME, not by a ride -- so it will be an effect with a name and no
+    // caller. That set is small enough to read.
+    if (fx != null)
+    {
+        var askedIds = wanted.Keys.Select(k => k.Id).ToHashSet();
+        var orphans = Enumerable.Range(0, fx.Effects.Count)
+            .Where(i2 => !askedIds.Contains(i2) && (fx[i2]?.Name.Length ?? 0) > 0)
+            .Select(i2 => $"{i2}:{fx[i2].Name}").ToArray();
+        Console.WriteLine($"  particles: library holds {fx.Effects.Count}; {orphans.Length} named effects no script asks for");
+        for (int c = 0; c < orphans.Length; c += 8)
+            Console.WriteLine("    particles: " + string.Join("  ", orphans.Skip(c).Take(8)));
+    }
+    int named = wanted.Count(k => k.Value.Name.Length > 0);
+    Console.WriteLine($"  particles: {wanted.Count} distinct (kind,id) asked for by scripts; {named} resolve in Tp2.plb");
+    foreach (var (k, v) in wanted.Where(k => k.Value.Name.Length == 0).Take(12))
+        Console.WriteLine($"    particles: kind {k.Kind} id {k.Id,3} x{v.Count,-3} NO LIBRARY ENTRY  ({string.Join(" ", v.Files.Take(4))})");
+    Check(fx != null, "the particle library loaded at all");
 }
 
 // ⭐⭐ WHAT WILL `ride.Name` ACTUALLY BE? The viewer names a placed ride from its .sam display
