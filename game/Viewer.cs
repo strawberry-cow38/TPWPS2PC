@@ -231,6 +231,9 @@ public partial class Viewer : Node3D
     Model _terrainModel;
     bool _pathTest;
     bool _ghostTest;
+    /// <summary>`--menu-test`: focus the first placed object and put its menu up, for a capture.</summary>
+    bool _menuTest;
+    bool _menuShown;
     bool _linkTest;
     bool _placeTest;
     bool _walkAudit;
@@ -306,6 +309,10 @@ public partial class Viewer : Node3D
     /// money display, which is what master said and was right about.</summary>
     TextureRect _money;
     FontText _hudFont;
+    /// <summary>The menu a selected object opens. ⚠ Built lazily: it needs both the HUD font and
+    /// UI.WAD's panel art, neither of which exists before a disc is open.</summary>
+    ObjectMenu _objMenu;
+    Control _uiRoot;
     string _moneyShown;
     Label _toolStatus;
     HSlider _scrub;
@@ -357,6 +364,7 @@ public partial class Viewer : Node3D
             else if (a.StartsWith("--mode=")) _wantMode = a["--mode=".Length..];
             else if (a == "--path-test") _pathTest = true;
             else if (a == "--ghost-test") _ghostTest = true;
+            else if (a == "--menu-test") _menuTest = true;
             else if (a == "--link-test") _linkTest = true;
             else if (a == "--place-test") { _buildTest = true; _placeTest = true; }
             else if (a == "--walk-audit") _walkAudit = true;
@@ -695,6 +703,7 @@ public partial class Viewer : Node3D
         _moneyShadow.SetAnchorsPreset(Control.LayoutPreset.TopLeft);
         ui.AddChild(_moneyShadow);
         ui.AddChild(_money);
+        _uiRoot = ui;
 
         // ⭐⭐ THE TOOL SAYS WHAT IT THINKS, ON SCREEN. Every refusal already printed a reason to
         // the console, which nobody playing the game can see -- so a click over the panel, or one
@@ -763,6 +772,20 @@ public partial class Viewer : Node3D
         // not a held key", but nothing enforced it: a held key repeats at the OS rate and every
         // repeat counted as another press. That is the other half of master's backwards rotation.
         if (e is not InputEventKey { Pressed: true, Echo: false } k) return;
+        // ⭐⭐ AN OPEN MENU EATS ITS KEYS. The console drives this with the d-pad and ✕, so up /
+        // down / confirm / cancel, and nothing else sees them while it is up -- otherwise the
+        // arrows would still be driving the camera behind the menu.
+        if (_objMenu is { Open: true })
+        {
+            switch (k.Keycode)
+            {
+                case Key.Up: _objMenu.Move(-1); return;
+                case Key.Down: _objMenu.Move(1); return;
+                case Key.Enter: case Key.KpEnter: case Key.Space: _objMenu.Confirm(); return;
+                case Key.Escape: _objMenu.Hide(); Status("menu closed"); return;
+            }
+            return;
+        }
         if (k.Keycode == Key.G)
         {
             _freeCam = !_freeCam;
@@ -5558,6 +5581,135 @@ public partial class Viewer : Node3D
     /// <summary>Take whatever the pointer is over as the SELECTION, and send the camera to it.
     /// Master: "wire up selecting with lmb, which focuses the camera on the selected thing."
     /// Returns true when something was taken.</summary>
+    /// <summary>Focus whatever is under the pointer and put its menu up. ⭐ Reuses
+    /// <see cref="SelectUnderCursor"/> so the right button focuses by exactly the same path the
+    /// left one does -- master asked for "focus an object like lmb does", and a second
+    /// implementation of that would be a second thing to keep in step.</summary>
+    bool OpenMenuUnderCursor(Vector2 at)
+    {
+        if (_objMenu == null || _mode != Mode.Park) return false;
+        UpdateHover();
+        // ⚠ The gate is selectable but owns none of these actions: it is not in `Park.Placed`,
+        // so there is nothing to delete and no queue to edit.
+        if (_hovered < 0 || _hovered == GateIndex) return false;
+        if (!SelectUnderCursor()) return false;
+        var entries = MenuEntriesFor(_selected).ToList();
+        _objMenu.Show(entries, at);
+        GD.Print($"[menu] {_park.Placed[_selected].Name}: {string.Join(" / ", entries)}");
+        Status($"{_park.Placed[_selected].Name} -- {string.Join(", ", entries)}");
+        return true;
+    }
+
+    /// <summary>What the menu offers for a placed object.
+    ///
+    /// ⭐ The captions are the game's own `STR_LISTBOX_*` strings, and Build/Edit Queue share ONE
+    /// handler on the disc (`0x124018`) -- the label changes with whether a queue exists, the
+    /// action does not. Delete is `0x123FB8`.
+    ///
+    /// ⚠ The real game picks its entries through a virtual on the selected object's class, and
+    /// that per-type filter is NOT yet decoded -- so this is the pair master asked for, not the
+    /// full native list. A ride with no queue reads "Build Queue" for the same reason.</summary>
+    IEnumerable<string> MenuEntriesFor(int placed)
+    {
+        yield return HasQueueNear(placed) ? "Edit Queue" : "Build Queue";
+        yield return "Delete";
+    }
+
+    /// <summary>Does a queue already touch this object's footprint? ⚠ Adjacency, not the native
+    /// ride/queue join: the game knows which queue belongs to which ride and this does not.</summary>
+    bool HasQueueNear(int placed)
+    {
+        if (_paths == null || placed < 0 || placed >= _park.Placed.Count) return false;
+        var p = _park.Placed[placed];
+        for (int y = p.Y - 1; y <= p.Y + p.Fp.Height; y++)
+            for (int x = p.X - 1; x <= p.X + p.Fp.Width; x++)
+                if (_paths.KindAt(x, y) == PathTool.Kind.Queue) return true;
+        return false;
+    }
+
+    /// <summary>The menu was used. ⚠ Only the captions are wired; the native handlers behind them
+    /// (`0x124018` / `0x123FB8`) are not ported, so Edit Queue opens OUR queue tool.</summary>
+    void OnObjectMenu(string caption)
+    {
+        switch (caption)
+        {
+            case "Edit Queue":
+            case "Build Queue":
+                ResumeQueue();
+                break;
+            case "Delete":
+                DeleteSelected();
+                break;
+        }
+    }
+
+    /// <summary>`--menu-test`: put the menu up on the first placed object so a capture can show
+    /// it. ⚠ Selects through the ordinary path so the shot is of the real thing.</summary>
+    void ShowTestMenu()
+    {
+        LoadHudFont();
+        if (_objMenu == null) { GD.PrintErr("[menu] --menu-test: no menu (font or UI.WAD art missing)"); _menuShown = true; return; }
+        if (_park == null || _park.Placed.Count == 0) return;   // wait for something to be placed
+        _menuShown = true;
+        _selected = 0;
+        ShowBoxFor(0);
+        var entries = MenuEntriesFor(0).ToList();
+        _objMenu.Show(entries, new Vector2(160, 150));
+        GD.Print($"[menu] --menu-test: {_park.Placed[0].Name} -> {string.Join(" / ", entries)}");
+    }
+
+    /// <summary>Open the queue tool ON the selected ride, continuing from where its queue was
+    /// left. ⭐ Master: "edit queue should start the queue at the stage it was at when it was
+    /// laid, same queue placing mechanics as laying it for the first time."
+    ///
+    /// ⭐⭐ So it is the SAME tool, not an editor: `OpenTool` with the ride as owner, and then the
+    /// run is seeded at the queue's free tip so the next press continues it. Setting `_runX/_runY`
+    /// is exactly the state `PressTool` leaves behind after a first click, which is why the
+    /// mechanics are identical rather than merely similar.</summary>
+    void ResumeQueue()
+    {
+        if (_selected < 0 || _selected >= _park.Placed.Count) return;
+        var ride = _park.Placed[_selected];
+        OpenTool(PathTool.Kind.Queue, ride.Id);
+        var tip = _paths?.QueueEnd(ride.Id);
+        if (tip is { } t)
+        {
+            _runX = t.X; _runY = t.Y;
+            _runStack.Add((t.X, t.Y));
+            _ghostAt = (-1, -1, -1, -1);
+            GD.Print($"[menu] queue for {ride.Name} resumes at ({t.X},{t.Y})");
+            Status($"queue continues from ({t.X},{t.Y}) -- click to lay");
+        }
+        else
+        {
+            // ⚠ No queue yet, so there is no tip to continue from: this is the first run, and the
+            // tool is already in exactly the state it would be for one.
+            GD.Print($"[menu] {ride.Name} has no queue yet -- starting one");
+            Status("click to start this ride's queue");
+        }
+    }
+
+    /// <summary>Delete the selected object. ⭐ Drops it from the park AND the simulation: a ride
+    /// left in `ParkSim` with no model is one guests keep walking to.</summary>
+    void DeleteSelected()
+    {
+        if (_selected < 0 || _selected >= _park.Placed.Count) { Status("nothing selected"); return; }
+        var p = _park.Placed[_selected];
+        string name = p.Name;
+        // ⭐⭐ THE QUEUE GOES WITH IT. Master: "deletes the ride including the queue. (but not
+        // exit paths + combo entry/exits)" -- ClearQueue takes Kind.Queue cells owned by this
+        // ride and leaves Path and Both alone, so the park's walkable network survives.
+        int queueCells = _paths?.ClearQueue(p.Id) ?? 0;
+        _sim?.Remove(p.Id);
+        if (!_park.Remove(p.Id)) { Status($"could not delete {name}"); return; }
+        if (queueCells > 0) RefreshFloor();
+        ClearSelection();
+        _shownBox = -1;
+        ShowBoxFor(-1);
+        GD.Print($"[menu] deleted {name} (id {p.Id}); {queueCells} queue cells with it");
+        Status(queueCells > 0 ? $"deleted {name} and its queue" : $"deleted {name}");
+    }
+
     bool SelectUnderCursor()
     {
         UpdateHover();
@@ -6559,6 +6711,9 @@ public partial class Viewer : Node3D
             // selected will get rid of its selected state. q/e wont." Read off the KEYS rather
             // than off the cursor having moved, because focusing the camera ON a selection moves
             // the cursor too and would otherwise drop it the instant it was made.
+            // ⭐ And the menu goes with it. Master: "the dialogue should close when you move like
+            // the selection box does" -- it belongs to the selection, so it cannot outlive it.
+            if ((fwd != 0 || side != 0) && _objMenu is { Open: true }) _objMenu.Hide();
             if ((fwd != 0 || side != 0) && (_selected >= 0 || _gateSelected)) ClearSelection();
             _game.CursorX += (int)((fwd * s - side * c) * pan);
             _game.CursorZ += (int)((fwd * c + side * s) * pan);
@@ -7141,6 +7296,16 @@ public partial class Viewer : Node3D
             var bff = _lib?.ReadGeneric("/Fonts/European/Large.bff");
             if (bff != null) { _hudFont = new FontText(new BitmapFont(bff)); GD.Print($"[hud] Large.bff (font index {MoneyFontIndex}) loaded for the money readout"); }
             else GD.PrintErr("[hud] /Fonts/European/Large.bff not found -- money readout stays hidden");
+            if (_hudFont != null && _objMenu == null && _uiRoot != null)
+            {
+                _objMenu = ObjectMenu.Create(_lib, _hudFont);
+                if (_objMenu != null)
+                {
+                    _uiRoot.AddChild(_objMenu);
+                    _objMenu.Activated += OnObjectMenu;
+                    GD.Print("[menu] object menu ready (UI.WAD panel art + Large.bff)");
+                }
+            }
         }
         catch (Exception e) { GD.PrintErr($"[hud] Large.bff would not load: {e.Message}"); }
     }
@@ -7301,6 +7466,9 @@ public partial class Viewer : Node3D
         if (_ghostTest && !_pickChecked && _mode == Mode.Park) CheckMousePicking();
         if (_animTest && !_animChecked && _mode == Mode.Park) CheckParkAnimation();
         if (_buildTest && !_buildChecked && _mode == Mode.Park) { if (_placeTest) CheckPlacement(); else CheckBuildMenu(); }
+        // ⚠ PER FRAME, not at park load: the menu needs something PLACED, and placement happens
+        // after the park is built. Hooked here with the other capture tests for that reason.
+        if (_menuTest && !_menuShown && _mode == Mode.Park) ShowTestMenu();
         _weather.Follow(_cam.GlobalPosition);
         if (_weatherWanted is { } wk)
         {
@@ -7390,6 +7558,11 @@ public partial class Viewer : Node3D
     {
         if (e is InputEventMouseMotion mm)
         {
+            // ⭐ The highlight follows the POINTER while the menu is up -- master: "the blue text
+            // should be the currently hovered option. else: black." Pointing off the rows leaves
+            // the last one lit rather than clearing it, so the highlight never flickers to
+            // nothing while the mouse crosses the frame.
+            if (_objMenu is { Open: true }) _objMenu.HoverAt(mm.Position);
             bool lDown = (mm.ButtonMask & MouseButtonMask.Left) != 0;
             bool rDown = (mm.ButtonMask & MouseButtonMask.Right) != 0;
             bool mDown = (mm.ButtonMask & MouseButtonMask.Middle) != 0;
@@ -7467,7 +7640,12 @@ public partial class Viewer : Node3D
                         // ⭐ LEFT OPENS AND WORKS IT, RIGHT ONLY SHUTS IT. Master's layout: the
                         // button you build with is the button you reach for, and the other one
                         // gets you out.
-                        if (mb.ButtonIndex == MouseButton.Right && _place.Active)
+                        // ⭐ Left click confirms the highlighted row, the way ✕ does on the pad.
+                        if (mb.ButtonIndex == MouseButton.Left && _objMenu is { Open: true })
+                        {
+                            _objMenu.Confirm();
+                        }
+                        else if (mb.ButtonIndex == MouseButton.Right && _place.Active)
                         {
                             // ⭐ The right button puts the blueprint down before it touches the
                             // path tool: holding something and reaching for cancel means cancel
@@ -7485,6 +7663,19 @@ public partial class Viewer : Node3D
                             // close below -- master: "up until the single tile sticking out, then
                             // it becomes close tool".
                         }
+                        // ⭐⭐ AN OPEN MENU TAKES THE CANCEL FIRST. Same bargain the held
+                        // blueprint already makes: reaching for cancel means cancel THAT.
+                        else if (mb.ButtonIndex == MouseButton.Right && _objMenu is { Open: true })
+                        {
+                            _objMenu.Hide();
+                            Status("menu closed");
+                        }
+                        // ⭐⭐ RIGHT CLICK FOCUSES AND OPENS THE MENU. Master: "rmb should focus
+                        // an object like lmb does. it should open the edit queue/delete menu."
+                        // ⚠ Only when something is actually under the pointer -- otherwise the
+                        // button keeps its old job of opening and closing the path tool, which is
+                        // how you reach the tool while pointing at empty ground.
+                        else if (mb.ButtonIndex == MouseButton.Right && OpenMenuUnderCursor(mb.Position)) { }
                         else if (mb.ButtonIndex == MouseButton.Right)
                         {
                             // ⭐ Right toggles, and it opens WITHOUT the under-the-cursor test
