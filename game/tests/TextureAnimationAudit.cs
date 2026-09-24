@@ -113,11 +113,77 @@ public partial class TextureAnimationAudit : Node
             for (int i = 0; i < at0.Length; i++) drift = Mathf.Max(drift, at0[i].DistanceTo(at75[i]));
             if (drift > 0.002f) throw new Exception($"coconut UVs do not close the loop at frame 75 (drift {drift:F4})");
 
+            // ⭐⭐ THE FOUNTAIN, WHICH IS THE SURFACE MASTER ACTUALLY REPORTED: "i dont see the
+            // animation on the fountain?". Its water matches no texture-name rule -- that was the
+            // bug -- so the only thing that can move it is its own 0x10000 track. Checking the
+            // Coconut alone would have left the reported case unverified in a running engine.
+            //
+            // ⚠ It is a SECOND model with a DIFFERENT record length (50 frames against 75) and a
+            // track carrying VertexMorph alongside the UV channel on wf_fall, so it exercises the
+            // path the Coconut cannot.
+            float fountain = MovesInEngine(lib, "Features/Fountain/fountain", "wf_water", 20f);
+            if (fountain < 0.01f)
+                throw new Exception($"the fountain's water did not move by frame 20 (max {fountain:F4})");
+            _checks++;
+
+            // ⚠⚠ AND wf_fall SEPARATELY, because it is the TWO-CHANNEL case and wf_water is not.
+            // wf_fall's track is 0x11000: VertexMorph AND the UV channel on the same track. Its
+            // positions come from the morph header at +0x20 and its UVs from the payload at +0x24,
+            // and nothing had ever run both on one part. Claiming wf_water covered this was wrong
+            // -- that track is 0x10000 alone.
+            float falls = MovesInEngine(lib, "Features/Fountain/fountain", "wf_fall", 20f);
+            if (falls < 0.01f)
+                throw new Exception($"the fountain's falls did not move by frame 20 (max {falls:F4})");
+            _checks++;
+
             GD.Print($"SCROLLING TEXTURE PASS: clock round-trips; coconut UVs move {moved:F3} by frame 20 "
-                   + $"and close to {drift:F4} at frame 75, key-driven with no shader spin");
+                   + $"and close to {drift:F4} at frame 75, key-driven with no shader spin; "
+                   + $"fountain water moves {fountain:F3} and its falls {falls:F3} (morph+UV on one track)");
             _checks += 3;
         }
         finally { built.Root.Free(); probe.Dispose(); }
+    }
+
+    /// <summary>Build a model's `Main` record and answer how far the named mesh's UVs travel by
+    /// the given frame. ⭐ Reads the MESH, not a shader uniform: a uniform proves a value was set,
+    /// not that anything drawn with it moved.</summary>
+    static float MovesInEngine(AssetLibrary lib, string stem, string meshName, float frame)
+    {
+        var me = lib.Wad.Entries.First(e => e.Path.Contains(stem, StringComparison.OrdinalIgnoreCase)
+            && e.Path.EndsWith(".mps", StringComparison.OrdinalIgnoreCase));
+        var ae = lib.Wad.Entries.First(e => e.Path.Contains(stem, StringComparison.OrdinalIgnoreCase)
+            && e.Path.EndsWith(".aps", StringComparison.OrdinalIgnoreCase));
+        var model = new Model(lib.Read(me));
+        var anim = new Aps(lib.Read(ae));
+        var main = anim.Records().First(r => r.Slot == 5);
+        var built = new AnimatedModel(model, anim, main, n =>
+        {
+            var img = lib.TextureNear(me.Path, n);
+            return (img == null ? null : ImageTexture.CreateFromImage(
+                Image.CreateFromData(img.Width, img.Height, false, Image.Format.Rgba8, img.Pixels)), false);
+        });
+        try
+        {
+            int material = -1;
+            foreach (var (mesh, mat, _) in built.Surfaces())
+                if (string.Equals(mesh, meshName, StringComparison.OrdinalIgnoreCase)) { material = mat; break; }
+            if (material < 0) throw new Exception($"{stem}: no surface on mesh '{meshName}'");
+            Godot.Vector2[] Uv()
+            {
+                var node = built.SurfaceFor(meshName, material);
+                var arr = (Godot.Collections.Array)((ArrayMesh)node.Mesh).SurfaceGetArrays(0);
+                return (Godot.Vector2[])arr[(int)Mesh.ArrayType.TexUV];
+            }
+            built.SetFrame(0f);
+            var at0 = (Godot.Vector2[])Uv().Clone();
+            built.SetFrame(frame);
+            var later = Uv();
+            float moved = 0f;
+            for (int i = 0; i < at0.Length && i < later.Length; i++)
+                moved = Mathf.Max(moved, at0[i].DistanceTo(later[i]));
+            return moved;
+        }
+        finally { built.Root.Free(); }
     }
 
     void Run(AssetLibrary lib, string world, string path, int slot, int count, int interval, Func<int, string> name)
