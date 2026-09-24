@@ -520,3 +520,43 @@ the setting that enables them.
 
 ⚠ What is still not proven: that no OTHER route writes the array, and that nothing applies an
 authored default after the memset. Neither was seen; neither was exhaustively searched for.
+
+
+## ⚠ Timing: what the chain says so far, and where it stops
+
+The order a graph plays in is read (`FUN_0024C1F0`). **When** each clip starts is not, and this
+records how far the chain goes rather than leaving the question shapeless.
+
+```
+FUN_0024C3D0(instance, paramId)                 set a parameter, then maybe advance
+    FUN_002462A0(instance, paramId, value)      4 slots at instance[+0x60]: id at +0, value at +4
+    if (instance[+0x40] & 0x40)                 <- the IDLE flag
+       && *(byte *)(instance[+0x60] + 4) != 0x7f
+       && vtable[+0x74](instance, 1) != 0       -> FUN_0024C590 -> FUN_0024C1F0, the chooser
+       && instance[+0x0C] != 0
+    {
+        instance[+0x10] = FUN_00245A88(instance, 1);   // START the next clip
+        instance[+0x40] &= ~0x40;                      // no longer idle
+    }
+```
+
+⭐ Three things that follow, and they are real:
+
+1. **The advance is gated on an IDLE flag.** The next clip is started only when `+0x40 & 0x40` is
+   up, and starting it clears the flag. Nothing here starts a clip while that flag is down.
+2. **A parameter write can advance the machine immediately** -- `FUN_0024C3D0` sets the parameter
+   and then tries the transition in the same call. So changing a scream's level does not merely
+   affect the next natural transition; if the instance is idle it moves at once.
+3. **`0x7f` in the parameter slot is a stop sentinel.** `FUN_0024C1F0`'s no-match branch writes it
+   and raises the idle flag together, and this guard then refuses to advance. That is how a loop
+   stays ended instead of retrying every tick.
+
+⚠⚠ **WHAT IS STILL UNREAD, and it is the actual question:** what raises `+0x40 & 0x40` on a
+*natural* clip end. Within this family only the no-match branch sets it (`0x24C3B4`, inside
+`FUN_0024C1F0`); the other setter in the audio region is `0x24F694`, a second transition
+implementation not followed here. So the end-of-clip signal comes from the voice/mixer layer.
+
+⭐ The structure is evidence AGAINST overlap -- a clip is started when the instance is idle, not
+alongside a sounding one -- but that is an argument from the gate, not a reading of the mixer. If
+the flag is raised early, at a lead-out rather than at silence, clips WOULD overlap and this chain
+would look identical. **Do not call it either way until `0x24F694` or the voice layer is read.**
