@@ -247,3 +247,98 @@ false. No evidence remains pending until the 0.5-second diagnostic window; that 
 is port instrumentation policy, not a decoded console constant. World reset stops old
 voices, releases the world-specific catalogue manager and clears old particle instances
 while retaining their global library holder. Dummy observations do not replace listening.
+
+## ⭐⭐ The sound-parameter call contract (`FUN_00111D40`), and why "parameter 20" has no engine-side answer
+
+Traced 2026-09-24 after astraclaw found the bus state handler setting a parameter on a live sound
+handle. **The parameter is still unnamed, deliberately** — see §"what this does NOT establish".
+
+### The chain, end to end (READ)
+
+```
+FUN_00111D40(audio, handle, selector, value)          a thin forwarder
+    audio  = *DAT_002ABE18 -> word 0 of a 5-word struct = the sound object
+    -> vtable 0x3706C8, slot +0x44 = FUN_002413E0(audio, handle, selector, value)
+         if handle == 0            -> 0        (nothing)
+         if selector == 0          -> handle   (no-op; selector 0 is not a parameter)
+         if (handle & DAT_00342EDC) == 0   -> FUN_00244568  (a SINGLE voice)
+              -> FUN_00247920 -> vtable slot +0x64 of the voice, called (selector, value)
+         else                              (a COMPOSITE/GROUP handle)
+              index  = handle & ~DAT_00342EDC, bounds-checked against audio[0xD4]
+              member = audio[0xD0][index]
+              slot   = FUN_00243840(paramTable, selector)
+              member[0x39][slot] = value ;  FUN_00242138(paramTable, member)
+```
+
+⚠⚠ **Ghidra's signature for `FUN_00111D40` is WRONG and will mislead anyone who trusts it.** It
+renders as `(int *, undefined8, undefined1)` — three parameters, no selector — because it types the
+handle as 64-bit and swallows `a2`/`a3`. The call sites disagree, and so does a wrapper:
+
+```
+0x147BD4  lw    a1,0x73A0(s1)     ; handle          FUN_00111E08(x, v)
+0x147BDC  addiu a2,zero,20        ; selector          -> FUN_00111D40(x, DAT_002AC178, 2, v)
+0x147BE0  jal   0x111D40
+0x147BE4  daddu a3,zero,zero      ; value
+```
+
+Two independent witnesses to four arguments. The same collapse affects `FUN_00244568` and
+`FUN_00247920` further down the chain.
+
+### ⭐⭐ A selector is an id in the SOUND'S OWN table, not an engine property
+
+`FUN_00243840(table, selector)` is a **linear search**: a count at `table+0x1C`, an array at
+`table+0x20` of **five-word records**, matching `record[0] == selector`, returning the record's
+index. The value is then written into the instance's own array (`member[0x39]`) at that index.
+
+So there is no engine-side `switch (selector)` anywhere, and looking for one is the wrong search.
+**What a selector means is defined by the parameter table belonging to the sound being played** —
+for the bus, the sound created as group 1, event 6. That is also why the selector space is sparse
+and uneven rather than a dense enum.
+
+### The selector space, censused (READ)
+
+All 49 call sites of `FUN_00111D40`, grouped by the `a2` selector, with the values each passes:
+
+| selector | sites | values seen |
+|---|---|---|
+| 2 | 1 | not immediate |
+| 4 | 3 | not immediate |
+| 6 | 7 | 0 |
+| 7 | 13 | 0, 20, 60 |
+| 8 | 5 | 0 |
+| 9 | 1 | 0 |
+| 10 | 1 | 100 |
+| **20** | **4** | **0, 51** |
+| 22 | 4 | not immediate |
+| 23 | 2 | 100 |
+
+⭐ **All four selector-20 sites are `0x147980`, `0x147BE0`, `0x147C28`, `0x147C90` — every one inside
+the bus handler.** Nothing else in the image uses it, so there is no sibling caller to learn from.
+
+### Where the object comes from
+
+`FUN_00110A78` builds it: `new(0x14)` → `FUN_00110A20` (which only zeroes five words — **no vtable**,
+so `DAT_002ABE18` is a plain struct, not a polymorphic object) → stored in `DAT_002ABE18`. Word 0 is
+then filled by `FUN_00110B60` → `FUN_0023FBA0` → `new(0xE0)` → `FUN_0023FC30`, and it is
+`FUN_0023FC30` that writes `*obj = &DAT_003706C8`, the vtable above. `FUN_00230260("DisableSound")`
+gates the whole of `FUN_00110B60`.
+
+⚠ Two red herrings in this area, both `0x14`: the object's allocation size is `0x14` bytes and the
+parameter records are `0x14` bytes. Neither has anything to do with selector 20.
+
+### What this does NOT establish
+
+- **What selector 20 controls.** It resolves through a runtime table, and the value pair `{0, 51}`
+  is not evidence of a meaning. It stays unnamed until the bus sound's own parameter table is read.
+- **That the table is absent from the executable.** A 20-byte-stride search for a static table whose
+  word 0 carries those ids found nothing — ⚠ **but the same search with a decoy id set also found
+  nothing, so it discriminates nothing and proves nothing.** The table is most likely built at
+  runtime from the sound data; that is a expectation, not a reading.
+- **The single-voice path.** Only the composite path was read to the parameter array. The single
+  path ends at vtable slot `+0x64` of the voice object, which was not followed.
+- ⚠ A previous version of this trace reported that `DAT_002ABE18` "is never written anywhere in the
+  image". **That was false, and it was an instrument defect**: the cross-reference sweep cleared
+  every register on `jal`, which throws away a `lui` held in a saved register across a call — the
+  exact shape a constructor uses. With caller-saved registers alone cleared, three stores appear at
+  `0x110AAC`, `0x110B14` and `0x110B20`. astraclaw called for a control before the negative was
+  believed and was right to. A negative from a sweep is a claim about the sweep until it is.
