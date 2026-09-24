@@ -138,8 +138,13 @@ static class CompiledShopPurchaseChecks
             // the same x10 units the guest is charged in.
             var shopRecord = a.Compiled ?? throw new InvalidDataException("named shop lost its compiled record");
             int margin = (named.Price - shopRecord.BaseCostOfGoods) * 10;
-            Check(bought.Visitors.Sim.Finances.Balance == margin,
-                  $"{region} the park earns the MARGIN, not the price ({bought.Visitors.Sim.Finances.Balance} for a {named.Price} sale on a {shopRecord.BaseCostOfGoods} base)");
+            // ⚠ A DELTA, not the absolute. The park now opens at ParkFinances.OpeningBalance,
+            // and asserting the total made this a test of the starting figure as much as of the
+            // credit -- it failed the moment that figure stopped being zero, which is the tell
+            // that it was measuring the wrong thing.
+            int earned = bought.Visitors.Sim.Finances.Balance - ParkFinances.OpeningBalance;
+            Check(earned == margin,
+                  $"{region} the park earns the MARGIN, not the price ({earned} for a {named.Price} sale on a {shopRecord.BaseCostOfGoods} base)");
             // ⚠ THE CONTROL THAT STOPS THIS BEING A TAUTOLOGY: the guest's x10 debit and the
             // park's x10 credit are read from different functions, and if they had been read in
             // different units this would be the line that noticed. The park must earn strictly

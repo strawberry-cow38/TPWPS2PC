@@ -301,7 +301,12 @@ public partial class Viewer : Node3D
     /// <summary>The terrain file the park tab asked for, or null for the first one.</summary>
     string _wantTerrain;
     Label _info;
-    Label _money;
+    /// <summary>⚠ A TEXTURE, NOT A LABEL. The money is composed from the game's own BFF glyphs --
+    /// see <see cref="FontText"/> -- because "a counter in Godot's default font" is not the
+    /// money display, which is what master said and was right about.</summary>
+    TextureRect _money;
+    FontText _hudFont;
+    string _moneyShown;
     Label _toolStatus;
     HSlider _scrub;
 
@@ -676,13 +681,19 @@ public partial class Viewer : Node3D
         // ⭐⭐ THE PARK'S MONEY, ON SCREEN. Master: "wire up the money ui from the game code."
         // ⚠ Anchored top-CENTRE on purpose: the left panel and the right build panel both reach
         // the top edge, so either corner would sit under a widget the moment a tab is open.
-        _money = new Label { MouseFilter = Control.MouseFilterEnum.Ignore, Visible = false,
-                             HorizontalAlignment = HorizontalAlignment.Center };
-        _money.SetAnchorsPreset(Control.LayoutPreset.CenterTop);
-        _money.OffsetLeft = -140; _money.OffsetRight = 140; _money.OffsetTop = 8;
-        _money.AddThemeFontSizeOverride("font_size", 28);
-        _money.AddThemeColorOverride("font_outline_color", new Color(0, 0, 0));
-        _money.AddThemeConstantOverride("outline_size", 8);
+        // ⭐ Top-LEFT, at the console's own (38, 50) scaled from its 512-wide UI space -- not
+        // the top-centre this file invented. Size follows the texture.
+        _money = new TextureRect { MouseFilter = Control.MouseFilterEnum.Ignore, Visible = false,
+                                   StretchMode = TextureRect.StretchModeEnum.Keep,
+                                   TextureFilter = CanvasItem.TextureFilterEnum.Nearest };
+        _money.SetAnchorsPreset(Control.LayoutPreset.TopLeft);
+        // ⚠ Added BEFORE the text so it draws behind it.
+        _moneyShadow = new TextureRect { MouseFilter = Control.MouseFilterEnum.Ignore, Visible = false,
+                                         StretchMode = TextureRect.StretchModeEnum.Keep,
+                                         TextureFilter = CanvasItem.TextureFilterEnum.Nearest,
+                                         Modulate = MoneyShadowTint };
+        _moneyShadow.SetAnchorsPreset(Control.LayoutPreset.TopLeft);
+        ui.AddChild(_moneyShadow);
         ui.AddChild(_money);
 
         // ⭐⭐ THE TOOL SAYS WHAT IT THINKS, ON SCREEN. Every refusal already printed a reason to
@@ -2708,6 +2719,36 @@ public partial class Viewer : Node3D
                 x => x.Path.Equals(dir + child, StringComparison.OrdinalIgnoreCase));
             return e == null ? null : _lib.Read(e);
         }
+        // ⭐⭐ IT COSTS MONEY. Master: "now wire up placement costs for everything."
+        // `FUN_0012BC10` reads the cost by family -- `record[0x50]` for the tiered kinds,
+        // `record[0x20]` for the rest -- and `FUN_00126408` charges `cost * 10` through the
+        // park debit, then plays effect **31**.
+        //
+        // ⭐ REFUSED BEFORE PLACING, not charged afterwards: `FUN_00197F48` is the build UI's own
+        // guard and it tests `balance - cost * 10 < 0` and plays **175** (`the cannot-afford
+        // cue`) rather than letting the placement through. The debit itself also refuses, so a
+        // park cannot be driven negative by building.
+        //
+        // ⚠ A definition that never joined a compiled record has NO cost rather than a free one,
+        // so it is placed without charge and says so -- silently giving away unjoined assets is
+        // how a missing join turns into a gameplay exploit nobody traces back.
+        int? price = _place.Def?.PlacementCost;
+        if (price is { } due)
+        {
+            if (!_sim.Finances.Debit(due))
+            {
+                GD.Print($"[money] {Leaf(assets.Name)} costs {Money.Format(due)} and the park holds "
+                       + $"{Money.Format(_sim.Finances.Balance)} -- refused");
+                Status($"{_place.Display ?? Leaf(assets.Name)} costs {Money.Format(due)} -- not enough money");
+                _sounds?.Cue(0, "build", _parkTicks * ParkSim.TickMilliseconds, RseOpcode.EVENT,
+                             UiSoundGroup, -1, CannotAffordSound, 0, Cell(ParkPaths.Centre(new ParkCell(cx, cy))));
+                return false;
+            }
+            GD.Print($"[money] {Leaf(assets.Name)} cost {Money.Format(due)}; the park holds {Money.Format(_sim.Finances.Balance)}");
+            _sounds?.Cue(0, "build", _parkTicks * ParkSim.TickMilliseconds, RseOpcode.EVENT,
+                         UiSoundGroup, -1, PurchaseSound, 0, Cell(ParkPaths.Centre(new ParkCell(cx, cy))));
+        }
+        else GD.Print($"[money] {Leaf(assets.Name)} has no compiled record, so no placement cost is known -- placed free");
         var ride = _sim.Add(id, _place.Display ?? Leaf(assets.Name), new ParkCell(cx, cy), w, h,
                             _lib.Read(assets.Script), anim, _place.Def?.UpgradeCapacity(0) ?? 1,
                             entrance, exit, out string fault, sibling: Sibling, headSlots: headSlots,
@@ -6869,19 +6910,143 @@ public partial class Viewer : Node3D
     /// ⚠⚠ AND IT READS THE LIVE BALANCE EVERY FRAME rather than keeping one of its own. A UI
     /// copy of a number the sim owns is a second source of truth that drifts silently the first
     /// time something credits the park without telling the UI.</summary>
+    /// <summary>⭐⭐⭐ THE MONEY HUD, READ WHOLE FROM `FUN_0013DCB8`. Master: "get all the
+    /// constants and everything. only then is it done." These are all of them:
+    ///
+    /// <code>
+    ///   balance = FUN_00100688(park) / 10;                   // the units, in the HUD itself
+    ///   if (balance &lt; 1) FUN_001388E8(t, 200, 0x82, 0);      // amber when broke
+    ///   else             FUN_001388E8(t, 0xff, 0xff, 0);     // yellow otherwise
+    ///   FUN_0020B258(ctx, 2, 2);                             // DROP SHADOW at +2,+2
+    ///   FUN_0020A958(ctx, 1);                                // font index 1
+    ///   FUN_00142908(buf, balance);                          // "-$1,234"
+    ///   FUN_00138798(t, buf, 0x26, 0x32, 10, 1);             // x 38, y 50
+    /// </code>
+    ///
+    /// ⭐ **The font is `Large.bff`.** `FUN_0020A958` walks the three loaded records and picks
+    /// the one whose stored index matches its argument, and `FUN_0020BA28` loads them as
+    /// Small=0, **Large=1**, Console=2. This port had `Console.bff` -- the wrong face -- chosen
+    /// because it sounded like a HUD font.
+    ///
+    /// ⭐ The colour is RGB with alpha 255 (`FUN_0020A900(..., 0xff)`), so `(255,255,0)` yellow
+    /// and `(200,130,0)` amber. The `10` in the draw call is a palette slot the RGB path
+    /// overrides; it is carried rather than interpreted.
+    ///
+    /// ⚠ THE ONE NUMBER STILL NOT READ is the console's UI width that `x=38` is measured in.
+    /// 512 is the usual PS2 text space and the other constants sit inside it (the slide-in runs
+    /// from -80 and latches at 45), but no line has been traced that states it. Everything else
+    /// on this screen is the game's.
+    ///
+    /// ⚠ There is a second, ANIMATED placement (`DAT_002E9900 != 0`): x starts at `DAT_002B62F0`
+    /// = **-80**, y = **69**, advances by `DAT_002B62F8` each frame and latches at `0x2D` = 45.
+    /// A slide-in. Not ported: what sets that flag is unread, and an animation on the wrong
+    /// trigger is worse than the static placement the other branch uses.</summary>
+    /// ⭐⭐ MASTER'S RULE FOR CARRYING CONSOLE COORDINATES OVER: "its definitely scaled and
+    /// positioned for the resolution of the console. measure in percentages of screen real
+    /// estate and the consoles resolution, and apply it dynamically for our window."
+    /// So x, y and the glyph scale are all expressed as FRACTIONS of the console's own frame and
+    /// multiplied back out by this viewport -- which keeps the readout in the same place and the
+    /// same relative size at any window size, instead of drifting as the window grows.
+    /// ⭐⭐⭐ AND THE FRAME IS READ NOW -- it was the last thing here marked as a guess, and
+    /// master's standard was "get all the constants". `FUN_002137C0`, the glyph blit, converts
+    /// the pen straight to normalised device coordinates:
+    ///
+    /// <code>
+    ///   x_ndc = x * 0.00390625 - 1.0;     // 0.00390625 = 1/256
+    ///   y_ndc = 1.0 - y * 0.00390625;
+    /// </code>
+    ///
+    /// x = 0 gives -1 and x = **512** gives +1; y = 0 gives +1 and y = **512** gives -1. So the
+    /// text space is **512 x 512**, on both axes. ⚠ This file had 512 x **448** -- the usual PS2
+    /// display height, reasoned to rather than read -- which left every y 14% short and the
+    /// glyphs 14% small. "Position looks perfect" was true enough at y = 50 to hide a six-pixel
+    /// error, which is exactly how a guessed constant survives a playtest.</summary>
+    /// ⚠⚠ `FUN_0020B258(ctx, 2, 2)` IS NOT A SCALE, which this file called it and master saw
+    /// at once: "the position is perfect. i think our scale is off tho." It sets three fields,
+    /// and `FUN_0020ACF8` shows what they are --
+    /// `if (ctx[5] != 0) draw(glyph, x + ctx[0], y + ctx[1], colour + 8)` -- so `ctx[5] = 1`
+    /// turns a DROP SHADOW on and `ctx[0]`/`ctx[1]` are its offset. The text itself is drawn at
+    /// **1:1**; two fields holding 2 looked like a scale and were an offset.
+    /// ⭐ Position being right while size was wrong is exactly the shape that says the FRAME is
+    /// correct and one constant inside it is not -- which is why that report was so useful.
+    /// <summary>`FUN_00126408` plays 31 on a purchase; `FUN_00197F48` plays 175 when the park
+    /// cannot afford what is being placed.
+    /// ⭐⭐ BOTH ARE **GROUP 9, `GlobalUi`** -- not the guests' group 6 -- and the clips say so
+    /// themselves: 31 is `BUTTON01.vag` and 175 is **`blnl_error1.vag`**, a file with "error" in
+    /// its name. ⚠ The first wiring passed group 6 out of habit, which would have resolved to
+    /// whatever the kids' map happens to hold at those ids. A sound's GROUP is part of its
+    /// address, not a default.</summary>
+    const int PurchaseSound = 31, CannotAffordSound = 175, UiSoundGroup = 9;
+
+    const int MoneyX = 0x26, MoneyY = 0x32, MoneyShadow = 2, MoneyFontIndex = 1;
+    const float ConsoleUiWidth = 512f, ConsoleUiHeight = 512f;
+    static readonly Color MoneyNormal = new(1f, 1f, 0f), MoneyBroke = new(200 / 255f, 130 / 255f, 0f);
+    /// ⚠ The shadow is drawn in palette slot `colour + 8`, and what that slot holds is not read.
+    /// Black at half alpha is a shadow's usual job; marked rather than claimed.
+    static readonly Color MoneyShadowTint = new(0f, 0f, 0f, 0.55f);
+    TextureRect _moneyShadow;
+
+    /// <summary>⚠ ONCE, and it remembers a failure so a missing font does not retry every frame
+    /// for the life of the session.</summary>
+    bool _hudFontTried;
+    void LoadHudFont()
+    {
+        if (_hudFontTried) return;
+        _hudFontTried = true;
+        try
+        {
+            var bff = _lib?.ReadGeneric("/Fonts/European/Large.bff");
+            if (bff != null) { _hudFont = new FontText(new BitmapFont(bff)); GD.Print($"[hud] Large.bff (font index {MoneyFontIndex}) loaded for the money readout"); }
+            else GD.PrintErr("[hud] /Fonts/European/Large.bff not found -- money readout stays hidden");
+        }
+        catch (Exception e) { GD.PrintErr($"[hud] Large.bff would not load: {e.Message}"); }
+    }
+
     void ShowMoney()
     {
         if (_money == null) return;
+        // ⭐ ALWAYS ON, master's rule -- "money should always be visible". A park that has not
+        // opened yet reads $0 rather than vanishing, because a missing readout looks like a
+        // broken one.
+        // ⭐ LOADED ON DEMAND, so the readout appears with the park rather than waiting for the
+        // first shop. Master: "it still needs me to build a shop before it shows." The font was
+        // being loaded inside the block that first creates the visitor coordinator, which does
+        // not run until the gate opens.
+        if (_hudFont == null && _lib != null && _mode == Mode.Park) LoadHudFont();
+        // ⭐⭐ THE PARK HAS MONEY BEFORE IT HAS A SHOP. Master: "the 30k doesn't 'apply' until u
+        // place a shop. ur probably not initializing the money system until we get a shop." They
+        // were right: `_sim` is created lazily by `StartScript`, so until something was placed
+        // there was no `ParkFinances` at all and the readout fell back to its own $0.
+        //
+        // ⚠ Created here rather than moving `StartScript`'s line, because the sim is what OWNS
+        // the finances and it is cheap and empty until a ride joins it -- `WalkGrid` is already
+        // memoised and shares the terrain's own cell array, so this allocates nothing new.
+        if (_sim == null && _mode == Mode.Park && WalkGrid() is { } grid) _sim = new ParkSim(grid);
         var bank = _sim?.Finances;
-        _money.Visible = bank != null;
-        if (bank == null) return;
+        _money.Visible = _moneyShadow.Visible = _hudFont != null && _mode == Mode.Park;
+        if (_hudFont == null) return;
         // ⚠ Integer division toward zero, and the sign carried explicitly: the console's own
         // rounding of a negative balance has not been read, and -5 tenths reading as "0" with no
         // minus would hide an overdraft.
-        int shown = bank.Balance / 10;
-        _money.Text = (bank.Balance < 0 ? "-" : "") + Math.Abs(shown).ToString("N0");
-        _money.AddThemeColorOverride("font_color",
-            bank.Balance < 0 ? new Color(1f, 0.45f, 0.45f) : new Color(1f, 0.95f, 0.6f));
+        // ⭐ `Money.Format` is `FUN_00142908`/`FUN_00142B68`: the sign, then '$', then the digits
+        // with commas every three -- and the /10 the finance screen applies to every figure.
+        // ⚠ The fallback is the OPENING balance, not zero: a park whose sim has not been built
+        // yet has not spent anything, and showing $0 made a full park look bankrupt.
+        string want = Money.Format(bank?.Balance ?? ParkFinances.OpeningBalance);
+        if (want != _moneyShown) { _moneyShown = want; _money.Texture = _moneyShadow.Texture = _hudFont.Render(want); }
+        // ⭐ The console's own test is on the DIVIDED figure, and it is `< 1` -- not `< 0`, so a
+        // park holding less than one unit is already showing the warning colour.
+        _money.Modulate = (bank?.Balance ?? ParkFinances.OpeningBalance) / 10 < 1 ? MoneyBroke : MoneyNormal;
+        // ⭐ As FRACTIONS of the console's frame, multiplied out by this viewport: the same
+        // place and the same share of the screen at any window size.
+        var view = GetViewport().GetVisibleRect().Size;
+        _money.Position = new Vector2(MoneyX / ConsoleUiWidth * view.X, MoneyY / ConsoleUiHeight * view.Y);
+        // ⚠ ONE factor for the glyphs, from the height: scaling x and y independently would
+        // stretch the letters on any window whose aspect differs from the console's.
+        // ⭐ 1:1 in console pixels -- the 2 that used to be here was the shadow's offset.
+        float k = view.Y / ConsoleUiHeight;
+        _money.Scale = _moneyShadow.Scale = new Vector2(k, k);
+        _moneyShadow.Position = _money.Position + new Vector2(MoneyShadow * k, MoneyShadow * k);
     }
 
     public override void _Process(double delta)

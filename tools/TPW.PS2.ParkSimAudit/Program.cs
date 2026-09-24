@@ -732,7 +732,8 @@ string Clips(SoundCatalogue.Resolved r) => string.Join("|", r.Clips.Select(c => 
 // argument selects a table INSIDE that function, so it is a category in some other numbering.
 // ⭐⭐ EVERY effect call in the guest code (0x209000..0x213000), found by censusing `jal` to the
 // two entry points and reading the `a2` immediate at each site. Eight, not the four first noticed.
-foreach (var (sfxId, sfxWhat) in new[] { (71, "0x1B94B8 build, footprint 1"), (72, "build, footprint <4"),
+foreach (var (sfxId, sfxWhat) in new[] { (31, "0x00126408 PLACEMENT bought"), (175, "0x00197F48 cannot afford"),
+                                         (71, "0x1B94B8 build, footprint 1"), (72, "build, footprint <4"),
                                          (73, "build, footprint <8"), (74, "build, footprint 8+"),
                                          (53, "0x20F0A0 lavatory relief -- THE CONTROL"),
                                          (208, "0x20EAD8 shop visit complete"),
@@ -788,6 +789,51 @@ foreach (var bs in wad.Entries.Where(e => e.Path.EndsWith(".rse", StringComparis
         Console.WriteLine($"  build head: {leaf3,-12} {ins4.Address,4}: {ins4.Opcode} "
                         + string.Join(" ", ins4.Operands.Select(o => o.Index)));
 }
+
+// ⭐ WHAT KINDS DOES THE COMPILED DIRECTORY HOLD, and do any of them look like a path? Master
+// asked what paths and queues cost; the tool debits a per-tool figure and where that figure comes
+// from is not yet traced, so this asks whether the DBA prices them as assets the way it prices
+// features.
+try
+{
+    var dbaE = Wad("DATA").Entries.FirstOrDefault(e => e.Path.Equals("/arsdb.dba", StringComparison.OrdinalIgnoreCase));
+    if (dbaE != null)
+    {
+        var db2 = new AssetResourceDatabase(Wad("DATA").Read(dbaE));
+        var byKind = db2.Entries.GroupBy(e => e.Kind).OrderBy(g => (int)g.Key);
+        Console.WriteLine("  dba kinds: " + string.Join("  ", byKind.Select(g => $"{(int)g.Key}:{g.Key}={g.Count()}")));
+    }
+}
+catch (Exception e) { Console.WriteLine($"  (dba kind census failed: {e.Message})"); }
+
+// ⭐⭐ CAN THE GAME'S OWN FONT ACTUALLY DRAW THE MONEY? The readout composes glyphs out of
+// `Console.bff`, so a character the formatter can produce but the font has no glyph for would
+// render as a HOLE -- silently, and only visible to somebody looking at the screen. Every
+// character `Money.Format` can emit is checked against the font's own lookup.
+try
+{
+    var fontEntry = Wad("DATA").Entries.FirstOrDefault(e => e.Path.Equals("/Fonts/European/Large.bff", StringComparison.OrdinalIgnoreCase));
+    // ⭐ Large.bff, not Console.bff: FUN_0020A958 picks the record whose stored index matches
+    // its argument, the money draw passes 1, and FUN_0020BA28 loads them Small=0, Large=1,
+    // Console=2. The port had the Console face because the NAME sounded like a HUD.
+    Check(fontEntry != null, "the disc carries /Fonts/European/Large.bff -- the money HUD's font");
+    if (fontEntry != null)
+    {
+        var hud = new BitmapFont(Wad("DATA").Read(fontEntry));
+        var need = new SortedSet<char>("$,-0123456789");
+        var absent = need.Where(c => !hud.TryGetGlyph(c, out _)).ToArray();
+        Check(absent.Length == 0, $"every character the money format emits has a glyph ({new string(need.ToArray())})"
+                                + (absent.Length == 0 ? "" : $"; MISSING {new string(absent)}"));
+        // ⚠ THE CONTROL: the lookup must be capable of saying NO, or the line above passes for a
+        // font that claims to have everything.
+        Check(!hud.TryGetGlyph('\u0001', out _), "CONTROL: and the lookup refuses a code the font does not carry");
+        // ⭐ Every glyph the money needs must also have pixels -- a zero-size descriptor is a
+        // legal glyph and an invisible one.
+        var blank = need.Where(c => hud.TryGetGlyph(c, out var g) && (g.Width == 0 || g.Height == 0) && c != ' ').ToArray();
+        Check(blank.Length == 0, $"and each of them has pixels" + (blank.Length == 0 ? "" : $"; BLANK {new string(blank)}"));
+    }
+}
+catch (Exception e) { Check(false, $"the money font loads: {e.Message}"); }
 
 // ⭐⭐ WHICH PARTICLE EFFECTS DOES A SCRIPT ASK FOR, AND DOES THE LIBRARY ANSWER? Master: "we
 // are missing a lot of particle effects. mainly the ones produced when something is built."

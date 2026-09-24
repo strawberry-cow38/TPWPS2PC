@@ -515,6 +515,36 @@ static class ServiceChecks
             }
             return (Run(0), Run(100));
         }
+        // ⭐⭐ THE GATE'S GROUND, checked where a real fitted grid exists. Occupancy must refuse
+        // a BUILD and still permit the path -- ⚠ and the second half is the control that matters,
+        // because putting these cells in the wrong set blocked the way into the park entirely.
+        {
+            var grid = new ParkPaths(terrain);
+            sourcePaths.Field.Cells.CopyTo(grid.Field.Cells, 0);
+            grid.SetEntrance(entranceTable);
+            // ⭐ Eight across by two deep, on the park's first two rows -- master's third and
+            // clearest statement: "gate should be 8x2 (inside the park, the first tiles against
+            // that middle inset.)"
+            Check(grid.GateHold.Count == 16, $"the gate holds eight by two inside the park ({grid.GateHold.Count} cells)");
+            // ⚠ THE SHAPE, not just the count -- 16 cells is also a 4x4, which is what this was
+            // two revisions ago. Spans, so a clipped or mis-centred block cannot pass.
+            Check(grid.GateHold.Max(c => c.X) - grid.GateHold.Min(c => c.X) == 7
+               && grid.GateHold.Max(c => c.Z) - grid.GateHold.Min(c => c.Z) == 1,
+                  "and it is eight across by two deep, not merely sixteen cells");
+            Check(grid.Protected.Count == 4, $"and protects a 2x2 of paths under it ({grid.Protected.Count})");
+            Check(grid.Protected.All(c => grid.GateHolds(c)), "every protected path is inside the gate's own hold");
+            Check(grid.GateHold.All(c => !grid.CanBuild(c)), "nothing can be built on the gate's ground");
+            // ⚠⚠ THE CONTROL, STATED AS THE INVARIANT THE BUG ACTUALLY BROKE. The first version
+            // asserted `CanLay` outright on those cells and failed -- correctly, and for a reason
+            // about the FIXTURE: the mouth is walkway, which was never `Buildable`. What the bug
+            // did was add the gate's cells to the set `CanLay` consults, so the honest test is
+            // that registering the entrance CHANGES NO `CanLay` ANSWER anywhere on the grid.
+            var before = new ParkPaths(terrain);
+            sourcePaths.Field.Cells.CopyTo(before.Field.Cells, 0);
+            int changed = grid.Cells.Count(c => before.CanLay(c) != grid.CanLay(c));
+            Check(changed == 0, $"CONTROL: the gate's hold changes no laying answer on the whole grid ({changed} cells differ)");
+            Check(grid.Cells.Count(before.CanLay) > 0, "and the grid had layable cells to begin with, so that is not vacuous");
+        }
         var loneLoo = ToiletOnly();
         Check(loneLoo.Idle == 0, $"a guest with an empty bladder never visits the only lavatory in the park ({loneLoo.Idle})");
         Check(loneLoo.Bursting > 0, $"CONTROL: the same park DOES relieve a desperate one ({loneLoo.Bursting})");

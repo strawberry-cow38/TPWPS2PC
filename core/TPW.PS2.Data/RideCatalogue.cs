@@ -134,6 +134,25 @@ public sealed class RideDefinition
     /// <summary>The same identity-joined payload, retained for compiled entrance geometry.</summary>
     public AssetResourceDatabase.Entry CompiledEntry { get; set; }
 
+    /// <summary>⭐⭐ WHAT IT COSTS TO PLACE THIS, in the park's tenths.
+    ///
+    /// `FUN_0012BC10` picks the field by the asset's kind:
+    /// <code>
+    ///   case 1, 3, 6, 7 (coaster, ride, track, tour):  record[0x50]
+    ///   case 2, 4, 5, 8 (feature, shop, sideshow, upgrade):  record[0x20]
+    /// </code>
+    /// and `FUN_00126408` charges it: `FUN_00100698(park, cost * 10)`, then plays effect 31.
+    ///
+    /// ⭐ This port's parser already splits on exactly that line: `record[0x50]` is tier 0's
+    /// last word, which it calls `PurchaseCost`, and `record[0x20]` is `SimpleEconomy`'s first,
+    /// which it also calls `PurchaseCost` -- and `HasRideTiers` chooses between them on the same
+    /// families the switch lists. Two routes to one rule, neither adjusted to meet the other.
+    ///
+    /// ⚠ Null when nothing joined a compiled record: a cost of zero and an unknown cost are
+    /// different answers, and the caller should not be handed a free ride by a missing join.</summary>
+    public int? PlacementCost => CompiledEntry is not { } e ? null
+        : (e.HasRideTiers ? e.Tier(0).PurchaseCost : e.SimpleEconomy?.PurchaseCost) * 10;
+
     /// ⭐⭐ COMPILED FIRST, AUTHORED SECOND. Where a compiled record is attached its numbers win,
     /// because they are the ones the console loads -- the balloon shop authors 15 happiness in
     /// three worlds and every compiled row says 10. Falling back to the .sam when nothing is

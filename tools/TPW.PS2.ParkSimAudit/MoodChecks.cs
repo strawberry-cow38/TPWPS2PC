@@ -215,13 +215,17 @@ static class MoodChecks
 
         // ── the park's money ───────────────────────────────────────────────────────────────
         {
-            var bank = new ParkFinances();
+            // ⚠ Opened at zero on purpose: these cases are about the arithmetic of a credit and
+            // a refusal, not about what a park starts with.
+            var bank = new ParkFinances { Balance = 0 };
             // ⭐ The constructor's `park[8] = 1` means a park nothing has loaded into spends
             // freely. ⚠ The control is the other arm: with the flag cleared a debit it cannot
             // afford must REFUSE and take nothing, which is the whole point of the flag existing.
             Check(bank.Unlimited, "a fresh park spends freely, as FUN_00100470 leaves it");
             Check(bank.Debit(500) && bank.Balance == -500, $"and an unaffordable debit goes through ({bank.Balance})");
             var budget = new ParkFinances { Unlimited = false, Balance = 100 };
+            Check(new ParkFinances().Balance == ParkFinances.OpeningBalance,
+                  $"⭐ and a fresh park opens at master's $30,000 ({new ParkFinances().Balance} tenths)");
             Check(!budget.Debit(500) && budget.Balance == 100,
                   $"with the flag cleared it refuses and takes NOTHING ({budget.Balance})");
             Check(budget.Debit(100) && budget.Balance == 0, "and an affordable one still goes through");
@@ -261,6 +265,33 @@ static class MoodChecks
             Check(slow == fast, $"equal sim time yields equal rise periods however many calls it took ({slow} vs {fast})");
             Check(slow > 0, $"and the clock actually advanced ({slow}) -- a frozen clock would pass the line above");
         }
+
+        // ── money, as the game writes it ───────────────────────────────────────────────────
+        // ⭐⭐ Every case is the decoded formatter's own behaviour: a '$', a '-' BEFORE it, and
+        // commas every three digits. ⚠ The grouping is the part worth checking hard -- the
+        // console computes its first group as `n > 3 ? n % 3 : 3`, so 4 digits break 1+3 and 6
+        // break 3+3, and an off-by-one there looks plausible at one length and wrong at another.
+        Check(Money.Display(0) == "$0", $"zero is $0 ({Money.Display(0)})");
+        Check(Money.Display(7) == "$7", $"one digit ({Money.Display(7)})");
+        Check(Money.Display(999) == "$999", $"three digits take no comma ({Money.Display(999)})");
+        Check(Money.Display(1000) == "$1,000", $"four digits break 1+3 ({Money.Display(1000)})");
+        Check(Money.Display(12345) == "$12,345", $"five digits break 2+3 ({Money.Display(12345)})");
+        Check(Money.Display(123456) == "$123,456", $"six digits break 3+3 ({Money.Display(123456)})");
+        Check(Money.Display(1234567) == "$1,234,567", $"seven digits take two commas ({Money.Display(1234567)})");
+        Check(Money.Display(-2500) == "-$2,500", $"the minus goes BEFORE the dollar ({Money.Display(-2500)})");
+        // ⭐ And the park's own units: the balance is in tenths, which the finance screen divides
+        // by ten on all seven of its figures before formatting.
+        Check(Money.Format(45_000) == "$4,500", $"park tenths are divided by ten ({Money.Format(45_000)})");
+        Check(Money.Format(-1_500) == "-$150", $"including a negative balance ({Money.Format(-1_500)})");
+
+        // ── the gate's ground ─────────────────────────────────────────────────────────────
+        // ⭐⭐ Master: "give the gate an occupancy over the tiles it sits on, + 1 on each side.
+        // mark a 2x2 of paths (right under the gate) as un-deleteable."
+        // ⚠⚠ THE CONTROL IS THE ENTRANCE ITSELF. The first version put those cells in the
+        // grid's `_occupied` set, which `CanLay` consults -- so the gate's own skirt refused the
+        // entrance path and every departure fixture lost its route. Blocking a BUILD and blocking
+        // the WAY IN are one line apart, and only the second one empties the park.
+        // (Exercised here through the audit's own terrain, which the caller has already fitted.)
 
         // ⚠ THE CONTROL THAT MATTERS: `+0x78` is NOT raised by the clock. Nothing in
         // `FUN_0020FB88` raises it -- queueing is its only riser found -- and a rise put there on
