@@ -34,7 +34,7 @@ unsupported here; we do not silently turn an invented coordinate into an authore
 FANTASY IceCream is one of them and the bounded smoke reports that limitation explicitly.
 Missing coordinates and script hiding are independent questions, not interchangeable gates.
 
-The default headless standing scene now has89 assertions, including literal 2x2 point and
+The default headless standing scene initially had89 assertions, including literal 2x2 point and
 height-cell expectations at all four turns, independent placement-facing checks, and negative
 controls for coordinate-less shops, larger LIMBO shops and ordinary rides. The runner requires
 those witnesses, not just a larger check count. Existing toilet ownership/host-hide/seat/WALK/
@@ -47,8 +47,10 @@ transform is not accepted merely because a helper or camera calculated the right
 
 ## Evidence and limits
 
-The fixed production code passes rendered service/handback in JUNGLE at all four turns,
-and HALLOW and SPACE at the first fitting turn. Initial scene-graph coverage was tightened
+The first fixed production code passed actor/purchase assertions in JUNGLE at all four turns,
+and HALLOW and SPACE at the first fitting turn. The latter two were NOT proof of alignment:
+subsequent peer inspection and independent floor measurements found an additional frame defect
+as recorded below. Initial scene-graph coverage was tightened
 by independent review: one non-head mesh is not proof of both torso and legs, and being on
 camera is not proof of correct position/facing. The strengthened version has been rerun in
 JUNGLE; subsequent final reruns are recorded in progress.md. Rendered captures require direct
@@ -73,3 +75,34 @@ The scene also writes `serving-before.png` and `serving-after.png`. It refuses e
 headless rendering and output under Git/symlink ancestry. `--shop-turn=0..3` pins orientation;
 omitting it takes the first fitting one. Without a fresh Debug build, a stale assembly is
 not evidence about current source.
+
+
+## CP4 correction: a body on screen can still be in the wrong world frame
+
+Peer inspection rejected HALLOW's floating customer. SPACE looked superficially plausible,
+but measuring against the actual playable floor rather than the legacy overlay exposed it
+too. Legacy guest positions differed from the built park's CellCorner interpolation by
+0.0003 units in JUNGLE,114.4984 in HALLOW and10.0002 in SPACE. These different offsets are
+consistent with different authored transforms; they do not establish unrelated bug classes.
+The old GuestWorld comment admitted that the overlay frame was known wrong in two worlds.
+
+The initial smoke shared that bad reference frame in its expected position and camera. A
+scene-tree visibility check and a visually plausible nearby building could therefore pass
+a misplaced customer. The independent floor-alignment assertion now fails on the old HALLOW
+implementation while the sale/body-existence assertions still pass. Earlier SPACE image
+review establishes visibility/readability only, not alignment; that sign-off was retracted.
+
+GuestWorld now interpolates the same CellCorner transform that builds the floor, retaining
+selected-cell height and vertical guest offset. GuestHeading maps grid directions through
+that same built frame before the upright body yaw is constructed. No per-world correction
+constants are used, and the plot's mirror/scale is not applied to the body mesh. Contexts
+without a built authored plot retain the old fallback; the real retail park path has one.
+Seated/script-WALK poses remain owned by their existing model/host transforms.
+
+The headless standing audit now has93 checks: additional independent literal controls use a
+translated, rotated, non-unit synthetic plot and a changed origin. Final rendered JUNGLE,
+HALLOW and SPACE service/handback pass against the actual park-floor oracle. Optional
+`--shop-markers` shows a magenta diagnostic dot/label at the actual placed model origin,
+not a point derived from the guest. It is an overlay, not disc artwork or gameplay UI.
+These captures are for renewed peer inspection, not an assertion that a marker alone proves
+correct authored counter alignment. Later all-turn/full-gate outcomes are in progress.md.

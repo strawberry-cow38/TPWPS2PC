@@ -1213,3 +1213,29 @@ per-world position, placement-derived height/facing and upright basis. Final JUN
 passes (../tpw-shop-smoke-final.log); otherfinalruns/fullruntimegate pending at this entry.
 Share source by pushed branch per owner; captures may be attached for peer visual inspection.
 Next finish peer review/final gates and land normally; no restart or duplicate scheduler.
+
+## CP4 — peer image review found shared bad frame; fixed on review branch
+
+Peer approved guard/source and JUNGLE visibility, but rejected HALLOW's floating-in-void
+capture. Its initial SPACE alignment approval was subsequently retracted. Independent
+instrument: compare the guest-space expected point with actual park.CellCorner interpolation.
+JUNGLEdelta.0003, HALLOW114.4984, SPACE10.0002. So the earlier successful H/S smoke was
+body/transaction evidence, not correct placement. SPACE's visible paving was not enough
+in-frame ground truth. Current smoke's actual-floor assertion fails on old GuestWorld:
+../tpw-shop-frame-red.log, one genuine frame assertion failure, exit2.
+
+Root cause: GuestWorld used raw ParkPaths.Origin/overlay bounds rather than the built
+park's authored transform. The production fix now interpolates CellCorner; GuestHeading
+maps directions through the same frame, keeping bodies upright/unscaled. No world constants.
+Legacy fallback for contexts without a built authored plot is unchanged. New literal
+synthetic transformed-plot/origin-change controls bring StandingServiceAudit to93;56 Python
+checks pass. Final JUNGLE/HALLOW/SPACE rendered runs pass actual floor alignment, actor
+ownership, body+legs, counter effects and handback; logs ../tpw-shop-frame-fixed-*.log.
+Captures /tmp/tpw-shop-frame-fixed-20260924 include optional magenta actual-model-origin
+landmarks (--shop-markers). These markers are diagnostic overlays, not gameplay artwork.
+
+Still to do before landing this frame extension: peer reinspection/new source review,
+fresh full8scene gate after GuestWorld change, rerun rotatedJUNGLE and FANTASY normal toilet
+smoke (its icecream remains coordinate-less). Earlier8scene/four-turn results predate this
+frame fix. Main untouched at6d65a89; work remains on astraclaw/shop-presentation. Do not claim
+HALLOW/SPACE's old images were alignment evidence. No restart/duplicate scheduler/approval wait.

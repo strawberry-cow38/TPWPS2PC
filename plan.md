@@ -70,6 +70,21 @@ base effects still need the documented runtime quality modifier or an explicit p
 do not confuse a correct lookup with full retail outcome parity. Keep any unresolved ordinary
 producer work bounded to an independently identified concrete class/dispatch chain.
 
+## CP5/CP4 adjustment — visible shop customers and the actual park frame
+
+Normal viewer placement exposed a missing customer that headless purchase arithmetic could
+not see. The bounded 2x2 authored-shop standing body fixes that handover gap, but peer image
+inspection then exposed a second defect: the legacy GuestWorld/overlay frame displaced
+HALLOW by114.5 units and SPACE by10 relative to the built floor. A shared bad expected frame
+made the first smoke overstate success. Use the floor's CellCorner transform, not per-world
+offsets, and make actual-floor alignment an independent gate alongside body ownership.
+
+Cow tools reviews code/images and traces defaults for the six coordinate-less shops;
+astraclaw owns the narrow renderer/frame fix and independent normal-startup checks.
+Coordinate-less bodies remain explicitly open while that evidence is investigated. Do not
+conflate presence, alignment, visual readability and retail behavior. Finish this bounded
+integration before another arithmetic census or an unrelated gameplay subsystem.
+
 ## CP4/CP2 adjustment — compiled purchases need product-aware consumers
 
 The join exposed more than wrong authored happiness: the consumer was charging one tenth

@@ -208,6 +208,20 @@ public partial class ShopServiceSmoke : Node3D
             camera.GlobalPosition = target + front.Normalized() * 4.5f + Vector3.Up * 2.3f;
             camera.LookAt(target); camera.MakeCurrent();
             Field<Control>(viewer, "_panel").Visible = false;
+            if (args.Contains("--shop-markers"))
+            {
+                // Optional diagnostic landmark: the actual placed node's origin, NOT a guest-
+                // derived position. The magenta dot is an overlay, not part of the disc artwork.
+                var modelOrigin = park.Placed.Single().Node.GlobalPosition;
+                var marker = new MeshInstance3D { Mesh = new SphereMesh { Radius = .045f, Height = .09f },
+                    MaterialOverride = new StandardMaterial3D { AlbedoColor = Colors.Magenta,
+                        ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded, NoDepthTest = true } };
+                AddChild(marker); marker.GlobalPosition = modelOrigin;
+                var label = new Label3D { Text = "placed shop origin", FontSize = 24, PixelSize = .003f,
+                    Billboard = BaseMaterial3D.BillboardModeEnum.Enabled, NoDepthTest = true, Modulate = Colors.Magenta };
+                AddChild(label); label.GlobalPosition = modelOrigin + Vector3.Up * .3f;
+                GD.Print($"SHOP SMOKE MARKER actualPlacedModelOrigin={modelOrigin}; magenta overlay is diagnostic, not gameplay art");
+            }
             var fixedCamera = camera.GlobalTransform;
             Require(!camera.IsPositionBehind(target) && GetViewport().GetVisibleRect().HasPoint(camera.UnprojectPosition(target)),
                 "camera frames actual shop service point");
@@ -291,14 +305,21 @@ public partial class ShopServiceSmoke : Node3D
             var localPoint = pointOracle[placedTurn];
             Vector3 expectedPosition = new(grid.Origin.X + ride.Origin.X + localPoint.X,
                 park.CellY(entryCell.X, entryCell.Z), -(grid.Origin.Y + ride.Origin.Z + localPoint.Y));
+            var floorCorner = park.CellCorner(ride.Origin.X, ride.Origin.Z);
+            var floorX = park.CellCorner(ride.Origin.X + 1, ride.Origin.Z) - floorCorner;
+            var floorZ = park.CellCorner(ride.Origin.X, ride.Origin.Z + 1) - floorCorner;
+            var floorPoint = floorCorner + localPoint.X * floorX + localPoint.Y * floorZ;
+            floorPoint.Y = park.CellY(entryCell.X, entryCell.Z);
+            GD.Print($"SHOP SMOKE FRAME legacyOverlayExpected={expectedPosition} actualFloorExpected={floorPoint} "
+                + $"legacyFrameDistance={expectedPosition.DistanceTo(floorPoint):F4} floorX={floorX} floorZ={floorZ}");
             var inward = new Vector3(-placementOracle.Turned.EntryDX, 0, placementOracle.Turned.EntryDY);
             var actorsAtService = Field<Dictionary<int,Node3D>>(viewer, "_actors");
             Check(standing.ContainsKey(guestId) && actorsAtService.TryGetValue(guestId, out var serviceActor)
-                && Live(serviceActor) && serviceActor.Position.DistanceTo(expectedPosition) < .0001f
+                && Live(serviceActor) && serviceActor.Position.DistanceTo(floorPoint) < .002f
                 && serviceActor.Basis.Z.DistanceTo(inward) < .0001f
                 && serviceActor.Basis.Y.DistanceTo(Vector3.Up) < .0001f
                 && Mathf.Abs(serviceActor.Basis.Determinant() - 1) < .0001f,
-                "LIVE_SERVICE_ACTOR_USES_AUTHORED_POSITION_HEIGHT_AND_UPRIGHT_INWARD_FACING");
+                "LIVE_SERVICE_ACTOR_ALIGNS_WITH_ACTUAL_PARK_FLOOR_AND_INWARD_FACING");
 
             for (int tick = 0; tick < 6000 && visitors.Rides == 0; tick++)
             {

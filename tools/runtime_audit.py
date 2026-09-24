@@ -95,10 +95,14 @@ def classify(scene: str, run: dict) -> dict:
         prefixes += ['STANDING SERVICE ok: ordinary ride does not become a standing shop']
         prefixes += ['STANDING SERVICE ok: coordinate-less external shop does not invent authored stand geometry',
                      'STANDING SERVICE ok: larger LIMBO shop does not receive the small-shop standing fallback']
+        prefixes += ['STANDING SERVICE ok: guest frame uses built plot translation rotation scale and fractional cell position',
+                     'STANDING SERVICE ok: guest frame maps grid X through the built plot direction',
+                     'STANDING SERVICE ok: guest frame maps grid Z through the built plot direction',
+                     'STANDING SERVICE ok: guest frame follows changed plot instead of retaining an old origin']
         summaries = re.findall(r'^STANDING SERVICE PASS: (\d+) checks, 0 failures$', text, re.M)
         checks = sum(line.startswith('STANDING SERVICE ok:') for line in lines)
         result['checks'] = checks
-        if len(summaries) != 1 or int(summaries[0]) != checks or checks < 89:
+        if len(summaries) != 1 or int(summaries[0]) != checks or checks < 93:
             return {**result, 'status': 'missing_coverage'}
     elif scene == 'audio':
         prefixes = ['AUDIO LIFECYCLE ok: 2D eight fast no-evidence polls remain pending',

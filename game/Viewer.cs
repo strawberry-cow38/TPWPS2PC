@@ -3161,13 +3161,38 @@ public partial class Viewer : Node3D
 
     static Vector3 Cell(System.Numerics.Vector3 p) => new(p.X, p.Y, p.Z);
 
-    /// <summary>A guest's cell-space point on the park. ⚠ THE OVERLAY'S FORMULA, not
-    /// VisitorParkView's: ParkPaths.Origin plus the cell, Z mirrored -- the frame the walk
-    /// overlay draws the entrance in. Where that overlay is wrong (space, hallow) this is wrong the
-    /// same way, which is the useful way to be wrong. Height is the cell's own, so a guest on a
-    /// raised cell stands on it rather than in it.</summary>
+    /// <summary>Place a guest in the same frame that builds the playable floor. Raw
+    /// ParkPaths.Origin is a data/overlay frame: it displaced HALLOW by114.5 units and SPACE
+    /// by10 while JUNGLE happened to agree. Do not repair that with per-world offsets.
+    /// A built authored plot owns the transform; the legacy fallback remains for contexts
+    /// without a built authored plot. Vertical guest offsets and the selected cell's raised height survive.</summary>
     Vector3 GuestWorld(Vector3 p, ParkCell cell)
-        => new(_guests.Paths.Origin.X + p.X, _park.CellY(cell.X, cell.Z) + p.Y, -(_guests.Paths.Origin.Y + p.Z));
+    {
+        float y = _park.CellY(cell.X, cell.Z) + p.Y;
+        if (_park.PlotSpace != null && _park.Width > 0 && _park.Height > 0)
+        {
+            int x = Mathf.FloorToInt(p.X), z = Mathf.FloorToInt(p.Z);
+            var corner = _park.CellCorner(x, z);
+            var at = corner + (p.X - x) * (_park.CellCorner(x + 1, z) - corner)
+                            + (p.Z - z) * (_park.CellCorner(x, z + 1) - corner);
+            return new Vector3(at.X, y, at.Z);
+        }
+        return new Vector3(_guests.Paths.Origin.X + p.X, y, -(_guests.Paths.Origin.Y + p.Z));
+    }
+
+    // Map direction as well as position. Keep the actor upright: applying a mirrored/scaled
+    // plot basis to the body itself would mirror/scale its geometry instead of just its route.
+    Vector3 GuestHeading(Vector3 grid)
+    {
+        if (_park.PlotSpace != null && _park.Width > 0 && _park.Height > 0)
+        {
+            var corner = _park.CellCorner(0, 0);
+            var at = grid.X * (_park.CellCorner(1, 0) - corner)
+                   + grid.Z * (_park.CellCorner(0, 1) - corner);
+            return new Vector3(at.X, 0, at.Z);
+        }
+        return new Vector3(grid.X, 0, -grid.Z);
+    }
 
     /// <summary>Where each seated rider was last drawn, by guest id, with the seat it sits in.</summary>
     readonly Dictionary<int, (Transform3D At, string Where, Vector3 Forward, string Part, float PartTop)> _seated = new();
@@ -3384,7 +3409,7 @@ public partial class Viewer : Node3D
             Vector3 cell = waiting ? Cell(ParkPaths.Centre(plan.At))
                 : new Vector3(place.Pose.CellPoint.X, 0, place.Pose.CellPoint.Y);
             var heightCell = waiting ? plan.At : place.Pose.HeightCell;
-            var forward = new Vector3(place.Pose.Inward.X, 0, -place.Pose.Inward.Y);
+            var forward = GuestHeading(new Vector3(place.Pose.Inward.X, 0, place.Pose.Inward.Y));
             _standing[id] = new Transform3D(WalkBasis(forward), GuestWorld(cell, heightCell));
         }
     }
@@ -3448,7 +3473,7 @@ public partial class Viewer : Node3D
             // ⚠ Assigned as a whole basis, not through Rotation: a kid back from a seat still carries
             // the seat's full basis, and Euler on that is the round trip this codebase already lost.
             if (g.Next is ParkCell next)
-                actor.Basis = WalkBasis(new Vector3(next.X - g.Cell.X, 0, g.Cell.Z - next.Z));
+                actor.Basis = WalkBasis(GuestHeading(new Vector3(next.X - g.Cell.X, 0, next.Z - g.Cell.Z)));
             else if (actor.Basis.Determinant() < 0 || Mathf.Abs(actor.Basis.Y.Dot(Vector3.Up) - 1f) > 1e-3f)
                 actor.Basis = Basis.Identity;
         }
@@ -3737,7 +3762,7 @@ public partial class Viewer : Node3D
                 PresentScripted(); PlaceActors(1f);   // present first: see StepPark
                 var g = pick; var next = g.Next.Value;
                 var at = GuestWorld(Cell(g.Position), g.Cell);
-                var heading = new Vector3(next.X - g.Cell.X, 0, g.Cell.Z - next.Z).Normalized();    // the walk's own mirrored frame, as WalkBasis
+                var heading = GuestHeading(new Vector3(next.X - g.Cell.X, 0, next.Z - g.Cell.Z)).Normalized();    // the same frame as the actual walking actor
                 var side = new Vector3(heading.Z, 0, -heading.X);
                 _freeCam = true; _focus = at + new Vector3(0, 0.3f, 0); _dist = 3f; _pitch = -0.35f; _yaw = Mathf.Atan2(side.X, side.Z);
                 double t = _parkTicks * ParkSim.TickMilliseconds / 1000.0;

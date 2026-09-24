@@ -78,6 +78,26 @@ public partial class StandingServiceAudit : Node3D
             thoughts.Load(library.ReadGeneric);
             Check(thoughts.Ready, "real disc thought artwork loaded");
             Set(viewer, "_guests", visitors.Walk); Set(viewer, "_visitors", visitors); Set(viewer, "_sim", sim);
+            // The real guest consumer must follow the built plot, not raw data/overlay bounds.
+            // This rotated, translated, non-unit grid gives literal independent expectations.
+            var framedPark = new Park { BaseY = 7 };
+            framedPark.PlotSpace = new Park.Plot(new Transform3D(
+                new Basis(new Vector3(0,0,-2), Vector3.Up, new Vector3(3,0,0)), new Vector3(20,0,-30)),
+                Vector3.Zero, new Vector3(4,0,3));
+            framedPark.Build(4,3); Set(viewer, "_park", framedPark);
+            var framedPoint = (Vector3)Call(viewer, "GuestWorld", new Vector3(1.25f,.25f,1.5f), new ParkCell(1,1));
+            Check(framedPoint.DistanceTo(new Vector3(24.5f,7.25f,-32.5f)) < .0001f,
+                  "guest frame uses built plot translation rotation scale and fractional cell position");
+            Check(((Vector3)Call(viewer, "GuestHeading", Vector3.Right)).Normalized().DistanceTo(Vector3.Forward) < .0001f,
+                  "guest frame maps grid X through the built plot direction");
+            Check(((Vector3)Call(viewer, "GuestHeading", Vector3.Back)).Normalized().DistanceTo(Vector3.Right) < .0001f,
+                  "guest frame maps grid Z through the built plot direction");
+            var shiftedPlot = framedPark.PlotSpace.Value;
+            framedPark.PlotSpace = shiftedPlot with { ToWorld = new Transform3D(shiftedPlot.ToWorld.Basis, new Vector3(-12,0,44)) };
+            Check(((Vector3)Call(viewer, "GuestWorld", new Vector3(1.25f,.25f,1.5f), new ParkCell(1,1)))
+                    .DistanceTo(new Vector3(-7.5f,7.25f,41.5f)) < .0001f,
+                  "guest frame follows changed plot instead of retaining an old origin");
+            Set(viewer, "_park", park); framedPark.Root.Free();
             var serviceRoot = new Node3D(); stage.AddChild(serviceRoot);
             Call(viewer, "RegisterStandingService", ride, serviceRoot, 0);
             // Actual actor creation/animation consumer, not a counter or placeholder mesh.
