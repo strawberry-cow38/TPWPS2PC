@@ -2417,3 +2417,19 @@ REJECTEDGUESTSHELD untilproperdepartureproducer. Userapprovedkeeponit; nextvisib
 priorityproperleaving/rejection, notgeometry. Needreadiness/nativepathservicealso
 closedbeforedefaultparityrelease. All3delegatesusedthispoolturn. Noextraction/
 privatefiles/otherhosts/restarts. CowownsselectedrideX/listboxUI; don'teditlane.
+
+Shared-pool checkpoint finalized at b334704 (research only). Fullgatescomplete:
+/tmp/tpw-pool-final-matrix J/Fpass ONLYexactThrillGrill/MoonBuggiesreds,1082pool
++76cursor+87actuator+113flow+23fee eachworld. /tmp/tpw-pool-final-runtime all11PASS;
+63PythonPASS. /tmp/tpw-pool-eight-viewers ALL8actual Viewer world/variant651PASS,
+exit0/noerrors/noleaks, witnessesrealsharedpoolconsumedandreturnedbysamebusguest.
+Nomainmerge, defaultsunchanged. Pendingreadiness/search/departurelimitsstilllogged.
+
+Nextreadinesspositive readforhandoff:191E10 getsvisualviaowner virtual+14; no model
+returns1. Unlessrequested low5bits(owner+30) are9or13, returns1. For9/13 reads
+visual+14 through10EC48 andpermitsonlyreportedfirstbyte9or13.191E98 bypassword
+2E2920 FILEINITIAL0 (not1); boundedxrefonlyfoundload191EC8, notproofimmutable.
+No-slotbranch precedesreadiness. Do NOTinferreadinessfromactorvisibility orinvent
+APSslot9/13 mapping: thesearelogicalcontrolIDs, actualvisualgetterjoinstillneeded.
+Sourceoutputselection/directallocationcomplete,3delegatesusedthispoolturn.
+Userapprovedcontinuing; nextvisiblegoalproperrejecteddeparture, notmoregeometry.
