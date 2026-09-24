@@ -260,7 +260,22 @@ public sealed class RideSounds
             if (!v.Verdict && (v.MaxPosition > 0 || v.Finished || v.Frames >= 8))
             {
                 v.Verdict = true; Verdicts++;
-                bool started = v.PlayingAt1 == true && (v.MaxPosition > 0 || v.Finished);
+                // ⭐⭐ FINISHED IS PROOF ON ITS OWN -- a clip cannot finish without having played.
+                // `PlayingAt1` used to GATE this, and it is only set one Step after the voice was
+                // created, so a clip that finished before that first poll was judged silent having
+                // played to the end. astraclaw reproduced it with a synthetic short clip:
+                // `playing@+1f=False, finished=True -> VOICE DID NOT START`.
+                //
+                // ⚠⚠ AND THIS IS THE SECOND TIME IN THIS METHOD. The note below records the
+                // first: the position was read once, eight frames on, and two clips that had run
+                // to the end reported 0. That fix moved the position read earlier but left
+                // PlayingAt1 as a REQUIREMENT -- so the predicate was shaped wrong, not timed
+                // wrong, and moving the observation earlier could never have finished the job.
+                //
+                // ⚠ It does not become unconditional: a voice that never played has no Finished
+                // signal and no position advance, which astraclaw's stopped/no-finish control
+                // holds us to. PlayingAt1 stays in the printed line as corroboration.
+                bool started = v.Finished || v.MaxPosition > 0;
                 if (started) StartedVoices++; else SilentVoices++;
                 string verdict = $"[snd]   #{v.Serial} {v.Name}: playing@+1f={v.PlayingAt1} first advance@+{v.FirstAdvanceFrame}f "
                                + $"max position {v.MaxPosition:F3}s finished={v.Finished} after {v.Frames}f={v.Elapsed:F2}s -> {(started ? "VOICE STARTED" : "VOICE DID NOT START")}";
@@ -285,7 +300,8 @@ public sealed class RideSounds
 
     public string Summary() =>
         $"[snd] census: {Cued} cues, {Resolved} resolved to a clip, {Unresolved} with no event in any map; "
-      + $"{Verdicts} voices judged: {StartedVoices} started (position advanced), {SilentVoices} did not; {Live} live now";
+      + $"{Verdicts} voices judged: {StartedVoices} started (position advanced, or the clip finished), "
+      + $"{SilentVoices} did not; {Live} live now";
 
     public void Clear()
     {
