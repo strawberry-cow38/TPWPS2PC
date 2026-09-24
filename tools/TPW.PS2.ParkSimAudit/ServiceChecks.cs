@@ -454,6 +454,40 @@ static class ServiceChecks
         // compiled entrance. Neither is this check's business; it only proves no infinite loop.
         Check(broke3.Home == 1, $"and they eventually give up and go home rather than looping forever ({broke3.Home})");
 
+        // ── somebody cleans the lavatories ──────────────────────────────────────────────────
+        // ⭐⭐ THE RATCHET CHECK. Wear costs condition, condition below 50 costs the next guest
+        // 10 happiness, and with no handyman that is permanent -- every guest angry forever and
+        // the park empties. Master saw it on the first playtest. This asserts recovery, and the
+        // CONTROL asserts the dirt is real when the stand-in is switched off, so a check that
+        // simply never wore anything could not pass both.
+        (int Dirty, int Clean) Handyman()
+        {
+            var paths = new ParkPaths(terrain);
+            sourcePaths.Field.Cells.CopyTo(paths.Field.Cells, 0);
+            paths.SetEntrance(entranceTable);
+
+            int Run(bool auto)
+            {
+                var visitors = new ParkVisitors(new ParkSim(paths), new GuestWalk(paths))
+                    { Needs = new VisitorNeeds(1234), AutoService = auto };
+                var loo = visitors.Sim.Add(1, "fixture toilet", corridor[0], 1, 1, toiletScript, toiletAps,
+                                           1, corridor[0], exit, out string fault,
+                                           sibling: toiletSibling, definition: toiletDef)
+                          ?? throw new InvalidOperationException(fault);
+                visitors.Sim.SetOpen(loo.Id, true);
+                loo.Wear(100);
+                if (loo.Condition != 0) throw new InvalidOperationException("fixture failed to soil the lavatory");
+                // Past one service period, whichever way the switch is set.
+                for (int i = 0; i < (int)(visitors.SecondsPerService / Tick) + 10; i++)
+                    visitors.Step(Tick, () => exit);
+                return loo.Condition;
+            }
+            return (Run(auto: false), Run(auto: true));
+        }
+        var loos = Handyman();
+        Check(loos.Clean == 100, $"a worn lavatory is serviced back to 100 ({loos.Clean})");
+        Check(loos.Dirty == 0, $"and the CONTROL shows the wear was real -- unserviced it stays filthy ({loos.Dirty})");
+
         // ── going home over a path that breaks and is mended ─────────────────────────────────
         // ⭐⭐ THE ONE-WAY DOOR. A `Leaving` guest whose path was dug up under them stayed stuck
         // FOREVER -- not because anything was stale, but because they left a state with no way
