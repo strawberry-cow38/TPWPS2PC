@@ -1644,3 +1644,33 @@ fetch/reconcile any newer economy/path commits before landing. Don't repeat comp
 gates unnecessarily; next check is review changes then normal push, followed by bus.
 The dirty original ../tpw-ride-eligibility WIP is superseded by this integrated branch,
 not separate pending feature work; preserve until main incorporates this branch.
+
+## CP2 — native guest consumer landing, September24 13:40 UTC
+
+Cow independently reviewed62d22aa and reran4worldmatrix (messages1552674941231431803 /
+1552674942229815318). Confirmed APS count predicate through three actual consumers,
+all3regionalDBA effect inputs inside lookup bounds, literal history propagation, and
+current Viewer.SetOpen binding. Script-driven native state transitions remain a stated
+adapter limit, not claimed equivalent. RegionDBA choice is a follow-up (Viewer stillEUR).
+
+Independent code review found one additional blocker: physical compiled service whose
+inside-entry geometry failed could still take legacyRSE service through its publicstub.
+Fixed e0f0e0e: RequiresNativeServiceEntry/Takes refuses that path for placedSHOP/relief;
+Viewer reports invalid relief as well asSHOP geometry. Real wrong-but-reachable stub
+regression exercises actualIdle. Removingguard yields2explicitfails in
+/tmp/tpw-native-geometry-mutation; restored/rebuilt. Nativeconsumer minimum now29/world.
+
+Reconciled peer4b312c1+a1924ab as e8b91f8, preserving gate,moneyHUD,startingbalance,
+placement costs and PSX-derived path/queue prices. Final merged gates:
+/tmp/tpw-native-landing-matrix only exact2knownrawretailreds;
+/tmp/tpw-native-landing-runtime all8PASS;
+/tmp/tpw-native-landing-python.log61PASS.
+Fourworld normal-startup rendered evidence remains /tmp/tpw-native-relief-four (pre path-
+price merge); finalmerged headless runtime andcorechecks pass. No image review claim.
+Decision: LAND. Full nativeAI parity remains out of scope; see findings integrationboundary.
+
+NEXT: requested bus research, not more scorer audit expansion. One broad bus-assets
+worker timedout600s with no returned finding and no repositoryoutput; do not infer
+absence or claim censusfinished. Narrow to memory-only WAD inventory/RSE behavior first,
+then trace native constructor/movement/guest-release consumers. Preserve owner's disc
+in place. Original dirty ride-eligibility snapshot is superseded, do not land it again.

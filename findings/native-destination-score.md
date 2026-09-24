@@ -249,3 +249,11 @@ Limits remain explicit:
   their unchanged routing checks are not proof of the new placed consumer.
 * State0 arms beyond selection/ordinary movement, local navigation, full shared RNG order,
   savegame activation order and complete service transport are not claimed as native parity.
+
+
+Peer retail census: all32 shop rows in each of EUR/JAP/USA compiled databases keep
+hunger<=25 and thirst<=40; no retail row reaches Need's unsupported index guard.
+The compiled effect5 values really map to the all-zero row, while20 and25 share a row.
+Four EUR/JAP hunger25 rows are15 inUSA, changing destination scores as well as purchase
+outcomes. Viewer currently selects EUR arsdb; matching regional text/DBA selection is a
+separate integration task, not silently corrected by this score port.

@@ -55,18 +55,18 @@ choice—such as presenting an invented track system as the target experience—
 to the humans rather than claiming that an autonomous technical review settled it. Existing pause/stop instructions
 still take priority; checkpoints are not authority to ignore them.
 
-## Current user-priority queue (September24 native-consumer review)
+## Current user-priority queue (September24 post-native-consumer landing)
 
-1. Finish peer review and land `astraclaw/native-destination-scoring` from worktree
-   `../tpw-gate-occupancy` (historical directory name; no gate changes). Actual compiled
-   selection and native relief lifecycle are integrated and tested, not just helpers.
-   Final evidence is in progress.md. Reconcile newer peer economy/path work first.
-2. **Research the bus next**, explicitly requested by strawberry1552630912481624105.
-   Urgent guest reports superseded it temporarily; they did not cancel the request.
-3. Preserve the explicit native-AI boundaries: lifecycle/transport adapters, local movement,
-   other state0 arms, all operating-state bindings and full RNG scheduling remain separate.
+1. **Research the bus**, explicitly requested by strawberry1552630912481624105. Start
+   with actual asset identity/script inputs, then trace creation, movement and guest handoff.
+   A timed-out inventory worker returned no finding; it does not establish absence.
+2. Native weighted selection and relief residence passed peer review, independent review
+   correction, four-world core, eight runtime scenes, rendered/mutation controls. See
+   progress.md for exact revisions/results. Do not repeat the old gate/walking fixes.
+3. Keep native-AI limitations explicit: lifecycle/transport adapters, local movement,
+   remaining state0 arms, live setting/track-cache bindings, region and RNG integration.
 4. Cow owns gate/protected paths, money HUD, path costs, audio and particle research.
-   Do not duplicate that work or ask for approval already contained in the request.
+   Preserve that work on every merge. No restarts or duplicate scheduled jobs.
 
 ## Latest CP4 correction — native relief state and decoded selector (September24)
 
