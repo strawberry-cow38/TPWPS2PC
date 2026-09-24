@@ -762,6 +762,23 @@ foreach (var featEntry in wad.Entries
     }
 }
 
+// ⭐⭐ WHAT WILL `ride.Name` ACTUALLY BE? The viewer names a placed ride from its .sam display
+// name, and the backwards-animation match is written against FILE STEMS ("s_plant", "toilet").
+// If those do not appear in the display name the match never fires. Print both together.
+foreach (var fs in wad.Entries.Where(e => e.Path.EndsWith(".sam", StringComparison.OrdinalIgnoreCase)
+                                       && e.Path.Contains("/Features/", StringComparison.OrdinalIgnoreCase)))
+{
+    var d2 = RideDefinition.Parse(System.Text.Encoding.ASCII.GetString(wad.Read(fs)), fs.Path);
+    string stem2 = System.IO.Path.GetFileNameWithoutExtension(fs.Path);
+    var apsE = wad.Find(fs.Path[..^4] + ".aps");
+    string slotList = "(no .aps)";
+    if (apsE != null)
+        try { slotList = string.Join(",", new TPW.PS2.Data.Animation(wad.Read(apsE)).Records()
+                                            .Select(r => r.Slot).Distinct().OrderBy(x => x)); }
+        catch { slotList = "(unreadable)"; }
+    Console.WriteLine($"  feature name: stem {stem2,-12} display \"{d2.Name}\"  slots [{slotList}]");
+}
+
 // ⭐ WHICH ANIMATION SLOT DOES A FEATURE'S SCRIPT ASK FOR? Master says slot 1 is the create for
 // the toilet and s_plant. Before changing any playback, read what the script requests -- if it
 // already asks for 1, nothing is missing and the fault is elsewhere.

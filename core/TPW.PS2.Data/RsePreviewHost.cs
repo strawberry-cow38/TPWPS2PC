@@ -70,6 +70,26 @@ public sealed class RsePreviewHost : IRseHost
 
     int PlayAnimation(int slot, int variant, bool loop, int speed)
     {
+        // ⭐⭐ A REQUEST FOR A SLOT THE ASSET DOES NOT HAVE FALLS BACK TO SLOT 1, and that is
+        // where the fallback belongs -- here, where a request is turned into a record. The
+        // viewer had it, which was too late: by the time it sees `ride.Slot` the machine has
+        // already failed to start anything and moved on, so the build request was simply lost.
+        // Master saw the result twice: "all features are missing their create animations", then
+        // "why are we STILL not getting the correct animation for the toilet creation".
+        //
+        // ⭐⭐ READ, AND NO NAMES IN IT. Every feature script opens `WAITANIM 0 0` while almost
+        // nothing carries a slot 0 -- 30 scripts against 0 records in JUNGLE. Exactly TWO feature
+        // `.aps` on the disc carry a slot 1: `s_plant` ("Small Tree") and `Toilet` ("Small
+        // Toilet") -- precisely the two master named, in every world (FANTASY, SPACE and HALLOW
+        // have none at all). ⭐ So conditioning on the DATA hits exactly the right assets and
+        // cannot misfire the way a name match did: the port matched file stems against DISPLAY
+        // names, so "Small Tree" never matched "s_plant" and the tree was never fixed, while
+        // "Super Toilet" matched "toilet" and should not have.
+        //
+        // ⚠ What the console does with that request is still unread -- `WAITANIM 0` on a feature
+        // may mean "the first record" rather than literally slot 0. This is a labelled fallback,
+        // not a decode.
+        if (!_slots.ContainsKey(slot) && slot != 1 && _slots.ContainsKey(1)) slot = 1;
         if (!_slots.TryGetValue(slot, out var records) || variant < 0 || variant >= records.Length)
         {
             // Nothing is started and nothing already playing is disturbed.

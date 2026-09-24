@@ -180,24 +180,19 @@ public partial class Viewer : Node3D
     /// `Create` -- and findings/visitors.md already records that the slot-name table is the
     /// ride's and "need not mean the same thing for a character". It does not mean the same
     /// thing for a feature either. Master corrected it in one line.</summary>
-    /// ⚠⚠ NARROWED TO THE TWO ASSETS MASTER NAMED. The first version applied this to every
-    /// feature, which over-read "slot 1 for toilet and s_plant" into a rule about features in
-    /// general -- and the other three worlds contradict it flatly: NO feature `.aps` in FANTASY,
-    /// SPACE or HALLOW carries a slot 1 at all, they are slot 5 (`Main`) throughout. Only
-    /// JUNGLE's `s_plant` has one. ⭐ Master gave two names, not a rule; taking the rule would
-    /// have put a silent fallback on 57 assets that do not want one.
-    static int CreateSlotFor(Aps anim, int want, string name)
-        => PlaysBackwards(name) && anim != null && !anim.Records().Any(r => r.Slot == want)
-           && anim.Records().Any(r => r.Slot == 1) ? 1 : want;
-
     /// <summary>⚠ MASTER'S INSTRUCTION, NOT A DECODE: "the small toilet and small tree's
-    /// animations are baked backwards for some reason, not our fault, just how they were made,
-    /// so reverse em when playing em." Matched on the asset's own leaf name, because that is the
-    /// only thing distinguishing them -- nothing in the record says which way round it was
-    /// authored, and inventing a flag for it would be the fourth structure-guess of the evening.</summary>
-    static readonly string[] BackwardsAssets = { "s_plant", "toilet" };
-    static bool PlaysBackwards(string name)
-        => BackwardsAssets.Any(a => name?.Contains(a, StringComparison.OrdinalIgnoreCase) == true);
+    /// animations are baked backwards ... so reverse em when playing em."
+    ///
+    /// ⭐⭐ NO NAME MATCHING, because the data already identifies them. Exactly two feature
+    /// `.aps` on the whole disc carry a slot 1 -- `s_plant` and `Toilet`, master's two -- and
+    /// `RsePreviewHost` only ever selects slot 1 as the fallback for a create request nothing
+    /// else can answer. So "the slot-1 record, played as a create" IS those two assets.
+    ///
+    /// ⚠⚠ THE NAME VERSION WAS BROKEN IN BOTH DIRECTIONS and shipped anyway: it matched file
+    /// stems against DISPLAY names, so "Small Tree" never matched `s_plant` -- the tree was never
+    /// reversed at all -- while "Super Toilet" DID match "toilet" and should not have. Two bugs
+    /// that cancel to "looks half right", which is the worst way for a thing to be wrong.</summary>
+    static bool ReverseCreate(int slot) => slot == 1;
     /// <summary>The voices the scripted rides ask for; see <see cref="RideSounds"/>.</summary>
     RideSounds _sounds;
     /// <summary>`--sound-census=N`: run the park for N seconds in REAL frames rather than winding
@@ -2923,7 +2918,7 @@ public partial class Viewer : Node3D
         {
             var (ride, model, anim, slot, variant) = _scripted[i];
             if (model?.Root == null || !GodotObject.IsInstanceValid(model.Root)) { _sounds?.Drop(ride.Id); _scripted.RemoveAt(i); continue; }
-            int want = CreateSlotFor(anim, ride.Slot, ride.Name), wantVariant = ride.Variant;
+            int want = ride.Slot, wantVariant = ride.Variant;
             if (want < 0) continue;
             if (want != slot || wantVariant != variant)
             {
@@ -2946,7 +2941,7 @@ public partial class Viewer : Node3D
             // script asks for slot 5 (`Main`) constantly and slot 0 (the build) once -- so the
             // name match alone turned its whole idle backwards. ⭐ The BUILD is the backwards
             // one; gate on the slot the fallback selected.
-            if (want == 1 && PlaysBackwards(ride.Name))
+            if (ReverseCreate(want))
             {
                 var playing = anim.Records().FirstOrDefault(r => r.Slot == want);
                 if (playing is { DurationFrames: > 0 }) at = Math.Max(0f, playing.DurationFrames - at);
