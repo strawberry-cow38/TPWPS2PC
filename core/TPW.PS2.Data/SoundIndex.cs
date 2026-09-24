@@ -51,9 +51,34 @@ public sealed class SfxMap
         public List<Clip> Clips { get; } = new();
         public List<Link> Links { get; } = new();
         /// <summary>The 26 bytes of the 42-byte record between the counts and the pointers. Two
-        /// byte pairs read as percentages (`64 64`, `55 55`, `3f 3f` and `32 32`) and the loader
-        /// adjusts `+0x1e` in place; nothing here has been walked to a consumer.</summary>
+        /// byte pairs read as percentages (`64 64`, `55 55`, `3f 3f` and `32 32`).
+        /// ⭐ This used to end "the loader adjusts `+0x1e` in place; nothing here has been walked
+        /// to a consumer" -- the consumer is now found. See <see cref="Weight"/>.</summary>
         public byte[] Raw { get; init; } = Array.Empty<byte>();
+
+        /// <summary>The set's draw weight, read by the transition chooser as
+        /// `*(int *)(target + 0x1e)` (`FUN_0024C1F0`, see <see cref="SfxEventMachine"/>). The
+        /// file's L3 record is 42 bytes with <see cref="Raw"/> spanning `[0x0C, 0x26)`, so the
+        /// runtime's `+0x1e` is `Raw[0x12]`; the runtime's `+0x26` links pointer is the record's
+        /// last word, which the loader relocates.
+        /// ⚠ It only bites where one set has SEVERAL links whose bands overlap -- with disjoint
+        /// bands exactly one link can match and the weight cancels.
+        ///
+        /// ⭐⭐ ON THIS DISC EVERY SET OF AN EVENT CARRIES THE SAME VALUE, AND IT IS AN EQUAL
+        /// SHARE OF `0xFFFF`: `0x47` has 37 sets of 1771 (= 65,527), `0x48` four of 16383
+        /// (= 65,532), `RIDESFX` 69 three of 21845 (= 65,535). So the draw is **uniform among the
+        /// matching links** here -- the weighting machinery exists and this disc never uses it to
+        /// bias anything. The weighted form is kept because it is what the console computes.
+        ///
+        /// ⚠⚠ AND THE VALUE IS NOT ALWAYS STORED THIS WAY. `FUN_0024B8D0` walks the sets and, when
+        /// a flag on the load context (`+0x30`) is set, replaces `+0x1e` with `stored - previous`
+        /// -- i.e. it differences a CUMULATIVE series into per-set weights, exactly as the clip
+        /// `Threshold` field is cumulative. That path does not apply to these maps: their values
+        /// are equal rather than ascending, and **six of the 68 graphs have a DECREASING series**,
+        /// which a running total cannot be. Differencing them would hand all the weight to set 0
+        /// and make every draw pick it. Read the raw value, and check this assumption if a map
+        /// from another build ever turns up.</summary>
+        public uint Weight => Raw.Length >= 0x16 ? BinaryPrimitives.ReadUInt32LittleEndian(Raw.AsSpan(0x12)) : 0;
     }
     public sealed class Event
     {
