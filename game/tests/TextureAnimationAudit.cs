@@ -126,9 +126,19 @@ public partial class TextureAnimationAudit : Node
                 throw new Exception($"the fountain's water did not move by frame 20 (max {fountain:F4})");
             _checks++;
 
+            // ⚠⚠ AND wf_fall SEPARATELY, because it is the TWO-CHANNEL case and wf_water is not.
+            // wf_fall's track is 0x11000: VertexMorph AND the UV channel on the same track. Its
+            // positions come from the morph header at +0x20 and its UVs from the payload at +0x24,
+            // and nothing had ever run both on one part. Claiming wf_water covered this was wrong
+            // -- that track is 0x10000 alone.
+            float falls = MovesInEngine(lib, "Features/Fountain/fountain", "wf_fall", 20f);
+            if (falls < 0.01f)
+                throw new Exception($"the fountain's falls did not move by frame 20 (max {falls:F4})");
+            _checks++;
+
             GD.Print($"SCROLLING TEXTURE PASS: clock round-trips; coconut UVs move {moved:F3} by frame 20 "
                    + $"and close to {drift:F4} at frame 75, key-driven with no shader spin; "
-                   + $"fountain water moves {fountain:F3}");
+                   + $"fountain water moves {fountain:F3} and its falls {falls:F3} (morph+UV on one track)");
             _checks += 3;
         }
         finally { built.Root.Free(); probe.Dispose(); }
