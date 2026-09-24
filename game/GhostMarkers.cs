@@ -115,7 +115,21 @@ public sealed class GhostMarkers
                 byMarker[id] = st;
             }
             var c = park.CellCentre(t.X, t.Y);
-            float y = park.CellY(t.X, t.Y) + Park.CellSize * 0.03f;
+            // ⭐⭐ LIFTED AGAINST THE TERRAIN STEP, NOT THE CELL. Master: the cursor "should be
+            // higher". It was `CellSize * 0.03` -- and `CellSize` is 1.0 while the field's own
+            // step height is 2.0, so the marker floated **one and a half percent of a height
+            // step** above the ground and z-fought the floor it was drawn on.
+            //
+            // ⚠⚠ AND THERE IS NO CONSOLE CONSTANT TO COPY -- I read `FUN_001504F8` for one. Its
+            // four corners come straight out of the tile-height helper `FUN_00152760`
+            // (`height = tileByte[+1] << 2`, against x and z at `<< 8`) and go into the submit
+            // `FUN_00221750` with **no arithmetic applied**: the PS2 draws the marker exactly at
+            // tile height. It can, because that overlay does not contend with a depth buffer the
+            // way this renderer does. So the lift is OURS, it is a rendering necessity rather
+            // than a decoded value, and it is tied to the step it has to clear so a park with a
+            // different step scales with it.
+            float step = park.Field?.Step > 0f ? park.Field.Step : Park.CellSize;
+            float y = park.CellY(t.X, t.Y) + step * 0.075f;
             var a = new Vector3(c.X - half, y, c.Z - half);
             var b = new Vector3(c.X + half, y, c.Z - half);
             var d = new Vector3(c.X + half, y, c.Z + half);
