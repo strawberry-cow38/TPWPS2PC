@@ -141,6 +141,72 @@ static class MoodChecks
                   "the score reproduces the console's integer arithmetic exactly (36 for the fries case)");
         }
 
+        // ── the thought ladder and its budget ──────────────────────────────────────────────
+        // ⭐ Every threshold here is read, so every row can fail against a guessed one -- and the
+        // port DID guess: it had happiness > 75 for Happy where the console uses 81 and 91, and
+        // no source at all for Bored or Sad.
+        {
+            // ⚠⚠ `VisitorWants` IS A STRUCT, so an arrange step has to RETURN the modified copy.
+            // The first version of this helper took an `Action<VisitorWants>` and mutated a
+            // by-value parameter, so no case ever arranged anything at all.
+            //
+            // ⚠⚠ AND IT LOOKED LIKE A PASS, because `Thought.Happy` is enum value **0** -- the
+            // default of an untouched struct. "No bubble was ever written" and "the guest is
+            // happy" are the SAME VALUE, so the one row expecting Happy went green while five
+            // rows around it went red, and the green one was the vacuous one. ⭐ Every case here
+            // therefore stamps a SENTINEL first: if the ladder does not write, the check sees
+            // the sentinel rather than an answer that happens to be right.
+            Thought Bubble(Func<VisitorWants, VisitorWants> arrange)
+            {
+                var n = Still();
+                n.Unknown78Bar = n.SickBar = n.ToiletBar = n.HungerBar = n.ThirstBar = 101;
+                n.Set(1, arrange(new VisitorWants { Happiness = 50, Thought = Thought.Litter }));
+                // Long enough that guest 1's 128-tick refresh slot is certainly reached.
+                n.Step(n.SecondsPerTick * VisitorNeeds.MoodTicks * 2);
+                return n.Of(1).Thought;
+            }
+            void Field(string label, Thought want, Func<VisitorWants, VisitorWants> set)
+            {
+                var got = Bubble(set);
+                Check(got == want, $"{label} -> {want} (got {got})");
+            }
+            // ⭐ THE CONTROL FOR THE SENTINEL ITSELF: a guest the ladder declines to bubble must
+            // come back holding the sentinel. If this ever returns Happy, the helper has stopped
+            // arranging again and every row above it is meaningless.
+            Check(Bubble(w => { w.Happiness = 50; w.Boredom = 0; return w; }) == Thought.Litter,
+                  "a guest with nothing to say keeps the sentinel -- proving the arrange step lands");
+
+            Field("toilet 91", Thought.Toilet, w => { w.Toilet = 91; return w; });
+            Field("sick 91", Thought.Sick, w => { w.Sick = 91; return w; });
+            Field("happiness 85", Thought.Happy, w => { w.Happiness = 85; return w; });
+            Field("happiness 5", Thought.Sad, w => { w.Happiness = 5; return w; });
+            Field("boredom 91 while unhappy", Thought.Bored, w => { w.Happiness = 80; w.Boredom = 91; return w; });
+            // ⭐ THE ORDERING CONTROL. Boredom only speaks below 81 happiness -- a chain that
+            // tested boredom first would send a delighted guest a bored bubble, and every row
+            // above would still pass.
+            Field("a HAPPY guest is not bored", Thought.Happy, w => { w.Happiness = 85; w.Boredom = 100; return w; });
+            // ⚠ 80 is under the Happy bar and over the Sad one, so this isolates the toilet's
+            // precedence rather than testing two things at once.
+            Field("toilet outranks boredom", Thought.Toilet, w => { w.Happiness = 80; w.Boredom = 100; w.Toilet = 95; return w; });
+
+            // ⭐⭐ THE BUDGET. 25 at once, and the check has to prove the cap BINDS -- 40 guests
+            // all wanting the toilet must yield 25 bubbles, not 40 and not 0.
+            var many = Still();
+            many.Unknown78Bar = many.SickBar = many.ToiletBar = many.HungerBar = many.ThirstBar = 101;
+            for (int g = 1; g <= 40; g++) many.Set(g, new VisitorWants { Toilet = 95, Happiness = 50 });
+            many.Step(many.SecondsPerTick * VisitorNeeds.MoodTicks * 2);
+            Check(many.BubblesHeld == 25, $"at most 25 bubbles are held at once (got {many.BubblesHeld})");
+            Check(many.All.Values.Count(w => w.Thought == Thought.Toilet) == 25,
+                  "and exactly the budgeted guests got one");
+            // ⚠ THE CONTROL: 20 guests must ALL get one, or the line above would pass on a cap
+            // that is simply refusing everybody past some smaller number.
+            var few = Still();
+            few.Unknown78Bar = few.SickBar = few.ToiletBar = few.HungerBar = few.ThirstBar = 101;
+            for (int g = 1; g <= 20; g++) few.Set(g, new VisitorWants { Toilet = 95, Happiness = 50 });
+            few.Step(few.SecondsPerTick * VisitorNeeds.MoodTicks * 2);
+            Check(few.BubblesHeld == 20, $"under the budget every guest gets one (got {few.BubblesHeld})");
+        }
+
         // ⚠ THE CONTROL THAT MATTERS: `+0x78` is NOT raised by the clock. Nothing in
         // `FUN_0020FB88` raises it -- queueing is its only riser found -- and a rise put there on
         // the strength of its 95 bar was this port's mistake for two commits.

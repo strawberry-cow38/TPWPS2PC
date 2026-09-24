@@ -431,10 +431,20 @@ static class ServiceChecks
         // which the engine points `tbbored` at) AND that nothing in that function raises `+0x78`
         // on a clock at all. So the rise went, and with it the only thing that made 20 true.
         //
-        // ⭐ What is left is the queue's own **+5**, which IS read (`FUN_0020C6A8`). Asserting
-        // exactly that keeps the line able to fail -- a port that stops charging for queueing
-        // reads 0 here -- without pretending a number back into existence.
-        Check(broke3.Bored == 5, $"standing in the queue is the only thing that moves +0x78 ({broke3.Bored})");
+        // ⭐ What is left is the queue's own **+5**, which IS read (`FUN_0020C6A8`).
+        //
+        // ⚠⚠ AND THE FIRST REPLACEMENT ASSERTED `== 5`, WHICH WAS THE JUNGLE NUMBER AND NOT AN
+        // INVARIANT. HALLOW and FANTASY read 0 -- their fixture geometry never puts the guest in
+        // a queue at all -- so a rule fitted to one world's observation failed in two others. ⭐
+        // Replacing an overclaim with a number I had just watched go by is the same mistake in a
+        // smaller font.
+        //
+        // What IS invariant: the ONLY thing that moves `+0x78` is the queue, in steps of 5. A
+        // timed rise coming back reads as a large, non-multiple value. ⚠ "It moves at all" is
+        // NOT this case's job and must not be asserted here -- the queue case above owns that,
+        // with its own no-ride control.
+        Check(broke3.Bored % 5 == 0 && broke3.Bored <= 50,
+              $"nothing but the queue's +5 moves +0x78 ({broke3.Bored})");
         // ⭐⭐ AND THIS IS THE CHECK THAT ACTUALLY MATTERED ALL ALONG -- measured, not assumed:
         // it passed WITHOUT the boredom rise, which is how the rise was found not to be the fix.
         // The queue's happiness cost alone grinds them under the go-home floor.

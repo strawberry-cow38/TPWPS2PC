@@ -1921,3 +1921,45 @@ that only ever falls would hand this port a slow silent shop death and call it f
 arm pays `HappinessEffect * (quality - customers/15) / 100`, which at quality 100 is
 `HappinessEffect` exactly — so the unscaled value this port already pays is right *today* and
 becomes wrong the moment quality moves. Recorded so it is wired the day quality has a mover.
+
+### The thought ladder and the 25-bubble budget, ported (2026-09-24)
+
+`FUN_0020FB88`'s chain, first hit wins, `FUN_0020F888` firing at **≥ 91** and `FUN_0020F968` at
+**< 10**, every `+0x40` write gated on the 128-tick refresh AND the budget:
+
+| test | bubble | face (`FUN_0020FA78`) |
+|---|---|---|
+| toilet ≥ 91 | 7 Toilet | 0 |
+| sick ≥ 91 | 5 Sick | 2 |
+| happiness ≥ 91 | 1 | 1 |
+| happiness < 10 | 3 Sad | 0 |
+| happiness ≥ 81 | 0 Happy | 1 |
+| *(below 81)* boredom ≥ 91 | 4 Bored | 0 |
+| *(below 81)* happiness 26..74, 1-in-10 | 1 | 1 |
+| otherwise | none — **the slot is given back** | — |
+
+⭐ This supplies the rules `Decide` (`FUN_0020C930`) could not: **Bored and Sad had no source at
+all**, and the happy end had a guessed 75 where the console uses 81 and 91.
+
+⭐⭐ `DAT_002E28D0` caps bubbles at **25 park-wide**, with bit 3 of `guest[0x34]` marking a holder.
+The per-guest stagger (`tick & 0x7f == guest & 0x7f`) is load-bearing: without it the first 25
+guests would hold every slot forever.
+
+⚠ NOT PORTED: `FUN_0020FA78(guest, 0|1|2)` is a FACE, unconditional, separate from the bubble.
+This port has no guest expression to hang it on.
+
+### ⚠⚠ Two defects in the CHECKS, both of which read as passes
+
+Worth recording because both are shapes that recur:
+
+1. **`VisitorWants` is a struct and the arrange helper took `Action<VisitorWants>`** — mutating a
+   by-value parameter. No case arranged anything. Fixed with `Func<VisitorWants, VisitorWants>`.
+2. ⭐⭐ **`Thought.Happy` is enum value 0**, so "the ladder never wrote anything" and "the guest is
+   happy" are the SAME VALUE. Five rows went red and the one row expecting `Happy` went green —
+   **and the green one was the vacuous one**. Every case now stamps a sentinel (`Thought.Litter`)
+   first, with a control asserting the sentinel survives a guest the ladder declines to bubble.
+
+⚠ And a third, in an assertion: the retracted `>= 20` boredom check was first replaced with
+`== 5`, **which was the JUNGLE number rather than an invariant** — HALLOW and FANTASY read 0,
+because their fixture geometry never queues. Now asserts what is actually invariant (only the
+queue moves `+0x78`, in steps of 5) and leaves "it moves at all" to the case that owns it.

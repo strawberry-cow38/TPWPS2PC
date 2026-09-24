@@ -33,6 +33,13 @@ static class NeedsLifecycleChecks
             // pins a need HIGH is a fixture that will one day cross a bar somebody adds later.
             visitors.Needs.Unknown78Bar = visitors.Needs.SickBar = visitors.Needs.ToiletBar =
                 visitors.Needs.HungerBar = visitors.Needs.ThirstBar = 101;
+            // ⚠ AND NO BUBBLE, for the same reason one step further on. These cases compare the
+            // WHOLE stored struct across a boarding or a removal, and `Thought` is DERIVED -- the
+            // mood ladder rewrites it every 128 ticks, correctly. A budget of zero stops it being
+            // taken at all, so the comparison stays about the fields that really must survive.
+            // ⭐ Not the same as excluding `Thought` from the comparison: if some other path ever
+            // starts writing it, this fixture will still notice.
+            visitors.Needs.BubbleBudget = 0;
             var guest = visitors.Arrive(entrance, entrance);
             visitors.Needs.Set(guest.Id, new VisitorWants
             {

@@ -310,8 +310,27 @@ public sealed class VisitorNeeds
     public double SecondsPerTick { get; set; } = 1d / 60d;
     /// <summary>`DAT_002EEB6C` and `DAT_002EEB70`, read from the image.</summary>
     public const int HungerTicks = 50, ThirstTicks = 40;
+    /// <summary>`FUN_0020FB88` refreshes a guest's mood bubble on `tick % 0x7f == guest % 0x7f`.
+    /// ⚠ 0x7f is a MASK (`&amp; 0x7f`), so the period is 128 and the comparison is against the
+    /// guest's own id -- which is what spreads the refresh across the crowd instead of every
+    /// guest asking for a bubble on the same tick. That stagger is load-bearing: see
+    /// <see cref="BubbleBudget"/>.</summary>
+    public const int MoodTicks = 128;
     double _sinceTick;
+    long _tick;
     int _hungerTicks, _thirstTicks;
+
+    /// <summary>⭐⭐ THE CONSOLE DRAWS AT MOST **25** THOUGHT BUBBLES AT ONCE. `DAT_002E28D0` is a
+    /// global count and every site that gives a guest a bubble does the same dance: if the count
+    /// is below `0x19`, raise it and set bit 3 of `guest[0x34]` to mark this guest as holding
+    /// one. A guest who already holds one keeps it without taking a second.
+    ///
+    /// ⭐ It is a presentation budget, not a simulation one -- the mood is computed either way,
+    /// only the picture is rationed -- which is why it belongs next to the refresh period rather
+    /// than inside the ladder.</summary>
+    public int BubbleBudget { get; set; } = 25;
+    readonly HashSet<int> _holdingBubble = new();
+    public int BubblesHeld => _holdingBubble.Count;
 
     readonly Dictionary<int, VisitorWants> _byGuest = new();
     readonly Random _rng;
@@ -426,6 +445,8 @@ public sealed class VisitorNeeds
         if (ticks <= 0) return;
         _sinceTick -= ticks * SecondsPerTick;
 
+        long before = _tick; _tick += ticks;
+        Moods(before, _tick);
         _hungerTicks += ticks; int hunger = _hungerTicks / HungerTicks; _hungerTicks %= HungerTicks;
         _thirstTicks += ticks; int thirst = _thirstTicks / ThirstTicks; _thirstTicks %= ThirstTicks;
         if (hunger == 0 && thirst == 0) return;
@@ -435,6 +456,78 @@ public sealed class VisitorNeeds
             var w = _byGuest[guest];
             for (int i = 0; i < hunger; i++) w.Hunger = Clamp(w.Hunger + Roll(Rates["hunger"]));
             for (int i = 0; i < thirst; i++) w.Thirst = Clamp(w.Thirst + Roll(Rates["thirst"]));
+            _byGuest[guest] = w;
+        }
+    }
+
+    /// <summary>⭐⭐ `FUN_0020FB88`'s THOUGHT LADDER -- first hit wins, and every threshold is
+    /// read. `FUN_0020F888` fires at **&gt;= 91** (<see cref="Urgent"/>) and `FUN_0020F968` at
+    /// **&lt; 10**:
+    ///
+    /// <code>
+    ///   toilet     &gt;= 91           -> 7  Toilet
+    ///   sick       &gt;= 91           -> 5  Sick
+    ///   happiness  &gt;= 91           -> 1
+    ///   happiness  &lt;  10           -> 3  Sad
+    ///   happiness  &lt;  81:
+    ///        boredom &gt;= 91         -> 4  Bored
+    ///        26..74, 1 chance in 10 -> 1
+    ///        otherwise              -> no bubble, and the slot is GIVEN BACK
+    ///   happiness  &gt;= 81           -> 0  Happy
+    /// </code>
+    ///
+    /// ⭐ This fills in the rules <see cref="Decide"/> could not: Bored and Sad had no source at
+    /// all, and the happy end had a guessed 75 where the console uses 81 and 91.
+    ///
+    /// ⚠⚠ IT IS A SECOND BUBBLE SOURCE, NOT A REPLACEMENT. `FUN_0020C930` -- what this port calls
+    /// <see cref="Decide"/> -- writes the same field when a guest chooses what to do, and it is
+    /// the one that knows about a burger van being nearby. Both run on the console and the later
+    /// write wins; this one runs only every 128 ticks, so it refreshes slowly rather than
+    /// stamping over the decision bubble every frame.
+    ///
+    /// ⚠ NOT PORTED: `FUN_0020FA78(guest, 0|1|2)` runs alongside every arm and is unconditional
+    /// -- a FACE, separate from the bubble, with three values (neutral / happy / queasy). This
+    /// port has no guest expression to put it on.
+    ///
+    /// ⭐ Note the ladder disagrees with this port's enum: id 1 sits ABOVE id 0 on the same
+    /// field with the same face, at 91 against 81, while the sad end is taken by 3. The enum
+    /// calls id 1 `VeryUnhappy`. The engine's own ordering says it is the stronger HAPPY. Not
+    /// renamed here: the art has not been looked at, and the picture and the behaviour should
+    /// agree before a name changes.</summary>
+    void Moods(long from, long to)
+    {
+        if (to <= from) return;
+        foreach (int guest in _byGuest.Keys.ToArray())
+        {
+            // The console's own stagger: this guest refreshes on ticks congruent to its id.
+            long phase = ((guest % MoodTicks) - from) % MoodTicks;
+            if (phase < 0) phase += MoodTicks;
+            if (from + phase >= to) continue;
+
+            var w = _byGuest[guest];
+            Thought? picked =
+                  w.Toilet    >= Urgent ? Thought.Toilet
+                : w.Sick      >= Urgent ? Thought.Sick
+                : w.Happiness >= Urgent ? Thought.VeryUnhappy
+                : w.Happiness <  10     ? Thought.Sad
+                : w.Happiness >= 81     ? Thought.Happy
+                : w.Boredom   >= Urgent ? Thought.Bored
+                : w.Happiness is >= 26 and <= 74 && Rand(10) == 0 ? Thought.VeryUnhappy
+                : null;
+
+            if (picked == null)
+            {
+                // ⭐ The console GIVES THE SLOT BACK here rather than leaving a stale bubble up.
+                _holdingBubble.Remove(guest);
+                continue;
+            }
+            // Already holding one? Keep it and do not take a second.
+            if (!_holdingBubble.Contains(guest))
+            {
+                if (_holdingBubble.Count >= BubbleBudget) continue;
+                _holdingBubble.Add(guest);
+            }
+            w.Thought = picked.Value;
             _byGuest[guest] = w;
         }
     }
@@ -758,6 +851,10 @@ public sealed class VisitorNeeds
     public int Reconcile(IEnumerable<int> live)
     {
         var keep = live as ISet<int> ?? live.ToHashSet();
+        // ⚠ A departed guest must hand its bubble slot back, or the budget leaks and the park
+        // eventually shows none at all -- the same reused-id trap the needs table itself guards.
+        // ⚠ Hoisted off `keep`: building the set inside the predicate would rebuild it per id.
+        _holdingBubble.RemoveWhere(id => !keep.Contains(id));
         var gone = _byGuest.Keys.Where(g => !keep.Contains(g)).ToArray();
         foreach (int g in gone) _byGuest.Remove(g);
         return gone.Length;
