@@ -7286,7 +7286,6 @@ public partial class Viewer : Node3D
         {
             _waterTime += (float)delta;
             Ps2Materials.TextureTime = _waterTime;
-            _water?.Advance(_waterTime);
         }
         if (_place.Active) UpdatePlacementGhost();
         else if (_toolOpen) UpdateGhost();
