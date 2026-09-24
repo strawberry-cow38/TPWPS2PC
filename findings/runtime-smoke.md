@@ -80,3 +80,9 @@ separate unfinished work; do not infer them from successful ride/scene execution
 seven rejected mutations, and a separate real JUNGLE60s census on `4ca1a41` with
 22 cues/22 resolved/22 started, zero unresolved/silent. This does not change the
 visual-review or audible-output limitations above, or certify full world-swap stability.
+
+## Follow-up advisor browser gate
+
+`advisor-browser-audit.md` records 45 actual-control callback/metadata/PCM/lifetime
+checks and six rejected mutations on production `6aacf63`. This is deliberately not
+Viewer startup, physical input, layout/glyph inspection or a park-driven advisor.

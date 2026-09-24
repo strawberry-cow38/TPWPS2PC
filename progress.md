@@ -568,3 +568,28 @@ with cow tools before touching its active Viewer/needs/effects files. Do not exp
 this 37-check gate into a claim of full initialized world swaps or long-run memory
 stability. Facility satisfaction, track services, manual/native-Windows gates and
 known HALLOW/SPACE retail findings remain unfinished/explicit.
+
+## M6: permanent advisor-browser callback/locale/playback gate
+
+At production6aacf63, new AdvisorBrowserAudit builds actual browser controls, enters
+them in a Godot scene and drives their real signals without Viewer._Ready/_Process.
+45checks pass across EUR-English/French, USA-missingFrench, JAP-German and return to
+English; exact text, lip metadata, selected-bank/slot PCM, live stream replacement,
+retail missinglip defect, ordinary-bank state clearing and active teardown are covered.
+Six mutation controls fail3/1/1/1/5/4; original Viewer restored/rebuilt,45pass. Existing
+AdvisorAudit passes all regional identity/negative checks. No production viewer changes.
+Read-only subagent review strengthened exact text and lifecycle controls. Full evidence
+and explicit limitations: findings/advisor-browser-audit.md. No assets extracted.
+
+Source census confirms AdvisorRules/LipTrack.Playback/BitmapFont/KanjiTable still lack
+game consumers. Do not disguise catalogue browsing as VM scheduling, Japanese glyph
+rendering or animated lips; producers/day-rate integration remain unresolved.
+
+Next bounded independent item: malformed-input/whole-table validation for
+TextDatabase.ParseTable. Current parser reads count/offsets before checking bounds
+and treats a missing terminating NUL as EOF; reproduce with small synthetic inputs,
+then make a narrow fail-explicitly reader fix if confirmed. Existing AdvisorAudit
+already independently checks exact contiguous strings and full-byte consumption for
+all regional real tables, so retain that real-disc gate. Coordinate scope with peer;
+leave its Viewer/needs/effects files untouched. No guessed gameplay semantics or
+new advisor scheduling implementation is authorized by merely calling the VM decoded.

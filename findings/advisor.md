@@ -422,3 +422,13 @@ They are not listening tests or rendered-mouth comparisons.
 * Only PAL executable addresses are supported; all three regional text/DBA sets and all three
   speech languages **on this disc** were checked. Other executable builds and audio fallback
   policy for the remaining text languages are not established.
+
+### Permanent sound-browser callback regression gate
+
+`game/tests/AdvisorBrowserAudit.tscn` now exercises real widget callbacks and speech
+playback with the disc read in place: 45 checks pass, including exact regional
+subtitle/missing-language presentation, independently selected bank/slot PCM,
+replacement of live speech, the known missing-lip defect, non-advisor state clearing
+and active playback teardown. Six deliberately broken production variants fail.
+See `advisor-browser-audit.md` for evidence, reproduction and scope restrictions.
+This is not a park-driven advisor, Japanese glyph renderer or animated-mouth test.
