@@ -2274,9 +2274,40 @@ than four loudspeakers screeching without end, and structure alone cannot tell t
 `+0x10` flags (0, 4, 6, 8, 0x406, 0xc06) and its `+0xC` word (3300, 4600, 5700, 2300, 1000,
 3200, 4000, 5999), which look very like a repeat interval in milliseconds.
 
-⭐⭐ Three rules for looping in one evening -- the opcode, then the set count, then neither. Every
-one was an inference about STRUCTURE standing in for a FIELD nobody had read, and each survived
-until a person listened to it.
+⭐⭐⭐ **AND THE FOURTH RULE IS THE FIELD ITSELF.** Master again, after the one-shot change: "now
+they play 1 sound and then never again." So the repetition is not the script's either -- the
+object is persistent and the SOUND SYSTEM owes the timer. That is exactly what the L2 record's
+`+0x10` flags word says, and it was parsed and carried in `SoundIndex` the whole time:
+
+```
+0x0404  Speaker1..4, Staff        0x0406  PelBin, bus       -> bit 0x400: REPEAT
+0x0008  Fountain, MamFount fallz2                           -> continuous
+0x0006  fireworks, gulp    0x0200  WinOneShot    0x0000  woooosh, mortar, Toilet x6   -> once
+```
+
+`+0xC` is the interval in **milliseconds**: 4300 for the speakers and staff, 3200 for the bin,
+4000 for the bus, 3000 for the fountain. ⭐ Every case matches what the object IS.
+
+⚠ This is a **correlation over ~20 events read off a field**, not a consumer walked in the
+executable -- the bit may carry more than "repeats". But it is the first of the four rules with
+any data under it at all, and it is asserted both ways: the six things that should repeat carry
+it, the four that should not do not.
+
+⭐ It also retires an invention made an hour earlier: the bus is `0x0406` like the bin, so its
+four sets are ALTERNATIVES on a four-second timer and not the approach/stop/idle/pull-away
+sequence this file claimed to be sacrificing. There was nothing to sacrifice.
+
+⭐⭐ **Four rules for looping in one evening -- the opcode, the set count, neither, then the
+flag.** The first three were inferences about STRUCTURE standing in for a FIELD, each survived
+until a person listened to it, and the field was sitting parsed in the codebase throughout.
+
+### Features have no Create animation (2026-09-24)
+
+Master: "all features are missing their create animations (if they even had any.)" **They had
+none.** Slot 0 is `Create`; of the **18** feature `.aps` in JUNGLE, **0** carry a slot-0 record --
+`5x5rck`, `camera`, `fountain`, `Gates`, `lavspurt`, `lights`, `mamfount`, `pelbin`, `s_plant`,
+`seaplane` and the rest. Consistent with the Super Bog, already recorded here as having nothing in
+slot 0 because a portaloo does not build itself. Nothing is missing from the port.
 
 ⭐ The tag semantics still settle the stacking half: `ADDOBJ` names an object and `KILLOBJ tag` /
 `FADEOBJ tag` act on *the* object with that tag — singular, and `RideSounds.Kill` already looks it

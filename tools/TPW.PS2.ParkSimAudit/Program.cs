@@ -757,8 +757,48 @@ foreach (var featEntry in wad.Entries
         var (h, pk) = ResolveEither(ops[0], ops[2]);
         Console.WriteLine($"  scenery sfx: {System.IO.Path.GetFileName(featEntry.Path),-20} {ins.Opcode,-7}"
                         + $" group {ops[0]} evt {ops[2],3} tag {(ops.Length > 3 ? ops[3] : 1000),4}"
-                        + (h == null ? "  (unresolved)" : $"  sets {h.Sets}  {Clips(h)}"));
+                        + (h == null ? "  (unresolved)"
+                           : $"  sets {h.Sets} w0C {h.Word0C,5} flags 0x{h.Flags:x4}  {Clips(h)}"));
     }
+}
+
+// ⭐⭐ THE REPEAT FLAG, ASSERTED AGAINST WHAT THE OBJECTS ARE. `RideSounds` now decides repetition
+// from the L2 record's `+0x10` flag and its `+0xC` interval rather than from the shape of the
+// sets -- the fourth rule, and the first read off a field. This pins the correlation that
+// justified it, both ways, because a flag that is set on everything or nothing explains nothing.
+{
+    (string File, int Evt)[] shouldRepeat = { ("Speaker1", 236), ("Speaker2", 237), ("Speaker3", 238),
+                                              ("Speaker4", 239), ("Staff", 188), ("PelBin", 93) };
+    (string File, int Evt)[] shouldNot = { ("End", 186), ("End", 202), ("Toilet", 51), ("Toilet", 53) };
+    int repeatOk = 0, onceOk = 0;
+    foreach (var (name, evt) in shouldRepeat)
+        foreach (int grp in new[] { 3, 4, 5, 6, 7, 8, 9, 11 })
+            if (ResolveEither(grp, evt).Hit is { } h && (h.Flags & 0x400) != 0 && h.Word0C > 0) { repeatOk++; break; }
+    foreach (var (name, evt) in shouldNot)
+        foreach (int grp in new[] { 3, 4, 5, 6, 7, 8, 9, 11 })
+            if (ResolveEither(grp, evt).Hit is { } h2) { if ((h2.Flags & 0x400) == 0) onceOk++; break; }
+    Check(repeatOk == shouldRepeat.Length,
+          $"every loudspeaker, the staff and the bin carry the repeat flag with an interval ({repeatOk} of {shouldRepeat.Length})");
+    Check(onceOk == shouldNot.Length,
+          $"CONTROL: the fireworks, the mortar and the toilet's own events do NOT ({onceOk} of {shouldNot.Length})");
+}
+
+// ⭐⭐ DO FEATURES HAVE A CREATE ANIMATION AT ALL? Master: "all features are missing their create
+// animations (if they even had any)". Slot 0 is `Create` -- harvested over 352 script pairs, see
+// findings/animation.md -- so this is answerable from the data rather than by staring at a park.
+{
+    int withCreate = 0, without = 0; var missing = new List<string>();
+    foreach (var fa in wad.Entries.Where(e => e.Path.EndsWith(".aps", StringComparison.OrdinalIgnoreCase)
+                                           && e.Path.Contains("/Features/", StringComparison.OrdinalIgnoreCase)))
+    {
+        TPW.PS2.Data.Animation ap;
+        try { ap = new TPW.PS2.Data.Animation(wad.Read(fa)); } catch { continue; }
+        bool has = ap.Records().Any(r => r.Slot == 0);
+        if (has) withCreate++;
+        else { without++; if (missing.Count < 10) missing.Add(System.IO.Path.GetFileNameWithoutExtension(fa.Path)); }
+    }
+    Console.WriteLine($"  feature create: {withCreate} of {withCreate + without} feature .aps carry a slot-0 Create"
+                    + (missing.Count == 0 ? "" : $"; WITHOUT: {string.Join(" ", missing)}"));
 }
 
 // ⭐⭐ THE RULE'S PREMISE, ASSERTED. `RideSounds` now loops a scenery voice only when its event
@@ -780,8 +820,7 @@ foreach (var featEntry in wad.Entries
             if (h.Sets >= 3) sustained++; else oneShot++;
         }
     }
-    Check(oneShot > 0, $"scenery adds sound objects whose event has NO sustaining set ({oneShot}) -- these must not loop");
-    Check(sustained > 0, $"CONTROL: and some DO carry start/loop/end, so the rule still lets things sustain ({sustained})");
+    Check(oneShot + sustained > 0, $"scenery adds sound objects at all ({oneShot + sustained})");
 }
 
 // ⭐⭐ ASSERTED, not just printed. A line of output nobody compares against anything is a number

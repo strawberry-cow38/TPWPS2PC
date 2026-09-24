@@ -249,16 +249,64 @@ public sealed class RideSounds
         // like a repeat interval in milliseconds. Read those and sustain comes back as data.
         var sets = Enumerable.Range(0, r.Sets).Select(i => r.Clips.Where(c => c.Set == i).ToList())
                              .Where(l => l.Count > 0).ToList();
+        bool repeats = (r.Flags & RepeatFlag) != 0 && r.Word0C > 0;
+        bool sustains = !repeats && (r.Flags & SustainFlag) != 0;
+        if (loop && repeats)
+        {
+            DropRepeats(rideId, tag);
+            _repeats.Add(new Repeater { Ride = rideId, Tag = tag, Kind = kind, At = at, Catalogue = cat,
+                                        Event = r, IntervalSeconds = r.Word0C / 1000.0,
+                                        Due = r.Word0C / 1000.0, Head = head });
+        }
         var bank = sets.Count > 0 ? sets[_rng.Next(sets.Count)] : r.Clips;
         var chosen = Pick(bank);
-        var stream = chosen == null ? null : Stream(cat, r, chosen, false);
+        var stream = chosen == null ? null : Stream(cat, r, chosen, sustains);
         string place = $"at ({at.X:F1},{at.Y:F1},{at.Z:F1}){(fellBack ? " ROOT (fitting did not resolve)" : "")}{(park == 2 ? " park-2 map" : "")}";
         string line = $"{head} -> {chosen?.Bank}[{chosen?.Index}] {chosen?.Name} {chosen?.Milliseconds}ms "
-                    + $"one-shot from {sets.Count} set(s) {place}"
+                    + $"{(repeats ? $"every {r.Word0C}ms" : sustains ? "CONTINUOUS" : "one-shot")}"
+                    + $" from {sets.Count} set(s) flags 0x{r.Flags:x4} {place}"
                     + (stream == null ? "  ⚠ NO STREAM (undecodable or missing bank)" : $" {(stream.Stereo ? "stereo" : "mono")} {stream.MixRate}Hz");
         Census.Add(line); GD.Print(line);
-        if (stream != null) Start(rideId, tag, chosen.Name, stream, false, kind, at, line);
+        if (stream != null) Start(rideId, tag, chosen.Name, stream, sustains, kind, at, line);
     }
+
+    /// <summary>⭐⭐ A SOUND OBJECT THAT FIRES AGAIN ON ITS OWN TIMER, which is what master
+    /// described from the first report -- loudspeakers "play a sound from their respective banks
+    /// on a timer/random" -- and what three rules inferred from STRUCTURE all failed to produce.
+    ///
+    /// ⭐⭐⭐ IT IS A FIELD, AND IT WAS PARSED AND CARRIED ALL ALONG. The L2 record's `+0x10`
+    /// flags word, which `findings/sound.md` lists as unread, has **bit 0x400 set on exactly the
+    /// things that should repeat** and clear on everything else:
+    ///
+    ///   0x0404  Speaker1..4, Staff      0x0406  PelBin, bus        -> repeat
+    ///   0x0008  Fountain, MamFount fallz2                          -> continuous
+    ///   0x0000  woooosh, mortar, every Toilet event                -> once
+    ///   0x0006  fireworks, gulp         0x0200  WinOneShot         -> once
+    ///
+    /// and `+0xC` is the interval in milliseconds: 4300 for the speakers and staff, 3200 for the
+    /// bin, 4000 for the bus, 3000 for the fountain. ⚠ Every case matches what the object IS,
+    /// which is the corroboration -- but this is a correlation over ~20 events, NOT a consumer
+    /// walked in the executable. The bit could carry more than "repeats".
+    ///
+    /// ⭐ It also retires an invention: the bus is `0x0406` like the bin, so its four sets are
+    /// ALTERNATIVES on a 4-second timer, not the approach/stop/idle/pull-away sequence this file
+    /// claimed to be sacrificing an hour ago. There was nothing to sacrifice.</summary>
+    const int RepeatFlag = 0x400, SustainFlag = 0x008;
+
+    sealed class Repeater
+    {
+        public int Ride, Tag, Kind;
+        public Vector3 At;
+        public SoundCatalogue Catalogue;
+        public SoundCatalogue.Resolved Event;
+        public double IntervalSeconds, Due;
+        public string Head;
+    }
+    readonly List<Repeater> _repeats = new();
+    public int Repeating => _repeats.Count;
+
+    void DropRepeats(int ride, int tag)
+        => _repeats.RemoveAll(t => t.Ride == ride && (tag < 0 || t.Tag == tag));
 
     static bool IsPlaying(Node p) => p is AudioStreamPlayer3D a ? a.Playing : p is AudioStreamPlayer b && b.Playing;
     static float Position(Node p) => p is AudioStreamPlayer3D a ? a.GetPlaybackPosition() : p is AudioStreamPlayer b ? b.GetPlaybackPosition() : -1;
@@ -279,6 +327,7 @@ public sealed class RideSounds
         var hit = _voices.Where(v => v.Ride == rideId && v.Tag == tag).ToList();
         string line = $"[snd] {scriptMs / 1000.0,7:F1}s {ride,-22} KILLOBJ tag {tag,4} -> stops {hit.Count}: {string.Join(", ", hit.Select(v => v.Name))}";
         Census.Add(line); GD.Print(line);
+        DropRepeats(rideId, tag);
         foreach (var v in hit) Free(v);
     }
 
@@ -288,12 +337,14 @@ public sealed class RideSounds
         var hit = _voices.Where(v => v.Ride == rideId && v.Tag == tag).ToList();
         string line = $"[snd] {scriptMs / 1000.0,7:F1}s {ride,-22} FADEOBJ tag {tag,4} -> fades {hit.Count}: {string.Join(", ", hit.Select(v => v.Name))}";
         Census.Add(line); GD.Print(line);
+        DropRepeats(rideId, tag);
         foreach (var v in hit) v.Fading = true;
     }
 
     /// <summary>The ride is gone (bulldozed, or the park rebuilt): everything it owned stops.</summary>
     public void Drop(int rideId)
     {
+        DropRepeats(rideId, -1);
         foreach (var v in _voices.Where(v => v.Ride == rideId).ToList()) Free(v);
     }
 
@@ -306,6 +357,21 @@ public sealed class RideSounds
 
     public void Step(double delta)
     {
+        // ⚠ The interval is the EVENT's own, so a 4.3 s speaker stays 4.3 s at any frame rate --
+        // it counts seconds, not calls.
+        for (int i = _repeats.Count - 1; i >= 0; i--)
+        {
+            var t = _repeats[i];
+            t.Due -= delta;
+            if (t.Due > 0) continue;
+            t.Due += t.IntervalSeconds;
+            var pool = Enumerable.Range(0, t.Event.Sets).Select(k => t.Event.Clips.Where(c => c.Set == k).ToList())
+                                 .Where(l => l.Count > 0).ToList();
+            var pick = Pick(pool.Count > 0 ? pool[_rng.Next(pool.Count)] : t.Event.Clips);
+            var wav = pick == null ? null : Stream(t.Catalogue, t.Event, pick, false);
+            if (wav != null) Start(t.Ride, t.Tag, pick.Name, wav, false, t.Kind, t.At, t.Head);
+        }
+
         for (int i = _voices.Count - 1; i >= 0; i--)
         {
             var v = _voices[i];
@@ -382,6 +448,8 @@ public sealed class RideSounds
 
     public void Clear()
     {
+        // ⚠ The timers too, or a rebuilt park keeps firing the old one's speakers.
+        _repeats.Clear();
         foreach (var v in _voices.ToList()) Free(v);
     }
 }
