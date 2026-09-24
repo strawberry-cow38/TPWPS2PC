@@ -26,12 +26,13 @@ ASSEMBLY = PROJECT + '/bin/Release/net8.0/TPW.PS2.ParkSimAudit.dll'
 MAX_LOG_BYTES = 8 * 1024 * 1024
 # Minimum assertions in the current integrated ParkSimAudit. A stale binary or
 # accidentally omitted helper must not turn missing lifecycle coverage into PASS.
-REQUIRED_CHECKS = {'availability': 30, 'removal': 57, 'conservation': 20, 'needs_lifecycle': 50, 'disruption': 21, 'service_routing': 5, 'departure_recovery': 6, 'ride_effect_consumer': 33, 'compiled_purchase': 67, 'decision_scheduling': 28, 'terminal_walking': 90, 'post_service_movement': 18, 'native_destination_score': 43, 'native_destination_consumer': 25, 'native_relief': 78, 'native_ride_value': 70}
+REQUIRED_CHECKS = {'availability': 30, 'removal': 57, 'conservation': 20, 'needs_lifecycle': 50, 'disruption': 21, 'service_routing': 5, 'departure_recovery': 6, 'ride_effect_consumer': 33, 'compiled_purchase': 67, 'decision_scheduling': 28, 'terminal_walking': 90, 'post_service_movement': 18, 'native_destination_score': 43, 'native_destination_consumer': 29, 'native_relief': 78, 'native_ride_value': 70}
 REQUIRED_WITNESSES = (
     'ok   native destination consumer: actual idle selector need0/sick0 rejects relief',
     'ok   native destination consumer: actual idle selector need90/sick0 chooses relief',
     'ok   native destination consumer: actual idle selector need0/sick90 chooses relief',
     'ok   native destination consumer: native construction state1 is not eligible',
+    'ok   native destination consumer: actual idle chooser cannot route invalid compiled toilet into legacy Queued service',
     'ok   native destination score: all121 literal need entries agree with owner',
     'ok   native relief: +523 only enters finishing',
     'ok   native relief: +524 completes once',

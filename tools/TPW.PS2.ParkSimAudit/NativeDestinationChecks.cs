@@ -32,12 +32,12 @@ static class NativeDestinationChecks
         var direction=rec.ConnectionA.Direction switch {0=>new ParkCell(0,-1),1=>new ParkCell(-1,0),2=>new ParkCell(0,1),_=>new ParkCell(1,0)};
         var stub=entry.Offset(direction.X,direction.Z); var start=stub.Offset(direction.X,direction.Z);
         int material=Enumerable.Range(1,finder.Materials.Count-1).First(i=>ParkPaths.Classify(finder.Materials[i])==ParkPathKind.Path);
-        (ParkVisitors V, ParkRide R, Guest G) Fixture(byte toilet,byte sick)
+        (ParkVisitors V, ParkRide R, Guest G) Fixture(byte toilet,byte sick,bool wrongStub=false)
         {
             var paths=Ground(); paths.Lay(stub,material); paths.Lay(start,material);
             var sim=new ParkSim(paths);
             var ride=sim.Add(71,stem,origin,rec.Width,rec.Depth,world.Read(world.Find(stem+".rse")),
-                aps==null?null:new Animation(world.Read(aps)),1,stub,stub,out var fault,Sibling,definition:def,placementTurns:0)
+                aps==null?null:new Animation(world.Read(aps)),1,wrongStub?start:stub,stub,out var fault,Sibling,definition:def,placementTurns:0)
                 ?? throw new InvalidDataException(fault);
             sim.SetOpen(ride.Id,true);
             var needs=new VisitorNeeds(33){SecondsPerRise=1_000_000};
@@ -46,8 +46,8 @@ static class NativeDestinationChecks
             var v=new ParkVisitors(sim,new GuestWalk(paths),()=>0){Needs=needs};
             var guest=v.Arrive(start,start);
             needs.Set(guest.Id,new VisitorWants{Cash=1234,Happiness=80,PreferredIntensity=50,Toilet=toilet,Sick=sick});
-            Check(ride.DestinationEntry==entry && ride.NativeRelief && ride.DestinationEligible,
-                  $"need{toilet}/sick{sick} fixture has live compiled inside entry and eligible lifecycle");
+            Check(ride.DestinationEntry==entry && ride.NativeRelief==!wrongStub && ride.DestinationEligible,
+                  $"need{toilet}/sick{sick} wrongStub={wrongStub} fixture distinguishes scoring entry and validated service entry");
             return(v,ride,guest);
         }
         foreach(var (toilet,sick,want) in new[]{(0,0,false),(34,0,false),(90,0,true),(0,90,true),(100,0,true)})
@@ -73,6 +73,17 @@ static class NativeDestinationChecks
         {
             var(v,r,g)=Fixture(100,0); r.Set("VAR_BROKEN",1); v.Step(0,null);
             Check(v.Plans[g.Id].Intent==VisitorIntent.Wandering,"broken relief cannot be selected");
+        }
+        {
+            var(v,r,g)=Fixture(100,0,wrongStub:true);
+            Check(r.RequiresNativeServiceEntry && r.ServiceEntry==null && r.DestinationEntry!=null
+                  && v.Walk.Paths.Open(r.Entrance.Value),
+                  "wrong reachable stub preserves compiled scoring geometry but fails native service validation");
+            Check(!v.Takes(r) && !v.SendTo(g,r),"invalid physical service geometry refuses explicit transport instead of RSE fallback");
+            for(int i=0;i<300;i++) v.Step(.04,null);
+            Check(v.Plans[g.Id].Intent==VisitorIntent.Wandering && v.Boardings==0 && v.Relieved==0
+                  && !v.ServiceHidden(g.Id) && r.Queue.Count==0,
+                  "actual idle chooser cannot route invalid compiled toilet into legacy Queued service");
         }
         // Object identity rather than ID orders/penalties: property-level producer control.
         var first=new ParkRide{Id=9,Definition=def}; var second=new ParkRide{Id=2,Definition=def};

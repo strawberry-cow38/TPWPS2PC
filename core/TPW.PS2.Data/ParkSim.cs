@@ -37,6 +37,12 @@ public sealed class ParkRide
     /// service state. Unplaced/unjoined legacy RSE fixtures retain their old adapter.</summary>
     public bool NativeRelief => ServiceEntry != null
         && Definition?.CompiledEntry is { Kind: AssetResourceDatabase.AssetKind.Feature } && ProvidesRelief;
+    /// <summary>A physical, joined shop/relief placement cannot silently switch back to
+    /// stub-based RSE service when compiled inside-entry validation fails.</summary>
+    public bool RequiresNativeServiceEntry => PlacementTurns.HasValue && Definition?.CompiledEntry is {} entry
+        && (entry.Kind==AssetResourceDatabase.AssetKind.Shop
+            || (entry.Kind==AssetResourceDatabase.AssetKind.Feature && (entry.RawFeatureFlags.GetValueOrDefault()&1)!=0));
+
     public bool Sells => Definition?.Sells ?? false;
 
     /// ⚠⚠ LAVATORIES ONLY. `+0xb4` does NOT mean the same thing on every placed object: on a

@@ -2773,7 +2773,7 @@ public partial class Viewer : Node3D
         if (_burst?.Emit(puff, Cell(ParkPaths.Centre(new ParkCell(cx, cy)))) is { } spark)
             GD.Print($"[fx] {ride.Name}: built ({w}x{h}={cells} cells) -> Create{puff - 78} {spark.Name}");
 
-        if (_place.Def?.CompiledEntry?.Kind == AssetResourceDatabase.AssetKind.Shop && ride.ServiceEntry == null)
+        if (ride.RequiresNativeServiceEntry && ride.ServiceEntry == null)
             GD.PrintErr($"[guest] {ride.Name}: compiled entrance does not match placed footprint/stub; native approach unavailable");
         RegisterStandingService(ride, model.Root, _place.Turns);
         _scripted.Add((ride, model, anim, -1, -1));

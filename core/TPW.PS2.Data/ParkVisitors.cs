@@ -107,7 +107,8 @@ public sealed class ParkVisitors
     /// ⚠ A ride whose script never declares VAR_LETMEON cannot take anybody, so it is not a
     /// destination -- offering a guest to one would strand them in a queue forever.</summary>
     public bool Takes(ParkRide ride) =>
-        ride is { Entrance: not null } && (ride.NativeRelief ? !ReliefBusy(ride) : ride.Has("VAR_LETMEON"))
+        ride is { Entrance: not null } && (!ride.RequiresNativeServiceEntry || ride.ServiceEntry!=null)
+        && (ride.NativeRelief ? !ReliefBusy(ride) : ride.Has("VAR_LETMEON"))
         && ride.Get("VAR_RIDECLOSED") == 0 && ride.Get("VAR_BROKEN") == 0 && ride.Fault == null;
 
     public IEnumerable<ParkRide> Open => Sim.Rides.Where(Takes);
