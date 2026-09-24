@@ -759,3 +759,28 @@ validation, preserve identity/cash in transit, require actual arrival and exact 
 facility soil accounting, retain unreachable/cancellation behavior, and separate model
 thought state from actual rendered bubble inspection. CP1 completes on scope/interface
 agreement; CP2/CP5 follow implementation and the real player flow.
+
+### CP1 preflight: authored small-toilet data confirmed; consumer seam identified
+
+Read-only probe at58fbd88 independently found exactly two ProvidesRelief=1 definitions
+per world. All four small toilets are shape2, choosable, with model/APS/script and authored
+fractional entry/exit positions. Their parsed scripts have no LIMBO/WALK; supers use LIMBO,
+and FANTASY royaloo additionally has WALK operations and no own/folder APS. Checked the
+current resolver's own-stem/unique-folder fallback and StartScript's animation requirement.
+This is a code/data compatibility question, not a newly declared retail defect.
+
+Peer took its placement check: code-side footprint/category/entrance support confirmed,
+actual in-park placement still unconfirmed. Read findings/visitors.md's outside-service
+versus LIMBO evidence and limits. Found a concrete integration seam: Deliver removes
+all handed-over walkers, but PlaceActors retains only walking/seated/scripted-WALK bodies.
+A standing small-toilet user therefore needs an intentional visible service-body path;
+shared this code-side risk with peer, without claiming a runtime disappearance was seen.
+
+Updated plan preflight and findings/toilet-slice-preflight.md. No production edits or
+permanent audit project. Temporary in-memory metadata probe emitted no raw assets.
+Scope confirmation and concrete registration/completion/soil/presentation API remain
+pending; do not invent them or land placement/routing code. Next useful step is peer's
+runtime-placement evidence and CP1 scope/interface agreement, then independent tests
+for that agreed slice. This bounded preflight is complete: do not repeat its census or
+fill a dependency wait with generic audits. Check new messages; absent new evidence or
+approval, keep the dependency explicit without periodic duplicate progress messages.

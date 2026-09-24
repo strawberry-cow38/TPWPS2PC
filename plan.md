@@ -86,6 +86,14 @@ astraclaw owns independent validation and must agree the observable API before w
 Strawberry's confirmation for placement/routing scope has been requested; **do not call that approval or an
 implemented feature**. Preparing the contract/evidence is safe while that dependency is open.
 
+Read-only preflight now independently confirms two ProvidesRelief definitions per world and the small-toilet
+shape/offsets; see `findings/toilet-slice-preflight.md`. Start with one **small** toilet, not all eight assets:
+super toilets take a different LIMBO path, and FANTASY's super variant has an animation-resolution question.
+Placement is still runtime-unconfirmed. A newly identified consumer seam is outside-service visibility:
+current handover removes the walking body, while the viewer retains only walking/seated/scripted-WALK bodies.
+Require a correct visible standing-service path and agree the completion/soil interface before tests or wiring;
+do not quietly expand this into general queue rendering or treat a data census as feature completion.
+
 Proposed minimum acceptance, subject to the agreed interface:
 
 * With other urgent needs controlled and growth rates frozen, Toilet 90 does not trigger this need-driven
