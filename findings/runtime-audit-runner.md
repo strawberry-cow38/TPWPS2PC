@@ -1,6 +1,6 @@
 # Reproducible headless runtime audit gate
 
-`tools/runtime_audit.py` makes the seven headless-safe Godot scenes a fresh-build
+`tools/runtime_audit.py` makes the eight headless-safe Godot scenes a fresh-build
 runtime gate. It does not replace `tools/lighting-check.py`, the whole-park matrix,
 physical UI testing, listening, or manual visual review.
 
@@ -15,7 +15,7 @@ python3 -m unittest discover -s tools -p 'test_*audit*.py'
 ## Contract
 
 The default gate runs VisitorAudit, RseAnimationAudit, TextureAnimationAudit, MtrAudit,
-AdvisorBrowserAudit, RideSoundLifecycleAudit and StandingServiceAudit. It probes the supplied engine for a
+AdvisorBrowserAudit, RideSoundLifecycleAudit, StandingServiceAudit and CompiledShopViewerAudit. It probes the supplied engine for a
 mono version, records .NET SDK version, and always runs `dotnet build -c Debug -t:Rebuild`
 for the viewer. Debug is the assembly configuration these Godot scene launches load.
 There is no skip-build switch. It does not invoke editor import or capture screenshots.
@@ -30,13 +30,13 @@ Advisor45/audio37 minimums also require named important lifecycle/locale witness
 Standing74 requires matching totals, visibility/ownership witnesses, and real placed
 service completion at all four rotations; see standing-service.md for its boundaries.
 
-Advisor/audio/standing checks print sequential assertion IDs. Repeated log lines cannot
+Advisor/audio/standing/compiled-shop checks print sequential assertion IDs. Repeated log lines cannot
 replace omitted assertions while inflating totals. This is a logging-only change to
 those scenes, not altered test behavior or a proof against deliberately forged logs.
 MTR retains its existing all-four-witness summary contract.
 
 Exit0 means every **selected** scene passed. Only `status=all_scenes_passed` with
-`full_gate_passed=true` certifies this runner's complete seven-scene set. A successful
+`full_gate_passed=true` certifies this runner's complete eight-scene set. A successful
 subset explicitly records `selected_scenes_passed` and `full_gate_passed=false`.
 Exit1 preserves failure evidence. Argument errors exit2 before starting the gate.
 
@@ -103,3 +103,11 @@ fails all four new witnesses; the previous all-seven run remains at70 standing c
 After integrating peer0618434, the full seven-scene gate also passes with74 standing checks;
 52 Python classifier/orchestration tests pass. The separate park matrix additionally requires
 six interrupted-departure checks per world and retains its exact known retail failures.
+
+## Compiled-shop viewer extension
+
+The default set now includes CompiledShopViewerAudit:18 checks through actual IndexRides
+and DefinitionFor, including catalogue re-indexing. Ten assertions reject the original
+attachment-before-population bug; authored-first getters and stale-catalogue mutations also
+fail. All eight runtime scenes pass on the d6f4e75 integration;54 Python tests pass. See
+compiled-shop-viewer.md for the fixture's scope and remaining region/purchase controls.

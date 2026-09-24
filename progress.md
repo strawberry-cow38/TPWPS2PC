@@ -1089,3 +1089,26 @@ currently surface that property. Verify/report before changing peer core. Consid
 purchase consumer controls, not just equivalent getters, and retain explicit unscaled
 quality default. Register new viewer scene in the default runner once green, with named
 coverage/mutation controls; run full gates and land explicit paths.
+
+## Viewer ordering fix verified; new default eighth scene ready to land
+
+Peer d6f4e75 arrived during a normal-push race. Fetched and rebased our docs commit safely
+(no force push; original3b5955c became6bde6b4). Producer-trace docs remain intact. d6 moves
+Attach after AddWad and shares CompiledAssets.Attach between runtime/helper; empty input
+reports NOTHING TO JOIN and both Source path shapes are handled.
+
+Our actual IndexRides/DefinitionFor scene now passes18/18 after failing10/18 atf96.
+3 restored-source mutation controls reject ordering(10 actual failed checks), authored-
+first happiness(4), and retaining the old catalogue(1). Logs tpw-compiled-viewer-mutant-*.log;
+source restored by finally. New shops scene registered as the DEFAULT eighth runtime
+scene with numbered coverage, named4world/reindex witnesses and matching summary.54 Python
+tests pass. /tmp/tpw-compiled-viewer-runtime-20260924: all8pass; shops18, standing74.
+/tmp/tpw-compiled-viewer-matrix-20260924: only exact known retail reds, existing33 consumer/
+50 needs lifecycle/6 departure/5 routing coverage retained. No production edits by me here.
+
+Next after landing this green scene: independent core identity/region and actual purchase
+controls for CompiledAssets/Definition getters, with named expected keys (239/153/66/388)
+and real icecream region differences (245/151/69/391). Inspect current Attach/For ambiguity
+and fallback semantics rather than assume the API; do not conflate duplicate numeric keys
+with duplicate symbolic identities. Coordinate any core change with peer. No restart,
+no human-approval wait, and existing recurring owner task remains the only continuation.

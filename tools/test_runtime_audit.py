@@ -30,6 +30,13 @@ def raw_witness(scene):
             'ADVISOR BROWSER ok: teardown begins with speech still active',
             'ADVISOR BROWSER ok: all replaced/active speech streams retire',
             'ADVISOR BROWSER PASS: 45 checks, 0 failures'])
+    if scene == 'shops':
+        return '\n'.join(['COMPILED SHOP VIEWER ok: tested'] * 12 +
+            [f'COMPILED SHOP VIEWER ok: {world} live definition consumes compiled happiness10'
+             for world in ('JUNGLE', 'HALLOW', 'FANTASY', 'SPACE')] + [
+             'COMPILED SHOP VIEWER ok: re-index replaces the catalogue',
+             'COMPILED SHOP VIEWER ok: re-index does not retain SPACE',
+             'COMPILED SHOP VIEWER PASS: 18 checks, 0 failures'])
     if scene == 'standing':
         return '\n'.join(['STANDING SERVICE ok: tested'] * 62 + [
             'STANDING SERVICE ok: real script accepts customer before satisfaction',
@@ -50,7 +57,7 @@ def raw_witness(scene):
 
 def witness(scene):
     text = raw_witness(scene)
-    if scene in ('advisor', 'audio', 'standing'):
+    if scene in ('advisor', 'audio', 'standing', 'shops'):
         number = 0
         lines = []
         for line in text.splitlines():
@@ -111,9 +118,16 @@ class Classification(unittest.TestCase):
             self.assertIn(audit.classify('audio', output(text))['status'], ('missing_coverage', 'duplicate_or_missing_assertion_ids'))
 
     def test_duplicate_assertion_line_cannot_replace_another_check(self):
-        for scene in ('advisor', 'audio', 'standing'):
+        for scene in ('advisor', 'audio', 'standing', 'shops'):
             text = witness(scene).replace('ok: [2] tested', 'ok: [1] tested')
             self.assertEqual(audit.classify(scene, output(text))['status'], 'duplicate_or_missing_assertion_ids')
+
+    def test_shops_require_each_live_world_and_matching_count(self):
+        text = witness('shops')
+        for damaged in [text.replace('18 checks', '17 checks'),
+                        text.replace('SPACE live definition consumes compiled happiness10', 'unrelated assertion'),
+                        text.replace('re-index replaces the catalogue', 'unrelated assertion')]:
+            self.assertEqual(audit.classify('shops', output(damaged))['status'], 'missing_coverage')
 
     def test_standing_requires_actual_placement_lifecycle_and_matching_count(self):
         text = witness('standing')
