@@ -884,6 +884,7 @@ public partial class Viewer : Node3D
         if (_current != null) _current.Root.Visible = m == Mode.Models || (m == Mode.Park && _parkRide);
         if (_park != null) _park.Root.Visible = m == Mode.Park;
         if (_gate != null) _gate.Root.Visible = m == Mode.Park;
+        if (_nativeBus != null) _nativeBus.Root.Visible = m == Mode.Park;
         if (_gateBox != null) _gateBox.Root.Visible = m == Mode.Park;
         _flags.Root.Visible = m == Mode.Park;
         if (_sky != null) _sky.Environment = m == Mode.Park && _skyEnv != null ? _skyEnv : _flatEnv;
@@ -2807,12 +2808,6 @@ public partial class Viewer : Node3D
         // at the ride root for node -1 (the console's own reading of a negative node: 0x1b9388
         // takes the instance's position through 0x1b9220) or at the named fitting.
         _sounds ??= MakeSounds(); _burst ??= MakeParticles();
-        // ⭐ Where a sound parameter's value comes from. ⚠ A LAMBDA over the ride list, not a
-        // captured figure: the level changes every time SCREAMLEVEL fires.
-        if (_sounds != null) _sounds.ParameterValue ??= (rideId, param) =>
-            param == RideScreams.LevelSelector
-                ? _sim?.Rides.FirstOrDefault(r => r.Id == rideId)?.ScreamLevel ?? 0
-                : 0;
         if (_sounds != null || _burst != null) ride.Host.EffectRequested += fx => OnRideEffect(ride, model, fx);
         // ⭐⭐ THE SCRIPT ASKS WHERE ITS NODES ARE, and the placed model answers -- the ANIMATED one,
         // LastWorld through the ride root, not the bind pose -- so WALKON's legs take the real
@@ -2844,6 +2839,10 @@ public partial class Viewer : Node3D
             // ⚠ Park 1 first, park 2 second, and the line says which served: a world's two parks
             // ship different ride maps and the game loads exactly one.
             var s = new RideSounds(this, new SoundCatalogue(_lib.Disc, world, 1), new SoundCatalogue(_lib.Disc, world, 2));
+            // Every sound owner starts with the ride accessor, even when the bus creates
+            // it before the first placed ride. Bus parameter20 composes over this accessor.
+            s.ParameterValue = (rideId, param) => param == RideScreams.LevelSelector
+                ? _sim?.Rides.FirstOrDefault(r => r.Id == rideId)?.ScreamLevel ?? 0 : 0;
             GD.Print($"[snd] catalogue for {world}: park maps 1 and 2, positional voices reach {RideSounds.MaxDistance} units");
             return s;
         }

@@ -1960,3 +1960,40 @@ andnormalpushmain, thenmergeintoBUSworktreecarefully (busAnimatedModelnativeopti
 BusWIPstaysin ../tpw-gate-occupancy Viewer.Bus.cs+Viewer.cs, NOTinthisworktree. Its latest
 build/tmp/tpw-bus-live-build-fixed.log isclean; actualparkadmissionverificationstillneeded.
 CowownsaudioseamadditiveViewer.BusAudio.cs via partialhooks specifiedinchannel, don'toverwrite.
+
+## Live bus consumer milestone — September 24, 17:20 UTC
+
+Active worktree `../tpw-gate-occupancy`, branch `astraclaw/bus-native-research`.
+Belly Bounce `335ab4e` is SHIPPED on main; do not redo that package. Bus remains
+branch-only. Live Viewer bridge in475e401, shipped changes merged6361592, cow's
+sound seam065031a/1639088 cherry-picked84493a9/211844a. Normal Viewer placement
+registration, native Point0 admissions, map reset and clocks are now connected;
+old invented Gate() arrival timer removed rather than left running beside it.
+
+New rendered-display `game/tests/BusViewerSmoke.tscn`: actual normal _Ready, real
+Shops menu/ArmFromList/PlaceHeld, shared grid and compiled identity, StepPark(.04),
+first batch, actual walkers/Plans/Needs, live bus scene-tree model, then LoadMap
+and fresh empty-park sound owner. Four worlds passed `/tmp/tpw-live-bus-*-v2.log`,
+2039 checks each. First arrival405ticks/16200ms, one guest from the real one-shop
+score20, at native Point0 (not at bus or gate mouth); no guests before phase2.
+Initial standaloneJungle `/tmp/tpw-live-bus-jungle.log` also passed1846checks.
+These are rendered-display integration runs, NOT screenshots/listening approval.
+
+Audio test exercises live selector20=51 at phase2, zero after strict>2000ms,
+and an independently changed ride ScreamLevel73 still reaching selector6. Reload
+clears bus/placement/admissions; next empty park creates sound BEFORE any shop,
+and its own selector20 reaches51. Found/fixed bool surviving sound-owner reload
+(cow1639088) and bus-first setup skipping later scream ??= (move base accessor to
+MakeSounds, let bus create sound). SetMode hides bus outside Park without changing
+native state0/end-hold visibility. v2 tests used our equivalent owner-identity fix;
+final cow integration includes re-chaining in UpdateBusAudio and needs fresh gates.
+
+Next: test terrain2 as STARTING map too, fresh combined11runtime+4worldmatrix+Python,
+merge latestmain (cow owns cursor/bridge lane), mutation-check live consumer where
+practical, ask peer review and land only after gates. No more isolated-helper-only
+work. Bus native pressure boundaries remain explicit: current port has no native
+entrance-group queue counts and no sticky departure-deferral+A4 lifecycle, so these
+admission inputs are ZERO with a startup warning, NOT claimed native equivalence.
+No attraction minigame session exists. Upgrade tier defaults0; actual upgrade UI
+unimplemented. Dedicated elapsed-ms/quantized active clock is separate from executed
+countdown ticks; exact console pump/pause-edge timing is not a hardware-emulation claim.

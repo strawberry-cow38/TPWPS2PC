@@ -37,8 +37,9 @@ public partial class Viewer
     /// non-zero arm, `0x147A1C` calls the release). Labelled rather than implied.</summary>
     partial void BusAudioStateChanged(int state, uint activeMs)
     {
-        if (_sounds == null) return;
         if (state == 0) { StopBusAudio(); return; }
+        _sounds ??= MakeSounds(); // a first bus must not depend on placing a shop
+        if (_sounds == null) return;
         if (_busAudioLive) return;              // one voice per visit, not one per phase
         ChainBusParameter();
         // ⭐ Registered BEFORE the cue: Follow decides that this owner's voices are positional at
