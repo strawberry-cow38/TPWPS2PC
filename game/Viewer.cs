@@ -314,7 +314,7 @@ public partial class Viewer : Node3D
     /// <summary>The menu a selected object opens. ⚠ Built lazily: it needs both the HUD font and
     /// UI.WAD's panel art, neither of which exists before a disc is open.</summary>
     ObjectMenu _objMenu;
-    ShopPanel _shopPanel;
+    LaptopShopScreen _shopPanel;
     Control _uiRoot;
     string _moneyShown;
     Label _toolStatus;
@@ -5692,8 +5692,12 @@ public partial class Viewer : Node3D
     {
         LoadHudFont();
         if (_objMenu == null) { GD.PrintErr("[menu] --menu-test: no menu (font or UI.WAD art missing)"); _menuShown = true; return; }
-        if (_park == null || _park.Placed.Count == 0) return;   // wait for something to be placed
-        _menuShown = true;
+        if (_park == null) return;
+        // ⚠ The plain menu test needs something already standing. The SHOP test does not: it puts
+        // its own shop down below, so waiting for a placement waits forever on a run that only
+        // lays paths -- which is exactly what `--path-test` does, and why the capture came back
+        // with an empty park and no panel.
+        if (!_shopInfoTest && _park.Placed.Count == 0) return;
         // ⭐ For the shop capture, pick a PLACED SHOP rather than whatever is first -- the panel
         // has nothing to say about a ride.
         int want = 0;
@@ -5727,6 +5731,10 @@ public partial class Viewer : Node3D
                         try { PlaceHeld(); } finally { _cursorOverride = had; }
                     }
                 }
+                // ⚠ No shop in the build list YET means the catalogue is still being indexed, not
+                // that this disc has none. Return WITHOUT latching `_menuShown` so the next frame
+                // tries again; latching here would give up permanently on frame one.
+                else return;
             }
             want = -1;
             for (int i = 0; i < _park.Placed.Count && want < 0; i++) if (ShopFor(i) != null) want = i;
@@ -5737,6 +5745,7 @@ public partial class Viewer : Node3D
                 _menuShown = true; return;
             }
         }
+        _menuShown = true;
         _selected = want;
         ShowBoxFor(want);
         var entries = MenuEntriesFor(want).ToList();
@@ -7398,21 +7407,17 @@ public partial class Viewer : Node3D
                     _objMenu.Activated += OnObjectMenu;
                     GD.Print("[menu] object menu ready (UI.WAD panel art + Large.bff)");
                 }
-                // ⭐ SMALL.bff for the panel, not the money face. Large.bff's glyphs are taller
-                // than this panel's own 14-unit row spacing, so its rows collided -- and a screen
-                // of small stats is what Small.bff is for.
-                FontText small = null;
-                try
-                {
-                    var sbff = _lib?.ReadGeneric("/Fonts/European/Small.bff");
-                    if (sbff != null) small = new FontText(new BitmapFont(sbff));
-                }
-                catch (Exception ex) { GD.PrintErr($"[shop] Small.bff would not load: {ex.Message}"); }
-                _shopPanel = ShopPanel.Create(_lib, small ?? _hudFont);
+                // ⭐⭐ LARGE.bff, and this is now READ rather than picked. The laptop's row step
+                // is 32 (`DAT_002e9ca8`) and Large.bff's own line advance is 30 -- a 2-unit gap.
+                // Small.bff (21) and Console.bff (14) would leave holes. An earlier version of
+                // this screen used Small.bff because its rows collided at 14 units, which was a
+                // symptom of the invented panel, not of the face.
+                _shopPanel = LaptopShopScreen.Create(_lib, _hudFont, _text, _lib?.WadName);
                 if (_shopPanel != null)
                 {
                     _uiRoot.AddChild(_shopPanel);
-                    GD.Print("[shop] info panel ready (260x180 at y=210, centred, scaled off 512)");
+                    GD.Print($"[laptop] shop screen ready ({ShopScreen.SceneFile} layout, "
+                             + $"{ShopScreen.ChromeFor(_lib?.WadName)} chrome, Large.bff, step {ShopScreen.RowStep})");
                 }
             }
         }
