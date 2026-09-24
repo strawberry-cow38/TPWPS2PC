@@ -268,3 +268,33 @@ the isolated pixel audit passed in both. The crash was not diagnosed or fixed in
 - **Live-console comparison.** No PCSX2 game-frame or live GS packet capture independently
   confirms the chosen state for every park. The evidence is static executable dataflow plus
   disc surface identities and actual Godot pixels, not a claim of visual PS2 equivalence.
+
+## Current scene-gate correction and rerun (2026-09-23)
+
+The audit's named-surface lookup had become stale: it selected `CLIFFS#0` as a surface
+ordinal, while AnimatedModel names the suffix by **material index**. The first verified
+triangle belonged to another material. Thus the audit compared `(66,108,-4)` with the
+other material stream's first `(31,123,-5)` normal. The failure reproduced both at
+`34b050b` and the current tree, under headless and real Compatibility rendering.
+No renderer normal/shader change was required.
+
+The corrected audit requests the already-verified `tri.Material` through the peer's
+`SurfaceFor(mesh, material)` API (`c32cb74`), requires missing materials to return null,
+and retains the exact normal identities and existing pixel tolerances. Failure output
+now includes the expected vector, channel type/length and a short actual-value sample.
+
+The full existing lighting harness then passed on the installed engine reporting
+`4.6.stable.mono.official.89cea1439`, with the project compiled against SDK 4.6.2:
+
+* Managed disc identities: PASS.
+* Compatibility/OpenGL software llvmpipe: 12 pixel probes, PASS.
+* Forward+/Vulkan software llvmpipe: 12 pixel probes, PASS.
+* Culling off: 12 pixel probes, PASS.
+* Directional-term mutation: required exit 2 at SPACE-CLIFFS framebuffer mismatch,
+  not an earlier unrelated normal/selector failure.
+* Restored shader: 12 pixel probes, PASS.
+
+This is exact evidence for those scenes/backends, not a universal engine-version
+compatibility rule. Controlled patches/pixels remain distinct from full-frame visual
+review. Artifacts are in the local `/tmp/tpw-lighting-evidence-5AMngk/gate` directory;
+no generated images or disc payloads are committed.

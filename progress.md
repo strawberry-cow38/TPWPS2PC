@@ -511,3 +511,38 @@ recording reported engine version, compile target, exit/counts and any compatibi
 failure. Do not infer project compatibility from the new --version capability check,
 and do not claim screenshot visual inspection unless it actually occurs. Coordinate
 with the renderer maintainer and leave its active source files untouched.
+
+## Current Godot runtime gate and lighting audit correction
+
+Ran the actual current project on installed Godot4.6.stable.mono.official.89cea1439,
+compiled with SDK4.6.2. Visitor/RSE-animation/texture-animation/MTR scene audits passed
+headlessly (including six visitor world/terrain cases and146 texture surface checks).
+Lighting initially failed on CLIFFS raw normals in both headless and actual OpenGL;
+the same failure existed at34b050b. Diagnosis was an audit selector error, not a renderer
+normal change: #0 was treated as surface ordinal though names encode material indices.
+
+Peer supplied SurfaceFor/Surfaces APIs in c32cb74. Integrated that change, selected the
+already-verified triangle material via SurfaceFor, retained exact normal and pixel checks,
+and added missing-material/diagnostic checks. The full lighting harness passes data,
+Compatibility12pixels, Forward+12pixels, cull-off12, required directional-mutation
+exit2 at the correct framebuffer mismatch, and restored12pixels. First artifact-path
+attempt was refused because it was under Git ancestry; reran properly under /tmp,
+without bypassing that guard.
+
+Actual main JUNGLE viewer smoke also exited0: at60s 28boardings/8returns/20ride-owned/
+8walking; at180s 68boardings/40returns/28ride-owned/0walking. Needs/bubble resource and
+visibility instrumentation ran, and four1280x720 captures were generated. They are NOT
+visually reviewed; Dummy audio is NOT an audible check. The walking-only “nobody in
+park” log does not mean ride-owned guests vanished. Shared that distinction with peer.
+
+Evidence/commands/limits: findings/runtime-smoke.md and appended findings/lighting.md;
+local tpw-scene-regression-c32cb74/manifest.json, tpw-lighting-artifact-path.txt,
+tpw-current-guest-smoke-path.txt. No images or extracted disc data go into Git.
+Only LightingAudit source and docs changed here; renderer modifications remained with
+its owner. Next: publish the verified gate, then choose an independent remaining audit/
+release item while facility routing/want satisfaction stays coordinated with cow tools.
+
+Peer follow-up `2802335` corrects the needs census label to distinguish WALKING guests
+from identities off the walk. Integrated before publishing this audit/docs package;
+recorded capture counts remain those of our c32cb74 run, not an assertion that separate
+live captures have identical arrivals. No population-conservation assertion was changed.

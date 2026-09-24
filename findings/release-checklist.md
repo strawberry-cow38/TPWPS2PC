@@ -15,6 +15,8 @@ The authoritative running handoff is `progress.md`; implementation scope is `pla
 | Launcher window event paths | 22 headless actual-window assertions, four deliberately broken implementations rejected | Fake external commands/processes; no native Windows input, visual or update sign-off |
 | Needs continuity | Guest-ID state preserved across queue, actual seated ride, completion, deletion, delayed readmission, retirement and ID reuse | Normal frame-rate/zero-time checks, not all long-stall timing; rise rates/cadence remain chosen |
 | DBA unknown storage | 172,992 one-bit probes across EUR/USA/JAP, original golden checks unchanged | Preservation evidence only; specialised semantics remain partial |
+| Current Godot runtime scenes | Four headless scene audits pass; corrected lighting gate passes both software renderers and rejects its shader mutation at `c32cb74` plus audit fix | Specific scene/backend evidence, not all API/version/platform compatibility; see runtime-smoke.md |
+| Current JUNGLE rendered smoke | Real viewer exits zero; at 180s, 68 cumulative boardings/40 returns/28 ride-owned identities; four 1280x720 captures generated | Captures not visually reviewed; Dummy audio; bubble logs not proof of on-screen readability |
 | Earlier rendered guest smoke | Actual Godot/Xvfb run at `4090631`; runtime boarding/seating counters and four generated captures | Captures were pixel-checked, not visually signed off; predate current renderer/needs bubbles |
 
 Recorded logs/manifests are local build artifacts outside Git. Reproduction commands and

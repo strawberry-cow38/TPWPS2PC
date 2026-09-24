@@ -44,10 +44,16 @@ public partial class LightingAudit : Node
                 var drawn = new AnimatedModel(model, null, null, _ => (onePixel, false));
                 AddChild(drawn.Root);
                 drawn.SetFrame(0);
-                var actual = drawn.Root.GetChildren().OfType<MeshInstance3D>().Single(s => s.Name == fixture.Mesh + "#0");
+                // Select the already-verified material explicitly, never a surface
+                // ordinal encoded in a display name. Missing materials must fail loud.
+                var actual = drawn.SurfaceFor(fixture.Mesh, tri.Material)
+                    ?? throw new Exception($"missing actual surface {fixture.Mesh}, material {tri.Material}");
+                Require(drawn.SurfaceFor(fixture.Mesh, int.MaxValue) == null,
+                    "missing material must not fall back to a neighboring surface");
                 var custom = actual.Mesh.SurfaceGetArrays(0)[(int)Mesh.ArrayType.Custom0].AsFloat32Array();
                 Require(custom.Length >= 3 && custom[0] == raw.X && custom[1] == raw.Y && custom[2] == raw.Z,
-                    fixture.Mesh + " uploaded raw normals");
+                    $"{fixture.Mesh} uploaded raw normals: expected={raw}, custom0type={actual.Mesh.SurfaceGetArrays(0)[(int)Mesh.ArrayType.Custom0].VariantType}, "
+                    + $"length={custom.Length}, first=[{string.Join(",", custom.Take(6))}]");
                 var material = (ShaderMaterial)actual.MaterialOverride;
                 if (OS.GetEnvironment("TPW_LIGHTING_MUTATION") == "drop-directional")
                 {
