@@ -48,9 +48,28 @@ public sealed class ThoughtBubbles
     /// tell was available and ignored: 2576 units of altitude over a park whose cells are ONE
     /// unit across would put the camera two and a half thousand tiles up.
     ///
-    /// ⚠ What is still NOT known is the projected size at the default pose, and it cannot be got
-    /// from the close-up captures -- their camera pose is not recorded, so there is no ratio to
-    /// scale by. It needs ONE capture at the reset pose, measured rather than judged.
+    /// ⭐⭐ AND THE DEFAULT-POSE MEASUREMENT SAYS LEAVE IT WORLD-SCALED. astraclaw captured the
+    /// reset pose (raw 2576 up, 1760 behind, dolly 0, fov 75) and measured the full texture quad
+    /// at **11.46 px**; the opaque cloud in that same frame is **10 x 8 px**, so the art fills
+    /// 0.873 of the quad. We had agreed a provisional 48-64 px readable range and a screen-stable
+    /// sprite to hit it -- and the capture kills that plan outright:
+    ///
+    /// ⚠⚠ AT THE PARK VIEW THE WHOLE OUTHOUSE IS ABOUT **32 x 45 px**. A 52 px cloud would be
+    /// WIDER THAN THE BUILDING IT STANDS ON, and would cover the ride it is describing. There is
+    /// no size that is readable at park zoom and not absurd, so "readable at every zoom" is not a
+    /// target anyone can hit -- it had to be measured to be seen, because 48-64 px sounds modest
+    /// right up until you learn what else is 45 px.
+    ///
+    /// ⭐ Which makes the plain world-scaled sprite RIGHT, not merely untuned: 34 px up close
+    /// where the player is looking at one guest, 10 px at park view where it is an INDICATOR that
+    /// somebody wants something -- and at that zoom the customer is hidden behind the hut
+    /// entirely, so a marker is the only thing a bubble could usefully be. A screen-stable sprite
+    /// was written for this and then deleted rather than left switched off: an unused knob reads
+    /// like a decision.
+    ///
+    /// ⚠ STILL NOT READ: what the console does. `FUN_00216028` registers the sixteen textures and
+    /// their ids and says nothing about size, so "indicator far, readable near" is a port choice
+    /// that happens to be forced by the geometry -- not a decoded rule.
     ///
     /// ⚠ And the first pass of this measurement reported 23 px, not 16: the brightness threshold
     /// was catching the kid's blond hair as well as the cloud. Re-measured with a blue-biased
