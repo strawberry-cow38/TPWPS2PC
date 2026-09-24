@@ -6912,8 +6912,20 @@ public partial class Viewer : Node3D
     /// So x, y and the glyph scale are all expressed as FRACTIONS of the console's own frame and
     /// multiplied back out by this viewport -- which keeps the readout in the same place and the
     /// same relative size at any window size, instead of drifting as the window grows.
-    /// ⚠ The console frame itself is the one number still not read: 512x448 is the usual PS2
-    /// text space and every constant here sits inside it, but no traced line states it.
+    /// ⭐⭐⭐ AND THE FRAME IS READ NOW -- it was the last thing here marked as a guess, and
+    /// master's standard was "get all the constants". `FUN_002137C0`, the glyph blit, converts
+    /// the pen straight to normalised device coordinates:
+    ///
+    /// <code>
+    ///   x_ndc = x * 0.00390625 - 1.0;     // 0.00390625 = 1/256
+    ///   y_ndc = 1.0 - y * 0.00390625;
+    /// </code>
+    ///
+    /// x = 0 gives -1 and x = **512** gives +1; y = 0 gives +1 and y = **512** gives -1. So the
+    /// text space is **512 x 512**, on both axes. ⚠ This file had 512 x **448** -- the usual PS2
+    /// display height, reasoned to rather than read -- which left every y 14% short and the
+    /// glyphs 14% small. "Position looks perfect" was true enough at y = 50 to hide a six-pixel
+    /// error, which is exactly how a guessed constant survives a playtest.</summary>
     /// ⚠⚠ `FUN_0020B258(ctx, 2, 2)` IS NOT A SCALE, which this file called it and master saw
     /// at once: "the position is perfect. i think our scale is off tho." It sets three fields,
     /// and `FUN_0020ACF8` shows what they are --
@@ -6923,7 +6935,7 @@ public partial class Viewer : Node3D
     /// ⭐ Position being right while size was wrong is exactly the shape that says the FRAME is
     /// correct and one constant inside it is not -- which is why that report was so useful.
     const int MoneyX = 0x26, MoneyY = 0x32, MoneyShadow = 2, MoneyFontIndex = 1;
-    const float ConsoleUiWidth = 512f, ConsoleUiHeight = 448f;
+    const float ConsoleUiWidth = 512f, ConsoleUiHeight = 512f;
     static readonly Color MoneyNormal = new(1f, 1f, 0f), MoneyBroke = new(200 / 255f, 130 / 255f, 0f);
     /// ⚠ The shadow is drawn in palette slot `colour + 8`, and what that slot holds is not read.
     /// Black at half alpha is a shadow's usual job; marked rather than claimed.
