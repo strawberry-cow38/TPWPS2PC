@@ -3,7 +3,9 @@ import unittest
 
 from audit_matrix import EXPECTED, classify
 
-COVERAGE = '\n'.join(['  ok   compiled purchase: check'] * 59 +
+COVERAGE = '\n'.join(['  ok   decision scheduling: check'] * 21 +
+                     ['  ok   decision scheduling: strict boundary rejects stored300 plus extra60 equality', '  ok   decision scheduling: cash1234 zero-time calls cannot reboard the same shop', '  ok   decision scheduling: cash299 zero-time calls cannot reboard the same shop', '  ok   decision scheduling: cash299 eligible later decision can revisit instead of a permanent blacklist'] +
+                     ['  ok   compiled purchase: check'] * 59 +
                      ['  ok   compiled purchase: bare-world source path attaches the named shop independently of region loop',
                       '  ok   compiled purchase: archive-qualified source path attaches the named shop independently of region loop',
                       '  ok   compiled purchase: product alone reverses the transfer and selects its own bladder amount',
@@ -41,6 +43,13 @@ def known(world):
 
 
 class ClassificationTests(unittest.TestCase):
+    def test_decision_schedule_coverage_and_witnesses_required(self):
+        for text in ('\n'.join(x for x in COVERAGE.splitlines() if 'decision scheduling:' not in x),
+                     COVERAGE.replace('  ok   decision scheduling: check\n', '', 1),
+                     COVERAGE.replace('cash299 zero-time calls cannot reboard the same shop', 'unrelated check'),
+                     COVERAGE.replace('strict boundary rejects stored300 plus extra60 equality', 'unrelated check')):
+            self.assertEqual(classify('JUNGLE', 0, text + '\nPASS')['status'], 'missing_coverage')
+
     def test_purchase_coverage_cannot_be_omitted_or_short(self):
         for text in ('\n'.join(line for line in COVERAGE.splitlines() if 'compiled purchase:' not in line),
                      COVERAGE.replace('  ok   compiled purchase: check\n', '', 1)):

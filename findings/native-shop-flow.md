@@ -153,3 +153,63 @@ After route success,20E074..A8 writes now toG+2C and enters waiting11; failure a
 pops state. Thus an unaffordable shop can be selected again after native scheduling/scoring;
 this is not the port's zero-time immediate re-entry. Mood changes are an additional system,
 not evidence that these timing/history mechanisms do not exist.
+
+## Counter producer and conditional PAL pacing (follow-up)
+
+The `331510` loop count defaults to1. Command0x10000002 in17DBF8 parses a decimal,
+sets it at17DC64 (zero becomes1 at17DC70), and prints the diagnostic at363920:
+“Gamespeed set to %d gameticks/rendertick”. Negative values skip the signed-positive
+loop in2312B8. That loop calls10EEC0 N times, then225FC8 for rendering. Nested
+pumps/loading paths also call it; this is not an unconditional wall-time clock.
+
+21B014 registers VBLANK handler224C10. It increments310C98, and the pending render
+submission is released against baseline310CB4 plus threshold310CBC (initial2).
+Thus the normal PAL rendering path can imply25 updates/second at default gamespeed,
+but neither this conditional throttle nor the default proves all guest updates run
+at exactly25Hz. The port shares its existing ParkSim-derived update counter between
+mood and selection; it does not create a second 60Hz clock.
+
+`G+6C` is independently consumed by the entertainer interruption path in20FB88:
+phase/flags/depth checks, strict deadline, then nearest member of PoolOfEntertainers
+(35FEC8, pool3952BC), state28. Its handler2107A0 faces the entertainer and on exit
+adds happiness5 and resets6C to now+900. This is NOT the shop destination gate at2C.
+
+## Why the original can walk into a building entrance
+
+Placement1E2AD0 first marks footprint cells as terrain kind5 via1E6138. For the shop,
+virtual+2B4 validates the inside entry returned by1E1760. At1E2F14..2C that entry
+cell alone becomes kind7. Its facing mask is written to terrain byte3 through1E8888
+(native directions0/1/2/3 -> masks01/40/10/04). The outside helper1E23F8 is separate.
+
+Route expansion18C928's kind7 arm at18CB60 requires BOTH the current cell's outgoing
+direction bit and candidate terrain pointer == the task's destination pointer(+3C).
+It is a **directional terminal cell**, not globally walkable building ground. The
+path-link builder1E70F0 links a north public path to a south entry by checking kind7
+and byte3 bit01, adding outgoing10 and reciprocal01. 18DA78 accepting the request
+is not itself proof of route success: the queued task is later expanded/installed.
+
+The common walking path installs the route through18D650; notification20F588 moves
+waiting11 to walking3. Movement191E98 updates guest coordinates. Arrival20D628 checks
+that the route is exhausted before entering the shop service path. Completion keeps
+the current inside position; it does not read ExitAppearPos or teleport to a stub.
+A port per-guest/live-owner terminal token would be an adapter for these permissions,
+not a claim that the native kind7 arm itself checks an owner pointer.
+
+## Bounded port integration: post-completion gate
+
+GuestDecisionSchedule implements the traced `now+300+rand300` completion deadline
+and strict `now > deadline+60+rand300` on decision arm0. ParkVisitors registers it
+before Serve, so a refused purchase is delayed too. It shares VisitorNeeds.UpdateTicks
+(or the walking counter when needs are absent), never advances on Step(0), preserves
+the deadline when routing fails, and retires state with ownership. Successful explicit
+SendTo remains an explicit override. Go-home handling remains ahead of this gate.
+
+Scope: one attempt per *observed* coordinator counter value is port scheduling policy;
+this does not reproduce every native state0 action, catch-up iteration, weighted
+selector, or recency penalty. It fixes the reproduced immediate re-entry, not the
+missing inside-entry walking leg. Guests may legitimately revisit after eligibility.
+
+Independent checks use real named/compiled IceCream and both successful1234/refused299
+cash fixtures. They require real handback, no zero-time reboarding, strict counter
+boundaries, and eventual permitted revisit. Four mutations (missing registration,
+missing consumer, non-strict comparison, repeated same-tick lottery) are rejected.

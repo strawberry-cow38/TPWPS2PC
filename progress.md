@@ -1379,3 +1379,23 @@ clockproducertrace first. Preserve explicitunknowns, don't replace with guessed 
 SAMwindowcoords or arbitrary cooldownseconds. Peer owns mood/zones; coordinate ParkVisitors
 scope before edits. Main currentlya6f5828 locally; fetch before implementation/landing because
 peer reports692f2e9 moodchanges. No bot restart/new scheduler.
+
+## CP4 timing candidate — September24 09:28 UTC
+
+0d25bf8 implements the post-completion gate; merged peer05b5bbc as4d053e8. Needs clock
+accessor merged cleanly; peer retains mood/idles/money UI scope. DecisionSchedulingChecks
+25/world use real compiled IceCream, successful1234/refused299 cash, same-counter calls,
+strict boundary, eventual revisit and retirement. Four deliberate mutants rejected:
+registration8 failures, missing consumer8, >=5, same-tick retry2. Sources restored/buildgood.
+Matrix /tmp/tpw-decision-gate-matrix-20260924: JUNGLE/FANTASY pass; HALLOW/SPACE only exact
+known retail reds; all25 new checks everyworld. Runtime /tmp/tpw-decision-runtime-20260924:
+all8scenes pass. Python classifier58tests pass; gate count/witnesses required explicitly.
+
+Further original traces now in findings/native-shop-flow.md: conditional2VBLANK/default
+1gametick-render pacing (not absolute25Hz promise), +6C entertainer gate, and actual
+kind7 directional destination-only entrance permission. Movement remains next: public
+stub -> compiled INSIDE entrance centre through common GuestWalk, no globally opening
+footprints and no visual-only lerp. Native handback retainsinsideposition. Preserve
+liveowner, mid-edge, demolition/replacement and egress invariants. Do not call current
+SAMfractions/fallbackstub positions decoded native window endpoints. They are superseded
+only when actual movement consumer is wired and checked. No movement fix shipped yet.
