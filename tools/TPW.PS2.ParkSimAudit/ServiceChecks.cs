@@ -16,7 +16,8 @@ static class ServiceChecks
     const int Steps = 6000;
     const double Tick = 0.04;
 
-    public static void Run(Model terrain, ParkPaths sourcePaths, ParkCell[] corridor, ParkCell exit,
+    public static void Run(Model terrain, ParkPaths sourcePaths, ParkEntrance entranceTable,
+                           ParkCell[] corridor, ParkCell exit,
                            byte[] toiletScript, Animation toiletAps, RideDefinition toiletDef, Func<string, byte[]> toiletSibling,
                            byte[] rideScript, Animation rideAps, RideDefinition rideDef, Func<string, byte[]> rideSibling, int rideSeats,
                            Action<bool, string> check)
@@ -34,6 +35,10 @@ static class ServiceChecks
         {
             var paths = new ParkPaths(terrain);
             sourcePaths.Field.Cells.CopyTo(paths.Field.Cells, 0);
+            // ⚠ A COPY HAS NO GATE. Field.Cells carries the laid path but not the entrance
+            // registration, and without it `ParkVisitors.Gate` is null and NOBODY CAN LEAVE --
+            // which would make the departure cases below pass while testing nothing at all.
+            paths.SetEntrance(entranceTable);
             var visitors = new ParkVisitors(new ParkSim(paths), new GuestWalk(paths)) { Needs = new VisitorNeeds(4242) };
             // ⚠ FROZEN ON PURPOSE. The need must be the one this case set, not that plus whatever
             // rose during the walk -- otherwise the mess arithmetic below is unpredictable and the
@@ -73,6 +78,10 @@ static class ServiceChecks
             // Nothing else may be urgent, or the guest has two errands and the one under test is
             // not necessarily the one they run.
             w.Hunger = 0; w.Thirst = 0; w.Sick = 0; w.Happiness = 50;
+            // ⚠ SOLVENT ON PURPOSE. A guest under 100 cash now goes home, and a service case
+            // whose guest wandered out of the park would fail for a reason that is not about
+            // service at all.
+            w.Cash = 5000;
             visitors.Needs.Set(guest.Id, w);
 
             for (int i = 0; i < Steps && visitors.Relieved == 0; i++) visitors.Step(Tick, () => exit);
@@ -114,5 +123,43 @@ static class ServiceChecks
         Check(routed.Relieved == 1, $"a desperate guest walks PAST closer rides to the lavatory ({routed.Relieved} served)");
         Check(routed.Completed == 1, $"and rode nothing on the way ({routed.Completed} facility used in total)");
         Check(routed.Toilet == 0, $"arriving with the need answered (toilet {routed.Toilet})");
+
+        // ── going home ────────────────────────────────────────────────────────────────────────
+        // ⭐⭐ `WantsToGoHome` WAS DECODED, DOCUMENTED, CHECKED FOR ITS ARITHMETIC AND CALLED FROM
+        // NOWHERE. Dead code is indistinguishable from a working feature unless something asks
+        // the park for the outcome, so these ask: a broke guest must end up outside the park with
+        // no record left behind, and a solvent happy one must still be in it.
+        (int Home, int Rows, int Walkers) Leave(int cash, byte happiness)
+        {
+            var paths = new ParkPaths(terrain);
+            sourcePaths.Field.Cells.CopyTo(paths.Field.Cells, 0);
+            paths.SetEntrance(entranceTable);
+            var visitors = new ParkVisitors(new ParkSim(paths), new GuestWalk(paths)) { Needs = new VisitorNeeds(77) };
+            foreach (string key in visitors.Needs.Rates.Keys.ToArray())
+                visitors.Needs.Rates[key] = new VisitorNeeds.Rate(0, 0, false);
+            var g = visitors.Arrive(exit, exit);
+            var w = visitors.Needs.Of(g.Id);
+            w.Cash = cash; w.Happiness = happiness;
+            w.Hunger = 0; w.Thirst = 0; w.Toilet = 0; w.Sick = 0; w.Unknown7B = 0;
+            visitors.Needs.Set(g.Id, w);
+            for (int i = 0; i < Steps && visitors.WentHome == 0; i++) visitors.Step(Tick, () => exit);
+            return (visitors.WentHome, visitors.Needs.All.Count, visitors.Walk.Guests.Count);
+        }
+
+        var broke = Leave(cash: 0, happiness: 80);
+        Check(broke.Home == 1, $"a guest with no money left goes home ({broke.Home})");
+        Check(broke.Walkers == 0, $"and is no longer in the park ({broke.Walkers} walkers)");
+        // ⚠ THE ID-REUSE TRAP. A needs row outliving its guest is inherited by whoever gets that
+        // id next, which reads as a visitor who arrived already miserable.
+        Check(broke.Rows == 0, $"leaving no needs record behind ({broke.Rows} rows)");
+
+        var miserable = Leave(cash: 5000, happiness: 2);
+        Check(miserable.Home == 1, $"so does a thoroughly miserable one ({miserable.Home})");
+
+        // ⭐ THE CONTROL. Without this, "everyone leaves immediately" passes all three above.
+        var content = Leave(cash: 5000, happiness: 80);
+        Check(content.Home == 0, $"a solvent, happy guest stays ({content.Home} went home)");
+        Check(content.Walkers == 1, $"and is still walking about ({content.Walkers})");
+        Check(content.Rows == 1, $"with their record intact ({content.Rows})");
     }
 }

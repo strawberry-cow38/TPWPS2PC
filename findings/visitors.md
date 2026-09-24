@@ -1233,3 +1233,39 @@ that never mentioned the question, and those are different instructions to a ren
 
 ⚠ The stand positions differ per lavatory (0.5/0.5 through 0.5/0.9), so a constant would be wrong
 for six of the seven.
+
+## ⭐⭐ Guests could never leave: `WantsToGoHome` was decoded and called from nowhere (2026-09-24)
+
+`VisitorNeeds.WantsToGoHome` was read off `FUN_0020C930`, documented down to the half of the gate a
+"leaves when unhappy" reading would miss, and given its own arithmetic checks — and **nothing in
+the port ever called it.** Grepped: zero call sites outside its own file. So every park filled up
+monotonically and no visitor had ever gone home.
+
+⚠ **This is the failure mode worth naming: dead code is indistinguishable from a working feature
+from the outside.** The decode was right, the tests were right, the documentation was right, and
+the park it described could not lose a guest. Nothing catches that except asking the PARK for the
+outcome rather than asking the function for its answer.
+
+Now wired: a guest who has had enough walks to the gate and is retired there — asked BEFORE any
+errand or ride, since having had enough outranks both. Dropping their plan is what retires them,
+because `Needs.Reconcile(_plans.Keys)` reaps any record with no plan behind it.
+
+⚠ **The id-reuse trap is the reason that matters.** A needs row outliving its guest is inherited
+by whoever is handed that id next, and reads as a visitor who arrived already miserable. There is
+a check for exactly that (`leaving no needs record behind`).
+
+⚠ **No gate, nobody leaves** — and that is deliberate: with no entrance registered a guest stays
+in the park rather than being deleted where they stand. ⭐⭐ This also set the trap in the CHECKS:
+a copied `ParkPaths` carries `Field.Cells` but NOT the entrance registration, so the fixture had
+to call `SetEntrance` or `Gate` would be null and all three departure cases would have passed
+while testing nothing. Same shape as the bug they were written to catch.
+
+⭐ Teeth, with a control and a mutation. Broke → goes home; miserable → goes home; **solvent and
+happy → stays, still walking, record intact**. Without the control, "everyone leaves immediately"
+passes every positive case. Mutation run: disable the call and exactly the four positive lines
+redden while the control stays green.
+
+⚠ `Unknown7B` (the had-enough counter) still only ever FALLS — `Spawn` seeds `rand(50)` and the
+ride path subtracts `rand(20)` — so its `>= 99` clause cannot currently fire, and departures come
+from the cash and happiness clauses alone. The rise for it is the same unfound rise as the other
+needs.

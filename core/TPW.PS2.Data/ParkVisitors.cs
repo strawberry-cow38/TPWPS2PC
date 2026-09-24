@@ -13,6 +13,9 @@ public enum VisitorIntent
     /// <summary>The old ride no longer owns this guest, but no valid ground is available yet.
     /// The coordinator retains the identity and retries readmission on later steps.</summary>
     Recovering,
+    /// <summary>Had enough, and walking to the gate to go home. ⚠ Still an ordinary walker until
+    /// they reach it -- they are drawn, they take up path, and a want can still rise on them.</summary>
+    Leaving,
 }
 
 /// <summary>⭐⭐ THE TWO HALVES, JOINED. <see cref="GuestWalk"/> moves people over the park's
@@ -57,6 +60,16 @@ public sealed class ParkVisitors
     /// was boarded by a script, was handed back by that script, and walked off.</summary>
     public int Rides { get; private set; }
     public int Boardings { get; private set; }
+
+    /// <summary>How many guests have gone home. ⭐ Counted because "the park empties" and "the
+    /// park never fills" look identical in a population graph and need different fixes.</summary>
+    public int WentHome { get; private set; }
+
+    /// <summary>Where a guest who has had enough walks to. ⚠ The park's own entrance cells, which
+    /// are also its exit -- the game has one gate. Null-safe: with no entrance registered nobody
+    /// can leave, which is the honest outcome rather than deleting them where they stand.</summary>
+    ParkCell? Gate => Walk.Paths.EntranceCells.Count == 0 ? null
+                    : Walk.Paths.EntranceCells.OrderBy(c => c.Z).ThenBy(c => c.X).First();
 
     readonly Func<int> _random;
 
@@ -307,6 +320,18 @@ public sealed class ParkVisitors
         }
     }
 
+    /// <summary>They reach the gate and are gone. ⭐ Dropping the PLAN is what retires them:
+    /// `Needs.Reconcile(_plans.Keys)` reaps any record with no plan behind it, so a departure
+    /// cannot leave a needs row behind to be inherited by whoever gets that id next.</summary>
+    void ShowOut(int guest)
+    {
+        Walk.Remove(guest);
+        _plans.Remove(guest);
+        _owners.Remove(guest);
+        _returning.Remove(guest);
+        WentHome++;
+    }
+
     ParkRide RideOf(Plan plan) => _owners.TryGetValue(plan.Guest, out var ride) && Sim.Rides.Contains(ride) ? ride : null;
 
     /// <summary>A guest who has reached the stub they were heading for joins that ride's queue and
@@ -353,6 +378,22 @@ public sealed class ParkVisitors
                 Wander(g.Id, g.Cell);
             if (g.State != GuestState.Arrived) continue;
             if (_plans.TryGetValue(g.Id, out var plan) && plan.Intent == VisitorIntent.Heading) continue;
+            // ⭐⭐ AND HAVING HAD ENOUGH BEATS BOTH. `WantsToGoHome` was decoded, documented
+            // and CALLED FROM NOWHERE -- the arithmetic had its own checks while the park it
+            // described could never lose a single guest. Dead code reads exactly like a feature
+            // from the outside, which is why this is asked before anything else a guest might do.
+            if (Needs != null && Needs.WantsToGoHome(g.Id) && Gate is { } gate)
+            {
+                if (g.Cell == gate) { ShowOut(g.Id); continue; }
+                if (Walk.Send(g, gate))
+                {
+                    _plans[g.Id] = new Plan(g.Id, VisitorIntent.Leaving, 0, g.Cell);
+                    _owners.Remove(g.Id);
+                    continue;
+                }
+                // No route to the gate: they stay in the park and try again next tick rather
+                // than standing still forever with a plan nobody completes.
+            }
             // ⭐⭐ SOMETHING PRESSING BEATS SOMETHING FUN. A guest who needs a lavatory and
             // picks a rollercoaster instead is the whole reason wants looked wired-up but dead:
             // the need rose, the bubble appeared, and then they queued for the Crazy Ape and it
