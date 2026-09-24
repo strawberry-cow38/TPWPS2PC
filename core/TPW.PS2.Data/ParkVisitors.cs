@@ -338,7 +338,10 @@ public sealed class ParkVisitors
     {
         int price = def.PricePerUse ?? 0;
         if (def.Compiled is not { } record) { shop.Book(price, 0); return; }
-        int margin = price - record.BaseCostOfGoods;
+        // ⭐ The COST is the same expression the want score is built on -- `FUN_001D1B08` serves
+        // both -- so the player's two sliders move what a sale costs and what it is worth at once.
+        int cost = record.BaseCostOfGoods * ((shop.Quality >> 2) + 75 - (shop.Setting0xAC >> 2)) / 100;
+        int margin = price - cost;
         shop.Book(price, margin);
         if (margin < 1) Sim.Finances.Debit(-margin * 10);
         else Sim.Finances.Credit(margin * 10);
@@ -642,7 +645,7 @@ public sealed class ParkVisitors
             if (Needs.Buy(guest, def.PricePerUse ?? 0, def.HungerEffect ?? 0, def.ThirstEffect ?? 0,
                           def.HappinessEffect ?? 0, def.VomitEffect ?? 0,
                           def.Compiled?.Product ?? VisitorNeeds.Food,
-                          def.Compiled?.BaseCostOfGoods ?? 0, used.Quality))
+                          def.Compiled?.BaseCostOfGoods ?? 0, used.Quality, used.Setting0xAC))
             {
                 Purchases++;
                 Take(used, def);

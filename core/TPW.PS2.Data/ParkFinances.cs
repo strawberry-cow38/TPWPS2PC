@@ -27,8 +27,10 @@ namespace TPW.PS2.Data;
 /// ⭐ `park[8]` is a "spend anything" flag -- with it set the debit never refuses -- which is how
 /// a sandbox or a scripted scenario would be done. Modelled as <see cref="Unlimited"/>.
 ///
-/// ⚠ THE STARTING BALANCE IS NOT READ. Park setup has not been traced, so this opens at zero and
-/// the caller sets it; a number invented here would look like a decoded one.
+/// ⚠ THE STARTING BALANCE IS NOT READ. The constructor zeroes every running total and sets the
+/// spend-anything flag but never writes `park[4]`, so the opening balance arrives with the
+/// scenario or save -- untraced. This opens at zero and the caller sets it; a number invented
+/// here would look like a decoded one.
 ///
 /// ⚠ THE GRAPHS ARE NOT MODELLED. Both ring buffers are indexed by a period counter at
 /// `park[0x12bc]` whose advance has not been read, and a 144-slot history advanced by a clock
@@ -40,8 +42,17 @@ public sealed class ParkFinances
     /// the sign to raise or clear a warning.</summary>
     public int Balance { get; set; }
 
-    /// <summary>`park[8]`. When set, <see cref="Debit"/> never refuses for want of money.</summary>
-    public bool Unlimited { get; set; }
+    /// <summary>`park[8]`. When set, <see cref="Debit"/> never refuses for want of money.
+    ///
+    /// ⭐⭐ DEFAULTS TRUE, AND THAT IS READ: the park constructor `FUN_00100470` writes
+    /// `park[8] = 1` along with zeroing every running total. So a park object that nothing has
+    /// loaded into spends freely -- which is exactly the state this port is in until a scenario
+    /// sets a budget. ⚠ What clears it is the scenario/save load, which is not traced; when that
+    /// lands it sets this and <see cref="Balance"/> together.
+    ///
+    /// ⚠ Deliberately NOT defaulted false "to be safe": false would refuse every purchase in a
+    /// park with no starting money, which is a behaviour nothing in the executable asks for.</summary>
+    public bool Unlimited { get; set; } = true;
 
     /// <summary>`park[0x12d8]` and `park[0x12e4]` -- lifetime totals, unaffected by the period
     /// counter this port does not model.</summary>
