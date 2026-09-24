@@ -548,6 +548,7 @@ if (looEntry.Entry != null && serviceRide is { } notALoo && corridorStops.Count 
                       wad.Read(wad.Find(lstem + ".rse")), laps, looEntry.Def, LSib,
                       notALoo.Script, notALoo.Aps, notALoo.Def, notALoo.Sibling, notALoo.Seats, Check);
 }
+CompiledJoinChecks.Run(Wad("DATA"), wad, world, Check);
 Check(looEntry.Entry != null, $"the world ships a lavatory to exercise ({looEntry.Entry?.Path ?? "none found"})");
 Check(availabilityChecked, "availability regression exercised a real ride with both availability flags");
 Check(removalChecked, "removal regression exercised a real non-track ride with seats");

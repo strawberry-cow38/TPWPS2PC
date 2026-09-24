@@ -98,8 +98,8 @@ public sealed class RideDefinition
     public int? ExcitementLevel => Int("UsageInfo.ExcitementLevel");
     public int? MinCapacity => Int("UsageInfo.MinCapacity");
     public int? MaxCapacity => Int("UsageInfo.MaxCapacity");
-    public int? PricePerUse => Int("UsageInfo.InitPricePerUse");
-    public int? CostOfGoods => Int("UsageInfo.InitCostOfGoods");
+    public int? PricePerUse => Compiled?.InitialPrice ?? Int("UsageInfo.InitPricePerUse");
+    public int? CostOfGoods => Compiled?.BaseCostOfGoods ?? Int("UsageInfo.InitCostOfGoods");
 
     /// <summary>⭐⭐ WHAT THIS FACILITY DOES TO A VISITOR'S WANTS, and it is AUTHORED -- the data
     /// files carry these with the developers' own comments beside them, e.g. the Burger Shop's
@@ -127,11 +127,22 @@ public sealed class RideDefinition
     /// has to be checked PER FIELD, not assumed from one file that matched. `AssetResourceDatabase`
     /// already reads the compiled block; joining it to these definitions is the fix and is not
     /// done.</summary>
-    public int? HungerEffect => Int("UsageInfo.HungerEffect");
-    public int? ThirstEffect => Int("UsageInfo.ThirstEffect");
-    public int? VomitEffect => Int("UsageInfo.VomitEffect");
+    /// <summary>The compiled record this definition resolves to, or null when nothing set it.
+    /// ⭐ Set by whoever HAS the DBA (see <see cref="CompiledAssets"/>); parsing text alone can
+    /// never fill it, which is why it is a property rather than a parse result.</summary>
+    public AssetResourceDatabase.ShopSettings Compiled { get; set; }
+
+    /// ⭐⭐ COMPILED FIRST, AUTHORED SECOND. Where a compiled record is attached its numbers win,
+    /// because they are the ones the console loads -- the balloon shop authors 15 happiness in
+    /// three worlds and every compiled row says 10. Falling back to the .sam when nothing is
+    /// attached keeps every existing caller working and is honest about which it used.
+    /// ⚠ `LitterEffect` has NO compiled counterpart in the decoded shop block, so it stays
+    /// authored-only -- and it is still not applied anywhere (see ParkVisitors.Serve).
+    public int? HungerEffect => Compiled?.HungerReduction ?? Int("UsageInfo.HungerEffect");
+    public int? ThirstEffect => Compiled?.ThirstReduction ?? Int("UsageInfo.ThirstEffect");
+    public int? VomitEffect => Compiled?.VomitIncrease ?? Int("UsageInfo.VomitEffect");
     public int? LitterEffect => Int("UsageInfo.LitterEffect");
-    public int? HappinessEffect => Int("UsageInfo.HappinessEffect");
+    public int? HappinessEffect => Compiled?.HappinessEffect ?? Int("UsageInfo.HappinessEffect");
     public int? FatigueEffect => Int("UsageInfo.FatigueEffect");
     public int? ShopType => Int("UsageInfo.ShopType");
 

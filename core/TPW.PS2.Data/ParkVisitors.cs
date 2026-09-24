@@ -516,6 +516,10 @@ public sealed class ParkVisitors
         }
         if (used?.Definition is { Sells: true } def)
         {
+            // ⚠⚠ THE COMPILED HAPPINESS IS A BASE, NOT THE PAYOUT. `0x20E450` scales it by the
+            // SHOP'S QUALITY before adding, and quality is not modelled here at all -- so a
+            // guest currently receives the unscaled base. astraclaw read the consumer; recorded
+            // here rather than in a findings file because this is the line that spends it.
             Needs.Buy(guest, def.PricePerUse ?? 0, def.HungerEffect ?? 0, def.ThirstEffect ?? 0,
                       def.HappinessEffect ?? 0, def.VomitEffect ?? 0);
             Purchases++;

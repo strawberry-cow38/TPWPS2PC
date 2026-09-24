@@ -1304,6 +1304,7 @@ public partial class Viewer : Node3D
         try
         {
             _cat = new RideCatalogue();
+            AttachCompiledRecords();
             _cat.AddWad(_lib.Wad, _lib.WadName);
             GD.Print($"[park] {_lib.WadName}: {_cat.All.Count} rides, {_cat.ById.Count} ids, "
                      + $"{_cat.All.Count(d => d.ModelPath != null)} with a model");
@@ -1353,6 +1354,52 @@ public partial class Viewer : Node3D
     /// <summary>The ride whose `.sam` sits in the same folder as the model being shown. A ride is
     /// a directory bundle, so the definition is found by PATH rather than by name -- names repeat
     /// across worlds and 32 of the 36 repeats carry a different id.</summary>
+    /// <summary>⭐⭐ GIVE EVERY DEFINITION THE RECORD THE GAME ACTUALLY LOADS. The .sam is the
+    /// authored source and the compiled DBA is what ships, and they disagree -- three worlds
+    /// author 15 happiness for their balloon shop and every compiled row reads 10.
+    ///
+    /// ⭐ Joined on the traced `STR_GRAPHICS_<WORLD>_<PATH>` identity, NEVER on matching numbers:
+    /// a value join could only ever find the rows that already agree, and would drop exactly the
+    /// disagreements this exists for. astraclaw's named-record check is the control -- Balloon
+    /// 239, VampShop 153, FatFairy 66, Droid 388 all carry 10 -- and Droid settles the method,
+    /// since its compiled price/cost is 50/35 where the other three are 45/30, so a profile match
+    /// would have mis-grouped it.
+    ///
+    /// ⚠ The `.sam` source is disc-absolute (`/DATA/JUNGLE.WAD/Shops/...`) while the identity
+    /// wants world plus WAD-RELATIVE path, which is the same split the display-name lookup above
+    /// already handles.
+    ///
+    /// ⚠ Silent on success and LOUD on a miss: a join that quietly covered half the shops would
+    /// look identical to one that worked, and half a join is how a wrong number reaches a guest.</summary>
+    void AttachCompiledRecords()
+    {
+        if (_cat == null || _text == null) return;
+        try
+        {
+            WadArchive data = null;
+            foreach (var f in _lib.WadFiles())
+                if (f.Path.EndsWith("/DATA.WAD", StringComparison.OrdinalIgnoreCase))
+                    data = new WadArchive(_lib.ReadDisc(f));
+            var dba = data?.Entries.FirstOrDefault(e => e.Path.Equals("/arsdb.dba", StringComparison.OrdinalIgnoreCase));
+            if (dba == null) { GD.Print("[park] compiled records: /arsdb.dba MISSING -- authored .sam values stand"); return; }
+            var compiled = new CompiledAssets(new AssetResourceDatabase(data.Read(dba)), _text);
+            int attached = 0; var missed = new List<string>();
+            foreach (var d in _cat.All)
+            {
+                if (d.ShopType == null) continue;      // only the block the purchase path reads
+                var src = d.Source.Split('/', StringSplitOptions.RemoveEmptyEntries);
+                int wi = Array.FindIndex(src, x => x.EndsWith(".WAD", StringComparison.OrdinalIgnoreCase));
+                if (wi < 0) { missed.Add(d.Source); continue; }
+                var hit = compiled.For(src[wi][..^4], string.Join('/', src.Skip(wi + 1)));
+                if (hit?.Shop is { } shop) { d.Compiled = shop; attached++; } else missed.Add(d.Source);
+            }
+            GD.Print($"[park] compiled records: {attached} shops joined"
+                   + (missed.Count == 0 ? "" : $", {missed.Count} MISSED ({string.Join(" ", missed.Take(4))})"
+                                             + " -- those keep their authored .sam values"));
+        }
+        catch (Exception ex) { GD.PrintErr($"[park] compiled records failed: {ex.Message}"); }
+    }
+
     RideDefinition DefinitionFor(WadArchive.Entry model)
     {
         if (_cat == null || model == null) return null;

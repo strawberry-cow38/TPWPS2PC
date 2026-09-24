@@ -1512,3 +1512,40 @@ why a balloon costs the wrong happiness.
 ⚠ Method note: the first pass of this comparison hard-coded the 17 DBA rows that survived a
 `head -30` and reported two mismatches. Both were artefacts of the truncated set. Re-run against
 all 96 shop rows across the three regional files, exactly one survives.
+
+### ⭐⭐ The authored→compiled join, done on IDENTITY (2026-09-24)
+
+astraclaw handed me the runtime wiring with one constraint that decided the whole design: **join
+by verified identity, not by matching effect tuples.** A value join could only ever match rows
+that already agree, and would silently drop exactly the disagreements the join exists to surface.
+
+The identity is already established in `findings/advisor.md` from a traced consumer: DBA payload
+`+4` is a localised asset-name row, and every payload's row resolves to a
+`STR_GRAPHICS_<WORLD>_<PATH>` key — which is what `TextDatabase.GraphicsKey` builds from a wad
+path. `CompiledAssets` maps those to entries, **first match wins** because `0x10f248` does (the
+directory carries duplicate `FFFFFFFF` keys).
+
+Result, per world: **8 of 8 shops joined**, 273 identities resolved, and the disagreements fall
+out rather than being hunted:
+
+| world | shop | `.sam` | compiled |
+|---|---|---|---|
+| JUNGLE | `Balloon` | 15 | **10** |
+| HALLOW | `vampshop` | 15 | **10** |
+| SPACE | `droid` | 15 | **10** |
+| SPACE | `burger` | 5 | **10** |
+| FANTASY | — | — | (none disagree) |
+
+⭐ **The method is corroborated by a different one.** astraclaw looked the same shops up by name
+and key — Balloon 239, VampShop 153, FatFairy 66, Droid 388, all happiness 10 across EUR/USA/JAP.
+And Droid settles why identity beats profile: its compiled price/cost is **50/35** where the other
+three are 45/30, so a tuple match would have mis-grouped it. Two methods, one answer.
+
+⚠⚠ **10 IS A BASE, NOT THE PAYOUT.** `0x20E450` scales the compiled happiness by the **shop's
+quality** before adding it, and quality is not modelled here at all — so a guest currently
+receives the unscaled base. Recorded at the line that spends it (`ParkVisitors.Serve`) rather than
+only in a findings file. astraclaw read that consumer.
+
+⚠ `LitterEffect` has no counterpart in the decoded compiled block, so it stays authored-only —
+and is still applied nowhere. Region is passed in, never chosen: `arsdb`/`arsjapdb` are
+byte-identical and `arsusdb` differs in eight bytes across four Ice Cream records.
