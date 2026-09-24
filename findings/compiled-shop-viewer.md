@@ -35,9 +35,10 @@ rendered shop purchases or visual sign-off. Those are distinct from the normal-s
 small-toilet smoke. The viewer currently selects arsdb/EUR explicitly. This scene verifies
 that selection, not an unimplemented runtime region selector.
 
-Independent all-region named-record and purchase-effect controls remain the next step.
-Particular discriminators are the four ice-cream records whose EUR/JAP hunger/vomit25/10
-differ from USA15/15. The lookup's treatment of duplicate symbolic identities also needs
-its own contract check: the original numeric-key first-match behavior is not automatically
-proof about symbolic-name collisions. Finally, compiled happiness is a base; the port's
-unmodelled shop-quality multiplier must not be silently claimed as retail outcome parity.
+Independent all-region named-record and real purchase-effect controls now live in
+`CompiledShopPurchaseChecks`; see [compiled-shop-consumer.md](compiled-shop-consumer.md).
+They retain the four ice-cream EUR/JAP hunger/vomit25/10 versus USA15/15 counterexamples,
+product selection, actual ×10 cash/affordability and verified initial quality defaults.
+This does not implement mutable quality or the original carried-object/willingness behavior.
+The lookup's treatment of duplicate symbolic identities still needs its own contract review:
+original numeric-key first-match behavior is not automatically proof of symbolic collisions.

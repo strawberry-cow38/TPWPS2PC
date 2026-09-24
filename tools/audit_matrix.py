@@ -26,8 +26,14 @@ ASSEMBLY = PROJECT + '/bin/Release/net8.0/TPW.PS2.ParkSimAudit.dll'
 MAX_LOG_BYTES = 8 * 1024 * 1024
 # Minimum assertions in the current integrated ParkSimAudit. A stale binary or
 # accidentally omitted helper must not turn missing lifecycle coverage into PASS.
-REQUIRED_CHECKS = {'availability': 30, 'removal': 57, 'conservation': 20, 'needs_lifecycle': 50, 'disruption': 21, 'service_routing': 5, 'departure_recovery': 6, 'ride_effect_consumer': 33}
+REQUIRED_CHECKS = {'availability': 30, 'removal': 57, 'conservation': 20, 'needs_lifecycle': 50, 'disruption': 21, 'service_routing': 5, 'departure_recovery': 6, 'ride_effect_consumer': 33, 'compiled_purchase': 65}
 REQUIRED_WITNESSES = (
+    'ok   compiled purchase: product alone reverses the transfer and selects its own bladder amount',
+    'ok   compiled purchase: usa ice cream keeps its regional hunger 15/vomit 15',
+    'ok   compiled purchase: eur product7 falls through to all food effects at initial q2 zero',
+    'ok   compiled purchase: jap costume handback changes preference to14 without reseeding or food effects',
+    'ok   compiled purchase: eur 299 cash refuses the 300-unit sale with no debit or effects at real handback',
+    'ok   compiled purchase: eur exactly300 cash buys once rather than being rejected at the boundary',
     'ok   ride effect consumer: value 55, sickness 20 becomes 20',
     'ok   ride effect consumer: preference 30, value 81 awards band 5',
     'ok   needs lifecycle: completion preserves nonzero preference and applies its middle band',

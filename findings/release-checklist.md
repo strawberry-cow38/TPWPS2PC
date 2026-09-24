@@ -25,6 +25,18 @@ Recorded logs/manifests are local build artifacts outside Git. Reproduction comm
 revision-specific outcomes are recorded in `clean-checkout-6004151.md`, `progress.md`, `ride-removal.md` and
 `launcher-recovery.md`. Do not substitute a newer untested commit name for these baselines.
 
+## Later bounded integration evidence (does not replace the clean-checkout baseline)
+
+On September24 UTC, the joint purchase candidate (`purchase-arms` through3583a06 plus the
+independent helper) passes65 compiled purchase assertions per world across EUR/USA/JAP and
+rejects9 deliberately broken implementations. The fresh Debug eight-scene runtime gate and
+whole-disc reader check pass; the matrix retains exactly its two known reds.56 Python runner
+tests pass. See compiled-shop-consumer.md and progress.md for scope and eventual landing.
+
+Selected small-toilet service/handback and revised WC-icon crops were also directly inspected;
+see service-smoke.md. That is narrower than general rendered shop/costume correctness or the
+full human release checklist. Do not replace absent native-platform/listening evidence with it.
+
 ## Expected retail findings — keep them visible
 
 * **HALLOW / Thrill Grill:** its script waits for an animation slot missing from the

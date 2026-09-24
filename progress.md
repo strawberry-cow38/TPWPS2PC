@@ -1112,3 +1112,43 @@ and real icecream region differences (245/151/69/391). Inspect current Attach/Fo
 and fallback semantics rather than assume the API; do not conflate duplicate numeric keys
 with duplicate symbolic identities. Coordinate any core change with peer. No restart,
 no human-approval wait, and existing recurring owner task remains the only continuation.
+
+## CP4/CP2 — product-aware compiled purchases, joint candidate ready for review
+
+Integrated peer purchase-arms through371e56d (latest changes are comment corrections).
+The compiled join's real consumer exposed tenfold undercharging and wrong transfer signs.
+A first universal thirst/litter correction broke drinks/trinkets; staging on a branch let
+independent controls catch that before joint landing. Costume's array-length guard was a
+no-op; product7 was misread as a standalone arm but actually prefixes q2/15 then falls through
+into food. Original instructions independently confirm row8 intensity14 and the fall-through.
+Original setup explicitly writes q1=100/q2=0, so base payouts at those INITIAL settings are
+verified; mutable quality, costume actors, repeated balloon ownership, willingness and park
+accounting remain incomplete. Findings are now compiled-shop-consumer.md, not only chat.
+
+Our CompiledShopPurchaseChecks has65 assertions/world:21 per EUR/USA/JAP plus2 identical-input
+selector controls. Named IDs/full identities and actual RSE/APS handbacks cover balloon,
+icecream, drink, fries and costume; affordability299/300 is exercised after routing and stops
+at physical handback, not a Purchases counter that could wait for repeated visits. All4worlds
+pass these65. Nine restored-source mutants are rejected by this helper itself: bare price18,
+food thirst sign7, drink-as-food4, balloon litter3, costume no-op3, fries omission3, missing
+affordability3, strict affordability3, ignored product9. All65 assertions completed in each
+mutant run; source/restored build clean. Local logs ../tpw-purchase-mutations/.
+
+Fresh matrix /tmp/tpw-purchase-matrix-20260924: JUNGLE/FANTASY pass, only exact HALLOW/SPACE
+retail reds remain (raw1, runner2), with new65 check minimum and named witnesses. Fresh Debug
+runtime /tmp/tpw-purchase-runtime-20260924: all8scenes pass. Whole-disc TPW.PS2.Check exits0
+(log ../tpw-purchase-full-check.log).56 Python runner tests pass. Gates ran on3583a06 plus our
+patch;371e56d is comment-only. No new rendered shop proof claimed.
+
+Peer review requested; files were initially attached because peer is on a different host.
+Owner now asks code sharing by commit/push: publish this candidate on a Git review branch,
+then incorporate peer findings and land normally once green. Never assume another agent can
+read this worktree. Main remainsa5e0e83 until actual landing; do not claim published-to-main.
+
+Next bounded action after landing: reuse normal Viewer startup/placement/tick smoke for a
+named shop; inspect actual guest presentation/ownership as well as its purchase. Current
+StandingServicePose is intentionally 1x1 ProvidesRelief-only; this fact alone does NOT prove
+shops invisible (LIMBO/scripted poses may legitimately own them). Inspect/reproduce before
+changing renderer or widening the pose helper. Coordinate core/viewer scope with cow tools,
+keep our work in tests/validation until agreed. No more generic purchase-audit expansion;
+no restart, human-approval wait or duplicate continuation job.

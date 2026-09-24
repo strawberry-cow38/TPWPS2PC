@@ -3,7 +3,14 @@ import unittest
 
 from audit_matrix import EXPECTED, classify
 
-COVERAGE = '\n'.join(['  ok   ride effect consumer: check'] * 31 +
+COVERAGE = '\n'.join(['  ok   compiled purchase: check'] * 59 +
+                     ['  ok   compiled purchase: product alone reverses the transfer and selects its own bladder amount',
+                      '  ok   compiled purchase: usa ice cream keeps its regional hunger 15/vomit 15',
+                      '  ok   compiled purchase: eur product7 falls through to all food effects at initial q2 zero',
+                      '  ok   compiled purchase: jap costume handback changes preference to14 without reseeding or food effects',
+                      '  ok   compiled purchase: eur 299 cash refuses the 300-unit sale with no debit or effects at real handback',
+                      '  ok   compiled purchase: eur exactly300 cash buys once rather than being rejected at the boundary'] +
+                     ['  ok   ride effect consumer: check'] * 31 +
                      ['  ok   ride effect consumer: value 55, sickness 20 becomes 20',
                       '  ok   ride effect consumer: preference 30, value 81 awards band 5'] +
                      ['  ok   departure recovery: check'] * 5 +
@@ -32,6 +39,19 @@ def known(world):
 
 
 class ClassificationTests(unittest.TestCase):
+    def test_purchase_coverage_cannot_be_omitted_or_short(self):
+        for text in ('\n'.join(line for line in COVERAGE.splitlines() if 'compiled purchase:' not in line),
+                     COVERAGE.replace('  ok   compiled purchase: check\n', '', 1)):
+            self.assertEqual(classify('JUNGLE', 0, text + '\nPASS')['status'], 'missing_coverage')
+
+    def test_purchase_count_cannot_replace_regional_or_transaction_witness(self):
+        for witness in ('usa ice cream keeps its regional hunger 15/vomit 15',
+                        'product7 falls through to all food effects at initial q2 zero',
+                        'costume handback changes preference to14 without reseeding or food effects',
+                        '299 cash refuses the 300-unit sale', 'exactly300 cash buys once'):
+            text = COVERAGE.replace(witness, 'unrelated check') + '\nPASS'
+            self.assertEqual(classify('JUNGLE', 0, text)['status'], 'missing_coverage')
+
     def test_missing_effect_consumer_or_preference_lifecycle_is_not_green(self):
         for label in ('ride effect consumer:', 'completion preserves nonzero preference'):
             text = '\n'.join(line for line in COVERAGE.splitlines() if label not in line) + '\nPASS'
@@ -117,6 +137,7 @@ class ClassificationTests(unittest.TestCase):
 
     def test_lifecycle_counts_recorded_in_manifest_row(self):
         row = classify('JUNGLE', 0, COVERAGE + '\nPASS')
+        self.assertEqual(row['compiled_purchase_checks'], 65)
         self.assertEqual(row['availability_checks'], 30)
         self.assertEqual(row['removal_checks'], 57)
         self.assertEqual(row['conservation_checks'], 20)

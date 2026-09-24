@@ -1,6 +1,6 @@
 # TPWPS2PC completion plan
 
-Updated: 2026-09-24 UTC. Current reviewed baseline: `699a9b1`; the original `0db3678` starting point is historical.
+Updated: 2026-09-24 UTC. Current purchase integration: peer branch `3583a06` plus independent consumer checks; exact landing/evidence is in progress.md. The original `0db3678` starting point is historical.
 This plan is revised at the checkpoints below, not executed as an immutable queue.
 Execution/results/handoff: [progress.md](progress.md). This is a completion roadmap, not a claim that the port is finished.
 
@@ -70,6 +70,27 @@ base effects still need the documented runtime quality modifier or an explicit p
 do not confuse a correct lookup with full retail outcome parity. Keep any unresolved ordinary
 producer work bounded to an independently identified concrete class/dispatch chain.
 
+## CP4/CP2 adjustment — compiled purchases need product-aware consumers
+
+The join exposed more than wrong authored happiness: the consumer was charging one tenth
+of the price, quenching thirst for food, and treating distinct product arms alike. A first
+correction adding thirst/litter universally would instead break drinks and balloons. Stop
+broad “purchase path complete” claims: retain the verified initial q1=100/q2=0 baseline,
+full symbolic identity and explicit regional values, then validate real handbacks per product.
+
+Current bounded package combines cow tools' `purchase-arms` implementation with our independent
+65 checks per world: named balloon/ice-cream/drink/fries/costume consumers across all3regions,
+opposite-transfer controls, affordability299/300 and post-completion stability. Original
+instruction evidence and limitations are in findings/compiled-shop-consumer.md. Product7's
+q2/15 prefix falls through into food; costume index8 resolves intensity14 but does not yet
+change the visible actor. Neither discovery licenses expanding random-spawn preferences.
+
+CP2 stopping condition: these checks reject plausible price/sign/selector/no-op/guard defects,
+then pass on the joint branch with the existing matrix/runtime gates unchanged. After landing,
+review the playable shop flow and remaining ownership/presentation/accounting gaps rather than
+expanding this audit family without a reproduced risk. Keep ordinary-ride producer research
+separate; do not wire a sideshow formula into ordinary rides just to close a checklist.
+
 ## Latest CP3 adjustment — original ride-effect consumer, 2026-09-24 UTC
 
 Reading the newly decoded constants led to a real correction: sickness is gated at ride
@@ -107,7 +128,7 @@ one speculative value with another or claiming image data equals runtime confirm
 Keep crowding/zoom/DPI/interaction/native platform checks on the final human checklist.
 See findings/service-smoke.md for scope, direct crop review and exact camera evidence.
 
-## Latest checkpoint — CP2/CP5, 2026-09-24 UTC
+## Earlier CP2/CP5 checkpoint — standing service, 2026-09-24 UTC
 
 This supersedes the courtesy-approval hold in the older CP1 preflight below: owner
 resume authorization was already sufficient. Peer shipped service routing/dispatch,
@@ -134,27 +155,29 @@ now has seven scenes; older clean-release evidence retains its original revision
 
 ## Current review and priority decision — CP0/CP3, 2026-09-24 UTC
 
-The reviewed baseline is `699a9b1`, not the original starting checkout. The evidence has changed the order of work:
+The original `699a9b1` review has been revised after actual service and compiled-shop integration. Earlier clean-build evidence keeps its own revision; it is not silently promoted to current parity:
 
 | Area | What we now know | Plan adjustment |
 |---|---|---|
-| Baseline and automated gates (M0/M1) | Published matrix and six-scene runner; clean `6004151` builds all 23 projects and passes the runtime gate. Newer disruption work passes its affected matrix. | Maintain/reuse these gates. Do not repeatedly rebuild them as a substitute for feature delivery. Earlier framebuffer/capture evidence keeps its own revision. |
+| Baseline and automated gates (M0/M1) | Published matrix now includes65 compiled-purchase checks/world; the current fresh Debug eight-scene runner passes. The all23-project clean-checkout evidence remains pinned to `6004151`. | Maintain/reuse these gates. Do not repeatedly rebuild them as a substitute for feature delivery. Earlier framebuffer/capture evidence keeps its own revision. |
 | Reader evidence (M2) | Unknown DBA storage is preserved, not fully interpreted; malformed compiled text is now rejected with real regional compatibility checks. | Follow a reader gap when it blocks a chosen consumer or a reproduced defect. Do not turn preservation coverage into a semantic-completion claim. |
-| Guest lifecycle (M3) | Removal, needs continuity and repeated disruption/replay are guarded. The latest extended pass found a fixture's mid-edge retarget assumption, not a new core bug. Existing GuestAudit also passes all four worlds. | Defer the proposed standalone expansion of walking-contract audits. Reopen it for a concrete movement bug or a chosen feature that depends on an uncovered boundary. |
+| Guest lifecycle (M3) | Removal, needs continuity and disruption/replay are guarded; interrupted departure recovery was subsequently fixed and rejects the old stuck-guest implementation. Purchase handbacks retain their own counter and side-table controls. | Defer the proposed standalone expansion of walking-contract audits. Reopen it for a concrete movement bug or a chosen feature that depends on an uncovered boundary. |
 | Effects/audio (M4) | Joint fixes have real voice/cue and synthetic lifecycle controls, including world-owned state cleanup. | Keep those regression gates; do not call Dummy playback an audible-quality or complete engine-layer result. |
-| Gameplay consumers (M5) | The current direct-call census still finds no game/core callers for needs Buy/UseToilet/WantsToGoHome/Queue helpers. Increasing needs alone does not satisfy them. | Prioritize agreeing one small end-to-end needs-satisfaction feature with cow tools, after checking its active scope and actual service/placement APIs. This is a candidate package, not an announced implementation already underway. |
+| Gameplay consumers (M5) | Service, departure and queue consumers now run. Small toilets have actual viewer placement/standing/handback evidence; compiled shop product effects and transaction cash are tested at real script handback across all3regions. | Finish the joint purchase integration, then demonstrate a placed shop through normal viewer startup. Inspect presentation/ownership at that boundary before adding more arithmetic checks. Costume actor changes and balloon ownership are still incomplete. |
 | UI/advisor (M6) | Browser callbacks work, but rules, lip playback and original font/Kanji readers still lack game consumers in the current census. | Treat these as genuine integration gaps. Choose one if the gameplay package is blocked; do not build speculative state producers or more browser tests by default. |
-| Release (M7) | Clean Linux source/build/runtime evidence exists; native Windows, actual listening and direct visual sign-off do not. | Keep unsupported/manual claims open. Repeat release gates for relevant changes, not to imply those missing qualifications are solved. |
+| Release (M7) | Clean Linux source/build/runtime evidence exists; selected small-toilet/WC crops were directly inspected. Native Windows, actual listening and general visual/platform sign-off remain absent. | Keep unsupported/manual claims open. Repeat release gates for relevant changes, not to imply those missing qualifications are solved. |
 
-**Next selection:** coordinate the current feature/file split with cow tools, inspect the actual consumer path, and
-write a CP1 package for one player-visible outcome. Prefer needs satisfaction if it can be integrated without guessing
-undecoded gameplay semantics; identify any chosen port policy explicitly. Pair implementation with a small independent
-regression and an actual consumer demonstration. Until ownership is agreed, use bounded read-only interface/evidence
-inspection—not an automatic new audit project. If that candidate is blocked, record the blocker and choose the next
-supported integration outcome together. Do not start a large track, save/economy or advisor rewrite merely because it
-appears later in this roadmap.
+**Next selection:** after the purchase package lands, reuse the normal-startup service smoke
+for a named placed shop and verify the actual purchase, guest ownership and visible presentation.
+The headless arithmetic suite cannot establish that a shopper has a body during service. Inspect
+existing script/renderer contracts first, coordinate core/viewer ownership with cow tools, and
+reproduce any gap before choosing a fix. Preserve explicit limits on costume actors, repeated
+balloon ownership, mutable quality and park accounting; no automatic broad rewrite is implied.
 
-### CP1 draft — minimal toilet flow, pending scope confirmation
+### Historical CP1 preflight — minimal toilet flow (superseded; not an active approval hold)
+
+The following records the pre-implementation decision, not current blocking instructions. Owner
+subsequently authorized continued autonomous execution and the slice shipped as described above.
 
 Cow tools confirms that needs-satisfaction consumers are its scope and proposes the toilet as the smallest
 end-to-end slice: one placeable facility, route an eligible guest to it, use it, retain the guest identity,
