@@ -6,11 +6,13 @@ Updated: 2026-09-24 UTC. Roadmap: [plan.md](plan.md).
 
 Active checkout: `../tpw-gate-occupancy`, branch `astraclaw/native-entrance-flow`.
 Bus and requested smoothing are already on main through98b5249; do not redo them.
-This research branch now connects native quarter-cell motion to GuestWalk,
-ParkVisitors ownership and actual Viewer actor transforms under an EXPLICIT lease.
-Automatic bus arrivals do NOT yet take that lease; no deployed entrance flow,
-backlog reduction or departure-pressure fix is claimed. See the latest snapshot
-and findings/native-route-consumer.md before continuing.
+This research branch now includes the full INCOMING controller through actual
+experimental Viewer bus births, staging/groups, fee credit/debit and actor handoff.
+It is OPT-IN `--experimental-native-entrance`, NOT a default/main release: public BFS,
+unlimited route slots, readiness bypass and constructor-only fee seed are explicit
+adapters. Rejected guests are HELD because native departure/serial/pressure remains
+unported. See latest snapshot and findings/native-incoming-controller.md. Do NOT
+call this complete native entrance parity or quietly enable it for normal play.
 The old `tpw-ride-eligibility` checkout and scheduler's `81d112c` note are stale.
 No restarts. No reimplementation of the shipped destination scoring, relief, shop
 walking, Bouncy hide-list, gate or path-price work. Cow owns the current animated
@@ -2250,3 +2252,52 @@ errors/leaks: /tmp/tpw-native-route-postmerge-smoke.log. Clean worktree before
 this evidence append; pushing research branch, not main. Next: complete the
 incoming controller, with acceptance/staging/order; don't redo actuator tests as
 if that alone resolved the shipping backlog bypass.
+
+
+## Incoming controller checkpoint — September24,2026, research branch ONLY
+
+New NativeEntranceFlow uses actual Guest references + owner leases, queued async
+request/result tokens, two incoming linked lists and staging P/R/sharedE. Tick order
+pump->groups->coordinator->active; manual leases avoid a generic second Walk step.
+Head phase32, queue spacing64, same x for BOTHgroups (nonzero-group preliminary
+x+256 is overwritten by common152868), literal>=11 selection is ONEflip, notcap.
+P++ mode15complete; P--/R++ onlymode16complete; broadcast gateR<11 notrecipientquota.
+Mode-purpose reset2 aftercompletion. Source precision in native-entrance-lifecycle.md.
+
+Viewer.Entrance.cs OPT-IN flag --experimental-native-entrance makes actual busborn
+guests take this controller immediately; Bounds usesactual incomingmembership;
+sharedE receivesstagingproducer. NativeEntranceAcceptance consumesactual BusObjects
+NativeRideValue sum, strictfee<cash, classmath, managercount-beforefinance andfee
+rereadcredit/debit. Mode13 releases SAMEguest/needs/actor atcentre. No arbitrary
+nearby-walker queue counts. Defaultmain behavior still unchanged.
+
+NOTRELEASE-READY: next-tick publicBFS adapter, unbounded directslots, explicit model
+readinessbypass; ordinary constructorfee150 only (save/UI overridesunjoined); RNG
+streams/order notnative; secondstagingfamilymissing. RejectcallbackHOLDSlease andlogs
+missingdeparture; native sharedactivationserial/idleordering/stickyA4 remainunported.
+Mode13scan restrictedprovenheadpoint2flag8 case, boundsmanagedsafety. No fake general
+tileflagarray. Clear/vanished cleanupmanagedsafety, notunreadnativeindirectcallbacks.
+
+Actualautomatic Viewer test NativeEntranceFlowSmoke: buildsrealpositive-value
+attraction viaUI, waitsforREALbus birth (no manuallyspawnedguests), fee10 explicit
+fixture anddisablesFURTHERbatches afterfirstdropoff. JUNGLE649checksPASS, observed
+staging/memberships, sameactor/identityeachupdate, onefee debit+credit, noleftover
+P/groups/lease aftermode13. This firstbatchisoneguest: hookup proof, notbusypark
+equivalence. Core109flowchecks covermultimember/12broadcast andphase/countlimits;
+23feechecks coverboundaries/order/rereadcash. Existing76cursor/75actuator retained.
+
+5behavior mutationscaught8/4/2/11/8 failures (genericdoublestep,period16,threshold12,
+missingPdecrement,repeatacceptance). Initialperiod16mutationPASSED! Firstrelease
+occurredafter16 andteststoppedbeforethenexthalfperiod. Extendedreadyreplacement-head
+observation tofull32period, nowcatches4failures. Allmutationsrestored; no test deletion.
+Fullgates /tmp/tpw-incoming-final-matrix: J/Fpass,ONLYexactThrillGrill/MoonBuggiesreds;
+109+23eachworld (final fee-read rerun below). /tmp/tpw-incoming-final-runtime ALL11PASS.63PythonPASS. Eightactual
+Viewerexperimentalworld/variant runs underway /tmp/tpw-incoming-eight-viewers.
+
+NEXT: resolve/adapt actual native route-service pool/readiness beforedefaultrelease;
+close sharedactivationserial andnormaldeparturecontinuation + rejectstate26route
+producer, cancellation callbacks andfeeoverride join. Do NOT releaseblockedrejects
+byteleport/deletingthem or guessguestIDserial. This ismeaningfullyconnectednow, but
+experimentalservices/rejectionhold are explicit blockers, not a request to merge main.
+No restarts/extraction/privatefiles. CowownsUV/bubblesandcamera; latestmaincamera
+52e576e should be merged aftercurrentrenderedgates (notduringclearingbuild).

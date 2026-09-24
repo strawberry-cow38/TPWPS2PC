@@ -4,7 +4,12 @@ using Point = TPW.PS2.Data.NativeGuestMotion.Point;
 namespace TPW.PS2.Data;
 
 /// <summary>Caller-owned native inputs; no guessed speed/delta/readiness defaults.</summary>
-public sealed record NativeMotionInputs(Func<sbyte> Speed, Func<int> Delta, Func<bool> AnimationReady);
+public sealed record NativeMotionInputs(Func<sbyte> Speed, Func<int> Delta, Func<bool> AnimationReady)
+{
+    /// <summary>False for a controller which orders its own group/active passes.
+    /// Its owner must call StepOwnedNative once in the appropriate pass.</summary>
+    public bool AutomaticStep { get; init; } = true;
+}
 
 /// <summary>A read-only observation, not access to the live cursor's Step method.</summary>
 public readonly record struct NativeMotionSnapshot(Point Position, int ExecutionState,
@@ -70,6 +75,15 @@ public sealed partial class GuestWalk
         guest.Route = null; guest.RouteIndex = 0; guest.Destination = guest.Cell;
         guest.State = GuestState.Arrived; guest.Reason = null;
         return true;
+    }
+
+    /// <summary>Explicit controller step, never permission for a different owner to drive
+    /// the cursor. Ordinary automatic leases cannot also be stepped through this API.</summary>
+    public void StepOwnedNative(Guest guest, object owner)
+    {
+        if (NativeRouteState(guest, owner) == null || guest.NativeMotion.Inputs.AutomaticStep)
+            throw new InvalidOperationException("Explicit step requires this owner's manual native lease.");
+        StepNative(guest);
     }
 
     static ParkCell NativeCell(Point p) => new(p.X >> 8, p.Z >> 8);

@@ -249,6 +249,16 @@ public sealed class ParkVisitors
         return true;
     }
 
+    /// <summary>Explicit research-controller/map teardown. Not a native departure callback.
+    /// Requires this owner's lease; removes plan/needs without incrementing WentHome.</summary>
+    public void DiscardEntranceGuest(Guest guest, object owner)
+    {
+        if (Walk.NativeRouteState(guest, owner) == null)
+            throw new InvalidOperationException("Entrance teardown requires its current owner.");
+        ShowOut(guest.Id, countDeparture: false);
+        Needs?.Reconcile(_plans.Keys);
+    }
+
     public bool ReleaseEntranceRoute(Guest guest, object owner)
     {
         if (guest == null || !_plans.TryGetValue(guest.Id, out var plan)
@@ -590,7 +600,7 @@ public sealed class ParkVisitors
     /// <summary>They reach the gate and are gone. ⭐ Dropping the PLAN is what retires them:
     /// `Needs.Reconcile(_plans.Keys)` reaps any record with no plan behind it, so a departure
     /// cannot leave a needs row behind to be inherited by whoever gets that id next.</summary>
-    void ShowOut(int guest)
+    void ShowOut(int guest, bool countDeparture = true)
     {
         Walk.Remove(guest);
         _plans.Remove(guest);
@@ -600,7 +610,7 @@ public sealed class ParkVisitors
         _decisions.Forget(guest);
         _serviceTerminals.Remove(guest);
         _reliefVisits.Remove(guest);
-        WentHome++;
+        if (countDeparture) WentHome++;
     }
 
     ParkRide RideOf(Plan plan) => _owners.TryGetValue(plan.Guest, out var ride) && Sim.Rides.Contains(ride) ? ride : null;

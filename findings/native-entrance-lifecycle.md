@@ -37,7 +37,7 @@ Activation establishes state24. The ordinary state table36CB90 then gives:
   target current x plus1532D8's z, state3. Failed allocation stays2F.
 * mode16 exhaustion ->20DC70: incoming branch chooses group and state2A.
 * state2A ->210E80: register1527C8 BEFORE requesting travel to its assigned
-  quarter-cell point, flag N+34 bit4, mode11. Accepted request sets speed15,
+  quarter-cell point, flag N+34 mask0x0004 (bit index2), mode11. Accepted request sets speed15,
   timestamp and state0B. Request refusal does not undo membership.
 * mode11 completion ->20DB8C: idempotently re-register/recalculate target;
   equal coordinates ->state2C, otherwise2A to move again.
@@ -143,9 +143,11 @@ zeros queue counts/sentinels, P,E,S; R resets operationally on an E0->1 episode.
 
 ## Next implementation boundary
 
-The port still lacks explicit ID-owned entrance/staging states, asynchronous route
-request/result handling, quarter-cell slot movement/retirement and fee acceptance.
-`NativeGuestMotion` covers only the numeric coordinate portion (55 controlled checks).
+The initial arithmetic checkpoint lacked explicit entrance/staging ownership. The
+research branch now connects that controller under opt-in experimental adapters;
+see `native-incoming-controller.md`. Default main behavior is not changed by that
+research option. Native pathfinder/resource/readiness and departure producers remain
+open; the numeric layer alone never established those behaviors.
 Do not wire W to nearby walkers, leaving guests, occupied tiles or a guessed lane.
 No runtime entrance reduction, traffic coordinator or departure tally is fixed by
 these research notes. Full pathfinder resource capacity/readiness, cancellation,
@@ -217,3 +219,47 @@ guest debit. The admission count at manager+20 increments once before charging.
 The current branch route actuator is described in `native-route-consumer.md`.
 It reaches actual GuestWalk/Visitors/Viewer consumers under an explicit owner,
 but the automatic request/queue/acceptance controller above is still missing.
+
+## Incoming controller follow-up: overwritten lane coordinate and exact pass order
+
+Further raw reads close a misleading branch in1527C8. Nonzero group first writes
+x=(row[4]+1)*256+128 at15280C..64, but falls through to152868..CC, which OVERWRITES
+that with row[4]*256+128. Both groups therefore use the same x. Height is sampled
+at the base point before predecessor traversal (twice for the nonzero group),
+then each preceding member subtracts64 from z at152914..18. The two lists are
+not two distinct x lanes. Existing membership returns before decrementing for
+itself; new membership appends and increments once. No capacity veto here.
+
+P--/R++ is specifically1532B0 at20DCCC, AFTER mode16 chooses state2A or30 and
+BEFORE20DD20 resets movement mode to2. Neither event9 nor direct-slot allocation
+changes those counters. The coordinator broadcasts to every staged state2E in
+both allocation lists after testingR<11 once, not to a quota of eleven guests.
+A simultaneous batch of twelve can all complete mode16 and select an empty
+same group before the next updates register them. The literal >=11 selection
+check is a one-time flip, not an enforced per-group capacity.
+
+152A18 group iteration saves next before callbacks. After head release it does
+`event6(member); update(member)` for each remainder, NOT broadcast-all then
+update-all. Only state2C/state12 consume event6; here it replaces state with2B,
+releases the old slot and records current tick (payload+4 is0). Direct mode12
+can be assigned in that same group update. Head release is gated by tick&31,
+not16; merely testing the first release can fail to discriminate those periods.
+
+Ordinary activation20BEEC..20BF2C assigns baseline15+RNG(15), copies it to active
+speed. State2A assigns active15 ONLY after request acceptance210EF4. Head release
+itself does not restore speed; state25 does at210CD4..D8, before fee evaluation.
+Async mode11 failure restores2A without undoing membership. Mode12 is a direct
+slot path, not an asynchronous request; if event2/state0B/mode12 were forced,
+the generic failure arm20F790 would run, not a dedicated state2B retry. Its
+ordinary reachability remains unproved. The controller never fabricates that
+combination or calls its limited incoming service a general event dispatcher.
+
+Implementation and opt-in runtime limits are now in `native-incoming-controller.md`.
+
+Final acceptance call-order control: cash quote is100D20 at210CE8; the nested
+210B38 independently reads100D20 at210BD4 AFTER summingvalues/RNG. Success then
+100D28 reads it again for the charge. Therefore three reads on success, two on
+class rejection, one on cash rejection. 210D38 also reloads guest cash AFTER the
+finance call, before debit. The initial adapter reused the cash quote for class
+evaluation; raw review caught it and the changing-fee callback test now pins all
+three reads in order, rather than only matching values when the fee is constant.

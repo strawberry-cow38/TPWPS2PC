@@ -1,8 +1,9 @@
 namespace TPW.PS2.Data;
 
 /// <summary>Read coordinate operations from 192560/1924D0 and 191E98. This is NOT a
-/// replacement for GuestWalk yet: it excludes model readiness, route-request/slot
-/// ownership, execution-state dispatch and facing. Callers must supply the actual
+/// complete native pathfinder: the research NativeGuestRoute/GuestWalk lease consumes
+/// these operations, while this numeric layer itself excludes model readiness,
+/// route-request ownership, execution-state dispatch and facing. Callers must supply the actual
 /// active signed speed byte and native delta, not a guessed seconds conversion.</summary>
 public static class NativeGuestMotion
 {

@@ -105,6 +105,10 @@ public sealed partial class GuestWalk
 
     public ParkPaths Paths { get; }
     public long Time { get; private set; }
+    /// <summary>One callback per executed tick, before the ordinary walker pass. An entrance
+    /// controller uses this for ordered request/group/coordinator/active native updates.
+    /// This is a managed scheduling seam, not the full game's global update ordering.</summary>
+    public Action<uint> BeforeStep { get; set; }
     long _carry;
     int _lastId;
 
@@ -277,9 +281,10 @@ public sealed partial class GuestWalk
     public void Step()
     {
         Time += TickMilliseconds;
+        BeforeStep?.Invoke(unchecked((uint)(Time / TickMilliseconds)));
         foreach (var g in _guests)
         {
-            if (g.HasNativeRoute) { StepNative(g); continue; }
+            if (g.HasNativeRoute) { if (g.NativeMotion.Inputs.AutomaticStep) StepNative(g); continue; }
             if (g.State != GuestState.Walking) continue;
             int budget = UnitsPerTick;
             while (budget > 0 && g.State == GuestState.Walking)

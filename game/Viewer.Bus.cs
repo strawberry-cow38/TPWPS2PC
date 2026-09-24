@@ -30,6 +30,7 @@ public partial class Viewer
 
     void ResetNativeBus()
     {
+        ResetExperimentalEntrance();
         ResetBusAudio();
         if (_nativeBus?.Root is {} root && IsInstanceValid(root)) root.QueueFree();
         _nativeBus=null;_nativeBusMesh=null;_busCatalogue=null;_busSourceKey=null;
@@ -158,15 +159,21 @@ public partial class Viewer
         int score=NativeBusDemand.Score(ordered,n=>_guestRng.Next(n));
         int ceiling=_busCatalogue.Ceiling(objects.Select(o=>(o.Kind,o.Key)));
         int population=_visitors.Plans.Keys.Concat(_guests.Guests.Select(g=>g.Id)).Distinct().Count();
-        // Zero is a permissive bypass, not a neutral contribution. Native entrance groups
+        // Without the explicit research controller, zero is a permissive bypass. Native entrance groups
         // are not Walk.Guests or path occupancy; do not substitute either as a guessed count.
         var bounds=NativeBusDemand.Bounds(score,_busCatalogue.DemandOffset,_busCatalogue.DemandDivisor,
-            entranceGroupCount:0,ceiling,population);
+            entranceGroupCount:_entranceFlow is {} incoming ? incoming.Counts.Group0 + incoming.Counts.Group1 : 0,
+            ceiling,population);
         int requested=bounds.Requested;
         var at=_busCatalogue.Point0;
         int admitted=0;
         if(_guests.Paths.Open(at))
-            for(int i=0;i<requested;i++) { _visitors.Arrive(at,at);admitted++; }
+            for(int i=0;i<requested;i++)
+            {
+                var guest = _visitors.Arrive(at,at);
+                _entranceFlow?.Add(guest, checked((sbyte)(15 + _guestRng.Next(15))));
+                admitted++;
+            }
         _busAdmitted+=admitted;
         GD.Print($"[bus.arrivals] {BusClock}ms request={_busBatches} score={score} ceiling={ceiling} population={population} bounds[demand={bounds.Demand},entrance={bounds.Entrance},headroom={bounds.Headroom}] requested={requested} admitted={admitted} point0={at}");
     }

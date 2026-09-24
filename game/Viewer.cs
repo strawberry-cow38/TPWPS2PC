@@ -3321,6 +3321,7 @@ public partial class Viewer : Node3D
         }
         if (_visitors != null)
         {
+            EnsureExperimentalEntrance();
             Snapshot();
             _visitors.Step(ConsoleClock.TickSeconds, Wander);
             Retry();
