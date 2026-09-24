@@ -1,10 +1,25 @@
-# The park entrance gate — placed, and its coordinate NAMED BUT NOT PLACED
+# The park entrance gate — authored position, READ
 
-## ⚠ UNFINISHED, at master's call
+## ⭐ RESOLVED 2026-09-23. Start at "The gate's z is authored, and the .sam states its rectangle".
+
+The `.sam` footprint is the gate's own authored bounding box: the x is exact in all four parks,
+the z is contained in all four, and the gate takes this park's **x shift and nothing in z**. The
+shift is `ticket_booths` centre minus 48, and two of the four parks shift by zero, which is a free
+control.
+
+## ⚠⚠ THE TWO SECTIONS BELOW ARE SUPERSEDED, AND THEY COST A READER AN HOUR ON 2026-09-24
+
+"UNFINISHED — calibrated by eye" and "The open question" describe the state BEFORE that section
+and are kept only so the reasoning is followable. ⭐ A stale header outranks a correct section
+further down, because the header is what gets quoted: this file's opening line was repeated to
+master as current fact while the answer sat sixty lines below it. If a finding is superseded, say
+so where the reader lands, not only where the work happened.
+
+## ⚠ SUPERSEDED — the state before the .sam rectangle was read
 
 The gate renders in all four parks, at a position **calibrated by eye, not read from the disc**.
 The real coordinate has been found and is written down below; what is missing is the frame it is
-expressed in. Picked up again, start at "the open question".
+expressed in.
 
 ## What ships
 
@@ -43,7 +58,7 @@ Also in the file: `Info.DontApplyOffset = 1`, `Info.Id` 1601/3601, `Info.HasQueu
 `UsageInfo.ConstrainCamera = 1` — the string found while reverse-engineering the camera, which
 turns out to live on the gate.
 
-## ⚠ The open question
+## ⚠ SUPERSEDED — the open question, answered below by the .sam rectangle
 
 **What map are those offsets into?** They are not plot cells: Jungle's plot runs z −76..0, so cell
 16 would be world −60, nowhere near the entrance. Until that frame is identified the coordinate is
