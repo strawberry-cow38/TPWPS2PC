@@ -1555,3 +1555,24 @@ onsounds/bubbles/featurecreation; stayoffthoseexceptagreedservicevisibilityconsu
 should include actualsoundeventconsumer/flags/timer rather thanrepeat any prior guessedstage
 interpretations; peer'srepeatflag0x400/word0C policyislabelledcorrelation, notnativeconsumerread.
 Do not repeat completedtiming/movement work orrestartbot; existingcroncontinuesoriginalplan.
+
+## Native selector review slice — September24 12:27 UTC
+
+Separate worktree ../tpw-gate-occupancy now branch astraclaw/native-destination-scoring,
+base126dc80 (name is historical; NO gate changes). Owner handed gate task to cow.
+Implemented GuestDestinationScore plus43 arithmetic/chooser checks, verified against
+all121 need table words and legal relief bins read in memory from owner's ELF.
+/tmp/tpw-score-restored.log PASS43, /tmp/tpw-score-mutations-20260924 all8 breaks caught;
+restored source rebuilt. Earlier four-world /tmp/tpw-native-score-arithmetic-20260924
+passes exceptexact known retail reds (41 arithmetic checks before direct ELF checks added).
+This is a REVIEW SLICE, not landed production behavior: ParkVisitors is UNCHANGED.
+
+New direct instruction trace resolves candidate family order3,6,1,7,4,5,2 and newest
+activation first within each pool, including distinct coaster+130 links. Findings updated
+with iterator tables, head getters and allocator stores. Initial capstone disassembler
+failed to import; NO inference made from that failure. Small raw-word decoder handles
+these instructions and reports UNKNOWN explicitly (movz/movn checked from R-type words).
+Remaining production package must integrate concrete getter inputs, signed score,
+instance identity/history lifecycle, eligibility and real inside entrance. No guessed
+91 threshold or generic random fallback for joined retail candidates. Keep relief WIP
+in ../tpw-ride-eligibility untouched. Bus remains queued after urgent guest fixes.

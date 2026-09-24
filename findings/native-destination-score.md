@@ -177,3 +177,46 @@ before it can safely store native-style history.
   Most-recent-ID match reduces it to3. Cash/willingness alone do not alter it.
 * Sentinel history ->recordA ->[A,FFFFFFFF,FFFFFFFF,FFFFFFFF]; recordB ->[B,A,A,A];
   recordC ->[C,B,B,B]; recordC again ->[C,C,C,C]. Reset on activation, not service.
+
+## Enumeration order resolved (September24 follow-up)
+
+The previous enumeration dependency is now partly resolved by reading the iterator,
+its jump tables, head getters and allocation writes together (not sorting by kind ID):
+
+*1E5AF0 ->1E5B58 initializes iterator flag+4=0 and its pointer from14CBE0,
+ pool39528C+8: ordinary ride head, complete pointer converted to placed pointer+8.
+*1E5BA0 returns that pointer. 1E5CA8 reads the current candidate kind via virtual+A4.
+ Table369E20 uses placed+130 as next link for coaster kind1; for all other kinds it
+ subtracts8, reads complete+0, then adds8 if nonnull.
+*On exhaustion1E5BA8 advances families through table369E00. Literal entries for
+ kind1..7 are1E5C0C/1E5C7C/1E5BEC/1E5C38/1E5C54/1E5BFC/1E5C1C.
+ This yields **ordinary3 -> track6 -> coaster1 -> tour7 -> shop4 -> sideshow5 ->
+ feature2**, then stops. It is neither numeric kind order nor one global insertion list.
+ Empty categories are skipped; shop/sideshow/feature skipping tests the flag+4, which
+ the chooser's1E5AF0 initialization sets tozero.
+*Head getters14CBE0/14CC90/14CCE8/14CC28/14CD78/14CDC0/14CD30 read+8 from
+ pools39528C/395294/395298/395290/39529C/3952A4/3952A0 respectively.
+*Allocators149FF0,14A0B8,14A180,14A558,14A620,14A6E8 prepend the activated
+ complete object to pool+8, with its+0 pointing at the former head. Ordinary writes
+ are14A058..70; track14A1E8..200; shop14A5C0..D8; feature14A688..6A0;
+ sideshow14A750..768. Coaster14A4A0 prepends through its+130/+134 links at
+ 14A504..51C. Thus freshly activated objects precede older objects within each family.
+
+This establishes normal allocation iteration, including recycled object activation.
+It does not establish the order in which a savegame loader activates objects; do not
+claim a port save/load ordering that has not been traced. Runtime serial identity and
+pool link ordering are different inputs: don't use a reused display ID for either.
+
+## Implementation review slice (not yet coordinator integration)
+
+GuestDestinationScore implements the score/lookup/history/choice arithmetic. The
+43 audit checks include a direct in-memory PT_LOAD read of all121 need words and all
+legal relief input indices from the owner's executable. Hand-calculated controls
+separately pin signed division, denominator, feature availability, product thresholds,
+taste bands, literal forward history copying, negative rejection and sequential ties.
+Eight deliberate arithmetic mutations each fail (table transpose, erase negative relief,
+drop fixed denominator, FIFO rewrite, always replace ties, ignore duplicate history,
+wrong map edge, enable taste for zero value). Those checks do NOT exercise ParkVisitors.
+The coordinator still needs the actual candidate producer/eligibility/identity/ordering
+integration; this helper's passing checks are not evidence that fresh visitors have
+stopped selecting toilets through the shipping path.

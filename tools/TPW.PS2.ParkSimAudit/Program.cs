@@ -12,6 +12,13 @@ int bad = 0;
 void Check(bool ok, string line) { Console.WriteLine((ok ? "  ok   " : "  FAIL ") + line); if (!ok) bad++; }
 
 using var disc = new Disc(args[0]);
+if (args.Contains("--destination-score-only"))
+{
+    DestinationScoreChecks.Run(disc, Check);
+    Console.WriteLine(bad == 0 ? "PASS native destination arithmetic (coordinator integration not exercised)" : $"FAIL: {bad}");
+    return bad == 0 ? 0 : 1;
+}
+
 WadArchive Wad(string name)
 {
     var e = disc.Files().Single(f => f.Path.Equals($"/DATA/{name}.WAD", StringComparison.OrdinalIgnoreCase));
@@ -556,6 +563,7 @@ RideValueChecks.Run(Wad("DATA"), wad, world, Check);
 GuestAnimationChecks.Run(Wad("DATA"), Check);
 CompiledShopPurchaseChecks.Run(terrain, loopPaths, corridorStops[0], onPath[^1], Wad("DATA"), wad, world, Check);
 TerminalWalkingChecks.Run(terrain, Wad("DATA"), wad, world, Check);
+DestinationScoreChecks.Run(disc, Check);
 DecisionSchedulingChecks.Run(terrain, loopPaths, corridorStops[0], onPath[^1], Wad("DATA"), wad, world, Check);
 Check(looEntry.Entry != null, $"the world ships a lavatory to exercise ({looEntry.Entry?.Path ?? "none found"})");
 Check(availabilityChecked, "availability regression exercised a real ride with both availability flags");
