@@ -60,6 +60,11 @@ public sealed class Water
         _soft = soft;
         if (terrain == null || model == null) return;
         int sea = 0, flow = 0;
+        // The highest sea surface, so "lower" is measured rather than assumed from a name.
+        float _seaTop = float.MinValue;
+        foreach (var mi in terrain.GetChildren().OfType<MeshInstance3D>())
+            if (mi.Name.ToString().Split('#')[0].StartsWith("A_SEA", StringComparison.OrdinalIgnoreCase))
+                _seaTop = Mathf.Max(_seaTop, mi.GetAabb().GetCenter().Y + mi.Position.Y);
         foreach (var mi in terrain.GetChildren().OfType<MeshInstance3D>())
         {
             // The surfaces are named "<mesh>#<material>" by AnimatedModel.
@@ -82,7 +87,14 @@ public sealed class Water
                 ? Env("TPW_SEA_ANGLE", SeaScrollDegrees)
                 : Env("TPW_WATER_ANGLE", RiverScrollDegrees));
             var scroll = new Vector2(Mathf.Sin(radians) * perSecond, Mathf.Cos(radians) * perSecond);
-            var wave = isSea
+            // ⭐⭐ ONLY THE TOP SEA ROLLS. Master: "remove the sine on the lower sea layer."
+            // The terrain stacks more than one A_SEA plane and waving the one underneath makes
+            // the two shear through each other at the shoreline.
+            // ⚠ MEASURED, not named: which plane is lower is a fact about its height, and
+            // guessing from "A_SEA_01 must be the bottom" is the kind of assumption this port
+            // keeps having to undo. `_seaTop` is the highest sea surface on this terrain.
+            bool lowerSea = isSea && mi.GetAabb().GetCenter().Y + mi.Position.Y < _seaTop - 0.01f;
+            var wave = isSea && !lowerSea
                 ? new Vector3(Env("TPW_SEA_AMP", SeaWave.X), Env("TPW_SEA_LEN", SeaWave.Y), Env("TPW_SEA_SPEED", SeaWave.Z))
                 : Vector3.Zero;
             // ⚠ The material's OWN translucency, from the same resolver the model used. A river

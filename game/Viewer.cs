@@ -248,6 +248,17 @@ public partial class Viewer : Node3D
     /// the kind of guess this port keeps having to undo. They stay 0 until someone looks at them.</summary>
     static float GateNudgeFor(string world) =>
         string.Equals(world, "JUNGLE", StringComparison.OrdinalIgnoreCase) ? -2.0f : 0f;
+
+    /// <summary>The by-eye flag nudge along z, per world. Master calibrated JUNGLE at **-12.95**.
+    ///
+    /// ⚠⚠ AND THAT NUMBER IS A SYMPTOM, NOT A SETTING. Thirteen units is thirteen CELLS -- the
+    /// gate needed 2.0 and the flags need six times that, which is not the size of an eye-tune on
+    /// a position derived from the poles' own vertices. Something upstream is putting the anchor
+    /// in the wrong place systematically, and this is papering over it well enough to look right
+    /// in one park. ⭐ Recorded as master's measurement because it IS one, and flagged because a
+    /// correction that large will not survive the other three worlds.</summary>
+    static float FlagNudgeFor(string world) =>
+        string.Equals(world, "JUNGLE", StringComparison.OrdinalIgnoreCase) ? -12.95f : 0f;
     /// <summary>G swaps to the free orbit camera.</summary>
     bool _freeCam;
     /// <summary>Ground height per TILE in world units, the same lookup the game does. Baked when
@@ -6318,6 +6329,9 @@ public partial class Viewer : Node3D
         ParkCameraOverrides();
         // ⚠ LAST. Everything above sets the camera, so aiming before them aims at nothing.
         LoadGate();
+        var fw = (_lib?.WadName ?? "").Split('/', StringSplitOptions.RemoveEmptyEntries);
+        int fi = Array.FindIndex(fw, x => x.EndsWith(".WAD", StringComparison.OrdinalIgnoreCase));
+        _flags.NudgeZ = FlagNudgeFor(fi >= 0 ? fw[fi][..^4] : "");
         _flags.Build(_terrainModel, path => _lib?.ReadGeneric(path));
         GD.Print($"[flags] {_flags.Report}");
         _flags.Root.Visible = _mode == Mode.Park;

@@ -93,6 +93,17 @@ public sealed class EntranceFlags
     /// top, so a nudge of 0 is exactly the behaviour before the tool existed.</summary>
     public float NudgeZ { get; set; }
 
+    /// <summary>⭐⭐ ONE WIND FOR THE WHOLE ENTRANCE, in degrees about y, 0 being the +x the strip
+    /// is built along. Master: "they should all point in a global wind direction (they all face
+    /// the same way)." Applied as a rotation on every flag from a single field, so they cannot
+    /// drift apart -- eight flags that each decided their own heading is precisely the thing that
+    /// would read as a bug. ⚠ CHOSEN: the console's wind direction is not read.</summary>
+    public float WindDegrees { get; set; }
+
+    /// <summary>How hard the flag flaps up and down. ⚠ CHOSEN, like the rest of the motion --
+    /// the console's vertex animation is not read, only that the flags move.</summary>
+    public float VerticalAmplitude { get; set; } = 0.16f;
+
     /// <summary>Stand the flags on this park's poles. <paramref name="terrain"/> is the park's own
     /// terrain model; <paramref name="read"/> fetches a shared asset out of DATA.WAD.</summary>
     public void Build(Model terrain, Func<string, byte[]> read)
@@ -125,6 +136,7 @@ public sealed class EntranceFlags
             };
             var strip = new ArrayMesh();
             mi.Mesh = strip;
+            mi.Rotation = new Vector3(0f, Mathf.DegToRad(WindDegrees), 0f);
             Root.AddChild(mi);
             _flags.Add((at, mi, strip));
         }
@@ -272,10 +284,15 @@ public sealed class EntranceFlags
             float u = (float)s / Segments;
             float x = u * Length;
             float z = Mathf.Sin(phase - u * 6.0f) * 0.22f * u;
-            // A flag also lifts as it flies rather than hanging straight down.
-            float lift = Mathf.Sin(phase * 0.8f - u * 2.0f) * 0.05f * u;
-            _pos[s * 2] = new Vector3(x, lift, z);
-            _pos[s * 2 + 1] = new Vector3(x, lift - Height, z * 0.75f);
+            // ⭐⭐ A VERTICAL SINE, not just a lift. Master: "we're missing a vertical sine on
+            // em." There was a 0.05 nudge here that raised the whole strip together, which is a
+            // flag being carried rather than a flag flapping. This travels along the length like
+            // the horizontal one does, and the BOTTOM edge runs a quarter-wave behind the top so
+            // the cloth twists instead of staying a rigid ribbon.
+            float top = Mathf.Sin(phase * 1.3f - u * 4.5f) * VerticalAmplitude * u;
+            float bottom = Mathf.Sin(phase * 1.3f - u * 4.5f - 1.6f) * VerticalAmplitude * u;
+            _pos[s * 2] = new Vector3(x, top, z);
+            _pos[s * 2 + 1] = new Vector3(x, bottom - Height, z * 0.75f);
         }
         _arrays[(int)Mesh.ArrayType.Vertex] = _pos;
     }
