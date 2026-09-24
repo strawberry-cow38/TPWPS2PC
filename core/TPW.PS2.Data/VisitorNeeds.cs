@@ -159,6 +159,13 @@ public sealed class VisitorNeeds
     /// gift 6. ⚠ NOT the authored `UsageInfo.ShopType`.</summary>
     public const int Food = 0, Drink = 1, Costume = 2, Trinket = 3;
 
+    /// <summary>What a costume shop leaves a guest preferring: row **8** of the preference table
+    /// at `DAT_002EEBD8`, read as **14** off the image. ⚠ Held separately from
+    /// <see cref="Preferences"/> ON PURPOSE -- that array is what ordinary spawning draws from,
+    /// and whether a guest can START as personality 8 is a different question with no evidence
+    /// behind it yet. Putting the row in the array would answer it by accident.</summary>
+    public const byte CostumePreference = 14;
+
     /// <summary>⭐⭐ WHY THE COMPILED HAPPINESS IS THE PAYOUT AT DEFAULTS. The console scales it by
     /// `(q1 - q2/15) / 100`, and shop setup explicitly writes **q1 = 100, q2 = 0** at
     /// `0x1D1870/7C` -- so the scale is `(100 - 0)/100 = 1` and a new shop pays its compiled base
@@ -381,7 +388,13 @@ public sealed class VisitorNeeds
         // on which effect happens to be larger.
         switch (product)
         {
-            case Food: case 4: case 5:
+            // ⭐⭐ 7 FALLS THROUGH INTO FOOD. `case 7:` carries NO `break` -- it bumps thirst by
+            // `FUN_001D1FB8(shop) / 15` and then runs the entire food arm. I had it as an
+            // unmodelled arm that did nothing, which was wrong twice over: it is not unmodelled
+            // and it is not nothing. ⚠ That getter is q2, which shop setup writes as **0**, so
+            // the bump is `0 / 15 = 0` at default quality and product 7 IS food until something
+            // moves q2 -- and what moves it is unread, which is the only honest gap here.
+            case Food: case 4: case 5: case 7:
                 w.Hunger = Clamp(w.Hunger - hungerReduction);
                 w.Toilet = Clamp(w.Toilet + hungerReduction);
                 w.Thirst = Clamp(w.Thirst + thirstReduction);
@@ -400,8 +413,13 @@ public sealed class VisitorNeeds
             case Costume:
                 // ⭐ A costume shop CHANGES WHO YOU ARE: the arm writes `guest[0x7d] = 8`, the
                 // personality index, so the guest leaves wanting a different kind of ride.
-                // ⚠ Index 8 is the row whose length I once used to bound the table at eight.
-                w.PreferredIntensity = Preferences.Length > 8 ? Preferences[8] : w.PreferredIntensity;
+                // ⚠⚠ `Preferences.Length > 8` was ALWAYS FALSE -- the array holds eight entries,
+                // indices 0..7 -- so the promised change silently never happened. A guard written
+                // against an array that cannot satisfy it is dead code wearing a safety check.
+                // astraclaw caught it. ⚠ Row 8 is deliberately NOT added to `Preferences`:
+                // that array is what ordinary spawning draws from, and whether a new guest can
+                // BE personality 8 is a separate, unverified policy.
+                w.PreferredIntensity = CostumePreference;
                 w.Happiness = Clamp(w.Happiness + happinessEffect);
                 break;
             case Trinket: case 6:

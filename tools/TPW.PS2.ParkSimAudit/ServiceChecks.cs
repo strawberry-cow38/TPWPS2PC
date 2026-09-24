@@ -187,6 +187,30 @@ static class ServiceChecks
         Check(balloon.Hunger == 50 && balloon.Thirst == 50 && balloon.Toilet == 20,
               $"and leaves every need alone (h{balloon.Hunger} t{balloon.Thirst} b{balloon.Toilet})");
 
+        // ⭐ PRODUCT 7 FALLS THROUGH INTO FOOD -- `case 7:` has no break. At default quality its
+        // extra thirst bump is q2/15 = 0, so it must behave EXACTLY like food, not like nothing.
+        var seven = Bought(price: 30, hunger: 25, thirst: 0, product: 7);
+        var asFood7 = Bought(price: 30, hunger: 25, thirst: 0, product: VisitorNeeds.Food);
+        Check(seven.Hunger == asFood7.Hunger && seven.Toilet == asFood7.Toilet && seven.Cash == asFood7.Cash,
+              $"product 7 falls through to food, not to nothing (h{seven.Hunger} b{seven.Toilet})");
+        // ⚠ THE CONTROL: it must not be a no-op. If the arm did nothing, hunger would read 50.
+        Check(seven.Hunger != 50, $"and is not the do-nothing arm it was written as ({seven.Hunger})");
+
+        // ⭐ A costume changes what rides the guest wants -- to row 8 of the preference table, 14.
+        // ⚠ The old guard `Preferences.Length > 8` was always false, so this silently did nothing.
+        var pref = PreferenceAfterCostume();
+        Check(pref == VisitorNeeds.CostumePreference, $"a costume shop changes the rider's taste to row 8 ({pref})");
+        Check(!VisitorNeeds.Preferences.Contains(VisitorNeeds.CostumePreference),
+              "and row 8 is NOT in the ordinary spawn table, which is a separate unverified policy");
+
+        int PreferenceAfterCostume()
+        {
+            var n = new VisitorNeeds(5);
+            var w = n.Spawn(1); w.Cash = 5000; w.PreferredIntensity = 90; n.Set(1, w);
+            n.Buy(1, 60, 0, 0, happinessEffect: 15, vomitIncrease: 0, product: VisitorNeeds.Costume);
+            return n.Of(1).PreferredIntensity;
+        }
+
         var icecream = Bought(price: 30, hunger: 15, thirst: 5);
         // ⚠⚠ THE SIGN. Ice cream's own thirst is 5, and it must go UP. Subtracting would read 45.
         Check(icecream.Thirst == 55, $"and eating makes them THIRSTIER, not less ({icecream.Thirst}, was 50)");
