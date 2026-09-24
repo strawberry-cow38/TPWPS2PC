@@ -21,6 +21,7 @@ public partial class StandingServiceAudit : Node3D
         try
         {
             string disc = OS.GetEnvironment("TPW_PS2_DISC");
+            EntryStubFallbackChecks.Run(disc, (ok, label) => Check(ok, "entry-stub fallback: " + label));
             library = new AssetLibrary(disc); library.OpenWad("/DATA/JUNGLE.WAD");
             var wad = library.Wad;
             var terrain = new Model(wad.Read(wad.Find("/terrain/terrain_1.mps")));
@@ -258,6 +259,51 @@ public partial class StandingServiceAudit : Node3D
                 }
 
             }
+            // Default-gate consumer control: metadata checks alone cannot catch forgetting
+            // RegisterStandingService's fallback call. Use a real outside-shop script here;
+            // needs/purchase arithmetic is covered by the normal-startup six-shop smoke.
+            var stubDefinition = Shop("/Shops/Coconut/Coconut.sam");
+            var stubAsset = library.Rides.Single(r => r.Model.Path.Equals("/Shops/Coconut/Coconut.mps", StringComparison.OrdinalIgnoreCase));
+            var stubSim = new ParkSim(paths);
+            byte[] StubSibling(string name) => wad.Find("/Shops/Coconut/" + name) is { } e ? wad.Read(e) : null;
+            var stubRide = stubSim.Add(700, "Coconut fallback", origin, 2, 2, library.Read(stubAsset.Script),
+                new TPW.PS2.Data.Animation(library.Read(stubAsset.Animation)), 1, entrance, exit, out var stubFault,
+                sibling: StubSibling, definition: stubDefinition) ?? throw new Exception(stubFault);
+            stubSim.SetOpen(stubRide.Id, true); stubRide.Set("VAR_BROKEN", 0);
+            var stubVisitors = new ParkVisitors(stubSim, new GuestWalk(paths));
+            var stubGuest = stubVisitors.Arrive(entrance, entrance);
+            Set(viewer, "_sim", stubSim); Set(viewer, "_visitors", stubVisitors); Set(viewer, "_guests", stubVisitors.Walk);
+            var stubRoot = new Node3D(); stage.AddChild(stubRoot);
+            Call(viewer, "RegisterStandingService", stubRide, stubRoot, 0);
+            Check(registered.TryGetValue(stubRide, out var stubRegistration) && stubRegistration.Pose.IsEntryStubFallback,
+                  "entry-stub consumer: actual viewer registration selects tagged policy");
+            Check(stubVisitors.SendTo(stubGuest, stubRide), "entry-stub consumer: real coordinator accepts route");
+            stubVisitors.Step(0, null);
+            for (int tick = 0; tick < 500 && (stubRide.Queue.Contains(stubGuest.Id) || stubRide.Get("VAR_LETMEON") == stubGuest.Id); tick++)
+                stubVisitors.Step(.04, null);
+            Check(stubVisitors.QueuedOwner(stubGuest.Id) == stubRide && stubVisitors.Rides == 0
+                  && !stubRide.Queue.Contains(stubGuest.Id) && stubRide.Get("VAR_LETMEON") != stubGuest.Id,
+                  "entry-stub consumer: real shop accepts before handback");
+            Call(viewer, "PlaceActors", 1f);
+            var actualArrival = stubGuest.Position;
+            var expectedStub = (Vector3)Call(viewer, "GuestWorld", new Vector3(actualArrival.X,actualArrival.Y,actualArrival.Z), stubGuest.Cell);
+            Check(standing.ContainsKey(stubGuest.Id) && actors.TryGetValue(stubGuest.Id, out var stubBody)
+                  && !stubBody.IsQueuedForDeletion() && stubBody.Position.DistanceTo(expectedStub) < .0001f,
+                  "entry-stub consumer: actual body holds retained arrival position");
+            stubRide.Host.GuestVisible(stubGuest.Id, false); Call(viewer, "PlaceActors", 1f);
+            Check(!standing.ContainsKey(stubGuest.Id) && !actors.ContainsKey(stubGuest.Id),
+                  "entry-stub consumer: explicit host hide still wins");
+            stubRide.Host.GuestVisible(stubGuest.Id, true); Call(viewer, "PlaceActors", 1f);
+            Check(standing.ContainsKey(stubGuest.Id) && actors.ContainsKey(stubGuest.Id),
+                  "entry-stub consumer: host reveal restores the one body");
+            for (int tick = 0; tick < 6000 && stubVisitors.Rides == 0; tick++) stubVisitors.Step(.04, null);
+            stubSim.SetOpen(stubRide.Id, false); Call(viewer, "PlaceActors", 1f);
+            Check(stubVisitors.Rides == 1 && stubVisitors.Walk.Guests.Count(g => g.Id == stubGuest.Id) == 1
+                  && actors.ContainsKey(stubGuest.Id) && !standing.ContainsKey(stubGuest.Id),
+                  "entry-stub consumer: genuine handback restores one walker without a standing duplicate");
+            Check(!stubDefinition.Fields.ContainsKey("UsageInfo.EntryCellStandPosX")
+                  && !stubDefinition.Fields.ContainsKey("UsageInfo.EntryCellStandPosY"),
+                  "entry-stub consumer: entire lifecycle leaves absent authored coordinates absent");
             sounds.Clear();
             stage.QueueFree(); await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
             await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);

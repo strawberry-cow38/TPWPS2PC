@@ -55,7 +55,28 @@ def raw_witness(scene):
             'STANDING SERVICE ok: guest frame maps grid X through the built plot direction',
             'STANDING SERVICE ok: guest frame maps grid Z through the built plot direction',
             'STANDING SERVICE ok: guest frame follows changed plot instead of retaining an old origin',
-            'STANDING SERVICE PASS: 93 checks, 0 failures'])
+            *[f'STANDING SERVICE ok: entry-stub fallback: {asset}: {label}'
+              for asset in ('JUNGLE/Shops/Coconut/Coconut.sam', 'FANTASY/Shops/sburger/sBurger.sam',
+                            'FANTASY/Shops/fries/Fries.sam', 'FANTASY/Shops/icecream/icecream.sam',
+                            'SPACE/Shops/burger/Burger.sam', 'SPACE/Shops/fries/fries.sam')
+              for label in ('raw missing pair; eligible footprint; authored-only rejects',
+                            'all four turns use actual stub centre, height and placement inward; fallback tagged',
+                            'fallback leaves both raw keys absent')],
+            *['STANDING SERVICE ok: entry-stub fallback: ' + label for label in (
+                'JIceCream: authored coordinates reject fallback',
+                'GiftShop: missing-coordinate 3x3 shop rejects fallback',
+                'Monkey: ordinary ride rejects fallback', 'Coconut: null entrance rejects fallback',
+                'Coconut: 2x2 footprint without entry rejects fallback',
+                *[f'Coconut: only UsageInfo.EntryCellStandPos{axis}={value} rejects fallback without filling other coordinate'
+                  for axis in ('X', 'Y') for value in ('0.5', 'malformed', 'NaN')],
+                *[f'Coconut: supplied UsageInfo.EntryCellStandPos{axis} block is malformed rather than absent' for axis in ('X', 'Y')])],
+            *['STANDING SERVICE ok: entry-stub consumer: ' + label for label in (
+                'actual viewer registration selects tagged policy', 'real coordinator accepts route',
+                'real shop accepts before handback', 'actual body holds retained arrival position',
+                'explicit host hide still wins', 'host reveal restores the one body',
+                'genuine handback restores one walker without a standing duplicate',
+                'entire lifecycle leaves absent authored coordinates absent')],
+            'STANDING SERVICE PASS: 132 checks, 0 failures' ])
     return '\n'.join(['AUDIO LIFECYCLE ok: tested'] * 31 + [
         'AUDIO LIFECYCLE ok: 2D eight fast no-evidence polls remain pending',
         'AUDIO LIFECYCLE ok: 3D eight fast no-evidence polls remain pending',
@@ -139,9 +160,18 @@ class Classification(unittest.TestCase):
                         text.replace('re-index replaces the catalogue', 'unrelated assertion')]:
             self.assertEqual(audit.classify('shops', output(damaged))['status'], 'missing_coverage')
 
+    def test_fallback_consumer_cannot_be_omitted_or_replaced_by_filler(self):
+        text = witness('standing')
+        consumer_lines = [line for line in text.splitlines() if 'entry-stub consumer:' in line]
+        self.assertEqual(len(consumer_lines), 8)
+        for line in consumer_lines:
+            self.assertEqual(audit.classify('standing', output(text.replace('entry-stub consumer: ' + line.split('entry-stub consumer: ', 1)[1], 'unrelated filler')))['status'], 'missing_coverage')
+        old = '\n'.join(line for line in text.splitlines() if 'entry-stub consumer:' not in line).replace('132 checks', '124 checks')
+        self.assertEqual(audit.classify('standing', output(old))['status'], 'missing_coverage')
+
     def test_standing_requires_actual_placement_lifecycle_and_matching_count(self):
         text = witness('standing')
-        for damaged in [text.replace('93 checks', '92 checks'),
+        for damaged in [text.replace('132 checks', '131 checks'),
                         text.replace('placed quarter turn 2 completes real relief without reseeding', 'unrelated assertion'),
                         text.replace('explicit host hiding suppresses standing body', 'unrelated assertion'),
                         text.replace('external shop quarter turn 0 uses literal authored 2x2 geometry', 'unrelated assertion'),
@@ -150,7 +180,10 @@ class Classification(unittest.TestCase):
                         text.replace('external shop quarter turn 0 faces inward from actual placement entry', 'unrelated assertion'),
                         text.replace('ordinary ride does not become a standing shop', 'unrelated assertion'),
                         text.replace('guest frame follows changed plot instead of retaining an old origin', 'unrelated assertion'),
-                        text.replace('guest frame maps grid X through the built plot direction', 'unrelated assertion')]:
+                        text.replace('guest frame maps grid X through the built plot direction', 'unrelated assertion'),
+                        text.replace('SPACE/Shops/fries/fries.sam: all four turns', 'unrelated assertion'),
+                        text.replace('JUNGLE/Shops/Coconut/Coconut.sam: fallback leaves both raw keys absent', 'unrelated assertion'),
+                        text.replace('Coconut: only UsageInfo.EntryCellStandPosX=NaN rejects fallback', 'unrelated assertion')]:
             self.assertEqual(audit.classify('standing', output(damaged))['status'], 'missing_coverage')
 
     def test_source_snapshot_includes_ignored_and_linked_sources(self):
