@@ -704,3 +704,58 @@ NoRoute versus Stranded, destination changes and rerouting) using independent sm
 graph controls if gaps exist. Do not duplicate covered tests or invent retail walking
 speed/AI. Coordinate any actual core finding before changes. Facility/track/advisor
 integration and native/manual release gates remain separate unfinished work.
+
+## CP0/CP3 review — 2026-09-24 UTC: adjust the plan, not just the test count
+
+Owner explicitly requested review/adjustment checkpoints and continued coordination
+with cow tools. Updated plan.md with CP0–CP6 triggers, decision outcomes and a required
+review record. Reviews now happen before package selection, after implementation,
+after two audit-only/no-new-defect packages, when evidence/dependencies change, after
+player-visible integration, and before release/platform claims.
+
+Baseline:699a9b1. Current existing GuestAudit was built and run on JUNGLE/FANTASY/
+HALLOW/SPACE: all exit0, before any proposed new walking-contract code. The recent
+extended conservation pass found a fixture timing assumption, not a core lifecycle
+bug. Core movement policy was clarified with the maintainer: committed edges finish;
+a deleted final destination can still be Arrived, and explicit retargeting can leave
+missing ground. This is port policy, not decoded console behavior. No new movement
+test/helper or production edit was started in this turn.
+
+Decision: DEFER the previously proposed standalone walking-contract audit expansion.
+Maintain the existing gates and redirect toward a missing end-to-end gameplay/UI
+consumer. The fresh direct-call census still finds no game/core callers of needs
+Buy/UseToilet/WantsToGoHome/Queue, nor game consumers of AdvisorRules/LipTrack.Playback/
+BitmapFont/KanjiTable. Tests around those readers do not implement those features.
+
+Next action: coordinate active feature/file ownership with cow tools (asked in channel),
+then inspect actual service/placement/needs interfaces read-only and agree a CP1 package.
+Candidate is one needs-satisfaction flow, with implementation and independent regression/
+consumer validation split between us; not yet claimed as accepted or implemented.
+If blocked, record the specific dependency and choose an already-supported integration
+outcome together. Do not fill the wait with another unmotivated audit family or guess
+missing console semantics. Next review triggers when scope/ownership/evidence is known,
+and again at that package's implementation/integration gate. Existing manual, native-
+Windows, audible and unknown-format gates remain open.
+
+Walking baseline evidence: task scratch tpw-walk-baseline/manifest.json and world logs.
+This entry supersedes the earlier next-action instruction to expand GuestAudit.
+
+### CP1 draft update: peer scope confirmed, placement approval still pending
+
+Cow tools confirms needs-satisfaction consumers are its scope and proposes one toilet
+as the smallest feature (no purchase/economy dependency). Agreed provisional file split:
+peer owns ParkVisitors/VisitorNeeds/viewer implementation; astraclaw independent validation.
+Requested strawberry's confirmation for placement/routing scope, respecting the peer's
+stated dependency; no facility code or approval is claimed. Added the draft acceptance
+contract and explicit no-scope-creep boundary to plan.md.
+
+Read existing UseToilet: it clears Toilet and returns max(0,(oldToilet-60)*2/3) by the
+current integer expression. Current Decide still bool-gates single-need thoughts.
+Peer's new threshold/errand-code executable correction must be recorded/verified with
+consumer provenance; it is not a reason to pretend current source already changed.
+Next bounded action is interface/evidence preparation with peer, not placement edits
+or speculative integration tests against an invented API. Freeze other needs/rates in
+validation, preserve identity/cash in transit, require actual arrival and exact once-only
+facility soil accounting, retain unreachable/cancellation behavior, and separate model
+thought state from actual rendered bubble inspection. CP1 completes on scope/interface
+agreement; CP2/CP5 follow implementation and the real player flow.
