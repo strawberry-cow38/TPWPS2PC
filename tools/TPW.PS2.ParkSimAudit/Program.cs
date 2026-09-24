@@ -12,6 +12,13 @@ int bad = 0;
 void Check(bool ok, string line) { Console.WriteLine((ok ? "  ok   " : "  FAIL ") + line); if (!ok) bad++; }
 
 using var disc = new Disc(args[0]);
+if (args.Contains("--native-route-consumer-only"))
+{
+    NativeGuestRouteChecks.Run(Check);
+    NativeWalkConsumerChecks.Run(disc,Check);
+    Console.WriteLine(bad==0 ? "PASS native route through GuestWalk/ParkVisitors (full entrance controller not yet connected)" : $"FAIL: {bad}");
+    return bad==0?0:1;
+}
 if (args.Contains("--guest-motion-only"))
 {
     NativeGuestMotionChecks.Run(Check);
@@ -584,6 +591,8 @@ PathPriceChecks.Run(terrain, PathPieces.Read(disc), Check);
 ScreamChecks.Run(disc, world, Check);
 BusAdmissionChecks.Run(disc, Check);
 NativeGuestMotionChecks.Run(Check);
+NativeGuestRouteChecks.Run(Check);
+NativeWalkConsumerChecks.Run(disc,Check);
 SfxGraphChecks.Run(disc, Check);
 BridgeChecks.Run(terrain, PathPieces.Read(disc), world, Check);
 RideValueChecks.Run(Wad("DATA"), wad, world, Check);

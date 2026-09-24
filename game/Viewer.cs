@@ -3728,7 +3728,9 @@ public partial class Viewer : Node3D
             // Facing the step, in the same mirrored frame. Standing guests keep their last facing.
             // ⚠ Assigned as a whole basis, not through Rotation: a kid back from a seat still carries
             // the seat's full basis, and Euler on that is the round trip this codebase already lost.
-            if (g.Next is ParkCell next)
+            if (g.NativeHeading is { } nativeHeading)
+                actor.Basis = WalkBasis(GuestHeading(Cell(nativeHeading)));
+            else if (g.Next is ParkCell next)
                 actor.Basis = WalkBasis(GuestHeading(new Vector3(next.X - g.Cell.X, 0, next.Z - g.Cell.Z)));
             else if (actor.Basis.Determinant() < 0 || Mathf.Abs(actor.Basis.Y.Dot(Vector3.Up) - 1f) > 1e-3f)
                 actor.Basis = Basis.Identity;

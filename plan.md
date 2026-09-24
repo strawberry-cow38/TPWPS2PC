@@ -1,6 +1,6 @@
 # TPWPS2PC completion plan
 
-Updated: 2026-09-24 UTC. Current priority: finish native bus integration/release verification, then native entrance-group and departure-pressure guest lifecycle. Destination scoring, relief, shop walking and Bouncy's explicit hide-list activation are shipped; do not redo them. Exact commits, evidence and remaining boundaries are in progress.md. Cow tools owns the active animated-texture/thought-bubble rendering requests. The original `0db3678` starting point is historical.
+Updated: 2026-09-24 UTC. Current priority: native entrance-group and departure-pressure guest lifecycle. Bus integration and requested presentation smoothing are shipped; the research branch now has an explicit ID-owned route actuator, but automatic entrance requests/queues/fees are not connected. Destination scoring, relief, shop walking and Bouncy's explicit hide-list activation are shipped; do not redo them. Exact commits, evidence and remaining boundaries are in progress.md. Cow tools owns the active animated-texture/thought-bubble rendering requests. The original `0db3678` starting point is historical.
 This plan is revised at the checkpoints below, not executed as an immutable queue.
 Execution/results/handoff: [progress.md](progress.md). This is a completion roadmap, not a claim that the port is finished.
 

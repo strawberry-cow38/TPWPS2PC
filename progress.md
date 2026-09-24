@@ -6,8 +6,11 @@ Updated: 2026-09-24 UTC. Roadmap: [plan.md](plan.md).
 
 Active checkout: `../tpw-gate-occupancy`, branch `astraclaw/native-entrance-flow`.
 Bus and requested smoothing are already on main through98b5249; do not redo them.
-This new branch contains a native coordinate arithmetic foundation and entrance
-research, NOT a deployed entrance flow. Existing GuestWalk behavior is unchanged.
+This research branch now connects native quarter-cell motion to GuestWalk,
+ParkVisitors ownership and actual Viewer actor transforms under an EXPLICIT lease.
+Automatic bus arrivals do NOT yet take that lease; no deployed entrance flow,
+backlog reduction or departure-pressure fix is claimed. See the latest snapshot
+and findings/native-route-consumer.md before continuing.
 The old `tpw-ride-eligibility` checkout and scheduler's `81d112c` note are stale.
 No restarts. No reimplementation of the shipped destination scoring, relief, shop
 walking, Bouncy hide-list, gate or path-price work. Cow owns the current animated
@@ -2198,3 +2201,44 @@ NextlegmustjoinfullID/state/slotownershipandorderedroutecallbacks, notkeepadding
 standalonehelpers. Native route-graphwalker remainsmissing; ordinaryBFS/resource
 readinessadaptersneedexplicitboundaries. Cowmain6bfae54introducesAPSUVratework;
 keepitsfiles, andletcowcompleteper-vertexUVreplayafteruserfountainreport.
+
+
+## Native route consumer checkpoint — September 24, 2026, 19:45 UTC
+
+Research branch ONLY: NativeGuestRoute cursor + GuestWalk.Native lease +
+ParkVisitors.Begin/ReleaseEntranceRoute + ordinary Viewer native facing. The
+arithmetic foundation is now exercised through real Step/StepPark/actor consumers,
+not just a helper. Automatic bus arrival does not invoke it yet. Native requests,
+staging, group membership, acceptance/fee and normal departure producers remain
+missing. Do not merge this as a complete entrance fix or claim the zero input
+bypasses are resolved. Detailed boundary: findings/native-route-consumer.md.
+
+76 cursor checks +75 production ownership checks required by audit_matrix. Actual
+Viewer NativeEntranceRouteSmoke has113 checks with independent position/facing
+oracles and same guest identity/actor/needs/cash. Mutations caught45/40/10/9 core
+failures (dispatch/premature completion/idle stealing/fractional snap), and removing
+Viewer native facing failed rendered check73. All restored. Fixture disables bus
+auto-arrivals and explicitly supplies readiness/speed/delta; no full admission claim.
+
+Full gates: /tmp/tpw-native-route-matrix JUNGLE/FANTASY PASS, ONLY exact known
+ThrillGrill/MoonBuggies retail failures. All11 /tmp/tpw-native-route-runtime scenes
+PASS. /tmp/tpw-native-route-python.log63 PASS. Original rendered113 PASS clean;
+after upstream merge rerun recorded separately. No extracted assets.
+
+New source joins in native-entrance-lifecycle.md: N+14 is shared base-object
+activation serial via1093B0/1093C4 delay-slot counter store2AA73C, NOT port guest ID
+or pool ordinal. Reused pool slots receive fresh serials; prior park activation
+history unresolved. Accepted mode13 scans50 increasing-Z cells with sticky native
+tile.byte7&8 latch before acceptingkind2/13; ParkPaths.Open/IsEntrance are not
+complete substitutes. Fee acceptance sums actual NativeRideValue+1D4, shops/features
+contribute0, strict fee<cash, class thresholds decoded; saved/UI fee override join
+still open. Source addresses and limits in findings, not inferred runtime values.
+
+NEXT: incoming owner/controller request+result timing, movement15->staging->event9
+->movement16->two incoming groups->head release->one acceptance/charge->mode13
+->normal handoff. Native route pool/globalbudget/readiness remain explicit adapter
+boundaries. Never derive native serial phase from Guest.Id, membership from nearby
+walkers or path cells, or assume synchronous BFS equals native request scheduling.
+Cow owns UV/fountain/bubbles and now Q/E rotation bug on ANOTHER host. Keep their
+changes; xref518a16f fixes JAL/JR delay-slot register liveness after our raw control.
+No restarts, no private bot files, owner disc read in place.

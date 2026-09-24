@@ -151,3 +151,69 @@ No runtime entrance reduction, traffic coordinator or departure tally is fixed b
 these research notes. Full pathfinder resource capacity/readiness, cancellation,
 second coordinator class, indirect cleanup and acceptance-value producers remain
 bounded open work.
+
+## Follow-up: activation serial is not guest ID or pool ordinal
+
+Raw MIPS closes the `N+14` producer. Constructor20BBD0 calls1912F8 withO=N+8,
+then109308; final vtable36CCE0 is installed at20BBF8..BC00. Activation14ACD4..E4
+uses virtual+30 (adjustment-8) ->20BCD0 ->191360 ->1093B0. At1093B4 the base-object
+counter2AA73C is loaded;1093B8 stores it toO+0C=N+14;1093BC increments it;
+**1093C4 stores the counter in `jr ra`'s delay slot**. The file initializes it to0.
+Other positive base-object users include114C38,15E290 and placed-object1E0F50.
+This is a shared activation serial, not the port's guest ID. Prior object
+activation/reset history at park start is not established, so substituting
+`guest.Id & 63` for the native departure phase would invent an input.
+
+Guest pool3952CC is allocated at148C28..CD4:100 objects, strideA8, with
+N=H+10+i*A8. Construction ascends, but prepending the free chain yields initial
+allocation order99..0. 14AC48 pops free, prepends allocated and activates;
+14B368 returns slots LIFO. A reused slot receives a new activation serial.
+
+Tool control: the old xref sweep found1093B4 but missed1093C4 because it cleared
+register state before the return delay slot. Cow's518a16f defers register kills
+until after JAL/JR delay slots. Raw positive instructions, not the old negative,
+are the evidence for this writer.
+
+## Follow-up: accepted mode13 goal scan and the flag8 latch
+
+210FE8 starts at the guest's current signed cell (1925F8), fixesX and checks up to
+50 cells in increasingZ, including the starting cell. 14E138 returns the native
+8-byte tile at3952EC+8*(z*width+x);1E6418 ->1E6140 tests **byte7 & 8**.
+A sticky local latch records having seen that flag. Only after it is set can a
+kind2 (1E6338) or kind13 (1E6370) cell become the exit goal. A path encountered
+before flag8 does not qualify. The qualifying goal is its cell centre, encoded
+with the route slot codec; a failed slot allocation continues searching later
+cells. No successful goal leaves state2D to retry without recharging.
+
+The native scan/accessor does not clip to dimensions; a managed bounds refusal
+would be a safety policy. Positive entrance flag8 seeds occur in14E8D8..FC,
+14E958..9BC,14EA04..80 and14EBD8..E0, including the kind2 apron. Thus
+`ParkPaths.IsEntrance` is not a complete replacement for byte7&8, and
+`ParkPaths.Open` is too broad for the goal-kind test (queue4 and phantom0C/0E
+are not goals). The normal head starts in the flagged point2 corridor, which
+establishes the latch for that reachable case, but this does not prove an
+arbitrary loaded position may be treated identically. Bridge-as-Path is also a
+port cell policy, not proof of its native tile-kind byte.
+
+## Follow-up: acceptance value inputs and fee boundary
+
+210B38 sums object+1D4 over iterator families3,6,1,7,4,5,2, allocated rather than
+only open objects. This is the already-decoded `NativeRideValue.Calculate` input,
+joined by real compiled identity/current state. Shops/features contribute0;
+a one-shop park is not a valid fixture for assuming paid entrance acceptance.
+
+Let S be the low32 sum, Q=signed-trunc(low32(S<<12)/(10000+RNG(5001))), and
+F=signed-trunc(fee/10). Signed shifted low32 products give
+A=Q*0x1400>>12, B=Q*0x1800>>12, C=Q*0x0C00>>12. IfF<A, class is1 whenF<=C
+and0 otherwise; otherwise class is-1 whenF<B and-2 otherwise. Acceptance requires
+class>-2, after the strict fee<cash test. Constants are at2EEB78/84/88/8C.
+
+1005D8 returns the cached fee object2A60B0;100D20 reads its+0. Constructor100470
+initializes0 when14E160()==2, else150; scenario/UI overrides remain to be joined.
+100D28 re-reads the fee, credits finance via100750 and returns the amount for the
+guest debit. The admission count at manager+20 increments once before charging.
+`ForceKidsToEnter`230260 is a literal return0 here, not an enabled bypass.
+
+The current branch route actuator is described in `native-route-consumer.md`.
+It reaches actual GuestWalk/Visitors/Viewer consumers under an explicit owner,
+but the automatic request/queue/acceptance controller above is still missing.

@@ -19,6 +19,8 @@ public enum VisitorIntent
     /// <summary>Had enough, and walking to the gate to go home. ⚠ Still an ordinary walker until
     /// they reach it -- they are drawn, they take up path, and a want can still rise on them.</summary>
     Leaving,
+    /// <summary>Explicit park-entrance route owner, not an attraction's queue or service.</summary>
+    Entering,
 }
 
 /// <summary>⭐⭐ THE TWO HALVES, JOINED. <see cref="GuestWalk"/> moves people over the park's
@@ -232,6 +234,27 @@ public sealed class ParkVisitors
         Wander(g.Id, at);
         Needs?.Spawn(g.Id);
         return g;
+    }
+
+    /// <summary>Explicit entrance owner of an existing wandering identity. The caller supplies
+    /// route service results and native inputs; this is not an automatic admission policy.</summary>
+    public bool BeginEntranceRoute(Guest guest, object owner,
+        IReadOnlyList<NativeGuestMotion.Point> waypoints, NativeMotionInputs inputs)
+    {
+        if (guest == null || !_plans.TryGetValue(guest.Id, out var plan)
+            || plan.Intent is not (VisitorIntent.Wandering or VisitorIntent.Entering)
+            || _owners.ContainsKey(guest.Id) || !Walk.BeginNativeRoute(guest, owner, waypoints, inputs))
+            return false;
+        _plans[guest.Id] = new Plan(guest.Id, VisitorIntent.Entering, 0, guest.Cell);
+        return true;
+    }
+
+    public bool ReleaseEntranceRoute(Guest guest, object owner)
+    {
+        if (guest == null || !_plans.TryGetValue(guest.Id, out var plan)
+            || plan.Intent != VisitorIntent.Entering || !Walk.ReleaseNativeRoute(guest, owner)) return false;
+        Wander(guest.Id, guest.Cell); // same needs/cash/identity, not a respawn
+        return true;
     }
 
     /// <summary>Send a walking guest to a ride's queue. False when there is no way there, and the
@@ -588,7 +611,7 @@ public sealed class ParkVisitors
     {
         foreach (var g in Walk.Guests.ToArray())
         {
-            if (!_plans.TryGetValue(g.Id, out var plan) || plan.Intent != VisitorIntent.Heading) continue;
+            if (g.HasNativeRoute || !_plans.TryGetValue(g.Id, out var plan) || plan.Intent != VisitorIntent.Heading) continue;
             if (g.State != GuestState.Arrived) continue;
             // ⚠⚠ ARRIVED SOMEWHERE IS NOT ARRIVED HERE. This used to join the queue on State alone,
             // so a guest heading for a ride who finished any other walk -- re-routed round a dug
@@ -654,6 +677,8 @@ public sealed class ParkVisitors
     {
         foreach (var g in Walk.Guests.ToArray())
         {
+            if (g.HasNativeRoute) continue; // native owner handles requests/completion/recovery
+
             // ⚠ A GUEST WHO CANNOT GET THERE MUST BE ABLE TO GIVE UP. Only Arrived was handled
             // here, so somebody Heading for a ride whose path was dug up under them stayed
             // Stranded forever with a plan nobody would ever complete -- a slowly filling pool of

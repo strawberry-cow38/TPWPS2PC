@@ -16,10 +16,15 @@ public enum GuestState { Walking, Arrived, NoRoute, Stranded }
 /// <see cref="GuestWalk.UnitsPerCell"/>. No floats in the state, so two runs are the same run;
 /// the view turns it into a position through <see cref="Fraction"/> or <see cref="Position"/>,
 /// which is the split <see cref="ParkSim"/> makes for rides -- console-rate logic, interpolated
-/// drawing.</summary>
+/// drawing. An explicit native-route lease instead owns signed 1/256-cell coordinates;
+/// in that mode Position and NativeHeading are authoritative, Progress stays zero, and
+/// Cell/Next are only coarse observations, not the source of movement.</summary>
 public sealed class Guest
 {
     public int Id { get; init; }
+    internal NativeWalkLease NativeMotion { get; set; }
+    public bool HasNativeRoute => NativeMotion != null;
+    public Vector3? NativeHeading => NativeMotion?.Facing;
     // Destination permission and occupied-cell escape permission are separate: a guest may
     // route from one shop to another, and deletion revokes entry but not physical egress.
     internal GuestTerminal TargetTerminal { get; set; }
@@ -32,7 +37,8 @@ public sealed class Guest
 
     /// <summary>The route being walked, from the cell the guest stood in when it was found to
     /// <see cref="Destination"/>, both included; <see cref="RouteIndex"/> is where
-    /// <see cref="Cell"/> sits in it. Null for a guest that has none.</summary>
+    /// <see cref="Cell"/> sits in it. Null for a guest that has none or is native-route owned;
+/// a native lease keeps its separate quarter-cell cursor and exposes its slot via RouteIndex.</summary>
     public IReadOnlyList<ParkCell> Route { get; internal set; }
     public int RouteIndex { get; internal set; }
 
@@ -44,12 +50,12 @@ public sealed class Guest
     /// guest stopped, in words, so a report can say it rather than only count it.</summary>
     public string Reason { get; internal set; }
 
-    /// <summary>0..1 along the edge from <see cref="Cell"/> to <see cref="Next"/>; 0 standing.</summary>
+    /// <summary>Legacy edge fraction. Always zero while native-route owned; use Position then.</summary>
     public float Fraction => Progress / (float)GuestWalk.UnitsPerCell;
     /// <summary>In cell space -- x across, z down the grid, y zero -- the frame of
     /// <see cref="ParkPaths.Centre"/>. ⚠ NOT world space: the scene mirrors Z (grid +z is world
     /// -Z), and that conversion belongs to the view, as it does for everything else on the grid.</summary>
-    public Vector3 Position => Next is ParkCell next
+    public Vector3 Position => NativeMotion is { } native ? native.Position : Next is ParkCell next
         ? Vector3.Lerp(ParkPaths.Centre(Cell), ParkPaths.Centre(next), Fraction)
         : ParkPaths.Centre(Cell);
 }
@@ -90,7 +96,7 @@ public sealed class Guest
 /// ⚠ NO CROWDING. Guests pass through each other; there are none of the cell reservations
 /// <see cref="VisitorSimulation"/> keeps. Answering that before the console's rule has been read
 /// would be one more placeholder.</summary>
-public sealed class GuestWalk
+public sealed partial class GuestWalk
 {
     /// <summary>The rides' tick, so one loop drives both.</summary>
     public const long TickMilliseconds = ParkSim.TickMilliseconds;
@@ -143,8 +149,16 @@ public sealed class GuestWalk
         return guest;
     }
 
-    public void Clear() { _guests.Clear(); Time = 0; _carry = 0; _lastId = 0; }
-    public void Remove(int id) => _guests.RemoveAll(g => g.Id == id);
+    public void Clear()
+    {
+        foreach (var guest in _guests) guest.NativeMotion = null;
+        _guests.Clear(); Time = 0; _carry = 0; _lastId = 0;
+    }
+    public void Remove(int id)
+    {
+        foreach (var guest in _guests.Where(g => g.Id == id)) guest.NativeMotion = null;
+        _guests.RemoveAll(g => g.Id == id);
+    }
 
     /// <summary>Give a guest somewhere new to go, from where it stands. False when it cannot get
     /// there -- the guest is left in <see cref="GuestState.NoRoute"/> with the reason, exactly
@@ -153,7 +167,7 @@ public sealed class GuestWalk
     /// sent off the cell it is stranded on.</summary>
     public bool Send(Guest g, ParkCell to)
     {
-        if (g.Next != null) return false;
+        if (g.HasNativeRoute || g.Next != null) return false;
         g.TargetTerminal = null;
         g.Destination = to; g.Progress = 0; g.Reason = null;
         if (g.Cell == to) { g.State = GuestState.Arrived; return true; }
@@ -166,7 +180,7 @@ public sealed class GuestWalk
     /// entrance edge. Failure leaves the existing walk and permissions untouched.</summary>
     public bool SendToTerminal(Guest g, GuestTerminal terminal)
     {
-        if (g == null || !_guests.Contains(g) || g.Next != null || terminal == null || !terminal.CanEnter) return false;
+        if (g == null || !_guests.Contains(g) || g.HasNativeRoute || g.Next != null || terminal == null || !terminal.CanEnter) return false;
         var route = RouteFor(g.Cell, terminal.Entry, g.OccupiedTerminal, terminal);
         if (route == null) return false;
         g.TargetTerminal=terminal; g.Destination=terminal.Entry;
@@ -265,6 +279,7 @@ public sealed class GuestWalk
         Time += TickMilliseconds;
         foreach (var g in _guests)
         {
+            if (g.HasNativeRoute) { StepNative(g); continue; }
             if (g.State != GuestState.Walking) continue;
             int budget = UnitsPerTick;
             while (budget > 0 && g.State == GuestState.Walking)
