@@ -1024,3 +1024,68 @@ comment-only atop peer logic), push normal main and notify peer. Then choose the
 bounded consumer gap from the updated plan—not another generic census. Per-ride value
 sourcing and original personality assignment remain genuine gaps; do not pretend constants
 alone implement them. No restart, no duplicate recurring task, no permission hold.
+
+## a78ada8 landed; producer trace corrected and next priority is compiled shop data
+
+Main a78ada8 includes peer0ce3bf7 plus our green consumer/lifecycle integration; clean
+worktree after push. Ordinary per-ride producer trace then exposed a classification error:
+first delegate labeled table3683B8/target1D2A68 ordinary and shifted its positive square8.
+Second narrow trace + my direct raw-word check disproved both. It is sideshow-backed;
+initializer loads payload+2E prize into complete+A8, +2C price into+CC, +30 win% into+CE.
+Instruction00028103 at1D2AD0 shifts4. I explicitly corrected the peer in-channel.
+Repeated+A8 offsets in facility/service structs do not establish service-decay here.
+
+Details now findings/ride-value-producer.md. Table35A560's value callback returns0 and
+constructor1188B0 installs it, but a base-constructor install is NOT final ordinary-instance
+dispatch proof. Do not wire raw SAM excitement or sideshow math into ordinary rides.
+Next narrow trace, if resumed: one known kind3 asset creation to final vtable, then its
+1D0/1D4 callback; initializer slot150/154 for35A560 is0/295160. Avoid guessing from nearby
+string constants or absent direct JAL references. No producer code changed.
+
+Direct all3regional DbaAudit --list run passed original goldens. ARC2X3 key247 has
+price10/prize30/win33/base0 in all3, despite old SAM omissions/75; resource initialization
+is proven without guessing SAM defaults. Metadata-only output, no binary asset extraction.
+Further named rows saved in scratch tpw-compiled-shop-identity-records.tsv (12 rows):
+Balloon239, VampShop153, FatFairy66, Droid388, happiness10 all3. Droid price/cost50/35;
+others45/30. Full identity matters; identical effect tuple is not a key.
+
+Peer87bc690 reports real shop mismatch: Balloon/VampShop/Droid SAM happiness15 vs compiled10.
+I am NOT implementing the join; peer was asked to own runtime wiring, I own independent
+identity/region/consumer tests. Do not write against an invented API before reading theirs.
+Known icecream regional controls: keys245/151/69/391, EUR/JAP hunger25/vomit10 vs USA15/15.
+Warning sent: 20E450 also scales happiness by shop quality; raw compiled10 isn't proof of
+final retail payout10. Join fidelity and chosen neutral/default quality are separate gates.
+
+Next resume: fetch current main/peer branch and latest messages, inspect compiled-shop API
+and identity/region/fallback contract, establish red-before/green-after tests on named assets,
+preserve peer edits, then matrix/runtime gates and normal pushes. Ordinary producer stays
+explicitly unresolved, not a reason to idle. No approval waits, no restart, no duplicate job.
+
+## Compiled shop join f96dde8 integrated; actual viewer regression is RED
+
+Peer wired core/TPW.PS2.Data/CompiledAssets.cs: constructor(database,text), For(world,path)
+returns full Entry, Report reports coverage, Ambiguous exposes duplicate symbolic identities.
+RideDefinition.Compiled is ShopSettings; price/cost/hunger/thirst/vomit/happiness getters
+prefer it, otherwise authored values. Viewer.AttachCompiledRecords loads /arsdb.dba and
+uses _text; caller currently explicitly selects EUR, not a viewer-configurable region.
+Peer CompiledJoinChecks covers helper lookup only; its filtered-disagreeing.All assertion
+cannot establish that actual viewer definitions got attached.
+
+Found concrete ordering defect: Viewer.IndexRides calls AttachCompiledRecords before
+_cat.AddWad. Only one caller exists. Notified peer to move it after population; keep
+Viewer/core edits with peer. New LOCAL game/tests/CompiledShopViewerAudit.cs/.tscn calls
+actual IndexRides then DefinitionFor for Balloon/VampShop/FatFairy/Droid, plus world reindex.
+It has18 numbered checks and reproduces10 failures atf96dde8: logs0shopsjoined in every
+world; correct names/authored controls pass, compiled attachment/getters fail. Log
+../tpw-compiled-viewer-before.log, build ../tpw-compiled-viewer-build.log. No production
+fix by me. This scene is NOT yet in runtime_audit.py and must not be called green.
+
+Next resume: latest channel/upstream ordering fix, rerun18checks before/after; add core
+named-record checks across EUR/USA/JAP incl four icecream counterexamples and missing/
+ambiguous lookup policy. Distinguish duplicate numeric DBA keys from duplicate symbolic
+identities—the original numeric first-match rule alone doesn't prove symbolic-collision
+semantics. Existing map keeps first and reports Ambiguous, but runtime caller does not
+currently surface that property. Verify/report before changing peer core. Consider actual
+purchase consumer controls, not just equivalent getters, and retain explicit unscaled
+quality default. Register new viewer scene in the default runner once green, with named
+coverage/mutation controls; run full gates and land explicit paths.

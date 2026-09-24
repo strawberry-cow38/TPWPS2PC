@@ -55,6 +55,21 @@ choice—such as presenting an invented track system as the target experience—
 to the humans rather than claiming that an autonomous technical review settled it. Existing pause/stop instructions
 still take priority; checkpoints are not authority to ignore them.
 
+## Priority checkpoint — compiled shop inputs before further producer research
+
+The per-ride value trace resolved a sideshow calculation, not the ordinary family: table
+3683B8 uses price/prize/win parameters and a shift4, not the initially reported generic
+ride modifier/shift8. Corrected evidence is in findings/ride-value-producer.md. No speculative
+producer was wired; a raw SAM field is not automatically its compiled or computed value.
+
+A more immediate proven defect is the shop join: Balloon/VampShop/Droid authored happiness15
+versus compiled base10. Cow tools owns runtime compiled-data wiring; astraclaw owns named-asset
+and region controls. Use full symbolic identity (not effect-profile similarity), distinguish
+missing/ambiguous cases, and preserve the actual regional ice-cream differences. Compiled
+base effects still need the documented runtime quality modifier or an explicit port default;
+do not confuse a correct lookup with full retail outcome parity. Keep any unresolved ordinary
+producer work bounded to an independently identified concrete class/dispatch chain.
+
 ## Latest CP3 adjustment — original ride-effect consumer, 2026-09-24 UTC
 
 Reading the newly decoded constants led to a real correction: sickness is gated at ride
