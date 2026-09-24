@@ -3179,15 +3179,6 @@ public partial class Viewer : Node3D
                 0, $"guest {guest}", _parkTicks * ParkSim.TickMilliseconds, RseOpcode.EVENT,
                 ParkVisitors.ShopSoundGroup, -1, eventId, 0, Cell(ParkPaths.Centre(at)));
             GD.Print($"[guest] guests now visit rides; the sim and the walk share one grid: {ReferenceEquals(_sim.Paths, _guests.Paths)}");
-            // ⭐ The game's own face for the money, from the fonts this repo already decoded.
-            if (_hudFont == null)
-                try
-                {
-                    var bff = _lib?.ReadGeneric("/Fonts/European/Large.bff");
-                    if (bff != null) { _hudFont = new FontText(new BitmapFont(bff)); GD.Print($"[hud] Large.bff (font index {MoneyFontIndex}) loaded for the money readout"); }
-                    else GD.PrintErr("[hud] /Fonts/European/Large.bff not found -- money readout stays hidden");
-                }
-                catch (Exception e) { GD.PrintErr($"[hud] Console.bff would not load: {e.Message}"); }
             GD.Print($"[want] {_thoughts.Load(path => _lib?.ReadGeneric(path))}"
                    + $"; cam={System.Environment.GetEnvironmentVariable("TPW_WANT_CAM")}"
                    + $" shot={System.Environment.GetEnvironmentVariable("TPW_WANT_SHOT")}");
@@ -6939,14 +6930,35 @@ public partial class Viewer : Node3D
     static readonly Color MoneyShadowTint = new(0f, 0f, 0f, 0.55f);
     TextureRect _moneyShadow;
 
+    /// <summary>⚠ ONCE, and it remembers a failure so a missing font does not retry every frame
+    /// for the life of the session.</summary>
+    bool _hudFontTried;
+    void LoadHudFont()
+    {
+        if (_hudFontTried) return;
+        _hudFontTried = true;
+        try
+        {
+            var bff = _lib?.ReadGeneric("/Fonts/European/Large.bff");
+            if (bff != null) { _hudFont = new FontText(new BitmapFont(bff)); GD.Print($"[hud] Large.bff (font index {MoneyFontIndex}) loaded for the money readout"); }
+            else GD.PrintErr("[hud] /Fonts/European/Large.bff not found -- money readout stays hidden");
+        }
+        catch (Exception e) { GD.PrintErr($"[hud] Large.bff would not load: {e.Message}"); }
+    }
+
     void ShowMoney()
     {
         if (_money == null) return;
         // ⭐ ALWAYS ON, master's rule -- "money should always be visible". A park that has not
         // opened yet reads $0 rather than vanishing, because a missing readout looks like a
         // broken one.
+        // ⭐ LOADED ON DEMAND, so the readout appears with the park rather than waiting for the
+        // first shop. Master: "it still needs me to build a shop before it shows." The font was
+        // being loaded inside the block that first creates the visitor coordinator, which does
+        // not run until the gate opens.
+        if (_hudFont == null && _lib != null && _mode == Mode.Park) LoadHudFont();
         var bank = _sim?.Finances;
-        _money.Visible = _moneyShadow.Visible = _hudFont != null;
+        _money.Visible = _moneyShadow.Visible = _hudFont != null && _mode == Mode.Park;
         if (_hudFont == null) return;
         // ⚠ Integer division toward zero, and the sign carried explicitly: the console's own
         // rounding of a negative balance has not been read, and -5 tenths reading as "0" with no

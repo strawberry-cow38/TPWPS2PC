@@ -27,10 +27,8 @@ namespace TPW.PS2.Data;
 /// ⭐ `park[8]` is a "spend anything" flag -- with it set the debit never refuses -- which is how
 /// a sandbox or a scripted scenario would be done. Modelled as <see cref="Unlimited"/>.
 ///
-/// ⚠ THE STARTING BALANCE IS NOT READ. The constructor zeroes every running total and sets the
-/// spend-anything flag but never writes `park[4]`, so the opening balance arrives with the
-/// scenario or save -- untraced. This opens at zero and the caller sets it; a number invented
-/// here would look like a decoded one.
+/// ⚠ THE STARTING BALANCE IS STILL NOT READ -- see <see cref="OpeningBalance"/>, which carries
+/// master's $30,000 explicitly labelled as theirs rather than as a decode.
 ///
 /// ⚠ THE GRAPHS ARE NOT MODELLED. Both ring buffers are indexed by a period counter at
 /// `park[0x12bc]` whose advance has not been read, and a 144-slot history advanced by a clock
@@ -40,7 +38,22 @@ public sealed class ParkFinances
 {
     /// <summary>`park[4]`. ⚠ May go negative: the console credits without a floor and only uses
     /// the sign to raise or clear a warning.</summary>
-    public int Balance { get; set; }
+    public int Balance { get; set; } = OpeningBalance;
+
+    /// <summary>⭐⭐ **$30,000**, in this class's tenths. Master: "you are meant to start with
+    /// $30,000."
+    ///
+    /// ⚠⚠ MASTER'S NUMBER, NOT A DECODED CONSTANT, and the difference is recorded rather than
+    /// blurred. A search of the image for 300000 and 30000 as a composed immediate finds seven
+    /// hits and every one is a graph clamp inside the statistics dispatcher `FUN_0010DE38`
+    /// (`if (30000 &lt; v) v = 30000`) -- no code path seeds the balance. That agrees with
+    /// `FUN_00100470`, the park constructor, which zeroes every running total and sets the
+    /// spend-anything flag but never writes `park[4]`: the opening figure arrives with the
+    /// scenario, whose loader is untraced.
+    ///
+    /// ⭐ So this is the right VALUE from someone who knows the game, sitting where the scenario
+    /// loader's result belongs -- and it is one line to delete when that loader is read.</summary>
+    public const int OpeningBalance = 300_000;
 
     /// <summary>`park[8]`. When set, <see cref="Debit"/> never refuses for want of money.
     ///

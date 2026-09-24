@@ -215,13 +215,17 @@ static class MoodChecks
 
         // ── the park's money ───────────────────────────────────────────────────────────────
         {
-            var bank = new ParkFinances();
+            // ⚠ Opened at zero on purpose: these cases are about the arithmetic of a credit and
+            // a refusal, not about what a park starts with.
+            var bank = new ParkFinances { Balance = 0 };
             // ⭐ The constructor's `park[8] = 1` means a park nothing has loaded into spends
             // freely. ⚠ The control is the other arm: with the flag cleared a debit it cannot
             // afford must REFUSE and take nothing, which is the whole point of the flag existing.
             Check(bank.Unlimited, "a fresh park spends freely, as FUN_00100470 leaves it");
             Check(bank.Debit(500) && bank.Balance == -500, $"and an unaffordable debit goes through ({bank.Balance})");
             var budget = new ParkFinances { Unlimited = false, Balance = 100 };
+            Check(new ParkFinances().Balance == ParkFinances.OpeningBalance,
+                  $"⭐ and a fresh park opens at master's $30,000 ({new ParkFinances().Balance} tenths)");
             Check(!budget.Debit(500) && budget.Balance == 100,
                   $"with the flag cleared it refuses and takes NOTHING ({budget.Balance})");
             Check(budget.Debit(100) && budget.Balance == 0, "and an affordable one still goes through");

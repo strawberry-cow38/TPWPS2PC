@@ -81,8 +81,11 @@ public sealed class ParkPaths
         int gate = 0, held = 0;
         if (!entry.Empty)
         {
+            // ⚠ The protected pair moves with the gate: "right under the gate", and the gate is
+            // now the 8x2 on the park's first two rows, so these are the walkway's own columns
+            // on those same rows rather than straddling the threshold.
             for (int x = entry.XCol; x <= entry.XCol + 1; x++)
-                for (int z = entry.ZEnd - 1; z <= entry.ZEnd; z++)
+                for (int z = entry.ZEnd; z <= entry.ZEnd + 1; z++)
                 {
                     var c = new ParkCell(x, z);
                     if (!Contains(c)) continue;
@@ -91,13 +94,14 @@ public sealed class ParkPaths
             // ⚠ Clipped rather than refused: the gate stands at the plot's edge, so part of its
             // skirt is off the map by construction.
             //
-            // ⭐ Master, after seeing the first version: "expand into the park by 1 tile and to
-            // the sides by 1 tile each side." So TWO tiles either side of the 2x2 in x, and the
-            // parkward edge reaches `ZEnd + 2`. ⚠ Parkward is INCREASING z -- the walkway runs
-            // down to its mouth at `ZEnd - 1` and the first cell the park gives a path to is
-            // `ZEnd` -- so the extra tile goes on that side, not back up the walkway.
-            for (int x = entry.XCol - 2; x <= entry.XCol + 3; x++)
-                for (int z = entry.ZEnd - 2; z <= entry.ZEnd + 2; z++)
+            // ⭐⭐ EIGHT BY TWO, INSIDE THE PARK. Master, third pass and the clearest statement
+            // of it: "gate should be 8x2 (inside the park, the first tiles against that middle
+            // inset.)" The walkway's two columns ARE that inset, so the block is centred on them
+            // -- three tiles left, three right -- and sits on the first two rows the park owns,
+            // `ZEnd` and `ZEnd + 1`. ⚠ Not straddling the threshold and not reaching back up the
+            // walkway, which is what the previous two versions did.
+            for (int x = entry.XCol - 3; x <= entry.XCol + 4; x++)
+                for (int z = entry.ZEnd; z <= entry.ZEnd + 1; z++)
                 {
                     // ⚠⚠ NOT `_occupied`. The first version put these in it, and `CanLay`
                     // consults `_occupied` -- so the gate's own skirt refused the entrance path

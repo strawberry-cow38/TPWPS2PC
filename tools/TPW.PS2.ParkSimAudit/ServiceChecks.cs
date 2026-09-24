@@ -522,15 +522,15 @@ static class ServiceChecks
             var grid = new ParkPaths(terrain);
             sourcePaths.Field.Cells.CopyTo(grid.Field.Cells, 0);
             grid.SetEntrance(entranceTable);
-            // ⭐ Six wide by five deep, clipped at the plot edge: the 2x2 plus two tiles either
-            // side in x and one more parkward in z, per master's second pass.
-            Check(grid.GateHold.Count == 30, $"the gate holds six by five around its 2x2 ({grid.GateHold.Count} cells)");
-            // ⚠ THE SHAPE, not just the count -- a clipped rectangle of the wrong aspect can
-            // still total 30. The parkward edge must reach two past the threshold and the sides
-            // two past the walkway's columns.
-            Check(grid.GateHold.Max(c => c.Z) - grid.GateHold.Min(c => c.Z) == 4
-               && grid.GateHold.Max(c => c.X) - grid.GateHold.Min(c => c.X) == 5,
-                  "and it is six across by five deep, not merely thirty cells");
+            // ⭐ Eight across by two deep, on the park's first two rows -- master's third and
+            // clearest statement: "gate should be 8x2 (inside the park, the first tiles against
+            // that middle inset.)"
+            Check(grid.GateHold.Count == 16, $"the gate holds eight by two inside the park ({grid.GateHold.Count} cells)");
+            // ⚠ THE SHAPE, not just the count -- 16 cells is also a 4x4, which is what this was
+            // two revisions ago. Spans, so a clipped or mis-centred block cannot pass.
+            Check(grid.GateHold.Max(c => c.X) - grid.GateHold.Min(c => c.X) == 7
+               && grid.GateHold.Max(c => c.Z) - grid.GateHold.Min(c => c.Z) == 1,
+                  "and it is eight across by two deep, not merely sixteen cells");
             Check(grid.Protected.Count == 4, $"and protects a 2x2 of paths under it ({grid.Protected.Count})");
             Check(grid.Protected.All(c => grid.GateHolds(c)), "every protected path is inside the gate's own hold");
             Check(grid.GateHold.All(c => !grid.CanBuild(c)), "nothing can be built on the gate's ground");
