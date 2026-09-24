@@ -37,7 +37,8 @@ def raw_witness(scene):
             "STANDING SERVICE ok: same numeric ride ID does not inherit removed owner's customer",
             'STANDING SERVICE ok: satisfied guest clears visible toilet thought',
             *[f'STANDING SERVICE ok: placed quarter turn {turn} completes real relief without reseeding' for turn in range(4)],
-            'STANDING SERVICE PASS: 70 checks, 0 failures'])
+            *[f'STANDING SERVICE ok: placed quarter turn {turn} authored stand is nearer its real stub than its mirror' for turn in range(4)],
+            'STANDING SERVICE PASS: 74 checks, 0 failures'])
     return '\n'.join(['AUDIO LIFECYCLE ok: tested'] * 31 + [
         'AUDIO LIFECYCLE ok: 2D eight fast no-evidence polls remain pending',
         'AUDIO LIFECYCLE ok: 3D eight fast no-evidence polls remain pending',
@@ -116,7 +117,7 @@ class Classification(unittest.TestCase):
 
     def test_standing_requires_actual_placement_lifecycle_and_matching_count(self):
         text = witness('standing')
-        for damaged in [text.replace('70 checks', '69 checks'),
+        for damaged in [text.replace('74 checks', '73 checks'),
                         text.replace('placed quarter turn 2 completes real relief without reseeding', 'unrelated assertion'),
                         text.replace('explicit host hiding suppresses standing body', 'unrelated assertion')]:
             self.assertEqual(audit.classify('standing', output(damaged))['status'], 'missing_coverage')

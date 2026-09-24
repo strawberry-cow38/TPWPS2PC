@@ -178,6 +178,17 @@ public partial class StandingServiceAudit : Node3D
                       $"actual placement quarter turn {turn} registers the real model and authored standing geometry");
                 Check(placed?.Entrance is { } door && placementPaths.Open(door),
                       $"actual placement quarter turn {turn} lays a walkable service stub");
+                if (placed?.Entrance is { } stub && registered.TryGetValue(placed, out var registration))
+                {
+                    // Independent phase anchor: the actual placement stub, not another stand
+                    // transform. Project to horizontal distance so uneven ground cannot decide it.
+                    Vector2 centre = new(cell.X + .5f, cell.Z + .5f);
+                    Vector2 point = registration.Pose.CellPoint;
+                    Vector2 opposite = 2 * centre - point;
+                    Vector2 stubPoint = new(stub.X + .5f, stub.Z + .5f);
+                    Check(point.DistanceSquaredTo(stubPoint) < opposite.DistanceSquaredTo(stubPoint),
+                          $"placed quarter turn {turn} authored stand is nearer its real stub than its mirror");
+                }
                 if (placed?.Entrance is { } start)
                 {
                     var live = new ParkVisitors(placedSim, new GuestWalk(placementPaths)) { Needs = new VisitorNeeds(4242) };

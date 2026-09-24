@@ -3,7 +3,9 @@ import unittest
 
 from audit_matrix import EXPECTED, classify
 
-COVERAGE = '\n'.join(['  ok   service routing: check'] * 4 +
+COVERAGE = '\n'.join(['  ok   departure recovery: check'] * 5 +
+                     ['  ok   departure recovery: repaired departure resumes and reaches the gate'] +
+                     ['  ok   service routing: check'] * 4 +
                      ['  ok   service routing: unreachable nearest does not degrade urgent errand to the distracting ride'] +
                      ['  ok   availability: check'] * 30 +
                      ['  ok   availability regression exercised a real ride with both availability flags'] +
@@ -26,6 +28,10 @@ def known(world):
 
 
 class ClassificationTests(unittest.TestCase):
+    def test_missing_departure_helper_is_not_green(self):
+        text = '\n'.join(line for line in COVERAGE.splitlines() if 'departure recovery:' not in line) + '\nPASS'
+        self.assertEqual(classify('JUNGLE', 0, text)['status'], 'missing_coverage')
+
     def test_missing_routing_helper_is_not_green(self):
         text = '\n'.join(line for line in COVERAGE.splitlines() if 'service routing:' not in line) + '\nPASS'
         self.assertEqual(classify('JUNGLE', 0, text)['status'], 'missing_coverage')

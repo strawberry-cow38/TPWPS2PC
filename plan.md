@@ -61,7 +61,10 @@ This supersedes the courtesy-approval hold in the older CP1 preflight below: own
 resume authorization was already sufficient. Peer shipped service routing/dispatch,
 reachable-candidate fallback and authored geometry accessors, then departure and queue
 consumers through c7eb67f. Astraclaw's bounded standing-service patch closes the real
-small-toilet handover/body gap and carries70 runtime checks plus five routing checks/world.
+small-toilet handover/body gap and now carries74 runtime checks plus five routing checks/world.
+Peer0618434 also fixes interrupted departures; six recovery checks/world reject the old
+source. A transient Stranded state was removed from the test contract because valid retries
+need not preserve it—observable conservation/recovery, not implementation state, is the gate.
 Actual placement and service callbacks pass at four JUNGLE rotations; headless scene-graph
 proof is not manual visual approval. See findings/standing-service.md for exact scope.
 

@@ -90,3 +90,24 @@ Review the peer's new departure/queue consumers for integration effects, not ano
 unmotivated expansion of generic audits. Soil is still coordinator accounting, not a
 verified simulation of facility dirt/cleaning. Native platform/audio qualification and
 unknown retail mechanics remain separate open work.
+
+### Peer-review follow-up: rotation phase
+
+Cow tools independently checked the authored 1x1/no-LIMBO partition and the inward
+facing reference, then requested a phase discriminator against the actual placement
+stub. Four added checks compare the standing point's horizontal distance to that stub
+against its reflection through the footprint centre. This tests a front-side placement
+convention rather than claiming decoded retail pixel coordinates. Removing the row
+mirror makes all four new checks fail; restored code passes74 checks. The runner now
+requires those four witnesses and the74-check minimum. The new validation is a selected
+standing-scene run, not a fresh all-seven claim; the prior full gate remains at6fedf61.
+
+The peer's suggested global draw census is broader than this slice: existing generic
+queues and unresolved seat/WALK poses still need their own presentation contracts.
+Do not report all coordinator-owned guests as rendered merely because small toilets
+are fixed. Explicit hiding is a legitimate omission, not an invisible-body error.
+
+Subsequent full rerun after integrating peer0618434 passes all seven scenes with74 standing
+checks. The selected-only limitation above describes the first phase-control run, not this
+later full result. Departure repair now has its own independently discriminating regression
+(see departure-recovery.md), rather than a change to standing-service ownership.

@@ -847,3 +847,51 @@ Final current-tree landing gates: /tmp/tpw-standing-runtime-final-20260924 has a
 scenes passing (standing70); /tmp/tpw-standing-parks-final-20260924 records5 routing
 checks/world with only the two exact known retail reds;51 Python tests pass. A focused
 production/test patch was sent to cow tools for peer review. No unrelated source changed.
+
+## Landed6fedf61; peer phase review and departure-recovery regression WIP
+
+6fedf61 is pushed to main. Cow independently reviewed the 1x1/no-LIMBO partition and
+inward-facing derivation, requested a phase control against actual placement stubs.
+Added4 checks (standing total74): stand point must be nearer its real stub than its
+reflection through footprint centre. All4 fail with row mirroring removed; restored
+selected-standing gate passes at /tmp/tpw-standing-phase-restored-20260924. Runner74
+minimum/named witnesses and docs are local WIP; no new all-seven claim for this addition.
+
+A narrow read-only review of peer dc67e2b/c7eb67f found a candidate Leaving/Stranded
+recovery bug. Reproduced it independently in ALL4 worlds:6 checks, first4 green and last2
+red. Departing guest is conserved while a route is broken; after restoration a real route
+exists but WentHome remains0 even after6000 ticks, needs/ownership remain. Idle only
+retries departure for Arrived guests, not Stranded Leaving guests. Peer has been asked to
+own the core fix; do NOT edit their ParkVisitors file concurrently.
+
+Local WIP: new tools/TPW.PS2.ParkSimAudit/DepartureRecoveryChecks.cs plus ONE Program.cs
+call before ServiceRoutingChecks. This intentionally makes current ParkSimAudit RED;
+not pushed. Logs tpw-departure-recovery-before.log and -FANTASY/-HALLOW/-SPACE.log.
+Standing phase additions and runner tests are green separately (51 Python tests).
+Next: peer core retry fix, verify6 recovery checks/world + existing retail reds, then
+land regression/phase followup with explicit paths. If peer is unavailable do independent
+normal-viewer smoke preparation, not a fake-green waiver or a courtesy-permission pause.
+No restarts. Existing owner continuation remains active; do not duplicate it.
+
+## Departure recovery resolved / peer phase follow-up ready to land
+
+Peer0618434 arrived and was fast-forwarded without touching their core edits. The first
+fixture over-pinned the transient walk state: its Stranded assertion failed precisely
+because the fix retries within Step. Corrected the observable contract instead: after
+actual movement, no route/no WentHome, one guest+needs retained; after repair, reach home
+and retire together. Restoring the actual6fedf61 pre-fix ParkVisitors source still fails
+exactly the two post-repair assertions (tpw-departure-contract-mutant.log); restored source
+passes6/world. No fake-green waiver and no requirement to remain in the stuck state.
+
+Final gates: /tmp/tpw-phase-departure-runtime-20260924 all7 pass, standing74;
+/tmp/tpw-phase-departure-matrix-20260924 six recovery + five routing/world, only exact
+known retail reds remain;52 Python tests. Updated matrix requires departure coverage.
+See findings/departure-recovery.md and standing-service.md peer-phase follow-up.
+
+Next useful player-flow work: normal Viewer._Ready/rendered service smoke, not more generic
+headless census. Existing --guest-test deliberately places Crazy Ape via the Rides category,
+so --guest-ride=Small Toilet cannot select a feature and is NOT a valid service smoke.
+A separate test driver can create a real Viewer, let normal initialization run, use the
+existing Features build callbacks/cursor override, and frame the actual standing customer.
+Do not call an uninspected PNG visual proof; direct inspection/manual sign-off is still open.
+Core needs/visitor files remain peer-owned; no restart or duplicate continuation needed.

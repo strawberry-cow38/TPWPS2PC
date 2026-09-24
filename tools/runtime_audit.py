@@ -74,10 +74,12 @@ def classify(scene: str, run: dict) -> dict:
                     'STANDING SERVICE ok: satisfied guest clears visible toilet thought']
         prefixes += [f'STANDING SERVICE ok: placed quarter turn {turn} completes real relief without reseeding'
                      for turn in range(4)]
+        prefixes += [f'STANDING SERVICE ok: placed quarter turn {turn} authored stand is nearer its real stub than its mirror'
+                     for turn in range(4)]
         summaries = re.findall(r'^STANDING SERVICE PASS: (\d+) checks, 0 failures$', text, re.M)
         checks = sum(line.startswith('STANDING SERVICE ok:') for line in lines)
         result['checks'] = checks
-        if len(summaries) != 1 or int(summaries[0]) != checks or checks < 70:
+        if len(summaries) != 1 or int(summaries[0]) != checks or checks < 74:
             return {**result, 'status': 'missing_coverage'}
     elif scene == 'audio':
         prefixes = ['AUDIO LIFECYCLE ok: 2D eight fast no-evidence polls remain pending',

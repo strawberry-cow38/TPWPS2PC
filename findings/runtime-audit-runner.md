@@ -27,7 +27,7 @@ SCRIPT ERROR or native resource-leak diagnostics. Ordinary warnings are retained
 not automatically fatal. Visitor and RSE require all six FANTASY/SPACE/HALLOW terrain
 witnesses; textures require at least146 surface checks plus the viewer clock witness.
 Advisor45/audio37 minimums also require named important lifecycle/locale witnesses.
-Standing70 requires matching totals, visibility/ownership witnesses, and real placed
+Standing74 requires matching totals, visibility/ownership witnesses, and real placed
 service completion at all four rotations; see standing-service.md for its boundaries.
 
 Advisor/audio/standing checks print sequential assertion IDs. Repeated log lines cannot
@@ -95,3 +95,11 @@ The seven-scene gate passes after integrating peer c7eb67f with the standing-ser
 patch. StandingServiceAudit adds70 checks; all51 Python classifier/orchestration tests
 pass. The original six-scene evidence above remains tied to its original revision.
 New result status is `all_scenes_passed`, not the historical `all_six_passed`.
+
+Peer review adds four actual-stub distance/phase witnesses, raising the current standing
+minimum to74. The restored selected-scene gate passes and a missing-row-mirror mutation
+fails all four new witnesses; the previous all-seven run remains at70 standing checks.
+
+After integrating peer0618434, the full seven-scene gate also passes with74 standing checks;
+52 Python classifier/orchestration tests pass. The separate park matrix additionally requires
+six interrupted-departure checks per world and retains its exact known retail failures.
