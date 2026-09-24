@@ -1674,3 +1674,24 @@ worker timedout600s with no returned finding and no repositoryoutput; do not inf
 absence or claim censusfinished. Narrow to memory-only WAD inventory/RSE behavior first,
 then trace native constructor/movement/guest-release consumers. Preserve owner's disc
 in place. Original dirty ride-eligibility snapshot is superseded, do not land it again.
+
+## Bus research began — native guest fix is LANDED7d262d0
+
+Cow independently verified merged7d262d0 including all22path-pricechecks and gamebuild
+(message1552676382910316686). Do not hold scorer awaiting review any longer; it landed.
+Active branch now astraclaw/bus-native-research in SAME worktree ../tpw-gate-occupancy.
+
+Bus inventory completed by parent memory-only C# reader ../tpw-bus-research, text output
+/tmp/tpw-bus-inventory-clean.log. Both Bus1/Bus2 animatedMPS bundles exist in ALL4 worlds;
+bus.RSE is identical across4 and looks up Traffic Lights, NOT the park gate. Slot5 has
+3variants220/260/220 in eachAPS. SeparateSAMbundle noMPS is not evidencebusmissing.
+NativecataloglogicalID97 is distinct fromSAMID1600etc. Positivefactory149C90->1476E0
+creates global37E0D4 through228868. Parent readrawinstructions/wrappercalls independently.
+Docs bus-assets-and-script.md and bus-native-catalogue.md hold provenance and limits.
+No gameplayimplementation. Nexttrace17BFF8/17C5D8/17C920 plus writers395280; identify
+real movement phases, native arrival timing and guest drop-off. Native states0..3 are NOT
+scriptstatuses1..6 unless callertrace proves it. Sound alternativesnotanimationstages.
+One originalbroadworker timedout600s; narrower4minuteprimarytrace succeeded. All3delegate
+calls used this turn (independentreview, timedoutbusinventory, nativecatalogue). No assets
+were extracted. Local helperdisasm reportsUNKNOWN forCOP1/movz; decode criticalwords
+rather than assuming them. Userbusrequest1552630912481624105 remains active.

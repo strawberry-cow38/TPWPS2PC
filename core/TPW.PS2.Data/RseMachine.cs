@@ -67,8 +67,8 @@ public interface IRseHost
 /// <summary>⭐⭐ THE OTHER SCRIPTS IN THE PARK. Two opcodes reach outside one machine entirely:
 /// FINDSCRIPTRAND (`0x1bf0e8`) walks the game's list of LIVE script instances counting the ones
 /// whose name matches a string and returns a random one of them, and SETREMOTEVAR (`0x1bea...`)
-/// writes a variable in whichever instance a handle names. The bus uses both -- it finds a gate
-/// and tells it something -- and neither can be answered by a machine that only knows itself.
+/// writes a variable in whichever instance a handle names. The bus uses both -- its literal string names "Traffic Lights"
+/// and it writes that script's variable zero -- and neither can be answered by a machine that only knows itself.
 ///
 /// ⚠ LIVE, not "declared on the disc". The console searches instances that exist right now, so a
 /// script naming something nobody has built finds nothing and the opcode leaves the result
