@@ -1567,9 +1567,13 @@ public partial class Viewer : Node3D
         // correctly, so this was the Viewer alone. astraclaw found it auditing the audio
         // lifecycle. Same bug as the walk grid, same function, one object later.
         //
-        // ⚠ `_burst` deliberately SURVIVES: its library is `/DATA/PARTICLE.WAD`, which is one
-        // file for the whole game rather than per world, so rebuilding it would be waste.
+        // ⚠ `_burst` KEEPS ITS HOLDER but loses its INSTANCES, and that distinction is
+        // astraclaw's -- I had the first half and missed the second. The library is
+        // `/DATA/PARTICLE.WAD`, one file for the whole game rather than per world, so rebuilding
+        // it would be waste. The live emitters are NOT global: they were parented to the last
+        // park's rides, and keeping the holder kept them too. Cache retained, instances cleared.
         _sounds?.Clear(); _sounds = null;
+        _burst?.Clear();
         if (_terrainModel?.Field == null) return;
         if (_pieces == null)
         {
