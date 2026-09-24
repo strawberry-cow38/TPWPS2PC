@@ -239,6 +239,13 @@ public sealed class RideSounds
         foreach (var v in _voices.Where(v => v.Ride == rideId).ToList()) Free(v);
     }
 
+    /// <summary>How long a voice may show no evidence before it is called silent.
+    ///
+    /// ⚠ DIAGNOSTIC POLICY, NOT RETAIL TIMING -- astraclaw's words, and the right framing: the
+    /// console has no such window, this is only how long an observer waits before concluding
+    /// nothing is being consumed. In SECONDS, so it means the same thing at any frame rate.</summary>
+    public const double ObservationWindow = 0.5;
+
     public void Step(double delta)
     {
         for (int i = _voices.Count - 1; i >= 0; i--)
@@ -257,7 +264,18 @@ public sealed class RideSounds
             // stopped before the read and reported 0 -- two "VOICE DID NOT START" verdicts on
             // clips that had played to the end. The elapsed seconds are printed beside the frame
             // count for exactly that reason.
-            if (!v.Verdict && (v.MaxPosition > 0 || v.Finished || v.Frames >= 8))
+            // ⚠⚠ A TIME WINDOW, NOT A FRAME COUNT -- the THIRD instance of one disease in this
+            // method. The give-up was `v.Frames >= 8`, chosen when "a walk film runs near 105 ms a
+            // frame" (the note below) made it roughly 840 ms. The census loop now runs frames in
+            // single-digit milliseconds, so eight frames had become **0.02 s** and `ape_crunch3`
+            // was declared silent 20 ms after being accepted. A frame count standing in for a
+            // time budget is only ever right at one frame rate.
+            //
+            // ⭐ THE SHAPE IS astraclaw's AND IT IS BETTER THAN SWAPPING THE UNIT. Evidence wins
+            // IMMEDIATELY -- a finished clip or an advanced position needs no waiting -- and the
+            // absence of evidence stays PENDING until the window is up rather than failing early.
+            // Swapping the count for a time budget alone would have thrown away the early-out.
+            if (!v.Verdict && (v.MaxPosition > 0 || v.Finished || v.Elapsed >= ObservationWindow))
             {
                 v.Verdict = true; Verdicts++;
                 // ⭐⭐ FINISHED IS PROOF ON ITS OWN -- a clip cannot finish without having played.
