@@ -262,6 +262,24 @@ static class MoodChecks
             Check(slow > 0, $"and the clock actually advanced ({slow}) -- a frozen clock would pass the line above");
         }
 
+        // ── money, as the game writes it ───────────────────────────────────────────────────
+        // ⭐⭐ Every case is the decoded formatter's own behaviour: a '$', a '-' BEFORE it, and
+        // commas every three digits. ⚠ The grouping is the part worth checking hard -- the
+        // console computes its first group as `n > 3 ? n % 3 : 3`, so 4 digits break 1+3 and 6
+        // break 3+3, and an off-by-one there looks plausible at one length and wrong at another.
+        Check(Money.Display(0) == "$0", $"zero is $0 ({Money.Display(0)})");
+        Check(Money.Display(7) == "$7", $"one digit ({Money.Display(7)})");
+        Check(Money.Display(999) == "$999", $"three digits take no comma ({Money.Display(999)})");
+        Check(Money.Display(1000) == "$1,000", $"four digits break 1+3 ({Money.Display(1000)})");
+        Check(Money.Display(12345) == "$12,345", $"five digits break 2+3 ({Money.Display(12345)})");
+        Check(Money.Display(123456) == "$123,456", $"six digits break 3+3 ({Money.Display(123456)})");
+        Check(Money.Display(1234567) == "$1,234,567", $"seven digits take two commas ({Money.Display(1234567)})");
+        Check(Money.Display(-2500) == "-$2,500", $"the minus goes BEFORE the dollar ({Money.Display(-2500)})");
+        // ⭐ And the park's own units: the balance is in tenths, which the finance screen divides
+        // by ten on all seven of its figures before formatting.
+        Check(Money.Format(45_000) == "$4,500", $"park tenths are divided by ten ({Money.Format(45_000)})");
+        Check(Money.Format(-1_500) == "-$150", $"including a negative balance ({Money.Format(-1_500)})");
+
         // ⚠ THE CONTROL THAT MATTERS: `+0x78` is NOT raised by the clock. Nothing in
         // `FUN_0020FB88` raises it -- queueing is its only riser found -- and a rise put there on
         // the strength of its 95 bar was this port's mistake for two commits.
