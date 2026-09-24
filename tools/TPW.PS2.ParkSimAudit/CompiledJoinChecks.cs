@@ -35,6 +35,27 @@ static class CompiledJoinChecks
         // "it worked" assertion, and half a join is how the wrong number reaches a guest.
         Check(joined == shops.Length, $"every shop joins to a compiled SHOP payload ({joined} of {shops.Length})");
 
+        // ⭐⭐ THROUGH THE SHIPPING PATH, NOT THE HELPER. The viewer once had its own copy of the
+        // attach loop and ran it on an EMPTY catalogue -- the join was dead while these checks
+        // stayed green, because they only ever called the lookup helper. So this now builds a
+        // catalogue exactly as the viewer does (construct, THEN AddWad) and calls the same
+        // Attach the viewer calls; an empty-input regression reports zero and fails here.
+        var cat = new RideCatalogue();
+        // ⚠ THE PATH THE VIEWER PASSES, not a tidied world name: AddWad stamps whatever it is
+        // given, and passing a bare name here produced a Source shape the viewer never sees --
+        // a check that exercises a different input is a check of a different thing.
+        cat.AddWad(world, $"/DATA/{worldName}.WAD");
+        int attached = compiled.Attach(cat.All, out string report);
+        Console.WriteLine("    attach: " + report);
+        Check(attached > 0, $"attaching through a populated catalogue joins shops ({report})");
+        Check(cat.All.Count(d => d.Compiled != null) == attached,
+              $"and the definitions themselves carry the compiled record ({cat.All.Count(d => d.Compiled != null)})");
+        // ⚠ THE ORDERING BUG, AS A CONTROL. An empty catalogue must report NOTHING TO JOIN and
+        // attach zero -- if this ever passes as a success, the bug is back.
+        int onEmpty = compiled.Attach(new RideCatalogue().All, out string emptyReport);
+        Check(onEmpty == 0 && emptyReport.StartsWith("NOTHING TO JOIN"),
+              $"an unpopulated catalogue says so instead of looking fine ({emptyReport})");
+
         // ⭐⭐ THE CASE THE JOIN EXISTS FOR. Find a shop whose authored happiness differs from its
         // compiled happiness, and require the join to surface the compiled one.
         var disagreeing = shops

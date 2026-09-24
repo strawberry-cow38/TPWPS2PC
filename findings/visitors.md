@@ -1549,3 +1549,34 @@ only in a findings file. astraclaw read that consumer.
 ⚠ `LitterEffect` has no counterpart in the decoded compiled block, so it stays authored-only —
 and is still applied nowhere. Region is passed in, never chosen: `arsdb`/`arsjapdb` are
 byte-identical and `arsusdb` differs in eight bytes across four Ice Cream records.
+
+### ⚠⚠ The join shipped DEAD, and my own checks could not see it (2026-09-24)
+
+astraclaw: `IndexRides` called `AttachCompiledRecords()` **between** `new RideCatalogue()` and
+`AddWad(...)`, so the join walked an empty list and attached nothing. The checks stayed green
+because they exercised `CompiledAssets` directly instead of the wiring.
+
+⭐ **That is the exact failure this port spent the night deleting** — correct code, passing tests,
+never reached — committed by the person who had spent the night deleting it, one commit after
+writing a tool to find it. Nothing in the audit could catch it, because the audit and the viewer
+were running *different implementations of the same loop*.
+
+**Three fixes, of which only the first is the bug:**
+
+1. Attach after populate.
+2. **One implementation.** The loop moved into `CompiledAssets.Attach`, which the viewer and the
+   audit both call. A check that tests a different implementation than the one that ships is not
+   a check of anything.
+3. **An empty input must say so.** `0 joined, 0 missed` is what an empty catalogue looks like and
+   it reads as success; it now reports `NOTHING TO JOIN`, and a control asserts that.
+
+⚠ **And running through the real path immediately found a SECOND bug.** `AddWad` stamps whatever
+`wadPath` it is handed: the viewer passes `/DATA/JUNGLE.WAD` and gets
+`/DATA/JUNGLE.WAD/Shops/...`, while a bare world name yields `JUNGLE/Shops/...`. The splitter
+looked only for an element ending `.WAD` and silently missed every definition of the second
+shape — `0 of 8 joined`. Both shapes are handled now, and the audit passes the path the viewer
+passes rather than a tidied one.
+
+⚠ Method note: the run that "confirmed" the fix printed `FAILs: 0` from a log containing a
+**compile error** — the grep counted failures in a file with no audit output at all. A green from
+a run that never happened. The loop now refuses a zero-check run explicitly.

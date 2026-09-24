@@ -56,6 +56,55 @@ public sealed class CompiledAssets
     public AssetResourceDatabase.Entry For(string world, string pathInWad)
         => _byIdentity.TryGetValue(TextDatabase.GraphicsKey(world, pathInWad), out var e) ? e : null;
 
+    /// <summary>⭐⭐ ATTACH THE COMPILED RECORD TO EVERY SHOP DEFINITION, and this is the ONE
+    /// implementation -- the viewer calls it and so does the audit.
+    ///
+    /// ⚠⚠ IT EXISTS BECAUSE THE TWO DIVERGED ONCE. The viewer had its own copy of this loop and
+    /// ran it BEFORE the catalogue was populated, so it walked an empty list and attached
+    /// nothing; the checks stayed green because they exercised the lookup helper instead of the
+    /// wiring. A check that tests a different implementation than the one that ships is not a
+    /// check of anything. astraclaw found it.
+    ///
+    /// ⚠ The `.sam` source is disc-absolute (`/DATA/JUNGLE.WAD/Shops/...`) and the identity wants
+    /// world plus WAD-RELATIVE path, so the split happens here rather than at each call site.</summary>
+    public int Attach(IEnumerable<RideDefinition> definitions, out string report)
+    {
+        var shops = definitions.Where(d => d.ShopType != null).ToArray();
+        int attached = 0;
+        var missed = new List<string>();
+        foreach (var d in shops)
+        {
+            var (world, path) = Split(d.Source);
+            if (path == null) { missed.Add(d.Source); continue; }
+            if (For(world, path)?.Shop is { } shop) { d.Compiled = shop; attached++; }
+            else missed.Add(d.Source);
+        }
+        // ⚠ "0 joined, 0 missed" is exactly what an EMPTY input looks like and it reads as
+        // success. Name that case, so an ordering bug cannot hide inside a tidy line again.
+        report = shops.Length == 0
+            ? "NOTHING TO JOIN -- no definition declared a shop block"
+            : $"{attached} of {shops.Length} shops joined"
+              + (missed.Count == 0 ? "" : $"; MISSED {string.Join(" ", missed.Take(4))}");
+        return attached;
+    }
+
+    /// <summary>World and WAD-relative path out of a definition's `Source`.
+    ///
+    /// ⚠⚠ TWO SHAPES REACH HERE AND ONLY ONE WAS HANDLED. `RideCatalogue.AddWad` stamps whatever
+    /// `wadPath` it is given: the viewer passes `/DATA/JUNGLE.WAD` and gets
+    /// `/DATA/JUNGLE.WAD/Shops/...`, while a caller passing a bare world name gets
+    /// `JUNGLE/Shops/...`. The first version looked for an element ending `.WAD` and silently
+    /// missed EVERY definition under the second, reporting "0 of 8 joined" -- found the moment a
+    /// check ran through the real catalogue instead of the lookup helper.</summary>
+    static (string World, string Path) Split(string source)
+    {
+        var p = (source ?? "").Split('/', StringSplitOptions.RemoveEmptyEntries);
+        int wi = Array.FindIndex(p, x => x.EndsWith(".WAD", StringComparison.OrdinalIgnoreCase));
+        if (wi >= 0) return (p[wi][..^4], string.Join('/', p.Skip(wi + 1)));
+        // No archive element: the first component is the world, as a bare name leaves it.
+        return p.Length >= 2 ? (p[0], string.Join('/', p.Skip(1))) : (null, null);
+    }
+
     /// <summary>What the join actually achieved over a set of `.sam` paths, in one line.
     /// ⭐ Coverage is N-of-M or it is nothing: "it worked" about a join that silently missed half
     /// the disc is the failure this reports rather than hides.</summary>

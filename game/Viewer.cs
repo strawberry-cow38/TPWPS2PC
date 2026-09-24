@@ -1304,8 +1304,13 @@ public partial class Viewer : Node3D
         try
         {
             _cat = new RideCatalogue();
-            AttachCompiledRecords();
             _cat.AddWad(_lib.Wad, _lib.WadName);
+            // ⚠⚠ AFTER THE CATALOGUE IS POPULATED, NOT BEFORE. This ran between the constructor
+            // and AddWad, so it walked an EMPTY list and attached nothing -- the join was dead at
+            // runtime while its checks stayed green, because they exercise CompiledAssets
+            // directly instead of this path. Exactly the shape this port spent the night
+            // deleting: correct code, passing tests, never reached. astraclaw caught it.
+            AttachCompiledRecords();
             GD.Print($"[park] {_lib.WadName}: {_cat.All.Count} rides, {_cat.ById.Count} ids, "
                      + $"{_cat.All.Count(d => d.ModelPath != null)} with a model");
         }
@@ -1383,19 +1388,8 @@ public partial class Viewer : Node3D
             var dba = data?.Entries.FirstOrDefault(e => e.Path.Equals("/arsdb.dba", StringComparison.OrdinalIgnoreCase));
             if (dba == null) { GD.Print("[park] compiled records: /arsdb.dba MISSING -- authored .sam values stand"); return; }
             var compiled = new CompiledAssets(new AssetResourceDatabase(data.Read(dba)), _text);
-            int attached = 0; var missed = new List<string>();
-            foreach (var d in _cat.All)
-            {
-                if (d.ShopType == null) continue;      // only the block the purchase path reads
-                var src = d.Source.Split('/', StringSplitOptions.RemoveEmptyEntries);
-                int wi = Array.FindIndex(src, x => x.EndsWith(".WAD", StringComparison.OrdinalIgnoreCase));
-                if (wi < 0) { missed.Add(d.Source); continue; }
-                var hit = compiled.For(src[wi][..^4], string.Join('/', src.Skip(wi + 1)));
-                if (hit?.Shop is { } shop) { d.Compiled = shop; attached++; } else missed.Add(d.Source);
-            }
-            GD.Print($"[park] compiled records: {attached} shops joined"
-                   + (missed.Count == 0 ? "" : $", {missed.Count} MISSED ({string.Join(" ", missed.Take(4))})"
-                                             + " -- those keep their authored .sam values"));
+            compiled.Attach(_cat.All, out string report);
+            GD.Print("[park] compiled records: " + report);
         }
         catch (Exception ex) { GD.PrintErr($"[park] compiled records failed: {ex.Message}"); }
     }
