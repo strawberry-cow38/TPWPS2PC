@@ -681,11 +681,12 @@ public partial class Viewer : Node3D
         // ⭐⭐ THE PARK'S MONEY, ON SCREEN. Master: "wire up the money ui from the game code."
         // ⚠ Anchored top-CENTRE on purpose: the left panel and the right build panel both reach
         // the top edge, so either corner would sit under a widget the moment a tab is open.
+        // ⭐ Top-LEFT, at the console's own (38, 50) scaled from its 512-wide UI space -- not
+        // the top-centre this file invented. Size follows the texture.
         _money = new TextureRect { MouseFilter = Control.MouseFilterEnum.Ignore, Visible = false,
-                                   StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+                                   StretchMode = TextureRect.StretchModeEnum.Keep,
                                    TextureFilter = CanvasItem.TextureFilterEnum.Nearest };
-        _money.SetAnchorsPreset(Control.LayoutPreset.CenterTop);
-        _money.OffsetLeft = -160; _money.OffsetRight = 160; _money.OffsetTop = 8; _money.OffsetBottom = 8 + MoneyHeight;
+        _money.SetAnchorsPreset(Control.LayoutPreset.TopLeft);
         ui.AddChild(_money);
 
         // ⭐⭐ THE TOOL SAYS WHAT IT THINKS, ON SCREEN. Every refusal already printed a reason to
@@ -3175,9 +3176,9 @@ public partial class Viewer : Node3D
             if (_hudFont == null)
                 try
                 {
-                    var bff = _lib?.ReadGeneric("/Fonts/European/Console.bff");
-                    if (bff != null) { _hudFont = new FontText(new BitmapFont(bff)); GD.Print("[hud] Console.bff loaded for the money readout"); }
-                    else GD.PrintErr("[hud] /Fonts/European/Console.bff not found -- money readout stays hidden");
+                    var bff = _lib?.ReadGeneric("/Fonts/European/Large.bff");
+                    if (bff != null) { _hudFont = new FontText(new BitmapFont(bff)); GD.Print($"[hud] Large.bff (font index {MoneyFontIndex}) loaded for the money readout"); }
+                    else GD.PrintErr("[hud] /Fonts/European/Large.bff not found -- money readout stays hidden");
                 }
                 catch (Exception e) { GD.PrintErr($"[hud] Console.bff would not load: {e.Message}"); }
             GD.Print($"[want] {_thoughts.Load(path => _lib?.ReadGeneric(path))}"
@@ -6876,11 +6877,39 @@ public partial class Viewer : Node3D
     /// ⚠⚠ AND IT READS THE LIVE BALANCE EVERY FRAME rather than keeping one of its own. A UI
     /// copy of a number the sim owns is a second source of truth that drifts silently the first
     /// time something credits the park without telling the UI.</summary>
-    /// <summary>⚠ CHOSEN. The console's own HUD coordinates are constants this port has not
-    /// read (`DAT_002B5CF4` and friends feed the finance screen's rows); the SCALE here is a
-    /// legibility choice, not a decode. What IS the game's is the glyphs, the advances, the
-    /// format and the units.</summary>
-    const int MoneyHeight = 40;
+    /// <summary>⭐⭐⭐ THE MONEY HUD, READ WHOLE FROM `FUN_0013DCB8`. Master: "get all the
+    /// constants and everything. only then is it done." These are all of them:
+    ///
+    /// <code>
+    ///   balance = FUN_00100688(park) / 10;                   // the units, in the HUD itself
+    ///   if (balance &lt; 1) FUN_001388E8(t, 200, 0x82, 0);      // amber when broke
+    ///   else             FUN_001388E8(t, 0xff, 0xff, 0);     // yellow otherwise
+    ///   FUN_0020B258(ctx, 2, 2);                             // scale 2 x 2
+    ///   FUN_0020A958(ctx, 1);                                // font index 1
+    ///   FUN_00142908(buf, balance);                          // "-$1,234"
+    ///   FUN_00138798(t, buf, 0x26, 0x32, 10, 1);             // x 38, y 50
+    /// </code>
+    ///
+    /// ⭐ **The font is `Large.bff`.** `FUN_0020A958` walks the three loaded records and picks
+    /// the one whose stored index matches its argument, and `FUN_0020BA28` loads them as
+    /// Small=0, **Large=1**, Console=2. This port had `Console.bff` -- the wrong face -- chosen
+    /// because it sounded like a HUD font.
+    ///
+    /// ⭐ The colour is RGB with alpha 255 (`FUN_0020A900(..., 0xff)`), so `(255,255,0)` yellow
+    /// and `(200,130,0)` amber. The `10` in the draw call is a palette slot the RGB path
+    /// overrides; it is carried rather than interpreted.
+    ///
+    /// ⚠ THE ONE NUMBER STILL NOT READ is the console's UI width that `x=38` is measured in.
+    /// 512 is the usual PS2 text space and the other constants sit inside it (the slide-in runs
+    /// from -80 and latches at 45), but no line has been traced that states it. Everything else
+    /// on this screen is the game's.
+    ///
+    /// ⚠ There is a second, ANIMATED placement (`DAT_002E9900 != 0`): x starts at `DAT_002B62F0`
+    /// = **-80**, y = **69**, advances by `DAT_002B62F8` each frame and latches at `0x2D` = 45.
+    /// A slide-in. Not ported: what sets that flag is unread, and an animation on the wrong
+    /// trigger is worse than the static placement the other branch uses.</summary>
+    const int MoneyX = 0x26, MoneyY = 0x32, MoneyScale = 2, MoneyFontIndex = 1, ConsoleUiWidth = 512;
+    static readonly Color MoneyNormal = new(1f, 1f, 0f), MoneyBroke = new(200 / 255f, 130 / 255f, 0f);
 
     void ShowMoney()
     {
@@ -6895,7 +6924,13 @@ public partial class Viewer : Node3D
         // with commas every three -- and the /10 the finance screen applies to every figure.
         string want = Money.Format(bank.Balance);
         if (want != _moneyShown) { _moneyShown = want; _money.Texture = _hudFont.Render(want); }
-        _money.Modulate = bank.Balance < 0 ? new Color(1f, 0.45f, 0.45f) : new Color(1f, 0.95f, 0.6f);
+        // ⭐ The console's own test is on the DIVIDED figure, and it is `< 1` -- not `< 0`, so a
+        // park holding less than one unit is already showing the warning colour.
+        _money.Modulate = bank.Balance / 10 < 1 ? MoneyBroke : MoneyNormal;
+        // ⭐ (38, 50) in the console's UI space, and its 2x scale, both carried to this viewport.
+        float k = GetViewport().GetVisibleRect().Size.X / ConsoleUiWidth;
+        _money.Position = new Vector2(MoneyX * k, MoneyY * k);
+        _money.Scale = new Vector2(MoneyScale * k, MoneyScale * k);
     }
 
     public override void _Process(double delta)

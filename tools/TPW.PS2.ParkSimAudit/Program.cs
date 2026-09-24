@@ -783,8 +783,11 @@ foreach (var bs in wad.Entries.Where(e => e.Path.EndsWith(".rse", StringComparis
 // character `Money.Format` can emit is checked against the font's own lookup.
 try
 {
-    var fontEntry = Wad("DATA").Entries.FirstOrDefault(e => e.Path.Equals("/Fonts/European/Console.bff", StringComparison.OrdinalIgnoreCase));
-    Check(fontEntry != null, "the disc carries /Fonts/European/Console.bff");
+    var fontEntry = Wad("DATA").Entries.FirstOrDefault(e => e.Path.Equals("/Fonts/European/Large.bff", StringComparison.OrdinalIgnoreCase));
+    // ⭐ Large.bff, not Console.bff: FUN_0020A958 picks the record whose stored index matches
+    // its argument, the money draw passes 1, and FUN_0020BA28 loads them Small=0, Large=1,
+    // Console=2. The port had the Console face because the NAME sounded like a HUD.
+    Check(fontEntry != null, "the disc carries /Fonts/European/Large.bff -- the money HUD's font");
     if (fontEntry != null)
     {
         var hud = new BitmapFont(Wad("DATA").Read(fontEntry));
