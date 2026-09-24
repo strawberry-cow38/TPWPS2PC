@@ -497,11 +497,14 @@ public sealed class ParkVisitors
     /// ⚠ ONE KIND EACH, and a lavatory is tested FIRST: nothing in the game both relieves and
     /// sells, but if a mod ever did, relief is the need with a hard threshold behind it.
     ///
-    /// ⚠ `UsageInfo.LitterEffect` IS AUTHORED AND IS NOT APPLIED HERE. The guest has a Litter
-    /// field and 23 shops declare the effect, but the decoded purchase path
-    /// (`0x20E380..0x20E45C`, findings/dba.md) does exactly four things and littering is not one
-    /// of them. Applying it anyway would be inventing a cadence and calling it a decode; it waits
-    /// for the litter path. Same for FatigueEffect, which has no field at all yet.</summary>
+    /// ⚠ `UsageInfo.LitterEffect` IS AUTHORED AND IS STILL NOT USED -- but litter IS now added,
+    /// from the read base `DAT_002EEB60` = 30 plus `rand(25)`, inside `VisitorNeeds.Buy`. The
+    /// authored 50 is simply not the number that runs, which by now is the rule rather than the
+    /// exception. `FatigueEffect` remains authored with no field at all to receive it.
+    ///
+    /// ⚠⚠ This block previously said litter was not applied anywhere, which stopped being true
+    /// the moment the base was read. astraclaw caught it against the body. A comment that has
+    /// drifted from its code is worse than no comment, because someone will believe it.</summary>
     void Serve(int guest, ParkRide used)
     {
         if (Needs == null || !Needs.Has(guest)) return;

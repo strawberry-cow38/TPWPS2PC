@@ -361,10 +361,12 @@ public sealed class VisitorNeeds
 
     int Roll(Rate r) => r.Base + (r.High ? RollHigh(r.Spread + 1) : RollCentred(r.Spread + 1));
 
-    /// ⚠ <paramref name="thirstReduction"/> keeps its name for its callers and is ADDED, not
-    /// subtracted -- see the body. ⚠ `+0x74` litter (`base + rand(25)`) is still NOT applied:
-    /// the base is not the .sam's `LitterEffect` (50 for a burger against an observed 30), so
-    /// its source is unidentified and inventing one is how a wrong number gets a comment.
+    /// ⚠ <paramref name="thirstReduction"/> keeps its name for its callers, and what happens to
+    /// it DEPENDS ON THE ARM: food adds it, drink subtracts it. ⭐ Litter IS applied now --
+    /// `LitterBase` (30, read from `DAT_002EEB60`) plus `rand(25)`, on the food and drink arms
+    /// only. ⚠ NOT the .sam's `LitterEffect`, which is 50 for a burger and is not what runs.
+    /// ⚠⚠ This comment said the opposite of both until astraclaw read it against the body:
+    /// a stale comment is worse than none, because it is trusted.
     /// <summary>A purchase, with the shop's own DBA effects. ⭐ All four come straight out of
     /// findings/dba.md's decode of the purchase path at `0x20E380..0x20E45C`, including the one
     /// that reads oddly and is right: the hunger reduction is subtracted from hunger AND added to
