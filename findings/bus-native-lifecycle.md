@@ -29,6 +29,19 @@ turning the rejected command into a playback reset fails the actual lifecycle te
 This is the same class of reachability error as the earlier guest flush: finding a
 callee's code is insufficient evidence the selected caller can execute it.
 
+## Initial wait versus reload: deliberately unequal raw units
+
+Peer review questioned whether `%200` was missing a `<<12`, since reloadC8000 is
+numerically `200<<12`. Parent rechecked149C64..94 on September24:144870 returns the
+RNG word;149C6C loads200;149C74 DIVU;149C8C MFHI a1;149C94 stores a1 directly to
+39527C in the delay slot of the bus-creation call. There is **no shift** between
+remainder and store. 147760 applies initial state0; it is not the timer initializer.
+The different magnitudes are native on this initialization path, not a conversion
+we should normalize. At saturated delta4000, a positive seed0..199 spends one
+subtraction; zero spends none. Animations still run before any batch request, so
+this is prompt phase start, NOT instantaneous passenger delivery. The peer's PSX
+initialization prediction differs; its numeric scale cannot override this PS2 store.
+
 ## Native visibility is not indiscriminate ancestor hiding
 
 All eight resources have these five nodes:

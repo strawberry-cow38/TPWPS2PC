@@ -37,6 +37,8 @@ public sealed class NativeBusController
         this.sample = sample ?? throw new ArgumentNullException(nameof(sample));
         this.stateCommand = stateCommand ?? throw new ArgumentNullException(nameof(stateCommand));
         this.requestBatch = requestBatch ?? throw new ArgumentNullException(nameof(requestBatch));
+        // 149C74 DIVU /149C8C MFHI /149C94 SW: unshifted remainder.
+        // Reload C8000 being numerically 200<<12 does NOT scale this initializer.
         OuterRemaining = (int)(initialRandomRaw % 200);
         ApplyState(clock); // creation147760 calls state0 before controller updates
     }

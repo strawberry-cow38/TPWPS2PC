@@ -1856,3 +1856,12 @@ instancekey+native0/51/strict2000 reset; itsgraphtimingstillunread. Their ef3961
 "0correct"claimaskedforinitializerproof; no-settercensusaloneisnotinitialvalueproof.
 PartialdecompilecorpusoutsideGit remainsavailable; actuallyconsulted1A7F48,1AC048,
 1AA460thisturn. Notfullcorpus; noabsenceclaimsfrommissingfunctions.
+
+
+Peer reviewed e15540f: no blocking findings. Questioned initial modulo200 vsC8000
+reload aspossiblemissingshift. Parentrechecked149C64..94directDIVU/MFHI/SWnoSHIFT;
+replied1552707275917893695 andrecordedbus-native-lifecycle.md. Initialpositivewait
+one saturatedsubtraction, NOTinstantbatch; animationsstillrun. Do not"fix"tomatchPSX.
+Peerconfirmed unsignedfloatidiom,clockwrap,controllerreplacementinvariant,hiddenpose
+updates,andself-vs-subtreevisibility. Motion ee3e645 review notseparatelyexplicit yet;
+e15540f encompassesitbutdon'tinventpeerviewsnotstated.
