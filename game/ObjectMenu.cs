@@ -34,14 +34,27 @@ public sealed partial class ObjectMenu : Control
     public const int RowStep = 32;
     /// <summary>`height = Pad + RowStep * entries`, fitted to two captures at 2x.</summary>
     public const int Pad = 40;
-    /// <summary>The 9-slice inset, from the draw at 0x1420c0 (`left = x-8, top = y-8`).</summary>
-    public const int Inset = 8;
-    /// <summary>One tile. The fill tiles in these steps with a remainder strip.</summary>
+    /// <summary>One tile, and the FRAME IS DRAWN A WHOLE TILE THICK. ⚠⚠ It used to be drawn
+    /// `Inset` (8) thick while the fill tiled at 16, so the border sat at half the scale of
+    /// everything else -- a too-thick bright band, a too-narrow gap, and a visible step where a
+    /// corner met an edge. Master: "the corners are fine but the edges are messed up".</summary>
     public const int Tile = 16;
 
-    /// <summary>⚠ CHOSEN. The console's own output is 512-ish wide; on a desktop window the panel
-    /// at 1:1 is unreadably small. Master's captures measure 2x, so that is what this uses.</summary>
-    public const int Scale = 2;
+    /// <summary>Where the ruled sheet starts, measured from the frame's outer edge. ⭐ READ OFF
+    /// THE REAL GAME: master's captures give a 5px bright band and a 15px translucent gap at 2x,
+    /// so 2.5 and 7.5 in console units -- a 10-unit inset with the sheet drawn OVER the inner part
+    /// of the frame tiles. Drawing the tiles whole and covering them is what produces a thin band
+    /// and a wide gap from one 16px tile.</summary>
+    public const int SheetInset = 10;
+
+    /// <summary>The console's UI space is 512 wide; everything here is authored in those units.</summary>
+    public const float NativeWidth = 512f;
+
+    /// <summary>⭐⭐ SCALE IS A PERCENTAGE OF THE VIEWPORT, not a constant. Master: "the
+    /// scale/position was based off the ps2 resolution. we should measure percentages and apply."
+    /// A fixed 2x is only correct on a 1024-wide window; this keeps the panel the same fraction of
+    /// the screen the console gives it at any size.</summary>
+    float Scale => Mathf.Max(1f, GetViewportRect().Size.X / NativeWidth);
 
     /// <summary>Selected rows draw blue, the rest black -- read straight off master's capture.</summary>
     static readonly Color Chosen = new(0.07f, 0.12f, 0.98f);
@@ -180,7 +193,7 @@ public sealed partial class ObjectMenu : Control
         int textW = _entries.Count == 0 ? 0 : _entries.Max(e => _font.Measure(e));
         int innerW = Math.Max(textW + RowStep, 6 * Tile);
         int innerH = Pad + RowStep * _entries.Count;
-        return new Vector2((innerW + Inset * 2) * Scale, (innerH + Inset * 2) * Scale);
+        return new Vector2((innerW + SheetInset * 2) * Scale, (innerH + SheetInset * 2) * Scale);
     }
 
     public override void _Draw()
@@ -191,8 +204,8 @@ public sealed partial class ObjectMenu : Control
         int innerH = Pad + RowStep * _entries.Count;
 
         // Outer translucent blue frame, then the opaque ruled sheet inside it.
-        DrawBox(new Rect2(0, 0, innerW + Inset * 2, innerH + Inset * 2));
-        DrawSheet(new Rect2(Inset, Inset, innerW, innerH));
+        DrawBox(new Rect2(0, 0, innerW + SheetInset * 2, innerH + SheetInset * 2));
+        DrawSheet(new Rect2(SheetInset, SheetInset, innerW, innerH));
 
         // ⭐ Rows are RowStep apart, which is the number the disc states; the first sits half a
         // pad down so the block is centred in the sheet.
@@ -202,8 +215,8 @@ public sealed partial class ObjectMenu : Control
             if (tex == null) continue;
             float w = tex.GetWidth(), h = tex.GetHeight();
             var at = new Vector2(
-                (Inset + (innerW - w) / 2f) * Scale,
-                (Inset + Pad / 2f + RowStep * i + (RowStep - h) / 2f) * Scale);
+                (SheetInset + (innerW - w) / 2f) * Scale,
+                (SheetInset + Pad / 2f + RowStep * i + (RowStep - h) / 2f) * Scale);
             DrawTextureRect(tex, new Rect2(at, new Vector2(w * Scale, h * Scale)), false,
                             i == _index ? Chosen : Plain);
         }
@@ -217,7 +230,7 @@ public sealed partial class ObjectMenu : Control
     /// the drawn size, so at 2x it laid the border down as stripes with gaps between them.</summary>
     void DrawBox(Rect2 r)
     {
-        float s = Scale, t = Inset * s;
+        float s = Scale, t = Tile * s;      // ⭐ a WHOLE tile thick; the sheet covers the inside
         var o = r.Position * s;
         var size = r.Size * s;
         Tile2D(_messFill, new Rect2(o + new Vector2(t, t), size - new Vector2(t * 2, t * 2)));
