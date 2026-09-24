@@ -30,7 +30,16 @@ public sealed class ParkRide
     public bool ProvidesRelief => Definition?.ProvidesRelief ?? false;
     public bool Sells => Definition?.Sells ?? false;
 
-    /// <summary>⭐⭐ THE FACILITY'S CONDITION, `+0xb4` on the console's own facility record, and
+    /// ⚠⚠ LAVATORIES ONLY. `+0xb4` does NOT mean the same thing on every placed object: on a
+    /// SHOP the sale recorder `FUN_001D1E68` does `+0xb4 += 1` as a CUSTOMER COUNT, unbounded,
+    /// while the lavatory path clamps the same offset to 0..100 and resets it to 100. Two classes,
+    /// one offset, two meanings -- so this property is only meaningful where
+    /// <see cref="ProvidesRelief"/> holds, and nothing writes it anywhere else. An earlier version
+    /// of this note called it "the console's own facility record" without that qualifier, which
+    /// would have invited someone to read a shop's condition and get a number that means
+    /// something else entirely.
+    ///
+    /// <summary>⭐⭐ THE LAVATORY'S CONDITION, `+0xb4` on that class's record, and
     /// this is its representation rather than an equivalent of mine. It starts at **100**
     /// (`FUN_001302d8` constructs it there, `FUN_00130678` places it from the ride template's
     /// byte 0xe), FALLS with use, and is reset to 100 by `FUN_00130978` -- which also stamps a

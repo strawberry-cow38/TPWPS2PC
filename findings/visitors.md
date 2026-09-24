@@ -1715,3 +1715,45 @@ message nobody reads twice.
 ⭐ Independently confirmed by astraclaw at instruction level: product 7's table entry reaches
 `0x20E36C`, adds `q2/15`, and falls through into the complete food arm at `0x20E3AC`; row 8's
 intensity is exactly **14**.
+
+
+## ⭐⭐ A shop keeps a RATING, not takings — and quality has addresses now (2026-09-24)
+
+Chasing "the guest pays 10x price and the park receives nothing" into the last unread call of the
+purchase path, `FUN_001D1E68`:
+
+```c
+shop[0xb0] += amount;    // amount = (happiness gained) * 5, NOT the price
+shop[0xb4] += 1;         // customers served
+FUN_001073C0(global, kind, …)   // a statistic, switched by product kind
+```
+
+⚠ **It is called with `(guest[0x75] - happinessBefore) * 5`** — so `+0xb0` accumulates the
+SATISFACTION a shop has delivered and `+0xb4` counts who it delivered to. `0xb0 / 0xb4` is an
+average rating. **This is not the park's till**, and the search for where a guest's money goes is
+still open: the debit at `0x20E1A0` is followed immediately by the effect switch, with no credit
+between.
+
+### ⚠⚠ And `+0xb4` means TWO different things
+
+On a shop it is that unbounded customer count. On a lavatory it is the 0..100 condition this file
+decoded earlier — clamped, depleted by use, reset to 100 by `FUN_00130978`. **Two classes, one
+offset, two meanings.** `ParkRide.Condition` is therefore meaningful only where `ProvidesRelief`
+holds; its note previously said "the console's own facility record" without that qualifier, which
+would have invited someone to read a shop's condition and get a customer count.
+
+⭐ This is the same trap as the sideshow `+A8/+CC/+CE` that astraclaw corrected earlier: an offset
+is not a meaning until you know which class you are standing in.
+
+### ⭐ Quality: q1 is `+0xba`, q2 is `+0xac`
+
+Both getters are one instruction each — `FUN_001D1F50` returns `*(u16*)(shop + 0xba)`,
+`FUN_001D1FB8` returns `*(u32*)(shop + 0xac)`. So the happiness scale `(q1 - q2/15) / 100` reads
+those two fields, and setup writes 100 and 0 into them (astraclaw, `0x1D1870/7C`).
+
+⚠ I had guessed quality would read the `0xb0 / 0xb4` rating, since a satisfaction average is
+exactly what "quality" ought to mean. **It does not.** Read before believing: the guess was
+plausible, tidy, and wrong, and one decompile of an eight-byte function settled it.
+
+⚠ What MOVES `+0xba` and `+0xac` after setup is still unread, so the port still has no shop
+quality rather than a wrong one.
