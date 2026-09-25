@@ -15,9 +15,17 @@ this order:
 | `lb N+7B` (boredom) >= 99: leaves unconditionally | 20C950..58 | `VisitorWants.Boredom >= 99` |
 | `lb N+75` (happiness) < 5 | 20C960..68 | `Happiness < 5` |
 | `lw N+60` (cash, a word) < 100 | 20C97C..84 | `Cash < 100` |
-| `211D48() >= 81` AND `rand(20) < 2` | 20C98C..AC | **not ported**; 211D48 is unread |
+| `211D48() >= 81` AND `rand(20) < 2` | 20C98C..AC | **not ported**. 211D48 is time in park: the calendar clock (16AE90→16B218) minus N+70 |
 
-`VisitorNeeds.WantsToGoHome` is exactly the first three. The fourth arm is random and unported.
+`VisitorNeeds.WantsToGoHome` is exactly the first three. The fourth arm is unported. It applies to a
+guest in the park for at least 81 units of the calendar clock (a clock distinct from 1C4930, per
+native-shop-flow.md), who then leaves with a 2-in-20 roll at each decision.
+
+**Cross-checked against the authorized Ghidra corpus**, `FUN_0020c930_0020c930.c`, after this
+section was written from raw MIPS. It gives the same predicate order, the same happiness < 3 block
+(`N+0x34 |= 8`, which is `B+2C`; thought 10; effect 0x133), the same `N+1C = 0` / `N+37 = 0x26`, and
+the same `rand(6)` / `rand(300)` switch. The corpus holds 416 files and is not complete: 18C928,
+18CF30, 1920B8 and 210D70 are absent. Its local path is in progress.md's HANDOFF.
 
 **On departure (20C9C0..20CA70).**
 - When happiness is below 3, 192D50(B) is consulted. If it returns zero and the global 2E28D0 is under
@@ -63,7 +71,7 @@ decision, a detour usually delays departure rather than cancelling it. This has 
 
 **Labelled adapters** (also printed at startup):
 - Departure enters 26 at once; the six arms after the 26 write are not joined.
-- The 211D48 random arm is not ported.
+- The 211D48 time-in-park random arm is not ported.
 - The happiness < 3 thought 10 and effect 0x133 are not ported.
 - Guests not admitted by this flow leave by the legacy gate.
 - The activation serial is the represented-activation adapter (plan section 6, won't-fix).

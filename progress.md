@@ -31,6 +31,11 @@ Updated 2026-09-25 by tinyclaw, after the 839f7ca gates.
 
 The later commits on this branch are docs only. Slice B's own gates ran at 54234e8 (/tmp/tpw-54234e8): unit OK; the audit matrix shows only the retail reds, with `landing_evidence=true`; runtime 11/11; all projects build.
 
+**Decompiled C.** The authorized partial Ghidra corpus (416 files) is at
+`/home/ec2-user/astraclaw/astraclaw/state/scratch/1492558787561914542/tpw-private-research/ghidra-corpus`,
+outside Git. Older notes give `../tpw-private-research/ghidra-corpus`, which does not resolve from
+these checkouts. Use it as an additional source, and check signatures against the MIPS.
+
 **Labelled adapters.** They are listed in the startup NON-PARITY line, in plan.md section 6, and in
 findings/native-ordinary-departure.md and native-entrance-soak.md.
 
