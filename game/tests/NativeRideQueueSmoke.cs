@@ -129,6 +129,16 @@ public partial class NativeRideQueueSmoke : Node3D
                 && shape.Entrance.Z >= ride.Origin.Z && shape.Entrance.Z < ride.Origin.Z + ride.Height,
                 $"the queue is read back from the tool: entrance connection {shape?.Entrance} inside the ride, {shape?.Cells.Count} cells, mouth {shape?.Mouth} on the path");
 
+            // ⭐ The viewer's own walker follows the queue AS DRAWN (strawberry, 2026-09-25: guests were
+            // "short-cutting from a path tile next to the queue tile of the entrance"): from the park's
+            // path, a route to the stub enters at the mouth and covers every queue cell in order.
+            var guestWalk = Field<GuestWalk>(viewer, "_guests");
+            var approach = ParkPaths.Neighbours(mouth).FirstOrDefault(n => MainPath((n.X, n.Z)));
+            var routeIn = guestWalk?.Route(approach, new ParkCell(stub.X, stub.Y));
+            Check(guestWalk?.QueueStep != null && MainPath((approach.X, approach.Z)) && routeIn != null
+                && routeIn.Skip(1).Select(c => (c.X, c.Z)).SequenceEqual(Enumerable.Reverse(queueRun)),
+                $"the viewer's walker enters at the mouth and walks all {queueRun.Count} queue cells to the stub ({routeIn?.Count - 1} steps)");
+
             // Run the park. Checks every tick; the impatience input once a line has formed.
             var actors = Field<Dictionary<int, Node3D>>(viewer, "_actors");
             var camera = Field<Camera3D>(viewer, "_cam");

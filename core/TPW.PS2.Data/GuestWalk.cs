@@ -271,6 +271,24 @@ public sealed partial class GuestWalk
         return null;
     }
 
+    /// <summary>⭐⭐ THE QUEUE AS THE PLAYER DREW IT, when the park knows it (the viewer passes
+    /// <see cref="PathTool.QueueStep"/>). strawberry, 2026-09-25: guests "dont use the full queue,
+    /// just short-cutting from a path tile next to the queue tile of the entrance". Under the old
+    /// rule below a queue tile could only be a DESTINATION, entered from any open neighbour, so a
+    /// guest walked the paths to whatever tile touched the ride's stub and stepped in, and a stub
+    /// with no path beside it could not be reached at all. With this set a queue tile is entered
+    /// and left only along its run links: a guest joins at the mouth where the queue meets a path
+    /// and walks the whole line to the stub. Null keeps the old rule, for fixtures built on
+    /// <see cref="ParkPaths"/> alone, which has no links to consult.</summary>
+    public Func<ParkCell, ParkCell, bool> QueueStep { get; set; }
+
+    bool IsQueue(ParkCell c) => Paths.Kind(c) == ParkPathKind.Queue && !Paths.IsEntrance(c);
+
+    /// <summary>A step that touches a queue tile must follow its drawn run; any other step is the
+    /// old rule's. True when no queue links are known.</summary>
+    bool QueueOk(ParkCell from, ParkCell to)
+        => QueueStep == null || !(IsQueue(from) || IsQueue(to)) || QueueStep(from, to);
+
     bool Edge(ParkCell from, ParkCell to, ParkCell destination, GuestTerminal occupied, GuestTerminal target)
     {
         if (!Paths.Contains(to)) return false;
@@ -279,7 +297,9 @@ public sealed partial class GuestWalk
         if (target != null && to==target.Entry)
             return to==destination && from==target.Approach && target.CanEnter && Paths.Walkable(from);
         if (occupied != null && to==occupied.Entry) return false; // never transit a private cell
-        if (target != null && to==target.Approach && target.CanEnter) return Paths.Walkable(to);
+        if (target != null && to==target.Approach && target.CanEnter) return Paths.Walkable(to) && QueueOk(from, to);
+        if (QueueStep != null)
+            return IsQueue(from) || IsQueue(to) ? Paths.Walkable(to) && QueueStep(from, to) : Paths.Open(to);
         return Paths.Open(to) || (to==destination && Paths.Walkable(to));
     }
 

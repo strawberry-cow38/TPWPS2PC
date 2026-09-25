@@ -638,6 +638,7 @@ else Check(false, "native ride queue walked: no vetted ride to queue for");
 SfxGraphChecks.Run(disc, Check);
 BridgeChecks.Run(terrain, PathPieces.Read(disc), world, Check);
 QueueRemovalChecks.Run(terrain, PathPieces.Read(disc), world, Check);
+QueueWalkChecks.Run(terrain, PathPieces.Read(disc), world, Check);
 RideValueChecks.Run(Wad("DATA"), wad, world, Check);
 GuestAnimationChecks.Run(Wad("DATA"), Check);
 CompiledShopPurchaseChecks.Run(terrain, loopPaths, corridorStops[0], onPath[^1], Wad("DATA"), wad, world, Check);
