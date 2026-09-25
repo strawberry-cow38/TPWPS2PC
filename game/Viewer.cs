@@ -1255,16 +1255,33 @@ public partial class Viewer : Node3D
 
     /// <summary>The archive folder's own kind. ⭐ These are the five folders every park ships;
     /// the mapping is the folder NAME to the console's kind, not a guess about the thing.</summary>
-    static AssetResourceDatabase.AssetKind? FolderKind(string name) =>
-        Category(name).ToLowerInvariant() switch
+    static AssetResourceDatabase.AssetKind? FolderKind(string name) => KindFromWord(Category(name));
+
+    /// <summary>⭐⭐ ONE RESOLVER FOR BOTH SPELLINGS: a compiled kind's own name (`Ride`,
+    /// `TrackRide`) and the archive folder's (`Rides`, `Sideshow`, `Coasters`).
+    ///
+    /// ⚠⚠ THIS EXISTS BECAUSE HALF THE CALLERS STILL SAY THE FOLDER. Six `ShowBuildCategory`
+    /// calls in the test and demo paths pass "Rides" or "Shops" as literals, and when
+    /// BuildCategory started returning kinds they all silently selected NOTHING -- a harness that
+    /// places a ride, finding no ride to place, and reporting no error. Accepting both spellings
+    /// fixes every caller at the root instead of at six call sites, and keeps working if another
+    /// one turns up.</summary>
+    static AssetResourceDatabase.AssetKind? KindFromWord(string word)
+    {
+        if (string.IsNullOrEmpty(word)) return null;
+        switch (word.ToLowerInvariant())
         {
-            "rides"    => AssetResourceDatabase.AssetKind.Ride,
-            "shops"    => AssetResourceDatabase.AssetKind.Shop,
-            "sideshow" => AssetResourceDatabase.AssetKind.Sideshow,
-            "features" => AssetResourceDatabase.AssetKind.Feature,
-            "upgrades" => AssetResourceDatabase.AssetKind.TrackUpgrade,
-            _ => null,
-        };
+            case "rides":    return AssetResourceDatabase.AssetKind.Ride;
+            case "shops":    return AssetResourceDatabase.AssetKind.Shop;
+            case "sideshow": return AssetResourceDatabase.AssetKind.Sideshow;
+            case "features": return AssetResourceDatabase.AssetKind.Feature;
+            case "upgrades": return AssetResourceDatabase.AssetKind.TrackUpgrade;
+            case "coasters": return AssetResourceDatabase.AssetKind.Coaster;
+        }
+        // ⚠ Letters only: Enum.TryParse also accepts the NUMBER, so "1" would read as Coaster.
+        return char.IsLetter(word[0])
+            && Enum.TryParse<AssetResourceDatabase.AssetKind>(word, true, out var k) ? k : null;
+    }
 
     /// <summary>The category key a thing lists under: the compiled kind's name, or the archive
     /// folder when there is no compiled record.</summary>
@@ -5879,8 +5896,7 @@ public partial class Viewer : Node3D
     }
 
     /// <summary>A category key back to the kind it came from, or null for a folder-derived one.</summary>
-    static AssetResourceDatabase.AssetKind? KindOf(string key) =>
-        Enum.TryParse<AssetResourceDatabase.AssetKind>(key, true, out var k) ? k : null;
+    static AssetResourceDatabase.AssetKind? KindOf(string key) => KindFromWord(key);
 
     /// ⚠⚠ IT COUNTS THINGS, NOT MODELS, off the same <see cref="BuildableRows"/> the list draws.
     /// Counting models promised "Rides (47)" over a list of eighteen.
@@ -5931,8 +5947,13 @@ public partial class Viewer : Node3D
         _buildCategory = category;
         _buildRows.Clear();
         foreach (int i in BuildableRows())
-            if (BuildCategory(_lib.Rides[i]).Equals(category, StringComparison.OrdinalIgnoreCase))
+        {
+            // ⭐ Compare KINDS, not strings, so "Rides" and "Ride" both select the same things.
+            var want = KindFromWord(category);
+            if (want is { } k ? BuildKind(_lib.Rides[i]) == k
+                              : BuildCategory(_lib.Rides[i]).Equals(category, StringComparison.OrdinalIgnoreCase))
                 _buildRows.Add(i);
+        }
         // ⚠ THE CONTROL, kept: after the collapse this must print NOTHING. It is what showed the
         // duplicates were one .sam each rather than sixteen rides, and it is what would catch the
         // collapse silently stopping.
@@ -5948,7 +5969,15 @@ public partial class Viewer : Node3D
         foreach (var (n, list) in seen)
             if (list.Count > 1)
                 GD.Print($"[build.dup] \"{n}\" x{list.Count}: {string.Join(" | ", list)}");
-        Status($"{Title(category)}: {_buildRows.Count} things -- pick one, then click the park");
+        // ⚠⚠ THE INSTRUMENT THAT WOULD HAVE CAUGHT THE LAST BREAK. Six callers pass a category
+        // as a literal; when BuildCategory started returning kinds they all matched NOTHING and
+        // said nothing about it -- a harness placing a ride, finding none, reporting success.
+        // An EMPTY category is either a bad key or an empty park, and both are worth a line.
+        if (_buildRows.Count == 0)
+            GD.PrintErr($"[build] category '{category}' selected NOTHING out of "
+                      + $"{BuildableRows().Count} buildable things -- is that key one of "
+                      + $"{string.Join("/", BuildCategoryNames.Order.Select(o => o.Kind))}?");
+        Status($"{CategoryName(category)}: {_buildRows.Count} things -- pick one, then click the park");
     }
 
     /// <summary>⭐⭐ ONE .sam IS ONE THING TO BUILD. Master saw "Dino Karts" sixteen times and
@@ -5997,6 +6026,13 @@ public partial class Viewer : Node3D
         return _buildThings;
     }
 
+    /// <summary>⭐ The kinds whose entrance lays a QUEUE rather than a path. ⚠ Coaster is absent
+    /// deliberately -- see <see cref="ArmFromList"/>.</summary>
+    static bool TakesQueueStub(AssetResourceDatabase.AssetKind? k) =>
+        k is AssetResourceDatabase.AssetKind.Ride
+          or AssetResourceDatabase.AssetKind.TrackRide
+          or AssetResourceDatabase.AssetKind.TourRide;
+
     /// <summary>Take an item out of the menu and hold it over the park.</summary>
     void ArmFromList(int row)
     {
@@ -6006,10 +6042,25 @@ public partial class Viewer : Node3D
         if (def == null) { Status($"{Leaf(r.Name)} has no .sam beside it -- nothing to place it by"); return; }
         var fp = def.Shape != null ? Park.Footprint.From(def.Shape)
                                    : new Park.Footprint(1, 1, new[,] { { true } }, -1, -1);
-        // ⭐ The CATEGORY decides whether it has a queue, and the category is where the row came
-        // from -- not a field read back off the .sam.
-        _place.Arm(def, DisplayName(r, def), def.Id ?? 1, fp,
-                   isRide: "Rides".Equals(_buildCategory, StringComparison.OrdinalIgnoreCase));
+        // ⭐ The KIND decides whether it has a queue, and the kind is what the row came from --
+        // not a field read back off the .sam.
+        //
+        // ⚠⚠ THIS WAS A STRING COMPARE AND IT BROKE SILENTLY. It read
+        // `"Rides".Equals(_buildCategory)`, and `_buildCategory` used to hold the archive FOLDER.
+        // When BuildCategory started returning the compiled KIND (`Ride`, `TrackRide`, ...) the
+        // compare went false for everything, so `Placement.IsRide` was always false: every ride's
+        // entrance laid a PATH instead of a queue, and the door marker fell to 172, the exit's,
+        // which is why the entrance and exit looked like one combo node. Master: "did YOU change
+        // all ride entrances to combo entry/exits and make the queues into paths?"
+        //
+        // The build stayed green because `"Rides".Equals(...)` is still perfectly valid C#. This
+        // is the same trap as `Call(o, "Name")`: I changed what a function RETURNS without
+        // grepping for who compares its result.
+        //
+        // ⚠ COASTERS ARE NOT INCLUDED, and were not before either: a coaster's old key was
+        // "Coasters", not "Rides", so it never took a queue stub. Restoring the behaviour, not the
+        // behaviour I assumed it had.
+        _place.Arm(def, DisplayName(r, def), def.Id ?? 1, fp, isRide: TakesQueueStub(BuildKind(r)));
         _armedRide = r;
         _ghostAt = (-1, -1, -1, -1);
         Status($"holding {_place.Display} ({fp.Width}x{fp.Height}) -- click to put it down, . to turn");
