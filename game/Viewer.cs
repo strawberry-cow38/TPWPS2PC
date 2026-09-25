@@ -3155,13 +3155,21 @@ public partial class Viewer : Node3D
 
         var spec = _laptopScreen.StartsWith("side", StringComparison.OrdinalIgnoreCase) ? LaptopScreen.Sideshow
                  : _laptopScreen.StartsWith("shop", StringComparison.OrdinalIgnoreCase) ? LaptopScreen.Shop
+                 : _laptopScreen.StartsWith("build", StringComparison.OrdinalIgnoreCase) ? LaptopScreen.Build
+                 : _laptopScreen.StartsWith("hire", StringComparison.OrdinalIgnoreCase) ? LaptopScreen.Hire
                  : LaptopScreen.Ride;
         string title = spec == LaptopScreen.Ride ? "Crazy Ape"
-                     : spec == LaptopScreen.Sideshow ? "Arcade" : "Drinks Shop";
+                     : spec == LaptopScreen.Sideshow ? "Arcade"
+                     : spec == LaptopScreen.Build ? "Crazy Ape"
+                     : spec == LaptopScreen.Hire ? "Mechanic" : "Drinks Shop";
 
         // ⭐ Build the model once, from the ride the screen is about, then step it per frame.
         if (_laptopModel == null && _laptopFrame == 0 && _lib?.Rides != null)
         {
+            // ⚠ This picks out of `_lib.Rides` by substring, so it is only honest for the screens
+            // whose subject IS a ride. Shop, sideshow and staff models live elsewhere and are not
+            // wired, which is why those screens render the wrong model or none -- a HARNESS gap,
+            // recorded in findings rather than passed off as the port's behaviour.
             string want = spec == LaptopScreen.Sideshow ? "arcade"
                         : spec == LaptopScreen.Shop ? "balloon" : "monkey";   // Crazy Ape's asset
             var pick = _lib.Rides.FirstOrDefault(r => r.Name.Contains(want, StringComparison.OrdinalIgnoreCase))

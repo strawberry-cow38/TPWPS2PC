@@ -38,12 +38,26 @@ public static class LaptopMainMenu
     public readonly record struct Option(int Index, int TextId, string Handler, string Condition = null,
                                          string Opens = null);
 
-    /// <summary>⭐⭐ The MAIN menu, in `FUN_0016e558`'s append order. At most EIGHT rows, which is
-    /// why it fits where thirteen did not.</summary>
+    /// <summary>⭐⭐ The MAIN menu, in `FUN_0016e558`'s append order. The console appends at most
+    /// EIGHT rows; splitting Build &amp; Hire makes it NINE, still inside the eleven the panel
+    /// holds.</summary>
     public static readonly Option[] Main =
     {
         new(0,  530,  null,           null,                       "main_info"),          // Information
-        new(6,  752,  "FUN_001c7220", "FUN_0014c928 && FUN_0014c8b8", "main_buildhire"), // Build & Hire
+        // ⚠⚠ DELIBERATE DEPARTURE FROM THE CONSOLE, at master's request: "split build & hire into
+        // separate build / hire options". The console has ONE pooled entry 6, `Build & Hire`
+        // (text 752), whose menu `main_buildhire` then offers Items and Staff -- its own scene
+        // file says so in its comment ("main build menu; items/staff text") and it `<include>`s
+        // `main_bh_items.sce` and `main_bh_staff.sce`. These two rows hoist that second level up,
+        // removing a step. ⭐ Both still share entry 6's condition, because they are the same
+        // console entry split in two; nothing about WHEN it appears has changed.
+        //
+        // ⚠ `Build` takes 801, `STR_MAINMENU_BUILD` -- a real main-menu string, and the same text
+        // the console's own pool entry 13 uses. `Hire` takes 291, `STR_GIZMO_CPP_HIRE`: there is
+        // NO `STR_MAINMENU_HIRE` in the table, so that one is BORROWED from the gizmo bar and is
+        // the one label here the console never shows in a menu.
+        new(6,  801,  "FUN_001c7220", "FUN_0014c928 && FUN_0014c8b8", "main_bh_items"), // Build
+        new(6,  291,  "FUN_001c7220", "FUN_0014c928 && FUN_0014c8b8", "main_bh_staff"), // Hire
         new(7,  1042, "FUN_001c7108", null,                       "main_research"),      // Research
         new(8,  485,  "FUN_001c7a98", null,                       "main_parkstats"),     // Park Statistics
         new(9,  441,  "FUN_001c78d0", null,                       "main_financialinfo"), // Financial Information

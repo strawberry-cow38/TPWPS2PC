@@ -621,3 +621,39 @@ eleven label rows, 115 to 435.
 
 ⚠ The port now refuses loudly (`GD.PrintErr`) if a menu exceeds eleven rows, rather than drawing
 onto the chrome. The two prior guesses both showed up as silent overflow.
+
+## Build and Hire, split and wired (2026-09-25)
+
+Master: *"split build & hire into separate build / hire options. then wire up the menus behind
+those options"*.
+
+**What was behind it.** `main_buildhire.sce` holds one `TextOptions` list and its own comment says
+what it lists -- *"main build menu; items/staff text"* -- and it `<include>`s `main_bh_items.sce`
+and `main_bh_staff.sce`. So the console's single `Build & Hire` opens a two-item menu. Splitting it
+hoists that second level up and removes a step.
+
+⚠⚠ **This is a deliberate departure from the console**, and it is the only one on this screen. Both
+rows still carry pool entry 6's condition, because they are one console entry shown as two; nothing
+about WHEN they appear has changed. `Build` takes text 801 (`STR_MAINMENU_BUILD`), a real main-menu
+string. `Hire` takes 291 (`STR_GIZMO_CPP_HIRE`) -- there is **no `STR_MAINMENU_HIRE`** in the
+table, so that label is borrowed from the gizmo bar and is the one string here the console never
+shows in a menu.
+
+**The two screens, read from their draws rather than their scene comments:**
+
+| screen | draw | label ids | rows |
+|---|---|---|---|
+| `main_bh_items` (Build) | `FUN_00198b48` | 780, 375, 969, 61, 1060 | Purchase Cost $, Balance $, No. Owned int, Excitement slider, Reliability slider |
+| `main_bh_staff` (Hire) | `FUN_00199008` | 773, 886, 833 | Pay Grade, Monthly Wage $, Motivation slider |
+
+⭐⭐ **Excitement and Reliability reuse the RIDE screen's own ids** -- 61 and 1060, the same two
+numbers already in `LaptopScreen.Ride`. That is corroboration across two independently decoded
+screens rather than a coincidence. Both draws also carry the **32** row step ten times over and the
+**(200,130)** label colour, so the whole laptop really is one widget family.
+
+⭐ The items scene's comment ("PurchaseCost/Balance/NumberOwned/Excitment Reliability") turns out to
+be right -- but only because the last two are SLIDERS with their own elements rather than text
+rows. It was checked against the draw, not believed; the ride screen's comment omitted a row.
+
+⭐ Nine main-menu rows now, still inside the eleven the panel holds, and the overflow guard stayed
+silent.

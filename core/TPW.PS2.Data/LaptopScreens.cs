@@ -79,6 +79,40 @@ public sealed record LaptopScreen(
             new(415,  LaptopRowKind.Value,  "UsersVal"),         // Users
         });
 
+    /// <summary>⭐ The BUILD screen, `main_bh_items` -- what "Build &amp; Hire" opens for items.
+    /// Drawn by `FUN_00198b48`, whose label ids read **780, 375, 969, 61, 1060** in that order.
+    ///
+    /// ⭐⭐ EXCITEMENT AND RELIABILITY REUSE THE RIDE SCREEN'S OWN IDS (61 and 1060), which is a
+    /// corroboration rather than a coincidence: the same two numbers already label the ride info
+    /// screen in <see cref="Ride"/>. The draw also carries the 32 row step ten times over and the
+    /// (200,130) label colour, so it is the same widget family throughout.
+    ///
+    /// ⚠ The `.sce` comment says "PurchaseCost/Balance/NumberOwned/Excitment Reliability" and this
+    /// time it is right -- but only because the last two are SLIDERS with their own elements, not
+    /// text rows. The comment was checked against the draw rather than believed.</summary>
+    public static readonly LaptopScreen Build = new(
+        "main_bh_items.sce", 0x00, "ItemSelect", "TextItems", "NumericItems", "Model",
+        new LaptopRow[]
+        {
+            new(780,  LaptopRowKind.Money),                          // Purchase Cost
+            new(375,  LaptopRowKind.Money),                          // Balance
+            new(969,  LaptopRowKind.Value),                          // No. Owned
+            new(61,   LaptopRowKind.Slider, "ExcitementSlider"),     // Excitement
+            new(1060, LaptopRowKind.Slider, "ReliabilitySlider"),    // Reliability
+        });
+
+    /// <summary>⭐ The HIRE screen, `main_bh_staff`. Drawn by `FUN_00199008`, label ids
+    /// **773, 886, 833**. ⚠ Three rows, and the scene comment agrees for once.
+    /// Motivation is both a label and a slider, which is why 833 carries an element.</summary>
+    public static readonly LaptopScreen Hire = new(
+        "main_bh_staff.sce", 0x00, "StaffSelect", "TextItems", "NumericItems", "Model",
+        new LaptopRow[]
+        {
+            new(773, LaptopRowKind.Text),                            // Pay Grade
+            new(886, LaptopRowKind.Money),                           // Monthly Wage
+            new(833, LaptopRowKind.Slider, "MotivationSlider"),      // Motivation
+        });
+
     /// <summary>⭐ The SIDESHOW screen, `main_i_sideshow_data`, menu 0x13, bound by `FUN_001D7A30`
     /// and drawn by `FUN_001D8288`. Labels are `STR_SINGLESHOW_*`.
     ///
