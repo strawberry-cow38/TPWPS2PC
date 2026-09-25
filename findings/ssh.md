@@ -99,11 +99,53 @@ bytes **relative to GM**, and is in ordinary image-row order. Alpha values repre
 convert to RGBA8 with `min(255, alpha * 2)`.
 
 RGB macroblocks traverse columns, while the pixels inside each 16x16 macroblock traverse rows.
-An 8x8 texture uses the first 64 **consecutive RGB pixels** of a decoded 16x16 buffer; cropping
-an 8x8 rectangle is wrong. For the three small images, cropping scored **36.536458, 34.911458,
-50.578125** RGB MAE; packing consecutive pixels scores **4.098958, 5.744792, 10.041667**.
-The one 8x8 alpha texture retains the **16-pixel alpha row stride**, independently of RGB.
-Flattening its alpha gave **17.343750** mean alpha error; the coded stride gives **0**.
+This is confirmed from the game's own uploaders (`0x223fe0` immediate IDEC->VRAM, `0x224660` and
+`0x236768` `texssh::generategifchain`): each IMAGE transfer is a **16-wide column strip** of the
+entry's full height at `DSAX = 16 * strip`, which is exactly this placement.
+
+## Sub-macroblock images: an ENCODER artefact, and the game never displays them
+
+An entry with a dimension under 16 does not follow either rule above, and the two planes do not
+even follow the *same* rule. There are **14** such entries on the disc: six 8x8, and the eight
+`UI.WAD/laptop/` tiles at 8x32, 32x8 and 16x8.
+
+⭐⭐ **THE GAME REFUSES ALL OF THEM.** `ctex_ssh::load` at `0x235d68` is the executable's only
+SHPS parser — it holds the sole reference to the `"SHPS"` string at `0x36fd90`; the other `"SHPS"`
+at `0x2f0c80` is an embedded splash fed straight to the IPU by the boot routine at `0x12d268`. It
+walks every directory entry and rejects the **whole file** if any entry is under 16 in either
+dimension:
+
+```
+if (entryWidth < 0x10 || entryHeight < 0x10) {
+    printf("*** ERROR ctex::load - mipmap too small (%d,%d)\n", w, h);   ; 0x36fe20
+    <destroy texture>; return 0;
+}
+```
+
+So there is no in-game rendering to match, the engine **cannot** settle this layout, and the
+encoder's bytes are the only authority — the source art it was given is the correct target. It
+also means these are **dead assets**: eleven of the 62 laptop files are unloadable on this build,
+so the laptop's inner nine-slice is not drawn from `L_edge*`/`L_fill` and a port should not
+reinstate them.
+
+**RGB** — the `W*H` source pixels sit **contiguously** in the coded raster (image pixel `p` =
+coded pixel `p`), with stale encoder memory after them. Cropping a `W x H` rectangle is wrong.
+
+**Alpha** — a *different* artefact: the encoder copied `codedWidth` bytes per coded row starting
+at `src + y*W`, so the image is the **top-left crop at the coded stride** and the columns past it
+are literally the next source row. The existing `alphaOffset + y*codedWidth + x` expression is
+already this; the mechanism is what was previously unstated.
+
+| claim | evidence | status |
+| --- | --- | --- |
+| 8x8 RGB contiguous | 3 TGA controls: MAE **10.0 / 4.1 / 5.7** against **50.6 / 36.5 / 34.9** for a crop, whose rows 4-7 score 60-129 (the stale memory) | measured |
+| 8x8 alpha = crop at coded stride | `AWARD_T_8` alpha MAE **0.0**; contiguous scores **17.3** | measured |
+| the alpha row rule, all 8-wide files | coded row `y` cols 8..15 equal row `y+1` cols 0..7 **exactly** — 248 of 248 pairs per 8x32 file, 120 of 120 per 8x8 — and the byte after `src[W*H]` is `0x44` in **all ten** sub-16 alpha files, at the coordinate the rule predicts | read from the bytes |
+| 8x32 RGB contiguous | **no TGA exists.** The laptop edges are one bevel in two orientations: read contiguously, `L_edge1`/`L_edge3` match the **32x8** `L_edge2`/`L_edge4` profile (which have no layout choice) at luma MAE **0.72 / 3.31**; a crop scores 34 / 44; a control pairing of unrelated tiles scores 31 | **corroborated, NOT TGA-proven** |
+| 32x8, 16x8 | single macroblock row, so contiguous and crop are the same expression | no choice exists |
+
+⚠ The guard admits only a sub-16 dimension of **8**, because 8 is the only one on this disc.
+Shapes like 8x16 or 8x64 are unmeasured and are refused rather than guessed at.
 
 The supplied source set contains **399 Targa images and 1 PNG named `.tga`**. The scorer detects
 that PNG signature and uses FFmpeg's existing PNG decoder. It is included in the 306 subset.
