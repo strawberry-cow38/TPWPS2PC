@@ -27,8 +27,7 @@ public partial class NativeEntranceFlowSmoke : Node3D
         {
             Check(DisplayServer.GetName()!="headless","rendering display required");
             viewer=new Viewer{Name="Viewer"};
-            Set(viewer,"_experimentalEntrance",true);
-            Set(viewer,"_experimentalEntranceFee",10); // explicit money-consumer fixture, not scenario default
+            Set(viewer,"_entranceFee",10); // explicit money-consumer fixture, not scenario default
             AddChild(viewer);viewer.SetProcess(false);
             await ToSignal(GetTree(),SceneTree.SignalName.ProcessFrame);
             var park=Field<Park>(viewer,"_park");

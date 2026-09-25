@@ -27,8 +27,7 @@ public partial class NativeRejectedDepartureSmoke : Node3D
         {
             Check(DisplayServer.GetName()!="headless","rendering display required");
             viewer=new Viewer{Name="Viewer"};
-            Set(viewer,"_experimentalEntrance",true);
-            Set(viewer,"_experimentalEntranceFee",int.MaxValue); // explicit rejection fixture, not an authored price
+            Set(viewer,"_entranceFee",int.MaxValue); // explicit rejection fixture, not an authored price
             AddChild(viewer);viewer.SetProcess(false);
             await ToSignal(GetTree(),SceneTree.SignalName.ProcessFrame);
             var park=Field<Park>(viewer,"_park");

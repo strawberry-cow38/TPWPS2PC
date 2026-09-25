@@ -7,17 +7,20 @@ namespace TPWPS2Viewer;
 
 public partial class Viewer
 {
-    // OPT-IN RESEARCH ADAPTER. Never silently replace the documented main behavior:
-    // the route finder, pool/readiness and departure producer are not fully ported.
-    bool _experimentalEntrance;
+    // ⭐ THE DEFAULT SINCE 2026-09-25 (strawberry: make tickets part of normal play). Guests off the
+    // bus queue at the booths, pay the entry fee into park income or turn back and ride home.
+    // `--legacy-entrance` (or _legacyEntrance) restores the old walk-in from the bus stop.
+    // ⚠ Not full parity, and the startup log says which adapters stand in: the route finder is
+    // this port's BFS, pool/readiness is the documented bypass unless --native-guest-animation,
+    // and the fee is the ordinary constructor seed only.
+    bool _legacyEntrance;
     NativeActivationSequence _nativeActivations; // process/viewer lifetime; NOT reset on each park
     readonly HashSet<int> _entranceRequestFlags = new();
     // The command line is read ONCE: these are consulted every park tick and, via Gait, every guest
     // every frame (review 2026-09-25). Same argv union as the main parser (Viewer.cs, `argv`).
     static readonly Lazy<HashSet<string>> ResearchFlags = new(() =>
         OS.GetCmdlineArgs().Concat(OS.GetCmdlineUserArgs()).Where(a => a.StartsWith("--")).ToHashSet());
-    bool ExperimentalEntranceRequested => _experimentalEntrance
-        || ResearchFlags.Value.Contains("--experimental-native-entrance");
+    bool NativeEntranceOn => !_legacyEntrance && !ResearchFlags.Value.Contains("--legacy-entrance");
 
     NativeActivationSequence ActivationSequence()
     {
@@ -30,9 +33,9 @@ public partial class Viewer
         return _nativeActivations;
     }
 
-    void ActivateExperimentalPlacement(Node3D node, RideDefinition definition)
+    void ActivateNativePlacement(Node3D node, RideDefinition definition)
     {
-        if (!ExperimentalEntranceRequested) return;
+        if (!NativeEntranceOn) return;
         uint serial = ActivationSequence().Activate($"placed:{definition?.CompiledEntry?.Kind}");
         node.SetMeta("represented_activation_serial", (long)serial);
     }
@@ -49,15 +52,14 @@ public partial class Viewer
     // Ordinary variants use constructor100470's 150 seed. Saved scenario/UI fee
     // overrides are not joined. A fixture can explicitly replace this fee, never
     // silently infer one from shop price or park balance.
-    int _experimentalEntranceFee = 150;
+    int _entranceFee = 150;
 
     static Point EntranceCentre(ParkCell c) => new(checked((short)(c.X * 256 + 128)),
         checked((short)(c.Z * 256 + 128)));
 
-    void EnsureExperimentalEntrance()
+    void EnsureNativeEntrance()
     {
-        _experimentalEntrance |= ExperimentalEntranceRequested;
-        if (!_experimentalEntrance || _entranceFlow != null || _visitors == null || !EnsureNativeBus()) return;
+        if (!NativeEntranceOn || _entranceFlow != null || _visitors == null || !EnsureNativeBus()) return;
         _entranceWalk = _guests;
         _entranceVisitors = _visitors;
         Point stage = EntranceCentre(_busCatalogue.StagingPoint);
@@ -70,14 +72,14 @@ public partial class Viewer
             NativeEntranceReady, // 191E10 under --native-guest-animation; otherwise the documented bypass
             () => 0x4000,
             g => NativeEntranceAcceptance.TryCharge(_entranceVisitors.Needs, g.Id, _sim.Finances,
-                () => _experimentalEntranceFee, EntranceValueSum, n => _guestRng.Next(n),
+                () => _entranceFee, EntranceValueSum, n => _guestRng.Next(n),
                 () => _entranceAccepted++),
-            ExperimentalEntranceExit,
+            EntranceExit,
             g => {
                 _entranceRejected++;
-                GD.Print($"[entrance.experimental] guest {g.Id} rejected: native outgoing journey under represented-activation phase adapter");
+                GD.Print($"[entrance] guest {g.Id} rejected: native outgoing journey under represented-activation phase adapter");
             },
-            _guests.StepOwnedNative, exitCandidates: ExperimentalEntranceExitCandidates,
+            _guests.StepOwnedNative, exitCandidates: EntranceExitCandidates,
             busPoint: (g, index) => index == 0 ? EntranceCentre(_busCatalogue.Point0)
                 : throw new InvalidOperationException("Ordinary departure RNG(1) must select point0."),
             requestDetailed: request => {
@@ -87,7 +89,7 @@ public partial class Viewer
                 // Flags reach the adapter but native 0x21/0x23 search policy is not yet reproduced by BFS.
                 return RequestEntranceRoute(request.Token, request.Guest, request.Mode, request.From, request.Target);
             },
-            recovery: (g, mode) => GD.Print($"[entrance.experimental] guest {g.Id}: mode{mode} native failure hold; the queue-8 adapter resumes it next update"),
+            recovery: (g, mode) => GD.Print($"[entrance] guest {g.Id}: mode{mode} native failure hold; the queue-8 adapter resumes it next update"),
             slotAdvanced: NativeSlotAdvanced));
 
         _entrancePriorTick = _guests.BeforeStep;
@@ -99,11 +101,11 @@ public partial class Viewer
         };
         _guests.BeforeStep = _entranceTickHook;
         _visitors.NativeDeparture = g => _entranceFlow != null && _entranceFlow.TryDepart(g);
-        GD.Print($"[entrance.experimental] OPT-IN controller: actual bus identities -> two incoming groups -> fee -> normal handoff. point1={_busCatalogue.StagingPoint} point2={_busCatalogue.IncomingQueuePoint}");
+        GD.Print($"[entrance] controller (default; --legacy-entrance for the old walk-in): actual bus identities -> two incoming groups -> fee -> normal handoff. point1={_busCatalogue.StagingPoint} point2={_busCatalogue.IncomingQueuePoint}");
         GD.Print(NativeAnimationActive
-            ? "[entrance.experimental] native guest animation: 191E10 readiness over the 2AAD48 dispatcher; adapters: one model update per park tick after steps, every owned guest pushed, NewlibRand stream, section 0 drawn as the section-1 walk"
-            : "[entrance.experimental] readiness BYPASS (pass --native-guest-animation for the dispatcher join)");
-        GD.Print("[entrance.experimental] NON-PARITY ADAPTERS: deferred-next-tick public BFS/search resources; ordinary constructor fee seed only; guard staging absent; represented-activation phase only; failed-route holds resumed by an adapter (state0: hand back or retry 26; state5: retry the bus leg); ordinary departure enters state26 at once (20C930's later arms unjoined, 211D48 roll unported); guests not admitted by this flow still leave by the legacy gate. Not release-ready.");
+            ? "[entrance] native guest animation: 191E10 readiness over the 2AAD48 dispatcher; adapters: one model update per park tick after steps, every owned guest pushed, NewlibRand stream, section 0 drawn as the section-1 walk"
+            : "[entrance] readiness BYPASS (pass --native-guest-animation for the dispatcher join)");
+        GD.Print("[entrance] NON-PARITY ADAPTERS: deferred-next-tick public BFS/search resources; ordinary constructor fee seed only; guard staging absent; represented-activation phase only; failed-route holds resumed by an adapter (state0: hand back or retry 26; state5: retry the bus leg); ordinary departure enters state26 at once (20C930's later arms unjoined, 211D48 roll unported); guests not admitted by this flow still leave by the legacy gate. Not release-ready.");
     }
 
     bool RequestEntranceRoute(ulong token, Guest guest, int mode, Point from, Point target)
@@ -136,13 +138,13 @@ public partial class Viewer
         return sum;
     }
 
-    Point? ExperimentalEntranceExit(Guest guest)
+    Point? EntranceExit(Guest guest)
     {
-        foreach (var point in ExperimentalEntranceExitCandidates(guest)) return point;
+        foreach (var point in EntranceExitCandidates(guest)) return point;
         return null;
     }
 
-    IEnumerable<Point> ExperimentalEntranceExitCandidates(Guest guest)
+    IEnumerable<Point> EntranceExitCandidates(Guest guest)
     {
         // Narrow reachable-case join: a released incoming HEAD is exactly point2,
         // whose corridor receives native flag8 in14E958..9BC. Do not equate every
@@ -162,7 +164,7 @@ public partial class Viewer
         }
     }
 
-    void ResetExperimentalEntrance()
+    void ResetNativeEntrance()
     {
         if (_entranceWalk != null && _entranceWalk.BeforeStep == _entranceTickHook)
             _entranceWalk.BeforeStep = _entrancePriorTick;

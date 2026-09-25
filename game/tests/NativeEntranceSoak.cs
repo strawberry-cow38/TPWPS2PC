@@ -32,7 +32,6 @@ public partial class NativeEntranceSoak : Node3D
         {
             Check(DisplayServer.GetName()!="headless","rendering display required");
             viewer=new Viewer{Name="Viewer"};
-            Set(viewer,"_experimentalEntrance",true);
             Set(viewer,"_nativeLoadsOfKids",true); // the executable's batch cheat rule: fills the entrance
             AddChild(viewer);viewer.SetProcess(false);
             await ToSignal(GetTree(),SceneTree.SignalName.ProcessFrame);

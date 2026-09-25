@@ -3935,7 +3935,7 @@ public partial class Viewer : Node3D
         SeedIdleScene();
         if (_visitors != null)
         {
-            EnsureExperimentalEntrance();
+            EnsureNativeEntrance();
             Snapshot();
             _visitors.Step(ConsoleClock.TickSeconds, Wander);
             Retry();

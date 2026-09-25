@@ -31,7 +31,7 @@ public partial class Viewer
     void ResetNativeBus()
     {
         ResetNativeRideQueues(); // first: its tick hook wraps the entrance flow's
-        ResetExperimentalEntrance();
+        ResetNativeEntrance();
         ResetBusAudio();
         if (_nativeBus?.Root is {} root && IsInstanceValid(root)) root.QueueFree();
         _nativeBus=null;_nativeBusMesh=null;_busCatalogue=null;_busSourceKey=null;
@@ -43,7 +43,7 @@ public partial class Viewer
     void RegisterBusPlacement(Node3D node,int runtimeId,RideDefinition definition)
     {
         _busPlacements.Add((node,runtimeId,definition));
-        ActivateExperimentalPlacement(node, definition);
+        ActivateNativePlacement(node, definition);
         if(definition?.CompiledEntry==null)
             GD.Print($"[bus] placed object {runtimeId} has no compiled identity; omitted from native demand/catalog representation");
     }
@@ -72,7 +72,7 @@ public partial class Viewer
             GD.Print($"[bus] loaded {key} -> {stem}; point0={_busCatalogue.Point0}; catalog={_busCatalogue.TotalEntries}");
             // Only true when the native entrance flow is OFF: with it on, the flow feeds these counts,
             // and this line sat beside every opt-in PASS as a stale witness (review 2026-09-25).
-            if (!ExperimentalEntranceRequested)
+            if (!NativeEntranceOn)
                 GD.Print("[bus] boundary: UNPORTED entrance-group queues and sticky departure-deferral pressure. Zero inputs BYPASS the backlog reduction (entrance bound stays20) and departure-pressure veto; busy-park admissions can exceed native. No attraction-minigame session exists in this port.");
             return true;
         }
@@ -187,6 +187,9 @@ public partial class Viewer
                 admitted++;
             }
         _busAdmitted+=admitted;
-        GD.Print($"[bus.arrivals] {BusClock}ms request={_busBatches} score={score} ceiling={ceiling} population={population} bounds[demand={bounds.Demand},entrance={bounds.Entrance},headroom={bounds.Headroom}] requested={requested} admitted={admitted} point0={at}");
+        GD.Print($"[bus.arrivals] {BusClock}ms request={_busBatches} score={score} ceiling={ceiling} population={population} bounds[demand={bounds.Demand},entrance={bounds.Entrance},headroom={bounds.Headroom}] requested={requested} admitted={admitted} point0={at}"
+            // ⭐ Who got in and who turned back, so the ticket booth is readable from a log: the balance
+            // alone nets fees against running costs and ride takings and cannot say anyone paid.
+            + (_entranceFlow == null ? "" : $" entrance[accepted={_entranceAccepted} rejected={_entranceRejected} fee={_entranceFee}]"));
     }
 }

@@ -200,6 +200,13 @@ preempts it, and a CP4 contradiction reorders it. Human testing is collected at 
       - Open with strawberry: whether decoded behaviour (for example the ride queues' spots, the
         cap of 7, impatience and close-up) gets folded into the normal port logic, written
         frame-rate independent, or stays reference only.
+    - **Revisited 2026-09-25 ~15:57 UTC: YES, for the entrance only.** Asked whether guests arrive by
+      bus, buy tickets and enter, then offered "make tickets part of normal play", strawberry: "yes go".
+      The entrance flow (booth queues, the fee into park income, turn-back and ride home) is now the
+      default; `--legacy-entrance` restores the walk-in. It runs on the park's fixed 40 ms tick like
+      the rest of the sim, so the 25 Hz objection above does not add a new frame-rate dependence.
+      Ride queues, native guest animation and idle-all stay opt-in. Residual adapters are printed at
+      startup (`[entrance] NON-PARITY ADAPTERS`).
 12. **Scope items, in strawberry's order** (section 7): the M5 census of non-boarding rides first
     (read-only), then each in-scope feature (save/load, coasters and track rides, staff, research,
     advisor). Each gets a CP1 naming the player action it enables.
