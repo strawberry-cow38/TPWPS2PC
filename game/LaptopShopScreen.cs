@@ -269,25 +269,21 @@ public sealed partial class LaptopShopScreen : Control
                 var want = new Color(LaptopArrows.Rendered.R / (float)LaptopArrows.Art.R,
                                      LaptopArrows.Rendered.G / (float)LaptopArrows.Art.G,
                                      LaptopArrows.Rendered.B / 255f);
-                // ⚠ The element's row is the sprite's BOTTOM -- see LaptopArrows.
+                // ⚠⚠ THE ELEMENT'S ROW IS THE SPRITE'S CENTRE, and getting this wrong twice is
+                // what master saw: "the thing misaligned were the arrows on prize and price for
+                // sideshows". Derived rather than nudged -- a label row is the TEXT'S TOP and
+                // Large.bff advances 30, so a line's middle is row + 15; the arrow elements sit
+                // at 353 and 384 against labels at 339 and 371, i.e. 14 and 13 below. That is the
+                // half-line, so the row is where the arrow's middle goes.
                 var size = new Vector2(LaptopArrows.NativeWidth, LaptopArrows.NativeHeight) * s;
-                DrawTextureRect(_arrows,
-                    new Rect2(At(arrow) - new Vector2(0, size.Y), size), false, want);
+                DrawTextureRect(_arrows, new Rect2(At(arrow) - new Vector2(0, size.Y / 2f), size), false, want);
             }
 
             if (text == null) continue;
             // A row with its own value element uses it; otherwise the shared value column, at the
             // label's height.
-            // ⭐⭐ ONE RULE FOR EVERY VALUE: the element gives its COLUMN, the label gives its
-            // LINE. A value element's own row is only ever a restatement of its label's -- the
-            // ride's AgeVal/UsersVal are 400/436 against labels at 403/435, the sideshow's are
-            // 340/372 against 339/371 -- so honouring it separately buys nothing and costs
-            // alignment. Master: "the prize and game price text is misaligned", and it was,
-            // because these rows took their element's row while every other row took its
-            // label's.
-            if (row.Element != null && layout[row.Element] is { } own && labels is { } onLine)
-                DrawRun(text, new Vector2(At(own).X, At(onLine).Y + dy), s,
-                        Of(ShopScreen.Highlight), own.Justify);
+            if (row.Element != null && layout[row.Element] is { } own)
+                DrawRun(text, At(own), s, Of(ShopScreen.Highlight), own.Justify);
             else if (values is { } v && labels is { } lab)
                 // ⚠ THE VALUE COLUMN CONTRIBUTES ITS X, AND THE LABEL ITS Y. On the shop the two
                 // elements share a row (both 175) so either reading works; on the ride they do
