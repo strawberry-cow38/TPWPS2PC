@@ -130,6 +130,11 @@ if (discArgument >= 0 && discArgument + 1 >= args.Length)
     Check(false, "--disc requires an existing user-supplied path");
 else
     DiscRecognitionChecks.Run(Check, discArgument >= 0 ? args[discArgument + 1] : null);
+int psxArgument = Array.IndexOf(args, "--psx");
+if (psxArgument >= 0 && psxArgument + 1 >= args.Length)
+    Check(false, "--psx requires an existing user-supplied path");
+else
+    PsxChoiceChecks.Run(Check, psxArgument >= 0 ? args[psxArgument + 1] : null);
 await GodotDiscoveryChecks.Run(Check);
 int engineArgument = Array.IndexOf(args, "--engine");
 if (engineArgument >= 0)

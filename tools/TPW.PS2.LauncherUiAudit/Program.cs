@@ -5,6 +5,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
+using TPW.PS2.Data;
 using TPW.PS2.Launcher;
 
 int bad = 0;
@@ -41,6 +42,31 @@ await session.Dispatch(async () =>
         f.ThrowOnStart = false; await f.Click();
         Check(!f.Window.IsVisible, "successful Play retry closes the launcher");
         Check(f.Starts == 2 && f.Builds == 0, "Play retry retries process start without unnecessary rebuilding");
+    }
+    await using (var f = new Fixture())
+    {
+        f.MakeReady(); f.SetMode("Play"); await f.Click();
+        Check(f.Starts == 1 && f.LastPsx == null, "with no PSX disc chosen, the viewer gets no TPW_PSX_DISC at all");
+    }
+    await using (var f = new Fixture())
+    {
+        const string psx = "synthetic psx [two].iso";
+        f.SetPsx(new PsxDisc.Check(PsxDisc.Status.Ok, psx, "fixture"));
+        f.MakeReady(); f.SetMode("Play"); await f.Click();
+        Check(f.Starts == 1 && f.LastPsx == psx, "a readable PSX choice is handed to the viewer as TPW_PSX_DISC");
+    }
+    await using (var f = new Fixture())
+    {
+        f.SetPsx(new PsxDisc.Check(PsxDisc.Status.NotTpw, "not a psx disc.iso", "fixture"));
+        f.MakeReady(); f.SetMode("Play"); await f.Click();
+        Check(f.Starts == 1 && f.LastPsx == null, "an unreadable PSX choice is never handed on");
+    }
+    await using (var f = new Fixture())
+    {
+        f.SetMode("Busy");
+        Check(!f.LocatePsx.IsEnabled && !f.ClearPsx.IsEnabled, "a pending operation disables the PSX picker and Clear");
+        f.SetMode("Play");
+        Check(f.LocatePsx.IsEnabled && f.ClearPsx.IsEnabled, "and they come back after it");
     }
     await using (var f = new Fixture())
     {
@@ -96,6 +122,7 @@ sealed class Fixture : IAsyncDisposable
     public string Assembly { get; }
     public ViewerBuildReceipt Receipt { get; }
     public int BuildExit, Builds, Starts;
+    public string LastPsx = "unset";
     public bool ThrowOnStart, NullStart;
     public TaskCompletionSource<LauncherProcess.Result> BlockBuild;
     const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
@@ -103,6 +130,11 @@ sealed class Fixture : IAsyncDisposable
     void Set(string name, object value) => typeof(MainWindow).GetField(name, Private).SetValue(Window, value);
     public Button Action => Field<Button>("_action");
     public Button Locate => Field<Button>("_locate");
+    public Button LocatePsx => Field<Button>("_locatePsx");
+    public Button ClearPsx => Field<Button>("_clearPsx");
+    /// <summary>Put a PSX identification into the window's choice without a disc.</summary>
+    public void SetPsx(PsxDisc.Check check) =>
+        typeof(PsxDiscChoice).GetProperty("Current").SetValue(Field<PsxDiscChoice>("_psx"), check);
     public string Mode => Field<object>("_mode").ToString();
     public string Status => Field<TextBlock>("_status").Text ?? "";
 
@@ -139,6 +171,7 @@ sealed class Fixture : IAsyncDisposable
                 if (info.UseShellExecute || !info.ArgumentList.SequenceEqual(new[] { "--path", Path.Combine(repo, "game") })
                     || info.Environment["TPW_PS2_DISC"] != Disc)
                     throw new InvalidOperationException("viewer launch arguments/environment contract changed");
+                LastPsx = info.Environment.ContainsKey("TPW_PSX_DISC") ? info.Environment["TPW_PSX_DISC"] : null;
                 if (ThrowOnStart) throw new InvalidOperationException("synthetic start failure");
                 if (NullStart) return null;
                 var handle = new Process(); _handles.Add(handle); return handle; // never started

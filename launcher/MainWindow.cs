@@ -56,6 +56,11 @@ public class MainWindow : Window
     readonly LauncherWindowServices _services;
     readonly Button _locate = new() { Content = "Locate disc…", MinWidth = 110 };
     DiscResult _disc;
+    // The optional PSX disc. Nothing chosen = nothing passed = the launcher as it always was.
+    readonly TextBlock _psxStatus = new() { Foreground = TextDim, TextWrapping = TextWrapping.Wrap };
+    readonly Button _locatePsx = new() { Content = "Locate PSX disc…", MinWidth = 110 };
+    readonly Button _clearPsx = new() { Content = "Clear", MinWidth = 60 };
+    PsxDiscChoice _psx;
     GodotChoice _godot;
     readonly string _baseDir;
     readonly string _repoDir;
@@ -73,6 +78,19 @@ public class MainWindow : Window
         _repoDir = Path.Combine(_baseDir, "TPWPS2PC");
 
         _receipt = new ViewerBuildReceipt(Path.Combine(_baseDir, "viewer-build.json"));
+        _psx = new PsxDiscChoice(Path.Combine(_baseDir, "psx-disc.txt"));
+        _psxStatus.Text = _psx.Current.Message;
+        _locatePsx.Click += async (_, _) =>
+        {
+            if (_mode == Mode.Busy) return;
+            try { await LocatePsxAsync(); }
+            catch (Exception e) { Log($"psx disc: {e.Message}"); }
+        };
+        _clearPsx.Click += (_, _) =>
+        {
+            if (_mode == Mode.Busy) return;
+            _psx.Clear(); ShowPsx();
+        };
         _locate.Click += async (_, _) =>
         {
             if (_mode == Mode.Busy) return;
@@ -104,6 +122,13 @@ public class MainWindow : Window
                                         Foreground = TextDim, FontSize = 11,
                                         TextWrapping = TextWrapping.Wrap },
                         _locate),
+                    Box("PSX disc (optional)", _psxStatus,
+                        new TextBlock { Text = "Not needed to play. A Theme Park World PSX image lets the port "
+                                             + "offer PSX content later; it is read, never copied.",
+                                        Foreground = TextDim, FontSize = 11,
+                                        TextWrapping = TextWrapping.Wrap },
+                        new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8,
+                                         Children = { _locatePsx, _clearPsx } }),
                     Box("Viewer", _buildState),
                     new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12,
                                      Children = { _action, _status } },
@@ -134,6 +159,8 @@ public class MainWindow : Window
                 throw new InvalidOperationException("Environment startup disabled by the isolated host.");
             if (await CheckSelfUpdateAsync()) return;              // may close the window
             Refresh(DiscLocator.Probe());
+            await Task.Run(() => _psx.Load());
+            ShowPsx();
             _godot = await GodotLocator.FindAsync(console: false, readVersion: async path =>
             {
                 var result = await _services.Execute(path, new[] { "--version" }, _baseDir, TimeSpan.FromSeconds(5));
@@ -222,6 +249,7 @@ public class MainWindow : Window
             _action.Content = label;
             _action.IsEnabled = m is not (Mode.Busy or Mode.Broken) || m == Mode.Broken && label == "Retry";
             _locate.IsEnabled = m != Mode.Busy;
+            _locatePsx.IsEnabled = _clearPsx.IsEnabled = m != Mode.Busy;
             _status.Text = status;
             _status.Foreground = m == Mode.Broken ? Bad : m == Mode.Play ? Good : TextDim;
         });
@@ -308,6 +336,9 @@ public class MainWindow : Window
         // brackets, and an argument a shell mangles arrives EMPTY -- which presents as the viewer
         // hanging rather than as a bad path.
         psi.Environment["TPW_PS2_DISC"] = _disc.Path;
+        // Only a disc identified as readable Theme Park World PSX is handed on. Anything else is
+        // left out entirely, so the viewer never has to decide whether to trust it.
+        if (_psx?.LaunchPath is { } psx) psi.Environment["TPW_PSX_DISC"] = psx;
         Log($"launching {Path.GetFileName(_godot.Path)}");
         Process child;
         try { child = _services.Start(psi); }
@@ -355,6 +386,35 @@ public class MainWindow : Window
         var path = files.FirstOrDefault()?.TryGetLocalPath();
         if (path != null) Refresh(DiscLocator.Identify(path));
         await RefreshStateAsync();
+    }
+
+    async Task LocatePsxAsync()
+    {
+        if (!_services.AllowEnvironmentActions)
+            throw new InvalidOperationException("Environment discovery disabled by the isolated host.");
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Select your Theme Park World PSX disc image (optional)",
+            AllowMultiple = false,
+            FileTypeFilter = new[] { new FilePickerFileType("PSX disc image")
+                                     { Patterns = new[] { "*.bin", "*.cue", "*.iso", "*.img" } } },
+        });
+        var path = files.FirstOrDefault()?.TryGetLocalPath();
+        if (path == null) return;
+        _psxStatus.Text = "Reading…";
+        await Task.Run(() => _psx.Choose(path));
+        ShowPsx();
+    }
+
+    void ShowPsx()
+    {
+        var c = _psx.Current;
+        Dispatcher.UIThread.Post(() =>
+        {
+            _psxStatus.Text = _psx.Contents == null ? c.Message : $"{c.Message} {_psx.Contents}.";
+            _psxStatus.Foreground = c.Status == TPW.PS2.Data.PsxDisc.Status.None ? TextDim : c.Readable ? Good : Bad;
+        });
+        if (c.Status != TPW.PS2.Data.PsxDisc.Status.None) Log(c.Readable ? $"psx disc ok: {c.Path}" : $"psx disc: {c.Message}");
     }
 
     void Refresh(DiscResult r)
