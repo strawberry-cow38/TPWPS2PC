@@ -20,7 +20,13 @@ Updated 2026-09-25 by tinyclaw, after the 839f7ca gates.
   walks.
 - The standalone native core is on main as slice A (c5dfe12).
 
-**Latest gates, at aa1075e** (clean committed tree, /tmp/tpw-aa1075e). This revision adds cow's
+**Latest gates, at 487995e** (clean committed tree, /tmp/tpw-487995e). This revision includes main's
+`--idle-scene`, the opt-in `--native-idle-all` and cow's snapshot fix. All 23 projects build, the unit
+tests pass, the audit matrix shows only the retail reds with `landing_evidence=true`, runtime is 11/11,
+and the viewer matrix is 48/48 with loaded == requested. Later commits are docs only
+(findings/native-ride-queue.md).
+
+**Previous gates, at aa1075e** (clean committed tree, /tmp/tpw-aa1075e). That revision added cow's
 GuestWalk.Step snapshot fix. All 23 projects build, the unit tests pass, the audit matrix shows only
 the retail reds with `landing_evidence=true`, runtime is 11/11, and the viewer matrix is 48/48 with
 loaded == requested.
