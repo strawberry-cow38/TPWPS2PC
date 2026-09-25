@@ -6098,6 +6098,45 @@ public partial class Viewer : Node3D
         return _buildThings;
     }
 
+    /// <summary>⭐⭐ THE SHAPE A THING CLAIMS. Master: "the object you place when building a
+    /// coaster shouldnt be a 1x1. its the bigger object, as the station."
+    ///
+    /// Almost everything declares `Info.Shape` in its `.sam` and that is the answer. A COASTER
+    /// does not -- `coaster.sam` carries the track's cross-sections, its car and its pylon, and no
+    /// shape at all, because the track is drawn rather than placed. What you put down first is the
+    /// STATION, which is the model named after the folder (`coaster1.mps` in `/Rides/Coaster1/`),
+    /// and the old fallback gave every shapeless thing a 1x1 -- so a coaster station was placed as
+    /// a single cell.
+    ///
+    /// ⭐ The station's size is its MODEL's, and on this disc one unit is one cell
+    /// (<see cref="Park.CellSize"/> = 1), so the extent in units IS the extent in cells. That is
+    /// the same conversion `Park` already uses for the plot at Park.cs:517, not a new rule.
+    ///
+    /// ⚠ Measured, printed, and only used when there is no authored shape: a thing that declares
+    /// one keeps it, so this cannot quietly resize anything that was already right.</summary>
+    Park.Footprint FootprintFor(AssetLibrary.RideAssets r, RideDefinition def)
+    {
+        if (def.Shape != null) return Park.Footprint.From(def.Shape);
+
+        var drawn = LoadPlaceable(r);
+        if (drawn?.Root != null)
+        {
+            var (lo, hi) = Park.DrawnBounds(drawn.Root, inParent: true);
+            int w = Math.Max(1, Mathf.RoundToInt((hi.X - lo.X) / Park.CellSize));
+            int h = Math.Max(1, Mathf.RoundToInt((hi.Z - lo.Z) / Park.CellSize));
+            drawn.Root.QueueFree();
+            var cells = new bool[w, h];
+            for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) cells[x, y] = true;
+            GD.Print($"[build] {Leaf(r.Name)} declares no Info.Shape; its model measures "
+                   + $"{hi.X - lo.X:F1} x {hi.Z - lo.Z:F1} units -> {w}x{h} cells");
+            // ⚠ No entry or exit: the .sam did not say where they are, and inventing a door would
+            // put a queue stub somewhere the game never puts one.
+            return new Park.Footprint(w, h, cells, -1, -1);
+        }
+        GD.PrintErr($"[build] {Leaf(r.Name)} has no Info.Shape and its model would not load -- 1x1");
+        return new Park.Footprint(1, 1, new[,] { { true } }, -1, -1);
+    }
+
     /// <summary>⭐ The kinds whose entrance lays a QUEUE rather than a path. ⚠ Coaster is absent
     /// deliberately -- see <see cref="ArmFromList"/>.</summary>
     static bool TakesQueueStub(AssetResourceDatabase.AssetKind? k) =>
@@ -6112,8 +6151,7 @@ public partial class Viewer : Node3D
         var r = _lib.Rides[_buildRows[row]];
         var def = DefinitionFor(r.Model);
         if (def == null) { Status($"{Leaf(r.Name)} has no .sam beside it -- nothing to place it by"); return; }
-        var fp = def.Shape != null ? Park.Footprint.From(def.Shape)
-                                   : new Park.Footprint(1, 1, new[,] { { true } }, -1, -1);
+        var fp = FootprintFor(r, def);
         // ⭐ The KIND decides whether it has a queue, and the kind is what the row came from --
         // not a field read back off the .sam.
         //
