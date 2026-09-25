@@ -177,6 +177,41 @@ return base * ((shop[0xba] >> 2) + 0x4b - (shop[0xac] >> 2)) / 100      ; 0x4b =
 infinity — a one-off difference that cannot arise while the slider stays in 0..100, but is a real
 difference in the expression.
 
+## ⭐⭐ Checked against the real screens (2026-09-25)
+
+Master supplied screenshots of three live laptop screens -- the JUNGLE **Drinks Shop**
+(`main_i_shop_data`, the one this file describes), a **Crazy Ape** ride
+(`main_i_ride_data`) and an **Arcade** sideshow (`main_i_sideshow_data`). They are the only
+ground truth in this document; everything else is static analysis.
+
+**Confirmed, byte for byte:**
+
+| claim | the real screen |
+| --- | --- |
+| row order, and the ingredient row | Customers / Cost of Goods / Takings / Profit / Satisfaction / Quality / **Ice** / Sale Price |
+| labels orange, the selected one yellow | "Quality" yellow against the rest orange |
+| satisfaction is a bar: orange frame, cyan fill, FLAT leading edge | frame **(255,162,4)** against `BARPROG`'s (255,157,0); fill **(21,227,212)** against `PROG_VBIT`'s (5,223,211) |
+| `BARPROG`, not the notched `PROG_BAR` | no notches on any bar, on any of the three screens |
+| an empty bar is normal | the Arcade's "Excitement" bar is drawn completely empty |
+
+**Refuted -- both were inferences presented as decodes:**
+
+* **The slider track is NOT tinted.** The brightest pixels in a slider row are **(242,246,26)**,
+  the track's own yellow outline, and `BARSLIDE`'s art already carries it (most saturated yellow
+  **(255,254,0)**). A green-tinted track cannot produce that.
+* **The knob does NOT change with selection.** On the Drinks Shop the Quality knob -- the row
+  being adjusted -- averages **(47,166,14)** over 2145 green pixels and the Ice knob **(49,167,14)**
+  over 2149. The Arcade repeats it: its selected row, "Winning Chance", also has a green knob.
+  ⚠ So `FUN_001DA938`'s branch on bit 0 (`+0xA8` against `+0xA4`) is NOT the selected/unselected
+  split it was read as. Left undecoded rather than guessed at twice.
+
+⭐ The pattern worth keeping: every claim that came from MEASURING held, and every claim inferred
+from recognising a branch was wrong.
+
+**Still missing from this port, visible in the references:** the `◀▶` arrows beside every
+adjustable numeric row (the Arcade has two), the face-button legend in the chrome's notch
+(triangle Back, square Mainmenu, circle Close, with a blank cross), and the model.
+
 ## The art, `UI.WAD/laptop/` (62 files)
 
 | file | what |
