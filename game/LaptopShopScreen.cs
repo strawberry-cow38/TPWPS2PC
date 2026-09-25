@@ -31,7 +31,7 @@ public sealed partial class LaptopShopScreen : Control
     /// coordinates are in the same units.</summary>
     public const float Native = 512f;
 
-    readonly ImageTexture _chrome, _barFrame, _barCap, _barCapEnd, _barBody, _slideTrack, _slideKnob;
+    readonly ImageTexture _chrome, _barFrame, _barFill, _slideTrack, _slideKnob;
     readonly FontText _font;
     readonly SceneLayout _layout;
     readonly TextDatabase _text;
@@ -52,11 +52,11 @@ public sealed partial class LaptopShopScreen : Control
     /// <summary>Top-left of the laptop in screen pixels, centred in the viewport.</summary>
     Vector2 Origin => (GetViewportRect().Size - new Vector2(Native, Native) * Scale) / 2f;
 
-    LaptopShopScreen(ImageTexture chrome, ImageTexture barFrame, ImageTexture barCap, ImageTexture barCapEnd,
-                     ImageTexture barBody, ImageTexture slideTrack, ImageTexture slideKnob,
+    LaptopShopScreen(ImageTexture chrome, ImageTexture barFrame, ImageTexture barFill,
+                     ImageTexture slideTrack, ImageTexture slideKnob,
                      SceneLayout layout, FontText font, TextDatabase text, string language)
     {
-        _chrome = chrome; _barFrame = barFrame; _barCap = barCap; _barCapEnd = barCapEnd; _barBody = barBody;
+        _chrome = chrome; _barFrame = barFrame; _barFill = barFill;
         _slideTrack = slideTrack; _slideKnob = slideKnob;
         _layout = layout; _font = font; _text = text; _language = language;
         MouseFilter = MouseFilterEnum.Ignore;
@@ -83,23 +83,6 @@ public sealed partial class LaptopShopScreen : Control
             }
             catch (Exception ex) { GD.PrintErr($"[laptop] {name}: {ex.Message}"); return null; }
         }
-        // ⭐ The SAME cap sprite serves both ends of the fill; the trailing one is mirrored.
-        ImageTexture Mirror(string name)
-        {
-            var raw = lib.ReadUi(name);
-            if (raw == null) return null;
-            try
-            {
-                var ssh = new Ssh(raw);
-                int w = ssh.Width, h = ssh.Height;
-                var px = new byte[w * h * 4];
-                for (int y = 0; y < h; y++)
-                    for (int x = 0; x < w; x++)
-                        Array.Copy(ssh.Pixels, (y * w + (w - 1 - x)) * 4, px, (y * w + x) * 4, 4);
-                return ImageTexture.CreateFromImage(Image.CreateFromData(w, h, false, Image.Format.Rgba8, px));
-            }
-            catch (Exception ex) { GD.PrintErr($"[laptop] {name} (mirrored): {ex.Message}"); return null; }
-        }
 
         var sce = lib.ReadMenu(ShopScreen.SceneFile);
         if (sce == null) { GD.PrintErr($"[laptop] MENUS.WAD/{ShopScreen.SceneFile} missing -- screen stays off"); return null; }
@@ -110,9 +93,7 @@ public sealed partial class LaptopShopScreen : Control
         // interior as BARSLIDE. PROG_BAR is an eleven-cell notched gauge and belongs to a
         // different widget -- see DrawBar.
         var barFrame = Load("/laptop/BARPROG.ssh");
-        var barCap = Load("/laptop/PROG_CBIT.ssh");
-        var barBody = Load("/laptop/PROG_VBIT.ssh");
-        var barCapEnd = Mirror("/laptop/PROG_CBIT.ssh");
+        var barFill = BuildFill(lib);
         var track = Load("/laptop/BARSLIDE.ssh");
         var knob = Load("/laptop/BARKNOB.ssh");
         if (chrome == null || barFrame == null || track == null || knob == null)
@@ -120,7 +101,7 @@ public sealed partial class LaptopShopScreen : Control
             GD.PrintErr("[laptop] UI.WAD laptop art missing -- screen stays off");
             return null;
         }
-        return new LaptopShopScreen(chrome, barFrame, barCap, barCapEnd, barBody, track, knob, layout, font, text, language);
+        return new LaptopShopScreen(chrome, barFrame, barFill, track, knob, layout, font, text, language);
     }
 
     /// <summary>Put the screen up for a shop.
@@ -264,6 +245,116 @@ public sealed partial class LaptopShopScreen : Control
         DrawTextureRect(tex, new Rect2(new Vector2(x, at.Y), new Vector2(w, tex.GetHeight() * s)), false, tint);
     }
 
+
+    /// <summary>Compose the satisfaction bar's fill: the trough's own INTERIOR shape, painted with
+    /// the fill sprite's vertical gradient.
+    ///
+    /// ⭐⭐ THIS IS A DELIBERATE IMPROVEMENT ON THE CONSOLE, at master's direction: "i genuinely
+    /// have no idea why they made the bar act this way. even in the real game, the low and high end
+    /// 'snap' instead of moving. this would be an improvement." The console builds the fill from
+    /// sprites -- `PROG_CBIT` as a fixed 10-wide rounded cap and `PROG_VBIT` as a 16-wide tile -- so
+    /// the rounded ends appear and disappear in whole-sprite steps rather than following the curve.
+    /// Everywhere else this port copies the console bug-for-bug; this is an exception master asked
+    /// for, and it is flagged rather than quietly "corrected".
+    ///
+    /// ⭐ The two pieces MEASURE as made for each other, which is why this reconstructs the intent
+    /// rather than inventing a look: the trough's interior occupies rows 3..28, and `PROG_VBIT`'s
+    /// cyan gradient occupies exactly rows 3..28 too (its rows 0..2 and 29..31 are the orange inner
+    /// edge, which the mask drops). The gradient runs top-to-bottom, (5,223,211) to (5,147,225).
+    ///
+    /// ⚠ The mask is the interior, NOT simply "transparent": the area OUTSIDE the frame is equally
+    /// transparent. It is found by flooding inwards from the border and keeping what the flood
+    /// cannot reach, so the rounded ends come out of the art instead of being modelled.</summary>
+    static ImageTexture BuildFill(AssetLibrary lib)
+    {
+        var px = BuildFillPixels(lib, out int fw, out int fh);
+        return px == null ? null
+             : ImageTexture.CreateFromImage(Image.CreateFromData(fw, fh, false, Image.Format.Rgba8, px));
+    }
+
+    /// <summary>The composed fill as raw RGBA, so an audit can assert on what actually ships
+    /// rather than re-deriving the mask and drifting from it.
+    /// ⚠ It reads the `.ssh`, NOT the `.tga` sibling: those are lossy-compressed and differ by a
+    /// few levels, which is enough to move a "is this pixel cyan" row boundary by one.</summary>
+    internal static byte[] BuildFillPixels(AssetLibrary lib, out int width, out int height)
+    {
+        width = height = 0;
+        byte[] frameRaw = lib.ReadUi("/laptop/BARPROG.ssh"), bodyRaw = lib.ReadUi("/laptop/PROG_VBIT.ssh");
+        if (frameRaw == null || bodyRaw == null) return null;
+        try
+        {
+            var frame = new Ssh(frameRaw);
+            var body = new Ssh(bodyRaw);
+            int w = frame.Width, h = frame.Height;
+
+            bool Clear(int x, int y) => frame.Pixels[(y * w + x) * 4 + 3] <= 16;
+            var outside = new bool[w * h];
+            var queue = new Queue<int>();
+            void Seed(int x, int y)
+            {
+                if (!Clear(x, y) || outside[y * w + x]) return;
+                outside[y * w + x] = true; queue.Enqueue(y * w + x);
+            }
+            for (int x = 0; x < w; x++) { Seed(x, 0); Seed(x, h - 1); }
+            for (int y = 0; y < h; y++) { Seed(0, y); Seed(w - 1, y); }
+            while (queue.Count > 0)
+            {
+                int at = queue.Dequeue(); int x = at % w, y = at / w;
+                if (x > 0) Seed(x - 1, y);
+                if (x < w - 1) Seed(x + 1, y);
+                if (y > 0) Seed(x, y - 1);
+                if (y < h - 1) Seed(x, y + 1);
+            }
+
+            // One column IS the gradient: it varies by ~250 down and ~7 across, so any column does.
+            //
+            // ⚠⚠ BUT NOT EVERY ROW OF IT. `PROG_VBIT` carries the trough's orange inner edge on its
+            // first and last three rows, and SHPS is lossy: the decode bleeds that orange into the
+            // cyan rows either side of it, so rows 3 and 28 come back muddy -- (122,184,97) and
+            // (105,125,89) instead of (5,223,211) and (5,147,225). Those are exactly the rows the
+            // mask needs, being the top and bottom of the trough, so the mud would land on the bar.
+            // Rows whose blue does not beat their red are compression bleed, not gradient, and take
+            // the nearest clean row instead.
+            //
+            // ⚠ I nearly missed this: a check that "the SSH decodes identically to the TGA" passed,
+            // but the two converters both write `<name>.png` beside the source, so it had compared
+            // the TGA against ITSELF. The audit below reads the composed pixels, which cannot be
+            // fooled that way.
+            int mid = body.Width / 2;
+            bool CleanRow(int y)
+            {
+                int o = (y * body.Width + mid) * 4;
+                return body.Pixels[o + 2] > body.Pixels[o];
+            }
+            var source = new int[body.Height];
+            for (int y = 0; y < body.Height; y++)
+            {
+                source[y] = y;
+                for (int d = 1; d < body.Height && !CleanRow(source[y]); d++)
+                {
+                    if (y - d >= 0 && CleanRow(y - d)) source[y] = y - d;
+                    else if (y + d < body.Height && CleanRow(y + d)) source[y] = y + d;
+                }
+            }
+
+            var px = new byte[w * h * 4];
+            for (int y = 0; y < h; y++)
+            {
+                int g = (source[Math.Min(y, body.Height - 1)] * body.Width + mid) * 4;
+                for (int x = 0; x < w; x++)
+                {
+                    if (!Clear(x, y) || outside[y * w + x]) continue;   // frame, or outside it
+                    int o = (y * w + x) * 4;
+                    px[o] = body.Pixels[g]; px[o + 1] = body.Pixels[g + 1];
+                    px[o + 2] = body.Pixels[g + 2]; px[o + 3] = 255;
+                }
+            }
+            width = w; height = h;
+            return px;
+        }
+        catch (Exception ex) { GD.PrintErr($"[laptop] bar fill: {ex.Message}"); return null; }
+    }
+
     /// <summary>The satisfaction bar: `BARPROG`'s smooth trough, filled with `PROG_CBIT`'s rounded
     /// cap followed by `PROG_VBIT` tiles.
     ///
@@ -284,32 +375,16 @@ public sealed partial class LaptopShopScreen : Control
     /// and the SOURCE is clipped when the fill ends mid-tile; the destination is never squashed.</summary>
     void DrawBar(Rect2 r, int value, float s)
     {
-        // Measured off the art: 128 columns, trough interior 3..124, cap 10 wide, body 16.
-        const float ArtWidth = 128f, InnerX = 3f, InnerWidth = 122f, CapCols = 10f, BitCols = 16f;
-        float unit = r.Size.X / ArtWidth;
+        // Measured off the art: 128 columns, the trough's interior spans 3..124.
+        const float ArtWidth = 128f, InnerX = 3f, InnerWidth = 122f;
         float fraction = Mathf.Clamp(value / (float)ShopScreen.SatisfactionMax, 0f, 1f);
-        float filled = InnerWidth * fraction;
-
-        void Bit(Texture2D tex, float at, float cols)
-        {
-            if (tex == null || cols <= 0f) return;
-            DrawTextureRectRegion(tex,
-                new Rect2(r.Position.X + (InnerX + at) * unit, r.Position.Y, cols * unit, r.Size.Y),
-                new Rect2(0, 0, cols, tex.GetHeight()));
-        }
-
-        // ⭐⭐ ROUNDED AT BOTH ENDS. The trough is symmetric -- its interior height per column runs
-        // 20,22,24,24,... at the left and the exact mirror ...,24,24,22,20 at the right -- and
-        // PROG_CBIT's opaque profile starts at the same 20. So the one cap sprite serves both
-        // ends, mirrored at the leading edge, and at 100% the two caps nest into the trough's own
-        // rounded ends. Filling flat to column 124 instead left a SQUARE edge inside a ROUND end,
-        // which is what master saw: "whats going on with the full bar?".
-        Bit(_barCap, 0f, Mathf.Min(CapCols, filled));
-        float bodyEnd = Mathf.Max(CapCols, filled - CapCols);
-        for (float at = CapCols; at < bodyEnd; at += BitCols)
-            Bit(_barBody, at, Mathf.Min(BitCols, bodyEnd - at));
-        if (filled > CapCols) Bit(_barCapEnd, filled - CapCols, CapCols);
-
+        // ⭐ Continuous, because the console is: FUN_00115530 computes (value - min) / (max - min)
+        // as a FLOAT and hands that to the sprite. Nothing quantises to a tile.
+        float cut = InnerX + InnerWidth * fraction;
+        if (_barFill != null && cut > 0f)
+            DrawTextureRectRegion(_barFill,
+                new Rect2(r.Position, new Vector2(cut / ArtWidth * r.Size.X, r.Size.Y)),
+                new Rect2(0, 0, cut, _barFill.GetHeight()));
         DrawTextureRect(_barFrame, r, false);
     }
 
