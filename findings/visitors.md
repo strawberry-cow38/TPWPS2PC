@@ -712,7 +712,8 @@ never take. That is this executable's behaviour, not a gap in the port.
 > and **no `.mps` or `.aps` in that folder**. (A first search of file NAMES said the disc had no model
 > for it at all. That was wrong: strawberry had seen it in the model viewer. Searching every `.mps` for
 > the ride's `fp_*` texture names finds it inside `LOBBY.WAD/hallow2.mps`, the Halloween lobby diorama,
-> which uses all seven and has a `hallow2.aps` beside it. So the mesh ships, but not as a ride bundle.)
+> which references all 16 of them (an earlier "seven" counted only `fp_base1`..`7`) and has a
+> `hallow2.aps` beside it. So the mesh ships, but not as a ride bundle.)
 > The only `firepit.aps` is `/upgrades/firepit/firepit.aps`, whose `.sam` names it **"CryptKarts
 > Jump"** (`AddOn.UpgradesId 2150`, a go-kart track add-on). So "Thrill Grill's model has no slot 4"
 > below is wrong in its premise: the audit found the add-on's animation by stem and paired it with
