@@ -348,6 +348,21 @@ public sealed class VisitorNeeds
     readonly HashSet<int> _holdingBubble = new();
     public int BubblesHeld => _holdingBubble.Count;
 
+    /// <summary>⭐⭐ THE SLOT IS WHAT IS DRAWN. tinyclaw, reading the console's event arms: both
+    /// `20C6A8` and `210428` take the same 25-bubble slot (`2E28D0 &lt; 25`, then `+0x34 |= 8`)
+    /// before writing `+0x40` -- "which reads like the slot is what's drawn". So holding a slot,
+    /// not holding a thought, is what puts a bubble over a guest, and every writer goes through
+    /// these two so no arm can set a thought without claiming its place in the budget.</summary>
+    bool TakeBubble(int guest)
+    {
+        if (_holdingBubble.Contains(guest)) return true;
+        if (_holdingBubble.Count >= BubbleBudget) return false;
+        _holdingBubble.Add(guest);
+        return true;
+    }
+
+    void ReleaseBubble(int guest) => _holdingBubble.Remove(guest);
+
     /// <summary>⭐⭐ THE GUEST'S OWN SOUNDS, raised as (guest, event id) for a coordinator to place
     /// and a viewer to play. Every id is the console's: a census of `jal` to the two effect entry
     /// points over the guest code found **eight** call sites, and all eight resolve in
@@ -570,15 +585,18 @@ public sealed class VisitorNeeds
             if (picked == null)
             {
                 // ⭐ The console GIVES THE SLOT BACK here rather than leaving a stale bubble up.
-                _holdingBubble.Remove(guest);
+                // ⚠⚠ AND THAT COMMENT USED TO BE HALF TRUE. It released the slot and left
+                // `w.Thought` standing, and `ThoughtOf` did not look at slots -- so a guest whose
+                // need had been met kept showing the old bubble. Found by tinyclaw: toilet 95
+                // raises Toilet at the guest's slot, then toilet 0 and 400 more ticks leaves the
+                // thought as Toilet with BubblesHeld 0. Gating ThoughtOf on the slot is what makes
+                // the release actually mean "stop drawing it".
+                ReleaseBubble(guest);
                 continue;
             }
-            // Already holding one? Keep it and do not take a second.
-            if (!_holdingBubble.Contains(guest))
-            {
-                if (_holdingBubble.Count >= BubbleBudget) continue;
-                _holdingBubble.Add(guest);
-            }
+            // Already holding one? Keep it and do not take a second. ⚠ A full budget means this
+            // guest simply is not drawn this round, exactly as the console's `2E28D0 < 25` gate.
+            if (!TakeBubble(guest)) continue;
             // ⭐ The console plays these from the SAME arms that set the bubble, so they are
             // raised here rather than invented at some other moment. ⚠ Only on a CHANGE: the
             // ladder re-runs every 128 ticks and a guest who is still happy is not newly happy.
@@ -764,7 +782,7 @@ public sealed class VisitorNeeds
     /// stamped the decoded ladder flat, so `Thought.Bored` -- which only the ladder produces --
     /// was never once visible.</summary>
     public Thought ThoughtOf(int guest) =>
-        _byGuest.TryGetValue(guest, out var w) ? w.Thought : Thought.Normal;
+        _holdingBubble.Contains(guest) && _byGuest.TryGetValue(guest, out var w) ? w.Thought : Thought.Normal;
 
     /// <summary>What a guest is thinking, and therefore which bubble is over their head.
     ///
@@ -840,6 +858,11 @@ public sealed class VisitorNeeds
         }
         w.Thought = t;
         _byGuest[guest] = w;
+        // ⭐ The console's event arms claim a bubble slot before writing `+0x40`, so this one does
+        // too: a decision that produces no bubble gives the slot back instead of leaving the last
+        // one up. ⚠ If the park is already showing its 25, the thought is still recorded and just
+        // is not drawn -- the budget decides visibility, not truth.
+        if (t == Thought.Normal) ReleaseBubble(guest); else TakeBubble(guest);
         return t;
     }
 
@@ -976,6 +999,7 @@ public sealed class VisitorNeeds
         w.Sick = Clamp(w.Sick + 10);
         w.Thought = Thought.Angry;
         _byGuest[guest] = w;
+        TakeBubble(guest);   // ⭐ an event thought claims its slot, or it would never be drawn
     }
 
     /// <summary>⚠⚠ FORGET WHOEVER IS NO LONGER IN THE PARK. Guest ids are REUSED, and a stale

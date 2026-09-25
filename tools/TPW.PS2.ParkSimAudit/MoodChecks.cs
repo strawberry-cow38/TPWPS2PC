@@ -182,6 +182,35 @@ static class MoodChecks
             Check(Bubble(w => { w.Happiness = 50; w.Boredom = 0; return w; }) == Thought.Litter,
                   "a guest with nothing to say keeps the sentinel -- proving the arrange step lands");
 
+            // ⭐⭐ A MET NEED MUST STOP DRAWING ITS BUBBLE. tinyclaw's experiment, made permanent:
+            // toilet 95 raises Toilet at the guest's mood slot; then toilet 0 and several more
+            // slots left the thought as Toilet with BubblesHeld 0, so a satisfied guest went on
+            // showing a stale toilet bubble. The ladder DID give the slot back -- `ThoughtOf` just
+            // never looked at slots, and the console's arms all take one before writing `+0x40`.
+            {
+                var n = Still();
+                n.Unknown78Bar = n.SickBar = n.ToiletBar = n.HungerBar = n.ThirstBar = 101;
+                // ⚠ HAPPINESS 78 ISOLATES THIS. At 50 the guest legitimately picks up a DIFFERENT
+                // bubble -- the ladder's `26..74, one roll in ten -> VeryUnhappy` arm -- so it goes
+                // on holding a slot for a good reason and the check below fails on correct code.
+                // 78 is above the 74 bar and below the 81 one, so no other arm has anything to say
+                // and the only bubble in play is the toilet.
+                n.Set(1, new VisitorWants { Toilet = 95, Happiness = 78, Thought = Thought.Litter });
+                n.Step(n.SecondsPerTick * VisitorNeeds.MoodTicks * 2);
+                Check(n.ThoughtOf(1) == Thought.Toilet,
+                      $"a desperate guest shows the toilet bubble (got {n.ThoughtOf(1)})");
+
+                var met = n.Of(1); met.Toilet = 0; n.Set(1, met);
+                n.Step(n.SecondsPerTick * VisitorNeeds.MoodTicks * 3);
+                Check(n.ThoughtOf(1) == Thought.Normal,
+                      $"and shows NOTHING once the need is met (got {n.ThoughtOf(1)})");
+                // ⚠ THE CONTROL: the bug was invisible to anything reading the raw thought, since
+                // the ladder released the slot and left `w.Thought` alone. Assert the SLOT is what
+                // changed, so a future ThoughtOf that ignores slots fails right here.
+                Check(n.BubblesHeld == 0,
+                      $"the slot is what was given back -- {n.BubblesHeld} held, expected 0");
+            }
+
             Field("toilet 91", Thought.Toilet, w => { w.Toilet = 91; return w; });
             Field("sick 91", Thought.Sick, w => { w.Sick = 91; return w; });
             Field("happiness 85", Thought.Happy, w => { w.Happiness = 85; return w; });

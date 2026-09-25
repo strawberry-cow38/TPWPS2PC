@@ -2505,3 +2505,37 @@ leaving it looking fixed. That guest is already `Servicing` when the scene start
 takes a decision action inside the test window. The remaining failures need the scene to reach the
 guest's mood slot before asserting -- a change to the scene's timing, which belongs with whoever
 knows what the scene is proving.
+
+### ⭐⭐ THE BUBBLE SLOT IS WHAT IS DRAWN -- a stale-thought bug, and where clearing belongs
+
+tinyclaw, testing `VisitorNeeds` alone: toilet 95 raises `Thought.Toilet` at the guest's mood slot;
+then toilet 0 and 400 more ticks (three slots) left the thought as **Toilet** with `BubblesHeld`
+**0**. So a satisfied guest kept showing a stale toilet bubble.
+
+⚠ **My own comment described the fix and the code did half of it.** The give-back arm says "the
+console GIVES THE SLOT BACK here rather than leaving a stale bubble up" -- and it released the slot
+and left `w.Thought` standing, while `ThoughtOf` never looked at slots at all.
+
+⭐ **The rule, from the console's own arms:** both `20C6A8` and `210428` check `2E28D0 < 25`, take a
+slot, set `+0x34 |= 8`, and only then write `+0x40`. tinyclaw: "which reads like the slot is what's
+drawn". So holding a SLOT, not holding a thought, is what puts a bubble over a guest. `ThoughtOf`
+now returns `Normal` without one, and every writer goes through `TakeBubble`/`ReleaseBubble` --
+the ladder, `Decide`, and `DirtyLavatory` -- so no arm can set a thought without claiming its place
+in the budget.
+
+⭐⭐ **AND CLEARING IS THE LADDER'S JOB, NOT THE SERVICE'S -- read, not assumed.**
+`FUN_0020EDD8`, the relief arm, only ever SETS a bubble: at its lines
+`if (lVar9 == 0 && DAT_002e28d0 < 0x19) { DAT_002e28d0++; *(u16*)(g+0x34) |= 8; } *(u32*)(g+0x40) = 10;`
+-- take a slot, mark the holder, write thought **10** (Angry, for a filthy lavatory). It never
+clears the toilet thought. So on the console a satisfied guest's bubble persists until the ladder's
+next 128-tick slot gives it back.
+
+⚠ Which means the standing-service checks `[89]` and `[155]` are the same shape as `[141]`: they
+assert immediately and the console does not clear immediately. The fix there is the mood-slot wait,
+not more code here. ⭐ The gating IS still required -- without it the bubble never cleared at all,
+which is what tinyclaw's 400-tick run showed.
+
+⭐ Pinned in `MoodChecks`: toilet 95 -> Toilet, then toilet 0 and three slots -> `Normal` with 0
+slots held. ⚠ Isolated on **happiness 78**, deliberately: at 50 the guest legitimately picks up a
+different bubble through the ladder's `26..74, one roll in ten` arm, so the check fails on correct
+code. 78 is above the 74 bar and below the 81 one, so the toilet is the only bubble in play.
