@@ -686,3 +686,39 @@ now asserted against every spec's row kinds in `LaptopShopScreenAudit`. Reintrod
 purpose -- flipping Excitement back to `Slider` -- turned the audit red with
 *"[70] Build: spec has 1 bars / 1 sliders, and FUN_00198b48 emits 2 / 0"*, exit code 2, while the
 Ride control stayed green. Restored, it passes 71.
+
+## The Build screen sells real rides at real prices (2026-09-25)
+
+Master: *"can u wire up every ride's purchase cost. and wire the balance to reflect our balance"*.
+
+Both were already decoded; nothing here invents a number.
+
+* **Purchase Cost** is `RideDefinition.PlacementCost` --
+  `(HasRideTiers ? Tier(0) : SimpleEconomy).PurchaseCost * 10`, in the park's tenths -- and
+  `Money.Format` divides by ten, the same `/10` the console's own finance screen
+  (`FUN_00134B98`) applies to every figure it draws.
+* **Balance** is `ParkSim.Finances.Balance`, the live park purse the placement path already debits.
+  `OpeningBalance` is 300,000 tenths, which is why a fresh park reads **$30,000**.
+
+**97 priced rides** on JUNGLE. Spot-checked across the list:
+
+| ride | purchase cost |
+|---|---|
+| Mammoth Fountain | $100 |
+| Arcade | $1,750 |
+| Giant Puzzle | $1,750 |
+| Dino Karts | $2,500 |
+| Splish Splash | $2,750 |
+
+⭐ A scenery fountain at $100 against a water ride at $2,750 is the sanity check that these are the
+game's own figures rather than something fitted.
+
+⚠ **A definition that never joined a compiled record has NO cost rather than a free one, so it is
+LEFT OUT of the list instead of shown at $0.** Listing an unjoined asset as free is how a missing
+join becomes a shopfront exploit that nobody traces back; the placement path already refuses it,
+and now the shopfront does too. Coaster parts and terrain are filtered exactly as the build list
+filters them, so a coaster's car and pylon are not offered as separate purchases.
+
+⚠⚠ **RELIABILITY HAS NO DEFINITION FIELD.** Nothing in `RideCatalogue` carries it, so that bar is
+the one value on this screen with no source. It reads **zero** and the run says so out loud rather
+than being filled from the cosine sweep, which would have looked exactly like data.

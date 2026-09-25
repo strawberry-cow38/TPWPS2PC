@@ -245,7 +245,7 @@ public partial class Viewer : Node3D
     Vector2I? _uiSize; SubViewport _uiShotView; Camera3D _uiShotCam;
     /// <summary>Which main-menu row the cursor is on, and whether the park is open -- the latter
     /// decides Open Park against Close Park. Both are harness knobs until the laptop takes input.</summary>
-    int _laptopMenuSelected; bool _laptopParkOpen;
+    int _laptopMenuSelected; bool _laptopParkOpen; int _laptopRide;
     bool _idleScene, _idleSeeded;
     int _idleCount = 24;
     /// <summary>Which ride the control run stands, by display name; Crazy Ape unless told.</summary>
@@ -384,6 +384,7 @@ public partial class Viewer : Node3D
             else if (a.StartsWith("--laptop-screen=")) _laptopScreen = a["--laptop-screen=".Length..];
             else if (a.StartsWith("--laptop-menu-row=")) int.TryParse(a["--laptop-menu-row=".Length..], out _laptopMenuSelected);
             else if (a == "--laptop-park-open") _laptopParkOpen = true;
+            else if (a.StartsWith("--laptop-ride=")) int.TryParse(a["--laptop-ride=".Length..], out _laptopRide);
             else if (a.StartsWith("--ui-size="))
             {
                 var wh = a["--ui-size=".Length..].Split('x');
@@ -3122,6 +3123,36 @@ public partial class Viewer : Node3D
         }
     }
 
+    /// <summary>⭐⭐ THE RIDES THE BUILD SCREEN CAN ACTUALLY SELL, with their real prices. Master:
+    /// "can u wire up every ride's purchase cost. and wire the balance to reflect our balance".
+    ///
+    /// ⭐ `RideDefinition.PlacementCost` was already decoded -- `(HasRideTiers ? Tier(0) :
+    /// SimpleEconomy).PurchaseCost * 10`, in the park's tenths -- and `Money.Format` already
+    /// divides by ten. Nothing here invents a price.
+    ///
+    /// ⚠ A definition that never joined a compiled record has NO cost rather than a free one, so
+    /// it is LEFT OUT instead of listed at $0. Showing an unjoined asset as free is how a missing
+    /// join turns into a shopfront exploit; the placement path already refuses to do it.
+    /// ⚠ Coaster parts and terrain are filtered the same way the build list filters them, so a
+    /// coaster's car and pylon are not offered as separate purchases.</summary>
+    List<(AssetLibrary.RideAssets Assets, RideDefinition Def)> PurchasableRides()
+    {
+        var outp = new List<(AssetLibrary.RideAssets, RideDefinition)>();
+        if (_lib?.Rides == null) return outp;
+        foreach (var r in _lib.Rides)
+        {
+            if (r.Model == null || IsTerrain(r.Model.Path)) continue;
+            if (BuildCategory(r).Equals("Coasters", StringComparison.OrdinalIgnoreCase)
+                && IsCoasterPart(r.Model.Path)) continue;
+            var def = DefinitionFor(r.Model);
+            if (def?.PlacementCost is not > 0) continue;
+            outp.Add((r, def));
+        }
+        outp.Sort((a, b) => string.Compare(DisplayName(a.Item1, a.Item2),
+                                           DisplayName(b.Item1, b.Item2), StringComparison.OrdinalIgnoreCase));
+        return outp;
+    }
+
     void LaptopFilmFrame()
     {
         if (_shopPanel == null) { GD.PrintErr("[film] --laptop-film: no laptop screen"); GetTree().Quit(2); return; }
@@ -3178,6 +3209,46 @@ public partial class Viewer : Node3D
             if (_laptopView != null) _shopPanel.ModelTexture = _laptopView.GetTexture();
         }
         StepLaptopModel();
+
+        // ⭐⭐ THE BUILD SCREEN SHOWS REAL PRICES AND THE REAL BALANCE. Everything else on these
+        // demo screens is a cosine sweep; these two rows are not, which is the point.
+        if (spec == LaptopScreen.Build)
+        {
+            var sellable = PurchasableRides();
+            if (sellable.Count > 0)
+            {
+                var (ra, def) = sellable[Math.Abs(_laptopRide) % sellable.Count];
+                title = DisplayName(ra, def);
+                int owned = _sim?.Rides?.Count(pr => pr.Id == (def.Id ?? -1)) ?? 0;
+                // ⚠ The balance is the PARK's, not a constant: an unlimited park has no meaningful
+                // figure to show, so it falls back to the opening balance rather than int.MaxValue.
+                int bal = _sim?.Finances is { } fin && !fin.Unlimited ? fin.Balance
+                        : _sim?.Finances?.Balance ?? ParkFinances.OpeningBalance;
+                var build = new List<(string, int)>
+                {
+                    (Money.Format(def.PlacementCost ?? 0), 0),
+                    (Money.Format(bal), 0),
+                    (owned.ToString(), 0),
+                    // ⭐ Excitement is the definition's own UsageInfo.ExcitementLevel.
+                    // ⚠ RELIABILITY HAS NO DEFINITION FIELD -- nothing in RideCatalogue carries it,
+                    // so this bar is the only value on the screen with no source. Left at zero and
+                    // said out loud rather than filled with a sweep that would look like data.
+                    (null, def.ExcitementLevel ?? 0),
+                    (null, 0),
+                };
+                _shopPanel.ShowScreen(spec, title, build);
+                if (_laptopFrame == 0)
+                    GD.Print($"[laptop] build: {sellable.Count} priced rides; showing {title} at "
+                           + $"{Money.Format(def.PlacementCost ?? 0)}, balance {Money.Format(bal)}"
+                           + " (reliability has no definition field and reads 0)");
+                PrepareUiShotView();
+                SaveShot(ShotSibling(_shotPath, $"-f{_laptopFrame:D4}"));
+                _laptopFrame++;
+                if (_laptopFrame >= _laptopFilm) GetTree().Quit();
+                return;
+            }
+            GD.PrintErr("[laptop] build: no ride definition carries a PlacementCost -- falling back to the sweep");
+        }
 
         float t = _laptopFrame / (float)_filmFps;
         var cells = new List<(string, int)>();
