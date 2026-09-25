@@ -270,9 +270,27 @@ the 32 row step. Small (21) and Console (14) would leave holes.
   description -- "just a front facing render of it. playing an animation" -- far better than a blit
   does, and it means the port needs a real model in a viewport rather than a texture.
 
-  ⚠ NOT established, and deliberately not guessed: what `FUN_00230a98` creates, what the `0x10`
-  and `-1` mean, and whether the `5` in that last virtual call is the animation master remembers.
-  The float 1.0 beside it looks like a scale. Naming them would need those two vtables walked.
+  ⭐⭐ AND THE `5` IS THE ANIMATION. tinyclaw had walked this chain already; each link below was
+  re-checked here against the executable rather than relayed:
+
+  * `FUN_00230A98` is a **factory** -- `new 0x4C`, constructor `0x227158` installs vtable
+    `0x36F290`, and it returns `obj + 0x0C`.
+  * That vtable's slot at `+0x58`/`+0x5C` is `{adjust -12, fn 0x228958}` (verified: the word at
+    `0x36F290 + 0x5C` is `0x228958`), and `0x228958` reaches `0x17C5D8`, the play-animation router.
+  * `0x17C5D8` switches on the visual's **type** at `+0x18` through the jump table `0x362AC0`.
+    **Types 6 and 7** go to `0x10E910` with the logical state in `a1` -- so the `5` in that call is
+    **logical 5**.
+  * And logical 5 in the `0x2AAD48` table is descriptor `0x2AA9C8`, count 1, main pair
+    **slot 6 / variant 0**, with first and last both the inactive sentinel (verified here).
+  * The `1.0` arrives in `f12` and lands as the **speed**, not a scale as guessed above.
+
+  So the shop's model plays **APS section 6, variant 0, at speed 1.0** -- which is the answer to
+  master's "playing an animation (cant remember which)".
+
+  ⚠ CONDITIONAL ON THE TYPE, and that matters: only types 6 and 7 take the `0x10E910` arm. Other
+  types take arms nobody has read, so a port must check the visual's type at `+0x18` before
+  assuming this path. Still unread: where `shop + 0x78`'s id comes from, what `0x10` and `-1` mean
+  in the init call, and the factory's init slot `+0x0C`.
 
   ⚠ WHAT IS STILL UNREAD: what *fills* that sprite. A front-facing render of the model playing an
   animation has to be produced somewhere upstream and handed to `obj + 0x58`; that producer, and
