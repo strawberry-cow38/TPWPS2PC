@@ -2,7 +2,8 @@
 
 2026-09-25, tinyclaw, at strawberry's request. Sources are raw MIPS from the owner's PAL SLES_500.32
 (`tools/r5900dis.py`) and, where it exists, the authorized Ghidra corpus (FUN_0020D628, FUN_00210428,
-FUN_001180B0). Addresses sit beside every claim. **Nothing here is ported yet.**
+FUN_001180B0, FUN_0020C6A8). Addresses sit beside every claim. **Ported, opt-in:** see "The port" at
+the end.
 
 ## How the queue was found
 
@@ -22,7 +23,7 @@ states.
 |---|---|---|
 | ride+F4 | queue head; a doubly linked list threaded through each guest's link node (B+0 next, B+4 prev, B = N+8) | 118540 counts it; 1180B0 and 117C90 unlink from it |
 | ride+A0 | list of queue CELLS (byte x, byte z), starting at the ride and ending at the far end of the queue | 117340, 20F4D8 via 1A3368 |
-| ride vtable +17C | the ride's rotated entrance connection cell (116EC0: rotation, origin +74, 1E1760), where spots start | 117340 |
+| ride vtable +17C | the ride's rotated entrance connection cell, where spots start. 116EC0 adds the placed origin (+74) to the rotated compiled record +0xC that 1E1760 reads, which is connection A: the cell INSIDE the footprint whose door faces the stub (the port's `ShopEntrance.Connection`) | 117340 |
 | ride vtable +F4 | the queue MOUTH: the last cell of the list (117280) | quit walk 2112D0 |
 | ride+126 | upgrade tier byte | 20D530 |
 | ride+108 | rider list; boarding links the guest here | 117C90 |
@@ -86,7 +87,20 @@ The update counter is `now` (1C4930). The phase is the guest's activation serial
 - What this adds up to: at a working ride only the 8-update roll runs, +1 with probability
   2/(100 - w/2), so between 2/75 and 2/50. Guests spawn with impatience rand(40) (VisitorNeeds
   `Unknown78`), so leaving takes many thousands of updates. At a broken ride the 4-update tick
-  dominates, and guests give up within a few hundred updates. The same B+2C bit 3 and 2E28D0 (< 25) bookkeeping as the happiness < 3 departure applies.
+  dominates, and guests give up within a few hundred updates.
+- The same B+2C bit 3 and 2E28D0 (< 25) bookkeeping as the happiness < 3 departure applies.
+- Draw order, from the corpus: rand(100 - w/2), then rand(100), on the eighth-phase update only. Then,
+  below 81 and strictly past N+2C: rand(300), rand(4), rand(10). The leave test comes after the
+  boredom roll. rand(n) is `rand() % n` with a trap at n = 0 (1448E0: divu, break 7).
+
+⚠ **+0x78 has a second riser, and it is not queueing.** 20C6A8, which the port's `VisitorNeeds.Queue`
+cites as "adds +5 while the guest queues", is the destination picker (called from 20DD70 every 8
+updates on the guest's phase). It enumerates attractions, tests +2DC and scores them with 20C138.
+When NOTHING scores it takes 10 off happiness (+75), adds **5 to +0x78** and writes thought 4
+(bored). When the pick scores under 8 it takes 5 off happiness. So +0x78 rises when a guest finds
+nothing worth doing, and rises slowly in a queue (210428). The port charges `Needs.Queue` to guests
+in its legacy queue; under native queues it does not apply, because native queueing guests are
+never `Queued`.
 
 ## Leaving and moving up (1180B0)
 
@@ -110,9 +124,25 @@ getter at +C: 118AB8 returns the record's +4 word, and 118AC0 always returns 6.
 - State 0x17 (20F4D8, a flags-0x18 walk to the last ride+A0 cell) is not reached from these events.
   Its producer is still unread.
 
-117798 empties a whole queue, sending each guest event 7, or event 10 in its second mode. Its callers
-(1229B8, 1E94DC, 2002F4, and 117758, which also calls 118018) are the per-family close, break and
-demolish paths. That is inferred from their location, not traced.
+117798 empties a whole queue, sending each guest event 7, or event 10 in its second mode. **Its
+callers are now traced** through the state setter 1E4D70 (it stores placed state +9A, then jumps
+through 369A40 to the vtable slot for that state; state 4 lands on slot +21C, state 5 on +224):
+
+| Caller | Where it sits | Mode | So |
+|---|---|---|---|
+| 1229A0 | coaster vtable 35B060 +21C | 0 (event 7) | entering state 4 (breakdown) empties the queue |
+| 1E94B8 | tour vtable 369F10 +21C | 0 | the same |
+| 2002D8 | track vtable 36BBF0 +21C | 0 | the same |
+| 1B8C28 | ordinary vtable 366330 +21C | 0, only when +2CC (1E1D58: s16 +94) <= 0 | an ordinary ride breaking down keeps its queue while +94 is positive |
+| 1B8BF0 | ordinary vtable +224 | 0 | entering state 5 always empties it |
+| 116458 | a slot at 35A66C | 1 (event 10) | teardown: it frees the queue-cell list (1A3398) first. Demolition |
+| 116048 | the constructor/reset | 0 | a new ride starts with an empty queue |
+
+117758 is 117798 followed by 118018 (unread). **No caller is on the state-3 (closed) path**: closing a
+ride sends its queue nothing. Its guests keep waiting on the ordinary clock, nobody boards, and a
+guest that has to move up fails 20D530's +2DC test (state 3 is not in 2/10/11) and quits. That is
+why 210428's broken tick is not dead code either: an ordinary ride in state 4 with +94 positive
+keeps a queue that grows impatient four times as fast.
 
 ## Boarding: the queue meets the script (ordinary ride update, 1166A8)
 
@@ -148,7 +178,56 @@ The other families call 117C90 from their own updates: tour 1EA288, track 201AE4
 | move-up | staggered ripple (event 0x13 + rand(3)) | instant (dequeue) |
 | closure | the whole queue is emptied with event 7 or 10 | ParkVisitors recovery policy |
 
+## Arrival, in order (20D628)
+
+- **Case 0** (the walk to the ride completes): N+2C = now. If the ride has queue cells (the last one
+  read through 1A3368), ask 20D530. Refused: target cleared, state 0. Accepted: state 0x29.
+- **0x29** (20F3F0): 20D530 and 117340 again (117340 links the guest in and sets bit 2), then the
+  flags-0x10 planner route to the spot, mode 3.
+- **Case 3**: at the spot, request 11 and state 0x12. Otherwise state 0x13. N+2C is not rewritten, so
+  the first waiting update is already past its facing deadline. 117340 failing here drops to case
+  0x16 (state 0, no target) WITHOUT unlinking the guest.
+- **Case 10** (the direct move-up completes): at the spot, 0x12. Otherwise 0x29 again.
+
+## Spot geometry, one consequence
+
+117340 walks in whole 64-unit steps from a cell centre (offset 128), and a cell is `pos >> 8`. Going
+toward +x or +z the entrance cell holds 2 spots (offsets 128 and 192; 256 is the next cell). Going
+toward -x or -z it holds **3** (128, 64 and 0, since 0 is still inside). So the same one-cell queue
+holds 6 guests facing one way and 7 facing the other. It follows from the arithmetic, not from a
+separate rule, and the port reproduces it.
+
+## The port
+
+`--native-ride-queues` (branch `tinyclaw/native-ride-queues`): `core/TPW.PS2.Data/NativeRideQueue.cs`,
+seams in ParkVisitors (`Queueing` intent, `NativeQueueMouth`, `NativeQueueArrival`, `AssignQueueRoute`,
+`BoardFromQueue`, `ReleaseFromQueue`), and `game/Viewer.RideQueue.cs`, which reads each ride's queue
+off the path tool: connection A, then the stub, then along the drawn run links to the `Both` cell.
+
+| | Native | Port under the flag |
+|---|---|---|
+| body | standing at the spot | the same: the guest stays on the walk, leased to the queue |
+| capacity | 7 + 4×tier, and the physical length | the same; tier is 0 (the port has no tiers) |
+| spacing | 117340 | the same function |
+| waiting | 210428 | the same arithmetic and draw order; phase = guest id (adapter) |
+| close-up | 3 × cumulative rand(3), waiting guests only | the same |
+| offer | waiting head, VAR_ONRIDE < VAR_CAPACITY | the same; the head then joins the script's queue for LETMEON |
+| breakdown | event 7 (with the ordinary +94 exception) | event 7; the exception is not modelled |
+| closing | nothing | nothing |
+| demolition | event 10, state 0 where they stand | the same, after a walk to the guest's own cell centre (hand-back needs one) |
+
+Other adapters: routes inside the queue follow the queue cells rather than the 0x10/0x11 planner;
+effect 0x7E, the sound and 2E28D0 are not ported; walking speed is 15 + (id·7 mod 15); readiness
+gates queue walking only under `--native-idle-all`.
+
+Checks: `tools/TPW.PS2.ParkSimAudit/NativeRideQueueChecks.cs` (hand-computed spots and waiting
+arithmetic; a walked fixture on the audit's vetted ride covering the head count, tier 1, the physical
+limit, the impatience ripple, the boarding gate, breakdown, closure and demolition). Five mutations
+each turn it red. The rendered smoke is `game/tests/NativeRideQueueSmoke.tscn`.
+
 ## Open
 
-- 1AECCC's family; 20E0E8 (state 0x15, riding); the producer of state 0x17.
-- Queue-cell list construction at ride+A0, i.e. how laid queue tiles become that list.
+- 1AECCC's family; 20E0E8 (state 0x15, riding); the producer of state 0x17; 118018.
+- Queue-cell list construction at ride+A0, i.e. how laid queue tiles become that list. The port
+  reads the drawn run links instead.
+- Who calls 116458 (it is only referenced from a vtable at 35A66C).
