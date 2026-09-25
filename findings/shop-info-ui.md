@@ -657,3 +657,32 @@ rows. It was checked against the draw, not believed; the ride screen's comment o
 
 ⭐ Nine main-menu rows now, still inside the eleven the panel holds, and the overflow guard stayed
 silent.
+
+## ⚠⚠ The scene element's NAME does not tell you the widget (2026-09-25)
+
+Master, on the Build screen: *"those arent meant to be sliders, they're meant to be bars."*
+
+`main_bh_items` names its two widgets **`ExcitementSlider`** and **`ReliabilitySlider`**, and
+`main_bh_staff` names its one **`MotivationSlider`**. All three are drawn as **BARS**. I wrote all
+three as sliders because I read the names -- the same trap as picking `PROG_BAR` over `BARPROG`
+because of the word "BAR" in it.
+
+⭐ **The widget is whichever function the draw calls.** `FUN_00115590` draws a bar, `FUN_001DAAE0`
+a slider. Counting those calls per draw:
+
+| screen | draw | bars | sliders |
+|---|---|---|---|
+| Ride | `FUN_001d5210` | **4** | **3** |
+| Build | `FUN_00198b48` | 2 | 0 |
+| Hire | `FUN_00199008` | 1 | 0 |
+
+⭐⭐ **The ride row is the control and it is not vacuous.** Its 4 bars and 3 sliders were decoded
+long before this count existed, and `LaptopScreen.Ride` already declared exactly that -- so the
+method is validated against a screen whose answer was known, rather than fitted to the screens
+being corrected.
+
+⭐ **The check was proven to reject the bug, not just to pass.** `LaptopWidgetCounts.Decoded` is
+now asserted against every spec's row kinds in `LaptopShopScreenAudit`. Reintroducing the fault on
+purpose -- flipping Excitement back to `Slider` -- turned the audit red with
+*"[70] Build: spec has 1 bars / 1 sliders, and FUN_00198b48 emits 2 / 0"*, exit code 2, while the
+Ride control stayed green. Restored, it passes 71.

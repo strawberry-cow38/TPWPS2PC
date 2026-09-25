@@ -1,5 +1,16 @@
 namespace TPW.PS2.Data;
 
+/// ⚠⚠ THE SCENE ELEMENT'S NAME DOES NOT TELL YOU THE WIDGET. `main_bh_items` names its two
+/// widgets `ExcitementSlider` and `ReliabilitySlider`, and `main_bh_staff` names its one
+/// `MotivationSlider` -- and all three are drawn as BARS. Master: "those arent meant to be
+/// sliders, they're meant to be bars." This file had all three wrong because it read the names.
+///
+/// ⭐ THE WIDGET IS WHICH FUNCTION THE DRAW CALLS: `FUN_00115590` is a bar, `FUN_001DAAE0` a
+/// slider. Counting those calls per draw gives the invariant in <see cref="Widgets"/>, and the
+/// ride screen is the control that proves the method -- `FUN_001d5210` calls the bar exactly 4
+/// times and the slider exactly 3, which is precisely what <see cref="Ride"/> already declared.
+/// This is the same trap as picking `PROG_BAR` over `BARPROG` by name.
+///
 /// <summary>What one laptop info screen is made of: which scene file lays it out, which text
 /// rows it labels, and which of those rows is a number, a bar or a slider.
 ///
@@ -97,8 +108,8 @@ public sealed record LaptopScreen(
             new(780,  LaptopRowKind.Money),                          // Purchase Cost
             new(375,  LaptopRowKind.Money),                          // Balance
             new(969,  LaptopRowKind.Value),                          // No. Owned
-            new(61,   LaptopRowKind.Slider, "ExcitementSlider"),     // Excitement
-            new(1060, LaptopRowKind.Slider, "ReliabilitySlider"),    // Reliability
+            new(61,   LaptopRowKind.Bar, "ExcitementSlider"),        // Excitement
+            new(1060, LaptopRowKind.Bar, "ReliabilitySlider"),       // Reliability
         });
 
     /// <summary>⭐ The HIRE screen, `main_bh_staff`. Drawn by `FUN_00199008`, label ids
@@ -110,7 +121,7 @@ public sealed record LaptopScreen(
         {
             new(773, LaptopRowKind.Text),                            // Pay Grade
             new(886, LaptopRowKind.Money),                           // Monthly Wage
-            new(833, LaptopRowKind.Slider, "MotivationSlider"),      // Motivation
+            new(833, LaptopRowKind.Bar, "MotivationSlider"),         // Motivation
         });
 
     /// <summary>⭐ The SIDESHOW screen, `main_i_sideshow_data`, menu 0x13, bound by `FUN_001D7A30`
@@ -146,6 +157,20 @@ public sealed record LaptopScreen(
 /// screen's shared value column at the label's own height.</summary>
 public readonly record struct LaptopRow(int TextId, LaptopRowKind Kind, string Element = null,
                                        string ArrowElement = null);
+
+/// <summary>⭐⭐ HOW MANY BARS AND SLIDERS EACH DRAW ACTUALLY EMITS, counted as calls to
+/// `FUN_00115590` (bar) and `FUN_001DAAE0` (slider) in the decompiled draw. A spec whose row kinds
+/// disagree with these has been written from the element names again.</summary>
+public static class LaptopWidgetCounts
+{
+    /// <summary>screen -> (bars, sliders), read off the draw.</summary>
+    public static readonly (string Screen, string Draw, int Bars, int Sliders)[] Decoded =
+    {
+        ("Ride",     "FUN_001d5210", 4, 3),   // the CONTROL: matches Ride's spec exactly
+        ("Build",    "FUN_00198b48", 2, 0),
+        ("Hire",     "FUN_00199008", 1, 0),
+    };
+}
 
 /// <summary>The `◀▶` pair a row gets when its value can be nudged.
 ///

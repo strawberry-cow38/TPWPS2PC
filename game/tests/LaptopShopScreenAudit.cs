@@ -355,6 +355,38 @@ public partial class LaptopShopScreenAudit : Node
                   $"BARSLIDE's own art carries the yellow the real screen shows, so the track needs no tint "
                   + $"({yellowest.R},{yellowest.G},{yellowest.B}) against the screenshot's (242,246,26)");
 
+            // ⭐⭐ THE CHECK THAT WOULD HAVE CAUGHT THE SLIDER/BAR MIX-UP. Build and Hire were
+            // written as sliders because their scene elements are NAMED `ExcitementSlider`,
+            // `ReliabilitySlider` and `MotivationSlider` -- and all three are drawn as BARS.
+            // Master: "those arent meant to be sliders, they're meant to be bars."
+            //
+            // The widget is whichever function the draw calls: `FUN_00115590` for a bar,
+            // `FUN_001DAAE0` for a slider. Those call counts are recorded in LaptopWidgetCounts,
+            // and every spec's row kinds must agree with them.
+            //
+            // ⚠ THE RIDE ROW IS THE CONTROL, and it is not vacuous: it is the one screen whose
+            // counts (4 bars, 3 sliders) were decoded BEFORE this check existed and were already
+            // right, so a broken comparison shows up as the control going red rather than as a
+            // silent pass over three wrong screens.
+            foreach (var (name, draw, bars, sliders) in LaptopWidgetCounts.Decoded)
+            {
+                var spec = name switch
+                {
+                    "Ride"  => LaptopScreen.Ride,
+                    "Build" => LaptopScreen.Build,
+                    _       => LaptopScreen.Hire,
+                };
+                int haveBars = 0, haveSliders = 0;
+                foreach (var r in spec.Rows)
+                {
+                    if (r.Kind == LaptopRowKind.Bar) haveBars++;
+                    else if (r.Kind == LaptopRowKind.Slider) haveSliders++;
+                }
+                Check(haveBars == bars && haveSliders == sliders,
+                      $"{name}: spec has {haveBars} bars / {haveSliders} sliders, and {draw} emits "
+                    + $"{bars} / {sliders} -- the widget comes from the DRAW, not the element name");
+            }
+
             if (_bad > 0) { GD.PrintErr($"LAPTOP SHOP FAIL: {_bad} of {_checks}"); GetTree().Quit(2); return; }
             GD.Print($"LAPTOP SHOP PASS: {_checks} checks; the layout is read from "
                    + $"{ShopScreen.SceneFile}, the row step predicts the scene's own widget rows, "
