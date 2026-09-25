@@ -566,11 +566,20 @@ public partial class LaptopShopScreenAudit : Node
                 screen.ShowMenu(many, 0, LaptopMainMenu.MainScene);
                 Check(screen.MenuRowScreenBox(max - 1).Size.Y > 0,
                       $"control: with no balance the list uses all {max} rows");
+                var row0NoBalance = screen.MenuRowScreenBox(0);
                 screen.ShowBalance("$30,000");
                 Check(screen.MenuRowScreenBox(max - 1).Size == Vector2.Zero,
                       $"with the balance showing, row {max - 1} is given up to it -- nothing is "
                     + "drawn where the readout sits");
                 Check(screen.MenuRowScreenBox(max - 2).Size.Y > 0, $"and row {max - 2} is still the list's");
+                // ⭐⭐ MASTER: "balance is meant to be at the top." So the list must move DOWN by
+                //    exactly one row. A window that merely got SHORTER would leave the readout
+                //    drawn over the first ride -- which is the same overlap, at the other end.
+                float dropped = (screen.MenuRowScreenBox(0).Position.Y - row0NoBalance.Position.Y)
+                              / screen.PanelScale;
+                Check(Mathf.IsEqualApprox(dropped, LaptopMainMenu.RowStep),
+                      $"the list starts one row lower to make room at the top (dropped {dropped:F0} "
+                    + $"authored units, expected {LaptopMainMenu.RowStep})");
 
                 screen.ShowBalance(null);
                 Check(!screen.BalanceShown, "and leaving build clears it");
