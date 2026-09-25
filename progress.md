@@ -3174,3 +3174,61 @@ has not changed them since 8ef44b9.
     `known_retail_failures_remain` with runner exit 2 and `landing_evidence=True`. **This is the
     first time the core matrix covered the four terrain_2 parks.**
   - `tools/runtime_audit.py`, in /tmp/tpw-c5dfe12/runtime: all 11 scenes pass.
+
+## Native ride queues, opt-in — September 25, 2026 UTC
+
+At strawberry's request: port the console's ride queues from the code. Branch
+`tinyclaw/native-ride-queues`, behind `--native-ride-queues`; default play is unchanged. The decode
+and the port table are in findings/native-ride-queue.md.
+
+**Code:**
+- `core/TPW.PS2.Data/NativeRideQueue.cs`:
+  - 117340's spots (`NativeQueueSpots`);
+  - 210428's waiting arithmetic (`NativeQueueWaiting`);
+  - the `NativeRideQueues` controller: 20D530's head count 7 + 4×tier, walk-in, waiting,
+    staggered move-up, quit, boarding for a waiting head while VAR_ONRIDE < VAR_CAPACITY,
+    breakdown (event 7), demolition (event 10), and closing (nothing).
+- ParkVisitors seams: the `Queueing` intent, `NativeQueueMouth`, `NativeQueueArrival`,
+  `AssignQueueRoute`, `BoardFromQueue` and `ReleaseFromQueue`. ReconcileRemovedRides leaves
+  Queueing guests to their owner.
+- `ShopEntrance.Connection` generalises connection A to rides. It is ride vtable +17C.
+- `game/Viewer.RideQueue.cs` reads each ride's queue off the path tool.
+
+**Decoded along the way:**
+- 117798's callers are the state-4 and state-5 entries (vtable +21C and +224) and demolition
+  (116458). Closing sends nothing.
+- 20C6A8 is the destination picker, not a queue cost. cow tools retracted the claim everywhere
+  (b11c6cb).
+- The viewer's per-frame `Decide` erased every event thought, BadQueue included. cow tools fixed it
+  with `ThoughtOf` (949333e); that fix is not on this branch.
+
+**Evidence:**
+- **At 7cba3ed** (the code, clean tree, /tmp/tpw-7cba3ed, provenance-checked manifests):
+  - 79 unit tests OK;
+  - audit matrix `known_retail_failures_remain`, runner exit 2, `landing_evidence=True`. Only
+    Thrill Grill (HALLOW) and Moon Buggies (SPACE) are red;
+  - runtime 11 of 11;
+  - viewer matrix 48 of 48;
+  - all 23 projects build with 0 errors.
+- **At c665fc4** (adds the smoke and the matrix minimums, /tmp/tpw-c665fc4):
+  - 79 unit tests OK;
+  - matrix as above, with native_ride_queue 17 and native_ride_queue_walked 18 in all 8 parks.
+- **Mutations:** five mutations of the controller each turn the audit red. They were: boarding
+  ignoring VAR_ONRIDE, boarding a head that is not waiting, closing emptying the queue, the first
+  follower staggered, and move-up ignoring eligibility.
+- **Rendered smoke** `game/tests/NativeRideQueueSmoke.tscn` PASS, 40418 checks:
+  - two fixture inputs: the ride held full until six wait, then impatience 81;
+  - every waiting guest was on its spot and drawn there (10343 ticks × guests);
+  - the leaver left on the next walk tick and was handed back on the mouth;
+  - the guests waiting behind it moved up at +0, 3 and 6;
+  - boarding resumed from the front.
+  - Film: TPW_QUEUE_FILM, sent to strawberry.
+
+**Adapters** (NON-PARITY line at startup):
+- tier 0;
+- phase = guest id;
+- speed 15 + (id·7 mod 15);
+- queue routes follow the drawn cells, not the 0x10/0x11 planner;
+- the ordinary state-4 +94 exception is not modelled;
+- a boarded head joins the script's queue for LETMEON;
+- effect 0x7E and 2E28D0 are unported.
