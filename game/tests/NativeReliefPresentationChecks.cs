@@ -166,9 +166,23 @@ public static class NativeReliefPresentationChecks
         actors.TryGetValue(id, out var original);
         Check(guest.State == GuestState.Walking && guest.Progress > 0 && FullBody(original),
             "BEFORE service actual walking character has visible mesh body and legs");
+        // ⭐ The toilet bubble comes from the 128-tick mood ladder on THIS guest's slot; SendTo takes
+        // no decision action, so nothing raises it on arrival. Step to the slot computed exactly as
+        // `Moods` does and assert after it, inside the same 50-step approach, so the walk timeline
+        // below is untouched. A fixed Tick(n) would only fit one guest id.
+        var needsTick = typeof(VisitorNeeds).GetField("_tick", Hidden)
+            ?? throw new MissingMemberException("VisitorNeeds._tick");
+        long NeedsTick() => (long)needsTick.GetValue(visitors.Needs);
+        long now = NeedsTick(), phase = ((id % VisitorNeeds.MoodTicks) - now) % VisitorNeeds.MoodTicks;
+        if (phase < 0) phase += VisitorNeeds.MoodTicks;
+        long slot = now + phase;
+        int waited = 0;
+        for (; NeedsTick() <= slot && waited < 49; waited++) Tick(1);
+        Present();
+        Check(NeedsTick() > slot, $"guest {id}'s mood slot (needs tick {slot}) is reached inside the approach, after {waited} steps");
         Check(thoughts.Root.GetChildren().OfType<Sprite3D>().Any(b => b.Visible && b.Texture != null),
             "BEFORE service real toilet bubble is visible");
-        Tick(49); Present();
+        Tick(49 - waited); Present();
         Check(guest.Cell == stub && !visitors.ServiceHidden(id) && visitors.Boardings == 0 && FullBody(actors.GetValueOrDefault(id)),
             "public stub arrival is still visible, not servicing");
         Tick(1); Present();
