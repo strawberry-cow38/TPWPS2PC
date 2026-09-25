@@ -789,3 +789,31 @@ asserts the predicate counts 2 and 1. ⚠ Its control re-runs the ORIGINAL key o
 and asserts it finds **0**, which is exactly the shape the bug took: a wrong answer that reads as
 an empty park. Without that control the first two checks would pass on the broken version too,
 because in an empty park everything counts zero.
+
+## The Hire screen's data sources -- decoded, but the port has no staff to show (2026-09-25)
+
+Read from `FUN_00199008`, which draws labels `0x305`/`0x376`/`0x341` = 773 Pay Grade, 886 Monthly
+Wage, 833 Motivation:
+
+| row | source |
+|---|---|
+| Pay Grade | `staff[+0x14] + 1`, through the INTEGER formatter `FUN_00142b68` |
+| Monthly Wage | `FUN_0012b630(staff, -1)`, through the MONEY formatter `FUN_00142908` |
+| Motivation (bar) | `staff[+0x18]` |
+
+⭐ **The wage is a product of two tables**, `FUN_0012b630`:
+```
+wage = DAT_0035c410[ staff[+0x14] ] * DAT_0035c428[ staff[+0x10] ]
+```
+so `staff[+0x14]` is the PAY GRADE index and `staff[+0x10]` the STAFF KIND index -- and the five
+kinds are already visible in the text table as `STR_PURCHASE_{MECHANICS,HANDYMEN,ENTERTAINERS,
+GUARDS,RESEARCHERS}`. ⚠ The two tables themselves are not yet dumped.
+
+⚠⚠ **AND THE SCREEN CANNOT BE WIRED YET, because this port has no staff at all.** There is no
+`Staff` type, no pay grade and no wage anywhere in `core/` or `game/` -- the only matches are the
+laptop lines written today. Staff are also absent from the compiled database: `AssetKind` runs
+Coaster / Feature / Ride / Shop / Sideshow / TrackRide / TourRide / TrackUpgrade, with no staff
+kind, so unlike the Build screen there is no record to read a price off.
+
+⭐ Recorded rather than faked. Filling these three rows from the demo sweep would have produced a
+screen that looks finished and means nothing; the spec above is what an implementation needs.
