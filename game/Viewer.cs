@@ -3133,11 +3133,11 @@ public partial class Viewer : Node3D
     {
         var outp = new List<(AssetLibrary.RideAssets, RideDefinition)>();
         if (_lib?.Rides == null) return outp;
-        foreach (var r in _lib.Rides)
+        // ⚠ Off BuildableRows, so the priced catalogue lists the same things the build list does
+        // -- it used to carry every track piece of every track ride at the ride's own price.
+        foreach (int i in BuildableRows())
         {
-            if (r.Model == null || IsTerrain(r.Model.Path)) continue;
-            if (BuildCategory(r).Equals("Coasters", StringComparison.OrdinalIgnoreCase)
-                && IsCoasterPart(r.Model.Path)) continue;
+            var r = _lib.Rides[i];
             var def = DefinitionFor(r.Model);
             if (def?.PlacementCost is not > 0) continue;
             outp.Add((r, def));
@@ -5824,12 +5824,11 @@ public partial class Viewer : Node3D
     /// test looked like it would work and did not.
     ///
     /// ⭐ Returns names and counts. It used to build buttons; the panel they sat on is gone.</summary>
+    /// ⚠⚠ IT COUNTS THINGS, NOT MODELS, off the same <see cref="BuildableRows"/> the list draws.
+    /// Counting models promised "Rides (47)" over a list of eighteen.
     List<(string Key, int Count)> BuildCategories() =>
-        _lib.Rides
-            .Where(r => r.Model != null && !IsTerrain(r.Model.Path) && DefinitionFor(r.Model) != null)
-            .Where(r => !(BuildCategory(r).Equals("Coasters", StringComparison.OrdinalIgnoreCase)
-                          && IsCoasterPart(r.Model.Path)))
-            .GroupBy(BuildCategory, StringComparer.OrdinalIgnoreCase)
+        BuildableRows()
+            .GroupBy(i => BuildCategory(_lib.Rides[i]), StringComparer.OrdinalIgnoreCase)
             .OrderByDescending(g => g.Count())
             .Select(g => (g.Key, g.Count()))
             .ToList();
@@ -5866,19 +5865,71 @@ public partial class Viewer : Node3D
         if (category == null) return;
         _buildCategory = category;
         _buildRows.Clear();
-        for (int i = 0; i < _lib.Rides.Count; i++)
+        foreach (int i in BuildableRows())
+            if (BuildCategory(_lib.Rides[i]).Equals(category, StringComparison.OrdinalIgnoreCase))
+                _buildRows.Add(i);
+        // ⚠ THE CONTROL, kept: after the collapse this must print NOTHING. It is what showed the
+        // duplicates were one .sam each rather than sixteen rides, and it is what would catch the
+        // collapse silently stopping.
+        var seen = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        foreach (int i in _buildRows)
+        {
+            var ra = _lib.Rides[i];
+            var d = DefinitionFor(ra.Model);
+            string n = DisplayName(ra, d);
+            if (!seen.TryGetValue(n, out var list)) seen[n] = list = new List<string>();
+            list.Add($"{ra.Model?.Path} <- {d?.Source} id={d?.Id?.ToString() ?? "-"}");
+        }
+        foreach (var (n, list) in seen)
+            if (list.Count > 1)
+                GD.Print($"[build.dup] \"{n}\" x{list.Count}: {string.Join(" | ", list)}");
+        Status($"{Title(category)}: {_buildRows.Count} things -- pick one, then click the park");
+    }
+
+    /// <summary>⭐⭐ ONE .sam IS ONE THING TO BUILD. Master saw "Dino Karts" sixteen times and
+    /// "Splish Splash" fourteen: `/Rides/GoKarts/` ships the ride, its four kart colours, ten
+    /// track pieces and a preview as separate `.mps` files, and `DefinitionFor` matches a `.sam`
+    /// by directory suffix, so every one of them resolved to GoKarts.sam -- id 1150, the same
+    /// buildable ride sixteen times over.
+    ///
+    /// ⭐ This is the COASTER rule, which was already here as `IsCoasterPart` and was only ever
+    /// applied to the Coasters category. The data says it was never about coasters: track rides
+    /// have exactly the same folder shape. So it is now the general rule, keyed on the thing the
+    /// game identifies a ride by -- its `.sam` -- rather than on a category name.
+    ///
+    /// ⚠⚠ AND IT NEVER DROPS A DEFINITION. `IsCoasterPart` excluded every model whose stem did
+    /// not match its folder, so a folder where NONE matched would have lost its ride from the list
+    /// entirely -- a duplicate is ugly, a missing ride is a bug. The preference is applied
+    /// WITHIN a group: the stem-matches-folder entry if there is one, otherwise the first.</summary>
+    /// ⭐ ONE list, read by the category counts, the category list and the priced catalogue, so
+    /// the three cannot disagree about what exists -- "Rides (47)" over a list of 18 is the shape
+    /// that bug takes.
+    List<int> _buildThings;
+    List<int> BuildableRows()
+    {
+        if (_buildThings != null) return _buildThings;
+        var best = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var order = new List<string>();
+        int models = 0;
+        for (int i = 0; i < (_lib?.Rides?.Count ?? 0); i++)
         {
             var r = _lib.Rides[i];
-            if (r.Model == null || IsTerrain(r.Model.Path)
-                || !BuildCategory(r).Equals(category, StringComparison.OrdinalIgnoreCase)) continue;
+            if (r.Model == null || IsTerrain(r.Model.Path)) continue;
             var def = DefinitionFor(r.Model);
             if (def == null) continue;
-            // ⚠ One folder is one coaster; its car and its pylon are not separate things to place.
-            if (BuildCategory(r).Equals("Coasters", StringComparison.OrdinalIgnoreCase)
-                && IsCoasterPart(r.Model.Path)) continue;
-            _buildRows.Add(i);
+            models++;
+            // ⚠ The .sam's own path is the identity, not the definition object: two lookups of the
+            // same file must land in the same group whether or not DefinitionFor caches.
+            string key = def.Source ?? r.Model.Path;
+            if (!best.TryGetValue(key, out int had)) { best[key] = i; order.Add(key); continue; }
+            // Prefer the model named after its folder -- `gokarts.mps` in `/Rides/GoKarts/`.
+            if (IsCoasterPart(_lib.Rides[had].Model.Path) && !IsCoasterPart(r.Model.Path)) best[key] = i;
         }
-        Status($"{Title(category)}: {_buildRows.Count} things -- pick one, then click the park");
+        _buildThings = new List<int>(order.Count);
+        foreach (var k in order) _buildThings.Add(best[k]);
+        GD.Print($"[build] {models} models are {_buildThings.Count} things to build -- one row per "
+               + ".sam, keeping the model named after its folder");
+        return _buildThings;
     }
 
     /// <summary>Take an item out of the menu and hold it over the park.</summary>
