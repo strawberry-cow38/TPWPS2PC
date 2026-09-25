@@ -2966,3 +2966,10 @@ animation for every guest, with cow tools) and slices B and C.
 has not changed them since 8ef44b9.
 
 **Evidence:** the gate results below were run at this commit's tree.
+- At c5dfe12, on a clean tree, freshly built:
+  - `python3 -m unittest discover -s tools -p 'test_*.py'`: 66 tests OK.
+  - `tools/audit_matrix.py`, in /tmp/tpw-c5dfe12/matrix: JUNGLE 1 and 2 and FANTASY 1 and 2 PASS.
+    HALLOW 1 and 2 show only Thrill Grill, and SPACE 1 and 2 only Moon Buggies. The status is
+    `known_retail_failures_remain` with runner exit 2 and `landing_evidence=True`. **This is the
+    first time the core matrix covered the four terrain_2 parks.**
+  - `tools/runtime_audit.py`, in /tmp/tpw-c5dfe12/runtime: all 11 scenes pass.
