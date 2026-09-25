@@ -32,8 +32,11 @@ Dinos is the likeliest such pair, and it is unverified.
 ## Notes
 
 - **Thrill Grill:** the PS2 HALLOW.WAD keeps `/rides/firepit/`, with its script, `.sam`, sign and
-  textures. There is no `.mps` or `.aps` anywhere on the disc, and it has no compiled table entry.
-  It cannot be built on PS2. The audit's "missing slot 4" was the CryptKarts Jump add-on's
+  textures, but no `.mps` or `.aps` in that folder, and it has no compiled table entry. It cannot be
+  built on PS2. **Its mesh does ship:** `LOBBY.WAD/hallow2.mps`, the Halloween lobby diorama, uses all
+  seven `fp_*` textures, and `hallow2.aps` sits beside it. An earlier line here said "no model
+  anywhere on the disc". That came from a filename search and was corrected after strawberry had
+  seen it in the model viewer. The audit's "missing slot 4" was the CryptKarts Jump add-on's
   `firepit.aps` found by stem (see visitors.md).
 - **Whirligig:** a stray `SPACE/Rides/whirli.sam` has no model. The real bundle
   `SPACE/Rides/whirli/` has one.
