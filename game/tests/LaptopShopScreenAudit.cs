@@ -1,0 +1,256 @@
+using Godot;
+using System;
+using System.Linq;
+using TPW.PS2.Data;
+
+namespace TPWPS2Viewer.Tests;
+
+/// <summary>The shop's laptop screen, against the disc that authors it.
+///
+/// ⭐⭐ THIS EXISTS BECAUSE THE FIRST VERSION OF THIS SCREEN WAS THE WRONG UI ENTIRELY. It drew
+/// the right numbers into a 260x180 message box, and master said so at a glance. The geometry had
+/// been assembled from whatever the executable seemed to offer, because the layout globals read 0
+/// in the image and that was taken for "unknowable". They read 0 because `MENUS.WAD` fills them.
+///
+/// So every check below reads the DISC and compares against it. A check that only exercised the
+/// port's own constants would have passed happily on the message box too.</summary>
+public partial class LaptopShopScreenAudit : Node
+{
+    int _checks, _bad;
+
+    void Check(bool ok, string label)
+    {
+        _checks++; if (!ok) _bad++;
+        GD.Print($"LAPTOP SHOP {(ok ? "ok" : "FAIL")}: [{_checks}] {label}");
+    }
+
+    public override void _Ready()
+    {
+        AssetLibrary library = null;
+        try
+        {
+            library = new AssetLibrary(OS.GetEnvironment("TPW_PS2_DISC"));
+
+            // ---- the scene file is the layout ------------------------------------------------
+            var raw = library.ReadMenu(ShopScreen.SceneFile);
+            Check(raw != null, $"MENUS.WAD carries {ShopScreen.SceneFile}");
+            var sce = SceneLayout.Parse(raw);
+            Check(sce.Name.Equals("main_i_shop_data", StringComparison.OrdinalIgnoreCase),
+                  $"the file declares its own menu name (got '{sce.Name}')");
+
+            // ⭐ The nine elements the binder `FUN_001d68b0` looks up, at the coordinates the file
+            // authors. These are transcribed from the disc, so a parser that silently dropped a
+            // field or merged two elements fails here rather than looking plausible on screen.
+            var expected = new (string Name, int Row, int Col, int W, int H)[]
+            {
+                ("ItemText",        115,  45,   0,   0),
+                ("TextOptions",     175,  45,   0,   0),
+                ("NumericItems",    175, 250,   0,   0),
+                ("SatisfactionBar", 305, 215,  72,  22),
+                ("QualitySlider",   338, 215,  72,  22),
+                ("AdditiveSlider",  370, 215,  72,  22),
+                ("CostItem",        400, 250,   0,   0),
+                ("CostItemArrows",  412, 190,   0,   0),
+                ("Model",           208, 315, 147, 240),
+            };
+            foreach (var e in expected)
+            {
+                var got = sce[e.Name];
+                Check(got is { } g && g.Row == e.Row && g.Col == e.Col && g.Width == e.W && g.Height == e.H,
+                      $"{e.Name} is row={e.Row} col={e.Col} {e.W}x{e.H}"
+                      + (sce[e.Name] is { } a ? $" (got row={a.Row} col={a.Col} {a.Width}x{a.Height})" : " (absent)"));
+            }
+
+            // ⚠ THE CONTROL. The lookup must be able to answer "no". Without this, a parser that
+            // returned a zeroed element for every name would pass all nine checks above only if
+            // they happened to be zero -- and would pass this file's `Frame()` callers silently.
+            Check(sce["NoSuchElement"] == null, "control: an element the file does not author reads null");
+
+            // ⭐ The file spells them lowercase (`textoptions`) and the executable CamelCase
+            // (`TextOptions`). If the lookup were case-sensitive, every element would read null.
+            Check(sce["textoptions"] != null && sce["SATISFACTIONBAR"] != null,
+                  "element lookup is case-insensitive, as the executable's names require");
+
+            // ⭐ An element authors its frame over TWO lines -- row/col, then width/height. A
+            // parser that replaced rather than merged would lose one of them.
+            Check(sce["SatisfactionBar"] is { HasSize: true, Row: 305, Col: 215 },
+                  "a two-line <frame> merges position and size rather than replacing");
+            Check(sce["ItemText"] is { HasSize: false }, "a text element authors no size, and reports that");
+            Check(sce["ItemText"]?.Justify == "left" && sce["NumericItems"]?.Justify == "center",
+                  "justification is read per element");
+
+            // ---- the row step, corroborated ACROSS FILES --------------------------------------
+            // ⭐⭐ `DAT_002e9ca8` = 32 is a constant in the executable image. Stepping the label
+            // column from the scene's own first row must land on the widgets the SCENE places
+            // independently. Two different files on the disc agreeing is the evidence.
+            int first = sce["TextOptions"]!.Value.Row;
+            var widgets = new (string Name, int Index)[]
+                { ("SatisfactionBar", 4), ("QualitySlider", 5), ("AdditiveSlider", 6), ("CostItem", 7) };
+            int worst = 0;
+            foreach (var (name, index) in widgets)
+                worst = Math.Max(worst, Math.Abs(sce[name]!.Value.Row - (first + ShopScreen.RowStep * index)));
+            Check(worst <= 3, $"row step {ShopScreen.RowStep} predicts all four widget rows (worst miss {worst}px)");
+
+            // ⚠⚠ AND THE CONTROL THAT MAKES THAT MEAN SOMETHING: a wrong step must FAIL the same
+            // test. Without this the check is vacuous -- a loose enough tolerance passes anything.
+            foreach (int wrong in new[] { 28, 30, 34, 36 })
+            {
+                int miss = widgets.Max(w => Math.Abs(sce[w.Name]!.Value.Row - (first + wrong * w.Index)));
+                Check(miss > 3, $"control: step {wrong} does NOT predict the widget rows (worst miss {miss}px)");
+            }
+
+            // ---- the labels are the rows the draw function names ------------------------------
+            var dataFile = library.WadFiles().Single(
+                f => f.Path.EndsWith("/DATA.WAD", StringComparison.OrdinalIgnoreCase));
+            var text = TextDatabase.Load(new WadArchive(library.ReadDisc(dataFile)), "eur");
+
+            Check(ShopScreen.LabelKeys.Length == ShopScreen.LabelTextIds.Length + 1,
+                  "the key array carries the ingredient slot the id array cannot");
+            Check(ShopScreen.LabelKeys[ShopScreen.IngredientRow] == null,
+                  "the ingredient slot is the null one, keeping the two arrays index-aligned");
+
+            // ⭐ The indices are what `FUN_001d70c8` passes. The KEYS are the independent check on
+            // them: the id and the symbolic name must be the same row.
+            for (int i = 0; i < ShopScreen.LabelKeys.Length; i++)
+            {
+                if (ShopScreen.LabelKeys[i] == null) continue;
+                int id = ShopScreen.LabelTextIds[i > ShopScreen.IngredientRow ? i - 1 : i];
+                int byKey = text.IndexOf(ShopScreen.LabelKeys[i]);
+                Check(byKey == id, $"text id {id} is {ShopScreen.LabelKeys[i]} (key resolves to {byKey})");
+            }
+
+            // ⚠ THE CONTROL: a wrong id must not resolve to that key, or the check above would
+            // pass for any number at all.
+            Check(text.IndexOf(ShopScreen.LabelKeys[0]) != ShopScreen.LabelTextIds[1],
+                  "control: a neighbouring id does not resolve to the first label's key");
+
+            // ⭐ Every label on this screen is a SINGLESHOP row -- the game's own name for it.
+            Check(ShopScreen.LabelKeys.Where(k => k != null).All(k => k.StartsWith("STR_SINGLESHOP_")),
+                  "every label belongs to the SINGLESHOP string family");
+
+            // ⭐ The ingredient captions resolve too, which is what puts row 7 on the screen.
+            foreach (var (id, word) in new[] { (804, "Fat"), (379, "Ice"), (142, "Sugar"), (1, "Salt") })
+                Check(text.Text("eng", id) == word, $"ingredient text {id} is '{word}'");
+
+            // ---- the chrome is per world ------------------------------------------------------
+            foreach (var world in new[] { "JUNGLE", "HALLOW", "FANTASY", "SPACE" })
+            {
+                var path = ShopScreen.ChromeFor("/DATA/" + world + ".WAD");
+                Check(path.Contains(world) && library.ReadUi(path) != null,
+                      $"{world} has its own laptop chrome at {path}");
+            }
+            // ⚠ A world the executable does not name must still land on art that exists, not null.
+            Check(library.ReadUi(ShopScreen.ChromeFor("/DATA/LOBBY.WAD")) != null,
+                  "control: an unnamed world falls back to chrome that is actually present");
+
+            // ---- the widget art the screen draws with -----------------------------------------
+            foreach (var art in new[] { "/laptop/BARPROG.ssh", "/laptop/PROG_BAR.ssh", "/laptop/PROG_CBIT.ssh",
+                                        "/laptop/PROG_VBIT.ssh", "/laptop/BARSLIDE.ssh", "/laptop/BARKNOB.ssh" })
+            {
+                bool ok = false;
+                try { var b = library.ReadUi(art); ok = b != null && new Ssh(b).Width > 0; } catch { }
+                Check(ok, $"{art} is present and decodes");
+            }
+
+            // ⚠⚠ THE CHECK THAT REJECTS THE BUG THAT SHIPPED. The satisfaction bar was drawn with
+            // PROG_BAR, chosen by name. The two candidate frames are the same size and colour and
+            // differ only in their INTERIOR, so nothing but the alpha distinguishes them: BARPROG
+            // is one continuous trough, PROG_BAR is an eleven-cell gauge. A tiled fill belongs in
+            // the first. Reinstating PROG_BAR would fail here.
+            int Cells(string art)
+            {
+                var img = new Ssh(library.ReadUi(art));
+                int runs = 0; bool inRun = false;
+                for (int x = 0; x < img.Width; x++)
+                {
+                    bool clear = img.Pixels[((img.Height / 2) * img.Width + x) * 4 + 3] <= 16;
+                    if (clear && !inRun) runs++;
+                    inRun = clear;
+                }
+                return runs;
+            }
+            int trough = Cells("/laptop/BARPROG.ssh"), notched = Cells("/laptop/PROG_BAR.ssh");
+            int slide = Cells("/laptop/BARSLIDE.ssh");
+            Check(trough == 1, $"BARPROG is ONE continuous trough (got {trough} interior runs)");
+            Check(notched > 1, $"control: PROG_BAR is a multi-cell gauge, not a trough (got {notched})");
+            Check(slide == trough, $"BARSLIDE matches BARPROG's interior ({slide} vs {trough}) -- a matched pair");
+
+            // ⚠ And the fill bits are NOT as wide as their images: stretching a 10-wide cap into a
+            // 16-wide slot is what made the first attempt look broken.
+            var cap = new Ssh(library.ReadUi("/laptop/PROG_CBIT.ssh"));
+            var body = new Ssh(library.ReadUi("/laptop/PROG_VBIT.ssh"));
+            int Opaque(Ssh i)
+            {
+                int last = -1;
+                for (int x = 0; x < i.Width; x++)
+                    for (int y = 0; y < i.Height; y++)
+                        if (i.Pixels[(y * i.Width + x) * 4 + 3] > 128) { last = x; break; }
+                return last + 1;
+            }
+            Check(Opaque(cap) == 10, $"PROG_CBIT is opaque over 10 of its 16 columns (got {Opaque(cap)})");
+            Check(Opaque(body) == 16, $"PROG_VBIT fills all 16 (got {Opaque(body)}) -- it is the tile, the cap is not");
+
+            // ⭐⭐ WHY THE FILL IS ROUNDED AT BOTH ENDS. The trough is symmetric and the cap's
+            // profile starts where the trough's does, so one sprite serves both ends -- mirrored at
+            // the leading edge. Filling flat to the last interior column instead put a SQUARE edge
+            // inside a ROUND one, visible the moment the bar reached 100%.
+            var trough2 = new Ssh(library.ReadUi("/laptop/BARPROG.ssh"));
+            int Interior(Ssh i, int x)
+            {
+                int n = 0;
+                for (int y = 0; y < i.Height; y++) if (i.Pixels[(y * i.Width + x) * 4 + 3] <= 16) n++;
+                return n;
+            }
+            var leftEnd = Enumerable.Range(3, 11).Select(x => Interior(trough2, x)).ToArray();
+            var rightEnd = Enumerable.Range(114, 11).Select(x => Interior(trough2, x)).Reverse().ToArray();
+            Check(leftEnd.SequenceEqual(rightEnd),
+                  $"BARPROG's ends are mirror images ([{string.Join(",", leftEnd)}] vs [{string.Join(",", rightEnd)}])");
+            int CapHeight(Ssh i, int x)
+            {
+                int n = 0;
+                for (int y = 0; y < i.Height; y++) if (i.Pixels[(y * i.Width + x) * 4 + 3] > 128) n++;
+                return n;
+            }
+            Check(CapHeight(cap, 0) == leftEnd[0],
+                  $"PROG_CBIT's first column matches the trough's first interior column ({CapHeight(cap, 0)} vs {leftEnd[0]})");
+            // ⚠ The control: an interior column well away from either end must NOT match, or the
+            // check above would pass against any flat-ended art.
+            Check(Interior(trough2, 60) != leftEnd[0],
+                  $"control: a mid-trough column differs from the end profile ({Interior(trough2, 60)} vs {leftEnd[0]})");
+
+            // ⭐ And the fill tiles SEAMLESSLY sideways because the gradient runs vertically. If it
+            // ran horizontally, tiling a 16-wide bit would band the bar every 16 columns.
+            int Spread(Ssh i, bool vertical)
+            {
+                int lo = 255, hi = 0;
+                for (int k = 0; k < (vertical ? i.Height : i.Width); k++)
+                {
+                    int x = vertical ? 2 : k, y = vertical ? k : i.Height / 2;
+                    if (i.Pixels[(y * i.Width + x) * 4 + 3] <= 128) continue;
+                    int v = i.Pixels[(y * i.Width + x) * 4 + 2];
+                    lo = Math.Min(lo, v); hi = Math.Max(hi, v);
+                }
+                return hi - lo;
+            }
+            Check(Spread(body, true) > 10 * Spread(body, false),
+                  $"PROG_VBIT's gradient is VERTICAL (spread {Spread(body, true)} down vs {Spread(body, false)} across) -- so it tiles seamlessly");
+
+            // ⭐ The face, corroborated by the step rather than chosen: Large.bff's line advance
+            // must FIT the row step, and the other two faces must be the ones that leave holes.
+            var advances = new[] { "Large", "Small", "Console" }
+                .ToDictionary(n => n, n => new BitmapFont(library.ReadGeneric($"/Fonts/European/{n}.bff")).LineAdvance);
+            Check(advances["Large"] <= ShopScreen.RowStep && ShopScreen.RowStep - advances["Large"] <= 4,
+                  $"Large.bff's line advance {advances["Large"]} fits the {ShopScreen.RowStep} row step");
+            Check(ShopScreen.RowStep - advances["Small"] > 4 && ShopScreen.RowStep - advances["Console"] > 4,
+                  $"control: Small ({advances["Small"]}) and Console ({advances["Console"]}) do not");
+
+            if (_bad > 0) { GD.PrintErr($"LAPTOP SHOP FAIL: {_bad} of {_checks}"); GetTree().Quit(2); return; }
+            GD.Print($"LAPTOP SHOP PASS: {_checks} checks; the layout is read from "
+                   + $"{ShopScreen.SceneFile}, the row step predicts the scene's own widget rows, "
+                   + "every label id is its SINGLESHOP key, and each world has its own chrome");
+            GetTree().Quit(0);
+        }
+        catch (Exception ex) { GD.PrintErr("LAPTOP SHOP FAIL: " + ex); GetTree().Quit(2); }
+        finally { library?.Dispose(); }
+    }
+}

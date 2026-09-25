@@ -87,48 +87,40 @@ public sealed class AssetLibrary : IDisposable
         .Where(f => !f.IsDirectory && f.Path.EndsWith(".WAD", StringComparison.OrdinalIgnoreCase))
         .ToList();
 
-    WadArchive _generic;
+    readonly Dictionary<string, WadArchive> _side = new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>The shared archive, opened alongside whichever world is current and kept.
+    /// <summary>Read a file out of a named archive that is NOT the park's own, keeping that
+    /// archive open for later reads.
     ///
-    /// ⭐ DATA.WAD holds what every park draws from -- the weather sprites, the water, the logo,
-    /// the characters. `OpenWad` has exactly one archive open, so reading a generic asset while a
-    /// park is loaded needs a SECOND one rather than a swap: swapping would throw away the park's
-    /// index and everything built from it.</summary>
-    public byte[] ReadGeneric(string pathContains)
+    /// ⭐ `OpenWad` has exactly one archive open -- the world the park is drawing from -- so
+    /// reading anything shared needs a SECOND handle rather than a swap: swapping would throw
+    /// away the park's index and everything built from it. DATA.WAD holds what every park draws
+    /// (weather, water, the characters, the fonts), UI.WAD the panel and laptop art, MENUS.WAD
+    /// the screen layouts.
+    ///
+    /// ⚠ Skip ALIAS entries: they carry a path but no bytes, so taking the first match by name
+    /// can hand back an empty record while the real file sits later in the table.</summary>
+    public byte[] ReadSide(string wadName, string pathContains)
     {
-        if (_generic == null)
+        if (!_side.TryGetValue(wadName, out var wad))
         {
             var f = WadFiles().FirstOrDefault(
-                x => x.Path.EndsWith("DATA.WAD", StringComparison.OrdinalIgnoreCase));
+                x => x.Path.EndsWith(wadName, StringComparison.OrdinalIgnoreCase));
             if (f == null) return null;
-            _generic = new WadArchive(_disc.Read(f.Extent, f.Size));
+            _side[wadName] = wad = new WadArchive(_disc.Read(f.Extent, f.Size));
         }
-        // ⚠ Skip ALIAS entries: they carry a path but no bytes, so taking the first match by name
-        // can hand back an empty record while the real file sits later in the table.
-        var e = _generic.Entries.FirstOrDefault(
+        var e = wad.Entries.FirstOrDefault(
             x => !WadArchive.IsAlias(x) && x.Path.EndsWith(pathContains, StringComparison.OrdinalIgnoreCase));
-        return e == null ? null : _generic.Read(e);
+        return e == null ? null : wad.Read(e);
     }
 
-    WadArchive _ui;
+    public byte[] ReadGeneric(string pathContains) => ReadSide("DATA.WAD", pathContains);
 
-    /// <summary>Read a file out of `UI.WAD` without disturbing the WAD a park is using.
-    /// ⚠ <see cref="ReadGeneric"/> only ever opens DATA.WAD, and the panel art lives in UI.WAD --
-    /// calling OpenWad for it would swap the archive the loaded park is still reading from.</summary>
-    public byte[] ReadUi(string pathContains)
-    {
-        if (_ui == null)
-        {
-            var f = WadFiles().FirstOrDefault(
-                x => x.Path.EndsWith("UI.WAD", StringComparison.OrdinalIgnoreCase));
-            if (f == null) return null;
-            _ui = new WadArchive(_disc.Read(f.Extent, f.Size));
-        }
-        var e = _ui.Entries.FirstOrDefault(
-            x => !WadArchive.IsAlias(x) && x.Path.EndsWith(pathContains, StringComparison.OrdinalIgnoreCase));
-        return e == null ? null : _ui.Read(e);
-    }
+    public byte[] ReadUi(string pathContains) => ReadSide("UI.WAD", pathContains);
+
+    /// <summary>⭐⭐ A screen's LAYOUT, which lives in `MENUS.WAD` as a plain-text `.sce` file and
+    /// not in the executable at all -- see <see cref="SceneLayout"/>.</summary>
+    public byte[] ReadMenu(string pathContains) => ReadSide("MENUS.WAD", pathContains);
 
     public void OpenWad(string path)
     {

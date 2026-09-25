@@ -44,6 +44,23 @@ internal static class SelfTests
             Check(small.Pixels.Length == 8 * 8 * 4 && small.Pixels.Chunk(4).All(p => p[0] == 130), "sub-macroblock image size");
             var smallAlpha = new Ssh(Synthetic(8, 8, [128], true));
             Check(Enumerable.Range(0, 64).All(i => smallAlpha.Pixels[i * 4 + 3] == 128 + i / 8 * 4), "8x8 alpha retains coded stride");
+            // 8x32 is two stacked macroblocks; the contiguous rule puts all 256 image pixels in the
+            // first one, so no pixel may carry the second macroblock's luminance (a crop would give
+            // rows 16..31 that value), while alpha keeps the coded row stride (contiguous alpha would
+            // repeat each value over two rows).
+            var tall = new Ssh(Synthetic(8, 32, [32, 64], true));
+            int lumaFirst = (((32 - 16) * 149 >> 6) + 1) >> 1;
+            Check(tall.Pixels.Length == 8 * 32 * 4 && Enumerable.Range(0, 256).All(i => tall.Pixels[i * 4] == lumaFirst), "8x32 RGB is contiguous in the first macroblock");
+            Check(Enumerable.Range(0, 256).All(i => tall.Pixels[i * 4 + 3] == Math.Min(255, 128 + i / 8 * 4)), "8x32 alpha retains coded stride");
+            // 32x8 is two side-by-side macroblocks in a single row, where contiguous and column
+            // placement coincide: columns 0..15 take the first macroblock, 16..31 the second.
+            var wide = new Ssh(Synthetic(32, 8, [32, 64], true));
+            int lumaSecond = (((64 - 16) * 149 >> 6) + 1) >> 1;
+            Check(wide.Pixels.Length == 32 * 8 * 4 && Enumerable.Range(0, 256).All(i => wide.Pixels[i * 4] == (i % 32 < 16 ? lumaFirst : lumaSecond)), "32x8 keeps macroblock columns in place");
+            Check(Enumerable.Range(0, 256).All(i => wide.Pixels[i * 4 + 3] == 128 + i / 32 * 4), "32x8 alpha retains coded stride");
+            Check(new Ssh(Synthetic(16, 8, [128], true)).Pixels.Length == 16 * 8 * 4, "16x8 decodes");
+            Reject(Synthetic(4, 4, [128], false), "unmeasured sub-macroblock dimension is refused");
+            Reject(Synthetic(8, 12, [128], false), "unmeasured sub-macroblock height is refused");
             foreach (var dimensions in new[] { (64, 32), (32, 64) })
             {
                 int width = dimensions.Item1, height = dimensions.Item2;
