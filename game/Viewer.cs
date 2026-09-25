@@ -3819,12 +3819,43 @@ public partial class Viewer : Node3D
             // being six: every guest on variant 0 is a chorus line. Chosen by id so a guest keeps
             // the same idle across frames and a render is reproducible.
             //
-            // ⚠⚠ WHICH variant the console would pick is NOT READ. The guest carries a 5-bit
-            // state in `guest[0x38] & 0x1f` -- censused at 4, 11, 12, 13 and 14, with 13 set at
-            // spawn (`FUN_00211A00`) and on every facility exit (`FUN_0020EDD8`), and 11 set by
-            // the walking path (`FUN_0020D628`) -- but those values run past the end of the
-            // slot table, so the field is a STATE and something maps state to record. That table
-            // has not been found, so this picks a variant rather than claiming to know one.
+            // ⭐⭐ THE STATE->CLIP TABLE HAS NOW BEEN FOUND, and this comment used to say it had
+            // not. It is at **`0x2AAD48`**: 22 `(descriptorPointer, count)` entries indexed by
+            // `logical * 8`, descriptors of 32 bytes holding first/main/last slot-variant pairs
+            // plus flags and a weight. Found by tinyclaw; written up in
+            // findings/native-guest-animation-readiness.md; re-read here off the executable before
+            // this comment was changed, because a comment that asserts a negative is exactly the
+            // kind that goes stale silently.
+            //
+            // ⭐ IT CONFIRMS THE IDENTIFICATION BELOW AND CONTRADICTS THE SELECTION. Logical 11
+            // maps to `0x2AAA88` with EIGHT variants, and six of them are slot 2 variants 0..5 --
+            // so slot 2 really is the idle set. But the console does not spread guests across them
+            // by anything like an id: the variants are WEIGHTED, and the weights are
+            //
+            //     variant 0  ->  main pair F/0 (NO CLIP)   weight 93
+            //     variants 1..6 -> slot 2, variants 0..5    weight 1 each
+            //     variant 7  ->  slot 6, variant 0          weight 1
+            //
+            // i.e. **93% of the time the console plays no idle clip at all**, and each of the six
+            // idles comes up one time in a hundred.
+            //
+            // ⚠⚠ AND THAT IS WHY THIS CODE DOES NOT COPY IT YET. "No clip" on the console leaves
+            // the model playing whatever it already was; in this port an absent record leaves it in
+            // BIND POSE -- arms out, dead still -- which is precisely the bug master reported
+            // ("we're also missing the idle/wait animations for visitors"). Copying the weights
+            // literally without also porting "keep the current animation" would put 93% of the
+            // crowd back in that pose. So this still picks a variant by id, which is NOT the
+            // console's rule, and says so rather than pretending otherwise.
+            //
+            // ⚠ STILL UNRECONCILED, deliberately not guessed at: which field the state lives in
+            // and which value means walking. This file had `guest[0x38] & 0x1f` (censused 4, 11,
+            // 12, 13, 14; 13 at spawn via `FUN_00211A00` and on facility exit via `FUN_0020EDD8`,
+            // 11 from `FUN_0020D628`); the findings doc has the requested state in the low 5 bits
+            // of `owner + 0x30`, and `FUN_0020D628` touches `+0x30`/`+0x36`, not `+0x38`. Those may
+            // be two different objects or one of them may be wrong. The walk below was chosen by
+            // MEASURING the motion, not by this table, and the table maps logical 13 to slot 0 and
+            // logical 9 to slot 1 -- so do not re-point the walk at slot 0 on the strength of a
+            // state number until that join is actually made.
             var idles = aps?.Records().Where(r => r.Slot == 2 && r.Skeletal && !r.Shared).ToArray()
                         ?? Array.Empty<Aps.Record>();
             var idle = idles.Length == 0 ? null : idles[Math.Abs(id) % idles.Length];
