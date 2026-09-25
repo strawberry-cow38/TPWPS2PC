@@ -101,7 +101,10 @@ public sealed partial class LaptopShopScreen : Control
             GD.PrintErr("[laptop] UI.WAD laptop art missing -- screen stays off");
             return null;
         }
-        return new LaptopShopScreen(chrome, barFrame, barFill, track, knob, layout, font, text, language);
+        var screen = new LaptopShopScreen(chrome, barFrame, barFill, track, knob, layout, font, text, language);
+        screen._lib = lib;                 // for the other screens' scene files, read on demand
+        screen._layouts[ShopScreen.SceneFile] = layout;
+        return screen;
     }
 
     /// <summary>Put the screen up for a shop.
@@ -183,7 +186,91 @@ public sealed partial class LaptopShopScreen : Control
         _ => "Sale Price",
     };
 
-    public new void Hide() { Open = false; Visible = false; _rows.Clear(); QueueRedraw(); }
+    public new void Hide() { Open = false; Visible = false; _rows.Clear(); _spec = null; QueueRedraw(); }
+
+    // ---- the general path: any of the three info screens --------------------------------------
+
+    LaptopScreen _spec;
+    readonly Dictionary<string, SceneLayout> _layouts = new(StringComparer.OrdinalIgnoreCase);
+    readonly List<(string Text, int Fraction)> _cells = new();
+    AssetLibrary _lib;
+
+    /// <summary>⭐⭐ ONE RENDERER FOR THE SHOP, THE RIDE AND THE SIDESHOW, because the console
+    /// has one: all three bind their own element list out of their own `.sce` and then draw with
+    /// the SAME widget calls. The difference between them is <see cref="LaptopScreen"/> data.
+    ///
+    /// <paramref name="cells"/> is one entry per row of the spec: the text to put in the value
+    /// column for a text row, or the 0..100 fraction for a bar or slider. A null text on a row
+    /// leaves that row blank, which is how the shop's ingredient row disappears while keeping
+    /// its slot.</summary>
+    public void ShowScreen(LaptopScreen spec, string title, IReadOnlyList<(string Text, int Fraction)> cells)
+    {
+        _spec = spec ?? throw new ArgumentNullException(nameof(spec));
+        _title = title ?? "";
+        _rows.Clear();
+        _cells.Clear();
+        if (cells != null) _cells.AddRange(cells);
+        Open = true; Visible = true;
+        QueueRedraw();
+    }
+
+    /// <summary>The layout for a screen, read from `MENUS.WAD` the first time it is asked for.
+    /// ⚠ Each screen has its OWN scene file; they are not variations on one layout.</summary>
+    SceneLayout LayoutFor(LaptopScreen spec)
+    {
+        if (_layouts.TryGetValue(spec.SceneFile, out var had)) return had;
+        var raw = _lib?.ReadMenu(spec.SceneFile);
+        var made = raw == null ? SceneLayout.Parse("") : SceneLayout.Parse(raw);
+        if (raw == null) GD.PrintErr($"[laptop] MENUS.WAD/{spec.SceneFile} missing -- {spec.SceneFile} draws empty");
+        _layouts[spec.SceneFile] = made;
+        return made;
+    }
+
+    void DrawSpecScreen(float s, Vector2 o)
+    {
+        var layout = LayoutFor(_spec);
+        Vector2 At(SceneLayout.Element e) => o + new Vector2(e.X, e.Y) * s;
+
+        if (layout[_spec.TitleElement] is { } title)
+            DrawRun(_title, At(title), s, Of(ShopScreen.Highlight), title.Justify);
+
+        var labels = layout[_spec.LabelElement];
+        var values = layout[_spec.ValueElement];
+        for (int i = 0; i < _spec.Rows.Count; i++)
+        {
+            var row = _spec.Rows[i];
+            var (text, fraction) = i < _cells.Count ? _cells[i] : (null, 0);
+            float dy = LaptopScreen.RowStep * i * s;
+
+            string label = Row(row.TextId);
+            if (labels is { } l && label != null)
+                DrawRun(label, At(l) + new Vector2(0, dy), s, Of(ShopScreen.Label), l.Justify);
+
+            // ⭐ A widget sits at ITS OWN element's row, not on the label grid. The ride screen
+            // places its seven widgets at 118/150/182/214/246/280/310 -- 32 apart for the bars and
+            // then 34 and 30 -- so stepping them with the labels would drift by the third slider.
+            if (row.Kind is LaptopRowKind.Bar or LaptopRowKind.Slider)
+            {
+                if (row.Element == null || layout[row.Element] is not { } w) continue;
+                var rect = new Rect2(At(w), new Vector2(w.Width, w.Height) * s);
+                if (row.Kind == LaptopRowKind.Bar) DrawBar(rect, fraction, s);
+                else DrawSlider(rect, fraction, s, selected: false);
+                continue;
+            }
+
+            if (text == null) continue;
+            // A row with its own value element uses it; otherwise the shared value column, at the
+            // label's height.
+            if (row.Element != null && layout[row.Element] is { } own)
+                DrawRun(text, At(own), s, Of(ShopScreen.Highlight), own.Justify);
+            else if (values is { } v && labels is { } lab)
+                // ⚠ THE VALUE COLUMN CONTRIBUTES ITS X, AND THE LABEL ITS Y. On the shop the two
+                // elements share a row (both 175) so either reading works; on the ride they do
+                // NOT -- its value elements sit at 338/400/436 against labels from 115 -- and
+                // taking the value element's row as a baseline threw the text off the screen.
+                DrawRun(text, new Vector2(At(v).X, At(lab).Y + dy), s, Of(ShopScreen.Highlight), v.Justify);
+        }
+    }
 
     static string Money(int v) => v < 0 ? $"-${-v:N0}" : $"${v:N0}";
 
@@ -195,6 +282,7 @@ public sealed partial class LaptopShopScreen : Control
         float s = Scale;
         var o = Origin;
         DrawTextureRect(_chrome, new Rect2(o, new Vector2(Native, Native) * s), false);
+        if (_spec != null) { DrawSpecScreen(s, o); return; }
 
         Vector2 At(SceneLayout.Element e) => o + new Vector2(e.X, e.Y) * s;
 

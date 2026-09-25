@@ -241,6 +241,7 @@ public partial class Viewer : Node3D
     bool _walkAudit;
     bool _typeAudit;
     bool _guestTest;
+    int _laptopFilm; string _laptopScreen = "ride"; int _laptopFrame;
     bool _idleScene, _idleSeeded;
     int _idleCount = 24;
     /// <summary>Which ride the control run stands, by display name; Crazy Ape unless told.</summary>
@@ -375,6 +376,8 @@ public partial class Viewer : Node3D
             else if (a == "--place-test") { _buildTest = true; _placeTest = true; }
             else if (a == "--walk-audit") _walkAudit = true;
             else if (a == "--guest-test") _guestTest = true;
+            else if (a.StartsWith("--laptop-film=")) { int.TryParse(a["--laptop-film=".Length..], out _laptopFilm); }
+            else if (a.StartsWith("--laptop-screen=")) _laptopScreen = a["--laptop-screen=".Length..];
             else if (a == "--idle-scene") _idleScene = true;
             else if (a.StartsWith("--idle-scene=")) { _idleScene = true; int.TryParse(a["--idle-scene=".Length..], out _idleCount); }
             else if (a.StartsWith("--walk-film=")) int.TryParse(a["--walk-film=".Length..], out _walkFilm);
@@ -3044,6 +3047,50 @@ public partial class Viewer : Node3D
     /// one PNG per frame at a fixed 1/F s of park time each, so frame k IS park time start + k/F
     /// and a `[snd]` cue at t lands at video time t - start. ⚠ The park is STEPPED by the film,
     /// never wound: a wound park fires every cue in one frame and no voice can advance.</summary>
+    /// <summary>⭐ A FILM OF ONE LAPTOP SCREEN, with every bar and slider sweeping, so the
+    /// widgets can be watched moving rather than inspected in a still. Master asked for "a gif of
+    /// crazy ape's info panel w the bars/sliders all moving smoothly".
+    ///
+    /// ⚠ The values are a SWEEP, not a simulation: each widget runs its own phase of one slow
+    /// cosine so no two are ever at the same place, which is what makes them legible as separate
+    /// widgets. Nothing here claims these are the values a real Crazy Ape would have -- it is an
+    /// instrument for looking at the widgets, and the numbers beside them are drawn from the same
+    /// sweep so the picture stays self-consistent.</summary>
+    void LaptopFilmFrame()
+    {
+        if (_shopPanel == null) { GD.PrintErr("[film] --laptop-film: no laptop screen"); GetTree().Quit(2); return; }
+        var spec = _laptopScreen.StartsWith("side", StringComparison.OrdinalIgnoreCase) ? LaptopScreen.Sideshow
+                 : _laptopScreen.StartsWith("shop", StringComparison.OrdinalIgnoreCase) ? LaptopScreen.Shop
+                 : LaptopScreen.Ride;
+        string title = spec == LaptopScreen.Ride ? "Crazy Ape"
+                     : spec == LaptopScreen.Sideshow ? "Arcade" : "Drinks Shop";
+
+        float t = _laptopFrame / (float)_filmFps;
+        var cells = new List<(string, int)>();
+        for (int i = 0; i < spec.Rows.Count; i++)
+        {
+            var row = spec.Rows[i];
+            // One slow cycle, each widget a fifth of a turn behind the last.
+            int pct = (int)Math.Round(50 - 50 * Math.Cos(t * 0.9 + i * 0.8));
+            cells.Add(row.Kind switch
+            {
+                LaptopRowKind.Bar or LaptopRowKind.Slider => (null, pct),
+                LaptopRowKind.Money => ($"${pct * 37:N0}", 0),
+                // The ride's three word rows read as they do on the real screen.
+                LaptopRowKind.Text  => (i == 7 ? null : i == 8 ? "Unavailable" : "1yr", 0),
+                _ => (pct.ToString(), 0),
+            });
+        }
+        _shopPanel.ShowScreen(spec, title, cells);
+        SaveShot(ShotSibling(_shotPath, $"-f{_laptopFrame:D4}"));
+        _laptopFrame++;
+        if (_laptopFrame >= _laptopFilm)
+        {
+            GD.Print($"[film] laptop film: {_laptopFrame} frames of {spec.SceneFile} at {_filmFps}/s");
+            GetTree().Quit(); return;
+        }
+    }
+
     void RideFilmStart()
     {
         _filmFrame = 0; _filmStartMs = _parkTicks * ParkSim.TickMilliseconds;
@@ -7783,6 +7830,17 @@ public partial class Viewer : Node3D
             // park. Each grab is two frames after its stage -- one for the camera, one for the draw.
             const int warm = 10;
             if (_soundCensus > 0) { }   // the census ends itself above, after its seconds of real frames
+            // ⭐ The laptop film draws a UI screen, so it needs no park stepping and no camera --
+            // only the panel out of the way and enough warm frames for the screen to exist.
+            else if (_laptopFilm > 0)
+            {
+                if (_shotWait >= warm)
+                {
+                    if (_panel != null) _panel.Visible = false;
+                    LaptopFilmFrame();
+                }
+                else _shotWait++;
+            }
             else if (_rideFilm > 0 && _guestTest && _guests != null)
             {
                 // ⚠⚠ THE CAMERA NEEDS TWO FRAMES TO LAND, AND FRAME 0 WAS BEING SHOT BEFORE IT DID.
