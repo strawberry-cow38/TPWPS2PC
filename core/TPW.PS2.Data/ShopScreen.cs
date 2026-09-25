@@ -75,6 +75,29 @@ public static class ShopScreen
     public static readonly (byte R, byte G, byte B) Highlight = (255, 255, 0);
     public static readonly (byte R, byte G, byte B) Label = (200, 130, 0);
 
+    /// <summary>⭐⭐ THE SLIDER IS TINTED GREEN, and its own art is gold. Master, looking at the
+    /// render: "why is our drag slider 'knob' orange? should it be green?" -- it should.
+    ///
+    /// The slider's constructor `FUN_001DA630` installs four colour pointers, and `+0xB0`, the one
+    /// `FUN_001DAA88` copies into the drawn sprite, is `0x2E9E18` = **(54, 249, 77)**. The others
+    /// are `0x2E9E10` (85,140,160), `0x2E9E20` (255,64,16) and `0x2E9E28` (13,62,19).
+    ///
+    /// ⭐ Static, not runtime: a cross-reference sweep of `0x2E9E10..0x2E9E30` finds only the four
+    /// address materialisations in that constructor and NO store -- and the sweep's control, a
+    /// nearby address that IS written, fired. So the image is the authority here.
+    ///
+    /// ⚠⚠ AND 0x80 IS UNITY, NOT 0xFF. The GS texture MODULATE is `(texel * colour) >> 7`, so a
+    /// component of 128 leaves the texel alone. The engine's own neutral call agrees:
+    /// `FUN_00214180(sprite, 0x60808080)` in `FUN_00214C20` sets a plain grey 0x80 per channel.
+    /// ⚠ What that choice decides is BRIGHTNESS, not hue -- a correction to an earlier draft of
+    /// this comment. The tint's green component dwarfs its red and blue, so the knob reads green
+    /// at either unity; 255-unity gives (54,206,44) against 0x80-unity's (107,255,87). Only the
+    /// correct 0x80 drives green to saturation, which is what the shipped render shows.</summary>
+    public static readonly (byte R, byte G, byte B) SliderTint = (54, 249, 77);
+
+    /// <summary>What a tint component of "no change" is on this hardware.</summary>
+    public const float TintUnity = 128f;
+
     /// <summary>Which row the player is adjusting: `*(screen + 0x9cc)`. It selects BOTH the
     /// yellow label and the live slider -- 0 drives the quality slider, 1 the additive slider,
     /// and the sale-price arrows take the remaining case.</summary>

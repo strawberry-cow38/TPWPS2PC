@@ -393,11 +393,18 @@ public sealed partial class LaptopShopScreen : Control
     /// HEIGHT rather than a share of its width -- scaling it by the track's aspect would squash it.</summary>
     void DrawSlider(Rect2 r, int value, float s)
     {
-        DrawTextureRect(_slideTrack, r, false);
+        // ⭐⭐ TINTED, because the console tints it: the drawn sprite takes the colour at the
+        // slider's `+0xB0`, which is (54,249,77). The art is gold; the console is not.
+        // ⚠ Divided by 128, not 255 -- see ShopScreen.SliderTint. Godot multiplies by `modulate`
+        // exactly as the GS does, so a component above 1 brightens rather than clipping the input.
+        var tint = new Color(ShopScreen.SliderTint.R / ShopScreen.TintUnity,
+                             ShopScreen.SliderTint.G / ShopScreen.TintUnity,
+                             ShopScreen.SliderTint.B / ShopScreen.TintUnity);
+        DrawTextureRect(_slideTrack, r, false, tint);
         float fraction = Mathf.Clamp(value / (float)ShopScreen.SatisfactionMax, 0f, 1f);
         float d = r.Size.Y;
         float x = r.Position.X + (r.Size.X - d) * fraction;
-        DrawTextureRect(_slideKnob, new Rect2(new Vector2(x, r.Position.Y), new Vector2(d, d)), false);
+        DrawTextureRect(_slideKnob, new Rect2(new Vector2(x, r.Position.Y), new Vector2(d, d)), false, tint);
     }
 
     /// <summary>The scene's own frame for an element, for a caller that places something this
