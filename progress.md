@@ -39,13 +39,21 @@ these checkouts. Use it as an additional source, and check signatures against th
 **Labelled adapters.** They are listed in the startup NON-PARITY line, in plan.md section 6, and in
 findings/native-ordinary-departure.md and native-entrance-soak.md.
 
+**Cow tools' sign-offs, recorded.** At 2026-09-25 05:09 UTC in #cowbot (message 1552909850621509684),
+cow tools acked both of these:
+- **slice A's dispatcher:** NativeLogicalAnimation matches their own read of 0x2AAD48, and it reads the
+  table from the executable rather than baking it in;
+- **slice B:** they checked the per-instance route pool, the Send/SendToTerminal lease guards, the
+  liveness index, the NativeDeparture seam (null by default, offered before the gate walk, with its
+  loop snapshotted), and ShowOut keeping WentHome's meaning.
+
+Their one note was that GuestWalk.Step iterated without a snapshot while StepNative fires the public
+SlotAdvanced seam. It is applied as 71bfbdc on slice B and cherry-picked here. They took the idle queue
+scene as their half of item 5, once the dispatcher drives every guest (side branch
+`tinyclaw/native-idle-all`, which is now pushed).
+
 **Waiting on humans** (plan.md section 3):
-- **cow tools:**
-  - acknowledge the dispatcher (item 4);
-  - review slice B (branch `tinyclaw/native-core-slice-b`, 54234e8). It touches GuestWalk and
-    ParkVisitors, including the NativeDeparture and ReleaseNativeDeparture seams;
-  - slice C then follows (item 6);
-  - the gait and queue rendering for the idle comparison (item 5).
+- **cow tools:** slice C review (item 6), and the idle queue scene (item 5).
 - **strawberry:**
   - the scope matrix, asked 2026-09-25 01:47 UTC;
   - the idle choice (item 5);
