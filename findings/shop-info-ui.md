@@ -845,3 +845,35 @@ exactly two text colours and a third invented for hover would not be this UI.
 ⚠ **A still cannot show a hover state**, so `ForceHoverForShot` drives the same two fields the
 pointer sets. Without it a render could neither demonstrate the highlight nor catch it going
 missing -- the screenshots proving this are evidence rather than assertion.
+
+## Tab opens the laptop; the temporary build panel is gone (2026-09-25)
+
+Master: *"can u wire up the laptop ui to tab, remove the old temporary build tab"*.
+
+**Tab** was toggling a Godot `PanelContainer` down the right-hand side -- a label reading
+`BUILD  (Tab)`, a wrapping row of category buttons and an `ItemList` -- scaffolding from before the
+laptop existed. It now calls `ToggleLaptop`, which opens the laptop's own main menu. ⚠ Closing
+clears any armed placement, exactly as closing the old panel did: a held ride with no menu behind
+it is a cursor nobody can put down.
+
+⚠⚠ **ONLY THE WIDGETS WENT, AND THAT WAS THE WHOLE DIFFICULTY.** `ShowBuildCategory`,
+`ArmFromList` and `_buildRows` are not UI -- **four harnesses drive placement through them**: the
+shop path, the ride path, `GuestTestRide` and `CheckBuildMenu`. Deleting the list along with the
+panel would have broken all four to remove a widget. The selection API stays; the `ItemList` lines
+inside it went.
+
+⭐ Verified by running the placement control afterwards: **6 categories read from the archive**
+(Rides 47, Features 31, Sideshow 12, Shops 8, Coasters 3, Upgrades 3), every one listed, and a ride
+armed and **placed** -- "placed Belly Bounce at (31,36) turned 0". The chain survives the panel.
+
+⚠ **`CheckBuildMenu` now checks less than it did, and that is worth stating rather than hiding.**
+Its stated point was that it went through the SAME calls the menu and the click do, so "a check
+that armed a placement by hand would pass with the menu unwired". There is no longer a widget whose
+wiring could rot, so that half retired with the menu. What remains still earns its place: the
+categories come from the archive, the row from `ShowBuildCategory`, the placement from
+`ArmFromList`.
+
+⭐ `FillBuildCategories` became `BuildCategories`, returning names and counts instead of building
+buttons. Its two hard-won warnings are kept verbatim -- terrain is excluded by PATH rather than by
+"has a definition", because `DefinitionFor` matches a `.sam` by directory suffix and hands the
+terrain one back anyway.

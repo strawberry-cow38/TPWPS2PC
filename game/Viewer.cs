@@ -95,11 +95,6 @@ public partial class Viewer : Node3D
     readonly ConsoleClock _clock = new();
     /// <summary>What the build menu has handed the cursor, if anything.</summary>
     readonly Placement _place = new();
-    Control _buildPanel;
-    Control _buildBox;
-    ItemList _buildList;
-    HFlowContainer _buildTabBar;
-    Button[] _buildTabs;
     string _buildCategory;
     readonly List<int> _buildRows = new();
     AssetLibrary.RideAssets _armedRide;
@@ -707,31 +702,15 @@ public partial class Viewer : Node3D
         // The categories are the ARCHIVE'S OWN FOLDERS -- Rides, Shops, Sideshow, Features,
         // Upgrades -- so the grouping is the game's, and it is per park because the open WAD is
         // the park.
-        var buildBox = new PanelContainer { Visible = false, MouseFilter = Control.MouseFilterEnum.Pass,
-                                            CustomMinimumSize = new Vector2(BuildW, 0) };
-        buildBox.SetAnchorsPreset(Control.LayoutPreset.RightWide);
-        buildBox.OffsetLeft = -BuildW;
-        ui.AddChild(buildBox);
-        _buildPanel = new VBoxContainer();
-        buildBox.AddChild(_buildPanel);
-        _buildPanel.AddChild(new Label { Text = "BUILD  (Tab)" });
-        // ⭐⭐ THE CATEGORY BAR WRAPS. At 300 wide in one row the five folders ran off the edge and
-        // Shops and Upgrades were simply not on screen -- master: "expand the build tab to be wide
-        // enough to show shops too". Widening alone would only move the cliff: the categories are
-        // the ARCHIVE'S folder names, so their number and their length are the disc's to choose
-        // and not mine to size a panel around. A flow container puts what fits on a row and the
-        // rest on the next, so every category is reachable at any width.
-        _buildTabBar = new HFlowContainer();
-        _buildPanel.AddChild(_buildTabBar);
-        _buildTabs = Array.Empty<Button>();
-        // ⚠⚠ NO KEYBOARD FOCUS. An ItemList with focus swallows every key press -- R, the commas,
-        // WASD, the lot -- so picking a ride left the whole keyboard dead until you clicked the
-        // world again. Master: "the list of rides etc is eating my keyboard control inputs".
-        _buildList = new ItemList { SizeFlagsVertical = Control.SizeFlags.ExpandFill, AllowReselect = true,
-                                    FocusMode = Control.FocusModeEnum.None };
-        _buildList.ItemSelected += i => ArmFromList((int)i);
-        _buildPanel.AddChild(_buildList);
-        _buildBox = buildBox;
+        // ⭐⭐ THE TEMPORARY BUILD PANEL IS GONE. Master: "remove the old temporary build tab."
+        // It was a Godot PanelContainer down the right-hand side -- a label reading "BUILD  (Tab)",
+        // a wrapping row of category buttons and an ItemList -- scaffolding from before the
+        // laptop existed. Tab now opens the laptop instead; see ToggleLaptop.
+        //
+        // ⚠ ONLY THE WIDGETS WENT. `ShowBuildCategory`, `ArmFromList` and `_buildRows` stay,
+        // because four harnesses drive placement through them (the shop and ride placement paths,
+        // the guest test and CheckBuildMenu). Removing the list as well would have broken all four
+        // to delete a panel.
 
         // ⭐⭐ THE PARK'S MONEY, ON SCREEN. Master: "wire up the money ui from the game code."
         // ⚠ Anchored top-CENTRE on purpose: the left panel and the right build panel both reach
@@ -888,7 +867,7 @@ public partial class Viewer : Node3D
             var want = k.ShiftPressed ? PathTool.Kind.Queue : PathTool.Kind.Path;
             if (!_toolOpen || _toolKind != want) OpenTool(want); else PressTool();
         }
-        else if (k.Keycode == Key.Tab && _mode == Mode.Park) ToggleBuildMenu();
+        else if (k.Keycode == Key.Tab && _mode == Mode.Park) ToggleLaptop();
         // ⭐ R and . turn it clockwise, , turns it back. ⚠ R is the camera's zoom-in elsewhere;
         // while something is HELD it belongs to the thing being turned, which is the same bargain
         // the mouse buttons make with the build tools.
@@ -3156,6 +3135,38 @@ public partial class Viewer : Node3D
         return outp;
     }
 
+    /// <summary>⭐ The laptop's main-menu rows, as text. Shared by the live Tab toggle and the
+    /// film harness so a screenshot cannot drift from what the game shows.</summary>
+    List<string> LaptopMainOptions()
+    {
+        var opts = new List<string>();
+        foreach (var o in LaptopMainMenu.VisibleMain(parkOpen: _laptopParkOpen))
+            opts.Add(_text?.Text("eng", o.TextId) ?? $"#{o.TextId}");
+        return opts;
+    }
+
+    /// <summary>⭐⭐ TAB OPENS THE LAPTOP. Master: "can u wire up the laptop ui to tab, remove the
+    /// old temporary build tab." Tab used to toggle a scaffolding panel down the right-hand side
+    /// -- a Godot `ItemList` under a label reading "BUILD  (Tab)" -- which was never the game's UI.
+    /// The laptop is, and it is now on the same key.
+    ///
+    /// ⚠ Closing it clears any armed placement, exactly as closing the old panel did: a held ride
+    /// with no menu behind it is a cursor nobody can put down.</summary>
+    void ToggleLaptop()
+    {
+        if (_shopPanel == null) { Status("laptop: no screen built"); return; }
+        if (_shopPanel.Open)
+        {
+            _shopPanel.Hide();
+            _place.Clear(); _ghostView?.Clear();
+            Status("laptop closed");
+            return;
+        }
+        if (_toolOpen) CloseTool();
+        _shopPanel.ShowMenu(LaptopMainOptions(), 0, LaptopMainMenu.MainScene);
+        Status("laptop open -- click a row, or Back/Close");
+    }
+
     void LaptopFilmFrame()
     {
         if (_shopPanel == null) { GD.PrintErr("[film] --laptop-film: no laptop screen"); GetTree().Quit(2); return; }
@@ -3167,12 +3178,14 @@ public partial class Viewer : Node3D
             // ⭐ Two menus, not one flat list: `main` and its `main_info` submenu, each built by
             // its own console routine. `--laptop-screen=main` shows the top level and
             // `--laptop-screen=info` the submenu.
-            var opts = new List<string>();
-            var src = _laptopScreen.Equals("info", StringComparison.OrdinalIgnoreCase)
-                    ? LaptopMainMenu.Information
-                    : System.Linq.Enumerable.ToArray(LaptopMainMenu.VisibleMain(parkOpen: _laptopParkOpen));
-            foreach (var o in src)
-                opts.Add(_text?.Text("eng", o.TextId) ?? $"#{o.TextId}");
+            List<string> opts;
+            if (_laptopScreen.Equals("info", StringComparison.OrdinalIgnoreCase))
+            {
+                opts = new List<string>();
+                foreach (var o in LaptopMainMenu.Information)
+                    opts.Add(_text?.Text("eng", o.TextId) ?? $"#{o.TextId}");
+            }
+            else opts = LaptopMainOptions();
             // ⚠ The panel holds eleven rows; anything more would draw onto the bevel, which is
             // exactly what master saw. Refuse loudly rather than overflow silently.
             if (opts.Count > LaptopMainMenu.MaxRows)
@@ -4689,7 +4702,7 @@ public partial class Viewer : Node3D
     /// Placed through <see cref="PlaceHeld"/>, exactly as a press would.</summary>
     void GuestTestRide(int xl, int z0)
     {
-        ToggleBuildMenu();
+        // ⚠ No menu to open any more -- ShowBuildCategory IS the selection now.
         ShowBuildCategory("Rides");
         int row = -1;
         for (int i = 0; i < _buildRows.Count && row < 0; i++)
@@ -4735,8 +4748,6 @@ public partial class Viewer : Node3D
                            + $"the sim's ride has entrance {ride?.Entrance} exit {ride?.Exit}"
                            + $"{(ride == null ? " -- NO SCRIPT STARTED" : ride.Has("VAR_LETMEON") ? "" : " -- declares no VAR_LETMEON, so it takes nobody")}");
                     ConnectExit(o.X, o.Y);
-                    // ⚠ The menu that armed it would otherwise stand over half the picture.
-                    if (_buildBox != null && _buildBox.Visible) ToggleBuildMenu();
                     return;
                 }
         }
@@ -5139,21 +5150,25 @@ public partial class Viewer : Node3D
 
     void Status(string text) { if (_toolStatus != null) _toolStatus.Text = text; }
 
-    /// <summary>⭐ A CONTROL FOR THE BUILD MENU that needs no mouse: open it, read back the
-    /// categories the archive gave it, take the first thing in each, and try to put one down.
+    /// <summary>⭐ A CONTROL FOR PLACEMENT that needs no mouse: read back the categories the
+    /// archive gave us, take something real out of one, and try to put it down.
     ///
-    /// ⚠ It goes through the SAME calls the menu and the click do. A check that armed a placement
-    /// by hand would pass with the menu unwired, which is most of what there is to get wrong.</summary>
+    /// ⚠⚠ IT USED TO CHECK MORE THAN IT NOW CAN. Its point was that it went through the SAME calls
+    /// the menu and the click do, so a check that armed a placement by hand would pass with the
+    /// menu unwired. The menu is gone (master: "remove the old temporary build tab"), so that half
+    /// retired with it -- there is no longer a widget whose wiring could rot. What remains is
+    /// still worth having: the CATEGORIES come from the archive, the row comes from
+    /// ShowBuildCategory, and the placement goes through ArmFromList, so a break anywhere in that
+    /// chain still shows up here.</summary>
     void CheckBuildMenu()
     {
         _buildChecked = true;
-        ToggleBuildMenu();
-        GD.Print($"[build] {_buildTabs.Length} categories: "
-               + string.Join(" ", _buildTabBar.GetChildren().OfType<Button>().Select(b => b.Text)));
-        foreach (var b in _buildTabBar.GetChildren().OfType<Button>().ToList())
+        var cats = BuildCategories();
+        GD.Print($"[build] {cats.Count} categories: " + string.Join(" ", cats.Select(c => $"{Title(c.Key)}({c.Count})")));
+        foreach (var c in cats)
         {
-            b.EmitSignal(Button.SignalName.Pressed);
-            GD.Print($"[build]   {b.Text} -> {_buildRows.Count} listed, first \"{(_buildList.ItemCount > 0 ? _buildList.GetItemText(0) : "-")}\"");
+            ShowBuildCategory(c.Key);
+            GD.Print($"[build]   {Title(c.Key)} -> {_buildRows.Count} listed");
         }
         // Arm something with a real footprint and try it on a cell the park will take.
         ShowBuildCategory("Rides");
@@ -5229,7 +5244,6 @@ public partial class Viewer : Node3D
     void CheckPlacement()
     {
         _buildChecked = true;
-        ToggleBuildMenu();
         ShowBuildCategory("Rides");
         int chosen = -1;
         for (int row = 0; row < _buildRows.Count && chosen < 0; row++)
@@ -5475,7 +5489,6 @@ public partial class Viewer : Node3D
                                    _park.Placed[1].Y + _park.Placed[1].Fp.Height / 2);
                 SelectUnderCursor();
             }
-            if (_buildBox != null) _buildBox.Visible = false;
             if (_panel != null) _panel.Visible = false;
             // ⚠ SAY WHETHER ANYTHING WAS ACTUALLY MADE. "Drew 6 markers" is a count of what was
             // ASKED FOR; the node's child count is what came out, and a marker whose texture would
@@ -5519,7 +5532,6 @@ public partial class Viewer : Node3D
         // ⚠ BOTH PANELS OUT OF THE WAY. They cover two thirds of a 1280-wide frame, and the thing
         // being photographed is where four rides are standing -- hidden DIRECTLY rather than
         // through the Tab toggle, which drops what is held and would take the ghost with it.
-        if (_buildBox != null) _buildBox.Visible = false;
         if (_panel != null) _panel.Visible = false;
     }
 
@@ -5527,47 +5539,31 @@ public partial class Viewer : Node3D
 
     /// <summary>Tab opens and shuts it. ⚠ Shutting it also drops whatever was held: a ghost left
     /// following the cursor with no menu to explain it reads as the park being stuck.</summary>
-    void ToggleBuildMenu()
-    {
-        if (_buildBox == null) return;
-        _buildBox.Visible = !_buildBox.Visible;
-        if (!_buildBox.Visible) { _place.Clear(); _ghostView?.Clear(); Status("build menu closed"); return; }
-        if (_toolOpen) CloseTool();
-        FillBuildCategories();
-    }
 
     /// <summary>⭐ The categories ARE THE ARCHIVE'S FOLDERS. Every .sam in a park sits under
     /// Rides, Shops, Sideshow, Features or Upgrades, and the catalogue keeps that path in its
     /// name, so the grouping is the game's own rather than a list I made up. Case differs between
     /// worlds -- jungle has "Features", space "features" -- so they are folded.</summary>
-    void FillBuildCategories()
-    {
-        // ⚠ NOT THE TERRAIN. The catalogue carries the terrain files too, and they are the park
-        // itself rather than something to put in it -- without this the menu offers a category
-        // called Terrain holding terrain_1.mps. ⚠ Excluded by PATH, not by "has a definition":
-        // DefinitionFor matches a .sam by directory SUFFIX and hands the terrain one anyway, so
-        // that test looked like it would work and did not.
-        var groups = _lib.Rides
+    /// <summary>⭐ THE CATEGORIES ARE THE ARCHIVE'S FOLDERS. Every .sam in a park sits under
+    /// Rides, Shops, Sideshow, Features or Upgrades, and the catalogue keeps that path in its
+    /// name, so the grouping is the game's own rather than a list I made up. Case differs between
+    /// worlds -- jungle has "Features", space "features" -- so they are folded.
+    ///
+    /// ⚠ NOT THE TERRAIN. The catalogue carries the terrain files too, and they are the park
+    /// itself rather than something to put in it. ⚠ Excluded by PATH, not by "has a definition":
+    /// DefinitionFor matches a .sam by directory SUFFIX and hands the terrain one anyway, so that
+    /// test looked like it would work and did not.
+    ///
+    /// ⭐ Returns names and counts. It used to build buttons; the panel they sat on is gone.</summary>
+    List<(string Key, int Count)> BuildCategories() =>
+        _lib.Rides
             .Where(r => r.Model != null && !IsTerrain(r.Model.Path) && DefinitionFor(r.Model) != null)
             .Where(r => !(BuildCategory(r).Equals("Coasters", StringComparison.OrdinalIgnoreCase)
                           && IsCoasterPart(r.Model.Path)))
             .GroupBy(BuildCategory, StringComparer.OrdinalIgnoreCase)
             .OrderByDescending(g => g.Count())
+            .Select(g => (g.Key, g.Count()))
             .ToList();
-        var bar = _buildTabBar;
-        foreach (var c in bar.GetChildren()) c.QueueFree();
-        _buildTabs = groups.Select(g =>
-        {
-            var b = new Button { Text = $"{Title(g.Key)} ({g.Count()})",
-                                 FocusMode = Control.FocusModeEnum.None };
-            string key = g.Key;
-            b.Pressed += () => ShowBuildCategory(key);
-            bar.AddChild(b);
-            return b;
-        }).ToArray();
-        ShowBuildCategory(_buildCategory != null && groups.Any(g => g.Key.Equals(_buildCategory, StringComparison.OrdinalIgnoreCase))
-            ? _buildCategory : groups.FirstOrDefault()?.Key);
-    }
 
     /// <summary>Whether a thing takes a queue.
     ///
@@ -5600,7 +5596,6 @@ public partial class Viewer : Node3D
     {
         if (category == null) return;
         _buildCategory = category;
-        _buildList.Clear();
         _buildRows.Clear();
         for (int i = 0; i < _lib.Rides.Count; i++)
         {
@@ -5612,7 +5607,6 @@ public partial class Viewer : Node3D
             // ⚠ One folder is one coaster; its car and its pylon are not separate things to place.
             if (BuildCategory(r).Equals("Coasters", StringComparison.OrdinalIgnoreCase)
                 && IsCoasterPart(r.Model.Path)) continue;
-            _buildList.AddItem(DisplayName(r, def));
             _buildRows.Add(i);
         }
         Status($"{Title(category)}: {_buildRows.Count} things -- pick one, then click the park");
@@ -6042,8 +6036,6 @@ public partial class Viewer : Node3D
         if (_cam == null) return -1;
         var mouse = GetViewport().GetMousePosition();
         if (_panel != null && _panel.Visible && mouse.X < PanelW) return -1;
-        if (_buildBox != null && _buildBox.Visible && mouse.X > GetViewport().GetVisibleRect().Size.X - BuildW)
-            return -1;
         var from = _cam.ProjectRayOrigin(mouse);
         var dir = _cam.ProjectRayNormal(mouse);
         int best = -1; float near = float.MaxValue;
