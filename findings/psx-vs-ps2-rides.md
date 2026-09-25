@@ -81,9 +81,18 @@ and the name comes from the English text table (`fable/text.py`). Examples: 0xC3
 - **Sideshows:** every PSX world has a themed strength game and a themed bash game. The PS2 has a
   generic "Strength Test" and renamed bashes (Gopher, Devil, Mole and Alien Bash). These are probably
   renames, not cuts; that is unverified. Busta Block is new on the PS2 in every world.
-- **Features:** the PS2 has 26 to 30 per world against 12 to 14. The additions are scenery and the
-  "shows". The Loudspeaker is the one PSX feature missing from every PS2 world. "Security Camera"
-  in PSX Space is "Security Cameras" on the PS2.
+- **Features:** the PS2 has 26 to 30 per world against 12 to 14, mostly extra scenery.
+  "Security Camera" in PSX Space is "Security Cameras" on the PS2.
+- **Loudspeakers** (corrected after strawberry: "ps2 replaced it with several different
+  loudspeakers"). An earlier line here said the Loudspeaker was dropped from every PS2 world. By
+  name it was. By folder, the PSX's single Loudspeaker became two to four themed speakers per world:
+  - Jungle `SPEAKER1`–`4`: Screeches, Strange Deep, Undergrowth, Wild Beasts.
+  - Halloween `HORSPEK1`–`3`: Furry Fiends, Night Creatures, Spooky Spirits.
+  - Wonderland `SPEAKER`–`SPEAKER4`: Clown Capers, Fairy Frolics, Hurry Up Havoc, Lucky Card.
+  - Space `SPACSPEK`, `SPACSPK2`: Comet Comms, Ground Control.
+
+  The shows that are not speakers are Firework Show (Halloween), and Laser Show and Pulsar
+  (Space).
 
 Raw per-world output, by normalised name, before those manual notes:
 
