@@ -267,6 +267,7 @@ public sealed partial class LaptopShopScreen : Control
         _cells.Clear();
         if (cells != null) _cells.AddRange(cells);
         Open = true; Visible = true;
+        FitToViewport();
         QueueRedraw();
     }
 
@@ -284,6 +285,7 @@ public sealed partial class LaptopShopScreen : Control
         if (options != null) _menu.AddRange(options);
         _menuSelected = selected;
         Open = true; Visible = true;
+        FitToViewport();
         QueueRedraw();
     }
 
@@ -331,9 +333,33 @@ public sealed partial class LaptopShopScreen : Control
         _menuHover = menuRow; _btnHover = button; QueueRedraw();
     }
 
+    /// <summary>⭐⭐ MAKE THE CONTROL'S RECT *BE* THE VIEWPORT, every time, rather than trusting
+    /// an anchor preset to resolve.
+    ///
+    /// ⚠⚠ THIS IS THE BUG MASTER HIT TWICE. `_GuiInput` reports positions in the Control's LOCAL
+    /// space, but every box this screen hit-tests is built from <see cref="Origin"/> and
+    /// <see cref="Scale"/>, which are computed from `GetViewportRect()` -- VIEWPORT space. The two
+    /// are only the same coordinate system when the Control sits at the origin and is exactly the
+    /// viewport's size. It did not, so:
+    ///   * most clicks landed outside the rect entirely and never reached `_GuiInput` at all
+    ///     -- "i cant click any options";
+    ///   * the few that did land were compared against boxes in the wrong space and matched
+    ///     whichever row the arithmetic happened to give -- "it just selects a random option".
+    /// One cause, both symptoms.
+    ///
+    /// ⚠ And I had already written that the anchored size was untested in game and assumed it
+    /// worked. It did not. Setting it outright removes the assumption rather than re-testing it.</summary>
+    void FitToViewport()
+    {
+        var want = GetViewportRect().Size;
+        if (Position != Vector2.Zero) Position = Vector2.Zero;
+        if (Size != want) Size = want;
+    }
+
     public override void _GuiInput(InputEvent @event)
     {
         if (!Open) return;
+        FitToViewport();
         float s = Scale; var o = Origin;
         if (@event is InputEventMouseMotion motion)
         {
@@ -521,6 +547,7 @@ public sealed partial class LaptopShopScreen : Control
     public override void _Draw()
     {
         if (!Open) return;
+        FitToViewport();
         RefreshChrome();
         float s = Scale;
         var o = Origin;

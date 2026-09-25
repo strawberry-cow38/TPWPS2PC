@@ -918,3 +918,34 @@ are exactly the values the panel saw before `OpenWad` ran.
 resolve against and the size reads 64x64. The check asserts only that it is non-zero. In the game
 the panel is a child of `_uiRoot`, where FullRect resolves to the viewport -- that part is NOT
 covered by a test.
+
+## ⚠⚠ The click bug had ONE cause and TWO symptoms — a coordinate-space mismatch
+
+Master, after the first fix: *"i cant click any options. and if it cant find my mouse, it just
+selects a random option to highlight"*.
+
+Those look like two bugs. They are one.
+
+`_GuiInput` reports `InputEventMouse.Position` in the **Control's LOCAL space**. Every box this
+screen hit-tests -- menu rows, the Back and Close buttons -- is built from `Origin` and `Scale`,
+which are computed from **`GetViewportRect()`**, i.e. VIEWPORT space. The two are the same
+coordinate system *only* when the Control sits at the origin and is exactly the viewport's size.
+
+It was not. So:
+* most clicks fell outside the rect and never reached `_GuiInput` at all → **"i cant click any
+  options"**;
+* the ones that did land were compared against boxes in the wrong frame and matched whichever row
+  the arithmetic happened to produce → **"it just selects a random option to highlight"**.
+
+⭐ Fixed by `FitToViewport()` -- Position to zero, Size to `GetViewportRect().Size` -- called on
+show, on draw and before every hit-test. The rect is now *set*, not inferred from an anchor preset.
+
+⚠⚠ **AND I HAD ALREADY WRITTEN THIS GAP DOWN.** The previous entry ends: *"the audit parents the
+panel to a bare `Node`, so `FullRect` has no parent rect to resolve against and the size reads
+64x64 ... In the game the panel is a child of `_uiRoot`, where FullRect resolves to the viewport --
+that part is NOT covered by a test."* I identified the untested assumption, stated it, and then
+relied on it anyway. Naming a gap is not the same as closing it.
+
+⭐ The check that let it through asserted only `Size.X > 0 && Size.Y > 0` -- which 64x64 satisfies,
+and which a wrong-but-nonzero rect satisfies too. It now asserts the **equality the code actually
+depends on**: `Position == 0 && Size == viewport`.

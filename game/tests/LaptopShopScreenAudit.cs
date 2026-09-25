@@ -483,9 +483,17 @@ public partial class LaptopShopScreenAudit : Node
                 screen.ShowMenu(new[] { "a", "b" }, 0, LaptopMainMenu.MainScene);
                 Check(screen.MouseFilter == Control.MouseFilterEnum.Stop,
                       $"an OPEN laptop blocks clicks behind it (filter {screen.MouseFilter})");
-                Check(screen.Size.X > 0 && screen.Size.Y > 0,
-                      $"and it has a rect for that filter to act over ({screen.Size.X}x{screen.Size.Y}) "
-                    + "-- Stop over an empty rect is what let clicks through");
+                // ⚠⚠ THIS CHECK USED TO ASSERT ONLY "non-zero", AND THAT IS WHY THE NEXT BUG GOT
+                // THROUGH. It read 64x64 here, I wrote in the findings that the real size was
+                // untested in game, and then assumed it resolved. It did not -- and because every
+                // hit-test box is built in VIEWPORT space while _GuiInput reports LOCAL space, a
+                // rect that is not exactly the viewport at the origin makes clicks miss and makes
+                // the ones that land match the wrong row. Assert the equality the code depends on.
+                var vp = screen.GetViewportRect().Size;
+                Check(screen.Position == Vector2.Zero && screen.Size == vp,
+                      $"its rect IS the viewport ({screen.Size.X}x{screen.Size.Y} at "
+                    + $"{screen.Position.X},{screen.Position.Y}; viewport {vp.X}x{vp.Y}) -- local and "
+                    + "viewport space must coincide or every hit-test is in the wrong frame");
                 screen.Hide();
                 Check(screen.MouseFilter == Control.MouseFilterEnum.Ignore,
                       "closing hands the mouse back to the park");
