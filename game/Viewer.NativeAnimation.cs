@@ -37,7 +37,7 @@ public partial class Viewer
 {
     bool _nativeGuestAnimation;
     bool NativeGuestAnimationRequested => _nativeGuestAnimation
-        || OS.GetCmdlineUserArgs().Contains("--native-guest-animation");
+        || ResearchFlags.Value.Contains("--native-guest-animation");
     NativeLogicalAnimationTable _logicalAnimations;
     readonly NewlibRand _nativeAnimationRand = new();
     readonly Dictionary<Guest, NativeGuestAnimation> _nativeAnimations = new(ReferenceEqualityComparer.Instance);
@@ -133,7 +133,7 @@ public partial class Viewer
     /// <summary>Gait hook: true when this guest's pose was drawn from the dispatcher.</summary>
     bool NativeDrawnRecord(int id, float alpha)
     {
-        if (!NativeAnimationActive || _nativeAnimations.Count == 0) return false;
+        if (_nativeAnimations.Count == 0 || !NativeAnimationActive) return false; // cheap test first: per guest per frame
         NativeGuestAnimation animation = null;
         foreach (var (guest, a) in _nativeAnimations)
             if (guest.Id == id) { animation = a; break; }

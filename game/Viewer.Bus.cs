@@ -69,7 +69,10 @@ public partial class Viewer
             _nativeBus.Root.Name="NativeBus";
             AddChild(_nativeBus.Root); // authored model/world coordinates; one root Z conversion
             GD.Print($"[bus] loaded {key} -> {stem}; point0={_busCatalogue.Point0}; catalog={_busCatalogue.TotalEntries}");
-            GD.Print("[bus] boundary: UNPORTED entrance-group queues and sticky departure-deferral pressure. Zero inputs BYPASS the backlog reduction (entrance bound stays20) and departure-pressure veto; busy-park admissions can exceed native. No attraction-minigame session exists in this port.");
+            // Only true when the native entrance flow is OFF: with it on, the flow feeds these counts,
+            // and this line sat beside every opt-in PASS as a stale witness (review 2026-09-25).
+            if (!ExperimentalEntranceRequested)
+                GD.Print("[bus] boundary: UNPORTED entrance-group queues and sticky departure-deferral pressure. Zero inputs BYPASS the backlog reduction (entrance bound stays20) and departure-pressure veto; busy-park admissions can exceed native. No attraction-minigame session exists in this port.");
             return true;
         }
         catch(Exception e)

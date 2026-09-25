@@ -11,7 +11,7 @@ static class NativeDepartureChecks
         void C(bool ok,string why)=>check(ok,"native rejected departure: "+why);
         var file=disc.Files().Single(f=>f.Path=="/DATA/JUNGLE.WAD");
         var wad=new WadArchive(disc.Read(file.Extent,file.Size));
-        var terrain=new Model(wad.Read(wad.Find("/terrain/terrain_1.mps")));
+        var terrain=new Model(wad.Read(wad.Find(AuditPark.Mps)));
         var elf=disc.Files().Single(f=>f.Path=="/SLES_500.32");
         var entrances=ParkEntrance.ReadExecutable(disc.Read(elf.Extent,elf.Size));
         var entry=entrances.Fit(terrain.Field,ParkEntrance.WalkwayColumnFromPoles(terrain),out _);

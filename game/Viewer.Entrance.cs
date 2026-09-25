@@ -12,8 +12,12 @@ public partial class Viewer
     bool _experimentalEntrance;
     NativeActivationSequence _nativeActivations; // process/viewer lifetime; NOT reset on each park
     readonly HashSet<int> _entranceRequestFlags = new();
+    // The command line is read ONCE: these are consulted every park tick and, via Gait, every guest
+    // every frame (review 2026-09-25). Same argv union as the main parser (Viewer.cs, `argv`).
+    static readonly Lazy<HashSet<string>> ResearchFlags = new(() =>
+        OS.GetCmdlineArgs().Concat(OS.GetCmdlineUserArgs()).Where(a => a.StartsWith("--")).ToHashSet());
     bool ExperimentalEntranceRequested => _experimentalEntrance
-        || OS.GetCmdlineUserArgs().Contains("--experimental-native-entrance");
+        || ResearchFlags.Value.Contains("--experimental-native-entrance");
 
     NativeActivationSequence ActivationSequence()
     {

@@ -455,9 +455,12 @@ public partial class Viewer : Node3D
         // these selectors has to map the row back through _rows -- passing the row straight to
         // ShowRide asked for 'bigpalm.mps' and got bus1, which reads as a model-loading bug.
         if (_wantRide != null)
-            for (int i = 0; i < _rideList.ItemCount; i++)
-                if (Row(i) >= 0 && _rideList.GetItemText(i).Contains(_wantRide, StringComparison.OrdinalIgnoreCase))
-                { _rideList.Select(i); ShowRide(Row(i)); break; }
+        {
+            var rows = Enumerable.Range(0, _rideList.ItemCount)
+                .Where(i => Row(i) >= 0 && _rideList.GetItemText(i).Contains(_wantRide, StringComparison.OrdinalIgnoreCase)).ToList();
+            if (SelectorFails("--ride", _wantRide, rows.Select(i => _rideList.GetItemText(i)))) return;
+            _rideList.Select(rows[0]); ShowRide(Row(rows[0]));
+        }
         if (_wantAnim != null && int.TryParse(_wantAnim, out var ai) && ai < _animPick.ItemCount)
         { _animPick.Select(ai); _recordIndex = ai; Rebuild(); }
         // ⚠ Every switch has an environment fallback, because arguments after `--` do not survive
@@ -503,18 +506,35 @@ public partial class Viewer : Node3D
             if (pick < 0) pick = _rows.FindIndex(v => v >= 0);
             // ⚠ Matched against the map's LABEL, not the row text: every row reads "terrain_1.mps"
             // and only the heading says which world, so the row text alone cannot pick one.
+            // ⚠⚠ AN EXPLICIT --map MUST MATCH EXACTLY ONE LABEL. On zero matches this used to keep the
+            // default row, so `--map=JUNGLE 2` (one space; labels have two) silently loaded FANTASY-1 and
+            // four published "eight park" matrices ran the same park five times (2026-09-25).
             if (_wantMap != null)
             {
-                int at = _rows.FindIndex(v => v >= 0
-                    && _maps[v].Label.Contains(_wantMap, StringComparison.OrdinalIgnoreCase));
-                if (at >= 0) pick = at;
+                var hits = Enumerable.Range(0, _rows.Count).Where(r => _rows[r] >= 0
+                    && _maps[_rows[r]].Label.Contains(_wantMap, StringComparison.OrdinalIgnoreCase)).ToList();
+                // A bare world name is the documented shorthand for that world's FIRST park
+                // (`--map=JUNGLE` in findings and smokes); any other multi-match is ambiguous.
+                if (hits.Count > 1)
+                {
+                    int first = hits.FindIndex(r => _maps[_rows[r]].Label.Equals(
+                        _wantMap.Trim() + "  terrain_1.mps", StringComparison.OrdinalIgnoreCase));
+                    if (first >= 0) hits = new List<int> { hits[first] };
+                }
+                if (SelectorFails("--map", _wantMap, hits.Select(r => _maps[_rows[r]].Label))) return;
+                pick = hits[0];
             }
             if (pick >= 0) { _rideList.Select(pick); LoadMap(Row(pick)); }
-            // The ride shown standing on that ground is still TPW_PS2_RIDE.
+            // The ride shown standing on that ground is still TPW_PS2_RIDE. Same rule: no match is fatal
+            // (it used to photograph empty ground); rides sharing ONE name are the same ride, so the first
+            // is taken, but a substring matching DIFFERENT names is ambiguous.
             if (_wantRide != null)
-                for (int i = 0; i < _lib.Rides.Count; i++)
-                    if (_lib.Rides[i].Name.Contains(_wantRide, StringComparison.OrdinalIgnoreCase))
-                    { ShowRide(i); break; }
+            {
+                var rides = Enumerable.Range(0, _lib.Rides.Count)
+                    .Where(i => _lib.Rides[i].Name.Contains(_wantRide, StringComparison.OrdinalIgnoreCase)).ToList();
+                if (SelectorFails("--ride", _wantRide, rides.Select(i => _lib.Rides[i].Name))) return;
+                ShowRide(rides[0]);
+            }
         }
     }
 
@@ -1345,10 +1365,26 @@ public partial class Viewer : Node3D
     }
 
     /// <summary>Open the archive a park lives in and load that terrain file.</summary>
+    /// <summary>An explicit selector flag that matches nothing, or matches DIFFERENT names, prints the
+    /// candidates and quits with 2 rather than silently showing a default or nothing. Several entries
+    /// sharing one name are one choice. True means the caller must stop.</summary>
+    bool SelectorFails(string flag, string wanted, IEnumerable<string> matches)
+    {
+        var names = matches.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (names.Count == 1) return false;
+        GD.PrintErr(names.Count == 0
+            ? $"[args] {flag}={wanted} matches nothing; refusing to fall back to a default"
+            : $"[args] {flag}={wanted} is ambiguous: {string.Join(" | ", names)}");
+        GetTree().Quit(2);
+        return true;
+    }
+
     void LoadMap(int i)
     {
         if (i < 0 || i >= _maps.Count) return;
         var m = _maps[i];
+        // Canonical witness: runners assert THIS, not texture paths (tools/viewer_matrix.py).
+        GD.Print($"[map] loaded world={Leaf(m.Wad).Replace(".WAD", "")} terrain={Leaf(m.Path)}");
         if (!string.Equals(m.Wad, _lib.WadName, StringComparison.OrdinalIgnoreCase))
         {
             _lib.OpenWad(m.Wad);

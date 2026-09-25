@@ -91,17 +91,35 @@ public partial class NativeAnimationReadinessSmoke : Node3D
             // capture it every other tick until 24 ticks after it moves again. Off in the matrix.
             string film=System.Environment.GetEnvironmentVariable("TPW_NATIVE_ANIM_FILM");
             Guest filmed=null;int filmAfter=-1,shots=0;var camera=Field<Camera3D>(viewer,"_cam");
-            if(film!=null){System.IO.Directory.CreateDirectory(film);Field<Control>(viewer,"_panel").Visible=false;}
+            if(film!=null)
+            {
+                // Every piece of UI goes: the build menu opened by the fixture covered the guest in the
+                // first film (2026-09-25), which was generated but failed inspection.
+                System.IO.Directory.CreateDirectory(film);
+                foreach(var layer in viewer.FindChildren("*","CanvasLayer",true,false).OfType<CanvasLayer>())layer.Visible=false;
+                foreach(var ui in viewer.GetChildren().OfType<Control>())ui.Visible=false;
+            }
             async System.Threading.Tasks.Task Capture(Guest g,string label)
             {
                 var actor=Field<Dictionary<int,Node3D>>(viewer,"_actors")[g.Id];
-                var at=actor.GlobalPosition+Vector3.Up*.3f;
-                camera.GlobalPosition=at+new Vector3(1.6f,1.1f,1.6f);camera.LookAt(at);
-                await ToSignal(GetTree(),SceneTree.SignalName.ProcessFrame);
-                await ToSignal(RenderingServer.Singleton,RenderingServer.SignalName.FramePostDraw);
-                using var image=GetViewport().GetTexture().GetImage();
-                string name=System.IO.Path.Combine(film,$"{shots++:D3}-{label}.png");
-                Check(image.SavePng(name)==Error.Ok,"saved film frame "+name);
+                // Aim at the DRAWN body: the actor node's origin is not where the mirrored model
+                // renders (the second film framed empty ground beside the guest).
+                var meshes=actor.FindChildren("*","MeshInstance3D",true,false).OfType<MeshInstance3D>().Where(m=>m.Mesh!=null).ToList();
+                Check(meshes.Count>0,$"guest {g.Id} has a drawn body to film");
+                var box=meshes.Select(m=>m.GlobalTransform*m.GetAabb()).Aggregate((x,y)=>x.Merge(y));
+                var at=box.GetCenter();
+                // Two angles per frame: a single fixed angle put the bus-stop pole between the camera
+                // and the waiting guest (second film, 2026-09-25).
+                int frame=shots++;
+                foreach(var (side,offset) in new[]{("a",new Vector3(-0.9f,0.5f,-0.9f)),("b",new Vector3(0.9f,0.5f,-0.9f))})
+                {
+                    camera.GlobalPosition=at+offset;camera.LookAt(at);
+                    await ToSignal(GetTree(),SceneTree.SignalName.ProcessFrame);
+                    await ToSignal(RenderingServer.Singleton,RenderingServer.SignalName.FramePostDraw);
+                    using var image=GetViewport().GetTexture().GetImage();
+                    string name=System.IO.Path.Combine(film,$"{frame:D3}{side}-{label}.png");
+                    Check(image.SavePng(name)==Error.Ok,"saved film frame "+name);
+                }
             }
             for(int i=0;i<9000&&(owned.Count<12||owned.Any(flow.Owns));i++)
             {

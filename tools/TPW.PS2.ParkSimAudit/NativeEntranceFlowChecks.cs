@@ -30,7 +30,7 @@ static class NativeEntranceFlowChecks
         void Check(bool ok, string why) => check(ok, "native entrance flow: " + why);
         var archive = disc.Files().Single(f => f.Path.Equals("/DATA/JUNGLE.WAD", StringComparison.OrdinalIgnoreCase));
         var wad = new WadArchive(disc.Read(archive.Extent, archive.Size));
-        var terrain = new Model(wad.Read(wad.Find("/terrain/terrain_1.mps")));
+        var terrain = new Model(wad.Read(wad.Find(AuditPark.Mps)));
         var executable = disc.Files().Single(f => f.Path.Equals("/SLES_500.32", StringComparison.OrdinalIgnoreCase));
         var entrance = ParkEntrance.ReadExecutable(disc.Read(executable.Extent, executable.Size));
         var entry = entrance.Fit(terrain.Field, ParkEntrance.WalkwayColumnFromPoles(terrain), out _);

@@ -26,7 +26,7 @@ ASSEMBLY = PROJECT + '/bin/Release/net8.0/TPW.PS2.ParkSimAudit.dll'
 MAX_LOG_BYTES = 8 * 1024 * 1024
 # Minimum assertions in the current integrated ParkSimAudit. A stale binary or
 # accidentally omitted helper must not turn missing lifecycle coverage into PASS.
-REQUIRED_CHECKS = {'availability': 30, 'removal': 57, 'conservation': 20, 'needs_lifecycle': 50, 'disruption': 21, 'service_routing': 5, 'departure_recovery': 6, 'ride_effect_consumer': 33, 'compiled_purchase': 67, 'decision_scheduling': 28, 'terminal_walking': 90, 'post_service_movement': 18, 'native_destination_score': 43, 'native_destination_consumer': 29, 'native_relief': 78, 'native_ride_value': 70, 'native_bus_admission_inputs': 278, 'native_guest_motion_arithmetic': 55, 'native_guest_route_cursor': 76, 'native_walk_consumer': 87, 'native_entrance_flow': 113, 'native_entrance_acceptance': 23, 'native_route_pool': 1082, 'native_rejected_departure': 59}
+REQUIRED_CHECKS = {'availability': 30, 'removal': 57, 'conservation': 20, 'needs_lifecycle': 50, 'disruption': 21, 'service_routing': 5, 'departure_recovery': 6, 'ride_effect_consumer': 33, 'compiled_purchase': 67, 'decision_scheduling': 28, 'terminal_walking': 90, 'post_service_movement': 18, 'native_destination_score': 43, 'native_destination_consumer': 29, 'native_relief': 78, 'native_ride_value': 70, 'native_bus_admission_inputs': 278, 'native_guest_motion_arithmetic': 55, 'native_guest_route_cursor': 76, 'native_walk_consumer': 87, 'native_entrance_flow': 113, 'native_entrance_acceptance': 23, 'native_route_pool': 1082, 'native_rejected_departure': 59, 'native_logical_animation': 62}
 REQUIRED_WITNESSES = (
     'ok   native destination consumer: actual idle selector need0/sick0 rejects relief',
     'ok   native destination consumer: actual idle selector need90/sick0 chooses relief',
@@ -79,8 +79,12 @@ REQUIRED_WITNESSES = (
 
 
 def classify(world: str, raw_exit: int | None, text: str, *, timed_out: bool = False,
-             truncated: bool = False, launch_error: str | None = None) -> dict:
+             truncated: bool = False, launch_error: str | None = None, terrain: int | None = None) -> dict:
     lines = [line.strip() for line in text.splitlines() if line.strip()]
+    # A case proves WHICH PARK it ran from its own output (2026-09-25: a viewer runner's unmatched
+    # --map silently repeated one park, and every repeat passed).
+    if terrain is not None and not any(line.startswith(f'{world} terrain_{terrain}:') for line in lines):
+        return {'raw_exit': raw_exit, 'failures': [], 'status': 'wrong_park'}
     failures = [line[5:] for line in lines if line.startswith('FAIL ')]
     counts = {category: sum(line.startswith(f"ok   {category.replace('_', ' ')}:") for line in lines)
               for category in REQUIRED_CHECKS}
@@ -171,6 +175,8 @@ def main(argv=None) -> int:
     parser.add_argument('--out', type=Path, required=True)
     parser.add_argument('--repo', type=Path, default=Path(__file__).resolve().parents[1])
     parser.add_argument('--worlds', nargs='+', choices=WORLDS, default=list(WORLDS))
+    parser.add_argument('--terrains', nargs='+', type=int, choices=(1, 2), default=[1, 2],
+                        help="each world's first and/or second park (default both: all eight parks)")
     parser.add_argument('--dotnet', default='dotnet')
     parser.add_argument('--timeout', type=float, default=120)
     parser.add_argument('--no-build', action='store_true', help='reuse a build; recorded explicitly in the manifest')
@@ -186,6 +192,8 @@ def main(argv=None) -> int:
         parser.error('--out must be a new directory; previous evidence will not be overwritten')
     manifest = {'schema_version': 1, **git_info(repo), 'disc_sha256': file_hash(disc),
                 'disc_bytes': disc.stat().st_size, 'build_skipped': args.no_build, 'results': []}
+    # Only a clean, freshly built tree is landing evidence; anything else is a local experiment.
+    manifest['landing_evidence'] = manifest.get('dirty') is False and not args.no_build
     manifest_path = out / 'manifest.json'
 
     def save():
@@ -203,15 +211,17 @@ def main(argv=None) -> int:
             print(f'BUILD_FAILED raw_exit={build["raw_exit"]}; {manifest_path}')
             return 1
     for world in dict.fromkeys(args.worlds):
-        run = run_process([args.dotnet, ASSEMBLY, str(disc), world], repo=repo,
-                          log=out / f'{world.lower()}.log', timeout=args.timeout)
-        verdict = classify(world, run['raw_exit'], run['text'], timed_out=run['timed_out'], truncated=run['truncated'], launch_error=run['launch_error'])
-        row = {key: value for key, value in run.items() if key != 'text'}
-        row.update(verdict, world=world)
-        manifest['results'].append(row)
-        save()  # preserve completed worlds if the next one is interrupted
-        coverage = ' '.join(f'{category}={row[f"{category}_checks"]}' for category in REQUIRED_CHECKS)
-        print(f'{world}: {row["status"].upper()} raw_exit={row["raw_exit"]} {coverage}')
+        for terrain in dict.fromkeys(args.terrains):
+            run = run_process([args.dotnet, ASSEMBLY, str(disc), world, f'--terrain={terrain}'], repo=repo,
+                              log=out / f'{world.lower()}-{terrain}.log', timeout=args.timeout)
+            verdict = classify(world, run['raw_exit'], run['text'], timed_out=run['timed_out'], truncated=run['truncated'],
+                               launch_error=run['launch_error'], terrain=terrain)
+            row = {key: value for key, value in run.items() if key != 'text'}
+            row.update(verdict, world=world, terrain=terrain)
+            manifest['results'].append(row)
+            save()  # preserve completed parks if the next one is interrupted
+            coverage = ' '.join(f'{category}={row.get(f"{category}_checks")}' for category in REQUIRED_CHECKS)
+            print(f'{world}/{terrain}: {row["status"].upper()} raw_exit={row["raw_exit"]} {coverage}')
     statuses = {row['status'] for row in manifest['results']}
     if statuses - {'pass', 'known_retail_failure'}:
         exit_code, status = 1, 'unexpected_result'
@@ -221,7 +231,7 @@ def main(argv=None) -> int:
         exit_code, status = 0, 'all_selected_passed'
     manifest.update(status=status, runner_exit=exit_code)
     save()
-    print(f'{status}; runner_exit={exit_code}; {manifest_path}')
+    print(f'{status}; runner_exit={exit_code}; landing_evidence={manifest["landing_evidence"]}; {manifest_path}')
     return exit_code
 
 

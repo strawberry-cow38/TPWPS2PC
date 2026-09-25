@@ -237,5 +237,20 @@ class ProcessEvidenceTests(unittest.TestCase):
             self.assertEqual(previous.read_text(), 'keep previous evidence')
 
 
+
+class ParkIdentity(unittest.TestCase):
+    """2026-09-25: a case must prove which park it ran from its own output."""
+    def test_right_park_line_is_required_when_a_terrain_is_named(self):
+        text = 'JUNGLE terrain_2: 128x128; entrance ok\n' + COVERAGE + '\nPASS\n'
+        self.assertNotEqual(classify('JUNGLE', 0, text, terrain=2)['status'], 'wrong_park')
+
+    def test_regression_other_park_output_is_wrong_park(self):
+        text = 'JUNGLE terrain_1: 128x128; entrance ok\n' + COVERAGE + '\nPASS\n'
+        self.assertEqual(classify('JUNGLE', 0, text, terrain=2)['status'], 'wrong_park')
+
+    def test_no_park_line_is_wrong_park(self):
+        self.assertEqual(classify('JUNGLE', 0, COVERAGE + '\nPASS\n', terrain=1)['status'], 'wrong_park')
+
+
 if __name__ == '__main__':
     unittest.main()
