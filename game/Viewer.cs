@@ -6683,8 +6683,26 @@ public partial class Viewer : Node3D
         // offers it. ⚠ Only a shop: the panel's rows are Takings/Profit/Quality/Sale Price and a
         // ride has none of them.
         if (_shopPanel != null && ShopFor(placed) != null) yield return "Details";
-        yield return HasQueueNear(placed) ? "Edit Queue" : "Build Queue";
+        // ⭐⭐ ONLY THINGS THAT TAKE A QUEUE OFFER ONE. Master: "make sure on the rmb details page
+        // that we only show relevant options, ie no build queue for things that arent meant to
+        // have queues." A tree, a bin and a lamp were all offering to have a queue built to them.
+        //
+        // ⭐ It asks the SAME predicate the placement stub asks -- one answer to "does this take a
+        // queue", so the menu cannot offer one for a thing whose entrance was laid as a path.
+        if (TakesQueueStub(KindOfPlaced(placed)))
+            yield return HasQueueNear(placed) ? "Edit Queue" : "Build Queue";
         yield return "Delete";
+    }
+
+    /// <summary>The compiled kind of something already standing in the park, or null. ⚠ Read off
+    /// the simulation's record for it, which is where the definition survives placement.</summary>
+    AssetResourceDatabase.AssetKind? KindOfPlaced(int placed)
+    {
+        if (_sim == null || placed < 0 || placed >= _park.Placed.Count) return null;
+        int id = _park.Placed[placed].Id;
+        foreach (var r in _sim.Rides)
+            if (r.Id == id) return r.Definition?.CompiledEntry?.Kind;
+        return null;
     }
 
     /// <summary>The simulation's record for a placed object, when it is a SHOP. ⚠ Matched by the

@@ -57,6 +57,25 @@ static class NeedsLifecycleChecks
                   && visitors.Plans[guest.Id].Intent == VisitorIntent.Queued, "fixture transfers guest to ride ownership");
         }
         bool Same(VisitorWants a, VisitorWants b) => a.Equals(b);
+
+        // ⭐⭐ AFTER A REMOVAL THE NEEDS SURVIVE AND THE THOUGHT IS RE-DECIDED. That is not the
+        // fixture rotting -- it is the fixture doing its job. Its own note above says a budget of
+        // zero stops the mood LADDER taking a bubble but that "if some other path ever starts
+        // writing `Thought`, this fixture will still notice", and one did: `Decide` was given its
+        // real call site at `SelectDestination` (c35aaa4), and a readmitted guest walks straight
+        // into it. Hunger 94 and Thirst 96 then read as HungryAndThirsty, correctly.
+        //
+        // ⚠ So the comparison is narrowed to the fields that must SURVIVE, and the thought is
+        // asserted OUTRIGHT rather than excluded -- excluding it would let a path that scrambles
+        // the thought pass unnoticed, which is exactly what the original note was guarding.
+        bool SameNeeds(VisitorWants a, VisitorWants b) => Same(a with { Thought = b.Thought }, b);
+        void CheckReDecided(VisitorWants before, VisitorWants after, string what)
+        {
+            Check(SameNeeds(before, after), what + ": every stored need survives");
+            Check(after.Thought == Thought.HungryAndThirsty,
+                  what + $": and the thought is re-decided from Hunger {before.Hunger} / Thirst "
+                       + $"{before.Thirst} (got {after.Thought})");
+        }
         bool Readmitted(ParkVisitors visitors, int id) => visitors.Walk.Guests.Count(g => g.Id == id) == 1
             && visitors.Plans.TryGetValue(id, out var plan) && plan.Intent == VisitorIntent.Wandering && plan.RideId == 0;
         bool HasOneRideEffect(VisitorWants before, VisitorWants after, ParkVisitors visitors)
@@ -79,9 +98,22 @@ static class NeedsLifecycleChecks
         Check(Same(original, queued.Visitors.Needs.Of(queued.Guest.Id)), "boarding preserves every stored need field");
         queued.Sim.Remove(1); queued.Visitors.Step(0, null);
         Check(queued.Visitors.Walk.Guests.Count == 1
-              && !ReferenceEquals(queued.Guest, queued.Visitors.Walk.Guests[0])
-              && Same(original, queued.Visitors.Needs.Of(queued.Guest.Id)),
-              "removal readmits a new walking object without respawning its needs");
+              && !ReferenceEquals(queued.Guest, queued.Visitors.Walk.Guests[0]),
+              "removal readmits a new walking object");
+        CheckReDecided(original, queued.Visitors.Needs.Of(queued.Guest.Id), "removal readmission");
+
+        // ⚠⚠ THE CONTROL, and without it the thought assertion above is a rubber stamp: a guest
+        // who is NOT hungry or thirsty must NOT come back HungryAndThirsty. If Decide were
+        // writing a constant, or the field were simply being left alone at some default, the
+        // check above would pass and this one would not.
+        var fed = Fresh();
+        fed.Visitors.Needs.Set(fed.Guest.Id, fed.Visitors.Needs.Of(fed.Guest.Id)
+                               with { Hunger = 2, Thirst = 2, Thought = Thought.Good });
+        Queue(fed.Visitors, fed.Ride, fed.Guest);
+        fed.Sim.Remove(1); fed.Visitors.Step(0, null);
+        Check(fed.Visitors.Needs.Of(fed.Guest.Id).Thought != Thought.HungryAndThirsty,
+              "control: a fed and watered guest is NOT re-decided as hungry and thirsty "
+            + $"(got {fed.Visitors.Needs.Of(fed.Guest.Id).Thought})");
 
         var seated = Fresh(); original = seated.Visitors.Needs.Of(seated.Guest.Id);
         Queue(seated.Visitors, seated.Ride, seated.Guest);
@@ -89,7 +121,7 @@ static class NeedsLifecycleChecks
         Check(seated.Ride.Host.Seats.Values.Contains(seated.Guest.Id), "real script actually seats the needs-bearing guest");
         Check(Same(original, seated.Visitors.Needs.Of(seated.Guest.Id)), "seated guest retains its entire side-table state");
         seated.Sim.Remove(1); seated.Visitors.Step(0, null);
-        Check(Same(original, seated.Visitors.Needs.Of(seated.Guest.Id)), "seated removal retains needs");
+        CheckReDecided(original, seated.Visitors.Needs.Of(seated.Guest.Id), "seated removal");
 
         var returning = Fresh(); original = returning.Visitors.Needs.Of(returning.Guest.Id);
         Queue(returning.Visitors, returning.Ride, returning.Guest); returning.Ride.Set("VAR_STARTNOW", 1);
@@ -173,8 +205,11 @@ static class NeedsLifecycleChecks
               && Same(original, recovery.Visitors.Needs.Of(recovery.Guest.Id)),
               "temporary absence of ground/body does not retire or reseed needs");
         recovery.Paths.Lay(entrance, material); recovery.Visitors.Step(0, null);
-        Check(recovery.Visitors.Walk.Guests.Count == 1 && Same(original, recovery.Visitors.Needs.Of(recovery.Guest.Id)),
-              "delayed recovery preserves needs until readmission succeeds");
+        Check(recovery.Visitors.Walk.Guests.Count == 1, "delayed recovery readmits once the ground is back");
+        // ⚠ The readmission is the moment the guest reaches SelectDestination, so this is the
+        // same re-decide as an ordinary removal -- the check above it, which asserts the WHOLE
+        // struct, is about the window BEFORE readmission, where nothing may touch anything.
+        CheckReDecided(original, recovery.Visitors.Needs.Of(recovery.Guest.Id), "delayed recovery");
 
         var retired = Fresh();
         Check(retired.Visitors.SendTo(retired.Guest, retired.Ride), "retirement fixture has a heading owner");
