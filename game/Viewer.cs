@@ -3127,12 +3127,25 @@ public partial class Viewer : Node3D
         if (_shopPanel == null) { GD.PrintErr("[film] --laptop-film: no laptop screen"); GetTree().Quit(2); return; }
         // ⭐ The MAIN MENU is a list, not a data screen -- `main.sce` has one element. It takes the
         // early return because none of the model/cell machinery below applies to it.
-        if (_laptopScreen.Equals("main", StringComparison.OrdinalIgnoreCase))
+        if (_laptopScreen.Equals("main", StringComparison.OrdinalIgnoreCase)
+            || _laptopScreen.Equals("info", StringComparison.OrdinalIgnoreCase))
         {
+            // ⭐ Two menus, not one flat list: `main` and its `main_info` submenu, each built by
+            // its own console routine. `--laptop-screen=main` shows the top level and
+            // `--laptop-screen=info` the submenu.
             var opts = new List<string>();
-            foreach (var o in LaptopMainMenu.Visible(parkOpen: _laptopParkOpen))
+            var src = _laptopScreen.Equals("info", StringComparison.OrdinalIgnoreCase)
+                    ? LaptopMainMenu.Information
+                    : System.Linq.Enumerable.ToArray(LaptopMainMenu.VisibleMain(parkOpen: _laptopParkOpen));
+            foreach (var o in src)
                 opts.Add(_text?.Text("eng", o.TextId) ?? $"#{o.TextId}");
-            _shopPanel.ShowMenu(opts, _laptopMenuSelected);
+            // ⚠ The panel holds eleven rows; anything more would draw onto the bevel, which is
+            // exactly what master saw. Refuse loudly rather than overflow silently.
+            if (opts.Count > LaptopMainMenu.MaxRows)
+                GD.PrintErr($"[laptop] {opts.Count} rows but the panel holds {LaptopMainMenu.MaxRows}"
+                          + " -- the list would run onto the chrome");
+            _shopPanel.ShowMenu(opts, _laptopMenuSelected,
+                _laptopScreen.Equals("info", StringComparison.OrdinalIgnoreCase) ? LaptopMainMenu.InfoScene : LaptopMainMenu.MainScene);
             PrepareUiShotView();
             SaveShot(ShotSibling(_shotPath, $"-f{_laptopFrame:D4}"));
             _laptopFrame++;

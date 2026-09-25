@@ -1,82 +1,84 @@
 namespace TPW.PS2.Data;
 
-/// <summary>⭐⭐ THE LAPTOP'S MAIN MENU, read off the console's own option table.
+/// <summary>⭐⭐ THE LAPTOP'S MENUS, read off the console's own table AND its builders.
 ///
-/// The chain, all of it read rather than guessed:
-/// * `MENUS.WAD/main.sce` lays the screen out, and it has exactly ONE element -- `textoptions`
-///   at row 115, col 45, left-justified. So the screen IS a list; there is no title element and
-///   no value column.
-/// * `FUN_001fc778` builds the menu registry at `0x2ec718`, 16 bytes per entry
-///   (`"<name>.sce"`, `"<name>"`, -1, 0). `main` is the second entry.
-///   ⭐ The registry index is one BELOW the menu id, corroborated three ways: this port already
-///   had ride_data = 0x0E, shop_data = 0x11 and sideshow_data = 0x13 decoded from their binders,
-///   and those sit at registry indices 13, 16 and 18. Three for three at index+1.
-/// * `FUN_0016ef68` fills the option table at **`0x2b97c0`**, 8 bytes per entry:
-///   `{u32 text id, handler}`. That is the list below.
+/// ⚠⚠ THE FIRST VERSION OF THIS FILE WAS WRONG, and master caught it in one line: "the list
+/// continues off the bottom". It listed all thirteen table entries as one flat menu. They are not
+/// one menu and they are not all shown: the table is a POOL, and two builders pick from it by
+/// index under conditions. Reading an initialiser and assuming its contents were the screen is the
+/// same mistake as reading a scene file's comment instead of its draw.
 ///
-/// ⭐ HOW IT WAS FOUND, because the method is reusable: scanning the image for
-/// `addiu rt, zero, imm` with each `STR_MAINMENU_*` text id as the immediate, then clustering the
-/// hit addresses. The ids land on a regular 0x18 stride from `0x16ef84` to `0x16f0b8`. ⚠ The same
-/// scan run without an address-range and size control first pointed at a 7,586-line decompiler
-/// artefact outside the code range, which contains most 3-digit integers by chance. The control
-/// that made it trustworthy: the SHOP's seven known label ids cluster at `0x1d7288`, inside the
-/// already-decoded shop draw `FUN_001d70c8`.</summary>
+/// **The chain, all read:**
+/// * `MENUS.WAD/main.sce` and `main_info.sce` each hold ONE element -- `textoptions`, row 115,
+///   col 45, left. Two scene files, because there are two menus.
+/// * `FUN_001fc778` builds the menu registry at `0x2ec718`, 16 bytes per entry. ⭐ Its index is one
+///   BELOW the menu id, corroborated three ways against ride_data 0x0E, shop_data 0x11 and
+///   sideshow_data 0x13, which sit at indices 13, 16 and 18. So `main` is id 2.
+/// * `FUN_0016ef68` fills the option POOL at **`0x2b97b8`**, 8 bytes per entry `{u32 text id,
+///   handler}`. ⚠ Not `0x2b97c0` as first written: nothing in the image materialises that, while
+///   `0x2b97b8` is materialised twice, so entry 0 is a real row rather than a stray.
+/// * `FUN_0016e520(menu, n)` appends pool entry **n** to the live list at `0x3ae108`.
+/// * `FUN_0016e558` builds the MAIN menu, `FUN_0016e710` the INFORMATION submenu -- each a
+///   straight-line run of guarded appends, which is where the conditions below come from.</summary>
 public static class LaptopMainMenu
 {
-    /// <summary>`main.sce`, one `textoptions` element.</summary>
-    public const string SceneFile = "main.sce";
-    /// <summary>The element the options are drawn from.</summary>
+    public const string MainScene = "main.sce", InfoScene = "main_info.sce";
     public const string ListElement = "textoptions";
-    /// <summary>Registry index 1, so menu id 2.</summary>
     public const int MenuId = 2;
-    /// <summary>The same 32 the info screens step by; see <see cref="ShopScreen.RowStep"/>.</summary>
     public const int RowStep = ShopScreen.RowStep;
 
-    /// <summary>One option: its text-table row, the console handler it came from, and the menu it
-    /// opens where this port knows one.</summary>
-    public readonly record struct Option(int TextId, string Handler, string Opens = null);
+    /// <summary>⭐ How many rows the panel actually holds. Rows start at 115 and step 32, and the
+    /// chrome's inner content edge is row **469** -- measured up the lossless TGA at col 150, where
+    /// the bevel's bright face gives way to the interior. Eleven rows end at 435 with text to ~465;
+    /// a twelfth would put text at ~497, ON the bevel. ⭐ The ride screen is the existence proof:
+    /// it draws exactly eleven label rows, 115 to 435.</summary>
+    public const int ContentBottom = 469, MaxRows = 11;
 
-    /// <summary>⭐⭐ The table at `0x2b97c0`, IN ORDER. Each entry is `{text id, handler}` and the
-    /// handler addresses are kept so the next person can pick up where this stopped.
-    ///
-    /// ⚠ `Open Park` (617) and `Close Park` (844) are two entries in the table but cannot both be
-    /// on screen: twelve rows from 115 at a 32 step ends at 467, and thirteen would end at 499 --
-    /// past the panel's own bottom edge at 493. A park is either open or closed, so they are
-    /// treated as one slot. ⚠ That is a geometric argument, not a decoded one: the condition that
-    /// picks between them has not been read.</summary>
-    public static readonly Option[] Options =
+    /// <summary>One pooled option. <paramref name="Index"/> is what `FUN_0016e520` is passed.</summary>
+    public readonly record struct Option(int Index, int TextId, string Handler, string Condition = null,
+                                         string Opens = null);
+
+    /// <summary>⭐⭐ The MAIN menu, in `FUN_0016e558`'s append order. At most EIGHT rows, which is
+    /// why it fits where thirteen did not.</summary>
+    public static readonly Option[] Main =
     {
-        new(420,  "FUN_001c5e08", "main_i_ride"),      // Ride Information
-        new(1041, "FUN_001c60d0", "main_i_shop"),      // Shop Information
-        new(760,  "FUN_001c6398", "main_i_sideshow"),  // Side Show Information
-        new(429,  "FUN_001c6660", "main_i_bathroom"),  // Toilet Information
-        new(995,  "FUN_001c6980", "main_i_staff"),     // Staff Information
-        new(752,  "FUN_001c7220", "main_buildhire"),   // Build & Hire
-        new(1042, "FUN_001c7108", "main_research"),    // Research
-        new(485,  "FUN_001c7a98", "main_parkstats"),   // Park Statistics
-        new(441,  "FUN_001c78d0", "main_financialinfo"), // Financial Information
-        new(549,  "FUN_001c5ce0", "main_gameoptions"), // Game Options
-        new(617,  "FUN_001c7c00"),                     // Open Park   -- exclusive with Close Park
-        new(844,  "FUN_001c7bb0"),                     // Close Park  -- exclusive with Open Park
-        new(801,  "FUN_001c7650"),                     // Build
+        new(0,  530,  null,           null,                       "main_info"),          // Information
+        new(6,  752,  "FUN_001c7220", "FUN_0014c928 && FUN_0014c8b8", "main_buildhire"), // Build & Hire
+        new(7,  1042, "FUN_001c7108", null,                       "main_research"),      // Research
+        new(8,  485,  "FUN_001c7a98", null,                       "main_parkstats"),     // Park Statistics
+        new(9,  441,  "FUN_001c78d0", null,                       "main_financialinfo"), // Financial Information
+        new(10, 549,  "FUN_001c5ce0", null,                       "main_gameoptions"),   // Game Options
+        new(11, 617,  "FUN_001c7c00", "FUN_0014e538 == 0"),                              // Open Park
+        new(12, 844,  "FUN_001c7bb0"),                                                   // Close Park
     };
 
-    /// <summary>The row the table carries ahead of the options -- `{0x212, null}` at `0x2b97b8`,
-    /// text id 530 (`STR_PARKSTATS_INFORMATION`, "Information") with a NULL handler.
-    /// ⚠ Its role is NOT settled. A null handler means it cannot be chosen, which fits a heading,
-    /// but `main.sce` gives the screen no title element to put it in and thirteen rows do not fit
-    /// below 115. It may equally be the terminator of the table before this one. Recorded with its
-    /// address so the question stays askable; nothing here draws it.</summary>
-    public const int HeadingTextId = 530;
+    /// <summary>⚠ Index 13 (`Build`, text 801) replaces the whole first group in
+    /// `FUN_0016e558`'s ELSE arm, taken when `FUN_00153410()` is non-zero -- a mode this port has
+    /// not identified. Recorded rather than drawn.</summary>
+    public static readonly Option AltModeBuild = new(13, 801, "FUN_001c7650", "FUN_00153410 != 0");
 
-    /// <summary>Which options are on screen, given whether the park is open. ⭐ This is where the
-    /// Open/Close exclusion lives, so a caller never sees both.</summary>
-    public static IEnumerable<Option> Visible(bool parkOpen)
+    /// <summary>⭐⭐ The INFORMATION submenu, `FUN_0016e710`. Every row is conditional: an entry
+    /// appears only when the park CONTAINS one of that thing, which is why a fresh park's laptop
+    /// is nearly empty. That is decoded, not assumed -- each append sits behind its own predicate.</summary>
+    public static readonly Option[] Information =
     {
-        foreach (var o in Options)
+        new(1, 420,  "FUN_001c5e08", "any of FUN_0014cba8/cbf0/cca0/cc58", "main_i_ride"),
+        new(2, 1041, "FUN_001c60d0", "FUN_0014cd40",                       "main_i_shop"),
+        new(3, 760,  "FUN_001c6398", "FUN_0014cd88",                       "main_i_sideshow"),
+        new(4, 429,  "FUN_001c6660", "FUN_0014cdd0",                       "main_i_bathroom"),
+        new(5, 995,  "FUN_001c6980", "FUN_00153410==0 && any staff",       "main_i_staff"),
+    };
+
+    /// <summary>What the main menu shows. ⚠ `parkOpen` is the ONE condition this port models; the
+    /// rest are park-content predicates the caller does not yet have, so they default to present.
+    /// ⭐ `Close Park` is text 844, `STR_MAINMENU_EXIT_TO_MAP_SCREEN` -- it is "leave for the map
+    /// screen", not the opposite of Open Park, which is why the console appends it unconditionally.</summary>
+    public static IEnumerable<Option> VisibleMain(bool parkOpen = false, bool canBuildAndHire = true)
+    {
+        foreach (var o in Main)
         {
-            if (o.TextId == 617 && parkOpen) continue;    // already open: offer Close
-            if (o.TextId == 844 && !parkOpen) continue;   // already closed: offer Open
+            if (o.Index == 11 && parkOpen) continue;          // Open Park: only while closed
+            if (o.Index == 6 && !canBuildAndHire) continue;
             yield return o;
         }
     }

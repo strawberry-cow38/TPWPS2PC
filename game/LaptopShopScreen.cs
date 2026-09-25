@@ -232,8 +232,9 @@ public sealed partial class LaptopShopScreen : Control
     ///
     /// The option order and text ids come from the console's own table at `0x2b97c0`; see
     /// <see cref="LaptopMainMenu"/>, which holds the reading.</summary>
-    public void ShowMenu(IReadOnlyList<string> options, int selected)
+    public void ShowMenu(IReadOnlyList<string> options, int selected, string sceneFile = null)
     {
+        _menuScene = sceneFile;
         _spec = null;
         _menu.Clear();
         if (options != null) _menu.AddRange(options);
@@ -243,14 +244,14 @@ public sealed partial class LaptopShopScreen : Control
     }
 
     readonly List<string> _menu = new();
-    int _menuSelected;
+    int _menuSelected; string _menuScene;
 
     /// <summary>⭐ The menu's own draw. It steps the SAME 32 the info screens do -- `DAT_002e9ca8`
     /// -- and uses the same two colours, yellow for the row under the cursor and orange for the
     /// rest, because the laptop has exactly two text colours and no third "disabled" one.</summary>
     void DrawMenu(float s, Vector2 o)
     {
-        var layout = LayoutFor(LaptopMainMenu.SceneFile);
+        var layout = LayoutFor(_menuScene ?? LaptopMainMenu.MainScene);
         if (layout[LaptopMainMenu.ListElement] is not { } list) return;
         var at = o + new Vector2(list.X, list.Y) * s;
         for (int i = 0; i < _menu.Count; i++)

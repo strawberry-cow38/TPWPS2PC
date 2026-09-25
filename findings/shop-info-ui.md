@@ -524,7 +524,7 @@ port bugs when someone next looks at a render:
   supplies no per-shop ingredient text id. `ShopScreen.LabelKeys` already holds null there by
   design; it is the caller that has nothing to put in it.
 
-## The laptop MAIN MENU, decoded and wired (2026-09-25)
+## ⚠⚠ SUPERSEDED -- see "The laptop menus, corrected" below. The laptop MAIN MENU, decoded and wired (2026-09-25)
 
 Master: *"can you wire the laptop main menu"*.
 
@@ -575,3 +575,49 @@ unread; the exclusion is geometric, not decoded.
 `STR_PARKSTATS_INFORMATION` ("Information") with a NULL handler. A null handler fits a heading, but
 `main.sce` gives the screen nowhere to put one and thirteen rows do not fit. It may be the
 terminator of the table before this one. Recorded with its address; nothing draws it.
+
+## ⚠⚠ The laptop menus, CORRECTED -- the table is a pool, not a menu (2026-09-25)
+
+Master, on the render above: *"the list continues off the bottom"*. Right, and the overflow was the
+symptom of a worse error than a layout slip.
+
+**What I got wrong.** I read `FUN_0016ef68`, saw thirteen `{text id, handler}` entries, and drew
+them as one flat list. They are neither one menu nor all shown. **The table at `0x2b97b8` is a
+POOL.** `FUN_0016e520(menu, n)` appends pool entry `n` to the live list at `0x3ae108`, and two
+builders pick from it under guards:
+
+* **`FUN_0016e558` -- the MAIN menu.** Appends 0, then 6 only if `FUN_0014c928 && FUN_0014c8b8`,
+  then 7, 8, 9, then 10, then 11 only if `FUN_0014e538() == 0`, then 12. **At most eight rows.**
+  ⚠ Its ELSE arm (`FUN_00153410()` non-zero, a mode not identified here) replaces the whole first
+  group with entry 13, `Build`.
+* **`FUN_0016e710` -- the INFORMATION submenu.** Appends 1..5, each behind its own predicate, so a
+  row appears only when the park actually contains one of that thing.
+
+| pool | text | English | menu | condition |
+|---|---|---|---|---|
+| 0 | 530 | Information | main | always -- opens the submenu |
+| 1 | 420 | Ride Information | info | any of `0014cba8/cbf0/cca0/cc58` |
+| 2 | 1041 | Shop Information | info | `0014cd40` |
+| 3 | 760 | Side Show Information | info | `0014cd88` |
+| 4 | 429 | Toilet Information | info | `0014cdd0` |
+| 5 | 995 | Staff Information | info | `00153410==0` && any staff |
+| 6 | 752 | Build & Hire | main | `0014c928 && 0014c8b8` |
+| 7-10 | 1042/485/441/549 | Research, Park Statistics, Financial Information, Game Options | main | always |
+| 11 | 617 | Open Park | main | `0014e538() == 0` |
+| 12 | 844 | Close Park | main | always |
+| 13 | 801 | Build | main, ELSE arm | `00153410 != 0` |
+
+⭐ **`Close Park` is not the opposite of `Open Park`.** Its key is
+`STR_MAINMENU_EXIT_TO_MAP_SCREEN` -- "leave for the map screen" -- which is why the console appends
+it unconditionally. My earlier "mutually exclusive pair" was a guess built to explain an overflow,
+and it was wrong about which entry is conditional and about why.
+
+⭐ **The row budget, measured rather than argued.** Rows start at 115 and step 32; the chrome's
+inner content edge is row **469**, measured up the lossless TGA at col 150 where the bevel's bright
+face gives way to the interior. Eleven rows end at 435 with text to ~465; a twelfth puts text at
+~497, on the bevel. ⚠ My first check compared against the panel's OUTER silhouette (493) and so
+called twelve rows a 3.3-unit fit. The ride screen settles it independently: it draws exactly
+eleven label rows, 115 to 435.
+
+⚠ The port now refuses loudly (`GD.PrintErr`) if a menu exceeds eleven rows, rather than drawing
+onto the chrome. The two prior guesses both showed up as silent overflow.
