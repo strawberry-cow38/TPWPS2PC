@@ -442,3 +442,42 @@ window, and `--resolution 1920x1080` silently yields 1028x749. `--ui-size=WxH` p
 SubViewport of the asked-for size so it *lays out* for that size, and `SaveShot` grabs that
 viewport. The model's own SubViewport is 4x oversampled (588x960), so it downscales -- and stays
 sharp -- through 1440p, and only begins to upscale past ~2160p.
+
+## The chrome's surround: measured, after a magic eraser was rejected
+
+Master, on the first cut: *"id do a measured version. magic eraser just eats too much. try again"*.
+Right on both counts -- the first version flooded inward over anything below luma 24 and cleared
+**13.9%** of the image against a true surround of **12.0%**, eating ~4,900 pixels of the bevel's
+antialiasing and leaving stray specks behind.
+
+⭐⭐ **The art is not a gradient to be thresholded; the surround is one EXACT flat colour.** On the
+lossless TGAs it is **(0,0,100)**, and all four world chromes agree on the colour *and* the area:
+
+| chrome | key | exact-colour pixels | reachable from the border | stranded inside |
+|---|---|---|---|---|
+| `LAPTOP_JUNGLE` | (0,0,100) | 31,522 | 31,522 | 0 |
+| `LAPTOP_HALLOW` | (0,0,100) | 31,524 | 31,522 | **2** |
+| `LAPTOP_FANTASY` | (0,0,100) | 31,522 | 31,522 | 0 |
+| `LAPTOP_SPACE` | (0,0,100) | 31,522 | 31,522 | 0 |
+| `LAPTOP_512` | (0,0,150) | 29,250 | 29,248 | **2** |
+
+Four independently-skinned images agreeing to within two pixels is a measurement, not a fit, and it
+leaves no threshold to choose. ⚠ But the colour alone is not the test: two key-coloured pixels sit
+stranded INSIDE the panel on HALLOW and on 512, so a plain colour match punches pinholes in them.
+The flood from the border is what excludes those.
+
+⚠⚠ **The mask cannot be taken from the `.ssh`, and that was measured too.** Over the pixels the TGA
+says are exactly the key, the decoded SSH drifts by up to **66**, while the nearest NON-surround
+pixel is **1** away -- the two populations overlap in colour space, so no runtime tolerance can
+separate them. Nor is the silhouette a rounded rectangle: the best circular fit leaves a **4px**
+residual and the four corners are not identical, so a radius would have been the same fitting
+mistake in different clothes.
+
+⭐ **UI.WAD ships both formats** -- 79 `.tga` against 103 `.ssh` -- so the lossless art is simply
+there at runtime. The chrome is still DRAWN from the `.ssh`, which is what the console displays;
+only the mask is read off the `.tga`, where it is exact. Runtime reports 31,522 / 12.0%, matching
+the offline measurement to the pixel.
+
+⚠ Worth stating plainly: **this is an improvement, not fidelity.** All five chromes are SSH type 4
+and 24bpp TGA -- no alpha channel anywhere, against every other laptop sprite being type 5 / 32bpp.
+On the console the laptop is a full-screen opaque image and the surround IS the background.

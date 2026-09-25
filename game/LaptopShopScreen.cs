@@ -89,8 +89,13 @@ public sealed partial class LaptopShopScreen : Control
         if (sce == null) { GD.PrintErr($"[laptop] MENUS.WAD/{ShopScreen.SceneFile} missing -- screen stays off"); return null; }
         var layout = SceneLayout.Parse(sce);
 
-        var chrome = Load(ShopScreen.ChromeFor(world)) ?? Load("/laptop/LAPTOP_512.ssh");
-        if (chrome != null) chrome = TrimRim(chrome);
+        // ⚠ The mask must come from the TGA beside the art that ACTUALLY loaded. Falling back to
+        // LAPTOP_512 while still naming the world's file would cut one chrome to another's outline
+        // -- and LAPTOP_512's outline differs (inset 11/11/16/17 against the worlds' 12/13/17/18).
+        string chromeName = ShopScreen.ChromeFor(world);
+        var chrome = Load(chromeName);
+        if (chrome == null) { chromeName = "/laptop/LAPTOP_512.ssh"; chrome = Load(chromeName); }
+        if (chrome != null) chrome = TrimRim(chrome, lib, chromeName);
         // ⭐ BARPROG, not PROG_BAR: the smooth trough, measured to have the same continuous
         // interior as BARSLIDE. PROG_BAR is an eleven-cell notched gauge and belongs to a
         // different widget -- see DrawBar.
@@ -397,60 +402,89 @@ public sealed partial class LaptopShopScreen : Control
     /// rather than re-deriving the mask and drifting from it.
     /// ⚠ It reads the `.ssh`, NOT the `.tga` sibling: those are lossy-compressed and differ by a
     /// few levels, which is enough to move a "is this pixel cyan" row boundary by one.</summary>
-    /// <summary>How dark a pixel must be to count as the surround rather than the panel's bevel.
-    /// ⭐ Measured off the rendered chrome: the flat surround is (3,0,103), luma 13, and the bevel
-    /// ramps 32 -> 117 within six pixels of it. 24 sits in that gap.</summary>
-    const int RimLuma = 24;
-
-    /// <summary>⭐⭐ CUT THE DARK RIM OFF THE CHROME, so the park shows through around the panel.
+    /// <summary>⭐⭐ CUT THE SURROUND OFF THE CHROME so the park shows through around the panel.
     /// Master: "cut out the darker border around the rounded edges of the background image.
     /// instead of a gray background, just dont hide the park behind".
     ///
-    /// ⚠ A BRIGHTNESS THRESHOLD ALONE WOULD EAT THE ARTWORK -- the photographic interior has dark
-    /// pixels of its own. This floods inward FROM THE BORDER, so only dark that is *connected to
-    /// the outside* is cleared; a dark corner of the photo inside the panel is unreachable and
-    /// survives. Same shape of fix as <see cref="BuildFillPixels"/>'s mask.
+    /// ⚠⚠ THE FIRST VERSION WAS A MAGIC ERASER AND MASTER REJECTED IT: "id do a measured version.
+    /// magic eraser just eats too much." It flooded inward over anything darker than luma 24. That
+    /// cleared **13.9%** of the image against a true surround of **12.0%** -- it ate ~2% of the
+    /// bevel's antialiasing, exactly the complaint.
     ///
-    /// ⭐ Brightness rather than hue because the four worlds' chromes are differently coloured but
-    /// all put a bright bevel against a near-black surround.</summary>
-    internal static byte[] TrimRimPixels(byte[] src, int w, int h, out int cleared)
+    /// ⭐⭐ WHAT THE ART ACTUALLY IS, measured on the lossless TGAs: the surround is one EXACT flat
+    /// colour, **(0,0,100)**, and all four world chromes agree on both that colour and its area --
+    /// 31,522 / 31,524 / 31,522 / 31,522 pixels. Four independently-skinned images agreeing to
+    /// within two pixels is a measurement, not a fit. (`LAPTOP_512`, the fallback art, uses
+    /// (0,0,150) over 29,250.) So there is no threshold to choose: the boundary is exactly where
+    /// the pixel stops being the key colour.
+    ///
+    /// ⚠ BUT THE COLOUR IS NOT THE TEST ON ITS OWN. Two pixels of the exact key sit STRANDED
+    /// INSIDE the panel on `LAPTOP_HALLOW` and on `LAPTOP_512`, so a plain colour match punches
+    /// two transparent pinholes in them. The flood from the border is what excludes those, and it
+    /// reaches 31,522 on every world.
+    ///
+    /// ⚠⚠ AND THE MASK CANNOT COME FROM THE `.ssh`, which is why this reads the `.tga`. The
+    /// shipped SSH is lossy: over the pixels the TGA says are exactly the key, the decoded values
+    /// drift by up to **66**, while the nearest NON-surround pixel is **1** away. The two
+    /// populations OVERLAP in colour space, so no tolerance on the decoded image can separate
+    /// them. Nor is the silhouette a rounded rectangle -- the best circular fit leaves a 4px
+    /// residual and the four corners are not even identical -- so a radius would be the same
+    /// fitting mistake in a different costume.
+    ///
+    /// ⭐ UI.WAD ships BOTH (79 `.tga` against 103 `.ssh`), so the lossless art is simply there at
+    /// runtime. The chrome is still DRAWN from the `.ssh`, which is what the console displays; only
+    /// the mask is read off the TGA, where it is exact.</summary>
+    static ImageTexture TrimRim(ImageTexture tex, AssetLibrary lib, string sshName)
     {
-        var px = (byte[])src.Clone();
+        var img = tex.GetImage();
+        if (img == null) return tex;
+        byte[] raw = lib.ReadUi(System.IO.Path.ChangeExtension(sshName, ".tga"));
+        if (raw == null) { GD.PrintErr($"[laptop] {sshName}: no .tga beside it -- chrome stays opaque"); return tex; }
+        Targa art;
+        try { art = new Targa(raw); }
+        catch (Exception ex) { GD.PrintErr($"[laptop] chrome .tga: {ex.Message} -- chrome stays opaque"); return tex; }
+
+        if (img.GetFormat() != Image.Format.Rgba8) img.Convert(Image.Format.Rgba8);
+        int w = img.GetWidth(), h = img.GetHeight();
+        // ⚠ A mask of the wrong size would cut the wrong shape rather than fail, so refuse instead.
+        if (art.Width != w || art.Height != h)
+        {
+            GD.PrintErr($"[laptop] chrome .tga is {art.Width}x{art.Height} but the .ssh is {w}x{h}"
+                      + " -- chrome stays opaque rather than cut to the wrong outline");
+            return tex;
+        }
+
+        var px = img.GetData();
+        byte kr = art.Pixels[0], kg = art.Pixels[1], kb = art.Pixels[2];   // the corner IS the key
+        bool Key(int i) => art.Pixels[i * 4] == kr && art.Pixels[i * 4 + 1] == kg && art.Pixels[i * 4 + 2] == kb;
+
         var seen = new bool[w * h];
         var queue = new Queue<int>();
         void Seed(int x, int y)
         {
             if (x < 0 || y < 0 || x >= w || y >= h) return;
             int i = y * w + x;
-            if (seen[i]) return;
-            int p = i * 4;
-            int luma = (299 * px[p] + 587 * px[p + 1] + 114 * px[p + 2]) / 1000;
-            if (px[p + 3] >= 8 && luma > RimLuma) return;   // the bevel: stop here
+            if (seen[i] || !Key(i)) return;
             seen[i] = true; queue.Enqueue(i);
         }
         for (int x = 0; x < w; x++) { Seed(x, 0); Seed(x, h - 1); }
         for (int y = 0; y < h; y++) { Seed(0, y); Seed(w - 1, y); }
-        cleared = 0;
+        int cleared = 0;
         while (queue.Count > 0)
         {
             int i = queue.Dequeue(), x = i % w, y = i / w;
-            if (px[i * 4 + 3] != 0) { px[i * 4 + 3] = 0; cleared++; }
+            px[i * 4 + 3] = 0; cleared++;
             Seed(x - 1, y); Seed(x + 1, y); Seed(x, y - 1); Seed(x, y + 1);
         }
-        return px;
-    }
 
-    static ImageTexture TrimRim(ImageTexture tex)
-    {
-        var img = tex.GetImage();
-        if (img == null) return tex;
-        if (img.GetFormat() != Image.Format.Rgba8) img.Convert(Image.Format.Rgba8);
-        int w = img.GetWidth(), h = img.GetHeight();
-        var cut = TrimRimPixels(img.GetData(), w, h, out int cleared);
-        // ⭐ The control: a rim is a border, so this should land in the low tens of percent.
-        // 0% means the threshold missed it; most of the image means it ate the panel.
-        GD.Print($"[laptop] chrome rim cut: {cleared} of {w * h} px ({100f * cleared / (w * h):F1}%) now transparent");
-        return ImageTexture.CreateFromImage(Image.CreateFromData(w, h, false, Image.Format.Rgba8, cut));
+        // ⭐ The control, and it is a real one: the flood must come in UNDER the raw colour count,
+        // because the stranded interior pixels are exactly what it is there to exclude. Equal on
+        // every world would mean the connectivity guard had never been exercised.
+        int rawKey = 0;
+        for (int i = 0; i < w * h; i++) if (Key(i)) rawKey++;
+        GD.Print($"[laptop] chrome surround cut: key ({kr},{kg},{kb}), {cleared} of {w * h} px "
+               + $"({100f * cleared / (w * h):F1}%); {rawKey - cleared} stranded interior px kept");
+        return ImageTexture.CreateFromImage(Image.CreateFromData(w, h, false, Image.Format.Rgba8, px));
     }
 
     internal static byte[] BuildFillPixels(AssetLibrary lib, out int width, out int height)
