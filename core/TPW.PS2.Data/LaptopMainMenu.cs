@@ -34,6 +34,16 @@ public static class LaptopMainMenu
     /// it draws exactly eleven label rows, 115 to 435.</summary>
     public const int ContentBottom = 469, MaxRows = 11;
 
+    /// <summary>⭐ `STR_MAINMENU_BUILD`. The console's own Build string, shared by the main menu's
+    /// Build option and the Build row at the foot of a purchase screen -- one id, so the two can
+    /// never read differently or drift apart in a translation.</summary>
+    public const int BuildTextId = 801;
+
+    /// <summary>⭐ `Balance`, the same id the Build screen's own second row uses (`FUN_00198b48`
+    /// reads 780, **375**, 969, 61, 1060). The readout that follows the player through build's
+    /// menus borrows the console's label rather than inventing an English one.</summary>
+    public const int BalanceTextId = 375;
+
     /// <summary>One pooled option. <paramref name="Index"/> is what `FUN_0016e520` is passed.</summary>
     public readonly record struct Option(int Index, int TextId, string Handler, string Condition = null,
                                          string Opens = null);
@@ -56,7 +66,7 @@ public static class LaptopMainMenu
         // the console's own pool entry 13 uses. `Hire` takes 291, `STR_GIZMO_CPP_HIRE`: there is
         // NO `STR_MAINMENU_HIRE` in the table, so that one is BORROWED from the gizmo bar and is
         // the one label here the console never shows in a menu.
-        new(6,  801,  "FUN_001c7220", "FUN_0014c928 && FUN_0014c8b8", "main_bh_items"), // Build
+        new(6,  BuildTextId, "FUN_001c7220", "FUN_0014c928 && FUN_0014c8b8", "main_bh_items"), // Build
         new(6,  291,  "FUN_001c7220", "FUN_0014c928 && FUN_0014c8b8", "main_bh_staff"), // Hire
         new(7,  1042, "FUN_001c7108", null,                       "main_research"),      // Research
         new(8,  485,  "FUN_001c7a98", null,                       "main_parkstats"),     // Park Statistics
@@ -69,7 +79,7 @@ public static class LaptopMainMenu
     /// <summary>⚠ Index 13 (`Build`, text 801) replaces the whole first group in
     /// `FUN_0016e558`'s ELSE arm, taken when `FUN_00153410()` is non-zero -- a mode this port has
     /// not identified. Recorded rather than drawn.</summary>
-    public static readonly Option AltModeBuild = new(13, 801, "FUN_001c7650", "FUN_00153410 != 0");
+    public static readonly Option AltModeBuild = new(13, BuildTextId, "FUN_001c7650", "FUN_00153410 != 0");
 
     /// <summary>⭐⭐ The INFORMATION submenu, `FUN_0016e710`. Every row is conditional: an entry
     /// appears only when the park CONTAINS one of that thing, which is why a fresh park's laptop

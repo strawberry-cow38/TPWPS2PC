@@ -259,7 +259,8 @@ public sealed partial class LaptopShopScreen : Control
     /// column for a text row, or the 0..100 fraction for a bar or slider. A null text on a row
     /// leaves that row blank, which is how the shop's ingredient row disappears while keeping
     /// its slot.</summary>
-    public void ShowScreen(LaptopScreen spec, string title, IReadOnlyList<(string Text, int Fraction)> cells)
+    public void ShowScreen(LaptopScreen spec, string title, IReadOnlyList<(string Text, int Fraction)> cells,
+                           bool buildRow = false)
     {
         _spec = spec ?? throw new ArgumentNullException(nameof(spec));
         _title = title ?? "";
@@ -270,7 +271,8 @@ public sealed partial class LaptopShopScreen : Control
         // anywhere on e.g. the Build screen fired MenuActivated and navigated. Master: "i click
         // it, and it takes me to the ride info (with sliders) page for the crazy ape ride."
         _menu.Clear();
-        _menuHover = -1;
+        _menuHover = -1; _menuScroll = 0;
+        _buildRow = buildRow; _buildHover = false;
         _cells.Clear();
         if (cells != null) _cells.AddRange(cells);
         Open = true; Visible = true;
@@ -291,6 +293,10 @@ public sealed partial class LaptopShopScreen : Control
         _menu.Clear();
         if (options != null) _menu.AddRange(options);
         _menuSelected = selected;
+        // ⚠ A new list starts at the top. Carrying the old scroll over would open a short list
+        // scrolled past its own end (the draw clamps, but the first frame would jump).
+        _menuScroll = 0; _menuHover = -1;
+        _buildRow = false; _buildHover = false;
         Open = true; Visible = true;
         FitToViewport();
         QueueRedraw();
@@ -298,6 +304,35 @@ public sealed partial class LaptopShopScreen : Control
 
     readonly List<string> _menu = new();
     int _menuSelected; string _menuScene;
+
+    /// <summary>⭐ First visible menu row. The panel holds <see cref="LaptopMainMenu.MaxRows"/>
+    /// and the Rides category alone has 47 things, so without this most of the archive is
+    /// unreachable. Master: "add a scrollbar when any menu exceeds the space on the ui."</summary>
+    int _menuScroll;
+    /// <summary>The scrollbar's clickable track, in screen pixels, or a zero rect when the list
+    /// fits. Kept from the draw so the hit-test cannot disagree with what was drawn.</summary>
+    Rect2 _scrollTrack;
+
+    /// <summary>⭐⭐ THE BALANCE, SWOOPING IN FROM THE LEFT. Master asked for it on Build and its
+    /// submenus. `null` means draw nothing; the float runs 0 to 1 and eases the slide.</summary>
+    string _balance;
+    float _swoop;
+    /// <summary>The Build row under the info list on a purchase screen, when there is one.</summary>
+    bool _buildRow, _buildHover;
+    Rect2 _buildRowRect;
+    public event Action BuildRequested;
+
+    /// <summary>Show a money figure sliding in, or clear it. ⚠ Re-showing the SAME figure does not
+    /// restart the slide -- moving between Build submenus should not make it fly in again.</summary>
+    public void ShowBalance(string money)
+    {
+        if (money == _balance) return;
+        _balance = money;
+        _swoop = money == null ? 0f : 0.0001f;
+        QueueRedraw();
+    }
+
+
 
     /// <summary>Which menu row the pointer is over, or -1. ⚠ Separate from the SELECTED row: the
     /// console has no pointer, so highlight-under-cursor is this port's addition and must not
@@ -329,8 +364,62 @@ public sealed partial class LaptopShopScreen : Control
     /// <summary>A menu row's clickable box. ⚠ Wider than the glyphs: a row is a TARGET, and
     /// hit-testing the rendered text would make short words like "Build" harder to hit than long
     /// ones, which is a worse UI than the console's.</summary>
-    Rect2 MenuRowBox(int i, SceneLayout.Element list, float s, Vector2 o) =>
-        Screen(new Rect2(list.X - 4, list.Y + LaptopMainMenu.RowStep * i, 260, LaptopMainMenu.RowStep), s, o);
+    ///
+    /// <para>⚠⚠ It takes the row's index in the LIST and subtracts the scroll itself, so a scrolled
+    /// list cannot hit-test one row and draw another. A row above or below the window gets a zero
+    /// rect, which <c>HasPoint</c> never matches -- an off-screen row is not clickable.</para>
+    Rect2 MenuRowBox(int i, SceneLayout.Element list, float s, Vector2 o)
+    {
+        int slot = i - _menuScroll;
+        if (slot < 0 || slot >= RowWindow) return new Rect2();
+        return Screen(new Rect2(list.X - 4, list.Y + LaptopMainMenu.RowStep * slot, 260, LaptopMainMenu.RowStep), s, o);
+    }
+
+    /// <summary>Scroll the menu by whole rows and clamp. Returns true when it actually moved.</summary>
+    bool ScrollMenu(int by)
+    {
+        int cap = Math.Max(0, _menu.Count - RowWindow);
+        int want = Math.Clamp(_menuScroll + by, 0, cap);
+        if (want == _menuScroll) return false;
+        _menuScroll = want;
+        return true;
+    }
+
+    /// <summary>⚠ FOR THE AUDIT AND THE SHOT HARNESS. The row's clickable box in SCREEN pixels --
+    /// the very rect `_GuiInput` tests, not a re-derivation of it. A check that rebuilt the
+    /// geometry itself would agree with a draw that had drifted; this one cannot.</summary>
+    public Rect2 MenuRowScreenBox(int i)
+    {
+        if (LayoutFor(_menuScene ?? LaptopMainMenu.MainScene)[LaptopMainMenu.ListElement] is not { } l)
+            return new Rect2();
+        return MenuRowBox(i, l, Scale, Origin);
+    }
+
+    /// <summary>⚠⚠ HOW MANY ROWS THE LIST MAY USE. The balance readout sits on the panel's LAST
+    /// row, so while it is showing the list gives that row up. The first render drew both: the
+    /// eleventh ride and "$30,000" on top of each other.</summary>
+    int RowWindow => _balance == null ? LaptopMainMenu.MaxRows : LaptopMainMenu.MaxRows - 1;
+
+    /// <summary>The first visible row, and a keyboard/harness way to move it. <see cref="Scroll"/>
+    /// returns false at either end, which is what makes the wheel fall through to the camera.</summary>
+    public int ScrollRow => _menuScroll;
+
+    /// <summary>The panel's own scale and top-left, so a check can convert a screen rect back into
+    /// the authored 512 space the disc measures in.</summary>
+    public float PanelScale => Scale;
+    public Vector2 PanelOrigin => Origin;
+    public bool Scroll(int rows) { if (!ScrollMenu(rows)) return false; QueueRedraw(); return true; }
+
+    /// <summary>What the audit reads back about the Build row and the balance.</summary>
+    public bool HasBuildRow => _buildRow;
+    public Rect2 BuildRowScreenBox => _buildRowRect;
+    public bool BalanceShown => _balance != null;
+    public float BalanceSwoop => _swoop;
+
+    /// <summary>⚠ FOR THE SHOT HARNESS ONLY. A still cannot show a slide, so a render can neither
+    /// demonstrate where the balance comes to rest nor catch it if it stops arriving. This forces
+    /// the one field `_Process` drives, so a screenshot is evidence rather than an assertion.</summary>
+    public void SetBalanceSwoop(float t) { _swoop = Mathf.Clamp(t, 0f, 1f); QueueRedraw(); }
 
     /// <summary>⚠ FOR THE SHOT HARNESS ONLY. A still cannot show a hover state, so a render can
     /// neither demonstrate the highlight works nor catch it if it stops. This forces the same two
@@ -369,6 +458,13 @@ public sealed partial class LaptopShopScreen : Control
     public int GuiEvents, GuiMotion, GuiClicks;
     public string LastGui = "(none)";
 
+    public override void _Process(double delta)
+    {
+        if (!Open || _balance == null || _swoop >= 1f) return;
+        _swoop = Mathf.Min(1f, _swoop + (float)delta * 4f);   // ~0.25s
+        QueueRedraw();
+    }
+
     public override void _GuiInput(InputEvent @event)
     {
         GuiEvents++;
@@ -384,6 +480,9 @@ public sealed partial class LaptopShopScreen : Control
             int wasMenu = _menuHover, wasBtn = _btnHover;
             _btnHover = Screen(BackBox, s, o).HasPoint(motion.Position) ? 0
                       : Screen(CloseBox, s, o).HasPoint(motion.Position) ? 1 : -1;
+            bool wasBuild = _buildHover;
+            _buildHover = _buildRow && _buildRowRect.HasPoint(motion.Position);
+            if (_buildHover != wasBuild) QueueRedraw();
             _menuHover = -1;
             if (_menu.Count > 0 && LayoutFor(_menuScene ?? LaptopMainMenu.MainScene)[LaptopMainMenu.ListElement] is { } l)
                 for (int i = 0; i < _menu.Count; i++)
@@ -391,10 +490,20 @@ public sealed partial class LaptopShopScreen : Control
             if (_menuHover != wasMenu || _btnHover != wasBtn) QueueRedraw();
             return;
         }
+        // ⭐ The wheel walks the list a row at a time. Only swallow it when it moved something --
+        // at either end the event belongs to whatever is behind (the camera zoom).
+        if (@event is InputEventMouseButton { Pressed: true } w
+            && (w.ButtonIndex == MouseButton.WheelUp || w.ButtonIndex == MouseButton.WheelDown))
+        {
+            if (ScrollMenu(w.ButtonIndex == MouseButton.WheelUp ? -1 : 1)) { QueueRedraw(); AcceptEvent(); }
+            return;
+        }
         if (@event is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left })
         {
             GuiClicks++;
             LastGui += $" -> btnHover={_btnHover} menuHover={_menuHover}";
+            if (_buildRow && _buildRowRect.HasPoint(((InputEventMouseButton)@event).Position))
+            { BuildRequested?.Invoke(); AcceptEvent(); return; }
             if (_btnHover >= 0) { Dismissed?.Invoke(_btnHover == 1); AcceptEvent(); return; }
             if (_menuHover >= 0)
             {
@@ -431,7 +540,23 @@ public sealed partial class LaptopShopScreen : Control
         var layout = LayoutFor(_menuScene ?? LaptopMainMenu.MainScene);
         if (layout[LaptopMainMenu.ListElement] is not { } list) return;
         var at = o + new Vector2(list.X, list.Y) * s;
-        for (int i = 0; i < _menu.Count; i++)
+        int max = RowWindow;
+        _menuScroll = Math.Clamp(_menuScroll, 0, Math.Max(0, _menu.Count - max));
+        int first = _menuScroll, last = Math.Min(_menu.Count, first + max);
+        // ⭐ The bar sits just right of the label column, inside the panel's own content area.
+        _scrollTrack = _menu.Count > max
+            ? new Rect2(o + new Vector2(list.X + 268, list.Y) * s, new Vector2(6, max * LaptopMainMenu.RowStep) * s)
+            : new Rect2();
+        if (_menu.Count > max)
+        {
+            DrawRect(_scrollTrack, Of(ShopScreen.Label) with { A = 0.35f });
+            float frac = max / (float)_menu.Count;
+            float pos  = first / (float)_menu.Count;
+            DrawRect(new Rect2(_scrollTrack.Position + new Vector2(0, _scrollTrack.Size.Y * pos),
+                               new Vector2(_scrollTrack.Size.X, Math.Max(8f, _scrollTrack.Size.Y * frac))),
+                     Of(ShopScreen.Highlight));
+        }
+        for (int i = first; i < last; i++)
         {
             // ⭐⭐ EXACTLY ONE ROW IS EVER HIGHLIGHTED. Master, on the first render: "are there
             // meant to be 2 options highlighted in the first pic?" -- there were, and no.
@@ -447,7 +572,8 @@ public sealed partial class LaptopShopScreen : Control
             // way, so a pad and a mouse still agree on what is chosen.
             int lit = _menuHover >= 0 ? _menuHover : _menuSelected;
             var colour = Of(i == lit ? ShopScreen.Highlight : ShopScreen.Label);
-            DrawRun(_menu[i], at + new Vector2(0, LaptopMainMenu.RowStep * i * s), s, colour, list.Justify);
+            int slot = i - first;   // ⚠ the ROW's place on screen, not its index in the list
+            DrawRun(_menu[i], at + new Vector2(0, LaptopMainMenu.RowStep * slot * s), s, colour, list.Justify);
         }
     }
 
@@ -564,6 +690,55 @@ public sealed partial class LaptopShopScreen : Control
         catch (Exception ex) { GD.PrintErr($"[laptop] chrome {want}: {ex.Message}"); }
     }
 
+    /// <summary>⭐ The Build row, under the last row of information on a purchase screen. Master:
+    /// "on the per-ride/etc page, add a build button at the bottom of the list of information".
+    ///
+    /// It uses text 801, `STR_MAINMENU_BUILD` -- the console's own Build string, the same one the
+    /// main menu's Build option draws -- so it reads in whatever language the rest of the UI does
+    /// instead of being an English literal wired into the port.</summary>
+    void DrawBuildRow(float s, Vector2 o, SceneLayout layout)
+    {
+        _buildRowRect = new Rect2();
+        if (!_buildRow) return;
+        string label = Row(LaptopMainMenu.BuildTextId);
+        if (string.IsNullOrEmpty(label)) return;
+        if (layout[_spec.LabelElement] is not { } l) return;
+        // ⚠ One row BELOW the last one, on the info list's own grid, and never past the panel's
+        // inner edge -- the chrome has no content below row 469.
+        int y = l.Y + LaptopScreen.RowStep * (_spec.Rows.Count + 1);
+        if (y + LaptopMainMenu.RowStep > LaptopMainMenu.ContentBottom)
+            y = LaptopMainMenu.ContentBottom - LaptopMainMenu.RowStep;
+        _buildRowRect = Screen(new Rect2(l.X - 4, y, 260, LaptopMainMenu.RowStep), s, o);
+        DrawRun(label, o + new Vector2(l.X, y) * s, s,
+                Of(_buildHover ? ShopScreen.Highlight : ShopScreen.Label), l.Justify);
+    }
+
+    /// <summary>⭐⭐ THE BALANCE, SWOOPING IN FROM THE LEFT -- master's words. Build and its
+    /// submenus are the screens where money decides whether a row is even worth clicking, so the
+    /// figure follows the player into them and slides away with them.
+    ///
+    /// ⚠ The slide is in AUTHORED units and then scaled, like every other coordinate here, so it
+    /// travels the same distance relative to the panel at 1080p as at 1440p.</summary>
+    void DrawBalance(float s, Vector2 o)
+    {
+        if (_balance == null) return;
+        if (LayoutFor(_menuScene ?? LaptopMainMenu.MainScene)[LaptopMainMenu.ListElement] is not { } list) return;
+        // ⭐ ON THE LIST'S OWN GRID, one row past the last one the list may use -- so it lines up
+        // with the rides above it instead of floating at a hand-picked y.
+        float restX = list.X;
+        int y = list.Y + LaptopMainMenu.RowStep * RowWindow;
+        // Ease-out cubic: fast off the mark, settling rather than stopping dead.
+        float t = 1f - Mathf.Pow(1f - Mathf.Clamp(_swoop, 0f, 1f), 3f);
+        float x = Mathf.Lerp(BalanceFrom, restX, t);
+        string label = Row(LaptopMainMenu.BalanceTextId);
+        DrawRun(label == null ? _balance : $"{label}  {_balance}",
+                o + new Vector2(x, y) * s, s, Of(ShopScreen.Highlight), "left");
+    }
+
+    /// <summary>The authored x the balance flies in from -- off the panel's left edge, which the
+    /// chrome's content starts 45 in from.</summary>
+    const float BalanceFrom = -260f;
+
     public override void _Draw()
     {
         if (!Open) return;
@@ -572,8 +747,15 @@ public sealed partial class LaptopShopScreen : Control
         float s = Scale;
         var o = Origin;
         DrawTextureRect(_chrome, new Rect2(o, new Vector2(Native, Native) * s), false);
-        if (_spec != null) { DrawSpecScreen(s, o); DrawButtons(s, o); return; }
-        if (_menu.Count > 0) { DrawMenu(s, o); DrawButtons(s, o); return; }
+        if (_spec != null)
+        {
+            DrawSpecScreen(s, o);
+            DrawBuildRow(s, o, LayoutFor(_spec));
+            DrawBalance(s, o);
+            DrawButtons(s, o);
+            return;
+        }
+        if (_menu.Count > 0) { DrawMenu(s, o); DrawBalance(s, o); DrawButtons(s, o); return; }
 
         Vector2 At(SceneLayout.Element e) => o + new Vector2(e.X, e.Y) * s;
 

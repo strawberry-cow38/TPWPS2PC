@@ -494,6 +494,88 @@ public partial class LaptopShopScreenAudit : Node
                       $"its rect IS the viewport ({screen.Size.X}x{screen.Size.Y} at "
                     + $"{screen.Position.X},{screen.Position.Y}; viewport {vp.X}x{vp.Y}) -- local and "
                     + "viewport space must coincide or every hit-test is in the wrong frame");
+
+                // 4. ⭐⭐ THE SCROLL. The Rides category alone holds far more than the panel's
+                //    eleven rows, so without this most of the archive cannot be reached at all.
+                //    Master: "add a scrollbar when any menu exceeds the space on the ui."
+                int max = LaptopMainMenu.MaxRows;
+                var many = Enumerable.Range(0, 47).Select(i => $"item {i}").ToArray();
+                screen.ShowMenu(many, 0, LaptopMainMenu.MainScene);
+                Check(screen.ScrollRow == 0, $"a fresh list opens at the top (row {screen.ScrollRow})");
+
+                // ⭐ A row above or below the window is NOT clickable. Under the old code every
+                // row had a box, so row 40 of 47 answered clicks at 40*32 = 1280 authored units
+                // down -- far below the panel, where nothing is drawn.
+                Check(screen.MenuRowScreenBox(max).Size == Vector2.Zero,
+                      $"row {max} is past the fold and has no hit box");
+                Check(screen.MenuRowScreenBox(46).Size == Vector2.Zero, "nor does the last of 47");
+                Check(screen.MenuRowScreenBox(max - 1).Size.Y > 0, $"row {max - 1} is the last visible one");
+
+                // ⭐⭐ THE ROW THE CODE HITS IS THE ROW IT DRAWS. Scroll, then the FIRST visible
+                // row must sit exactly where row 0 sat -- that is the property a draw-at-index /
+                // hit-at-slot mismatch breaks, and it breaks silently.
+                var topBefore = screen.MenuRowScreenBox(0);
+                Check(screen.Scroll(5) && screen.ScrollRow == 5, $"the wheel moves it (row {screen.ScrollRow})");
+                var topAfter = screen.MenuRowScreenBox(5);
+                Check(topAfter.Position.IsEqualApprox(topBefore.Position),
+                      $"scrolled to 5, row 5 sits where row 0 did ({topAfter.Position} vs {topBefore.Position})");
+                Check(screen.MenuRowScreenBox(4).Size == Vector2.Zero, "and row 4 has scrolled off the top");
+
+                // ⭐ The last row must land INSIDE the panel. This is the check that rejects
+                // drawing at the list index: at index 46 the row would be ~1472 authored units
+                // down, and the panel's content ends at 469.
+                Check(screen.Scroll(999) && screen.ScrollRow == 47 - max,
+                      $"it stops at the end of the list (row {screen.ScrollRow}, expected {47 - max})");
+                var lastBox = screen.MenuRowScreenBox(46);
+                float lastBottom = (lastBox.Position.Y + lastBox.Size.Y - screen.PanelOrigin.Y) / screen.PanelScale;
+                Check(lastBox.Size.Y > 0 && lastBottom <= LaptopMainMenu.ContentBottom + 1,
+                      $"the last of 47 is reachable and inside the panel (authored bottom {lastBottom:F0} "
+                    + $"<= {LaptopMainMenu.ContentBottom})");
+                Check(!screen.Scroll(1), "and cannot go further");
+                Check(screen.Scroll(-999) && screen.ScrollRow == 0, "back to the top");
+
+                // ⚠ THE CONTROL: a list that FITS must not scroll at all, or a short menu would
+                // slide its own rows out of view.
+                screen.ShowMenu(new[] { "a", "b", "c" }, 0, LaptopMainMenu.MainScene);
+                Check(!screen.Scroll(1) && screen.ScrollRow == 0,
+                      "control: a 3-row list does not scroll -- there is nothing below the fold");
+
+                // 5. ⭐ THE BUILD ROW, and the balance that swoops in. Master: "add a build button
+                //    at the bottom of the list of information, when on build or any of build's
+                //    submenus, show our balance. it should swoop in from the left."
+                var cells = Enumerable.Repeat(("0", 0), LaptopScreen.Build.Rows.Count).ToList();
+                screen.ShowScreen(LaptopScreen.Build, "Crazy Ape", cells);
+                Check(!screen.HasBuildRow, "control: a screen asked without a Build row has none");
+                screen.ShowScreen(LaptopScreen.Build, "Crazy Ape", cells, buildRow: true);
+                Check(screen.HasBuildRow, "a purchase screen has a Build row");
+
+                screen.ShowBalance("$150,000");
+                Check(screen.BalanceShown && screen.BalanceSwoop > 0f && screen.BalanceSwoop < 1f,
+                      $"showing the balance starts the slide ({screen.BalanceSwoop:F4})");
+                float mid = screen.BalanceSwoop;
+                screen.ShowBalance("$150,000");
+                Check(screen.BalanceSwoop == mid,
+                      "⚠ the SAME figure does not restart it -- stepping between build submenus "
+                    + "must not make it fly in again");
+                screen.ShowBalance("$140,000");
+                Check(screen.BalanceSwoop < mid + 0.001f && screen.BalanceShown,
+                      "a DIFFERENT figure does restart it");
+                // ⭐⭐ THE BALANCE TAKES A ROW, AND THE LIST GIVES IT UP. The first render drew
+                //    the eleventh ride and "$30,000" on top of each other at row 435.
+                screen.ShowBalance(null);   // ⚠ ShowMenu deliberately does NOT clear it
+                screen.ShowMenu(many, 0, LaptopMainMenu.MainScene);
+                Check(screen.MenuRowScreenBox(max - 1).Size.Y > 0,
+                      $"control: with no balance the list uses all {max} rows");
+                screen.ShowBalance("$30,000");
+                Check(screen.MenuRowScreenBox(max - 1).Size == Vector2.Zero,
+                      $"with the balance showing, row {max - 1} is given up to it -- nothing is "
+                    + "drawn where the readout sits");
+                Check(screen.MenuRowScreenBox(max - 2).Size.Y > 0, $"and row {max - 2} is still the list's");
+
+                screen.ShowBalance(null);
+                Check(!screen.BalanceShown, "and leaving build clears it");
+                Check(screen.MenuRowScreenBox(max - 1).Size.Y > 0, "which gives the row back");
+
                 screen.Hide();
                 Check(screen.MouseFilter == Control.MouseFilterEnum.Ignore,
                       "closing hands the mouse back to the park");

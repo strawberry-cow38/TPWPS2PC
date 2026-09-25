@@ -245,6 +245,11 @@ public partial class Viewer : Node3D
     /// <summary>⚠ DIAGNOSTIC: "X,Y" -- push a real click through the viewport at that point and
     /// report what the laptop received. Two reasoned fixes failed; this measures instead.</summary>
     string _laptopClick;
+    /// <summary>Force the menu scroll for a shot -- a still cannot turn a wheel.</summary>
+    int _laptopScroll;
+    /// <summary>Force the balance slide, 0..100. ⚠ Unset (-1) lets it run, so a FILM shows the
+    /// swoop for real; a single still wants 100, the resting place.</summary>
+    int _laptopSwoop = -1;
     bool _idleScene, _idleSeeded;
     int _idleCount = 24;
     /// <summary>Which ride the control run stands, by display name; Crazy Ape unless told.</summary>
@@ -387,6 +392,9 @@ public partial class Viewer : Node3D
             else if (a.StartsWith("--laptop-hover=")) int.TryParse(a["--laptop-hover=".Length..], out _laptopHoverRow);
             else if (a.StartsWith("--laptop-hover-btn=")) int.TryParse(a["--laptop-hover-btn=".Length..], out _laptopHoverBtn);
             else if (a.StartsWith("--laptop-click=")) _laptopClick = a["--laptop-click=".Length..];
+            else if (a.StartsWith("--laptop-scroll=")) int.TryParse(a["--laptop-scroll=".Length..], out _laptopScroll);
+            else if (a.StartsWith("--laptop-swoop="))
+            { if (int.TryParse(a["--laptop-swoop=".Length..], out int sw)) _laptopSwoop = sw; }
             else if (a.StartsWith("--ui-size="))
             {
                 var wh = a["--ui-size=".Length..].Split('x');
@@ -3216,6 +3224,7 @@ public partial class Viewer : Node3D
                 foreach (var o in LaptopMainMenu.Information)
                     names.Add(_text?.Text("eng", o.TextId) ?? $"#{o.TextId}");
                 _shopPanel.ShowMenu(names, 0, LaptopMainMenu.InfoScene);
+                RefreshLaptopBalance();
                 Status("information -- pick a kind, or Back");
                 break;
             }
@@ -3228,6 +3237,7 @@ public partial class Viewer : Node3D
                 var names = new List<string>();
                 foreach (var c in cats) names.Add($"{Title(c.Key)} ({c.Count})");
                 _shopPanel.ShowMenu(names, 0, LaptopMainMenu.MainScene);
+                RefreshLaptopBalance();
                 Status($"build -- {cats.Count} categories from the archive; pick one, or Back");
                 break;
             }
@@ -3241,15 +3251,31 @@ public partial class Viewer : Node3D
                     names.Add(DisplayName(r, DefinitionFor(r.Model)));
                 }
                 _shopPanel.ShowMenu(names, 0, LaptopMainMenu.MainScene);
+                RefreshLaptopBalance();
                 Status($"{Title(arg)} -- {names.Count} to choose from, or Back");
                 break;
             }
         }
     }
 
+    /// <summary>⭐ Master: "when on build or any of build's submenus, show our balance." Every
+    /// build level is pushed on top of a `buildcats`, so the stack itself answers it -- no separate
+    /// flag to keep in step with the navigation.</summary>
+    bool LaptopInBuild() => _laptopBack.Exists(l => l.Kind == "buildcats");
+
+    /// <summary>The balance readout, shown on build's menus and cleared anywhere else. ⚠ Called
+    /// AFTER `ShowMenu`, which resets the row state but deliberately leaves the balance alone, so
+    /// stepping between two build levels does not make it fly in twice.</summary>
+    void RefreshLaptopBalance()
+    {
+        int bal = _sim?.Finances?.Balance ?? ParkFinances.OpeningBalance;
+        _shopPanel.ShowBalance(LaptopInBuild() ? Money.Format(bal) : null);
+    }
+
     void ShowLaptopMain()
     {
         _shopPanel.ShowMenu(LaptopMainOptions(), 0, LaptopMainMenu.MainScene);
+        RefreshLaptopBalance();
         Status("laptop -- click a row, or Back/Close");
     }
 
@@ -3304,7 +3330,7 @@ public partial class Viewer : Node3D
                 var r = _lib.Rides[_buildRows[row]];
                 var def = DefinitionFor(r.Model);
                 if (def == null) { Status($"{Leaf(r.Name)} has no .sam beside it"); return; }
-                ShowBuildDetail(r, def);
+                ShowBuildDetail(row, r, def);
                 return;
             }
         }
@@ -3313,9 +3339,11 @@ public partial class Viewer : Node3D
     /// <summary>⭐ The purchase screen for one thing, with the figures that are REAL -- the decoded
     /// placement cost, the live balance, how many the park holds, and the decoded excitement and
     /// reliability. ⚠ An unjoined definition has NO price rather than a free one, and says so.</summary>
-    void ShowBuildDetail(AssetLibrary.RideAssets r, RideDefinition def)
+    void ShowBuildDetail(int row, AssetLibrary.RideAssets r, RideDefinition def)
     {
-        _laptopBack.Add(("screen", null));
+        // ⚠ The row goes IN THE STACK, because the Build button at the foot of this screen has to
+        // arm the same thing later and `_buildRows` is the only index that knows which one it is.
+        _laptopBack.Add(("screen", row.ToString()));
         int owned = _sim?.Rides?.Count(pr => ReferenceEquals(pr.Definition, def)
                       || (pr.Definition?.Id is { } pid && def.Id is { } did && pid == did)) ?? 0;
         int bal = _sim?.Finances?.Balance ?? ParkFinances.OpeningBalance;
@@ -3327,8 +3355,30 @@ public partial class Viewer : Node3D
             (owned.ToString(), 0),
             (null, def.ShopfrontExcitement ?? 0),
             (null, def.ShopfrontReliability ?? 0),
-        });
+        }, buildRow: true);
+        // ⚠ No swooping readout here: this screen's OWN scene already has a Balance row (the
+        // `.sce` comment lists "PurchaseCost/Balance/NumberOwned/Excitment Reliability"), and a
+        // second copy of the same number on the same screen is a fault, not a feature.
+        _shopPanel.ShowBalance(null);
         Status($"{DisplayName(r, def)} costs {cost} -- Back to go up, Close to put the laptop away");
+    }
+
+    /// <summary>⭐⭐ THE BUILD BUTTON, at the foot of a purchase screen. It arms the thing the
+    /// screen is describing and puts the laptop away, because you cannot aim at the park through
+    /// it -- the panel covers the whole viewport and eats every click while it is open.
+    ///
+    /// ⚠ It re-enters the category first. `ArmFromList` reads `_buildRows` and `_buildCategory`,
+    /// and a Back out of the list would have left both holding the wrong category.</summary>
+    void OnLaptopBuild()
+    {
+        var screen = _laptopBack.FindLast(l => l.Kind == "screen");
+        var list = _laptopBack.FindLast(l => l.Kind == "buildlist");
+        if (screen.Kind == null || list.Kind == null || !int.TryParse(screen.Arg, out int row))
+        { Status("build: nothing is selected to place"); return; }
+        ShowBuildCategory(list.Arg);
+        _shopPanel.Hide(); _laptopBack.Clear();
+        _shopPanel.ShowBalance(null);
+        ArmFromList(row);
     }
 
     /// <summary>Back steps out one level; Close puts the laptop away.</summary>
@@ -3337,6 +3387,7 @@ public partial class Viewer : Node3D
         if (close || _laptopBack.Count == 0)
         {
             _shopPanel.Hide(); _laptopBack.Clear();
+            _shopPanel.ShowBalance(null);
             _place.Clear(); _ghostView?.Clear();
             Status("laptop closed");
             return;
@@ -3373,6 +3424,39 @@ public partial class Viewer : Node3D
                 _laptopScreen.Equals("info", StringComparison.OrdinalIgnoreCase) ? LaptopMainMenu.InfoScene : LaptopMainMenu.MainScene);
             if (_laptopClick != null && _laptopFrame == 0) LaptopClickProbe();
             _shopPanel.ForceHoverForShot(_laptopHoverRow, _laptopHoverBtn);
+            PrepareUiShotView();
+            SaveShot(ShotSibling(_shotPath, $"-f{_laptopFrame:D4}"));
+            _laptopFrame++;
+            if (_laptopFrame >= _laptopFilm) GetTree().Quit();
+            return;
+        }
+
+        // ⭐⭐ THE BUILD LEVELS GO THROUGH THE REAL NAVIGATION. `--laptop-screen=buildcats` and
+        // `--laptop-screen=buildlist:Rides` push the same stack a click pushes and call the same
+        // `ShowLaptopLevel`, so the render is evidence about the shipped path rather than about a
+        // second copy of it built for the harness -- which is how the click bug survived two shots.
+        if (_laptopScreen.StartsWith("buildcat", StringComparison.OrdinalIgnoreCase)
+            || _laptopScreen.StartsWith("buildlist", StringComparison.OrdinalIgnoreCase))
+        {
+            if (_laptopFrame == 0)
+            {
+                _laptopBack.Clear();
+                _laptopBack.Add(("buildcats", null));
+                if (_laptopScreen.StartsWith("buildlist", StringComparison.OrdinalIgnoreCase))
+                {
+                    int colon = _laptopScreen.IndexOf(':');
+                    string cat = colon >= 0 ? _laptopScreen[(colon + 1)..] : "Rides";
+                    _laptopBack.Add(("buildlist", cat));
+                }
+                ShowLaptopLevel();
+                // ⚠ The scroll is forced AFTER the level draws: ShowMenu resets it to the top.
+                if (_laptopScroll > 0) _shopPanel.Scroll(_laptopScroll);
+                GD.Print($"[laptop] {_laptopBack[^1].Kind} {_laptopBack[^1].Arg ?? ""}: "
+                       + $"scrolled to row {_shopPanel.ScrollRow}, balance shown {_shopPanel.BalanceShown}");
+            }
+            if (_laptopClick != null && _laptopFrame == 0) LaptopClickProbe();
+            _shopPanel.ForceHoverForShot(_laptopHoverRow, _laptopHoverBtn);
+            if (_laptopSwoop >= 0) _shopPanel.SetBalanceSwoop(_laptopSwoop / 100f);
             PrepareUiShotView();
             SaveShot(ShotSibling(_shotPath, $"-f{_laptopFrame:D4}"));
             _laptopFrame++;
@@ -3440,7 +3524,7 @@ public partial class Viewer : Node3D
                     (null, def.ShopfrontExcitement ?? 0),
                     (null, def.ShopfrontReliability ?? 0),
                 };
-                _shopPanel.ShowScreen(spec, title, build);
+                _shopPanel.ShowScreen(spec, title, build, buildRow: true);
                 _shopPanel.ForceHoverForShot(_laptopHoverRow, _laptopHoverBtn);
                 if (_laptopFrame == 0)
                     GD.Print($"[laptop] build: {sellable.Count} priced rides; showing {title} at "
@@ -8155,6 +8239,7 @@ public partial class Viewer : Node3D
                     // Dismissed with no subscriber, so every click highlighted a row and stopped.
                     _shopPanel.MenuActivated += OnLaptopRow;
                     _shopPanel.Dismissed += OnLaptopDismiss;
+                    _shopPanel.BuildRequested += OnLaptopBuild;
                     GD.Print($"[laptop] shop screen ready ({ShopScreen.SceneFile} layout, "
                              + $"{ShopScreen.ChromeFor(_lib?.WadName)} chrome, Large.bff, step {ShopScreen.RowStep})");
                 }
