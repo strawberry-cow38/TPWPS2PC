@@ -48,7 +48,23 @@ JUNGLE-1, first run:
 | made broke | 52 |
 | conservation checks | 39 |
 
-All-park numbers are in the viewer-matrix manifest cited by progress.md.
+All 8 parks, at 839f7ca (/tmp/tpw-839f7ca/viewer):
+
+| Park | Peak live | Peak group | Flips | Peak pressure | Vetoes |
+|---|---:|---:|---:|---:|---:|
+| JUNGLE-1 | 70 | 12 | 5 | 56 | 1 |
+| JUNGLE-2 | 78 | 11 | 6 | 64 | 1 |
+| HALLOW-1 | 86 | 11 | 4 | 78 | 1 |
+| HALLOW-2 | 86 | 11 | 6 | 80 | 1 |
+| FANTASY-1 | 86 | 12 | 10 | 77 | 1 |
+| FANTASY-2 | 86 | 12 | 10 | 77 | 1 |
+| SPACE-1 | 65 | 11 | 7 | 49 | 1 |
+| SPACE-2 | 68 | 12 | 7 | 55 | 1 |
+
+- Births were 100 in every park, and WentHome equalled births everywhere. The 100 is bus cadence,
+  not coverage: five LoadsOfKids batches of 20 land inside the 3000-tick busy phase.
+- FANTASY-1 and FANTASY-2 match exactly. That is the translation-invariant corridor recorded in the
+  readiness CP2, not a repeated case.
 
 The counters are instrumentation. Nothing reads them to decide, and each check prints the count
 beside its verdict.
