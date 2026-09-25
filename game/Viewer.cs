@@ -3937,8 +3937,24 @@ public partial class Viewer : Node3D
             //     variants 1..6 -> slot 2, variants 0..5    weight 1 each
             //     variant 7  ->  slot 6, variant 0          weight 1
             //
-            // i.e. **93% of the time the console plays no idle clip at all**, and each of the six
-            // idles comes up one time in a hundred.
+            // ⚠⚠ AND 93 IS NOT "93% OF THE TIME" -- I wrote that here and it was wrong, as was the
+            // plan that quoted it. 93 is the weight on ONE FRESH PICK. Whether a pick happens at
+            // all is decided first, by `FUN_0010E800`:
+            //
+            //     if (current == null || (current->flags & 4) == 0)  rand % 100;      // fresh pick
+            //     else { rand % 400; if (99 < remainder) keep the current one; }      // 3/4 sticky
+            //
+            // ⭐⭐ And the flags split logical 11 asymmetrically: the six slot-2 idles carry flags
+            // **6** (bit 4 SET, so once chosen they are retained three times in four at every loop
+            // end) while variant 0, the no-clip one, carries flags **2** and re-rolls fresh every
+            // time. So a playing idle sticks and a frozen guest keeps rolling a 7% chance to start
+            // one. The steady state is therefore the opposite of what the weight suggests:
+            // tinyclaw measured 974 standing guest-ticks on the --idle-scene harness at **79%
+            // playing an idle and 15% frozen** on a last frame.
+            //
+            // ⚠ That 15% depends on how often a frozen guest is re-rolled, which their port does
+            // once per 40ms tick and the console's own rate for is not pinned down. It moves the
+            // number, not the shape.
             //
             // ⚠⚠ AND THAT IS WHY THIS CODE DOES NOT COPY IT YET -- but "no clip" is NOT what it
             // sounds like, and it is worth being exact. It is neither "keep animating" nor bind
@@ -3951,9 +3967,10 @@ public partial class Viewer : Node3D
             //
             // Here an absent record leaves the model in BIND POSE instead -- arms out, dead still
             // -- which is precisely the bug master reported ("we're also missing the idle/wait
-            // animations for visitors"). Porting the 93% therefore requires porting hold-last-pose
-            // WITH it; the weights alone would put most of the crowd back in that pose. So this
-            // still picks a variant by id, which is NOT the console's rule, and says so.
+            // animations for visitors"). Porting the weights therefore requires porting
+            // hold-last-pose WITH them -- and the retention roll above, without which a crowd
+            // really would freeze. So this still picks a variant by id, which is NOT the console's
+            // rule, and says so.
             // (tinyclaw, who owns the dispatcher work: "i won't wire it without the hold.")
             //
             // ⭐ THE STATE FIELD IS RESOLVED: it is one field seen through two base pointers, and
