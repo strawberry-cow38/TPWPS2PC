@@ -82,8 +82,14 @@ public sealed record LaptopScreen(
             new(899, LaptopRowKind.Bar,    "ExcitementBar"),
             new(743, LaptopRowKind.Bar,    "SatisfactionBar"),
             new(295, LaptopRowKind.Slider, "ChanceofWinningSlider"),
-            new(832, LaptopRowKind.Money,  "CostOfPrizeValue",  "CostOfPrizeArrow"),
-            new(190, LaptopRowKind.Money,  "PricePerGameValue", "PricePerGameArrow"),
+            // ⚠⚠ THE SCENE FILE'S NAMES ARE SWAPPED, and the rows prove it. Labels land at
+            // 115 + 32n, so Prize Cost is row 339 and Game Price row 371. `PricePerGameValue`
+            // sits at 340 -- the PRIZE COST row -- and `CostOfPrizeValue` at 372, the GAME PRICE
+            // row. Their arrows follow the same crossing: `CostOfPrizeArrow` (353) is 13 below
+            // the value at 340, `PricePerGameArrow` (384) is 12 below the value at 372.
+            // Taking the names at face value put each number on the other row's line.
+            new(832, LaptopRowKind.Money,  "PricePerGameValue", "CostOfPrizeArrow"),   // Prize Cost
+            new(190, LaptopRowKind.Money,  "CostOfPrizeValue",  "PricePerGameArrow"),  // Game Price
         });
 }
 
@@ -112,10 +118,11 @@ public readonly record struct LaptopRow(int TextId, LaptopRowKind Kind, string E
 /// gave 3.139, 2.653 and 1.774 pixels per authored unit on three tries, so the width here is the
 /// art's own aspect applied to that height rather than a measurement.
 ///
-/// ⚠ The row is used as the sprite's TOP. The file's own arrow rows (353, 384) do not pair
-/// consistently with its value rows (372, 340) -- one arrow reads 19 above its value and the
-/// other 44 below -- which suggests the two arrow elements are named across their values. That is
-/// not resolved here.</summary>
+/// ⭐ THE ROW IS THE SPRITE'S BOTTOM, not its top. Each arrow element sits 12-13 units BELOW the
+/// value it belongs to (353 against 340, 384 against 372), so drawing downward from it puts the
+/// arrows under the number -- which is what master saw: "the prize and game price text is
+/// misaligned". Drawn upward from that row, a 24-tall pair spans 329..353 and the value at 340
+/// sits level inside it, as the reference shows.</summary>
 public static class LaptopArrows
 {
     public const string Sprite = "/Arrow/UIarrow.ssh";
