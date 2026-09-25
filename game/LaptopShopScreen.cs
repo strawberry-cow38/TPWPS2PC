@@ -275,7 +275,10 @@ public sealed partial class LaptopShopScreen : Control
         _buildRow = buildRow; _buildHover = false;
         _cells.Clear();
         if (cells != null) _cells.AddRange(cells);
+        bool wasShut = !Open;
         Open = true; Visible = true;
+        // ⚠ Only on the way IN. Stepping between screens is not opening the laptop again.
+        if (wasShut) Cue(LaptopSounds.Cue.Open);
         FitToViewport();
         QueueRedraw();
     }
@@ -297,7 +300,9 @@ public sealed partial class LaptopShopScreen : Control
         // scrolled past its own end (the draw clamps, but the first frame would jump).
         _menuScroll = 0; _menuHover = -1;
         _buildRow = false; _buildHover = false;
+        bool wasShut = !Open;
         Open = true; Visible = true;
+        if (wasShut) Cue(LaptopSounds.Cue.Open);
         FitToViewport();
         QueueRedraw();
     }
@@ -325,6 +330,12 @@ public sealed partial class LaptopShopScreen : Control
     /// <summary>⭐ RIGHT-CLICK ON A MENU ROW. Master: "rmb opens the current ride build info page.
     /// lmb just goes straight to placing." Left is <see cref="MenuActivated"/>.</summary>
     public event Action<int> MenuInspected;
+
+    /// <summary>⭐ The laptop's voice. Set by the viewer; null means a silent park, which must
+    /// still be navigable. The panel fires the cues rather than the viewer because MOVE is a
+    /// thing only the panel knows about -- the row under the cursor, and the arrow keys.</summary>
+    public LaptopSounds Sounds { get; set; }
+    void Cue(LaptopSounds.Cue c) => Sounds?.Play(c);
 
     /// <summary>Show a money figure sliding in, or clear it. ⚠ Re-showing the SAME figure does not
     /// restart the slide -- moving between Build submenus should not make it fly in again.</summary>
@@ -528,17 +539,19 @@ public sealed partial class LaptopShopScreen : Control
                 // ⭐ The same thing the LEFT button does, so a pad and a mouse agree: activate the
                 // selected row, or press Build when the screen has one and no list.
                 if (_menu.Count > 0 && _menuSelected >= 0 && _menuSelected < _menu.Count)
-                    MenuActivated?.Invoke(_menuSelected);
-                else if (_buildRow) BuildRequested?.Invoke();
+                { Cue(LaptopSounds.Cue.Choose); MenuActivated?.Invoke(_menuSelected); }
+                else if (_buildRow) { Cue(LaptopSounds.Cue.Choose); BuildRequested?.Invoke(); }
                 else return;
                 break;
             case Key.Right:
                 // ⭐ The keyboard's INSPECT, matching the right mouse button.
                 if (k.Echo || _menu.Count == 0) return;
+                Cue(LaptopSounds.Cue.Choose);
                 MenuInspected?.Invoke(_menuSelected);
                 break;
             case Key.Escape or Key.Backspace or Key.Left:
                 if (k.Echo) return;
+                Cue(LaptopSounds.Cue.Back);
                 Dismissed?.Invoke(false);   // Back, never Close: Close is a decision, not a slip
                 break;
             default: return;
@@ -554,7 +567,10 @@ public sealed partial class LaptopShopScreen : Control
     void MoveSelection(int by)
     {
         if (_menu.Count == 0) return;
+        int was = _menuSelected;
         _menuSelected = Math.Clamp(_menuSelected + by, 0, _menu.Count - 1);
+        // ⚠ At either end the arrow moves nothing, and a tick there would say otherwise.
+        if (_menuSelected != was) Cue(LaptopSounds.Cue.Move);
         _menuHover = -1;
         // ⭐ Scroll only as far as it must to bring the selection back into the window.
         if (_menuSelected < _menuScroll) _menuScroll = _menuSelected;
@@ -582,6 +598,9 @@ public sealed partial class LaptopShopScreen : Control
             _buildHover = _buildRow && _buildRowRect.HasPoint(motion.Position);
             if (_buildHover != wasBuild) QueueRedraw();
             _menuHover = RowAt(motion.Position, s, o);
+            // ⚠ Only when it lands ON a row, and only when it CHANGES -- otherwise every pixel of
+            // mouse movement across one row would tick.
+            if (_menuHover >= 0 && _menuHover != wasMenu) Cue(LaptopSounds.Cue.Move);
             if (_menuHover != wasMenu || _btnHover != wasBtn) QueueRedraw();
             return;
         }
@@ -614,16 +633,26 @@ public sealed partial class LaptopShopScreen : Control
             // right-click on them should not quietly perform them.
             if (b.ButtonIndex == MouseButton.Right)
             {
-                if (row >= 0) { _menuSelected = row; QueueRedraw(); MenuInspected?.Invoke(row); AcceptEvent(); }
+                if (row >= 0)
+                {
+                    _menuSelected = row; QueueRedraw();
+                    Cue(LaptopSounds.Cue.Choose);
+                    MenuInspected?.Invoke(row); AcceptEvent();
+                }
                 return;
             }
             if (_buildRow && _buildRowRect.HasPoint(b.Position))
-            { BuildRequested?.Invoke(); AcceptEvent(); return; }
-            if (_btnHover >= 0) { Dismissed?.Invoke(_btnHover == 1); AcceptEvent(); return; }
+            { Cue(LaptopSounds.Cue.Choose); BuildRequested?.Invoke(); AcceptEvent(); return; }
+            if (_btnHover >= 0)
+            {
+                Cue(_btnHover == 1 ? LaptopSounds.Cue.Close : LaptopSounds.Cue.Back);
+                Dismissed?.Invoke(_btnHover == 1); AcceptEvent(); return;
+            }
             if (row >= 0)
             {
                 _menuSelected = row;
                 QueueRedraw();
+                Cue(LaptopSounds.Cue.Choose);
                 MenuActivated?.Invoke(row);
                 AcceptEvent();
             }

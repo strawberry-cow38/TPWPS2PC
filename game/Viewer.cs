@@ -95,6 +95,7 @@ public partial class Viewer : Node3D
     readonly ConsoleClock _clock = new();
     /// <summary>What the build menu has handed the cursor, if anything.</summary>
     readonly Placement _place = new();
+    LaptopSounds _laptopSounds;
     string _buildCategory;
     readonly List<int> _buildRows = new();
     AssetLibrary.RideAssets _armedRide;
@@ -7590,6 +7591,38 @@ public partial class Viewer : Node3D
                 if (r.Model != null && r.Model.Path.Contains("/Coaster", StringComparison.OrdinalIgnoreCase))
                     GD.Print($"[coaster.file] {r.Model.Path}  sam={DefinitionFor(r.Model)?.Source}");
         }
+        // ⭐ THE UI SOUND BANK, in full. Master: "research and implement the correct sound
+        // effects for all the ui interactions with the laptop." ToolSounds already reads
+        // /AUDIO/GLOBAL/UIHD.SDT and picks its cues BY NAME; the laptop's cues have to come from
+        // the same place, so every name and length is printed rather than four being guessed at.
+        {
+            var e = _lib.SoundBanks().Find(
+                x => x.Path.EndsWith("/AUDIO/GLOBAL/UIHD.SDT", StringComparison.OrdinalIgnoreCase));
+            if (e != null)
+            {
+                DirAccess.MakeDirRecursiveAbsolute("C:/claude-workspace/uihd");
+                var bank = new SoundBank(_lib.ReadDisc(e));
+                for (int i = 0; i < bank.Sounds.Count; i++)
+                {
+                    var snd = bank.Sounds[i];
+                    GD.Print($"[uihd] {i,3} {snd.Name,-24} {snd.Milliseconds}ms tag=0x{snd.Tag:X2}");
+                    // ⭐ And WRITE them, so the one thing the filenames do not settle -- which
+                    // mkgui is which interaction -- can be settled by an ear instead of by me
+                    // picking on length. Master can hear the console.
+                    if (!snd.IsAdpcm || snd.IsEmpty) continue;
+                    var pcm = Vag.Decode(bank.Data, snd.Start, snd.End);
+                    if (pcm == null || pcm.Length == 0) continue;
+                    var raw = new byte[pcm.Length * 2];
+                    Buffer.BlockCopy(pcm, 0, raw, 0, raw.Length);
+                    new AudioStreamWav
+                    {
+                        Format = AudioStreamWav.FormatEnum.Format16Bits,
+                        MixRate = 22050, Stereo = false, Data = raw,
+                    }.SaveToWav($"C:/claude-workspace/uihd/{i:D2}_{snd.Name.Split('.')[0]}.wav");
+                }
+            }
+            else GD.PrintErr("[uihd] no /AUDIO/GLOBAL/UIHD.SDT");
+        }
         GD.Print("[type] --- end of STR_PURCHASE ---");
         GD.Print("[type] the first 26 rows, in case the index is simply the row:");
         for (int i = 0; i < 26 && i < _text.Keys.Length; i++)
@@ -8603,6 +8636,11 @@ public partial class Viewer : Node3D
                     _shopPanel.Dismissed += OnLaptopDismiss;
                     _shopPanel.BuildRequested += OnLaptopBuild;
                     _shopPanel.MenuInspected += OnLaptopInspect;
+                    // ⭐ The laptop's voice. ⚠ A bank that will not read leaves it null and the
+                    // laptop silent, never unusable -- Report says which cues resolved.
+                    _laptopSounds = new LaptopSounds(_lib, this);
+                    _shopPanel.Sounds = _laptopSounds;
+                    GD.Print($"[laptop] sounds: {_laptopSounds.Report}");
                     GD.Print($"[laptop] shop screen ready ({ShopScreen.SceneFile} layout, "
                              + $"{ShopScreen.ChromeFor(_lib?.WadName)} chrome, Large.bff, step {ShopScreen.RowStep})");
                 }
