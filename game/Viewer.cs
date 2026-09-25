@@ -241,6 +241,8 @@ public partial class Viewer : Node3D
     bool _walkAudit;
     bool _typeAudit;
     bool _guestTest;
+    bool _idleScene, _idleSeeded;
+    int _idleCount = 24;
     /// <summary>Which ride the control run stands, by display name; Crazy Ape unless told.</summary>
     string _guestRide = "Crazy Ape";
     /// <summary>The sim's own grid, built once per park. ⭐⭐ ITS CELLS ARE THE GROUND'S. ParkPaths
@@ -373,6 +375,8 @@ public partial class Viewer : Node3D
             else if (a == "--place-test") { _buildTest = true; _placeTest = true; }
             else if (a == "--walk-audit") _walkAudit = true;
             else if (a == "--guest-test") _guestTest = true;
+            else if (a == "--idle-scene") _idleScene = true;
+            else if (a.StartsWith("--idle-scene=")) { _idleScene = true; int.TryParse(a["--idle-scene=".Length..], out _idleCount); }
             else if (a.StartsWith("--walk-film=")) int.TryParse(a["--walk-film=".Length..], out _walkFilm);
             // ⭐ The census borrows --guest-test's park (corridor, Crazy Ape, guests) and replaces
             // its wind-and-shoot with real frames: a voice needs frames to advance in.
@@ -3364,7 +3368,11 @@ public partial class Viewer : Node3D
         // ⭐ One call per EXECUTED tick, so a scenery repeat interval counts park time even when
         // a long frame makes the sim fall behind the wall clock. See RideSounds.AdvanceSim.
         _sounds?.AdvanceSim(ParkSim.TickMilliseconds / 1000.0);
-        if (_visitors == null && _sim != null && OpenGate())
+        // ⚠⚠ THE GATE STILL OPENS IN AN IDLE SCENE -- `OpenGate` is what CREATES GuestWalk, so
+        // gating the CALL on `!_idleScene` left `_guests` null and the scene never seeded. Only
+        // the ParkVisitors construction is suppressed, because its Step re-sends an Arrived guest
+        // to a new Wander target, which is what stops anyone standing still long enough to film.
+        if (_visitors == null && _sim != null && OpenGate() && !_idleScene)
         {
             // ⭐⭐ SHOPS RING UP. `FUN_0020E1A0` ends with a positional one-shot of event 208,
             // which is `cashD2b.vag` in the kids map -- a cash register, the console's own clip.
@@ -3389,6 +3397,7 @@ public partial class Viewer : Node3D
                    + $"; cam={System.Environment.GetEnvironmentVariable("TPW_WANT_CAM")}"
                    + $" shot={System.Environment.GetEnvironmentVariable("TPW_WANT_SHOT")}");
         }
+        SeedIdleScene();
         if (_visitors != null)
         {
             EnsureExperimentalEntrance();
@@ -3462,6 +3471,62 @@ public partial class Viewer : Node3D
 
     /// <summary>Somewhere to walk to when there is nothing better: a laid cell at random, or the
     /// mouth when nothing is laid -- ParkVisitors asks for a cell, not for a maybe.</summary>
+    /// <summary>⭐⭐ A STANDING CROWD, for comparing idle animations.
+    ///
+    /// tinyclaw's idle comparison film came back blind: "guests in that test park almost never
+    /// stand still", so the six slot-2 idles were averaged into walking and nothing could be told
+    /// apart. A film of an idle needs guests that are idle.
+    ///
+    /// ⭐ THE INSTRUMENT MUST WORK ON BOTH BRANCHES, which is why it lives here on main and not
+    /// beside the dispatcher. The whole point is to compare this port's variant choice against the
+    /// native one, and a scene that only exists on one side cannot produce the control.
+    ///
+    /// How it stands them up, with no new machinery: `GuestWalk.Add` marks a guest `Arrived` the
+    /// moment its destination equals where it was put down, and `Gait` draws the idle for any
+    /// guest that is not Walking. So N guests placed AT their own destination are a standing
+    /// crowd -- no pathing, no crowding, no queue to build, and the real idle selection runs
+    /// untouched. ⚠ `ParkVisitors` is suppressed for the same reason: its Step re-sends an
+    /// Arrived guest to a new Wander target, which is exactly what made the first film blind.
+    ///
+    /// ⚠ Deterministic: the cells are taken in the pool's own sorted order, not sampled from
+    /// `_guestRng`, so two runs place the same ids on the same cells and a before/after pair of
+    /// frames differs only by the thing under test.</summary>
+    void SeedIdleScene()
+    {
+        if (!_idleScene || _idleSeeded || _guests == null) return;
+        var pool = GuestPool();
+        if (pool.Count == 0) return;
+        _idleSeeded = true;
+        var cells = pool.OrderBy(c => c.Z).ThenBy(c => c.X).ToList();
+        // Spread across the pool rather than taking the first N, so the crowd is a field of
+        // guests rather than one dense row, without needing a layout of its own.
+        int stride = Math.Max(1, cells.Count / Math.Max(1, _idleCount));
+        int placed = 0;
+        for (int i = 0; i < cells.Count && placed < _idleCount; i += stride)
+        {
+            var at = cells[i];
+            try { _guests.Spawn(at, at); placed++; }        // at == to -> Arrived, i.e. standing
+            catch (ArgumentException) { }                    // not walkable after all; skip it
+        }
+        // ⚠ The debug panel covers a third of the frame, and this scene exists to be LOOKED at
+        // side by side. F3 hides it interactively; a capture cannot press F3.
+        if (_panel != null) _panel.Visible = false;
+        // ⭐⭐ THE FREE CAMERA, not the game's. The game camera couples its zoom to its pitch --
+        // `PitchDegrees = atan2(Above, Behind)` -- so getting close forces a near-overhead angle,
+        // and an idle animation seen from above is exactly as unreadable as one seen while
+        // walking. The same escape the thought-bubble capture takes: frame the crowd directly.
+        if (placed > 0)
+        {
+            var mid = cells[Math.Min(cells.Count - 1, (placed / 2) * stride)];
+            _freeCam = true;
+            _focus = GuestWorld(Cell(ParkPaths.Centre(mid)), mid) + new Vector3(0f, 0.5f, 0f);
+            _dist = 4.5f;
+            _pitch = -0.22f;
+        }
+        GD.Print($"[idle] idle scene: {placed} guests standing on {cells.Count} open cells, "
+               + "visitors suppressed so nobody is re-sent; panel hidden for capture");
+    }
+
     ParkCell Wander()
     {
         var pool = GuestPool();
@@ -7630,7 +7695,11 @@ public partial class Viewer : Node3D
         if (_shotPath != null && _soundCensus <= 0)
         {
             // ⚠ Not under --guest-test: its capture branch winds the park itself, in two stages.
-            if (!_guestTest && !_shotWound && _scripted.Count > 0) { _shotWound = true; WindPark(_shotFrame); }
+            // ⚠ `_scripted.Count > 0` is the latch: wind only once there is something to wind.
+            // An idle scene has no scripted ride at all -- it is a standing crowd on bare path --
+            // so it must ask for the wind itself, or TickPark never runs and nobody is ever placed.
+            if (!_guestTest && !_shotWound && (_scripted.Count > 0 || _idleScene))
+            { _shotWound = true; WindPark(_shotFrame); }
         }
         // ⭐ Rides AND people, on the console's tick, with the screen interpolating between ticks.
         // ⚠ And under a sound census even with a shot asked for: a wound park fires every cue in
