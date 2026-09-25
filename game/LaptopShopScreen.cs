@@ -31,7 +31,8 @@ public sealed partial class LaptopShopScreen : Control
     /// coordinates are in the same units.</summary>
     public const float Native = 512f;
 
-    readonly ImageTexture _chrome, _barFrame, _barFill, _slideTrack, _slideKnob;
+    ImageTexture _chrome;
+    readonly ImageTexture _barFrame, _barFill, _slideTrack, _slideKnob;
     ImageTexture _arrows;
     readonly FontText _font;
     readonly SceneLayout _layout;
@@ -44,7 +45,15 @@ public sealed partial class LaptopShopScreen : Control
     bool _hasAdditive;
     ShopScreen.Selection _selected = ShopScreen.Selection.Quality;
 
-    public bool Open { get; private set; }
+    bool _open;
+    /// <summary>⚠ Setting this also switches the Control's MouseFilter. A full-rect `Stop` is
+    /// what makes the laptop modal while it is up -- and it would swallow every click in the park
+    /// if it stayed on once the laptop closed, so the two move together and cannot drift apart.</summary>
+    public bool Open
+    {
+        get => _open;
+        private set { _open = value; MouseFilter = value ? MouseFilterEnum.Stop : MouseFilterEnum.Ignore; }
+    }
 
     /// <summary>A fraction of the viewport, never a pixel count. ⚠ The smaller of the two ratios:
     /// scaling each axis independently would stretch a 512x512 laptop into the window's aspect.</summary>
@@ -63,7 +72,18 @@ public sealed partial class LaptopShopScreen : Control
         // ⭐ The laptop takes the mouse now. Master: "does the 'laptop' ui support mouse hover to
         // highlight, click to open / select" -- it did not; this was Ignore and the class had no
         // input handler at all.
-        MouseFilter = MouseFilterEnum.Stop;
+        //
+        // ⚠⚠ AND `Stop` ALONE DID NOTHING, which is the bug master hit next: "the laptop menu
+        // doesnt block clicks behind it, so you cant interact with the menu itself." A Control
+        // stops the mouse over its RECT, and this one never set anchors or a size -- so its rect
+        // was empty, `_GuiInput` never fired, and every click went straight through to the park.
+        // Filling the viewport gives it the area its MouseFilter needs.
+        SetAnchorsPreset(LayoutPreset.FullRect);
+        // ⚠⚠ START IGNORING, NOT STOPPING. The `Open` setter turns Stop on when the laptop is
+        // shown; setting Stop here instead left a freshly built, CLOSED laptop swallowing every
+        // click in the park -- the opposite of master's bug and worse than it. The audit caught
+        // this before it shipped ("a closed laptop lets clicks through (filter Stop)").
+        MouseFilter = MouseFilterEnum.Ignore;
         Visible = false;
         ZIndex = 110;
     }
@@ -71,8 +91,12 @@ public sealed partial class LaptopShopScreen : Control
     /// <summary>Build it from the disc, or answer null when a piece is missing.
     /// ⚠ Answering null rather than substituting: a laptop drawn without its own chrome would be
     /// the same mistake this screen exists to correct.</summary>
+    /// <param name="world">The world AT BUILD TIME, which may be null -- see <see cref="_world"/>.</param>
+    /// <param name="worldNow">⭐ Asked again every frame, so the chrome follows the park the player
+    /// is actually in rather than whichever world happened to be open when the UI was built.</param>
     public static LaptopShopScreen Create(AssetLibrary lib, FontText font, TextDatabase text,
-                                          string world, string language = "eng")
+                                          string world, string language = "eng",
+                                          Func<string> worldNow = null)
     {
         if (lib == null || font == null) return null;
         ImageTexture Load(string name)
@@ -113,6 +137,8 @@ public sealed partial class LaptopShopScreen : Control
         }
         var screen = new LaptopShopScreen(chrome, barFrame, barFill, track, knob, layout, font, text, language);
         screen._lib = lib;                 // for the other screens' scene files, read on demand
+        screen._chromeName = chromeName;   // ⭐ so RefreshChrome knows what is already loaded
+        screen._world = worldNow;
         screen._arrows = Load(LaptopArrows.Sprite);
         screen._layouts[ShopScreen.SceneFile] = layout;
         return screen;
@@ -209,6 +235,21 @@ public sealed partial class LaptopShopScreen : Control
     readonly Dictionary<string, SceneLayout> _layouts = new(StringComparer.OrdinalIgnoreCase);
     readonly List<(string Text, int Fraction)> _cells = new();
     AssetLibrary _lib;
+
+    /// <summary>⭐⭐ THE WORLD IS ASKED FOR, NOT REMEMBERED. Master: "its also showing the
+    /// halloween background graphic, not the park dependant one."
+    ///
+    /// ⚠⚠ It was not halloween -- it was `LAPTOP_512`, the FALLBACK, whose art is the same
+    /// ghoul-and-stone-wall picture as `LAPTOP_HALLOW`. So a chrome that looked like a wrong
+    /// world was really "no world matched at all".
+    ///
+    /// ⚠ And it matched nothing because this screen is built from `LoadHudFont`, which can run
+    /// BEFORE `AssetLibrary.OpenWad` has been called -- `WadName` is set only by `OpenWad`, so at
+    /// construction there was no world to name. The old code froze that null forever. Holding a
+    /// `Func` and asking it each frame is the fix, and it is a lesson this port already had
+    /// written down: a constructor freezes a field, and call order is not file order.</summary>
+    Func<string> _world;
+    string _chromeName;
 
     /// <summary>⭐⭐ ONE RENDERER FOR THE SHOP, THE RIDE AND THE SIDESHOW, because the console
     /// has one: all three bind their own element list out of their own `.sce` and then draw with
@@ -454,9 +495,33 @@ public sealed partial class LaptopShopScreen : Control
 
     static Color Of((byte R, byte G, byte B) c) => Color.Color8(c.R, c.G, c.B);
 
+    /// <summary>⭐ Re-pick the chrome if the park has changed worlds since it was last loaded.
+    /// ⚠ Guarded on the resolved FILENAME rather than on the world string, so a world that maps to
+    /// the same chrome -- or a null that keeps mapping to the fallback -- costs one comparison and
+    /// no reload.</summary>
+    void RefreshChrome()
+    {
+        if (_world == null || _lib == null) return;
+        string want = ShopScreen.ChromeFor(_world());
+        if (want == _chromeName) return;
+        var raw = _lib.ReadUi(want);
+        if (raw == null) return;                 // ⚠ keep what we have rather than draw nothing
+        try
+        {
+            var ssh = new Ssh(raw);
+            var tex = ImageTexture.CreateFromImage(
+                Image.CreateFromData(ssh.Width, ssh.Height, false, Image.Format.Rgba8, ssh.Pixels));
+            _chrome = TrimRim(tex, _lib, want);
+            _chromeName = want;
+            GD.Print($"[laptop] chrome -> {want} (world \"{_world()}\")");
+        }
+        catch (Exception ex) { GD.PrintErr($"[laptop] chrome {want}: {ex.Message}"); }
+    }
+
     public override void _Draw()
     {
         if (!Open) return;
+        RefreshChrome();
         float s = Scale;
         var o = Origin;
         DrawTextureRect(_chrome, new Rect2(o, new Vector2(Native, Native) * s), false);

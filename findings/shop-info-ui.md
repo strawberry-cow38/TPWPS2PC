@@ -877,3 +877,44 @@ categories come from the archive, the row from `ShowBuildCategory`, the placemen
 buttons. Its two hard-won warnings are kept verbatim -- terrain is excluded by PATH rather than by
 "has a definition", because `DefinitionFor` matches a `.sam` by directory suffix and hands the
 terrain one back anyway.
+
+## Three bugs master hit in play (2026-09-25)
+
+> *"the laptop menu doesnt block clicks behind it, so you cant interact with the menu itself. its
+> also showing the halloween background graphic, not the park dependant one"* ... *"also dont close
+> it when moving."*
+
+**1. Clicks fell through.** I set `MouseFilter.Stop` and never gave the Control a RECT. A Control
+stops the mouse over its rect; an empty rect stops nothing, `_GuiInput` never fired, and every click
+went to the park. `SetAnchorsPreset(FullRect)` supplies the area.
+⚠ And `Stop` must not be permanent, or a CLOSED laptop eats the whole park. `Open` is now a property
+that moves the filter with it, so the two cannot drift apart.
+⭐ **The audit caught a worse bug in that fix before it shipped**: the constructor still set `Stop`,
+so a freshly built, closed laptop swallowed every click. Red on `[79] a closed laptop lets clicks
+through (filter Stop)`; the constructor now starts `Ignore`.
+
+**2. It was never showing halloween.** ⭐⭐ `LAPTOP_512` -- the FALLBACK -- carries the *same
+ghoul-and-stone-wall art as `LAPTOP_HALLOW`*. So "no world matched at all" is indistinguishable, by
+eye, from "picked the wrong world". That is why it read as a halloween bug.
+
+⚠ It matched nothing because the screen is built from `LoadHudFont`, which can run BEFORE
+`AssetLibrary.OpenWad` -- and `WadName` is set *only* by `OpenWad`. At construction there was no
+world to name, and the old code froze that null forever.
+
+⭐ Fixed by asking rather than remembering: `Create` takes a `Func<string> worldNow`, and
+`RefreshChrome` re-picks each frame, guarded on the resolved FILENAME so an unchanged world costs
+one comparison. This is a lesson this port already had written down -- a constructor freezes a
+field, and call order is not file order.
+
+**3. Moving closed it.** A line hid the laptop on any WASD input. Removed: you cannot read a screen
+and pan at the same time, and a stray movement key dismissing a menu you are clicking is just a way
+to lose your place.
+
+⭐ All three are pinned in `LaptopShopScreenAudit` (now 88). The chrome checks include the ones that
+matter: **a null world, an empty world, and a non-world WAD must all give the FALLBACK** -- those
+are exactly the values the panel saw before `OpenWad` ran.
+
+⚠ One honest limit: the audit adds the panel to a bare `Node`, so `FullRect` has no parent rect to
+resolve against and the size reads 64x64. The check asserts only that it is non-zero. In the game
+the panel is a child of `_uiRoot`, where FullRect resolves to the viewport -- that part is NOT
+covered by a test.

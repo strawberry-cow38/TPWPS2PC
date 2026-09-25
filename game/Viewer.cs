@@ -7363,7 +7363,10 @@ public partial class Viewer : Node3D
             // ⭐ And the menu goes with it. Master: "the dialogue should close when you move like
             // the selection box does" -- it belongs to the selection, so it cannot outlive it.
             if ((fwd != 0 || side != 0) && _objMenu is { Open: true }) _objMenu.Hide();
-            if ((fwd != 0 || side != 0) && _shopPanel is { Open: true }) _shopPanel.Hide();
+            // ⚠ THE LAPTOP NO LONGER CLOSES WHEN YOU MOVE. Master: "also dont close it when
+            // moving." It used to hide on any WASD input, which made it impossible to read the
+            // screen and pan at the same time -- and now that it is a real menu you click, a
+            // stray movement key dismissing it is just a way to lose your place.
             if ((fwd != 0 || side != 0) && (_selected >= 0 || _gateSelected)) ClearSelection();
             _game.CursorX += (int)((fwd * s - side * c) * pan);
             _game.CursorZ += (int)((fwd * c + side * s) * pan);
@@ -7960,7 +7963,12 @@ public partial class Viewer : Node3D
                 // Small.bff (21) and Console.bff (14) would leave holes. An earlier version of
                 // this screen used Small.bff because its rows collided at 14 units, which was a
                 // symptom of the invented panel, not of the face.
-                _shopPanel = LaptopShopScreen.Create(_lib, _hudFont, _text, _lib?.WadName);
+                // ⚠⚠ THE WORLD IS PASSED AS A FUNCTION, NOT A VALUE. This runs from LoadHudFont, which can
+                // fire BEFORE any world WAD is open -- `WadName` is set only by OpenWad -- so the
+                // eager argument may be null and freezing it left every park showing LAPTOP_512,
+                // whose art is the halloween picture. The lambda is re-asked each frame.
+                _shopPanel = LaptopShopScreen.Create(_lib, _hudFont, _text, _lib?.WadName,
+                                                     worldNow: () => _lib?.WadName);
                 if (_shopPanel != null)
                 {
                     _uiRoot.AddChild(_shopPanel);

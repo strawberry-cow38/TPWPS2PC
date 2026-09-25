@@ -465,6 +465,49 @@ public partial class LaptopShopScreenAudit : Node
                     + "hover 3 / selected 0, which is the render master queried");
             }
 
+            // ⭐⭐ THE THREE BUGS MASTER HIT IN PLAY, PINNED.
+            {
+                var bff = library.ReadGeneric("/Fonts/European/Large.bff");
+                var screen = bff == null ? null
+                    : LaptopShopScreen.Create(library, new FontText(new BitmapFont(bff)), text,
+                                              "/DATA/JUNGLE.WAD");
+                if (screen == null) { GD.PrintErr("[audit] could not build a laptop screen; mouse checks skipped"); }
+                else
+                {
+                AddChild(screen);   // ⚠ anchors only resolve inside a tree
+                // 1. A CLOSED laptop must not eat clicks, and an OPEN one must. The panel had
+                //    MouseFilter.Stop and NO RECT -- a Control stops the mouse over its rect, so
+                //    an empty rect stopped nothing and every click fell through to the park.
+                Check(screen.MouseFilter == Control.MouseFilterEnum.Ignore,
+                      $"a closed laptop lets clicks through (filter {screen.MouseFilter})");
+                screen.ShowMenu(new[] { "a", "b" }, 0, LaptopMainMenu.MainScene);
+                Check(screen.MouseFilter == Control.MouseFilterEnum.Stop,
+                      $"an OPEN laptop blocks clicks behind it (filter {screen.MouseFilter})");
+                Check(screen.Size.X > 0 && screen.Size.Y > 0,
+                      $"and it has a rect for that filter to act over ({screen.Size.X}x{screen.Size.Y}) "
+                    + "-- Stop over an empty rect is what let clicks through");
+                screen.Hide();
+                Check(screen.MouseFilter == Control.MouseFilterEnum.Ignore,
+                      "closing hands the mouse back to the park");
+                screen.QueueFree();
+                }
+
+                // 2. ⚠⚠ THE FALLBACK CHROME IS THE HALLOWEEN PICTURE. LAPTOP_512's art is the same
+                //    ghoul-and-stone-wall image as LAPTOP_HALLOW, so "no world matched" LOOKS like
+                //    "wrong world picked" -- which is exactly how master read it. Pin the mapping
+                //    so a null world is recognisable as a fallback rather than as halloween.
+                Check(ShopScreen.ChromeFor("JUNGLE.WAD").Contains("JUNGLE"), "JUNGLE -> its own chrome");
+                Check(ShopScreen.ChromeFor("/DATA/HALLOW.WAD").Contains("HALLOW"), "HALLOW -> its own chrome");
+                Check(ShopScreen.ChromeFor("space.wad").Contains("SPACE"), "SPACE -> its own chrome, case-folded");
+                // ⚠ THE CONTROL, and the whole point: these are the values a not-yet-open world
+                // gives, and they must land on the FALLBACK rather than on a world's chrome.
+                Check(ShopScreen.ChromeFor(null).Contains("512"),
+                      $"a null world gives the FALLBACK, not a world ({ShopScreen.ChromeFor(null)})");
+                Check(ShopScreen.ChromeFor("").Contains("512"), "and so does an empty one");
+                Check(ShopScreen.ChromeFor("DATA.WAD").Contains("512"),
+                      "and so does a non-world WAD -- which is what the panel saw before OpenWad ran");
+            }
+
             if (_bad > 0) { GD.PrintErr($"LAPTOP SHOP FAIL: {_bad} of {_checks}"); GetTree().Quit(2); return; }
             GD.Print($"LAPTOP SHOP PASS: {_checks} checks; the layout is read from "
                    + $"{ShopScreen.SceneFile}, the row step predicts the scene's own widget rows, "
