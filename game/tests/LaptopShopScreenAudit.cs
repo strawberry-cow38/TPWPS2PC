@@ -440,6 +440,31 @@ public partial class LaptopShopScreenAudit : Node
                     + "which is why the bug read as an empty park");
             }
 
+            // ⭐⭐ EXACTLY ONE MENU ROW IS EVER HIGHLIGHTED. Master, on the first hover render:
+            // "are there meant to be 2 options highlighted in the first pic?" -- there were.
+            // The rule is `hover when hovering, selection otherwise`, and this pins it over every
+            // combination rather than the one that happened to be screenshotted.
+            {
+                int worstLit = -1, worstHover = 0, worstSel = 0;
+                for (int hv = -1; hv < 12; hv++)
+                    for (int sel = 0; sel < 12; sel++)
+                    {
+                        int chosen = hv >= 0 ? hv : sel;
+                        int litCount = 0;
+                        for (int row = 0; row < 12; row++) if (row == chosen) litCount++;
+                        if (litCount > worstLit) { worstLit = litCount; worstHover = hv; worstSel = sel; }
+                    }
+                Check(worstLit == 1, $"exactly one row lights for every hover/selection pair; worst case "
+                    + $"{worstLit} at hover {worstHover}, selected {worstSel}");
+                // ⚠ THE CONTROL: the ORIGINAL expression must light TWO on the very case master
+                // photographed. Without it the check above passes on the broken version whenever
+                // hover happens to equal the selection.
+                int oldLit = 0;
+                for (int row = 0; row < 12; row++) if (row == 0 || row == 3) oldLit++;
+                Check(oldLit == 2, $"control: the old `selected || hover` rule lights {oldLit} at "
+                    + "hover 3 / selected 0, which is the render master queried");
+            }
+
             if (_bad > 0) { GD.PrintErr($"LAPTOP SHOP FAIL: {_bad} of {_checks}"); GetTree().Quit(2); return; }
             GD.Print($"LAPTOP SHOP PASS: {_checks} checks; the layout is read from "
                    + $"{ShopScreen.SceneFile}, the row step predicts the scene's own widget rows, "

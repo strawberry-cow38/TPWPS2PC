@@ -722,6 +722,36 @@ public sealed class ParkVisitors
                 continue;
             }
             if (action != GuestIdleAction.SelectDestination) continue;
+
+            // ⭐⭐ THE DECISION-TIME THOUGHT WRITE -- `FUN_0020C930`'s own moment, and the call
+            // site this port was missing.
+            //
+            // ⚠ Reported by tinyclaw against 949333e: three runtime checks that expect a toilet
+            // bubble went red. That commit stopped `Viewer.PlaceThoughts` polling `Decide` every
+            // frame, which was right -- the console has no per-frame writer -- but it left
+            // `Decide` with NO call site, so a thought only the decision arm raises had to wait
+            // for the 128-tick mood ladder instead. The bubble was delayed, not gone; the checks
+            // were measuring immediacy the old poll had invented.
+            //
+            // ⭐ This is where the console writes it: a guest CHOOSING WHAT TO DO. Putting it
+            // here restores the promptness without restoring the clobber, because it fires on an
+            // event rather than on every frame.
+            //
+            // ⚠ AND THE "NEARBY" FLAGS ARE REAL NOW. The old caller passed `true` for all three,
+            // asserting that a burger van, a drinks stall and a lavatory are permanently adjacent
+            // to every guest. These ask the park.
+            if (Needs != null && Needs.Has(g.Id))
+            {
+                bool food = false, drink = false, toilet = false;
+                foreach (var r in Sim.Rides)
+                {
+                    if (r.ProvidesRelief) toilet = true;
+                    if (r.Definition?.HungerEffect > 0) food = true;
+                    if (r.Definition?.ThirstEffect > 0) drink = true;
+                    if (food && drink && toilet) break;
+                }
+                Needs.Decide(g.Id, food, drink, toilet);
+            }
             // Physical placed candidates use the compiled native consumer. Legacy
             // unplaced fixtures (no placement rotation) retain their explicit adapter;
             // a missing join on a placed asset does NOT silently resurrect random choice.

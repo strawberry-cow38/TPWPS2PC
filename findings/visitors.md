@@ -2476,3 +2476,32 @@ ladder directly and asserts `Thought.Bored` at boredom 91 -- it has been GREEN t
 the bubble was never once visible in the running game. The check tests `VisitorNeeds` in isolation;
 the defect was `Viewer` calling it wrongly. A defect that lives in the SEAM between two components
 is invisible to every test that instantiates only one of them, and both of mine did.
+
+### ⚠ The decision-time thought write, and a regression it did not fully fix (2026-09-25)
+
+tinyclaw, against `949333e`: three runtime checks in the standing-service scene went red --
+`[89] satisfied guest clears visible toilet thought`, `[141] BEFORE service real toilet bubble is
+visible`, `[155] completion ... removes toilet thought` -- because "those checks leaned on the
+per-frame Decide to raise the toilet bubble, and now nothing raises it".
+
+⭐ **Half right, and the half matters.** The ladder DOES raise Toilet -- it is the chain's FIRST arm,
+`w.Toilet >= Urgent -> Thought.Toilet`. What it does not do is raise it *immediately*: `Moods` runs
+on the console's own per-guest stagger, `tick % 128 == guest % 128`. So the bubble was **delayed,
+not absent**, and the checks were measuring an immediacy the per-frame poll had invented.
+
+⭐⭐ **Verified rather than argued.** Changing the scene's `Tick(1)` to `Tick(4)` before the bubble
+assertion turns `[141]` green. (It reds three others, because the extra ticks shift the service
+timeline -- which is exactly why "add ticks" is not the fix.) The experiment was reverted.
+
+**What was fixed here:** `Decide` now has its real call site. `ParkVisitors` calls it where a guest
+takes `GuestIdleAction.SelectDestination` -- `FUN_0020C930`'s own moment, a guest CHOOSING WHAT TO
+DO. That restores promptness on an EVENT rather than on every frame, so it does not restore the
+clobber. ⭐ And its three "nearby" flags are real now: the old caller passed `true` for all three,
+asserting a burger van, a drinks stall and a lavatory are permanently adjacent to every guest;
+these ask the park through `ProvidesRelief` / `HungerEffect` / `ThirstEffect`.
+
+⚠ **It does NOT fix the standing-service scene**, and that is worth saying plainly rather than
+leaving it looking fixed. That guest is already `Servicing` when the scene starts, so it never
+takes a decision action inside the test window. The remaining failures need the scene to reach the
+guest's mood slot before asserting -- a change to the scene's timing, which belongs with whoever
+knows what the scene is proving.

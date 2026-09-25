@@ -346,8 +346,20 @@ public sealed partial class LaptopShopScreen : Control
         var at = o + new Vector2(list.X, list.Y) * s;
         for (int i = 0; i < _menu.Count; i++)
         {
-            // ⭐ Hover reads the same as selection -- two colours is all this UI has.
-            var colour = Of(i == _menuSelected || i == _menuHover ? ShopScreen.Highlight : ShopScreen.Label);
+            // ⭐⭐ EXACTLY ONE ROW IS EVER HIGHLIGHTED. Master, on the first render: "are there
+            // meant to be 2 options highlighted in the first pic?" -- there were, and no.
+            //
+            // ⚠ The first version lit `_menuSelected || _menuHover`, so the selected row AND the
+            // row under the pointer both went yellow and nothing told them apart. The reasoning
+            // behind it was right about STATE -- hovering must not move a selection a pad is
+            // driving -- but it let that produce two identical highlights, which is a different
+            // question and a plain UI fault.
+            //
+            // ⭐ While the pointer is over a row, THAT row is the highlight; with the pointer
+            // away, the selection shows through again. The selection itself is untouched either
+            // way, so a pad and a mouse still agree on what is chosen.
+            int lit = _menuHover >= 0 ? _menuHover : _menuSelected;
+            var colour = Of(i == lit ? ShopScreen.Highlight : ShopScreen.Label);
             DrawRun(_menu[i], at + new Vector2(0, LaptopMainMenu.RowStep * i * s), s, colour, list.Justify);
         }
     }
