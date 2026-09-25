@@ -15,6 +15,9 @@ public sealed class NativeBusController
     uint startClock;
     int appliedState = -1;
     public int State { get; private set; }
+    /// <summary>Batch requests the 30-guest departure-pressure test (14C2EC) refused while the park was
+    /// open. Instrumentation for the soak; nothing reads it to decide.</summary>
+    public int PressureVetoes { get; private set; }
     public int AppliedState => appliedState;
     public int OuterRemaining { get; private set; }
     public int DwellRemaining { get; private set; }
@@ -104,6 +107,7 @@ public sealed class NativeBusController
         if (State == 2)
         {
             if (open && specialObjectAbsent && flaggedGuestCount < 30) requestBatch(0);
+            else if (open && specialObjectAbsent) PressureVetoes++;
             DwellRemaining = DwellCountdown; // also when the batch is denied
         }
         if (++State > 3) { State = 0; OuterRemaining = OuterCountdown; }

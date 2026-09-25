@@ -19,6 +19,8 @@ public enum VisitorIntent
     /// <summary>Had enough, and walking to the gate to go home. ⚠ Still an ordinary walker until
     /// they reach it -- they are drawn, they take up path, and a want can still rise on them.</summary>
     Leaving,
+    /// <summary>Explicit park-entrance route owner, not an attraction's queue or service.</summary>
+    Entering,
 }
 
 /// <summary>⭐⭐ THE TWO HALVES, JOINED. <see cref="GuestWalk"/> moves people over the park's
@@ -77,6 +79,8 @@ public sealed class ParkVisitors
     /// <summary>How many guests have gone home. ⭐ Counted because "the park empties" and "the
     /// park never fills" look identical in a population graph and need different fixes.</summary>
     public int WentHome { get; private set; }
+    /// <summary>Explicit entrance/controller teardown, NOT departures or paid admissions.</summary>
+    public int DiscardedEntranceGuests { get; private set; }
 
     /// <summary>Where a guest who has had enough walks to. ⚠ The park's own entrance cells, which
     /// are also its exit -- the game has one gate. Null-safe: with no entrance registered nobody
@@ -232,6 +236,95 @@ public sealed class ParkVisitors
         Wander(g.Id, at);
         Needs?.Spawn(g.Id);
         return g;
+    }
+
+    /// <summary>Research seam (queue item 7), null by default. When set, a guest who WantsToGoHome is
+    /// offered to the native departure owner BEFORE the legacy gate walk. True means that owner took the
+    /// guest's lease and will retire it through <see cref="CompleteNativeDeparture"/>; false leaves the
+    /// legacy walk below untouched.</summary>
+    public Func<Guest, bool> NativeDeparture { get; set; }
+
+    /// <summary>Explicit entrance owner of an existing wandering identity. The caller supplies
+    /// route service results and native inputs; this is not an automatic admission policy.</summary>
+    public bool BeginEntranceRoute(Guest guest, object owner,
+        IReadOnlyList<NativeGuestMotion.Point> waypoints, NativeMotionInputs inputs)
+        => AssignEntranceRoute(guest, owner, waypoints, inputs) == GuestWalk.NativeAssignment.Assigned;
+
+    bool MayOwnEntrance(Guest guest, object owner) => guest != null && _plans.TryGetValue(guest.Id, out var plan)
+        && (plan.Intent is VisitorIntent.Wandering or VisitorIntent.Entering
+            || plan.Intent == VisitorIntent.Leaving && Walk.NativeRouteState(guest, owner) != null)
+        && !_owners.ContainsKey(guest.Id);
+
+    public GuestWalk.NativeAssignment AssignEntranceRoute(Guest guest, object owner,
+        IReadOnlyList<NativeGuestMotion.Point> waypoints, NativeMotionInputs inputs)
+    {
+        if (!MayOwnEntrance(guest, owner)) return GuestWalk.NativeAssignment.Refused;
+        var result = Walk.AssignNativeRoute(guest, owner, waypoints, inputs);
+        if (result != GuestWalk.NativeAssignment.Refused)
+            _plans[guest.Id] = new Plan(guest.Id,
+                _plans[guest.Id].Intent == VisitorIntent.Leaving ? VisitorIntent.Leaving : VisitorIntent.Entering,
+                0, guest.Cell);
+        return result;
+    }
+
+    public GuestWalk.NativeAssignment AssignDirectEntranceRoute(Guest guest, object owner,
+        Func<NativeGuestMotion.Point> target, NativeMotionInputs inputs)
+    {
+        if (!MayOwnEntrance(guest, owner)) return GuestWalk.NativeAssignment.Refused;
+        var result = Walk.AssignDirectNativeRoute(guest, owner, target, inputs);
+        if (result != GuestWalk.NativeAssignment.Refused)
+            _plans[guest.Id] = new Plan(guest.Id,
+                _plans[guest.Id].Intent == VisitorIntent.Leaving ? VisitorIntent.Leaving : VisitorIntent.Entering,
+                0, guest.Cell);
+        return result;
+    }
+
+    /// <summary>Departure keeps the same route owner and visitor identity; it is not a
+    /// handoff to legacy WantsToGoHome or permission to skip the native outgoing journey.</summary>
+    public void MarkNativeDeparture(Guest guest, object owner)
+    {
+        if (Walk.NativeRouteState(guest, owner) == null || !_plans.ContainsKey(guest.Id))
+            throw new InvalidOperationException("Departure requires the current live route owner.");
+        _plans[guest.Id] = new Plan(guest.Id, VisitorIntent.Leaving, 0, guest.Cell);
+    }
+
+    public void CompleteNativeDeparture(Guest guest, object owner)
+    {
+        if (!_plans.TryGetValue(guest.Id, out var plan) || plan.Intent != VisitorIntent.Leaving
+            || Walk.NativeRouteState(guest, owner) is not { Finished: true, Failed: false, SlotIndex: -1 })
+            throw new InvalidOperationException("Native departure must complete its route before removal.");
+        ShowOut(guest.Id);
+        Needs?.Reconcile(_plans.Keys);
+    }
+
+    /// <summary>Explicit research-controller/map teardown. Not a native departure callback.
+    /// Requires this owner's lease; removes plan/needs without incrementing WentHome.</summary>
+    public void DiscardEntranceGuest(Guest guest, object owner)
+    {
+        if (Walk.NativeRouteState(guest, owner) == null)
+            throw new InvalidOperationException("Entrance teardown requires its current owner.");
+        ShowOut(guest.Id, countDeparture: false);
+        DiscardedEntranceGuests++;
+        Needs?.Reconcile(_plans.Keys);
+    }
+
+    /// <summary>Queue item 8 adapter seam: a native departure that found no route home hands its guest
+    /// back to ordinary visiting where it stands. It needs the owner's finished lease at a cell centre,
+    /// as the entrance release does. The same identity, needs and cash are kept; nothing is counted.</summary>
+    public bool ReleaseNativeDeparture(Guest guest, object owner)
+    {
+        if (guest == null || !_plans.TryGetValue(guest.Id, out var plan)
+            || plan.Intent != VisitorIntent.Leaving || !Walk.ReleaseNativeRoute(guest, owner)) return false;
+        Wander(guest.Id, guest.Cell);
+        return true;
+    }
+
+    public bool ReleaseEntranceRoute(Guest guest, object owner)
+    {
+        if (guest == null || !_plans.TryGetValue(guest.Id, out var plan)
+            || plan.Intent != VisitorIntent.Entering || !Walk.ReleaseNativeRoute(guest, owner)) return false;
+        Wander(guest.Id, guest.Cell); // same needs/cash/identity, not a respawn
+        return true;
     }
 
     /// <summary>Send a walking guest to a ride's queue. False when there is no way there, and the
@@ -567,7 +660,7 @@ public sealed class ParkVisitors
     /// <summary>They reach the gate and are gone. ⭐ Dropping the PLAN is what retires them:
     /// `Needs.Reconcile(_plans.Keys)` reaps any record with no plan behind it, so a departure
     /// cannot leave a needs row behind to be inherited by whoever gets that id next.</summary>
-    void ShowOut(int guest)
+    void ShowOut(int guest, bool countDeparture = true)
     {
         Walk.Remove(guest);
         _plans.Remove(guest);
@@ -577,7 +670,7 @@ public sealed class ParkVisitors
         _decisions.Forget(guest);
         _serviceTerminals.Remove(guest);
         _reliefVisits.Remove(guest);
-        WentHome++;
+        if (countDeparture) WentHome++;
     }
 
     ParkRide RideOf(Plan plan) => _owners.TryGetValue(plan.Guest, out var ride) && Sim.Rides.Contains(ride) ? ride : null;
@@ -588,7 +681,7 @@ public sealed class ParkVisitors
     {
         foreach (var g in Walk.Guests.ToArray())
         {
-            if (!_plans.TryGetValue(g.Id, out var plan) || plan.Intent != VisitorIntent.Heading) continue;
+            if (g.HasNativeRoute || !_plans.TryGetValue(g.Id, out var plan) || plan.Intent != VisitorIntent.Heading) continue;
             if (g.State != GuestState.Arrived) continue;
             // ⚠⚠ ARRIVED SOMEWHERE IS NOT ARRIVED HERE. This used to join the queue on State alone,
             // so a guest heading for a ride who finished any other walk -- re-routed round a dug
@@ -654,6 +747,8 @@ public sealed class ParkVisitors
     {
         foreach (var g in Walk.Guests.ToArray())
         {
+            if (g.HasNativeRoute) continue; // native owner handles requests/completion/recovery
+
             // ⚠ A GUEST WHO CANNOT GET THERE MUST BE ABLE TO GIVE UP. Only Arrived was handled
             // here, so somebody Heading for a ride whose path was dug up under them stayed
             // Stranded forever with a plan nobody would ever complete -- a slowly filling pool of
@@ -693,6 +788,7 @@ public sealed class ParkVisitors
             // and CALLED FROM NOWHERE -- the arithmetic had its own checks while the park it
             // described could never lose a single guest. Dead code reads exactly like a feature
             // from the outside, which is why this is asked before anything else a guest might do.
+            if (Needs != null && Needs.WantsToGoHome(g.Id) && NativeDeparture?.Invoke(g) == true) continue;
             if (Needs != null && Needs.WantsToGoHome(g.Id) && Gate is { } gate)
             {
                 if (g.Cell == gate) { ShowOut(g.Id); continue; }
