@@ -291,8 +291,9 @@ public sealed class ParkVisitors
         {
             int rises = Needs.Step(ticks * GuestWalk.TickMilliseconds / 1000.0);
             // ⭐⭐ WAITING IN A QUEUE COSTS SOMETHING, and it did not until now. `VisitorNeeds.Queue`
-            // was decoded off `FUN_0020C6A8` -- happiness down, `+0x78` up -- documented, carried
-            // eighteen references from the checks, and was CALLED FROM NOWHERE: queueing was free.
+            // carried eighteen references from the checks and was CALLED FROM NOWHERE: queueing was
+            // free. ⚠⚠ Its decode attribution (`FUN_0020C6A8`) is RETRACTED -- that function is the
+            // destination picker, not a queueing routine; see `VisitorWants.Unknown78`.
             // Found by tools/dead_port_audit.py one commit after WantsToGoHome, which is the same
             // shape and the reason that tool now exists in this port too.
             //

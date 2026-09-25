@@ -61,9 +61,20 @@ public struct VisitorWants
     public byte Litter;
 
     /// <summary>`+0x78`. ⚠⚠ STILL UNNAMED -- AND IT IS NOT BOREDOM, which this file asserted for
-    /// most of a day. `FUN_0020C6A8` adds **+5** while the guest queues and `FUN_0020EDD8`
-    /// subtracts the RIDE'S OWN INTENSITY from it (scale 1.0), so it rises with waiting and falls
-    /// with excitement -- which is why boredom was the obvious guess.
+    /// most of a day. `FUN_0020EDD8` subtracts the RIDE'S OWN INTENSITY from it (scale 1.0).
+    ///
+    /// ⚠⚠ AND ITS ONLY DOCUMENTED RISER WAS MISATTRIBUTED. This file said `FUN_0020C6A8` adds
+    /// **+5** "while the guest queues". `FUN_0020C6A8` is the DESTINATION PICKER, not queueing --
+    /// findings/native-destination-score.md describes it enumerating candidates, scoring them and
+    /// storing the winner at `G+28`, and the penalty it charges is for a poor CHOICE ("a chosen
+    /// score under 8 costs happiness 5"), not for waiting. Two of this port's own files contradicted
+    /// each other on it for days; the destination write-up is the one that read the function.
+    /// Flagged by tinyclaw 2026-09-25, who places the `+0x78` rise in the no-score path.
+    ///
+    /// ⭐ WHAT SURVIVES: `+0x78` is still NOT boredom. That was settled on independent evidence --
+    /// `FUN_0020FB88` points the `tbbored` bubble at `guest[0x7B]` -- which does not depend on
+    /// this attribution at all. What is lost is the claim that QUEUEING raises this byte, so what
+    /// the meter is a need FOR is once again unread.
     ///
     /// ⭐⭐ THE THOUGHT LADDER SETTLES IT AGAINST THAT GUESS. `FUN_0020FB88`'s bubble chain asks
     /// `FUN_0020F888(guest, guest[0x7B], ...)` and on a hit writes bubble id **4**, which
@@ -764,7 +775,19 @@ public sealed class VisitorNeeds
     ///
     /// ⚠ What is NOT read is what a guest thinks when nothing is urgent -- the console picks its
     /// idle behaviour with `rand(6)` and only some arms set a thought at all. Normal is returned
-    /// here, and Bored/Sad/Good/Bad/Scared/BadQueue/Litter have no rule yet.</summary>
+    /// here, and Bored/Sad/Good/Bad/Scared/BadQueue/Litter have no rule yet.
+    ///
+    /// ⚠⚠ AND THIS METHOD IS AUTHORITATIVE AND DESTRUCTIVE, which is worse than "no rule yet".
+    /// It ends by ASSIGNING `w.Thought` unconditionally, and `Viewer.PlaceThoughts` runs it over
+    /// every VISIBLE guest EVERY FRAME. So a thought written anywhere else survives at most until
+    /// the next frame that guest is on screen, and any arm missing from the ladder above can never
+    /// be seen at all:
+    ///   - `DirtyLavatory`'s `Thought.Angry` -- erased unless happiness happens to be under 3.
+    ///   - the 128-tick ladder's `Thought.Bored` -- erased always; nothing here produces Bored.
+    ///   - a `BadQueue` written by the ride queue -- erased always. Reported by tinyclaw
+    ///     2026-09-25 against `tinyclaw/native-ride-queues`; the defect is here, not there.
+    /// ⭐ The fix is arbitration, and which way it goes is a DECODE question -- whether the console
+    /// re-decides destructively too, or latches an event thought for a while. Not guessed here.</summary>
     public Thought Decide(int guest, bool foodNearby, bool drinkNearby, bool toiletNearby)
     {
         if (!_byGuest.TryGetValue(guest, out var w)) return Thought.Normal;
@@ -845,9 +868,14 @@ public sealed class VisitorNeeds
         _byGuest[guest] = w;
     }
 
-    /// <summary>Waiting, as the function labelled `"Toilet"` has it: happiness down for the wait,
-    /// and **+5** to `+0x78`. ⚠ NOT boredom -- see <see cref="VisitorWants.Unknown78"/>; queueing
-    /// is the only riser that byte has, and what it is a need FOR is still unread.</summary>
+    /// <summary>Waiting: happiness down for the wait, and **+5** to `+0x78`.
+    ///
+    /// ⚠⚠ THE ATTRIBUTION IS RETRACTED, THE BEHAVIOUR IS NOT YET. This was documented as decoded
+    /// off `FUN_0020C6A8`; that function is the destination picker (see
+    /// <see cref="VisitorWants.Unknown78"/>), so nothing here is read off a queueing routine. The
+    /// effect is left in place rather than ripped out on the spot, because removing a charge is as
+    /// much a behaviour claim as adding one and the console's own queue cost has not been read.
+    /// ⭐ What this needs is the decomp, not another inference.</summary>
     public void Queue(int guest, int happinessCost = 5)
     {
         if (!_byGuest.TryGetValue(guest, out var w)) return;

@@ -316,8 +316,10 @@ static class ServiceChecks
 
         // ⭐ THE CONTROL. Without this, "everyone leaves immediately" passes all three above.
         // ── waiting in a queue ────────────────────────────────────────────────────────────────
-        // ⭐⭐ `VisitorNeeds.Queue` -- decoded off `FUN_0020C6A8`, eighteen references from these
-        // checks, and CALLED FROM NOWHERE until now, so standing in a queue was free. Found by
+        // ⭐⭐ `VisitorNeeds.Queue` -- eighteen references from these checks, and CALLED FROM
+        // NOWHERE until now, so standing in a queue was free. ⚠ Its `FUN_0020C6A8` attribution is
+        // retracted: that is the destination picker. These checks test the PORT's behaviour, which
+        // is unchanged; only the provenance claim was wrong. Found by
         // tools/dead_port_audit.py. ⚠ PEAK, not final: `Ride` SUBTRACTS from the same byte that
         // `Queue` adds to, so a completed ride can erase the evidence -- the sign difference is
         // what makes the two separable, and sampling the high-water mark is what survives it.
@@ -431,7 +433,8 @@ static class ServiceChecks
         // which the engine points `tbbored` at) AND that nothing in that function raises `+0x78`
         // on a clock at all. So the rise went, and with it the only thing that made 20 true.
         //
-        // ⭐ What is left is the queue's own **+5**, which IS read (`FUN_0020C6A8`).
+        // ⭐ What is left is the queue's own **+5** -- ⚠ which this called "read (`FUN_0020C6A8`)"
+        // and is not: that function picks destinations. The number stands as the port's, unread.
         //
         // ⚠⚠ AND THE FIRST REPLACEMENT ASSERTED `== 5`, WHICH WAS THE JUNGLE NUMBER AND NOT AN
         // INVARIANT. HALLOW and FANTASY read 0 -- their fixture geometry never puts the guest in

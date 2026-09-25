@@ -2406,3 +2406,49 @@ sized to the CROWD, not to the ride. Implemented in `RideScreams`; see findings/
 kind. Its values across the image are 7, 8, 1, 12, 2, 3, 6, 13, 4, 9, 11, and id 175 -- a SOUND --
 appears under both 1 and 2. Whatever it selects, it is not the `OBJ_SOUND_*` numbering, which the
 failed control this evening had already shown.
+
+## ⚠⚠ RETRACTION: `FUN_0020C6A8` is the destination picker, not queueing (2026-09-25)
+
+Flagged by tinyclaw while landing `tinyclaw/native-ride-queues`: "20C6A8 is the destination picker,
+not queueing. its +5 to +0x78 fires when nothing scores, so the `VisitorNeeds.Queue` comment is off."
+
+Checked, and they are right -- **and this port's own files already said so.**
+`findings/native-destination-score.md` describes `20C6A8` returning early if `G+28` holds a target,
+otherwise enumerating candidates through `1E5AF0/1E5BA0/1E5CA8`, scoring them, and storing the
+winner at `G+28`; the happiness penalty in it is for a poor CHOICE -- "a chosen score<8 costs
+happiness 5" -- not for waiting. `GuestDestinationScore.cs` calls it "20C6A8's sequential choice".
+
+⭐⭐ **Two of my own files contradicted each other for days and I did not notice**, because each
+read consistently on its own. The destination write-up is the one that actually read the function;
+`VisitorNeeds`' comments inherited the wrong name and then propagated it to `ParkVisitors`, to
+`ServiceChecks` twice, and to this file twice. A claim repeated in five places is not five
+corroborations of it -- it is one claim, copied.
+
+**What survives:** `+0x78` is still not boredom. That rests on `FUN_0020FB88` pointing the
+`tbbored` bubble at `guest[0x7B]`, which does not depend on this attribution.
+**What is lost:** the claim that QUEUEING raises `+0x78`. It had no other support, so the byte's
+risers are unread again and what it is a need FOR is once more unknown.
+**What is NOT changed:** the port still charges the wait. Removing a charge is as much a behaviour
+claim as adding one, and the console's queue cost has not been read. The comments now say the
+number is the port's rather than the console's.
+
+## ⚠⚠ `VisitorNeeds.Decide` is authoritative and destructive: no external thought can survive
+
+The same report surfaced a bigger defect, and it is mine rather than the queue's.
+
+`Decide` ends with an unconditional `w.Thought = t`, and `Viewer.PlaceThoughts` calls it for every
+VISIBLE guest EVERY FRAME. So any thought set anywhere else lives at most until the next frame that
+guest is on screen, and a thought `Decide` cannot produce can never be seen:
+
+| writer | fate |
+|---|---|
+| ride queue's `BadQueue` (thought 9) | erased always -- `Decide` has no BadQueue arm |
+| the 128-tick ladder's `Thought.Bored` | erased always -- `Decide` never produces Bored |
+| `DirtyLavatory`'s `Thought.Angry` | erased unless happiness is under 3 |
+
+⚠ The middle row is the one that stings: the `FUN_0020FB88` bubble ladder was decoded, ported, given
+its sounds -- and then silently overwritten every frame for anyone on screen. It was never visible.
+
+⭐ The fix is ARBITRATION and its shape is a decode question, not a preference: does the console
+re-decide destructively too, or does an event thought latch for a while? Until that is read, adding
+a `BadQueue` arm to `Decide` would make the bubble appear without establishing that it should.
