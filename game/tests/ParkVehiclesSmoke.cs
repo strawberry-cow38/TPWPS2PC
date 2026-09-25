@@ -99,8 +99,14 @@ public partial class ParkVehiclesSmoke : Node3D
             Call(viewer, "StepPark", .04);
             Check(vehicles.Count == 0, "--no-seaplane-ferry leaves no vehicle");
 
+            // Retire the park's voices before closing, as BusViewerSmoke does: scene frames alone can
+            // outrun Dummy audio's pending stopped playbacks, and they report as leaked instances.
+            Call(viewer, "ResetNativeBus");
+            Field<RideSounds>(viewer, "_sounds")?.Clear();
             viewer.QueueFree();
             await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            await ToSignal(GetTree().CreateTimer(.1), SceneTreeTimer.SignalName.Timeout);
             GD.Print($"PARK VEHICLES SMOKE PASS checks={_checks}; world={world}");
             GetTree().Quit(0);
         }
