@@ -242,6 +242,7 @@ public partial class Viewer : Node3D
     bool _typeAudit;
     bool _guestTest;
     int _laptopFilm; string _laptopScreen = "ride"; int _laptopFrame;
+    Vector2I? _uiSize; SubViewport _uiShotView;
     bool _idleScene, _idleSeeded;
     int _idleCount = 24;
     /// <summary>Which ride the control run stands, by display name; Crazy Ape unless told.</summary>
@@ -378,6 +379,12 @@ public partial class Viewer : Node3D
             else if (a == "--guest-test") _guestTest = true;
             else if (a.StartsWith("--laptop-film=")) { int.TryParse(a["--laptop-film=".Length..], out _laptopFilm); }
             else if (a.StartsWith("--laptop-screen=")) _laptopScreen = a["--laptop-screen=".Length..];
+            else if (a.StartsWith("--ui-size="))
+            {
+                var wh = a["--ui-size=".Length..].Split('x');
+                if (wh.Length == 2 && int.TryParse(wh[0], out int uw) && int.TryParse(wh[1], out int uh))
+                    _uiSize = new Vector2I(uw, uh);
+            }
             else if (a == "--idle-scene") _idleScene = true;
             else if (a.StartsWith("--idle-scene=")) { _idleScene = true; int.TryParse(a["--idle-scene=".Length..], out _idleCount); }
             else if (a.StartsWith("--walk-film=")) int.TryParse(a["--walk-film=".Length..], out _walkFilm);
@@ -3094,6 +3101,34 @@ public partial class Viewer : Node3D
             });
         }
         _shopPanel.ShowScreen(spec, title, cells);
+
+        // ⭐⭐ RENDER THE UI AT AN ARBITRARY SIZE, INDEPENDENT OF THE DESKTOP. Master asked how the
+        // screen looks at 1080p and 1440p; the build box's display is 1024x768, so Godot clamps
+        // every window and `--resolution 1920x1080` silently produced 1028x749 renders. Answering
+        // from those would have been answering about a resolution nobody asked about.
+        //
+        // ⚠ The panel sizes itself from GetViewportRect(), so putting it in a SubViewport of the
+        // wanted size makes it lay out for THAT size -- which is the thing under test, not a
+        // scaled-up picture of a small one.
+        if (_uiSize is { } uiWant)
+        {
+            if (_uiShotView == null)
+            {
+                _uiShotView = new SubViewport
+                {
+                    Size = uiWant,
+                    RenderTargetUpdateMode = SubViewport.UpdateMode.Always,
+                    TransparentBg = false,
+                };
+                AddChild(_uiShotView);
+                _shopPanel.GetParent()?.RemoveChild(_shopPanel);
+                _uiShotView.AddChild(_shopPanel);
+                GD.Print($"[laptop] ui-size {uiWant.X}x{uiWant.Y}: the panel lays out for that viewport, "
+                       + "not for this window");
+            }
+            _shopPanel.QueueRedraw();
+        }
+
         SaveShot(ShotSibling(_shotPath, $"-f{_laptopFrame:D4}"));
         _laptopFrame++;
         if (_laptopFrame >= _laptopFilm)
@@ -4902,7 +4937,11 @@ public partial class Viewer : Node3D
 
     void SaveShot(string path)
     {
-        var img = GetViewport().GetTexture().GetImage();
+        // ⚠ When a UI size was asked for, the picture is of THAT viewport, not the window. The
+        // window is whatever the desktop allows -- 1024x768 on the build box -- and saving it
+        // would answer a question about the wrong resolution while looking like an answer.
+        var from = _uiShotView != null ? (Viewport)_uiShotView : GetViewport();
+        var img = from.GetTexture().GetImage();
         img.SavePng(path);
         GD.Print($"wrote {path} ({img.GetWidth()}x{img.GetHeight()})");
     }

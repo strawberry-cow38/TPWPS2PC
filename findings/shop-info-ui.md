@@ -404,3 +404,41 @@ exactly the guarded ids — so the guard is live code rather than something read
 
 ⭐ Confirmed **in place** by the draw: `FUN_001d1f60` is what supplies row 7's text id, and the row
 is skipped when it returns 0.
+
+## The authored canvas is 512x512 SQUARE, measured on all four sides
+
+Master asked how the laptop looks "filling at 1080p/1440p". That is a question about the canvas'
+proportions, so the proportions had to be measured rather than assumed.
+
+⚠ **The first measurement was contaminated and said 480.** It compared the lowest *text row*
+(`UsersVal`, row 436 in `main_i_ride_data`) against the rightmost *frame edge* (col 315 + width
+147 = 462). A text row is a baseline with glyphs hanging below it; a frame edge is a true edge.
+Comparing the two is comparing unlike things, and it produced a confident wrong answer.
+
+⭐ **Redone on true frame edges only** -- elements that declare both `width` and `height`, so each
+axis is measured the same way -- across all 29 `.sce` files in MENUS.WAD:
+
+| | extreme | against a 512 canvas |
+|---|---|---|
+| lowest frame BOTTOM | 448 (`main_bh_items:Model`, row 208 + h 240) | bottom margin **64** |
+| rightmost frame RIGHT | 472 (`main_goldtickets:StarRow`, col 45 + w 427) | right margin **40** |
+| topmost row | 65 | top margin **65** |
+| leftmost col | 45 | left margin **45** |
+
+Top 65 against bottom 64, left 45 against right 40. A canvas that is not 512 tall breaks that
+symmetry: at 448 the bottom margin is 12 against a top of 65. So the canvas is **512x512**, which
+is independently the size of the chrome art (`laptop_{jungle,hallow,fantasy,space}.ssh`), and the
+margins are the chrome's own border.
+
+⭐ **What that means on a widescreen.** The port scales by `min(w,h)/512` and centres, so the panel
+comes out exactly square -- verified on the rendered pixels, `panel/height = 1.000` at both 1920x1080
+and 2560x1440 -- leaving 420px bars each side at 1080p and 560px at 1440p, **43.8% of the width**.
+That is the art's own shape, not a layout fault. Filling a 16:9 screen would mean stretching a
+square canvas by 1.78, and whether the console itself stretched 512x512 into its 640x448 framebuffer
+is NOT settled here; the `.sce` cannot answer it.
+
+⚠ **`--resolution` does not work on the build box.** Its display is 1024x768, Godot clamps the
+window, and `--resolution 1920x1080` silently yields 1028x749. `--ui-size=WxH` puts the panel in a
+SubViewport of the asked-for size so it *lays out* for that size, and `SaveShot` grabs that
+viewport. The model's own SubViewport is 4x oversampled (588x960), so it downscales -- and stays
+sharp -- through 1440p, and only begins to upscale past ~2160p.
