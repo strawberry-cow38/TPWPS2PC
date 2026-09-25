@@ -2452,3 +2452,27 @@ its sounds -- and then silently overwritten every frame for anyone on screen. It
 ⭐ The fix is ARBITRATION and its shape is a decode question, not a preference: does the console
 re-decide destructively too, or does an event thought latch for a while? Until that is read, adding
 a `BadQueue` arm to `Decide` would make the bubble appear without establishing that it should.
+
+### ⭐⭐ The fix, and why every check stayed green through the bug
+
+`Viewer.PlaceThoughts` now calls `VisitorNeeds.ThoughtOf` -- a pure read -- instead of `Decide`.
+
+That is not a preference. `Decide` is `FUN_0020C930`, the arm that runs when a guest CHOOSES WHAT
+TO DO, and tinyclaw's census of `+0x40` writers found every one to be a one-shot EVENT write with
+no per-frame writer anywhere: `20C6A8` writes 4 when nothing scores or 2 on a sub-8 pick, `210428`
+writes 9 once as the guest leaves. The per-frame poll was this port's invention. ⭐ And the
+ladder's own comment in `VisitorNeeds` already stated the correct model -- that the two sources
+coexist and the ladder "refreshes slowly rather than stamping over the decision bubble every
+frame" -- while the renderer did exactly what that sentence forbids.
+
+⚠ `Decide` now has NO call site. It is an event handler waiting for its event: nothing in this port
+yet marks the moment a guest picks a destination. Kept rather than deleted, because its rules are
+read off the console. ⚠⚠ `tools/dead_port_audit.py` will flag it -- that is expected now, not a
+finding. What the port loses meanwhile is nothing real: the renderer was passing `foodNearby: true`
+for every guest on every frame, asserting that every amenity is always adjacent to everyone.
+
+⭐⭐ **AND THE CHECKS COULD NOT HAVE CAUGHT THIS, WHICH IS THE LESSON.** `MoodChecks` exercises the
+ladder directly and asserts `Thought.Bored` at boredom 91 -- it has been GREEN throughout, while
+the bubble was never once visible in the running game. The check tests `VisitorNeeds` in isolation;
+the defect was `Viewer` calling it wrongly. A defect that lives in the SEAM between two components
+is invisible to every test that instantiates only one of them, and both of mine did.

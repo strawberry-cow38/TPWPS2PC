@@ -755,6 +755,17 @@ public sealed class VisitorNeeds
         return true;
     }
 
+    /// <summary>⭐⭐ WHAT A GUEST IS CURRENTLY THINKING -- a pure READ, no re-decision.
+    ///
+    /// ⚠⚠ THE RENDERER MUST USE THIS, NOT <see cref="Decide"/>. `Decide` is `FUN_0020C930`, the
+    /// arm that runs when a guest CHOOSES WHAT TO DO; the console writes `+0x40` on that event and
+    /// on the 128-tick ladder, and tinyclaw's read of every `+0x40` writer found no per-frame
+    /// writer at all. Polling `Decide` once a frame therefore invented a console behaviour and
+    /// stamped the decoded ladder flat, so `Thought.Bored` -- which only the ladder produces --
+    /// was never once visible.</summary>
+    public Thought ThoughtOf(int guest) =>
+        _byGuest.TryGetValue(guest, out var w) ? w.Thought : Thought.Normal;
+
     /// <summary>What a guest is thinking, and therefore which bubble is over their head.
     ///
     /// ⭐⭐ EVERY THRESHOLD HERE IS THE CONSOLE'S, off `FUN_0020C930`:
@@ -777,17 +788,27 @@ public sealed class VisitorNeeds
     /// idle behaviour with `rand(6)` and only some arms set a thought at all. Normal is returned
     /// here, and Bored/Sad/Good/Bad/Scared/BadQueue/Litter have no rule yet.
     ///
-    /// ⚠⚠ AND THIS METHOD IS AUTHORITATIVE AND DESTRUCTIVE, which is worse than "no rule yet".
-    /// It ends by ASSIGNING `w.Thought` unconditionally, and `Viewer.PlaceThoughts` runs it over
-    /// every VISIBLE guest EVERY FRAME. So a thought written anywhere else survives at most until
-    /// the next frame that guest is on screen, and any arm missing from the ladder above can never
-    /// be seen at all:
-    ///   - `DirtyLavatory`'s `Thought.Angry` -- erased unless happiness happens to be under 3.
-    ///   - the 128-tick ladder's `Thought.Bored` -- erased always; nothing here produces Bored.
+    /// ⚠⚠ AND THIS METHOD ASSIGNS `w.Thought` UNCONDITIONALLY, so whoever calls it last wins.
+    /// It used to be called from `Viewer.PlaceThoughts` for every VISIBLE guest EVERY FRAME, which
+    /// meant no thought written anywhere else could survive being on screen:
+    ///   - the 128-tick ladder's `Thought.Bored` -- erased always; nothing here produces Bored, so
+    ///     a decoded, ported, sound-wired bubble had never once rendered.
+    ///   - `DirtyLavatory`'s `Thought.Angry` -- erased unless happiness happened to be under 3.
     ///   - a `BadQueue` written by the ride queue -- erased always. Reported by tinyclaw
-    ///     2026-09-25 against `tinyclaw/native-ride-queues`; the defect is here, not there.
-    /// ⭐ The fix is arbitration, and which way it goes is a DECODE question -- whether the console
-    /// re-decides destructively too, or latches an event thought for a while. Not guessed here.</summary>
+    ///     2026-09-25 against `tinyclaw/native-ride-queues`; the defect was here, not there.
+    ///
+    /// ⭐⭐ FIXED BY MAKING THE RENDERER READ. `Viewer.PlaceThoughts` now calls
+    /// <see cref="ThoughtOf"/>. That is not a preference: this is `FUN_0020C930`, the arm that runs
+    /// when a guest CHOOSES WHAT TO DO, and tinyclaw's census of `+0x40` writers found every one to
+    /// be a one-shot EVENT write with no per-frame writer anywhere -- `20C6A8` writing 4 when
+    /// nothing scores or 2 on a sub-8 pick, `210428` writing 9 once as the guest leaves. The
+    /// per-frame poll was this port's invention, and the ladder's own comment already said so.
+    ///
+    /// ⚠ SO THIS NOW HAS NO CALL SITE. It is an event handler waiting for its event: nothing in
+    /// this port yet marks the moment a guest picks a destination. Kept, rather than deleted,
+    /// because the rules in it are read off the console and the event is coming. What the port
+    /// loses meanwhile is nothing real -- the renderer was passing `foodNearby: true` for every
+    /// guest on every frame, which asserts that every amenity is always adjacent.</summary>
     public Thought Decide(int guest, bool foodNearby, bool drinkNearby, bool toiletNearby)
     {
         if (!_byGuest.TryGetValue(guest, out var w)) return Thought.Normal;

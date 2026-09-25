@@ -1911,7 +1911,12 @@ public partial class Viewer : Node3D
         foreach (int id in visibleGuests)
         {
             if (!needs.Has(id)) continue;
-            var want = needs.Decide(id, foodNearby: true, drinkNearby: true, toiletNearby: true);
+            // ⚠⚠ READ, DO NOT RE-DECIDE. This called `Decide` every frame with all three
+            // "nearby" flags hardcoded true -- asserting a burger van, a drinks stall and a
+            // lavatory are always adjacent to every guest -- and `Decide` assigns the thought
+            // unconditionally, so the decoded 128-tick ladder was overwritten before it could ever
+            // be seen. `Thought.Bored` comes only from that ladder and had never once rendered.
+            var want = needs.ThoughtOf(id);
             // Both walking and outside-service bodies use world-space bubble anchors.
             if (_actors.TryGetValue(id, out var actor) && IsInstanceValid(actor))
                 _thoughts.Show(id, want, actor.GlobalPosition);
