@@ -2723,6 +2723,60 @@ Every park-2 row equals its park-1 row, so the ride set belongs to the world, no
 Correction: findings/visitors.md records SPACE as "6 of 23". Every run on disk since 2026-09-24 03:45
 reads 22. The 09-23 figure has no surviving log and is annotated as unverified there.
 
+## CP2: departures, stranded guests, soak and CI (queue items 7, 8, 10, 13) — September 25, 2026 UTC
+
+**Item 7: ordinary departures through state 26. Landed at 4a98b64.**
+- An admitted guest who WantsToGoHome now leaves through 210D70, the same departure a booth
+  rejection takes. It runs phase-gated mode 14 with sticky A4, then staging, then mode 9 to point0, and
+  counts as WentHome.
+- The seam is ParkVisitors.NativeDeparture (cow's file).
+- Details and the 20C930 decode are in findings/native-ordinary-departure.md.
+
+Gates at 4a98b64, clean tree, in /tmp/tpw-4a98b64:
+- all 23 projects build with 0 errors;
+- 79 unit tests OK;
+- the audit matrix gives `known_retail_failures_remain`, exit 2, `landing_evidence=true`. Only
+  Thrill Grill (HALLOW 1/2) and Moon Buggies (SPACE 1/2) are red, and the departure family is at 63
+  checks in every park;
+- runtime 11/11;
+- the viewer matrix is 32/32 with loaded == requested. The departure scene passes in all 8 parks (46
+  checks; 50 on FANTASY).
+
+Teeth, each failing by name:
+- with no seam: "a guest retires only from the native departure, never the legacy gate walk";
+- with no phase gate: "mode14 is requested only on the guest's activation phase";
+- headless, the seam never consulted, and a minted serial for a stranger.
+
+**Item 8: no stranded guests.** The state-0 and state-5 holds are resumed one update later by a
+labelled adapter (NativeEntranceFlow.Resume):
+- An admitted leaver is handed back to ordinary visiting through ParkVisitors.ReleaseNativeDeparture
+  (cow's file).
+- Any other guest held at state 0 retries state 26.
+- State 5 requests the bus leg again.
+- GuestWalk.ReleaseNativeRoute now accepts a lease holding no slot, which is one standing still.
+
+Evidence:
+- NativeDepartureDisruptionSmoke, JUNGLE-1: the park path is dug up under 3 broke leavers. 20 holds
+  were resumed and all 20 handed back, and no guest was held more than one update. Once the path was
+  relaid, all 8 guests left at point0 with nothing held.
+- Teeth, each failing by name:
+  - keeping the holds: "guest 5 is not left in a state-0/5 hold", plus 5 headless checks;
+  - before the ReleaseNativeRoute fix: "0 handbacks".
+
+**Item 10: busy-park soak.** NativeEntranceSoak, described in findings/native-entrance-soak.md.
+- It runs the executable's LoadsOfKids batch rule, then a broke exodus.
+- JUNGLE-1: 100 births and 100 went home, peak group 12 with 5 flips, peak pressure 56 with 1 veto,
+  and the park drained with all 1000 slots free.
+- Teeth, each failing by name:
+  - the 30-guest test removed: "refused 0 batch requests";
+  - departures left uncounted: "tick 500: births 20 = went home 0 + discarded 0 + live 19".
+
+**Item 13, first half.** `.github/workflows/ci.yml` builds every project and runs the disc-free tool
+tests on push and pull request. It lives on the research branch only, so nobody's pushes to main
+trigger it until it lands there. The disc, rendered and engine gates stay local.
+
+The 8-park evidence for items 8 and 10 is the final gate run cited in the HANDOFF.
+
 ## Archived plan checkpoints (moved verbatim from plan.md lines 58-329 on 2026-09-25)
 
 ## Current user-priority queue (September24 post-native-consumer landing)

@@ -35,6 +35,8 @@ SCENES = {
     'departure': ('NativeOrdinaryDepartureSmoke', 'NATIVE ORDINARY DEPARTURE SMOKE', 40),
     # Per-update hold checks dominate this count (13144 on JUNGLE-1); the floor only proves they ran.
     'disruption': ('NativeDepartureDisruptionSmoke', 'NATIVE DEPARTURE DISRUPTION SMOKE', 1000),
+    # Queue item 10. Per-update stop checks dominate (73473 on JUNGLE-1); the floor only proves it ran.
+    'soak': ('NativeEntranceSoak', 'NATIVE ENTRANCE SOAK SMOKE', 5000),
 }
 MAP_LINE = re.compile(r'^\[map\] loaded world=([A-Z]+) terrain=(terrain_[12])\.mps$', re.M)
 

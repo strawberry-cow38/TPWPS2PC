@@ -1,0 +1,28 @@
+# Queue item 13: build every project and run the disc-free tool tests on each push and pull request.
+# No disc, extracted asset or engine binary is available here, so the rendered and disc-reading gates
+# (audit_matrix, runtime_audit, viewer_matrix) stay local; see plan.md section 8.
+name: ci
+on:
+  push:
+  pull_request:
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build every project
+        run: |
+          set -eu
+          for project in $(git ls-files '*.csproj' | sort); do
+            echo "::group::$project"
+            dotnet build "$project" --nologo -v q
+            echo "::endgroup::"
+          done
+      - name: Disc-free tool tests
+        run: python3 -m unittest discover -s tools -p 'test_*.py'

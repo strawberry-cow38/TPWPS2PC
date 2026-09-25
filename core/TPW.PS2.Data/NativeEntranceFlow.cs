@@ -181,6 +181,9 @@ public sealed class NativeEntranceFlow
     /// to ordinary visiting. Instrumentation only; nothing reads them to decide.</summary>
     public int HoldsResumed { get; private set; }
     public int DepartureHandbacks { get; private set; }
+    /// <summary>Mode-16 completions whose random group already held 11 and flipped (the ONE flip, not a
+    /// veto). Instrumentation for the soak.</summary>
+    public int GroupFlips { get; private set; }
 
     /// <summary>Reference-identity gate for the parent Walk loop: these guests must
     /// only be stepped through the supplied StepOwnedNative callback.</summary>
@@ -756,7 +759,7 @@ public sealed class NativeEntranceFlow
                     int group = _services.Random(2);
                     if (group is < 0 or > 1)
                         throw new InvalidOperationException("Bounded RNG(2) returned an out-of-range value.");
-                    if (_incoming[group].Count >= 11) group = 1 - group; // ONE flip, not a capacity veto
+                    if (_incoming[group].Count >= 11) { group = 1 - group; GroupFlips++; } // ONE flip, not a capacity veto
                     e.Group = group;
                     e.State = State.RequestQueue;
                 }

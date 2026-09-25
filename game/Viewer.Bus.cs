@@ -150,6 +150,8 @@ public partial class Viewer
         return result;
     }
 
+    bool _nativeLoadsOfKids;
+
     void AdmitBusBatch(int pointSelector)
     {
         if(pointSelector!=0) throw new InvalidOperationException("unsupported native bus drop-off selector");
@@ -168,7 +170,9 @@ public partial class Viewer
         var bounds=NativeBusDemand.Bounds(score,_busCatalogue.DemandOffset,_busCatalogue.DemandDivisor,
             entranceGroupCount:_entranceFlow is {} incoming ? incoming.Counts.Group0 + incoming.Counts.Group1 : 0,
             ceiling,population);
-        int requested=bounds.Requested;
+        // Research soak only: the executable's LoadsOfKids batch rule, min(20, 20-W), ignoring demand and
+        // headroom (NativeBusDemand.Batch). Off unless a fixture sets it; never a default.
+        int requested=_nativeLoadsOfKids ? Math.Min(20,bounds.Entrance) : bounds.Requested;
         var at=_busCatalogue.Point0;
         int admitted=0;
         if(_guests.Paths.Open(at))

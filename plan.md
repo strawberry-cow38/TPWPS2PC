@@ -89,17 +89,20 @@ No raw disc, extracted game assets, credentials or proprietary source goes into 
 
 ## 3. Now
 
-**Package:** queue item 7, ordinary departures through state 26, on the research branch behind
-`--experimental-native-entrance`. Items 2 and 9 are done (progress.md, "CP2: evidence infrastructure").
-Items 4 and 5 wait on humans: cow's dispatcher acknowledgement, and strawberry's choice from the
-side-by-side idle film.
+**Package:** none in progress for the agent. Items 2, 7, 8, 9 and 10 are done on the research branch,
+and item 13 is half done: the CI workflow is on the branch. See progress.md, "CP2: departures,
+stranded guests, soak and CI".
 
-**Owner:** tinyclaw. ParkVisitors is cow's, so the one-member Leaving seam needs cow's sign-off before
-it goes to main.
+Everything left waits on a human:
+- cow tools: acknowledge the dispatcher (item 4). Review the ParkVisitors seams and the
+  GuestWalk.ReleaseNativeRoute change (items 7 and 8), then slices B and C (item 6), and own the
+  gait for item 5.
+- strawberry: the scope matrix (section 7); the idle-animation choice (item 5); the default flip
+  (item 11); and whether CI goes to main (item 13).
 
-**Stopping condition:** the queue item 7 conditions.
+**Owner:** tinyclaw, for the evidence and the next package once any of those answers arrive.
 
-**Next review:** CP2 when item 7 lands. Replace this section in place then; do not append.
+**Next review:** when the first answer arrives. Replace this section in place then; do not append.
 
 ## 4. Priority queue
 
@@ -147,14 +150,19 @@ preempts it, and a CP4 contradiction reorders it. Human testing is collected at 
    - C is the Viewer partials and hooks, the Bus hooks, and the smokes, with an internal test seam so
      that about 30 reflected private members stop being a silent breakage risk.
    - *Stop when:* main's default gates are unchanged and the opt-in 24-scene matrix passes on main.
-7. **Ordinary departures through state 26** (the real content of "pressure population").
+7. **Ordinary departures through state 26** (the real content of "pressure population"). DONE on
+   the branch, 2026-09-25 at 4a98b64: 32/32 viewer matrix and findings/native-ordinary-departure.md.
+   Needs cow's sign-off on the ParkVisitors seam before main.
    - 20C930 routes unhappy or broke guests (happiness < 5 or cash < 100) through 26 → 14 → 2E → 30 →
      9, so they walk out through the booths to the bus instead of vanishing at the gate. WentHome counts
      them and the sticky tally includes them.
    - This needs a Leaving handoff API in ParkVisitors, which is cow's.
    - *Stop when:* a Viewer smoke shows it, and mutations for "vanish at gate" and "skip phase gating"
      fail.
-8. **No stranded guests.** A handback adapter for the state 0 and state 5 holds.
+8. **No stranded guests.** A handback adapter for the state 0 and state 5 holds. DONE on the
+   branch, 2026-09-25: NativeEntranceFlow.Resume and the disruption smoke. The booth-to-bus corridor
+   cannot be bulldozed in this port, so the smoke digs up the park path instead; state 5 is covered
+   headless.
    - *Stop when:* a disruption smoke (bulldoze booth→bus mid-departure, delete the staging path) ends
      every guest as WentHome or back in ordinary park state within a fixed tick budget, with no lease
      held at quiescence.
@@ -165,7 +173,9 @@ preempts it, and a CP4 contradiction reorders it. Human testing is collected at 
    the BFS adapter uses it.
    - *Stop when:* a findings table exists. A mismatch opens the planner package (section 6); a match
      records BFS as an equivalent labelled adapter for the corridor.
-10. **Busy-park soak.** All 8 parks with the flow on, for a fixed number of ticks each.
+10. **Busy-park soak.** All 8 parks with the flow on, for a fixed number of ticks each. DONE on the
+    branch, 2026-09-25: findings/native-entrance-soak.md. It uses the executable's LoadsOfKids batch
+    rule as a fixture input.
     - *Stop when:* all of these hold: conservation (births = WentHome + discarded + live), the pool
       reads 1000 free at quiescence, the group flip (≥ 11) and the 30-guest veto each occur at least
       once, and there are no errors or leaks.
@@ -204,8 +214,8 @@ preempts it, and a CP4 contradiction reorders it. Human testing is collected at 
 | Item | State | Gate for default? | If not, trigger |
 |---|---|---|---|
 | Readiness (191E10 over 2AAD48) | done, opt-in | yes, already met | n/a |
-| Ordinary departures via 26 (pressure population) | open | **yes** (queue 7) | n/a |
-| No stranded guests (state 0/5 holds) | open | **yes**, as an adapter (queue 8) | n/a |
+| Ordinary departures via 26 (pressure population) | done on the branch, opt-in | **yes** (queue 7), met there | n/a; the arms after the 26 write are a labelled adapter |
+| No stranded guests (state 0/5 holds) | done on the branch as an adapter | **yes** (queue 8), met there | n/a |
 | Native A* planner 18C4B8–18DC74 (A*, Manhattan heuristic, random 1-of-4 direction order, two-ended open-list insert, ~99 nodes per call) | decoded in part; BFS adapter in use | no | the queue 9 check found a mismatch IN PRINCIPLE (findings/native-route-planner.md), so the package opens only once its input exists. Trigger: a native tile-kind producer (placement 1E2AD0, link byte 1E70F0) is built, or a routing defect is reproduced at the entrance, or ordinary walkers move onto native routes. Then rerun the item 9 comparison on real tiles |
 | Activation-serial origin | unknowable statically | no | **won't fix**: a labelled adapter (≤ 64-tick phase offset) |
 | RNG stream and global order | generator readable, order not | no | **won't fix**: NewlibRand / guest stream, labelled |
