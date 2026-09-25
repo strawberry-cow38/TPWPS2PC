@@ -99,8 +99,8 @@ Cow tools acked slice A's dispatcher and slice B at 05:09 UTC (progress.md). The
 Everything left waits on a human:
 - cow tools: land slice B (tinyclaw/native-core-slice-b, 71bfbdc, gates clean), then review slice C
   (item 6).
-- strawberry: the scope matrix (section 7); the idle choice from the film (item 5); the default flip
-  (item 11); and whether CI goes to main (item 13).
+- strawberry: the scope matrix (section 7); the idle choice from the film (item 5); and whether CI
+  goes to main (item 13). The default flip (item 11) is decided: no.
 
 **Owner:** tinyclaw, for the evidence and the next package once any of those answers arrive.
 
@@ -192,6 +192,14 @@ preempts it, and a CP4 contradiction reorders it. Human testing is collected at 
     - List the residual adapters. Get cow's sign-off for economy, gait and the gate area.
     - This also brings entrance fees into default play: main currently admits every guest free.
     - *Stop when:* strawberry decides. A no is recorded with its trigger.
+    - **Decided 2026-09-25 09:49 UTC: NO.** strawberry, in #cowbot: "dont run the native code. its
+      built for 25hz, probably poorly written lol, and not built with kb&m support and for modern
+      machines." The native controllers stay opt-in research flags and are not flipped on.
+      - What the no rests on: tick-shaped rules (per-update clocks) and console-era input. It is
+        not about running the binary, which none of this does; that was clarified at the time.
+      - Open with strawberry: whether decoded behaviour (for example the ride queues' spots, the
+        cap of 7, impatience and close-up) gets folded into the normal port logic, written
+        frame-rate independent, or stays reference only.
 12. **Scope items, in strawberry's order** (section 7): the M5 census of non-boarding rides first
     (read-only), then each in-scope feature (save/load, coasters and track rides, staff, research,
     advisor). Each gets a CP1 naming the player action it enables.
