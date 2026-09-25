@@ -7501,6 +7501,24 @@ public partial class Viewer : Node3D
             if (!k.StartsWith("STR_PURCHASE_", StringComparison.OrdinalIgnoreCase)) continue;
             GD.Print($"[type]   {i,4} {k} = \"{_text.Text("eng", i)}\"");
         }
+        // ⭐ EVERY key of a coaster's .sam, and every model in its folder. Master: "the object
+        // you place when building a coaster shouldnt be a 1x1. its the bigger object, as the
+        // station." `coaster1.sam` reports no Info.Shape, so the station's size is somewhere else
+        // -- printed in full rather than guessed at.
+        {
+            var c = _lib.Rides.FirstOrDefault(r => r.Model != null
+                        && r.Model.Path.Contains("coaster1", StringComparison.OrdinalIgnoreCase));
+            var cd = c == null ? null : DefinitionFor(c.Model);
+            if (cd != null)
+            {
+                foreach (var k in cd.Fields.Keys.Concat(cd.Blocks.Keys).OrderBy(k => k)
+                             .Where(k => !k.StartsWith("asCrossSection")))
+                    GD.Print($"[coaster] {k} = {cd.Fields.GetValueOrDefault(k)?.ToString() ?? "(block)"}");
+            }
+            foreach (var r in _lib.Rides)
+                if (r.Model != null && r.Model.Path.Contains("/Coaster", StringComparison.OrdinalIgnoreCase))
+                    GD.Print($"[coaster.file] {r.Model.Path}  sam={DefinitionFor(r.Model)?.Source}");
+        }
         GD.Print("[type] --- end of STR_PURCHASE ---");
         GD.Print("[type] the first 26 rows, in case the index is simply the row:");
         for (int i = 0; i < 26 && i < _text.Keys.Length; i++)

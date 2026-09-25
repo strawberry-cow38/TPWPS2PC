@@ -399,11 +399,35 @@ public sealed class PathTool
     {
         if (rideId == 0 || !Ready) return 0;
         var cleared = new List<(int X, int Y)>();
+        int torn = 0;   // ⚠ cells that WENT -- a demoted join cell is still there
         for (int y = 0; y < _field.Height; y++)
             for (int x = 0; x < _field.Width; x++)
             {
                 int at = At(x, y);
-                if (_kind[at] != Kind.Queue || _owner[at] != rideId) continue;
+                if (_owner[at] != rideId) continue;
+
+                // ⭐⭐ THE JOIN CELL STAYS, BUT IT STOPS BEING A JUNCTION. Master: "the queues of
+                // deleted rides are refreshing sprites of once-connected path tiles."
+                //
+                // A `Kind.Both` cell is where this ride's queue was drawn onto park path, and it
+                // is deliberately NOT torn up -- master's earlier rule, because it is the park's
+                // walkable network. But it kept `_run`, the queue-arm bits it was drawn with, and
+                // `LinksFor` ors those in for a Both cell -- so after the queue vanished that tile
+                // went on wearing a limb pointing down a queue that no longer exists. It is not a
+                // junction any more; it is plain path, and it has to be told so.
+                //
+                // ⚠ The ground is NOT restored here, unlike a cleared queue cell: this cell is
+                // still a path and Repick will choose it a path sprite. Restoring `_before` would
+                // put back whatever was under the path.
+                if (_kind[at] == Kind.Both)
+                {
+                    Record(at);
+                    _kind[at] = Kind.Path; _owner[at] = 0; _run[at] = 0;
+                    _before.Remove(at);
+                    cleared.Add((x, y));
+                    continue;
+                }
+                if (_kind[at] != Kind.Queue) continue;
                 Record(at);
                 if (_before.TryGetValue(at, out var ground))
                 {
@@ -412,12 +436,13 @@ public sealed class PathTool
                 }
                 _kind[at] = Kind.None; _owner[at] = 0; _run[at] = 0; _turns[at] = 0;
                 Laid--;
+                torn++;
                 cleared.Add((x, y));
             }
         // ⚠ AFTER the whole sweep, not inside it: a neighbour repicked while the rest of the run
         // is still standing would choose its sprite against cells about to vanish.
         foreach (var (x, y) in cleared) RepickAround(x, y);
-        return cleared.Count;
+        return torn;
     }
 
     /// <summary>⭐⭐ FORGET A RIDE'S DOORS, and repick the ground that was wearing an arm at them.
