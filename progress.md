@@ -4,88 +4,30 @@ Updated: 2026-09-25 UTC. Roadmap: [plan.md](plan.md).
 
 ## HANDOFF (rewritten in place at every landing; newest log entry is at the BOTTOM of this file)
 
-Updated 2026-09-25 by tinyclaw, after the 839f7ca gates.
-- The active checkout is `/home/ec2-user/tpwps2-entrance`, branch `tinyclaw/native-entrance-flow`,
-  pushed as `origin/astraclaw/native-entrance-flow`.
-- It is merged with origin/main as of dce68b7 (slice A).
-- astraclaw is out of usage until Oct 1, and tinyclaw is executing plan.md until then.
+Updated 2026-09-25 ~20:00 UTC by tinyclaw, after 95304e8.
+- Everything is on main. The research branch `astraclaw/native-entrance-flow` and
+  `tinyclaw/native-ride-queues` merged at 876b9f8/8082978 and 15824af; there is no side branch to pick up.
+- astraclaw is out of usage until Oct 1. cow tools owns the laptop UI, build list and PathTool deletes.
 
-**The branch.** Opt-in research; default play on main is unchanged.
-- `--experimental-native-entrance` does all of the following:
-  - runs bus-born guests through the native booth queues and fee;
-  - walks rejected guests back to the bus;
-  - sends admitted guests who have had enough out through state 26 (queue item 7);
-  - resumes the state-0 and state-5 holds, so no guest is stranded (queue item 8).
-- `--native-guest-animation` adds readiness: a guest waits for its animation to commit before it
-  walks.
-- The standalone native core is on main as slice A (c5dfe12).
+**What default play does now:**
+- **Tickets** (0e6e5eb): bus guests queue at the booths and pay the fee (150) into park income, or turn
+  back and ride home. `--legacy-entrance` restores the free walk-in.
+- **Queues are walked as drawn** (aff6cbf): a guest steps onto and off queue tiles only along the run
+  links, so it joins where the queue meets a path and walks the line. A queue that only ends beside
+  a path is not connected.
+- **Seaplane and ferry** (079a1d5): run from their own scripts in HALLOW, FANTASY and SPACE;
+  none in JUNGLE; `--no-seaplane-ferry` turns them off. Silent, carry no guests, port-chosen waits.
 
-**Latest gates, at 487995e** (clean committed tree, /tmp/tpw-487995e). This revision includes main's
-`--idle-scene`, the opt-in `--native-idle-all` and cow's snapshot fix. All 23 projects build, the unit
-tests pass, the audit matrix shows only the retail reds with `landing_evidence=true`, runtime is 11/11,
-and the viewer matrix is 48/48 with loaded == requested. Later commits are docs only
-(findings/native-ride-queue.md).
+**Still opt-in:** `--native-ride-queues`, `--native-guest-animation`, `--native-idle-all`
+(plan.md item 11: the entrance is the one exception to its "no").
 
-**Previous gates, at aa1075e** (clean committed tree, /tmp/tpw-aa1075e). That revision added cow's
-GuestWalk.Step snapshot fix. All 23 projects build, the unit tests pass, the audit matrix shows only
-the retail reds with `landing_evidence=true`, runtime is 11/11, and the viewer matrix is 48/48 with
-loaded == requested.
+**Known reds on main, all pre-existing:** the audit's Thrill Grill (HALLOW) and Moon Buggies (SPACE)
+retail failures; StandingService `[89]`; StandingServiceSmoke "same guest reappears"; ShopServiceSmoke
+`BEFORE_SEED_PRESERVED_WITH_PRESENTED_NEED_THOUGHT`. The needs-lifecycle three were c35aaa4's and were
+fixed in 57ae10e.
 
-Later commits bring in main (cow's `--idle-scene`, and the corrected 93% comment), the opt-in
-`--native-idle-all` branch with its IdleSceneFilm harness, and docs. A full gate rerun at the
-resulting HEAD is recorded when it finishes.
-
-**Earlier gates at 839f7ca** (clean committed tree, built before the runs, /tmp/tpw-839f7ca):
-- all 23 projects build with 0 errors;
-- 79 tool unit tests OK;
-- `tools/audit_matrix.py`: `known_retail_failures_remain`, exit 2, `landing_evidence=true`. It covers
-  8 parks, terrain_2 included. Only HALLOW Thrill Grill and SPACE Moon Buggies are red, and every
-  REQUIRED_CHECKS minimum is met (rejected/ordinary departure 71);
-- `tools/runtime_audit.py`: 11 of 11;
-- `tools/viewer_matrix.py`: 48 of 48 across all 8 real parks (entrance, rejected, readiness, departure, disruption, soak), loaded == requested in every case.
-
-The later commits on this branch are docs only. Slice B's own gates ran at 54234e8 (/tmp/tpw-54234e8): unit OK; the audit matrix shows only the retail reds, with `landing_evidence=true`; runtime 11/11; all projects build.
-
-**Decompiled C.** The authorized partial Ghidra corpus (416 files) is at
-`/home/ec2-user/astraclaw/astraclaw/state/scratch/1492558787561914542/tpw-private-research/ghidra-corpus`,
-outside Git. Older notes give `../tpw-private-research/ghidra-corpus`, which does not resolve from
-these checkouts. Use it as an additional source, and check signatures against the MIPS.
-
-**Labelled adapters.** They are listed in the startup NON-PARITY line, in plan.md section 6, and in
-findings/native-ordinary-departure.md and native-entrance-soak.md.
-
-**Cow tools' sign-offs, recorded.** At 2026-09-25 05:09 UTC in #cowbot (message 1552909850621509684),
-cow tools acked both of these:
-- **slice A's dispatcher:** NativeLogicalAnimation matches their own read of 0x2AAD48, and it reads the
-  table from the executable rather than baking it in;
-- **slice B:** they checked the per-instance route pool, the Send/SendToTerminal lease guards, the
-  liveness index, the NativeDeparture seam (null by default, offered before the gate walk, with its
-  loop snapshotted), and ShowOut keeping WentHome's meaning.
-
-Their one note was that GuestWalk.Step iterated without a snapshot while StepNative fires the public
-SlotAdvanced seam. It is applied as 71bfbdc on slice B and cherry-picked here. They took the idle queue
-scene as their half of item 5, once the dispatcher drives every guest (side branch
-`tinyclaw/native-idle-all`, which is now pushed).
-
-**Waiting on humans** (plan.md section 3):
-- **cow tools:** slice C review (item 6), and the idle queue scene (item 5).
-- **strawberry:**
-  - the scope matrix, asked 2026-09-25 01:47 UTC;
-  - the idle choice (item 5);
-  - the default flip (item 11);
-  - whether the CI workflow goes to main (item 13).
-
-**Item 5, a negative result.** The idle film fixture (side branch `tinyclaw/native-idle-all`, f27ebe1)
-was blind. Admitted guests stood still for only 5 and 3 guest-ticks out of 150 per mode, because Idle
-re-tasks a guest the moment it arrives. An idle comparison needs guests who wait, in queues or at
-service.
-
-**Rules that still hold:**
-- No restarts.
-- Do not redo the shipped bus, destination scoring, relief, shop walking, hide list, gate or path-price
-  work.
-- Cow tools owns the body of Viewer.cs, economy, gait, audio and particles (plan.md section 2).
-- Never write into a worktree while a provenance-checked gate run is reading it.
+**Gates:** full gates ran on each landing's own commit before it was pushed; see the log entries below.
+The viewer matrix now has a seventh scene, `vehicles`, and is 56 cases.
 
 ## Previous handoff (2026-09-24, superseded)
 
@@ -3232,3 +3174,49 @@ and the port table are in findings/native-ride-queue.md.
 - the ordinary state-4 +94 exception is not modelled;
 - a boarded head joins the script's queue for LETMEON;
 - effect 0x7E and 2E28D0 are unported.
+
+## Queues and the entrance research merged to main — September 25, 2026 UTC
+
+- 876b9f8 merges `tinyclaw/native-ride-queues`, which carries astraclaw's `native-entrance-flow`, onto
+  c8a4a65. The queues use that branch's bus code, so they could not land alone: a trial cherry-pick
+  of the six queue commits conflicted in 3 files.
+- 8082978: c8a4a65 had removed `ToggleBuildMenu`, which 10 test scenes still called by reflection
+  (MissingMethodException in all 48 viewer cases). They now call `ShowBuildCategory` directly, as the
+  viewer itself does. 15824af brings the research branch's last docs-only commits.
+- Full gates at the merge 876b9f8 matched main's own (the three needs-lifecycle reds were already on
+  main); the viewer matrix was 48/48 after the smoke fix, at 8082978.
+
+## Tickets are the default — September 25, 2026 UTC
+
+- 0e6e5eb: the native entrance flow is the default (strawberry: "yes go" to "make tickets part of
+  normal play"). `NativeEntranceOn`, `--legacy-entrance`/`_legacyEntrance`, fee field `_entranceFee`,
+  log prefix `[entrance]`. `[bus.arrivals]` prints `entrance[accepted, rejected, fee]`.
+- The six entrance smokes no longer switch it on, so they pass only if the default is on. c69e645:
+  BusViewerSmoke asserts the flow owns each newborn; with `--legacy-entrance` it fails at "the entrance
+  flow is live in shipping play without any flag".
+- Default play, JUNGLE `--guest-test`, no flags: 7 buses, accepted 7, rejected 0, riders on Crazy Ape.
+  Gates at 9aefe67: as main, viewer 48/48; BusViewerSmoke's walk-in assertion was the one new red,
+  fixed in c69e645 and re-run after rebasing onto 414c73d.
+
+## Queues walked as drawn — September 25, 2026 UTC
+
+- strawberry: guests "dont use the full queue, just short-cutting from a path tile next to the queue
+  tile of the entrance". GuestWalk let a queue tile be only a destination, entered from any open
+  neighbour. aff6cbf: `PathTool.QueueStep` (a step follows a queue's run bits) and
+  `GuestWalk.QueueStep`; the viewer wires them. `--guest-test` now draws one queue cell onto the path.
+- QueueWalkChecks (every park, matrix requires 7): a U-shaped queue whose stub is beside a path row.
+  The old rule on the same fixture takes the 7-cell shortcut; the new one walks all 13. Forcing the old
+  rule turns three checks red. NativeRideQueueSmoke checks the viewer's own walker end to end.
+- Gates at 38152c9: as main, viewer 48/48; re-checked after rebasing onto 9a927d6.
+
+## Seaplane and ferry — September 25, 2026 UTC
+
+- Every world ships both (Info.Id x602/x604 beside Bus x600, Gates x601), with a script that does the
+  bus's job. The PS2 executable never loads them: its fixed-item stem list is Gates, Bus1, Bus2, and no
+  sound bank has a plane or boat sample. The PC version shows them.
+- 079a1d5: each runs its own .RSE on the port's VM; the port pulls VAR_TRIGGER after its own waits.
+  Stops were rendered in all 8 parks: on the bay by the entrance road in HALLOW, FANTASY and SPACE;
+  inside the grass bank in both JUNGLE terrains, so JUNGLE gets none (its ferry also has no model).
+- ParkVehiclesSmoke, viewer matrix `vehicles`: 8/8 after 95304e8's teardown fix (the first run flagged
+  3 parks for leaked ambient AudioStreamPlaybackWAV at exit, not vehicle objects). Disabling the
+  trigger stops the seaplane at status 2 and fails the smoke.
