@@ -89,7 +89,7 @@ static class NativeRideQueueChecks
     public static void RunWalked(Model terrain, ParkPaths source, IReadOnlyList<ParkCell> corridor, byte[] script,
         Animation aps, int capacity, Func<string, byte[]> sibling, int seats, Action<bool, string> check)
     {
-        void C(bool ok, string why) => check(ok, "native ride queue (walked): " + why);
+        void C(bool ok, string why) => check(ok, "native ride queue walked: " + why);
         var mouth = corridor.Skip(4).OrderByDescending(c => c.X).ThenBy(c => c.Z).First();
         var spawn = corridor[0];
 

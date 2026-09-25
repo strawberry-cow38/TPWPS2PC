@@ -634,7 +634,7 @@ NativeRideQueueChecks.Run(Check);
 if (serviceRide is { } queueRide)
     NativeRideQueueChecks.RunWalked(terrain, loopPaths, onPath, queueRide.Script, queueRide.Aps,
         queueRide.Def.UpgradeCapacity(0) ?? 1, queueRide.Sibling, queueRide.Seats, Check);
-else Check(false, "native ride queue (walked): no vetted ride to queue for");
+else Check(false, "native ride queue walked: no vetted ride to queue for");
 SfxGraphChecks.Run(disc, Check);
 BridgeChecks.Run(terrain, PathPieces.Read(disc), world, Check);
 QueueRemovalChecks.Run(terrain, PathPieces.Read(disc), world, Check);
