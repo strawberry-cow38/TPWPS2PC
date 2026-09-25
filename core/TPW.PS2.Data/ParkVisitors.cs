@@ -21,6 +21,10 @@ public enum VisitorIntent
     Leaving,
     /// <summary>Explicit park-entrance route owner, not an attraction's queue or service.</summary>
     Entering,
+    /// <summary>Standing in a ride's NATIVE queue (research, <see cref="ParkVisitors.NativeQueueArrival"/>).
+    /// ⚠ Unlike <see cref="Queued"/> the guest is still ON the walk, drawn at its spot, and its native
+    /// lease belongs to the queue owner until it boards or walks back out.</summary>
+    Queueing,
 }
 
 /// <summary>⭐⭐ THE TWO HALVES, JOINED. <see cref="GuestWalk"/> moves people over the park's
@@ -244,6 +248,59 @@ public sealed class ParkVisitors
     /// legacy walk below untouched.</summary>
     public Func<Guest, bool> NativeDeparture { get; set; }
 
+    /// <summary>Research seam, null by default: the native ride queues (findings/native-ride-queue.md).
+    /// Names the cell where a ride's queue meets the path, its mouth (ride vtable +F4). A guest sent to
+    /// that ride walks there instead of to the legacy stub. Null, or null for one ride, keeps the stub
+    /// and the legacy queue.</summary>
+    public Func<ParkRide, ParkCell?> NativeQueueMouth { get; set; }
+
+    /// <summary>A guest heading for a ride has reached its mouth (20D628 case 0, then 20D530 and state
+    /// 0x29). True means the queue owner took the guest's lease through <see cref="AssignQueueRoute"/>.
+    /// False is the console's refusal (the ride is not eligible, the queue is at its head count, or it is
+    /// physically full): the guest gives up on the ride where it stands. There is no legacy join.</summary>
+    public Func<Guest, ParkRide, bool> NativeQueueArrival { get; set; }
+
+    /// <summary>The queue owner's route, inside the queue. It is only granted for the ride the guest was
+    /// heading for, or to the owner already holding the guest's queue lease.</summary>
+    public GuestWalk.NativeAssignment AssignQueueRoute(Guest guest, ParkRide ride, object owner,
+        IReadOnlyList<NativeGuestMotion.Point> waypoints, NativeMotionInputs inputs)
+    {
+        if (guest == null || ride == null || !_plans.TryGetValue(guest.Id, out var plan)
+            || !_owners.TryGetValue(guest.Id, out var heading) || !ReferenceEquals(heading, ride)
+            || !(plan.Intent == VisitorIntent.Heading && !guest.HasNativeRoute
+                 || plan.Intent == VisitorIntent.Queueing && Walk.NativeRouteState(guest, owner) != null))
+            return GuestWalk.NativeAssignment.Refused;
+        var result = Walk.AssignNativeRoute(guest, owner, waypoints, inputs);
+        if (result != GuestWalk.NativeAssignment.Refused)
+            _plans[guest.Id] = plan with { Intent = VisitorIntent.Queueing, At = guest.Cell };
+        return result;
+    }
+
+    /// <summary>117C90: the queue's head boards. It leaves the walk and joins the ride's script queue,
+    /// where <see cref="ParkSim"/> offers it through LETMEON, exactly as a legacy arrival does from here.</summary>
+    public bool BoardFromQueue(Guest guest, ParkRide ride, object owner)
+    {
+        if (guest == null || !_plans.TryGetValue(guest.Id, out var plan) || plan.Intent != VisitorIntent.Queueing
+            || !_owners.TryGetValue(guest.Id, out var at) || !ReferenceEquals(at, ride) || !Sim.Rides.Contains(ride)
+            || Walk.NativeRouteState(guest, owner) == null) return false;
+        ride.Join(guest.Id);
+        Boardings++;
+        _plans[guest.Id] = plan with { Intent = VisitorIntent.Queued, At = guest.Cell };
+        Walk.Remove(guest.Id);
+        return true;
+    }
+
+    /// <summary>A guest out of the queue (event 7's walk back to the mouth, or event 10 where it stood)
+    /// goes back to ordinary visiting. It needs the owner's finished lease at a cell centre, like every
+    /// other native hand-back. The same identity, needs and cash are kept.</summary>
+    public bool ReleaseFromQueue(Guest guest, object owner)
+    {
+        if (guest == null || !_plans.TryGetValue(guest.Id, out var plan) || plan.Intent != VisitorIntent.Queueing
+            || !Walk.ReleaseNativeRoute(guest, owner)) return false;
+        Wander(guest.Id, guest.Cell);
+        return true;
+    }
+
     /// <summary>Explicit entrance owner of an existing wandering identity. The caller supplies
     /// route service results and native inputs; this is not an automatic admission policy.</summary>
     public bool BeginEntranceRoute(Guest guest, object owner,
@@ -337,7 +394,7 @@ public sealed class ParkVisitors
             var terminal=new GuestTerminal(ride,ride.Entrance.Value,entry,()=>Sim.Rides.Contains(ride) && Takes(ride));
             if (!Walk.SendToTerminal(guest,terminal)) return false;
         }
-        else if (!Walk.Send(guest, ride.Entrance.Value)) return false;
+        else if (!Walk.Send(guest, NativeQueueMouth?.Invoke(ride) ?? ride.Entrance.Value)) return false;
         _plans[guest.Id] = new Plan(guest.Id, VisitorIntent.Heading, ride.Id, guest.Cell);
         _owners[guest.Id] = ride;
         _returning.Remove(guest.Id);
@@ -591,6 +648,8 @@ public sealed class ParkVisitors
         {
             if (live.Contains(ride)) continue;
             if (!_plans.TryGetValue(guest, out var plan)) { _owners.Remove(guest); continue; }
+            // A native queue's owner holds the lease and releases its guests itself (event 10).
+            if (plan.Intent == VisitorIntent.Queueing) continue;
             var walking = Walk.Guests.FirstOrDefault(g => g.Id == guest);
             if (plan.Intent == VisitorIntent.Servicing)
             {
@@ -689,7 +748,13 @@ public sealed class ParkVisitors
             // wherever they happened to be standing. Caught by the agent wiring this into the
             // viewer, where it would have looked like teleporting into a queue.
             var ride = RideOf(plan);
-            if (ride != null && g.Cell != (ride.ServiceEntry ?? ride.Entrance)) continue;
+            var mouth = ride == null || ride.ServiceEntry != null ? null : NativeQueueMouth?.Invoke(ride);
+            if (ride != null && g.Cell != (ride.ServiceEntry ?? mouth ?? ride.Entrance))
+            {
+                // A native queue can be re-laid while a guest walks to it; its mouth moves with it.
+                if (mouth is { } moved && !Walk.Send(g, moved)) Wander(g.Id, g.Cell);
+                continue;
+            }
             if (ride?.ServiceEntry != null && (g.Next != null || g.Progress != 0
                 || !ReferenceEquals(g.OccupiedTerminal?.Owner,ride))) continue;
             // ⚠ THE RIDE MAY HAVE GONE, or closed, or broken, while they walked. Then this is not
@@ -702,6 +767,11 @@ public sealed class ParkVisitors
             if (ride.NativeRelief)
             {
                 BeginRelief(g,ride,plan);
+                continue;
+            }
+            if (mouth != null)
+            {
+                if (NativeQueueArrival?.Invoke(g, ride) != true) Wander(g.Id, g.Cell);
                 continue;
             }
             ride.Join(g.Id);

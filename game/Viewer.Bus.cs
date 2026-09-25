@@ -30,6 +30,7 @@ public partial class Viewer
 
     void ResetNativeBus()
     {
+        ResetNativeRideQueues(); // first: its tick hook wraps the entrance flow's
         ResetExperimentalEntrance();
         ResetBusAudio();
         if (_nativeBus?.Root is {} root && IsInstanceValid(root)) root.QueueFree();
@@ -115,6 +116,7 @@ public partial class Viewer
     void TickNativeBus()
     {
         TickNativeAnimationsWithoutFlow(); // research --native-idle-all only; a no-op otherwise
+        EnsureNativeRideQueues(); // research --native-ride-queues only; a no-op otherwise
         if(!_busClockAdvancedForFrame) _busElapsedMs+=ParkSim.TickMilliseconds; // explicit fixed-time capture winding
         if(!EnsureNativeBus()) return;
         uint now=BusClock;

@@ -33,6 +33,9 @@ static class GuestConservationChecks
                     if (plan.Intent == VisitorIntent.Heading && !bodies.ContainsKey(plan.RideId))
                         return $"heading guest {id} references a missing ride";
                     break;
+                case VisitorIntent.Queueing:
+                    if (walking != 1 || owners.Length != 0) return $"native queueing guest {id} has inconsistent body ownership";
+                    break;
                 case VisitorIntent.Queued:
                     if (walking != 0 || !bodies.ContainsKey(plan.RideId)
                         || owners.Any(owner => owner != plan.RideId)) return $"queued guest {id} has inconsistent ride ownership";
