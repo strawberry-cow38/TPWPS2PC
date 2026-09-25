@@ -3839,23 +3839,33 @@ public partial class Viewer : Node3D
             // i.e. **93% of the time the console plays no idle clip at all**, and each of the six
             // idles comes up one time in a hundred.
             //
-            // ⚠⚠ AND THAT IS WHY THIS CODE DOES NOT COPY IT YET. "No clip" on the console leaves
-            // the model playing whatever it already was; in this port an absent record leaves it in
-            // BIND POSE -- arms out, dead still -- which is precisely the bug master reported
-            // ("we're also missing the idle/wait animations for visitors"). Copying the weights
-            // literally without also porting "keep the current animation" would put 93% of the
-            // crowd back in that pose. So this still picks a variant by id, which is NOT the
-            // console's rule, and says so rather than pretending otherwise.
+            // ⚠⚠ AND THAT IS WHY THIS CODE DOES NOT COPY IT YET -- but "no clip" is NOT what it
+            // sounds like, and it is worth being exact. It is neither "keep animating" nor bind
+            // pose: it is HOLD THE LAST POSE. When `10EA38` hands back the inactive slot, the
+            // updater `1ACFC0` loads the old record's duration (`lwc1 f0, 0x20(s1)` at `0x1AD268`)
+            // into the current frame (`swc1 f0, 0x0C(s1)` at `0x1AD274`), applies that pose
+            // (`jal 0x1A8DA8` at `0x1AD278`), and only then marks the slot F (`li v0, 15` /
+            // `sw v0, 0x0(s1)` at `0x1AD280..88`). So the guest freezes on the final frame of
+            // whatever it was last playing.
             //
-            // ⚠ STILL UNRECONCILED, deliberately not guessed at: which field the state lives in
-            // and which value means walking. This file had `guest[0x38] & 0x1f` (censused 4, 11,
-            // 12, 13, 14; 13 at spawn via `FUN_00211A00` and on facility exit via `FUN_0020EDD8`,
-            // 11 from `FUN_0020D628`); the findings doc has the requested state in the low 5 bits
-            // of `owner + 0x30`, and `FUN_0020D628` touches `+0x30`/`+0x36`, not `+0x38`. Those may
-            // be two different objects or one of them may be wrong. The walk below was chosen by
-            // MEASURING the motion, not by this table, and the table maps logical 13 to slot 0 and
-            // logical 9 to slot 1 -- so do not re-point the walk at slot 0 on the strength of a
-            // state number until that join is actually made.
+            // Here an absent record leaves the model in BIND POSE instead -- arms out, dead still
+            // -- which is precisely the bug master reported ("we're also missing the idle/wait
+            // animations for visitors"). Porting the 93% therefore requires porting hold-last-pose
+            // WITH it; the weights alone would put most of the crowd back in that pose. So this
+            // still picks a variant by id, which is NOT the console's rule, and says so.
+            // (tinyclaw, who owns the dispatcher work: "i won't wire it without the hold.")
+            //
+            // ⭐ THE STATE FIELD IS RESOLVED: it is one field seen through two base pointers, and
+            // both readings were right. `191E10`, `1921D0` and `191D78` are handed `B = N + 8`, so
+            // their `B + 0x30` IS `N + 0x38` -- and this file's own call above passes
+            // `iVar11 + 8`. `FUN_0020D628` does write `N + 0x38` directly: 14 at `0x20D780`, and
+            // 11 at `0x20DAE8`, `0x20DB10` and `0x20DB34` (each `sw v0, 0x38(s2)`). The `+0x30` it
+            // READS is the route-slot halfword, a different field entirely.
+            //
+            // ⚠ Still not joined: the walk below was chosen by MEASURING the motion, not by this
+            // table, and the table maps logical 13 to slot 0 and logical 9 to slot 1 -- so do not
+            // re-point the walk at slot 0 on the strength of a state number until that is checked
+            // against the authored data.
             var idles = aps?.Records().Where(r => r.Slot == 2 && r.Skeletal && !r.Shared).ToArray()
                         ?? Array.Empty<Aps.Record>();
             var idle = idles.Length == 0 ? null : idles[Math.Abs(id) % idles.Length];
