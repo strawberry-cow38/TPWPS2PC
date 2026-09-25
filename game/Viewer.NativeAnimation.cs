@@ -32,6 +32,12 @@ namespace TPWPS2Viewer;
 ///   stride. Its TIMING is still section 0's own record.
 /// - 1C4930's update counter is taken to be the park tick, for the N+2C stamp and 2106E8's
 ///   120-update hold. The picker's draws come from the flow's 1448E0 stream (_guestRng).
+///
+/// `--native-idle-all` (queue item 5, research only) extends the DRAWING to every ordinary guest,
+/// so strawberry can compare it with the id%6 idles. An ordinary walker requests 13 while walking
+/// and 11 when it arrives (20D628's writes at 20DAE8/20DB10/20DB34). Logical 11 is the weighted
+/// idle: 93 of 99 weight holds the last pose. ⚠ Adapter: ordinary walkers are NOT gated on 191E10,
+/// because the legacy walker moves them; only what is drawn follows the dispatcher.
 /// </summary>
 public partial class Viewer
 {
@@ -44,6 +50,9 @@ public partial class Viewer
     // What NativeDrawnRecord last handed AnimatedModel, per guest id: re-seed only on change.
     readonly Dictionary<int, Aps.Record> _nativeDrawn = new();
     public int NativeAnimationWaits { get; private set; }
+    bool _nativeIdleAll;
+    bool NativeIdleAllActive => NativeAnimationActive
+        && (_nativeIdleAll |= ResearchFlags.Value.Contains("--native-idle-all"));
 
     bool NativeAnimationActive => _nativeGuestAnimation |= NativeGuestAnimationRequested;
 
@@ -102,17 +111,49 @@ public partial class Viewer
     void TickNativeAnimations()
     {
         if (!NativeAnimationActive || _entranceFlow == null || _entranceWalk == null) return;
+        bool all = NativeIdleAllActive;
         foreach (var guest in _entranceWalk.Guests)
         {
-            if (!_entranceFlow.Owns(guest)) continue;
+            bool owned = _entranceFlow.Owns(guest);
+            if (!owned && !all) continue;
             var animation = NativeAnimation(guest);
-            if (_entranceFlow.StateOf(guest) == NativeEntranceFlow.State.Pending)
+            if (owned && _entranceFlow.StateOf(guest) == NativeEntranceFlow.State.Pending)
                 animation.IdlePick(_parkTicks, n => _guestRng.Next(n), _logicalAnimations.IdleStates);
+            if (!owned) OrdinaryRequest(guest, animation);
             animation.Push();
             animation.Update(ParkSim.TickMilliseconds, _nativeAnimationRand.Next);
         }
-        foreach (var gone in _nativeAnimations.Keys.Where(g => _entranceFlow?.Owns(g) != true).ToArray())
+        foreach (var gone in _nativeAnimations.Keys
+                     .Where(g => _entranceFlow?.Owns(g) != true && !(all && _entranceWalk.IsLive(g))).ToArray())
             ReleaseNativeAnimation(gone);
+    }
+
+    /// <summary>--native-idle-all with NO entrance flow, e.g. cow tools' `--idle-scene`, where ParkVisitors
+    /// is suppressed and so the flow never exists. Called once per park tick from TickNativeBus, after
+    /// the guests have stepped. Every guest is ordinary here.</summary>
+    void TickNativeAnimationsWithoutFlow()
+    {
+        if (_entranceFlow != null || _guests == null || !NativeIdleAllActive) return;
+        foreach (var guest in _guests.Guests)
+        {
+            var animation = NativeAnimation(guest);
+            OrdinaryRequest(guest, animation);
+            animation.Push();
+            animation.Update(ParkSim.TickMilliseconds, _nativeAnimationRand.Next);
+        }
+        foreach (var gone in _nativeAnimations.Keys.Where(g => !_guests.IsLive(g)).ToArray())
+            ReleaseNativeAnimation(gone);
+    }
+
+    /// <summary>--native-idle-all only: an ordinary walker's logical request, written on the change.
+    /// Walking -> 13 (as each route advance does); stopped -> 11 (20D628's completion writes).
+    /// Seated and riding guests never reach the Gait hook, so their state does not matter here.</summary>
+    void OrdinaryRequest(Guest guest, NativeGuestAnimation animation)
+    {
+        int want = guest.State == GuestState.Walking ? 13 : 11;
+        if ((animation.Requested & 0x1f) == want) return;
+        animation.Requested = (animation.Requested & ~0x1f) | want;
+        if (want == 11) animation.Stamp = _parkTicks;
     }
 
     void ReleaseNativeAnimation(Guest guest)
