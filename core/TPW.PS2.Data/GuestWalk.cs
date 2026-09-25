@@ -305,8 +305,12 @@ public sealed partial class GuestWalk
     {
         Time += TickMilliseconds;
         BeforeStep?.Invoke(unchecked((uint)(Time / TickMilliseconds)));
-        foreach (var g in _guests)
+        // A SNAPSHOT (cow tools, reviewing slice B): StepNative fires the public SlotAdvanced seam from
+        // inside this loop, and a consumer that removes a guest there would otherwise break the
+        // enumeration. A guest removed earlier in the same tick is skipped rather than stepped.
+        foreach (var g in _guests.ToArray())
         {
+            if (!IsLive(g)) continue;
             if (g.HasNativeRoute) { if (g.NativeMotion.Inputs.AutomaticStep) StepNative(g); continue; }
             if (g.State != GuestState.Walking) continue;
             int budget = UnitsPerTick;
