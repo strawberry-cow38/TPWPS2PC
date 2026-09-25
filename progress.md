@@ -14,16 +14,18 @@ the native booth queues and fee, and walks rejected guests back to the bus. `--n
 adds readiness: a guest waits for its animation to commit before it walks. Default play on main is
 unchanged, and none of this is on main yet.
 
-**Gates at ee2b1f7:**
-- `tools/audit_matrix.py`: only the two retail reds (HALLOW Thrill Grill, SPACE Moon Buggies).
+**Gates at 783225b** (clean tree, /tmp/tpw-783225b):
+- unit: 79 tool tests OK.
+- `tools/audit_matrix.py`: 8 parks, terrain_2 included; only the two retail reds (HALLOW Thrill Grill,
+  SPACE Moon Buggies); `landing_evidence=true`.
 - `tools/runtime_audit.py`: 11 of 11 scenes pass.
-- The 24-scene viewer matrix across all 8 real parks passes. It currently runs from a scratch runner;
-  queue item 2 puts a committed version in tools.
+- `tools/viewer_matrix.py`: 24 of 24 across all 8 real parks, loaded == requested in every case.
 
 **Corrected today.** Every earlier "eight park" viewer claim had run FANTASY terrain_1 for its park-2
 cases, because the `--map` label didn't match. See the CP2 entry at the bottom of this file.
 
-**Next action.** plan.md section 3 (Now) and section 4, queue item 2: evidence infrastructure.
+**Next action.** plan.md section 3 (Now): queue item 7, ordinary departures through state 26. Items 4
+and 5 wait on cow tools and strawberry; item 9 (corridor check) is done and the planner stays deferred.
 The labelled adapters are listed in plan.md section 6.
 
 **Rules that still hold:**
@@ -2667,6 +2669,58 @@ agent results and are summarised here.
   almost nothing from it.
 - **Decision: defer it with triggers** (plan section 6). The cheap corridor passability check, queue
   item 9, decides whether it is ever needed.
+
+## CP2: evidence infrastructure (queue item 2) and the corridor check (item 9) — September 25, 2026 UTC
+
+**Item 2 landed at 783225b.** All four gates ran on that clean committed tree, built before the runs,
+with output in /tmp/tpw-783225b:
+- unit: 79 tool tests, OK.
+- `tools/audit_matrix.py`: `known_retail_failures_remain`, runner exit 2, `landing_evidence=true`.
+  All 8 parks ran, terrain_2 included. JUNGLE and FANTASY pass on both terrains. HALLOW and SPACE carry
+  only their retail reds on both.
+- `tools/runtime_audit.py`: 11 of 11 scenes, exit 0.
+- `tools/viewer_matrix.py`: `all_cases_passed`, runner exit 0, 24 of 24.
+  - Every case's single `[map] loaded` line equals its request.
+  - The source snapshot was clean before and after.
+  - Readiness check counts run from 6993 to 8092 by park. Entrance (651) and rejected (2399) are the
+    code-fixed counts, not coverage.
+- The film at /tmp/tpw-film4 has 56 frames, two angles per tick. It was generated and then inspected:
+  the UI is hidden, the guest is visible standing through the WAIT on logical 11 section 6, and then
+  walking.
+- The two named regressions were reverted and each failed by name before being restored: the old
+  `--map=JUNGLE 2` form and a log whose only PASS is BYPASS.
+
+A near-miss worth recording: the viewer matrix's source guard compares `git status --porcelain`
+before and after. An untracked findings file written into the worktree during the run would have
+flipped `dirty` and failed the whole run as `source_changed_during_run`. It was moved out before the
+run ended and restored after. Do not write into a worktree that a provenance-checked run is reading.
+
+**Item 9: the corridor passability check is done.** The findings table is
+findings/native-route-planner.md, the 18C928 kind arms from jump table 364690, set against the port's
+BFS.
+- Verdict: **the passable sets differ in principle; the difference has not been reproduced.**
+  - The native planner leaves kinds 2, 4 and 13 only in the directions the tile's link byte (+2)
+    allows. The port's BFS moves between any adjacent open cells.
+  - Flag 0x23, the mode-14 alternate, admits open ground at cost 2.
+  - Queues (kind 4) need flag 0x10, which no entrance request sets.
+- Under the plan's rule a mismatch opens the planner package. That package is still blocked on its
+  input: the port builds no native tile-kind array (placement 1E2AD0, link builder 1E70F0), so there is
+  nothing to run the native arms against. The planner therefore stays deferred.
+- The trigger is now concrete (plan section 6): build the tile-kind producer, then rerun this
+  comparison on real tiles.
+- Route LENGTH agrees wherever the passable sets agree. With uniform cost 1 and a consistent
+  Manhattan heuristic, A* returns a shortest path as BFS does. Only the choice among equal paths
+  (random 1-of-4 direction order, two-ended tie insertion) differs.
+
+**Item 12 census, first read.** The audit's ride census over all 8 parks is unchanged by terrain.
+Every park-2 row equals its park-1 row, so the ride set belongs to the world, not the terrain:
+- JUNGLE: 6 of 21 rides poll a track subsystem; 6 took nobody.
+- SPACE: 6 of 22 poll; 6 took nobody.
+- FANTASY: 6 of 19 poll; 6 took nobody.
+- HALLOW: 8 of 23 poll; 9 took nobody. Thrill Grill is the known exception (findings/visitors.md).
+
+Correction: findings/visitors.md records SPACE as "6 of 23". Every run on disk since 2026-09-24 03:45
+reads 22. The 09-23 figure has no surviving log and is annotated as unverified there.
 
 ## Archived plan checkpoints (moved verbatim from plan.md lines 58-329 on 2026-09-25)
 

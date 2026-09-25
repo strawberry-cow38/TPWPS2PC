@@ -89,14 +89,17 @@ No raw disc, extracted game assets, credentials or proprietary source goes into 
 
 ## 3. Now
 
-**Package:** the readiness join has landed on the research branch (see the CP2 entry in progress.md).
-The package in progress is the evidence infrastructure, queue item 2.
+**Package:** queue item 7, ordinary departures through state 26, on the research branch behind
+`--experimental-native-entrance`. Items 2 and 9 are done (progress.md, "CP2: evidence infrastructure").
+Items 4 and 5 wait on humans: cow's dispatcher acknowledgement, and strawberry's choice from the
+side-by-side idle film.
 
-**Owner:** tinyclaw. Cow tools signs off the Viewer.cs map-matching change.
+**Owner:** tinyclaw. ParkVisitors is cow's, so the one-member Leaving seam needs cow's sign-off before
+it goes to main.
 
-**Stopping condition:** the queue item 2 conditions.
+**Stopping condition:** the queue item 7 conditions.
 
-**Next review:** CP2 when item 2 lands. Replace this section in place then; do not append.
+**Next review:** CP2 when item 7 lands. Replace this section in place then; do not append.
 
 ## 4. Priority queue
 
@@ -105,7 +108,8 @@ preempts it, and a CP4 contradiction reorders it. Human testing is collected at 
 
 1. **Land the readiness package and correct the record.** DONE 2026-09-25. The 24/24 matrix is in
    /tmp/tpw-cp1-final. The false park-2 claims are annotated in place.
-2. **Evidence infrastructure.**
+2. **Evidence infrastructure.** DONE 2026-09-25 at 783225b. All four gates ran clean in /tmp/tpw-783225b,
+   the viewer matrix 24/24 with loaded == requested, and the film at /tmp/tpw-film4 was inspected.
    - Commit `tools/viewer_matrix.py` with unit tests. Its per-case requirements are:
      - PASS matched by an exact scene-prefix regex (a BYPASS witness must not count);
      - a minimum check count;
@@ -154,7 +158,9 @@ preempts it, and a CP4 contradiction reorders it. Human testing is collected at 
    - *Stop when:* a disruption smoke (bulldoze booth→bus mid-departure, delete the staging path) ends
      every guest as WentHome or back in ordinary park state within a fixed tick budget, with no lease
      held at quiescence.
-9. **Corridor passability check.** Read 18C928's kind arms (jump table 364690) for the tile kinds in
+9. **Corridor passability check.** DONE 2026-09-25. findings/native-route-planner.md. Verdict: the sets
+   differ in principle (direction links, flag 0x23 ground, queue flag 0x10) and nothing reproduces it
+   yet. The planner stays deferred on its missing input (section 6). Read 18C928's kind arms (jump table 364690) for the tile kinds in
    the entrance corridor and request flags 0x21, 0x23 and 1, and compare them with ParkPaths.Open as
    the BFS adapter uses it.
    - *Stop when:* a findings table exists. A mismatch opens the planner package (section 6); a match
@@ -184,7 +190,7 @@ preempts it, and a CP4 contradiction reorders it. Human testing is collected at 
 | Milestone | State | Evidence | What remains |
 |---|---|---|---|
 | M0 baseline and ledger | done | progress.md "CP0" entries; audit_matrix in tools | nothing |
-| M1 validation and rendered smoke | partial | audit_matrix.py, runtime_audit.py (63 Python tests) | the committed viewer matrix; exact `--map` (queue 2) |
+| M1 validation and rendered smoke | done | audit_matrix.py, runtime_audit.py, viewer_matrix.py (79 Python tests); `--map` fails loudly | CI (queue 13) |
 | M2 reader completeness | open by design | findings/format-inventory.md | only when a consumer needs it (CP1) |
 | M3 park and visitor lifecycle | mostly done on main | availability, removal, replay, departure recovery | fixed-tick replay across the native flow (queue 8 and 10) |
 | M4 effects and audio | done for current scope | the audio-lifecycle and particle findings | listening and visual sign-off are human |
@@ -200,7 +206,7 @@ preempts it, and a CP4 contradiction reorders it. Human testing is collected at 
 | Readiness (191E10 over 2AAD48) | done, opt-in | yes, already met | n/a |
 | Ordinary departures via 26 (pressure population) | open | **yes** (queue 7) | n/a |
 | No stranded guests (state 0/5 holds) | open | **yes**, as an adapter (queue 8) | n/a |
-| Native A* planner 18C4B8–18DC74 (A*, Manhattan heuristic, random 1-of-4 direction order, two-ended open-list insert, ~99 nodes per call) | decoded in part; BFS adapter in use | no | any of: the queue 9 check finds a mismatch; a routing defect is reproduced at the entrance; ordinary park walkers move onto native routes. Planner findings first, and it needs a native tile-kind producer the port does not have |
+| Native A* planner 18C4B8–18DC74 (A*, Manhattan heuristic, random 1-of-4 direction order, two-ended open-list insert, ~99 nodes per call) | decoded in part; BFS adapter in use | no | the queue 9 check found a mismatch IN PRINCIPLE (findings/native-route-planner.md), so the package opens only once its input exists. Trigger: a native tile-kind producer (placement 1E2AD0, link byte 1E70F0) is built, or a routing defect is reproduced at the entrance, or ordinary walkers move onto native routes. Then rerun the item 9 comparison on real tiles |
 | Activation-serial origin | unknowable statically | no | **won't fix**: a labelled adapter (≤ 64-tick phase offset) |
 | RNG stream and global order | generator readable, order not | no | **won't fix**: NewlibRand / guest stream, labelled |
 | Guard staging (second family, 3952AC) | producer readable | no | staff get ported |
