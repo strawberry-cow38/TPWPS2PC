@@ -3196,8 +3196,56 @@ public partial class Viewer : Node3D
                + $"(motion {_shopPanel.GuiMotion}, clicks {_shopPanel.GuiClicks}); last = {_shopPanel.LastGui}");
     }
 
-    /// <summary>Where Back goes: the screens opened on the way here, innermost last.</summary>
-    readonly List<string> _laptopBack = new();
+    /// <summary>⭐⭐ THE LAPTOP'S NAVIGATION STACK. Each level knows how to redraw itself, so Back
+    /// is "drop the last one and redraw", not a pile of special cases.
+    ///
+    /// `Kind` is "main", "info", "buildcats", "buildlist" or "screen"; `Arg` carries the category
+    /// for a list level.</summary>
+    readonly List<(string Kind, string Arg)> _laptopBack = new();
+
+    void ShowLaptopLevel()
+    {
+        if (_laptopBack.Count == 0) { ShowLaptopMain(); return; }
+        var (kind, arg) = _laptopBack[^1];
+        GD.Print($"[laptop] -> {kind}{(arg == null ? "" : " " + arg)} (depth {_laptopBack.Count})");
+        switch (kind)
+        {
+            case "info":
+            {
+                var names = new List<string>();
+                foreach (var o in LaptopMainMenu.Information)
+                    names.Add(_text?.Text("eng", o.TextId) ?? $"#{o.TextId}");
+                _shopPanel.ShowMenu(names, 0, LaptopMainMenu.InfoScene);
+                Status("information -- pick a kind, or Back");
+                break;
+            }
+            case "buildcats":
+            {
+                // ⭐ Master: "build should go into a list of categories, ie Rides, track rides,
+                // coasters, shops, features etc." ⚠ And they ARE the archive's own folders, not a
+                // list I chose -- BuildCategories groups every .sam by the directory it sits in.
+                var cats = BuildCategories();
+                var names = new List<string>();
+                foreach (var c in cats) names.Add($"{Title(c.Key)} ({c.Count})");
+                _shopPanel.ShowMenu(names, 0, LaptopMainMenu.MainScene);
+                Status($"build -- {cats.Count} categories from the archive; pick one, or Back");
+                break;
+            }
+            case "buildlist":
+            {
+                ShowBuildCategory(arg);
+                var names = new List<string>();
+                foreach (int i in _buildRows)
+                {
+                    var r = _lib.Rides[i];
+                    names.Add(DisplayName(r, DefinitionFor(r.Model)));
+                }
+                _shopPanel.ShowMenu(names, 0, LaptopMainMenu.MainScene);
+                Status($"{Title(arg)} -- {names.Count} to choose from, or Back");
+                break;
+            }
+        }
+    }
 
     void ShowLaptopMain()
     {
@@ -3207,73 +3255,85 @@ public partial class Viewer : Node3D
 
     /// <summary>⭐⭐ THE ROW CLICK, WIRED. Master: "i cant click any options."
     ///
-    /// ⚠⚠ The clicking was never broken. A probe that pushes a real `InputEventMouseButton`
-    /// through the viewport showed `_GuiInput` firing, the rect equal to the viewport, local
-    /// coordinates correct and row 0 correctly hit -- and then `MenuActivated` was raised with
-    /// **no subscriber anywhere in the codebase**. The event went into the void, so a click
-    /// highlighted a row and did nothing, which is indistinguishable from a click that never
-    /// landed. Two earlier fixes were aimed at the input path, which was fine.</summary>
+    /// ⚠⚠ The clicking was never broken. A probe pushing a real `InputEventMouseButton` through
+    /// the viewport showed `_GuiInput` firing, the rect equal to the viewport and the right row
+    /// hit -- and then `MenuActivated` was raised with NO SUBSCRIBER. The event went into the
+    /// void, which is indistinguishable from a click that never landed.</summary>
     void OnLaptopRow(int row)
     {
-        GD.Print($"[laptop] row {row} activated (depth {_laptopBack.Count})");
-        var opts = System.Linq.Enumerable.ToArray(LaptopMainMenu.VisibleMain(parkOpen: _laptopParkOpen));
-        bool onMain = _laptopBack.Count == 0;
-        if (onMain)
+        if (row < 0) return;
+        string here = _laptopBack.Count == 0 ? "main" : _laptopBack[^1].Kind;
+        switch (here)
         {
-            if (row < 0 || row >= opts.Length) return;
-            var picked = opts[row];
-            // The Information row opens the submenu the console gives it; everything else either
-            // has a screen here or says plainly that it has none yet.
-            if (picked.Opens == "main_info")
+            case "main":
             {
-                _laptopBack.Add("main");
-                var names = new List<string>();
-                foreach (var o in LaptopMainMenu.Information)
-                    names.Add(_text?.Text("eng", o.TextId) ?? $"#{o.TextId}");
-                _shopPanel.ShowMenu(names, 0, LaptopMainMenu.InfoScene);
-                Status("information -- pick a kind, or Back");
+                var opts = System.Linq.Enumerable.ToArray(LaptopMainMenu.VisibleMain(parkOpen: _laptopParkOpen));
+                if (row >= opts.Length) return;
+                var picked = opts[row];
+                switch (picked.Opens)
+                {
+                    case "main_info":      _laptopBack.Add(("info", null)); ShowLaptopLevel(); return;
+                    case "main_bh_items":  _laptopBack.Add(("buildcats", null)); ShowLaptopLevel(); return;
+                    case "main_bh_staff":
+                        Status("hire has no staff to list -- this port has no staff system yet");
+                        return;
+                    default:
+                        Status($"{_text?.Text("eng", picked.TextId) ?? "that"} has no screen in this port yet");
+                        return;
+                }
+            }
+            case "info":
+            {
+                var info = LaptopMainMenu.Information;
+                if (row >= info.Length) return;
+                Status($"{_text?.Text("eng", info[row].TextId) ?? "that"} has no live figures in this "
+                     + "port yet -- the screen is decoded, the data is not");
                 return;
             }
-            if (picked.Opens == "main_bh_items") { OpenLaptopScreen(LaptopScreen.Build, "Build"); return; }
-            if (picked.Opens == "main_bh_staff") { OpenLaptopScreen(LaptopScreen.Hire, "Hire"); return; }
-            Status($"{_text?.Text("eng", picked.TextId) ?? "that"} has no screen in this port yet");
-            return;
-        }
-        // On the Information submenu.
-        var info = LaptopMainMenu.Information;
-        if (row < 0 || row >= info.Length) return;
-        switch (info[row].Opens)
-        {
-            case "main_i_ride":     OpenLaptopScreen(LaptopScreen.Ride, "Crazy Ape"); break;
-            case "main_i_shop":     OpenLaptopScreen(LaptopScreen.Shop, "Drinks Shop"); break;
-            case "main_i_sideshow": OpenLaptopScreen(LaptopScreen.Sideshow, "Arcade"); break;
-            default:
-                Status($"{_text?.Text("eng", info[row].TextId) ?? "that"} has no screen in this port yet");
-                break;
-        }
-    }
-
-    /// <summary>Open one of the data screens with whatever this port can fill it from.</summary>
-    void OpenLaptopScreen(LaptopScreen spec, string title)
-    {
-        _laptopBack.Add("menu");
-        var cells = new List<(string, int)>();
-        foreach (var r in spec.Rows)
-            cells.Add(r.Kind switch
+            case "buildcats":
             {
-                LaptopRowKind.Bar or LaptopRowKind.Slider => (null, 0),
-                LaptopRowKind.Money => ("$0", 0),
-                LaptopRowKind.Text  => (null, 0),
-                _ => ("0", 0),
-            });
-        _shopPanel.ShowScreen(spec, title, cells);
-        Status($"{title} -- Back to go up, Close to put the laptop away");
+                var cats = BuildCategories();
+                if (row >= cats.Count) return;
+                _laptopBack.Add(("buildlist", cats[row].Key));
+                ShowLaptopLevel();
+                return;
+            }
+            case "buildlist":
+            {
+                if (row >= _buildRows.Count) return;
+                var r = _lib.Rides[_buildRows[row]];
+                var def = DefinitionFor(r.Model);
+                if (def == null) { Status($"{Leaf(r.Name)} has no .sam beside it"); return; }
+                ShowBuildDetail(r, def);
+                return;
+            }
+        }
     }
 
-    /// <summary>Back steps out one level; Close puts the laptop away entirely.</summary>
+    /// <summary>⭐ The purchase screen for one thing, with the figures that are REAL -- the decoded
+    /// placement cost, the live balance, how many the park holds, and the decoded excitement and
+    /// reliability. ⚠ An unjoined definition has NO price rather than a free one, and says so.</summary>
+    void ShowBuildDetail(AssetLibrary.RideAssets r, RideDefinition def)
+    {
+        _laptopBack.Add(("screen", null));
+        int owned = _sim?.Rides?.Count(pr => ReferenceEquals(pr.Definition, def)
+                      || (pr.Definition?.Id is { } pid && def.Id is { } did && pid == did)) ?? 0;
+        int bal = _sim?.Finances?.Balance ?? ParkFinances.OpeningBalance;
+        string cost = def.PlacementCost is { } c ? Money.Format(c) : "-";
+        _shopPanel.ShowScreen(LaptopScreen.Build, DisplayName(r, def), new List<(string, int)>
+        {
+            (cost, 0),
+            (Money.Format(bal), 0),
+            (owned.ToString(), 0),
+            (null, def.ShopfrontExcitement ?? 0),
+            (null, def.ShopfrontReliability ?? 0),
+        });
+        Status($"{DisplayName(r, def)} costs {cost} -- Back to go up, Close to put the laptop away");
+    }
+
+    /// <summary>Back steps out one level; Close puts the laptop away.</summary>
     void OnLaptopDismiss(bool close)
     {
-        GD.Print($"[laptop] dismiss close={close} (depth {_laptopBack.Count})");
         if (close || _laptopBack.Count == 0)
         {
             _shopPanel.Hide(); _laptopBack.Clear();
@@ -3282,15 +3342,7 @@ public partial class Viewer : Node3D
             return;
         }
         _laptopBack.RemoveAt(_laptopBack.Count - 1);
-        if (_laptopBack.Count == 0) ShowLaptopMain();
-        else
-        {
-            var names = new List<string>();
-            foreach (var o in LaptopMainMenu.Information)
-                names.Add(_text?.Text("eng", o.TextId) ?? $"#{o.TextId}");
-            _shopPanel.ShowMenu(names, 0, LaptopMainMenu.InfoScene);
-            Status("information -- pick a kind, or Back");
-        }
+        ShowLaptopLevel();
     }
 
     void LaptopFilmFrame()

@@ -985,3 +985,36 @@ laptop away. Verified end to end: the probe now prints `[laptop] row 0 activated
 ⭐ The method lesson, recorded in memory: **when a fix aimed at a diagnosis fails, the diagnosis is
 what is wrong** -- build the smallest thing that measures the path rather than reasoning a second
 time in the same direction.
+
+## Build goes through the archive's categories (2026-09-25)
+
+Master: *"okay im so confused with this ui. Build goes to a separate menu, which has.. stats? about
+a ride called build? i click it, and it takes me to the ride info (with sliders) page for the crazy
+ape ride"* ... *"build should go into a list of categories, ie Rides, track rides, coasters, shops,
+features etc."*
+
+Two defects and a missing design.
+
+**1. A data screen still behaved as a menu.** `ShowMenu` cleared `_spec`, but `ShowScreen` never
+cleared `_menu` -- so a data screen carried the previous menu's rows, `_GuiInput` went on
+hit-testing them, and clicking anywhere on the Build screen fired `MenuActivated` and navigated.
+That is the "click it and I land on Crazy Ape". Both now clear each other.
+
+**2. The screen was fed zeros.** I passed placeholder cells and the screen's own NAME as the title,
+so Build read as "a ride called Build" with $0 against $0. ⚠ A screen full of zeros looks like data
+and is worse than one that admits it is empty.
+
+**3. The design master asked for, which the archive already had.** Build now opens a CATEGORY menu
+-- and the categories are not a list I chose, they are the disc's own folders via `BuildCategories`:
+**Rides (47), Features (31), Sideshow (12), Shops (8), Coasters (3), Upgrades (3)**. Pick one, get
+that category's things by display name, pick one of those, get the purchase screen with the figures
+that are real: decoded `PlacementCost`, the live balance, the owned count, and the decoded
+excitement and reliability. ⚠ An unjoined definition shows `-` rather than a price of zero.
+
+⚠ Master listed "track rides" as a category; the archive does not group them separately -- TrackRide
+is an `AssetKind` in the compiled database, but the folder grouping the game itself uses gives the
+six above. The disc's grouping is kept rather than invented around.
+
+⭐ Navigation is a stack of levels that each know how to redraw themselves, so Back is "drop the
+last and redraw" rather than a pile of special cases. The three INFORMATION screens say plainly
+that the screen is decoded and the data is not, instead of drawing zeros.

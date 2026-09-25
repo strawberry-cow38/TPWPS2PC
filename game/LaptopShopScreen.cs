@@ -264,6 +264,13 @@ public sealed partial class LaptopShopScreen : Control
         _spec = spec ?? throw new ArgumentNullException(nameof(spec));
         _title = title ?? "";
         _rows.Clear();
+        // ⚠⚠ A DATA SCREEN IS NOT A MENU, AND LEAVING THE MENU BEHIND MADE IT ACT LIKE ONE.
+        // `ShowMenu` cleared `_spec`, but this never cleared `_menu` -- so a data screen still
+        // carried the previous menu's rows, `_GuiInput` went on hit-testing them, and clicking
+        // anywhere on e.g. the Build screen fired MenuActivated and navigated. Master: "i click
+        // it, and it takes me to the ride info (with sliders) page for the crazy ape ride."
+        _menu.Clear();
+        _menuHover = -1;
         _cells.Clear();
         if (cells != null) _cells.AddRange(cells);
         Open = true; Visible = true;
