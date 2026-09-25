@@ -3101,7 +3101,9 @@ public partial class Viewer : Node3D
                 LaptopRowKind.Bar or LaptopRowKind.Slider => (null, pct),
                 LaptopRowKind.Money => ($"${pct * 37:N0}", 0),
                 // The ride's three word rows read as they do on the real screen.
-                LaptopRowKind.Text  => (i == 7 ? null : i == 8 ? "Unavailable" : "1yr", 0),
+                // ⚠ Upgrades (7) carries the word, Addons (8) does not -- that is which rows the
+                // SCENE gives a value element to, and this harness had the two the wrong way round.
+                LaptopRowKind.Text  => (i == 7 ? "Unavailable" : i == 8 ? null : "1yr", 0),
                 _ => (pct.ToString(), 0),
             });
         }

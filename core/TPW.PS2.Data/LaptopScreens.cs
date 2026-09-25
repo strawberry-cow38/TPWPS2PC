@@ -63,7 +63,17 @@ public sealed record LaptopScreen(
             new(436,  LaptopRowKind.Slider, "SpeedSlider"),
             new(919,  LaptopRowKind.Slider, "CapacitySlider"),
             new(769,  LaptopRowKind.Slider, "DurationSlider"),
-            new(119,  LaptopRowKind.Text),                       // Upgrades -- blank on the real screen
+            // ⚠⚠ UPGRADES HAS A VALUE ELEMENT AND THIS FILE SAID IT DID NOT. The comment here read
+            // "blank on the real screen", which was an inference; `main_i_ride_data.sce` authors
+            // **UpgradeVal at row 338**, one unit above the Upgrades label at 339 -- the same
+            // 1-3 unit offset AgeVal (400 vs 403) and UsersVal (436 vs 435) carry. Leaving it
+            // unbound sent the value through the shared-column fallback instead of its own
+            // element. Found by checking every declared element against its scene file: it was
+            // the ONE element, across all three screens, that the scene provides and the port
+            // never used.
+            new(119,  LaptopRowKind.Text,   "UpgradeVal"),       // Upgrades
+            // ⭐ Addons genuinely has no value element -- the scene stops at UpgradeVal/AgeVal/
+            // UsersVal -- so this row is label-only. That asymmetry is the game's, not a gap.
             new(454,  LaptopRowKind.Text),                       // Addons, absent from the .sce comment
             new(493,  LaptopRowKind.Text,   "AgeVal"),           // Age
             new(415,  LaptopRowKind.Value,  "UsersVal"),         // Users

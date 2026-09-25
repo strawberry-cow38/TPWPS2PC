@@ -481,3 +481,45 @@ the offline measurement to the pixel.
 ⚠ Worth stating plainly: **this is an improvement, not fidelity.** All five chromes are SSH type 4
 and 24bpp TGA -- no alpha channel anywhere, against every other laptop sprite being type 5 / 32bpp.
 On the console the laptop is a full-screen opaque image and the surround IS the background.
+
+## Consistency across the three screens (2026-09-25)
+
+Master: *"is everything between rides -> shop -> sideshows consistent?"* Checked three ways -- the
+scene files field by field, every declared element against its scene, and a render of each.
+
+**Shared, and identical rather than merely similar:**
+
+| | RIDE | SHOP | SIDESHOW |
+|---|---|---|---|
+| model window | row 208, col 315, 147x240 | same | same |
+| title | col 45, left | col 45, left | col 45, left |
+| label column | col 45, left | col 45, left | col 45, left |
+| value column | col 250, centre | col 250, centre | col 250, centre |
+
+**Two differences that are the GAME'S, authored in the `.sce`:**
+- The **shop sits 50 units lower**: title row 115 against 65 on the other two, labels 175 against
+  115. Fewer rows, so the block is placed lower. Not drift.
+- The **ride has no stepped value column**. Its values are per-row elements (`UpgradeVal` 338,
+  `AgeVal` 400, `UsersVal` 436) while shop and sideshow step a shared column.
+
+**⚠⚠ One real port defect, found by cross-checking declared elements against the scenes.** Of every
+element the three scenes define, exactly one was provided by the scene and never used by the port:
+**`UpgradeVal`**. `LaptopScreens.Ride` left the Upgrades row unbound with the comment "blank on the
+real screen" -- an inference the scene file contradicts. Unbound, the value fell through to the
+shared-column fallback and rendered **one full 32-unit row too low**, on the Addons line.
+
+⭐ Measured on the render before and after, reading the value column's text bands back into
+authored units: **370 -> 336**, against the scene's authored **338**. `AgeVal` (404 vs 400) and
+`UsersVal` (437 vs 436) were already correct and did not move.
+
+⭐ And Addons genuinely has NO value element -- the scene stops at those three -- so that row is
+label-only. The asymmetry is the game's.
+
+**⚠ Gaps that are the SCREENSHOT HARNESS, not the port**, recorded so they are not mistaken for
+port bugs when someone next looks at a render:
+- `LaptopFilmFrame` picks its model out of `_lib.Rides` by substring ("monkey" / "arcade" /
+  "balloon"). Shops and sideshows are not rides, so the **shop renders no model at all** and the
+  **sideshow renders the wrong one**. Only the ride screen's model is the right asset.
+- The shop's ingredient row (Fat/Ice/Sugar/Salt) draws with a **blank label**, because the harness
+  supplies no per-shop ingredient text id. `ShopScreen.LabelKeys` already holds null there by
+  design; it is the caller that has nothing to put in it.
