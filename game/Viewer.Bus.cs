@@ -114,6 +114,7 @@ public partial class Viewer
 
     void TickNativeBus()
     {
+        TickNativeAnimationsWithoutFlow(); // research --native-idle-all only; a no-op otherwise
         if(!_busClockAdvancedForFrame) _busElapsedMs+=ParkSim.TickMilliseconds; // explicit fixed-time capture winding
         if(!EnsureNativeBus()) return;
         uint now=BusClock;

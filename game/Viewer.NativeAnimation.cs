@@ -128,6 +128,23 @@ public partial class Viewer
             ReleaseNativeAnimation(gone);
     }
 
+    /// <summary>--native-idle-all with NO entrance flow, e.g. cow tools' `--idle-scene`, where ParkVisitors
+    /// is suppressed and so the flow never exists. Called once per park tick from TickNativeBus, after
+    /// the guests have stepped. Every guest is ordinary here.</summary>
+    void TickNativeAnimationsWithoutFlow()
+    {
+        if (_entranceFlow != null || _guests == null || !NativeIdleAllActive) return;
+        foreach (var guest in _guests.Guests)
+        {
+            var animation = NativeAnimation(guest);
+            OrdinaryRequest(guest, animation);
+            animation.Push();
+            animation.Update(ParkSim.TickMilliseconds, _nativeAnimationRand.Next);
+        }
+        foreach (var gone in _nativeAnimations.Keys.Where(g => !_guests.IsLive(g)).ToArray())
+            ReleaseNativeAnimation(gone);
+    }
+
     /// <summary>--native-idle-all only: an ordinary walker's logical request, written on the change.
     /// Walking -> 13 (as each route advance does); stopped -> 11 (20D628's completion writes).
     /// Seated and riding guests never reach the Gait hook, so their state does not matter here.</summary>
