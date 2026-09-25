@@ -31,6 +31,8 @@ SCENES = {
     'entrance': ('NativeEntranceFlowSmoke', 'NATIVE ENTRANCE FLOW SMOKE', 651),
     'rejected': ('NativeRejectedDepartureSmoke', 'NATIVE REJECTED DEPARTURE SMOKE', 2399),
     'readiness': ('NativeAnimationReadinessSmoke', 'NATIVE ANIMATION READINESS SMOKE', 6000),
+    # 8 followed guests: 3 checks per retirement plus one per admitted leaver, over a fixed core.
+    'departure': ('NativeOrdinaryDepartureSmoke', 'NATIVE ORDINARY DEPARTURE SMOKE', 40),
 }
 MAP_LINE = re.compile(r'^\[map\] loaded world=([A-Z]+) terrain=(terrain_[12])\.mps$', re.M)
 

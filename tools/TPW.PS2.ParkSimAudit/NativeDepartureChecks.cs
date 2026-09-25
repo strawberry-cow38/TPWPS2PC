@@ -28,7 +28,29 @@ static class NativeDepartureChecks
         var table=NativeBusCatalogue.Read(disc,new(0,0));
         C(table.ImageInitialActivationCounter==0,"owner ELF counter image seed read separately from live activation history");
 
-        Success(); Phase32(); Refusal(); Alternate(false); Alternate(true); AlternateRecordFull(); Recovery(); Pressure(); CallbackFaults();
+        Success(); Phase32(); Refusal(); Alternate(false); Alternate(true); AlternateRecordFull(); Recovery(); Pressure(); CallbackFaults(); OrdinarySeam();
+
+        // Queue item 7's boundaries. The positive path (an admitted guest leaving through 26) needs a
+        // real admission and is the rendered NativeOrdinaryDepartureSmoke; these are the refusals.
+        void OrdinarySeam()
+        {
+            var f=New();var stranger=f.Visitors.Arrive(f.Start,f.Start);
+            C(!f.Flow.TryDepart(stranger)&&!f.Flow.Owns(stranger)&&!stranger.HasNativeRoute
+                &&f.Visitors.Plans[stranger.Id].Intent==VisitorIntent.Wandering,
+                "ordinary departure refuses a guest this flow never admitted: no birth serial is minted and nothing changes");
+            var entering=f.Add(63);var before=f.O(entering);
+            C(!f.Flow.TryDepart(entering)&&f.O(entering)==before,"ordinary departure refuses a guest the flow already owns");
+            static void Broke(Fixture x,Guest g){var w=x.Visitors.Needs.Of(g.Id);w.Cash=50;x.Visitors.Needs.Set(g.Id,w);}
+            var legacy=New();var walker=legacy.Visitors.Arrive(legacy.Start,legacy.Start);int offered=0;
+            legacy.Visitors.NativeDeparture=g=>{offered++;return false;};Broke(legacy,walker);legacy.Step();
+            C(offered>0&&(legacy.Visitors.WentHome==1||legacy.Visitors.Plans[walker.Id].Intent==VisitorIntent.Leaving),
+                $"a declined native departure leaves the legacy walk to the gate untouched (offered {offered}, went home {legacy.Visitors.WentHome})");
+            var taken=New();var kept=taken.Visitors.Arrive(taken.Start,taken.Start);
+            Broke(taken,kept);
+            int accepted=0;taken.Visitors.NativeDeparture=g=>{accepted++;return true;};taken.Step();
+            C(accepted>0&&taken.Visitors.WentHome==0&&taken.Walk.IsLive(kept)&&taken.Visitors.Plans[kept.Id].Intent!=VisitorIntent.Leaving,
+                $"an accepted native departure suppresses the legacy gate walk entirely (offered {accepted})");
+        }
 
         void CallbackFaults()
         {

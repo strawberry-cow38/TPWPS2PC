@@ -149,6 +149,9 @@ public sealed class NativeEntranceFlow
 
     readonly ParkVisitors _visitors;
     readonly Services _services;
+    // Identity an admitted guest carries back out: the activation serial (N+14) and baseline speed
+    // are fixed at birth, so a later ordinary departure must reuse them, never mint new ones.
+    readonly Dictionary<Guest, (uint Serial, sbyte Baseline)> _admitted = new(ReferenceEqualityComparer.Instance);
     // Never key controller state by the display ID: the visitor/walk adapter itself
     // enforces the ID-owned lease constraint, while callbacks require exact identity.
     readonly Dictionary<Guest, Entry> _entries = new(ReferenceEqualityComparer.Instance);
@@ -222,6 +225,38 @@ public sealed class NativeEntranceFlow
             e.AllocatedNode = _allocated.AddFirst(e);
             e.ActiveNode = _active.AddFirst(e);
             Trace("added; empty lease acquired", e);
+        }
+        finally { _busy = false; }
+    }
+
+    /// <summary>Queue item 7. An admitted guest whose 20C930 decision wrote state 26 (the port's
+    /// VisitorNeeds.WantsToGoHome: +7B >= 99, happiness < 5 or cash < 100; 20C950..20CA70) enters the
+    /// SAME 210D70 departure a booth rejection uses: phase-gated mode14 with sticky A4, staging, mode9 to
+    /// point0, and retirement counted as WentHome. False, with nothing changed, when this flow did not
+    /// admit the guest (no birth serial to phase-gate on) or the visitor layer refuses the lease; the
+    /// caller then keeps its legacy walk to the gate.
+    /// ADAPTER, not parity: 20C930 keeps running its six-arm action switch after the 26 write
+    /// (20CA74..20CFF0). Arm0's facility selection and arm1's movement PUSH 26 onto the N+20 stack and
+    /// detour (states 6 and 1); arm4 (sickness >= 93, rand4 == 0) clears the stack and writes 29. Here the
+    /// guest goes to 26 at once. The random 211D48 >= 81 / rand(20) < 2 departure arm is not ported.</summary>
+    public bool TryDepart(Guest guest)
+    {
+        ArgumentNullException.ThrowIfNull(guest);
+        Enter();
+        try
+        {
+            if (_entries.ContainsKey(guest) || !_admitted.TryGetValue(guest, out var identity)) return false;
+            if (_services.BusPoint == null)
+                throw new InvalidOperationException("Ordinary departure requires a bus-point supplier.");
+            var e = new Entry(guest, identity.Baseline, identity.Serial, _services) { State = State.Rejected };
+            if (!_visitors.BeginEntranceRoute(guest, _owner, Array.Empty<Point>(), e.Inputs)) return false;
+            _visitors.MarkNativeDeparture(guest, _owner);
+            _admitted.Remove(guest);
+            _entries.Add(guest, e);
+            e.AllocatedNode = _allocated.AddFirst(e);
+            e.ActiveNode = _active.AddFirst(e);
+            Trace("ordinary departure: state26 requested; empty lease acquired", e);
+            return true;
         }
         finally { _busy = false; }
     }
@@ -342,6 +377,8 @@ public sealed class NativeEntranceFlow
 
     void RemoveVanished()
     {
+        foreach (var gone in _admitted.Keys.Where(g => !_visitors.Walk.IsLive(g)).ToArray())
+            _admitted.Remove(gone); // left by another path (legacy gate, removal): nothing to carry
         for (var node = _allocated.First; node != null;)
         {
             var next = node.Next;
@@ -698,6 +735,7 @@ public sealed class NativeEntranceFlow
                 if (!_visitors.ReleaseEntranceRoute(e.Guest, _owner))
                     throw new InvalidOperationException("Completed entrance exit lease could not be released.");
                 Trace("mode13 released to ordinary visitor", e);
+                if (e.Serial.HasValue) _admitted[e.Guest] = (e.Serial.Value, e.Baseline);
                 Forget(e);
                 return;
             default:
@@ -761,6 +799,7 @@ public sealed class NativeEntranceFlow
                 Forget(e);
                 node = next;
             }
+            _admitted.Clear();
             StagingPending = 0;
             EpisodeProcessed = 0;
             DeparturePressure = 0;

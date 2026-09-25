@@ -238,6 +238,12 @@ public sealed class ParkVisitors
         return g;
     }
 
+    /// <summary>Research seam (queue item 7), null by default. When set, a guest who WantsToGoHome is
+    /// offered to the native departure owner BEFORE the legacy gate walk. True means that owner took the
+    /// guest's lease and will retire it through <see cref="CompleteNativeDeparture"/>; false leaves the
+    /// legacy walk below untouched.</summary>
+    public Func<Guest, bool> NativeDeparture { get; set; }
+
     /// <summary>Explicit entrance owner of an existing wandering identity. The caller supplies
     /// route service results and native inputs; this is not an automatic admission policy.</summary>
     public bool BeginEntranceRoute(Guest guest, object owner,
@@ -771,6 +777,7 @@ public sealed class ParkVisitors
             // and CALLED FROM NOWHERE -- the arithmetic had its own checks while the park it
             // described could never lose a single guest. Dead code reads exactly like a feature
             // from the outside, which is why this is asked before anything else a guest might do.
+            if (Needs != null && Needs.WantsToGoHome(g.Id) && NativeDeparture?.Invoke(g) == true) continue;
             if (Needs != null && Needs.WantsToGoHome(g.Id) && Gate is { } gate)
             {
                 if (g.Cell == gate) { ShowOut(g.Id); continue; }

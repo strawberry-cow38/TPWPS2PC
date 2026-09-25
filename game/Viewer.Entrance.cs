@@ -41,6 +41,10 @@ public partial class Viewer
     ParkVisitors _entranceVisitors;
     Action<uint> _entrancePriorTick, _entranceTickHook;
     readonly Queue<Flow.RouteResult> _entranceResults = new();
+    // Research instrumentation: the last requests with the flow tick they were made on, so a smoke can
+    // check 210D70's phase gate. Bounded; never consulted by the flow itself.
+    readonly Queue<(Guest Guest, int Mode, int Flags, uint Tick)> _entranceRequests = new();
+    uint _entranceTick;
     int _entranceAccepted, _entranceRejected;
     // Ordinary variants use constructor100470's 150 seed. Saved scenario/UI fee
     // overrides are not joined. A fixture can explicitly replace this fee, never
@@ -78,6 +82,8 @@ public partial class Viewer
                 : throw new InvalidOperationException("Ordinary departure RNG(1) must select point0."),
             requestDetailed: request => {
                 _entranceRequestFlags.Add(request.Flags);
+                _entranceRequests.Enqueue((request.Guest, request.Mode, request.Flags, _entranceTick));
+                while (_entranceRequests.Count > 4096) _entranceRequests.Dequeue();
                 // Flags reach the adapter but native 0x21/0x23 search policy is not yet reproduced by BFS.
                 return RequestEntranceRoute(request.Token, request.Guest, request.Mode, request.From, request.Target);
             },
@@ -87,15 +93,17 @@ public partial class Viewer
         _entrancePriorTick = _guests.BeforeStep;
         _entranceTickHook = tick => {
             _entrancePriorTick?.Invoke(tick);
+            _entranceTick = tick;
             _busTraffic = _entranceFlow.Tick(tick, _nativeBus.Controller.State, _busTraffic);
             TickNativeAnimations();
         };
         _guests.BeforeStep = _entranceTickHook;
+        _visitors.NativeDeparture = g => _entranceFlow != null && _entranceFlow.TryDepart(g);
         GD.Print($"[entrance.experimental] OPT-IN controller: actual bus identities -> two incoming groups -> fee -> normal handoff. point1={_busCatalogue.StagingPoint} point2={_busCatalogue.IncomingQueuePoint}");
         GD.Print(NativeAnimationActive
             ? "[entrance.experimental] native guest animation: 191E10 readiness over the 2AAD48 dispatcher; adapters: one model update per park tick after steps, every owned guest pushed, NewlibRand stream, section 0 drawn as the section-1 walk"
             : "[entrance.experimental] readiness BYPASS (pass --native-guest-animation for the dispatcher join)");
-        GD.Print("[entrance.experimental] NON-PARITY ADAPTERS: deferred-next-tick public BFS/search resources; ordinary constructor fee seed only; guard staging absent; represented-activation phase only; ordinary departure/recovery and full native pressure population unported. Not release-ready.");
+        GD.Print("[entrance.experimental] NON-PARITY ADAPTERS: deferred-next-tick public BFS/search resources; ordinary constructor fee seed only; guard staging absent; represented-activation phase only; failed-route recovery unported; ordinary departure enters state26 at once (20C930's later arms unjoined, 211D48 roll unported); guests not admitted by this flow still leave by the legacy gate. Not release-ready.");
     }
 
     bool RequestEntranceRoute(ulong token, Guest guest, int mode, Point from, Point target)
@@ -158,10 +166,12 @@ public partial class Viewer
     {
         if (_entranceWalk != null && _entranceWalk.BeforeStep == _entranceTickHook)
             _entranceWalk.BeforeStep = _entrancePriorTick;
+        if (_entranceVisitors != null) _entranceVisitors.NativeDeparture = null;
         _entranceFlow?.Clear((_, _) => { }, (g, owner) => _entranceVisitors.DiscardEntranceGuest(g, owner));
         ResetNativeAnimations();
         _entranceResults.Clear();
         _entranceRequestFlags.Clear();
+        _entranceRequests.Clear();
         _entranceFlow = null; _entranceWalk = null; _entranceVisitors = null;
         _entrancePriorTick = _entranceTickHook = null;
         _entranceAccepted = _entranceRejected = 0;
