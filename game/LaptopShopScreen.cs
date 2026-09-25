@@ -192,6 +192,10 @@ public sealed partial class LaptopShopScreen : Control
 
     // ---- the general path: any of the three info screens --------------------------------------
 
+    /// <summary>The info screen's model, rendered by the viewer into its own viewport. Null
+    /// until one is built; the screen simply leaves the window empty then.</summary>
+    public Texture2D ModelTexture { get; set; }
+
     LaptopScreen _spec;
     readonly Dictionary<string, SceneLayout> _layouts = new(StringComparer.OrdinalIgnoreCase);
     readonly List<(string Text, int Fraction)> _cells = new();
@@ -235,6 +239,11 @@ public sealed partial class LaptopShopScreen : Control
 
         if (layout[_spec.TitleElement] is { } title)
             DrawRun(_title, At(title), s, Of(ShopScreen.Highlight), title.Justify);
+
+        // ⭐ The model window. Drawn before the rows so nothing it overlaps can be hidden by it.
+        if (ModelTexture != null && layout[_spec.ModelElement] is { } window)
+            DrawTextureRect(ModelTexture,
+                new Rect2(At(window), new Vector2(window.Width, window.Height) * s), false);
 
         var labels = layout[_spec.LabelElement];
         var values = layout[_spec.ValueElement];

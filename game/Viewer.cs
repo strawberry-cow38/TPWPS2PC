@@ -3065,6 +3065,18 @@ public partial class Viewer : Node3D
         string title = spec == LaptopScreen.Ride ? "Crazy Ape"
                      : spec == LaptopScreen.Sideshow ? "Arcade" : "Drinks Shop";
 
+        // ⭐ Build the model once, from the ride the screen is about, then step it per frame.
+        if (_laptopModel == null && _laptopFrame == 0 && _lib?.Rides != null)
+        {
+            string want = spec == LaptopScreen.Sideshow ? "arcade"
+                        : spec == LaptopScreen.Shop ? "balloon" : "monkey";   // Crazy Ape's asset
+            var pick = _lib.Rides.FirstOrDefault(r => r.Name.Contains(want, StringComparison.OrdinalIgnoreCase))
+                    ?? _lib.Rides.FirstOrDefault();
+            BuildLaptopModel(pick);
+            if (_laptopView != null) _shopPanel.ModelTexture = _laptopView.GetTexture();
+        }
+        StepLaptopModel();
+
         float t = _laptopFrame / (float)_filmFps;
         var cells = new List<(string, int)>();
         for (int i = 0; i < spec.Rows.Count; i++)
@@ -5625,6 +5637,93 @@ public partial class Viewer : Node3D
     }
 
     /// <summary>The model for the held thing, built the same way the viewer builds any other.</summary>
+    SubViewport _laptopView; AnimatedModel _laptopModel; Camera3D _laptopCam; int _laptopModelFrame;
+
+    /// <summary>⭐⭐ THE INFO SCREEN'S MODEL, which is a real model and not a picture of one.
+    ///
+    /// The element is 147x240 at col 315 -- the right column below the chrome's notch -- and it
+    /// was written up here twice as a sprite blit before the chain was read to the end. It is not:
+    /// `FUN_00144068` tears down whatever the widget held, calls the factory `FUN_00230A98`, and
+    /// initialises the new object FROM AN ID at `shop + 0x78`, caching on that id so it rebuilds
+    /// only when the subject changes. So the port needs a viewport, which is what this is.
+    ///
+    /// ⭐ AND IT PLAYS APS SECTION 6. The factory's vtable slot reaches `0x17C5D8`, whose types
+    /// 6/7 arm calls `0x10E910(a0 = 5, ...)`; logical 5 in the `0x2AAD48` table is descriptor
+    /// `0x2AA9C8`, main pair slot **6** variant 0, with first and last both the inactive sentinel.
+    /// Asked for BY SLOT, the way LoadPlaceable asks for slot 0, because a model with no section 6
+    /// must fall back rather than silently play whatever its first record happens to be.
+    ///
+    /// ⚠ FRONT ON, NOT SPINNING. The scene file's own comment says ";3D Spinning model" and the
+    /// comment is wrong about the shipped behaviour -- master, who has played it: "the model isnt
+    /// meant to spin in the viewport. its just a front facing render of it. playing an animation".
+    /// Nothing here turns the camera or the subject.</summary>
+    void BuildLaptopModel(AssetLibrary.RideAssets ride)
+    {
+        if (_laptopView != null) { _laptopView.QueueFree(); _laptopView = null; _laptopModel = null; }
+        if (ride == null) return;
+        var drawn = LoadPlaceable(ride, out var anim, out _);
+        if (drawn?.Root == null) return;
+        // ⭐ Slot 6, per the dispatcher; anything else is a fallback and says so in the log.
+        var rec = anim?.Records().FirstOrDefault(r => r.Slot == 6 && r.Skeletal)
+               ?? anim?.Records().FirstOrDefault(r => r.Slot == 6);
+        if (rec != null) drawn.UseRecord(rec);
+        drawn.SetFrame(0);
+
+        _laptopView = new SubViewport
+        {
+            Size = new Vector2I(LaptopScreen.ModelWidth * 4, LaptopScreen.ModelHeight * 4),
+            RenderTargetUpdateMode = SubViewport.UpdateMode.Always,
+            TransparentBg = true,
+            // ⚠⚠ ITS OWN WORLD, or it shares the parent viewport's. Without this the window
+            // rendered THE PARK from wherever this camera stood -- 15 units up, inside the
+            // terrain -- which came back as a flat olive wash that looked like a broken model
+            // rather than a correct render of the wrong scene.
+            OwnWorld3D = true,
+        };
+        AddChild(_laptopView);
+        var stage = new Node3D(); _laptopView.AddChild(stage);
+        stage.AddChild(drawn.Root);
+        stage.AddChild(new DirectionalLight3D { RotationDegrees = new Vector3(-35, -25, 0), LightEnergy = 1.5f });
+        // ⚠ NOT BGMode.Canvas: that composites the 2D canvas -- the laptop panel itself -- into
+        // the viewport, which came out as a flat olive wash over the model. A transparent clear
+        // is what a window onto a model wants.
+        _laptopView.AddChild(new WorldEnvironment { Environment = new Godot.Environment {
+            BackgroundMode = Godot.Environment.BGMode.Color,
+            BackgroundColor = new Color(0, 0, 0, 0),
+            AmbientLightSource = Godot.Environment.AmbientSource.Color,
+            AmbientLightColor = Colors.White, AmbientLightEnergy = 0.9f } });
+
+        // Frame the model on its own drawn bounds, so any ride fills the window the same way.
+        var (lo, hi) = Park.DrawnBounds(drawn.Root, inParent: true);
+        var mid = (lo + hi) / 2f;
+        // ⚠ FIT THE BOUNDING SPHERE, not a guessed multiple of the widest axis. The window is
+        // TALL (147x240), so the vertical field is the binding one and the distance has to come
+        // out of the FOV rather than a constant that happened to look right on one ride.
+        float radius = Mathf.Max(0.001f, (hi - lo).Length() / 2f);
+        const float fov = 30f;
+        float dist = radius / Mathf.Tan(Mathf.DegToRad(fov / 2f)) * 1.15f;
+        _laptopCam = new Camera3D { Current = true, Fov = fov, Near = 0.05f, Far = dist * 4f };
+        _laptopView.AddChild(_laptopCam);
+        // ⚠ Straight on: the camera sits on +Z looking at the model's middle, with only enough
+        // lift to read the top surfaces. A turntable would contradict master's description.
+        _laptopCam.Position = mid + new Vector3(0, radius * 0.25f, dist);
+        _laptopCam.LookAt(mid, Vector3.Up);
+        GD.Print($"[laptop] model bounds {lo} .. {hi}; radius {radius:F2}, camera {dist:F2} back");
+        _laptopModel = drawn; _laptopModelFrame = 0;
+        GD.Print($"[laptop] model: {Leaf(ride.Name)}, "
+               + (rec == null ? "NO slot-6 record -- showing its default pose"
+                              : $"slot 6 v0, {rec.DurationFrames} frames"));
+    }
+
+    /// <summary>One frame of the info screen's model. ⚠ Its own clock: the screen is a menu and
+    /// does not step the park.</summary>
+    void StepLaptopModel()
+    {
+        if (_laptopModel == null) return;
+        _laptopModelFrame++;
+        _laptopModel.SetFrame(_laptopModelFrame % Math.Max(1, _laptopModel.Frames));
+    }
+
     AnimatedModel LoadPlaceable(AssetLibrary.RideAssets ride) => LoadPlaceable(ride, out _, out _);
     AnimatedModel LoadPlaceable(AssetLibrary.RideAssets ride, out Aps animation) => LoadPlaceable(ride, out animation, out _);
 

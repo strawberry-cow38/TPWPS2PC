@@ -25,6 +25,10 @@ public sealed record LaptopScreen(
     /// clear: its labels go out at `iVar9`, `+0x20`, `+0x40`, `+0x60`, i.e. 32 apart.</summary>
     public const int RowStep = ShopScreen.RowStep;
 
+    /// <summary>The model window's authored extent, the same on all three screens: 147x240 at
+    /// col 315, the right column below the chrome's notch.</summary>
+    public const int ModelWidth = 147, ModelHeight = 240;
+
     /// <summary>⭐ The SHOP screen, `main_i_shop_data`, menu 0x11. Labels resolve to
     /// `STR_SINGLESHOP_*`; see <see cref="ShopScreen"/>, which holds its arithmetic.</summary>
     public static readonly LaptopScreen Shop = new(
