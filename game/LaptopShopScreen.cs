@@ -400,6 +400,15 @@ public sealed partial class LaptopShopScreen : Control
     /// the chrome's own empty band above row 115, so it costs the list nothing.</summary>
     int RowWindow => LaptopMainMenu.MaxRows;
 
+    /// <summary>⭐⭐ THE ELEMENT THE BALANCE SITS ABOVE. Master: "the swoop in balance should
+    /// still show on buildable-specific pages" -- so it has to anchor on a DATA screen too, where
+    /// there is no menu list. On a menu that is the option list; on a purchase screen it is the
+    /// TITLE, which is the topmost text either way, so the readout lands in the same band on both
+    /// and does not jump as you step into a ride.</summary>
+    SceneLayout.Element? BalanceAnchor() =>
+        _spec != null ? LayoutFor(_spec)[_spec.TitleElement]
+                      : LayoutFor(_menuScene ?? LaptopMainMenu.MainScene)[LaptopMainMenu.ListElement];
+
     /// <summary>⭐ The balance's row: ONE ROW ABOVE the list's first, on the list's own grid, in
     /// the band the chrome leaves between its top edge and row 115. The Back/Close column sits at
     /// column 336, so the left of that band is empty.</summary>
@@ -414,8 +423,7 @@ public sealed partial class LaptopShopScreen : Control
         get
         {
             if (_balance == null) return new Rect2();
-            if (LayoutFor(_menuScene ?? LaptopMainMenu.MainScene)[LaptopMainMenu.ListElement] is not { } l)
-                return new Rect2();
+            if (BalanceAnchor() is not { } l) return new Rect2();
             return Screen(BalanceRow(l), Scale, Origin);
         }
     }
@@ -687,6 +695,10 @@ public sealed partial class LaptopShopScreen : Control
 
     static Color Of((byte R, byte G, byte B) c) => Color.Color8(c.R, c.G, c.B);
 
+    /// <summary>The shadow's colour, from <see cref="ShopScreen.TextShadowRgba"/>.</summary>
+    static readonly Color ShadowTint = Color.Color8(ShopScreen.TextShadowRgba.R, ShopScreen.TextShadowRgba.G,
+                                                    ShopScreen.TextShadowRgba.B, ShopScreen.TextShadowRgba.A);
+
     /// <summary>⭐ Re-pick the chrome if the park has changed worlds since it was last loaded.
     /// ⚠ Guarded on the resolved FILENAME rather than on the world string, so a world that maps to
     /// the same chrome -- or a null that keeps mapping to the fallback -- costs one comparison and
@@ -742,7 +754,7 @@ public sealed partial class LaptopShopScreen : Control
     void DrawBalance(float s, Vector2 o)
     {
         if (_balance == null) return;
-        if (LayoutFor(_menuScene ?? LaptopMainMenu.MainScene)[LaptopMainMenu.ListElement] is not { } list) return;
+        if (BalanceAnchor() is not { } list) return;
         // ⭐ ONE ROW ABOVE THE LIST, in the chrome's empty band -- master: "above where the list
         // starts, in that empty space". The list keeps all eleven of its own rows.
         var rest = BalanceRow(list);
@@ -818,6 +830,19 @@ public sealed partial class LaptopShopScreen : Control
     /// ⚠ `justify=center` in these files means centred ON the authored column, which is why the
     /// x is shifted by half the measured width rather than centred inside some box: no box is
     /// authored for a text element.</summary>
+    /// <summary>⭐⭐ EVERY RUN OF LAPTOP TEXT IS DRAWN TWICE: a shadow, then the glyphs. Master:
+    /// "missing drop shadows on all laptop ui text."
+    ///
+    /// ⭐ The offset is the HUD money readout's, which is DECODED -- `MoneyShadow = 2` console
+    /// pixels, drawn from the same `Large.bff` in the same UI layer -- so this is the port's one
+    /// measured text shadow applied to the rest of the text rather than a figure I picked.
+    ///
+    /// ⚠ What the shadow's COLOUR is, is not decoded either here or there: the console draws it in
+    /// palette slot `colour + 8` and that slot has not been read. Black at 55% is a shadow's usual
+    /// job, and it is marked as an assumption in both places rather than claimed.
+    ///
+    /// ⚠ It scales with `s` like every other coordinate, so the shadow sits 2 AUTHORED units off
+    /// at any window size instead of 2 screen pixels, which would vanish at 1440p.</summary>
     void DrawRun(string text, Vector2 at, float s, Color tint, string justify)
     {
         if (string.IsNullOrEmpty(text)) return;
@@ -827,7 +852,10 @@ public sealed partial class LaptopShopScreen : Control
         float x = justify != null && justify.StartsWith("cent", StringComparison.OrdinalIgnoreCase) ? at.X - w / 2f
                 : justify != null && justify.StartsWith("right", StringComparison.OrdinalIgnoreCase) ? at.X - w
                 : at.X;
-        DrawTextureRect(tex, new Rect2(new Vector2(x, at.Y), new Vector2(w, tex.GetHeight() * s)), false, tint);
+        var size = new Vector2(w, tex.GetHeight() * s);
+        float d = ShopScreen.TextShadowOffset * s;
+        DrawTextureRect(tex, new Rect2(new Vector2(x + d, at.Y + d), size), false, ShadowTint);
+        DrawTextureRect(tex, new Rect2(new Vector2(x, at.Y), size), false, tint);
     }
 
 

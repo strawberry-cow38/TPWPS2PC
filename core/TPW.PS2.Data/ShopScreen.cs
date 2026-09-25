@@ -75,6 +75,18 @@ public static class ShopScreen
     public static readonly (byte R, byte G, byte B) Highlight = (255, 255, 0);
     public static readonly (byte R, byte G, byte B) Label = (200, 130, 0);
 
+    /// <summary>⭐⭐ THE DROP SHADOW UNDER LAPTOP TEXT. Master: "missing drop shadows on all
+    /// laptop ui text."
+    ///
+    /// ⭐ The OFFSET is decoded, from the HUD money readout: `MoneyShadow = 2` console pixels,
+    /// the same `Large.bff` in the same UI layer. It is the port's one measured text shadow.
+    ///
+    /// ⚠ The COLOUR is not. The console draws the shadow in palette slot `colour + 8` and that
+    /// slot has not been read, here or in the HUD. Black at 55% is a shadow's usual job; it is
+    /// marked as an assumption in both places rather than claimed as decoded.</summary>
+    public const float TextShadowOffset = 2f;
+    public static readonly (byte R, byte G, byte B, byte A) TextShadowRgba = (0, 0, 0, 140);
+
     /// <summary>⭐⭐ THE SLIDER IS TINTED GREEN, and its own art is gold. Master, looking at the
     /// render: "why is our drag slider 'knob' orange? should it be green?" -- it should.
     ///

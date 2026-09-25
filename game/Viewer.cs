@@ -1230,13 +1230,46 @@ public partial class Viewer : Node3D
     /// `STR_LISTBOX_EDIT_TRACK` = "Edit Track" are LISTBOX strings -- entries in a list, which is
     /// to say ACTIONS on a coaster, not a shelf of items to place. So it is not made into a button
     /// holding nothing.</summary>
-    string BuildCategory(AssetLibrary.RideAssets r)
+    /// <summary>⭐⭐ THE COMPILED RECORD SAYS WHAT A THING IS. `AssetKind` separates TrackRide (6)
+    /// from TourRide (7) from Ride (3) -- the game's own classification, which the archive's
+    /// FOLDERS do not carry: they file the karts, the water ride and the tour ride under `Rides/`
+    /// with everything else. The old test (has `sCoasterType.*` keys, else the folder) could only
+    /// ever have produced two of master's six.
+    ///
+    /// ⚠ A thing with no compiled record falls back to the folder rather than vanishing, and the
+    /// `sCoasterType` test stays as the coaster fallback for the same reason.</summary>
+    AssetResourceDatabase.AssetKind? BuildKind(AssetLibrary.RideAssets r)
     {
         var def = r.Model == null ? null : DefinitionFor(r.Model);
-        return def != null && def.Fields.Keys.Concat(def.Blocks.Keys)
-                   .Any(k => k.StartsWith("sCoasterType.", StringComparison.OrdinalIgnoreCase))
-             ? "Coasters" : Category(r.Name);
+        if (def?.CompiledEntry is { } e) return e.Kind;
+        if (def != null && def.Fields.Keys.Concat(def.Blocks.Keys)
+                .Any(k => k.StartsWith("sCoasterType.", StringComparison.OrdinalIgnoreCase)))
+            return AssetResourceDatabase.AssetKind.Coaster;
+        // ⚠⚠ A THING WITH NO COMPILED RECORD IS STILL ONE OF THE CONSOLE'S KINDS. Four jungle
+        // items have no record, and leaving them on their folder key put a SECOND "Features (4)"
+        // at the foot of the menu, under the real one -- two keys rendering the same name, which
+        // reads as a bug and is one. The folder answers for them; only a folder the console has no
+        // kind for falls through, and that one is worth seeing.
+        return FolderKind(r.Name);
     }
+
+    /// <summary>The archive folder's own kind. ⭐ These are the five folders every park ships;
+    /// the mapping is the folder NAME to the console's kind, not a guess about the thing.</summary>
+    static AssetResourceDatabase.AssetKind? FolderKind(string name) =>
+        Category(name).ToLowerInvariant() switch
+        {
+            "rides"    => AssetResourceDatabase.AssetKind.Ride,
+            "shops"    => AssetResourceDatabase.AssetKind.Shop,
+            "sideshow" => AssetResourceDatabase.AssetKind.Sideshow,
+            "features" => AssetResourceDatabase.AssetKind.Feature,
+            "upgrades" => AssetResourceDatabase.AssetKind.TrackUpgrade,
+            _ => null,
+        };
+
+    /// <summary>The category key a thing lists under: the compiled kind's name, or the archive
+    /// folder when there is no compiled record.</summary>
+    string BuildCategory(AssetLibrary.RideAssets r) =>
+        BuildKind(r) is { } k ? k.ToString() : Category(r.Name);
 
     /// <summary>The name a thing is listed under. ⭐⭐ `Info.Name` FIRST, THEN THE TEXT DATABASE.
     /// A coaster's .sam declares no name at all, so the build list showed `coaster1.mps` --
@@ -3235,7 +3268,10 @@ public partial class Viewer : Node3D
                 // list I chose -- BuildCategories groups every .sam by the directory it sits in.
                 var cats = BuildCategories();
                 var names = new List<string>();
-                foreach (var c in cats) names.Add($"{Title(c.Key)} ({c.Count})");
+                // ⭐ The DISC's name for the category, not the folder's. "Sideshow" is the
+                // archive's spelling; the console says "Sideshows", and "Coasters" is really
+                // "Roller Coasters".
+                foreach (var c in cats) names.Add($"{CategoryName(c.Key)} ({c.Count})");
                 _shopPanel.ShowMenu(names, 0, LaptopMainMenu.MainScene);
                 RefreshLaptopBalance();
                 Status($"build -- {cats.Count} categories from the archive; pick one, or Back");
@@ -3252,7 +3288,7 @@ public partial class Viewer : Node3D
                 }
                 _shopPanel.ShowMenu(names, 0, LaptopMainMenu.MainScene);
                 RefreshLaptopBalance();
-                Status($"{Title(arg)} -- {names.Count} to choose from, or Back");
+                Status($"{CategoryName(arg)} -- {names.Count} to choose from, or Back");
                 break;
             }
         }
@@ -3356,10 +3392,12 @@ public partial class Viewer : Node3D
             (null, def.ShopfrontExcitement ?? 0),
             (null, def.ShopfrontReliability ?? 0),
         }, buildRow: true);
-        // ⚠ No swooping readout here: this screen's OWN scene already has a Balance row (the
-        // `.sce` comment lists "PurchaseCost/Balance/NumberOwned/Excitment Reliability"), and a
-        // second copy of the same number on the same screen is a fault, not a feature.
-        _shopPanel.ShowBalance(null);
+        // ⭐ Master: "the swoop in balance should still show on buildable-specific pages." It
+        // follows the player all the way in, so the figure never leaves the screen while they are
+        // deciding. ⚠ This screen's own `.sce` ALSO has a Balance row -- I left the readout off
+        // here for that reason and master overruled it, which is their call; both show the same
+        // number and neither is wrong.
+        RefreshLaptopBalance();
         Status($"{DisplayName(r, def)} costs {cost} -- Back to go up, Close to put the laptop away");
     }
 
@@ -3525,6 +3563,12 @@ public partial class Viewer : Node3D
                     (null, def.ShopfrontReliability ?? 0),
                 };
                 _shopPanel.ShowScreen(spec, title, build, buildRow: true);
+                // ⚠ The LIVE path reaches this screen through ShowBuildDetail, which shows the
+                // balance; the harness calls ShowScreen directly, so without this the render would
+                // show a purchase screen with no readout and the picture would not be evidence
+                // about the screen the game actually draws.
+                _shopPanel.ShowBalance(Money.Format(bal));
+                if (_laptopSwoop >= 0) _shopPanel.SetBalanceSwoop(_laptopSwoop / 100f);
                 _shopPanel.ForceHoverForShot(_laptopHoverRow, _laptopHoverBtn);
                 if (_laptopFrame == 0)
                     GD.Print($"[laptop] build: {sellable.Count} priced rides; showing {title} at "
@@ -5824,12 +5868,33 @@ public partial class Viewer : Node3D
     /// test looked like it would work and did not.
     ///
     /// ⭐ Returns names and counts. It used to build buttons; the panel they sat on is gone.</summary>
+    /// <summary>⭐ A category's name as the CONSOLE says it, falling back to the archive folder
+    /// when the table does not name it (jungle's Upgrades) or the text database is missing.</summary>
+    string CategoryName(string key)
+    {
+        if (KindOf(key) is not { } k) return Title(key);
+        int id = BuildCategoryNames.TextId(k);
+        if (id > 0 && _text?.Text("eng", id) is { Length: > 0 } t) return t;
+        return BuildCategoryNames.Fallback(k);
+    }
+
+    /// <summary>A category key back to the kind it came from, or null for a folder-derived one.</summary>
+    static AssetResourceDatabase.AssetKind? KindOf(string key) =>
+        Enum.TryParse<AssetResourceDatabase.AssetKind>(key, true, out var k) ? k : null;
+
     /// ⚠⚠ IT COUNTS THINGS, NOT MODELS, off the same <see cref="BuildableRows"/> the list draws.
     /// Counting models promised "Rides (47)" over a list of eighteen.
     List<(string Key, int Count)> BuildCategories() =>
         BuildableRows()
             .GroupBy(i => BuildCategory(_lib.Rides[i]), StringComparer.OrdinalIgnoreCase)
-            .OrderByDescending(g => g.Count())
+            // ⭐ THE CONSOLE'S ORDER, not mine and not the counts'. Master: "build should be
+            // ordered Rides, Track rides, Roller Coasters, Shops, Sideshows, Features" -- which is
+            // the STR_PURCHASE_* family's own order; see BuildCategoryNames.
+            // ⚠ Ties broken by count so a category the table does not name (jungle's Upgrades)
+            // still lands somewhere stable rather than wherever the grouping happened to put it.
+            .OrderBy(g => KindOf(g.Key) is { } k ? BuildCategoryNames.Rank(k)
+                                                  : BuildCategoryNames.Order.Length)
+            .ThenByDescending(g => g.Count())
             .Select(g => (g.Key, g.Count()))
             .ToList();
 
@@ -7308,11 +7373,13 @@ public partial class Viewer : Node3D
         {
             var k = _text.Keys[i];
             if (k == null) continue;
-            if (!k.Contains("RIDETYPE", StringComparison.OrdinalIgnoreCase)
-             && !k.Contains("COASTER", StringComparison.OrdinalIgnoreCase)
-             && !k.Contains("TRACK", StringComparison.OrdinalIgnoreCase)) continue;
+            // ⭐⭐ `STR_PURCHASE_*` IS THE CONSOLE'S OWN BUILD-MENU CATEGORY LIST. 362 reads
+            // "Track Rides" and 457 "Roller Coasters" -- the exact names master asked for, which
+            // is what says the split is the game's and not a taxonomy I invented.
+            if (!k.StartsWith("STR_PURCHASE_", StringComparison.OrdinalIgnoreCase)) continue;
             GD.Print($"[type]   {i,4} {k} = \"{_text.Text("eng", i)}\"");
         }
+        GD.Print("[type] --- end of STR_PURCHASE ---");
         GD.Print("[type] the first 26 rows, in case the index is simply the row:");
         for (int i = 0; i < 26 && i < _text.Keys.Length; i++)
             GD.Print($"[type]   {i,4} {_text.Keys[i]} = \"{_text.Text("eng", i)}\"");
@@ -7336,7 +7403,8 @@ public partial class Viewer : Node3D
         // separates them from Dizzy Dinos is what a category split has to be built on, so the key
         // sets of one of each are printed side by side.
         var keysOf = new Dictionary<string, string[]>();
-        foreach (var want in new[] { "coaster1", "croccar", "stdpylon", "dizzy", "bellybounce" })
+        foreach (var want in new[] { "coaster1", "gokarts/gokarts", "wateride/wateride",
+                                     "tourride/tourride", "dizzy", "bellybounce" })
         {
             var hit = _lib.Rides.FirstOrDefault(r => r.Model != null && !IsTerrain(r.Model.Path)
                         && r.Model.Path.Contains(want, StringComparison.OrdinalIgnoreCase));
@@ -7355,6 +7423,38 @@ public partial class Viewer : Node3D
                    + $"shape={(def.Shape == null ? "none" : $"{def.Shape.Max(r => r.Length)}x{def.Shape.Length}")} "
                    + $"{def.Fields.Count + def.Blocks.Count} keys");
         }
+        // ⭐⭐ THE CATEGORY FIELD, PER RIDE. `STR_PURCHASE_RIDES` 1024, `_TRACKRIDES` 362,
+        // `_TOURRIDES` 811, `_COASTER` 457, `_SHOPS` 513, `_SIDESHOWS` 522, `_FEATURES` 242 --
+        // the console's own build categories, and master asked for exactly those names. What is
+        // printed here is every candidate field side by side for each ride, so the one that
+        // SPLITS them the same way is read off the data rather than argued for.
+        GD.Print("[cat] folder | name | RideTypeStringIndex | Bumper.WhichTrackType | "
+               + "Bumper.BumperType | SupplementalMeshes | Research.Group");
+        foreach (int i in BuildableRows())
+        {
+            var ra = _lib.Rides[i];
+            var d = DefinitionFor(ra.Model);
+            if (d == null) continue;
+            int sup = 0;
+            while (d.Fields.ContainsKey($"SupplementalMeshes[{sup}].FileName")) sup++;
+            GD.Print($"[cat] {Category(ra.Name),-9} {DisplayName(ra, d),-22} "
+                   + $"type={d.Int("Info.RideTypeStringIndex")?.ToString() ?? "-",-3} "
+                   + $"track={d.Int("Bumper.WhichTrackType")?.ToString() ?? "-",-3} "
+                   + $"bumper={d.Int("Bumper.BumperType")?.ToString() ?? "-",-3} "
+                   + $"sup={sup,-2} "
+                   + $"research={d.Int("Research.Group")?.ToString() ?? "-",-3} "
+                   + $"coaster={(d.Fields.Keys.Concat(d.Blocks.Keys).Any(k => k.StartsWith("sCoasterType.")) ? "Y" : "n")}");
+        }
+
+        // ⭐⭐ WHAT SEPARATES A TRACK RIDE FROM A FLAT ONE. Master wants Rides / Track Rides /
+        // Roller Coasters as separate categories and the console has the names for all three
+        // (STR_PURCHASE_RIDES 1024, _TRACKRIDES 362, _COASTER 457), so the split is the game's.
+        // The question is which FIELD it reads -- printed as a diff against a flat ride rather
+        // than guessed from the folder's shape.
+        if (keysOf.TryGetValue("dizzy", out var flat))
+            foreach (var w in new[] { "gokarts/gokarts", "wateride/wateride", "tourride/tourride", "coaster1" })
+                if (keysOf.TryGetValue(w, out var tk))
+                    GD.Print($"[type] keys {w} has and Dizzy Dinos does not: {string.Join(" ", tk.Except(flat))}");
         if (keysOf.TryGetValue("coaster1", out var ck) && keysOf.TryGetValue("dizzy", out var dk))
         {
             GD.Print($"[type] keys coaster1 has and Dizzy Dinos does not: {string.Join(" ", ck.Except(dk))}");
