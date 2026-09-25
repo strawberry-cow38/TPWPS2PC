@@ -20,7 +20,16 @@ Updated 2026-09-25 by tinyclaw, after the 839f7ca gates.
   walks.
 - The standalone native core is on main as slice A (c5dfe12).
 
-**Gates at 839f7ca** (clean committed tree, built before the runs, /tmp/tpw-839f7ca):
+**Latest gates, at aa1075e** (clean committed tree, /tmp/tpw-aa1075e). This revision adds cow's
+GuestWalk.Step snapshot fix. All 23 projects build, the unit tests pass, the audit matrix shows only
+the retail reds with `landing_evidence=true`, runtime is 11/11, and the viewer matrix is 48/48 with
+loaded == requested.
+
+Later commits bring in main (cow's `--idle-scene`, and the corrected 93% comment), the opt-in
+`--native-idle-all` branch with its IdleSceneFilm harness, and docs. A full gate rerun at the
+resulting HEAD is recorded when it finishes.
+
+**Earlier gates at 839f7ca** (clean committed tree, built before the runs, /tmp/tpw-839f7ca):
 - all 23 projects build with 0 errors;
 - 79 tool unit tests OK;
 - `tools/audit_matrix.py`: `known_retail_failures_remain`, exit 2, `landing_evidence=true`. It covers
@@ -2841,6 +2850,18 @@ was blind: in 150 ticks per mode, admitted guests stood still for only 5 (A) and
 because Idle re-tasks a guest the moment it arrives. An inspected frame shows one guest walking past
 the gate. The idle comparison needs guests who wait, in queues or at service, and that rendering is
 cow's.
+
+**Idle A/B film (item 5), the 93% correction, and cow's acks — 2026-09-25 ~05:30 UTC.**
+- cow tools acked slice A's dispatcher and slice B. Their note was to snapshot GuestWalk.Step's
+  loop, and that is fixed as 71bfbdc (slice B) and 3f43b5f (here).
+- The slice B gates at 71bfbdc are clean (/tmp/tpw-71bfbdc).
+- cow built `--idle-scene` on main (2268664).
+- The film was made on it with one harness in both builds; see findings/native-idle-film.md.
+  - Measured: native plays an idle clip 79% of standing guest-ticks and holds the last pose 15%.
+  - The "93% frozen" reading was a per-pick weight mistaken for a share of time. It was wrong in
+    plan.md, and in cow's Viewer.cs comment, which cow fixed in c525f95 after checking 10E800's flag-4
+    retention against the C.
+  - The film went to strawberry for the choice.
 
 ## Archived plan checkpoints (moved verbatim from plan.md lines 58-329 on 2026-09-25)
 

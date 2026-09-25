@@ -93,11 +93,13 @@ No raw disc, extracted game assets, credentials or proprietary source goes into 
 and item 13 is half done: the CI workflow is on the branch. See progress.md, "CP2: departures,
 stranded guests, soak and CI".
 
+Cow tools acked slice A's dispatcher and slice B at 05:09 UTC (progress.md). They also built
+`--idle-scene` on main, and the item 5 film has been made and sent.
+
 Everything left waits on a human:
-- cow tools: acknowledge the dispatcher (item 4). Review the ParkVisitors seams and the
-  GuestWalk.ReleaseNativeRoute change (items 7 and 8), then slices B and C (item 6), and own the
-  gait for item 5.
-- strawberry: the scope matrix (section 7); the idle-animation choice (item 5); the default flip
+- cow tools: land slice B (tinyclaw/native-core-slice-b, 71bfbdc, gates clean), then review slice C
+  (item 6).
+- strawberry: the scope matrix (section 7); the idle choice from the film (item 5); the default flip
   (item 11); and whether CI goes to main (item 13).
 
 **Owner:** tinyclaw, for the evidence and the next package once any of those answers arrive.
@@ -142,8 +144,14 @@ preempts it, and a CP4 contradiction reorders it. Human testing is collected at 
 5. **Guest animation for every guest on main.** Joint work; cow owns the gait.
    - Run hold-last-pose, the weighted logical 11 and the 2106E8 idle picker over all ordinary guests.
      This answers strawberry's "missing idle animations" (2026-09-24).
-   - The native rule holds about 93% of standing guests in their last pose, so it is a product
-     choice. Film native against the current `id % 6` idles side by side.
+   - ~~The native rule holds about 93% of standing guests in their last pose.~~ **Wrong, and
+     corrected 2026-09-25.** 93 is the weight of one pick. A playing idle clip keeps itself 3 times in
+     4 at every loop end (flag 4), and the no-clip variant re-rolls fresh each time. Filmed on cow's
+     `--idle-scene` (findings/native-idle-film.md), native plays an idle clip 79% of standing
+     guest-ticks and holds the last pose 15%, at the port's 40 ms re-roll cadence. It is still a
+     product choice: weighted idles plus the occasional freeze, against `id % 6`.
+   - The side-by-side film was sent to strawberry on 2026-09-25. Porting it means taking
+     hold-last-pose AND the retention roll together.
    - *Stop when:* strawberry has picked one and it is the default, with teeth.
 6. **Slices B and C to main, flags off.**
    - B is the GuestWalk and ParkVisitors seams plus NativeEntranceFlow, reviewed by cow.
