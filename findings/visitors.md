@@ -707,6 +707,17 @@ never take. That is this executable's behaviour, not a gap in the port.
 
 ### ⚠ THE EXCEPTION: Thrill Grill (HALLOW) — OPEN
 
+> **⚠ Correction, 2026-09-25, tinyclaw (scope: the premise, not the opcode semantics).** Thrill
+> Grill is `/rides/firepit/` in HALLOW.WAD: `firepit.RSE`, `.rss`, `.sam`, its sign and 21 textures,
+> and **no `.mps` or `.aps`**. A search of every WAD on the disc finds no model and no animation for
+> it. The only `firepit.aps` is `/upgrades/firepit/firepit.aps`, whose `.sam` names it **"CryptKarts
+> Jump"** (`AddOn.UpgradesId 2150`, a go-kart track add-on). So "Thrill Grill's model has no slot 4"
+> below is wrong in its premise: the audit found the add-on's animation by stem and paired it with
+> the ride's script. The ride has no model, so the build list (which needs one) never offers it. It
+> looks like cut content. **What still stands:** the TRIGWAITANIM gate analysis below. A script
+> waiting on a slot no playing record has does spin forever. **Not checked:** whether the console's
+> compiled attraction table lists Thrill Grill at all.
+
 **`Thrill Grill` boards nobody and does not poll a track subsystem at all.** It is the only such
 ride on the disc, and it is unlike the eight around it in exactly the way that matters:
 
