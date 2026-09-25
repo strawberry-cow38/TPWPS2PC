@@ -11,13 +11,63 @@ public sealed class Disc : IDisposable
     public const int SectorSize = 2352, UserOffset = 24, UserSize = 2048;
 
     readonly FileStream _fs;
-    public Disc(string path) { _fs = File.OpenRead(path); }
+    readonly int _sectorSize, _userOffset;
+    public Disc(string path) : this(path, SectorSize, UserOffset) { }
+
+    /// <summary>An image in some other sector layout: a 2,048-byte cooked ISO (<c>2048, 0</c>) or a
+    /// Mode 1 raw track (<c>2352, 16</c>). The PS2 rip always uses the parameterless constructor.</summary>
+    public Disc(string path, int sectorSize, int userOffset)
+    {
+        if (sectorSize is not (2048 or 2352) || userOffset < 0 || userOffset + UserSize > sectorSize)
+            throw new ArgumentException($"unsupported sector layout {sectorSize}/{userOffset}");
+        _fs = File.OpenRead(path);
+        _sectorSize = sectorSize; _userOffset = userOffset;
+    }
     public void Dispose() => _fs.Dispose();
+
+    /// <summary>"2048" or "2352+24" style, for reports.</summary>
+    public string Layout => _sectorSize == 2048 ? "2048" : $"{_sectorSize}+{_userOffset}";
+
+    /// <summary>Open an image whose layout is not known in advance, by finding the ISO9660 primary
+    /// volume descriptor ("\x01CD001" at sector 16) under each candidate layout. A <c>.cue</c> is
+    /// followed to its first FILE. Null when no layout finds one.</summary>
+    public static Disc Open(string path)
+    {
+        if (path.EndsWith(".cue", StringComparison.OrdinalIgnoreCase)) path = CueTarget(path);
+        foreach (var (size, offset) in new[] { (2352, 24), (2048, 0), (2352, 16) })
+        {
+            Disc d = null;
+            try
+            {
+                d = new Disc(path, size, offset);
+                if ((16L + 1) * size > d._fs.Length) { d.Dispose(); continue; }
+                var pvd = d.Sector(16);
+                if (pvd[0] == 1 && pvd[1] == (byte)'C' && pvd[2] == (byte)'D' && pvd[3] == (byte)'0'
+                    && pvd[4] == (byte)'0' && pvd[5] == (byte)'1') return d;
+                d.Dispose();
+            }
+            catch (IOException) { d?.Dispose(); }
+        }
+        return null;
+    }
+
+    /// <summary>The first <c>FILE "…"</c> of a cue sheet, relative to the cue's folder.</summary>
+    public static string CueTarget(string cue)
+    {
+        foreach (var line in File.ReadLines(cue))
+        {
+            var t = line.Trim();
+            if (!t.StartsWith("FILE", StringComparison.OrdinalIgnoreCase)) continue;
+            int a = t.IndexOf('"'), b = a < 0 ? -1 : t.IndexOf('"', a + 1);
+            if (b > a) return Path.Combine(Path.GetDirectoryName(Path.GetFullPath(cue)) ?? "", t[(a + 1)..b]);
+        }
+        throw new InvalidDataException($"{cue}: no FILE line");
+    }
 
     public byte[] Sector(long n)
     {
         var b = new byte[UserSize];
-        _fs.Seek(n * SectorSize + UserOffset, SeekOrigin.Begin);
+        _fs.Seek(n * _sectorSize + _userOffset, SeekOrigin.Begin);
         _fs.ReadExactly(b, 0, UserSize);
         return b;
     }
