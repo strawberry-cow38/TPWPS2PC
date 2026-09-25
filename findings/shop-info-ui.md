@@ -817,3 +817,31 @@ kind, so unlike the Build screen there is no record to read a price off.
 
 ⭐ Recorded rather than faked. Filling these three rows from the demo sweep would have produced a
 screen that looks finished and means nothing; the spec above is what an implementation needs.
+
+## Mouse support, and the Back/Close buttons -- which fill the lump (2026-09-25)
+
+Master: *"does the 'laptop' ui support mouse hover to highlight, click to open / select. oh also
+add a back/close button to every laptop ui"*.
+
+**It did not.** `LaptopShopScreen` was `MouseFilter.Ignore` with no input handler at all -- the
+pointer passed straight through it. Now `MouseFilter.Stop` with `_GuiInput`: motion sets a hover
+row or button, a left click activates. ⭐ Hover is kept SEPARATE from selection, because the
+console has no pointer and highlight-under-cursor must not quietly move a selection a controller
+would be driving.
+
+⭐ **A menu row's hit box is the whole row**, 260 units wide, not the rendered glyphs -- hit-testing
+the text would make "Build" harder to click than "Financial Information", which is a worse UI than
+the console's.
+
+**The buttons go in the lump** -- cols 321..499, rows 17..183, the space measured earlier and left
+empty when master said "leave it blank for now". That is where the console drew its face-button
+legend (triangle Back, square Mainmenu, circle Close), so it is the right home for the same idea.
+⚠ A deliberate addition, not a restoration: the console drew glyphs for a pad it assumed you were
+holding, and these are words because a mouse has no face buttons. ⭐ The words are the game's own,
+`STR_GIZMO_CPP_BACK` (545) and `STR_GIZMO_CPP_CLOSE` (967) -- the pair the gizmo bar already uses
+-- rather than invented English. Hover brightens them to the selection yellow, since the laptop has
+exactly two text colours and a third invented for hover would not be this UI.
+
+⚠ **A still cannot show a hover state**, so `ForceHoverForShot` drives the same two fields the
+pointer sets. Without it a render could neither demonstrate the highlight nor catch it going
+missing -- the screenshots proving this are evidence rather than assertion.

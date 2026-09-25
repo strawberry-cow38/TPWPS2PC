@@ -60,7 +60,10 @@ public sealed partial class LaptopShopScreen : Control
         _chrome = chrome; _barFrame = barFrame; _barFill = barFill;
         _slideTrack = slideTrack; _slideKnob = slideKnob;
         _layout = layout; _font = font; _text = text; _language = language;
-        MouseFilter = MouseFilterEnum.Ignore;
+        // ⭐ The laptop takes the mouse now. Master: "does the 'laptop' ui support mouse hover to
+        // highlight, click to open / select" -- it did not; this was Ignore and the class had no
+        // input handler at all.
+        MouseFilter = MouseFilterEnum.Stop;
         Visible = false;
         ZIndex = 110;
     }
@@ -246,6 +249,93 @@ public sealed partial class LaptopShopScreen : Control
     readonly List<string> _menu = new();
     int _menuSelected; string _menuScene;
 
+    /// <summary>Which menu row the pointer is over, or -1. ⚠ Separate from the SELECTED row: the
+    /// console has no pointer, so highlight-under-cursor is this port's addition and must not
+    /// quietly move the selection a controller would be driving.</summary>
+    int _menuHover = -1;
+
+    /// <summary>⭐⭐ THE BACK AND CLOSE BUTTONS, which master asked for on every laptop screen.
+    /// They live in the chrome's top-right lump -- cols 321..499, rows 17..183, measured off the
+    /// lossless TGA -- which is the space the console filled with its face-button legend
+    /// (triangle Back, square Mainmenu, circle Close) and which this port had left empty.
+    ///
+    /// ⚠ A DELIBERATE ADDITION, not a restoration: the console drew glyphs for a pad it assumed
+    /// you were holding. These are words, because a mouse has no face buttons.
+    /// ⭐ The words are the game's own -- `STR_GIZMO_CPP_BACK` (545) and `STR_GIZMO_CPP_CLOSE`
+    /// (967), the same two the gizmo bar uses -- rather than invented English.</summary>
+    public const int BackTextId = 545, CloseTextId = 967;
+    /// <summary>Authored-space boxes for the two buttons, inside the lump.</summary>
+    static readonly Rect2 BackBox = new(336, 60, 150, 34), CloseBox = new(336, 104, 150, 34);
+    int _btnHover = -1;   // 0 = back, 1 = close
+
+    /// <summary>Raised when a menu row is clicked, with its index.</summary>
+    public event Action<int> MenuActivated;
+    /// <summary>Raised when Back or Close is clicked.</summary>
+    public event Action<bool> Dismissed;   // true = close, false = back
+
+    Rect2 Screen(Rect2 authored, float s, Vector2 o) =>
+        new(o + authored.Position * s, authored.Size * s);
+
+    /// <summary>A menu row's clickable box. ⚠ Wider than the glyphs: a row is a TARGET, and
+    /// hit-testing the rendered text would make short words like "Build" harder to hit than long
+    /// ones, which is a worse UI than the console's.</summary>
+    Rect2 MenuRowBox(int i, SceneLayout.Element list, float s, Vector2 o) =>
+        Screen(new Rect2(list.X - 4, list.Y + LaptopMainMenu.RowStep * i, 260, LaptopMainMenu.RowStep), s, o);
+
+    /// <summary>⚠ FOR THE SHOT HARNESS ONLY. A still cannot show a hover state, so a render can
+    /// neither demonstrate the highlight works nor catch it if it stops. This forces the same two
+    /// fields the pointer sets, so a screenshot is evidence rather than an assertion.</summary>
+    public void ForceHoverForShot(int menuRow, int button)
+    {
+        _menuHover = menuRow; _btnHover = button; QueueRedraw();
+    }
+
+    public override void _GuiInput(InputEvent @event)
+    {
+        if (!Open) return;
+        float s = Scale; var o = Origin;
+        if (@event is InputEventMouseMotion motion)
+        {
+            int wasMenu = _menuHover, wasBtn = _btnHover;
+            _btnHover = Screen(BackBox, s, o).HasPoint(motion.Position) ? 0
+                      : Screen(CloseBox, s, o).HasPoint(motion.Position) ? 1 : -1;
+            _menuHover = -1;
+            if (_menu.Count > 0 && LayoutFor(_menuScene ?? LaptopMainMenu.MainScene)[LaptopMainMenu.ListElement] is { } l)
+                for (int i = 0; i < _menu.Count; i++)
+                    if (MenuRowBox(i, l, s, o).HasPoint(motion.Position)) { _menuHover = i; break; }
+            if (_menuHover != wasMenu || _btnHover != wasBtn) QueueRedraw();
+            return;
+        }
+        if (@event is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left })
+        {
+            if (_btnHover >= 0) { Dismissed?.Invoke(_btnHover == 1); AcceptEvent(); return; }
+            if (_menuHover >= 0)
+            {
+                _menuSelected = _menuHover;
+                QueueRedraw();
+                MenuActivated?.Invoke(_menuHover);
+                AcceptEvent();
+            }
+        }
+    }
+
+    /// <summary>⭐ Back and Close, drawn on EVERY screen. Hovering brightens a row to the same
+    /// yellow the selected row uses, because the laptop has exactly two text colours and inventing
+    /// a third for hover would not be this UI.</summary>
+    void DrawButtons(float s, Vector2 o)
+    {
+        void One(Rect2 box, int textId, bool hot)
+        {
+            string label = Row(textId);
+            if (label == null) return;
+            var at = Screen(box, s, o);
+            DrawRun(label, at.Position + new Vector2(0, 2 * s), s,
+                    Of(hot ? ShopScreen.Highlight : ShopScreen.Label), "left");
+        }
+        One(BackBox, BackTextId, _btnHover == 0);
+        One(CloseBox, CloseTextId, _btnHover == 1);
+    }
+
     /// <summary>⭐ The menu's own draw. It steps the SAME 32 the info screens do -- `DAT_002e9ca8`
     /// -- and uses the same two colours, yellow for the row under the cursor and orange for the
     /// rest, because the laptop has exactly two text colours and no third "disabled" one.</summary>
@@ -256,7 +346,8 @@ public sealed partial class LaptopShopScreen : Control
         var at = o + new Vector2(list.X, list.Y) * s;
         for (int i = 0; i < _menu.Count; i++)
         {
-            var colour = Of(i == _menuSelected ? ShopScreen.Highlight : ShopScreen.Label);
+            // ⭐ Hover reads the same as selection -- two colours is all this UI has.
+            var colour = Of(i == _menuSelected || i == _menuHover ? ShopScreen.Highlight : ShopScreen.Label);
             DrawRun(_menu[i], at + new Vector2(0, LaptopMainMenu.RowStep * i * s), s, colour, list.Justify);
         }
     }
@@ -357,13 +448,14 @@ public sealed partial class LaptopShopScreen : Control
         float s = Scale;
         var o = Origin;
         DrawTextureRect(_chrome, new Rect2(o, new Vector2(Native, Native) * s), false);
-        if (_spec != null) { DrawSpecScreen(s, o); return; }
-        if (_menu.Count > 0) { DrawMenu(s, o); return; }
+        if (_spec != null) { DrawSpecScreen(s, o); DrawButtons(s, o); return; }
+        if (_menu.Count > 0) { DrawMenu(s, o); DrawButtons(s, o); return; }
 
         Vector2 At(SceneLayout.Element e) => o + new Vector2(e.X, e.Y) * s;
 
         if (_layout["ItemText"] is { } title)
             DrawRun(_title, At(title), s, Of(ShopScreen.Highlight), title.Justify);
+        DrawButtons(s, o);
 
         // ⭐ Labels and values are two independent columns that step together: the draw advances
         // both by the same `RowStep` and they start on the same row.

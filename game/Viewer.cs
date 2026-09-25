@@ -246,6 +246,7 @@ public partial class Viewer : Node3D
     /// <summary>Which main-menu row the cursor is on, and whether the park is open -- the latter
     /// decides Open Park against Close Park. Both are harness knobs until the laptop takes input.</summary>
     int _laptopMenuSelected; bool _laptopParkOpen; int _laptopRide;
+    int _laptopHoverRow = -1, _laptopHoverBtn = -1;
     bool _idleScene, _idleSeeded;
     int _idleCount = 24;
     /// <summary>Which ride the control run stands, by display name; Crazy Ape unless told.</summary>
@@ -385,6 +386,8 @@ public partial class Viewer : Node3D
             else if (a.StartsWith("--laptop-menu-row=")) int.TryParse(a["--laptop-menu-row=".Length..], out _laptopMenuSelected);
             else if (a == "--laptop-park-open") _laptopParkOpen = true;
             else if (a.StartsWith("--laptop-ride=")) int.TryParse(a["--laptop-ride=".Length..], out _laptopRide);
+            else if (a.StartsWith("--laptop-hover=")) int.TryParse(a["--laptop-hover=".Length..], out _laptopHoverRow);
+            else if (a.StartsWith("--laptop-hover-btn=")) int.TryParse(a["--laptop-hover-btn=".Length..], out _laptopHoverBtn);
             else if (a.StartsWith("--ui-size="))
             {
                 var wh = a["--ui-size=".Length..].Split('x');
@@ -3177,6 +3180,7 @@ public partial class Viewer : Node3D
                           + " -- the list would run onto the chrome");
             _shopPanel.ShowMenu(opts, _laptopMenuSelected,
                 _laptopScreen.Equals("info", StringComparison.OrdinalIgnoreCase) ? LaptopMainMenu.InfoScene : LaptopMainMenu.MainScene);
+            _shopPanel.ForceHoverForShot(_laptopHoverRow, _laptopHoverBtn);
             PrepareUiShotView();
             SaveShot(ShotSibling(_shotPath, $"-f{_laptopFrame:D4}"));
             _laptopFrame++;
@@ -3245,6 +3249,7 @@ public partial class Viewer : Node3D
                     (null, def.ShopfrontReliability ?? 0),
                 };
                 _shopPanel.ShowScreen(spec, title, build);
+                _shopPanel.ForceHoverForShot(_laptopHoverRow, _laptopHoverBtn);
                 if (_laptopFrame == 0)
                     GD.Print($"[laptop] build: {sellable.Count} priced rides; showing {title} at "
                            + $"{Money.Format(def.PlacementCost ?? 0)}, balance {Money.Format(bal)}, "
@@ -3287,6 +3292,7 @@ public partial class Viewer : Node3D
         }
         _shopPanel.ShowScreen(spec, title, cells);
 
+        _shopPanel.ForceHoverForShot(_laptopHoverRow, _laptopHoverBtn);
         PrepareUiShotView();
         SaveShot(ShotSibling(_shotPath, $"-f{_laptopFrame:D4}"));
         _laptopFrame++;
