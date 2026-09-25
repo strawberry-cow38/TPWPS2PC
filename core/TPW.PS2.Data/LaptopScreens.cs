@@ -38,7 +38,7 @@ public sealed record LaptopScreen(
             new(1074, LaptopRowKind.Bar,    "SatisfactionBar"),
             new(312,  LaptopRowKind.Slider, "QualitySlider"),
             new(0,    LaptopRowKind.Slider, "AdditiveSlider"),   // label is per-shop: Fat/Ice/Sugar/Salt
-            new(594,  LaptopRowKind.Money,  "CostItem"),         // Sale Price, with CostItemArrows
+            new(594,  LaptopRowKind.Money,  "CostItem", "CostItemArrows"),   // Sale Price
         });
 
     /// <summary>⭐ The RIDE screen, `main_i_ride_data`, menu 0x0E, bound by `FUN_001D3F98` and
@@ -82,15 +82,52 @@ public sealed record LaptopScreen(
             new(899, LaptopRowKind.Bar,    "ExcitementBar"),
             new(743, LaptopRowKind.Bar,    "SatisfactionBar"),
             new(295, LaptopRowKind.Slider, "ChanceofWinningSlider"),
-            new(832, LaptopRowKind.Money,  "CostOfPrizeValue"),
-            new(190, LaptopRowKind.Money,  "PricePerGameValue"),
+            new(832, LaptopRowKind.Money,  "CostOfPrizeValue",  "CostOfPrizeArrow"),
+            new(190, LaptopRowKind.Money,  "PricePerGameValue", "PricePerGameArrow"),
         });
 }
 
 /// <summary>One labelled row. <paramref name="Element"/> names the scene element that carries the
 /// row's widget or value, when it has one of its own; a null means the row's value sits on the
 /// screen's shared value column at the label's own height.</summary>
-public readonly record struct LaptopRow(int TextId, LaptopRowKind Kind, string Element = null);
+public readonly record struct LaptopRow(int TextId, LaptopRowKind Kind, string Element = null,
+                                       string ArrowElement = null);
+
+/// <summary>The `◀▶` pair a row gets when its value can be nudged.
+///
+/// ⭐ ONE SPRITE, BOTH TRIANGLES: `UI.WAD/Arrow/UIarrow.ssh` is 32x32 and symmetric -- 208 opaque
+/// pixels in its left half against 205 in its right. The scene files call it the "Yellow
+/// Selection Arrows" and the art is indeed yellow, (255,254,0).
+///
+/// ⚠ BUT IT DOES NOT RENDER YELLOW. Measured off master's screenshot of the real Drinks Shop, the
+/// Sale Price arrows sit at **(206,138,3)** -- the same orange as an unselected label. So the port
+/// draws them in the label colour rather than the art's own. That is matched to the picture, not
+/// decoded: which call tints them, and whether it is the same label-colour call, is unread.
+///
+/// ⚠⚠ THE SIZE IS ONLY PARTLY MEASURED, and the honest version is worth more than a confident
+/// one. The scene gives the arrows a position and NO extent. On the reference a pair is 43 pixels
+/// tall against a row pitch of 55-57, so it is about three quarters of a row -- and that ratio is
+/// the one figure every attempt agreed on, because a ratio of two like things survives a bad
+/// scale. The WIDTH did not converge: isolating one element by colour on a compressed screenshot
+/// gave 3.139, 2.653 and 1.774 pixels per authored unit on three tries, so the width here is the
+/// art's own aspect applied to that height rather than a measurement.
+///
+/// ⚠ The row is used as the sprite's TOP. The file's own arrow rows (353, 384) do not pair
+/// consistently with its value rows (372, 340) -- one arrow reads 19 above its value and the
+/// other 44 below -- which suggests the two arrow elements are named across their values. That is
+/// not resolved here.</summary>
+public static class LaptopArrows
+{
+    public const string Sprite = "/Arrow/UIarrow.ssh";
+    /// <summary>About three quarters of a row tall, which is what the reference shows.</summary>
+    public const int NativeHeight = 24;
+    /// <summary>The art's aspect at that height: 32 wide over 30 opaque rows.</summary>
+    public const int NativeWidth = 26;
+    /// <summary>What the arrows must come out as, measured on the reference.</summary>
+    public static readonly (byte R, byte G, byte B) Rendered = (206, 138, 3);
+    /// <summary>The art's own colour, so a caller can work out its own modulate.</summary>
+    public static readonly (byte R, byte G, byte B) Art = (255, 254, 0);
+}
 
 public enum LaptopRowKind
 {

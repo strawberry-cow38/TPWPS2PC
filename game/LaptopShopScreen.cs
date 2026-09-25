@@ -32,6 +32,7 @@ public sealed partial class LaptopShopScreen : Control
     public const float Native = 512f;
 
     readonly ImageTexture _chrome, _barFrame, _barFill, _slideTrack, _slideKnob;
+    ImageTexture _arrows;
     readonly FontText _font;
     readonly SceneLayout _layout;
     readonly TextDatabase _text;
@@ -103,6 +104,7 @@ public sealed partial class LaptopShopScreen : Control
         }
         var screen = new LaptopShopScreen(chrome, barFrame, barFill, track, knob, layout, font, text, language);
         screen._lib = lib;                 // for the other screens' scene files, read on demand
+        screen._arrows = Load(LaptopArrows.Sprite);
         screen._layouts[ShopScreen.SceneFile] = layout;
         return screen;
     }
@@ -256,6 +258,19 @@ public sealed partial class LaptopShopScreen : Control
                 if (row.Kind == LaptopRowKind.Bar) DrawBar(rect, fraction, s);
                 else DrawSlider(rect, fraction, s, selected: false);
                 continue;
+            }
+
+            // ⭐ The nudge arrows, for a row whose value the player can change. They are drawn
+            // whether or not the row has text this frame, because they belong to the row.
+            if (row.ArrowElement != null && _arrows != null && layout[row.ArrowElement] is { } arrow)
+            {
+                // ⚠ Modulate so the YELLOW art lands on the orange the real screen shows; see
+                // LaptopArrows. Godot multiplies, so the factor is rendered/art per channel.
+                var want = new Color(LaptopArrows.Rendered.R / (float)LaptopArrows.Art.R,
+                                     LaptopArrows.Rendered.G / (float)LaptopArrows.Art.G,
+                                     LaptopArrows.Rendered.B / 255f);
+                DrawTextureRect(_arrows, new Rect2(At(arrow),
+                    new Vector2(LaptopArrows.NativeWidth, LaptopArrows.NativeHeight) * s), false, want);
             }
 
             if (text == null) continue;
