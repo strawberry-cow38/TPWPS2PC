@@ -332,13 +332,50 @@ the 32 row step. Small (21) and Console (14) would leave holes.
 
   ⚠ CONDITIONAL ON THE TYPE, and that matters: only types 6 and 7 take the `0x10E910` arm. Other
   types take arms nobody has read, so a port must check the visual's type at `+0x18` before
-  assuming this path. Still unread: where `shop + 0x78`'s id comes from, what `0x10` and `-1` mean
-  in the init call, and the factory's init slot `+0x0C`.
+  assuming this path.
 
-  ⚠ WHAT IS STILL UNREAD: what *fills* that sprite. A front-facing render of the model playing an
-  animation has to be produced somewhere upstream and handed to `obj + 0x58`; that producer, and
-  which animation it plays, are not traced. So the port needs a render-to-texture whose contents
-  are not yet specified — knowing the UI blits a sprite does not tell you what is in it.
+  ⚠⚠ A STALE PARAGRAPH LIVED HERE and is worth recording rather than quietly deleting. It said the
+  element was a sprite, that "what fills that sprite" was unread, and that the port needed a
+  render-to-texture. All three were wrong and had already been corrected ABOVE in this same file --
+  the correction was written and the superseded claim was left standing underneath it. A document
+  that contradicts itself is worse than one that is merely out of date, because both halves look
+  equally authoritative.
+
+  ⭐⭐ WHAT THE ID IS, AND HOW IT BECOMES A MODEL. The value at `shop + 0x78` is an **asset id**:
+
+  ```
+  FUN_00144068(widget, id)
+    -> obj = FUN_00230A98()                 ; new 0x4C, ctor 0x227158, vtable 0x36F290
+    -> vtable slot +0x08, fn at +0x0C = FUN_00228868
+         -> FUN_0017BFF8(obj + 0x0C, id, 0x10, -1)
+              renderable[4]    = id
+              index            = FUN_0017D7E8(id)    ; -> resource index, or -1
+              renderable[0x10] = record[0x1C]        ; the handle
+              renderable[0x18] = 0x10                ; the caller's flag overrides record[0x04]
+  ```
+
+  ⚠ The vtable's slots are EIGHT bytes, `{short adjust, fn}`, so `vtable + 0xC` is the FUNCTION of
+  the slot at `+0x08`, not a slot of its own. Reading `+0x24` as a slot index lands on `0x227940`,
+  which is a function prologue rather than a table.
+
+  ⭐ `FUN_0017D7E8` is a linear search over **36-byte records** based at `0x2BF2BC`, count in
+  `DAT_002C3300`:
+
+  | offset | meaning |
+  | --- | --- |
+  | `+0x00` | world filter -- matches `4` (any) or the current world, from `FUN_0014E170` |
+  | `+0x04` | type, which the consumer compares against `0xC` |
+  | `+0x08` | the asset id searched for |
+  | `+0x0C` | flags; bit `8` is special-cased and the low bits are matched to `FUN_0014E160() + 1` |
+  | `+0x1C` | the handle the renderable keeps |
+
+  ⭐⭐ SO THE LOOKUP IS FILTERED BY WORLD **AND** REGION -- the same seam the three shipped
+  databases sit behind. An id alone does not identify an asset here; an id plus a world plus a
+  region does. And the handle indexes `DAT_002EAAD0`, the SAME model table the guest animation
+  dispatcher reads. One handle space, two consumers.
+
+  ⚠ STILL UNREAD: who WRITES `shop + 0x78`, and the `parts[0x54]` branch in the fit, which
+  overrides the model's own width with an authored value when it is present.
 * The laptop **sprite registry** at `DAT_002eeff0` — 62 records of 24 bytes, exactly the file count
   in `UI.WAD/laptop/` — reads all zeros in the image, so it is runtime-populated and its
   index-to-file mapping is **not** established. `FUN_00214c20` sets sprite 57 to `0x60ffffff` and
