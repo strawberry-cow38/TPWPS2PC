@@ -190,6 +190,51 @@ public partial class LaptopShopScreenAudit : Node
             Check(Opaque(cap) == 10, $"PROG_CBIT is opaque over 10 of its 16 columns (got {Opaque(cap)})");
             Check(Opaque(body) == 16, $"PROG_VBIT fills all 16 (got {Opaque(body)}) -- it is the tile, the cap is not");
 
+            // ⭐⭐ WHY THE FILL IS ROUNDED AT BOTH ENDS. The trough is symmetric and the cap's
+            // profile starts where the trough's does, so one sprite serves both ends -- mirrored at
+            // the leading edge. Filling flat to the last interior column instead put a SQUARE edge
+            // inside a ROUND one, visible the moment the bar reached 100%.
+            var trough2 = new Ssh(library.ReadUi("/laptop/BARPROG.ssh"));
+            int Interior(Ssh i, int x)
+            {
+                int n = 0;
+                for (int y = 0; y < i.Height; y++) if (i.Pixels[(y * i.Width + x) * 4 + 3] <= 16) n++;
+                return n;
+            }
+            var leftEnd = Enumerable.Range(3, 11).Select(x => Interior(trough2, x)).ToArray();
+            var rightEnd = Enumerable.Range(114, 11).Select(x => Interior(trough2, x)).Reverse().ToArray();
+            Check(leftEnd.SequenceEqual(rightEnd),
+                  $"BARPROG's ends are mirror images ([{string.Join(",", leftEnd)}] vs [{string.Join(",", rightEnd)}])");
+            int CapHeight(Ssh i, int x)
+            {
+                int n = 0;
+                for (int y = 0; y < i.Height; y++) if (i.Pixels[(y * i.Width + x) * 4 + 3] > 128) n++;
+                return n;
+            }
+            Check(CapHeight(cap, 0) == leftEnd[0],
+                  $"PROG_CBIT's first column matches the trough's first interior column ({CapHeight(cap, 0)} vs {leftEnd[0]})");
+            // ⚠ The control: an interior column well away from either end must NOT match, or the
+            // check above would pass against any flat-ended art.
+            Check(Interior(trough2, 60) != leftEnd[0],
+                  $"control: a mid-trough column differs from the end profile ({Interior(trough2, 60)} vs {leftEnd[0]})");
+
+            // ⭐ And the fill tiles SEAMLESSLY sideways because the gradient runs vertically. If it
+            // ran horizontally, tiling a 16-wide bit would band the bar every 16 columns.
+            int Spread(Ssh i, bool vertical)
+            {
+                int lo = 255, hi = 0;
+                for (int k = 0; k < (vertical ? i.Height : i.Width); k++)
+                {
+                    int x = vertical ? 2 : k, y = vertical ? k : i.Height / 2;
+                    if (i.Pixels[(y * i.Width + x) * 4 + 3] <= 128) continue;
+                    int v = i.Pixels[(y * i.Width + x) * 4 + 2];
+                    lo = Math.Min(lo, v); hi = Math.Max(hi, v);
+                }
+                return hi - lo;
+            }
+            Check(Spread(body, true) > 10 * Spread(body, false),
+                  $"PROG_VBIT's gradient is VERTICAL (spread {Spread(body, true)} down vs {Spread(body, false)} across) -- so it tiles seamlessly");
+
             // ⭐ The face, corroborated by the step rather than chosen: Large.bff's line advance
             // must FIT the row step, and the other two faces must be the ones that leave holes.
             var advances = new[] { "Large", "Small", "Console" }

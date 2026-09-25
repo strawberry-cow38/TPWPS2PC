@@ -31,7 +31,7 @@ public sealed partial class LaptopShopScreen : Control
     /// coordinates are in the same units.</summary>
     public const float Native = 512f;
 
-    readonly ImageTexture _chrome, _barFrame, _barCap, _barBody, _slideTrack, _slideKnob;
+    readonly ImageTexture _chrome, _barFrame, _barCap, _barCapEnd, _barBody, _slideTrack, _slideKnob;
     readonly FontText _font;
     readonly SceneLayout _layout;
     readonly TextDatabase _text;
@@ -52,11 +52,11 @@ public sealed partial class LaptopShopScreen : Control
     /// <summary>Top-left of the laptop in screen pixels, centred in the viewport.</summary>
     Vector2 Origin => (GetViewportRect().Size - new Vector2(Native, Native) * Scale) / 2f;
 
-    LaptopShopScreen(ImageTexture chrome, ImageTexture barFrame, ImageTexture barCap, ImageTexture barBody,
-                     ImageTexture slideTrack, ImageTexture slideKnob,
+    LaptopShopScreen(ImageTexture chrome, ImageTexture barFrame, ImageTexture barCap, ImageTexture barCapEnd,
+                     ImageTexture barBody, ImageTexture slideTrack, ImageTexture slideKnob,
                      SceneLayout layout, FontText font, TextDatabase text, string language)
     {
-        _chrome = chrome; _barFrame = barFrame; _barCap = barCap; _barBody = barBody;
+        _chrome = chrome; _barFrame = barFrame; _barCap = barCap; _barCapEnd = barCapEnd; _barBody = barBody;
         _slideTrack = slideTrack; _slideKnob = slideKnob;
         _layout = layout; _font = font; _text = text; _language = language;
         MouseFilter = MouseFilterEnum.Ignore;
@@ -83,6 +83,23 @@ public sealed partial class LaptopShopScreen : Control
             }
             catch (Exception ex) { GD.PrintErr($"[laptop] {name}: {ex.Message}"); return null; }
         }
+        // ⭐ The SAME cap sprite serves both ends of the fill; the trailing one is mirrored.
+        ImageTexture Mirror(string name)
+        {
+            var raw = lib.ReadUi(name);
+            if (raw == null) return null;
+            try
+            {
+                var ssh = new Ssh(raw);
+                int w = ssh.Width, h = ssh.Height;
+                var px = new byte[w * h * 4];
+                for (int y = 0; y < h; y++)
+                    for (int x = 0; x < w; x++)
+                        Array.Copy(ssh.Pixels, (y * w + (w - 1 - x)) * 4, px, (y * w + x) * 4, 4);
+                return ImageTexture.CreateFromImage(Image.CreateFromData(w, h, false, Image.Format.Rgba8, px));
+            }
+            catch (Exception ex) { GD.PrintErr($"[laptop] {name} (mirrored): {ex.Message}"); return null; }
+        }
 
         var sce = lib.ReadMenu(ShopScreen.SceneFile);
         if (sce == null) { GD.PrintErr($"[laptop] MENUS.WAD/{ShopScreen.SceneFile} missing -- screen stays off"); return null; }
@@ -95,6 +112,7 @@ public sealed partial class LaptopShopScreen : Control
         var barFrame = Load("/laptop/BARPROG.ssh");
         var barCap = Load("/laptop/PROG_CBIT.ssh");
         var barBody = Load("/laptop/PROG_VBIT.ssh");
+        var barCapEnd = Mirror("/laptop/PROG_CBIT.ssh");
         var track = Load("/laptop/BARSLIDE.ssh");
         var knob = Load("/laptop/BARKNOB.ssh");
         if (chrome == null || barFrame == null || track == null || knob == null)
@@ -102,7 +120,7 @@ public sealed partial class LaptopShopScreen : Control
             GD.PrintErr("[laptop] UI.WAD laptop art missing -- screen stays off");
             return null;
         }
-        return new LaptopShopScreen(chrome, barFrame, barCap, barBody, track, knob, layout, font, text, language);
+        return new LaptopShopScreen(chrome, barFrame, barCap, barCapEnd, barBody, track, knob, layout, font, text, language);
     }
 
     /// <summary>Put the screen up for a shop.
@@ -271,18 +289,27 @@ public sealed partial class LaptopShopScreen : Control
         float unit = r.Size.X / ArtWidth;
         float fraction = Mathf.Clamp(value / (float)ShopScreen.SatisfactionMax, 0f, 1f);
         float filled = InnerWidth * fraction;
-        if (_barCap != null && _barBody != null)
-            for (float at = 0f; at < filled; )
-            {
-                bool cap = at <= 0f;
-                var tex = cap ? _barCap : _barBody;
-                float cols = cap ? CapCols : BitCols;
-                float take = Mathf.Min(cols, filled - at);
-                DrawTextureRectRegion(tex,
-                    new Rect2(r.Position.X + (InnerX + at) * unit, r.Position.Y, take * unit, r.Size.Y),
-                    new Rect2(0, 0, take, tex.GetHeight()));
-                at += cols;
-            }
+
+        void Bit(Texture2D tex, float at, float cols)
+        {
+            if (tex == null || cols <= 0f) return;
+            DrawTextureRectRegion(tex,
+                new Rect2(r.Position.X + (InnerX + at) * unit, r.Position.Y, cols * unit, r.Size.Y),
+                new Rect2(0, 0, cols, tex.GetHeight()));
+        }
+
+        // ⭐⭐ ROUNDED AT BOTH ENDS. The trough is symmetric -- its interior height per column runs
+        // 20,22,24,24,... at the left and the exact mirror ...,24,24,22,20 at the right -- and
+        // PROG_CBIT's opaque profile starts at the same 20. So the one cap sprite serves both
+        // ends, mirrored at the leading edge, and at 100% the two caps nest into the trough's own
+        // rounded ends. Filling flat to column 124 instead left a SQUARE edge inside a ROUND end,
+        // which is what master saw: "whats going on with the full bar?".
+        Bit(_barCap, 0f, Mathf.Min(CapCols, filled));
+        float bodyEnd = Mathf.Max(CapCols, filled - CapCols);
+        for (float at = CapCols; at < bodyEnd; at += BitCols)
+            Bit(_barBody, at, Mathf.Min(BitCols, bodyEnd - at));
+        if (filled > CapCols) Bit(_barCapEnd, filled - CapCols, CapCols);
+
         DrawTextureRect(_barFrame, r, false);
     }
 
