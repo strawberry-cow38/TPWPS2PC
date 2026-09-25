@@ -18,6 +18,32 @@ int bad = 0;
 void Check(bool ok, string line) { Console.WriteLine((ok ? "  ok   " : "  FAIL ") + line); if (!ok) bad++; }
 
 using var disc = new Disc(args[0]);
+if (args.Contains("--native-departure-only"))
+{
+    NativeDepartureChecks.Run(disc,Check);
+    Console.WriteLine(bad==0 ? "PASS rejected departure through actual visitors/walk (explicit serial/service fixtures)" : $"FAIL: {bad}");
+    return bad==0?0:1;
+}
+if (args.Contains("--native-route-pool-only"))
+{
+    NativeRoutePoolChecks.Run(disc,Check);
+    Console.WriteLine(bad==0 ? "PASS shared output pool through cursor/walk/entrance (native search and readiness still separate)" : $"FAIL: {bad}");
+    return bad==0?0:1;
+}
+if (args.Contains("--native-entrance-flow-only"))
+{
+    NativeEntranceFlowChecks.Run(disc,Check);
+    NativeEntranceAcceptanceChecks.Run(Check);
+    Console.WriteLine(bad==0 ? "PASS experimental incoming controller through real visitors/walk (explicit service adapters)" : $"FAIL: {bad}");
+    return bad==0?0:1;
+}
+if (args.Contains("--native-route-consumer-only"))
+{
+    NativeGuestRouteChecks.Run(Check);
+    NativeWalkConsumerChecks.Run(disc,Check);
+    Console.WriteLine(bad==0 ? "PASS native route through GuestWalk/ParkVisitors (controller is a separate opt-in experimental consumer)" : $"FAIL: {bad}");
+    return bad==0?0:1;
+}
 if (args.Contains("--logical-animation-only"))
 {
     NativeLogicalAnimationChecks.Run(disc,Check);
@@ -599,7 +625,16 @@ BusAdmissionChecks.Run(disc, Check);
 NativeGuestMotionChecks.Run(Check);
 NativeLogicalAnimationChecks.Run(disc,Check);
 NativeGuestRouteChecks.Run(Check);
+NativeWalkConsumerChecks.Run(disc,Check);
+NativeEntranceFlowChecks.Run(disc,Check);
 NativeEntranceAcceptanceChecks.Run(Check);
+NativeRoutePoolChecks.Run(disc,Check);
+NativeDepartureChecks.Run(disc,Check);
+NativeRideQueueChecks.Run(Check);
+if (serviceRide is { } queueRide)
+    NativeRideQueueChecks.RunWalked(terrain, loopPaths, onPath, queueRide.Script, queueRide.Aps,
+        queueRide.Def.UpgradeCapacity(0) ?? 1, queueRide.Sibling, queueRide.Seats, Check);
+else Check(false, "native ride queue walked: no vetted ride to queue for");
 SfxGraphChecks.Run(disc, Check);
 BridgeChecks.Run(terrain, PathPieces.Read(disc), world, Check);
 QueueRemovalChecks.Run(terrain, PathPieces.Read(disc), world, Check);

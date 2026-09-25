@@ -12,7 +12,16 @@ public static class ShopEntrance
     {
         bool service=record?.Kind==AssetResourceDatabase.AssetKind.Shop
             || (record?.Kind==AssetResourceDatabase.AssetKind.Feature && (record.RawFeatureFlags.GetValueOrDefault()&1)!=0);
-        if (!service || approach == null) return null;
+        return service ? Connection(record,origin,turns,width,depth,approach) : null;
+    }
+
+    /// <summary>The same rotated connection A for any compiled placement. For a ride it is the
+    /// entrance connection cell that ride vtable +17C returns (116EC0: the placed origin +74 plus the
+    /// rotated record +0xC that 1E1760 reads), where the head of its queue stands.</summary>
+    public static ParkCell? Connection(AssetResourceDatabase.Entry record, ParkCell origin,
+                                       int turns, int width, int depth, ParkCell? approach)
+    {
+        if (record == null || approach == null) return null;
         var a=record.ConnectionA;
         int w=record.Width, h=record.Depth, x=a.X, z=a.Z;
         if (!a.IsPresent || x>=w || z>=h || a.Direction>3) return null;

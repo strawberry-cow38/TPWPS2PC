@@ -30,6 +30,8 @@ public partial class Viewer
 
     void ResetNativeBus()
     {
+        ResetNativeRideQueues(); // first: its tick hook wraps the entrance flow's
+        ResetExperimentalEntrance();
         ResetBusAudio();
         if (_nativeBus?.Root is {} root && IsInstanceValid(root)) root.QueueFree();
         _nativeBus=null;_nativeBusMesh=null;_busCatalogue=null;_busSourceKey=null;
@@ -41,6 +43,7 @@ public partial class Viewer
     void RegisterBusPlacement(Node3D node,int runtimeId,RideDefinition definition)
     {
         _busPlacements.Add((node,runtimeId,definition));
+        ActivateExperimentalPlacement(node, definition);
         if(definition?.CompiledEntry==null)
             GD.Print($"[bus] placed object {runtimeId} has no compiled identity; omitted from native demand/catalog representation");
     }
@@ -67,7 +70,10 @@ public partial class Viewer
             _nativeBus.Root.Name="NativeBus";
             AddChild(_nativeBus.Root); // authored model/world coordinates; one root Z conversion
             GD.Print($"[bus] loaded {key} -> {stem}; point0={_busCatalogue.Point0}; catalog={_busCatalogue.TotalEntries}");
-            GD.Print("[bus] boundary: UNPORTED entrance-group queues and sticky departure-deferral pressure. Zero inputs BYPASS the backlog reduction (entrance bound stays20) and departure-pressure veto; busy-park admissions can exceed native. No attraction-minigame session exists in this port.");
+            // Only true when the native entrance flow is OFF: with it on, the flow feeds these counts,
+            // and this line sat beside every opt-in PASS as a stale witness (review 2026-09-25).
+            if (!ExperimentalEntranceRequested)
+                GD.Print("[bus] boundary: UNPORTED entrance-group queues and sticky departure-deferral pressure. Zero inputs BYPASS the backlog reduction (entrance bound stays20) and departure-pressure veto; busy-park admissions can exceed native. No attraction-minigame session exists in this port.");
             return true;
         }
         catch(Exception e)
@@ -109,6 +115,8 @@ public partial class Viewer
 
     void TickNativeBus()
     {
+        TickNativeAnimationsWithoutFlow(); // research --native-idle-all only; a no-op otherwise
+        EnsureNativeRideQueues(); // research --native-ride-queues only; a no-op otherwise
         if(!_busClockAdvancedForFrame) _busElapsedMs+=ParkSim.TickMilliseconds; // explicit fixed-time capture winding
         if(!EnsureNativeBus()) return;
         uint now=BusClock;
@@ -118,7 +126,7 @@ public partial class Viewer
         // This is deliberately NOT elapsed-ms delta: animation catches elapsed time,
         // countdowns count the updates actually executed by the park owner.
         _busTraffic=_nativeBus.Update(now,0x4000,_busTraffic,
-            open:_visitors!=null && !_gateClosed,specialObjectAbsent:true,flaggedGuestCount:0);
+            open:_visitors!=null && !_gateClosed,specialObjectAbsent:true,flaggedGuestCount:_entranceFlow?.DeparturePressure ?? 0);
         UpdateBusAudio();
     }
 
@@ -145,6 +153,8 @@ public partial class Viewer
         return result;
     }
 
+    bool _nativeLoadsOfKids;
+
     void AdmitBusBatch(int pointSelector)
     {
         if(pointSelector!=0) throw new InvalidOperationException("unsupported native bus drop-off selector");
@@ -158,15 +168,24 @@ public partial class Viewer
         int score=NativeBusDemand.Score(ordered,n=>_guestRng.Next(n));
         int ceiling=_busCatalogue.Ceiling(objects.Select(o=>(o.Kind,o.Key)));
         int population=_visitors.Plans.Keys.Concat(_guests.Guests.Select(g=>g.Id)).Distinct().Count();
-        // Zero is a permissive bypass, not a neutral contribution. Native entrance groups
+        // Without the explicit research controller, zero is a permissive bypass. Native entrance groups
         // are not Walk.Guests or path occupancy; do not substitute either as a guessed count.
         var bounds=NativeBusDemand.Bounds(score,_busCatalogue.DemandOffset,_busCatalogue.DemandDivisor,
-            entranceGroupCount:0,ceiling,population);
-        int requested=bounds.Requested;
+            entranceGroupCount:_entranceFlow is {} incoming ? incoming.Counts.Group0 + incoming.Counts.Group1 : 0,
+            ceiling,population);
+        // Research soak only: the executable's LoadsOfKids batch rule, min(20, 20-W), ignoring demand and
+        // headroom (NativeBusDemand.Batch). Off unless a fixture sets it; never a default.
+        int requested=_nativeLoadsOfKids ? Math.Min(20,bounds.Entrance) : bounds.Requested;
         var at=_busCatalogue.Point0;
         int admitted=0;
         if(_guests.Paths.Open(at))
-            for(int i=0;i<requested;i++) { _visitors.Arrive(at,at);admitted++; }
+            for(int i=0;i<requested;i++)
+            {
+                uint? activationSerial = _entranceFlow == null ? null : ActivationSequence().Activate("guest");
+                var guest = _visitors.Arrive(at,at);
+                _entranceFlow?.Add(guest, checked((sbyte)(15 + _guestRng.Next(15))), activationSerial);
+                admitted++;
+            }
         _busAdmitted+=admitted;
         GD.Print($"[bus.arrivals] {BusClock}ms request={_busBatches} score={score} ceiling={ceiling} population={population} bounds[demand={bounds.Demand},entrance={bounds.Entrance},headroom={bounds.Headroom}] requested={requested} admitted={admitted} point0={at}");
     }

@@ -89,14 +89,22 @@ No raw disc, extracted game assets, credentials or proprietary source goes into 
 
 ## 3. Now
 
-**Package:** the readiness join has landed on the research branch (see the CP2 entry in progress.md).
-The package in progress is the evidence infrastructure, queue item 2.
+**Package:** none in progress for the agent. Items 2, 7, 8, 9 and 10 are done on the research branch,
+and item 13 is half done: the CI workflow is on the branch. See progress.md, "CP2: departures,
+stranded guests, soak and CI".
 
-**Owner:** tinyclaw. Cow tools signs off the Viewer.cs map-matching change.
+Cow tools acked slice A's dispatcher and slice B at 05:09 UTC (progress.md). They also built
+`--idle-scene` on main, and the item 5 film has been made and sent.
 
-**Stopping condition:** the queue item 2 conditions.
+Everything left waits on a human:
+- cow tools: land slice B (tinyclaw/native-core-slice-b, 71bfbdc, gates clean), then review slice C
+  (item 6).
+- strawberry: the scope matrix (section 7); the idle choice from the film (item 5); the default flip
+  (item 11); and whether CI goes to main (item 13).
 
-**Next review:** CP2 when item 2 lands. Replace this section in place then; do not append.
+**Owner:** tinyclaw, for the evidence and the next package once any of those answers arrive.
+
+**Next review:** when the first answer arrives. Replace this section in place then; do not append.
 
 ## 4. Priority queue
 
@@ -105,7 +113,8 @@ preempts it, and a CP4 contradiction reorders it. Human testing is collected at 
 
 1. **Land the readiness package and correct the record.** DONE 2026-09-25. The 24/24 matrix is in
    /tmp/tpw-cp1-final. The false park-2 claims are annotated in place.
-2. **Evidence infrastructure.**
+2. **Evidence infrastructure.** DONE 2026-09-25 at 783225b. All four gates ran clean in /tmp/tpw-783225b,
+   the viewer matrix 24/24 with loaded == requested, and the film at /tmp/tpw-film4 was inspected.
    - Commit `tools/viewer_matrix.py` with unit tests. Its per-case requirements are:
      - PASS matched by an exact scene-prefix regex (a BYPASS witness must not count);
      - a minimum check count;
@@ -135,31 +144,46 @@ preempts it, and a CP4 contradiction reorders it. Human testing is collected at 
 5. **Guest animation for every guest on main.** Joint work; cow owns the gait.
    - Run hold-last-pose, the weighted logical 11 and the 2106E8 idle picker over all ordinary guests.
      This answers strawberry's "missing idle animations" (2026-09-24).
-   - The native rule holds about 93% of standing guests in their last pose, so it is a product
-     choice. Film native against the current `id % 6` idles side by side.
+   - ~~The native rule holds about 93% of standing guests in their last pose.~~ **Wrong, and
+     corrected 2026-09-25.** 93 is the weight of one pick. A playing idle clip keeps itself 3 times in
+     4 at every loop end (flag 4), and the no-clip variant re-rolls fresh each time. Filmed on cow's
+     `--idle-scene` (findings/native-idle-film.md), native plays an idle clip 79% of standing
+     guest-ticks and holds the last pose 15%, at the port's 40 ms re-roll cadence. It is still a
+     product choice: weighted idles plus the occasional freeze, against `id % 6`.
+   - The side-by-side film was sent to strawberry on 2026-09-25. Porting it means taking
+     hold-last-pose AND the retention roll together.
    - *Stop when:* strawberry has picked one and it is the default, with teeth.
 6. **Slices B and C to main, flags off.**
    - B is the GuestWalk and ParkVisitors seams plus NativeEntranceFlow, reviewed by cow.
    - C is the Viewer partials and hooks, the Bus hooks, and the smokes, with an internal test seam so
      that about 30 reflected private members stop being a silent breakage risk.
    - *Stop when:* main's default gates are unchanged and the opt-in 24-scene matrix passes on main.
-7. **Ordinary departures through state 26** (the real content of "pressure population").
+7. **Ordinary departures through state 26** (the real content of "pressure population"). DONE on
+   the branch, 2026-09-25 at 4a98b64: 32/32 viewer matrix and findings/native-ordinary-departure.md.
+   Needs cow's sign-off on the ParkVisitors seam before main.
    - 20C930 routes unhappy or broke guests (happiness < 5 or cash < 100) through 26 → 14 → 2E → 30 →
      9, so they walk out through the booths to the bus instead of vanishing at the gate. WentHome counts
      them and the sticky tally includes them.
    - This needs a Leaving handoff API in ParkVisitors, which is cow's.
    - *Stop when:* a Viewer smoke shows it, and mutations for "vanish at gate" and "skip phase gating"
      fail.
-8. **No stranded guests.** A handback adapter for the state 0 and state 5 holds.
+8. **No stranded guests.** A handback adapter for the state 0 and state 5 holds. DONE on the
+   branch, 2026-09-25: NativeEntranceFlow.Resume and the disruption smoke. The booth-to-bus corridor
+   cannot be bulldozed in this port, so the smoke digs up the park path instead; state 5 is covered
+   headless.
    - *Stop when:* a disruption smoke (bulldoze booth→bus mid-departure, delete the staging path) ends
      every guest as WentHome or back in ordinary park state within a fixed tick budget, with no lease
      held at quiescence.
-9. **Corridor passability check.** Read 18C928's kind arms (jump table 364690) for the tile kinds in
+9. **Corridor passability check.** DONE 2026-09-25. findings/native-route-planner.md. Verdict: the sets
+   differ in principle (direction links, flag 0x23 ground, queue flag 0x10) and nothing reproduces it
+   yet. The planner stays deferred on its missing input (section 6). Read 18C928's kind arms (jump table 364690) for the tile kinds in
    the entrance corridor and request flags 0x21, 0x23 and 1, and compare them with ParkPaths.Open as
    the BFS adapter uses it.
    - *Stop when:* a findings table exists. A mismatch opens the planner package (section 6); a match
      records BFS as an equivalent labelled adapter for the corridor.
-10. **Busy-park soak.** All 8 parks with the flow on, for a fixed number of ticks each.
+10. **Busy-park soak.** All 8 parks with the flow on, for a fixed number of ticks each. DONE on the
+    branch, 2026-09-25: findings/native-entrance-soak.md. It uses the executable's LoadsOfKids batch
+    rule as a fixture input.
     - *Stop when:* all of these hold: conservation (births = WentHome + discarded + live), the pool
       reads 1000 free at quiescence, the group flip (≥ 11) and the 30-guest veto each occur at least
       once, and there are no errors or leaks.
@@ -184,7 +208,7 @@ preempts it, and a CP4 contradiction reorders it. Human testing is collected at 
 | Milestone | State | Evidence | What remains |
 |---|---|---|---|
 | M0 baseline and ledger | done | progress.md "CP0" entries; audit_matrix in tools | nothing |
-| M1 validation and rendered smoke | partial | audit_matrix.py, runtime_audit.py (63 Python tests) | the committed viewer matrix; exact `--map` (queue 2) |
+| M1 validation and rendered smoke | done | audit_matrix.py, runtime_audit.py, viewer_matrix.py (79 Python tests); `--map` fails loudly | CI (queue 13) |
 | M2 reader completeness | open by design | findings/format-inventory.md | only when a consumer needs it (CP1) |
 | M3 park and visitor lifecycle | mostly done on main | availability, removal, replay, departure recovery | fixed-tick replay across the native flow (queue 8 and 10) |
 | M4 effects and audio | done for current scope | the audio-lifecycle and particle findings | listening and visual sign-off are human |
@@ -198,9 +222,9 @@ preempts it, and a CP4 contradiction reorders it. Human testing is collected at 
 | Item | State | Gate for default? | If not, trigger |
 |---|---|---|---|
 | Readiness (191E10 over 2AAD48) | done, opt-in | yes, already met | n/a |
-| Ordinary departures via 26 (pressure population) | open | **yes** (queue 7) | n/a |
-| No stranded guests (state 0/5 holds) | open | **yes**, as an adapter (queue 8) | n/a |
-| Native A* planner 18C4B8–18DC74 (A*, Manhattan heuristic, random 1-of-4 direction order, two-ended open-list insert, ~99 nodes per call) | decoded in part; BFS adapter in use | no | any of: the queue 9 check finds a mismatch; a routing defect is reproduced at the entrance; ordinary park walkers move onto native routes. Planner findings first, and it needs a native tile-kind producer the port does not have |
+| Ordinary departures via 26 (pressure population) | done on the branch, opt-in | **yes** (queue 7), met there | n/a; the arms after the 26 write are a labelled adapter |
+| No stranded guests (state 0/5 holds) | done on the branch as an adapter | **yes** (queue 8), met there | n/a |
+| Native A* planner 18C4B8–18DC74 (A*, Manhattan heuristic, random 1-of-4 direction order, two-ended open-list insert, ~99 nodes per call) | decoded in part; BFS adapter in use | no | the queue 9 check found a mismatch IN PRINCIPLE (findings/native-route-planner.md), so the package opens only once its input exists. Trigger: a native tile-kind producer (placement 1E2AD0, link byte 1E70F0) is built, or a routing defect is reproduced at the entrance, or ordinary walkers move onto native routes. Then rerun the item 9 comparison on real tiles |
 | Activation-serial origin | unknowable statically | no | **won't fix**: a labelled adapter (≤ 64-tick phase offset) |
 | RNG stream and global order | generator readable, order not | no | **won't fix**: NewlibRand / guest stream, labelled |
 | Guard staging (second family, 3952AC) | producer readable | no | staff get ported |

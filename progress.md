@@ -4,33 +4,88 @@ Updated: 2026-09-25 UTC. Roadmap: [plan.md](plan.md).
 
 ## HANDOFF (rewritten in place at every landing; newest log entry is at the BOTTOM of this file)
 
-Updated 2026-09-25 by tinyclaw. The active checkout is `/home/ec2-user/tpwps2-entrance`, branch
-`tinyclaw/native-entrance-flow`, pushed as `origin/astraclaw/native-entrance-flow`. It is merged with
-origin/main as of 8ef44b9. astraclaw is out of usage until Oct 1, and tinyclaw is executing plan.md
-until then.
+Updated 2026-09-25 by tinyclaw, after the 839f7ca gates.
+- The active checkout is `/home/ec2-user/tpwps2-entrance`, branch `tinyclaw/native-entrance-flow`,
+  pushed as `origin/astraclaw/native-entrance-flow`.
+- It is merged with origin/main as of dce68b7 (slice A).
+- astraclaw is out of usage until Oct 1, and tinyclaw is executing plan.md until then.
 
-**The branch.** It is opt-in research. `--experimental-native-entrance` runs bus-born guests through
-the native booth queues and fee, and walks rejected guests back to the bus. `--native-guest-animation`
-adds readiness: a guest waits for its animation to commit before it walks. Default play on main is
-unchanged, and none of this is on main yet.
+**The branch.** Opt-in research; default play on main is unchanged.
+- `--experimental-native-entrance` does all of the following:
+  - runs bus-born guests through the native booth queues and fee;
+  - walks rejected guests back to the bus;
+  - sends admitted guests who have had enough out through state 26 (queue item 7);
+  - resumes the state-0 and state-5 holds, so no guest is stranded (queue item 8).
+- `--native-guest-animation` adds readiness: a guest waits for its animation to commit before it
+  walks.
+- The standalone native core is on main as slice A (c5dfe12).
 
-**Gates at ee2b1f7:**
-- `tools/audit_matrix.py`: only the two retail reds (HALLOW Thrill Grill, SPACE Moon Buggies).
-- `tools/runtime_audit.py`: 11 of 11 scenes pass.
-- The 24-scene viewer matrix across all 8 real parks passes. It currently runs from a scratch runner;
-  queue item 2 puts a committed version in tools.
+**Latest gates, at 487995e** (clean committed tree, /tmp/tpw-487995e). This revision includes main's
+`--idle-scene`, the opt-in `--native-idle-all` and cow's snapshot fix. All 23 projects build, the unit
+tests pass, the audit matrix shows only the retail reds with `landing_evidence=true`, runtime is 11/11,
+and the viewer matrix is 48/48 with loaded == requested. Later commits are docs only
+(findings/native-ride-queue.md).
 
-**Corrected today.** Every earlier "eight park" viewer claim had run FANTASY terrain_1 for its park-2
-cases, because the `--map` label didn't match. See the CP2 entry at the bottom of this file.
+**Previous gates, at aa1075e** (clean committed tree, /tmp/tpw-aa1075e). That revision added cow's
+GuestWalk.Step snapshot fix. All 23 projects build, the unit tests pass, the audit matrix shows only
+the retail reds with `landing_evidence=true`, runtime is 11/11, and the viewer matrix is 48/48 with
+loaded == requested.
 
-**Next action.** plan.md section 3 (Now) and section 4, queue item 2: evidence infrastructure.
-The labelled adapters are listed in plan.md section 6.
+Later commits bring in main (cow's `--idle-scene`, and the corrected 93% comment), the opt-in
+`--native-idle-all` branch with its IdleSceneFilm harness, and docs. A full gate rerun at the
+resulting HEAD is recorded when it finishes.
+
+**Earlier gates at 839f7ca** (clean committed tree, built before the runs, /tmp/tpw-839f7ca):
+- all 23 projects build with 0 errors;
+- 79 tool unit tests OK;
+- `tools/audit_matrix.py`: `known_retail_failures_remain`, exit 2, `landing_evidence=true`. It covers
+  8 parks, terrain_2 included. Only HALLOW Thrill Grill and SPACE Moon Buggies are red, and every
+  REQUIRED_CHECKS minimum is met (rejected/ordinary departure 71);
+- `tools/runtime_audit.py`: 11 of 11;
+- `tools/viewer_matrix.py`: 48 of 48 across all 8 real parks (entrance, rejected, readiness, departure, disruption, soak), loaded == requested in every case.
+
+The later commits on this branch are docs only. Slice B's own gates ran at 54234e8 (/tmp/tpw-54234e8): unit OK; the audit matrix shows only the retail reds, with `landing_evidence=true`; runtime 11/11; all projects build.
+
+**Decompiled C.** The authorized partial Ghidra corpus (416 files) is at
+`/home/ec2-user/astraclaw/astraclaw/state/scratch/1492558787561914542/tpw-private-research/ghidra-corpus`,
+outside Git. Older notes give `../tpw-private-research/ghidra-corpus`, which does not resolve from
+these checkouts. Use it as an additional source, and check signatures against the MIPS.
+
+**Labelled adapters.** They are listed in the startup NON-PARITY line, in plan.md section 6, and in
+findings/native-ordinary-departure.md and native-entrance-soak.md.
+
+**Cow tools' sign-offs, recorded.** At 2026-09-25 05:09 UTC in #cowbot (message 1552909850621509684),
+cow tools acked both of these:
+- **slice A's dispatcher:** NativeLogicalAnimation matches their own read of 0x2AAD48, and it reads the
+  table from the executable rather than baking it in;
+- **slice B:** they checked the per-instance route pool, the Send/SendToTerminal lease guards, the
+  liveness index, the NativeDeparture seam (null by default, offered before the gate walk, with its
+  loop snapshotted), and ShowOut keeping WentHome's meaning.
+
+Their one note was that GuestWalk.Step iterated without a snapshot while StepNative fires the public
+SlotAdvanced seam. It is applied as 71bfbdc on slice B and cherry-picked here. They took the idle queue
+scene as their half of item 5, once the dispatcher drives every guest (side branch
+`tinyclaw/native-idle-all`, which is now pushed).
+
+**Waiting on humans** (plan.md section 3):
+- **cow tools:** slice C review (item 6), and the idle queue scene (item 5).
+- **strawberry:**
+  - the scope matrix, asked 2026-09-25 01:47 UTC;
+  - the idle choice (item 5);
+  - the default flip (item 11);
+  - whether the CI workflow goes to main (item 13).
+
+**Item 5, a negative result.** The idle film fixture (side branch `tinyclaw/native-idle-all`, f27ebe1)
+was blind. Admitted guests stood still for only 5 and 3 guest-ticks out of 150 per mode, because Idle
+re-tasks a guest the moment it arrives. An idle comparison needs guests who wait, in queues or at
+service.
 
 **Rules that still hold:**
 - No restarts.
 - Do not redo the shipped bus, destination scoring, relief, shop walking, hide list, gate or path-price
   work.
 - Cow tools owns the body of Viewer.cs, economy, gait, audio and particles (plan.md section 2).
+- Never write into a worktree while a provenance-checked gate run is reading it.
 
 ## Previous handoff (2026-09-24, superseded)
 
@@ -2668,6 +2723,152 @@ agent results and are summarised here.
 - **Decision: defer it with triggers** (plan section 6). The cheap corridor passability check, queue
   item 9, decides whether it is ever needed.
 
+## CP2: evidence infrastructure (queue item 2) and the corridor check (item 9) — September 25, 2026 UTC
+
+**Item 2 landed at 783225b.** All four gates ran on that clean committed tree, built before the runs,
+with output in /tmp/tpw-783225b:
+- unit: 79 tool tests, OK.
+- `tools/audit_matrix.py`: `known_retail_failures_remain`, runner exit 2, `landing_evidence=true`.
+  All 8 parks ran, terrain_2 included. JUNGLE and FANTASY pass on both terrains. HALLOW and SPACE carry
+  only their retail reds on both.
+- `tools/runtime_audit.py`: 11 of 11 scenes, exit 0.
+- `tools/viewer_matrix.py`: `all_cases_passed`, runner exit 0, 24 of 24.
+  - Every case's single `[map] loaded` line equals its request.
+  - The source snapshot was clean before and after.
+  - Readiness check counts run from 6993 to 8092 by park. Entrance (651) and rejected (2399) are the
+    code-fixed counts, not coverage.
+- The film at /tmp/tpw-film4 has 56 frames, two angles per tick. It was generated and then inspected:
+  the UI is hidden, the guest is visible standing through the WAIT on logical 11 section 6, and then
+  walking.
+- The two named regressions were reverted and each failed by name before being restored: the old
+  `--map=JUNGLE 2` form and a log whose only PASS is BYPASS.
+
+A near-miss worth recording: the viewer matrix's source guard compares `git status --porcelain`
+before and after. An untracked findings file written into the worktree during the run would have
+flipped `dirty` and failed the whole run as `source_changed_during_run`. It was moved out before the
+run ended and restored after. Do not write into a worktree that a provenance-checked run is reading.
+
+**Item 9: the corridor passability check is done.** The findings table is
+findings/native-route-planner.md, the 18C928 kind arms from jump table 364690, set against the port's
+BFS.
+- Verdict: **the passable sets differ in principle; the difference has not been reproduced.**
+  - The native planner leaves kinds 2, 4 and 13 only in the directions the tile's link byte (+2)
+    allows. The port's BFS moves between any adjacent open cells.
+  - Flag 0x23, the mode-14 alternate, admits open ground at cost 2.
+  - Queues (kind 4) need flag 0x10, which no entrance request sets.
+- Under the plan's rule a mismatch opens the planner package. That package is still blocked on its
+  input: the port builds no native tile-kind array (placement 1E2AD0, link builder 1E70F0), so there is
+  nothing to run the native arms against. The planner therefore stays deferred.
+- The trigger is now concrete (plan section 6): build the tile-kind producer, then rerun this
+  comparison on real tiles.
+- Route LENGTH agrees wherever the passable sets agree. With uniform cost 1 and a consistent
+  Manhattan heuristic, A* returns a shortest path as BFS does. Only the choice among equal paths
+  (random 1-of-4 direction order, two-ended tie insertion) differs.
+
+**Item 12 census, first read.** The audit's ride census over all 8 parks is unchanged by terrain.
+Every park-2 row equals its park-1 row, so the ride set belongs to the world, not the terrain:
+- JUNGLE: 6 of 21 rides poll a track subsystem; 6 took nobody.
+- SPACE: 6 of 22 poll; 6 took nobody.
+- FANTASY: 6 of 19 poll; 6 took nobody.
+- HALLOW: 8 of 23 poll; 9 took nobody. Thrill Grill is the known exception (findings/visitors.md).
+
+Correction: findings/visitors.md records SPACE as "6 of 23". Every run on disk since 2026-09-24 03:45
+reads 22. The 09-23 figure has no surviving log and is annotated as unverified there.
+
+## CP2: departures, stranded guests, soak and CI (queue items 7, 8, 10, 13) — September 25, 2026 UTC
+
+**Item 7: ordinary departures through state 26. Landed at 4a98b64.**
+- An admitted guest who WantsToGoHome now leaves through 210D70, the same departure a booth
+  rejection takes. It runs phase-gated mode 14 with sticky A4, then staging, then mode 9 to point0, and
+  counts as WentHome.
+- The seam is ParkVisitors.NativeDeparture (cow's file).
+- Details and the 20C930 decode are in findings/native-ordinary-departure.md.
+
+Gates at 4a98b64, clean tree, in /tmp/tpw-4a98b64:
+- all 23 projects build with 0 errors;
+- 79 unit tests OK;
+- the audit matrix gives `known_retail_failures_remain`, exit 2, `landing_evidence=true`. Only
+  Thrill Grill (HALLOW 1/2) and Moon Buggies (SPACE 1/2) are red, and the departure family is at 63
+  checks in every park;
+- runtime 11/11;
+- the viewer matrix is 32/32 with loaded == requested. The departure scene passes in all 8 parks (46
+  checks; 50 on FANTASY).
+
+Teeth, each failing by name:
+- with no seam: "a guest retires only from the native departure, never the legacy gate walk";
+- with no phase gate: "mode14 is requested only on the guest's activation phase";
+- headless, the seam never consulted, and a minted serial for a stranger.
+
+**Item 8: no stranded guests.** The state-0 and state-5 holds are resumed one update later by a
+labelled adapter (NativeEntranceFlow.Resume):
+- An admitted leaver is handed back to ordinary visiting through ParkVisitors.ReleaseNativeDeparture
+  (cow's file).
+- Any other guest held at state 0 retries state 26.
+- State 5 requests the bus leg again.
+- GuestWalk.ReleaseNativeRoute now accepts a lease holding no slot, which is one standing still.
+
+Evidence:
+- NativeDepartureDisruptionSmoke, JUNGLE-1: the park path is dug up under 3 broke leavers. 20 holds
+  were resumed and all 20 handed back, and no guest was held more than one update. Once the path was
+  relaid, all 8 guests left at point0 with nothing held.
+- Teeth, each failing by name:
+  - keeping the holds: "guest 5 is not left in a state-0/5 hold", plus 5 headless checks;
+  - before the ReleaseNativeRoute fix: "0 handbacks".
+
+**Item 10: busy-park soak.** NativeEntranceSoak, described in findings/native-entrance-soak.md.
+- It runs the executable's LoadsOfKids batch rule, then a broke exodus.
+- JUNGLE-1: 100 births and 100 went home, peak group 12 with 5 flips, peak pressure 56 with 1 veto,
+  and the park drained with all 1000 slots free.
+- Teeth, each failing by name:
+  - the 30-guest test removed: "refused 0 batch requests";
+  - departures left uncounted: "tick 500: births 20 = went home 0 + discarded 0 + live 19".
+
+**Item 13, first half.** `.github/workflows/ci.yml` builds every project and runs the disc-free tool
+tests on push and pull request. It lives on the research branch only, so nobody's pushes to main
+trigger it until it lands there. The disc, rendered and engine gates stay local.
+
+The 8-park evidence for items 8 and 10 is the final gate run cited in the HANDOFF.
+
+**8-park evidence for items 8 and 10, and a failure caught on the way.**
+- The first full run, at 6ab3de8 (/tmp/tpw-6ab3de8), passed 45 of 48 viewer cases.
+  - The disruption scene failed on FANTASY-1, FANTASY-2 and SPACE-1 with "0 handbacks, 0 holds
+    resumed". That is its check against a vacuous pass firing correctly.
+  - Only the fixture's own leg is on the path tool's undo stack; the park's pre-laid path is not. So
+    digging up the leg stranded nobody in those parks.
+  - 839f7ca fixes the fixture, not the product. It lays a 16-cell leg, asks the route adapter's own
+    BFS who is cut off after each dig, and re-digs until somebody is. Only those guests go broke.
+- The final gates ran at 839f7ca: all four gates green and the viewer matrix 48/48 with loaded == requested (/tmp/tpw-839f7ca); every park passes the disruption scene on its first dig (2 to 5 guests cut off, 29 to 49 handbacks) and the soak. The per-park disruption and soak numbers are in its
+  manifest.
+
+**Slice B (queue item 6, part B)** is branch `tinyclaw/native-core-slice-b` at 54234e8, pushed.
+- Base: origin/main.
+- Content: the native entrance core (NativeEntranceFlow, GuestWalk.Native, the GuestWalk and
+  ParkVisitors seams, and the NativeBusController counter), their ParkSimAudit families, and two
+  findings files.
+- No Viewer wiring, so default play cannot reach it.
+- Gates at 54234e8, in /tmp/tpw-54234e8: unit OK; the audit matrix shows only the retail reds, with
+  `landing_evidence=true`; runtime 11/11; all projects build.
+- It lands only with cow's review.
+
+**Item 5: a negative result, recorded so nobody repeats it.** `--native-idle-all` and the
+NativeIdleFilm scene are on the side branch `tinyclaw/native-idle-all` (f27ebe1, local). Its first run
+was blind: in 150 ticks per mode, admitted guests stood still for only 5 (A) and 3 (B) guest-ticks,
+because Idle re-tasks a guest the moment it arrives. An inspected frame shows one guest walking past
+the gate. The idle comparison needs guests who wait, in queues or at service, and that rendering is
+cow's.
+
+**Idle A/B film (item 5), the 93% correction, and cow's acks — 2026-09-25 ~05:30 UTC.**
+- cow tools acked slice A's dispatcher and slice B. Their note was to snapshot GuestWalk.Step's
+  loop, and that is fixed as 71bfbdc (slice B) and 3f43b5f (here).
+- The slice B gates at 71bfbdc are clean (/tmp/tpw-71bfbdc).
+- cow built `--idle-scene` on main (2268664).
+- The film was made on it with one harness in both builds; see findings/native-idle-film.md.
+  - Measured: native plays an idle clip 79% of standing guest-ticks and holds the last pose 15%.
+  - The "93% frozen" reading was a per-pick weight mistaken for a share of time. It was wrong in
+    plan.md, and in cow's Viewer.cs comment, which cow fixed in c525f95 after checking 10E800's flag-4
+    retention against the C.
+  - The film went to strawberry for the choice.
+
 ## Archived plan checkpoints (moved verbatim from plan.md lines 58-329 on 2026-09-25)
 
 ## Current user-priority queue (September24 post-native-consumer landing)
@@ -2973,3 +3174,61 @@ has not changed them since 8ef44b9.
     `known_retail_failures_remain` with runner exit 2 and `landing_evidence=True`. **This is the
     first time the core matrix covered the four terrain_2 parks.**
   - `tools/runtime_audit.py`, in /tmp/tpw-c5dfe12/runtime: all 11 scenes pass.
+
+## Native ride queues, opt-in — September 25, 2026 UTC
+
+At strawberry's request: port the console's ride queues from the code. Branch
+`tinyclaw/native-ride-queues`, behind `--native-ride-queues`; default play is unchanged. The decode
+and the port table are in findings/native-ride-queue.md.
+
+**Code:**
+- `core/TPW.PS2.Data/NativeRideQueue.cs`:
+  - 117340's spots (`NativeQueueSpots`);
+  - 210428's waiting arithmetic (`NativeQueueWaiting`);
+  - the `NativeRideQueues` controller: 20D530's head count 7 + 4×tier, walk-in, waiting,
+    staggered move-up, quit, boarding for a waiting head while VAR_ONRIDE < VAR_CAPACITY,
+    breakdown (event 7), demolition (event 10), and closing (nothing).
+- ParkVisitors seams: the `Queueing` intent, `NativeQueueMouth`, `NativeQueueArrival`,
+  `AssignQueueRoute`, `BoardFromQueue` and `ReleaseFromQueue`. ReconcileRemovedRides leaves
+  Queueing guests to their owner.
+- `ShopEntrance.Connection` generalises connection A to rides. It is ride vtable +17C.
+- `game/Viewer.RideQueue.cs` reads each ride's queue off the path tool.
+
+**Decoded along the way:**
+- 117798's callers are the state-4 and state-5 entries (vtable +21C and +224) and demolition
+  (116458). Closing sends nothing.
+- 20C6A8 is the destination picker, not a queue cost. cow tools retracted the claim everywhere
+  (b11c6cb).
+- The viewer's per-frame `Decide` erased every event thought, BadQueue included. cow tools fixed it
+  with `ThoughtOf` (949333e); that fix is not on this branch.
+
+**Evidence:**
+- **At 7cba3ed** (the code, clean tree, /tmp/tpw-7cba3ed, provenance-checked manifests):
+  - 79 unit tests OK;
+  - audit matrix `known_retail_failures_remain`, runner exit 2, `landing_evidence=True`. Only
+    Thrill Grill (HALLOW) and Moon Buggies (SPACE) are red;
+  - runtime 11 of 11;
+  - viewer matrix 48 of 48;
+  - all 23 projects build with 0 errors.
+- **At c665fc4** (adds the smoke and the matrix minimums, /tmp/tpw-c665fc4):
+  - 79 unit tests OK;
+  - matrix as above, with native_ride_queue 17 and native_ride_queue_walked 18 in all 8 parks.
+- **Mutations:** five mutations of the controller each turn the audit red. They were: boarding
+  ignoring VAR_ONRIDE, boarding a head that is not waiting, closing emptying the queue, the first
+  follower staggered, and move-up ignoring eligibility.
+- **Rendered smoke** `game/tests/NativeRideQueueSmoke.tscn` PASS, 40418 checks:
+  - two fixture inputs: the ride held full until six wait, then impatience 81;
+  - every waiting guest was on its spot and drawn there (10343 ticks × guests);
+  - the leaver left on the next walk tick and was handed back on the mouth;
+  - the guests waiting behind it moved up at +0, 3 and 6;
+  - boarding resumed from the front.
+  - Film: TPW_QUEUE_FILM, sent to strawberry.
+
+**Adapters** (NON-PARITY line at startup):
+- tier 0;
+- phase = guest id;
+- speed 15 + (id·7 mod 15);
+- queue routes follow the drawn cells, not the 0x10/0x11 planner;
+- the ordinary state-4 +94 exception is not modelled;
+- a boarded head joins the script's queue for LETMEON;
+- effect 0x7E and 2E28D0 are unported.

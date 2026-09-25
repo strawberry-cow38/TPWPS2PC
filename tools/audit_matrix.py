@@ -26,7 +26,7 @@ ASSEMBLY = PROJECT + '/bin/Release/net8.0/TPW.PS2.ParkSimAudit.dll'
 MAX_LOG_BYTES = 8 * 1024 * 1024
 # Minimum assertions in the current integrated ParkSimAudit. A stale binary or
 # accidentally omitted helper must not turn missing lifecycle coverage into PASS.
-REQUIRED_CHECKS = {'availability': 30, 'removal': 57, 'conservation': 20, 'needs_lifecycle': 50, 'disruption': 21, 'service_routing': 5, 'departure_recovery': 6, 'ride_effect_consumer': 33, 'compiled_purchase': 67, 'decision_scheduling': 28, 'terminal_walking': 90, 'post_service_movement': 18, 'native_destination_score': 43, 'native_destination_consumer': 29, 'native_relief': 78, 'native_ride_value': 70, 'native_bus_admission_inputs': 278, 'native_guest_motion_arithmetic': 55, 'native_guest_route_cursor': 76, 'native_entrance_acceptance': 23, 'native_logical_animation': 62}
+REQUIRED_CHECKS = {'availability': 30, 'removal': 57, 'conservation': 20, 'needs_lifecycle': 50, 'disruption': 21, 'service_routing': 5, 'departure_recovery': 6, 'ride_effect_consumer': 33, 'compiled_purchase': 67, 'decision_scheduling': 28, 'terminal_walking': 90, 'post_service_movement': 18, 'native_destination_score': 43, 'native_destination_consumer': 29, 'native_relief': 78, 'native_ride_value': 70, 'native_bus_admission_inputs': 278, 'native_guest_motion_arithmetic': 55, 'native_guest_route_cursor': 76, 'native_walk_consumer': 87, 'native_entrance_flow': 113, 'native_entrance_acceptance': 23, 'native_route_pool': 1082, 'native_rejected_departure': 71, 'native_logical_animation': 62, 'native_ride_queue': 17, 'native_ride_queue_walked': 18}
 REQUIRED_WITNESSES = (
     'ok   native destination consumer: actual idle selector need0/sick0 rejects relief',
     'ok   native destination consumer: actual idle selector need90/sick0 chooses relief',
@@ -36,6 +36,10 @@ REQUIRED_WITNESSES = (
     'ok   native destination score: all121 literal need entries agree with owner',
     'ok   native relief: +523 only enters finishing',
     'ok   native relief: +524 completes once',
+    'ok   native ride queue: L-shaped queue: the line turns only at the CENTRE of the corner cell',
+    'ok   native ride queue walked: all seven stand still at their own 117340 spots',
+    'ok   native ride queue walked: closing a ride leaves its seven waiting (no 117798 event on the state-3 path)',
+    'ok   native ride queue walked: demolition (event 10) hands all seven back where they stood',
 
     'ok   post service movement: relief1234 ordinary arm walks away before the facility deadline',
     'ok   post service movement: shop1234 ordinary arm walks away before the facility deadline',

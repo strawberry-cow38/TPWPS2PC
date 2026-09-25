@@ -3672,6 +3672,7 @@ public partial class Viewer : Node3D
         SeedIdleScene();
         if (_visitors != null)
         {
+            EnsureExperimentalEntrance();
             Snapshot();
             _visitors.Step(ConsoleClock.TickSeconds, Wander);
             Retry();
@@ -4138,7 +4139,9 @@ public partial class Viewer : Node3D
             // Facing the step, in the same mirrored frame. Standing guests keep their last facing.
             // ⚠ Assigned as a whole basis, not through Rotation: a kid back from a seat still carries
             // the seat's full basis, and Euler on that is the round trip this codebase already lost.
-            if (g.Next is ParkCell next)
+            if (g.NativeHeading is { } nativeHeading)
+                actor.Basis = WalkBasis(GuestHeading(Cell(nativeHeading)));
+            else if (g.Next is ParkCell next)
                 actor.Basis = WalkBasis(GuestHeading(new Vector3(next.X - g.Cell.X, 0, next.Z - g.Cell.Z)));
             else if (actor.Basis.Determinant() < 0 || Mathf.Abs(actor.Basis.Y.Dot(Vector3.Up) - 1f) > 1e-3f)
                 actor.Basis = Basis.Identity;
@@ -4392,6 +4395,9 @@ public partial class Viewer : Node3D
     {
         if (!_drawn.TryGetValue(id, out var d) || d.Drawn?.Root == null || !IsInstanceValid(d.Drawn.Root)) return;
         if (!_walkRec.TryGetValue(id, out var w) || _posed.Contains(id)) return;
+        // Opt-in (--native-guest-animation, entrance-owned guests only): the dispatcher's record.
+        // After the two guards so a seated guest is never taken (Viewer.NativeAnimation.cs).
+        if (NativeDrawnRecord(id, alpha)) return;
         // ⭐ ONE RECORD PER STATE, and standing is a state with a record of its own now rather
         // than the absence of one.
         if (!walking) Fidget(id, ref w);

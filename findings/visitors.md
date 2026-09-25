@@ -684,7 +684,8 @@ So "walks at the floor" on Crazy Ape is the correct behaviour of a ride that doe
 
 ## ⭐⭐ The rides that board nobody are the track rides — with exactly one exception
 
-A third of the park takes no guests: 6 of 21 rides in JUNGLE, 6 of 23 in SPACE, 9 of 23 in HALLOW,
+A third of the park takes no guests: 6 of 21 rides in JUNGLE, 6 of 23 in SPACE (⚠ every run since
+2026-09-24 03:45 reads 6 of **22**; the 23 has no surviving log), 9 of 23 in HALLOW,
 6 of 19 in FANTASY. The audit used to say why in a *comment* — "they are the coasters, the karts
 and the tour bus, the rides whose scripts poll TOUR/BUMP/COAST" — which is the weakest kind of
 finding: it reads like a conclusion, and nothing would have noticed a flat ride quietly joining
