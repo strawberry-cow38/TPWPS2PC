@@ -413,6 +413,33 @@ public partial class LaptopShopScreenAudit : Node
                     + $"({100 - (v2 < 101 ? v2 : 100)} against 86)");
             }
 
+            // ⭐⭐ "No. Owned" COUNTS BY DEFINITION, NOT BY PLACEMENT ID -- and this proves the
+            // predicate rather than the park. `ParkRide.Id` is the PLACEMENT's id, unique per
+            // placed thing; `RideDefinition.Id` is the ride TYPE's `Info.Id`. Comparing the two
+            // matched nothing, and in an empty harness park that wrong answer is indistinguishable
+            // from the right one -- both read 0. So the expression is exercised directly here,
+            // against rides built by hand, instead of being trusted because a render showed 0.
+            {
+                var typeA = new RideDefinition(); typeA.Fields["Info.Id"] = "4242";
+                var typeB = new RideDefinition(); typeB.Fields["Info.Id"] = "9999";
+                var park = new List<ParkRide>
+                {
+                    new() { Id = 1, Definition = typeA },   // two of the same TYPE,
+                    new() { Id = 2, Definition = typeA },   // with different placement ids
+                    new() { Id = 3, Definition = typeB },
+                };
+                int Owned(RideDefinition d) => park.Count(pr => ReferenceEquals(pr.Definition, d)
+                    || (pr.Definition?.Id is { } pid && d.Id is { } did && pid == did));
+                Check(Owned(typeA) == 2, $"two placements of one ride type count as 2 owned, got {Owned(typeA)}");
+                Check(Owned(typeB) == 1, $"and a single placement counts as 1, got {Owned(typeB)}");
+                // ⚠ THE CONTROL that catches the original bug: keying on ParkRide.Id would give 0
+                // here, because no placement id equals a type id in this fixture.
+                int byPlacementId = park.Count(pr => pr.Id == (typeA.Id ?? -1));
+                Check(byPlacementId == 0,
+                      $"control: the OLD key (ParkRide.Id == RideDefinition.Id) finds {byPlacementId}, "
+                    + "which is why the bug read as an empty park");
+            }
+
             if (_bad > 0) { GD.PrintErr($"LAPTOP SHOP FAIL: {_bad} of {_checks}"); GetTree().Quit(2); return; }
             GD.Print($"LAPTOP SHOP PASS: {_checks} checks; the layout is read from "
                    + $"{ShopScreen.SceneFile}, the row step predicts the scene's own widget rows, "

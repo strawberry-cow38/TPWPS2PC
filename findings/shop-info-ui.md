@@ -768,3 +768,24 @@ that returned 86 regardless of its inputs.
 ⚠ The console's clamp is one-sided and the port keeps it: only the upper end is capped, so a
 negative `v` returns above 100. `null` rather than 100 for anything with no ride tiers, because
 "perfectly reliable" and "has no wear model" are different readings.
+
+## "No. Owned" was wired, and wired to the wrong key (2026-09-25)
+
+Master: *"do u wanna wire up the no. owned? if it isnt already"*. It was -- and it was wrong in a
+way that could not be seen.
+
+⚠⚠ **`ParkRide.Id` is the PLACEMENT's id, unique per placed thing. `RideDefinition.Id` is the ride
+TYPE's `Info.Id`.** The first version compared the two, so it matched nothing and would have read
+**0 in a park full of Dino Karts**. The harness park is empty, so the wrong answer and the right
+answer were the same number on screen: **0**. A render could never have caught it.
+
+⭐ `ParkSim.Add` already carries the definition through to `ParkRide.Definition`, and the catalogue
+holds one instance per definition, so reference equality is the exact test, with the `Info.Id`
+comparison kept as a fallback for anything placed before that was wired.
+
+⭐⭐ **Proven against rides built by hand, not against the park.** The audit now constructs three
+`ParkRide`s -- two sharing one definition with different placement ids, one of another -- and
+asserts the predicate counts 2 and 1. ⚠ Its control re-runs the ORIGINAL key on the same fixture
+and asserts it finds **0**, which is exactly the shape the bug took: a wrong answer that reads as
+an empty park. Without that control the first two checks would pass on the broken version too,
+because in an empty park everything counts zero.

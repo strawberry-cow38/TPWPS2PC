@@ -3219,7 +3219,15 @@ public partial class Viewer : Node3D
             {
                 var (ra, def) = sellable[Math.Abs(_laptopRide) % sellable.Count];
                 title = DisplayName(ra, def);
-                int owned = _sim?.Rides?.Count(pr => pr.Id == (def.Id ?? -1)) ?? 0;
+                // ⚠⚠ COUNT BY DEFINITION, NOT BY `ParkRide.Id`. That id is the PLACEMENT's, unique
+                // per placed thing, so comparing it to `RideDefinition.Id` (the ride TYPE's
+                // `Info.Id`) matched nothing and would have read 0 in a park full of them --
+                // a wrong answer that looks exactly like an empty park.
+                // ⭐ `ParkSim.Add` already carries the definition through, and the catalogue holds
+                // one instance per definition, so reference equality is the exact test; the
+                // `Info.Id` comparison is a fallback for a ride placed before that was wired.
+                int owned = _sim?.Rides?.Count(pr => ReferenceEquals(pr.Definition, def)
+                              || (pr.Definition?.Id is { } pid && def.Id is { } did && pid == did)) ?? 0;
                 // ⚠ The balance is the PARK's, not a constant: an unlimited park has no meaningful
                 // figure to show, so it falls back to the opening balance rather than int.MaxValue.
                 int bal = _sim?.Finances is { } fin && !fin.Unlimited ? fin.Balance
@@ -3241,7 +3249,8 @@ public partial class Viewer : Node3D
                     GD.Print($"[laptop] build: {sellable.Count} priced rides; showing {title} at "
                            + $"{Money.Format(def.PlacementCost ?? 0)}, balance {Money.Format(bal)}, "
                            + $"excitement {def.ShopfrontExcitement?.ToString() ?? "-"}, "
-                           + $"reliability {def.ShopfrontReliability?.ToString() ?? "- (no tiers)"}");
+                           + $"reliability {def.ShopfrontReliability?.ToString() ?? "- (no tiers)"}, "
+                           + $"owned {owned} of {_sim?.Rides?.Count ?? 0} placed in the park");
                 if (_laptopFrame == 0 && def.CompiledEntry is { HasRideTiers: true } dbg)
                 {
                     var t0 = dbg.Tier(0);
