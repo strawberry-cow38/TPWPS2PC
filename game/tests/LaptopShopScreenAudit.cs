@@ -299,6 +299,42 @@ public partial class LaptopShopScreenAudit : Node
             Check(top - bottom > 50, $"the gradient spans down the bar (green {top} at top, {bottom} at bottom)");
             Check(maxRise <= 4, $"and descends smoothly -- no reversal bigger than compression noise (worst +{maxRise})");
 
+            // ⭐⭐ THE SLIDER TINT, and specifically that it is applied the way the HARDWARE
+            // applies it. Master: "why is our drag slider 'knob' orange? should it be green?" --
+            // the art is gold (hue 36-47 deg) and the console tints it with (54,249,77) from
+            // 0x2E9E18. This check takes the knob's own brightest texel, applies the tint at
+            // 0x80-unity, and requires the result to be green-dominant when the source is
+            // red-dominant.
+            var knob = new Ssh(library.ReadUi("/laptop/BARKNOB.ssh"));
+            (int R, int G, int B) brightest = (0, 0, 0);
+            for (int i = 0; i < knob.Width * knob.Height; i++)
+            {
+                if (knob.Pixels[i * 4 + 3] < 200) continue;
+                int r = knob.Pixels[i * 4], g = knob.Pixels[i * 4 + 1], b = knob.Pixels[i * 4 + 2];
+                if (r + g + b > brightest.R + brightest.G + brightest.B) brightest = (r, g, b);
+            }
+            Check(brightest.R > brightest.G && brightest.G > brightest.B,
+                  $"the knob's art is gold, red>green>blue ({brightest.R},{brightest.G},{brightest.B})");
+
+            (int R, int G, int B) Tinted(float unity) => (
+                (int)Math.Min(255, brightest.R * ShopScreen.SliderTint.R / unity),
+                (int)Math.Min(255, brightest.G * ShopScreen.SliderTint.G / unity),
+                (int)Math.Min(255, brightest.B * ShopScreen.SliderTint.B / unity));
+
+            var lit = Tinted(ShopScreen.TintUnity);
+            Check(lit.G > lit.R && lit.G > lit.B,
+                  $"tinted at 0x80-unity the knob is GREEN-dominant ({lit.R},{lit.G},{lit.B})");
+
+            // ⚠ WHAT THE UNITY VALUE ACTUALLY DECIDES IS BRIGHTNESS, NOT HUE, and I had this
+            // wrong: the tint's green component dwarfs its red and blue, so the knob comes out
+            // green at EITHER unity. My first control asserted "at 255-unity it stays
+            // red-dominant" and it failed, correctly -- 255-unity gives (54,206,44), still green,
+            // just dark. The real difference is that only 0x80-unity drives green to saturation,
+            // which is what the on-screen sample shows: (102,255,1).
+            var at255 = Tinted(255f);
+            Check(lit.G == 255 && at255.G < 255,
+                  $"only 0x80-unity saturates the green ({lit.G} vs {at255.G} at 255-unity)");
+
             if (_bad > 0) { GD.PrintErr($"LAPTOP SHOP FAIL: {_bad} of {_checks}"); GetTree().Quit(2); return; }
             GD.Print($"LAPTOP SHOP PASS: {_checks} checks; the layout is read from "
                    + $"{ShopScreen.SceneFile}, the row step predicts the scene's own widget rows, "

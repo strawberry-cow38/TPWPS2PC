@@ -53,7 +53,8 @@ if (args.Contains("--logical-animation-only"))
 if (args.Contains("--guest-motion-only"))
 {
     NativeGuestMotionChecks.Run(Check);
-    Console.WriteLine(bad==0 ? "PASS native guest coordinate arithmetic (GuestWalk/entrance integration NOT exercised)" : $"FAIL: {bad}");
+    NativeGuestRouteChecks.Run(Check);
+    Console.WriteLine(bad==0 ? "PASS native guest coordinate arithmetic and route cursor (GuestWalk/entrance integration NOT exercised)" : $"FAIL: {bad}");
     return bad==0?0:1;
 }
 if (args.Contains("--bus-inputs-only"))

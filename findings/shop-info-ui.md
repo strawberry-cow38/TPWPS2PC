@@ -246,14 +246,59 @@ the 32 row step. Small (21) and Console (14) would leave holes.
                                          FUN_00212838(widget + 0x38)                ; draw
   ```
 
-  ⭐⭐ Those are **the same three sprite calls `FUN_00115590` uses to draw the satisfaction bar**.
-  The UI side of this element is a flat **sprite blit**, of a handle taken off the shop object at
-  `+0x58`, into the authored rect at depth `0x60`. Nothing here turns a model or steps a skeleton.
+  ⚠⚠ THOSE THREE CALLS ARE A GENERIC "PLACE, SIZE, DRAW" TRIO, NOT PROOF OF A SPRITE. An earlier
+  version of this section said the element was "a flat sprite blit", because `FUN_00115590` draws
+  the satisfaction bar with the same three. That was reading the calls that answered the question
+  and stopping. `FUN_00144068`, the fourth call, is where the answer actually is:
 
-  ⚠ The scene file's own comment calls it `;3D Spinning model` and **the comment is wrong about
-  the behaviour** — master, who has played it: "the model isnt meant to spin in the viewport. its
-  just a front facing render of it. playing an animation". The decompilation agrees with master
-  and not with the comment. An authored comment says what someone meant, not what shipped.
+  ```
+  if (widget[0x30] == 0 || widget[0x38] != value) {     ; cached on the VALUE
+      FUN_00144168(widget);                             ; tear the old one down
+      obj = FUN_00230a98();                             ; CREATE an object
+      widget[0x30] = obj;
+      obj->vtable[0x24]->[0x0C](obj, value, 0x10, -1);  ; initialise it FROM the value
+      widget[0x38] = value;  widget[0x34] = obj[0x0C];
+      FUN_0016FEA0(obj[0x0C][0x70] + 0x10, 0x2B68A8);
+      FUN_0017D1D8(obj, 1);
+      obj->vtable[0x24]->[0x5C](1.0f, obj, 5, 0, 0, 1); ; 0x3F800000 = 1.0, and a 5
+      FUN_0017CCA8(obj);  DAT_002B68AC = 1;
+  }
+  ```
+
+  ⭐ So `shop + 0x78` holds an **id**, not a picture: the widget instantiates a real object from it,
+  configures it, and caches on the id so it only rebuilds when the shop changes. That fits master's
+  description -- "just a front facing render of it. playing an animation" -- far better than a blit
+  does, and it means the port needs a real model in a viewport rather than a texture.
+
+  ⭐⭐ AND THE `5` IS THE ANIMATION. tinyclaw had walked this chain already; each link below was
+  re-checked here against the executable rather than relayed:
+
+  * `FUN_00230A98` is a **factory** -- `new 0x4C`, constructor `0x227158` installs vtable
+    `0x36F290`, and it returns `obj + 0x0C`.
+  * That vtable's slot at `+0x58`/`+0x5C` is `{adjust -12, fn 0x228958}` (verified: the word at
+    `0x36F290 + 0x5C` is `0x228958`), and `0x228958` reaches `0x17C5D8`, the play-animation router.
+  * `0x17C5D8` saves its arguments (`s1 = a0` the object, `s2 = a1` the `5`, `s6` the trailing
+    flag) and switches on the visual's **type** at `+0x18` through the jump table `0x362AC0`
+    (materialised at `0x17C630..38`, bounds-checked to 16 arms).
+  * **Types 6 and 7** land at `0x17C6F0`, which calls `0x10E910(a0 = s2, a1 = obj[0x14],
+    a2 = s6)`. Against that function's signature `(logical, handle, flags)` the **logical is `a0`,
+    i.e. `s2`, i.e. the `5`** -- so the `5` is **logical 5**. ⚠ Not `a1`: `a1` is reloaded from
+    `obj + 0x14` and is the model handle. The conclusion is unaffected but the register is not.
+  * And logical 5 in the `0x2AAD48` table is descriptor `0x2AA9C8`, count 1, main pair
+    **slot 6 / variant 0**, with first and last both the inactive sentinel (verified here).
+  * ⚠⚠ THE `1.0` IS NOT CONSUMED ON THIS PATH. `0x17C5D8` copies `f12` into `f20`
+    (`mov.s f20, f12` at `0x17C61C`) and the types-6/7 arm never reads it -- there is no COP1
+    instruction at all in `0x17C6F0..0x17C740`. So it is neither a scale (my guess) nor a speed
+    (the first shortcut I was given, which tinyclaw withdrew and I had already propagated). What
+    it does in the OTHER type arms is unread.
+
+  So the shop's model plays **APS section 6, variant 0** -- which is the answer to master's
+  "playing an animation (cant remember which)". No speed is set on this path.
+
+  ⚠ CONDITIONAL ON THE TYPE, and that matters: only types 6 and 7 take the `0x10E910` arm. Other
+  types take arms nobody has read, so a port must check the visual's type at `+0x18` before
+  assuming this path. Still unread: where `shop + 0x78`'s id comes from, what `0x10` and `-1` mean
+  in the init call, and the factory's init slot `+0x0C`.
 
   ⚠ WHAT IS STILL UNREAD: what *fills* that sprite. A front-facing render of the model playing an
   animation has to be produced somewhere upstream and handed to `obj + 0x58`; that producer, and

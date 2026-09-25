@@ -12,7 +12,8 @@ until then.
 **The branch.** It is opt-in research. `--experimental-native-entrance` runs bus-born guests through
 the native booth queues and fee, and walks rejected guests back to the bus. `--native-guest-animation`
 adds readiness: a guest waits for its animation to commit before it walks. Default play on main is
-unchanged, and none of this is on main yet.
+unchanged. The standalone native core is on main as slice A (c5dfe12, merged back here); the entrance
+flow, readiness wiring and Viewer hooks are still branch-only (slices B and C, queue item 6).
 
 **Gates at 783225b** (clean tree, /tmp/tpw-783225b):
 - unit: 79 tool tests OK.
@@ -2997,3 +2998,33 @@ checks regression controls and CP5 checks the actual player flow. If placement n
 subsystem or missing data, narrow/defer it explicitly and select another supported consumer rather than hiding
 scope growth inside “one toilet”.
 
+
+## Slice A landed on main: native core, no behaviour change — September 25, 2026 UTC
+
+This is plan.md queue item 4. It moves the standalone native core onto main from the research
+branch.
+
+**Code:**
+- `NativeLogicalAnimation`, `NativeGuestMotion`, `NativeGuestRoute`, `NativeRoutePool`,
+  `NativeRouteOutput`, `NativeActivationSequence`, `NativeEntranceAcceptance`, and the additive
+  `NativeBusCatalogue` points and counter.
+- Their ParkSimAudit families: motion, route cursor, logical animation and acceptance.
+- ParkSimAudit's `--terrain=1|2`.
+- audit_matrix over all 8 parks, with a per-case park-identity check and a landing flag.
+- The cow-approved Viewer.cs selector fix: `--map` and `--ride` fail loudly, and the canonical
+  `[map] loaded` line.
+
+**Nothing in default play calls the new core yet.** It is the substrate for queue item 5 (guest
+animation for every guest, with cow tools) and slices B and C.
+
+**Docs:** plan.md, progress.md, the review and the branch's findings files, taken only where main
+has not changed them since 8ef44b9.
+
+**Evidence:** the gate results below were run at this commit's tree.
+- At c5dfe12, on a clean tree, freshly built:
+  - `python3 -m unittest discover -s tools -p 'test_*.py'`: 66 tests OK.
+  - `tools/audit_matrix.py`, in /tmp/tpw-c5dfe12/matrix: JUNGLE 1 and 2 and FANTASY 1 and 2 PASS.
+    HALLOW 1 and 2 show only Thrill Grill, and SPACE 1 and 2 only Moon Buggies. The status is
+    `known_retail_failures_remain` with runner exit 2 and `landing_evidence=True`. **This is the
+    first time the core matrix covered the four terrain_2 parks.**
+  - `tools/runtime_audit.py`, in /tmp/tpw-c5dfe12/runtime: all 11 scenes pass.
