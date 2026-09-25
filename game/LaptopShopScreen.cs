@@ -322,6 +322,10 @@ public sealed partial class LaptopShopScreen : Control
     Rect2 _buildRowRect;
     public event Action BuildRequested;
 
+    /// <summary>⭐ RIGHT-CLICK ON A MENU ROW. Master: "rmb opens the current ride build info page.
+    /// lmb just goes straight to placing." Left is <see cref="MenuActivated"/>.</summary>
+    public event Action<int> MenuInspected;
+
     /// <summary>Show a money figure sliding in, or clear it. ⚠ Re-showing the SAME figure does not
     /// restart the slide -- moving between Build submenus should not make it fly in again.</summary>
     public void ShowBalance(string money)
@@ -373,6 +377,16 @@ public sealed partial class LaptopShopScreen : Control
         int slot = i - _menuScroll;
         if (slot < 0 || slot >= RowWindow) return new Rect2();
         return Screen(new Rect2(list.X - 4, list.Y + LaptopMainMenu.RowStep * slot, 260, LaptopMainMenu.RowStep), s, o);
+    }
+
+    /// <summary>The menu row under a point, or -1. ⭐ One place, used by the hover, the wheel and
+    /// both buttons, so they cannot disagree about which row is under the pointer.</summary>
+    int RowAt(Vector2 p, float s, Vector2 o)
+    {
+        if (_menu.Count == 0) return -1;
+        if (LayoutFor(_menuScene ?? LaptopMainMenu.MainScene)[LaptopMainMenu.ListElement] is not { } l) return -1;
+        for (int i = 0; i < _menu.Count; i++) if (MenuRowBox(i, l, s, o).HasPoint(p)) return i;
+        return -1;
     }
 
     /// <summary>Scroll the menu by whole rows and clamp. Returns true when it actually moved.</summary>
@@ -431,6 +445,7 @@ public sealed partial class LaptopShopScreen : Control
     /// <summary>The first visible row, and a keyboard/harness way to move it. <see cref="Scroll"/>
     /// returns false at either end, which is what makes the wheel fall through to the camera.</summary>
     public int ScrollRow => _menuScroll;
+    public int Selected => _menuSelected;
 
     /// <summary>The panel's own scale and top-left, so a check can convert a screen rect back into
     /// the authored 512 space the disc measures in.</summary>
@@ -493,6 +508,61 @@ public sealed partial class LaptopShopScreen : Control
         QueueRedraw();
     }
 
+    /// <summary>⭐⭐ THE KEYBOARD. Master: "add support for arrow keys operating these menus, too."
+    ///
+    /// ⚠ `_UnhandledKeyInput`, NOT `_GuiInput`: a Control only sees key events through `_GuiInput`
+    /// when it holds focus, and this panel never takes focus -- it would have worked in a test and
+    /// done nothing in the game. Unhandled input reaches it whether or not anything is focused.
+    ///
+    /// ⚠ Up/Down accept ECHO so holding an arrow walks the list, which is what a 47-row category
+    /// needs; Enter and Escape do not, so a held key cannot fire an action twice.</summary>
+    public override void _UnhandledKeyInput(InputEvent @event)
+    {
+        if (!Open || @event is not InputEventKey { Pressed: true } k) return;
+        switch (k.Keycode)
+        {
+            case Key.Up:   MoveSelection(-1); break;
+            case Key.Down: MoveSelection(+1); break;
+            case Key.Enter or Key.KpEnter or Key.Space:
+                if (k.Echo) return;
+                // ⭐ The same thing the LEFT button does, so a pad and a mouse agree: activate the
+                // selected row, or press Build when the screen has one and no list.
+                if (_menu.Count > 0 && _menuSelected >= 0 && _menuSelected < _menu.Count)
+                    MenuActivated?.Invoke(_menuSelected);
+                else if (_buildRow) BuildRequested?.Invoke();
+                else return;
+                break;
+            case Key.Right:
+                // ⭐ The keyboard's INSPECT, matching the right mouse button.
+                if (k.Echo || _menu.Count == 0) return;
+                MenuInspected?.Invoke(_menuSelected);
+                break;
+            case Key.Escape or Key.Backspace or Key.Left:
+                if (k.Echo) return;
+                Dismissed?.Invoke(false);   // Back, never Close: Close is a decision, not a slip
+                break;
+            default: return;
+        }
+        // ⚠ AcceptEvent() is for _GuiInput only; from unhandled input this is the way to stop the
+        // key reaching the park -- Escape would otherwise also clear whatever is held.
+        GetViewport().SetInputAsHandled();
+    }
+
+    /// <summary>Move the selection and keep it on screen. ⚠ It also drops the HOVER: the draw
+    /// prefers hover over selection, so without this the highlight would stay under a stationary
+    /// mouse while the arrows moved something invisible.</summary>
+    void MoveSelection(int by)
+    {
+        if (_menu.Count == 0) return;
+        _menuSelected = Math.Clamp(_menuSelected + by, 0, _menu.Count - 1);
+        _menuHover = -1;
+        // ⭐ Scroll only as far as it must to bring the selection back into the window.
+        if (_menuSelected < _menuScroll) _menuScroll = _menuSelected;
+        else if (_menuSelected >= _menuScroll + RowWindow) _menuScroll = _menuSelected - RowWindow + 1;
+        _menuScroll = Math.Clamp(_menuScroll, 0, Math.Max(0, _menu.Count - RowWindow));
+        QueueRedraw();
+    }
+
     public override void _GuiInput(InputEvent @event)
     {
         GuiEvents++;
@@ -511,10 +581,7 @@ public sealed partial class LaptopShopScreen : Control
             bool wasBuild = _buildHover;
             _buildHover = _buildRow && _buildRowRect.HasPoint(motion.Position);
             if (_buildHover != wasBuild) QueueRedraw();
-            _menuHover = -1;
-            if (_menu.Count > 0 && LayoutFor(_menuScene ?? LaptopMainMenu.MainScene)[LaptopMainMenu.ListElement] is { } l)
-                for (int i = 0; i < _menu.Count; i++)
-                    if (MenuRowBox(i, l, s, o).HasPoint(motion.Position)) { _menuHover = i; break; }
+            _menuHover = RowAt(motion.Position, s, o);
             if (_menuHover != wasMenu || _btnHover != wasBtn) QueueRedraw();
             return;
         }
@@ -523,21 +590,41 @@ public sealed partial class LaptopShopScreen : Control
         if (@event is InputEventMouseButton { Pressed: true } w
             && (w.ButtonIndex == MouseButton.WheelUp || w.ButtonIndex == MouseButton.WheelDown))
         {
-            if (ScrollMenu(w.ButtonIndex == MouseButton.WheelUp ? -1 : 1)) { QueueRedraw(); AcceptEvent(); }
+            if (ScrollMenu(w.ButtonIndex == MouseButton.WheelUp ? -1 : 1))
+            {
+                // ⚠ The rows have moved UNDER a cursor that has not: re-hover from the pointer,
+                // or the highlight would point at one row until the mouse next twitched.
+                _menuHover = RowAt(w.Position, s, o);
+                QueueRedraw(); AcceptEvent();
+            }
             return;
         }
-        if (@event is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left })
+        if (@event is InputEventMouseButton { Pressed: true } b
+            && b.ButtonIndex is MouseButton.Left or MouseButton.Right)
         {
             GuiClicks++;
-            LastGui += $" -> btnHover={_btnHover} menuHover={_menuHover}";
-            if (_buildRow && _buildRowRect.HasPoint(((InputEventMouseButton)@event).Position))
+            // ⚠⚠ HIT-TEST THE CLICK, DO NOT TRUST THE HOVER. `_menuHover` is set by MOTION, and
+            // the wheel moves rows under a cursor that never moved -- so a scroll followed by a
+            // click with no twitch in between would have activated whatever row used to be there.
+            int row = RowAt(b.Position, s, o);
+            LastGui += $" -> btn={b.ButtonIndex} btnHover={_btnHover} row={row}";
+
+            // ⭐ RIGHT-CLICK IS INSPECT. Master: "rmb opens the current ride build info page."
+            // It does nothing anywhere else -- Back, Close and the Build row are actions, and a
+            // right-click on them should not quietly perform them.
+            if (b.ButtonIndex == MouseButton.Right)
+            {
+                if (row >= 0) { _menuSelected = row; QueueRedraw(); MenuInspected?.Invoke(row); AcceptEvent(); }
+                return;
+            }
+            if (_buildRow && _buildRowRect.HasPoint(b.Position))
             { BuildRequested?.Invoke(); AcceptEvent(); return; }
             if (_btnHover >= 0) { Dismissed?.Invoke(_btnHover == 1); AcceptEvent(); return; }
-            if (_menuHover >= 0)
+            if (row >= 0)
             {
-                _menuSelected = _menuHover;
+                _menuSelected = row;
                 QueueRedraw();
-                MenuActivated?.Invoke(_menuHover);
+                MenuActivated?.Invoke(row);
                 AcceptEvent();
             }
         }

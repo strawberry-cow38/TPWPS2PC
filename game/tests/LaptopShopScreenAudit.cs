@@ -587,6 +587,42 @@ public partial class LaptopShopScreenAudit : Node
                 Check(bal.Position.Y + bal.Size.Y <= row0NoBalance.Position.Y + 1,
                       "sitting ABOVE the first row, in the band the chrome leaves there");
 
+                // 6. ⭐⭐ THE KEYBOARD. Master: "add support for arrow keys operating these
+                //    menus, too." ⚠ Pushed as REAL key events through the viewport, because the
+                //    thing most likely to be wrong is the ROUTE: a Control only sees keys in
+                //    _GuiInput when focused, and this panel never takes focus -- a check that
+                //    called a method directly would pass on a panel the keyboard never reaches.
+                screen.ShowBalance(null);
+                screen.ShowMenu(many, 0, LaptopMainMenu.MainScene);
+                int fired = -1;
+                void OnActivate(int r) => fired = r;
+                screen.MenuActivated += OnActivate;
+                void Key(Key code)
+                {
+                    screen.GetViewport().PushInput(new InputEventKey { Keycode = code, Pressed = true }, true);
+                }
+                Key(Godot.Key.Down); Key(Godot.Key.Down);
+                Check(screen.Selected == 2, $"two Downs move the selection to row 2 (got {screen.Selected})");
+                Check(screen.ScrollRow == 0, "and a selection inside the window does not scroll it");
+
+                // ⭐ THE CHECK THAT REJECTS "moves the selection but not the window": walk past the
+                //   fold and the list MUST follow, or the arrows would drive an invisible cursor.
+                for (int i = 0; i < 20; i++) Key(Godot.Key.Down);
+                Check(screen.Selected == 22, $"holding Down walks the list (row {screen.Selected})");
+                Check(screen.ScrollRow > 0 && screen.Selected >= screen.ScrollRow
+                      && screen.Selected < screen.ScrollRow + max,
+                      $"and the window follows it -- selection {screen.Selected} is inside "
+                    + $"[{screen.ScrollRow},{screen.ScrollRow + max})");
+                Check(screen.MenuRowScreenBox(screen.Selected).Size.Y > 0,
+                      "so the selected row is actually drawn");
+
+                Key(Godot.Key.Enter);
+                Check(fired == 22, $"Enter activates the selected row ({fired})");
+                for (int i = 0; i < 40; i++) Key(Godot.Key.Up);
+                Check(screen.Selected == 0 && screen.ScrollRow == 0,
+                      $"Up stops at the top (row {screen.Selected}, scroll {screen.ScrollRow})");
+                screen.MenuActivated -= OnActivate;
+
                 screen.ShowBalance(null);
                 Check(!screen.BalanceShown, "and leaving build clears it");
 

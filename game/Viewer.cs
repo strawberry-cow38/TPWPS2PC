@@ -245,6 +245,8 @@ public partial class Viewer : Node3D
     /// <summary>⚠ DIAGNOSTIC: "X,Y" -- push a real click through the viewport at that point and
     /// report what the laptop received. Two reasoned fixes failed; this measures instead.</summary>
     string _laptopClick;
+    /// <summary>Push the probe click as the RIGHT button -- master's inspect gesture.</summary>
+    bool _laptopRight;
     /// <summary>Force the menu scroll for a shot -- a still cannot turn a wheel.</summary>
     int _laptopScroll;
     /// <summary>Force the balance slide, 0..100. ⚠ Unset (-1) lets it run, so a FILM shows the
@@ -392,6 +394,7 @@ public partial class Viewer : Node3D
             else if (a.StartsWith("--laptop-hover=")) int.TryParse(a["--laptop-hover=".Length..], out _laptopHoverRow);
             else if (a.StartsWith("--laptop-hover-btn=")) int.TryParse(a["--laptop-hover-btn=".Length..], out _laptopHoverBtn);
             else if (a.StartsWith("--laptop-click=")) _laptopClick = a["--laptop-click=".Length..];
+            else if (a.StartsWith("--laptop-rclick=")) { _laptopClick = a["--laptop-rclick=".Length..]; _laptopRight = true; }
             else if (a.StartsWith("--laptop-scroll=")) int.TryParse(a["--laptop-scroll=".Length..], out _laptopScroll);
             else if (a.StartsWith("--laptop-swoop="))
             { if (int.TryParse(a["--laptop-swoop=".Length..], out int sw)) _laptopSwoop = sw; }
@@ -3247,7 +3250,8 @@ public partial class Viewer : Node3D
                  {
                      new InputEventMouseMotion { Position = at, GlobalPosition = at },
                      new InputEventMouseButton { Position = at, GlobalPosition = at,
-                                                 ButtonIndex = MouseButton.Left, Pressed = true },
+                                                 ButtonIndex = _laptopRight ? MouseButton.Right : MouseButton.Left,
+                                                 Pressed = true },
                  })
             _shopPanel.GetViewport().PushInput(ev, true);
         GD.Print($"[click] pushed at ({px},{py}) -> _GuiInput fired {_shopPanel.GuiEvents - before} times "
@@ -3378,15 +3382,39 @@ public partial class Viewer : Node3D
                 return;
             }
             case "buildlist":
-            {
-                if (row >= _buildRows.Count) return;
-                var r = _lib.Rides[_buildRows[row]];
-                var def = DefinitionFor(r.Model);
-                if (def == null) { Status($"{Leaf(r.Name)} has no .sam beside it"); return; }
-                ShowBuildDetail(row, r, def);
+                // ⭐ Master: "lmb just goes straight to placing." The info page is RIGHT-click --
+                // see OnLaptopInspect -- so the common action costs one click, not three.
+                ArmAndClose(row);
                 return;
-            }
         }
+    }
+
+    /// <summary>⭐ RIGHT-CLICK ON A ROW: the thing's own page. Master: "rmb opens the current
+    /// ride build info page. lmb just goes straight to placing."
+    ///
+    /// ⚠ Only the build LIST has a page behind a row. Right-clicking the main menu, the
+    /// information submenu or the category list does nothing rather than doing the left-click's
+    /// job, which would make the two buttons indistinguishable there.</summary>
+    void OnLaptopInspect(int row)
+    {
+        if (row < 0 || _laptopBack.Count == 0 || _laptopBack[^1].Kind != "buildlist") return;
+        if (row >= _buildRows.Count) return;
+        var r = _lib.Rides[_buildRows[row]];
+        var def = DefinitionFor(r.Model);
+        if (def == null) { Status($"{Leaf(r.Name)} has no .sam beside it"); return; }
+        ShowBuildDetail(row, r, def);
+    }
+
+    /// <summary>Take the row out of the list and hold it over the park, laptop away. ⚠ Shared by
+    /// the left-click on a row and the Build button on the page, so the two cannot drift.</summary>
+    void ArmAndClose(int row)
+    {
+        if (row < 0 || row >= _buildRows.Count) return;
+        // ⚠ The category must be re-entered FIRST when coming from the page: ArmFromList reads
+        // `_buildRows` and `_buildCategory`, and Back out of the list would leave both stale.
+        _shopPanel.Hide(); _laptopBack.Clear();
+        _shopPanel.ShowBalance(null);
+        ArmFromList(row);
     }
 
     /// <summary>⭐ The purchase screen for one thing, with the figures that are REAL -- the decoded
@@ -3431,9 +3459,7 @@ public partial class Viewer : Node3D
         if (screen.Kind == null || list.Kind == null || !int.TryParse(screen.Arg, out int row))
         { Status("build: nothing is selected to place"); return; }
         ShowBuildCategory(list.Arg);
-        _shopPanel.Hide(); _laptopBack.Clear();
-        _shopPanel.ShowBalance(null);
-        ArmFromList(row);
+        ArmAndClose(row);
     }
 
     /// <summary>Back steps out one level; Close puts the laptop away.</summary>
@@ -8442,6 +8468,7 @@ public partial class Viewer : Node3D
                     _shopPanel.MenuActivated += OnLaptopRow;
                     _shopPanel.Dismissed += OnLaptopDismiss;
                     _shopPanel.BuildRequested += OnLaptopBuild;
+                    _shopPanel.MenuInspected += OnLaptopInspect;
                     GD.Print($"[laptop] shop screen ready ({ShopScreen.SceneFile} layout, "
                              + $"{ShopScreen.ChromeFor(_lib?.WadName)} chrome, Large.bff, step {ShopScreen.RowStep})");
                 }
