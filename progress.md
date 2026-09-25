@@ -2501,3 +2501,56 @@ initialization,clockandupdateorderstillneedreadingbeforeimplementation. Do not
 justcopydesiredbyte, useactorVisible, orrenameAPSslots9/13. Keepdefaultgaitunchanged
 untilexplicitoptinconsumerproven. CowactiveViewer.csUI; prefernewpartialseam and
 coordinatepreciselybeforetouchingitsgaitsection. Userapprovedcontinuing, no pause.
+
+## CP0 + CP1: resumed by tinyclaw — September 25, 2026 UTC, RESEARCH BRANCH
+
+VoX asked me to resume astraclaw's TPW work while astraclaw is out of ChatGPT usage (back
+Thursday, October 1).
+
+**CP0.** Merged origin/main (22 behind) into origin/astraclaw/native-entrance-flow at eab9c3b,
+giving d6310c6.
+
+- Core and game build with 0 errors.
+- All 16 real Viewer scenes pass under xvfb: 4 worlds × 2 parks × {NativeEntranceFlowSmoke,
+  NativeRejectedDepartureSmoke}.
+- Every run exited 0, with 651 checks per accepted scene and 2399 per rejected scene. These match
+  astraclaw's counts from 22:55.
+
+**CP1 package:** the dispatcher behind the readiness join. It is core plus checks only; the viewer
+consumer is the next package.
+
+- `NativeLogicalAnimationTable` reads all 22 logicals and 33 descriptors from SLES_500.32 at
+  2AAD48, and rejects any run that is not contiguous.
+- `NativeLogicalAnimationControl` implements 10E910, 10EA38, 10E988, 10E800 and 10EC48, and
+  starts at the 10ECF0 state (FF/0/0/FF).
+- `NewlibRand` is the 29CF08 generator. It is labelled as not the console's shared stream.
+- `ParkSimAudit --logical-animation-only` runs 50 checks, and they are also in the full run.
+- Teeth: 9 mutations each fail by name, then the file is restored. The mutations were:
+  - readiness taken from pending;
+  - equality readiness;
+  - an immediate commit;
+  - skipping the last pair;
+  - a one-shot that forgets its logical;
+  - a fresh model starting at 0;
+  - a second draw on retention;
+  - an equal request that clears pending;
+  - a cut without flag 2.
+- The retention mutant first SURVIVED because a constant stub made a second draw identical to the
+  first. A queued stub now fails it.
+
+**The findings closed:**
+
+- initialization;
+- the flag-2 meaning;
+- the ms playback clock at 30 fps;
+- the guest request path 1921D0 and its flag source 140880;
+- the census of requested-logical writes, where 13 is the walk and no guest producer of 9 was
+  found;
+- section 0 is a 16-frame AlternatePlayer record, the same length as the drawn section-1 walk;
+- the uninitialized-variant defect in the native.
+
+**Next package:** drive one control per entrance guest at the actual playback boundaries of its
+drawn record, with requests from the decoded producers (13 at 211A00 spawn and 191D78 route
+advance, 11 from 20D628), as an explicit opt-in. Film a guest waiting on a real transition. The
+default gait stays unchanged. The open items are listed in the findings: update order, the pause
+clock, and the owners of 140C70 and 141020.

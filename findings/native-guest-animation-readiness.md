@@ -98,3 +98,146 @@ The partial C corpus corroborates it; raw signatures/register arguments remain t
 source of truth. Full guest->visual-type/update/request chain still needs checking
 before installing this dispatcher in gameplay. This document is a source checkpoint,
 not a claim that readiness or all guest animation is implemented.
+
+## Closing the open joins — tinyclaw, September 25, 2026 (resuming astraclaw's branch)
+
+Everything below comes from raw disassembly of the owner's PAL executable, and the address of
+each fact is given next to it. The managed port is `core/TPW.PS2.Data/NativeLogicalAnimation.cs`,
+and its checks are `ParkSimAudit --logical-animation-only` (50 checks, with 9 named mutations
+each required to fail). It is **not yet wired into the Viewer**: the entrance experiment still
+passes `ready=true`.
+
+### The whole table: 22 logicals, 33 descriptors, contiguous
+
+The table at 2AAD48 has 22 `(pointer, count)` entries. Their descriptors run back to back in
+logical order from 2AA928 and end exactly at 2AAD48, where the table begins. The next word,
+2AADF8, holds 22, but no instruction reads it. Neither reader (10E800, 10EA38) bound-checks the
+logical. Descriptor fields are u32 words.
+
+| logical | first | main | last | flags | variants |
+|---:|---|---|---|---:|---|
+| 0, 3, 8, 10 | F | 2/0 | F | 0 | 1 |
+| 1, 5 | F | 6/0 | F | 0 | 1 |
+| 2 | 8/0 | F | F | 0 | 1 |
+| 4 | F | 5/0 | F | 0 | 1 |
+| 6 | F | 12/0 | F | 0 | 1 |
+| 7 | F | 10/0 | F | 0 | 1 |
+| 9 | F | 1/0 | F | 0 | 1 |
+| 11 | F | F / 2/0..2/5 / 6/0 | F | 2 / 6 / 2 | 8, weights 93, 1×6, 1 |
+| 12 | F | 4/0 | F | 1 | 1 |
+| 13 | F | 0/0 | F | 0 | 1 |
+| 14, 15 | F | 7/0 | F | 0 | 1 |
+| 16 | 4/0 | 5/0 | 6/0 | 0 | 1 |
+| 17 | 3/0 | 3/1 | 3/2 | 0 | 1 |
+| 18 | F | 3/0 | F | 0 | 1 |
+| 19 | F | 13/0 | F | 1 | 1 |
+| 20 | F | 14/0 | F | 1 | 1 |
+| 21 | 8/0 or F | 2/2, 2/3, 5/0 | F | 2 | 5, weights 5, 40, 5, 40, 10 |
+
+No logical plays the APS section with its own number. Logical 15's first slot is the sentinel F,
+not section 15; the first draft of the check counted it and failed.
+
+### A fresh model: current FF, variant 0, phase 0, pending FF
+
+The instance's control block is not constructed. It is copied from the loader's template:
+
+- 1F7ED8 builds a 0x58-byte template on its stack at sp+220 and zeroes it with 29C370 at 1F7F40.
+  The FF bytes stored just before that call are overwritten by the zeroing.
+- It then calls **10ECF0 at 1F8188** on template+4C. That writes current=FF, variant=0,
+  pending=FF. 10ECF0 has no other caller.
+- 1F6230 copies the 0x58 template bytes into each instance (1F6354..1F6408).
+
+So a guest that requests 13 at birth is **not** ready until the first playback boundary commits
+it.
+
+The 1F68A8 writer that puts FF into bytes +0, +2 and +3 targets one static object at 2EA7E0 and
+is a separate case. The `sb +4C` sites at 1DB654 and 1FF6A0 clamp guest attribute bytes to 0..100
+and are unrelated to animation.
+
+### What 1ACF20 does (flag 2)
+
+1ACF20 leaves playback with slot F untouched. Otherwise it computes
+`start(+18) = now(+1C) - round(duration(+20) × 33.333)`.
+
+The playback clock is in milliseconds at 30 frames per second. Its inverse is at 1AD21C..1AD250:
+`start = now - frame×1000/30/speed`.
+
+So flag 2 makes the record's whole duration look elapsed, and the next 1ACFC0 update becomes a
+boundary. **It cuts the current record short. It does not skip an old last pair.** 10EA38 still
+plays that pair (phase 2) before committing.
+
+At a boundary with an unchanged section, 1ACFC0 carries the overshoot through an fmod
+(1AD0C8..F8). A new section starts at frame min(carry, duration − 0.0001).
+
+### The guest request path
+
+Guests hold the logical in the low five bits of N+38, which is B+30 with B = N+8.
+
+**1921D0(B, y)** takes a nonzero y as 13 and a zero y as the ground height. It then calls the
+visual's vtable +58/+5C → 228958 → 17C5D8 → 10E910 with:
+
+- logical = low5(B+30);
+- flags = 2 when bit 200 of halfword B+2C is set, otherwise 0;
+
+and clears the bit afterwards.
+
+**The only setter of that bit found is 140880**, which is called from 140C70 and 141020. It:
+
+1. creates an attached visual through factory 230A98;
+2. requests logical 17 on it with flags 2;
+3. sets the guest's own request to 16;
+4. sets bit 200.
+
+**Its inverse 140990** removes the attachment and sets 13 without the flag. Reading the table,
+the guest therefore enters 16 immediately (first 4, then main 5 looping). When it goes back to 13,
+it plays 16's last pair (section 6, 40 frames on the kids) and only then commits 13. During that
+wait, **191E10 blocks movement.** That is the visible case the readiness gate exists for.
+
+### Census of immediate writes to the guest's requested logical
+
+Immediate writes to N+38 (`and` with −20 followed by `ori`/`addiu`):
+
+| logical | where it is written |
+|---:|---|
+| 13 | 1409D8 / 140990, 178714, 20CC20, 20E150, 20EE70 and 20F024 / 20EDD8, 20F674, 211C60 / 211A00, 212010; plus B+30 at 191DA0 / 191D78 (route advance) and 192214 |
+| 11 | 12E08C, 20BD34, 20D998 / 20DAE8 / 20DB10 / 20DB34 (20D628), 210A8C, 212010 |
+| 12 | 20CF48 |
+| 14 | 20D780 |
+| 16 | 12DF70, 140970, 141024, 1455C0, 1B61E8 |
+| 2 | 2107D4 |
+
+2106E8 writes one of `[14, 5, 6, 13]` from the byte table 2EEC18, chosen with 1448E0(4).
+
+**No guest-side producer of 9 was found in this census.** Walking guests request 13. The
+predicate still accepts 9 and 13 in either order.
+
+Here, 13 means APS section 0. Every character .aps has a section 0 made of one record with flags
+0x01: an `AlternatePlayer` record (track flag 0x40000). Boy1a's has three tracks, covering
+head, body and legs; the four kids' have two. Only Boy1a's track targets were read. For the kids and the Boy/Girl sets it lasts **16 frames, the same as the section-1
+skeletal walk the Viewer draws**. The readiness timing therefore does not depend on which of the
+two is drawn. The Viewer comment saying the state→record table "has not been found" is out of
+date: this is that table.
+
+### The random source
+
+29CF08 is newlib `rand` (state×1103515245 + 12345, low 31 bits, state at 3535E4+58), and 46
+call sites share it. 10E800 divides by 400 or 100 with signed `div` on a non-negative result.
+
+- The flag-4 retention path reuses its own remainder below 100 as the weighted roll. It does not
+  draw again.
+- ⚠ **Native defect:** the pending path in 10EA38 passes an uninitialized stack byte as the
+  variant. When 10E800 takes the retention path it returns the OLD descriptor without writing
+  that byte. The commit then has a garbage variant. It needs a multi-variant pending logical (11
+  or 21) together with a flag-4 current descriptor. The port refuses that path instead of
+  inventing a variant.
+
+### Still open
+
+- Clock and update order: 1ACFC0 through 1F2E70, against guest movement 191E98 through 140B60,
+  within one frame.
+- Whether the park simulation delta that drives 191E98 and the playback millisecond clock share a
+  pause.
+- The owners of 140C70 and 141020 (which activity attaches the item).
+- The viewer consumer. It should drive this control at the actual playback boundaries of the
+  guest's drawn record, gated as an explicit opt-in, and leave the default gait unchanged until
+  that consumer is filmed.

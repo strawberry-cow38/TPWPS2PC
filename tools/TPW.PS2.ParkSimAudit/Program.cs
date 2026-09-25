@@ -38,6 +38,12 @@ if (args.Contains("--native-route-consumer-only"))
     Console.WriteLine(bad==0 ? "PASS native route through GuestWalk/ParkVisitors (controller is a separate opt-in experimental consumer)" : $"FAIL: {bad}");
     return bad==0?0:1;
 }
+if (args.Contains("--logical-animation-only"))
+{
+    NativeLogicalAnimationChecks.Run(disc,Check);
+    Console.WriteLine(bad==0 ? "PASS native logical-animation table and control block (viewer playback/producers NOT exercised)" : $"FAIL: {bad}");
+    return bad==0?0:1;
+}
 if (args.Contains("--guest-motion-only"))
 {
     NativeGuestMotionChecks.Run(Check);
@@ -610,6 +616,7 @@ PathPriceChecks.Run(terrain, PathPieces.Read(disc), Check);
 ScreamChecks.Run(disc, world, Check);
 BusAdmissionChecks.Run(disc, Check);
 NativeGuestMotionChecks.Run(Check);
+NativeLogicalAnimationChecks.Run(disc,Check);
 NativeGuestRouteChecks.Run(Check);
 NativeWalkConsumerChecks.Run(disc,Check);
 NativeEntranceFlowChecks.Run(disc,Check);
