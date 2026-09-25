@@ -22,7 +22,8 @@ states.
 |---|---|---|
 | ride+F4 | queue head; a doubly linked list threaded through each guest's link node (B+0 next, B+4 prev, B = N+8) | 118540 counts it; 1180B0 and 117C90 unlink from it |
 | ride+A0 | list of queue CELLS (byte x, byte z), starting at the ride and ending at the far end of the queue | 117340, 20F4D8 via 1A3368 |
-| ride vtable +17C | the ride's queue-entrance cell, where the queue meets the ride | 117340 |
+| ride vtable +17C | the ride's rotated entrance connection cell (116EC0: rotation, origin +74, 1E1760), where spots start | 117340 |
+| ride vtable +F4 | the queue MOUTH: the last cell of the list (117280) | quit walk 2112D0 |
 | ride+126 | upgrade tier byte | 20D530 |
 | ride+108 | rider list; boarding links the guest here | 117C90 |
 | ride+120 | u16 count of guests boarded, incremented per boarding | 117C90 |
@@ -69,7 +70,11 @@ the spot after the tail, and is linked in after the last node (or as the head of
 The update counter is `now` (1C4930). The phase is the guest's activation serial, N+14.
 
 - **Every 4 updates** on the guest's phase: if the ride's vtable +C4 predicate is true, impatience
-  (N+78) goes up by 1, capped at 100. What +C4 tests is not decoded.
+  (N+78) goes up by 1, capped at 100. **+C4 is "the ride is broken".** In all four ride families it is
+  1E2830, `lbu v0,+9A; addiu v0,-4; jr ra; sltiu v0,v0,2`. The delay slot turns it into
+  `state - 4 < 2`, i.e. placed state 4 or 5, which are the breakdown states
+  (native-selection-eligibility.md). Read without the delay slot it looks like "state != 4", the
+  opposite.
 - **Every 8 updates** on the guest's phase:
   - `mismatch = |taste (20C078) - ride value (+1D4)|` and `w = max(50, mismatch)`;
   - `rand(100 - w/2) < 2` adds 1 to impatience, so a worse match leaves sooner;
@@ -77,15 +82,33 @@ The update counter is `now` (1C4930). The phase is the guest's activation serial
 - **While impatience is below 81:** after each `now + rand(300)` deadline the guest faces a random
   quarter direction (N+3C = rand(4) × 2 × 2π/8).
 - **At 81 or more:** thought 9, effect 0x7E at the guest, and 1180B0, which takes the guest out of the
-  queue. The same B+2C bit 3 and 2E28D0 (< 25) bookkeeping as the happiness < 3 departure applies.
+  queue.
+- What this adds up to: at a working ride only the 8-update roll runs, +1 with probability
+  2/(100 - w/2), so between 2/75 and 2/50. Guests spawn with impatience rand(40) (VisitorNeeds
+  `Unknown78`), so leaving takes many thousands of updates. At a broken ride the 4-update tick
+  dominates, and guests give up within a few hundred updates. The same B+2C bit 3 and 2E28D0 (< 25) bookkeeping as the happiness < 3 departure applies.
 
 ## Leaving and moving up (1180B0)
 
 1180B0 unlinks the guest and sends it event 7 through guest vtable +16C (event record 35A548); it then
-calls vtable +2C(1) and 14DA60. **Every guest behind it** gets event 0x13 (record 35A530), with a
-delay that grows by `rand(3)` per guest. So the queue closes up as a staggered ripple, not in
-lockstep. The event handler's mapping (event 7 → state 0x17, event 0x13 → state 0x13) is inferred from
-the states those numbers name; it is not yet read.
+calls vtable +2C(1) and 14DA60. **Every guest behind it** gets a move-up event (record 35A530) carrying
+a stagger that grows by `rand(3)` per guest. So the queue closes up as a staggered ripple, not in
+lockstep.
+
+The guest event handler is 20F588 (guest vtable 36CCE0, slot +16C). It switches on the record's code
+getter at +C: 118AB8 returns the record's +4 word, and 118AC0 always returns 6.
+- **Code 7 (quit):** free the route slots (192840), clear the stack, state **0x3A**, clear the queued
+  bit. State 0x3A (2112D0) routes to the ride's vtable +F4 cell with flags 0x11 and movement mode
+  0x16, pushing 0x3A. Mode 0x16 completing (20D628) returns the guest to state 0 with no target. +F4
+  (117280) is the **last** cell of the queue list, its mouth. So a quitter walks back out along the
+  queue to where it meets the path, then resumes ordinary visiting.
+- **Code 10 (queue emptied, from 117798's second mode):** target cleared, slots freed, state 0 at once,
+  queued bit cleared.
+- **Code 6 (move up):** only when the guest is in state 0x12, or 0x2C in the entrance queue. Free the
+  slots, set the deadline N+2C = now + **3 × stagger**, clear the stack, state = the record's +8 word
+  (0x13).
+- State 0x17 (20F4D8, a flags-0x18 walk to the last ride+A0 cell) is not reached from these events.
+  Its producer is still unread.
 
 117798 empties a whole queue, sending each guest event 7, or event 10 in its second mode. Its callers
 (1229B8, 1E94DC, 2002F4, and 117758, which also calls 118018) are the per-family close, break and
@@ -95,15 +118,17 @@ demolish paths. That is inferred from their location, not traced.
 
 Each ride update:
 1. `1FA528(machine)`: the ride is full when script variable 5 >= variable 2 (1C10D8 reads). Full means
-   no boarding. Variables 5 and 2 are most likely riders on board and capacity; the indices are read
-   but their names are not joined.
+   no boarding. All 162 ride scripts on the disc declare **index 2 = VAR_CAPACITY** and **index 5 =
+   VAR_ONRIDE**, read from each script's own shipped variable table. So the ride takes the next guest
+   only while `VAR_ONRIDE < VAR_CAPACITY`.
 2. Otherwise, take the head (ride+F4). **It must be in state 0x12**, actually standing at the front
    (read through guest vtable +DC).
 3. `1FA368(machine, guest, 1, 1)` offers the guest to the script. It requires the machine and
    1FA168, then calls 107E48, 1FB3B8(guest, 1) and 1FA260(machine, guest): the LETMEON write the port
    models.
-4. If the script takes the guest: 211FE0(guest, 1) (not decoded; possibly the ride fee), the vtable
-   +1F4(10) call unless state 1E1D70 == 4, then **117C90** boards:
+4. If the script takes the guest: 211FE0(guest, 1) sets the guest's animation request to **13 (walk)**
+   and plays it immediately (argument 0 would give 11; it is not a fee). Then placed state becomes 10
+   through +1F4 unless it is already 4, and **117C90** boards:
    - unlink from the queue;
    - guest state **0x15** (20E0E8), stack cleared, guest vtable +3C and +44;
    - link into ride+108 and increment ride+120;
@@ -125,7 +150,5 @@ The other families call 117C90 from their own updates: tour 1EA288, track 201AE4
 
 ## Open
 
-- The +C4 predicate (what makes impatience tick every 4 updates), and 211FE0.
-- The event handler mapping; the names of script variables 2 and 5.
-- 1AECCC's family; 20E0E8 (state 0x15, riding).
+- 1AECCC's family; 20E0E8 (state 0x15, riding); the producer of state 0x17.
 - Queue-cell list construction at ride+A0, i.e. how laid queue tiles become that list.
