@@ -372,7 +372,7 @@ public sealed partial class LaptopShopScreen : Control
     {
         int slot = i - _menuScroll;
         if (slot < 0 || slot >= RowWindow) return new Rect2();
-        return Screen(new Rect2(list.X - 4, list.Y + MenuTop + LaptopMainMenu.RowStep * slot, 260, LaptopMainMenu.RowStep), s, o);
+        return Screen(new Rect2(list.X - 4, list.Y + LaptopMainMenu.RowStep * slot, 260, LaptopMainMenu.RowStep), s, o);
     }
 
     /// <summary>Scroll the menu by whole rows and clamp. Returns true when it actually moved.</summary>
@@ -395,17 +395,30 @@ public sealed partial class LaptopShopScreen : Control
         return MenuRowBox(i, l, Scale, Origin);
     }
 
-    /// <summary>⚠⚠ HOW MANY ROWS THE LIST MAY USE. The balance readout takes a row of the panel,
-    /// so while it is showing the list gives that row up. The first render drew both on top of
-    /// each other.</summary>
-    int RowWindow => _balance == null ? LaptopMainMenu.MaxRows : LaptopMainMenu.MaxRows - 1;
+    /// <summary>How many rows the list may use -- all of them. ⚠ It briefly gave one up to the
+    /// balance; master: "above where the list starts, in that empty space". The readout lives in
+    /// the chrome's own empty band above row 115, so it costs the list nothing.</summary>
+    int RowWindow => LaptopMainMenu.MaxRows;
 
-    /// <summary>⭐ How far down the list starts. Master: "balance is meant to be at the top", so
-    /// the readout takes the FIRST row and the list begins one row below it.
-    ///
-    /// ⚠ Both the draw and the hit-test read this, because they must offset by the same amount or
-    /// every row answers for its neighbour.</summary>
-    int MenuTop => _balance == null ? 0 : LaptopMainMenu.RowStep;
+    /// <summary>⭐ The balance's row: ONE ROW ABOVE the list's first, on the list's own grid, in
+    /// the band the chrome leaves between its top edge and row 115. The Back/Close column sits at
+    /// column 336, so the left of that band is empty.</summary>
+    Rect2 BalanceRow(SceneLayout.Element list) =>
+        new(list.X, list.Y - LaptopMainMenu.RowStep, 260, LaptopMainMenu.RowStep);
+
+    /// <summary>⚠ FOR THE AUDIT. Where the readout comes to rest, in screen pixels -- so a check
+    /// can assert it does not land on the list rather than re-deriving the geometry and agreeing
+    /// with a draw that had drifted.</summary>
+    public Rect2 BalanceScreenBox
+    {
+        get
+        {
+            if (_balance == null) return new Rect2();
+            if (LayoutFor(_menuScene ?? LaptopMainMenu.MainScene)[LaptopMainMenu.ListElement] is not { } l)
+                return new Rect2();
+            return Screen(BalanceRow(l), Scale, Origin);
+        }
+    }
 
     /// <summary>The first visible row, and a keyboard/harness way to move it. <see cref="Scroll"/>
     /// returns false at either end, which is what makes the wheel fall through to the camera.</summary>
@@ -546,13 +559,13 @@ public sealed partial class LaptopShopScreen : Control
     {
         var layout = LayoutFor(_menuScene ?? LaptopMainMenu.MainScene);
         if (layout[LaptopMainMenu.ListElement] is not { } list) return;
-        var at = o + new Vector2(list.X, list.Y + MenuTop) * s;
+        var at = o + new Vector2(list.X, list.Y) * s;
         int max = RowWindow;
         _menuScroll = Math.Clamp(_menuScroll, 0, Math.Max(0, _menu.Count - max));
         int first = _menuScroll, last = Math.Min(_menu.Count, first + max);
         // ⭐ The bar sits just right of the label column, inside the panel's own content area.
         _scrollTrack = _menu.Count > max
-            ? new Rect2(o + new Vector2(list.X + 268, list.Y + MenuTop) * s, new Vector2(6, max * LaptopMainMenu.RowStep) * s)
+            ? new Rect2(o + new Vector2(list.X + 268, list.Y) * s, new Vector2(6, max * LaptopMainMenu.RowStep) * s)
             : new Rect2();
         if (_menu.Count > max)
         {
@@ -730,10 +743,11 @@ public sealed partial class LaptopShopScreen : Control
     {
         if (_balance == null) return;
         if (LayoutFor(_menuScene ?? LaptopMainMenu.MainScene)[LaptopMainMenu.ListElement] is not { } list) return;
-        // ⭐ ON THE LIST'S OWN GRID, at its FIRST row -- master: "balance is meant to be at the
-        // top" -- with the list pushed down one row by MenuTop to make room.
-        float restX = list.X;
-        int y = list.Y;
+        // ⭐ ONE ROW ABOVE THE LIST, in the chrome's empty band -- master: "above where the list
+        // starts, in that empty space". The list keeps all eleven of its own rows.
+        var rest = BalanceRow(list);
+        float restX = rest.Position.X;
+        float y = rest.Position.Y;
         // Ease-out cubic: fast off the mark, settling rather than stopping dead.
         float t = 1f - Mathf.Pow(1f - Mathf.Clamp(_swoop, 0f, 1f), 3f);
         float x = Mathf.Lerp(BalanceFrom, restX, t);

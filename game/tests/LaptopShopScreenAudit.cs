@@ -560,30 +560,35 @@ public partial class LaptopShopScreenAudit : Node
                 screen.ShowBalance("$140,000");
                 Check(screen.BalanceSwoop < mid + 0.001f && screen.BalanceShown,
                       "a DIFFERENT figure does restart it");
-                // ⭐⭐ THE BALANCE TAKES A ROW, AND THE LIST GIVES IT UP. The first render drew
-                //    the eleventh ride and "$30,000" on top of each other at row 435.
+                // ⭐⭐ THE BALANCE SITS ABOVE THE LIST, AND COSTS IT NOTHING. Master: "above
+                //    where the list starts, in that empty space." Two earlier tries were wrong at
+                //    opposite ends -- one drew it over the ELEVENTH ride, one over the FIRST.
                 screen.ShowBalance(null);   // ⚠ ShowMenu deliberately does NOT clear it
                 screen.ShowMenu(many, 0, LaptopMainMenu.MainScene);
+                var row0NoBalance = screen.MenuRowScreenBox(0);
                 Check(screen.MenuRowScreenBox(max - 1).Size.Y > 0,
                       $"control: with no balance the list uses all {max} rows");
-                var row0NoBalance = screen.MenuRowScreenBox(0);
+
                 screen.ShowBalance("$30,000");
-                Check(screen.MenuRowScreenBox(max - 1).Size == Vector2.Zero,
-                      $"with the balance showing, row {max - 1} is given up to it -- nothing is "
-                    + "drawn where the readout sits");
-                Check(screen.MenuRowScreenBox(max - 2).Size.Y > 0, $"and row {max - 2} is still the list's");
-                // ⭐⭐ MASTER: "balance is meant to be at the top." So the list must move DOWN by
-                //    exactly one row. A window that merely got SHORTER would leave the readout
-                //    drawn over the first ride -- which is the same overlap, at the other end.
-                float dropped = (screen.MenuRowScreenBox(0).Position.Y - row0NoBalance.Position.Y)
-                              / screen.PanelScale;
-                Check(Mathf.IsEqualApprox(dropped, LaptopMainMenu.RowStep),
-                      $"the list starts one row lower to make room at the top (dropped {dropped:F0} "
-                    + $"authored units, expected {LaptopMainMenu.RowStep})");
+                Check(screen.MenuRowScreenBox(max - 1).Size.Y > 0,
+                      $"the list STILL uses all {max} rows -- the readout is not in the list");
+                Check(screen.MenuRowScreenBox(0).Position.IsEqualApprox(row0NoBalance.Position),
+                      "and row 0 has not moved");
+
+                // ⭐ THE CHECK THAT REJECTS BOTH EARLIER VERSIONS: wherever the readout rests, it
+                //   must not land on a row of the list. Overlap is the fault, not a coordinate.
+                var bal = screen.BalanceScreenBox;
+                Check(bal.Size.Y > 0, "the readout has a place of its own");
+                bool clear = true;
+                for (int i = 0; i < max; i++)
+                    if (screen.MenuRowScreenBox(i) is { Size.Y: > 0 } r && r.Intersects(bal)) clear = false;
+                Check(clear, $"and it overlaps NO row of the list (readout at y {bal.Position.Y:F0}, "
+                           + $"row 0 at {row0NoBalance.Position.Y:F0})");
+                Check(bal.Position.Y + bal.Size.Y <= row0NoBalance.Position.Y + 1,
+                      "sitting ABOVE the first row, in the band the chrome leaves there");
 
                 screen.ShowBalance(null);
                 Check(!screen.BalanceShown, "and leaving build clears it");
-                Check(screen.MenuRowScreenBox(max - 1).Size.Y > 0, "which gives the row back");
 
                 screen.Hide();
                 Check(screen.MouseFilter == Control.MouseFilterEnum.Ignore,
