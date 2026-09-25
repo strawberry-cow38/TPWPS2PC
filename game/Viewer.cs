@@ -3862,10 +3862,24 @@ public partial class Viewer : Node3D
             // 11 at `0x20DAE8`, `0x20DB10` and `0x20DB34` (each `sw v0, 0x38(s2)`). The `+0x30` it
             // READS is the route-slot halfword, a different field entirely.
             //
-            // ⚠ Still not joined: the walk below was chosen by MEASURING the motion, not by this
-            // table, and the table maps logical 13 to slot 0 and logical 9 to slot 1 -- so do not
-            // re-point the walk at slot 0 on the strength of a state number until that is checked
-            // against the authored data.
+            // ⭐⭐ AND THE WALK IS FINE. The table maps logical 13 to slot 0 and logical 9 to
+            // slot 1, which looked like it might mean the slot-1 walk below was the wrong clip. It
+            // does not: SLOT 0 IS A WALK TOO, in the other of the file's two track formats.
+            // tinyclaw measured the motion -- Boy1a legs L/R z correlation -0.96 with swings
+            // 7080/6219, JungleKid -0.97 with 5956/5549, both 16 frames, two steps a cycle, head
+            // bobbing ~1100 -- the same magnitude as the slot-1 measurement recorded above.
+            //
+            // ⭐ Corroborated here from the DATA LAYOUT rather than the motion, which is a second
+            // method and not the same one twice: across Boy1a, JungleKid and Girl1a, slot 0 is
+            // flags 0x01 with 2-3 tracks (the 48-byte VERTEX format, one track per mesh group --
+            // head, body, legs) while slot 1 and the slot 2 idles are flags 0x25 with 22-25 tracks
+            // (the 20-byte SKELETAL format, one per bone). `1A7E18` plays the vertex form: int16
+            // xyz per group per frame, written straight into the mesh with no interpolation.
+            //
+            // So logical 9 and 13 are the two FORMS of walking, which is exactly why the readiness
+            // predicate accepts either, and drawing a 13 guest with slot 1 substitutes an
+            // equivalent walk rather than the wrong animation. ⚠ Girl1a is "likely, not measured":
+            // her left/right split came out lopsided on the legs mesh (her body mesh gives -0.94).
             var idles = aps?.Records().Where(r => r.Slot == 2 && r.Skeletal && !r.Shared).ToArray()
                         ?? Array.Empty<Aps.Record>();
             var idle = idles.Length == 0 ? null : idles[Math.Abs(id) % idles.Length];
