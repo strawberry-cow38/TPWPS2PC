@@ -95,22 +95,25 @@ public static class ShopScreen
     /// correct 0x80 drives green to saturation, which is what the shipped render shows.</summary>
     public static readonly (byte R, byte G, byte B) SliderTint = (54, 249, 77);
 
-    /// <summary>⭐⭐ THE KNOB IS NOT THE TRACK'S COLOUR, and it changes with selection. Master:
-    /// "is the whole bar meant to be green?" -- no. `FUN_001DA938` draws the knob and branches on
-    /// bit 0 of the widget's `+0x18`, the SAME bit `FUN_001DAAE0` uses to pick the label's colour,
-    /// i.e. "this row is the one being adjusted":
+    /// <summary>⚠⚠ THE TRACK IS NOT TINTED, AND THE KNOB DOES NOT CHANGE WITH SELECTION. Both
+    /// of those were my inferences and master's screenshot of the real Drinks Shop screen refutes
+    /// both.
     ///
-    /// <code>
-    /// if ((widget[0x18] &amp; 1) == 0) colour = widget[0xA8];   // 0x2E9E28 = (13,62,19)
-    /// else                            colour = widget[0xA4];   // 0x2E9E20 = (255,64,16)
-    /// </code>
+    /// Measured off that screenshot: the brightest pixels in a slider row are **(242,246,26)**,
+    /// the track's own YELLOW outline -- a green-tinted track could not read that. And the knob is
+    /// the same colour on the row being adjusted as on the row that is not: the Quality knob
+    /// averages **(47,166,14)** over 2145 green pixels and the Ice knob **(49,167,14)** over 2149.
+    /// Two levels apart is the same colour.
     ///
-    /// So the track is bright green throughout, and the knob is a dark green that turns orange-red
-    /// on the row the player is on. ⚠ The two arms also call different drawing functions
-    /// (`FUN_00119C28` vs `FUN_00119D20`) with different sprite pointers, so the knob may change
-    /// SHAPE as well; only the colour is claimed here.</summary>
-    public static readonly (byte R, byte G, byte B) KnobTint = (13, 62, 19);
-    public static readonly (byte R, byte G, byte B) KnobTintSelected = (255, 64, 16);
+    /// ⚠ So `FUN_001DA938`'s branch on bit 0 -- `+0xA8` (13,62,19) against `+0xA4` (255,64,16) --
+    /// is NOT the selected/unselected split I read it as. It is some other state, or another
+    /// widget entirely; the ride screen's sliders are the obvious place to look. It is left
+    /// undecoded here rather than guessed at a second time.
+    ///
+    /// ⭐ What ships is what the picture shows: the track drawn untinted, and the knob taking
+    /// <see cref="SliderTint"/> -- the `+0xB0` colour `FUN_001DAA88` actually copies into the
+    /// drawn sprite, which is the one link in this chain that was read rather than inferred.</summary>
+    public const string KnobColourNote = "track untinted; knob takes SliderTint; no selection variant";
 
     /// <summary>What a tint component of "no change" is on this hardware.</summary>
     public const float TintUnity = 128f;

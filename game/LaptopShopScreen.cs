@@ -393,6 +393,9 @@ public sealed partial class LaptopShopScreen : Control
     /// <summary>A slider: the yellow track with the gold knob riding it.
     /// ⚠ The knob art is square (32x32) and the track 128x32, so the knob is drawn at the track's
     /// HEIGHT rather than a share of its width -- scaling it by the track's aspect would squash it.</summary>
+    /// ⚠ `selected` is NOT used for colour: measured off the real screen, the knob is the same
+    /// on the row being adjusted as on the row that is not. It is kept because the console does
+    /// branch on that bit somewhere, and the caller already knows the answer.
     void DrawSlider(Rect2 r, int value, float s, bool selected)
     {
         // ⭐⭐ TINTED, because the console tints it: the drawn sprite takes the colour at the
@@ -402,16 +405,14 @@ public sealed partial class LaptopShopScreen : Control
         var tint = new Color(ShopScreen.SliderTint.R / ShopScreen.TintUnity,
                              ShopScreen.SliderTint.G / ShopScreen.TintUnity,
                              ShopScreen.SliderTint.B / ShopScreen.TintUnity);
-        DrawTextureRect(_slideTrack, r, false, tint);
-        // ⭐ The knob takes its OWN colour, and it changes with selection -- see ShopScreen.KnobTint.
-        var knobRgb = selected ? ShopScreen.KnobTintSelected : ShopScreen.KnobTint;
-        var knobTint = new Color(knobRgb.R / ShopScreen.TintUnity,
-                                 knobRgb.G / ShopScreen.TintUnity,
-                                 knobRgb.B / ShopScreen.TintUnity);
+        // ⚠ THE TRACK IS DRAWN UNTINTED. Its art is already the yellow outline the real screen
+        // shows -- master's screenshot measures (242,246,26) there, which a green tint could not
+        // produce. Tinting it was my inference, and it was wrong.
+        DrawTextureRect(_slideTrack, r, false);
         float fraction = Mathf.Clamp(value / (float)ShopScreen.SatisfactionMax, 0f, 1f);
         float d = r.Size.Y;
         float x = r.Position.X + (r.Size.X - d) * fraction;
-        DrawTextureRect(_slideKnob, new Rect2(new Vector2(x, r.Position.Y), new Vector2(d, d)), false, knobTint);
+        DrawTextureRect(_slideKnob, new Rect2(new Vector2(x, r.Position.Y), new Vector2(d, d)), false, tint);
     }
 
     /// <summary>The scene's own frame for an element, for a caller that places something this
