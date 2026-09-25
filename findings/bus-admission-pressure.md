@@ -1,5 +1,9 @@
 # Native bus admission-pressure and minigame gate
 
+Later entry/staging joins are in `native-entrance-lifecycle.md`; in particular,
+mode14's N+28=1 is a pre-list direction marker, and state0's departure-state write
+continues into its six-way action switch rather than returning immediately.
+
 September24 2026, owner-disc raw MIPS and authorized partial C. Descriptive names,
 not recovered source symbols. Complements bus-native-arrivals.md.
 
@@ -34,9 +38,11 @@ New A4 setters contribute next pass, while a counted guest removed later still
 contributed this pass. Earlier group-update contributions are discarded by reset.
 Do not substitute a post-update collection size.
 
-Current port does NOT implement this departure-deferral lifecycle or ordered
-contribution counter. Passing zero must be labelled unsupported/bypassed, not
-claimed to be a native-equivalent measured zero. It belongs in guest lifetime
+Default main still bypasses this lifecycle. The opt-in research controller now
+implements it for rejected booth guests, with a represented-activation phase
+origin explicitly distinguished from native history; see native-rejected-departure.md.
+Ordinary legacy departing guests are not yet complete contributors. A zero or
+partial population must not be claimed as the full native-equivalent count. It belongs in guest lifetime
 scheduling, not VisitorNeeds. This is distinct from the already-traced entrance
 list count W used in the numeric batch bound.
 

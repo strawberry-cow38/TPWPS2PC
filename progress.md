@@ -1,18 +1,58 @@
 # TPWPS2PC progress / AI handoff
 
-Updated: 2026-09-24 UTC. Roadmap: [plan.md](plan.md).
+Updated: 2026-09-25 UTC. Roadmap: [plan.md](plan.md).
 
-## Current handoff — supersedes the historical sections below
+## HANDOFF (rewritten in place at every landing; newest log entry is at the BOTTOM of this file)
 
-Active checkout: `../tpw-gate-occupancy`, branch `astraclaw/bus-native-research`.
+Updated 2026-09-25 by tinyclaw. The active checkout is `/home/ec2-user/tpwps2-entrance`, branch
+`tinyclaw/native-entrance-flow`, pushed as `origin/astraclaw/native-entrance-flow`. It is merged with
+origin/main as of 8ef44b9. astraclaw is out of usage until Oct 1, and tinyclaw is executing plan.md
+until then.
+
+**The branch.** It is opt-in research. `--experimental-native-entrance` runs bus-born guests through
+the native booth queues and fee, and walks rejected guests back to the bus. `--native-guest-animation`
+adds readiness: a guest waits for its animation to commit before it walks. Default play on main is
+unchanged, and none of this is on main yet.
+
+**Gates at ee2b1f7:**
+- `tools/audit_matrix.py`: only the two retail reds (HALLOW Thrill Grill, SPACE Moon Buggies).
+- `tools/runtime_audit.py`: 11 of 11 scenes pass.
+- The 24-scene viewer matrix across all 8 real parks passes. It currently runs from a scratch runner;
+  queue item 2 puts a committed version in tools.
+
+**Corrected today.** Every earlier "eight park" viewer claim had run FANTASY terrain_1 for its park-2
+cases, because the `--map` label didn't match. See the CP2 entry at the bottom of this file.
+
+**Next action.** plan.md section 3 (Now) and section 4, queue item 2: evidence infrastructure.
+The labelled adapters are listed in plan.md section 6.
+
+**Rules that still hold:**
+- No restarts.
+- Do not redo the shipped bus, destination scoring, relief, shop walking, hide list, gate or path-price
+  work.
+- Cow tools owns the body of Viewer.cs, economy, gait, audio and particles (plan.md section 2).
+
+## Previous handoff (2026-09-24, superseded)
+
+Active checkout: `../tpw-gate-occupancy`, branch `astraclaw/native-entrance-flow`.
+Bus and requested smoothing are already on main through98b5249; do not redo them.
+This research branch now includes the full INCOMING controller through actual
+experimental Viewer bus births, staging/groups, fee credit/debit and actor handoff.
+It is OPT-IN `--experimental-native-entrance`, NOT a default/main release: public BFS,
+unported native search/request resources, readiness bypass and constructor-only fee
+seed are explicit adapters. Output routes now use a real shared1000-slot pool; read
+the latest snapshot and native-route-slot-pool.md, not older unlimited-slot notes. Normal rejected guests now walk out to point0 and retire under the explicit
+represented-activation phase adapter. Native startup/clock origin, ordinary
+state0/state5 failure recovery and non-controller pressure population remain open. See latest snapshot and findings/native-incoming-controller.md. Do NOT
+call this complete native entrance parity or quietly enable it for normal play.
 The old `tpw-ride-eligibility` checkout and scheduler's `81d112c` note are stale.
 No restarts. No reimplementation of the shipped destination scoring, relief, shop
-walking, Bouncy hide-list, gate or path-price work. Cow owns the current animated
-texture / thought-bubble rendering requests; leave those files to them.
+walking, Bouncy hide-list, gate or path-price work. Cow owns the current RMB/listbox and shop-info UI work; leave those files to them.
 
-Bus integration has passed normal Viewer startup/real placement/first admission/
-map reload in **all eight starting parks**,2039 assertions each. The release snapshot below is ready for normal fast-forward main integration;
-use it for exact results, not the old milestone headers. Peer reviewed8b0bba9, no blocker;
+Bus integration and smoothing are already shipped. Normal Viewer startup/real
+placement/first admission/map reload passed in **all eight starting parks**,2039
+assertions each. The release snapshots below are historical evidence, not a pending
+bus-landing task; use the newest entrance-foundation entry for current work. Peer reviewed8b0bba9, no blocker;
 requested explicit permissive-bypass language for missing entrance/departure inputs.
 `findings/bus-viewer-integration.md` describes scope and reproduction. After bus
 landing, the next native behavior package is the entrance-group/departure-pressure
@@ -2133,3 +2173,796 @@ Last upstream reconciliation: cowd9792f9 removesduplicatewaterclockupdate, merge
 688eb40. Freshbuild +affectedTexture/NativeBusheadlessscenesPASS `/tmp/tpw-bus-
 present-lastmerge`; actualViewerpresentation57PASSclean `/tmp/tpw-bus-present-
 lastmerge-smoke.log`. Noowning/interferingwithcowUVfix; mainpushnormalfast-forward.
+
+
+## Native entrance foundation — September24 18:40 UTC, BRANCH ONLY
+
+Activebranch `astraclaw/native-entrance-flow` basedmaind34c196; samehistorical
+`tpw-gate-occupancy`worktree. Mainhasbus+smoothing98b5249andcowUVchanges; theseareDONE.
+Researchclosedactualentrymodechain, intrusivegroupownership,stagingcoordinator,
+feeacceptanceordering andsignedquarter-cellroute/motionrepresentation. Newnotes:
+`findings/native-entrance-lifecycle.md`, `findings/native-guest-motion.md`. Older
+bus-group/admissionnotesmarkedwithcorrections. Bothcountedqueuesareincoming,
+N+28isreuseddirectionthengroup. Literal20DC94SLTI11, notDBAattractioncapacity.
+
+Primarymotionread192560/1924D0 and191E98: signed16coords/256, slotroundstonearest64
+with+32bias andpreserves87FFflags/links; signedN7Cminimum5; low32(speed*delta)>>14,
+axesclampedindependently, nofractionalcarry, boundscheckedbeforeBOTHcoordinatewrites.
+Normal15..29speed fromactivation, separatetemplateprofile160410/211A00 notbuspath.
+AtWaypoint !=routecomplete: state2withslot->free/advance->state3noslot->state2->purpose.
+No invented alternate1532D8endpoints: helperignoresselector; incomingmode16canbethe
+samequantizedcoordinate asmode15arrival, butstillhasslot/dispatchsteps.
+
+`NativeGuestMotion.cs` implementsONLYnumericoperations. NOTcalledbyGuestWalk or
+Viewer yet; deliberatelyno claimthatqueues/speeds/admissionlimitsarefixed. Dedicated
+`--guest-motion-only` andfullParkSimAuditrun55controls, matrixrequires55category.
+`/tmp/tpw-native-motion-restored.log`55PASS. Fourmutationscaught5/5/15/12 failures
+(roundingbias/minimumspeed/shift/bounds), restored. Reviewnonblocking; correctly
+flaggednegativecelltestcannotdiscriminatesignedintermediatevsunsigned+shortwrap,
+soitslabelnowassertsonlytheresult. Addedmixed-axisboundscontrolstorejectpartialcommit.
+63PythonPASS `/tmp/tpw-native-entrance-foundation-python-final.log`.
+Original4worldmatrixwith51checkswasgreenexceptexact2retailreds; final55matrixrunning
+`/tmp/tpw-native-entrance-foundation-final`. No game/rendererchangeinthisfoundation.
+
+NEXT REQUIRED: actual ID-owned native entrance/route lifecycle using thesepoints,
+notmoreunconnectedarithmetic. KeeporiginalmainGuestWalkuntoucheduntiltheadapter
+canpreservependingrequests, slots/terminalhandoff, entrance/stagingmembership,
+feeacceptance andnative-decisionordering. Entryrequestpump151928 isINSIDEeachsubstep,
+beforegroupupdates151954 andactive14BE60; requestsissuedlaterarenotcompletedbythe
+alreadyfinishedpump. Pumpbudget195E28()+100unitisnotseconds. PublicBFSchoice/resource
+capacity/modelreadinessremainexplicitportboundaries; nofake"exactnativepathfinder".
+
+SeparateE trafficcoordinator ismissinginViewer too: P3953D8/R3953DC gatebroadcast9
+fromE0->1 episode; busstate2ownsE2. CountedWqueuesandsticky+A4tallyareotherinputs.
+14B368structurallyunlinksanyembeddedowner butcountrepairviaindirect20BFD0callbacks
+stillunread. State0departurewrite20CA70continuesintoRNG6/RNG300switch, notearlyreturn;
+currentWantsToGoHomecontinueisnotfullnativeproducer. Don'tderivepressurefromit.
+
+Cowownsscroll/UV/fountain/bubblelane. Sharedpositiveconsumer1A87B8->1AD378 from
+corpus+raw helpedtheircoconutdecoder; warnedthatlinearlylerped19.2degUVkeys differ
+fromconstant-angularshader by~1.4%radiusathalfway (conditional, inspectactualsample).
+Do notoverwrite theirAnimatedModel/Materials edits. PrivateCcorpusoutsideGit remains
+additionalsource; noassets/executableextraction, nootherbox/privatebotfiles, norestarts.
+
+
+Entrancefoundation final gate: `/tmp/tpw-native-entrance-foundation-final` passes
+JUNGLE/FANTASY andretainsONLYexactThrillGrill/MoonBuggiesreds, 55newarithmeticchecks
+ineachworld. 63PythonPASS; fourmutationsrestored. Read-onlyreviewnoblockingnumeric
+mismatch, buttestlabelsign-extensionclarifiedandmixed-axisout-of-boundscontrolsadded.
+PushingRESEARCHBRANCHONLY, notmain; nochangeinshippingentry/GuestWalkbehavior.
+NextlegmustjoinfullID/state/slotownershipandorderedroutecallbacks, notkeepadding
+standalonehelpers. Native route-graphwalker remainsmissing; ordinaryBFS/resource
+readinessadaptersneedexplicitboundaries. Cowmain6bfae54introducesAPSUVratework;
+keepitsfiles, andletcowcompleteper-vertexUVreplayafteruserfountainreport.
+
+
+## Native route consumer checkpoint — September 24, 2026, 19:45 UTC
+
+Research branch ONLY: NativeGuestRoute cursor + GuestWalk.Native lease +
+ParkVisitors.Begin/ReleaseEntranceRoute + ordinary Viewer native facing. The
+arithmetic foundation is now exercised through real Step/StepPark/actor consumers,
+not just a helper. Automatic bus arrival does not invoke it yet. Native requests,
+staging, group membership, acceptance/fee and normal departure producers remain
+missing. Do not merge this as a complete entrance fix or claim the zero input
+bypasses are resolved. Detailed boundary: findings/native-route-consumer.md.
+
+76 cursor checks +75 production ownership checks required by audit_matrix. Actual
+Viewer NativeEntranceRouteSmoke has113 checks with independent position/facing
+oracles and same guest identity/actor/needs/cash. Mutations caught45/40/10/9 core
+failures (dispatch/premature completion/idle stealing/fractional snap), and removing
+Viewer native facing failed rendered check73. All restored. Fixture disables bus
+auto-arrivals and explicitly supplies readiness/speed/delta; no full admission claim.
+
+Full gates: /tmp/tpw-native-route-matrix JUNGLE/FANTASY PASS, ONLY exact known
+ThrillGrill/MoonBuggies retail failures. All11 /tmp/tpw-native-route-runtime scenes
+PASS. /tmp/tpw-native-route-python.log63 PASS. Original rendered113 PASS clean;
+after upstream merge rerun recorded separately. No extracted assets.
+
+New source joins in native-entrance-lifecycle.md: N+14 is shared base-object
+activation serial via1093B0/1093C4 delay-slot counter store2AA73C, NOT port guest ID
+or pool ordinal. Reused pool slots receive fresh serials; prior park activation
+history unresolved. Accepted mode13 scans50 increasing-Z cells with sticky native
+tile.byte7&8 latch before acceptingkind2/13; ParkPaths.Open/IsEntrance are not
+complete substitutes. Fee acceptance sums actual NativeRideValue+1D4, shops/features
+contribute0, strict fee<cash, class thresholds decoded; saved/UI fee override join
+still open. Source addresses and limits in findings, not inferred runtime values.
+
+NEXT: incoming owner/controller request+result timing, movement15->staging->event9
+->movement16->two incoming groups->head release->one acceptance/charge->mode13
+->normal handoff. Native route pool/globalbudget/readiness remain explicit adapter
+boundaries. Never derive native serial phase from Guest.Id, membership from nearby
+walkers or path cells, or assume synchronous BFS equals native request scheduling.
+Cow owns UV/fountain/bubbles and now Q/E rotation bug on ANOTHER host. Keep their
+changes; xref518a16f fixes JAL/JR delay-slot register liveness after our raw control.
+No restarts, no private bot files, owner disc read in place.
+
+Post-checkpoint merge b836966 incorporates main518a16f (xref-only changes).
+RAM-only owner ELF sweep now finds BOTH1093B4 load and1093C4 delay-slot store
+for2AA73C; control asserted. Postmerge actual Viewer smoke113 PASS, exit0, no
+errors/leaks: /tmp/tpw-native-route-postmerge-smoke.log. Clean worktree before
+this evidence append; pushing research branch, not main. Next: complete the
+incoming controller, with acceptance/staging/order; don't redo actuator tests as
+if that alone resolved the shipping backlog bypass.
+
+
+## Incoming controller checkpoint — September24,2026, research branch ONLY
+
+New NativeEntranceFlow uses actual Guest references + owner leases, queued async
+request/result tokens, two incoming linked lists and staging P/R/sharedE. Tick order
+pump->groups->coordinator->active; manual leases avoid a generic second Walk step.
+Head phase32, queue spacing64, same x for BOTHgroups (nonzero-group preliminary
+x+256 is overwritten by common152868), literal>=11 selection is ONEflip, notcap.
+P++ mode15complete; P--/R++ onlymode16complete; broadcast gateR<11 notrecipientquota.
+Mode-purpose reset2 aftercompletion. Source precision in native-entrance-lifecycle.md.
+
+Viewer.Entrance.cs OPT-IN flag --experimental-native-entrance makes actual busborn
+guests take this controller immediately; Bounds usesactual incomingmembership;
+sharedE receivesstagingproducer. NativeEntranceAcceptance consumesactual BusObjects
+NativeRideValue sum, strictfee<cash, classmath, managercount-beforefinance andfee
+rereadcredit/debit. Mode13 releases SAMEguest/needs/actor atcentre. No arbitrary
+nearby-walker queue counts. Defaultmain behavior still unchanged.
+
+NOTRELEASE-READY: next-tick publicBFS adapter, unbounded directslots, explicit model
+readinessbypass; ordinary constructorfee150 only (save/UI overridesunjoined); RNG
+streams/order notnative; secondstagingfamilymissing. RejectcallbackHOLDSlease andlogs
+missingdeparture; native sharedactivationserial/idleordering/stickyA4 remainunported.
+Mode13scan restrictedprovenheadpoint2flag8 case, boundsmanagedsafety. No fake general
+tileflagarray. Clear/vanished cleanupmanagedsafety, notunreadnativeindirectcallbacks.
+
+Actualautomatic Viewer test NativeEntranceFlowSmoke: buildsrealpositive-value
+attraction viaUI, waitsforREALbus birth (no manuallyspawnedguests), fee10 explicit
+fixture anddisablesFURTHERbatches afterfirstdropoff. JUNGLE649checksPASS, observed
+staging/memberships, sameactor/identityeachupdate, onefee debit+credit, noleftover
+P/groups/lease aftermode13. This firstbatchisoneguest: hookup proof, notbusypark
+equivalence. Core109flowchecks covermultimember/12broadcast andphase/countlimits;
+23feechecks coverboundaries/order/rereadcash. Existing76cursor/75actuator retained.
+
+5behavior mutationscaught8/4/2/11/8 failures (genericdoublestep,period16,threshold12,
+missingPdecrement,repeatacceptance). Initialperiod16mutationPASSED! Firstrelease
+occurredafter16 andteststoppedbeforethenexthalfperiod. Extendedreadyreplacement-head
+observation tofull32period, nowcatches4failures. Allmutationsrestored; no test deletion.
+Fullgates /tmp/tpw-incoming-final-matrix: J/Fpass,ONLYexactThrillGrill/MoonBuggiesreds;
+109+23eachworld (final fee-read rerun below). /tmp/tpw-incoming-final-runtime ALL11PASS.63PythonPASS. Eightactual
+Viewerexperimentalworld/variant runs underway /tmp/tpw-incoming-eight-viewers.
+
+NEXT: resolve/adapt actual native route-service pool/readiness beforedefaultrelease;
+close sharedactivationserial andnormaldeparturecontinuation + rejectstate26route
+producer, cancellation callbacks andfeeoverride join. Do NOT releaseblockedrejects
+byteleport/deletingthem or guessguestIDserial. This ismeaningfullyconnectednow, but
+experimentalservices/rejectionhold are explicit blockers, not a request to merge main.
+No restarts/extraction/privatefiles. CowownsUV/bubblesandcamera; latestmaincamera
+52e576e should be merged aftercurrentrenderedgates (notduringclearingbuild).
+
+Final incoming checkpoint evidence after raw fee-order correction and camera merge:
+`cc9422d` implementation, followed by merge of main52e576e. Raw210BD4 requires a
+SEPARATE class-fee read aftersum/RNG, so success readsfeeTHREEtimes; guestcashreload
+is afterfinance210D38. Corrected before final gates; changed-class-fee mutation
+caught2failures (usingoldquote despiteperformingallreads).23feechecks now required.
+/tmp/tpw-incoming-release-matrix:109flow+23fee eachworld, J/Fpass, ONLYexact2retailreds.
+/tmp/tpw-incoming-release-runtime all11PASS;63PythonPASS.
+/tmp/tpw-incoming-release-viewers: ALL8actual experimentalViewer world/variant runs **[CORRECTED 2026-09-25: the runner's `--map=WORLD 2` matched no label, so every park-2 case loaded FANTASY terrain_1; only the four terrain_1 parks were tested. Rerun on all 8 real parks: /tmp/tpw-cp1-final, see the CP1 entry.]**
+PASS649each, exit0/noerrors/noleaks; fee10 fixture +actualbusbornidentity, notmainparity.
+MergedCameraTurnAudit independentlyPASS10. Earlier /tmp/tpw-incoming-eight-viewers
+alsoall8pass butfinalrelease-viewers is the post-fee-correction/post-camera evidence.
+ResearchbranchONLY; no default release/main merge. Default entrance remainsbypassed.
+
+NEXT positive lead already read: findings/native-route-slot-pool.md. Capacity is
+literal1000 at192770, NOT2047 inferredfrom11bitlinks.192728 reset clearsONLYallocated
+bit, hint37E118=0 and free2E2924=1000;192768 forwardscanalloc,1927F8 singlefree
+minhint,192840 chainfree. Slotarray3AE1B8 stride4. No guards ondoublefree/cycles in
+these bodies. Need actual sharedpool/cursor/requestservice consumers andreset/
+partialfailure timing, notanotherunusedcounter. Readiness anddeparture remainother
+releaseblockers. All3delegatesusedthisturn; no moreuntilnewturn. No pendingbuilds.
+
+Peer review follow-up September24: cowacceptedgroup/activeordering; parentraw14DA98/
+14DAA4/14DAB4 provesnativePREPEND. RepeatedLive.Any +NativeRouteState.Contains now
+O(1)referenceHashSet. SeparateIDmultiplicities preserveexistingReadmitduplicate
+semantics/uniqueleaseguard. All3birthsites+Remove/Clear maintainindices; readonly
+Guests view preventsoutsideindexbypass. 87actuator checks,113flow,23fee. Integer
+Flow.Position now suppliesmode13headprecondition; nofloattolerance. Explicit
+DiscardedEntranceGuests census (notWentHome or anewnativecounter), testedrealplan/
+needs/identityremoval andrepeatClear. 3mutationscaught2failureseach/restored.
+Gates /tmp/tpw-review-final-matrix onlyexact2retailreds; all11runtimePASS;63Python;
+/tmp/tpw-review-viewer.log actualJUNGLE649PASS clean. These are reviewhardening,
+not changes todefault/main parity or removalofexperimentalroute/departurebypasses.
+
+User20:43 asked whatresearchwasfor; answeredplainlyguesttrafficAFTERbusdropoff,
+queues/price/backlog/leaving, bus+smoothalreadyshipped. Mustkeepfutureupdateson
+visibleoutcome, notjustinternalcheckcounts. TheydidNOTpause/changeourtask. Cow
+ownsride-Xmenu researchnowandfountain/camera; main1b62cd0 addsfountainruntimeaudit.
+
+Read-onlyworker closedpoolproducer details, savednative-route-slot-pool.md:
+output1000/search2000/requestrecords10 DISTINCTresources.18D358 directioncompressed
+backwardparent builder disposesOLDroutefirst, prependsprivatepartialchain, rolls
+backpartialvia18D574->192840 onallocfailure, publishonly18D650success. Cursor191D78
+savesnext/freeONE/publishnext; invalidposition191E98 freesWHOLEchain192038. Two
+resetcallers149C08/init and18C4C0/globaldisable-reinitialize-enable path; NOTonly
+onceperpark. Pendingcancel18DB70cleanssearchrequests notcompletedactoroutput;
+liveindirectcallerunclosed. Needactualpool/curor/requestconsumer next, notunusedhelper.
+No pendingbuilds, no extractedassets, no restarts. Readonlydelegateused1thisreviewturn.
+
+User20:48 said keepgoing, thenasked20:49 whetherturnstilesresearched/maybenamed
+somethingelse. NEW near-termpriority: identifyphysicalturnstile/boothmechanism,
+NOTjustmorepathallocatorinternals. Answeredpartly(admissionlogic), andaskedwhich
+part: themedarchdoors vs smallerbarriers/boothsinfront. Readonlyworker foundnative
+Gatescontrollerasset489/category0E, init15178C->13C600/13C650->3953E4, update13C780
+usesparkopen14E538 andsection5records1(open)/0(close). Realtrigger, NOTperguest.
+Saved findings/native-gates-controller.md. ticket_booths staticterraincandidate,
+no correspondingordinaryAPS/morph/UVchannelsfound, NOTproofno proceduralmechanism.
+Cowclaimeddoor01/02turnstiles andRSEdrivesit; clarifiedthoseclaimsprovisionaluntil
+actualconsumer/useridentification. TheyownXbuttonselectedrideGIZMOresearch, leaveit.
+Currentreviewpatch2c1d59b mergedmain e96412b(fountainaudit); freshupstreamTexture
+runtimeauditPASS /tmp/tpw-review-upstream-texture. Reviewchanges readyto push.
+Poolreset/builderresearchsavedbut don'tignoreuserturnstileclarificationnextturn.
+Readonlydelegatesused2thisreviewturn. No pendingbuilds/restarts/extraction.
+
+
+Userclarification20:57/21:00: meansBOOTHSOUTFRONT, knowsstaticmesh; questionwas
+BEHAVIOR, notanimation. Replied21:03corequeue/payment/crossingalreadyresearched
+atboothpoint, notarch; rejecteddepartureunported. DO NOTkeepchasingmovingparts
+oraskwhichpartagain. Savedfindings/native-booth-admission.md. PositiveJungle
+queue/paymentpoint29.5,15.5 insideboothbounds; nativeinitializedpathgoal29.5,19.5
+afterkind0C/0E->2 scan, conditionalunchangedtiles+allocation. PayBEFOREcrossing,
+mode13completionstate0nofee. Secondstagingfamily3952AC isGUARDS positivelyvia
+Load_ReadGuards160448->14AF30/string361368/1416D0, notboothattendants. Guardtraffic
+unported. No provenadmission-specificaudiovisualcue; noabsenceclaimneeded.
+Resumeincoming/departure/pathresource work, notgeometrydetour. CowownsGIZMO
+bindingsperuser21:01. Merged0fc2cc7gatedoccorrection; no codechangefromthatmerge.
+Readonlydelegatesused3thisreviewturn, noneleftuntilnewturn. Earlierreviewgates
+pass113flow/87actuator/23fee,11runtime+upstreamtexture,63Python,Jungle649rendered.
+Researchbranchstillnotdefault/main; sourcepoolnextstepsareinlatestpoolfindings.
+
+
+## Shared output route-pool consumer — September24 research branch
+
+Actual NativeRoutePool->NativeGuestRoute->GuestWalk->NativeEntranceFlow->Viewer
+connection now replaces unlimited copied-array routes for native-owned guests.
+Packed1000slots, nativeallocationhint/freecount, reverse-prependlinking, partial
+rollback, oldroutefreedBEFOREreplacement, exhaustion!=ownerrefusal. Sameguest/
+owner/positionretainedemptyduringretry. DirectallocationBEFOREtargetfactory/RNG;
+mode13lazycandidatestryallocbetweenyields inSAMEtick. Arrivaldoesnotfree; next
+retirementfreesONEsavedlink; invalidbounds/replacement/remove/clearfreeownedchain.
+Clearactorchainsbeforepoolreset; managedinvalidlink/doublefree/cycle/epochguards
+areexplicitSAFETY, notclaimsretailchecks. Privatebuilderlinear(notN-squaredtails).
+
+NativeRouteOutput18D358selectionappliedtoexistingBFS: walkbackwardsINCLUDINGroot,
+rootdirection0 vsnonrootdxsign6/2 ordz0/4, previousFFFF; emitonchange, firstexact
+endpoint thennodecentres; reverse. RootNOTunconditionallyskipped; singleton1slot.
+Thisportsoutputtransform, NOTnativepathsearch. Elevenoldcursorassertionsfailed
+ONLYlocalindexassumptions; nowactualreverseallocatedhandleexpectations preserve
+allposition/phaseassertions. Noordinalfacadekeptbesiderealpool.
+
+1082newchecks throughactualpool/walk/controller inclfullcapacity,partialfailure,
+replacementlosesoldroute, directfactorynoRNGwhenfull, same-ticklatergoalretry.
+6mutationscaught34/8+guard/9/8/5/2+guard; scriptoutertimeoutduringRESTOREonly,
+sourcesrestoredchecked,separaterestored1082PASS /tmp/tpw-pool-restored.log.
+JungleactualViewer651PASS /tmp/tpw-pool-final-viewer.log nowassertsrealpoolused
+andfullyreturnedbybusguest. Old76cursor/87actuator/113flow/23fee pass. Fullmatrix
+/tmp/tpw-pool-final-matrix alreadyJ/Fpass ONLYexactThrillGrill/MoonBuggiesreds;
+runtime11/Python runningascheckpointwritten, inspectexitfilesbeforeclaiming.
+
+STILLNOTMAIN: native searchnodes2000/requestrecords10/budget/readinessunported,
+guards+ordinarylegacywalkersnotaccountedinpool, constructorfeeoverrides/RNGunjoined,
+REJECTEDGUESTSHELD untilproperdepartureproducer. Userapprovedkeeponit; nextvisible
+priorityproperleaving/rejection, notgeometry. Needreadiness/nativepathservicealso
+closedbeforedefaultparityrelease. All3delegatesusedthispoolturn. Noextraction/
+privatefiles/otherhosts/restarts. CowownsselectedrideX/listboxUI; don'teditlane.
+
+Shared-pool checkpoint finalized at b334704 (research only). Fullgatescomplete:
+/tmp/tpw-pool-final-matrix J/Fpass ONLYexactThrillGrill/MoonBuggiesreds,1082pool
++76cursor+87actuator+113flow+23fee eachworld. /tmp/tpw-pool-final-runtime all11PASS;
+63PythonPASS. /tmp/tpw-pool-eight-viewers ALL8actual Viewer world/variant651PASS, **[CORRECTED 2026-09-25: the runner's `--map=WORLD 2` matched no label, so every park-2 case loaded FANTASY terrain_1; only the four terrain_1 parks were tested. Rerun on all 8 real parks: /tmp/tpw-cp1-final, see the CP1 entry.]**
+exit0/noerrors/noleaks, witnessesrealsharedpoolconsumedandreturnedbysamebusguest.
+Nomainmerge, defaultsunchanged. Pendingreadiness/search/departurelimitsstilllogged.
+
+Nextreadinesspositive readforhandoff:191E10 getsvisualviaowner virtual+14; no model
+returns1. Unlessrequested low5bits(owner+30) are9or13, returns1. For9/13 reads
+visual+14 through10EC48 andpermitsonlyreportedfirstbyte9or13.191E98 bypassword
+2E2920 FILEINITIAL0 (not1); boundedxrefonlyfoundload191EC8, notproofimmutable.
+No-slotbranch precedesreadiness. Do NOTinferreadinessfromactorvisibility orinvent
+APSslot9/13 mapping: thesearelogicalcontrolIDs, actualvisualgetterjoinstillneeded.
+Sourceoutputselection/directallocationcomplete,3delegatesusedthispoolturn.
+Userapprovedcontinuing; nextvisiblegoalproperrejecteddeparture, notmoregeometry.
+
+
+## Rejected departure consumer — September24 WIP checkpoint
+
+Normalrejections nowactualmode14->stagingoutgoing->mode16->mode9->realdeparture,
+notpermanenthold. NativeFlow.Add optionalserial; nullkeepslegacyexplicitboundary.
+ViewerNativeActivationSequence seededfromownerELF2AA73C throughNativeBusCatalogue
+ImageInitialActivationCounter, consumesactualrepresentedPLACEDobjects+GUESTbirths,
+NOTmeshes/pooledstorage/bustrips. PersistsViewerparkresets. OriginWARNEDunverified
+nativehistory +portexecutedtickorigin, NOTGuest.Id phase; nofullparityclaim. Positive
+extra nativefamiliesballoons/litter/allstaff, noUIprerequisitedemonstrated. Source
+findings/native-activation-serial.md. Actualstartup/save/compositehistoryunclosed.
+
+Flowflags21initialdeparture,23immediateasyncfallback,1finalpoint0; RNG1consumed.
+Async14fallbackrefusalstays0B/notoken; alternatefailurestate0; mode9failurestate5
+withsignedhappiness/unknown78effects. OwnerheldatTHOSEunportedrecoveryboundaries,
+notnormalreject. Deferredstickysetonlyphase/initialrefusal; tallyBEFOREactive
+dispatch, includesfinalremovedpass. Experimentbususesownedcohortpressure; normal
+legacydepartures/guardsnotcompletepopulation. Directmode16allocbeforehelperRNG;
+outgoingdoesNOTjoinincominggroup1. Mode14headingpi20DC6Cnowexplicit; replacement
+preservesexistingnativeheading. CallbackackAfterResultAFTERhandling(notbefore
+alternate request), preservingcurrentrecordoccupancy. DeferredBFSstillnotnative
+search/resourceplanner. Sourcefindings/native-rejected-departure.md.
+
+Firstconsumerbugfound: AssignEntranceRoute resetLeavingplanbacktoEntering, so
+CompleteNativeDeparture correctlyrefused. PreserveownedLeavingthroughbothroute
+assignmentpaths; keptfinalguardstrong. Bodytestsincludeplancontinuity.
+53departurechecksPASS;8mutationscaught2+guard/5/10/2/2/1/1/1 andrestored. Actual
+NativeRejectedDepartureSmoke JUNGLE2399PASS:2realplacements(thusserial!=Guest.Id),
+realbuscohort3, explicitmaxfee cashrejection, sameguest/actoruntilbuspoint0, nofee,
+WentHome ratherthanDiscard, realplan/needs/rendercleanup, sharedpoolreturned, last
+stickypressurecountthen0. Existingacceptedflowmustremain651, matrixcurrently
+/tmp/tpw-departure-final-matrix onlyexact2retailreds, all11runtime/63PythonPASS.
+Finaleight-park BOTHaccepted+rejected scenes stilltorunaftermainmerge.
+All3delegatesusedthisturn. No extraction/restarts/privatefiles/otherhosts. Cowowns
+RMB/listbox/shopinfo; mainmovedto0f2ab51, mergewithoutdroppingtheirUIaftercheckpoint.
+Useraskedprogress22:32; reportedvisible normalrejectionworking, stillnotmain and
+remainingfidelitygaps—not"finished". Nextnative readinessthenrequest/search/feejoins.
+
+
+## Departure landing/review snapshot — September24 22:55
+
+6e37ebc rejected-departure consumer pushedRESEARCH;3bccfc3 mergesmain0f2ab51.
+ALL16actualViewer cases(/tmp/tpw-departure-eight):8accepted651each+8rejected2399each, **[CORRECTED 2026-09-25: the runner's `--map=WORLD 2` matched no label, so every park-2 case loaded FANTASY terrain_1; only the four terrain_1 parks were tested. Rerun on all 8 real parks: /tmp/tpw-cp1-final, see the CP1 entry.]**
+exit0/noerrors/noleaks. Explicit scene-prefixPASS checked, notsubstringBYPASS.
+Cowreviewconfirmedbothorderings; diagnosedfinallymaskinghandlerexception. Fixed
+withoutswallowing: handler-onlyoriginalstack, ack-onlylabel, bothAggregateoriginals;
+6newchecks(59total); restoringoldfinallyfails2thenrestoredPASS. Add remainsstrict
+newguestownershipprecondition, notroutineTryAdd orsilentlydroppingguest.
+Nextpositive: visualreadiness191E10 checksCURRENTlogicalbyte atmodel+4C through
+10EC48, notrequestedbyte+4F.10E910queuesdesiredbyte,10EA38commitsitonlyatplayback
+boundaryselectedby1ACFC0. Table2AAD48mapslogical9->APS1v0,13->APS0v0;
+logical11has8weightedentries, NOTdirectAPS11. Needsactualpresentationconsumerjoin.
+
+Final reviewed gates COMPLETE: cf70714 callback diagnosis fix, thenmainf23427c
+DOCSONLY merge. /tmp/tpw-departure-reviewed-matrix all59departurechecks/world,
+J/Fpass ONLYexactThrillGrill/MoonBuggiesretailreds; runtimeall11PASS. Earlier63Python
+PASS andALL16actualrenderedscenes retained. No latestsourceconsumerchangessince **[CORRECTED 2026-09-25: the runner's `--map=WORLD 2` matched no label, so every park-2 case loaded FANTASY terrain_1; only the four terrain_1 parks were tested. Rerun on all 8 real parks: /tmp/tpw-cp1-final, see the CP1 entry.]**
+gatesexceptdocs. Researchbranchonly; do notmergeenableasnativecomplete.
+Nextboundedpackage: join native guest logical-animation dispatcher to ACTUAL actor
+and movementreadiness. findings/native-guest-animation-readiness.md hasrawtable,
+currentvsrequestedbytes, weightedvariants, boundaryandflagcaveats. Avoidunusedhelper:
+actualrenderedsameguestmustWAITwhilecurrentnot9/13 thenmoveafterrealtransition;
+cross-controls9<->13permitmotion,novisual!=zerohandle. Nativecaller/requestflags,
+initialization,clockandupdateorderstillneedreadingbeforeimplementation. Do not
+justcopydesiredbyte, useactorVisible, orrenameAPSslots9/13. Keepdefaultgaitunchanged
+untilexplicitoptinconsumerproven. CowactiveViewer.csUI; prefernewpartialseam and
+coordinatepreciselybeforetouchingitsgaitsection. Userapprovedcontinuing, no pause.
+
+## CP0 + CP1: resumed by tinyclaw — September 25, 2026 UTC, RESEARCH BRANCH
+
+VoX asked me to resume astraclaw's TPW work while astraclaw is out of ChatGPT usage (back
+Thursday, October 1).
+
+**CP0.** Merged origin/main (22 behind) into origin/astraclaw/native-entrance-flow at eab9c3b,
+giving d6310c6.
+
+- Core and game build with 0 errors.
+- ~~All 16 real Viewer scenes pass under xvfb: 4 worlds × 2 parks~~ **CORRECTED below**: the
+  runner's `--map=WORLD 2` matched no map label, so all four "park 2" cases loaded FANTASY
+  terrain_1. The real count is the 4 terrain_1 parks, with FANTASY-1 run five times; terrain_2 was
+  never run. {NativeEntranceFlowSmoke, NativeRejectedDepartureSmoke}.
+- Every run exited 0, with 651 checks per accepted scene and 2399 per rejected scene. These match
+  astraclaw's counts from 22:55.
+
+**CP1 package:** the dispatcher behind the readiness join. It is core plus checks only; the viewer
+consumer is the next package.
+
+- `NativeLogicalAnimationTable` reads all 22 logicals and 33 descriptors from SLES_500.32 at
+  2AAD48, and rejects any run that is not contiguous.
+- `NativeLogicalAnimationControl` implements 10E910, 10EA38, 10E988, 10E800 and 10EC48, and
+  starts at the 10ECF0 state (FF/0/0/FF).
+- `NewlibRand` is the 29CF08 generator. It is labelled as not the console's shared stream.
+- `ParkSimAudit --logical-animation-only` runs 50 checks, and they are also in the full run.
+- Teeth: 9 mutations each fail by name, then the file is restored. The mutations were:
+  - readiness taken from pending;
+  - equality readiness;
+  - an immediate commit;
+  - skipping the last pair;
+  - a one-shot that forgets its logical;
+  - a fresh model starting at 0;
+  - a second draw on retention;
+  - an equal request that clears pending;
+  - a cut without flag 2.
+- The retention mutant first SURVIVED because a constant stub made a second draw identical to the
+  first. A queued stub now fails it.
+
+**The findings closed:**
+
+- initialization;
+- the flag-2 meaning;
+- the ms playback clock at 30 fps;
+- the guest request path 1921D0 and its flag source 140880;
+- the census of requested-logical writes, where 13 is the walk and no guest producer of 9 was
+  found;
+- section 0 is a 16-frame AlternatePlayer record, the same length as the drawn section-1 walk;
+- the uninitialized-variant defect in the native.
+
+**Next package:** drive one control per entrance guest at the actual playback boundaries of its
+drawn record, with requests from the decoded producers (13 at 211A00 spawn and 191D78 route
+advance, 11 from 20D628), as an explicit opt-in. Film a guest waiting on a real transition. The
+default gait stays unchanged. The open items are listed in the findings: update order, the pause
+clock, and the owners of 140C70 and 141020.
+
+## CP2: readiness join landed on the research branch; eight-park evidence corrected — September 25, 2026 UTC
+
+**Package:** `--native-guest-animation` (together with `--experimental-native-entrance`).
+
+- 191E10 readiness over the 2AAD48 dispatcher replaces the entrance bypass.
+- One control and one playback run per flow-owned guest. The requests come from the decoded producers
+  only:
+  - 11 at activation (20BD34);
+  - 13 at every slot advance (191D78);
+  - 2106E8's idle picks while the guest is in state 0B.
+- The dispatcher's record is drawn through a hook in `Gait()`, placed after its seated guard, which
+  cow tools approved.
+- Handback clears the gait caches.
+- The labelled adapters are listed in the header of `game/Viewer.NativeAnimation.cs` and in
+  findings/native-guest-animation-readiness.md.
+
+**Evidence**, at this commit's tree, built before the runs:
+
+- **Core:** `ParkSimAudit --logical-animation-only` runs 62 checks (log: /tmp/tpw-la.log), covering the table, the control,
+  the playback beside it and the idle picker. The PASS line and teeth are in the earlier CP1 entry:
+  9 core mutations, each failing by name.
+- **Smoke teeth:** `NativeAnimationReadinessSmoke` catches 4 mutations by name: readiness bypassed
+  ("stepped anyway"), no advance producer ("requests seen 11,14"), dispatcher not drawn ("section 0
+  but drawn slot 2"), and no handback release.
+- **Viewer matrix:** 24/24 exit 0 in `/tmp/tpw-cp1-final/manifest.json`. That is all 8 real parks ×
+  {readiness, entrance flow, rejected departure}. Each case asserts from its own log which
+  WAD/terrain loaded; the assertion flags every old park-2 log and passes every park-1 log.
+  - The entrance and rejected-departure check counts are fixed by the code (651 and 2399 in every
+    park), so they are not evidence of coverage. Readiness counts vary by park: 6993 to 8092.
+  - Blocked guests per park range from 1 to 3 of 12–13. The longest wait is 1320 ms, on logical 11's
+    40-frame section 6. No guest stepped while blocked, every blocked guest moved again after 13
+    committed, and there were no deadlocks.
+  - FANTASY-1 and FANTASY-2 print identical readiness statistics, but each loaded its own terrain and
+    has its own entrance column (39 against 37). The corridor geometry is the same shape shifted two
+    cells, so the result is translation-invariant rather than a repeated case.
+- **Film FAILED as evidence.** `/tmp/tpw-film` holds 28 frames that were generated and then
+  inspected. The build menu covers the frame and no guest is visible. Nothing visual is claimed;
+  fixing this is part of the next item.
+
+- **Branch gates, on this tree (staged, not yet committed, when run):**
+  - `tools/audit_matrix.py` in /tmp/tpw-cp2-matrix gives `known_retail_failures_remain` with runner
+    exit 2: JUNGLE and FANTASY PASS, and HALLOW and SPACE carry only their retail reds. Every existing
+    REQUIRED_CHECKS minimum is met. Logical animation has no REQUIRED_CHECKS entry yet (queue item 2).
+  - `tools/runtime_audit.py` in /tmp/tpw-cp2-runtime: all 11 scenes pass, exit 0.
+
+**Corrections, made openly:**
+
+- The eight-park runner used since the incoming checkpoint passed `--map=WORLD 2`, which matches no
+  label. Viewer.cs:506–511 silently keeps the default row, so every "park 2" case ran FANTASY
+  terrain_1.
+- Annotated in place: progress.md 2313, 2424, 2479 and 2493, native-rejected-departure.md:106 and
+  the CP0 entry above.
+- The rerun above is the first time the native entrance flow ran on a terrain_2 park, and it passes.
+- 195E28 is a call counter, not a clock (4 callers, all inside the planner). The planner's service
+  budget is about 99 node expansions per call. Annotated in native-route-slot-pool.md and
+  native-guest-motion.md.
+
+**Plan review:** VoX asked for 1 fable and 3 Opus reviews of plan.md. They are complete, and the
+revised plan follows in its own commit. It replaces this entry's "next package": the native planner
+is deferred with triggers.
+
+## Plan review round and rewrite — September 25, 2026 UTC
+
+VoX asked for 1 fable and 3 Opus reviews of plan.md, then a revision. The reviewers were read-only.
+Fable's full text is at reviews/2026-09-25/fable-whole-plan.md. The Opus reports reached tinyclaw as
+agent results and are summarised here.
+
+| Reviewer | Angle | Key findings (each spot-checked by tinyclaw where it mattered) | Adopted |
+|---|---|---|---|
+| fable | Whole-plan structure | Four sections claimed to be "current", and three were stale. Milestones had no status. The branch mapped to no milestone. The rendered runner was not in the repo. There was no agent-side done. The `~/tpwps2` main was 251 commits behind. The bus witness line was stale | Structure, M8, DoD split, runner into tools, witness fix |
+| Opus A | Sequencing and completeness | "Complete" is undefined without a feature set. Seven branch packages changed nothing in default play, and strawberry asked "what are u actually researching" (09-24). M5 was never started. There is no CI. There was a tracker request from strawberry (09-20). Planner not verifiable without an oracle | Scope matrix, CP3 broadened, CI, animation for all guests, the tracker |
+| Opus B | Evidence and gates | The park-2 blindness hit 3 more claims. The runner's PASS substring matched "BYPASS". Gates lived in /tmp. REQUIRED_CHECKS was missing logical animation. The matrix accepted a dirty tree. Constant counts were read as corroboration | All of it, as queue item 2 |
+| Opus C | Technical risk and landing | Blockers sorted into gate, trigger and won't-fix. **195E28 is a call counter** (verified by tinyclaw). The fee is 150 for every ordinary park. The branch merges cleanly, so land it in slices. Flags are read on hot paths. Smokes reach about 30 private members by reflection | Blocker table, the labelled-adapter category, slices A/B/C, flags read once, a test seam |
+
+**Where the reviewers disagreed:**
+- **The native A\* planner.** Fable put it next, with findings first. The Opus reviewers deferred it, for
+  three reasons: no oracle exists, the tile-kind producer is missing, and the entrance corridor gains
+  almost nothing from it.
+- **Decision: defer it with triggers** (plan section 6). The cheap corridor passability check, queue
+  item 9, decides whether it is ever needed.
+
+## Archived plan checkpoints (moved verbatim from plan.md lines 58-329 on 2026-09-25)
+
+## Current user-priority queue (September24 post-native-consumer landing)
+
+1. **Research the bus**, explicitly requested by strawberry1552630912481624105. Start
+   with actual asset identity/script inputs, then trace creation, movement and guest handoff.
+   A timed-out inventory worker returned no finding; it does not establish absence.
+2. Native weighted selection and relief residence passed peer review, independent review
+   correction, four-world core, eight runtime scenes, rendered/mutation controls. See
+   progress.md for exact revisions/results. Do not repeat the old gate/walking fixes.
+3. Keep native-AI limitations explicit: lifecycle/transport adapters, local movement,
+   remaining state0 arms, live setting/track-cache bindings, region and RNG integration.
+4. Cow owns gate/protected paths, money HUD, path costs, audio and particle research.
+   Preserve that work on every merge. No restarts or duplicate scheduled jobs.
+
+## Latest CP4 correction — native relief state and decoded selector (September24)
+
+The post-walking trace found a real contradiction, not another optional polish task:
+**Small Toilet having no RSE LIMBO does not establish native visibility.** Guest arrival
+explicitly hides accepted kind2 relief customers and starts a522-update deadline. The
+old visible-standing-toilet explanation is retracted in findings/visitors.md; see the
+address-backed replacement in findings/native-shop-flow.md.
+
+Decision: **split and reorder**, not infer a new rule from the scripts again.
+
+1. Next bounded production package: validated compiled relief inside-entry walking,
+   native accepted-service hide/deadline/reveal/retained-position lifecycle. Keep occupancy
+   and availability distinct from SHOP purchases. Use executed park ticks, not a new
+   seconds constant. Resource notification is slot5 variant1/0 through1ABC80; verify
+   its real presentation consumer rather than leaving a correct timer with no animation.
+   Explicitly handle demolition, refusal/occupied entries, zero-time calls and missing
+   presentation data; no loss/duplication or premature relief on a script-only handback.
+2. The scorer equation, exact lookup tables and conditional non-FIFO history writer are
+   now decoded in findings/native-destination-score.md. Final ordinary/coaster/tour/track
+   value getters and compiled relief support are decoded in ride-value-producer.md.
+   Port selection only with known producers/runtime identity and controlled enumeration;
+   do not silently wire SAM excitement, a constant45, or a guessed four-visit FIFO.
+3. Operating-speed/duration script bridge remains a specific integration seam: speed writes
+   machine+C0, duration writes variable index3. Resolve the current managed binding before
+   claiming native operating state. Renderer/script adapters and missing APS are separate
+   from the now-read native guest service mechanism.
+
+Astro owns coordinator/entrances/scorer; cow tools retains money/economy/idle and existing
+needs effects. Share pushed branches and independent controls. The stopping condition for
+this research package is recorded equations/provenance/corrections, not another speculative
+runtime change. Next turn should implement the bounded relief consumer or resolve its
+specific bridge—not repeat the table census or ask humans to remember retail behavior.
+
+## Current CP4/CP5 decision — original movement and selection, not cosmetic patches
+
+The user's repeated-visit/teleport report changed the priority: finish this consumer flow before
+returning to release-state sweeps. The code trace superseded two plausible render policies:
+SAM stand fractions and absent-coordinate arrival-stub fallback are NOT the traced native shop
+endpoint. The original walks to the compiled inside entrance centre with directed terminal
+permission, then retains that position after service. Preserve the old fallback only where a
+validated compiled placed-shop endpoint is unavailable, and report that limitation.
+
+* **Timing complete:** post-completion deadline registration/consumer landed at `c0ee884`, peer
+  reviewed and mutation-checked. Executed park ticks are the sole time source; appetite tuning
+  cannot move the deadline. This is not a permanent revisit ban or full native AI parity.
+* **Walking integration complete at54a58af:** peer-reviewed `astraclaw/shop-terminal-walk` proves physical final-edge
+  interpolation AND changing walk-animation mesh, no handback teleport, live-owner/deletion/
+  replacement controls, four rotations/worlds, and marked rendered review.
+  Do not globally open building footprints or conceal the issue with a view-only animation.
+* **Next fidelity gap:** after this bounded slice, evaluate native weighted destination scoring
+  and its actual conditional recency writer against the remaining needs-first/random policy.
+  A user asking whether it is fully accurate deserves an explicit no until those differences
+  are resolved. Trace other facility-kind entrance consumers before extending SHOP rules to
+  toilets/rides. Cow tools owns current money UI/economy/idle work; coordinate before overlap.
+* **Stopping condition:** land this proven physical flow, document remaining selection/speed/
+  service-adapter limits, and stop expanding its audit family absent a new failure. The clean
+  source build at65b7370 remains valid only for that revision; CP6 resumes after this user-visible
+  defect package, not instead of it. No approval waiting and no repeat bot restarts.
+
+The sections below record earlier checkpoint decisions; this section controls current priority.
+
+## Priority checkpoint — compiled shop inputs before further producer research
+
+The per-ride value trace resolved a sideshow calculation, not the ordinary family: table
+3683B8 uses price/prize/win parameters and a shift4, not the initially reported generic
+ride modifier/shift8. Corrected evidence is in findings/ride-value-producer.md. No speculative
+producer was wired; a raw SAM field is not automatically its compiled or computed value.
+
+A more immediate proven defect is the shop join: Balloon/VampShop/Droid authored happiness15
+versus compiled base10. Cow tools owns runtime compiled-data wiring; astraclaw owns named-asset
+and region controls. Use full symbolic identity (not effect-profile similarity), distinguish
+missing/ambiguous cases, and preserve the actual regional ice-cream differences. Compiled
+base effects still need the documented runtime quality modifier or an explicit port default;
+do not confuse a correct lookup with full retail outcome parity. Keep any unresolved ordinary
+producer work bounded to an independently identified concrete class/dispatch chain.
+
+## CP2/CP6 adjustment — coordinate-less policy and integration checkpoint
+
+The six shops without stand keys now have a labelled arrival-stub policy: preserve the actual
+position reached by the guest, without writing guessed authored values. Both scalar Fields
+and fenced Blocks count as supplied data, so malformed keys are not silently treated as absent.
+Authored positions retain priority; real host ownership/hiding still wins.132 standing checks,
+actual fallback-consumer witnesses and six normal-startup runs cover this bounded behavior.
+
+Original parser/default semantics remain unknown. Peer code/images have been shared; absent
+image feedback is not invented sign-off. Human input/camera/platform testing remains at the
+end as the owner requested. Stop expanding this finished policy's audit family. Next take a
+CP6 clean-source integration/build checkpoint (the prior all-project evidence predates many
+changes), then select the next playable gap together with cow tools. Do not substitute that
+Linux/cache-backed checkpoint for native Windows or real-audio qualification.
+
+## CP5/CP4 adjustment — visible shop customers and the actual park frame
+
+Normal viewer placement exposed a missing customer that headless purchase arithmetic could
+not see. The bounded 2x2 authored-shop standing body fixes that handover gap, but peer image
+inspection then exposed a second defect: the legacy GuestWorld/overlay frame displaced
+HALLOW by114.5 units and SPACE by10 relative to the built floor. A shared bad expected frame
+made the first smoke overstate success. Use the floor's CellCorner transform, not per-world
+offsets, and make actual-floor alignment an independent gate alongside body ownership.
+
+Cow tools reviews code/images and traces defaults for the six coordinate-less shops;
+astraclaw owns the narrow renderer/frame fix and independent normal-startup checks.
+The current bounded exit gates pass:93 standing/frame checks, fresh8scene runtime,
+normal-startup rendered service, and peer marked-image review in JUNGLE/HALLOW/SPACE.
+Coordinate-less bodies remain explicitly open while that evidence is investigated. Do not
+conflate presence, alignment, visual readability and retail behavior. Land this bounded integration and resolve those six customers next. If original defaults
+remain unread, explicitly label a conservative port fallback rather than inventing provenance.
+Do not restart a finished arithmetic census or an unrelated subsystem by default.
+
+## CP4/CP2 adjustment — compiled purchases need product-aware consumers
+
+The join exposed more than wrong authored happiness: the consumer was charging one tenth
+of the price, quenching thirst for food, and treating distinct product arms alike. A first
+correction adding thirst/litter universally would instead break drinks and balloons. Stop
+broad “purchase path complete” claims: retain the verified initial q1=100/q2=0 baseline,
+full symbolic identity and explicit regional values, then validate real handbacks per product.
+
+Current bounded package combines cow tools' `purchase-arms` implementation with our independent
+67 checks per world: named balloon/ice-cream/drink/fries/costume consumers across all3regions,
+opposite-transfer controls, affordability299/300 and post-completion stability. Original
+instruction evidence and limitations are in findings/compiled-shop-consumer.md. Product7's
+q2/15 prefix falls through into food; costume index8 resolves intensity14 but does not yet
+change the visible actor. Neither discovery licenses expanding random-spawn preferences.
+
+CP2 stopping condition: these checks reject plausible price/sign/selector/no-op/guard defects,
+then pass on the joint branch with the existing matrix/runtime gates unchanged. After landing,
+review the playable shop flow and remaining ownership/presentation/accounting gaps rather than
+expanding this audit family without a reproduced risk. Keep ordinary-ride producer research
+separate; do not wire a sideshow formula into ordinary rides just to close a checklist.
+
+## Latest CP3 adjustment — original ride-effect consumer, 2026-09-24 UTC
+
+Reading the newly decoded constants led to a real correction: sickness is gated at ride
+value56, and happiness is banded by absolute preference mismatch rather than always15.
+Peer branch code plus independent33 consumer checks and50 lifecycle checks now exercise
+both nonzero preferences and the deliberately unspecified fallback. Eight mutations reject
+missing/wrong gates or bands; the full runtime gate and four-world matrix retain their
+expected results. See findings/ride-effect-consumer.md for instruction evidence and limits.
+
+The first eight preference records are verified; original table extent and assignment of
+index+0x7D are not. Uniform choice among that verified set is a labelled port decision.
+The per-ride callback value still defaults to45. Next bounded work should connect a real
+per-ride producer only after tracing the existing callback/data path, rather than assuming
+an authored field with a plausible name is the runtime value. Keep core edits coordinated
+with cow tools; independent regression/consumer verification remains astraclaw's part.
+
+## Latest CP5 adjustment — rendered service flow and readability, 2026-09-24 UTC
+
+Normal Viewer startup + real build/service callbacks now produce successful rendered
+small-toilet captures in all four worlds. Directly inspected JUNGLE crops confirm the
+standing body/doorway/handback relationship and the correct WC icon after close-up tuning.
+The default camera actually projects the full icon quad to11.46px at1280x720: its raw
+2576 altitude is divided by256, not2576 Godot tiles. Do not reuse that unit error or the
+peer's superseded23px opaque-mask measurement.
+
+Owner explicitly requests best-effort autonomous choices with human testing collected
+at the end, not permission waits. A proposed48–64px screen clamp was rejected after peer
+measurement put the whole hut at approximately32×45px in that park-view capture. Retain
+world scaling: indicator far away, readable artwork close up. This is chosen port policy,
+not a decoded rule or the only possible UI design. No unused scaling solver is shipped.
+
+Next bounded work: review newly decoded needs-effect constants and their consumer arithmetic
+against the actual executable, while preserving peer ownership of core files. Avoid replacing
+one speculative value with another or claiming image data equals runtime confirmation.
+Keep crowding/zoom/DPI/interaction/native platform checks on the final human checklist.
+See findings/service-smoke.md for scope, direct crop review and exact camera evidence.
+
+## Earlier CP2/CP5 checkpoint — standing service, 2026-09-24 UTC
+
+This supersedes the courtesy-approval hold in the older CP1 preflight below: owner
+resume authorization was already sufficient. Peer shipped service routing/dispatch,
+reachable-candidate fallback and authored geometry accessors, then departure and queue
+consumers through c7eb67f. Astraclaw's bounded standing-service patch closes the real
+small-toilet handover/body gap and now carries74 runtime checks plus five routing checks/world.
+Peer0618434 also fixes interrupted departures; six recovery checks/world reject the old
+source. A transient Stranded state was removed from the test contract because valid retries
+need not preserve it—observable conservation/recovery, not implementation state, is the gate.
+Actual placement and service callbacks pass at four JUNGLE rotations; headless scene-graph
+proof is not manual visual approval. See findings/standing-service.md for exact scope.
+
+Learning: authored script ownership does not prove this port draws a replacement body;
+actual host visibility/pose ownership must decide. Eventual relief does not prove priority
+routing; a disconnected nearer service and reachable distracting ride discriminate it.
+Godot's deferred deletion must finish before a test calls a retired bubble a visible leak.
+
+Next bounded action: exchange peer review of these integration changes, then normal-viewer
+rendered/manual smoke with explicit inspection if available. Keep scope on the playable
+service flow and inspect new departure/queue consumer interactions; do not broaden to
+Super Toilets, track systems or another generic audit campaign without CP1 evidence.
+Keep the two exact retail reds and manual/platform limitations explicit. The runtime gate
+now has seven scenes; older clean-release evidence retains its original revision.
+
+## Current review and priority decision — CP0/CP3, 2026-09-24 UTC
+
+The original `699a9b1` review has been revised after actual service and compiled-shop integration. Earlier clean-build evidence keeps its own revision; it is not silently promoted to current parity:
+
+| Area | What we now know | Plan adjustment |
+|---|---|---|
+| Baseline and automated gates (M0/M1) | Published matrix now includes67 compiled-purchase checks/world; the current fresh Debug eight-scene runner passes. The all23-project clean-checkout evidence remains pinned to `6004151`. | Maintain/reuse these gates. Do not repeatedly rebuild them as a substitute for feature delivery. Earlier framebuffer/capture evidence keeps its own revision. |
+| Reader evidence (M2) | Unknown DBA storage is preserved, not fully interpreted; malformed compiled text is now rejected with real regional compatibility checks. | Follow a reader gap when it blocks a chosen consumer or a reproduced defect. Do not turn preservation coverage into a semantic-completion claim. |
+| Guest lifecycle (M3) | Removal, needs continuity and disruption/replay are guarded; interrupted departure recovery was subsequently fixed and rejects the old stuck-guest implementation. Purchase handbacks retain their own counter and side-table controls. | Defer the proposed standalone expansion of walking-contract audits. Reopen it for a concrete movement bug or a chosen feature that depends on an uncovered boundary. |
+| Effects/audio (M4) | Joint fixes have real voice/cue and synthetic lifecycle controls, including world-owned state cleanup. | Keep those regression gates; do not call Dummy playback an audible-quality or complete engine-layer result. |
+| Gameplay consumers (M5) | Service, departure and queue consumers now run. Small toilets have actual viewer placement/standing/handback evidence; compiled shop product effects and transaction cash are tested at real script handback across all3regions. | Finish the joint purchase integration, then demonstrate a placed shop through normal viewer startup. Inspect presentation/ownership at that boundary before adding more arithmetic checks. Costume actor changes and balloon ownership are still incomplete. |
+| UI/advisor (M6) | Browser callbacks work, but rules, lip playback and original font/Kanji readers still lack game consumers in the current census. | Treat these as genuine integration gaps. Choose one if the gameplay package is blocked; do not build speculative state producers or more browser tests by default. |
+| Release (M7) | Clean Linux source/build/runtime evidence exists; selected small-toilet/WC crops were directly inspected. Native Windows, actual listening and general visual/platform sign-off remain absent. | Keep unsupported/manual claims open. Repeat release gates for relevant changes, not to imply those missing qualifications are solved. |
+
+**Next selection:** after the purchase package lands, reuse the normal-startup service smoke
+for a named placed shop and verify the actual purchase, guest ownership and visible presentation.
+The headless arithmetic suite cannot establish that a shopper has a body during service. Inspect
+existing script/renderer contracts first, coordinate core/viewer ownership with cow tools, and
+reproduce any gap before choosing a fix. Preserve explicit limits on costume actors, repeated
+balloon ownership, mutable quality and park accounting; no automatic broad rewrite is implied.
+
+### Historical CP1 preflight — minimal toilet flow (superseded; not an active approval hold)
+
+The following records the pre-implementation decision, not current blocking instructions. Owner
+subsequently authorized continued autonomous execution and the slice shipped as described above.
+
+Cow tools confirms that needs-satisfaction consumers are its scope and proposes the toilet as the smallest
+end-to-end slice: one placeable facility, route an eligible guest to it, use it, retain the guest identity,
+record the returned soil amount, and update the thought. It owns `ParkVisitors`, `VisitorNeeds` and viewer wiring;
+astraclaw owns independent validation and must agree the observable API before writing integration checks.
+Strawberry's confirmation for placement/routing scope has been requested; **do not call that approval or an
+implemented feature**. Preparing the contract/evidence is safe while that dependency is open.
+
+Read-only preflight now independently confirms two ProvidesRelief definitions per world and the small-toilet
+shape/offsets; see `findings/toilet-slice-preflight.md`. Start with one **small** toilet, not all eight assets:
+super toilets take a different LIMBO path, and FANTASY's super variant has an animation-resolution question.
+Placement is still runtime-unconfirmed. A newly identified consumer seam is outside-service visibility:
+current handover removes the walking body, while the viewer retains only walking/seated/scripted-WALK bodies.
+Require a correct visible standing-service path and agree the completion/soil interface before tests or wiring;
+do not quietly expand this into general queue rendering or treat a data census as feature completion.
+
+Proposed minimum acceptance, subject to the agreed interface:
+
+* With other urgent needs controlled and growth rates frozen, Toilet 90 does not trigger this need-driven
+  errand; Toilet 91 with a reachable, usable toilet routes through the actual walking/service consumer.
+* No early satisfaction or reseeding: the same guest retains cash and unrelated needs while travelling.
+  Only actual arrival/service may set Toilet to 0; an unreachable or absent facility does not satisfy it.
+* Existing `UseToilet` arithmetic is observable at the facility: starting at 91 produces 20 soil,
+ 92 produces 21, and 100 produces 26. A completed use is accounted once; later idle updates do not duplicate it.
+* The sole toilet thought is cleared/recomputed after use, not merely hidden while the need stays high.
+  A missing route is distinct from a mid-edge `Send` refusal; neither licenses teleporting or losing the guest.
+* Select at least one disruption boundary (facility removed/closed while travelling) and define its behavior
+  before implementation. Preserve ownership and needs rather than inventing a completed service.
+* Demonstrate the actual placed-facility flow in the viewer as well as the engine-free regression. Logs or
+  headless checks alone do not establish bubble appearance or placement usability; visual limits stay explicit.
+
+The peer has corrected its earlier executable interpretation: the threshold helper records an errand, rather
+than searching for a facility. Record/verify that consumer evidence in the implementation findings before
+promoting it to a decoded claim. Current `Decide` still exposes availability-gated single-need branches, so
+source behavior, updated evidence and the intended contract must be reconciled—not silently assumed identical.
+Facility selection/routing/service timing not established from the executable must remain labelled port policy.
+No food purchases, economy, general facility framework, cleaning staff or advisor rewrite are implied by this slice.
+
+Review trigger: scope confirmation and concrete interface/file split produce the final CP1 decision; then CP2
+checks regression controls and CP5 checks the actual player flow. If placement needs a substantially larger
+subsystem or missing data, narrow/defer it explicitly and select another supported consumer rather than hiding
+scope growth inside “one toilet”.
+
+
+## Slice A landed on main: native core, no behaviour change — September 25, 2026 UTC
+
+This is plan.md queue item 4. It moves the standalone native core onto main from the research
+branch.
+
+**Code:**
+- `NativeLogicalAnimation`, `NativeGuestMotion`, `NativeGuestRoute`, `NativeRoutePool`,
+  `NativeRouteOutput`, `NativeActivationSequence`, `NativeEntranceAcceptance`, and the additive
+  `NativeBusCatalogue` points and counter.
+- Their ParkSimAudit families: motion, route cursor, logical animation and acceptance.
+- ParkSimAudit's `--terrain=1|2`.
+- audit_matrix over all 8 parks, with a per-case park-identity check and a landing flag.
+- The cow-approved Viewer.cs selector fix: `--map` and `--ride` fail loudly, and the canonical
+  `[map] loaded` line.
+
+**Nothing in default play calls the new core yet.** It is the substrate for queue item 5 (guest
+animation for every guest, with cow tools) and slices B and C.
+
+**Docs:** plan.md, progress.md, the review and the branch's findings files, taken only where main
+has not changed them since 8ef44b9.
+
+**Evidence:** the gate results below were run at this commit's tree.

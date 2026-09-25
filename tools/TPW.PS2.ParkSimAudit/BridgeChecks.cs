@@ -18,11 +18,12 @@ static class BridgeChecks
         var tool = new PathTool(terrain, pieces);
         Check(tool.Ready, $"the path tool still starts -- {tool.Report}");
 
-        if (world != "JUNGLE")
+        string park = $"{world} {Path.GetFileNameWithoutExtension(AuditPark.Mps)}";
+        if (park != "JUNGLE terrain_1")
         {
             // ⭐ Searched all eight parks: JUNGLE park 1 owns the only bridge on the disc. Asserted
-            // per world so a future world quietly growing one is a failing check, not a surprise.
-            Check(deck.Count == 0, $"{world} has no bridge ({deck.Count} cells)");
+            // per PARK (not per world: JUNGLE park 2 has none) so a park quietly growing one fails.
+            Check(deck.Count == 0, $"{park} has no bridge ({deck.Count} cells)");
             return;
         }
 

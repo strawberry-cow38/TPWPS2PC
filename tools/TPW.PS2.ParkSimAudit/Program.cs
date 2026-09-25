@@ -8,10 +8,29 @@ using TPW.PS2.Data;
 
 if (args.Length < 1) { Console.Error.WriteLine("Usage: ParkSimAudit /path/to/disc.bin [WORLD] [--removal-only]"); return 2; }
 string world = args.Skip(1).FirstOrDefault(a => !a.StartsWith("--", StringComparison.Ordinal))?.ToUpperInvariant() ?? "JUNGLE";
+// --terrain=2 selects each world's SECOND park. Default 1. Every terrain-dependent family reads
+// AuditPark.Mps, so no check can silently stay on terrain_1 (2026-09-25: four were hardcoded).
+var terrainArg = args.FirstOrDefault(a => a.StartsWith("--terrain=", StringComparison.Ordinal));
+if (terrainArg != null && terrainArg != "--terrain=1" && terrainArg != "--terrain=2")
+{ Console.Error.WriteLine($"not a terrain: {terrainArg} (use --terrain=1 or --terrain=2)"); return 2; }
+AuditPark.Mps = terrainArg == "--terrain=2" ? "/terrain/terrain_2.mps" : "/terrain/terrain_1.mps";
 int bad = 0;
 void Check(bool ok, string line) { Console.WriteLine((ok ? "  ok   " : "  FAIL ") + line); if (!ok) bad++; }
 
 using var disc = new Disc(args[0]);
+if (args.Contains("--logical-animation-only"))
+{
+    NativeLogicalAnimationChecks.Run(disc,Check);
+    Console.WriteLine(bad==0 ? "PASS native logical-animation table, control block, playback and idle picker (viewer integration: NativeAnimationReadinessSmoke)" : $"FAIL: {bad}");
+    return bad==0?0:1;
+}
+if (args.Contains("--guest-motion-only"))
+{
+    NativeGuestMotionChecks.Run(Check);
+    NativeGuestRouteChecks.Run(Check);
+    Console.WriteLine(bad==0 ? "PASS native guest coordinate arithmetic and route cursor (GuestWalk/entrance integration NOT exercised)" : $"FAIL: {bad}");
+    return bad==0?0:1;
+}
 if (args.Contains("--bus-inputs-only"))
 {
     BusAdmissionChecks.Run(disc,Check);
@@ -32,7 +51,7 @@ WadArchive Wad(string name)
     return new WadArchive(disc.Read(e.Extent, e.Size));
 }
 var wad = Wad(world);
-var terrain = new Model(wad.Read(wad.Find("/terrain/terrain_1.mps")));
+var terrain = new Model(wad.Read(wad.Find(AuditPark.Mps)));
 if (args.Contains("--native-consumer-only"))
 {
     NativeDestinationChecks.Run(terrain,Wad("DATA"),wad,world,Check);
@@ -52,7 +71,7 @@ var paths = new ParkPaths(terrain);
 // The entrance the park comes with, from the game's own table in the owner's executable.
 var exe = disc.Files().SingleOrDefault(f => f.Path.Equals("/SLES_500.32", StringComparison.OrdinalIgnoreCase));
 var entrance = exe == null ? null : ParkEntrance.ReadExecutable(disc.Read(exe.Extent, exe.Size));
-Console.WriteLine($"{world} terrain_1: {paths.Field.Width}x{paths.Field.Height}; entrance {paths.SetEntrance(entrance)}");
+Console.WriteLine($"{world} {Path.GetFileNameWithoutExtension(AuditPark.Mps)}: {paths.Field.Width}x{paths.Field.Height}; entrance {paths.SetEntrance(entrance)}");
 Check(paths.EntranceCells.Count > 0, $"the park has an entrance to walk in by ({paths.EntranceCells.Count} cells)");
 
 // ⚠⚠ RIDES, NOT EVERYTHING WITH A SCRIPT. The first twelve .rse files alphabetically are all
@@ -577,6 +596,10 @@ MoodChecks.Run(Check);
 PathPriceChecks.Run(terrain, PathPieces.Read(disc), Check);
 ScreamChecks.Run(disc, world, Check);
 BusAdmissionChecks.Run(disc, Check);
+NativeGuestMotionChecks.Run(Check);
+NativeLogicalAnimationChecks.Run(disc,Check);
+NativeGuestRouteChecks.Run(Check);
+NativeEntranceAcceptanceChecks.Run(Check);
 SfxGraphChecks.Run(disc, Check);
 BridgeChecks.Run(terrain, PathPieces.Read(disc), world, Check);
 QueueRemovalChecks.Run(terrain, PathPieces.Read(disc), world, Check);
@@ -1158,3 +1181,6 @@ if (sounds != null)
 
 Console.WriteLine(bad == 0 ? "PASS" : $"FAIL: {bad}");
 return bad == 0 ? 0 : 1;
+
+/// <summary>The park every terrain-dependent family loads; set once from --terrain.</summary>
+static class AuditPark { public static string Mps = "/terrain/terrain_1.mps"; }

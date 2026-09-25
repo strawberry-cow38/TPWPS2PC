@@ -1,5 +1,12 @@
 # PS2 bus entrance-group population inputs — four-minute partial
 
+**Later causal trace:** see `native-entrance-lifecycle.md` and `native-guest-motion.md`.
+In particular, N+28 is reused across staging and list selection: both counted
+queues are incoming. Mode14's early value1 is NOT departure-list membership.
+The literal11 belongs to global park entrance counts, not attraction capacity.
+The older bounded-unread list below is historical; the newer notes delimit what
+has since been read and what still prevents a faithful runtime join.
+
 Read bus-native-arrivals.md and bus-native-demand.md first (no root demand.md
 exists). Primary owner-disc ELF memory only, LBA262773, Mode2/2352+24,
 size 0x2B1160, file 0x1000 -> VA 0x100000. Used selector reader; no

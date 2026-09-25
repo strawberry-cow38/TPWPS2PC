@@ -25,6 +25,9 @@ public sealed class NativeBusCatalogue
     readonly Dictionary<int,uint[]> keys = new();
     public NativeParkSelection Selection { get; }
     public ParkCell Point0 { get; }
+    public uint ImageInitialActivationCounter { get; }
+    public ParkCell StagingPoint { get; }
+    public ParkCell IncomingQueuePoint { get; }
     public int DemandOffset { get; }
     public int DemandDivisor { get; }
     public int TotalEntries => keys.Values.Sum(k=>k.Length);
@@ -101,8 +104,11 @@ public sealed class NativeBusCatalogue
             keys.Add(src.Kind,values);
         }
         if(TotalEntries==0) throw new InvalidDataException("empty native denominator would divide by zero");
-        int point=Offset(checked(0x2b71b0u+(uint)selection.World*0x36+(uint)selection.Variant*0x12),2);
+        int point=Offset(checked(0x2b71b0u+(uint)selection.World*0x36+(uint)selection.Variant*0x12),6);
         Point0=new ParkCell(elf[point],elf[point+1]); // 14E290(0), not bus position or gate mouth
+        StagingPoint=new ParkCell(elf[point+2],elf[point+3]);
+        IncomingQueuePoint=new ParkCell(elf[point+4],elf[point+5]);
+        ImageInitialActivationCounter=Word(0x2aa73c); // executable-load seed, NOT a per-park reset
         DemandOffset=unchecked((int)Word(0x2b9734));DemandDivisor=unchecked((int)Word(0x2b9730));
         if(DemandDivisor==0) throw new InvalidDataException("native demand denominator is zero");
     }

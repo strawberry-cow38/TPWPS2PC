@@ -1,433 +1,281 @@
 # TPWPS2PC completion plan
 
-Updated: 2026-09-24 UTC. Current priority: finish native bus integration/release verification, then native entrance-group and departure-pressure guest lifecycle. Destination scoring, relief, shop walking and Bouncy's explicit hide-list activation are shipped; do not redo them. Exact commits, evidence and remaining boundaries are in progress.md. Cow tools owns the active animated-texture/thought-bubble rendering requests. The original `0db3678` starting point is historical.
-This plan is revised at the checkpoints below, not executed as an immutable queue.
-Execution/results/handoff: [progress.md](progress.md). This is a completion roadmap, not a claim that the port is finished.
-
-## What “complete” means
-
-Deliver a reproducibly buildable, usable PS2-derived PC port which reads a user-supplied disc in place, exposes the shipped worlds/assets, and runs the supported park/ride/visitor/audio/UI systems with documented provenance. An asset reader existing is not sufficient: its important consumers, lifecycle, controls, failure behavior and integration must be exercised.
-
-There are two distinct outcomes, which must never be silently conflated:
-
-* **Faithful baseline:** reproduce supported retail behavior and preserve evidence of retail defects/stubs. An unavailable asset or a handler returning zero in the executable is not permission to invent data and call it decoded.
-* **Explicit extensions:** playable track systems or other behavior absent/stubbed in this build may require an independently designed implementation. Keep such work separately documented and distinguish it from measured PS2 parity. Unsupported faithful behavior remains visible until evidence or an explicitly identified extension supplies it.
-
-Completion requires reproducible reader/runtime gates, a usable launcher and error paths, stable state/lifecycle handling, documented platform requirements, manual rendered smoke tests, and a handoff ledger listing remaining evidence gaps. No raw disc, extracted game assets, credentials or proprietary source goes into Git.
-
-## Working agreement and evidence standards
-
-* Work in isolated worktrees. Fetch before each milestone, inspect the actual diff against remote main, and integrate upstream without replacing another agent's work. Push normally, never force. A rejected push means reconcile and retest.
-* Inspect status immediately before committing and stage explicit paths. Preserve unknown/uncommitted work. Never sweep up the active shared tree.
-* Confirm current file ownership with cow tools at each work-package review; the established split reserves its active viewer/needs/effects wiring and our independent lifecycle/validation work until explicitly renegotiated. Do not assume a historical file list is still current. Announce a narrow split before editing or pushing, and exchange implementation and validation for mutual review.
-* Retain the documented HALLOW Thrill Grill missing-animation and SPACE Moon Buggies missing-fitting failures. Keep raw audit failures visible; do not weaken assertions, invent records or broaden expected-failure exceptions merely to obtain green output.
-* Inventory coverage, interpreted byte coverage, consumer evidence, correctness tests and live integration are separate measures. Maintain READ / CANDIDATE / UNKNOWN distinctions; data-shape guesses are not consumer proofs.
-* Every milestone includes the change, a regression or reproducible audit, relevant cross-world checks, and a progress entry with actual results. Record failed attempts and blockers, not only successes.
-* Do not claim screenshots were visually reviewed when they were only generated or pixel-checked. Runtime logs, automated scene assertions, rendered captures and human/visual inspection are distinct evidence.
-
-## Review checkpoints — evaluate, then change the plan
-
-Milestones below describe outcomes, not a mandatory order or an invitation to keep adding tests forever.
-At a checkpoint, make and record a decision: **continue**, **narrow/split**, **reorder**, **defer with a trigger**, or **stop the work package**.
-Change this plan and the next-action handoff when the decision changes priorities; do not merely append another status report.
-
-| Checkpoint | When it fires | Questions and required decision |
-|---|---|---|
-| CP0: reset the baseline | Now; after major upstream integration or resumed work with a stale handoff | What actually works at which revision? Which failures are retail data, production bugs, fixture bugs or environment limits? Replace stale assumptions and choose the next useful outcome. |
-| CP1: select a bounded package | Before starting implementation, a new audit family or significant reverse engineering | What user-visible gap, concrete production risk or blocked consumer does this unlock? What evidence already exists? Agree scope/files with cow tools, minimum validation, and a stopping condition. Defer duplicate or unmotivated work. |
-| CP2: review the result | After implementation plus independent review/regression evidence, before landing | Did we fix the actual failure, or only our instrument/fixture? Did scope or the data contract change? Does the test reject a plausible wrong implementation? Land, revise, split or discard based on evidence. |
-| CP3: stop audit expansion | At M1/M3/M4 validation gates, and after two consecutive audit-only packages without a newly reproduced production defect | Is another test materially reducing a named risk, or postponing missing functionality? Maintain existing gates and move to an end-to-end feature unless a concrete risk justifies more validation. Record the exception, not an open-ended audit backlog. |
-| CP4: revisit evidence or dependencies | A consumer contradicts a field guess; a fixture contradicts its caller contract; ownership changes; required data/platform is unavailable | Correct READ/CANDIDATE/UNKNOWN and compatibility claims, preserve the failed evidence, and reconsider dependent tasks. Do not invent retail semantics, silently weaken a gate or keep waiting without a bounded alternative. |
-| CP5: assess integration value | After each playable M5/M6 slice or a cross-system M3/M4 change | Can the intended player action complete through the real consumer, not just a reader or helper? What remains visibly missing? Review the flow together, then choose the next feature or address a discovered integration defect. Missing visual/listening evidence stays missing. |
-| CP6: release readiness | Before a platform/release claim, or after toolchain/dependency changes | Recheck chosen supported features and targets against actual clean-source, runtime and manual evidence. Qualify only tested targets; reopen failed gates and keep explicit limitations. |
-
-Each checkpoint entry in `progress.md` must contain:
-
-1. Baseline/revision and the question being decided.
-2. What we learned, with tests/source/runtime evidence and its limits.
-3. What assumption, priority or acceptance criterion changed (or why it did not).
-4. Decision and rationale, including work we are **not** doing now.
-5. Next bounded action, file owners, minimum proof/stopping condition, and what triggers the next review.
-
-Routine evidence-based resequencing does not require repeatedly asking for permission already granted.
-Keep strawberry informed of project outcomes and coordinate directly with cow tools. Escalate a real product-scope
-choice—such as presenting an invented track system as the target experience—or an unavailable manual/platform gate
-to the humans rather than claiming that an autonomous technical review settled it. Existing pause/stop instructions
-still take priority; checkpoints are not authority to ignore them.
-
-## Current user-priority queue (September24 post-native-consumer landing)
-
-1. **Research the bus**, explicitly requested by strawberry1552630912481624105. Start
-   with actual asset identity/script inputs, then trace creation, movement and guest handoff.
-   A timed-out inventory worker returned no finding; it does not establish absence.
-2. Native weighted selection and relief residence passed peer review, independent review
-   correction, four-world core, eight runtime scenes, rendered/mutation controls. See
-   progress.md for exact revisions/results. Do not repeat the old gate/walking fixes.
-3. Keep native-AI limitations explicit: lifecycle/transport adapters, local movement,
-   remaining state0 arms, live setting/track-cache bindings, region and RNG integration.
-4. Cow owns gate/protected paths, money HUD, path costs, audio and particle research.
-   Preserve that work on every merge. No restarts or duplicate scheduled jobs.
-
-## Latest CP4 correction — native relief state and decoded selector (September24)
-
-The post-walking trace found a real contradiction, not another optional polish task:
-**Small Toilet having no RSE LIMBO does not establish native visibility.** Guest arrival
-explicitly hides accepted kind2 relief customers and starts a522-update deadline. The
-old visible-standing-toilet explanation is retracted in findings/visitors.md; see the
-address-backed replacement in findings/native-shop-flow.md.
-
-Decision: **split and reorder**, not infer a new rule from the scripts again.
-
-1. Next bounded production package: validated compiled relief inside-entry walking,
-   native accepted-service hide/deadline/reveal/retained-position lifecycle. Keep occupancy
-   and availability distinct from SHOP purchases. Use executed park ticks, not a new
-   seconds constant. Resource notification is slot5 variant1/0 through1ABC80; verify
-   its real presentation consumer rather than leaving a correct timer with no animation.
-   Explicitly handle demolition, refusal/occupied entries, zero-time calls and missing
-   presentation data; no loss/duplication or premature relief on a script-only handback.
-2. The scorer equation, exact lookup tables and conditional non-FIFO history writer are
-   now decoded in findings/native-destination-score.md. Final ordinary/coaster/tour/track
-   value getters and compiled relief support are decoded in ride-value-producer.md.
-   Port selection only with known producers/runtime identity and controlled enumeration;
-   do not silently wire SAM excitement, a constant45, or a guessed four-visit FIFO.
-3. Operating-speed/duration script bridge remains a specific integration seam: speed writes
-   machine+C0, duration writes variable index3. Resolve the current managed binding before
-   claiming native operating state. Renderer/script adapters and missing APS are separate
-   from the now-read native guest service mechanism.
-
-Astro owns coordinator/entrances/scorer; cow tools retains money/economy/idle and existing
-needs effects. Share pushed branches and independent controls. The stopping condition for
-this research package is recorded equations/provenance/corrections, not another speculative
-runtime change. Next turn should implement the bounded relief consumer or resolve its
-specific bridge—not repeat the table census or ask humans to remember retail behavior.
-
-## Current CP4/CP5 decision — original movement and selection, not cosmetic patches
-
-The user's repeated-visit/teleport report changed the priority: finish this consumer flow before
-returning to release-state sweeps. The code trace superseded two plausible render policies:
-SAM stand fractions and absent-coordinate arrival-stub fallback are NOT the traced native shop
-endpoint. The original walks to the compiled inside entrance centre with directed terminal
-permission, then retains that position after service. Preserve the old fallback only where a
-validated compiled placed-shop endpoint is unavailable, and report that limitation.
-
-* **Timing complete:** post-completion deadline registration/consumer landed at `c0ee884`, peer
-  reviewed and mutation-checked. Executed park ticks are the sole time source; appetite tuning
-  cannot move the deadline. This is not a permanent revisit ban or full native AI parity.
-* **Walking integration complete at54a58af:** peer-reviewed `astraclaw/shop-terminal-walk` proves physical final-edge
-  interpolation AND changing walk-animation mesh, no handback teleport, live-owner/deletion/
-  replacement controls, four rotations/worlds, and marked rendered review.
-  Do not globally open building footprints or conceal the issue with a view-only animation.
-* **Next fidelity gap:** after this bounded slice, evaluate native weighted destination scoring
-  and its actual conditional recency writer against the remaining needs-first/random policy.
-  A user asking whether it is fully accurate deserves an explicit no until those differences
-  are resolved. Trace other facility-kind entrance consumers before extending SHOP rules to
-  toilets/rides. Cow tools owns current money UI/economy/idle work; coordinate before overlap.
-* **Stopping condition:** land this proven physical flow, document remaining selection/speed/
-  service-adapter limits, and stop expanding its audit family absent a new failure. The clean
-  source build at65b7370 remains valid only for that revision; CP6 resumes after this user-visible
-  defect package, not instead of it. No approval waiting and no repeat bot restarts.
-
-The sections below record earlier checkpoint decisions; this section controls current priority.
-
-## Priority checkpoint — compiled shop inputs before further producer research
-
-The per-ride value trace resolved a sideshow calculation, not the ordinary family: table
-3683B8 uses price/prize/win parameters and a shift4, not the initially reported generic
-ride modifier/shift8. Corrected evidence is in findings/ride-value-producer.md. No speculative
-producer was wired; a raw SAM field is not automatically its compiled or computed value.
-
-A more immediate proven defect is the shop join: Balloon/VampShop/Droid authored happiness15
-versus compiled base10. Cow tools owns runtime compiled-data wiring; astraclaw owns named-asset
-and region controls. Use full symbolic identity (not effect-profile similarity), distinguish
-missing/ambiguous cases, and preserve the actual regional ice-cream differences. Compiled
-base effects still need the documented runtime quality modifier or an explicit port default;
-do not confuse a correct lookup with full retail outcome parity. Keep any unresolved ordinary
-producer work bounded to an independently identified concrete class/dispatch chain.
-
-## CP2/CP6 adjustment — coordinate-less policy and integration checkpoint
-
-The six shops without stand keys now have a labelled arrival-stub policy: preserve the actual
-position reached by the guest, without writing guessed authored values. Both scalar Fields
-and fenced Blocks count as supplied data, so malformed keys are not silently treated as absent.
-Authored positions retain priority; real host ownership/hiding still wins.132 standing checks,
-actual fallback-consumer witnesses and six normal-startup runs cover this bounded behavior.
-
-Original parser/default semantics remain unknown. Peer code/images have been shared; absent
-image feedback is not invented sign-off. Human input/camera/platform testing remains at the
-end as the owner requested. Stop expanding this finished policy's audit family. Next take a
-CP6 clean-source integration/build checkpoint (the prior all-project evidence predates many
-changes), then select the next playable gap together with cow tools. Do not substitute that
-Linux/cache-backed checkpoint for native Windows or real-audio qualification.
-
-## CP5/CP4 adjustment — visible shop customers and the actual park frame
-
-Normal viewer placement exposed a missing customer that headless purchase arithmetic could
-not see. The bounded 2x2 authored-shop standing body fixes that handover gap, but peer image
-inspection then exposed a second defect: the legacy GuestWorld/overlay frame displaced
-HALLOW by114.5 units and SPACE by10 relative to the built floor. A shared bad expected frame
-made the first smoke overstate success. Use the floor's CellCorner transform, not per-world
-offsets, and make actual-floor alignment an independent gate alongside body ownership.
-
-Cow tools reviews code/images and traces defaults for the six coordinate-less shops;
-astraclaw owns the narrow renderer/frame fix and independent normal-startup checks.
-The current bounded exit gates pass:93 standing/frame checks, fresh8scene runtime,
-normal-startup rendered service, and peer marked-image review in JUNGLE/HALLOW/SPACE.
-Coordinate-less bodies remain explicitly open while that evidence is investigated. Do not
-conflate presence, alignment, visual readability and retail behavior. Land this bounded integration and resolve those six customers next. If original defaults
-remain unread, explicitly label a conservative port fallback rather than inventing provenance.
-Do not restart a finished arithmetic census or an unrelated subsystem by default.
-
-## CP4/CP2 adjustment — compiled purchases need product-aware consumers
-
-The join exposed more than wrong authored happiness: the consumer was charging one tenth
-of the price, quenching thirst for food, and treating distinct product arms alike. A first
-correction adding thirst/litter universally would instead break drinks and balloons. Stop
-broad “purchase path complete” claims: retain the verified initial q1=100/q2=0 baseline,
-full symbolic identity and explicit regional values, then validate real handbacks per product.
-
-Current bounded package combines cow tools' `purchase-arms` implementation with our independent
-67 checks per world: named balloon/ice-cream/drink/fries/costume consumers across all3regions,
-opposite-transfer controls, affordability299/300 and post-completion stability. Original
-instruction evidence and limitations are in findings/compiled-shop-consumer.md. Product7's
-q2/15 prefix falls through into food; costume index8 resolves intensity14 but does not yet
-change the visible actor. Neither discovery licenses expanding random-spawn preferences.
-
-CP2 stopping condition: these checks reject plausible price/sign/selector/no-op/guard defects,
-then pass on the joint branch with the existing matrix/runtime gates unchanged. After landing,
-review the playable shop flow and remaining ownership/presentation/accounting gaps rather than
-expanding this audit family without a reproduced risk. Keep ordinary-ride producer research
-separate; do not wire a sideshow formula into ordinary rides just to close a checklist.
-
-## Latest CP3 adjustment — original ride-effect consumer, 2026-09-24 UTC
-
-Reading the newly decoded constants led to a real correction: sickness is gated at ride
-value56, and happiness is banded by absolute preference mismatch rather than always15.
-Peer branch code plus independent33 consumer checks and50 lifecycle checks now exercise
-both nonzero preferences and the deliberately unspecified fallback. Eight mutations reject
-missing/wrong gates or bands; the full runtime gate and four-world matrix retain their
-expected results. See findings/ride-effect-consumer.md for instruction evidence and limits.
-
-The first eight preference records are verified; original table extent and assignment of
-index+0x7D are not. Uniform choice among that verified set is a labelled port decision.
-The per-ride callback value still defaults to45. Next bounded work should connect a real
-per-ride producer only after tracing the existing callback/data path, rather than assuming
-an authored field with a plausible name is the runtime value. Keep core edits coordinated
-with cow tools; independent regression/consumer verification remains astraclaw's part.
-
-## Latest CP5 adjustment — rendered service flow and readability, 2026-09-24 UTC
-
-Normal Viewer startup + real build/service callbacks now produce successful rendered
-small-toilet captures in all four worlds. Directly inspected JUNGLE crops confirm the
-standing body/doorway/handback relationship and the correct WC icon after close-up tuning.
-The default camera actually projects the full icon quad to11.46px at1280x720: its raw
-2576 altitude is divided by256, not2576 Godot tiles. Do not reuse that unit error or the
-peer's superseded23px opaque-mask measurement.
-
-Owner explicitly requests best-effort autonomous choices with human testing collected
-at the end, not permission waits. A proposed48–64px screen clamp was rejected after peer
-measurement put the whole hut at approximately32×45px in that park-view capture. Retain
-world scaling: indicator far away, readable artwork close up. This is chosen port policy,
-not a decoded rule or the only possible UI design. No unused scaling solver is shipped.
-
-Next bounded work: review newly decoded needs-effect constants and their consumer arithmetic
-against the actual executable, while preserving peer ownership of core files. Avoid replacing
-one speculative value with another or claiming image data equals runtime confirmation.
-Keep crowding/zoom/DPI/interaction/native platform checks on the final human checklist.
-See findings/service-smoke.md for scope, direct crop review and exact camera evidence.
-
-## Earlier CP2/CP5 checkpoint — standing service, 2026-09-24 UTC
-
-This supersedes the courtesy-approval hold in the older CP1 preflight below: owner
-resume authorization was already sufficient. Peer shipped service routing/dispatch,
-reachable-candidate fallback and authored geometry accessors, then departure and queue
-consumers through c7eb67f. Astraclaw's bounded standing-service patch closes the real
-small-toilet handover/body gap and now carries74 runtime checks plus five routing checks/world.
-Peer0618434 also fixes interrupted departures; six recovery checks/world reject the old
-source. A transient Stranded state was removed from the test contract because valid retries
-need not preserve it—observable conservation/recovery, not implementation state, is the gate.
-Actual placement and service callbacks pass at four JUNGLE rotations; headless scene-graph
-proof is not manual visual approval. See findings/standing-service.md for exact scope.
-
-Learning: authored script ownership does not prove this port draws a replacement body;
-actual host visibility/pose ownership must decide. Eventual relief does not prove priority
-routing; a disconnected nearer service and reachable distracting ride discriminate it.
-Godot's deferred deletion must finish before a test calls a retired bubble a visible leak.
-
-Next bounded action: exchange peer review of these integration changes, then normal-viewer
-rendered/manual smoke with explicit inspection if available. Keep scope on the playable
-service flow and inspect new departure/queue consumer interactions; do not broaden to
-Super Toilets, track systems or another generic audit campaign without CP1 evidence.
-Keep the two exact retail reds and manual/platform limitations explicit. The runtime gate
-now has seven scenes; older clean-release evidence retains its original revision.
-
-## Current review and priority decision — CP0/CP3, 2026-09-24 UTC
-
-The original `699a9b1` review has been revised after actual service and compiled-shop integration. Earlier clean-build evidence keeps its own revision; it is not silently promoted to current parity:
-
-| Area | What we now know | Plan adjustment |
-|---|---|---|
-| Baseline and automated gates (M0/M1) | Published matrix now includes67 compiled-purchase checks/world; the current fresh Debug eight-scene runner passes. The all23-project clean-checkout evidence remains pinned to `6004151`. | Maintain/reuse these gates. Do not repeatedly rebuild them as a substitute for feature delivery. Earlier framebuffer/capture evidence keeps its own revision. |
-| Reader evidence (M2) | Unknown DBA storage is preserved, not fully interpreted; malformed compiled text is now rejected with real regional compatibility checks. | Follow a reader gap when it blocks a chosen consumer or a reproduced defect. Do not turn preservation coverage into a semantic-completion claim. |
-| Guest lifecycle (M3) | Removal, needs continuity and disruption/replay are guarded; interrupted departure recovery was subsequently fixed and rejects the old stuck-guest implementation. Purchase handbacks retain their own counter and side-table controls. | Defer the proposed standalone expansion of walking-contract audits. Reopen it for a concrete movement bug or a chosen feature that depends on an uncovered boundary. |
-| Effects/audio (M4) | Joint fixes have real voice/cue and synthetic lifecycle controls, including world-owned state cleanup. | Keep those regression gates; do not call Dummy playback an audible-quality or complete engine-layer result. |
-| Gameplay consumers (M5) | Service, departure and queue consumers now run. Small toilets have actual viewer placement/standing/handback evidence; compiled shop product effects and transaction cash are tested at real script handback across all3regions. | Finish the joint purchase integration, then demonstrate a placed shop through normal viewer startup. Inspect presentation/ownership at that boundary before adding more arithmetic checks. Costume actor changes and balloon ownership are still incomplete. |
-| UI/advisor (M6) | Browser callbacks work, but rules, lip playback and original font/Kanji readers still lack game consumers in the current census. | Treat these as genuine integration gaps. Choose one if the gameplay package is blocked; do not build speculative state producers or more browser tests by default. |
-| Release (M7) | Clean Linux source/build/runtime evidence exists; selected small-toilet/WC crops were directly inspected. Native Windows, actual listening and general visual/platform sign-off remain absent. | Keep unsupported/manual claims open. Repeat release gates for relevant changes, not to imply those missing qualifications are solved. |
-
-**Next selection:** after the purchase package lands, reuse the normal-startup service smoke
-for a named placed shop and verify the actual purchase, guest ownership and visible presentation.
-The headless arithmetic suite cannot establish that a shopper has a body during service. Inspect
-existing script/renderer contracts first, coordinate core/viewer ownership with cow tools, and
-reproduce any gap before choosing a fix. Preserve explicit limits on costume actors, repeated
-balloon ownership, mutable quality and park accounting; no automatic broad rewrite is implied.
-
-### Historical CP1 preflight — minimal toilet flow (superseded; not an active approval hold)
-
-The following records the pre-implementation decision, not current blocking instructions. Owner
-subsequently authorized continued autonomous execution and the slice shipped as described above.
-
-Cow tools confirms that needs-satisfaction consumers are its scope and proposes the toilet as the smallest
-end-to-end slice: one placeable facility, route an eligible guest to it, use it, retain the guest identity,
-record the returned soil amount, and update the thought. It owns `ParkVisitors`, `VisitorNeeds` and viewer wiring;
-astraclaw owns independent validation and must agree the observable API before writing integration checks.
-Strawberry's confirmation for placement/routing scope has been requested; **do not call that approval or an
-implemented feature**. Preparing the contract/evidence is safe while that dependency is open.
-
-Read-only preflight now independently confirms two ProvidesRelief definitions per world and the small-toilet
-shape/offsets; see `findings/toilet-slice-preflight.md`. Start with one **small** toilet, not all eight assets:
-super toilets take a different LIMBO path, and FANTASY's super variant has an animation-resolution question.
-Placement is still runtime-unconfirmed. A newly identified consumer seam is outside-service visibility:
-current handover removes the walking body, while the viewer retains only walking/seated/scripted-WALK bodies.
-Require a correct visible standing-service path and agree the completion/soil interface before tests or wiring;
-do not quietly expand this into general queue rendering or treat a data census as feature completion.
-
-Proposed minimum acceptance, subject to the agreed interface:
-
-* With other urgent needs controlled and growth rates frozen, Toilet 90 does not trigger this need-driven
-  errand; Toilet 91 with a reachable, usable toilet routes through the actual walking/service consumer.
-* No early satisfaction or reseeding: the same guest retains cash and unrelated needs while travelling.
-  Only actual arrival/service may set Toilet to 0; an unreachable or absent facility does not satisfy it.
-* Existing `UseToilet` arithmetic is observable at the facility: starting at 91 produces 20 soil,
- 92 produces 21, and 100 produces 26. A completed use is accounted once; later idle updates do not duplicate it.
-* The sole toilet thought is cleared/recomputed after use, not merely hidden while the need stays high.
-  A missing route is distinct from a mid-edge `Send` refusal; neither licenses teleporting or losing the guest.
-* Select at least one disruption boundary (facility removed/closed while travelling) and define its behavior
-  before implementation. Preserve ownership and needs rather than inventing a completed service.
-* Demonstrate the actual placed-facility flow in the viewer as well as the engine-free regression. Logs or
-  headless checks alone do not establish bubble appearance or placement usability; visual limits stay explicit.
-
-The peer has corrected its earlier executable interpretation: the threshold helper records an errand, rather
-than searching for a facility. Record/verify that consumer evidence in the implementation findings before
-promoting it to a decoded claim. Current `Decide` still exposes availability-gated single-need branches, so
-source behavior, updated evidence and the intended contract must be reconciled—not silently assumed identical.
-Facility selection/routing/service timing not established from the executable must remain labelled port policy.
-No food purchases, economy, general facility framework, cleaning staff or advisor rewrite are implied by this slice.
-
-Review trigger: scope confirmation and concrete interface/file split produce the final CP1 decision; then CP2
-checks regression controls and CP5 checks the actual player flow. If placement needs a substantially larger
-subsystem or missing data, narrow/defer it explicitly and select another supported consumer rather than hiding
-scope growth inside “one toilet”.
-
-## M0 — Establish the executable baseline and collaboration ledger
-
-Deliverables:
-1. Commit this plan and `progress.md`; incorporate the isolated ride-availability fix without losing current upstream work.
-2. Enumerate existing audit commands and distinguish known retail findings from new regressions.
-3. Make repeatable evidence capture straightforward: command, revision, world, raw exit status, exact failures, and local log/capture references.
-
-Exit gate: the plan/progress are on remote main; the eligibility fix has before/after evidence; all four park audits are run against the integrated revision. JUNGLE/FANTASY are expected to pass; HALLOW/SPACE retain their precise known failures unless new independent evidence changes the findings.
-
-Review point after M0: CP0 confirms the integrated baseline and separates known retail reds before choosing the first validation package.
-
-## M1 — Repeatable validation and actual rendered smoke coverage
-
-First work package, deliberately outside the active viewer/core files:
-* Add an audit runner which builds selected projects, runs reproducible world matrices, retains raw outputs and writes a structured result manifest.
-* Start with ParkSimAudit, then expand to reader/VM/visitor audits after recording their real baselines. An expected retail finding is a distinct outcome, not a pass. Unknown failures, crashes, timeouts, missing checks, or extra failures must fail classification.
-* Test the runner's own classification with negative controls: an extra error containing a familiar ride name must not be accepted; a truncated/crashed audit must not look successful.
-* Build and run the actual Godot viewer in an isolated checkout. Use the existing `--guest-test`, `--shot`, `--walk-film`, `--ride-film`, `--place-test`, `--path-test` and `--ghost-test` controls where applicable. Record the renderer/engine, world, command, logs and output dimensions; inspect actual captures when image-viewing capability is available.
-* Exercise normal launch, missing/invalid disc, a world change and an exit. Do not confuse a headless data-only run with rendered verification.
-
-Exit gate: a successor can reproduce the baseline without guessing commands; at least one real rendered park smoke is recorded, and the distinction between inspected and merely generated captures is explicit.
-
-Review point after M1: CP3 decides whether the validation infrastructure is sufficient for the next feature; uninspected captures do not make its manual gate complete.
-
-## M2 — Reader completeness and evidence debt
-
-* Reconcile `findings/format-inventory.md` with current source and upstream changes. ParticleTemplate/consumer findings recently superseded earlier particle-field guesses; do not repeat stale claims.
-* For DBA, finish only semantics supported by executable consumers and cross-region evidence: specialised track/tour fields, upgrade selector, unnamed flags/ranges. Add identity/field mutation tests for every interpretation.
-* Inventory uninterpreted sound-map records, fitting fields/pointers, GIN payloads and any retained raw ranges. Measure bytes accounted for, not merely tags recognised; validate every claim against the current readers before opening work.
-* Revalidate model/APS/skinning uncertainties against independent controls. Separate reconstruction (e.g. inferred bind transforms) from direct decoding. If required source data is unavailable, record the boundary rather than fabricate a “fix”.
-
-Exit gate: each format has an honest coverage/evidence table, mutation/round-trip or independent-reference checks appropriate to it, and explicit remaining ranges. A format is not declared complete because a constructor accepts the file.
-
-Review point within M2: use CP4 whenever a consumer contradicts an interpretation; at CP1 tie further decoding to a concrete consumer/evidence gap.
-
-## M3 — Park/visitor lifecycle correctness
-
-* Finish ride availability checks (first patch already tested): closed/broken rides cannot be destinations or receive newly arriving guests; recovery works; optional flags remain safe.
-* Audit ride removal, route invalidation, closure after queueing, cancellation and ownership transfer. Preserve guest identity and account for each guest in exactly one appropriate lifecycle state. Do not silently delete people.
-* Represent waiting/queued guests deliberately rather than letting them disappear between the walking and seated sets; coordinate rendering changes with the viewer owner.
-* Add tests for multiple rides/guests, blocked routes, removal during walking/queueing/riding, and deterministic fixed-tick replay. Keep the renderer a consumer of engine-free simulation state.
-
-Exit gate: guest conservation and lifecycle invariants hold through disruptions; a manual/rendered sequence demonstrates arrival, waiting, boarding, riding, exit and recovery without duplicate or lost bodies.
-
-Review point after M3: CP2/CP3 distinguish production fixes from fixture fixes and stop unmotivated census expansion; CP5 evaluates real gameplay integration.
-
-## M4 — Effects and audio integration
-
-* Coordinate with the active particle implementation before touching its files. Evaluate the current consumer-backed emitter implementation, not the older generic-burst code from the initial sweep.
-* Check persistent object handles, ADDOBJ/EVENT distinctions, KILLOBJ/FADEOBJ/SETOBJPARAM, child effects and cleanup across world/ride removal.
-* Connect or explicitly account for decoded `.eng` layers and sound event/clip selection. Distinguish proven clip lookup from inferred variant thresholds/attenuation.
-* Investigate unresolved executable consumers/vtable paths only with provenance and an independent check. Do not make a static table “used” by guessing a mapping.
-
-Exit gate: representative effects and sounds follow script lifecycle correctly, clean up on removal, and have recorded runtime/rendered/audio evidence; unresolved paths remain named.
-
-Review point after M4: CP4 reassesses unresolved semantics; CP3/CP5 weigh another effects audit against a missing player-visible feature.
-
-## M5 — Gameplay systems and track capability boundary
-
-* Establish what the shipped PS2 executable actually supplies for TOUR/BUMP/COAST and the ride classes they affect. Re-census the reported 27/86 non-boarding rides on the current tree rather than assuming all are eligibility bugs.
-* Define the track/vehicle/path representation, construction constraints, movement/boarding lifecycle, and persistence tests before implementing it. Keep any behavior extending a retail stub explicitly identified as an extension, not reverse-engineered fact.
-* Build persistent visitor needs/economy/happiness/queue-choice state and park-management services from validated game data where available. Distinguish original algorithms from port policy.
-* Add save/load only with an explicit state schema, stable identities, round-trip tests, versioning and corruption handling; confirm existing support before designing a replacement.
-
-Exit gate: the selected playable feature set is functional and reproducible; faithful unsupported cases and optional extensions are clearly separated. No invented implementation is reported as console parity.
-
-Review point within M5: CP1 bounds each feature slice and labels extensions; CP5 reviews the implemented player flow before expanding the subsystem.
-
-## M6 — UI, advisor, text and accessibility
-
-* Integrate original font/Kanji/text resources where appropriate; decoded tables require actual rendering/lookup consumers and non-Latin test cases.
-* Connect advisor rules to game-state producers, scheduling, speech/subtitles and lip transitions. The existing sound-browser catalogue is not automatic park advice.
-* Implement remaining menu/interaction paths from shipped layout evidence where available. Exercise keyboard/mouse focus, scaling, cancellation and informative error states.
-* Verify every visible action has a real path (including launcher Retry/update failures), without silently launching stale binaries after failed builds.
-
-Exit gate: controls and feedback form a usable workflow instead of disconnected asset demos, and representative locale/advisor/error-path scenarios are demonstrated.
-
-Review point within M6: CP5 requires real producers/consumers and usable interaction, not just successful asset browsing; defer unknown semantics explicitly.
-
-## M7 — Release and long-run validation
-
-* Build from a clean checkout on supported target platforms; record exact toolchain/engine requirements and dependency/license notices.
-* Exercise launcher install/update/relaunch, offline and failure recovery, user-selected disc paths, and no bundled proprietary data.
-* Run cross-world regression gates, long simulations, repeated load/unload, resource-leak checks and fixed-tick comparisons. Preserve known retail failures as evidence.
-* Produce a release/handoff checklist with feature status, evidence links/commands, known limitations and the exact revision tested. Do not label an untested platform supported.
-
-Exit gate: documented installation and gameplay workflows work on the declared targets, outstanding exceptions are explicit, and another developer can reproduce all release evidence.
-
-Review point after M7: CP6 checks exact tested revisions/platforms and outstanding manual gates before any release claim.
-
-## Tooling already available
-
-* Managed data/runtime: `core/TPW.PS2.Data` (.NET 8), separate from the Godot `game/` consumer.
-* Audits: `tools/TPW.PS2.*Audit`, plus `TPW.PS2.Check`, MP2/reference tooling, and negative-control `teeth.sh` checks. Read each tool's current CLI before running it.
-* Scene audits: `game/tests/*Audit.tscn` for integration rather than decoder-only checks.
-* Render harness: viewer command-line selectors and screenshot/film switches. A software GL/Xvfb run can exercise actual rendering on the Linux worker; it is not a substitute for declaring human visual inspection.
-* Reverse-engineering evidence: `findings/`, disc/ELF readers and disassembly helpers. Read the owner's disc in place; never commit it or extracted payloads.
-
-## Autonomous continuation and handoff
-
-At each major milestone: perform CP2 and any triggered priority review, update `progress.md`, commit explicit paths, fetch/reconcile, rerun affected gates, announce the push scope, and push without force. Continue with the next bounded package chosen by the latest checkpoint rather than waiting for approval already granted. A later checkpoint supersedes an older next-action note. If another agent owns the relevant file or evidence is unavailable, record that dependency and choose bounded work that advances an agreed outcome—not independent tooling merely because its files are free.
-
-If interrupted or out of model usage, the last pushed `progress.md` is the handoff: it must identify active branch/revision, completed changes, exact tests, known reds, blockers, and the next concrete action. Local-only work and unverified captures must be marked as such.
+Updated 2026-09-25 by tinyclaw after VoX's review round (1 fable + 3 Opus reviewers, reconciled below).
+
+**Where the port is.** On main, all 8 parks load. Rides run their scripts. Visitors spawn from the bus
+and queue, ride, buy, use toilets and leave. Sound, particles, weather and water work. Cow tools is
+active on UI and presentation.
+
+The research branch `tinyclaw/native-entrance-flow` (pushed as `origin/astraclaw/native-entrance-flow`)
+reproduces the console's guest-entrance lifecycle behind opt-in flags. That covers the booth queues,
+the entrance fee, rejected guests walking back to the bus, and guests waiting for their animation
+before they walk. None of it has reached default play yet.
+
+The next work moves that branch onto main in slices, then turns to what players see.
+
+Execution log and handoff: [progress.md](progress.md). The checkpoint history that used to live here
+(2026-09-23..24) is archived verbatim at the end of progress.md.
+
+## 1. What "complete" means
+
+Deliver a reproducibly buildable, usable PS2-derived PC port which reads a user-supplied disc in place,
+exposes the shipped worlds/assets, and runs the supported park/ride/visitor/audio/UI systems with
+documented provenance. An asset reader existing is not sufficient: its important consumers, lifecycle,
+controls, failure behavior and integration must be exercised.
+
+There are three kinds of outcome. Never conflate them silently:
+
+* **Faithful baseline.** Reproduce supported retail behavior and preserve evidence of retail defects
+  and stubs. An unavailable asset, or a handler that returns zero in the executable, is not permission
+  to invent data and call it decoded.
+* **Labelled adapter.** A port mechanism that stands in for a native one. It may ship as the default
+  only when all four of these hold:
+  - it names its native counterpart;
+  - its divergence from native is bounded and listed;
+  - it cannot lose, duplicate or strand a guest;
+  - the result is strictly closer to native than what it replaces.
+  The labels are adapters such as a BFS in place of the A* planner, or NewlibRand in place of the
+  shared console random stream. A labelled adapter is not a release blocker just because it is not
+  parity.
+* **Explicit extension.** Behavior absent from or stubbed in this build (for example, playable track
+  systems) that needs an independently designed implementation. Document it separately from measured
+  PS2 parity. Unsupported faithful behavior stays visible until evidence or an identified extension
+  supplies it.
+
+Completion requires:
+- reproducible reader and runtime gates;
+- a usable launcher and error paths;
+- stable state and lifecycle handling;
+- documented platform requirements;
+- manual rendered smoke tests;
+- a handoff ledger listing the remaining evidence gaps.
+
+No raw disc, extracted game assets, credentials or proprietary source goes into Git.
+
+## 2. Working agreement and evidence standards
+
+**Branches and commits**
+* Work in isolated worktrees. The reference is **origin/main**. The shared checkout `~/tpwps2` was 251
+  commits behind it on 2026-09-25, so never read main's state from it.
+* Fetch before each package and inspect the actual diff against origin/main. Integrate upstream without
+  replacing another agent's work. Push normally, never force; a rejected push means reconcile and
+  retest.
+* Inspect status immediately before committing and stage explicit paths. Preserve unknown or
+  uncommitted work.
+
+**Ownership** (dated 2026-09-25; confirm with cow tools at each package)
+
+| Owner | Area |
+|---|---|
+| cow tools | The body of Viewer.cs (build/placement UI, gait, HUD); money, economy and ParkFinances; ParkVisitors, VisitorNeeds and GuestWalk; audio; particles; gates and protected paths |
+| tinyclaw (astraclaw after Oct 1) | The native entrance research: `core/TPW.PS2.Data/Native*.cs`, the `Viewer.Entrance.cs` and `Viewer.NativeAnimation.cs` partials, `Viewer.Bus.cs`, the tools runners, and findings |
+
+* Touch cow's files only through partial-class seams or with its recorded sign-off.
+
+**Evidence**
+* Keep the HALLOW Thrill Grill and SPACE Moon Buggies retail reds visible. Do not weaken assertions,
+  invent records or broaden expected failures to get green output.
+* READ, CANDIDATE and UNKNOWN stay distinct. Inventory, consumer evidence, tests and live integration
+  are separate measures.
+* **A multi-case gate must show, from each case's own output, what that case actually loaded.**
+  Loop-variable names and constant check counts are not coverage. On 2026-09-25 a runner's
+  `--map=WORLD 2` matched nothing, the viewer silently loaded FANTASY-1, and four published
+  "eight-park" claims were false for a day.
+* A gate is cited only for changes it can observe.
+* Landing evidence comes from a committed runner on a committed tree, never a `/tmp`-only script or a
+  dirty build.
+* Generated captures are not inspected captures. Say which one you have.
+* Every new check family gets teeth: plausible wrong implementations must fail **by name**.
+
+## 3. Now
+
+**Package:** the readiness join has landed on the research branch (see the CP2 entry in progress.md).
+The package in progress is the evidence infrastructure, queue item 2.
+
+**Owner:** tinyclaw. Cow tools signs off the Viewer.cs map-matching change.
+
+**Stopping condition:** the queue item 2 conditions.
+
+**Next review:** CP2 when item 2 lands. Replace this section in place then; do not append.
+
+## 4. Priority queue
+
+Each item lists its stopping condition. The queue is ordered but not rigid: a report from strawberry
+preempts it, and a CP4 contradiction reorders it. Human testing is collected at the end (owner request).
+
+1. **Land the readiness package and correct the record.** DONE 2026-09-25. The 24/24 matrix is in
+   /tmp/tpw-cp1-final. The false park-2 claims are annotated in place.
+2. **Evidence infrastructure.**
+   - Commit `tools/viewer_matrix.py` with unit tests. Its per-case requirements are:
+     - PASS matched by an exact scene-prefix regex (a BYPASS witness must not count);
+     - a minimum check count;
+     - a fresh output directory;
+     - a loaded-map assertion read from a canonical `[map] loaded` log line.
+   - An unmatched or ambiguous `--map` exits non-zero. This is Viewer.cs, so it needs cow's sign-off.
+   - ParkSimAudit takes a terrain argument, and the native families also run on terrain_2.
+   - Add `REQUIRED_CHECKS` entries for logical animation.
+   - `audit_matrix.py` refuses to call a dirty-tree run landing evidence.
+   - Opt-in flags are read once at `_Ready`, not per tick or per frame.
+   - The bus boundary witness line prints only when the native flow is off.
+   - The readiness film is re-shot with the UI hidden and the guest framed, then inspected.
+   - *Stop when:* two regression tests fail with the fixes reverted (the old `--map=JUNGLE 2`, and a
+     log whose only PASS is BYPASS), the 8-park viewer matrix passes from one committed command, and
+     the film is inspected.
+3. **Plan and handoff hygiene.** This rewrite; progress.md keeps a prose HANDOFF block at its top.
+   - Send strawberry the scope matrix (section 7) once. Do not wait for the answer.
+   - *Stop when:* one Now section exists, every blocker is a gate, a trigger or won't-fix, and the
+     question has been sent.
+4. **Slice A to main: the standalone native core.**
+   - The files: NativeLogicalAnimation, NativeGuestMotion, NativeRoutePool, NativeRouteOutput,
+     NativeGuestRoute, NativeActivationSequence and NativeEntranceAcceptance.
+   - Their ParkSimAudit categories.
+   - No behavior change.
+   - *Stop when:* main's audit matrix shows only the two retail reds, the runtime scenes pass, and cow
+     tools acknowledges the dispatcher is available.
+5. **Guest animation for every guest on main.** Joint work; cow owns the gait.
+   - Run hold-last-pose, the weighted logical 11 and the 2106E8 idle picker over all ordinary guests.
+     This answers strawberry's "missing idle animations" (2026-09-24).
+   - The native rule holds about 93% of standing guests in their last pose, so it is a product
+     choice. Film native against the current `id % 6` idles side by side.
+   - *Stop when:* strawberry has picked one and it is the default, with teeth.
+6. **Slices B and C to main, flags off.**
+   - B is the GuestWalk and ParkVisitors seams plus NativeEntranceFlow, reviewed by cow.
+   - C is the Viewer partials and hooks, the Bus hooks, and the smokes, with an internal test seam so
+     that about 30 reflected private members stop being a silent breakage risk.
+   - *Stop when:* main's default gates are unchanged and the opt-in 24-scene matrix passes on main.
+7. **Ordinary departures through state 26** (the real content of "pressure population").
+   - 20C930 routes unhappy or broke guests (happiness < 5 or cash < 100) through 26 → 14 → 2E → 30 →
+     9, so they walk out through the booths to the bus instead of vanishing at the gate. WentHome counts
+     them and the sticky tally includes them.
+   - This needs a Leaving handoff API in ParkVisitors, which is cow's.
+   - *Stop when:* a Viewer smoke shows it, and mutations for "vanish at gate" and "skip phase gating"
+     fail.
+8. **No stranded guests.** A handback adapter for the state 0 and state 5 holds.
+   - *Stop when:* a disruption smoke (bulldoze booth→bus mid-departure, delete the staging path) ends
+     every guest as WentHome or back in ordinary park state within a fixed tick budget, with no lease
+     held at quiescence.
+9. **Corridor passability check.** Read 18C928's kind arms (jump table 364690) for the tile kinds in
+   the entrance corridor and request flags 0x21, 0x23 and 1, and compare them with ParkPaths.Open as
+   the BFS adapter uses it.
+   - *Stop when:* a findings table exists. A mismatch opens the planner package (section 6); a match
+     records BFS as an equivalent labelled adapter for the corridor.
+10. **Busy-park soak.** All 8 parks with the flow on, for a fixed number of ticks each.
+    - *Stop when:* all of these hold: conservation (births = WentHome + discarded + live), the pool
+      reads 1000 free at quiescence, the group flip (≥ 11) and the 30-guest veto each occur at least
+      once, and there are no errors or leaks.
+11. **Default flip (CP5 with strawberry).**
+    - Add a `--legacy-entrance` escape. Film legacy against native on the same park.
+    - List the residual adapters. Get cow's sign-off for economy, gait and the gate area.
+    - This also brings entrance fees into default play: main currently admits every guest free.
+    - *Stop when:* strawberry decides. A no is recorded with its trigger.
+12. **Scope items, in strawberry's order** (section 7): the M5 census of non-boarding rides first
+    (read-only), then each in-scope feature (save/load, coasters and track rides, staff, research,
+    advisor). Each gets a CP1 naming the player action it enables.
+    - *Stop, per feature:* a default-path smoke in 8 parks, plus a demo strawberry has seen.
+13. **Release.**
+    - CI: build plus the disc-free tests on every push. Main has none, and the launcher rebuilds main
+      for the owner.
+    - Rebuild from a clean checkout at the candidate.
+    - The human release checklist.
+    - *Stop when:* section 8 holds.
+
+## 5. Milestone status
+
+| Milestone | State | Evidence | What remains |
+|---|---|---|---|
+| M0 baseline and ledger | done | progress.md "CP0" entries; audit_matrix in tools | nothing |
+| M1 validation and rendered smoke | partial | audit_matrix.py, runtime_audit.py (63 Python tests) | the committed viewer matrix; exact `--map` (queue 2) |
+| M2 reader completeness | open by design | findings/format-inventory.md | only when a consumer needs it (CP1) |
+| M3 park and visitor lifecycle | mostly done on main | availability, removal, replay, departure recovery | fixed-tick replay across the native flow (queue 8 and 10) |
+| M4 effects and audio | done for current scope | the audio-lifecycle and particle findings | listening and visual sign-off are human |
+| M5 gameplay and track boundary | not started | "M5" appears nowhere in progress.md | the scope matrix, then queue 12 |
+| M6 UI, advisor and text | partial on main (cow) | the shop-info UI, the laptop screens | the fee UI and other controls go to strawberry as scope |
+| M7 release | stale | clean checkout at 6004151 only | CI and the queue 13 checklist |
+| M8 native guest lifecycle (new) | research branch | progress.md 2148 onward; the native-* findings | queue 4–11, and section 6 |
+
+## 6. Native guest lifecycle: blocker disposition
+
+| Item | State | Gate for default? | If not, trigger |
+|---|---|---|---|
+| Readiness (191E10 over 2AAD48) | done, opt-in | yes, already met | n/a |
+| Ordinary departures via 26 (pressure population) | open | **yes** (queue 7) | n/a |
+| No stranded guests (state 0/5 holds) | open | **yes**, as an adapter (queue 8) | n/a |
+| Native A* planner 18C4B8–18DC74 (A*, Manhattan heuristic, random 1-of-4 direction order, two-ended open-list insert, ~99 nodes per call) | decoded in part; BFS adapter in use | no | any of: the queue 9 check finds a mismatch; a routing defect is reproduced at the entrance; ordinary park walkers move onto native routes. Planner findings first, and it needs a native tile-kind producer the port does not have |
+| Activation-serial origin | unknowable statically | no | **won't fix**: a labelled adapter (≤ 64-tick phase offset) |
+| RNG stream and global order | generator readable, order not | no | **won't fix**: NewlibRand / guest stream, labelled |
+| Guard staging (second family, 3952AC) | producer readable | no | staff get ported |
+| Fee overrides | data rule read: 150 for every ordinary park | no | the UI is a scope question (section 7). There is no save/load, so no save override |
+| "Idle ordering" | undefined | no | dropped unless someone defines it with an address |
+
+## 7. Scope matrix (for strawberry: in, out or extension)
+
+The rows: save/load; coasters and track rides; staff (handymen, mechanics, guards); research;
+advisor producers; an entrance-fee control; the master job/bug tracker strawberry asked about on
+2026-09-20. The scope matrix itself can seed that tracker.
+
+Until strawberry answers, rows stay "pending". Agent-done treats pending rows as open human decisions,
+not as unfinished agent work.
+
+## 8. Definition of done
+
+**Agent-done** is where "work through it until done" terminates. All of these must hold at one
+origin/main revision:
+1. This plan has one Now section, and every blocker in section 6 is a met gate, a trigger or a
+   won't-fix.
+2. `git log origin/main..tinyclaw/native-entrance-flow` is empty, or the branch is recorded as
+   archived.
+3. The native flow is the default with `--legacy-entrance` working, or strawberry's "not default" is
+   recorded with its trigger. The adapter list printed at startup matches one findings list word for
+   word.
+4. From a clean checkout, all of these pass:
+   - every project builds with 0 errors;
+   - `python3 -m unittest discover -s tools -p 'test_*.py'`;
+   - `tools/audit_matrix.py` exits 2 with only the two retail reds, every REQUIRED_CHECKS minimum
+     met (new families included), and the terrain_2 native families included;
+   - `tools/runtime_audit.py` exits 0;
+   - `tools/viewer_matrix.py` exits 0 over 8 parks, with loaded == requested for every case;
+   - the soak passes.
+5. Every "N parks/worlds" claim cites a manifest that records what loaded, and `--map` fails loudly.
+6. Cow's sign-off is recorded for every file of theirs that the branch touched.
+7. CI is green at that revision.
+8. Every scope-matrix row is done with evidence, or out/extension by strawberry's recorded decision, or
+   pending on a human, and listed as such in the handoff.
+9. The progress.md handoff, in prose, names the revision, gates, reds, adapters and open human
+   decisions, and `git status` is clean.
+
+**Release-done** is for the humans: findings/release-checklist.md "Still required", executed on the
+target platform through the launcher with the revision recorded. Each failure is fixed or waived by
+name by strawberry.
+
+## 9. Checkpoint protocol (slimmed)
+
+* **CP1, bound a package:** five lines in the Now section (scope, owner, gate, stopping condition,
+  next trigger). Name the player-visible change, or say that there is none.
+* **CP2, review the result:** does a test reject a plausible wrong implementation? Teeth fail by name.
+  This is the practice that actually caught defects (the period-16 mutant, the constant-stub retention
+  mutant, the `--map` fallback).
+* **CP3, stop audit expansion:** two packages in a row with no change visible in default play means
+  stop and decide, recorded in Now.
+* **CP4, contradictions:** correct READ/CANDIDATE/UNKNOWN openly and preserve the failed evidence.
+* **CP5, integration value:** the player flow is reviewed with strawberry before a default changes.
+* **CP6, release readiness:** at the end, or after a toolchain change.
+
+A checkpoint replaces the Now section and adds one progress.md entry. The dated checkpoint sections do
+not come back into this file.
+
+Keep strawberry informed of outcomes and coordinate directly with cow tools. Escalate real product-scope
+choices (the section 7 rows, default flips) to the humans instead of settling them autonomously.
+Existing pause or stop instructions take priority.
+
+## 10. Tooling and handoff
+
+* **Managed data and runtime:** `core/TPW.PS2.Data` (.NET 8), separate from the Godot `game/` consumer.
+* **Audits:** `tools/TPW.PS2.*Audit`, `tools/audit_matrix.py` (the core matrix), `tools/runtime_audit.py`
+  (headless scenes) and `tools/viewer_matrix.py` (rendered normal-startup smokes, from queue 2).
+  Read each tool's CLI before running it.
+* **Viewer map selection:** `--map="<WORLD>  terrain_<n>"`. There are TWO spaces, and the argument
+  matches the map label.
+* **Reverse engineering:** `tools/r5900dis.py`, the findings, and the disc/ELF readers. Read the disc
+  in place and never commit it or anything extracted from it.
+* **Handoff:** the last pushed progress.md HANDOFF block names the branch, revision, gates, reds,
+  blockers and next action. Local-only work and uninspected captures are marked as such.
