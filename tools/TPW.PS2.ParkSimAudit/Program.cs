@@ -41,7 +41,7 @@ if (args.Contains("--native-route-consumer-only"))
 if (args.Contains("--logical-animation-only"))
 {
     NativeLogicalAnimationChecks.Run(disc,Check);
-    Console.WriteLine(bad==0 ? "PASS native logical-animation table and control block (viewer playback/producers NOT exercised)" : $"FAIL: {bad}");
+    Console.WriteLine(bad==0 ? "PASS native logical-animation table, control block, playback and idle picker (viewer integration: NativeAnimationReadinessSmoke)" : $"FAIL: {bad}");
     return bad==0?0:1;
 }
 if (args.Contains("--guest-motion-only"))

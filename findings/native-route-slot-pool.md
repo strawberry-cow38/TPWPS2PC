@@ -94,7 +94,7 @@ service invocation; zero cleans searches, notifies2 and finishes. It is not an
 output-slot count or a demonstrated time duration.
 
 18D7F8 skips work while2D7068!=0. Finished requests decrement active count and
-return to free list. Its timer195E28()+0x64 units remain unknown (0x64=100).
+return to free list. Its timer195E28()+0x64 units remain unknown (0x64=100). **[2026-09-25: 195E28 is a CALL COUNTER, not a clock: `lw [2E2934]; +1; sw; return old`. Its only 4 callers are inside the planner (18CFF4, 18D128, 18D824, 18D8CC), and 2E2934 has no other writer. In 18CF30 the deadline is start+100 and the counter ticks once per expanded node, so each service call is capped at about 99 node expansions, deterministically.]**
 18D1D0 cleans request+40 and four search lists starting+54, returning search-node
 indices; it does not change output availability or free the actor's output chain.
 

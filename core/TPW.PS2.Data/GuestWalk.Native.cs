@@ -9,6 +9,10 @@ public sealed record NativeMotionInputs(Func<sbyte> Speed, Func<int> Delta, Func
     /// <summary>False for a controller which orders its own group/active passes.
     /// Its owner must call StepOwnedNative once in the appropriate pass.</summary>
     public bool AutomaticStep { get; init; } = true;
+    /// <summary>Called when the cursor takes 191D78's advance (a present slot at state 2).
+    /// Natively that call also requests logical 13 on the guest (191D78 with a1=0 from 20D628).
+    /// Optional and observational: it must not step, assign or release the route.</summary>
+    public Action SlotAdvanced { get; init; }
 }
 
 /// <summary>A read-only observation, not access to the live cursor's Step method.</summary>
@@ -160,7 +164,9 @@ public sealed partial class GuestWalk
             ready = lease.Inputs.AnimationReady();
             if (ready) { speed = lease.Inputs.Speed(); delta = lease.Inputs.Delta(); }
         }
+        bool advancing = !cursor.Finished && !cursor.Failed && cursor.ExecutionState == 2 && cursor.SlotIndex >= 0;
         cursor.Step(speed, delta, Paths.Field.Width, Paths.Field.Height, ready);
+        if (advancing) lease.Inputs.SlotAdvanced?.Invoke();
         var cell = NativeCell(cursor.Position);
         guest.Steps += Math.Abs(cell.X - guest.Cell.X) + Math.Abs(cell.Z - guest.Cell.Z);
         guest.Cell = cell; guest.Progress = 0; guest.RouteIndex = cursor.SlotIndex;

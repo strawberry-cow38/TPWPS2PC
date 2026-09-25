@@ -241,3 +241,100 @@ call sites share it. 10E800 divides by 400 or 100 with signed `div` on a non-neg
 - The viewer consumer. It should drive this control at the actual playback boundaries of the
   guest's drawn record, gated as an explicit opt-in, and leave the default gait unchanged until
   that consumer is filmed.
+
+## The consumer: who requests what on the entrance path, and the viewer join
+
+This section adds to the one above.
+
+### Section 0 is a walk
+
+Section 0 is a baked-vertex walk, not an idle. 1A7E18 plays each frame by writing int16 xyz for
+every vertex group straight into the mesh, with no interpolation. Over the lowest third of the
+leg vertices, split left and right:
+
+| file | L/R z correlation | swing (left / right) | frames |
+|---|---:|---|---:|
+| Boy1a | −0.96 | 7080 / 6219 | 16 |
+| JungleKid | −0.97 | 5956 / 5549 | 16 |
+
+The head bobs about 1100 units, twice per cycle. That is the same size as the skeletal
+section-1 walk. Girl1a's left/right split came out lopsided on her legs mesh; her body mesh reads
+−0.94, so the girls are *likely* walks, not measured ones. cow tools confirmed this independently
+from the track formats: section 0 has 2–3 vertex tracks and section 1 has 22–25 bone tracks.
+
+**9 and 13 are the two walk forms**, which is why 191E10 accepts either.
+
+### Guest execution state is N+37, dispatched by 1920D0
+
+1920D0 dispatches on B+2F = N+37 through the table at 364840:
+
+| state | vtable slot | function |
+|---:|---|---|
+| 1 | +154 | 1920B8 |
+| 2 | +144 | 20D628 (arrival or advance, called with a1=0) |
+| 3 | +14C | 191E98 (move, including readiness) |
+| 5 | +15C | 1913B8 |
+| **0B** | **+164** | **2106E8, the idle picker** |
+
+States above 0B are behaviour states and go through 12BEB0. The entrance lifecycle's "0B awaits
+the route result" is this 0B.
+
+**2106E8**, reading its branches:
+
+- If request 11 and fewer than 120 updates have passed since the N+2C stamp: keep it.
+- If request 11 and 120 or more have passed: pick.
+- Any other request: pick when 1448E0(100) < 10.
+- A pick is 2EEC18[1448E0(4)×4], which gives 14, 5, 6 or 13.
+
+`FUN_001c4930` is the update counter.
+
+### Entrance-path producers
+
+- **Activation** 20BCD0 sets 11 unconditionally (20BD24..34) and stamps N+2C from 1C4930
+  (20BD38).
+- **Every route-slot advance** (20D628 with a slot present → 191D78 with a1=0) sets 13.
+- **The idle picker** runs while the guest is in state 0B.
+- The completion handlers for entrance modes 11, 13, 15 and 16 (20DB8C, 20DC1C, 20DC28, 20DC70)
+  write no request.
+
+### The push to the model
+
+The guest's vtable slot +40/+44 is 211D28 → 192438. If B+2C bit 0 is set, it calls 1921D0(B, 0).
+192C10 sets and clears that bit, which marks the guest as shown (it is not a movement dirty
+flag). A shown guest therefore pushes its request to the model on every update, and readiness
+cannot deadlock for lack of a push.
+
+### Hold-last-pose
+
+1F2E70 passes `a1 != 0` to 1ACFC0 as the apply-pose flag.
+
+### Not found
+
+- The per-frame order and cadence of guest update, visual sync and model update. The pairs of
+  vtable +3C/+44 calls I found belong to other classes.
+- The producer of the shown bit for bus-born guests.
+
+### The viewer join
+
+`--native-guest-animation` works together with `--experimental-native-entrance`. The code is in
+`game/Viewer.NativeAnimation.cs`, and cow tools approved the hook, which sits after `Gait()`'s
+seated guard.
+
+- 191E10 replaces the entrance `ready=true`.
+- The requests come from the three producers above.
+- One control and one playback run per flow-owned guest. The durations come from the guest's OWN
+  .aps.
+- The dispatcher's (section, variant) is what gets drawn. Section 0 is drawn as section 1 (see
+  above). The gait caches are cleared on handback.
+- Adapters, all labelled in the file:
+  - one model update per 40 ms tick, after the steps;
+  - every owned guest is pushed;
+  - NewlibRand;
+  - the update counter is the park tick;
+  - the picker uses the flow's 1448E0 stream.
+
+**NativeAnimationReadinessSmoke on JUNGLE park 1:** 12 real bus guests, 7473 checks. One guest
+waited 33 ticks (1320 ms) on logical 11's section-6 record (40 frames = 1333 ms), and every one
+of those ticks held its position. After 13 committed it moved. No guest deadlocked. Every drawn
+record matched the dispatcher's section and duration. The core checks derive the same wait as 34
+updates.

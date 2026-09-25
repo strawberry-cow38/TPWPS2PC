@@ -4005,6 +4005,9 @@ public partial class Viewer : Node3D
     {
         if (!_drawn.TryGetValue(id, out var d) || d.Drawn?.Root == null || !IsInstanceValid(d.Drawn.Root)) return;
         if (!_walkRec.TryGetValue(id, out var w) || _posed.Contains(id)) return;
+        // Opt-in (--native-guest-animation, entrance-owned guests only): the dispatcher's record.
+        // After the two guards so a seated guest is never taken (Viewer.NativeAnimation.cs).
+        if (NativeDrawnRecord(id, alpha)) return;
         // ⭐ ONE RECORD PER STATE, and standing is a state with a record of its own now rather
         // than the absence of one.
         if (!walking) Fidget(id, ref w);

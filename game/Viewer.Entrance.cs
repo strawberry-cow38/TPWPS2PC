@@ -59,7 +59,7 @@ public partial class Viewer
             _ => new Point(unchecked((short)(stage.X + _guestRng.Next(256))), stage.Z),
             queue, RequestEntranceRoute, PumpEntranceRoutes,
             _ => true, // no extra admission gate; actual allocation is GuestWalk.NativeRoutes (1000 shared slots)
-            _ => true, // explicit model-readiness bypass, not a decoded ready-state join
+            NativeEntranceReady, // 191E10 under --native-guest-animation; otherwise the documented bypass
             () => 0x4000,
             g => NativeEntranceAcceptance.TryCharge(_entranceVisitors.Needs, g.Id, _sim.Finances,
                 () => _experimentalEntranceFee, EntranceValueSum, n => _guestRng.Next(n),
@@ -77,16 +77,21 @@ public partial class Viewer
                 // Flags reach the adapter but native 0x21/0x23 search policy is not yet reproduced by BFS.
                 return RequestEntranceRoute(request.Token, request.Guest, request.Mode, request.From, request.Target);
             },
-            recovery: (g, mode) => GD.Print($"[entrance.experimental] guest {g.Id}: mode{mode} native failure recovery state reached; ordinary recovery remains unported, owner retained")));
+            recovery: (g, mode) => GD.Print($"[entrance.experimental] guest {g.Id}: mode{mode} native failure recovery state reached; ordinary recovery remains unported, owner retained"),
+            slotAdvanced: NativeSlotAdvanced));
 
         _entrancePriorTick = _guests.BeforeStep;
         _entranceTickHook = tick => {
             _entrancePriorTick?.Invoke(tick);
             _busTraffic = _entranceFlow.Tick(tick, _nativeBus.Controller.State, _busTraffic);
+            TickNativeAnimations();
         };
         _guests.BeforeStep = _entranceTickHook;
         GD.Print($"[entrance.experimental] OPT-IN controller: actual bus identities -> two incoming groups -> fee -> normal handoff. point1={_busCatalogue.StagingPoint} point2={_busCatalogue.IncomingQueuePoint}");
-        GD.Print("[entrance.experimental] NON-PARITY ADAPTERS: deferred-next-tick public BFS/search resources, readiness bypass; ordinary constructor fee seed only; guard staging absent; represented-activation phase only; ordinary departure/recovery and full native pressure population unported. Not release-ready.");
+        GD.Print(NativeAnimationActive
+            ? "[entrance.experimental] native guest animation: 191E10 readiness over the 2AAD48 dispatcher; adapters: one model update per park tick after steps, every owned guest pushed, NewlibRand stream, section 0 drawn as the section-1 walk"
+            : "[entrance.experimental] readiness BYPASS (pass --native-guest-animation for the dispatcher join)");
+        GD.Print("[entrance.experimental] NON-PARITY ADAPTERS: deferred-next-tick public BFS/search resources; ordinary constructor fee seed only; guard staging absent; represented-activation phase only; ordinary departure/recovery and full native pressure population unported. Not release-ready.");
     }
 
     bool RequestEntranceRoute(ulong token, Guest guest, int mode, Point from, Point target)
@@ -150,6 +155,7 @@ public partial class Viewer
         if (_entranceWalk != null && _entranceWalk.BeforeStep == _entranceTickHook)
             _entranceWalk.BeforeStep = _entrancePriorTick;
         _entranceFlow?.Clear((_, _) => { }, (g, owner) => _entranceVisitors.DiscardEntranceGuest(g, owner));
+        ResetNativeAnimations();
         _entranceResults.Clear();
         _entranceRequestFlags.Clear();
         _entranceFlow = null; _entranceWalk = null; _entranceVisitors = null;

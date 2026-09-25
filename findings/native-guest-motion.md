@@ -108,7 +108,7 @@ be called a native walker while those lifecycle differences remain.
 151928 calls18D7F8 INSIDE the per-update loop, before152A18's entrance-list pass,
 then the2EEB9C reset and14BE60's active guests/bus. Requests submitted by that
 substep's guest pass are therefore not handled by its already-finished pump.
-18D7F8 operates under a195E28()+100 budget; after processing its first task it
+18D7F8 operates under a195E28()+100 budget; after processing its first task it **[2026-09-25: 195E28 is a CALL COUNTER, not a clock: `lw [2E2934]; +1; sw; return old`. Its only 4 callers are inside the planner (18CFF4, 18D128, 18D824, 18D8CC), and 2E2934 has no other writer. In 18CF30 the deadline is start+100 and the counter ticks once per expanded node, so each service call is capped at about 99 node expansions, deterministically.]**
 selects further tasks by task+34==1, and exits when the timer exceeds its deadline.
 The units of that budget and full route-search/pool semantics are not assigned here.
 A synchronous BFS return must not be mistaken for this request/completion protocol.

@@ -117,6 +117,41 @@ static class NativeLogicalAnimationChecks
         idle.Request(21,0,Cut);
         Check(Throws(()=>idle.Advance(()=>100)),"pending 21 from a flag-4 idle hits the uninitialized-variant path: refused, not invented");
 
+        // ---- idle picks (2106E8 reads 2EEC18 + 4*i, bounded by 1448E0(4)) ----
+        Check(table.IdleStates.SequenceEqual(new[]{14,5,6,13}),$"2106E8 picks {string.Join(",",table.IdleStates)} = 14,5,6,13");
+        int noDraw(int n) => throw new InvalidOperationException("2106E8 drew where it must return first");
+        var p=new NativeGuestAnimation(table,(s2,v2)=>16){Requested=11,Stamp=0};
+        p.IdlePick(120,noDraw,table.IdleStates);
+        Check((p.Requested&0x1f)==11,"request 11 is held until the stamp is 120 updates old, without a draw");
+        var picks=new Queue<int>(new[]{1});
+        p.IdlePick(121,n=>n==4?picks.Dequeue():throw new InvalidOperationException("11 past 120 must pick directly"),table.IdleStates);
+        Check((p.Requested&0x1f)==5 && picks.Count==0,"past 120 updates, 11 picks at once with one rand(4): index 1 -> 5");
+        p.Requested=0x40|13;
+        p.IdlePick(50,n=>n==100?10:throw new InvalidOperationException(),table.IdleStates);
+        Check(p.Requested==(0x40|13),"a non-11 request survives rand(100) = 10");
+        var two=new Queue<int>(new[]{9,3});
+        p.IdlePick(50,n=>two.Dequeue(),table.IdleStates);
+        Check(p.Requested==(0x40|13) && two.Count==0,"rand(100) = 9 re-picks (index 3 -> 13), keeping the upper bits");
+
+        // ---- playback beside the control (1ACFC0) with kid-shaped durations ----
+        int? Kid(int s2,int v2) => (s2,v2) switch { (0,0)=>16, (1,0)=>16, (2,<6)=>new[]{16,16,32,16,32,32}[v2], (6,0)=>40, _=>null };
+        var g=new NativeGuestAnimation(table,Kid){Requested=11};
+        g.Push(); g.Update(40,()=>0);
+        Check(g.Control.Current==11 && g.Slot==F && g.Held==null,"11 commits at the first update; draw 0 is inactive, nothing to hold");
+        g.Update(40,()=>99);
+        Check(g.Slot==6 && g.Frame==0f && g.Duration==40f,"a later re-roll of 99 starts section 6 (40 frames) at frame 0");
+        g.Requested=13; g.Push();
+        int waited=0; while(!g.PermitsMovement && waited<100){ g.Update(40,never); waited++; }
+        Check(waited==34,$"13 waits out the 40-frame record at 1.2 frames per 40 ms update: {waited} updates (expect 34)");
+        Check(g.Slot==0 && Math.Abs(g.Frame-0.8f)<1e-3,$"commit carries the overshoot: section 0 from frame {g.Frame:F2} (expect 0.80)");
+        g.Push(2);
+        Check(g.Control.Pending==0xff && g.Frame!=g.Duration,"flag 2 with request equal to current: no cut");
+        g.Requested=12; g.Push(2);
+        Check(g.Frame==g.Duration && g.Control.Pending==12,"flag 2 cuts: the record reads as complete");
+        g.Update(40,never);
+        Check(g.Slot==F && g.Held==(0,0) && g.Frame==16f && g.Control.Current==12,
+            "logical 12's section 4 is absent from this model: the old record's final pose is HELD, slot F");
+
         // ---- 191E10 predicate ----
         Check(NativeLogicalAnimationControl.MovementPermitted(13,false,0xff),"no visual object permits motion");
         Check(!NativeLogicalAnimationControl.MovementPermitted(13,true,0xff),"visual with handle 0 reads FF and blocks (distinct from no visual)");

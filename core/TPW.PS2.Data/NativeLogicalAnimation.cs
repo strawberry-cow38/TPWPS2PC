@@ -27,9 +27,11 @@ public readonly record struct NativeAnimationDescriptor(
 /// </summary>
 public sealed class NativeLogicalAnimationTable
 {
-    public const uint TableAddress = 0x2aad48, FirstDescriptor = 0x2aa928;
-    public const int LogicalCount = 22;
+    public const uint TableAddress = 0x2aad48, FirstDescriptor = 0x2aa928, IdleTable = 0x2eec18;
+    public const int LogicalCount = 22, IdleCount = 4;
     readonly NativeAnimationDescriptor[][] rows;
+    /// <summary>2106E8's picks: bytes at 2EEC18 + 4*i, bounded by its own 1448E0(4) at 210758.</summary>
+    public IReadOnlyList<int> IdleStates { get; }
 
     public IReadOnlyList<NativeAnimationDescriptor> Variants(int logical) =>
         (uint)logical < (uint)rows.Length ? Array.AsReadOnly(rows[logical])
@@ -82,6 +84,12 @@ public sealed class NativeLogicalAnimationTable
         }
         if (expected != TableAddress)
             throw new InvalidDataException($"descriptors end at 0x{expected:x}, not at the table 0x{TableAddress:x}");
+        var idle = new int[IdleCount];
+        int at0 = Offset(IdleTable, IdleCount * 4);
+        for (int i = 0; i < IdleCount; i++)
+            if ((idle[i] = elf[at0 + i * 4] & 0x1f) >= LogicalCount)
+                throw new InvalidDataException($"idle pick {i} is logical {idle[i]}, off the 2AAD48 table");
+        IdleStates = Array.AsReadOnly(idle);
     }
 }
 
@@ -242,4 +250,93 @@ public sealed class NativeLogicalAnimationControl
     }
 
     public bool PermitsMovement(int requestedWord) => MovementPermitted(requestedWord, true, Current);
+}
+
+/// <summary>
+/// A guest model's playback (the struct at model+10) driven beside its control block, as 1ACFC0
+/// drives it. The frame runs at 30 per second on the playback's millisecond clock (1AD21C..50).
+/// Between record boundaries nothing changes. At a boundary, or while inactive (slot F), it asks
+/// <see cref="NativeLogicalAnimationControl.Advance"/> for the next (section, variant).
+///
+/// A valid answer continues the frame through fmod, or restarts it at 0 when coming from F.
+/// A changed record starts at min(carry, duration - 0.0001).
+///
+/// An answer the model cannot play has two cases: section F, or a section/variant the model's
+/// .aps lacks, which the 17D7C0/17D7C8 counts reject. In both, the old record is posed at its
+/// full duration and the slot becomes F. The guest HOLDS its final pose; this is not bind pose
+/// and not a loop (1AD254..288, when the caller 1F2E70 applies poses).
+///
+/// <see cref="Requested"/> is the guest's N+38 word; its low five bits are the logical.
+/// <see cref="Push"/> is what the guest's visual sync (211D28 -> 192438 -> 1921D0) does on every
+/// update of a shown guest. Which of guest update, push and model update comes first within one
+/// frame was NOT found: see findings/native-guest-animation-readiness.md.
+/// </summary>
+public sealed class NativeGuestAnimation
+{
+    public const float FramesPerSecond = 30f;
+    readonly Func<int, int, int?> duration;
+    public NativeLogicalAnimationControl Control { get; }
+    public int Requested { get; set; }
+    public int Slot { get; private set; } = NativeAnimationDescriptor.Inactive; // 1ACCC0 at creation
+    public int Variant { get; private set; }
+    public float Frame { get; private set; }
+    public float Duration { get; private set; }
+    /// <summary>The record whose final pose is held while <see cref="Slot"/> is F, or null.</summary>
+    public (int Slot, int Variant)? Held { get; private set; }
+    public int Boundaries { get; private set; }
+
+    /// <param name="duration">(section, variant) -> frame count of that record in THIS guest's
+    /// .aps, or null when the model has no such record.</param>
+    public NativeGuestAnimation(NativeLogicalAnimationTable table, Func<int, int, int?> duration)
+    {
+        Control = new NativeLogicalAnimationControl(table);
+        this.duration = duration ?? throw new ArgumentNullException(nameof(duration));
+    }
+
+    public bool PermitsMovement => Control.PermitsMovement(Requested);
+    /// <summary>N+2C: the update-counter stamp 20BD30..38 takes at activation.</summary>
+    public int Stamp { get; set; }
+
+    /// <summary>2106E8, the guest update for execution state 0B. <paramref name="now"/> is the
+    /// 1C4930 update counter and <paramref name="random"/> is 1448E0(n), the guest stream.
+    /// Request 11 is held until 120 updates after the stamp and then picked. Any other request is
+    /// re-picked on a 1-in-10 draw (rand(100) &lt; 10), whenever it happens.</summary>
+    public void IdlePick(int now, Func<int, int> random, IReadOnlyList<int> picks)
+    {
+        bool idle = (Requested & 0x1f) == 11;
+        if (unchecked((uint)(Stamp + 0x78)) < (uint)now) { if (!idle && random(100) >= 10) return; }
+        else if (idle || random(100) >= 10) return;
+        Requested = (Requested & ~0x1f) | picks[random(picks.Count)];
+    }
+
+    /// <summary>1921D0's request. flags is 2 only when guest bit B+2C&amp;200 is set (140880's
+    /// item attach), otherwise 0. The cut is 1ACF20: the next update finds the record complete.</summary>
+    public void Push(int flags = 0) => Control.Request(Requested & 0x1f, flags, () =>
+    {
+        if (Slot != NativeAnimationDescriptor.Inactive) Frame = Duration;
+    });
+
+    /// <summary>One model update after <paramref name="milliseconds"/> of playback clock.</summary>
+    public void Update(float milliseconds, Func<int> rand)
+    {
+        if (milliseconds < 0) throw new ArgumentOutOfRangeException(nameof(milliseconds));
+        Frame += milliseconds * FramesPerSecond / 1000f;
+        if (Slot != NativeAnimationDescriptor.Inactive && Frame < Duration) return;
+        Boundaries++;
+        var (slot, variant) = Control.Advance(rand);
+        int? frames = slot == NativeAnimationDescriptor.Inactive ? null : duration(slot, variant);
+        if (frames is int length && length > 0)
+        {
+            Frame = Slot == NativeAnimationDescriptor.Inactive ? 0f : Frame % Duration;
+            if (slot != Slot || variant != Variant)
+            {
+                Slot = slot; Variant = variant; Duration = length;
+                Frame = Math.Min(Frame, length - 0.0001f);
+            }
+            Held = null;
+            return;
+        }
+        if (Slot != NativeAnimationDescriptor.Inactive) { Frame = Duration; Held = (Slot, Variant); }
+        Slot = NativeAnimationDescriptor.Inactive;
+    }
 }

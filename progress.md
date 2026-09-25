@@ -2310,7 +2310,7 @@ is afterfinance210D38. Corrected before final gates; changed-class-fee mutation
 caught2failures (usingoldquote despiteperformingallreads).23feechecks now required.
 /tmp/tpw-incoming-release-matrix:109flow+23fee eachworld, J/Fpass, ONLYexact2retailreds.
 /tmp/tpw-incoming-release-runtime all11PASS;63PythonPASS.
-/tmp/tpw-incoming-release-viewers: ALL8actual experimentalViewer world/variant runs
+/tmp/tpw-incoming-release-viewers: ALL8actual experimentalViewer world/variant runs **[CORRECTED 2026-09-25: the runner's `--map=WORLD 2` matched no label, so every park-2 case loaded FANTASY terrain_1; only the four terrain_1 parks were tested. Rerun on all 8 real parks: /tmp/tpw-cp1-final, see the CP1 entry.]**
 PASS649each, exit0/noerrors/noleaks; fee10 fixture +actualbusbornidentity, notmainparity.
 MergedCameraTurnAudit independentlyPASS10. Earlier /tmp/tpw-incoming-eight-viewers
 alsoall8pass butfinalrelease-viewers is the post-fee-correction/post-camera evidence.
@@ -2421,7 +2421,7 @@ privatefiles/otherhosts/restarts. CowownsselectedrideX/listboxUI; don'teditlane.
 Shared-pool checkpoint finalized at b334704 (research only). Fullgatescomplete:
 /tmp/tpw-pool-final-matrix J/Fpass ONLYexactThrillGrill/MoonBuggiesreds,1082pool
 +76cursor+87actuator+113flow+23fee eachworld. /tmp/tpw-pool-final-runtime all11PASS;
-63PythonPASS. /tmp/tpw-pool-eight-viewers ALL8actual Viewer world/variant651PASS,
+63PythonPASS. /tmp/tpw-pool-eight-viewers ALL8actual Viewer world/variant651PASS, **[CORRECTED 2026-09-25: the runner's `--map=WORLD 2` matched no label, so every park-2 case loaded FANTASY terrain_1; only the four terrain_1 parks were tested. Rerun on all 8 real parks: /tmp/tpw-cp1-final, see the CP1 entry.]**
 exit0/noerrors/noleaks, witnessesrealsharedpoolconsumedandreturnedbysamebusguest.
 Nomainmerge, defaultsunchanged. Pendingreadiness/search/departurelimitsstilllogged.
 
@@ -2476,7 +2476,7 @@ remainingfidelitygaps—not"finished". Nextnative readinessthenrequest/search/fe
 ## Departure landing/review snapshot — September24 22:55
 
 6e37ebc rejected-departure consumer pushedRESEARCH;3bccfc3 mergesmain0f2ab51.
-ALL16actualViewer cases(/tmp/tpw-departure-eight):8accepted651each+8rejected2399each,
+ALL16actualViewer cases(/tmp/tpw-departure-eight):8accepted651each+8rejected2399each, **[CORRECTED 2026-09-25: the runner's `--map=WORLD 2` matched no label, so every park-2 case loaded FANTASY terrain_1; only the four terrain_1 parks were tested. Rerun on all 8 real parks: /tmp/tpw-cp1-final, see the CP1 entry.]**
 exit0/noerrors/noleaks. Explicit scene-prefixPASS checked, notsubstringBYPASS.
 Cowreviewconfirmedbothorderings; diagnosedfinallymaskinghandlerexception. Fixed
 withoutswallowing: handler-onlyoriginalstack, ack-onlylabel, bothAggregateoriginals;
@@ -2490,7 +2490,7 @@ logical11has8weightedentries, NOTdirectAPS11. Needsactualpresentationconsumerjoi
 Final reviewed gates COMPLETE: cf70714 callback diagnosis fix, thenmainf23427c
 DOCSONLY merge. /tmp/tpw-departure-reviewed-matrix all59departurechecks/world,
 J/Fpass ONLYexactThrillGrill/MoonBuggiesretailreds; runtimeall11PASS. Earlier63Python
-PASS andALL16actualrenderedscenes retained. No latestsourceconsumerchangessince
+PASS andALL16actualrenderedscenes retained. No latestsourceconsumerchangessince **[CORRECTED 2026-09-25: the runner's `--map=WORLD 2` matched no label, so every park-2 case loaded FANTASY terrain_1; only the four terrain_1 parks were tested. Rerun on all 8 real parks: /tmp/tpw-cp1-final, see the CP1 entry.]**
 gatesexceptdocs. Researchbranchonly; do notmergeenableasnativecomplete.
 Nextboundedpackage: join native guest logical-animation dispatcher to ACTUAL actor
 and movementreadiness. findings/native-guest-animation-readiness.md hasrawtable,
@@ -2511,8 +2511,10 @@ Thursday, October 1).
 giving d6310c6.
 
 - Core and game build with 0 errors.
-- All 16 real Viewer scenes pass under xvfb: 4 worlds × 2 parks × {NativeEntranceFlowSmoke,
-  NativeRejectedDepartureSmoke}.
+- ~~All 16 real Viewer scenes pass under xvfb: 4 worlds × 2 parks~~ **CORRECTED below**: the
+  runner's `--map=WORLD 2` matched no map label, so all four "park 2" cases loaded FANTASY
+  terrain_1. The real count is the 4 terrain_1 parks, with FANTASY-1 run five times; terrain_2 was
+  never run. {NativeEntranceFlowSmoke, NativeRejectedDepartureSmoke}.
 - Every run exited 0, with 651 checks per accepted scene and 2399 per rejected scene. These match
   astraclaw's counts from 22:55.
 
@@ -2554,3 +2556,64 @@ drawn record, with requests from the decoded producers (13 at 211A00 spawn and 1
 advance, 11 from 20D628), as an explicit opt-in. Film a guest waiting on a real transition. The
 default gait stays unchanged. The open items are listed in the findings: update order, the pause
 clock, and the owners of 140C70 and 141020.
+
+## CP2: readiness join landed on the research branch; eight-park evidence corrected — September 25, 2026 UTC
+
+**Package:** `--native-guest-animation` (together with `--experimental-native-entrance`).
+
+- 191E10 readiness over the 2AAD48 dispatcher replaces the entrance bypass.
+- One control and one playback run per flow-owned guest. The requests come from the decoded producers
+  only:
+  - 11 at activation (20BD34);
+  - 13 at every slot advance (191D78);
+  - 2106E8's idle picks while the guest is in state 0B.
+- The dispatcher's record is drawn through a hook in `Gait()`, placed after its seated guard, which
+  cow tools approved.
+- Handback clears the gait caches.
+- The labelled adapters are listed in the header of `game/Viewer.NativeAnimation.cs` and in
+  findings/native-guest-animation-readiness.md.
+
+**Evidence**, at this commit's tree, built before the runs:
+
+- **Core:** `ParkSimAudit --logical-animation-only` runs 62 checks (log: /tmp/tpw-la.log), covering the table, the control,
+  the playback beside it and the idle picker. The PASS line and teeth are in the earlier CP1 entry:
+  9 core mutations, each failing by name.
+- **Smoke teeth:** `NativeAnimationReadinessSmoke` catches 4 mutations by name: readiness bypassed
+  ("stepped anyway"), no advance producer ("requests seen 11,14"), dispatcher not drawn ("section 0
+  but drawn slot 2"), and no handback release.
+- **Viewer matrix:** 24/24 exit 0 in `/tmp/tpw-cp1-final/manifest.json`. That is all 8 real parks ×
+  {readiness, entrance flow, rejected departure}. Each case asserts from its own log which
+  WAD/terrain loaded; the assertion flags every old park-2 log and passes every park-1 log.
+  - The entrance and rejected-departure check counts are fixed by the code (651 and 2399 in every
+    park), so they are not evidence of coverage. Readiness counts vary by park: 6993 to 8092.
+  - Blocked guests per park range from 1 to 3 of 12–13. The longest wait is 1320 ms, on logical 11's
+    40-frame section 6. No guest stepped while blocked, every blocked guest moved again after 13
+    committed, and there were no deadlocks.
+  - FANTASY-1 and FANTASY-2 print identical readiness statistics, but each loaded its own terrain and
+    has its own entrance column (39 against 37). The corridor geometry is the same shape shifted two
+    cells, so the result is translation-invariant rather than a repeated case.
+- **Film FAILED as evidence.** `/tmp/tpw-film` holds 28 frames that were generated and then
+  inspected. The build menu covers the frame and no guest is visible. Nothing visual is claimed;
+  fixing this is part of the next item.
+
+- **Branch gates, on this tree (staged, not yet committed, when run):**
+  - `tools/audit_matrix.py` in /tmp/tpw-cp2-matrix gives `known_retail_failures_remain` with runner
+    exit 2: JUNGLE and FANTASY PASS, and HALLOW and SPACE carry only their retail reds. Every existing
+    REQUIRED_CHECKS minimum is met. Logical animation has no REQUIRED_CHECKS entry yet (queue item 2).
+  - `tools/runtime_audit.py` in /tmp/tpw-cp2-runtime: all 11 scenes pass, exit 0.
+
+**Corrections, made openly:**
+
+- The eight-park runner used since the incoming checkpoint passed `--map=WORLD 2`, which matches no
+  label. Viewer.cs:506–511 silently keeps the default row, so every "park 2" case ran FANTASY
+  terrain_1.
+- Annotated in place: progress.md 2313, 2424, 2479 and 2493, native-rejected-departure.md:106 and
+  the CP0 entry above.
+- The rerun above is the first time the native entrance flow ran on a terrain_2 park, and it passes.
+- 195E28 is a call counter, not a clock (4 callers, all inside the planner). The planner's service
+  budget is about 99 node expansions per call. Annotated in native-route-slot-pool.md and
+  native-guest-motion.md.
+
+**Plan review:** VoX asked for 1 fable and 3 Opus reviews of plan.md. They are complete, and the
+revised plan follows in its own commit. It replaces this entry's "next package": the native planner
+is deferred with triggers.

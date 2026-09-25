@@ -103,7 +103,7 @@ Six assertions exercise the three actual callback fault combinations. Restoring 
 old finally causes two diagnostic checks to fail; restored production passes59.
 This is managed failure diagnosis, not an invented native recovery transition.
 
-After merging main0f2ab51, all eight actual Viewer park variants passed BOTH paths:
+After merging main0f2ab51, all eight actual Viewer park variants passed BOTH paths: **[CORRECTED 2026-09-25: the runner's `--map=WORLD 2` matched no label, so every park-2 case loaded FANTASY terrain_1; only the four terrain_1 parks were tested. Rerun on all 8 real parks: /tmp/tpw-cp1-final, see the CP1 entry.]**
 accepted651 checks each, rejected2399 each. All16 exited0 with no engine errors or
 resource-leak lines. Exact scene PASS prefixes were independently checked (a loose
 substring PASS would incorrectly match the startup warning's word BYPASS).

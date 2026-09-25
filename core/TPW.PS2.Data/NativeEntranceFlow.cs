@@ -83,6 +83,8 @@ public sealed class NativeEntranceFlow
         /// <summary>One-shot notification with the failed movement mode (14 or 9).
         /// Ordinary decision/recovery is unported; the owner lease remains held.</summary>
         public Action<Guest, int>? Recovery { get; }
+        /// <summary>Optional: the guest's cursor took 191D78's slot advance (see NativeMotionInputs).</summary>
+        public Action<Guest>? SlotAdvanced { get; }
 
         public Services(Func<int, int> random, Func<Guest, Point> stagingTarget,
             Point queueBase, Func<ulong, Guest, int, Point, Point, bool> request,
@@ -93,7 +95,8 @@ public sealed class NativeEntranceFlow
             Func<Guest, IEnumerable<Point>>? exitCandidates = null,
             Func<Guest, int, Point>? busPoint = null,
             Func<RouteRequest, bool>? requestDetailed = null,
-            Action<RouteResult>? afterResult = null, Action<Guest, int>? recovery = null)
+            Action<RouteResult>? afterResult = null, Action<Guest, int>? recovery = null,
+            Action<Guest>? slotAdvanced = null)
         {
             Random = random ?? throw new ArgumentNullException(nameof(random));
             StagingTarget = stagingTarget ?? throw new ArgumentNullException(nameof(stagingTarget));
@@ -113,6 +116,7 @@ public sealed class NativeEntranceFlow
             RequestDetailed = requestDetailed;
             AfterResult = afterResult;
             Recovery = recovery;
+            SlotAdvanced = slotAdvanced;
         }
     }
 
@@ -138,7 +142,8 @@ public sealed class NativeEntranceFlow
             Serial = serial;
             Baseline = Speed = baseline;
             Inputs = new NativeMotionInputs(() => Speed, services.Delta,
-                () => services.Ready(guest)) { AutomaticStep = false };
+                () => services.Ready(guest)) { AutomaticStep = false,
+                SlotAdvanced = services.SlotAdvanced == null ? null : () => services.SlotAdvanced(guest) };
         }
     }
 
@@ -171,6 +176,8 @@ public sealed class NativeEntranceFlow
     /// <summary>Reference-identity gate for the parent Walk loop: these guests must
     /// only be stepped through the supplied StepOwnedNative callback.</summary>
     public bool Owns(Guest guest) => guest != null && _entries.ContainsKey(guest);
+    /// <summary>The owned guest's N+37 state, read-only; null when not owned.</summary>
+    public State? StateOf(Guest guest) => guest != null && _entries.TryGetValue(guest, out var e) ? e.State : null;
 
     /// <summary>Source fixed-point position under the current owner, never a rendering float.</summary>
     public Point? Position(Guest guest) => guest != null && _entries.TryGetValue(guest, out var e) && Live(e)
