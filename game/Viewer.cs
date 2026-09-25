@@ -3822,12 +3822,67 @@ public partial class Viewer : Node3D
             // being six: every guest on variant 0 is a chorus line. Chosen by id so a guest keeps
             // the same idle across frames and a render is reproducible.
             //
-            // ⚠⚠ WHICH variant the console would pick is NOT READ. The guest carries a 5-bit
-            // state in `guest[0x38] & 0x1f` -- censused at 4, 11, 12, 13 and 14, with 13 set at
-            // spawn (`FUN_00211A00`) and on every facility exit (`FUN_0020EDD8`), and 11 set by
-            // the walking path (`FUN_0020D628`) -- but those values run past the end of the
-            // slot table, so the field is a STATE and something maps state to record. That table
-            // has not been found, so this picks a variant rather than claiming to know one.
+            // ⭐⭐ THE STATE->CLIP TABLE HAS NOW BEEN FOUND, and this comment used to say it had
+            // not. It is at **`0x2AAD48`**: 22 `(descriptorPointer, count)` entries indexed by
+            // `logical * 8`, descriptors of 32 bytes holding first/main/last slot-variant pairs
+            // plus flags and a weight. Found by tinyclaw; written up in
+            // findings/native-guest-animation-readiness.md; re-read here off the executable before
+            // this comment was changed, because a comment that asserts a negative is exactly the
+            // kind that goes stale silently.
+            //
+            // ⭐ IT CONFIRMS THE IDENTIFICATION BELOW AND CONTRADICTS THE SELECTION. Logical 11
+            // maps to `0x2AAA88` with EIGHT variants, and six of them are slot 2 variants 0..5 --
+            // so slot 2 really is the idle set. But the console does not spread guests across them
+            // by anything like an id: the variants are WEIGHTED, and the weights are
+            //
+            //     variant 0  ->  main pair F/0 (NO CLIP)   weight 93
+            //     variants 1..6 -> slot 2, variants 0..5    weight 1 each
+            //     variant 7  ->  slot 6, variant 0          weight 1
+            //
+            // i.e. **93% of the time the console plays no idle clip at all**, and each of the six
+            // idles comes up one time in a hundred.
+            //
+            // ⚠⚠ AND THAT IS WHY THIS CODE DOES NOT COPY IT YET -- but "no clip" is NOT what it
+            // sounds like, and it is worth being exact. It is neither "keep animating" nor bind
+            // pose: it is HOLD THE LAST POSE. When `10EA38` hands back the inactive slot, the
+            // updater `1ACFC0` loads the old record's duration (`lwc1 f0, 0x20(s1)` at `0x1AD268`)
+            // into the current frame (`swc1 f0, 0x0C(s1)` at `0x1AD274`), applies that pose
+            // (`jal 0x1A8DA8` at `0x1AD278`), and only then marks the slot F (`li v0, 15` /
+            // `sw v0, 0x0(s1)` at `0x1AD280..88`). So the guest freezes on the final frame of
+            // whatever it was last playing.
+            //
+            // Here an absent record leaves the model in BIND POSE instead -- arms out, dead still
+            // -- which is precisely the bug master reported ("we're also missing the idle/wait
+            // animations for visitors"). Porting the 93% therefore requires porting hold-last-pose
+            // WITH it; the weights alone would put most of the crowd back in that pose. So this
+            // still picks a variant by id, which is NOT the console's rule, and says so.
+            // (tinyclaw, who owns the dispatcher work: "i won't wire it without the hold.")
+            //
+            // ⭐ THE STATE FIELD IS RESOLVED: it is one field seen through two base pointers, and
+            // both readings were right. `191E10`, `1921D0` and `191D78` are handed `B = N + 8`, so
+            // their `B + 0x30` IS `N + 0x38` -- and this file's own call above passes
+            // `iVar11 + 8`. `FUN_0020D628` does write `N + 0x38` directly: 14 at `0x20D780`, and
+            // 11 at `0x20DAE8`, `0x20DB10` and `0x20DB34` (each `sw v0, 0x38(s2)`). The `+0x30` it
+            // READS is the route-slot halfword, a different field entirely.
+            //
+            // ⭐⭐ AND THE WALK IS FINE. The table maps logical 13 to slot 0 and logical 9 to
+            // slot 1, which looked like it might mean the slot-1 walk below was the wrong clip. It
+            // does not: SLOT 0 IS A WALK TOO, in the other of the file's two track formats.
+            // tinyclaw measured the motion -- Boy1a legs L/R z correlation -0.96 with swings
+            // 7080/6219, JungleKid -0.97 with 5956/5549, both 16 frames, two steps a cycle, head
+            // bobbing ~1100 -- the same magnitude as the slot-1 measurement recorded above.
+            //
+            // ⭐ Corroborated here from the DATA LAYOUT rather than the motion, which is a second
+            // method and not the same one twice: across Boy1a, JungleKid and Girl1a, slot 0 is
+            // flags 0x01 with 2-3 tracks (the 48-byte VERTEX format, one track per mesh group --
+            // head, body, legs) while slot 1 and the slot 2 idles are flags 0x25 with 22-25 tracks
+            // (the 20-byte SKELETAL format, one per bone). `1A7E18` plays the vertex form: int16
+            // xyz per group per frame, written straight into the mesh with no interpolation.
+            //
+            // So logical 9 and 13 are the two FORMS of walking, which is exactly why the readiness
+            // predicate accepts either, and drawing a 13 guest with slot 1 substitutes an
+            // equivalent walk rather than the wrong animation. ⚠ Girl1a is "likely, not measured":
+            // her left/right split came out lopsided on the legs mesh (her body mesh gives -0.94).
             var idles = aps?.Records().Where(r => r.Slot == 2 && r.Skeletal && !r.Shared).ToArray()
                         ?? Array.Empty<Aps.Record>();
             var idle = idles.Length == 0 ? null : idles[Math.Abs(id) % idles.Length];

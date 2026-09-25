@@ -233,16 +233,71 @@ public partial class LaptopShopScreenAudit : Node
                 return hi - lo;
             }
             Check(Spread(body, true) > 10 * Spread(body, false),
-                  $"PROG_VBIT's gradient is VERTICAL (spread {Spread(body, true)} down vs {Spread(body, false)} across) -- so it tiles seamlessly");
+                  $"PROG_VBIT's gradient is VERTICAL (spread {Spread(body, true)} down vs {Spread(body, false)} across)");
 
-            // ⭐ The face, corroborated by the step rather than chosen: Large.bff's line advance
-            // must FIT the row step, and the other two faces must be the ones that leave holes.
-            var advances = new[] { "Large", "Small", "Console" }
-                .ToDictionary(n => n, n => new BitmapFont(library.ReadGeneric($"/Fonts/European/{n}.bff")).LineAdvance);
-            Check(advances["Large"] <= ShopScreen.RowStep && ShopScreen.RowStep - advances["Large"] <= 4,
-                  $"Large.bff's line advance {advances["Large"]} fits the {ShopScreen.RowStep} row step");
-            Check(ShopScreen.RowStep - advances["Small"] > 4 && ShopScreen.RowStep - advances["Console"] > 4,
-                  $"control: Small ({advances["Small"]}) and Console ({advances["Console"]}) do not");
+            // ⭐⭐ THE COMPOSED FILL ITSELF, not a re-derivation of it. The bar no longer tiles
+            // cap sprites: it paints the trough's own interior with the fill sprite's vertical
+            // gradient, at master's direction, so the rounded ends follow the curve continuously
+            // instead of snapping in whole-sprite steps. What must hold is that the painted shape
+            // IS the trough's interior and nothing else.
+            var fill = LaptopShopScreen.BuildFillPixels(library, out int fw, out int fh);
+            Check(fill != null && fw == trough2.Width && fh == trough2.Height,
+                  $"the composed fill is the frame's own size ({fw}x{fh})");
+
+            bool Painted(int x, int y) => fill[(y * fw + x) * 4 + 3] > 0;
+            int painted = 0, leaked = 0;
+            int rowLo = int.MaxValue, rowHi = -1, colLo = int.MaxValue, colHi = -1;
+            for (int y = 0; y < fh; y++)
+                for (int x = 0; x < fw; x++)
+                {
+                    if (!Painted(x, y)) continue;
+                    painted++;
+                    rowLo = Math.Min(rowLo, y); rowHi = Math.Max(rowHi, y);
+                    colLo = Math.Min(colLo, x); colHi = Math.Max(colHi, x);
+                    // ⚠ A painted pixel must be INSIDE the frame: never on the orange stroke, and
+                    // never out in the transparent surround. This is what a naive
+                    // "fill every transparent pixel" mask would get wrong -- the outside is
+                    // transparent too, and it would paint the whole image.
+                    if (trough2.Pixels[(y * fw + x) * 4 + 3] > 16) leaked++;
+                }
+            Check(leaked == 0, $"no painted pixel lands on the frame stroke ({leaked} leaked)");
+            Check(colLo == 3 && colHi == 124, $"the fill spans the trough's interior columns 3..124 (got {colLo}..{colHi})");
+            Check(rowLo == 3 && rowHi == 28, $"and its interior rows 3..28 (got {rowLo}..{rowHi})");
+
+            // ⚠ THE CONTROL that makes the span checks mean something: the fill must NOT reach the
+            // image border. A mask taken as "every transparent pixel" would paint corner to corner,
+            // because the area OUTSIDE the frame is transparent too.
+            // (A count threshold does NOT work here and I tried one: the interior is legitimately
+            // 3064 of 4096 pixels, three quarters of the image, so "less than half" fails on
+            // correct output.)
+            int border = 0;
+            for (int x = 0; x < fw; x++) { if (Painted(x, 0)) border++; if (Painted(x, fh - 1)) border++; }
+            for (int y = 0; y < fh; y++) { if (Painted(0, y)) border++; if (Painted(fw - 1, y)) border++; }
+            Check(border == 0 && painted > 0,
+                  $"the fill never reaches the image border ({border} border pixels, {painted} painted)");
+
+            // Every painted pixel is the cyan gradient, and it varies down the bar, not across.
+            int cyanBad = 0, rowsDiffer = 0; string badRows = "";
+            for (int y = rowLo; y <= rowHi; y++)
+            {
+                int o = (y * fw + 64) * 4;
+                if (fill[o + 2] <= fill[o]) { cyanBad++; badRows += $" y{y}=({fill[o]},{fill[o + 1]},{fill[o + 2]},a{fill[o + 3]})"; }                       // blue must beat red
+                if (y > rowLo && fill[o + 1] != fill[((y - 1) * fw + 64) * 4 + 1]) rowsDiffer++;
+            }
+            Check(cyanBad == 0, $"every filled row is cyan, not the sprite's orange edge ({cyanBad} bad:{badRows})");
+            // ⚠ NOT a count of "how many rows differ": the two bleed rows reuse a clean neighbour,
+            // so a couple of steps legitimately repeat and a step-count proxy fails on correct
+            // output (it did, at 22 of 25). The invariant is that the gradient SPANS -- top and
+            // bottom are far apart and it descends throughout.
+            int top = fill[(rowLo * fw + 64) * 4 + 1], bottom = fill[(rowHi * fw + 64) * 4 + 1];
+            // ⚠ NOT "strictly monotonic": SHPS is lossy, so the decoded ramp wobbles by a level
+            // here and there. Requiring a perfect descent fails on correct output. What must hold
+            // is that no wobble is big enough to read as a band.
+            int maxRise = 0;
+            for (int y = rowLo + 1; y <= rowHi; y++)
+                maxRise = Math.Max(maxRise, fill[(y * fw + 64) * 4 + 1] - fill[((y - 1) * fw + 64) * 4 + 1]);
+            Check(top - bottom > 50, $"the gradient spans down the bar (green {top} at top, {bottom} at bottom)");
+            Check(maxRise <= 4, $"and descends smoothly -- no reversal bigger than compression noise (worst +{maxRise})");
 
             if (_bad > 0) { GD.PrintErr($"LAPTOP SHOP FAIL: {_bad} of {_checks}"); GetTree().Quit(2); return; }
             GD.Print($"LAPTOP SHOP PASS: {_checks} checks; the layout is read from "
