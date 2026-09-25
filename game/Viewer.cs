@@ -960,6 +960,7 @@ public partial class Viewer : Node3D
         if (_park != null) _park.Root.Visible = m == Mode.Park;
         if (_gate != null) _gate.Root.Visible = m == Mode.Park;
         if (_nativeBus != null) _nativeBus.Root.Visible = m == Mode.Park;
+        foreach (var v in _vehicles) if (IsInstanceValid(v.Root)) v.Root.Visible = m == Mode.Park;
         if (_gateBox != null) _gateBox.Root.Visible = m == Mode.Park;
         _flags.Root.Visible = m == Mode.Park;
         if (_sky != null) _sky.Environment = m == Mode.Park && _skyEnv != null ? _skyEnv : _flatEnv;
@@ -3982,6 +3983,7 @@ public partial class Viewer : Node3D
         // measured WHERE a rider was, never WHEN.
         PresentScripted(alpha: _parkClock.Alpha);
         PresentNativeBus(); // including rendered frames in which the park executes no tick
+        PresentParkVehicles();
         if (_guests != null) PlaceActors(_parkClock.Alpha);
     }
 
