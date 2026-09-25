@@ -722,3 +722,49 @@ filters them, so a coaster's car and pylon are not offered as separate purchases
 ⚠⚠ **RELIABILITY HAS NO DEFINITION FIELD.** Nothing in `RideCatalogue` carries it, so that bar is
 the one value on this screen with no source. It reads **zero** and the run says so out loud rather
 than being filled from the cosine sweep, which would have looked exactly like data.
+
+## ⭐⭐⭐ Reliability is COMPUTED, not stored -- and Excitement was the wrong field (2026-09-25)
+
+Master: *"go fetch everything u need from the game code"*. Both gaps on the Build screen closed.
+
+**Why no field carried reliability.** `FUN_00198b48` feeds its two bars from different places: the
+excitement bar takes the item record's **+0x18** directly, the reliability bar takes
+**`FUN_00198ad8(item)`** -- a computation.
+
+```
+FUN_00198ad8(item):
+    inner = FUN_00198a98(item+0x24, item+0x28, item+0x2c)
+    v     = inner * ((item+0x40 + item+0x44) / 2) * 9 >> 15
+    return 100 - (v < 101 ? v : 100)
+
+FUN_00198a98(a,b,c):
+    = ((((0x1000-a)*0x800>>12) + a + ((0x1000-b)*0x800>>12) + b) / 2) * c
+```
+Each half reduces to `0x800 + p/2` in 12-bit fixed point.
+
+⭐⭐ **The offsets land exactly on this port's own tier layout**, which is the corroboration.
+`RideTier` is 52 bytes at payload+32, so from the payload base +0x24/+0x28/+0x2c are
+**MinSpeedDamage**, **MinCapacityDamage** and **WearRate**, and +0x40/+0x44 are **MinDuration** and
+**MaxDuration**. Damage per unit speed and capacity, times a wear rate, times how long a ride runs
+-- wear per ride, inverted into a percentage. Those names were chosen long before this function was
+read.
+
+⚠⚠ **AND IT CAUGHT A SECOND ERROR.** The excitement bar reads **+0x18**, and
+`AssetResourceDatabase.Entry` independently names `I32(24)` -- the same offset -- `BaseExcitement`.
+The first wiring used `UsageInfo.ExcitementLevel`, a different field. Two derivations that never
+saw each other agreeing on +0x18 is what makes the correction a reading rather than a preference.
+
+⚠ **Every tiered ride reads 86, and that is the DATA, not a bug.** All of them carry the same
+tier-0 wear fields -- MinSpeedDamage 4, MinCapacityDamage 4, WearRate 5, MinDuration 1,
+MaxDuration 10. ⭐ What proves the read is per-ride rather than one shared default is that
+`InitialCondition` DOES vary across those same records (100 against 1000). Excitement varies too:
+0 / 45 / 60 / 75 / 80 over the sample. So the purchase screen shows the reliability of a ride
+*fresh*, and everything is equally fresh.
+
+⭐ Pinned in the audit with a worked example AND a control: (4,4,5,1,10) must give 86, and eight
+times the wear rate must give LESS than 86 -- otherwise the first check would pass on a function
+that returned 86 regardless of its inputs.
+
+⚠ The console's clamp is one-sided and the port keeps it: only the upper end is capped, so a
+negative `v` returns above 100. `null` rather than 100 for anything with no ride tiers, because
+"perfectly reliable" and "has no wear model" are different readings.

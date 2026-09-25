@@ -150,6 +150,53 @@ public sealed class RideDefinition
     ///
     /// ⚠ Null when nothing joined a compiled record: a cost of zero and an unknown cost are
     /// different answers, and the caller should not be handed a free ride by a missing join.</summary>
+    /// <summary>⭐⭐ WHAT THE BUILD SCREEN SHOWS AS EXCITEMENT -- the compiled record's
+    /// `BaseExcitement`, NOT `UsageInfo.ExcitementLevel`.
+    ///
+    /// `FUN_00198b48`, the build draw, feeds its excitement bar from the item record's **+0x18**,
+    /// and `AssetResourceDatabase.Entry` independently names `I32(24)` -- the same offset --
+    /// `BaseExcitement`. Two derivations that never saw each other agreeing on one field is what
+    /// makes this a reading rather than a guess.</summary>
+    public int? ShopfrontExcitement => CompiledEntry?.BaseExcitement;
+
+    /// <summary>⭐⭐⭐ THE BUILD SCREEN'S RELIABILITY, WHICH IS COMPUTED AND NOT STORED -- which is
+    /// why no field on this class carried it and why that bar read zero.
+    ///
+    /// `FUN_00198ad8`, in full:
+    /// <code>
+    ///   inner = FUN_00198a98(+0x24, +0x28, +0x2c)
+    ///   v     = inner * ((+0x40 + +0x44) / 2) * 9 >> 15
+    ///   return 100 - (v &lt; 101 ? v : 100)
+    /// </code>
+    /// and `FUN_00198a98(a,b,c)` is
+    /// `((((0x1000-a)*0x800>>12) + a + ((0x1000-b)*0x800>>12) + b) / 2) * c`, whose two halves each
+    /// reduce to `0x800 + p/2` in 12-bit fixed point.
+    ///
+    /// ⭐ THE OFFSETS LAND EXACTLY ON THIS PORT'S OWN TIER LAYOUT. `RideTier` is 52 bytes at
+    /// payload+32, so from the payload base +0x24/+0x28/+0x2c are **MinSpeedDamage**,
+    /// **MinCapacityDamage** and **WearRate**, and +0x40/+0x44 are **MinDuration** and
+    /// **MaxDuration**. Damage per unit speed and capacity, times a wear rate, times how long a
+    /// ride lasts -- a wear-per-ride model, inverted into a percentage. The names were chosen long
+    /// before this function was read, and they fit it.
+    ///
+    /// ⚠ THE CONSOLE'S CLAMP IS ONE-SIDED and this keeps it: only the upper end is capped, so a
+    /// negative `v` returns ABOVE 100. Faithful rather than tidied; a park that produced one would
+    /// be showing the console's own behaviour.
+    /// ⚠ Null for anything without ride tiers -- a shop has no wear model -- rather than 100,
+    /// because "perfectly reliable" and "has no reliability" are not the same reading.</summary>
+    public int? ShopfrontReliability
+    {
+        get
+        {
+            if (CompiledEntry is not { HasRideTiers: true } entry) return null;
+            var t = entry.Tier(0);
+            int Half(int p) => ((0x1000 - p) * 0x800 >> 12) + p;
+            int inner = ((Half(t.MinSpeedDamage) + Half(t.MinCapacityDamage)) / 2) * t.WearRate;
+            int v = inner * ((t.MinDuration + t.MaxDuration) / 2) * 9 >> 15;
+            return 100 - (v < 101 ? v : 100);
+        }
+    }
+
     public int? PlacementCost => CompiledEntry is not { } e ? null
         : (e.HasRideTiers ? e.Tier(0).PurchaseCost : e.SimpleEconomy?.PurchaseCost) * 10;
 

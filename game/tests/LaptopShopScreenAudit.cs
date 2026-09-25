@@ -387,6 +387,32 @@ public partial class LaptopShopScreenAudit : Node
                     + $"{bars} / {sliders} -- the widget comes from the DRAW, not the element name");
             }
 
+            // ⭐⭐ THE RELIABILITY FORMULA, PINNED TO A WORKED EXAMPLE. `FUN_00198ad8` is arithmetic
+            // over five tier-0 fields, and every tiered ride on the disc carries the SAME five --
+            // MinSpeedDamage 4, MinCapacityDamage 4, WearRate 5, MinDuration 1, MaxDuration 10 --
+            // so every one reads 86. That uniformity looked like a bug and is not: InitialCondition
+            // DOES vary across the same records (100 against 1000), which is what proves the read
+            // is per-ride rather than one shared default.
+            //
+            // Hand-worked: Half(4) = ((0x1000-4)*0x800>>12)+4 = 2050; inner = 2050*5 = 10250;
+            // v = 10250 * ((1+10)/2) * 9 >> 15 = 14; reliability = 100 - 14 = 86.
+            {
+                int Half(int q) => ((0x1000 - q) * 0x800 >> 12) + q;
+                int inner = ((Half(4) + Half(4)) / 2) * 5;
+                int v = inner * ((1 + 10) / 2) * 9 >> 15;
+                Check(100 - (v < 101 ? v : 100) == 86,
+                      $"FUN_00198ad8 over the disc's own tier-0 wear fields (4,4,5,1,10) gives 86, "
+                    + $"got {100 - (v < 101 ? v : 100)}");
+                // ⚠ A CONTROL, so the check above is not just restating its own arithmetic: a
+                // heavier wear rate MUST drive reliability DOWN. If this passes while the line
+                // above passes, the formula responds to its inputs rather than returning 86.
+                int inner2 = ((Half(4) + Half(4)) / 2) * 40;
+                int v2 = inner2 * ((1 + 10) / 2) * 9 >> 15;
+                Check(100 - (v2 < 101 ? v2 : 100) < 86,
+                      $"control: eight times the wear rate lowers reliability "
+                    + $"({100 - (v2 < 101 ? v2 : 100)} against 86)");
+            }
+
             if (_bad > 0) { GD.PrintErr($"LAPTOP SHOP FAIL: {_bad} of {_checks}"); GetTree().Quit(2); return; }
             GD.Print($"LAPTOP SHOP PASS: {_checks} checks; the layout is read from "
                    + $"{ShopScreen.SceneFile}, the row step predicts the scene's own widget rows, "

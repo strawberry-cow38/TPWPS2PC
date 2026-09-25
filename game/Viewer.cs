@@ -3229,18 +3229,26 @@ public partial class Viewer : Node3D
                     (Money.Format(def.PlacementCost ?? 0), 0),
                     (Money.Format(bal), 0),
                     (owned.ToString(), 0),
-                    // ⭐ Excitement is the definition's own UsageInfo.ExcitementLevel.
-                    // ⚠ RELIABILITY HAS NO DEFINITION FIELD -- nothing in RideCatalogue carries it,
-                    // so this bar is the only value on the screen with no source. Left at zero and
-                    // said out loud rather than filled with a sweep that would look like data.
-                    (null, def.ExcitementLevel ?? 0),
-                    (null, 0),
+                    // ⭐⭐ BOTH BARS NOW COME FROM THE DRAW'S OWN SOURCES. Excitement is the
+                    // compiled record's BaseExcitement (+0x18), NOT UsageInfo.ExcitementLevel --
+                    // reading `FUN_00198b48` showed the first version had the wrong field.
+                    // Reliability is FUN_00198ad8's wear model; see RideDefinition.
+                    (null, def.ShopfrontExcitement ?? 0),
+                    (null, def.ShopfrontReliability ?? 0),
                 };
                 _shopPanel.ShowScreen(spec, title, build);
                 if (_laptopFrame == 0)
                     GD.Print($"[laptop] build: {sellable.Count} priced rides; showing {title} at "
-                           + $"{Money.Format(def.PlacementCost ?? 0)}, balance {Money.Format(bal)}"
-                           + " (reliability has no definition field and reads 0)");
+                           + $"{Money.Format(def.PlacementCost ?? 0)}, balance {Money.Format(bal)}, "
+                           + $"excitement {def.ShopfrontExcitement?.ToString() ?? "-"}, "
+                           + $"reliability {def.ShopfrontReliability?.ToString() ?? "- (no tiers)"}");
+                if (_laptopFrame == 0 && def.CompiledEntry is { HasRideTiers: true } dbg)
+                {
+                    var t0 = dbg.Tier(0);
+                    GD.Print($"[laptop]   tier0: MinSpeedDamage {t0.MinSpeedDamage} MinCapacityDamage "
+                           + $"{t0.MinCapacityDamage} WearRate {t0.WearRate} MinDuration {t0.MinDuration} "
+                           + $"MaxDuration {t0.MaxDuration} InitialCondition {t0.InitialCondition}");
+                }
                 PrepareUiShotView();
                 SaveShot(ShotSibling(_shotPath, $"-f{_laptopFrame:D4}"));
                 _laptopFrame++;
