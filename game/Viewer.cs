@@ -242,7 +242,7 @@ public partial class Viewer : Node3D
     bool _typeAudit;
     bool _guestTest;
     int _laptopFilm; string _laptopScreen = "ride"; int _laptopFrame;
-    Vector2I? _uiSize; SubViewport _uiShotView;
+    Vector2I? _uiSize; SubViewport _uiShotView; Camera3D _uiShotCam;
     bool _idleScene, _idleSeeded;
     int _idleCount = 24;
     /// <summary>Which ride the control run stands, by display name; Crazy Ape unless told.</summary>
@@ -3121,10 +3121,26 @@ public partial class Viewer : Node3D
                     TransparentBg = false,
                 };
                 AddChild(_uiShotView);
+                // ⭐⭐ THE PARK GOES BEHIND THE PANEL. Master: "instead of a gray background, just
+                // dont hide the park behind". ⚠ The grey was THIS HARNESS, not the game -- in play
+                // the panel sits on `_uiRoot` over the live 3D view, and only the sized SubViewport
+                // put it somewhere with no camera in it. A SubViewport shares its parent's World3D
+                // by default, so all it needs to show the same park is a camera of its own.
+                _uiShotCam = new Camera3D { Current = true };
+                _uiShotView.AddChild(_uiShotCam);
                 _shopPanel.GetParent()?.RemoveChild(_shopPanel);
                 _uiShotView.AddChild(_shopPanel);
                 GD.Print($"[laptop] ui-size {uiWant.X}x{uiWant.Y}: the panel lays out for that viewport, "
-                       + "not for this window");
+                       + "not for this window, and the park renders behind it");
+            }
+            if (_cam != null && _uiShotCam != null)
+            {
+                _uiShotCam.GlobalTransform = _cam.GlobalTransform;
+                _uiShotCam.Fov = _cam.Fov;
+                _uiShotCam.Near = _cam.Near;
+                _uiShotCam.Far = _cam.Far;
+                _uiShotCam.Projection = _cam.Projection;
+                _uiShotCam.Size = _cam.Size;
             }
             _shopPanel.QueueRedraw();
         }

@@ -90,6 +90,7 @@ public sealed partial class LaptopShopScreen : Control
         var layout = SceneLayout.Parse(sce);
 
         var chrome = Load(ShopScreen.ChromeFor(world)) ?? Load("/laptop/LAPTOP_512.ssh");
+        if (chrome != null) chrome = TrimRim(chrome);
         // ⭐ BARPROG, not PROG_BAR: the smooth trough, measured to have the same continuous
         // interior as BARSLIDE. PROG_BAR is an eleven-cell notched gauge and belongs to a
         // different widget -- see DrawBar.
@@ -396,6 +397,62 @@ public sealed partial class LaptopShopScreen : Control
     /// rather than re-deriving the mask and drifting from it.
     /// ⚠ It reads the `.ssh`, NOT the `.tga` sibling: those are lossy-compressed and differ by a
     /// few levels, which is enough to move a "is this pixel cyan" row boundary by one.</summary>
+    /// <summary>How dark a pixel must be to count as the surround rather than the panel's bevel.
+    /// ⭐ Measured off the rendered chrome: the flat surround is (3,0,103), luma 13, and the bevel
+    /// ramps 32 -> 117 within six pixels of it. 24 sits in that gap.</summary>
+    const int RimLuma = 24;
+
+    /// <summary>⭐⭐ CUT THE DARK RIM OFF THE CHROME, so the park shows through around the panel.
+    /// Master: "cut out the darker border around the rounded edges of the background image.
+    /// instead of a gray background, just dont hide the park behind".
+    ///
+    /// ⚠ A BRIGHTNESS THRESHOLD ALONE WOULD EAT THE ARTWORK -- the photographic interior has dark
+    /// pixels of its own. This floods inward FROM THE BORDER, so only dark that is *connected to
+    /// the outside* is cleared; a dark corner of the photo inside the panel is unreachable and
+    /// survives. Same shape of fix as <see cref="BuildFillPixels"/>'s mask.
+    ///
+    /// ⭐ Brightness rather than hue because the four worlds' chromes are differently coloured but
+    /// all put a bright bevel against a near-black surround.</summary>
+    internal static byte[] TrimRimPixels(byte[] src, int w, int h, out int cleared)
+    {
+        var px = (byte[])src.Clone();
+        var seen = new bool[w * h];
+        var queue = new Queue<int>();
+        void Seed(int x, int y)
+        {
+            if (x < 0 || y < 0 || x >= w || y >= h) return;
+            int i = y * w + x;
+            if (seen[i]) return;
+            int p = i * 4;
+            int luma = (299 * px[p] + 587 * px[p + 1] + 114 * px[p + 2]) / 1000;
+            if (px[p + 3] >= 8 && luma > RimLuma) return;   // the bevel: stop here
+            seen[i] = true; queue.Enqueue(i);
+        }
+        for (int x = 0; x < w; x++) { Seed(x, 0); Seed(x, h - 1); }
+        for (int y = 0; y < h; y++) { Seed(0, y); Seed(w - 1, y); }
+        cleared = 0;
+        while (queue.Count > 0)
+        {
+            int i = queue.Dequeue(), x = i % w, y = i / w;
+            if (px[i * 4 + 3] != 0) { px[i * 4 + 3] = 0; cleared++; }
+            Seed(x - 1, y); Seed(x + 1, y); Seed(x, y - 1); Seed(x, y + 1);
+        }
+        return px;
+    }
+
+    static ImageTexture TrimRim(ImageTexture tex)
+    {
+        var img = tex.GetImage();
+        if (img == null) return tex;
+        if (img.GetFormat() != Image.Format.Rgba8) img.Convert(Image.Format.Rgba8);
+        int w = img.GetWidth(), h = img.GetHeight();
+        var cut = TrimRimPixels(img.GetData(), w, h, out int cleared);
+        // ⭐ The control: a rim is a border, so this should land in the low tens of percent.
+        // 0% means the threshold missed it; most of the image means it ate the panel.
+        GD.Print($"[laptop] chrome rim cut: {cleared} of {w * h} px ({100f * cleared / (w * h):F1}%) now transparent");
+        return ImageTexture.CreateFromImage(Image.CreateFromData(w, h, false, Image.Format.Rgba8, cut));
+    }
+
     internal static byte[] BuildFillPixels(AssetLibrary lib, out int width, out int height)
     {
         width = height = 0;
