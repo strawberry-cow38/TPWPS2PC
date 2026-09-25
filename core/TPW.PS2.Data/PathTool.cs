@@ -420,6 +420,28 @@ public sealed class PathTool
         return cleared.Count;
     }
 
+    /// <summary>⭐⭐ FORGET A RIDE'S DOORS, and repick the ground that was wearing an arm at them.
+    ///
+    /// Master: "update the path tiles around, to fix dead connected sprites." `AddDoor` told the
+    /// tool where a ride's entrance and exit are so the one tile outside each could draw an arm
+    /// back at it -- and NOTHING ever removed them. Delete the ride and `DoorBits` went on
+    /// reporting a door that was no longer there, so the path beside it kept a limb reaching into
+    /// empty grass. The sprite was not stale; the tool still believed the door.
+    ///
+    /// ⚠ The repick is done AFTER the whole sweep, like <see cref="ClearQueue"/>'s: a neighbour
+    /// repicked while the ride's other door is still registered would choose against a door that
+    /// is about to go.</summary>
+    public int RemoveDoors(int rideId)
+    {
+        if (rideId == 0 || !Ready) return 0;
+        var gone = new List<(int X, int Y)>();
+        foreach (var (at, door) in _doors)
+            if (door.Ride == rideId) gone.Add((at % _field.Width, at / _field.Width));
+        foreach (var (x, y) in gone) _doors.Remove(At(x, y));
+        foreach (var (x, y) in gone) RepickAround(x, y);
+        return gone.Count;
+    }
+
     /// <summary>The free end of a ride's queue -- where laying it left off -- or null.
     /// ⭐ For resuming: master wants Edit Queue to "start the queue at the stage it was at when
     /// it was laid", which means the next press continues from the tip rather than starting a

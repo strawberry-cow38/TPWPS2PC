@@ -1256,6 +1256,12 @@ public partial class Viewer : Node3D
         return FolderKind(r.Name);
     }
 
+    /// <summary>⭐ What a coaster charges per unit of track. A coaster has no `PlacementCost`: you
+    /// pay as you draw, so this is its price and its presence is what says it is buildable.</summary>
+    static float? PerUnitCost(RideDefinition def) =>
+        def.Float("asPylonControls[0].fCostPerUnit")
+        ?? def.Float("asPylonControls[0].fCostPer2DLength");
+
     /// <summary>The archive folder's own kind. ⭐ These are the five folders every park ships;
     /// the mapping is the folder NAME to the console's kind, not a guess about the thing.</summary>
     static AssetResourceDatabase.AssetKind? FolderKind(string name) => KindFromWord(Category(name));
@@ -6030,7 +6036,7 @@ public partial class Viewer : Node3D
         if (_buildThings != null) return _buildThings;
         var best = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         var order = new List<string>();
-        int models = 0;
+        int models = 0, unpriced = 0;
         for (int i = 0; i < (_lib?.Rides?.Count ?? 0); i++)
         {
             var r = _lib.Rides[i];
@@ -6038,6 +6044,30 @@ public partial class Viewer : Node3D
             var def = DefinitionFor(r.Model);
             if (def == null) continue;
             models++;
+            // ⭐⭐ NOTHING TO CHARGE FOR IT, NOT PLAYER-BUILDABLE. Master: "omit any items that
+            // dont have a fixed cost to build. they arent intended to be built by the player."
+            //
+            // ⚠⚠ BUT "FIXED COST" IS NOT `PlacementCost > 0`. The first version tested exactly
+            // that and deleted the entire ROLLER COASTERS category -- three rides master had just
+            // asked me to fix the station footprint of, so they are plainly meant to be built.
+            // The data said why: every coaster entry carries `asPylonControls[0].fCostPerUnit` 40,
+            // `fCostPer2DLength` 10, `fCostPerHeight` 10 and no PlacementCost, because a coaster
+            // is charged PER TRACK UNIT as you draw it. It has a price; it just is not a placement
+            // price.
+            //
+            // ⭐ The four things that really have no price of any kind are Gates, lights, seaplane
+            // and sign1 -- which are exactly the things the GAME places. That is master's rule,
+            // and the per-unit test is what separates it from "delete the coasters".
+            //
+            // ⚠ Counted and NAMED, not silently dropped: an exclusion this broad is where a decode
+            // fault hides, and this one already hid a whole category for one build.
+            if (def.PlacementCost is not > 0 && PerUnitCost(def) is not > 0)
+            {
+                unpriced++;
+                GD.Print($"[build.unpriced] {Category(r.Name)}/{Leaf(r.Name)} has no PlacementCost "
+                       + "and no per-unit cost -- the game places this, not the player");
+                continue;
+            }
             // ⚠ The .sam's own path is the identity, not the definition object: two lookups of the
             // same file must land in the same group whether or not DefinitionFor caches.
             string key = def.Source ?? r.Model.Path;
@@ -6048,7 +6078,8 @@ public partial class Viewer : Node3D
         _buildThings = new List<int>(order.Count);
         foreach (var k in order) _buildThings.Add(best[k]);
         GD.Print($"[build] {models} models are {_buildThings.Count} things to build -- one row per "
-               + ".sam, keeping the model named after its folder");
+               + $".sam, keeping the model named after its folder; {unpriced} models skipped for "
+               + "having no PlacementCost (the game places those, not the player)");
         return _buildThings;
     }
 
@@ -6805,13 +6836,27 @@ public partial class Viewer : Node3D
         // exit paths + combo entry/exits)" -- ClearQueue takes Kind.Queue cells owned by this
         // ride and leaves Path and Both alone, so the park's walkable network survives.
         int queueCells = _paths?.ClearQueue(p.Id) ?? 0;
+        // ⭐⭐ AND ITS DOORS. Master: "update the path tiles around, to fix dead connected
+        // sprites." AddDoor told the path tool where this ride's entrance and exit were so the
+        // tile outside each could draw an arm back at it, and nothing ever took them away -- so
+        // the path beside a deleted ride kept reaching into empty grass. RemoveDoors forgets them
+        // and repicks the ground that was joined to them.
+        int doors = _paths?.RemoveDoors(p.Id) ?? 0;
         _sim?.Remove(p.Id);
         if (!_park.Remove(p.Id)) { Status($"could not delete {name}"); return; }
-        if (queueCells > 0) RefreshFloor();
+        // ⭐⭐ ALWAYS, NOT ONLY FOR A QUEUE. Master: "make sure terrain holes heal when we delete
+        // things." `Park.Build` skips every occupied cell -- `if (_occupied[x, y] != 0) continue`
+        // -- so a ride's footprint has NO floor under it while it stands. Remove() frees those
+        // cells but the mesh is only rebuilt by RefreshFloor, and this called it only when a queue
+        // had been cleared. Delete a ride with no queue and its footprint stayed a hole in the
+        // ground. The floor has to be rebuilt because the ride is gone, which has nothing to do
+        // with whether it had a queue.
+        RefreshFloor();
         ClearSelection();
         _shownBox = -1;
         ShowBoxFor(-1);
-        GD.Print($"[menu] deleted {name} (id {p.Id}); {queueCells} queue cells with it");
+        GD.Print($"[menu] deleted {name} (id {p.Id}); {queueCells} queue cells and {doors} doors "
+               + "with it; floor rebuilt");
         Status(queueCells > 0 ? $"deleted {name} and its queue" : $"deleted {name}");
     }
 
