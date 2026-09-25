@@ -143,9 +143,17 @@ static class NativeDepartureChecks
             {
                 C(f.O(g) is {State:Flow.State.DecisionBoundary,AlternateRequestFlag:true,DeferredSticky:true,Mode:14}
                     &&f.RecoveryModes.SequenceEqual(new[]{14}),"second mode14 failure selects state0 and preserves flag20/A4, not state26");
-                int count=f.Requests.Count;for(int i=0;i<70;i++)f.Step();
-                C(f.Requests.Count==count&&f.Flow.Owns(g)&&f.Flow.DeparturePressure==1&&f.Visitors.WentHome==0,
-                    "unported ordinary recovery is explicit owned boundary, not fake retry or disappearance");
+                // Queue item 8 adapter: the held state 0 is resumed one update later. A booth rejection
+                // (not an admitted leaver) re-enters 26 with flag 20 cleared and retries on its OWN phase.
+                int count=f.Requests.Count;f.Step();
+                C(f.O(g) is {State:Flow.State.Rejected,AlternateRequestFlag:false,DeferredSticky:true}&&f.Flow.HoldsResumed==1
+                    &&f.Flow.DepartureHandbacks==0&&f.Requests.Count==count,
+                    "state0 hold resumes next update as state26 with flag20 cleared, no request off-phase and no handback");
+                if(!f.Until(()=>f.Requests.Count>count,"retry after the state0 hold"))return;
+                var retry=f.Requests[count];
+                C(retry.Tick%64==63&&retry.Request is {Mode:14,Flags:0x21},"the retry is a fresh flags21 mode14 on the guest's phase63");
+                if(!f.Until(()=>!f.Flow.Owns(g),"retried departure completes",1024))return;
+                C(f.Visitors.WentHome==1&&f.Walk.NativeRoutes.Available==1000,"a resumed state0 hold ends in a real departure, not a stranded lease");
             }
             else
             {
@@ -176,6 +184,13 @@ static class NativeDepartureChecks
             C(f.CapturedRecovery.Happiness==0&&f.CapturedRecovery.Unknown78==129&&f.CapturedRecovery.Cash==w.Cash,
                 "generic failure uses signed happiness/unknown78 bytes and no fee or reseed");
             C(f.Flow.Owns(g)&&f.Visitors.WentHome==0&&f.Flow.DeparturePressure==1,"generic recovery boundary retains identity and sticky contribution");
+            int buses=f.Requests.Count(r=>r.Request.Mode==9);f.Step();
+            C(f.Flow.HoldsResumed==1&&f.O(g).State==Flow.State.RequestBus&&f.Requests.Count(r=>r.Request.Mode==9)==buses,
+                "queue 8 adapter: the state5 hold resumes one update later as state30, not a removal");
+            f.Step();
+            C(f.Requests.Count(r=>r.Request.Mode==9)==buses+1,"the resumed state30 requests the bus leg again on the following update");
+            if(!f.Until(()=>!f.Flow.Owns(g),"resumed bus leg completes"))return;
+            C(f.Visitors.WentHome==1&&f.Walk.NativeRoutes.Available==1000,"a resumed state5 hold ends in a real departure");
         }
         void Pressure()
         {

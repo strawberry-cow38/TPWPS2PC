@@ -132,6 +132,8 @@ public sealed class NativeEntranceFlow
         internal ulong? Token;
         internal bool StageCounted, AcceptanceAttempted, RejectionNotified, Stopped;
         internal bool OutgoingDirection, DeferredSticky, AlternateRequestFlag;
+        internal bool Ordinary;  // entered through TryDepart: an admitted guest, not a booth rejection
+        internal uint? HeldAt;   // tick a state-0/state-5 hold was entered (queue item 8 adapter)
         internal bool? Accepted;
         internal string? Failure;
         internal LinkedListNode<Entry>? ActiveNode, QueueNode, AllocatedNode;
@@ -175,6 +177,10 @@ public sealed class NativeEntranceFlow
     /// <summary>Ordered A4 contributions from live active entries BEFORE their update.
     /// Includes guests removed later in this pass; new deferrals count next pass.</summary>
     public int DeparturePressure { get; private set; }
+    /// <summary>Queue item 8 adapter counters: holds resumed, and of those, admitted leavers handed back
+    /// to ordinary visiting. Instrumentation only; nothing reads them to decide.</summary>
+    public int HoldsResumed { get; private set; }
+    public int DepartureHandbacks { get; private set; }
 
     /// <summary>Reference-identity gate for the parent Walk loop: these guests must
     /// only be stepped through the supplied StepOwnedNative callback.</summary>
@@ -248,7 +254,7 @@ public sealed class NativeEntranceFlow
             if (_entries.ContainsKey(guest) || !_admitted.TryGetValue(guest, out var identity)) return false;
             if (_services.BusPoint == null)
                 throw new InvalidOperationException("Ordinary departure requires a bus-point supplier.");
-            var e = new Entry(guest, identity.Baseline, identity.Serial, _services) { State = State.Rejected };
+            var e = new Entry(guest, identity.Baseline, identity.Serial, _services) { State = State.Rejected, Ordinary = true };
             if (!_visitors.BeginEntranceRoute(guest, _owner, Array.Empty<Point>(), e.Inputs)) return false;
             _visitors.MarkNativeDeparture(guest, _owner);
             _admitted.Remove(guest);
@@ -424,6 +430,7 @@ public sealed class NativeEntranceFlow
                 if (e.AlternateRequestFlag)
                 {
                     e.State = State.DecisionBoundary;
+                    e.HeldAt = _tick;
                     Trace("mode14 alternate failed; ordinary decision boundary, lease retained", e);
                     _services.Recovery?.Invoke(e.Guest, e.Mode);
                 }
@@ -453,6 +460,7 @@ public sealed class NativeEntranceFlow
                 needs.Set(e.Guest.Id, w);
                 e.Group = -1;
                 e.State = State.RecoveryBoundary;
+                e.HeldAt = _tick;
                 Trace("mode9 event2; recovery boundary, lease retained", e);
                 _services.Recovery?.Invoke(e.Guest, e.Mode);
                 break;
@@ -668,17 +676,53 @@ public sealed class NativeEntranceFlow
                     ?? throw new InvalidOperationException("Departure requires a bus-point supplier.");
                 Request(e, 9, busPoint(e.Guest, index), 1);
                 break;
-            // Pending with no token is legitimate after an alternate refusal.
-            // Ordinary decision/failed-recovery are explicit held boundaries.
+            case State.DecisionBoundary:
+            case State.RecoveryBoundary:
+                Resume(e);
+                break;
+            // Pending with no token is legitimate after an alternate refusal, and it stays: nothing in
+            // the executable resubmits it either (see findings/native-ordinary-departure.md).
             case State.Pending:
             case State.Staged:
             case State.Waiting:
-            case State.DecisionBoundary:
-            case State.RecoveryBoundary:
                 break;
             default:
                 throw new InvalidOperationException("Unimplemented entrance state.");
         }
+    }
+
+    /// <summary>Queue item 8. This is a LABELLED ADAPTER, not native parity.
+    /// The executable leaves these holds through two paths the port does not run for a flow-owned
+    /// guest: its state-0 decision (20C930) and state-5 local movement (1913B8). Left as they were, a
+    /// guest whose route home was dug up kept its lease forever. So, one update after the hold:
+    /// - State 0 (the mode-14 alternate also failed). An admitted ordinary leaver standing at a cell
+    ///   centre is handed back to ordinary visiting where it stands. ParkVisitors then re-offers the
+    ///   departure while WantsToGoHome holds, which is the choice 20C930 would make again. Any other
+    ///   guest re-enters state 26 with flag 20 cleared, and retries on its next phase.
+    /// - State 5 (mode 9 failed). The bus leg is requested again. This skips 1913B8's local wander
+    ///   and the decision that would lead back to it.</summary>
+    void Resume(Entry e)
+    {
+        if (e.HeldAt == _tick) return; // entered during this tick's result pass; native selection stays observable
+        e.HeldAt = null;
+        HoldsResumed++;
+        if (e.State == State.RecoveryBoundary)
+        {
+            e.State = State.RequestBus;
+            Trace("ADAPTER: state5 hold resumed; bus leg requested again", e);
+            return;
+        }
+        if (e.Ordinary && e.Serial.HasValue && _visitors.ReleaseNativeDeparture(e.Guest, _owner))
+        {
+            DepartureHandbacks++;
+            _admitted[e.Guest] = (e.Serial.Value, e.Baseline);
+            Trace("ADAPTER: state0 hold handed back to ordinary visiting", e);
+            Forget(e);
+            return;
+        }
+        e.AlternateRequestFlag = false;
+        e.State = State.Rejected;
+        Trace("ADAPTER: state0 hold retries state26 on its next phase", e);
     }
 
     void Complete(Entry e, Point position)

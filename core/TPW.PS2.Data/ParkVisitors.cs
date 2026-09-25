@@ -308,6 +308,17 @@ public sealed class ParkVisitors
         Needs?.Reconcile(_plans.Keys);
     }
 
+    /// <summary>Queue item 8 adapter seam: a native departure that found no route home hands its guest
+    /// back to ordinary visiting where it stands. It needs the owner's finished lease at a cell centre,
+    /// as the entrance release does. The same identity, needs and cash are kept; nothing is counted.</summary>
+    public bool ReleaseNativeDeparture(Guest guest, object owner)
+    {
+        if (guest == null || !_plans.TryGetValue(guest.Id, out var plan)
+            || plan.Intent != VisitorIntent.Leaving || !Walk.ReleaseNativeRoute(guest, owner)) return false;
+        Wander(guest.Id, guest.Cell);
+        return true;
+    }
+
     public bool ReleaseEntranceRoute(Guest guest, object owner)
     {
         if (guest == null || !_plans.TryGetValue(guest.Id, out var plan)

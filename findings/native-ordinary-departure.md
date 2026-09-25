@@ -84,3 +84,34 @@ admission fixture.
   fixture, 3 were made broke), 8 distinct phases, 8 mode-14 requests, peak pressure 3.
 - The 5 natural departures happened while later buses were still arriving. Which predicate fired was
   not instrumented.
+
+## Queue item 8: the state-0 and state-5 holds are resumed (adapter)
+
+**The problem.** Two failures used to park a flow-owned guest forever, with its lease held:
+- mode 14 failing twice (the flags-0x21 request, then the 0x23 alternate) selects state 0;
+- mode 9 failing selects state 5.
+
+The executable leaves both through code the port does not run for a flow-owned guest: the state-0
+decision (20C930, above) and the state-5 local movement planner (1913B8).
+
+In this port a moving native route never fails because of tiles, since the cursor only fails outside
+the grid (NativeGuestRoute 192038). So the reachable trigger is a route *request* that finds no path.
+Digging up the park path between a leaver and the booth does exactly that. The corridor cannot be dug
+up, so the bus leg (mode 9) fails only on shared-pool exhaustion.
+
+**The adapter** is `NativeEntranceFlow.Resume`. It acts one update after the hold is entered, so the
+native selection itself stays observable in between.
+- **State 0**, for an admitted ordinary leaver standing at a cell centre: the lease is released through
+  the new `ParkVisitors.ReleaseNativeDeparture`, which is a second member in cow's file. The guest
+  wanders from where it stands, and its birth identity is remembered again. While `WantsToGoHome`
+  still holds, Idle re-offers the departure, which is the choice 20C930 would make again.
+- **State 0**, for any other guest: back to state 26 with flag 20 cleared, retried on its own next
+  phase.
+- **State 5**: state 0x30 again, so the bus leg is requested once more. This skips 1913B8's local
+  wander and the decision that would lead back to it.
+- Counters `HoldsResumed` and `DepartureHandbacks` are instrumentation only.
+
+**Still held, deliberately.** A mode-14 alternate refused at submission (all 10 request records full)
+leaves the guest in state 0B with no token. Nothing in the executable resubmits it either. The port's
+BFS adapter never refuses a request, so this cannot happen in the Viewer today. It is recorded here,
+not fixed.

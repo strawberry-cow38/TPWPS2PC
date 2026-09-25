@@ -87,7 +87,7 @@ public partial class Viewer
                 // Flags reach the adapter but native 0x21/0x23 search policy is not yet reproduced by BFS.
                 return RequestEntranceRoute(request.Token, request.Guest, request.Mode, request.From, request.Target);
             },
-            recovery: (g, mode) => GD.Print($"[entrance.experimental] guest {g.Id}: mode{mode} native failure recovery state reached; ordinary recovery remains unported, owner retained"),
+            recovery: (g, mode) => GD.Print($"[entrance.experimental] guest {g.Id}: mode{mode} native failure hold; the queue-8 adapter resumes it next update"),
             slotAdvanced: NativeSlotAdvanced));
 
         _entrancePriorTick = _guests.BeforeStep;
@@ -103,7 +103,7 @@ public partial class Viewer
         GD.Print(NativeAnimationActive
             ? "[entrance.experimental] native guest animation: 191E10 readiness over the 2AAD48 dispatcher; adapters: one model update per park tick after steps, every owned guest pushed, NewlibRand stream, section 0 drawn as the section-1 walk"
             : "[entrance.experimental] readiness BYPASS (pass --native-guest-animation for the dispatcher join)");
-        GD.Print("[entrance.experimental] NON-PARITY ADAPTERS: deferred-next-tick public BFS/search resources; ordinary constructor fee seed only; guard staging absent; represented-activation phase only; failed-route recovery unported; ordinary departure enters state26 at once (20C930's later arms unjoined, 211D48 roll unported); guests not admitted by this flow still leave by the legacy gate. Not release-ready.");
+        GD.Print("[entrance.experimental] NON-PARITY ADAPTERS: deferred-next-tick public BFS/search resources; ordinary constructor fee seed only; guard staging absent; represented-activation phase only; failed-route holds resumed by an adapter (state0: hand back or retry 26; state5: retry the bus leg); ordinary departure enters state26 at once (20C930's later arms unjoined, 211D48 roll unported); guests not admitted by this flow still leave by the legacy gate. Not release-ready.");
     }
 
     bool RequestEntranceRoute(ulong token, Guest guest, int mode, Point from, Point target)

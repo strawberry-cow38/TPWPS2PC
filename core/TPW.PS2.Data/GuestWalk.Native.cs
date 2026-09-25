@@ -131,7 +131,11 @@ public sealed partial class GuestWalk
     /// owner or use a separately specified recovery policy, never silently teleport.</summary>
     public bool ReleaseNativeRoute(Guest guest, object owner)
     {
-        if (NativeRouteState(guest, owner) is not { Finished: true, Failed: false } state
+        // A lease holding NO slot is standing still (the cursor only moves toward a slot's target), so
+        // an empty lease that was never stepped is as safe to hand back as a finished one. Queue item 8
+        // needs that: a departure whose route request failed never assigned a route at all.
+        if (NativeRouteState(guest, owner) is not { Failed: false } state
+            || !state.Finished && state.SlotIndex >= 0
             || (state.Position.X & 255) != 128 || (state.Position.Z & 255) != 128)
             return false;
         guest.Cell = NativeCell(state.Position);

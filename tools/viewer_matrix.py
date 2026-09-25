@@ -33,6 +33,8 @@ SCENES = {
     'readiness': ('NativeAnimationReadinessSmoke', 'NATIVE ANIMATION READINESS SMOKE', 6000),
     # 8 followed guests: 3 checks per retirement plus one per admitted leaver, over a fixed core.
     'departure': ('NativeOrdinaryDepartureSmoke', 'NATIVE ORDINARY DEPARTURE SMOKE', 40),
+    # Per-update hold checks dominate this count (13144 on JUNGLE-1); the floor only proves they ran.
+    'disruption': ('NativeDepartureDisruptionSmoke', 'NATIVE DEPARTURE DISRUPTION SMOKE', 1000),
 }
 MAP_LINE = re.compile(r'^\[map\] loaded world=([A-Z]+) terrain=(terrain_[12])\.mps$', re.M)
 
