@@ -41,7 +41,7 @@ public partial class NativeDepartureDisruptionSmoke : Node3D
             var entry=Field<ParkEntrance>(viewer,"_entranceTable").Fit(terrain.Field,
                 ParkEntrance.WalkwayColumnFromPoles(terrain),out _);
             var path=new List<(int,int)>();
-            for(int z=entry.ZEnd;z<entry.ZEnd+8;z++)path.Add((entry.XCol,z));
+            for(int z=entry.ZEnd;z<entry.ZEnd+16;z++)path.Add((entry.XCol,z));
             Call(viewer,"LayLeg",path,PathTool.Kind.Path,0);Call(viewer,"RefreshFloor");
             Check((bool)Call(viewer,"OpenGate"),"ordinary guest layer opens");
             Call(viewer,"ToggleBuildMenu");Call(viewer,"ShowBuildCategory","Rides");
@@ -118,25 +118,36 @@ public partial class NativeDepartureDisruptionSmoke : Node3D
             }
             var stayers=followed.Where(g=>walk.IsLive(g)&&!flow.Owns(g)).ToArray();
             Check(followed.Count>=8&&stayers.Length>=2,$"{stayers.Length} of {followed.Count} followed guests are admitted, unowned visitors before the disruption");
-            // THE DISRUPTION: everyone still here goes broke, and in the same instant the park path is dug up.
-            foreach(var g in stayers){var w=visitors.Needs.Of(g.Id);w.Cash=50;visitors.Needs.Set(g.Id,w);}
-            Check(paths.UndoLeg(),"the fixture's park path is dug up through the path tool's own undo");
-            Call(viewer,"RefreshFloor");
+            // THE DISRUPTION. Only the fixture's own leg can be dug up (the park's pre-laid path is not
+            // on the undo stack), so whether it strands anyone depends on where guests stand. FANTASY-1
+            // stranded nobody on the first try (2026-09-25: 0 holds). So dig, ask the route adapter's own
+            // BFS who is now cut off from the booth, and re-lay and dig again until somebody is.
+            // Those guests, and only those, go broke.
+            var entryPath=new List<(int,int)>();
+            for(int z=entry.ZEnd;z<entry.ZEnd+16;z++)entryPath.Add((entry.XCol,z));
+            var staging=catalogue.StagingPoint;Guest[] cut=Array.Empty<Guest>();int digs=0;
+            for(int attempt=0;attempt<12&&cut.Length==0;attempt++)
+            {
+                if(attempt>0){Call(viewer,"LayLeg",entryPath,PathTool.Kind.Path,0);Call(viewer,"RefreshFloor");for(int i=0;i<120;i++)await Step(i);}
+                Check(paths.UndoLeg(),"the fixture's park path is dug up through the path tool's own undo");
+                Call(viewer,"RefreshFloor");digs++;
+                cut=followed.Where(g=>walk.IsLive(g)&&!flow.Owns(g)&&walk.Route(g.Cell,staging)==null).ToArray();
+            }
+            Check(cut.Length>0,$"digging up the leg cut {cut.Length} admitted guests off from the booth (after {digs} digs)");
+            foreach(var g in cut){var w=visitors.Needs.Of(g.Id);w.Cash=50;visitors.Needs.Set(g.Id,w);}
             int resumedBefore=flow.HoldsResumed,handbacksBefore=flow.DepartureHandbacks;
             for(int i=0;i<640;i++)await Step(i);
             int handbacks=flow.DepartureHandbacks-handbacksBefore,resumed=flow.HoldsResumed-resumedBefore;
             Check(handbacks>0,$"with no way home, a leaver's failed departure was handed back to ordinary visiting ({handbacks} handbacks, {resumed} holds resumed)");
             Check(held>0,"the disruption really drove guests into the native state-0 hold (it is not a vacuous pass)");
             // THE REPAIR: the same path is laid again, and every followed guest must now leave.
-            var entryPath=new List<(int,int)>();
-            for(int z=entry.ZEnd;z<entry.ZEnd+8;z++)entryPath.Add((entry.XCol,z));
             Call(viewer,"LayLeg",entryPath,PathTool.Kind.Path,0);Call(viewer,"RefreshFloor");
             for(int i=0;i<8000&&retired.Count<followed.Count;i++)await Step(i);
             Check(retired.Count==followed.Count&&visitors.WentHome-wentHome==followed.Count&&visitors.DiscardedEntranceGuests==0,
                 $"every followed guest left through a real departure once the path returned ({retired.Count} of {followed.Count})");
             Check(walk.NativeRoutes.Available==NativeRoutePool.Capacity&&flow.Counts==(0,0)&&flow.StagingPending==0&&flow.Observations.Count==0,
                 "no lease, route slot, membership or staging count is held at quiescence");
-            detail=$"followed={followed.Count} disrupted={stayers.Length} handbacks={handbacks} holdsResumed={resumed} heldObservations={held} maxHeldRun={maxHeldRun}";
+            detail=$"followed={followed.Count} cutOff={cut.Length} digs={digs} handbacks={handbacks} holdsResumed={resumed} heldObservations={held} maxHeldRun={maxHeldRun}";
             exit=0;
         }
         catch(Exception e){GD.PrintErr($"NATIVE DEPARTURE DISRUPTION SMOKE FAIL checks={checks}: {e}");}
