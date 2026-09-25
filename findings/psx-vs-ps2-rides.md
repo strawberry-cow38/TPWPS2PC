@@ -67,3 +67,76 @@ tiles (flag `0x02` clear, inside the loader's `w−1 × h−1` bounds): 1997, 19
 Both versions use 256-unit tiles, and on both the no-build tile flag is bit 1. The PS2 fills it from
 the drawn bit at 0x14E700. So the counts compare directly: a PS2 park has about 1.9× the buildable
 ground of a PSX park.
+
+## Features, shops and sideshows
+
+Same sources and method as the rides. On the PSX the build-table names include unresolved `?0x..`
+ids. Those are folio entries whose record `fable/records.json` did not parse. They were resolved
+from the ripped entry: the record sits at `data + data[0x14]`, with `{u32 type, u32 name text id}`,
+and the name comes from the English text table (`fable/text.py`). Examples: 0xC3 is Loudspeaker and
+0x13 is Litter Bin.
+
+- **Shops** are identical: all four worlds have the same eight on both versions. "Fries" is
+  "Fries Shop".
+- **Sideshows:** every PSX world has a themed strength game and a themed bash game. The PS2 has a
+  generic "Strength Test" and renamed bashes (Gopher, Devil, Mole and Alien Bash). These are probably
+  renames, not cuts; that is unverified. Busta Block is new on the PS2 in every world.
+- **Features:** the PS2 has 26 to 30 per world against 12 to 14. The additions are scenery and the
+  "shows". The Loudspeaker is the one PSX feature missing from every PS2 world. "Security Camera"
+  in PSX Space is "Security Cameras" on the PS2.
+
+Raw per-world output, by normalised name, before those manual notes:
+
+```
+#### features
+== JUNGLE: psx 13 ps2 30
+  both: Large Tree, Litter Bin, Mammoth Fountain, Security Camera, Small Rock, Small Tree, Staff Room, Super Toilet, Toilet
+  psx only: Big Palm, Fountain, Loudspeaker, Small Palm
+  ps2 only: Colourful Bush, Golden Idol, Golden Statue, Huge Hollow Rock, Huge Leafy Rock, Large Rock Pillar, Lava Fountain, Leafy Bush, Medium Bush, Round Fountain, Screeches, Small Bush, Small Rock Pillar, Stone Head, Stone Statue, Strange Deep, Tiny Rock, Tropical Flower, Undergrowth, Wild Beasts, Wooden Log
+== HALLOW: psx 14 ps2 30
+  both: Demon Statue, Gargoyle, Gravestone, Huge Rock, Large Rock Pillar, Litter Bin, Security Camera, Small Toilet, Staff Room, Super Toilet
+  psx only: Brown Bush, Green Bush, Loudspeaker, Pumpkin
+  ps2 only: Finger, Firework Show, Furry Fiends, Giant Pumpkin, Kid Creosote Fountain, Large Tree, Medium Bush, Medium Rock, Medium Tree, Monster Hand, Night Creatures, Small Bush, Small Rock, Small Tree, Spooky Spirits, Tentacle, The Bells, Tiny Rock, Tower, Trident
+== FANTASY: psx 12 ps2 30
+  both: Bricks, Card Statue, Donut, Grass, Large Flower, Litter Bin, Plant Pot, Security Camera, Small Toilet, Staff Room, Super Toilet
+  psx only: speaker
+  ps2 only: Candy Cane, Cards, Clown Capers, Coin, Crayon, Fairy Frolics, Fork, Fountain, Hurry Up Havoc, Lollipop, Lucky Card, Medium Flower, Mushroom, Pencil, Small Flower, Sun Flower, Sweet, Teapot, Trowel
+== SPACE: psx 13 ps2 26
+  both: Alien Bubbler, Gyrotron, Large Tree, Litter Bin, Medium Bush, Small Bush, Small Toilet, Staff Room, Strange Growth, Super Toilet
+  psx only: Loudspeaker, Plasmatrope, Security Camera
+  ps2 only: Antenna, Comet Comms, Crater, Giant Robot, Golden Rocks, Ground Control, Large Crystals, Laser Show, Medium Tree, Obelisk, Pulsar, Security Cameras, Small Crystals, Space Dust, Tower, UFOs
+#### shops
+== JUNGLE: psx 8 ps2 8
+  both: Balloon Shop, Burger Shop, Costume Shop, Drinks Shop, Gift Shop, Ice Cream Shop, Restaurant
+  psx only: Fries
+  ps2 only: Fries Shop
+== HALLOW: psx 8 ps2 8
+  both: Balloon Shop, Burger Shop, Costume Shop, Drinks Shop, Fries Shop, Gift Shop, Ice Cream Shop, Restaurant
+  psx only: 
+  ps2 only: 
+== FANTASY: psx 8 ps2 8
+  both: Balloon Shop, Burger Shop, Costume Shop, Drinks Shop, Fries Shop, Gift Shop, Ice Cream Shop, Restaurant
+  psx only: 
+  ps2 only: 
+== SPACE: psx 8 ps2 8
+  both: Balloon Shop, Burger Shop, Costume Shop, Drinks Shop, Fries Shop, Gift Shop, Ice Cream Shop, Restaurant
+  psx only: 
+  ps2 only: 
+#### sideshows
+== JUNGLE: psx 6 ps2 8
+  both: Arcade, Dino Racing, Giant Puzzle
+  psx only: Idol Smash, Strength Bird, Sun Shooter
+  ps2 only: Busta Block, Gopher Bash, Jungle Spray, Laughing Hyenas, Strength Test
+== HALLOW: psx 6 ps2 8
+  both: Arcade, Fortune Teller, Giant Puzzle, Pumpkin Shy, Shooter
+  psx only: Bone Crusher
+  ps2 only: Busta Block, Devil Bash, Strength Test
+== FANTASY: psx 6 ps2 7
+  both: Aqua Spray, Arcade, Fruit Shy, Giant Puzzle
+  psx only: Strength Flower, Worm Bash
+  ps2 only: Busta Block, Mole Bash, Strength Test
+== SPACE: psx 6 ps2 7
+  both: Arcade, Giant Puzzle, Martian Mooners, UFO Blaster
+  psx only: Martian Mash, Strength Rocket
+  ps2 only: Alien Bash, Busta Block, Strength Test
+```
