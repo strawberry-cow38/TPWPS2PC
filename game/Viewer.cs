@@ -5695,20 +5695,47 @@ public partial class Viewer : Node3D
 
         // Frame the model on its own drawn bounds, so any ride fills the window the same way.
         var (lo, hi) = Park.DrawnBounds(drawn.Root, inParent: true);
-        var mid = (lo + hi) / 2f;
-        // ⚠ FIT THE BOUNDING SPHERE, not a guessed multiple of the widest axis. The window is
-        // TALL (147x240), so the vertical field is the binding one and the distance has to come
-        // out of the FOV rather than a constant that happened to look right on one ride.
-        float radius = Mathf.Max(0.001f, (hi - lo).Length() / 2f);
-        const float fov = 30f;
-        float dist = radius / Mathf.Tan(Mathf.DegToRad(fov / 2f)) * 1.15f;
-        _laptopCam = new Camera3D { Current = true, Fov = fov, Near = 0.05f, Far = dist * 4f };
+
+        // ⭐⭐ THE CONSOLE USES NO CAMERA HERE AT ALL, and this is written to match what it does
+        // rather than to look similar. `FUN_001442B0` converts the element's own position to
+        // NORMALISED DEVICE COORDINATES -- `x = col/256 - 1`, `y = 1 - (row + height)/256`, the
+        // 512-wide authored space mapping straight onto NDC's span of 2 -- then scales the model
+        // by `FUN_001441C8` and writes the result into the model's own transform. There is no
+        // projection and no eye position; the model is placed in screen space and drawn in the
+        // UI pass. An ORTHOGRAPHIC camera is the equivalent of that here.
+        //
+        // ⭐ And the fit is the console's, from FUN_001441C8:
+        //     sx = windowWidth / modelWidth;  sy = windowHeight / modelHeight;
+        //     scale = min(sx, sy);
+        // i.e. aspect-preserving, the binding axis winning -- which in Godot's terms is an
+        // orthographic height of max(modelHeight, modelWidth / aspect).
+        float modelW = Mathf.Max(0.001f, hi.X - lo.X), modelH = Mathf.Max(0.001f, hi.Y - lo.Y);
+        float aspect = LaptopScreen.ModelWidth / (float)LaptopScreen.ModelHeight;
+        float orthoH = Mathf.Max(modelH, modelW / aspect);
+        bool heightBinds = modelH >= modelW / aspect;
+
+        // ⚠⚠ AND THE CONSOLE'S ASYMMETRY IS KEPT. FUN_001441C8 re-centres only on ONE axis:
+        // `if (sy < sx) x += winW * (1 - sy/sx) * 0.5`. There is no matching y branch, so when
+        // the WIDTH binds the model sits at the TOP of the window rather than centred. That is
+        // the original's behaviour, not an oversight here; it is flagged rather than tidied.
+        float cx = (lo.X + hi.X) / 2f;
+        float cy = heightBinds ? (lo.Y + hi.Y) / 2f : hi.Y - orthoH / 2f;
+        float depth = Mathf.Max(modelW, modelH) * 4f;      // far enough to clear the model
+        _laptopCam = new Camera3D
+        {
+            Current = true,
+            Projection = Camera3D.ProjectionType.Orthogonal,
+            Size = orthoH,
+            Near = 0.05f,
+            Far = depth * 3f,
+        };
         _laptopView.AddChild(_laptopCam);
-        // ⚠ Straight on: the camera sits on +Z looking at the model's middle, with only enough
-        // lift to read the top surfaces. A turntable would contradict master's description.
-        _laptopCam.Position = mid + new Vector3(0, radius * 0.25f, dist);
-        _laptopCam.LookAt(mid, Vector3.Up);
-        GD.Print($"[laptop] model bounds {lo} .. {hi}; radius {radius:F2}, camera {dist:F2} back");
+        // Straight on, per master: "its just a front facing render of it". No turntable.
+        _laptopCam.Position = new Vector3(cx, cy, hi.Z + depth);
+        _laptopCam.LookAt(new Vector3(cx, cy, (lo.Z + hi.Z) / 2f), Vector3.Up);
+        GD.Print($"[laptop] model {modelW:F2}x{modelH:F2}, window aspect {aspect:F2}; "
+               + $"orthographic height {orthoH:F2}, {(heightBinds ? "height" : "width")} binds"
+               + (heightBinds ? "" : " -- top-aligned, as the console leaves it"));
         _laptopModel = drawn; _laptopModelFrame = 0;
         GD.Print($"[laptop] model: {Leaf(ride.Name)}, "
                + (rec == null ? "NO slot-6 record -- showing its default pose"
