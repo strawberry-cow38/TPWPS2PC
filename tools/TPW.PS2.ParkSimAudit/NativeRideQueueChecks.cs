@@ -111,7 +111,8 @@ static class NativeRideQueueChecks
             var f = new Fixture(visitors, ride, shape, spawn);
             f.Queues = new Queues(visitors, new Queues.Services
             {
-                Shape = r => ReferenceEquals(r, ride) ? f.Shape : null, Random = n => rng.Next(n), Tier = _ => tier,
+                Shape = r => ReferenceEquals(r, ride) ? f.Shape : null, Tier = _ => tier,
+                Random = n => f.MaxStagger && n == 3 ? 2 : rng.Next(n), // nothing else in a tick draws rand(3)
             });
             visitors.NativeQueueMouth = f.Queues.Mouth;
             visitors.NativeQueueArrival = f.Queues.Arrive;
@@ -166,16 +167,18 @@ static class NativeRideQueueChecks
             ReferenceEqualityComparer.Instance);
         var needs = full.Visitors.Needs;
         var lw = needs.Of(leaver.Id); lw.Unknown78 = 81; needs.Set(leaver.Id, lw);
+        full.MaxStagger = true;
         full.Step();
+        full.MaxStagger = false;
         var after = full.Queues.Observations;
         var left = after.Single(o => ReferenceEquals(o.Guest, leaver));
         var ripple = behind.Select(g => after.Single(o => ReferenceEquals(o.Guest, g))).ToArray();
         C(left.Step == Queues.Step.Quit && left.Index < 0 && needs.Of(leaver.Id).Thought == Thought.BadQueue
             && full.Queues.Impatient == 1,
             "at 81 a waiting guest leaves the line with thought 9 (BadQueue) and walks out");
-        C(ripple.All(o => o.Step == Queues.Step.MoveUp) && ripple[0].Deadline == full.Now
-            && ripple.Zip(ripple.Skip(1)).All(p => p.Second.Deadline - p.First.Deadline is 0 or 3 or 6),
-            $"everyone behind moves up after now + 3 × a cumulative rand(3): deadlines +{string.Join(",", ripple.Select(o => o.Deadline - full.Now))}");
+        C(ripple.Length == 4 && ripple.All(o => o.Step == Queues.Step.MoveUp)
+            && ripple.Select(o => o.Deadline - full.Now).SequenceEqual(new uint[] { 0, 6, 12, 18 }),
+            $"everyone behind moves up at now + 3 × a cumulative rand(3), the first with none: with every rand(3) = 2, +{string.Join(",", ripple.Select(o => o.Deadline - full.Now))} (want +0,6,12,18)");
         ParkCell? releasedAt = null;
         for (int i = 0; i < 600 && releasedAt == null; i++)
         {
@@ -255,6 +258,7 @@ static class NativeRideQueueChecks
         internal readonly ParkCell Home;
         internal Queues Queues;
         internal uint Now;
+        internal bool MaxStagger;
         internal readonly List<Guest> Guests = new();
         internal Fixture(ParkVisitors visitors, ParkRide ride, NativeQueueShape shape, ParkCell home)
         { Visitors = visitors; Ride = ride; Shape = shape; Home = home; }
