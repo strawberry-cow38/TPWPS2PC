@@ -356,13 +356,24 @@ public sealed partial class LaptopShopScreen : Control
         if (Size != want) Size = want;
     }
 
+    /// <summary>⚠ DIAGNOSTIC. Two fixes for master's click bug were reasoned from the code and
+    /// both failed ("identical behavior"). These record what actually reaches the Control, so the
+    /// third attempt starts from a measurement instead of a third theory.</summary>
+    public int GuiEvents, GuiMotion, GuiClicks;
+    public string LastGui = "(none)";
+
     public override void _GuiInput(InputEvent @event)
     {
+        GuiEvents++;
+        if (@event is InputEventMouse m0)
+            LastGui = $"{@event.GetType().Name} at local({m0.Position.X:F0},{m0.Position.Y:F0}) "
+                    + $"rect({Position.X:F0},{Position.Y:F0} {Size.X:F0}x{Size.Y:F0}) open={Open}";
         if (!Open) return;
         FitToViewport();
         float s = Scale; var o = Origin;
         if (@event is InputEventMouseMotion motion)
         {
+            GuiMotion++;
             int wasMenu = _menuHover, wasBtn = _btnHover;
             _btnHover = Screen(BackBox, s, o).HasPoint(motion.Position) ? 0
                       : Screen(CloseBox, s, o).HasPoint(motion.Position) ? 1 : -1;
@@ -375,6 +386,8 @@ public sealed partial class LaptopShopScreen : Control
         }
         if (@event is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left })
         {
+            GuiClicks++;
+            LastGui += $" -> btnHover={_btnHover} menuHover={_menuHover}";
             if (_btnHover >= 0) { Dismissed?.Invoke(_btnHover == 1); AcceptEvent(); return; }
             if (_menuHover >= 0)
             {

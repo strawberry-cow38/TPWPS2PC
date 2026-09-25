@@ -949,3 +949,39 @@ relied on it anyway. Naming a gap is not the same as closing it.
 ⭐ The check that let it through asserted only `Size.X > 0 && Size.Y > 0` -- which 64x64 satisfies,
 and which a wrong-but-nonzero rect satisfies too. It now asserts the **equality the code actually
 depends on**: `Position == 0 && Size == viewport`.
+
+## ⭐⭐ "i cant click any options" — the input path was never broken
+
+Master said this twice, and after my second fix: *"identical behavior"*. Both fixes were aimed at
+the input path. The input path was fine.
+
+⭐ **The third attempt started from a MEASUREMENT.** `--laptop-click=X,Y` pushes a real
+`InputEventMouseButton` through the viewport -- the same route a real click takes -- and prints what
+each stage saw:
+
+```
+[click] panel: parent=@Control@5 visible=True filter=Stop rect=(0,0 1024x749) viewport=(1024,749)
+[click] pushed at (270,190) -> _GuiInput fired 2 times (motion 1, clicks 1);
+        last = InputEventMouseButton at local(270,190) rect(0,0 1024x749) open=True -> menuHover=0
+```
+
+Everything worked: the rect equalled the viewport, `_GuiInput` fired, local coordinates matched, and
+**row 0 was hit correctly**.
+
+⚠⚠ **`MenuActivated` was then raised with NO SUBSCRIBER.** A grep for it across `game/` and `core/`
+found only the two `?.Invoke` sites inside the panel itself. Nothing in the viewer ever listened. So
+a click highlighted a row and the event went into the void -- and `Dismissed` likewise, which is why
+Back and Close did nothing either.
+
+⭐ **That is why it fooled two fixes**: an event with no listener and an input that never arrives
+produce the *same* observable -- nothing happens. "The click isn't landing" fitted the symptom
+perfectly and was wrong.
+
+Now wired: `MenuActivated -> OnLaptopRow` (Information opens the submenu, Build/Hire open their
+screens, anything without a screen says so plainly rather than silently doing nothing), and
+`Dismissed -> OnLaptopDismiss` with a small back-stack -- Back steps out one level, Close puts the
+laptop away. Verified end to end: the probe now prints `[laptop] row 0 activated (depth 0)`.
+
+⭐ The method lesson, recorded in memory: **when a fix aimed at a diagnosis fails, the diagnosis is
+what is wrong** -- build the smallest thing that measures the path rather than reasoning a second
+time in the same direction.

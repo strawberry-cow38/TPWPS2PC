@@ -242,6 +242,9 @@ public partial class Viewer : Node3D
     /// decides Open Park against Close Park. Both are harness knobs until the laptop takes input.</summary>
     int _laptopMenuSelected; bool _laptopParkOpen; int _laptopRide;
     int _laptopHoverRow = -1, _laptopHoverBtn = -1;
+    /// <summary>⚠ DIAGNOSTIC: "X,Y" -- push a real click through the viewport at that point and
+    /// report what the laptop received. Two reasoned fixes failed; this measures instead.</summary>
+    string _laptopClick;
     bool _idleScene, _idleSeeded;
     int _idleCount = 24;
     /// <summary>Which ride the control run stands, by display name; Crazy Ape unless told.</summary>
@@ -383,6 +386,7 @@ public partial class Viewer : Node3D
             else if (a.StartsWith("--laptop-ride=")) int.TryParse(a["--laptop-ride=".Length..], out _laptopRide);
             else if (a.StartsWith("--laptop-hover=")) int.TryParse(a["--laptop-hover=".Length..], out _laptopHoverRow);
             else if (a.StartsWith("--laptop-hover-btn=")) int.TryParse(a["--laptop-hover-btn=".Length..], out _laptopHoverBtn);
+            else if (a.StartsWith("--laptop-click=")) _laptopClick = a["--laptop-click=".Length..];
             else if (a.StartsWith("--ui-size="))
             {
                 var wh = a["--ui-size=".Length..].Split('x');
@@ -3163,8 +3167,130 @@ public partial class Viewer : Node3D
             return;
         }
         if (_toolOpen) CloseTool();
+        _laptopBack.Clear();
+        ShowLaptopMain();
+    }
+
+    /// <summary>⚠ DIAGNOSTIC for master's "i cant click any options". Pushes a genuine
+    /// InputEventMouseButton through the viewport -- the SAME route a real click takes -- and
+    /// prints what the laptop saw. If `_GuiInput` never fires, the problem is routing, not
+    /// hit-testing, and no amount of coordinate arithmetic will fix it.</summary>
+    void LaptopClickProbe()
+    {
+        var parts = _laptopClick.Split(',');
+        if (parts.Length != 2 || !float.TryParse(parts[0], out float px) || !float.TryParse(parts[1], out float py))
+        { GD.PrintErr("[click] --laptop-click wants X,Y"); return; }
+        var at = new Vector2(px, py);
+        GD.Print($"[click] panel: parent={_shopPanel.GetParent()?.Name} visible={_shopPanel.Visible} "
+               + $"filter={_shopPanel.MouseFilter} rect=({_shopPanel.Position.X:F0},{_shopPanel.Position.Y:F0} "
+               + $"{_shopPanel.Size.X:F0}x{_shopPanel.Size.Y:F0}) viewport={_shopPanel.GetViewportRect().Size}");
+        int before = _shopPanel.GuiEvents;
+        foreach (var ev in new InputEvent[]
+                 {
+                     new InputEventMouseMotion { Position = at, GlobalPosition = at },
+                     new InputEventMouseButton { Position = at, GlobalPosition = at,
+                                                 ButtonIndex = MouseButton.Left, Pressed = true },
+                 })
+            _shopPanel.GetViewport().PushInput(ev, true);
+        GD.Print($"[click] pushed at ({px},{py}) -> _GuiInput fired {_shopPanel.GuiEvents - before} times "
+               + $"(motion {_shopPanel.GuiMotion}, clicks {_shopPanel.GuiClicks}); last = {_shopPanel.LastGui}");
+    }
+
+    /// <summary>Where Back goes: the screens opened on the way here, innermost last.</summary>
+    readonly List<string> _laptopBack = new();
+
+    void ShowLaptopMain()
+    {
         _shopPanel.ShowMenu(LaptopMainOptions(), 0, LaptopMainMenu.MainScene);
-        Status("laptop open -- click a row, or Back/Close");
+        Status("laptop -- click a row, or Back/Close");
+    }
+
+    /// <summary>⭐⭐ THE ROW CLICK, WIRED. Master: "i cant click any options."
+    ///
+    /// ⚠⚠ The clicking was never broken. A probe that pushes a real `InputEventMouseButton`
+    /// through the viewport showed `_GuiInput` firing, the rect equal to the viewport, local
+    /// coordinates correct and row 0 correctly hit -- and then `MenuActivated` was raised with
+    /// **no subscriber anywhere in the codebase**. The event went into the void, so a click
+    /// highlighted a row and did nothing, which is indistinguishable from a click that never
+    /// landed. Two earlier fixes were aimed at the input path, which was fine.</summary>
+    void OnLaptopRow(int row)
+    {
+        GD.Print($"[laptop] row {row} activated (depth {_laptopBack.Count})");
+        var opts = System.Linq.Enumerable.ToArray(LaptopMainMenu.VisibleMain(parkOpen: _laptopParkOpen));
+        bool onMain = _laptopBack.Count == 0;
+        if (onMain)
+        {
+            if (row < 0 || row >= opts.Length) return;
+            var picked = opts[row];
+            // The Information row opens the submenu the console gives it; everything else either
+            // has a screen here or says plainly that it has none yet.
+            if (picked.Opens == "main_info")
+            {
+                _laptopBack.Add("main");
+                var names = new List<string>();
+                foreach (var o in LaptopMainMenu.Information)
+                    names.Add(_text?.Text("eng", o.TextId) ?? $"#{o.TextId}");
+                _shopPanel.ShowMenu(names, 0, LaptopMainMenu.InfoScene);
+                Status("information -- pick a kind, or Back");
+                return;
+            }
+            if (picked.Opens == "main_bh_items") { OpenLaptopScreen(LaptopScreen.Build, "Build"); return; }
+            if (picked.Opens == "main_bh_staff") { OpenLaptopScreen(LaptopScreen.Hire, "Hire"); return; }
+            Status($"{_text?.Text("eng", picked.TextId) ?? "that"} has no screen in this port yet");
+            return;
+        }
+        // On the Information submenu.
+        var info = LaptopMainMenu.Information;
+        if (row < 0 || row >= info.Length) return;
+        switch (info[row].Opens)
+        {
+            case "main_i_ride":     OpenLaptopScreen(LaptopScreen.Ride, "Crazy Ape"); break;
+            case "main_i_shop":     OpenLaptopScreen(LaptopScreen.Shop, "Drinks Shop"); break;
+            case "main_i_sideshow": OpenLaptopScreen(LaptopScreen.Sideshow, "Arcade"); break;
+            default:
+                Status($"{_text?.Text("eng", info[row].TextId) ?? "that"} has no screen in this port yet");
+                break;
+        }
+    }
+
+    /// <summary>Open one of the data screens with whatever this port can fill it from.</summary>
+    void OpenLaptopScreen(LaptopScreen spec, string title)
+    {
+        _laptopBack.Add("menu");
+        var cells = new List<(string, int)>();
+        foreach (var r in spec.Rows)
+            cells.Add(r.Kind switch
+            {
+                LaptopRowKind.Bar or LaptopRowKind.Slider => (null, 0),
+                LaptopRowKind.Money => ("$0", 0),
+                LaptopRowKind.Text  => (null, 0),
+                _ => ("0", 0),
+            });
+        _shopPanel.ShowScreen(spec, title, cells);
+        Status($"{title} -- Back to go up, Close to put the laptop away");
+    }
+
+    /// <summary>Back steps out one level; Close puts the laptop away entirely.</summary>
+    void OnLaptopDismiss(bool close)
+    {
+        GD.Print($"[laptop] dismiss close={close} (depth {_laptopBack.Count})");
+        if (close || _laptopBack.Count == 0)
+        {
+            _shopPanel.Hide(); _laptopBack.Clear();
+            _place.Clear(); _ghostView?.Clear();
+            Status("laptop closed");
+            return;
+        }
+        _laptopBack.RemoveAt(_laptopBack.Count - 1);
+        if (_laptopBack.Count == 0) ShowLaptopMain();
+        else
+        {
+            var names = new List<string>();
+            foreach (var o in LaptopMainMenu.Information)
+                names.Add(_text?.Text("eng", o.TextId) ?? $"#{o.TextId}");
+            _shopPanel.ShowMenu(names, 0, LaptopMainMenu.InfoScene);
+            Status("information -- pick a kind, or Back");
+        }
     }
 
     void LaptopFilmFrame()
@@ -3193,6 +3319,7 @@ public partial class Viewer : Node3D
                           + " -- the list would run onto the chrome");
             _shopPanel.ShowMenu(opts, _laptopMenuSelected,
                 _laptopScreen.Equals("info", StringComparison.OrdinalIgnoreCase) ? LaptopMainMenu.InfoScene : LaptopMainMenu.MainScene);
+            if (_laptopClick != null && _laptopFrame == 0) LaptopClickProbe();
             _shopPanel.ForceHoverForShot(_laptopHoverRow, _laptopHoverBtn);
             PrepareUiShotView();
             SaveShot(ShotSibling(_shotPath, $"-f{_laptopFrame:D4}"));
@@ -7972,6 +8099,10 @@ public partial class Viewer : Node3D
                 if (_shopPanel != null)
                 {
                     _uiRoot.AddChild(_shopPanel);
+                    // ⚠⚠ WITHOUT THESE THE MOUSE DOES NOTHING. The panel raised MenuActivated and
+                    // Dismissed with no subscriber, so every click highlighted a row and stopped.
+                    _shopPanel.MenuActivated += OnLaptopRow;
+                    _shopPanel.Dismissed += OnLaptopDismiss;
                     GD.Print($"[laptop] shop screen ready ({ShopScreen.SceneFile} layout, "
                              + $"{ShopScreen.ChromeFor(_lib?.WadName)} chrome, Large.bff, step {ShopScreen.RowStep})");
                 }
