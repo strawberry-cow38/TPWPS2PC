@@ -222,10 +222,15 @@ public partial class BusViewerSmoke : Node3D
             Check(newborns.Select(g => g.Id).Distinct().Count() == admitted
                 && newborns.All(g => g.Cell == catalogue.Point0),
                 "every actual new guest cell equals catalogue Point0 on the first admitted tick");
+            // ⭐ Tickets are the shipping default (2026-09-25): a bus guest is no longer handed
+            // straight to wandering but to the entrance flow, which queues it at the booths and
+            // charges the fee. --legacy-entrance restores the old Wandering handoff.
+            var flow = Field<NativeEntranceFlow>(viewer, "_entranceFlow");
+            Check(flow != null, "the entrance flow is live in shipping play without any flag");
             Check(visitors.Plans.Count == admitted && newborns.All(g =>
                 visitors.Plans.TryGetValue(g.Id, out var plan) && plan.Guest == g.Id
-                && plan.At == catalogue.Point0 && plan.Intent == VisitorIntent.Wandering),
-                "actual Plans identities seeded at point0 by shipping Arrive");
+                && plan.At == catalogue.Point0 && flow.Owns(g)),
+                "actual Plans identities seeded at point0 by shipping Arrive and handed to the entrance flow");
             Check(visitors.Needs != null && newborns.All(g => visitors.Needs.Has(g.Id)),
                 "actual admitted identities have seeded needs");
             var oldRoot = bus.Root;
@@ -258,6 +263,8 @@ public partial class BusViewerSmoke : Node3D
                 Check(Field<ParkVisitors>(viewer, "_visitors") == null && Field<GuestWalk>(viewer, "_guests") == null
                     && Field<ParkSim>(viewer, "_sim") == null && Field<int>(viewer, "_parkTicks") == 0,
                     "old simulation/guest owners reset before reinitialization");
+                Check(Field<NativeEntranceFlow>(viewer, "_entranceFlow") == null,
+                    "old park's entrance flow torn down with it");
             }
             CheckReset();
             await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
