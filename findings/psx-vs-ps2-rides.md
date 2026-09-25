@@ -42,3 +42,28 @@ Dinos is the likeliest such pair, and it is unverified.
   `SPACE/Rides/whirli/` has one.
 - `Ghost Train` is the folder `HALLOW/Rides/bellt` (`.sam` name `_bellt`). `Phantom` is `<PHANTOM>`
   in its `.sam`.
+
+## Park sizes
+
+**PSX.** FOLIO.GAZ has eight map resources in the loader's layout: `u32 N; u32 tab[N]; u32 w; u32 h;
+8-byte tiles` (0x800544E0; see the PSX project's `fable/paths.md`). They are entries 34/35, 116/117,
+203/204 and 355/356, and all eight are **44×74**. Each has 38 tiles of pre-laid path. Buildable
+tiles (flag `0x02` clear, inside the loader's `w−1 × h−1` bounds): 1997, 1922, 1821, 1845, 2010,
+1837, 2153 and 2158. Which world each entry belongs to is not pinned.
+
+**PS2.** Terrain grids and buildable (drawn) cells:
+
+| Park | Grid | Buildable | Raised (0x40) |
+|---|---|---|---|
+| Jungle 1 | 64×76 | 3387 | 20 |
+| Jungle 2 | 64×76 | 3314 | 20 |
+| Halloween 1 | 96×52 | 3906 | 12 |
+| Halloween 2 | 88×56 | 3924 | 33 |
+| Wonderland 1 | 80×60 | 3928 | 12 |
+| Wonderland 2 | 76×62 | 3604 | 88 |
+| Space 1 | 96×54 | 4068 | 158 |
+| Space 2 | 72×62 | 3176 | 152 |
+
+Both versions use 256-unit tiles, and on both the no-build tile flag is bit 1. The PS2 fills it from
+the drawn bit at 0x14E700. So the counts compare directly: a PS2 park has about 1.9× the buildable
+ground of a PSX park.
