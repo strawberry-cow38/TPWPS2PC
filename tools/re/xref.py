@@ -127,5 +127,24 @@ if __name__ == '__main__':
         sys.exit(0)
     else:
         want = {int(a, 0) for a in args}
-    for pc, mn, a, rt, rs in sweep(img, want):
+    found = sweep(img, want)
+    for pc, mn, a, rt, rs in found:
         print(f"{hex(pc)}  {mn:5} {rt:4} {hex(a)}")
+
+    # ⚠⚠ AN EMPTY SWEEP OVER A FUNCTION ADDRESS IS NOT A FINDING, AND IT LOOKS EXACTLY LIKE ONE.
+    # This mode reports address MATERIALISATION -- lui/addiu, loads, stores. A function that is
+    # only ever `jal`ed is never materialised, so it comes back silent. That silence read as
+    # "nothing references this" on 2026-09-25 for a function with THIRTEEN call sites, and the
+    # only reason it was caught is that the check had a control.
+    #
+    # ⭐ So the tool now answers the question the silence invites, rather than leaving it to be
+    # misread: if nothing matched and the address is in the code range, count the call sites too.
+    if not found:
+        for a in sorted(want):
+            if 0x100000 <= a < 0x2b0000:
+                n = len(callers(img, a))
+                print(f"# {hex(a)}: no address materialisation."
+                      + (f" BUT {n} `jal` call site(s) -- it is CALLED, not referenced."
+                         f" Use --callers {hex(a)}." if n else
+                         " And no `jal` call sites either: not called by name anywhere."
+                         " It may be virtual (look for its pointer in a vtable) or unreachable."))
