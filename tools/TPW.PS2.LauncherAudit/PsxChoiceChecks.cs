@@ -88,6 +88,11 @@ static class PsxChoiceChecks
             check(PsxDisc.Identify(Path.Combine(root, "junk.iso")).Status == PsxDisc.Status.NotADisc, "psx disc: junk is NotADisc, not an exception");
             check(PsxDisc.Identify(Path.Combine(root, "missing.iso")).Status == PsxDisc.Status.NotFound, "psx disc: a missing path is NotFound");
             check(PsxDisc.Identify(null).Status == PsxDisc.Status.None, "psx disc: no selection is None");
+            string fixtureReport = PsxContentReport.Describe(bin), refusedReport = PsxContentReport.Describe(badFolio);
+            check(fixtureReport.Contains("an unrecognised build") && fixtureReport.Contains("raw 2352-byte sectors (2352+24)")
+                  && fixtureReport.Contains("0 attraction records") && fixtureReport.Contains("0 park maps")
+                  && refusedReport.StartsWith("PSX disc not read: "),
+                  "psx report: an unknown build says so, and a refused image is reported, not thrown");
 
             string memory = Path.Combine(root, "psx-disc.txt");
             var choice = new PsxDiscChoice(memory);

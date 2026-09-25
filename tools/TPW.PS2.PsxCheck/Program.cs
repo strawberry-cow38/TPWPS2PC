@@ -2,7 +2,7 @@ using TPW.PS2.Data;
 
 // The optional PSX disc: identify it, read it, and hold the reader to answers known from the
 // TPW-PSX project's reports. Usage:
-//   dotnet run --project tools/TPW.PS2.PsxCheck -- <psx image> [--ps2=<ps2 image>] [--list]
+//   dotnet run --project tools/TPW.PS2.PsxCheck -- <psx image> [--ps2=<ps2 image>] [--list] [--report]
 // No PSX image (argument or TPW_PSX_DISC) is a SKIP, not a failure: PSX support is optional.
 int bad = 0, ok = 0;
 void Check(bool pass, string line) { Console.WriteLine((pass ? "  ok   " : "  FAIL ") + line); if (pass) ok++; else bad++; }
@@ -75,9 +75,16 @@ if (id.Status == PsxDisc.Status.Ok && id.BootId == "SLES_026.88")
     Check(counted.SequenceEqual(buildable), $"buildable tiles per map {string.Join(",", counted)}");
     Check(maps.All(m => Enumerable.Range(0, m.Width * m.Height).Count(i => m.InBounds(i % m.Width, i / m.Width) && m.Type(i % m.Width, i / m.Width) == 2) == 38),
         "each map has 38 tiles of pre-laid path");
+    var report = PsxContentReport.Describe(psx);
+    Check(report.StartsWith("Theme Park World (PSX), SLES_026.88\n") && report.Contains("244 attraction records\n")
+          && report.Contains("  Rides (59): ") && report.Contains("Thrill Grill") && report.Contains("Loudspeaker ×")
+          && report.Contains("8 park maps\n") && report.Contains("map 1 (FOLIO entry 34): 44×74 tiles, 1997 buildable, 38 pre-laid path")
+          && report.Contains("Not read yet: models, textures, sounds"),
+        "the player's content report carries the same answers");
 }
 else Console.WriteLine("(not the PAL build that has been read: known-answer checks skipped)");
 
+if (args.Contains("--report")) Console.WriteLine(PsxContentReport.Describe(psx));
 if (args.Contains("--list"))
     foreach (var a in attractions.OrderBy(a => a.Type).ThenBy(a => a.Name))
         Console.WriteLine($"  {a.Type,-13} {a.Folio,4}  {a.FootprintWidth}x{a.FootprintDepth}  {a.Name}");

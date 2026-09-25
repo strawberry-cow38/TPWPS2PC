@@ -29,6 +29,10 @@ public partial class Viewer : Node3D
     string _shotPath; int _shotFrame = -1, _shotWait;
     string _wantRide, _wantAnim, _wantWad, _wantMode, _wantImage, _wantSound, _wantPlay, _wantMap;
     string _discPath;
+    // ⭐ The player's OPTIONAL PSX disc (TPW_PSX_DISC, handed on by the launcher only when it reads as
+    // Theme Park World PSX). Unset, nothing below is shown and the viewer is exactly what it was.
+    string _psxDisc, _psxReport; bool _psxReportAtStart;
+    Button _psxButton; PanelContainer _psxPane; Label _psxText;
     // The park, and the two tables it needs: every ride's design data, and the text the player
     // is actually shown. Loaded once -- RideCatalogue walks every WAD.
     /// <summary>The park's size in cells. Big enough that a ride is in a place rather than on a
@@ -413,6 +417,8 @@ public partial class Viewer : Node3D
             // to ask for the crunchy one, and for a render to state which it used rather than
             // inherit whatever the last keypress left behind.
             else if (a == "--nearest") Ps2Materials.Bilinear = false;
+            else if (a.StartsWith("--psx-disc=")) _psxDisc = a["--psx-disc=".Length..];
+            else if (a == "--psx-report") _psxReportAtStart = true;
             else if (a == "--bilinear") Ps2Materials.Bilinear = true;
         }
 
@@ -424,6 +430,7 @@ public partial class Viewer : Node3D
         _wantRide ??= Env("TPW_PS2_RIDE");
         _wantAnim ??= Env("TPW_PS2_ANIM");
         _wantWad ??= Env("TPW_PS2_WAD");
+        _psxDisc ??= Env("TPW_PSX_DISC");
         if (_shotPath == null && Env("TPW_PS2_SHOT") != null)
         {
             _shotPath = Env("TPW_PS2_SHOT");
@@ -431,6 +438,12 @@ public partial class Viewer : Node3D
         }
         BuildUi();
         GD.Print($"[v] start; args={string.Join(" ", argv)}");
+        // Before the PS2 disc check on purpose: the PSX report needs nothing from the PS2 disc.
+        if (_psxDisc != null)
+        {
+            _psxButton.Visible = true;
+            if (_psxReportAtStart) TogglePsxReport();
+        }
         if (string.IsNullOrWhiteSpace(disc) || !File.Exists(disc))
         {
             // ⚠ Say WHICH path failed. "No disc" alone cannot tell a missing argument from a
@@ -558,6 +571,20 @@ public partial class Viewer : Node3D
         }
     }
 
+    /// <summary>Show or hide what the optional PSX disc holds. Read on first open, not at start: a
+    /// full read is a quarter of a second and most sessions never ask.</summary>
+    void TogglePsxReport()
+    {
+        if (_psxPane.Visible) { _psxPane.Visible = false; return; }
+        if (_psxReport == null)
+        {
+            _psxReport = PsxContentReport.Describe(_psxDisc);
+            GD.Print("[psx] " + _psxReport.Split('\n')[0]);
+        }
+        _psxText.Text = _psxReport;
+        _psxPane.Visible = true;
+    }
+
     void BuildUi()
     {
         // ⚠ Godot's default near plane is 0.05 against a far of 4000, and this world is 210 units
@@ -626,6 +653,28 @@ public partial class Viewer : Node3D
         _imageView.SetAnchorsPreset(Control.LayoutPreset.FullRect);
         ui.AddChild(_imageView);
 
+        // The PSX report sits where the image pane does, over the 3D view, and takes its own clicks.
+        _psxPane = new PanelContainer { Visible = false, MouseFilter = Control.MouseFilterEnum.Stop, OffsetLeft = PanelW };
+        _psxPane.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+        // ⚠ Opaque, or the model behind shows through the text: the default panel style is not.
+        _psxPane.AddThemeStyleboxOverride("panel", new StyleBoxFlat { BgColor = new Color(0.07f, 0.07f, 0.09f),
+            ContentMarginLeft = 14, ContentMarginRight = 14, ContentMarginTop = 8, ContentMarginBottom = 8 });
+        ui.AddChild(_psxPane);
+        var psxCol = new VBoxContainer();
+        _psxPane.AddChild(psxCol);
+        var psxHead = new HBoxContainer();
+        psxHead.AddChild(new Label { Text = "PSX DISC  (optional, read-only)", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
+        var psxClose = new Button { Text = "Close" };
+        psxClose.Pressed += () => _psxPane.Visible = false;
+        psxHead.AddChild(psxClose);
+        psxCol.AddChild(psxHead);
+        var psxScroll = new ScrollContainer { SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+                                              HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
+        _psxText = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart,
+                               SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        psxScroll.AddChild(_psxText);
+        psxCol.AddChild(psxScroll);
+
         // ⭐ Tabs rather than a dropdown, in the order master asked for. The Mode enum keeps its
         // old numbering so saved command-line args still work, so the tab order is mapped, not
         // assumed to match.
@@ -657,6 +706,10 @@ public partial class Viewer : Node3D
             GetTree().ChangeSceneToFile("res://VisitorDemo.tscn");
         };
         col.AddChild(visitors);
+
+        _psxButton = new Button { Text = "PSX disc report", Visible = false };
+        _psxButton.Pressed += TogglePsxReport;
+        col.AddChild(_psxButton);
 
         _wadPick = new OptionButton();
         _wadPick.ItemSelected += i => { if (_mode == Mode.Sounds) OpenBank((int)i); else OpenWad((int)i); };
