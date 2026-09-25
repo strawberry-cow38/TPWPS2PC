@@ -3950,6 +3950,9 @@ public partial class Viewer : Node3D
             return false;
         }
         _guests = new GuestWalk(grid);
+        // ⭐ Queues walk as drawn: onto a queue tile and off it only along its run links, so a
+        // guest joins at the mouth and walks the line (strawberry, 2026-09-25).
+        _guests.QueueStep = (a, b) => _paths?.QueueStep(a.X, a.Z, b.X, b.Z) ?? false;
         _guestRoot = new Node3D { Name = "guests" };
         AddChild(_guestRoot);
         GD.Print($"[guest] the gate is at {string.Join(" ", _mouth)}; guests come in once a path meets it");
@@ -5074,7 +5077,11 @@ public partial class Viewer : Node3D
         }
         if (row < 0) { GD.Print($"[guest] no '{_guestRide}' among this archive's Rides -- nothing to board"); return; }
         var grid = _guests.Paths;
-        bool Touches(int x, int y) => ParkPaths.Neighbours(new ParkCell(x, y)).Any(grid.Open);
+        // A LAID path, not the park's phantom walkway: the queue has to be drawn onto it below.
+        ParkCell? Join(int x, int y) => ParkPaths.Neighbours(new ParkCell(x, y))
+            .Where(n => grid.Open(n) && _paths.KindAt(n.X, n.Z) is PathTool.Kind.Path or PathTool.Kind.Both)
+            .Select(n => (ParkCell?)n).FirstOrDefault();
+        bool Touches(int x, int y) => Join(x, y) != null;
         int tried = 0, fits = 0, doors = 0;
         for (int turn = 0; turn < 4; turn++)
         {
@@ -5103,6 +5110,14 @@ public partial class Viewer : Node3D
                     _cursorOverride = null;
                     if (_park.Placed.Count == placed) { GD.Print($"[guest] the ride was REFUSED at ({x},{y}) turned {turn * 90} although it fitted"); continue; }
                     CloseTool();
+                    // ⭐ AND DRAW THE QUEUE IN. Touching is not joining -- guests walk a queue only
+                    // along its run -- so one queue cell is run from the stub onto the path, which
+                    // makes that path cell the Both junction a player's queue ends on.
+                    if (Join(q.X, q.Y) is { } join)
+                    {
+                        LayLeg(new List<(int X, int Y)> { (q.X, q.Y), (join.X, join.Z) }, PathTool.Kind.Queue, _paths.OwnerAt(q.X, q.Y));
+                        RefreshFloor();
+                    }
                     _guestTestRide = (cx, cy, w, h);
                     var ride = _sim?.Rides.LastOrDefault();
                     GD.Print($"[guest] {_place.Display ?? _guestRide} at ({cx},{cy}) {w}x{h} turned {turn * 90} after {tried} cells tried ({fits} fitted, {doors} with both doors): "

@@ -308,6 +308,16 @@ public sealed class PathTool
         return bits;
     }
 
+    /// <summary>⭐⭐ WHETHER ONE STEP FOLLOWS A QUEUE AS IT WAS DRAWN: either cell's run bits point at
+    /// the other. A queue is a LINE carrying the links it was laid with (see `_run`), and the
+    /// <see cref="Kind.Both"/> cell where it meets a path keeps its bits back down the line, so this
+    /// is true along the run and at that one junction, and false for a path that merely lies
+    /// beside a queue tile -- "adjacent is not connected", the rule the sprites already follow.
+    /// For <see cref="GuestWalk.QueueStep"/>.</summary>
+    public bool QueueStep(int x, int y, int nx, int ny)
+        => In(x, y) && In(nx, ny)
+           && ((_run[At(x, y)] & BitToward(x, y, nx, ny)) != 0 || (_run[At(nx, ny)] & BitToward(nx, ny, x, y)) != 0);
+
     /// <summary>A cell's link bits, for a control to read. ⚠ Bits, not a picture: two queue runs
     /// a cell apart look identical whether or not they are joined, and only the mask says.</summary>
     public int LinkBits(int x, int y) => In(x, y) ? LinksFor(x, y) : 0;

@@ -7,6 +7,7 @@ COVERAGE = '\n'.join([f'  ok   {category.replace("_", " ")}: filler'
                         for category, count in REQUIRED_CHECKS.items() if category.startswith('native_')
                         for _ in range(count)] +
                      ['  '+w for w in REQUIRED_WITNESSES if w.startswith('ok   native ')] +
+                     ['  ok   queue walk: check'] * 7 +
                      ['  ok   post service movement: check'] * 15 +
                      ['  ok   post service movement: relief1234 ordinary arm walks away before the facility deadline', '  ok   post service movement: shop1234 ordinary arm walks away before the facility deadline', '  ok   post service movement: shop299 ordinary arm walks away before the facility deadline'] +
                      ['  ok   terminal walking: check'] * 86 +
