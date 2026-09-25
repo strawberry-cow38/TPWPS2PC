@@ -64,7 +64,7 @@ public partial class StandingServiceSmoke : Node3D
             Call(viewer, "LayLeg", corridor, PathTool.Kind.Path, 0); Call(viewer, "RefreshFloor");
             Require((bool)Call(viewer, "OpenGate"), "normal guest layer opened on the authored entrance");
             var grid = Field<GuestWalk>(viewer, "_guests").Paths;
-            Call(viewer, "ToggleBuildMenu"); Call(viewer, "ShowBuildCategory", "Features");
+            Call(viewer, "ShowBuildCategory", "Features");
             var rows = Field<List<int>>(viewer, "_buildRows");
             int row = rows.FindIndex(i => ((RideDefinition)Call(viewer, "DefinitionFor", library.Rides[i].Model)) is { ProvidesRelief: true, Shape: not null } d
                                          && Park.Footprint.From(d.Shape).Width == 1 && Park.Footprint.From(d.Shape).Height == 1);

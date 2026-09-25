@@ -84,7 +84,7 @@ public partial class NativeRideQueueSmoke : Node3D
             Call(viewer, "LayLeg", path, PathTool.Kind.Path, 0); Call(viewer, "RefreshFloor");
             Check((bool)Call(viewer, "OpenGate"), "ordinary guest layer opens");
 
-            Call(viewer, "ToggleBuildMenu"); Call(viewer, "ShowBuildCategory", "Rides");
+            Call(viewer, "ShowBuildCategory", "Rides");
             var rows = Field<List<int>>(viewer, "_buildRows");
             int chosen = Enumerable.Range(0, rows.Count).First(row =>
             {

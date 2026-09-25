@@ -106,7 +106,6 @@ public partial class BusViewerSmoke : Node3D
                 "FANTASY" => "/Shops/icecream/icecream",
                 _ => "/Shops/ices/ices",
             };
-            Call(viewer, "ToggleBuildMenu");
             Call(viewer, "ShowBuildCategory", "Shops");
             var rows = Field<List<int>>(viewer, "_buildRows");
             var matches = Enumerable.Range(0, rows.Count).Where(row =>

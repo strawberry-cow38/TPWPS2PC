@@ -124,7 +124,7 @@ public partial class ShopServiceSmoke : Node3D
             Call(viewer, "LayLeg", corridor, PathTool.Kind.Path, 0); Call(viewer, "RefreshFloor");
             Require((bool)Call(viewer, "OpenGate"), "normal guest layer opened");
             var grid = Field<GuestWalk>(viewer, "_guests").Paths;
-            Call(viewer, "ToggleBuildMenu"); Call(viewer, "ShowBuildCategory", "Shops");
+            Call(viewer, "ShowBuildCategory", "Shops");
             var rows = Field<List<int>>(viewer, "_buildRows");
             var matches = Enumerable.Range(0, rows.Count).Where(candidateRow =>
             {
