@@ -277,15 +277,23 @@ the 32 row step. Small (21) and Console (14) would leave holes.
     `0x36F290`, and it returns `obj + 0x0C`.
   * That vtable's slot at `+0x58`/`+0x5C` is `{adjust -12, fn 0x228958}` (verified: the word at
     `0x36F290 + 0x5C` is `0x228958`), and `0x228958` reaches `0x17C5D8`, the play-animation router.
-  * `0x17C5D8` switches on the visual's **type** at `+0x18` through the jump table `0x362AC0`.
-    **Types 6 and 7** go to `0x10E910` with the logical state in `a1` -- so the `5` in that call is
-    **logical 5**.
+  * `0x17C5D8` saves its arguments (`s1 = a0` the object, `s2 = a1` the `5`, `s6` the trailing
+    flag) and switches on the visual's **type** at `+0x18` through the jump table `0x362AC0`
+    (materialised at `0x17C630..38`, bounds-checked to 16 arms).
+  * **Types 6 and 7** land at `0x17C6F0`, which calls `0x10E910(a0 = s2, a1 = obj[0x14],
+    a2 = s6)`. Against that function's signature `(logical, handle, flags)` the **logical is `a0`,
+    i.e. `s2`, i.e. the `5`** -- so the `5` is **logical 5**. ⚠ Not `a1`: `a1` is reloaded from
+    `obj + 0x14` and is the model handle. The conclusion is unaffected but the register is not.
   * And logical 5 in the `0x2AAD48` table is descriptor `0x2AA9C8`, count 1, main pair
     **slot 6 / variant 0**, with first and last both the inactive sentinel (verified here).
-  * The `1.0` arrives in `f12` and lands as the **speed**, not a scale as guessed above.
+  * ⚠⚠ THE `1.0` IS NOT CONSUMED ON THIS PATH. `0x17C5D8` copies `f12` into `f20`
+    (`mov.s f20, f12` at `0x17C61C`) and the types-6/7 arm never reads it -- there is no COP1
+    instruction at all in `0x17C6F0..0x17C740`. So it is neither a scale (my guess) nor a speed
+    (the first shortcut I was given, which tinyclaw withdrew and I had already propagated). What
+    it does in the OTHER type arms is unread.
 
-  So the shop's model plays **APS section 6, variant 0, at speed 1.0** -- which is the answer to
-  master's "playing an animation (cant remember which)".
+  So the shop's model plays **APS section 6, variant 0** -- which is the answer to master's
+  "playing an animation (cant remember which)". No speed is set on this path.
 
   ⚠ CONDITIONAL ON THE TYPE, and that matters: only types 6 and 7 take the `0x10E910` arm. Other
   types take arms nobody has read, so a port must check the visual's type at `+0x18` before
