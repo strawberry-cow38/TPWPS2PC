@@ -243,6 +243,9 @@ public partial class Viewer : Node3D
     bool _guestTest;
     int _laptopFilm; string _laptopScreen = "ride"; int _laptopFrame;
     Vector2I? _uiSize; SubViewport _uiShotView; Camera3D _uiShotCam;
+    /// <summary>Which main-menu row the cursor is on, and whether the park is open -- the latter
+    /// decides Open Park against Close Park. Both are harness knobs until the laptop takes input.</summary>
+    int _laptopMenuSelected; bool _laptopParkOpen;
     bool _idleScene, _idleSeeded;
     int _idleCount = 24;
     /// <summary>Which ride the control run stands, by display name; Crazy Ape unless told.</summary>
@@ -379,6 +382,8 @@ public partial class Viewer : Node3D
             else if (a == "--guest-test") _guestTest = true;
             else if (a.StartsWith("--laptop-film=")) { int.TryParse(a["--laptop-film=".Length..], out _laptopFilm); }
             else if (a.StartsWith("--laptop-screen=")) _laptopScreen = a["--laptop-screen=".Length..];
+            else if (a.StartsWith("--laptop-menu-row=")) int.TryParse(a["--laptop-menu-row=".Length..], out _laptopMenuSelected);
+            else if (a == "--laptop-park-open") _laptopParkOpen = true;
             else if (a.StartsWith("--ui-size="))
             {
                 var wh = a["--ui-size=".Length..].Split('x');
@@ -3068,47 +3073,11 @@ public partial class Viewer : Node3D
     /// widgets. Nothing here claims these are the values a real Crazy Ape would have -- it is an
     /// instrument for looking at the widgets, and the numbers beside them are drawn from the same
     /// sweep so the picture stays self-consistent.</summary>
-    void LaptopFilmFrame()
+    /// <summary>Put the panel in the sized SubViewport, with the park behind it, and keep that
+    /// viewport's camera on the main one. ⭐ Shared by the data screens and the main menu, which
+    /// otherwise took an early return and would have been photographed at the WINDOW's size.</summary>
+    void PrepareUiShotView()
     {
-        if (_shopPanel == null) { GD.PrintErr("[film] --laptop-film: no laptop screen"); GetTree().Quit(2); return; }
-        var spec = _laptopScreen.StartsWith("side", StringComparison.OrdinalIgnoreCase) ? LaptopScreen.Sideshow
-                 : _laptopScreen.StartsWith("shop", StringComparison.OrdinalIgnoreCase) ? LaptopScreen.Shop
-                 : LaptopScreen.Ride;
-        string title = spec == LaptopScreen.Ride ? "Crazy Ape"
-                     : spec == LaptopScreen.Sideshow ? "Arcade" : "Drinks Shop";
-
-        // ⭐ Build the model once, from the ride the screen is about, then step it per frame.
-        if (_laptopModel == null && _laptopFrame == 0 && _lib?.Rides != null)
-        {
-            string want = spec == LaptopScreen.Sideshow ? "arcade"
-                        : spec == LaptopScreen.Shop ? "balloon" : "monkey";   // Crazy Ape's asset
-            var pick = _lib.Rides.FirstOrDefault(r => r.Name.Contains(want, StringComparison.OrdinalIgnoreCase))
-                    ?? _lib.Rides.FirstOrDefault();
-            BuildLaptopModel(pick);
-            if (_laptopView != null) _shopPanel.ModelTexture = _laptopView.GetTexture();
-        }
-        StepLaptopModel();
-
-        float t = _laptopFrame / (float)_filmFps;
-        var cells = new List<(string, int)>();
-        for (int i = 0; i < spec.Rows.Count; i++)
-        {
-            var row = spec.Rows[i];
-            // One slow cycle, each widget a fifth of a turn behind the last.
-            int pct = (int)Math.Round(50 - 50 * Math.Cos(t * 0.9 + i * 0.8));
-            cells.Add(row.Kind switch
-            {
-                LaptopRowKind.Bar or LaptopRowKind.Slider => (null, pct),
-                LaptopRowKind.Money => ($"${pct * 37:N0}", 0),
-                // The ride's three word rows read as they do on the real screen.
-                // ⚠ Upgrades (7) carries the word, Addons (8) does not -- that is which rows the
-                // SCENE gives a value element to, and this harness had the two the wrong way round.
-                LaptopRowKind.Text  => (i == 7 ? "Unavailable" : i == 8 ? null : "1yr", 0),
-                _ => (pct.ToString(), 0),
-            });
-        }
-        _shopPanel.ShowScreen(spec, title, cells);
-
         // ⭐⭐ RENDER THE UI AT AN ARBITRARY SIZE, INDEPENDENT OF THE DESKTOP. Master asked how the
         // screen looks at 1080p and 1440p; the build box's display is 1024x768, so Godot clamps
         // every window and `--resolution 1920x1080` silently produced 1028x749 renders. Answering
@@ -3151,7 +3120,65 @@ public partial class Viewer : Node3D
             }
             _shopPanel.QueueRedraw();
         }
+    }
 
+    void LaptopFilmFrame()
+    {
+        if (_shopPanel == null) { GD.PrintErr("[film] --laptop-film: no laptop screen"); GetTree().Quit(2); return; }
+        // ⭐ The MAIN MENU is a list, not a data screen -- `main.sce` has one element. It takes the
+        // early return because none of the model/cell machinery below applies to it.
+        if (_laptopScreen.Equals("main", StringComparison.OrdinalIgnoreCase))
+        {
+            var opts = new List<string>();
+            foreach (var o in LaptopMainMenu.Visible(parkOpen: _laptopParkOpen))
+                opts.Add(_text?.Text("eng", o.TextId) ?? $"#{o.TextId}");
+            _shopPanel.ShowMenu(opts, _laptopMenuSelected);
+            PrepareUiShotView();
+            SaveShot(ShotSibling(_shotPath, $"-f{_laptopFrame:D4}"));
+            _laptopFrame++;
+            if (_laptopFrame >= _laptopFilm) GetTree().Quit();
+            return;
+        }
+
+        var spec = _laptopScreen.StartsWith("side", StringComparison.OrdinalIgnoreCase) ? LaptopScreen.Sideshow
+                 : _laptopScreen.StartsWith("shop", StringComparison.OrdinalIgnoreCase) ? LaptopScreen.Shop
+                 : LaptopScreen.Ride;
+        string title = spec == LaptopScreen.Ride ? "Crazy Ape"
+                     : spec == LaptopScreen.Sideshow ? "Arcade" : "Drinks Shop";
+
+        // ⭐ Build the model once, from the ride the screen is about, then step it per frame.
+        if (_laptopModel == null && _laptopFrame == 0 && _lib?.Rides != null)
+        {
+            string want = spec == LaptopScreen.Sideshow ? "arcade"
+                        : spec == LaptopScreen.Shop ? "balloon" : "monkey";   // Crazy Ape's asset
+            var pick = _lib.Rides.FirstOrDefault(r => r.Name.Contains(want, StringComparison.OrdinalIgnoreCase))
+                    ?? _lib.Rides.FirstOrDefault();
+            BuildLaptopModel(pick);
+            if (_laptopView != null) _shopPanel.ModelTexture = _laptopView.GetTexture();
+        }
+        StepLaptopModel();
+
+        float t = _laptopFrame / (float)_filmFps;
+        var cells = new List<(string, int)>();
+        for (int i = 0; i < spec.Rows.Count; i++)
+        {
+            var row = spec.Rows[i];
+            // One slow cycle, each widget a fifth of a turn behind the last.
+            int pct = (int)Math.Round(50 - 50 * Math.Cos(t * 0.9 + i * 0.8));
+            cells.Add(row.Kind switch
+            {
+                LaptopRowKind.Bar or LaptopRowKind.Slider => (null, pct),
+                LaptopRowKind.Money => ($"${pct * 37:N0}", 0),
+                // The ride's three word rows read as they do on the real screen.
+                // ⚠ Upgrades (7) carries the word, Addons (8) does not -- that is which rows the
+                // SCENE gives a value element to, and this harness had the two the wrong way round.
+                LaptopRowKind.Text  => (i == 7 ? "Unavailable" : i == 8 ? null : "1yr", 0),
+                _ => (pct.ToString(), 0),
+            });
+        }
+        _shopPanel.ShowScreen(spec, title, cells);
+
+        PrepareUiShotView();
         SaveShot(ShotSibling(_shotPath, $"-f{_laptopFrame:D4}"));
         _laptopFrame++;
         if (_laptopFrame >= _laptopFilm)

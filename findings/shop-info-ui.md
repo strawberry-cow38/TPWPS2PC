@@ -523,3 +523,55 @@ port bugs when someone next looks at a render:
 - The shop's ingredient row (Fat/Ice/Sugar/Salt) draws with a **blank label**, because the harness
   supplies no per-shop ingredient text id. `ShopScreen.LabelKeys` already holds null there by
   design; it is the caller that has nothing to put in it.
+
+## The laptop MAIN MENU, decoded and wired (2026-09-25)
+
+Master: *"can you wire the laptop main menu"*.
+
+**The chain, all read:**
+1. `MENUS.WAD/main.sce` has exactly ONE element -- `textoptions`, row 115, col 45, left. No title
+   element, no value column, no model window: the options ARE the screen.
+2. `FUN_001fc778` builds the menu registry at **`0x2ec718`**, 16 bytes per entry
+   (`"<name>.sce"`, `"<name>"`, -1, 0) -- 27 menus, `main` second.
+   ⭐ The registry index is one BELOW the menu id, corroborated three ways: this port already had
+   ride_data 0x0E, shop_data 0x11 and sideshow_data 0x13 decoded from their binders, and those sit
+   at indices 13, 16 and 18. Three for three at index+1, so `main` is **menu id 2**.
+3. `FUN_0016ef68` fills the option table at **`0x2b97c0`**, 8 bytes per entry `{u32 text id,
+   handler}`.
+
+| # | id | key | English | handler | opens |
+|---|---|---|---|---|---|
+| 1 | 420 | `STR_MAINMENU_RIDES` | Ride Information | `FUN_001c5e08` | `main_i_ride` |
+| 2 | 1041 | `STR_MAINMENU_SHOPS` | Shop Information | `FUN_001c60d0` | `main_i_shop` |
+| 3 | 760 | `STR_MAINMENU_SIDE_SHOWS` | Side Show Information | `FUN_001c6398` | `main_i_sideshow` |
+| 4 | 429 | `STR_MAINMENU_TOILETS` | Toilet Information | `FUN_001c6660` | `main_i_bathroom` |
+| 5 | 995 | `STR_MAINMENU_STAFF` | Staff Information | `FUN_001c6980` | `main_i_staff` |
+| 6 | 752 | `STR_MAINMENU_BUILD_AND_HIRE` | Build & Hire | `FUN_001c7220` | `main_buildhire` |
+| 7 | 1042 | `STR_MAINMENU_RESEARCH` | Research | `FUN_001c7108` | `main_research` |
+| 8 | 485 | `STR_MAINMENU_PARK_STATS` | Park Statistics | `FUN_001c7a98` | `main_parkstats` |
+| 9 | 441 | `STR_MAINMENU_FINANCE` | Financial Information | `FUN_001c78d0` | `main_financialinfo` |
+| 10 | 549 | `STR_MAINMENU_GAME_OPTIONS` | Game Options | `FUN_001c5ce0` | `main_gameoptions` |
+| 11 | 617 / 844 | `OPEN_PARK` / `EXIT_TO_MAP_SCREEN` | Open Park / Close Park | `FUN_001c7c00` / `FUN_001c7bb0` | — |
+| 12 | 801 | `STR_MAINMENU_BUILD` | Build | `FUN_001c7650` | — |
+
+⭐ **HOW IT WAS FOUND, because the method is reusable.** Scan the image for
+`addiu rt, zero, imm` with each `STR_MAINMENU_*` text id as the immediate, then cluster the hit
+addresses. They land on a regular **0x18 stride from `0x16ef84` to `0x16f0b8`**.
+
+⚠⚠ **The same scan without controls lied first.** Run across the whole corpus it pointed at
+`FUN_00bfd9ac` -- a 7,586-line decompiler artefact *outside the code range* that contains most
+3-digit integers by chance. Adding an address-range and a size limit removed it. The control that
+made the result trustworthy: the SHOP's seven already-known label ids cluster at `0x1d7288`, inside
+the already-decoded shop draw `FUN_001d70c8`.
+
+⭐⭐ **Open Park and Close Park are mutually exclusive, predicted BEFORE the render.** The table has
+thirteen entries but twelve rows from 115 at a 32 step end at 467, and thirteen would start at 499
+-- past the panel's own bottom edge at 493. Measured on the render afterwards: twelve bands, each
+within 2-4 units of prediction, the last starting at **469.3** and its text ending at **489.7**,
+3.3 units inside the panel. Nothing else fits. ⚠ The *condition* that chooses between them is still
+unread; the exclusion is geometric, not decoded.
+
+⚠ **Unsettled:** the table is preceded at `0x2b97b8` by `{530, null}` -- text id 530 is
+`STR_PARKSTATS_INFORMATION` ("Information") with a NULL handler. A null handler fits a heading, but
+`main.sce` gives the screen nowhere to put one and thirteen rows do not fit. It may be the
+terminator of the table before this one. Recorded with its address; nothing draws it.

@@ -194,7 +194,7 @@ public sealed partial class LaptopShopScreen : Control
         _ => "Sale Price",
     };
 
-    public new void Hide() { Open = false; Visible = false; _rows.Clear(); _spec = null; QueueRedraw(); }
+    public new void Hide() { Open = false; Visible = false; _rows.Clear(); _spec = null; _menu.Clear(); QueueRedraw(); }
 
     // ---- the general path: any of the three info screens --------------------------------------
 
@@ -226,15 +226,53 @@ public sealed partial class LaptopShopScreen : Control
         QueueRedraw();
     }
 
+    /// <summary>⭐⭐ THE LAPTOP'S MAIN MENU -- a list, not a data screen. `main.sce` has exactly one
+    /// element, `textoptions` at row 115 col 45 left-justified, so there is no title row, no value
+    /// column and no model window to draw; the options ARE the screen.
+    ///
+    /// The option order and text ids come from the console's own table at `0x2b97c0`; see
+    /// <see cref="LaptopMainMenu"/>, which holds the reading.</summary>
+    public void ShowMenu(IReadOnlyList<string> options, int selected)
+    {
+        _spec = null;
+        _menu.Clear();
+        if (options != null) _menu.AddRange(options);
+        _menuSelected = selected;
+        Open = true; Visible = true;
+        QueueRedraw();
+    }
+
+    readonly List<string> _menu = new();
+    int _menuSelected;
+
+    /// <summary>⭐ The menu's own draw. It steps the SAME 32 the info screens do -- `DAT_002e9ca8`
+    /// -- and uses the same two colours, yellow for the row under the cursor and orange for the
+    /// rest, because the laptop has exactly two text colours and no third "disabled" one.</summary>
+    void DrawMenu(float s, Vector2 o)
+    {
+        var layout = LayoutFor(LaptopMainMenu.SceneFile);
+        if (layout[LaptopMainMenu.ListElement] is not { } list) return;
+        var at = o + new Vector2(list.X, list.Y) * s;
+        for (int i = 0; i < _menu.Count; i++)
+        {
+            var colour = Of(i == _menuSelected ? ShopScreen.Highlight : ShopScreen.Label);
+            DrawRun(_menu[i], at + new Vector2(0, LaptopMainMenu.RowStep * i * s), s, colour, list.Justify);
+        }
+    }
+
     /// <summary>The layout for a screen, read from `MENUS.WAD` the first time it is asked for.
     /// ⚠ Each screen has its OWN scene file; they are not variations on one layout.</summary>
-    SceneLayout LayoutFor(LaptopScreen spec)
+    SceneLayout LayoutFor(LaptopScreen spec) => LayoutFor(spec.SceneFile);
+
+    /// <summary>⭐ By scene FILE, because the main menu has no <see cref="LaptopScreen"/> spec --
+    /// it is a list, not a data screen, so there is nothing for a spec to describe.</summary>
+    SceneLayout LayoutFor(string sceneFile)
     {
-        if (_layouts.TryGetValue(spec.SceneFile, out var had)) return had;
-        var raw = _lib?.ReadMenu(spec.SceneFile);
+        if (_layouts.TryGetValue(sceneFile, out var had)) return had;
+        var raw = _lib?.ReadMenu(sceneFile);
         var made = raw == null ? SceneLayout.Parse("") : SceneLayout.Parse(raw);
-        if (raw == null) GD.PrintErr($"[laptop] MENUS.WAD/{spec.SceneFile} missing -- {spec.SceneFile} draws empty");
-        _layouts[spec.SceneFile] = made;
+        if (raw == null) GD.PrintErr($"[laptop] MENUS.WAD/{sceneFile} missing -- {sceneFile} draws empty");
+        _layouts[sceneFile] = made;
         return made;
     }
 
@@ -319,6 +357,7 @@ public sealed partial class LaptopShopScreen : Control
         var o = Origin;
         DrawTextureRect(_chrome, new Rect2(o, new Vector2(Native, Native) * s), false);
         if (_spec != null) { DrawSpecScreen(s, o); return; }
+        if (_menu.Count > 0) { DrawMenu(s, o); return; }
 
         Vector2 At(SceneLayout.Element e) => o + new Vector2(e.X, e.Y) * s;
 
