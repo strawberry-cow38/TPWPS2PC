@@ -225,6 +225,23 @@ arithmetic; a walked fixture on the audit's vetted ride covering the head count,
 limit, the impatience ripple, the boarding gate, breakdown, closure and demolition). Five mutations
 each turn it red. The rendered smoke is `game/tests/NativeRideQueueSmoke.tscn`.
 
+## Default play cannot reach a queue longer than one tile
+
+A defect in the LEGACY path, found while answering "what is the benefit" (2026-09-25).
+- `GuestWalk.Edge` admits a cell only when it is `ParkPaths.Open` (a path material) or when it is
+  the route's own destination.
+- Queue tiles are `ParkPathKind.Queue`, so a guest can step onto the first queue tile and cannot
+  walk through one.
+- Legacy `SendTo` targets `ride.Entrance`, the stub at the FAR end of the queue from the path.
+
+**Probe** (JUNGLE-1, three path cells then three queue cells in a row): path → the queue tile next
+to the path routes; path → the tile three in is `NoRoute`, "no route". So in default play a ride
+whose drawn queue is longer than one tile never gets a visitor.
+
+Under `--native-ride-queues` the guest routes only to the mouth (the `Both` cell, path material), and
+the queue controller walks it along the queue cells. So the flag does not have this defect. Fixing
+it without the flag means letting a queue's own tiles carry the guests heading for that ride.
+
 ## Open
 
 - 1AECCC's family; 20E0E8 (state 0x15, riding); the producer of state 0x17; 118018.
