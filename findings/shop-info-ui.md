@@ -246,14 +246,33 @@ the 32 row step. Small (21) and Console (14) would leave holes.
                                          FUN_00212838(widget + 0x38)                ; draw
   ```
 
-  ⭐⭐ Those are **the same three sprite calls `FUN_00115590` uses to draw the satisfaction bar**.
-  The UI side of this element is a flat **sprite blit**, of a handle taken off the shop object at
-  `+0x58`, into the authored rect at depth `0x60`. Nothing here turns a model or steps a skeleton.
+  ⚠⚠ THOSE THREE CALLS ARE A GENERIC "PLACE, SIZE, DRAW" TRIO, NOT PROOF OF A SPRITE. An earlier
+  version of this section said the element was "a flat sprite blit", because `FUN_00115590` draws
+  the satisfaction bar with the same three. That was reading the calls that answered the question
+  and stopping. `FUN_00144068`, the fourth call, is where the answer actually is:
 
-  ⚠ The scene file's own comment calls it `;3D Spinning model` and **the comment is wrong about
-  the behaviour** — master, who has played it: "the model isnt meant to spin in the viewport. its
-  just a front facing render of it. playing an animation". The decompilation agrees with master
-  and not with the comment. An authored comment says what someone meant, not what shipped.
+  ```
+  if (widget[0x30] == 0 || widget[0x38] != value) {     ; cached on the VALUE
+      FUN_00144168(widget);                             ; tear the old one down
+      obj = FUN_00230a98();                             ; CREATE an object
+      widget[0x30] = obj;
+      obj->vtable[0x24]->[0x0C](obj, value, 0x10, -1);  ; initialise it FROM the value
+      widget[0x38] = value;  widget[0x34] = obj[0x0C];
+      FUN_0016FEA0(obj[0x0C][0x70] + 0x10, 0x2B68A8);
+      FUN_0017D1D8(obj, 1);
+      obj->vtable[0x24]->[0x5C](1.0f, obj, 5, 0, 0, 1); ; 0x3F800000 = 1.0, and a 5
+      FUN_0017CCA8(obj);  DAT_002B68AC = 1;
+  }
+  ```
+
+  ⭐ So `shop + 0x78` holds an **id**, not a picture: the widget instantiates a real object from it,
+  configures it, and caches on the id so it only rebuilds when the shop changes. That fits master's
+  description -- "just a front facing render of it. playing an animation" -- far better than a blit
+  does, and it means the port needs a real model in a viewport rather than a texture.
+
+  ⚠ NOT established, and deliberately not guessed: what `FUN_00230a98` creates, what the `0x10`
+  and `-1` mean, and whether the `5` in that last virtual call is the animation master remembers.
+  The float 1.0 beside it looks like a scale. Naming them would need those two vtables walked.
 
   ⚠ WHAT IS STILL UNREAD: what *fills* that sprite. A front-facing render of the model playing an
   animation has to be produced somewhere upstream and handed to `obj + 0x58`; that producer, and
