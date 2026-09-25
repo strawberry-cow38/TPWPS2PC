@@ -335,6 +335,24 @@ public partial class LaptopShopScreenAudit : Node
             Check(lit.G == 255 && at255.G < 255,
                   $"only 0x80-unity saturates the green ({lit.G} vs {at255.G} at 255-unity)");
 
+            // ⭐⭐ THE KNOB IS NOT THE TRACK, and it changes with selection. Master: "is the whole
+            // bar meant to be green?" -- no, and drawing it green was my mistake. FUN_001DA938
+            // branches on the widget's selected bit and takes +0xA8 or +0xA4, never the track's
+            // +0xB0. Three distinct colours, so a regression that collapses any two fails here.
+            var track = ShopScreen.SliderTint;
+            var idle = ShopScreen.KnobTint;
+            var hot = ShopScreen.KnobTintSelected;
+            Check(idle != track && hot != track && idle != hot,
+                  $"track/knob/selected-knob are three different colours ({track}, {idle}, {hot})");
+            Check(hot.R > hot.G && hot.R > hot.B, $"the selected knob is red-dominant ({hot.R},{hot.G},{hot.B})");
+            Check(track.G > track.R && idle.G > idle.R,
+                  $"the track and the resting knob are both green-dominant ({track.G}>{track.R}, {idle.G}>{idle.R})");
+            // ⚠ The control: they are not merely light and dark versions of one hue. The resting
+            // knob is a DARK green and the track a bright one, so a port that tinted both from one
+            // constant would pass a naive "is it green" test.
+            Check(track.G > idle.G * 3,
+                  $"control: the track is far brighter than the resting knob ({track.G} vs {idle.G}), not one shade");
+
             if (_bad > 0) { GD.PrintErr($"LAPTOP SHOP FAIL: {_bad} of {_checks}"); GetTree().Quit(2); return; }
             GD.Print($"LAPTOP SHOP PASS: {_checks} checks; the layout is read from "
                    + $"{ShopScreen.SceneFile}, the row step predicts the scene's own widget rows, "

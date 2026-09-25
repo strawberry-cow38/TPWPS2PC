@@ -219,9 +219,11 @@ public sealed partial class LaptopShopScreen : Control
         if (_layout["SatisfactionBar"] is { } bar)
             DrawBar(new Rect2(At(bar), new Vector2(bar.Width, bar.Height) * s), _satisfaction, s);
         if (_layout["QualitySlider"] is { } quality)
-            DrawSlider(new Rect2(At(quality), new Vector2(quality.Width, quality.Height) * s), _quality, s);
+            DrawSlider(new Rect2(At(quality), new Vector2(quality.Width, quality.Height) * s), _quality, s,
+                       _selected == ShopScreen.Selection.Quality);
         if (_hasAdditive && _layout["AdditiveSlider"] is { } additive)
-            DrawSlider(new Rect2(At(additive), new Vector2(additive.Width, additive.Height) * s), _additive, s);
+            DrawSlider(new Rect2(At(additive), new Vector2(additive.Width, additive.Height) * s), _additive, s,
+                       _selected == ShopScreen.Selection.Additive);
 
         if (_layout["CostItem"] is { } cost)
             DrawRun(Money(_price), At(cost), s,
@@ -391,7 +393,7 @@ public sealed partial class LaptopShopScreen : Control
     /// <summary>A slider: the yellow track with the gold knob riding it.
     /// ⚠ The knob art is square (32x32) and the track 128x32, so the knob is drawn at the track's
     /// HEIGHT rather than a share of its width -- scaling it by the track's aspect would squash it.</summary>
-    void DrawSlider(Rect2 r, int value, float s)
+    void DrawSlider(Rect2 r, int value, float s, bool selected)
     {
         // ⭐⭐ TINTED, because the console tints it: the drawn sprite takes the colour at the
         // slider's `+0xB0`, which is (54,249,77). The art is gold; the console is not.
@@ -401,10 +403,15 @@ public sealed partial class LaptopShopScreen : Control
                              ShopScreen.SliderTint.G / ShopScreen.TintUnity,
                              ShopScreen.SliderTint.B / ShopScreen.TintUnity);
         DrawTextureRect(_slideTrack, r, false, tint);
+        // ⭐ The knob takes its OWN colour, and it changes with selection -- see ShopScreen.KnobTint.
+        var knobRgb = selected ? ShopScreen.KnobTintSelected : ShopScreen.KnobTint;
+        var knobTint = new Color(knobRgb.R / ShopScreen.TintUnity,
+                                 knobRgb.G / ShopScreen.TintUnity,
+                                 knobRgb.B / ShopScreen.TintUnity);
         float fraction = Mathf.Clamp(value / (float)ShopScreen.SatisfactionMax, 0f, 1f);
         float d = r.Size.Y;
         float x = r.Position.X + (r.Size.X - d) * fraction;
-        DrawTextureRect(_slideKnob, new Rect2(new Vector2(x, r.Position.Y), new Vector2(d, d)), false, tint);
+        DrawTextureRect(_slideKnob, new Rect2(new Vector2(x, r.Position.Y), new Vector2(d, d)), false, knobTint);
     }
 
     /// <summary>The scene's own frame for an element, for a caller that places something this

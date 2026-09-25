@@ -95,6 +95,23 @@ public static class ShopScreen
     /// correct 0x80 drives green to saturation, which is what the shipped render shows.</summary>
     public static readonly (byte R, byte G, byte B) SliderTint = (54, 249, 77);
 
+    /// <summary>⭐⭐ THE KNOB IS NOT THE TRACK'S COLOUR, and it changes with selection. Master:
+    /// "is the whole bar meant to be green?" -- no. `FUN_001DA938` draws the knob and branches on
+    /// bit 0 of the widget's `+0x18`, the SAME bit `FUN_001DAAE0` uses to pick the label's colour,
+    /// i.e. "this row is the one being adjusted":
+    ///
+    /// <code>
+    /// if ((widget[0x18] &amp; 1) == 0) colour = widget[0xA8];   // 0x2E9E28 = (13,62,19)
+    /// else                            colour = widget[0xA4];   // 0x2E9E20 = (255,64,16)
+    /// </code>
+    ///
+    /// So the track is bright green throughout, and the knob is a dark green that turns orange-red
+    /// on the row the player is on. ⚠ The two arms also call different drawing functions
+    /// (`FUN_00119C28` vs `FUN_00119D20`) with different sprite pointers, so the knob may change
+    /// SHAPE as well; only the colour is claimed here.</summary>
+    public static readonly (byte R, byte G, byte B) KnobTint = (13, 62, 19);
+    public static readonly (byte R, byte G, byte B) KnobTintSelected = (255, 64, 16);
+
     /// <summary>What a tint component of "no change" is on this hardware.</summary>
     public const float TintUnity = 128f;
 
