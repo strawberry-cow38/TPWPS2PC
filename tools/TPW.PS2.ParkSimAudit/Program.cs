@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using TPW.PS2.Data;
 
 // ⭐⭐ THE PARK SIM, WITH NO ENGINE. This runs the rides and their scripts as a console app --
@@ -774,6 +775,28 @@ try
     {
         var pw = new WadArchive(disc.Read(pwad.Extent, pwad.Size));
         fx = new ParticleLibrary(pw.Read(pw.Find("/Tp2.plb")));
+        // ⚠⚠ THE +0x70 CENSUS, AND THE THREE FIELDS NO CONSUMER READS. The port's blend polarity
+        // rests on a TWO-EFFECT argument -- "Sparks reads 0 and ApeSnot reads 4; a spark glows and
+        // snot does not" -- so the thing that settles how much weight that carries is the FULL
+        // list of which effects are on which side, not two of them.
+        if (args.Contains("--particle-unread"))
+        {
+            var on = new List<string>(); var off = new List<string>();
+            foreach (var e in fx.Effects)
+            {
+                if (e.Raw.Length < 0xc4) continue;
+                ((e.Raw[0x70] & 4) != 0 ? on : off).Add(e.Name);
+                int u90 = BinaryPrimitives.ReadInt32LittleEndian(e.Raw.AsSpan(0x90, 4));
+                int ua4 = BinaryPrimitives.ReadInt16LittleEndian(e.Raw.AsSpan(0xa4, 2));
+                int uc3 = e.Raw[0xc3];
+                if (u90 != 0 || ua4 != 0 || uc3 != 0)
+                    Console.WriteLine($"  unread {e.Id,3} {e.Name,-18} +0x90={u90} +0xa4={ua4} +0xc3={uc3}");
+            }
+            Console.WriteLine($"  record 0 is named '{fx.Effects[0].Name}'");
+            Console.WriteLine($"  +0x70 bit2 SET   ({on.Count}): {string.Join(", ", on)}");
+            Console.WriteLine($"  +0x70 bit2 CLEAR ({off.Count}): {string.Join(", ", off)}");
+            return 0;
+        }
     }
 }
 catch (Exception e) { Console.WriteLine($"  (no particle library: {e.Message})"); }

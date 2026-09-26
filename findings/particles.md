@@ -257,6 +257,44 @@ does the culling. If so there is no EE-side walk to find, and the flag reaches t
 GIF A+D packet built from `entry[0]`. That is where the next attempt should start, not in more
 EE xrefs.
 
+### The `+0x70` bit 2 census, in full (2026-09-26, `ParkSimAudit --particle-unread`)
+
+**SET (49):** Firework1, ExplodeFirey, Explode2, Explode3, Fire, BeamUpCar, IncaGodFlame, BeamUp,
+ApeSnot, LargeExplosion, AirLeak, SmallAirLeak, DemonBreath, Button, GoldenTicket, GoldenTicket2,
+YellowStink, Repair, RepairData, Flames, BuyLand, FW1explosion, FireworkLaser, LaserFWexplode,
+LaserRing, SmallExplosion, GreenFumes, Engine, Destroy1-4, Create1-4, Twinkle, Twinkle2, TwinkleSm,
+Twinkle2Sm, Key, Key2, Upgrade, MessageTag1, EndOfMessage, KeySparkle, KeyPuff, CongratSparkle,
+Test2D.
+
+**CLEAR (56):** NULL, Sparks, Smoke, Firework2, FirePuff, Flies, ExhaustPuff, Splash, SmallSmoke,
+Explode, Smoke2, Steam, WaterFall, BigGreenPuff, ApeSmoke, TorchSmoke, Volcano, CoasterSparks,
+BigSparks, MumboPuff, Zzzz, Spray, Notes, WaterJet, GreenSmokePuff, FlySmoke, FlyFire, BloodSpurt,
+SlimeJet, Cannon, DemonFire, PinkPop, BrewUp, PlasmaSphere, GreenPuke, Avatar, feathers,
+OtherAvatar, Bubbles, LaserLaunch, GocartFireballs, BigSteamJet, GoldSparkles, SteamJet,
+QuickSteamJet, MudJet, SideShowWin, BigSmokePuff, SmokeTrailR/B/W, SmallSplash, + 3 unnamed.
+
+⚠⚠ **This kills the argument the port's `Additive` shipped on.** That was "Sparks reads 0 and
+ApeSnot reads 4; a spark glows and snot does not" -- one pair out of 105. The full lists put
+three SPARK effects (Sparks, CoasterSparks, BigSparks) plus GoldSparkles, DemonFire, FlyFire and
+PlasmaSphere on the CLEAR side, and two STINK effects plus Button, Repair, BuyLand, Upgrade and
+the message tags on the SET side. Neither side is "the glowing ones".
+
+⭐ **A second reading that fits the whole SET list: bit 2 is UNLIT / FULL-BRIGHT, not a blend
+mode.** Fire, explosions, fireworks, twinkles, keys, buttons, Repair, BuyLand and the
+Create/Destroy feedback puffs all ignore scene lighting; smoke, steam, splash and bubbles all take
+it. Recorded as a rival CANDIDATE so the next pass has two readings to separate rather than one to
+confirm. The shipped value is unchanged -- swapping a guess for a guess is not progress.
+
+### The three unread fields, listed (same run)
+
+`NULL` (record 0) `+0x90=1 +0xa4=1`; `YellowStink`, `GreenPuke`, `GreenFumes` `+0xa4=1`;
+`Avatar`, `OtherAvatar` `+0xc3=1`. ⭐ Record 0 IS named `NULL`, so `+0x90` is set on the dummy
+record and nothing else -- most likely dead. `+0xa4` marks the three SMELL effects (once NULL is
+discounted) and `+0xc3` the two avatars, which suggests both are read by GUEST/avatar code rather
+than by the particle system -- which is why a particle-side census never found them.
+⚠ Five further functions that touch the template/emitter tables and were not in the original walk
+(`0x18a798`, `0x146e68`, `0x18a520`, `0x1887a0`, `0x1465f0`) were decompiled: none reads them.
+
 **⚠ A FALSE LEAD, KILLED.** `FUN_002329c8` tests `& 0x20` and sits in the renderer core, so it
 reads exactly like the answer. It is **not**: that `0x20` is on the SPRITE descriptor and swaps
 the u/v pairs -- a texture flip. A different struct's bit 2. Reported here because it is the

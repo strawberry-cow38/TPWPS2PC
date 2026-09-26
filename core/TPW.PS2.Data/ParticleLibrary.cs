@@ -36,6 +36,29 @@ public sealed class ParticleEffect
     /// ⚠ NO CONSUMER READ. This is a two-known-answers test over a binary field, not the
     /// executable's own branch. `+0x58` (a 0..3 enum) and `+0x71` (0 or 32, adjacent and probably
     /// the same flags word) also separate the two and are the next candidates if this is wrong.
+    ///
+    /// ⚠⚠ **AND THE TWO-EFFECT ARGUMENT DOES NOT SURVIVE THE FULL CENSUS** (2026-09-26,
+    /// `--particle-unread`). Bit 2 is SET on 49 effects and CLEAR on 56, and BOTH sides hold
+    /// glowing and non-glowing things:
+    ///   SET   includes Fire, Flames, every Explode/Firework/Twinkle, LaserRing, BeamUp,
+    ///         GoldenTicket -- but also YellowStink, GreenFumes, ApeSnot, Button, Repair,
+    ///         BuyLand, Upgrade, MessageTag1, EndOfMessage.
+    ///   CLEAR includes Smoke, Steam, Splash, Bubbles -- but also Sparks, CoasterSparks,
+    ///         BigSparks, GoldSparkles, DemonFire, FlyFire, PlasmaSphere.
+    /// "A spark glows; snot does not" picked the one pair that suits the reading. Sparks is not
+    /// alone on its side and snot is not alone on its: three separate SPARK effects are clear and
+    /// two STINK effects are set.
+    ///
+    /// ⭐ A hypothesis that fits the whole SET list where "additive" does not: bit 2 is
+    /// **unlit / full-bright**, not a blend mode. Fire, explosions, fireworks, twinkles, keys,
+    /// buttons, Repair, BuyLand and the Create/Destroy feedback puffs are all things that should
+    /// ignore scene lighting; smoke, steam, splash and bubbles are things that should take it.
+    /// That is a CANDIDATE too, and it is recorded so the next pass has two readings to separate
+    /// rather than one to confirm.
+    ///
+    /// ⭐⭐ Either way the honest status is UNKNOWN, not "additive". The value kept here is the
+    /// one already shipped -- changing a guess for a different guess is not progress -- but it is
+    /// no better supported than its opposite, and it should not be cited as decoded.
     public bool Additive => (RawAt(0x70) & 4) != 0;
 
     /// <summary>⚠ CANDIDATE, from the shape of the values: `+0x74` is 100 for Sparks, 300 for
