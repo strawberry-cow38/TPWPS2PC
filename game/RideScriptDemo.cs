@@ -28,7 +28,9 @@ public partial class RideScriptDemo : Node3D
     int _filmStep = 200, _filmFrames = 120, _filmSaved;
     float _filmZoom = 1f;
     int _filmControl = -1;
+    AssetLibrary _particleWad;
     int _captureFrames;
+    int _aliveFrames;
 
     public override void _Ready()
     {
@@ -72,15 +74,33 @@ public partial class RideScriptDemo : Node3D
             // one has the ride's world open and this must not disturb it.
             try
             {
-                var pw = new AssetLibrary(disc);
-                pw.OpenWad("/DATA/PARTICLE.WAD");
-                _particles = new ParticleLibrary(pw.Read(pw.Wad.Find("/Tp2.plb")));
+                // ⚠ KEPT, not scoped to this block: RideParticles reads the effects' textures out
+                // of the same WAD when it first draws one, so it must still be open then.
+                _particleWad = new AssetLibrary(disc);
+                _particleWad.OpenWad("/DATA/PARTICLE.WAD");
+                _particles = new ParticleLibrary(_particleWad.Read(_particleWad.Wad.Find("/Tp2.plb")));
                 GD.Print($"[fx] Tp2.plb: {_particles.Effects.Count} effects; "
                        + $"{_particles.RampDisagreements().Count()} whose colours disagree with their name");
             }
             catch (Exception e) { GD.PrintErr($"[fx] no particle library: {e.Message}"); }
             Restart();
             int captureTime = 19000;
+            // ⚠⚠ `--shot=PATH[:FRAME]` AS WELL AS `--shot PATH`, AND THIS IS WHY THE BOX WAS FULL
+            // OF DEAD GODOTS. Every script that drives this scene passes the joined form, which
+            // the two-argument loop below never matched -- so `_capture` stayed null, the capture
+            // branch never ran, and the scene ran FOREVER with nothing to quit it. Twenty-one
+            // headless processes were still alive, the oldest a day old. A harness that silently
+            // does nothing is bad; one that then never exits is a leak.
+            foreach (var a in argv)
+            {
+                if (!a.StartsWith("--shot=")) continue;
+                var spec = a["--shot=".Length..];
+                // ⚠ The `:FRAME` suffix is the park viewer's spelling. Split on the LAST colon so
+                // a Windows drive letter (`C:\...`) is not mistaken for it.
+                int colon = spec.LastIndexOf(':');
+                if (colon > 1 && int.TryParse(spec[(colon + 1)..], out _)) spec = spec[..colon];
+                _capture = spec;
+            }
             for (int i = 0; i + 1 < argv.Length; i++)
             {
                 if (argv[i] == "--shot") _capture = argv[i + 1];
@@ -131,7 +151,7 @@ public partial class RideScriptDemo : Node3D
             _preview = new RseRidePreview(new RseProgram(Read(".rse")), animation);
             _presenter = new RseModelPresenter(this, model, animation, Texture);
             _burst?.Clear();
-            _burst = _particles == null ? null : new RideParticles(this, _particles);
+            _burst = _particles == null ? null : new RideParticles(this, _particles, _particleWad);
             _sounds?.Clear();
             try { _sounds ??= new RideSounds(this, new SoundCatalogue(_lib.Disc, _world, 1), new SoundCatalogue(_lib.Disc, _world, 2)); }
             catch (Exception e) { GD.PrintErr($"[snd] no sound catalogue: {e.Message}"); _sounds = null; }
@@ -238,6 +258,17 @@ public partial class RideScriptDemo : Node3D
             {
                 using var image = GetViewport().GetTexture().GetImage();
                 image.SavePng(_capture); GetTree().Quit(); _capture = null;
+            }
+            // ⚠⚠ A HARD STOP, BECAUSE THE LAST ONE COST A DAY OF STUCK PROCESSES. Whatever the
+            // reason -- a shot that never resolves, a film that never advances, an argument
+            // spelled a way nothing matches -- a headless run of this scene must not outlive its
+            // job. 60 seconds is far longer than any capture here needs and far shorter than a
+            // process anyone would notice leaking.
+            if (DisplayServer.GetName() == "headless" && ++_aliveFrames > 3600)
+            {
+                GD.PrintErr("[fx] headless run hit its 60s cap with nothing to capture -- "
+                          + "quitting rather than leaking the process");
+                GetTree().Quit(3);
             }
         }
         catch (Exception ex) { Fail(ex); }

@@ -3012,7 +3012,7 @@ public partial class Viewer : Node3D
             pw.OpenWad("/DATA/PARTICLE.WAD");
             var lib = new ParticleLibrary(pw.Read(pw.Wad.Find("/Tp2.plb")));
             GD.Print($"[fx] Tp2.plb: {lib.Effects.Count} effects; bursts drawn at the script's fittings");
-            return new RideParticles(this, lib);
+            return new RideParticles(this, lib, pw);
         }
         catch (Exception e) { GD.PrintErr($"[fx] no particle library: {e.Message}"); return null; }
     }
