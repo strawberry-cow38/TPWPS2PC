@@ -139,6 +139,15 @@ public partial class RideScriptDemo : Node3D
             {
                 if (captureTime < 0 || captureTime > 240000) throw new Exception("Capture time must be 0..240000ms");
                 while (_time < captureTime) { _time += 100; _preview.Tick(_time); }
+                // ⭐⭐ THE CONTROL BURST WORKS ON A STILL TOO. It only ever fired in FILM mode, so
+                // `--fx-control N --shot X` wound the clock forward and photographed an empty
+                // park -- "Particles: 0 asked for" on a run that had asked for one. Fired AFTER
+                // the wind-forward so the burst is young when the shutter opens, and at the
+                // camera's focus, owing nothing to the node table: if this does not appear the
+                // EMITTER is wrong, and if it appears while the script's do not, the POSITION is.
+                if (_burst != null && _filmControl >= 0)
+                    GD.Print($"[fx] control burst {_filmControl} at focus {_focus}: "
+                           + (_burst.Emit(_filmControl, _focus + Vector3.Up) != null));
                 _presenter.Update(_preview.Host); ShowStatus(); _paused = true;
             }
         }
