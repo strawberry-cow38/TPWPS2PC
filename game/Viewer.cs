@@ -3738,6 +3738,13 @@ public partial class Viewer : Node3D
                 {
                     var fit = fm.FindFitting(n, 0x100);
                     var w = NodeWorld(fr.Id, n, 0x100); var d = NodeWorldDir(fr.Id, n, 0x100);
+                    // ⭐ THE CROSS-CHECK. The agent read ApeSnot nose1 as batch 6, verts 19..21,
+                    // uvh (0.089, 0.182, 0.019), corner selectors 0,2,1 -- from the CONSUMER's
+                    // instructions. This parses the same bytes from the FILE. If the two agree
+                    // digit for digit, the layout is right for a reason rather than by assertion.
+                    if (fit?.OnSurface is { } sf)
+                        GD.Print($"[fit] node {n}: SURFACE batch {sf.Batch} firstVert {sf.FirstVertex} "
+                               + $"uvh({sf.U:F3},{sf.V:F3},{sf.H:F3}) corners {sf.Corner0},{sf.Corner1},{sf.Corner2}");
                     GD.Print($"[fit] node {n}: fitting={(fit is { } g ? $"id {g.Id} node {g.Node} xyz({g.X:F2},{g.Y:F2},{g.Z:F2}) flags 0x{g.Flags:X}" : "(none)")}"
                            + $" world={(w is { } p2 ? p2.ToString() : "-")} dir={(d is { } d2 ? d2.Snapped(Vector3.One * 0.01f).ToString() : "-")}");
                 }
