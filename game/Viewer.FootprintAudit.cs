@@ -32,8 +32,19 @@ public partial class Viewer
 
     void FootprintAudit()
     {
-        var rows = PurchasableRides();
-        GD.Print($"[fp] {rows.Count} buildable things in {_lib.WadName}");
+        // ⚠⚠ NOT PurchasableRides(). That filters to PlacementCost > 0, and a COASTER is priced
+        // per track unit rather than by a fixed cost -- so every coaster station was excluded from
+        // the census, which is precisely the set that needed checking when the anchor rule changed
+        // under tinyclaw's station placement. An audit's exclusions are where its blind spot is.
+        var rows = new List<(AssetLibrary.RideAssets Assets, RideDefinition Def)>();
+        foreach (int i in BuildableRows())
+        {
+            var rr = _lib.Rides[i];
+            var dd = DefinitionFor(rr.Model);
+            if (dd != null) rows.Add((rr, dd));
+        }
+        GD.Print($"[fp] {rows.Count} buildable things in {_lib.WadName} (UNFILTERED -- "
+               + "includes the per-unit-priced coasters)");
         GD.Print("[fp] name | shape WxH | model cells | origin-in-shape (cells) | "
                + "box-centre-in-shape | disagreement | floor?");
         var offsets = new List<float>();
