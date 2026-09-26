@@ -810,6 +810,79 @@ try
             foreach (var en in pw.Entries) Console.WriteLine($"  pwad {en.Path}");
             int[] GroupBase = { 0,1,2,3,7,11,18,19,20,21,29,33,41,49,52,57,58,59,60,61,62,63,64,65,
                                 66,67,68,69,70,71,72,73,0 };
+            // ⭐⭐ AND WRITE THE ART OUT, because the only thing that actually answers "is it a
+            // puff of smoke" is looking at it. Each named effect's frames are laid side by side
+            // and written as an uncompressed 32-bit TGA -- no encoder needed, and the box's ffmpeg
+            // turns it into a PNG.
+// ⭐⭐ WHICH RIDES ASK FOR PARTICLES, AND WHICH EFFECT. Master: "how are particles done for
+// crazy ape's anims?" Read STATICALLY off every ride's bytecode rather than by running one in a
+// demo and watching what happens to come out -- a run only shows the branches it took, and I had
+// already said "Crazy Ape asks for zero" on the strength of one 10-second capture.
+// ⚠ EVENT/ADDOBJ carry a KIND first, and only kinds 1 and 2 reach Tp2.plb (0x18b5a8/0x18b0f8);
+// kind 3+ are sound groups whose ids run past the library's 105 and mean something else entirely.
+if (args.Contains("--particle-events"))
+{
+    foreach (var re in wad.Entries
+                 .Where(x => x.Path.EndsWith(".rse", StringComparison.OrdinalIgnoreCase)
+                          && x.Path.StartsWith("/Rides/", StringComparison.OrdinalIgnoreCase))
+                 .OrderBy(x => x.Path, StringComparer.OrdinalIgnoreCase))
+    {
+        RseProgram prog;
+        try { prog = new RseProgram(wad.Read(re)); } catch { continue; }
+        var hits = new List<string>();
+        foreach (var ins in prog.Instructions)
+        {
+            if (ins.Opcode is not (RseOpcode.EVENT or RseOpcode.ADDOBJ)) continue;
+            if (ins.Operands.Count < 3) continue;
+            // ⚠ Only literal operands can be read here; a computed id is invisible to a static
+            // pass and is reported as such rather than skipped silently.
+            var v = ins.Operands.Select(o => o.ToString()).ToArray();
+            if (!int.TryParse(v[0], out int kind)) { hits.Add($"{ins.Opcode}(kind=?)"); continue; }
+            if (kind is not (1 or 2)) continue;
+            string name = int.TryParse(v[2], out int fxid) && fx?[fxid]?.Name is { Length: > 0 } n ? n : v[2];
+            hits.Add($"{ins.Opcode} kind {kind} node {v[1]} -> {name}");
+        }
+        if (hits.Count > 0)
+            Console.WriteLine($"  fxevent {re.Path}: {string.Join(" | ", hits.Distinct())}");
+    }
+    Console.WriteLine("  fxevent -- end (rides with no line above ask for NO particles)");
+}
+
+            foreach (var want in new[] { "ApeSnot", "Bubbles", "Fire", "Smoke", "Create1", "Destroy1" })
+            {
+                var eff = fx.Effects.FirstOrDefault(x => x.Name == want);
+                if (eff == null || eff.Raw.Length < 0x98) continue;
+                int grp = BinaryPrimitives.ReadInt16LittleEndian(eff.Raw.AsSpan(0x94, 2));
+                int frames = BinaryPrimitives.ReadInt16LittleEndian(eff.Raw.AsSpan(0x96, 2));
+                var names = new List<string>();
+                for (int f = 0; f < Math.Max(1, frames); f += 2)
+                    if (ParticleSprites.For(grp, f) is { } n && (names.Count == 0 || names[^1] != n))
+                        names.Add(n);
+                var tiles = new List<Ssh>();
+                foreach (var n in names)
+                    try { tiles.Add(new Ssh(pw.Read(pw.Find(ParticleSprites.Path(n))))); }
+                    catch (Exception ex) { Console.WriteLine($"  art {want}: {n} -- {ex.Message}"); }
+                if (tiles.Count == 0) { Console.WriteLine($"  art {want}: nothing decoded"); continue; }
+                int tw = tiles[0].Width, th = tiles[0].Height, W = tw * tiles.Count;
+                var px = new byte[W * th * 4];
+                for (int t = 0; t < tiles.Count; t++)
+                    for (int y = 0; y < th; y++)
+                        for (int x = 0; x < tw; x++)
+                        {
+                            int src = (y * tiles[t].Width + x) * 4, dst = (y * W + t * tw + x) * 4;
+                            if (src + 3 >= tiles[t].Pixels.Length) continue;
+                            // ⚠ TGA is BGRA, the decoder gives RGBA.
+                            px[dst] = tiles[t].Pixels[src + 2]; px[dst + 1] = tiles[t].Pixels[src + 1];
+                            px[dst + 2] = tiles[t].Pixels[src];  px[dst + 3] = tiles[t].Pixels[src + 3];
+                        }
+                var hdr = new byte[18];
+                hdr[2] = 2; hdr[12] = (byte)(W & 0xff); hdr[13] = (byte)(W >> 8);
+                hdr[14] = (byte)(th & 0xff); hdr[15] = (byte)(th >> 8); hdr[16] = 32; hdr[17] = 0x20;
+                var path = $"C:/claude-workspace/art_{want}.tga";
+                using (var fsx = File.Create(path)) { fsx.Write(hdr); fsx.Write(px); }
+                Console.WriteLine($"  art {want}: group {grp}, {frames} frames -> {tiles.Count} images "
+                                + $"{tw}x{th} ({string.Join(",", names)}) -> {path}");
+            }
             Console.WriteLine($"  record 0 is named '{fx.Effects[0].Name}'");
             foreach (var e in fx.Effects)
             {

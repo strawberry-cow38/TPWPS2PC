@@ -1,4 +1,5 @@
 using Godot;
+using System.Linq;
 using TPW.PS2.Data;
 using Aps = TPW.PS2.Data.Animation;
 
@@ -28,7 +29,9 @@ public partial class RideScriptDemo : Node3D
     int _filmStep = 200, _filmFrames = 120, _filmSaved;
     float _filmZoom = 1f;
     int _filmControl = -1;
+    AssetLibrary _particleWad;
     int _captureFrames;
+    int _aliveFrames;
 
     public override void _Ready()
     {
@@ -63,7 +66,13 @@ public partial class RideScriptDemo : Node3D
             string disc = OS.GetEnvironment("TPW_PS2_DISC");
             if (string.IsNullOrWhiteSpace(disc)) disc = GetTree().GetMeta("tpw_disc", "").AsString();
             var argv = OS.GetCmdlineUserArgs();
-            foreach (string arg in OS.GetCmdlineArgs()) if (arg.StartsWith("--disc=")) disc = arg[7..];
+            // ⚠⚠ BOTH SPELLINGS, IN BOTH LISTS. `--disc=PATH` was only ever checked against
+            // `GetCmdlineArgs()` (the args BEFORE `--`) and `--disc PATH` only against the user
+            // args AFTER it -- so the perfectly reasonable `-- --disc=PATH` matched neither, threw
+            // here, and left the scene sitting in a failed state forever. That is where every
+            // leaked fx process came from.
+            foreach (string arg in OS.GetCmdlineArgs().Concat(argv))
+                if (arg.StartsWith("--disc=")) disc = arg[7..];
             for (int i = 0; i + 1 < argv.Length; i++) if (argv[i] == "--disc") disc = argv[i + 1];
             if (string.IsNullOrEmpty(disc)) throw new Exception("Set TPW_PS2_DISC or pass -- --disc /path/to/disc.bin");
             GetTree().SetMeta("tpw_disc", disc);
@@ -72,15 +81,33 @@ public partial class RideScriptDemo : Node3D
             // one has the ride's world open and this must not disturb it.
             try
             {
-                var pw = new AssetLibrary(disc);
-                pw.OpenWad("/DATA/PARTICLE.WAD");
-                _particles = new ParticleLibrary(pw.Read(pw.Wad.Find("/Tp2.plb")));
+                // ⚠ KEPT, not scoped to this block: RideParticles reads the effects' textures out
+                // of the same WAD when it first draws one, so it must still be open then.
+                _particleWad = new AssetLibrary(disc);
+                _particleWad.OpenWad("/DATA/PARTICLE.WAD");
+                _particles = new ParticleLibrary(_particleWad.Read(_particleWad.Wad.Find("/Tp2.plb")));
                 GD.Print($"[fx] Tp2.plb: {_particles.Effects.Count} effects; "
                        + $"{_particles.RampDisagreements().Count()} whose colours disagree with their name");
             }
             catch (Exception e) { GD.PrintErr($"[fx] no particle library: {e.Message}"); }
             Restart();
             int captureTime = 19000;
+            // ⚠⚠ `--shot=PATH[:FRAME]` AS WELL AS `--shot PATH`, AND THIS IS WHY THE BOX WAS FULL
+            // OF DEAD GODOTS. Every script that drives this scene passes the joined form, which
+            // the two-argument loop below never matched -- so `_capture` stayed null, the capture
+            // branch never ran, and the scene ran FOREVER with nothing to quit it. Twenty-one
+            // headless processes were still alive, the oldest a day old. A harness that silently
+            // does nothing is bad; one that then never exits is a leak.
+            foreach (var a in argv)
+            {
+                if (!a.StartsWith("--shot=")) continue;
+                var spec = a["--shot=".Length..];
+                // ⚠ The `:FRAME` suffix is the park viewer's spelling. Split on the LAST colon so
+                // a Windows drive letter (`C:\...`) is not mistaken for it.
+                int colon = spec.LastIndexOf(':');
+                if (colon > 1 && int.TryParse(spec[(colon + 1)..], out _)) spec = spec[..colon];
+                _capture = spec;
+            }
             for (int i = 0; i + 1 < argv.Length; i++)
             {
                 if (argv[i] == "--shot") _capture = argv[i + 1];
@@ -112,6 +139,15 @@ public partial class RideScriptDemo : Node3D
             {
                 if (captureTime < 0 || captureTime > 240000) throw new Exception("Capture time must be 0..240000ms");
                 while (_time < captureTime) { _time += 100; _preview.Tick(_time); }
+                // ⭐⭐ THE CONTROL BURST WORKS ON A STILL TOO. It only ever fired in FILM mode, so
+                // `--fx-control N --shot X` wound the clock forward and photographed an empty
+                // park -- "Particles: 0 asked for" on a run that had asked for one. Fired AFTER
+                // the wind-forward so the burst is young when the shutter opens, and at the
+                // camera's focus, owing nothing to the node table: if this does not appear the
+                // EMITTER is wrong, and if it appears while the script's do not, the POSITION is.
+                if (_burst != null && _filmControl >= 0)
+                    GD.Print($"[fx] control burst {_filmControl} at focus {_focus}: "
+                           + (_burst.Emit(_filmControl, _focus + Vector3.Up) != null));
                 _presenter.Update(_preview.Host); ShowStatus(); _paused = true;
             }
         }
@@ -131,7 +167,7 @@ public partial class RideScriptDemo : Node3D
             _preview = new RseRidePreview(new RseProgram(Read(".rse")), animation);
             _presenter = new RseModelPresenter(this, model, animation, Texture);
             _burst?.Clear();
-            _burst = _particles == null ? null : new RideParticles(this, _particles);
+            _burst = _particles == null ? null : new RideParticles(this, _particles, _particleWad);
             _sounds?.Clear();
             try { _sounds ??= new RideSounds(this, new SoundCatalogue(_lib.Disc, _world, 1), new SoundCatalogue(_lib.Disc, _world, 2)); }
             catch (Exception e) { GD.PrintErr($"[snd] no sound catalogue: {e.Message}"); _sounds = null; }
@@ -239,6 +275,25 @@ public partial class RideScriptDemo : Node3D
                 using var image = GetViewport().GetTexture().GetImage();
                 image.SavePng(_capture); GetTree().Quit(); _capture = null;
             }
+            // ⚠⚠ A HARD STOP, BECAUSE THE LAST ONE COST A DAY OF STUCK PROCESSES. Whatever the
+            // reason -- a shot that never resolves, a film that never advances, an argument
+            // spelled a way nothing matches -- a headless run of this scene must not outlive its
+            // job. 60 seconds is far longer than any capture here needs and far shorter than a
+            // process anyone would notice leaking.
+            // ⚠⚠ ON A **CAPTURE** RUN, not a headless one -- and that distinction is the whole
+            // bug. The first version of this guard tested `DisplayServer.GetName() == "headless"`,
+            // but a capture needs a real viewport, so every shot harness runs WINDOWED and the
+            // guard never fired for the runs that were actually leaking. Eighteen of the twenty
+            // stuck processes were windowed `--mode=park` captures.
+            //
+            // ⭐ A run that was ASKED for a picture is automated by definition; a person driving
+            // this scene passes neither --shot nor --film and is left alone.
+            if ((_capture != null || _film != null) && ++_aliveFrames > 3600)
+            {
+                GD.PrintErr("[fx] capture run hit its 60s cap without finishing -- quitting "
+                          + "rather than leaking the process");
+                GetTree().Quit(3);
+            }
         }
         catch (Exception ex) { Fail(ex); }
     }
@@ -280,7 +335,20 @@ public partial class RideScriptDemo : Node3D
         return new Vector3(w.M41, w.M42, -w.M43);
     }
 
-    void Fail(Exception ex) { _paused = true; _status.Text = ex.Message; GD.PrintErr(ex); }
+    /// <summary>⚠⚠ A FAILED CAPTURE RUN MUST DIE, NOT SIT THERE. This used to pause and print,
+    /// which is right for a person driving the scene and catastrophic for a harness: the run had
+    /// nothing left to do, nothing to quit it, and no window anyone would notice. Twenty of them
+    /// accumulated on the box over a day.
+    ///
+    /// ⭐ "Was a picture asked for" is the test, because that is exactly the run nobody is
+    /// watching. A person gets the old behaviour: paused, with the message on screen.</summary>
+    void Fail(Exception ex)
+    {
+        _paused = true; _status.Text = ex.Message; GD.PrintErr(ex);
+        bool automated = OS.GetCmdlineArgs().Concat(OS.GetCmdlineUserArgs())
+            .Any(a => a.StartsWith("--shot") || a.StartsWith("--film"));
+        if (automated) { GD.PrintErr("[fx] capture run failed -- quitting instead of hanging"); GetTree().Quit(4); }
+    }
     public override void _UnhandledInput(InputEvent ev)
     {
         if (ev is InputEventMouseMotion motion && (motion.ButtonMask & MouseButtonMask.Left) != 0)
