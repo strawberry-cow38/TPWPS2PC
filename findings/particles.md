@@ -230,6 +230,39 @@ from the ramp every tick.
   `0x311160` reads the entry array, so the flush takes it through a pointer the census cannot see.
   On the names, `0x20` is ADDITIVE and everything else is ordinary alpha, which is the OPPOSITE of
   the earlier guess; labelled CANDIDATE until read.
+### The display list, read (2026-09-26)
+
+Chasing draw flag `0x20` further. `0x22a068` is now fully read, and the shape of the list is:
+
+- The context (`0x311160`) holds **8192 entries of 16 bytes at `+0x80`**. `entry[0]` = flags,
+  `[1]` = the payload word, `[2]` = a depth key, `[3]` = a link or the object pointer.
+- Entries are taken from **both ends**: `+0x20080` counts up from the front, `+0x20084` counts
+  down from the back (`0x2000` at frame start). Bit `0x40` of the flags picks which.
+- **Three heads**: `+0x20088` (plain entries), `+0x20090` (object list, linked through
+  `obj[0x10]`, insertion ordered by the object's own bit `0x8000`), `+0x20094`. An object carries
+  bit `0x100` = "already in the list this frame", which is what stops it being filed twice.
+- `0x22a378` is the **per-frame reset**: all three heads and the count to 0, back index to
+  `0x2000`, a double-buffer index at `+0x200d8` flipped, `+0x20098/9c` copied to `+0x200a0/a4`.
+
+**⚠⚠ THE CONSUMER IS NOT IN EE CODE THAT NAMES THE CONTEXT, and that is now a census result
+rather than a failed search.** Of the **31** functions that reference `0x311160`, exactly one --
+`0x22a068` -- touches the entry array or any head. The context is passed as an argument to only
+six functions (`0x22a068`, `0x22a2f8`, `0x22a378`, `0x22b0a0`, `0x229e08`, `0x229dc0`,
+`0x229ab0`); of those, `0x22a378` resets, `0x22b0a0` does a DMA `SYNC(0x10)`, and none walks the
+entries. So whatever draws the list is reached with a HEAD or an entry pointer, not the context.
+
+⭐ The hypothesis that fits the shape: the sorted list is handed to **VU1 by DMA chain** rather
+than walked on the EE -- the same division of labour the winding flag already showed, where VU1
+does the culling. If so there is no EE-side walk to find, and the flag reaches the GS through a
+GIF A+D packet built from `entry[0]`. That is where the next attempt should start, not in more
+EE xrefs.
+
+**⚠ A FALSE LEAD, KILLED.** `FUN_002329c8` tests `& 0x20` and sits in the renderer core, so it
+reads exactly like the answer. It is **not**: that `0x20` is on the SPRITE descriptor and swaps
+the u/v pairs -- a texture flip. A different struct's bit 2. Reported here because it is the
+shape of thing that would have been written up as the resolution by a less suspicious pass, and
+because anyone repeating this search will land on it too.
+
 - Bit 13 of `+0x70` (`0x2000`, on 61 effects) has no reader on the walked path.
 - `+0x90`, `+0xa4`, `+0xc3`: nonzero on a few records, no reader found (absolute census only).
 - The 104-byte attractor record (20 templates); `0x1b9388`'s direction scale for `EVENT 2`
