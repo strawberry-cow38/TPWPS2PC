@@ -189,6 +189,18 @@ public partial class CoasterSmoke : Node3D
                 float rail = (frameT * new Vector3(n.X / 256f, n.TrackY / 256f, n.Z / 256f)).Y;
                 Check(MathF.Abs(lo - floor) < 0.05f && hi > rail - 0.05f && hi < rail + 0.4f,
                       $"pylon ({n.CellX},{n.CellZ}) h{n.Height} stands on the floor ({lo - floor:F2} off) and reaches the track ({hi - rail:+0.00;-0.00} at its top)");
+                // The lattice tiles up the post: additive UV keys keep the authored U and add V with the
+                // loft (0x1ad378). Written as absolute UVs every U collapses to 0 and the post bands.
+                float u0 = float.MaxValue, u1 = float.MinValue, v0 = float.MaxValue, v1 = float.MinValue;
+                foreach (var mi in holder.FindChildren("*", "MeshInstance3D", true, false).OfType<MeshInstance3D>())
+                    if (mi.IsVisibleInTree() && mi.Mesh != null)
+                        for (int sfc = 0; sfc < mi.Mesh.GetSurfaceCount(); sfc++)
+                            foreach (var uv in mi.Mesh.SurfaceGetArrays(sfc)[(int)Mesh.ArrayType.TexUV].AsVector2Array())
+                            { u0 = Math.Min(u0, uv.X); u1 = Math.Max(u1, uv.X); v0 = Math.Min(v0, uv.Y); v1 = Math.Max(v1, uv.Y); }
+                float loft = Math.Clamp(n.Height / 2560f, 0f, 1f);
+                if (type.Folder == "MineCart")
+                    Check(u1 - u0 > 0.5f && v1 - v0 >= 7.493f * loft - 0.01f,
+                          $"pylon ({n.CellX},{n.CellZ}) keeps its lattice: U spans {u1 - u0:F2}, V spans {v1 - v0:F2} for loft {loft:F3} (keys add 7.493 per full loft)");
                 var across = (holder.GlobalTransform.Basis.X).Normalized();
                 var s0 = n.S[2];
                 var sideV = (frameT.Basis * new Vector3(s0.X, s0.Y, s0.Z)).Normalized();

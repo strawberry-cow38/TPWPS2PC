@@ -93,7 +93,8 @@ public sealed class AnimatedModel
 
     /// <summary>⭐⭐ MODEL HEADER `+0x1c & 4`: THE CHANNELS ADD TO THE BIND POSE. `0x1a7f48` passes that
     /// bit to the morph player `0x1a6d68` as its last argument, and with it set each vertex is
-    /// `lerp(keys) + its current position` instead of `lerp(keys)`; a path adds to the bind
+    /// `lerp(keys) + its current position` instead of `lerp(keys)`; the UV consumer `0x1ad378` adds
+    /// its keys the same way; a path adds to the bind
     /// translation and a rotation composes onto the bind (findings/coaster-geometry.md §4.2).
     /// 18 of the disc's 496 models carry it: the 15 coaster pylons and three coaster cars. A pylon's
     /// loft keys are DELTAS (16 vertices +0 → +90 in y, 4 fixed at +0), so read as positions they
@@ -643,7 +644,11 @@ public sealed class AnimatedModel
                 var (u, v) = Aps.SampleUv(p.UvKeys[i], now);
                 sampled[i] = new Godot.Vector2(u, v);
             }
-            uv = p.UvMap.Select(i => sampled[i]).ToList();
+            // Additive models ADD the keys to the authored UV (0x1ad378's last argument is the same
+            // header bit): a pylon's loft keys run V 0 -> 7.493 on the top vertices, so the lattice
+            // tiles up the post instead of pinning every vertex to U = 0.
+            uv = Additive ? p.UvMap.Select((i, j) => p.Uv[j] + sampled[i]).ToList()
+                          : p.UvMap.Select(i => sampled[i]).ToList();
         }
         int si = 0;
         foreach (var grp in p.Tris.GroupBy(t => t.Material))

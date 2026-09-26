@@ -182,6 +182,11 @@ ParkSimAudit checks (`coaster:`) and the `CoasterSmoke` viewer scene:
   cells above the floor and stopped short of the track. `AnimatedModel.Additive` now adds morphs,
   adds path translations and composes rotations for the 18 of 496 models that set the bit: the 15
   pylons and three coaster cars (Ghosta Coasta's `cart`, Escape Velocity's `cart`, the Shocker's `car`).
+- The loft's UV keys are deltas too: the post's top groups run V 0 → 7.493 at full loft, so the
+  `mc_pylon` lattice (an X-braced bamboo panel with transparent holes) tiles up the post. The UV
+  consumer `0x1ad378` takes `(hdr +0x1c >> 2) & 1` and ADDS its keys with it (`+=`, MIPS read in the
+  decompile). Written as absolute UVs every U collapsed to 0 and the post drew as horizontal bands
+  (strawberry: "should have crosses up the whole thing").
 - Section 10's key at 25 % is +90° about +Y, taking the model's +Z to +X, so the yaw is +heading (the
   port had −heading, skewing every diagonal).
 - **The stacker is hidden unless something is stacked on it** (`0x199c90`, run by the stack setters
