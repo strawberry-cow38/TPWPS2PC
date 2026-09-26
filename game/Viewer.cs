@@ -403,6 +403,7 @@ public partial class Viewer : Node3D
             // ⭐ So a render can SHOW the debug panel. Master sees the pictures and I do not, so a
             // panel that only opens on a keypress is a panel neither of us has checked.
             else if (a == "--cheats") _cheatsAtStart = true;
+            else if (a == "--footprint-audit") _footprintAudit = true;
             // ⭐ Select a placed thing from the command line, so a render can show the selection
             // box. A visual bug in it is otherwise only reachable by clicking, which a headless
             // shot cannot do -- and master reports these by looking at the picture.
@@ -9085,6 +9086,8 @@ public partial class Viewer : Node3D
         if (_ghostTest && !_pickChecked && _mode == Mode.Park) CheckMousePicking();
         if (_animTest && !_animChecked && _mode == Mode.Park) CheckParkAnimation();
         if (_buildTest && !_buildChecked && _mode == Mode.Park) { if (_placeTest) CheckPlacement(); else CheckBuildMenu(); }
+        if (_footprintAudit && _mode == Mode.Park && _lib != null)
+        { _footprintAudit = false; FootprintAudit(); GetTree().Quit(); }
         // ⚠⚠ AFTER the build test has FINISHED, not merely after its call. CheckPlacement runs
         // over several frames and ends by clicking empty ground to prove that drops the selection
         // -- so selecting on the first frame a ride exists logged "selected Belly Bounce" and then
