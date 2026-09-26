@@ -1060,43 +1060,75 @@ public sealed class Park
         // the shape it had before it turned.
         if ((turns & 3) != 0)
             model.Basis = new Basis(Vector3.Up, Mathf.Pi * 0.5f * (turns & 3)) * model.Basis;
-        // ⭐⭐ A RIDE THAT BRINGS ITS OWN FLOOR IS ALIGNED BY THAT FLOOR. The Belly Bounce carries
-        // `jb_floor#0..11` -- twelve flat tiles that measure EXACTLY 3.0 x 4.0, which is its
-        // footprint to the last decimal. Its fence, signs and hoarding hang off one side, so the
-        // whole model's bounding box is lopsided and centring THAT put the floor 0.40 out in x
-        // while the box itself sat dead centre. Master: "the belly bounce is the only ride in the
-        // game that is misaligned in its footprint... just try to re-align it in its hole."
+        // ⭐⭐ A RIDE IS ANCHORED BY ITS OWN ORIGIN, NOT BY A BOX MEASURED AT RUNTIME.
+        // Master: "some rides are misaligned in their footprint. some a lot more than others."
         //
-        // ⚠ FALLS BACK to the whole model. Most rides have no part called floor, and for the ones
-        // that do the two answers agree -- the control prints both, so a ride this moves is a ride
-        // that says so rather than one that quietly shifts.
-        var (fmin, fmax) = DrawnBounds(model, inParent: true, onlyNamed: "floor");
-        bool onFloor = fmax.X > fmin.X && fmax.Z > fmin.Z;
-        var (min, max) = onFloor ? (fmin, fmax) : DrawnBounds(model, inParent: true);
-        var centre = (min + max) * 0.5f;
-        model.Position += new Vector3(
-            Origin.X + (x + fp.Width * 0.5f) * CellSize - centre.X,
-            // ⭐⭐ THE MODEL'S OWN ORIGIN GOES ON THE FLOOR, not the bottom of its bounding box.
-            // Lifting a ride until its lowest drawn point rested on the surface pushed every ride
-            // with a buried base UP INTO THE AIR by the depth of that base -- master: "a lot of our
-            // rides are floating (because they have stuff thats usually meant to sit under the
-            // ground surface)". Those parts are meant to be under it, so the origin is the ground
-            // plane and what hangs below it hangs below it.
-            BaseY,
-            // ⚠⚠ MINUS, because `centre` is measured IN THE PARENT'S SPACE. `DrawnBounds(model,
-            // inParent: true)` starts its walk from `model.Transform`, so the bounds already include
-            // the model's own position AND its Scale(1,1,-1). Adding a delta to `Position` shifts
-            // parent-space bounds by exactly that delta whatever the scale, so the delta that lands
-            // the drawn centre on the target is `target - centre` on every axis -- mirrored or not.
-            //
-            // History, because this line has flipped three times: main had `DrawnBounds(model)`
-            // (local space, excludes the mirror) with `+ centre.Z`, which was right for that frame.
-            // visitor-ai had `inParent: true` with `- centre.Z`, also right for ITS frame. The merge
-            // took visitor-ai's frame and main's sign -- two halves that are each correct and wrong
-            // together. Measured on SPACE t1 (Orbiter, model centre.Z = 1.5002): with `+`, the drawn
-            // centre landed 3.0005 off target -- exactly TWICE the centre, for every ride, in the
-            // ordinary viewer too. With `-` it lands on the target exactly.
-            Origin.Y + (Height - y - fp.Height * 0.5f) * CellSize - centre.Z);
+        // `--footprint-audit` over JUNGLE's 64 buildables: **47 have their model origin at exactly
+        // (0.00, 0.00) of their drawn bounds**. The models are authored IN their footprint's box --
+        // local X 0..w and Z 0..h in cells, the same box the Info.Shape grid describes -- so the
+        // origin IS the anchor and there is nothing to measure.
+        //
+        // ⚠⚠ WHAT THIS REPLACES centred the drawn BOUNDING BOX on the footprint's centre. The two
+        // rules agree only while a model's extent equals its shape, and eleven do not: gokarts is a
+        // 4x4 model declared 4x3, lavajump a 4x4 declared 2x2. Centring those splits the difference
+        // and lands the ride half a cell off in both axes -- "some a lot more than others" exactly.
+        // It also needed a hand-written special case for the Belly Bounce (its fence and signs hang
+        // off one side, so its box centre is nowhere near its floor); that special case is gone,
+        // because the origin was never lopsided in the first place.
+        //
+        // ⭐ WHICH CORNER THE ORIGIN GOES TO IS DERIVED, NOT PICKED. The models carry Scale(1,1,-1),
+        // so local X 0..W and Z 0..H land in parent space at X 0..W and Z -H..0, and the turn is
+        // pre-multiplied about the origin. Sending +X to -Z a quarter at a time walks the authored
+        // corner round the footprint:
+        //
+        //   turns 0 -> (minX, maxZ)   turns 1 -> (maxX, maxZ)
+        //   turns 2 -> (maxX, minZ)   turns 3 -> (minX, minZ)
+        //
+        // ⚠ `fp` arrives already turned, so its Width/Height are the world box's, not the
+        // authored one's -- which is what these corners are taken from.
+        float x0 = Origin.X + x * CellSize, x1 = x0 + fp.Width * CellSize;
+        float z1 = Origin.Y + (Height - y) * CellSize, z0 = z1 - fp.Height * CellSize;
+        var anchor = (turns & 3) switch
+        {
+            0 => new Vector2(x0, z1),
+            1 => new Vector2(x1, z1),
+            2 => new Vector2(x1, z0),
+            _ => new Vector2(x0, z0),
+        };
+        // ⚠⚠ THE ORIGIN RULE IS OPT-IN (`TPW_PLACE_ORIGIN=1`) AND NOT THE DEFAULT, BECAUSE THE
+        // EVIDENCE FOR IT DOES NOT YET SURVIVE ITS OWN CONTROL.
+        //
+        // The census said 47 of 64 models have their origin at exactly (0,0) of their bounds, and
+        // that looked like the anchor. But where extent EQUALS shape -- which is those same 47 --
+        // anchoring the origin and centring the box give the IDENTICAL answer. So the rule is a
+        // no-op exactly where it is proven and a guess exactly where it is not: the eleven whose
+        // model and shape disagree, where it only moves the overhang from both sides to one.
+        //
+        // ⚠ And the Belly Bounce settles that it is not yet understood. It needed a hand-written
+        // `onlyNamed: "floor"` special case because its box centre was 0.40 out -- yet the census
+        // measures it at exactly 3.00 x 4.00 against a 3x4 shape, with its origin at (0,0), which
+        // is a model that cannot be 0.40 out under either rule. The census and the placement code
+        // are therefore NOT measuring the same node, and a DrawnBounds reading has misled this
+        // port twice before. Re-measure inside TryPlace, against the node actually being placed,
+        // before this becomes the default.
+        if (System.Environment.GetEnvironmentVariable("TPW_PLACE_ORIGIN") != "1")
+        {
+            // The shipped rule: centre the drawn box on the footprint's centre.
+            var (bmin, bmax) = DrawnBounds(model, inParent: true, onlyNamed: "floor");
+            if (!(bmax.X > bmin.X && bmax.Z > bmin.Z)) (bmin, bmax) = DrawnBounds(model, inParent: true);
+            var c = (bmin + bmax) * 0.5f;
+            model.Position += new Vector3(
+                Origin.X + (x + fp.Width * 0.5f) * CellSize - c.X, BaseY - model.Position.Y,
+                Origin.Y + (Height - y - fp.Height * 0.5f) * CellSize - c.Z);
+            return true;
+        }
+        // ⭐⭐ THE MODEL'S OWN ORIGIN GOES ON THE FLOOR, not the bottom of its bounding box. Lifting
+        // a ride until its lowest drawn point rested on the surface pushed every ride with a buried
+        // base UP INTO THE AIR by the depth of that base -- master: "a lot of our rides are floating
+        // (because they have stuff thats usually meant to sit under the ground surface)". Those
+        // parts are meant to be under it, so the origin is the ground plane and what hangs below it
+        // hangs below it.
+        model.Position = new Vector3(anchor.X, BaseY, anchor.Y);
         return true;
     }
 

@@ -243,6 +243,7 @@ public partial class Viewer : Node3D
     bool _linkTest;
     bool _placeTest;
     int _selectAtStart = -1;
+    string _placeName;
     bool _walkAudit;
     bool _typeAudit;
     bool _guestTest;
@@ -404,6 +405,7 @@ public partial class Viewer : Node3D
             // panel that only opens on a keypress is a panel neither of us has checked.
             else if (a == "--cheats") _cheatsAtStart = true;
             else if (a == "--footprint-audit") _footprintAudit = true;
+            else if (a.StartsWith("--place-name=")) _placeName = a["--place-name=".Length..];
             // ⭐ Select a placed thing from the command line, so a render can show the selection
             // box. A visual bug in it is otherwise only reachable by clicking, which a headless
             // shot cannot do -- and master reports these by looking at the picture.
@@ -5833,6 +5835,27 @@ public partial class Viewer : Node3D
         _buildChecked = true;
         ShowBuildCategory("Rides");
         int chosen = -1;
+        // ⭐ --place-name=gokarts puts the harness on a NAMED ride, so a visual change can be shown
+        // on the ride that actually demonstrates it rather than on whichever one the scan picks.
+        if (_placeName != null)
+        {
+            // ⚠ ACROSS EVERY CATEGORY. The harness opens "Rides" and the named one is as likely to
+            // be a shop, a sideshow or a track ride -- the first attempt matched nothing for
+            // exactly that reason and the run silently fell through to its usual pick.
+            foreach (var (kind, _) in BuildCategoryNames.Order)
+            {
+                ShowBuildCategory(kind.ToString());
+                for (int row = 0; row < _buildRows.Count && chosen < 0; row++)
+                    if (Leaf(_lib.Rides[_buildRows[row]].Name)
+                            .Contains(_placeName, StringComparison.OrdinalIgnoreCase)) chosen = row;
+                if (chosen >= 0) { GD.Print($"[place] --place-name={_placeName} found in {kind}"); break; }
+            }
+            if (chosen < 0)
+            {
+                GD.Print($"[place] --place-name={_placeName} matched nothing in any category");
+                ShowBuildCategory("Rides");
+            }
+        }
         for (int row = 0; row < _buildRows.Count && chosen < 0; row++)
         {
             var d = DefinitionFor(_lib.Rides[_buildRows[row]].Model);
