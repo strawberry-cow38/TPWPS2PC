@@ -9,6 +9,7 @@ COVERAGE = '\n'.join([f'  ok   {category.replace("_", " ")}: filler'
                      ['  '+w for w in REQUIRED_WITNESSES if w.startswith('ok   native ')] +
                      ['  ok   queue walk: check'] * 7 +
                      ['  ok   track ride: check'] * 43 +
+                     ['  ok   coaster: check'] * 41 +
                      ['  ok   post service movement: check'] * 15 +
                      ['  ok   post service movement: relief1234 ordinary arm walks away before the facility deadline', '  ok   post service movement: shop1234 ordinary arm walks away before the facility deadline', '  ok   post service movement: shop299 ordinary arm walks away before the facility deadline'] +
                      ['  ok   terminal walking: check'] * 86 +

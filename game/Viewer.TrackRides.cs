@@ -105,7 +105,7 @@ public partial class Viewer
         AddChild(frame);
         var view = new TrackRideView { Id = id, Ride = ride, Sim = sim, Layout = layout, Dir = dir, Prefix = prefix, Price = price, Frame = frame };
         _tracks[id] = view;
-        _park.Claimed ??= (x, y) => _tracks.Values.Any(v => v.Cells.Contains((x, y)));
+        ClaimFloor();
         PlaceFrame(view);
         RebuildTrackView(view);
         GD.Print($"[track] {station.Name}: station anchor {anchor} rot {rot} (port turns {turns}), exit {layout.ExitCell}, "

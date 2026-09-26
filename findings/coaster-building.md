@@ -670,7 +670,7 @@ After the samples, still in `0x121000`:
 
 Allowed only in the build state (not sub-mode, not moving, not stats) and only when the coaster's
 entry in the loops table `0x2acad0[w][p][o]` is set. After the Test Park remap `0x11f930`, that is
-the ten coasters marked "yes" in `coaster-survey.md` §1.
+the nine coasters marked "yes" in `coaster-survey.md` §1.
 
 - If `BottomNodeAt(cursor, 9)` is non-null and not the last node → sound 0xaf, return.
 - **Extend** (the last node is a loop node, `+0x53 == 2`):

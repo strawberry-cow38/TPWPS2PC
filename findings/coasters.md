@@ -150,3 +150,37 @@ In dependency order:
 7. The test park, which needs the registry's `0x8` flag and the `/Ultimate` textures.
 
 The coaster's status machine and value are small once those exist.
+
+## In the port (2026-09-26)
+
+Built, in `core/TPW.PS2.Data/Coaster{Track,Sim,Mesh}.cs` and `game/Viewer.Coasters.cs`, held by 37
+ParkSimAudit checks (`coaster:`) and the `CoasterSmoke` viewer scene:
+- **The station and its queue.** The station's doors are DBA `+0xc`/`+0x10` (`0x1e1760`, `0x1e1a48`,
+  the same record every ride's doors come from), which is the station's own `<name>.sam`
+  `Info.Shape` with z flipped. The port used to resolve a coaster station to the PC-only
+  `coaster.sam` (first `.sam` in the folder), which has no shape and no compiled record, so a coaster
+  had no doors, no queue, and ParkSim never knew it was a coaster. `DefinitionFor` now prefers the
+  `.sam` named after the model, then the one named after the folder.
+- **The station link**: DBA `+0xbc`/`+0xc0` and `+0xd3` through the port's own quarter turns.
+- **The node ring**, window, Catmull-Rom, side-vector frame, loop, lead-in and lead-out, the 17
+  samples, arc length, V/W texture coordinates, heights through the additive pylon pose.
+- **The placement rules** of `0x1216d8`, with the segment-against-segment test reduced (see the
+  comment on `SegmentClear`).
+- **The tool**: station → build (place, undo, loop, close on the entry cell) → pylon edit (height and
+  bank, next and prev) → the queue tool. Costs as §2.7.
+- **The seven cross-sections**, the `red.ssh` swap, the scrolling chain and water bands.
+- **The trains**: the physics step as written, blocking, the station state machine, spawning, and
+  the lift marking.
+- **The test lap** on finishing the tool: car 0's statistics, the per-segment length, drops and
+  steepest drop, and the rating text (shown on the status line; the stats screen itself is not drawn).
+
+**The join quirk decides where the chain texture goes** (`0x1aee48..0x1aee68`, re-read in MIPS for
+the port). Going into a longer segment on a climb, the look-ahead lands up to a cell behind the car,
+the "drop" comes out positive, and the speed jumps past 0.04, so the chain lets go for a stretch.
+On the audit's hill oval, the climb into a 7.05-cell segment after a 6.50-cell one is chained only in
+patches. The console's lift texture is therefore patchy wherever consecutive segments differ in
+length (INFERRED from the READ code; not seen on hardware).
+
+Not built yet: the stats screen as a screen; the Ultimate award record; riders drawn in the cars; coaster sounds; the Test
+Park; moving a pylon (mode 13's Move); breakdowns; stacked pylons use the pylon below's attach point
+instead of its posed stack helper.

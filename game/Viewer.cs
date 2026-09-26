@@ -833,6 +833,7 @@ public partial class Viewer : Node3D
             Status("details closed");
             return;
         }
+        if (CoasterToolKey(k.Keycode)) return;
         if (_objMenu is { Open: true })
         {
             switch (k.Keycode)
@@ -1634,19 +1635,38 @@ public partial class Viewer : Node3D
         catch (Exception ex) { GD.PrintErr($"[park] compiled records failed: {ex.Message}"); }
     }
 
+    /// <summary>The `.sam` beside a model. ⭐⭐ THE ONE NAMED AFTER IT WINS when a folder holds two.
+    /// Thirteen folders do: the twelve coasters (`coaster1.sam` beside the PC-only `coaster.sam`)
+    /// and the shooter (`shooter.sam` beside `_shooter.sam`). First-in-the-folder picked
+    /// `coaster.sam` for every coaster station, which has no `Info.Shape` (so no doors, so no
+    /// queue) and no compiled record (its graphics key is `..._COASTER1_COASTER`, which the
+    /// table does not hold -- so ParkSim never knew a coaster was a coaster). The station's own
+    /// `.sam` has both: its shape is the DBA footprint with z flipped, doors included.
+    ///
+    /// ⚠ A PART (the car, the pylon) has no `.sam` of its own and takes the one named after the
+    /// FOLDER, so the station, its car and its pylon still land in one build-list row
+    /// (BuildableRows groups by `.sam`). Falling to "first" instead would hand the parts
+    /// `coaster.sam` and a row of their own.</summary>
     RideDefinition DefinitionFor(WadArchive.Entry model)
     {
         if (_cat == null || model == null) return null;
         int slash = model.Path.LastIndexOf('/');
         if (slash < 0) return null;
         var dir = model.Path[..(slash + 1)];
+        string stem = System.IO.Path.GetFileNameWithoutExtension(model.Path);
+        string folder = System.IO.Path.GetFileName(dir.TrimEnd('/'));
+        RideDefinition first = null, named = null;
         foreach (var d in _cat.All)
         {
             int s2 = d.Source.LastIndexOf('/');
             if (s2 < 0) continue;
-            if (d.Source[..(s2 + 1)].EndsWith(dir, StringComparison.OrdinalIgnoreCase)) return d;
+            if (!d.Source[..(s2 + 1)].EndsWith(dir, StringComparison.OrdinalIgnoreCase)) continue;
+            string own = System.IO.Path.GetFileNameWithoutExtension(d.Source);
+            if (own.Equals(stem, StringComparison.OrdinalIgnoreCase)) return d;
+            if (own.Equals(folder, StringComparison.OrdinalIgnoreCase)) named ??= d;
+            first ??= d;
         }
-        return null;
+        return named ?? first;
     }
 
     /// <summary>Stand the current ride on park ground at its own footprint, and say what the game
@@ -1838,7 +1858,7 @@ public partial class Viewer : Node3D
         ResetGuests();
         _walkGrid = null;
         // ⭐ AND THE SIM WITH IT: it was made on that grid, and its rides stood on that park.
-        _sim = null; _scripted.Clear(); _rideMeshes.Clear(); _shotWound = false; ClearTrackViews();
+        _sim = null; _scripted.Clear(); _rideMeshes.Clear(); _shotWound = false; ClearTrackViews(); ClearCoasterViews(); _placedHeight.Clear();
         // ⭐⭐ AND THE SOUND, FOR THE SAME REASON THE GRID IS RESET TWO LINES UP. `_sounds` is
         // built `??=` from `SoundCatalogue(disc, world, 1)` and `(.., 2)` -- the CURRENT world's
         // event maps -- so keeping it across a world change resolves the new park's cues against
@@ -3797,6 +3817,7 @@ public partial class Viewer : Node3D
         while (_parkTicks * ParkSim.TickMilliseconds < target && guard++ < 100_000) { TickPark(); PresentScripted(frames: false); }
         PresentScripted();
         PresentTracks(1f);
+        PresentCoasters(1f);
         if (_guests != null) PlaceActors(1f);
         GD.Print($"[sim] wound to {_parkTicks * ParkSim.TickMilliseconds}ms for the shot ({_scripted.Count} scripted, {_guests?.Guests.Count ?? 0} walking)");
     }
@@ -4038,6 +4059,7 @@ public partial class Viewer : Node3D
         PresentNativeBus(); // including rendered frames in which the park executes no tick
         PresentParkVehicles();
         PresentTracks(_parkClock.Alpha);
+        PresentCoasters(_parkClock.Alpha);
         if (_guests != null) PlaceActors(_parkClock.Alpha);
     }
 
@@ -6229,12 +6251,15 @@ public partial class Viewer : Node3D
         return new Park.Footprint(1, 1, new[,] { { true } }, -1, -1);
     }
 
-    /// <summary>⭐ The kinds whose entrance lays a QUEUE rather than a path. ⚠ Coaster is absent
-    /// deliberately -- see <see cref="ArmFromList"/>.</summary>
+    /// <summary>⭐ The kinds whose entrance lays a QUEUE rather than a path. Coasters included: the
+    /// station preview draws the entrance with the "enter" marker for kind 1 exactly as for any
+    /// ride (0x1e3978, findings/coaster-building.md §6.3), and the doors are the DBA's +0xc/+0x10,
+    /// the same record every ride's are read from (0x1e1760/0x1e1a48).</summary>
     static bool TakesQueueStub(AssetResourceDatabase.AssetKind? k) =>
         k is AssetResourceDatabase.AssetKind.Ride
           or AssetResourceDatabase.AssetKind.TrackRide
-          or AssetResourceDatabase.AssetKind.TourRide;
+          or AssetResourceDatabase.AssetKind.TourRide
+          or AssetResourceDatabase.AssetKind.Coaster;
 
     /// <summary>Take an item out of the menu and hold it over the park.</summary>
     void ArmFromList(int row)
@@ -6259,9 +6284,8 @@ public partial class Viewer : Node3D
         // is the same trap as `Call(o, "Name")`: I changed what a function RETURNS without
         // grepping for who compares its result.
         //
-        // ⚠ COASTERS ARE NOT INCLUDED, and were not before either: a coaster's old key was
-        // "Coasters", not "Rides", so it never took a queue stub. Restoring the behaviour, not the
-        // behaviour I assumed it had.
+        // Coasters were left out here once because their old key was "Coasters", not "Rides".
+        // They take a queue now; see TakesQueueStub.
         _place.Arm(def, DisplayName(r, def), def.Id ?? 1, fp, isRide: TakesQueueStub(BuildKind(r)));
         _armedRide = r;
         _ghostAt = (-1, -1, -1, -1);
@@ -6332,8 +6356,14 @@ public partial class Viewer : Node3D
         // and its way out are two different tiles.
         Door(_place.DoorFor(x, y), _place.IsRide ? 168 : 172, StubOk(true));
         Door(_place.ExitFor(x, y), 169, StubOk(false));
+        // ⭐ A coaster's track cells too: 166 chevrons, red when the cell is not empty land.
+        foreach (var (c, turn, cellOk) in CoasterLinkPreview(x, y))
+        {
+            cells.RemoveAll(t => t.Item1 == c.X && t.Item2 == c.Z);
+            cells.Add((c.X, c.Z, cellOk ? 166 : 175, turn));
+        }
         _ghostView.ShowTurnedCells(cells, _park);
-        bool ok = _place.Fits(_park, x, y);
+        bool ok = _place.Fits(_park, x, y) && CoasterLinkPreview(x, y).All(t => t.Ok);
         Status($"{_place.Display} at ({x},{y}) turned {_place.Turns * 90} degrees"
              + (ok ? " -- click to put it down" : " -- BLOCKED"));
     }
@@ -6344,7 +6374,7 @@ public partial class Viewer : Node3D
     {
         if (!_place.Active) return;
         if (!CursorCell(out int x, out int y)) { Status("that click was not over the park"); return; }
-        if (!_place.Fits(_park, x, y))
+        if (!_place.Fits(_park, x, y) || !CoasterLinkPreview(x, y).All(t => t.Ok))
         {
             Status($"{_place.Display} does not fit there");
             _toolSfx?.Play(ToolSounds.Cue.Refused);
@@ -6422,11 +6452,14 @@ public partial class Viewer : Node3D
         // track tool (mode 8), and only when that finishes the queue tool (mode 3). See
         // Viewer.TrackRides.cs and findings/track-ride-tool.md §2.
         bool trackRide = IsTrackRide(_armedRide) && BeginTrackRide(ride, _armedRide, cx, cy, _place.Turns, _place.Base);
+        // ⭐⭐ AND A COASTER DRAWS ITS PYLONS FIRST: station (mode 11), then the track (mode 12), and
+        // the queue tool only when the stats screen says OK (0x11bca8). See Viewer.Coasters.cs.
+        bool coaster = !trackRide && IsCoaster(_armedRide) && BeginCoaster(ride, _armedRide, cx, cy, _place.Turns, _place.Base);
         _ghostAt = (-1, -1, -1, -1);
         // ⭐ SHIFT STAMPS. Held, the blueprint stays on the cursor for the next one; let go, one
         // press puts one thing down and the cursor comes away empty, which is what a build tool
         // that is not being used to lay a row should do.
-        if (Input.IsKeyPressed(Key.Shift) && !trackRide)
+        if (Input.IsKeyPressed(Key.Shift) && !trackRide && !coaster)
         {
             Status($"stamped {_place.Display} at ({cx},{cy}) -- still holding it");
             return;
@@ -6478,6 +6511,7 @@ public partial class Viewer : Node3D
         }
         }
         if (trackRide) OpenTrackTool(_tracks[ride], HandOff);
+        else if (coaster) OpenCoasterTool(_coasters[ride], HandOff, fromStation: true);
         else HandOff();
     }
 
@@ -6833,6 +6867,12 @@ public partial class Viewer : Node3D
         // ⭐ The console's ride list box offers "Edit Track" (string 12) on a track ride.
         if (placed >= 0 && placed < _park.Placed.Count && _tracks.ContainsKey(_park.Placed[placed].Id))
             yield return "Edit Track";
+        // ⭐ And a coaster's: "Edit Track" (mode 12) and "Edit Pylons" (mode 13), 0x1240e8 / 0x124118.
+        if (placed >= 0 && placed < _park.Placed.Count && _coasters.ContainsKey(_park.Placed[placed].Id))
+        {
+            yield return "Edit Track";
+            yield return "Edit Pylons";
+        }
         yield return "Delete";
     }
 
@@ -6891,7 +6931,12 @@ public partial class Viewer : Node3D
                 }
                 break;
             case "Edit Track":
-                EditTrack(_selected);
+                if (_selected >= 0 && _selected < _park.Placed.Count && _coasters.ContainsKey(_park.Placed[_selected].Id))
+                    EditCoaster(_selected, pylons: false);
+                else EditTrack(_selected);
+                break;
+            case "Edit Pylons":
+                EditCoaster(_selected, pylons: true);
                 break;
             case "Delete":
                 DeleteSelected();
@@ -7021,6 +7066,7 @@ public partial class Viewer : Node3D
         // and repicks the ground that was joined to them.
         int doors = _paths?.RemoveDoors(p.Id) ?? 0;
         RemoveTrackView(p.Id);
+        RemoveCoasterView(p.Id);
         _sim?.Remove(p.Id);
         if (!_park.Remove(p.Id)) { Status($"could not delete {name}"); return; }
         // ⭐⭐ ALWAYS, NOT ONLY FOR A QUEUE. Master: "make sure terrain holes heal when we delete
@@ -8911,6 +8957,7 @@ public partial class Viewer : Node3D
         }
         if (_place.Active) UpdatePlacementGhost();
         else if (_trackTool != null) UpdateTrackGhost();
+        else if (_coasterTool != null) UpdateCoasterGhost(delta);
         else if (_toolOpen) UpdateGhost();
         // ⚠ AFTER the camera has been placed for this frame, or the projection is a frame stale
         // and the check is of the wrong camera.
@@ -9118,6 +9165,13 @@ public partial class Viewer : Node3D
                             _ghostView?.Clear();
                             _ghostAt = (-1, -1, -1, -1);
                         }
+                        else if (mb.ButtonIndex == MouseButton.Right && _coasterTool != null)
+                        {
+                            // The coaster tool's Circle: undo while laying (nothing left to take back
+                            // finishes), Next while editing pylons.
+                            if (_coasterMode == CoasterMode.Edit) CoasterPick(1);
+                            else if (!UndoCoasterPylon()) FinishCoasterTool();
+                        }
                         else if (mb.ButtonIndex == MouseButton.Right && _trackTool != null)
                         {
                             // The track tool's Circle: take the last leg back; with nothing left
@@ -9160,6 +9214,7 @@ public partial class Viewer : Node3D
                         }
                         else if (_place.Active) PlaceHeld();
                         else if (_trackTool != null) PressTrackTool();
+                        else if (_coasterTool != null) PressCoasterTool();
                         else if (_toolOpen) PressTool();
                         // ⭐⭐ A LEFT CLICK REACHES A RIDE BEFORE IT REACHES THE GROUND. That was
                         // always the intent -- the comment on the right button says so -- and it

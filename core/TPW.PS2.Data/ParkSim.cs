@@ -208,6 +208,11 @@ public sealed class ParkRide
     /// Null for every other ride.</summary>
     public TrackRideSim Track { get; internal set; }
 
+    /// <summary>⭐ A ROLLER COASTER'S TRAINS, once its station is down (<see cref="ParkSim.AttachCoaster"/>).
+    /// The coaster's `COAST` script handler is a stub on PS2 (GETQUEUE and GETPEEP always 0), and the
+    /// class boards natively (findings/coaster-survey.md §2.3), so the handshake is skipped here too.</summary>
+    public CoasterSim Coaster { get; internal set; }
+
     /// <summary>Which of the script's variables this program actually declares. ⚠ NOT every ride
     /// declares every one -- a sideshow has no VAR_SPACELEFT -- and RseProgram.VariableIndex
     /// THROWS on a name it does not know, so asking blindly kills the ride that is least like the
@@ -384,6 +389,28 @@ public sealed class ParkSim : IRseDirectory
         return track;
     }
 
+    /// <summary>Give a placed coaster its track. Riders board from the ride's own queue and step off
+    /// through <see cref="ParkRide.Left"/>.</summary>
+    public CoasterSim AttachCoaster(int id, CoasterTrack track)
+    {
+        var ride = _rides.FirstOrDefault(r => r.Id == id);
+        if (ride == null) return null;
+        var sim = new CoasterSim(track) { TakeHead = () => ride.TryTakeFromQueue(out int g) ? g : null };
+        sim.Released += ride.Leaves;
+        sim.SetOpen(ride.DestinationState == 2);
+        ride.Coaster = sim;
+        SyncCoaster(ride);
+        return sim;
+    }
+
+    /// <summary>Status is the destination state, and native `+0x148` (ring closed) is what makes a
+    /// coaster choosable at all (<see cref="ParkRide.CoasterTrackClosed"/>).</summary>
+    static void SyncCoaster(ParkRide r)
+    {
+        r.DestinationState = (byte)r.Coaster.Status;
+        r.CoasterTrackClosed = r.Coaster.Track.Closed;
+    }
+
     /// <summary>The track ride's status is the destination state (+0xA2 is what 0x1E1E48 tests:
     /// 2, 10 and 11 are choosable), and its laid pieces are Excitement's cached weight (+0x1D1).</summary>
     static void SyncTrack(ParkRide r)
@@ -403,6 +430,7 @@ public sealed class ParkSim : IRseDirectory
         {
             r.Set("VAR_RIDECLOSED", open ? 0 : 1); r.DestinationState=(byte)(open ? 2 : 3);
             if (r.Track != null) { r.Track.SetOpen(open); SyncTrack(r); }
+            if (r.Coaster != null) { r.Coaster.SetOpen(open); SyncCoaster(r); }
         }
     }
 
@@ -434,6 +462,11 @@ public sealed class ParkSim : IRseDirectory
             {
                 r.Track.Step(unchecked((uint)(Time / TickMilliseconds)));
                 SyncTrack(r);
+            }
+            else if (r.Coaster != null)
+            {
+                r.Coaster.Step();
+                SyncCoaster(r);
             }
             else Handshake(r);
             // ⭐ A SPAWNED CHILD IS ITS OWN SCHEDULED SCRIPT, not something the parent steps. The
