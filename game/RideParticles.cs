@@ -374,6 +374,12 @@ public sealed class RideParticles
     /// curve under test. Mode 2 exists because a test that cannot fail measures nothing: if the
     /// control also reads as a constant frame-to-frame ratio, the instrument is broken and the
     /// run says nothing about the drag.</param>
+    /// ⚠ PROBE ONLY. Multiplies the damping actually set on the emitter, so a sweep can ask the
+    /// engine the one question the arithmetic cannot: does the distance a particle covers scale
+    /// as 1/D, the way constant deceleration must? If it does, the magnitude is honoured and the
+    /// curve is the loss; if it does not, the magnitude itself is not what was asked for.
+    public static float ProbeDampingScale = 1f;
+
     public ParticleEffect Emit(int id, Vector3 where, Vector3? fireAlong = null, int probe = 0)
     {
         var e = _library?[id];
@@ -479,8 +485,10 @@ public sealed class RideParticles
             InitialVelocityMin = probe == 4 ? 0f : probe > 0 ? motion.SpeedMax : motion.SpeedMin,
             InitialVelocityMax = probe == 4 ? 0f : motion.SpeedMax,
             Gravity = probe > 0 ? Vector3.Zero : new Vector3(0, -motion.Gravity, 0),
-            DampingMin = probe >= 3 ? 0f : motion.Damping * EulerGain(motion, life),
-            DampingMax = probe >= 3 ? 0f : motion.Damping * EulerGain(motion, life),
+            DampingMin = probe >= 3 ? 0f
+                : motion.Damping * EulerGain(motion, life) * (probe > 0 ? ProbeDampingScale : 1f),
+            DampingMax = probe >= 3 ? 0f
+                : motion.Damping * EulerGain(motion, life) * (probe > 0 ? ProbeDampingScale : 1f),
             // ⭐ Mode 2 is the control. Godot damps `v -= damping(life fraction) * delta`, so a
             // FLAT curve is constant deceleration -- the linear easing -- and the curved one is
             // D*e^(-lambda*t) against v0*e^(-lambda*t), which is the console's `v *= k` per tick.

@@ -134,6 +134,9 @@ public partial class RideScriptDemo : Node3D
                 // 1 = shipped exponential drag, 2 = the linear control. See RideParticles.Emit.
                 if (argv[i] == "--fx-probe") _fxProbe = int.Parse(argv[i + 1]);
                 if (argv[i] == "--fx-marker") _fxMarker = argv[i + 1] == "1";
+                if (argv[i] == "--fx-damp")
+                    RideParticles.ProbeDampingScale =
+                        float.Parse(argv[i + 1], System.Globalization.CultureInfo.InvariantCulture);
                 if (argv[i] == "--fx-slow")
                     _fxSlow = double.Parse(argv[i + 1], System.Globalization.CultureInfo.InvariantCulture);
                 // ⭐ Where to put the control burst. ⚠ DEFAULT -1 KEEPS THE DIAGNOSTIC: the burst

@@ -392,6 +392,9 @@ public partial class Viewer : Node3D
             else if (a.StartsWith("--laptop-screen=")) _laptopScreen = a["--laptop-screen=".Length..];
             else if (a.StartsWith("--laptop-menu-row=")) int.TryParse(a["--laptop-menu-row=".Length..], out _laptopMenuSelected);
             else if (a == "--laptop-park-open") _laptopParkOpen = true;
+            // ⭐ So a render can SHOW the debug panel. Master sees the pictures and I do not, so a
+            // panel that only opens on a keypress is a panel neither of us has checked.
+            else if (a == "--cheats") _cheatsAtStart = true;
             else if (a.StartsWith("--laptop-ride=")) int.TryParse(a["--laptop-ride=".Length..], out _laptopRide);
             else if (a.StartsWith("--laptop-hover=")) int.TryParse(a["--laptop-hover=".Length..], out _laptopHoverRow);
             else if (a.StartsWith("--laptop-hover-btn=")) int.TryParse(a["--laptop-hover-btn=".Length..], out _laptopHoverBtn);
@@ -755,6 +758,8 @@ public partial class Viewer : Node3D
         ui.AddChild(_moneyShadow);
         ui.AddChild(_money);
         _uiRoot = ui;
+        BuildDebugHud(ui);
+        if (_cheatsAtStart) ToggleCheats();
 
         // ⭐⭐ THE TOOL SAYS WHAT IT THINKS, ON SCREEN. Every refusal already printed a reason to
         // the console, which nobody playing the game can see -- so a click over the panel, or one
@@ -819,6 +824,8 @@ public partial class Viewer : Node3D
     {
         if (e is InputEventKey { Pressed: true, Keycode: Key.F3 } && _panel != null)
             _panel.Visible = !_panel.Visible;
+        // ⭐ F4 beside F3: one hides the port's readout, the other shows the testing buttons.
+        if (e is InputEventKey { Pressed: true, Keycode: Key.F4 }) ToggleCheats();
         // ⚠ `Echo: false`. The comment on the turn keys below already said "turning is an EVENT,
         // not a held key", but nothing enforced it: a held key repeats at the OS rate and every
         // repeat counted as another press. That is the other half of master's backwards rotation.
@@ -2509,6 +2516,7 @@ public partial class Viewer : Node3D
         // world plane would land a cell or two off wherever the park is not at zero.
         var mouse = GetViewport().GetMousePosition();
         if (_panel != null && _panel.Visible && mouse.X < PanelW) return false;
+        if (PointerOverCheats(mouse)) return false;
         return CellAtScreen(mouse, out bx, out by);
     }
 
@@ -6772,6 +6780,7 @@ public partial class Viewer : Node3D
         if (_cam == null) return -1;
         var mouse = GetViewport().GetMousePosition();
         if (_panel != null && _panel.Visible && mouse.X < PanelW) return -1;
+        if (PointerOverCheats(mouse)) return -1;
         var from = _cam.ProjectRayOrigin(mouse);
         var dir = _cam.ProjectRayNormal(mouse);
         int best = -1; float near = float.MaxValue;
@@ -8938,6 +8947,7 @@ public partial class Viewer : Node3D
     public override void _Process(double delta)
     {
         ShowMoney();
+        TickDebugHud(delta);
         // ⚠ The camera is placed FIRST, before any early return. It used to sit below the capture
         // branch, so a --shot run photographed the origin and produced a perfectly black frame with
         // a perfectly correct UI beside it -- the geometry was fine the whole time.

@@ -411,6 +411,15 @@ jitter. `Engine.TimeScale = 0.25` during a probe stretches the *same* motion ove
 without touching one particle parameter. That alone moved the fit from "4.95, 6.08, 6.49, 3.75" to
 a single stable number.
 
+⚠⚠ **AND THE FULL-SPEED PROBE IS BLIND, WHICH I NEARLY REPORTED AS A FINDING.** Running the same
+probe at `TimeScale 1` fits λ = 0.86/s and looked like "the damping collapses at the real frame
+rate, so the error is step-size dependent". It is not. The ruler dates the first captured frame at
+**88 ms** after birth at full speed, and the decay's time constant is 130 ms — the particle has
+already done ~0.98 of its ~1.1 cells before the first PNG exists, so the fit is fitting the flat
+tail. A damping sweep (×1, ×2, ×4) confirms the magnitude IS honoured: heavier damping visibly
+stops it sooner. **The two speeds agree** — travel 1.12 cells at 0.25× and ~1.2 at 1× against the
+console's 0.866, a single consistent ~30% overshoot, not a collapse.
+
 **The verdict, over 120 samples:** the easing is **exponential** — `R² = 0.99935`, rms 0.0059
 cells — and the linear control fits the same model far worse (rms 0.0120) and flattens to a dead
 stop the real one never reaches. The initial speed is right. **Remaining: the puff travels ~27%
