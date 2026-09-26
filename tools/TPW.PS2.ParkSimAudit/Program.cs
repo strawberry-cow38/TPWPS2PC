@@ -805,7 +805,41 @@ try
             // puff of smoke" is looking at it. Each named effect's frames are laid side by side
             // and written as an uncompressed 32-bit TGA -- no encoder needed, and the box's ffmpeg
             // turns it into a PNG.
-            foreach (var want in new[] { "ApeSnot", "Bubbles", "Fire", "Smoke" })
+// ⭐⭐ WHICH RIDES ASK FOR PARTICLES, AND WHICH EFFECT. Master: "how are particles done for
+// crazy ape's anims?" Read STATICALLY off every ride's bytecode rather than by running one in a
+// demo and watching what happens to come out -- a run only shows the branches it took, and I had
+// already said "Crazy Ape asks for zero" on the strength of one 10-second capture.
+// ⚠ EVENT/ADDOBJ carry a KIND first, and only kinds 1 and 2 reach Tp2.plb (0x18b5a8/0x18b0f8);
+// kind 3+ are sound groups whose ids run past the library's 105 and mean something else entirely.
+if (args.Contains("--particle-events"))
+{
+    foreach (var re in wad.Entries
+                 .Where(x => x.Path.EndsWith(".rse", StringComparison.OrdinalIgnoreCase)
+                          && x.Path.StartsWith("/Rides/", StringComparison.OrdinalIgnoreCase))
+                 .OrderBy(x => x.Path, StringComparer.OrdinalIgnoreCase))
+    {
+        RseProgram prog;
+        try { prog = new RseProgram(wad.Read(re)); } catch { continue; }
+        var hits = new List<string>();
+        foreach (var ins in prog.Instructions)
+        {
+            if (ins.Opcode is not (RseOpcode.EVENT or RseOpcode.ADDOBJ)) continue;
+            if (ins.Operands.Count < 3) continue;
+            // ⚠ Only literal operands can be read here; a computed id is invisible to a static
+            // pass and is reported as such rather than skipped silently.
+            var v = ins.Operands.Select(o => o.ToString()).ToArray();
+            if (!int.TryParse(v[0], out int kind)) { hits.Add($"{ins.Opcode}(kind=?)"); continue; }
+            if (kind is not (1 or 2)) continue;
+            string name = int.TryParse(v[2], out int fxid) && fx?[fxid]?.Name is { Length: > 0 } n ? n : v[2];
+            hits.Add($"{ins.Opcode} kind {kind} node {v[1]} -> {name}");
+        }
+        if (hits.Count > 0)
+            Console.WriteLine($"  fxevent {re.Path}: {string.Join(" | ", hits.Distinct())}");
+    }
+    Console.WriteLine("  fxevent -- end (rides with no line above ask for NO particles)");
+}
+
+            foreach (var want in new[] { "ApeSnot", "Bubbles", "Fire", "Smoke", "Create1", "Destroy1" })
             {
                 var eff = fx.Effects.FirstOrDefault(x => x.Name == want);
                 if (eff == null || eff.Raw.Length < 0x98) continue;
