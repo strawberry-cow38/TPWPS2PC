@@ -292,7 +292,31 @@ cross-check on the section below: **every "glowing but CLEAR" effect that made t
 look incoherent -- Sparks, CoasterSparks, BigSparks, PlasmaSphere, FireworkLaser -- has no sprite
 at all.** Their side of a *texture* flag was never evidence about blending.
 
-**⚠ WHAT IS STILL OPEN: which file image index `N` is.** PARTICLE.WAD holds **108 `.ssh`
+**⭐⭐ AND WHICH FILE EACH INDEX IS -- SOLVED.** `FUN_001826d8` writes the manifest out longhand:
+74 entries at `0x2c3b98`, each a directory pointer (`data/Particle/Textures/`) and a filename. In
+order: `PA1r0000`, `PA1w0000`, `PA1s0000`, `PA1c0000/2/4/6`, `PA1b0000/2/4/6`, `PA1f0000..0012`,
+`PA1z0000`, `PA1n0000`, `PA1u0000`, `PA1a0000..0014`, `PA1d0000..0006`, `PA1e0000..0014`,
+`PA1g0000..0014`, `PA1h0000..0004`, `PA1i0000..0008`, `PA1j0000`, then `PB1a0000`..`PB1p0000`.
+Held as code in `core/TPW.PS2.Data/ParticleSprites.cs`.
+
+⭐⭐ **THE SELF-CHECK: all 31 live groups resolve to exactly ONE filename prefix, complete and in
+order.** g3=`PA1c`, g4=`PA1b`, g5=`PA1f`, g9=`PA1a`, g10=`PA1d`, g11=`PA1e`, g12=`PA1g`,
+g13=`PA1h`, g14=`PA1i`, and g16..g31 are the sixteen single-image `PB1a`..`PB1p`. Thirty-one for
+thirty-one, no group straddling a prefix and no prefix split across groups -- an off-by-one
+anywhere would shear every run. The source art numbering (0000, 0002, 0004 ...) is the `frame/2`
+halving showing through, which is a second, independent confirmation.
+
+So master's two: **Bubbles = `PA1u0000.ssh`** (group 8, one still) and **ApeSnot = `PA1e0000` ..
+`PA1e0014`**, the same eight-frame sequence as Smoke, SmallSmoke and ApeSmoke. Fire is
+`PA1a0000..0014`.
+
+⚠ Index 0 (`PA1r0000`) is named by no group, and group 32 reads 0 -- the null slot.
+
+⚠ My earlier guess that the smoke group was `PA1d` (it has exactly 8 files) was WRONG: it is
+`PA1e`. `PA1d` is group 10, four images, Smoke2 and BigGreenPuff. The count coincidence was worth
+nothing, which is why it was not shipped.
+
+**⚠ WHAT WAS OPEN: which file image index `N` is.** PARTICLE.WAD holds **108 `.ssh`
 textures** (plus 100 source `.tga`), and the array is only 74, so it is not the file list in WAD
 order -- and the group runs do not align with the filename prefix runs (`PA1a` 16, `Pa1b` 8,
 `Pa1c` 1, `PA1C` 7, `PA1d` 8, `PA1e` 16, `PA1f` 14, `PA1g` 16, `PA1h` 6, `PA1i` 9, then singles).
