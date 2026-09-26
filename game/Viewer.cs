@@ -235,6 +235,7 @@ public partial class Viewer : Node3D
     bool _shopInfoTest;
     bool _linkTest;
     bool _placeTest;
+    int _selectAtStart = -1;
     bool _walkAudit;
     bool _typeAudit;
     bool _guestTest;
@@ -395,6 +396,10 @@ public partial class Viewer : Node3D
             // ⭐ So a render can SHOW the debug panel. Master sees the pictures and I do not, so a
             // panel that only opens on a keypress is a panel neither of us has checked.
             else if (a == "--cheats") _cheatsAtStart = true;
+            // ⭐ Select a placed thing from the command line, so a render can show the selection
+            // box. A visual bug in it is otherwise only reachable by clicking, which a headless
+            // shot cannot do -- and master reports these by looking at the picture.
+            else if (a.StartsWith("--select=")) _selectAtStart = int.Parse(a["--select=".Length..]);
             else if (a.StartsWith("--laptop-ride=")) int.TryParse(a["--laptop-ride=".Length..], out _laptopRide);
             else if (a.StartsWith("--laptop-hover=")) int.TryParse(a["--laptop-hover=".Length..], out _laptopHoverRow);
             else if (a.StartsWith("--laptop-hover-btn=")) int.TryParse(a["--laptop-hover-btn=".Length..], out _laptopHoverBtn);
@@ -9052,6 +9057,27 @@ public partial class Viewer : Node3D
         if (_ghostTest && !_pickChecked && _mode == Mode.Park) CheckMousePicking();
         if (_animTest && !_animChecked && _mode == Mode.Park) CheckParkAnimation();
         if (_buildTest && !_buildChecked && _mode == Mode.Park) { if (_placeTest) CheckPlacement(); else CheckBuildMenu(); }
+        // ⚠⚠ AFTER the build test has FINISHED, not merely after its call. CheckPlacement runs
+        // over several frames and ends by clicking empty ground to prove that drops the selection
+        // -- so selecting on the first frame a ride exists logged "selected Belly Bounce" and then
+        // the harness quietly cleared it, and three renders came back with no box in them.
+        if (_selectAtStart >= 0 && _mode == Mode.Park && (!_buildTest || _buildChecked)
+            && _selectAtStart < _park.Placed.Count)
+        {
+            var sel = _park.Placed[_selectAtStart];
+            _selected = _selectAtStart; _selectAtStart = -1;
+            // ⚠ A FREE CURSOR FIRST. A selection box is deliberately suppressed while a tool or a
+            // blueprint owns the cursor (two answers to one question), and --place-test ends by
+            // leaving a blueprint on it for its own picture -- so the flag selected correctly,
+            // logged that it had, and rendered nothing. Clearing them is what a player's click
+            // does anyway.
+            _toolOpen = false; _place.Clear(); _ghostView?.Clear();
+            ShowBoxFor(_selected);
+            // ⚠ And point the camera at it, or the flag selects something off screen and the
+            // render it exists to produce shows nothing.
+            LookAtCell(sel.X + sel.Fp.Width / 2, sel.Y + sel.Fp.Height / 2);
+            GD.Print($"[select] --select: {_park.Placed[_selected].Name}");
+        }
         // ⚠ PER FRAME, not at park load: the menu needs something PLACED, and placement happens
         // after the park is built. Hooked here with the other capture tests for that reason.
         if (_menuTest && !_menuShown && _mode == Mode.Park) ShowTestMenu();

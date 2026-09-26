@@ -149,6 +149,19 @@ public sealed class SelectionBox
                 // brackets do not fight each other where two overlap.
                 DepthDrawMode = BaseMaterial3D.DepthDrawModeEnum.Disabled,
                 TextureFilter = BaseMaterial3D.TextureFilterEnum.Linear,
+                // ⚠⚠ CLAMP, NOT REPEAT -- master: "the selection boxes have a tiny bit of 'crust'
+                // on the texture in the middle of each edge." Godot's StandardMaterial3D repeats
+                // by default, and the mid-edge vertices are exactly the ones the game's UV table
+                // puts at u=1 or v=1. Bilinear sampling at the very edge of a REPEATING texture
+                // blends the last texel with the FIRST one -- and the first one is the bracket, at
+                // (0,0). So each mid-edge vertex smeared a sliver of bracket that belongs on the
+                // corner. Clamped, u=1 samples the empty last texel and the edges fade to nothing
+                // the way the UV table means them to.
+                // ⭐ MEASURED, not argued: Selectbox.tga is 64x64 and its alpha on column u=0 and
+                // row v=0 peaks at 255 (mean 110) -- the bracket -- while column 63 and row 63 are
+                // alpha 0 throughout. So a bilinear sample at u=1 under REPEAT blends an empty
+                // texel with the bracket and lands half a bracket on the mid-edge vertex.
+                TextureRepeat = false,
             };
         }
         catch (System.Exception e) { GD.PrintErr($"[select] Selectbox would not build: {e.Message}"); }
