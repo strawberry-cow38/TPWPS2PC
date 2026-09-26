@@ -374,3 +374,59 @@ because anyone repeating this search will land on it too.
 - The 104-byte attractor record (20 templates); `0x1b9388`'s direction scale for `EVENT 2`
   (the spawn treats the direction as Q10, so a unit direction gives speed `+0xb0`); which of the
   `PARTICLE.WAD` images a sprite group resolves to (`0x182680`, `findings/animated-textures.md`).
+
+## Measuring the drag, instead of judging it by eye (2026-09-26)
+
+Master, on being sent a clip as evidence for an easing curve: *"you send a screenshot. to measure
+movement lol."* Correct — a video cannot show position against time. So `--fx-probe` in
+`RideScriptDemo` emits **one** particle with everything that blurs a reading stripped out (no
+spread, no speed jitter, no gravity, animation frozen), and its centroid is tracked out of the
+captured PNGs.
+
+**The instrument has to be validated before its readings mean anything**, and four of its five
+readings were wrong before it was:
+
+| mode | what it is | why |
+| --- | --- | --- |
+| 1 | the shipped exponential drag | the subject |
+| 2 | **linear control** — flat damping, constant deceleration | a test that cannot fail measures nothing |
+| 3 | **ruler** — no damping, so it must hold `v0` exactly | proves the engine honours the speed |
+| 4 | **static marker** at a known height | pins the world→pixel projection |
+
+⭐⭐ **Never convert pixels to cells with a scale factor.** The demo camera sits 9.84 cells out and
+3.4 above, so a particle rising *toward* it grows in pixels while it slows — the decay flatters
+itself. Three "calibrations" off the screen gave 27, 58 and 59 px/cell, and the fitted λ came out
+4.95, 6.08, 6.49 and 3.75 on four passes of the same data. The camera's own numbers make the
+projection exact arithmetic: the static marker at h=3 projects to y=209.95 and **measures 209.95,
+drifting 0.0004 cells over 120 frames**; the undamped ruler comes out at **5.911 cells/s against
+the record's 5.948 (0.6%)**, straight to 0.016 cells.
+
+⚠ **The timestamp beside a frame is not the particle's age.** The capture skips frames and the
+grab lags the sim (the first two PNGs of every run are byte-identical). The ruler dates the birth
+for free — it is a straight line through `h = 1` — and says a frame stamped `t` is really
+`t + 23.7 ms` old, 5.7 captured frames.
+
+⚠ **ApeSnot's whole decay is eight frames at 60fps**, which is fewer samples than the rig has
+jitter. `Engine.TimeScale = 0.25` during a probe stretches the *same* motion over 4× the frames
+without touching one particle parameter. That alone moved the fit from "4.95, 6.08, 6.49, 3.75" to
+a single stable number.
+
+**The verdict, over 120 samples:** the easing is **exponential** — `R² = 0.99935`, rms 0.0059
+cells — and the linear control fits the same model far worse (rms 0.0120) and flattens to a dead
+stop the real one never reaches. The initial speed is right. **Remaining: the puff travels ~27%
+further than the console's own recurrence and its effective λ is 5.95/s against 7.72/s.** The
+in-engine stepper over the very same `Curve` object predicts 0.77 cells where the engine delivers
+1.08, so the gap is between Godot's damping and our model of it, not in the record.
+
+Two real bugs fell out on the way:
+- **Damping was keyed to the mean speed.** Godot draws speed and damping from *independent*
+  randoms, so every particle born faster than the mean kept a permanent residual and crawled away
+  for ever. Keyed to `SpeedMax`: the fastest is exact and slower ones stop slightly early, which is
+  what the console does anyway since it moves particles in integer units.
+- **Forward Euler on a stiff decay.** Godot subtracts `damping(age) * dt` once a frame and at 60fps
+  that removes 12% per step, far too coarse to approximate `v = v0·e^(-λt)`; the speed ran out early
+  and clamped at zero, eating the tail. `EulerGain` solves for the gain that lands the discrete sum
+  on the continuous answer, using the same loop the engine runs rather than a closed form.
+- `DecayCurve` also had **zero tangents on every point** — `AddPoint(position)` leaves them at 0, so
+  the cubic Hermite left and entered each point flat: a staircase of smoothsteps, not an
+  exponential. It now carries the analytic slope.

@@ -101,7 +101,21 @@ public sealed class RideParticles
         // ⚠ `k` here is the FRACTION REMAINING per tick, not the fraction removed.
         float kept = 1f - t.Drag / 1024f;
         float lambda = t.Drag > 0 && kept > 0f && kept < 1f ? -Mathf.Log(kept) / tick : 0f;
-        float Damping(float v) => lambda > 0f && v > 0f ? lambda * v : 0f;
+        // ⭐⭐ THE DAMPING MUST BE KEYED TO THE **FASTEST** PARTICLE, NOT THE AVERAGE.
+        // Godot damps SUBTRACTIVELY -- `|v| -= damping(t) * dt`, clamped at a dead stop -- while
+        // the console multiplies, `v *= k` per tick. The curve makes damping(t) = D*e^(-lambda t),
+        // which reproduces `v = v0*e^(-lambda t)` EXACTLY, but only for the one speed where
+        // D == lambda*v0. Godot draws a particle's speed and its damping from INDEPENDENT randoms,
+        // so D cannot track each particle's own v0.
+        //
+        // Keying D to the middle of the speed range left every particle born above it with a
+        // permanent residual v0 - D/lambda and it crawled away forever. MEASURED, not reasoned:
+        // the single-particle probe (--fx-probe, RideScriptDemo) fitted lambda = 4.95/s against
+        // the record's 7.72 -- a log fit reads low exactly when the speed decays to a non-zero
+        // floor instead of to zero. Keying D to SpeedMax makes the fastest particle exact and
+        // every slower one stop a little early, which is also what the console does: it moves
+        // particles in INTEGER units, so anything under one unit per tick has already stopped.
+        float Damping(float vMax) => lambda > 0f && vMax > 0f ? lambda * vMax : 0f;
 
         // ⭐⭐ EVENT 2: the fitting points, and DirectionSpeed says how hard. The template's own
         // velocity never runs for these -- see the parameter's note on Emit.
@@ -112,7 +126,8 @@ public sealed class RideParticles
             float sp = Math.Abs(ds);
             return (ds >= 0 ? along : -along,
                     Mathf.Clamp(sp > 0.001f ? Mathf.RadToDeg(Mathf.Atan2(j, sp)) : (j > 0f ? 180f : 0f), 0f, 180f),
-                    Math.Max(0f, sp - j), Math.Max(0.01f, sp + j), gravity, Damping(sp), lambda);
+                    Math.Max(0f, sp - j), Math.Max(0.01f, sp + j), gravity,
+                    Damping(Math.Max(0.01f, sp + j)), lambda);
         }
 
         if (t.RadialSpeed > 0)
@@ -138,7 +153,8 @@ public sealed class RideParticles
             ? Mathf.RadToDeg(Mathf.Atan2(jitter, speed))
             : (jitter > 0f ? 180f : 0f);
         return (dir, Mathf.Clamp(spread, 0f, 180f), Math.Max(0f, speed - jitter),
-                Math.Max(0.01f, speed + jitter), gravity, Damping(speed), lambda);
+                Math.Max(0.01f, speed + jitter), gravity,
+                Damping(Math.Max(0.01f, speed + jitter)), lambda);
     }
 
     /// <summary>`e^(-lambda * s * life)` over the particle's life, as a Godot `Curve`.
@@ -150,15 +166,73 @@ public sealed class RideParticles
     ///
     /// ⚠ Returns null when there is no drag -- a flat curve of 1.0 would be harmless but says
     /// "damping, shaped", and null says "no damping", which is the truth.</summary>
+    /// ⭐⭐ THE CURVE IS RIGHT AND THE ANSWER IS STILL SHORT, BECAUSE THE ENGINE INTEGRATES IT
+    /// BY FORWARD EULER. Godot subtracts `damping(age) * dt` from the speed once a frame, and at
+    /// 60fps this decay removes 12% per step -- far too stiff for that to approximate the
+    /// continuous `v = v0*e^(-lambda t)`. The stepped speed runs out early and CLAMPS AT ZERO,
+    /// which is what eats the tail: the in-engine stepper measured 0.669 cells against the
+    /// record's 0.770, and the rendered particle measured 0.670. Three digits of agreement, so
+    /// the loss is arithmetic, not the particle system.
+    ///
+    /// So solve for the gain that makes the DISCRETE sum land on the continuous answer, using the
+    /// same loop the engine runs rather than a closed form -- which order Godot applies damping
+    /// and motion in is exactly the sort of assumption that has been wrong twice today.
+    /// ⚠ The gain is frame-rate dependent (that is the nature of the error); 60fps is nominal.
+    static float EulerGain((Vector3 Direction, float SpreadDegrees, float SpeedMin, float SpeedMax,
+                               float Gravity, float Damping, float Lambda) m, float life)
+    {
+        if (m.Lambda <= 0f || m.Damping <= 0f || m.SpeedMax <= 0f) return 1f;
+        var curve = DecayCurve(m.Lambda, life);
+        float want = m.SpeedMax / m.Lambda;
+        float Travelled(float gain)
+        {
+            float v = m.SpeedMax, travel = 0f, dt = 1f / 60f;
+            for (float age = 0f; age < life && v > 0f; age += dt)
+            {
+                travel += v * dt;
+                v = Math.Max(0f, v - m.Damping * gain * curve.Sample(age / life) * dt);
+            }
+            return travel;
+        }
+        // Less damping -> further, so the bracket is inverted; 20 halvings is well under a pixel.
+        float lo = 0.05f, hi = 1f;
+        if (Travelled(lo) < want) return lo;
+        for (int i = 0; i < 20; i++)
+        {
+            float mid = (lo + hi) / 2f;
+            if (Travelled(mid) < want) hi = mid; else lo = mid;
+        }
+        return (lo + hi) / 2f;
+    }
+
+    /// The linear control: damping held at its peak for the whole life, i.e. constant
+    /// deceleration. Its frame-to-frame displacement ratio must NOT be constant.
+    static Curve FlatCurve()
+    {
+        var c = new Curve { MinValue = 0f, MaxValue = 1f };
+        c.AddPoint(new Vector2(0f, 1f));
+        c.AddPoint(new Vector2(1f, 1f));
+        return c;
+    }
+
     static Curve DecayCurve(float lambda, float life)
     {
         if (lambda <= 0f || life <= 0f) return null;
         var c = new Curve { MinValue = 0f, MaxValue = 1f };
-        const int n = 20;
+        const int n = 40;
+        // ⚠⚠ GIVE THE POINTS THEIR TANGENTS. `AddPoint(position)` leaves both tangents at ZERO,
+        // so Godot's cubic Hermite leaves and enters every point FLAT -- a staircase of
+        // smoothsteps, not an exponential. The total damping came out close enough to hide it,
+        // which is why it survived: the rendered particle matched the intended TRAVEL to 1% while
+        // its measured decay constant sat at 6.5/s against the record's 7.72. A curve can be
+        // wrong in shape and right in area. The analytic slope is d/ds exp(-lambda*s*life).
+        float decay = lambda * life;
         for (int i = 0; i <= n; i++)
         {
             float s = (i / (float)n) * (i / (float)n);      // dense at birth
-            c.AddPoint(new Vector2(s, Mathf.Exp(-lambda * s * life)));
+            float v = Mathf.Exp(-decay * s);
+            float slope = -decay * v;
+            c.AddPoint(new Vector2(s, v), slope, slope);
         }
         return c;
     }
@@ -290,7 +364,17 @@ public sealed class RideParticles
     /// ⚠ Master spotted this from a video -- ApeSnot puffing straight up instead of out of the
     /// ape's nose -- and my own decode notes had already said EVENT 2 replaces the velocity. I had
     /// applied the EVENT 1 path to an EVENT 2 effect.</param>
-    public ParticleEffect Emit(int id, Vector3 where, Vector3? fireAlong = null)
+    /// <param name="probe">⚠⚠ THE MOTION PROBE -- A MEASURING INSTRUMENT, NEVER GAMEPLAY.
+    /// 0 = off. 1 = the shipped exponential drag. 2 = a LINEAR CONTROL (flat damping = constant
+    /// deceleration). 3 = a RULER: no damping at all, so the particle flies at exactly v0 cells/s
+    /// forever and the pixels it covers per second CALIBRATE pixels-per-cell. Without that, a
+    /// lambda read off the screen is a shape with no scale -- I had two runs disagreeing about
+    /// distance and no way to tell whether the drag was wrong or my pixel ruler was. Both modes strip everything that would blur a reading: ONE particle, no
+    /// spread, no speed jitter, NO GRAVITY -- so the only thing shaping the path is the damping
+    /// curve under test. Mode 2 exists because a test that cannot fail measures nothing: if the
+    /// control also reads as a constant frame-to-frame ratio, the instrument is broken and the
+    /// run says nothing about the drag.</param>
+    public ParticleEffect Emit(int id, Vector3 where, Vector3? fireAlong = null, int probe = 0)
     {
         var e = _library?[id];
         if (e == null || e.Ramp.All(c => c == 0)) return null;
@@ -336,17 +420,52 @@ public sealed class RideParticles
                + $"(raw v={t.ParticleVelocity} jitter={t.VelocityJitter} radial={t.RadialSpeed} "
                + $"g={t.Gravity} drag={t.Drag} dirspeed={t.DirectionSpeed} "
                + $"along={(fireAlong is { } fa ? fa.Snapped(Vector3.One * 0.01f).ToString() : "(EVENT 1)")} "
-               + $"-> lambda {motion.Lambda:F2}/s, damping peak {motion.Damping:F1} cells/s2, "
+               + $"-> lambda {motion.Lambda:F2}/s, damping peak {motion.Damping:F1} cells/s2 "
+               + $"x{EulerGain(motion, life):F3} euler gain, "
                + $"half-speed at {(motion.Lambda > 0 ? (0.693f / motion.Lambda).ToString("F3") : "-")}s)");
+        // ⭐⭐ MEASURE THE CURVE, DON'T INFER IT. Three fixes in a row each moved the rendered
+        // decay the right way and none of them closed the gap, which per the usual lesson means
+        // the DIAGNOSIS is wrong, not the size of the correction. So step Godot's own damping
+        // loop here, over the very Curve object that is about to be handed to the emitter, and
+        // print what it predicts. If this says 0.77 cells and the render says 0.67, the loss is
+        // inside the particle system; if this says 0.67 too, it is the curve and it is visible
+        // right here. `Sample` vs `SampleBaked` are both run because Curve bakes to 100 UNIFORM
+        // samples and this curve puts most of its shape in the first 5% of its domain.
+        if (probe > 0)
+        {
+            var dbg = probe == 3 ? null : probe == 2 ? FlatCurve() : DecayCurve(motion.Lambda, life);
+            foreach (var baked in new[] { false, true })
+            {
+                float v = motion.SpeedMax, travel = 0f, dt = 1f / 62f, half = -1f;
+                for (float age = 0f; age < life && v > 0f; age += dt)
+                {
+                    float c = dbg == null ? 1f
+                        : baked ? dbg.SampleBaked(age / life) : dbg.Sample(age / life);
+                    travel += v * dt;
+                    v = Math.Max(0f, v - motion.Damping * EulerGain(motion, life) * c * dt);
+                    if (half < 0f && v <= motion.SpeedMax / 2f) half = age;
+                }
+                GD.Print($"[probe] curve stepped ({(baked ? "SampleBaked" : "Sample")}): "
+                       + $"travel {travel:F4} cells, half-speed at {half:F4}s "
+                       + $"(record wants {motion.SpeedMax / Math.Max(motion.Lambda, 1e-6f):F4} cells, "
+                       + $"{0.693f / Math.Max(motion.Lambda, 1e-6f):F4}s)");
+            }
+        }
+        if (probe > 0)
+            GD.Print($"[probe] mode {probe} ({(probe == 2 ? "LINEAR CONTROL" : "exponential")}): "
+                   + $"v0 {motion.SpeedMax:F3} cells/s, life {life:F3}s, lambda {motion.Lambda:F3}/s. "
+                   + $"Predicted per-frame displacement ratio at 60fps: "
+                   + $"{(probe == 3 ? "1.0000 (RULER: undamped, constant speed)" : probe == 2 ? "FALLING (not constant)" : Mathf.Exp(-motion.Lambda / 60f).ToString("F4"))}");
         var p = new CpuParticles3D
         {
-            Amount = count,
-            Lifetime = life,
+            Amount = probe > 0 ? 1 : count,
             OneShot = true,
             // ⭐ Explosiveness is now DERIVED: the record says how much is a burst at spawn and
             // how much trickles out over the emitter's life, so the fraction born at once is the
             // burst's share of the total rather than a number I picked.
-            Explosiveness = t.Burst > 0 && count > 0
+            Lifetime = probe >= 3 ? Math.Max(life, 4f) : life,
+            Explosiveness = probe > 0 ? 1f
+                : t.Burst > 0 && count > 0
                 ? Mathf.Clamp(ParticleTemplate.DensityScaled(t.Burst, ParticleTemplate.RetailDensity) / (float)count, 0f, 1f)
                 : (emitterSeconds <= 0f ? 1f : 0.1f),
             Emitting = false,
@@ -356,13 +475,17 @@ public sealed class RideParticles
             // all things, and a gravity of 1.5. See `Motion` for the conversion out of the
             // console's units.
             Direction = motion.Direction,
-            Spread = motion.SpreadDegrees,
-            InitialVelocityMin = motion.SpeedMin,
-            InitialVelocityMax = motion.SpeedMax,
-            Gravity = new Vector3(0, -motion.Gravity, 0),
-            DampingMin = motion.Damping,
-            DampingMax = motion.Damping,
-            DampingCurve = DecayCurve(motion.Lambda, life),
+            Spread = probe > 0 ? 0f : motion.SpreadDegrees,
+            InitialVelocityMin = probe == 4 ? 0f : probe > 0 ? motion.SpeedMax : motion.SpeedMin,
+            InitialVelocityMax = probe == 4 ? 0f : motion.SpeedMax,
+            Gravity = probe > 0 ? Vector3.Zero : new Vector3(0, -motion.Gravity, 0),
+            DampingMin = probe >= 3 ? 0f : motion.Damping * EulerGain(motion, life),
+            DampingMax = probe >= 3 ? 0f : motion.Damping * EulerGain(motion, life),
+            // ⭐ Mode 2 is the control. Godot damps `v -= damping(life fraction) * delta`, so a
+            // FLAT curve is constant deceleration -- the linear easing -- and the curved one is
+            // D*e^(-lambda*t) against v0*e^(-lambda*t), which is the console's `v *= k` per tick.
+            DampingCurve = probe >= 3 ? null : probe == 2 ? FlatCurve()
+                : DecayCurve(motion.Lambda, life),
             ScaleAmountMin = Math.Max(0.01f, Math.Min(size0, size1)),
             ScaleAmountMax = Math.Max(0.02f, Math.Max(size0, size1)),
             // ⚠⚠ A CpuParticles3D DRAWS A MESH, NOT A TEXTURE. It has no Texture property at all,
@@ -415,14 +538,21 @@ public sealed class RideParticles
         // exactly once over a particle's life, which is what `0x189e78` does by indexing on
         // remaining life. ⚠ Offset stays 0: every particle starts at frame 0, because the console
         // starts each one at its own birth rather than at a random point in the animation.
-        p.AnimSpeedMin = p.AnimSpeedMax = sheet.Frames > 1 ? 1f : 0f;
+        // ⚠ THE PROBE FREEZES THE STRIP. The puff walks 8 drawings over its life and they are not
+        // all centred the same, so a tracked centroid wobbles ~2px -- comparable to the whole
+        // early-frame displacement being measured. Holding one drawing removes the wobble from the
+        // instrument without touching the motion. (Gameplay keeps the animation, obviously.)
+        p.AnimSpeedMin = p.AnimSpeedMax = probe > 0 ? 0f : sheet.Frames > 1 ? 1f : 0f;
         p.AnimOffsetMin = p.AnimOffsetMax = 0f;
         // ⚠⚠ POSITION BEFORE AddChild. A one-shot emits at the transform it had when it entered
         // the tree, so setting it afterwards puts the whole burst at the origin.
         p.Position = where;
         _root.AddChild(p);
         p.Emitting = true;
-        _live.Add((p, Time.GetTicksMsec() + (ulong)(life * 1000) + 500));
+        // ⚠ The cull deadline is WALL time while the particle ages on SCALED time, so slow motion
+        // would free the probe mid-flight -- the one thing that would make the fix invisible.
+        _live.Add((p, Time.GetTicksMsec()
+                    + (ulong)(life * 1000 / Math.Max(0.01, Engine.TimeScale)) + 500));
         Spawned++;
         return e;
     }
