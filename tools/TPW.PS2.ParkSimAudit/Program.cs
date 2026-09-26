@@ -792,7 +792,26 @@ try
                 if (u90 != 0 || ua4 != 0 || uc3 != 0)
                     Console.WriteLine($"  unread {e.Id,3} {e.Name,-18} +0x90={u90} +0xa4={ua4} +0xc3={uc3}");
             }
+            // ⭐⭐ THE SPRITE, RESOLVED. `0x182680` is
+            //   if (group-1 > 0x1f) return 0;  return images[ tbl32[group] + frame/2 ];
+            // with the group->base table at 0x364058 in the executable. So an effect's images are
+            // `base .. base + (frames-1)/2`, and the /2 is why two logical frames share one image.
+            // ⭐ And WHAT the images are: PARTICLE.WAD's own entry list, so the index the
+            // resolver returns can be turned into a file rather than staying a number.
+            foreach (var en in pw.Entries) Console.WriteLine($"  pwad {en.Path}");
+            int[] GroupBase = { 0,1,2,3,7,11,18,19,20,21,29,33,41,49,52,57,58,59,60,61,62,63,64,65,
+                                66,67,68,69,70,71,72,73,0 };
             Console.WriteLine($"  record 0 is named '{fx.Effects[0].Name}'");
+            foreach (var e in fx.Effects)
+            {
+                if (e.Raw.Length < 0x98) continue;
+                int grp = BinaryPrimitives.ReadInt16LittleEndian(e.Raw.AsSpan(0x94, 2));
+                int frames = BinaryPrimitives.ReadInt16LittleEndian(e.Raw.AsSpan(0x96, 2));
+                if (frames == 0) { Console.WriteLine($"  sprite {e.Id,3} {e.Name,-18} UNTEXTURED"); continue; }
+                int b = grp >= 1 && grp <= 32 ? GroupBase[grp] : -1;
+                Console.WriteLine($"  sprite {e.Id,3} {e.Name,-18} group={grp,2} frames={frames,2}"
+                                + $" -> images {b}..{(b < 0 ? -1 : b + (frames - 1) / 2)}");
+            }
             Console.WriteLine($"  +0x70 bit2 SET   ({on.Count}): {string.Join(", ", on)}");
             Console.WriteLine($"  +0x70 bit2 CLEAR ({off.Count}): {string.Join(", ", off)}");
             return 0;

@@ -254,7 +254,16 @@ public sealed class ParticleTemplate
     /// bit 13 has no reader on the walked path.</summary>
     public uint RenderFlags => U32(0x70);
 
-    /// <summary>⚠ CANDIDATE -- the bit is READ, its meaning is not yet. Bit 2 of
+    /// <summary>⚠⚠ IT IS **NOT** THE ADDITIVE FLAG. Master, who can see the real game: "yeah they
+    /// arent additive." The name is kept because it is what every note and commit called it, but
+    /// nothing blends on it any more -- see `RideParticles`.
+    ///
+    /// ⭐ The surviving candidate is UNLIT / FULL-BRIGHT. That is the reading that fits the whole
+    /// SET list where additive never did: Fire, explosions, fireworks, twinkles, keys, Button,
+    /// Repair, BuyLand and the Create/Destroy feedback puffs should all ignore scene lighting,
+    /// while smoke, steam, splash and bubbles should take it. Unread, and flagged as such.
+    ///
+    /// ⚠ CANDIDATE -- the bit is READ, its meaning is not yet. Bit 2 of
     /// <see cref="RenderFlags"/> is set on Fire, Flames, the explosions, every Twinkle and Sparkle,
     /// ApeSnot and the fireworks' bursts, and clear on Smoke, Steam, Splash, WaterFall, Bubbles,
     /// MumboPuff, ApeSmoke and the three bare Sparks. Draw flag `0x20` is what it becomes at

@@ -257,6 +257,50 @@ does the culling. If so there is no EE-side walk to find, and the flag reaches t
 GIF A+D packet built from `entry[0]`. That is where the next attempt should start, not in more
 EE xrefs.
 
+### The sprite, resolved (2026-09-26) -- and why every particle in the port is a white orb
+
+Master, on the live park: *"the drinks shop is meant to have translucent orange bubbles floating
+out of the top, and the apesnort is meant to be puffs of smoke, where our particle is a white
+orb."* They are right, and the cause is not subtle: **`RideParticles.Dot()` builds a 32x32 radial
+gradient at runtime and every effect in the port is given that same blob**, tinted by the ramp.
+No disc art is drawn at all.
+
+**The resolver is now read.** `FUN_00182680(group, frame)` is, in full:
+
+```c
+if (0x1f < group - 1U) return 0;                 // group must be 1..32
+return images[ tbl32[group] + frame/2 ];         // tbl32 @ 0x364058, images @ DAT_002c4038
+```
+
+- **The group -> base table is at `0x364058`**, 32 words, and it reads cleanly out of
+  `SLES_500.32` (vaddr = file offset + 0xFF000):
+  `1 2 3 7 11 18 19 20 21 29 33 41 49 52 57 58 59 60 61 62 63 64 65 66 67 68 69 70 71 72 73`,
+  i.e. group *n* owns images `tbl[n] .. tbl[n+1]-1`. Group 32 reads 0 = none.
+- `frame/2` is the "halving" -- **two logical frames share one image**, so an effect with 16
+  frames uses 8 images.
+- `DAT_002c4038 = FUN_00235208(0x2c3b98, 0x4a)`: the array is **74 entries** (0..73), which is
+  exactly the range the group table spans. `0x182648` frees it.
+
+**Every effect's sprite, from `ParkSimAudit --particle-unread`.** ApeSnot is **group 11, 16
+frames -> 8 images**, the SAME group as `Smoke`, `SmallSmoke` and `ApeSmoke` -- so master's "meant
+to be puffs of smoke" is what the record says too. `Bubbles` is **group 8, 1 frame -> image 20**, a
+single still. `Fire` is group 9, images 21..28.
+
+⭐⭐ **And ELEVEN effects are UNTEXTURED** (`+0x96` frames = 0): NULL, Sparks, Flies,
+CoasterSparks, BigSparks, PinkPop, PlasmaSphere, FireworkLaser and three unnamed. That is a
+cross-check on the section below: **every "glowing but CLEAR" effect that made the bit-2 census
+look incoherent -- Sparks, CoasterSparks, BigSparks, PlasmaSphere, FireworkLaser -- has no sprite
+at all.** Their side of a *texture* flag was never evidence about blending.
+
+**⚠ WHAT IS STILL OPEN: which file image index `N` is.** PARTICLE.WAD holds **108 `.ssh`
+textures** (plus 100 source `.tga`), and the array is only 74, so it is not the file list in WAD
+order -- and the group runs do not align with the filename prefix runs (`PA1a` 16, `Pa1b` 8,
+`Pa1c` 1, `PA1C` 7, `PA1d` 8, `PA1e` 16, `PA1f` 14, `PA1g` 16, `PA1h` 6, `PA1i` 9, then singles).
+`0x2c3b98` is BSS, so the order is established at LOAD time. ⭐ Next step: find who writes
+`DAT_002c4038[i]`; that gives the index -> file map and the port can stop drawing a placeholder.
+⚠ Suggestive but NOT yet evidence: `PA1d` holds exactly 8 files and group 11 (the smoke group)
+holds exactly 8 images.
+
 ### The `+0x70` bit 2 census, in full (2026-09-26, `ParkSimAudit --particle-unread`)
 
 **SET (49):** Firework1, ExplodeFirey, Explode2, Explode3, Fire, BeamUpCar, IncaGodFlame, BeamUp,

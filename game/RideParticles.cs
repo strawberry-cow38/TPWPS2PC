@@ -152,16 +152,21 @@ public sealed class RideParticles
         {
             ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
             Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
-            // ⚠ NOT ADDITIVE FOR EVERYTHING -- see ParticleEffect.Additive. Master, on the live
-            // park: "still way too opaque everywhere". Additive blending cannot darken, so it
-            // saturates towards white over a bright scene and never reads as translucent.
-            // ⚠ CANDIDATE, AND THE POLARITY IS NOW THE OTHER WAY ROUND. Bit 2 of +0x70 is READ
-            // as far as draw flag 0x20; what 0x20 means at the GS was not read. It is SET on
-            // Fire, Flames, explosions, Twinkle, Sparkle and ApeSnot and CLEAR on Smoke, Steam,
-            // Splash, Bubbles and MumboPuff -- so on the names it is ADDITIVE, which is the
-            // opposite of what I shipped in 951e184 (that drew Smoke additive and Fire alpha).
-            // A name is not a read; see findings/particles.md.
-            BlendMode = t.AdditiveBit ? BaseMaterial3D.BlendModeEnum.Add : BaseMaterial3D.BlendModeEnum.Mix,
+            // ⭐⭐ NOTHING IS ADDITIVE. Master, who can see the real game, settled it outright:
+            // "yeah they arent additive."
+            //
+            // ⚠⚠ THE BIT WAS NEVER EVIDENCE FOR IT. `+0x70` bit 2 became draw flag `0x20` and
+            // there the trail stopped -- what `0x20` meant at the GS was never read, and the port
+            // twice picked a POLARITY for it off the effect NAMES, in both directions. The full
+            // 105-effect census then showed the names do not support either: three spark effects
+            // sit on the clear side and Button, Repair and BuyLand sit on the set side. So this
+            // was a coin landing on its edge, and master's answer is the first actual evidence
+            // anyone has had about it.
+            //
+            // ⭐ The bit still means SOMETHING -- see ParticleTemplate.AdditiveBit, where the
+            // surviving candidate is unlit/full-bright. It just does not mean this, and until it
+            // is read it drives nothing.
+            BlendMode = BaseMaterial3D.BlendModeEnum.Mix,
             BillboardMode = BaseMaterial3D.BillboardModeEnum.Particles,
             // ⚠ BillboardMode.Particles drops ScaleAmount unless this is set.
             BillboardKeepScale = true,
