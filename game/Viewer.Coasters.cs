@@ -283,7 +283,8 @@ public partial class Viewer
             // flag 0x8000 unless a pylon is stacked on this one. ⚠ The same function hides the
             // record at instance+0xc → +0x70 when this pylon stands on another; that it is the
             // first mesh (the post) is INFERRED.
-            void Hide(string meshName) { foreach (var (m, _, node) in drawn.Surfaces()) if (m == meshName) node.Visible = false; }
+            var hidden = new HashSet<string>();
+            void Hide(string meshName) { hidden.Add(meshName); foreach (var (m, _, node) in drawn.Surfaces()) if (m == meshName) node.Visible = false; }
             if (mesh.FindFitting(1, 0x80000) is { } fit)
             {
                 int engineNode = fit.Node - mesh.Meshes.Count + BitConverter.ToUInt16(mesh.D, 0x34);
@@ -292,6 +293,22 @@ public partial class Viewer
             if (n.Below != null && mesh.Meshes.Count > 0) Hide(mesh.Meshes[0].Name);
             drawn.Root.Scale = Vector3.One;
             var holder = new Node3D { Name = $"pylon_{n.CellX}_{n.CellZ}" };
+            // The visible parts' top at REST (bind pose, loft 0), from the .mps bounds: what the loft
+            // adds its 9 cells a full loft to. Kept for the checks.
+            var bindWorld = mesh.WorldTransforms();
+            float restTop = float.NegativeInfinity;
+            foreach (var part in mesh.Meshes)
+            {
+                if (hidden.Contains(part.Name) || !bindWorld.TryGetValue(part.Offset, out var bw)) continue;
+                for (int c = 0; c < 8; c++)
+                {
+                    var corner = new System.Numerics.Vector3((c & 1) != 0 ? part.BoundsMax.X : part.BoundsMin.X,
+                                                             (c & 2) != 0 ? part.BoundsMax.Y : part.BoundsMin.Y,
+                                                             (c & 4) != 0 ? part.BoundsMax.Z : part.BoundsMin.Z);
+                    restTop = Math.Max(restTop, System.Numerics.Vector3.Transform(corner, bw).Y);
+                }
+            }
+            if (!float.IsInfinity(restTop)) holder.SetMeta("rest_top", restTop);
             // The posed track dummy (fitting 0x400000 id 2, else id 1, by the engine's node rule, the
             // one 0x19a420 reads), kept for the checks: the post is authored to meet it.
             if ((mesh.FindFitting(2, 0x400000) ?? mesh.FindFitting(1, 0x400000)) is { } dummyFit && drawn.LastWorld != null)

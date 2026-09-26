@@ -171,6 +171,7 @@ public partial class CoasterSmoke : Node3D
             // the track, and turns with it. Strawberry saw them floating: the loft keys are deltas and
             // were read as positions (AnimatedModel.Additive), and the yaw sign was assumed.
             var frameT = ((Node3D)F(view, "Frame")).GlobalTransform;
+            float? restTop = null;
             foreach (var n in track.Pylons)
             {
                 var holder = (Node3D)pylons[n];
@@ -187,14 +188,22 @@ public partial class CoasterSmoke : Node3D
                 }
                 float floor = park.CellY(n.CellX, n.CellZ);
                 float rail = (frameT * new Vector3(n.X / 256f, n.TrackY / 256f, n.Z / 256f)).Y;
-                Check(holder.HasMeta("track_dummy"), $"pylon ({n.CellX},{n.CellZ}) resolves its track dummy (fitting 0x400000)");
-                var dummy = ((Node3D)holder.GetChild(0)).GlobalTransform * (Vector3)holder.GetMeta("track_dummy");
-                // ⚠ "Reaches the TRACK" is not the invariant: 0x19a420 sets the track at the dummy's LOCAL
-                // y + 0x60 (parent offset ignored), so the rail sits 0.125 under Temple's post top and
-                // 0.375 over Caterpillar's. The post is authored to meet its DUMMY; that is what holds.
-                Check(MathF.Abs(lo - floor) < 0.05f && MathF.Abs(hi - dummy.Y) < 0.15f,
-                      $"pylon ({n.CellX},{n.CellZ}) h{n.Height} stands on the floor ({lo - floor:F2} off) and meets its posed track dummy "
-                      + $"({hi - dummy.Y:+0.00;-0.00}); the rail is {rail - dummy.Y:+0.00;-0.00} from the dummy");
+                var dummy = holder.HasMeta("track_dummy")
+                    ? ((Node3D)holder.GetChild(0)).GlobalTransform * (Vector3)holder.GetMeta("track_dummy") : new Vector3(float.NaN, float.NaN, float.NaN);
+                // ⭐ THE LOFT, NOT A REFERENCE POINT. The posts are authored to different things --
+                // Temple's and Caterpillar's tops meet their track dummy, Chak Atak's and Hades' meet the
+                // rail -- so neither is the invariant. What the loft guarantees is that every post's top
+                // rises 9 cells per full loft (the keys' +90 at 0.1 scale): top - 9h/2560 is one number
+                // per coaster. The broken absolute morph pinned the top instead.
+                // Rest height = the measured top minus the loft's 9L, which must be the post's own BIND
+                // top out of the .mps: the loft ADDS to the bind pose. (The collapsed absolute morph
+                // rose 9L too, from nothing: rest -0.01 against a bind top of 1.0 on Chak Atak.)
+                float rest = hi - floor - 9f * Math.Clamp(n.Height / 2560f, 0f, 1f);
+                float bindTop = holder.HasMeta("rest_top") ? (float)holder.GetMeta("rest_top") : float.NaN;
+                restTop ??= rest;
+                Check(MathF.Abs(lo - floor) < 0.05f && MathF.Abs(rest - bindTop) < 0.05f && MathF.Abs(rest - restTop.Value) < 0.05f,
+                      $"pylon ({n.CellX},{n.CellZ}) h{n.Height} stands on the floor ({lo - floor:F2} off) and its top is the bind top plus the loft "
+                      + $"(rest {rest:F2}, bind top {bindTop:F2}); rail {rail - hi:+0.00;-0.00} from its top, dummy {dummy.Y - hi:+0.00;-0.00}");
                 // The lattice tiles up the post: additive UV keys keep the authored U and add V with the
                 // loft (0x1ad378). Written as absolute UVs every U collapses to 0 and the post bands.
                 float u0 = float.MaxValue, u1 = float.MinValue, v0 = float.MaxValue, v1 = float.MinValue;
