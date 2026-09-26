@@ -29,6 +29,7 @@ public partial class RideScriptDemo : Node3D
     int _filmStep = 200, _filmFrames = 120, _filmSaved;
     float _filmZoom = 1f;
     int _filmControl = -1;
+    int _fxNode = -1;
     AssetLibrary _particleWad;
     int _captureFrames;
     int _aliveFrames;
@@ -117,6 +118,14 @@ public partial class RideScriptDemo : Node3D
                 if (argv[i] == "--frames") _filmFrames = int.Parse(argv[i + 1]);
                 // ⚠ Applied AFTER Restart, which is what sets _distance from the bounds.
                 if (argv[i] == "--fx-control") _filmControl = int.Parse(argv[i + 1]);
+                // ⭐ Where to put the control burst. ⚠ DEFAULT -1 KEEPS THE DIAGNOSTIC: the burst
+                // is normally fired at the camera's focus owing NOTHING to the node table, so that
+                // "it did not appear" means the emitter is wrong rather than the place. Naming a
+                // node trades that away for a burst where the RIDE would actually put it -- which
+                // is what you want once the emitter is known good. Master, on a control shot:
+                // "so why is there still a puff way above his head?" -- because focus+up IS above
+                // his head, and that was the harness, not the motion.
+                if (argv[i] == "--fx-node") _fxNode = int.Parse(argv[i + 1]);
                 if (argv[i] == "--zoom") _filmZoom = float.Parse(argv[i + 1], System.Globalization.CultureInfo.InvariantCulture);
                 if (argv[i] == "--stem") _stem = argv[i + 1];
                 if (argv[i] == "--world") { _world = argv[i + 1]; }
@@ -146,8 +155,13 @@ public partial class RideScriptDemo : Node3D
                 // camera's focus, owing nothing to the node table: if this does not appear the
                 // EMITTER is wrong, and if it appears while the script's do not, the POSITION is.
                 if (_burst != null && _filmControl >= 0)
-                    GD.Print($"[fx] control burst {_filmControl} at focus {_focus}: "
-                           + (_burst.Emit(_filmControl, _focus + Vector3.Up) != null));
+                {
+                    var spot = _fxNode >= 0 ? NodeAt(_fxNode, 0x100) : null;
+                    var where = spot ?? _focus + Vector3.Up;
+                    GD.Print($"[fx] control burst {_filmControl} at "
+                           + (spot is { } ? $"NODE {_fxNode} {where}" : $"focus+up {where} (no node asked for)")
+                           + $": {_burst.Emit(_filmControl, where) != null}");
+                }
                 _presenter.Update(_preview.Host); ShowStatus(); _paused = true;
             }
         }
