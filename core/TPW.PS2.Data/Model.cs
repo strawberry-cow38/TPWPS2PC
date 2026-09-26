@@ -664,6 +664,23 @@ public sealed partial class Model
 
     /// <summary>A node's parent node, or -1 at a root. The parent is the record's `+4`, the
     /// offset <see cref="WorldTransforms"/> already walks for every mesh and helper.</summary>
+    /// <summary>⭐ The index, in this mesh's own vertex list, of a batch's first vertex.
+    /// <see cref="Vertices"/> walks <see cref="Batches"/> in order and appends `Count` each, so a
+    /// batch's vertices start after every earlier batch's -- which is what turns the fitting
+    /// surface record's (batch, firstVertex) pair into one index into the live positions.
+    /// ⚠ Returns -1 for a batch that does not exist rather than an index that looks fine.</summary>
+    public int BatchVertexBase(Mesh m, int batch)
+    {
+        if (batch < 0) return -1;
+        int at = 0, j = 0;
+        foreach (var b in Batches(m))
+        {
+            if (j++ == batch) return at;
+            at += b.Count;
+        }
+        return -1;
+    }
+
     public int NodeParent(int node)
     {
         if (node < 0) return -1;
