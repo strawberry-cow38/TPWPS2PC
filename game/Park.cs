@@ -67,7 +67,26 @@ public sealed class Park
                 for (int x = 0; x < rows[y].TrimEnd().Length; x++)
                 {
                     char c = rows[y][x];
-                    if (c is ' ' or '\t') continue;
+                    // ⭐⭐ `.` IS AN EMPTY CELL, NOT A FULL ONE. Censused over every .sam in all
+                    // four world WADs: 17 cells in 10 files, and they are all CORNERS --
+                    // `.**.` / `****` / `****` / `****` on the 4x4 rock, `.****` .. `****.` on the
+                    // 5x5, one corner on the plant pot and the brick pile. It is a chamfer: a
+                    // blocky footprint with its corners taken off, so a path can round them.
+                    // Reading `.` as solid made every rock claim and clear cells the author cut
+                    // out of it -- master: "some footprints may be wrong".
+                    //
+                    // ⚠ The other characters, for the record: `*` 2291 cells, `2` the entrance
+                    // (171), `+` 76 cells in 10 files and ALL of them Upgrades -- a cell kind, not
+                    // a size, since the eight `*++*` upgrades measure 4x4 and their models do too.
+                    // `S`/`N`/`E`/`W` are the exit and its facing.
+                    //
+                    // ⚠⚠ `<` and `>` -- 14 files each, always as a PAIR on a middle row beside an
+                    // existing `2` entrance and `N`/`S` exit (`****` / `<**>` / `*2N*`). They are a
+                    // third pair of markers this reader does not understand; it keeps them as
+                    // ordinary cells, which they are, but records nothing about them. Every one is
+                    // a track ride or a coaster, so what they mark is almost certainly where the
+                    // track attaches -- unread, and flagged rather than guessed.
+                    if (c is ' ' or '\t' or '.') continue;
                     cells[x, y] = true;
                     if (c == '2') { ex = x; ey = y; }
                     else if (c is 'N' or 'S' or 'E' or 'W')
