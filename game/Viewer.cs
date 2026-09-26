@@ -3721,6 +3721,29 @@ public partial class Viewer : Node3D
         {
             var at = NodeWorld(fr.Id, _fxBurstNode, 0x100);
             var made = at is { } q ? _burst.Emit(_fxBurst, q, NodeWorldDir(fr.Id, _fxBurstNode, 0x100)) : null;
+            // ⚠ WHERE THE FITTINGS ACTUALLY ARE. Master: "particles emit from behind the head then
+            // forward to the nose." That is the symptom `FittingLocal` returning Zero predicts --
+            // the spawn lands on the NODE'S ORIGIN rather than the fitting's offset within it --
+            // but "node 1 is behind the head" is a claim about geometry, so measure it rather than
+            // assume the explanation that happens to be in hand.
+            if (_filmFrame == _fxBurstEvery && _rideMeshes.TryGetValue(fr.Id, out var fm))
+            {
+                var mdl = _scripted.FirstOrDefault(e => e.Ride.Id == fr.Id).Model;
+                if (mdl?.Root != null)
+                {
+                    var (lo, hi) = Park.DrawnBounds(mdl.Root, inParent: true);
+                    GD.Print($"[fit] {fr.Name} drawn bounds {lo} .. {hi}");
+                }
+                for (int n = 1; n <= 6; n++)
+                {
+                    var fit = fm.FindFitting(n, 0x100);
+                    var w = NodeWorld(fr.Id, n, 0x100); var d = NodeWorldDir(fr.Id, n, 0x100);
+                    GD.Print($"[fit] node {n}: fitting={(fit is { } g ? $"id {g.Id} node {g.Node} xyz({g.X:F2},{g.Y:F2},{g.Z:F2}) flags 0x{g.Flags:X}" : "(none)")}"
+                           + $" world={(w is { } p2 ? p2.ToString() : "-")} dir={(d is { } d2 ? d2.Snapped(Vector3.One * 0.01f).ToString() : "-")}");
+                }
+                GD.Print($"[fit] meshes={fm.Meshes.Count} fittings={fm.Fittings.Count} "
+                       + "-- FittingLocal returns Zero whenever Node >= meshes, which is ALWAYS under the current rule");
+            }
             GD.Print($"[film] f{_filmFrame:D4} burst {_fxBurst} at node {_fxBurstNode} -> "
                    + (made?.Name ?? "(no fitting or no such effect)")
                    + (at is { } r ? $" ({r.X:F1},{r.Y:F1},{r.Z:F1})" : ""));

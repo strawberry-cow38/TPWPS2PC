@@ -883,6 +883,21 @@ if (args.Contains("--particle-events"))
                 Console.WriteLine($"  art {want}: group {grp}, {frames} frames -> {tiles.Count} images "
                                 + $"{tw}x{th} ({string.Join(",", names)}) -> {path}");
             }
+            // ⭐⭐ WHAT IS THE HEADER u16 AT +0x34? Tinyclaw's coaster decomp resolves a fitting
+            // to a node as `index + u16@0x34`; `Model.Fittings` uses `Meshes.Count + index`. They
+            // agree on monkey.mps and disagree on 107 of 360 models, so one of them is a
+            // coincidence. Printed for every model with fittings rather than argued about.
+            foreach (var re in wad.Entries.Where(x => x.Path.EndsWith(".mps", StringComparison.OrdinalIgnoreCase))
+                                          .OrderBy(x => x.Path, StringComparer.OrdinalIgnoreCase))
+            {
+                byte[] raw; try { raw = wad.Read(re); } catch { continue; }
+                if (raw.Length < 0x78) continue;
+                ushort U16(int o) => BinaryPrimitives.ReadUInt16LittleEndian(raw.AsSpan(o, 2));
+                int nmesh = U16(0x30), h32 = U16(0x32), h34 = U16(0x34), nfit = U16(0x36);
+                if (nfit == 0) continue;
+                Console.WriteLine($"  hdr {re.Path,-40} meshes={nmesh,3} +0x32={h32,3} +0x34={h34,3} "
+                                + $"fittings={nfit,3} {(h34 == nmesh ? "agree" : "DIFFER")}");
+            }
             Console.WriteLine($"  record 0 is named '{fx.Effects[0].Name}'");
             foreach (var e in fx.Effects)
             {
