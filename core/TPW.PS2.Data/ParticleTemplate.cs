@@ -336,6 +336,44 @@ public sealed class ParticleTemplate
     /// (one every n ticks) are counted as such. An immortal emitter has no total; this returns the
     /// count over <see cref="EmitterLife"/> ticks as if it were mortal, which is what a script that
     /// stops it after that long would see.</summary>
+    /// <summary>Particles per SECOND from an emitter that never stops.
+    ///
+    /// ⭐⭐ AN IMMORTAL EMITTER HAS NO TOTAL, AND <see cref="ExpectedTotal"/> QUIETLY RETURNS ONE
+    /// FOR IT. It sums the rate over `Max(EmitterLife, 0)` ticks, and 25 of this library's records
+    /// are immortal with an EmitterLife of 0 and no burst -- so the sum is over zero ticks, the
+    /// total is 0, and the caller's `Clamp(total, 1, 200)` turns that into a SINGLE PARTICLE.
+    /// Master: "the drinks shop produced a SINGLE bubble particle and then never again lol." It is
+    /// every continuous effect in the game: Smoke, Splash, Steam, WaterFall, TorchSmoke, Spray,
+    /// SteamJet, MudJet, Bubbles.
+    ///
+    /// ⚠ The FIRST quarter's rate is the one that applies. `0x188428` takes the phase from
+    /// `remaining * 4 / initial`, and on an immortal emitter `remaining` never counts down, so the
+    /// phase is pinned at the top of the range -- which is Q1.
+    ///
+    /// ⚠⚠ A NEGATIVE RATE IS NOT DENSITY-SCALED. It means "one particle every n ticks", and
+    /// <see cref="DensityScaled"/> returns anything &lt;= 0 untouched. Scaling it would be wrong in
+    /// the obvious direction anyway: fewer particles means a LONGER interval, not a shorter one.
+    /// </summary>
+    public float SteadyRatePerSecond(int density = RetailDensity)
+    {
+        sbyte r = Rate.Q1;
+        float tick = TickMilliseconds / 1000f;
+        if (r == 0) return 0f;
+        return r > 0 ? DensityScaled(r, density, isByte: true) / tick : 1f / (-r * tick);
+    }
+
+    /// <summary>How many of an immortal emitter's particles are alive at once: the rate times how
+    /// long each one lasts, plus whatever the burst puts out, capped by the record's own
+    /// <see cref="MaxLive"/>. ⚠ That cap is density-scaled like everything else -- TorchSmoke asks
+    /// for 20, which is 7 at the retail density, against a steady population of 30.</summary>
+    public int SteadyPopulation(int density = RetailDensity)
+    {
+        float life = Math.Max(Life, 0) * (TickMilliseconds / 1000f);
+        int want = (int)Math.Ceiling(SteadyRatePerSecond(density) * life) + DensityScaled(Burst, density);
+        int cap = DensityScaled(MaxLive, density);
+        return Math.Clamp(want, 1, cap > 0 ? cap : 200);
+    }
+
     public int ExpectedTotal(int density = RetailDensity)
     {
         int burst = DensityScaled(Burst, density);

@@ -394,6 +394,13 @@ public sealed class RideParticles
         // is attached. The check belongs HERE rather than at that one call site: every caller has
         // the same exposure and only this function knows what it is about to touch.
         if (_root == null || !GodotObject.IsInstanceValid(_root) || !_root.IsInsideTree()) return null;
+        // ⚠ ONE CONTINUOUS EMITTER PER PLACE. A looping node is never culled on a deadline, so a
+        // script that asks twice would leave two running for ever and double the density.
+        if (_continuous.TryGetValue(ContinuousKey(id, where), out var already))
+        {
+            if (GodotObject.IsInstanceValid(already)) return _library?[id];
+            _continuous.Remove(ContinuousKey(id, where));
+        }
 
         // ⭐⭐ THE RECORD IS NOW READ FROM THE CODE THAT RUNS IT (findings/particles.md,
         // ParticleTemplate). Everything this block used to guess was wrong:
@@ -406,7 +413,18 @@ public sealed class RideParticles
         // this code was drawing SEVENTY-FIVE at once, which is why bursts read as solid paint
         // however transparent each one was. "piles", exactly.
         var t = ParticleTemplate.Of(e);
-        int count = Math.Clamp(t.ExpectedTotal(), 1, 200);
+        // ⭐⭐ AN IMMORTAL EMITTER LOOPS; IT DOES NOT FIRE ONCE. Master: "the drinks shop produced a
+        // SINGLE bubble particle and then never again lol." Bubbles is burst 0, EmitterLife 0,
+        // Immortal 1, rate -5 -- and ExpectedTotal sums the rate over Max(EmitterLife, 0) = ZERO
+        // ticks, returns 0, and the clamp below turned that into one particle fired one-shot. That
+        // is 25 of the library's 105 records: every continuous effect in the game, Smoke, Splash,
+        // Steam, WaterFall, TorchSmoke, Spray, SteamJet, MudJet and the drinks shop's bubbles.
+        //
+        // ⭐ Godot emits `Amount` particles per `Lifetime` seconds while looping, so for a
+        // continuous emitter Amount IS the steady-state population -- rate times how long one
+        // particle lasts. Bubbles: one every 5 ticks over a 60-tick life = 12 alive at a time.
+        bool loops = t.Immortal;
+        int count = loops ? t.SteadyPopulation() : Math.Clamp(t.ExpectedTotal(), 1, 200);
         float life = Math.Clamp(t.Life * ParticleTemplate.TickMilliseconds / 1000f, 0.05f, 8f);
         // Drawn width is size/5120 CELLS and one cell is one unit here; start and end differ, so
         // the scale range is the record's own taper rather than an invented 0.5..1 spread.
@@ -420,7 +438,10 @@ public sealed class RideParticles
         var motion = Motion(t, fireAlong);
         // ⚠ Printed so the numbers can be checked against the record rather than judged by eye:
         // a puff that looks plausible and a puff that is right are different claims.
-        GD.Print($"[fx] {e.Name}: dir {motion.Direction.Snapped(Vector3.One * 0.01f)} "
+        GD.Print($"[fx] {e.Name}: {(loops ? $"CONTINUOUS {count} alive "
+                     + $"({t.SteadyRatePerSecond():F1}/s x {life:F2}s life, cap {t.MaxLive})"
+                     : $"one-shot {count}")} | "
+               + $"dir {motion.Direction.Snapped(Vector3.One * 0.01f)} "
                + $"spread {motion.SpreadDegrees:F0}deg speed {motion.SpeedMin:F2}..{motion.SpeedMax:F2} "
                + $"cells/s gravity {motion.Gravity:F2} cells/s2 "
                + $"(raw v={t.ParticleVelocity} jitter={t.VelocityJitter} radial={t.RadialSpeed} "
@@ -465,12 +486,14 @@ public sealed class RideParticles
         var p = new CpuParticles3D
         {
             Amount = probe > 0 ? 1 : count,
-            OneShot = true,
+            // ⚠ A looping emitter must NOT be one-shot, and its Explosiveness must be 0 or Godot
+            // dumps the whole population at the start of every cycle instead of trickling it.
+            OneShot = !loops,
             // ⭐ Explosiveness is now DERIVED: the record says how much is a burst at spawn and
             // how much trickles out over the emitter's life, so the fraction born at once is the
             // burst's share of the total rather than a number I picked.
             Lifetime = probe >= 3 ? Math.Max(life, 4f) : life,
-            Explosiveness = probe > 0 ? 1f
+            Explosiveness = loops ? 0f : probe > 0 ? 1f
                 : t.Burst > 0 && count > 0
                 ? Mathf.Clamp(ParticleTemplate.DensityScaled(t.Burst, ParticleTemplate.RetailDensity) / (float)count, 0f, 1f)
                 : (emitterSeconds <= 0f ? 1f : 0.1f),
@@ -559,6 +582,12 @@ public sealed class RideParticles
         p.Emitting = true;
         // ⚠ The cull deadline is WALL time while the particle ages on SCALED time, so slow motion
         // would free the probe mid-flight -- the one thing that would make the fix invisible.
+        // ⚠⚠ AND THE CULL MUST NOT KILL IT. The deadline is one particle-lifetime, which is right
+        // for a burst and fatal for an emitter that is supposed to run for ever -- it would put the
+        // bubbles back to a few seconds and then silence. The stop path is not traced (no script on
+        // this disc turns one off), so a continuous emitter is kept until its holder goes, and
+        // `Emit` refuses to start a second one in the same place rather than stacking them.
+        if (loops) { _continuous[ContinuousKey(id, where)] = p; Spawned++; return e; }
         _live.Add((p, Time.GetTicksMsec()
                     + (ulong)(life * 1000 / Math.Max(0.01, Engine.TimeScale)) + 500));
         Spawned++;
@@ -567,6 +596,12 @@ public sealed class RideParticles
 
     /// <summary>Drop the bursts that have finished. ⚠ A freed node answers as if it were alive
     /// right until it throws, so validity is checked and not assumed.</summary>
+    /// <summary>Continuous emitters, keyed by effect and by the cell they stand in -- rounded,
+    /// because the same request arriving twice will not carry bit-identical floats.</summary>
+    readonly Dictionary<(int, int, int, int), CpuParticles3D> _continuous = new();
+    static (int, int, int, int) ContinuousKey(int id, Vector3 at) =>
+        (id, Mathf.RoundToInt(at.X * 4), Mathf.RoundToInt(at.Y * 4), Mathf.RoundToInt(at.Z * 4));
+
     public void Step()
     {
         ulong now = Time.GetTicksMsec();
