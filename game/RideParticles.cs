@@ -58,7 +58,27 @@ public sealed class RideParticles
     /// random XZ direction at `(rand &amp; 0x7fff) % v` with Y a signed `rand % v`. That is a
     /// sphere, so the cone opens to 180 degrees and the direction stops mattering.
     ///
-    /// ⚠⚠ DRAG IS APPROXIMATED, AND LEAVING IT OFF WAS NOT AN OPTION. The console does
+    /// ⭐⭐ DRAG IS EXPONENTIAL, AND SO IS THIS NOW. The console does `v -= v * drag >> 10` every
+    /// tick -- decay proportional to the speed, a fifth gone per tick for ApeSnot. Godot's damping
+    /// subtracts a CONSTANT per second, so my first version matched only the total TRAVEL and got
+    /// the journey wrong: the console dumps most of its speed in the first few ticks and crawls,
+    /// mine slowed evenly.
+    ///
+    /// ⭐ `DampingCurve` fixes the shape. Damping is sampled as `DampingMax * curve(t/life)`, so
+    /// setting `curve(s) = e^(-lambda * s * life)` and `DampingMax = lambda * v0` gives
+    /// `dv/dt = -lambda*v0*e^(-lambda t)`, which integrates to exactly `v(t) = v0*e^(-lambda t)`.
+    /// With `lambda = -ln(1 - drag/1024) / tick` that reproduces the console's velocity EXACTLY at
+    /// every tick boundary: `v(n*tick) = v0 * k^n`.
+    ///
+    /// ⚠ Two residuals, named rather than buried. (1) Total travel is ~11% shorter than the
+    /// console's, because the console holds each tick's velocity constant across the tick (a
+    /// rectangle sum) while this integrates the curve -- 0.73 cells against 0.82 for ApeSnot. I
+    /// chose to match the VELOCITY exactly rather than bend lambda to fix the distance; the
+    /// difference is under a tenth of a cell. (2) `DampingMax` needs the particle's OWN v0 and one
+    /// material serves them all, so it uses the mean of the speed range -- for ApeSnot that range
+    /// is 5.34..5.95, about 10% wide, and a wider spread would drift.
+    ///
+    /// ⚠ SUPERSEDED NOTE, kept because the reasoning was wrong in an instructive way: The console does
     /// `v -= v * drag >> 10` every tick -- exponential decay, a fifth per tick for ApeSnot -- and
     /// Godot's `Damping` subtracts a CONSTANT per second, which is a different CURVE. I first
     /// wrote that off as "owed" and then did the arithmetic: ApeSnot leaves at 5.65 cells/s and
@@ -66,14 +86,10 @@ public sealed class RideParticles
     /// **0.82** -- sixteen times too far. That is not a missing refinement, it is smoke that
     /// shoots off the screen instead of hanging by the ape's face.
     ///
-    /// ⭐ So the damping is chosen to match the TOTAL TRAVEL, which is the thing you can see:
-    /// exponential distance is `v * tick / k` (a geometric series, k = drag/1024), linear is
-    /// `v^2 / 2d`, so `d = v * k / (2 * tick)`. The particle ends up in the right place.
-    /// ⚠ WHAT IS STILL WRONG: the easing between here and there. The console dumps most of its
-    /// speed in the first few ticks and crawls after; this slows evenly. Right destination, wrong
-    /// journey -- said plainly because "drag is wired" would imply both.</summary>
+    /// I matched total travel with a linear damping and called the easing "still wrong". It was;
+    /// the curve was the fixable part all along.</summary>
     static (Vector3 Direction, float SpreadDegrees, float SpeedMin, float SpeedMax, float Gravity,
-            float Damping) Motion(ParticleTemplate t, Vector3? fireAlong)
+            float Damping, float Lambda) Motion(ParticleTemplate t, Vector3? fireAlong)
     {
         const float cell = ParticleTemplate.PositionUnitsPerCell;
         float tick = ParticleTemplate.TickMilliseconds / 1000f;
@@ -82,8 +98,10 @@ public sealed class RideParticles
         float gravity = PerSecond(t.Gravity) / tick;   // an acceleration: per tick, per tick
 
         // ⚠ k is the per-tick fraction the console removes; 0 means no drag and no damping.
-        float k = t.Drag / 1024f;
-        float Damping(float v) => k > 0f && v > 0f ? v * k / (2f * tick) : 0f;
+        // ⚠ `k` here is the FRACTION REMAINING per tick, not the fraction removed.
+        float kept = 1f - t.Drag / 1024f;
+        float lambda = t.Drag > 0 && kept > 0f && kept < 1f ? -Mathf.Log(kept) / tick : 0f;
+        float Damping(float v) => lambda > 0f && v > 0f ? lambda * v : 0f;
 
         // ⭐⭐ EVENT 2: the fitting points, and DirectionSpeed says how hard. The template's own
         // velocity never runs for these -- see the parameter's note on Emit.
@@ -94,7 +112,7 @@ public sealed class RideParticles
             float sp = Math.Abs(ds);
             return (ds >= 0 ? along : -along,
                     Mathf.Clamp(sp > 0.001f ? Mathf.RadToDeg(Mathf.Atan2(j, sp)) : (j > 0f ? 180f : 0f), 0f, 180f),
-                    Math.Max(0f, sp - j), Math.Max(0.01f, sp + j), gravity, Damping(sp));
+                    Math.Max(0f, sp - j), Math.Max(0.01f, sp + j), gravity, Damping(sp), lambda);
         }
 
         if (t.RadialSpeed > 0)
@@ -103,7 +121,7 @@ public sealed class RideParticles
             // ⚠ The XZ speed is `rand % v` and Y is a SIGNED `rand % v`, so the fastest particle
             // is the one that rolls high on both -- but Godot draws one speed per particle and
             // fires it along a cone, so the range is 0..v and the cone is the whole sphere.
-            return (Vector3.Up, 180f, 0f, Math.Max(0.01f, r), gravity, Damping(r));
+            return (Vector3.Up, 180f, 0f, Math.Max(0.01f, r), gravity, Damping(r), lambda);
         }
 
         var (vx, vy, vz) = t.ParticleVelocity;
@@ -120,7 +138,29 @@ public sealed class RideParticles
             ? Mathf.RadToDeg(Mathf.Atan2(jitter, speed))
             : (jitter > 0f ? 180f : 0f);
         return (dir, Mathf.Clamp(spread, 0f, 180f), Math.Max(0f, speed - jitter),
-                Math.Max(0.01f, speed + jitter), gravity, Damping(speed));
+                Math.Max(0.01f, speed + jitter), gravity, Damping(speed), lambda);
+    }
+
+    /// <summary>`e^(-lambda * s * life)` over the particle's life, as a Godot `Curve`.
+    ///
+    /// ⚠ The points are spaced QUADRATICALLY, not evenly. At ApeSnot's lambda of 7.7 per second
+    /// the curve has fallen to a thousandth within the first eighth of its life, so evenly spaced
+    /// samples would put almost every point in the flat tail and let a straight line cut the
+    /// corner exactly where all the motion is.
+    ///
+    /// ⚠ Returns null when there is no drag -- a flat curve of 1.0 would be harmless but says
+    /// "damping, shaped", and null says "no damping", which is the truth.</summary>
+    static Curve DecayCurve(float lambda, float life)
+    {
+        if (lambda <= 0f || life <= 0f) return null;
+        var c = new Curve { MinValue = 0f, MaxValue = 1f };
+        const int n = 20;
+        for (int i = 0; i <= n; i++)
+        {
+            float s = (i / (float)n) * (i / (float)n);      // dense at birth
+            c.AddPoint(new Vector2(s, Mathf.Exp(-lambda * s * life)));
+        }
+        return c;
     }
 
     /// <summary>⭐⭐ THE EFFECT'S OWN SPRITE, as a strip of its frames.
@@ -296,7 +336,8 @@ public sealed class RideParticles
                + $"(raw v={t.ParticleVelocity} jitter={t.VelocityJitter} radial={t.RadialSpeed} "
                + $"g={t.Gravity} drag={t.Drag} dirspeed={t.DirectionSpeed} "
                + $"along={(fireAlong is { } fa ? fa.Snapped(Vector3.One * 0.01f).ToString() : "(EVENT 1)")} "
-               + $"-> damping {motion.Damping:F1})");
+               + $"-> lambda {motion.Lambda:F2}/s, damping peak {motion.Damping:F1} cells/s2, "
+               + $"half-speed at {(motion.Lambda > 0 ? (0.693f / motion.Lambda).ToString("F3") : "-")}s)");
         var p = new CpuParticles3D
         {
             Amount = count,
@@ -321,6 +362,7 @@ public sealed class RideParticles
             Gravity = new Vector3(0, -motion.Gravity, 0),
             DampingMin = motion.Damping,
             DampingMax = motion.Damping,
+            DampingCurve = DecayCurve(motion.Lambda, life),
             ScaleAmountMin = Math.Max(0.01f, Math.Min(size0, size1)),
             ScaleAmountMax = Math.Max(0.02f, Math.Max(size0, size1)),
             // ⚠⚠ A CpuParticles3D DRAWS A MESH, NOT A TEXTURE. It has no Texture property at all,
