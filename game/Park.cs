@@ -1086,6 +1086,22 @@ public sealed class Park
         //
         // ⚠ `fp` arrives already turned, so its Width/Height are the world box's, not the
         // authored one's -- which is what these corners are taken from.
+        // ⭐ MEASURE THE NODE ACTUALLY BEING PLACED. The census loaded models through the
+        // blueprint's loader and got clean whole-cell extents; the placement code needed a special
+        // case for a lopsided box on the same ride. Only one of those can be true of one model, so
+        // print what arrives HERE rather than reasoning about which loader is right.
+        if (System.Environment.GetEnvironmentVariable("TPW_PLACE_AUDIT") == "1")
+        {
+            var (am, aM) = DrawnBounds(model, inParent: true);
+            var (fm, fM) = DrawnBounds(model, inParent: true, onlyNamed: "floor");
+            var (lm, lM) = DrawnBounds(model, inParent: false);
+            GD.Print($"[place.audit] {name} fp {fp.Width}x{fp.Height} turns {turns}"
+                   + $" | parent {(aM.X - am.X) / CellSize:F2}x{(aM.Z - am.Z) / CellSize:F2}"
+                   + $" | local {(lM.X - lm.X) / CellSize:F2}x{(lM.Z - lm.Z) / CellSize:F2}"
+                   + $" | floor {(fM.X > fm.X ? $"{(fM.X - fm.X) / CellSize:F2}x{(fM.Z - fm.Z) / CellSize:F2}" : "none")}"
+                   + $" | origin-in-parent-box ({(0f - am.X) / CellSize:F2},{(0f - am.Z) / CellSize:F2})"
+                   + $" | model.Position ({model.Position.X:F2},{model.Position.Z:F2})");
+        }
         float x0 = Origin.X + x * CellSize, x1 = x0 + fp.Width * CellSize;
         float z1 = Origin.Y + (Height - y) * CellSize, z0 = z1 - fp.Height * CellSize;
         var anchor = (turns & 3) switch
@@ -1095,23 +1111,25 @@ public sealed class Park
             2 => new Vector2(x1, z0),
             _ => new Vector2(x0, z0),
         };
-        // ⚠⚠ THE ORIGIN RULE IS OPT-IN (`TPW_PLACE_ORIGIN=1`) AND NOT THE DEFAULT, BECAUSE THE
-        // EVIDENCE FOR IT DOES NOT YET SURVIVE ITS OWN CONTROL.
+        // ⭐⭐ AND THE CORNER SEQUENCE IS NOT DERIVED-AND-HOPED, IT IS MEASURED. `TPW_PLACE_AUDIT=1`
+        // printed the Belly Bounce at three turns, and the model's origin sat at exactly the corner
+        // the derivation says, every time:
         //
-        // The census said 47 of 64 models have their origin at exactly (0,0) of their bounds, and
-        // that looked like the anchor. But where extent EQUALS shape -- which is those same 47 --
-        // anchoring the origin and centring the box give the IDENTICAL answer. So the rule is a
-        // no-op exactly where it is proven and a guess exactly where it is not: the eleven whose
-        // model and shape disagree, where it only moves the overhang from both sides to one.
+        //   turns 0 -> (0.00, 4.00) = (minX, maxZ)      turns 1 -> (4.00, 3.00) = (maxX, maxZ)
+        //   turns 2 -> (3.00, 0.00) = (maxX, minZ)
         //
-        // ⚠ And the Belly Bounce settles that it is not yet understood. It needed a hand-written
-        // `onlyNamed: "floor"` special case because its box centre was 0.40 out -- yet the census
-        // measures it at exactly 3.00 x 4.00 against a 3x4 shape, with its origin at (0,0), which
-        // is a model that cannot be 0.40 out under either rule. The census and the placement code
-        // are therefore NOT measuring the same node, and a DrawnBounds reading has misled this
-        // port twice before. Re-measure inside TryPlace, against the node actually being placed,
-        // before this becomes the default.
-        if (System.Environment.GetEnvironmentVariable("TPW_PLACE_ORIGIN") != "1")
+        // ⚠ It also dissolved the objection that held this back. The Belly Bounce needed a
+        // hand-written `onlyNamed: "floor"` case for a box centre 0.40 out -- but its floor box now
+        // measures 3.00x4.00 and its WHOLE box measures 3.00x4.00, the same numbers, so there is no
+        // lopsidedness left for that case to correct and it has been carrying nothing. Whatever
+        // made the two disagree was fixed elsewhere; the special case outlived the fault.
+        //
+        // ⭐ Where a model's extent equals its shape -- 47 of JUNGLE's 64 -- anchoring the origin
+        // and centring the box give the IDENTICAL answer, so this changes nothing for them. It is
+        // the eleven that disagree where it matters, and there it puts the overhang on the side the
+        // author put it rather than splitting it across both. ⚠ Whether those ELEVEN SHAPES are
+        // themselves right is a separate question and master's to answer; see --footprint-audit.
+        if (System.Environment.GetEnvironmentVariable("TPW_PLACE_CENTRE") == "1")
         {
             // The shipped rule: centre the drawn box on the footprint's centre.
             var (bmin, bmax) = DrawnBounds(model, inParent: true, onlyNamed: "floor");
