@@ -45,19 +45,27 @@ sky[+0x08] += vx;  sky[+0x0c] += vy;        // FAR layer UV, wrapped into 0..1
 DAT_002f0270 += 2*vx;  DAT_002f0274 += 2*vy; // NEAR layer UV, also wrapped, at DOUBLE rate
 ```
 
-The rates are set once, globally, by `0x231848` -- the same four floats for every world:
+⚠⚠ **CORRECTION TO THE FIRST VERSION OF THIS FILE.** I wrote that the rates "are set once,
+globally, the same four floats for every world". They are not. `0x231848` sets *initial* values --
+X `0.0067`, Y `0.0037`, starting U `0.1`, V `0.2` -- and **the weather tick overwrites them every
+frame**. I had found the initialiser and stopped, which is the same mistake as reading a field's
+default and calling it the value.
 
-| Field | Raw | Value | Meaning |
-|---|---|---|---|
-| `+0x00` | `0x3bdb8bac` | **0.0067** | X scroll, UV per second |
-| `+0x04` | `0x3b727bb3` | **0.0037** | Y scroll, UV per second |
-| `+0x08` | `0x3dcccccd` | 0.1 | starting U |
-| `+0x0c` | `0x3e4ccccd` | 0.2 | starting V |
+### The clouds blow in a WIND DIRECTION, and the weather turns it
 
-So the far layer takes **149 s** to wrap in U and **270 s** in V; the near layer **75 s** and
-**135 s**. Slow drift, not visible motion -- which is why nobody noticed it was missing.
-⭐ The values are round in decimal (0.0067, 0.0037, 0.1, 0.2), i.e. hand-authored, which is a
-reasonable check that they are being read as the right type at the right offsets.
+In `0x23efe8`, before the greying:
+
+```c
+i  = (uint)(angle * 40.743664);            // 40.743664 = 256 / 2pi -> a 256-entry sine table
+c  = sinTable[(i + 0x40) & 0xff];          // +0x40 is +90 degrees, so this is the cosine
+s  = sinTable[ i        & 0xff];
+FUN_00232318(-c * 0.01, s * 0.01, sky);    // writes sky[+0x00], sky[+0x04] -- the scroll rate
+```
+
+So the scroll vector is a **unit wind direction times 0.01 UV/second**, and the angle advances
+over time: the clouds change heading. Magnitude is always 0.01, which is not the magnitude of the
+initial pair (0.00765) -- another sign those four floats are defaults and nothing more. The same
+`c`/`s` also feed `0x342e00`/`0x342e08`, scaled by `0.05 * 0.2`.
 
 The second pair is consumed by `0x21ea20`, which folds it into texture matrices at `0x2f0540`.
 
@@ -82,13 +90,44 @@ At full weather that is ambient `0.3752` and directional `0.504`.
   weather state machine is ported", so `f` is always 0 and the clear colours are always used. The
   formula has never had a nonzero input.
 
+## The sky greying: a PALETTE rewrite, driven by the same curve as the light
+
+⭐⭐ **RESOLVED, and it is neither of the two guesses.** Not fog, and not "the sky is lit geometry".
+The weather tick recolours the sky's **palette** on the CPU and re-uploads the texture.
+
+`0x23efe8` computes the eased factor once and hands it to BOTH consumers:
+
+```c
+f = 2t - t*t                               // the SAME curve the light colours use
+DAT_00311160..0x311178 = ambient/directional reduced by f    // the lighting path
+FUN_00232700(f, 0x331570);                 // and the SKY
+DAT_002f02bc = (1 - f) * 0.3 + 0.2;
+```
+
+`0x232700` walks **0x400 bytes = 256 RGBA entries** -- a palette, not an image -- from the pristine
+copy at `sky+0x22c`, and for each entry:
+
+```c
+a   = src.A / 127.0
+mul = (1 - f) + f * (a * 0.2 + 0.3)        // clamped to 0..1
+dst.RGB = src.RGB * mul
+dst.A   = ((1 - f) * a + f * (1 - 0.15 * a)) * 127
+```
+then `FUN_002349e8(tex, 1)` re-uploads it.
+
+At full weather an opaque cloud texel keeps `0.5` of its colour and a clear-sky texel only `0.3`
+-- **the sky darkens harder than the clouds do**, which is what turns a blue sky with white clouds
+into flat overcast. Alpha moves the other way: a fully clear texel goes to `1.0`, so the cloud
+sheet thickens and covers.
+
 ## ⚠ OPEN
 
-**Whether the sky itself greys, or only the things under it.** `0x225fc8` shows the weather object
-is never passed to the sky, so there is no sky-specific tint on this path. The likely explanation
-is that the sky dome is ordinary geometry going through the same per-vertex ambient+directional
-path as everything else, so darkening those two colours greys it along with the park -- one
-mechanism, not two. **That is a hypothesis and is not established here**; it needs the sky dome's
-own draw path read. ⚠ It matters for the port, because the port's sky is a `shader_type sky` that
-writes COLOR directly and is lit by nothing: if the console's sky is lit geometry, ours will stay
-bright while the park goes grey, and that is exactly the symptom master would report next.
+- **Where the weather amount comes from.** The curve and both consumers are read; the state machine
+  that drives `amount` is not, and the port pins it at 0.
+- **What `DAT_002f02bc` ((1-f)*0.3 + 0.2) and the `0x342e00/08` pair are for.** Both are written
+  from the same weather values and neither consumer has been read.
+- ⚠ The port's sky is a `shader_type sky` with no palette: reproducing this needs the two sky
+  textures kept as indexed data, or the same multiply applied in the shader. The second is easier
+  and is NOT the same thing -- a palette multiply happens once per colour, a shader multiply once
+  per pixel, and they only agree because the operation is linear. Worth writing down before
+  someone calls them equivalent.
