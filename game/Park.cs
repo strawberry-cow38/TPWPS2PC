@@ -594,7 +594,13 @@ public sealed class Park
     /// caller: a placement ghost is routinely dragged off the edge of the plot, and that has to
     /// read as "no" instead of throwing.</summary>
     public bool Vacant(int x, int y)
-        => x >= 0 && y >= 0 && x < Width && y < Height && _occupied[x, y] == 0 && !Reserved(x, y);
+        => x >= 0 && y >= 0 && x < Width && y < Height && _occupied[x, y] == 0 && !Reserved(x, y)
+           && !(Claimed?.Invoke(x, y) ?? false);
+
+    /// <summary>Cells something stands on WITHOUT removing the ground under it: a track ride's
+    /// pieces. ⚠ Not in <see cref="_occupied"/>, whose cells lose their floor, and whose invariant
+    /// is the placed footprints; a track lies ON the grass.</summary>
+    public System.Func<int, int, bool> Claimed { get; set; }
 
     /// <summary>Whether a cell is inside a no-build zone.</summary>
     public bool Reserved(int x, int y)

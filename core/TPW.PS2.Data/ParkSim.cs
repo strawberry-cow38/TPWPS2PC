@@ -201,6 +201,13 @@ public sealed class ParkRide
     public RseMachine Machine { get; init; }
     public RsePreviewHost Host { get; init; }
 
+    /// <summary>⭐ A TRACK RIDE'S NATIVE OPERATION, once its track exists (<see cref="ParkSim.AttachTrack"/>).
+    /// On PS2 the track ride's own class replaces every status tick that would consult the script,
+    /// whose `BUMP` handler is a stub (findings/track-ride-operation.md §9). So when this is set the
+    /// VAR_LETMEON handshake is skipped and the cars take guests straight from <see cref="Queue"/>.
+    /// Null for every other ride.</summary>
+    public TrackRideSim Track { get; internal set; }
+
     /// <summary>Which of the script's variables this program actually declares. ⚠ NOT every ride
     /// declares every one -- a sideshow has no VAR_SPACELEFT -- and RseProgram.VariableIndex
     /// THROWS on a name it does not know, so asking blindly kills the ride that is least like the
@@ -361,6 +368,30 @@ public sealed class ParkSim : IRseDirectory
         return ride;
     }
 
+    /// <summary>Give a placed track ride its track. The cars board from the ride's own queue and hand
+    /// riders back through <see cref="ParkRide.Left"/>, the same way a script's leavers go.</summary>
+    public TrackRideSim AttachTrack(int id, TrackLayout layout, int seed = 0, bool? karts = null)
+    {
+        var ride = _rides.FirstOrDefault(r => r.Id == id);
+        if (ride == null) return null;
+        var track = new TrackRideSim(layout, seed, karts)
+        {
+            TakeHead = () => ride.TryTakeFromQueue(out int g) ? g : null,
+        };
+        track.Released += ride.Leaves;
+        ride.Track = track;
+        SyncTrack(ride);
+        return track;
+    }
+
+    /// <summary>The track ride's status is the destination state (+0xA2 is what 0x1E1E48 tests:
+    /// 2, 10 and 11 are choosable), and its laid pieces are Excitement's cached weight (+0x1D1).</summary>
+    static void SyncTrack(ParkRide r)
+    {
+        r.DestinationState = (byte)r.Track.Status;
+        r.CachedTrackWeight = (byte)Math.Min(255, r.Track.Track.Weight);
+    }
+
     public void Remove(int id) => _rides.RemoveAll(r => r.Id == id);
     public void Clear() { _rides.Clear(); Time = 0; _carry = 0; }
 
@@ -369,7 +400,10 @@ public sealed class ParkSim : IRseDirectory
     public void SetOpen(int id, bool open)
     {
         foreach (var r in _rides) if (r.Id == id)
-        { r.Set("VAR_RIDECLOSED", open ? 0 : 1); r.DestinationState=(byte)(open ? 2 : 3); }
+        {
+            r.Set("VAR_RIDECLOSED", open ? 0 : 1); r.DestinationState=(byte)(open ? 2 : 3);
+            if (r.Track != null) { r.Track.SetOpen(open); SyncTrack(r); }
+        }
     }
 
     /// <summary>Advance by a real delta, in whole ticks, keeping the remainder.</summary>
@@ -396,7 +430,12 @@ public sealed class ParkSim : IRseDirectory
         {
             if (r.Machine == null) continue;
             r.Host.AdvanceTo(Time);
-            Handshake(r);
+            if (r.Track != null)
+            {
+                r.Track.Step(unchecked((uint)(Time / TickMilliseconds)));
+                SyncTrack(r);
+            }
+            else Handshake(r);
             // ⭐ A SPAWNED CHILD IS ITS OWN SCHEDULED SCRIPT, not something the parent steps. The
             // PS2's scheduler visits every live instance, children included, so they are visited
             // here too -- and a child faulting leaves its parent running.

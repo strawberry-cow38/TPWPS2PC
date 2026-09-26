@@ -315,6 +315,25 @@ The first version of this file got these wrong:
 - Mechanic dispatch.
 - The add-on catalogue mapping (above).
 
+## In the port
+
+Built 2026-09-26:
+- **Core.** `core/TPW.PS2.Data/TrackLayout.cs` holds the tables, the rebuild, the piece chooser (crossings, bridges, corners; add-ons not yet), the sample bake and the double-lerp pose. `TrackRideSim.cs` holds the status machine, boarding, laps, unloading and both car classes. `ParkSim.AttachTrack` hooks a track into a placed ride: the cars take guests straight from the ride's queue and hand them back through `Left`, and the stubbed script handshake is skipped.
+- **Viewer.** `game/Viewer.TrackRides.cs`:
+  - placing a track ride opens the track tool before the queue tool, as on the console;
+  - legs are previewed with the console's own tiles (165 ok, 175 blocked, 173 closes, 166 entry arrow) and priced per piece from record `+0xCC`;
+  - pieces and cars are drawn from the ride's own folder at the console's model origin and yaw;
+  - "Edit Track" in the ride menu reopens the loop.
+- **Checks.**
+  - ParkSimAudit `--track-rides-only` runs 43 `track ride:` checks, with controls. Three deliberate mutations turn them red: the b2 sampling, the connector shift, and a boarding timeout.
+  - The viewer matrix scene `trackride` (`TrackRideSmoke`) builds, draws, boards and unloads a loop on the real viewer.
+- **Not yet.** Add-ons; wear, breakdown and repair (the port has no mechanics); the drive-it-yourself race; riders drawn in the cars; engine sounds; laying a path under an existing track.
+- **Kept, because the console has them:**
+  - the b2 bend's jump and stall;
+  - one guest per car;
+  - no boarding timeout;
+  - Running lasting 2 × Duration updates.
+
 ## To build it in the port
 
 In dependency order:
