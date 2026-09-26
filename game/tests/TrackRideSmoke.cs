@@ -189,16 +189,29 @@ public partial class TrackRideSmoke : Node3D
             {
                 var (x, _, z) = layout.Position(car.Distance, 128);
                 var line = frame.GlobalTransform * new Vector3(x / 256f, 0, z / 256f);
-                var node = (Node3D)F(cars[car], "Item1");
+                var node = (Node3D)F(cars[car], "Node");
                 var at = node.GlobalPosition;
                 Check(new Vector2(at.X - line.X, at.Z - line.Z).Length() < 1.2f, $"{car} is drawn on the track ({new Vector2(at.X - line.X, at.Z - line.Z).Length():F2} off the centre line)");
             }
+            // Riders sit on the cars' seat fittings, and the cars' engine note resolves to the track bank.
+            var seated = Field<IDictionary>(viewer, "_seated");
+            foreach (var car in trackSim.Cars)
+            {
+                var node = (Node3D)F(cars[car], "Node");
+                Check(car.Guest is int g && seated.Contains(g), $"{car}'s rider is seated");
+                var at = ((Transform3D)((System.Runtime.CompilerServices.ITuple)seated[car.Guest.Value])[0]).Origin;
+                Check(at.DistanceTo(node.GlobalPosition) < 1.0f, $"{car}'s rider sits on the car ({at.DistanceTo(node.GlobalPosition):F2} from its origin)");
+            }
+            var sounds = Field<RideSounds>(viewer, "_sounds");
+            var engine = sounds?.Census.Where(l => l.Contains("NativeRidesTrack") && l.Contains("evt   4")).ToList() ?? new();
+            Check(engine.Count > 0 && engine.All(l => !l.Contains("(no event")) && engine.Any(l => l.Contains("ms ")),
+                  $"the cars' engine note (native category 6 event 4) resolves to a clip in the track bank ({engine.Count} cues): {engine.FirstOrDefault()}");
             await Shot("cars");
             // Close on the lead car, side-on, to see its scale, height over the deck and heading.
             if (shots != null && trackSim.Cars.Count > 0)
             {
                 var leadCar = trackSim.Cars[0];
-                var lead = (Node3D)F(cars[leadCar], "Item1");
+                var lead = (Node3D)F(cars[leadCar], "Node");
                 aimAt = lead.GlobalPosition; aimFar = 1.6f;
                 await Shot("closeup");
                 aimAt = null; aimFar = null;

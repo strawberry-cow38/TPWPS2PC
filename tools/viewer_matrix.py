@@ -41,7 +41,7 @@ SCENES = {
     # and its PASS line prints only after all of them, so the floor is JUNGLE's.
     'vehicles': ('ParkVehiclesSmoke', 'PARK VEHICLES SMOKE', 4),
     # Track rides: build menu -> station -> the track tool pressed round a loop -> riders on and off.
-    'trackride': ('TrackRideSmoke', 'TRACK RIDE SMOKE', 24),
+    'trackride': ('TrackRideSmoke', 'TRACK RIDE SMOKE', 33),
     # Roller coasters: build menu -> station with its queue -> pylons pressed round a ring -> trains -> riders.
     'coaster': ('CoasterSmoke', 'COASTER SMOKE', 44),
 }

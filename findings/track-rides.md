@@ -327,7 +327,12 @@ Built 2026-09-26:
 - **Checks.**
   - ParkSimAudit `--track-rides-only` runs 43 `track ride:` checks, with controls. Three deliberate mutations turn them red: the b2 sampling, the connector shift, and a boarding timeout.
   - The viewer matrix scene `trackride` (`TrackRideSmoke`) builds, draws, boards and unloads a loop on the real viewer.
-- **Not yet.** Add-ons; wear, breakdown and repair (the port has no mechanics); the drive-it-yourself race; riders drawn in the cars; engine sounds; laying a path under an existing track.
+- **Riders and sound** (2026-09-26, second pass):
+  - Each rider's head sits on the car model's seat fitting 1 (`0x205568` seats guest *n* on fitting *n+1*), through the same `SeatPose` the scripted rides use.
+  - Every car plays native category 6 (`AUDIO/RIDES/trck`) event 4, `Engine.mp2` from `TRACKHD.SDT`. The console restarts it whenever it has stopped (`0x111CC8`, then vtable `+0x34`), and so does the port.
+  - Karts play event 0xF when they start an overtake or a spin.
+  - ⚠ Parameter 4 (speed × 100 / target) is set every step, but what the audio object does with it is not read, so pitch doesn't follow speed.
+- **Not yet.** Add-ons; wear, breakdown and repair (the port has no mechanics); the drive-it-yourself race; laying a path under an existing track.
 - **Kept, because the console has them:**
   - the b2 bend's jump and stall;
   - one guest per car;
