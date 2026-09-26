@@ -30,6 +30,11 @@ public partial class RideScriptDemo : Node3D
     float _filmZoom = 1f;
     int _filmControl = -1;
     int _fxProbe;
+    // ⚠ The measured "engine damps at 0.73x what I set" was taken entirely at 0.25x. If that
+    // factor is really Euler error it MUST change with the step; if it is constant the engine is
+    // simply applying less damping than asked. One flag, one run, and the two are told apart.
+    double _fxSlow = 0.25;
+    bool _fxMarker;
     ulong _probeT0;
     int _fxNode = -1;
     AssetLibrary _particleWad;
@@ -128,6 +133,9 @@ public partial class RideScriptDemo : Node3D
                 // orbiting camera is what made me misread a render as "worse" earlier today.
                 // 1 = shipped exponential drag, 2 = the linear control. See RideParticles.Emit.
                 if (argv[i] == "--fx-probe") _fxProbe = int.Parse(argv[i + 1]);
+                if (argv[i] == "--fx-marker") _fxMarker = argv[i + 1] == "1";
+                if (argv[i] == "--fx-slow")
+                    _fxSlow = double.Parse(argv[i + 1], System.Globalization.CultureInfo.InvariantCulture);
                 // ⭐ Where to put the control burst. ⚠ DEFAULT -1 KEEPS THE DIAGNOSTIC: the burst
                 // is normally fired at the camera's focus owing NOTHING to the node table, so that
                 // "it did not appear" means the emitter is wrong rather than the place. Naming a
@@ -159,7 +167,12 @@ public partial class RideScriptDemo : Node3D
                     // checked; two give a ratio that MUST come out 3.0, so the calibration has to
                     // earn its place before a 2x claim gets hung on it. A ratio under 3 also
                     // measures the perspective, which is the one thing a single gap hides.
-                    if (_fxProbe == 1)
+                    // ⚠ OPT-IN NOW. The marker sits 2 cells above the spawn and the puff rises
+                    // about one, so at full speed the two blobs merge after eight frames and the
+                    // fit degenerates. It has already done its job -- it pinned the projection to
+                    // 0.0004 cells, and the projection is arithmetic from the logged camera, so
+                    // it does not need re-proving on every run.
+                    if (_fxMarker)
                         foreach (int up in new[] { 3, 7 })
                             GD.Print($"[fx] scale marker {up - 1} cells up: "
                                    + (_burst.Emit(_filmControl, _focus + Vector3.Up * up, null, 4) != null));
@@ -181,7 +194,7 @@ public partial class RideScriptDemo : Node3D
                     // the same data gave lambda = 4.9, 6.1, 6.5 and 3.8 on four passes. Scaling
                     // time stretches the SAME motion over 4x the frames without altering a single
                     // particle parameter -- more samples of the identical physics.
-                    if (_fxProbe > 0) Engine.TimeScale = 0.25;
+                    if (_fxProbe > 0) Engine.TimeScale = _fxSlow;
                     _probeT0 = Time.GetTicksUsec();
                     GD.Print($"[fx] control burst {_filmControl} at focus {_focus}: "
                            + (_burst.Emit(_filmControl, _focus + Vector3.Up, null, _fxProbe) != null));
