@@ -1,4 +1,5 @@
 using Godot;
+using System.Linq;
 using TPW.PS2.Data;
 using Aps = TPW.PS2.Data.Animation;
 
@@ -65,7 +66,13 @@ public partial class RideScriptDemo : Node3D
             string disc = OS.GetEnvironment("TPW_PS2_DISC");
             if (string.IsNullOrWhiteSpace(disc)) disc = GetTree().GetMeta("tpw_disc", "").AsString();
             var argv = OS.GetCmdlineUserArgs();
-            foreach (string arg in OS.GetCmdlineArgs()) if (arg.StartsWith("--disc=")) disc = arg[7..];
+            // ⚠⚠ BOTH SPELLINGS, IN BOTH LISTS. `--disc=PATH` was only ever checked against
+            // `GetCmdlineArgs()` (the args BEFORE `--`) and `--disc PATH` only against the user
+            // args AFTER it -- so the perfectly reasonable `-- --disc=PATH` matched neither, threw
+            // here, and left the scene sitting in a failed state forever. That is where every
+            // leaked fx process came from.
+            foreach (string arg in OS.GetCmdlineArgs().Concat(argv))
+                if (arg.StartsWith("--disc=")) disc = arg[7..];
             for (int i = 0; i + 1 < argv.Length; i++) if (argv[i] == "--disc") disc = argv[i + 1];
             if (string.IsNullOrEmpty(disc)) throw new Exception("Set TPW_PS2_DISC or pass -- --disc /path/to/disc.bin");
             GetTree().SetMeta("tpw_disc", disc);
@@ -264,10 +271,18 @@ public partial class RideScriptDemo : Node3D
             // spelled a way nothing matches -- a headless run of this scene must not outlive its
             // job. 60 seconds is far longer than any capture here needs and far shorter than a
             // process anyone would notice leaking.
-            if (DisplayServer.GetName() == "headless" && ++_aliveFrames > 3600)
+            // ⚠⚠ ON A **CAPTURE** RUN, not a headless one -- and that distinction is the whole
+            // bug. The first version of this guard tested `DisplayServer.GetName() == "headless"`,
+            // but a capture needs a real viewport, so every shot harness runs WINDOWED and the
+            // guard never fired for the runs that were actually leaking. Eighteen of the twenty
+            // stuck processes were windowed `--mode=park` captures.
+            //
+            // ⭐ A run that was ASKED for a picture is automated by definition; a person driving
+            // this scene passes neither --shot nor --film and is left alone.
+            if ((_capture != null || _film != null) && ++_aliveFrames > 3600)
             {
-                GD.PrintErr("[fx] headless run hit its 60s cap with nothing to capture -- "
-                          + "quitting rather than leaking the process");
+                GD.PrintErr("[fx] capture run hit its 60s cap without finishing -- quitting "
+                          + "rather than leaking the process");
                 GetTree().Quit(3);
             }
         }
@@ -311,7 +326,20 @@ public partial class RideScriptDemo : Node3D
         return new Vector3(w.M41, w.M42, -w.M43);
     }
 
-    void Fail(Exception ex) { _paused = true; _status.Text = ex.Message; GD.PrintErr(ex); }
+    /// <summary>⚠⚠ A FAILED CAPTURE RUN MUST DIE, NOT SIT THERE. This used to pause and print,
+    /// which is right for a person driving the scene and catastrophic for a harness: the run had
+    /// nothing left to do, nothing to quit it, and no window anyone would notice. Twenty of them
+    /// accumulated on the box over a day.
+    ///
+    /// ⭐ "Was a picture asked for" is the test, because that is exactly the run nobody is
+    /// watching. A person gets the old behaviour: paused, with the message on screen.</summary>
+    void Fail(Exception ex)
+    {
+        _paused = true; _status.Text = ex.Message; GD.PrintErr(ex);
+        bool automated = OS.GetCmdlineArgs().Concat(OS.GetCmdlineUserArgs())
+            .Any(a => a.StartsWith("--shot") || a.StartsWith("--film"));
+        if (automated) { GD.PrintErr("[fx] capture run failed -- quitting instead of hanging"); GetTree().Quit(4); }
+    }
     public override void _UnhandledInput(InputEvent ev)
     {
         if (ev is InputEventMouseMotion motion && (motion.ButtonMask & MouseButtonMask.Left) != 0)

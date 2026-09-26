@@ -801,6 +801,45 @@ try
             foreach (var en in pw.Entries) Console.WriteLine($"  pwad {en.Path}");
             int[] GroupBase = { 0,1,2,3,7,11,18,19,20,21,29,33,41,49,52,57,58,59,60,61,62,63,64,65,
                                 66,67,68,69,70,71,72,73,0 };
+            // ⭐⭐ AND WRITE THE ART OUT, because the only thing that actually answers "is it a
+            // puff of smoke" is looking at it. Each named effect's frames are laid side by side
+            // and written as an uncompressed 32-bit TGA -- no encoder needed, and the box's ffmpeg
+            // turns it into a PNG.
+            foreach (var want in new[] { "ApeSnot", "Bubbles", "Fire", "Smoke" })
+            {
+                var eff = fx.Effects.FirstOrDefault(x => x.Name == want);
+                if (eff == null || eff.Raw.Length < 0x98) continue;
+                int grp = BinaryPrimitives.ReadInt16LittleEndian(eff.Raw.AsSpan(0x94, 2));
+                int frames = BinaryPrimitives.ReadInt16LittleEndian(eff.Raw.AsSpan(0x96, 2));
+                var names = new List<string>();
+                for (int f = 0; f < Math.Max(1, frames); f += 2)
+                    if (ParticleSprites.For(grp, f) is { } n && (names.Count == 0 || names[^1] != n))
+                        names.Add(n);
+                var tiles = new List<Ssh>();
+                foreach (var n in names)
+                    try { tiles.Add(new Ssh(pw.Read(pw.Find(ParticleSprites.Path(n))))); }
+                    catch (Exception ex) { Console.WriteLine($"  art {want}: {n} -- {ex.Message}"); }
+                if (tiles.Count == 0) { Console.WriteLine($"  art {want}: nothing decoded"); continue; }
+                int tw = tiles[0].Width, th = tiles[0].Height, W = tw * tiles.Count;
+                var px = new byte[W * th * 4];
+                for (int t = 0; t < tiles.Count; t++)
+                    for (int y = 0; y < th; y++)
+                        for (int x = 0; x < tw; x++)
+                        {
+                            int src = (y * tiles[t].Width + x) * 4, dst = (y * W + t * tw + x) * 4;
+                            if (src + 3 >= tiles[t].Pixels.Length) continue;
+                            // ⚠ TGA is BGRA, the decoder gives RGBA.
+                            px[dst] = tiles[t].Pixels[src + 2]; px[dst + 1] = tiles[t].Pixels[src + 1];
+                            px[dst + 2] = tiles[t].Pixels[src];  px[dst + 3] = tiles[t].Pixels[src + 3];
+                        }
+                var hdr = new byte[18];
+                hdr[2] = 2; hdr[12] = (byte)(W & 0xff); hdr[13] = (byte)(W >> 8);
+                hdr[14] = (byte)(th & 0xff); hdr[15] = (byte)(th >> 8); hdr[16] = 32; hdr[17] = 0x20;
+                var path = $"C:/claude-workspace/art_{want}.tga";
+                using (var fsx = File.Create(path)) { fsx.Write(hdr); fsx.Write(px); }
+                Console.WriteLine($"  art {want}: group {grp}, {frames} frames -> {tiles.Count} images "
+                                + $"{tw}x{th} ({string.Join(",", names)}) -> {path}");
+            }
             Console.WriteLine($"  record 0 is named '{fx.Effects[0].Name}'");
             foreach (var e in fx.Effects)
             {
