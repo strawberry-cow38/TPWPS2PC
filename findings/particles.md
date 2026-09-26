@@ -420,6 +420,15 @@ tail. A damping sweep (×1, ×2, ×4) confirms the magnitude IS honoured: heavie
 stops it sooner. **The two speeds agree** — travel 1.12 cells at 0.25× and ~1.2 at 1× against the
 console's 0.866, a single consistent ~30% overshoot, not a collapse.
 
+⭐ **AND FIRING THE BURST AT CAPTURE TIME, NOT AT FILM SETUP, CLOSED MOST OF THE GAP.** The
+emitter used to be armed when the film was set up, ~88 ms before the first PNG existed; the
+"remaining ~30%" was largely the fit extrapolating back across a birth it could only estimate.
+Fired from the film loop instead, with the ruler dating the birth to **+3.0 ms**, the measured
+travel is **0.900 cells against the console's 0.866 — within 4%**, and the fitted λ is 0.78× over
+2.9 time constants, where λ and the asymptote trade off. ⚠ The full-speed rig is still not
+trustworthy: its undamped ruler leaves the crop window and bends 0.22 cells off a straight line,
+which is the instrument, not the particle.
+
 **The verdict, over 120 samples:** the easing is **exponential** — `R² = 0.99935`, rms 0.0059
 cells — and the linear control fits the same model far worse (rms 0.0120) and flattens to a dead
 stop the real one never reaches. The initial speed is right. **Remaining: the puff travels ~27%

@@ -35,6 +35,7 @@ public partial class RideScriptDemo : Node3D
     // simply applying less damping than asked. One flag, one run, and the two are told apart.
     double _fxSlow = 0.25;
     bool _fxMarker;
+    bool _burstPending;
     ulong _probeT0;
     int _fxNode = -1;
     AssetLibrary _particleWad;
@@ -160,48 +161,13 @@ public partial class RideScriptDemo : Node3D
                 // ⭐ A CONTROL IN A KNOWN-GOOD PLACE. One burst at the camera's focus, owing
                 // nothing to the node table or the script: if this does not appear, the emitter
                 // is wrong; if it appears and the script's do not, the POSITION is wrong.
-                if (_burst != null && _filmControl >= 0)
-                {
-                    // ⭐ THE SCALE BAR. Emitted two cells above the one under test and frozen
-                    // there, so every captured frame carries its own pixels-per-cell as the gap
-                    // between the two blobs. Measuring distance off a separately-calibrated run
-                    // put a 4% wobble under every number.
-                    // ⚠ TWO markers, at +2 and +6 cells. One marker gives a scale that cannot be
-                    // checked; two give a ratio that MUST come out 3.0, so the calibration has to
-                    // earn its place before a 2x claim gets hung on it. A ratio under 3 also
-                    // measures the perspective, which is the one thing a single gap hides.
-                    // ⚠ OPT-IN NOW. The marker sits 2 cells above the spawn and the puff rises
-                    // about one, so at full speed the two blobs merge after eight frames and the
-                    // fit degenerates. It has already done its job -- it pinned the projection to
-                    // 0.0004 cells, and the projection is arithmetic from the logged camera, so
-                    // it does not need re-proving on every run.
-                    if (_fxMarker)
-                        foreach (int up in new[] { 3, 7 })
-                            GD.Print($"[fx] scale marker {up - 1} cells up: "
-                                   + (_burst.Emit(_filmControl, _focus + Vector3.Up * up, null, 4) != null));
-                    // ⭐⭐ PRINT THE CAMERA, DON'T INFER THE SCALE. Every pixels-per-cell I took
-                    // off the screen disagreed with the next one (27, 58, and a gap that moved
-                    // 23% between runs) because the camera sits CLOSE and above: a particle
-                    // rising toward it grows in pixels while it slows, which flatters the decay
-                    // and reads as a lambda lower than the record's. With the camera's own
-                    // numbers the world->pixel projection is exact arithmetic and the blob gaps
-                    // become a check on it rather than the source of it.
-                    GD.Print($"[probe] camera pos {_camera.GlobalPosition} fov {_camera.Fov} "
-                           + $"near {_camera.Near} focus {_focus} distance {_distance} "
-                           + $"viewport {GetViewport().GetVisibleRect().Size} "
-                           + $"keep {_camera.KeepAspect}");
-                    // ⭐⭐ SLOW MOTION, BECAUSE THE RIG RAN OUT OF RESOLUTION. ApeSnot's whole
-                    // decay is over in about eight captured frames, and the grab is out of phase
-                    // with the simulation by up to one (the first two PNGs of every run are the
-                    // same picture). Measuring a time constant with eight jittery samples is how
-                    // the same data gave lambda = 4.9, 6.1, 6.5 and 3.8 on four passes. Scaling
-                    // time stretches the SAME motion over 4x the frames without altering a single
-                    // particle parameter -- more samples of the identical physics.
-                    if (_fxProbe > 0) Engine.TimeScale = _fxSlow;
-                    _probeT0 = Time.GetTicksUsec();
-                    GD.Print($"[fx] control burst {_filmControl} at focus {_focus}: "
-                           + (_burst.Emit(_filmControl, _focus + Vector3.Up, null, _fxProbe) != null));
-                }
+                // ⭐⭐ THE BURST NOW WAITS FOR THE CAMERA. Fired here, at film SETUP, the particle
+                // was 88 ms old by the time the first PNG existed -- and the decay's time constant
+                // is 130 ms, so the rig never saw the part that matters and fitted the flat tail
+                // instead. At 0.25x that gap is a fifth of the motion; at full speed it is nearly
+                // all of it, which is why the full-speed numbers looked like a collapse. It is
+                // armed here and fired from the film loop on the first captured frame.
+                if (_burst != null && _filmControl >= 0) _burstPending = true;
                 GD.Print($"[film] {_world}{_stem}: {_filmFrames} frames every {_filmStep}ms");
             }
             if (_capture != null)
@@ -331,6 +297,21 @@ public partial class RideScriptDemo : Node3D
             {
                 if (++_captureFrames > 3)
                 {
+                    if (_burstPending)
+                    {
+                        _burstPending = false;
+                        if (_fxProbe > 0) Engine.TimeScale = _fxSlow;
+                        if (_fxMarker)
+                            foreach (int up in new[] { 3, 7 })
+                                GD.Print($"[fx] scale marker {up - 1} cells up: "
+                                       + (_burst.Emit(_filmControl, _focus + Vector3.Up * up, null, 4) != null));
+                        GD.Print($"[probe] camera pos {_camera.GlobalPosition} fov {_camera.Fov} "
+                               + $"near {_camera.Near} focus {_focus} distance {_distance} "
+                               + $"viewport {GetViewport().GetVisibleRect().Size} keep {_camera.KeepAspect}");
+                        _probeT0 = Time.GetTicksUsec();
+                        GD.Print($"[fx] control burst {_filmControl} at focus {_focus}: "
+                               + (_burst.Emit(_filmControl, _focus + Vector3.Up, null, _fxProbe) != null));
+                    }
                     using var shot = GetViewport().GetTexture().GetImage();
                     shot.SavePng($"{_film}{_filmSaved:D4}.png");
                     // ⚠ The REAL elapsed time, not the script clock. Particles age on engine time
