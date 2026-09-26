@@ -18,6 +18,11 @@ public enum SoundGroup
 {
     LocalRide = 3, LocalAmbient = 4, GlobalRide = 5, GlobalKids = 6, GlobalStaff = 7,
     GlobalAmbient = 8, GlobalUi = 9, GlobalBumper = 11,
+    /// <summary>⚠ NOT A SCRIPT GROUP. Native audio category 6, `AUDIO/RIDES/trck`
+    /// (findings/sound.md's category registry), which only native code reaches: the track-ride
+    /// cars' `0x111428(audio, 6, 4 | 0xf, ...)`. Numbered well clear of the script range so that
+    /// no script operand can ever select it.</summary>
+    NativeRidesTrack = 0x106,
 }
 
 /// <summary>A `*SFX.MAP` -- the event-to-clip index beside a `.SDT` bank. Record sizes and the
@@ -220,6 +225,7 @@ public sealed class SoundCatalogue
         SoundGroup.GlobalAmbient => "/AUDIO/GLOBAL/AMBSFX.MAP",
         SoundGroup.GlobalUi => "/AUDIO/GLOBAL/UISFX.MAP",
         SoundGroup.GlobalBumper => "/AUDIO/RIDES/BUMPSFX.MAP",
+        SoundGroup.NativeRidesTrack => "/AUDIO/RIDES/TRCKSFX.MAP",
         _ => null,
     };
 

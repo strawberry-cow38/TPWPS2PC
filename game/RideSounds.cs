@@ -425,6 +425,10 @@ public sealed class RideSounds
     /// <summary>`KILLOBJ tag`: the ride's objects with that tag stop now; a loop with an end clip
     /// plays it. Logged with the script time, because a loop's END is as much a fact of the
     /// timeline as its start -- an assembled track has to stop the grunt where the script did.</summary>
+    /// <summary>Whether a voice with this owner and tag is still sounding. The track-ride cars restart
+    /// their engine note when it has ended (`0x111cc8` then vtable +0x34 in every car step).</summary>
+    public bool Sounding(int ride, int tag) => _voices.Any(v => v.Ride == ride && v.Tag == tag && !v.Finished && IsPlaying(v.Player));
+
     public void Kill(int rideId, string ride, int tag, long scriptMs)
     {
         var hit = _voices.Where(v => v.Ride == rideId && v.Tag == tag).ToList();

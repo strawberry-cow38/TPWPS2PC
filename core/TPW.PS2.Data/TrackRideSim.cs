@@ -89,6 +89,10 @@ public sealed class TrackRideSim
     public event Action<int> Released;
     /// <summary>A guest boarded a new car.</summary>
     public event Action<int, TrackCar> Boarded;
+    /// <summary>A car's one-shot sound: native category 6 event 0xF, on a kart entering the overtake
+    /// or the spin state (0x2049D0). The engine loop, event 4, is the presenter's: the console
+    /// restarts it whenever it has stopped.</summary>
+    public event Action<TrackCar, int> SoundCue;
 
     /// <summary>0x2EE528[world*2 + park]: nonzero is karts. JUNGLE park 1 karts, park 2 boats; the
     /// other three worlds the other way round.</summary>
@@ -333,9 +337,10 @@ public sealed class TrackRideSim
             case 3:
                 if (c.State != 2) return;
                 c.Accel = (byte)(c.BaseAccel << 1); c.Target = (byte)(c.BaseMax + Rand(6)); c.Timer = (byte)(10 + 2 * Rand(11));
+                SoundCue?.Invoke(c, 0xf);
                 break;
             case 4: c.Timer = 20; break;
-            case 5: c.Timer = (byte)(8 + (short)(Track.Yaw(c.Distance) - c.Heading) / 512); break;
+            case 5: c.Timer = (byte)(8 + (short)(Track.Yaw(c.Distance) - c.Heading) / 512); SoundCue?.Invoke(c, 0xf); break;
             case 6: c.Timer = (byte)(5 + 2 * Rand(11)); break;
         }
         c.State = (byte)s;

@@ -24,10 +24,27 @@ public partial class Viewer
         public int Price;
         public Node3D Frame;
         public readonly List<Node3D> Pieces = new();
-        public readonly Dictionary<TrackCar, (Node3D Node, Vector3 Was, Vector3 Now, float WasYaw, float NowYaw)> Cars = new();
+        public readonly Dictionary<TrackCar, CarView> Cars = new();
+        public int NextTag = CarSoundTagBase;
         public readonly HashSet<(int X, int Y)> Cells = new();
         public long SeenTime = -1;
     }
+
+    /// <summary>A drawn car: its node, the model and mesh (for the seat fitting), its last two poses
+    /// for interpolation, and the sound tag its engine voice is registered under.</summary>
+    sealed class CarView
+    {
+        public Node3D Node;
+        public AnimatedModel Model;
+        public Model Mesh;
+        public Vector3 Was, Now;
+        public float WasYaw, NowYaw;
+        public int Tag;
+    }
+
+    /// <summary>Car voices share the ride's sound owner with its script's objects, whose tags are small
+    /// script numbers, so the cars' tags start well above them.</summary>
+    const int CarSoundTagBase = 0x7000;
 
     readonly Dictionary<int, TrackRideView> _tracks = new();
     TrackRideView _trackTool;
@@ -105,6 +122,7 @@ public partial class Viewer
         AddChild(frame);
         var view = new TrackRideView { Id = id, Ride = ride, Sim = sim, Layout = layout, Dir = dir, Prefix = prefix, Price = price, Frame = frame };
         _tracks[id] = view;
+        sim.SoundCue += (car, evt) => TrackCarSound(view, car, evt);
         _park.Claimed ??= (x, y) => _tracks.Values.Any(v => v.Cells.Contains((x, y)));
         PlaceFrame(view);
         RebuildTrackView(view);
@@ -128,15 +146,17 @@ public partial class Viewer
 
     /// <summary>A mesh from the ride's folder, built the way LoadPlaceable builds any model, with the
     /// loader's Z mirror taken off (the frame carries the plot's own).</summary>
-    Node3D TrackModel(TrackRideView v, string stem)
+    Node3D TrackModel(TrackRideView v, string stem) => TrackModel(v, stem, out _, out _);
+
+    Node3D TrackModel(TrackRideView v, string stem, out AnimatedModel model, out Model mesh)
     {
         var assets = _lib.Rides.FirstOrDefault(r => r.Model != null
             && r.Model.Path.Equals(v.Dir + stem + ".mps", StringComparison.OrdinalIgnoreCase));
-        var built = LoadPlaceable(assets, out _, out _);
-        if (built?.Root == null) return null;
-        built.Root.Scale = Vector3.One;
+        model = LoadPlaceable(assets, out _, out mesh);
+        if (model?.Root == null) return null;
+        model.Root.Scale = Vector3.One;
         var holder = new Node3D { Name = stem };
-        holder.AddChild(built.Root);
+        holder.AddChild(model.Root);
         return holder;
     }
 
@@ -178,7 +198,7 @@ public partial class Viewer
         RefreshFloor();
     }
 
-    /// <summary>Per rendered frame: the cars, between the last two ticks.</summary>
+    /// <summary>Per rendered frame: the cars, between the last two ticks, and their engine voices.</summary>
     void PresentTracks(float alpha)
     {
         foreach (var v in _tracks.Values)
@@ -187,7 +207,10 @@ public partial class Viewer
             if (ticked) v.SeenTime = _sim.Time;
             foreach (var gone in v.Cars.Keys.Where(c => !v.Sim.Cars.Contains(c)).ToList())
             {
-                if (IsInstanceValid(v.Cars[gone].Node)) v.Cars[gone].Node.QueueFree();
+                var cv = v.Cars[gone];
+                if (IsInstanceValid(cv.Node)) cv.Node.QueueFree();
+                _sounds?.Kill(v.Id, "track", cv.Tag, (long)_busElapsedMs);
+                _sounds?.Follow(v.Id, cv.Tag, null);
                 v.Cars.Remove(gone);
             }
             if (v.Layout.Length == 0) continue;
@@ -196,28 +219,69 @@ public partial class Viewer
                 var (x, y, z) = v.Layout.Position(car.Distance, car.Lateral);
                 var now = new Vector3(x / 256f, y / 256f, z / 256f);
                 float yawNow = car.Heading * Mathf.Tau / 4096f;
-                if (!v.Cars.TryGetValue(car, out var st))
+                if (!v.Cars.TryGetValue(car, out var cv))
                 {
                     string stem = car.IsKart
                         ? v.Prefix + new[] { "blue", "green", "orange", "purple" }[car.Colour & 3]
                         : v.Prefix + "ring";
-                    var node = TrackModel(v, stem) ?? (car.IsKart ? TrackModel(v, v.Prefix + "blue") : null) ?? new Node3D();
+                    AnimatedModel model; Model mesh;
+                    var node = TrackModel(v, stem, out model, out mesh);
+                    if (node == null && car.IsKart) node = TrackModel(v, v.Prefix + "blue", out model, out mesh);
+                    node ??= new Node3D();
                     v.Frame.AddChild(node);
-                    st = (node, now, now, yawNow, yawNow);
+                    cv = new CarView { Node = node, Model = model, Mesh = mesh, Was = now, Now = now, WasYaw = yawNow, NowYaw = yawNow, Tag = v.NextTag++ };
+                    v.Cars[car] = cv;
+                    var carNode = node;
+                    _sounds ??= MakeSounds();
+                    _sounds?.Follow(v.Id, cv.Tag, () => IsInstanceValid(carNode) ? carNode.GlobalPosition : null);
                 }
-                else if (ticked) st = (st.Node, st.Now, now, st.NowYaw, yawNow);
-                var pos = st.Was.Lerp(st.Now, alpha);
-                float yaw = Mathf.LerpAngle(st.WasYaw, st.NowYaw, alpha);
+                else if (ticked) { cv.Was = cv.Now; cv.Now = now; cv.WasYaw = cv.NowYaw; cv.NowYaw = yawNow; }
+                var pos = cv.Was.Lerp(cv.Now, alpha);
+                float yaw = Mathf.LerpAngle(cv.WasYaw, cv.NowYaw, alpha);
                 // Car heading h: the console turns the model by −h·2π/4096 (0x2039C8), i.e. RotY(+h) here.
-                st.Node.Transform = new Transform3D(new Basis(Vector3.Up, yaw), pos);
-                v.Cars[car] = st;
+                cv.Node.Transform = new Transform3D(new Basis(Vector3.Up, yaw), pos);
+                // ⭐ The engine note: category 6 event 4, a 226 ms clip. The console does not loop it;
+                // every car step asks whether the voice is still alive (0x111CC8) and starts it again
+                // if not (vtable +0x34), which is what this does once a tick.
+                // ⚠ Parameter 4 is set to speed × 100 / target every step, and what the audio object does
+                // with parameter 4 is not read, so no pitch or volume follows speed here.
+                if (ticked && _sounds != null && !_sounds.Sounding(v.Id, cv.Tag))
+                    _sounds.Cue(v.Id, "track", (long)_busElapsedMs, RseOpcode.EVENT, (int)SoundGroup.NativeRidesTrack,
+                                -1, 4, cv.Tag, cv.Node.GlobalPosition);
             }
         }
+    }
+
+    /// <summary>A car's one-shot (category 6 event 0xF), from the sim.</summary>
+    void TrackCarSound(TrackRideView v, TrackCar car, int evt)
+    {
+        _sounds ??= MakeSounds();
+        if (_sounds == null || !v.Cars.TryGetValue(car, out var cv) || !IsInstanceValid(cv.Node)) return;
+        _sounds.Cue(v.Id, "track", (long)_busElapsedMs, RseOpcode.EVENT, (int)SoundGroup.NativeRidesTrack,
+                    -1, evt, cv.Tag + 0x800, cv.Node.GlobalPosition);
+    }
+
+    /// <summary>⭐ RIDERS IN THE CARS. `0x205568` seats a boarding guest on the car model's seat
+    /// `n + 1` (0x80 fittings: `bluehead`, `Head02`...), and with one guest per car that is always
+    /// fitting 1. Drawn through the same SeatPose the scripted rides use, so a head in a kart is
+    /// placed exactly as a head on Crazy Ape's arm.</summary>
+    void SeatTrackRiders()
+    {
+        foreach (var v in _tracks.Values)
+            foreach (var car in v.Sim.Cars)
+            {
+                if (car.Guest is not int guest || !v.Cars.TryGetValue(car, out var cv)) continue;
+                if (cv.Mesh == null || cv.Model?.Root == null || !IsInstanceValid(cv.Model.Root) || cv.Model.LastWorld == null) continue;
+                if (cv.Mesh.FindFitting(1, 0x80) is not { Node: >= 0 } fit) continue;
+                if (!SeatPose(cv.Mesh, cv.Model, cv.Model.Root.GlobalTransform, fit, out var pose, out var forward, out _)) continue;
+                _seated[guest] = (pose, $"{v.Ride.Name} car {car.Index} on {cv.Mesh.NodeName(fit.Node)}", forward, "car", float.NaN);
+            }
     }
 
     void RemoveTrackView(int id)
     {
         if (!_tracks.Remove(id, out var v)) return;
+        foreach (var cv in v.Cars.Values) { _sounds?.Kill(id, "track", cv.Tag, (long)_busElapsedMs); _sounds?.Follow(id, cv.Tag, null); }
         if (_trackTool == v) { _trackTool = null; _afterTrack = null; _ghostView?.Clear(); }
         if (IsInstanceValid(v.Frame)) v.Frame.QueueFree();
     }
