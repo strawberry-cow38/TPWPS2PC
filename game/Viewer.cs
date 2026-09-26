@@ -2924,6 +2924,7 @@ public partial class Viewer : Node3D
                              UiSoundGroup, -1, CannotAffordSound, 0, Cell(ParkPaths.Centre(new ParkCell(cx, cy))));
                 return false;
             }
+            _paidFor[id] = _paidFor.GetValueOrDefault(id) + due;
             GD.Print($"[money] {Leaf(assets.Name)} cost {Money.Format(due)}; the park holds {Money.Format(_sim.Finances.Balance)}");
             _sounds?.Cue(0, "build", _parkTicks * ParkSim.TickMilliseconds, RseOpcode.EVENT,
                          UiSoundGroup, -1, PurchaseSound, 0, Cell(ParkPaths.Centre(new ParkCell(cx, cy))));
@@ -7093,6 +7094,36 @@ public partial class Viewer : Node3D
 
     /// <summary>Delete the selected object. ⭐ Drops it from the park AND the simulation: a ride
     /// left in `ParkSim` with no model is one guests keep walking to.</summary>
+    /// <summary>What the park actually paid for each thing standing in it, in tenths, so that
+    /// deleting it can hand half of it back.
+    ///
+    /// ⭐ THE LEDGER RECORDS WHAT WAS CHARGED, not what the catalogue says the thing costs.
+    /// Re-pricing at delete time would drift the moment anything is priced per unit -- a track
+    /// ride's legs are bought a leg at a time and a coaster is priced per track piece, so "half
+    /// its price" and "half of what you paid" are different numbers for the same ride.</summary>
+    readonly Dictionary<int, int> _paidFor = new();
+
+    /// <summary>Master: "deleting anything should give you a 50% refund."</summary>
+    public const int RefundPercent = 50;
+
+    /// <summary>Hand back <see cref="RefundPercent"/>% of what was paid for <paramref name="id"/>,
+    /// plus the queue tiles that went with it, and forget the entry.
+    ///
+    /// ⚠ Filed as a PLAIN credit with no category. The console files income by category and
+    /// switches on two of them; which number a refund would carry is not read, and inventing one
+    /// would put made-up rows in the income breakdown.</summary>
+    int RefundFor(int id, int queueCells)
+    {
+        int paid = _paidFor.TryGetValue(id, out int v) ? v : 0;
+        _paidFor.Remove(id);
+        // The queue was bought by the tile and is being destroyed with the ride, so it is part of
+        // what is being given up. ⚠ Queue tiles, not path tiles -- ClearQueue leaves Path and Both.
+        paid += queueCells * PathPrices.Tenths(PathPrices.QueuePounds);
+        int back = paid * RefundPercent / 100;
+        if (back > 0) _sim?.Finances.Credit(back);
+        return back;
+    }
+
     void DeleteSelected()
     {
         if (_selected < 0 || _selected >= _park.Placed.Count) { Status("nothing selected"); return; }
@@ -7122,9 +7153,15 @@ public partial class Viewer : Node3D
         ClearSelection();
         _shownBox = -1;
         ShowBoxFor(-1);
+        // ⭐ AFTER the removal has actually succeeded -- refunding a delete that then fails would
+        // pay the park for something it still owns.
+        int back = RefundFor(p.Id, queueCells);
         GD.Print($"[menu] deleted {name} (id {p.Id}); {queueCells} queue cells and {doors} doors "
-               + "with it; floor rebuilt");
-        Status(queueCells > 0 ? $"deleted {name} and its queue" : $"deleted {name}");
+               + $"with it; floor rebuilt; refunded {Money.Format(back)} "
+               + $"({RefundPercent}%), the park holds {Money.Format(_sim?.Finances?.Balance ?? 0)}");
+        Status(back > 0
+            ? $"deleted {name} -- {Money.Format(back)} back"
+            : queueCells > 0 ? $"deleted {name} and its queue" : $"deleted {name}");
     }
 
     bool SelectUnderCursor()
