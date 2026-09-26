@@ -45,6 +45,72 @@ public sealed class RideParticles
 
     public int Spawned { get; private set; }
 
+    /// <summary>⭐⭐ THE CONSOLE'S OWN MOTION, converted into Godot's units.
+    ///
+    /// The record states all of it and `ParticleTemplate` documents the arithmetic:
+    /// <see cref="ParticleTemplate.ParticleVelocity"/> is per TICK in position units, positions are
+    /// cells x <see cref="ParticleTemplate.PositionUnitsPerCell"/>, and a tick is
+    /// <see cref="ParticleTemplate.TickMilliseconds"/>. So a speed in cells per second is
+    /// `v / 640 / 0.031`, and a gravity -- which `0x189e78` subtracts from Y velocity EVERY tick,
+    /// making it an acceleration -- is that again per tick, `g / 640 / 0.031^2`.
+    ///
+    /// ⭐ `RadialSpeed` nonzero means the record wants a BURST, not a jet: `0x1888a8` gives a
+    /// random XZ direction at `(rand &amp; 0x7fff) % v` with Y a signed `rand % v`. That is a
+    /// sphere, so the cone opens to 180 degrees and the direction stops mattering.
+    ///
+    /// ⚠⚠ DRAG IS APPROXIMATED, AND LEAVING IT OFF WAS NOT AN OPTION. The console does
+    /// `v -= v * drag >> 10` every tick -- exponential decay, a fifth per tick for ApeSnot -- and
+    /// Godot's `Damping` subtracts a CONSTANT per second, which is a different CURVE. I first
+    /// wrote that off as "owed" and then did the arithmetic: ApeSnot leaves at 5.65 cells/s and
+    /// lives 2.33s, so undamped it travels **13 cells** where the console's drag carries it
+    /// **0.82** -- sixteen times too far. That is not a missing refinement, it is smoke that
+    /// shoots off the screen instead of hanging by the ape's face.
+    ///
+    /// ⭐ So the damping is chosen to match the TOTAL TRAVEL, which is the thing you can see:
+    /// exponential distance is `v * tick / k` (a geometric series, k = drag/1024), linear is
+    /// `v^2 / 2d`, so `d = v * k / (2 * tick)`. The particle ends up in the right place.
+    /// ⚠ WHAT IS STILL WRONG: the easing between here and there. The console dumps most of its
+    /// speed in the first few ticks and crawls after; this slows evenly. Right destination, wrong
+    /// journey -- said plainly because "drag is wired" would imply both.</summary>
+    static (Vector3 Direction, float SpreadDegrees, float SpeedMin, float SpeedMax, float Gravity,
+            float Damping) Motion(ParticleTemplate t)
+    {
+        const float cell = ParticleTemplate.PositionUnitsPerCell;
+        float tick = ParticleTemplate.TickMilliseconds / 1000f;
+        float PerSecond(float v) => v / cell / tick;
+
+        float gravity = PerSecond(t.Gravity) / tick;   // an acceleration: per tick, per tick
+
+        // ⚠ k is the per-tick fraction the console removes; 0 means no drag and no damping.
+        float k = t.Drag / 1024f;
+        float Damping(float v) => k > 0f && v > 0f ? v * k / (2f * tick) : 0f;
+
+        if (t.RadialSpeed > 0)
+        {
+            float r = PerSecond(t.RadialSpeed);
+            // ⚠ The XZ speed is `rand % v` and Y is a SIGNED `rand % v`, so the fastest particle
+            // is the one that rolls high on both -- but Godot draws one speed per particle and
+            // fires it along a cone, so the range is 0..v and the cone is the whole sphere.
+            return (Vector3.Up, 180f, 0f, Math.Max(0.01f, r), gravity, Damping(r));
+        }
+
+        var (vx, vy, vz) = t.ParticleVelocity;
+        var v3 = new Vector3(vx, vy, vz);
+        float speed = PerSecond(v3.Length());
+        // ⚠ A record with no velocity at all still has to point somewhere; up is the console's own
+        // default for `EVENT 1` and the jitter is what actually moves it.
+        var dir = v3.LengthSquared() > 0 ? v3.Normalized() : Vector3.Up;
+        // ⭐ The cone comes from the jitter the birth adds per axis, against the speed it is added
+        // to: a big jitter on a slow particle is a wide spray, the same jitter on a fast one is
+        // barely a wobble. With no speed at all the jitter IS the motion, so it opens right up.
+        float jitter = PerSecond(t.VelocityJitter);
+        float spread = speed > 0.001f
+            ? Mathf.RadToDeg(Mathf.Atan2(jitter, speed))
+            : (jitter > 0f ? 180f : 0f);
+        return (dir, Mathf.Clamp(spread, 0f, 180f), Math.Max(0f, speed - jitter),
+                Math.Max(0.01f, speed + jitter), gravity, Damping(speed));
+    }
+
     /// <summary>⭐⭐ THE EFFECT'S OWN SPRITE, as a strip of its frames.
     ///
     /// `ParticleSprites` holds the executable's two tables -- group -> first image (`0x364058`)
@@ -201,6 +267,14 @@ public sealed class RideParticles
         float emitterSeconds = t.Immortal ? life
             : Math.Clamp(t.EmitterLife * ParticleTemplate.TickMilliseconds / 1000f, 0f, 8f);
 
+        var motion = Motion(t);
+        // ⚠ Printed so the numbers can be checked against the record rather than judged by eye:
+        // a puff that looks plausible and a puff that is right are different claims.
+        GD.Print($"[fx] {e.Name}: dir {motion.Direction.Snapped(Vector3.One * 0.01f)} "
+               + $"spread {motion.SpreadDegrees:F0}deg speed {motion.SpeedMin:F2}..{motion.SpeedMax:F2} "
+               + $"cells/s gravity {motion.Gravity:F2} cells/s2 "
+               + $"(raw v={t.ParticleVelocity} jitter={t.VelocityJitter} radial={t.RadialSpeed} "
+               + $"g={t.Gravity} drag={t.Drag} -> damping {motion.Damping:F1})");
         var p = new CpuParticles3D
         {
             Amount = count,
@@ -214,11 +288,17 @@ public sealed class RideParticles
                 : (emitterSeconds <= 0f ? 1f : 0.1f),
             Emitting = false,
             ColorRamp = RampOf(e),
-            Direction = Vector3.Up,
-            Spread = 35f,
-            InitialVelocityMin = size * 1.5f,
-            InitialVelocityMax = size * 3.5f,
-            Gravity = new Vector3(0, -1.5f, 0),
+            // ⭐⭐ THE MOTION IS THE RECORD'S NOW, not mine. Every one of these used to be a
+            // number I picked -- straight up, a 35-degree cone, a speed derived from the SIZE of
+            // all things, and a gravity of 1.5. See `Motion` for the conversion out of the
+            // console's units.
+            Direction = motion.Direction,
+            Spread = motion.SpreadDegrees,
+            InitialVelocityMin = motion.SpeedMin,
+            InitialVelocityMax = motion.SpeedMax,
+            Gravity = new Vector3(0, -motion.Gravity, 0),
+            DampingMin = motion.Damping,
+            DampingMax = motion.Damping,
             ScaleAmountMin = Math.Max(0.01f, Math.Min(size0, size1)),
             ScaleAmountMax = Math.Max(0.02f, Math.Max(size0, size1)),
             // ⚠⚠ A CpuParticles3D DRAWS A MESH, NOT A TEXTURE. It has no Texture property at all,
