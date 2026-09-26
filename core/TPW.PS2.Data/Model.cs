@@ -521,7 +521,28 @@ public sealed partial class Model
     /// a match.</param>
     /// <param name="Id">The number the script uses.</param>
     /// <param name="Node">The model node it IS -- the nth fitting is the nth helper node.</param>
-    public readonly record struct Fitting(uint Flags, int Id, int Node, float X, float Y, float Z);
+    public readonly record struct Fitting(uint Flags, int Id, int Node, float X, float Y, float Z)
+    {
+        /// <summary>⭐⭐ THE SURFACE RECORD, present exactly when <see cref="Flags"/> has `0x40`.
+        /// A fitting with one is not at a point in space at all -- it is `(u, v, h)` on ONE
+        /// TRIANGLE of its PARENT mesh, so that it can ride the face as the mesh morphs:
+        ///
+        /// <code>P = (tri[b0]*(1-u) + tri[b1]*u)*(1-v) + tri[b2]*v + h*N</code>
+        ///
+        /// with the three vertices taken through the PARENT's world matrix first, and `N` the
+        /// triangle normal whose winding is the M3D2 FACING bit (the LSB of vertex 2's y). Read
+        /// from `FUN_001f1248` at `0x1f138c..0x1f16e0`; see `findings/particles.md` and the
+        /// memory note `reference_tpw_ps2_fitting_surface_uvh`.
+        ///
+        /// ⚠ `X`/`Y`/`Z` above are NOT this. They are the older reading of the same pointer and
+        /// are only meaningful through <see cref="FittingLocal"/>, which cannot fire.</summary>
+        public Surface? OnSurface { get; init; }
+    }
+
+    /// <summary>Where a `0x40` fitting sits on its parent's skin. `Corner0/1/2` select which of
+    /// the three loaded vertices each term uses -- they are NOT always 0,1,2.</summary>
+    public readonly record struct Surface(int Batch, int FirstVertex, float U, float V, float H,
+                                          int Corner0, int Corner1, int Corner2);
 
     List<Fitting> _fittings;
 
@@ -565,8 +586,14 @@ public sealed partial class Model
                 int id = (int)U32(o + 4), p = (int)U32(o + 12);
                 float x = 0, y = 0, z = 0;
                 if (p > 0 && p + 16 <= D.Length) { x = F32(p + 4); y = F32(p + 8); z = F32(p + 12); }
+                // ⭐ The same pointer, read as what it actually is. Layout from the consumer:
+                // u16 batch, u16 firstVertex, f32 u, f32 v, f32 h, f32 (unread), u8 b0 b1 b2.
+                Surface? surf = null;
+                if ((flags & 0x40) != 0 && p > 0 && p + 0x13 <= D.Length)
+                    surf = new Surface(U16(p), U16(p + 2), F32(p + 4), F32(p + 8), F32(p + 0xc),
+                                       D[p + 0x10], D[p + 0x11], D[p + 0x12]);
                 // ⚠ The nth fitting is the nth HELPER, not whatever the record's own u16 says.
-                _fittings.Add(new Fitting(flags, id, Meshes.Count + i, x, y, z));
+                _fittings.Add(new Fitting(flags, id, Meshes.Count + i, x, y, z) { OnSurface = surf });
             }
             return _fittings;
         }
@@ -637,6 +664,23 @@ public sealed partial class Model
 
     /// <summary>A node's parent node, or -1 at a root. The parent is the record's `+4`, the
     /// offset <see cref="WorldTransforms"/> already walks for every mesh and helper.</summary>
+    /// <summary>⭐ The index, in this mesh's own vertex list, of a batch's first vertex.
+    /// <see cref="Vertices"/> walks <see cref="Batches"/> in order and appends `Count` each, so a
+    /// batch's vertices start after every earlier batch's -- which is what turns the fitting
+    /// surface record's (batch, firstVertex) pair into one index into the live positions.
+    /// ⚠ Returns -1 for a batch that does not exist rather than an index that looks fine.</summary>
+    public int BatchVertexBase(Mesh m, int batch)
+    {
+        if (batch < 0) return -1;
+        int at = 0, j = 0;
+        foreach (var b in Batches(m))
+        {
+            if (j++ == batch) return at;
+            at += b.Count;
+        }
+        return -1;
+    }
+
     public int NodeParent(int node)
     {
         if (node < 0) return -1;

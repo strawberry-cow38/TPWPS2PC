@@ -3738,6 +3738,29 @@ public partial class Viewer : Node3D
                 {
                     var fit = fm.FindFitting(n, 0x100);
                     var w = NodeWorld(fr.Id, n, 0x100); var d = NodeWorldDir(fr.Id, n, 0x100);
+                    // ⭐ THE CROSS-CHECK. The agent read ApeSnot nose1 as batch 6, verts 19..21,
+                    // uvh (0.089, 0.182, 0.019), corner selectors 0,2,1 -- from the CONSUMER's
+                    // instructions. This parses the same bytes from the FILE. If the two agree
+                    // digit for digit, the layout is right for a reason rather than by assertion.
+                    // ⚠ THE CHECK THAT SEPARATES "the morph is working" FROM "my indices are
+                    // wrong". The agent computed P from the BIND pose and got 0.17 from the
+                    // helper origin. If my bind-pose P agrees, the mapping is right and any
+                    // larger live distance is the face actually moving. If it does not, I am
+                    // reading the wrong three vertices and the number would have looked fine.
+                    if (fit is { OnSurface: not null } fc && mdl != null)
+                    {
+                        var live = SurfacePoint(mdl, fm, fc);
+                        var bind = SurfacePointBind(mdl, fm, fc);
+                        var org = NodeWorld(fr.Id, n, 0x100);
+                        if (org is { } o0)
+                            GD.Print($"[fit] node {n}: drawn {o0.Snapped(Vector3.One*0.001f)}"
+                                   + $" | bind P {(bind is { } bp ? bp.Snapped(Vector3.One*0.001f).ToString() : "-")}"
+                                   + $" d(bindP,helper)={(bind is { } b2 ? (b2 - HelperOrigin(fr.Id, n)).Length().ToString("F3") : "-")}"
+                                   + $" | live P {(live is { } lp ? lp.Snapped(Vector3.One*0.001f).ToString() : "-")}");
+                    }
+                    if (fit?.OnSurface is { } sf)
+                        GD.Print($"[fit] node {n}: SURFACE batch {sf.Batch} firstVert {sf.FirstVertex} "
+                               + $"uvh({sf.U:F3},{sf.V:F3},{sf.H:F3}) corners {sf.Corner0},{sf.Corner1},{sf.Corner2}");
                     GD.Print($"[fit] node {n}: fitting={(fit is { } g ? $"id {g.Id} node {g.Node} xyz({g.X:F2},{g.Y:F2},{g.Z:F2}) flags 0x{g.Flags:X}" : "(none)")}"
                            + $" world={(w is { } p2 ? p2.ToString() : "-")} dir={(d is { } d2 ? d2.Snapped(Vector3.One * 0.01f).ToString() : "-")}");
                 }
@@ -4406,6 +4429,62 @@ public partial class Viewer : Node3D
     /// ⭐ And `0x1f2ac0` says which axis: the node's world matrix at +0x20/+0x24/+0x28, i.e. its
     /// **Z basis**, NEGATED when the fitting's flag bit `0x10` is set, then normalised. (With a
     /// nonzero fourth argument it also returns +0x10..0x18, the Y axis; this caller passes 0.)</summary>
+    /// <summary>The world point a surface fitting sits at, or null when it is not one (or the
+    /// data needed is not there yet, which is a real state and not a reason to guess).
+    ///
+    /// ⚠ THE INDEX SPACES. `Surface.FirstVertex` counts from the start of its BATCH, while the
+    /// port's live positions are one flat list per mesh. <see cref="Model.BatchVertexBase"/>
+    /// converts, because `Model.Vertices` walks the batches in order -- and getting that wrong
+    /// would pick three real vertices from the wrong part of the face and look almost right.
+    ///
+    /// ⚠ The normal's winding is the M3D2 FACING bit: the LOW BIT of vertex 2's y, read off the
+    /// float's bits, not its value. Set means the right-hand normal of (v0, v1, v2).</summary>
+    Vector3? SurfacePoint(AnimatedModel model, Model mesh, Model.Fitting fit, bool bindPose = false)
+    {
+        if (fit.OnSurface is not { } sf) return null;
+        int parent = mesh.NodeParent(fit.Node);
+        if (parent < 0 || parent >= mesh.Meshes.Count) return null;           // parent must be a MESH
+        var pm = mesh.Meshes[parent];
+        int bse = mesh.BatchVertexBase(pm, sf.Batch);
+        if (bse < 0) return null;
+        // ⭐ The drawn positions, so the point follows the morph; the bind pose when nothing has
+        // deformed this mesh yet.
+        var pos = bindPose ? model.BindPositions(pm.Offset) : model.LivePositions(pm.Offset);
+        if (pos == null || bse + sf.FirstVertex + 2 >= pos.Count) return null;
+        if (!model.LastWorld.TryGetValue(pm.Offset, out var pw)) return null;
+
+        var v = new System.Numerics.Vector3[3];
+        for (int k = 0; k < 3; k++)
+            v[k] = System.Numerics.Vector3.Transform(pos[bse + sf.FirstVertex + k], pw);
+
+        var a = v[0] - v[1];
+        var b = v[2] - v[1];
+        bool facing = (BitConverter.SingleToInt32Bits(pos[bse + sf.FirstVertex + 2].Y) & 1) != 0;
+        var n = facing ? System.Numerics.Vector3.Cross(b, a) : System.Numerics.Vector3.Cross(a, b);
+        if (n.LengthSquared() > 0f) n = System.Numerics.Vector3.Normalize(n);
+
+        int C(int i) => Math.Clamp(i, 0, 2);
+        var edge = v[C(sf.Corner0)] * (1f - sf.U) + v[C(sf.Corner1)] * sf.U;
+        var pt = edge * (1f - sf.V) + v[C(sf.Corner2)] * sf.V + n * sf.H;
+        return model.Root.GlobalTransform * new Vector3(pt.X, pt.Y, pt.Z);
+    }
+
+    /// <summary>⚠ FOR THE CHECK ONLY: P from the BIND pose, which is what an offline reading of
+    /// the disc computes. The live one should differ only by however far the face has moved.</summary>
+    Vector3? SurfacePointBind(AnimatedModel model, Model mesh, Model.Fitting fit) =>
+        SurfacePoint(model, mesh, fit, bindPose: true);
+
+    /// <summary>⚠ FOR THE CHECK ONLY: the helper's own origin, ignoring any surface record.</summary>
+    Vector3 HelperOrigin(int rideId, int node)
+    {
+        var mdl = _scripted.FirstOrDefault(e => e.Ride.Id == rideId).Model;
+        var fm = _rideMeshes[rideId];
+        var fit = fm.FindFitting(node, 0x100) ?? default;
+        mdl.LastWorld.TryGetValue(fm.NodeOffset(fit.Node), out var w);
+        var p = System.Numerics.Vector3.Transform(fm.FittingLocal(fit), w);
+        return mdl.Root.GlobalTransform * new Vector3(p.X, p.Y, p.Z);
+    }
+
     Vector3? NodeWorldDir(int rideId, int node, uint space)
     {
         if (!_rideMeshes.TryGetValue(rideId, out var mesh)) return null;
@@ -4436,6 +4515,14 @@ public partial class Viewer : Node3D
         if (model?.Root == null || !IsInstanceValid(model.Root) || model.LastWorld == null) return null;
         if (mesh.FindFitting(node, space) is not { Node: >= 0 } fit) return null;
         if (!model.LastWorld.TryGetValue(mesh.NodeOffset(fit.Node), out var w)) return null;
+        // ⭐⭐ A `0x40` FITTING IS A POINT ON THE PARENT'S SKIN, not a point in space. `0x1f1248`
+        // loads three consecutive vertices of the parent mesh, puts them through the PARENT's
+        // world matrix, and replaces the translation with
+        //     P = (tri[b0]*(1-u) + tri[b1]*u)*(1-v) + tri[b2]*v + h*N
+        // so the fitting rides the face as it morphs. That is the whole reason ApeSnot has one:
+        // the snot has to come off the nose while the nose is moving.
+        if (SurfacePoint(model, mesh, fit) is { } surfaceWorld) return surfaceWorld;
+
         var p = System.Numerics.Vector3.Transform(mesh.FittingLocal(fit), w);
         return model.Root.GlobalTransform * new Vector3(p.X, p.Y, p.Z);
     }

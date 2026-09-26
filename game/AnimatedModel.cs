@@ -27,6 +27,11 @@ public sealed class AnimatedModel
         public Model.Mesh Mesh;
         public int NodeOffset;
         public List<System.Numerics.Vector3> BindPos;
+        /// <summary>⭐ The positions as last DRAWN -- morphed or skinned, not the bind pose.
+        /// `RebuildGeometry` used to compute these into a local and drop them; a fitting pinned to
+        /// this mesh's surface has to read the same vertices the player is looking at, or it
+        /// tracks a face that is not there any more.</summary>
+        public List<System.Numerics.Vector3> LivePos;
         public List<Godot.Vector2> Uv;
         public List<Godot.Vector3> Normal;
         public List<Model.Triangle> Tris;
@@ -607,6 +612,7 @@ public sealed class AnimatedModel
     void RebuildGeometry(Part p, float now, Matrix4x4[] pose = null)
     {
         var pos = p.BindPos;
+        // (LivePos is assigned once `pos` is final, below.)
         if (pose != null && p.Skin != null && p.AnimMap != null)
         {
             // ⭐ The game's own skinning per animated vertex (Model.Skin.Deform), fanned out to
@@ -620,6 +626,9 @@ public sealed class AnimatedModel
             var ev = p.Morph.Select(v => Sample(v.Times, v.Keys, now)).ToArray();
             pos = p.AnimMap.Select(i => ev[i]).ToList();
         }
+        // ⭐ Kept now that it is final, for fittings pinned to this surface. Same list object as
+        // BindPos when nothing deforms, which is correct: then the bind pose IS what is drawn.
+        p.LivePos = pos;
         // ⭐⭐ AUTHORED UV KEYFRAMES, the game's real moving-texture channel. One sample per
         // GROUP, fanned out to vertices through the +0x9c run list -- the same shape the position
         // paths above use, because the console walks one run list per channel.
@@ -866,6 +875,22 @@ public sealed class AnimatedModel
     /// <summary>The world matrices the last WorldAt produced, for callers that want to compare
     /// them against the bind chain. Null while the model has no tracks at all.</summary>
     public Dictionary<int, Matrix4x4> LastWorld;
+
+    /// <summary>The positions a mesh node was last drawn with, or null. ⚠ Null before the first
+    /// rebuild, which is a real state: a fitting asked for too early must fall back rather than
+    /// read a bind pose and pretend it is live.</summary>
+    public List<System.Numerics.Vector3> LivePositions(int nodeOffset)
+    {
+        foreach (var p in _parts) if (p.NodeOffset == nodeOffset) return p.LivePos;
+        return null;
+    }
+
+    /// <summary>⚠ FOR A CHECK: the bind pose, which is what an offline read of the disc sees.</summary>
+    public List<System.Numerics.Vector3> BindPositions(int nodeOffset)
+    {
+        foreach (var p in _parts) if (p.NodeOffset == nodeOffset) return p.BindPos;
+        return null;
+    }
     /// <summary>Node indices that had a track overriding their local matrix.</summary>
     public HashSet<int> OverriddenNodes = new();
 
