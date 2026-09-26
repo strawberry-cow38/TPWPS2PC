@@ -187,6 +187,15 @@ ParkSimAudit checks (`coaster:`) and the `CoasterSmoke` viewer scene:
   consumer `0x1ad378` takes `(hdr +0x1c >> 2) & 1` and ADDS its keys with it (`+=`, MIPS read in the
   decompile). Written as absolute UVs every U collapsed to 0 and the post drew as horizontal bands
   (strawberry: "should have crosses up the whole thing").
+- **What a post meets is its track dummy, not the track.** Every post is authored to meet its posed
+  `TrackDummyCentre` exactly (checked on all nine pylons of Temple of Gloom and of Caterpillar: +0.00).
+  `0x19a420` then puts the track at the dummy's LOCAL y + 0x60, ignoring the parent's offset. So the
+  rail sits 0.11 under Temple's post top and 0.39 over Caterpillar's (whose `PYLON_TOWER` stands at
+  y 0, not 0.5). That is the console's arithmetic as read; Caterpillar's station check was already
+  52 units high (geometry §4.5), so the reading of Caterpillar's numbers may still hide something.
+- Node flag 0x8000 is a draw skip: `0x22810c` tests `flags & 0x8050` before drawing a node's own
+  mesh (children still drawn), so the stacker really is hidden. On Caterpillar that is the tall
+  `STACKER` trunk, which is why its visible support is only the short tower.
 - Section 10's key at 25 % is +90° about +Y, taking the model's +Z to +X, so the yaw is +heading (the
   port had −heading, skewing every diagonal).
 - **The stacker is hidden unless something is stacked on it** (`0x199c90`, run by the stack setters
@@ -202,6 +211,9 @@ On the audit's hill oval, the climb into a 7.05-cell segment after a 6.50-cell o
 patches. The console's lift texture is therefore patchy wherever consecutive segments differ in
 length (INFERRED from the READ code; not seen on hardware).
 
-Not built yet: the stats screen as a screen; the Ultimate award record; riders drawn in the cars; coaster sounds; the Test
+Riders sit on their cars' seat fittings (id seat + 1, space 0x80; Caterpillar's missing seat 4 seats
+nobody, as on the console).
+
+Not built yet: the stats screen as a screen; the Ultimate award record; coaster sounds; the Test
 Park; moving a pylon (mode 13's Move); breakdowns; stacked pylons use the pylon below's attach point
 instead of its posed stack helper.

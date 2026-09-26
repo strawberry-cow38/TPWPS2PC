@@ -25,13 +25,23 @@ public partial class Viewer
         public Node3D Frame;
         public readonly Dictionary<CoasterNode, MeshInstance3D> Segments = new();
         public readonly Dictionary<CoasterNode, Node3D> Pylons = new();
-        public readonly Dictionary<CoasterCar, (Node3D Node, Vector3 Was, Vector3 Now, Basis WasB, Basis NowB)> Cars = new();
+        public readonly Dictionary<CoasterCar, CoasterCarView> Cars = new();
         public readonly HashSet<(int X, int Y)> Cells = new();
         public Material[] Slots, Red;
         public int WinchSeen = -1;
         public long SeenTime = -1;
         /// <summary>The last test lap's record, for the stats screen.</summary>
         public CoasterStats Stats = CoasterStats.None;
+    }
+
+    /// <summary>A drawn car: its node, the model its riders sit on, and its last two tick poses.</summary>
+    sealed class CoasterCarView
+    {
+        public Node3D Node;
+        public AnimatedModel Model;
+        public Model Mesh;
+        public Vector3 Was, Now;
+        public Basis WasB, NowB;
     }
 
     enum CoasterMode { Build, Edit }
@@ -279,6 +289,14 @@ public partial class Viewer
             if (n.Below != null && mesh.Meshes.Count > 0) Hide(mesh.Meshes[0].Name);
             drawn.Root.Scale = Vector3.One;
             var holder = new Node3D { Name = $"pylon_{n.CellX}_{n.CellZ}" };
+            // The posed track dummy (fitting 0x400000 id 2, else id 1, by the engine's node rule, the
+            // one 0x19a420 reads), kept for the checks: the post is authored to meet it.
+            if ((mesh.FindFitting(2, 0x400000) ?? mesh.FindFitting(1, 0x400000)) is { } dummyFit && drawn.LastWorld != null)
+            {
+                int node = dummyFit.Node - mesh.Meshes.Count + BitConverter.ToUInt16(mesh.D, 0x34);
+                if (drawn.LastWorld.TryGetValue(mesh.NodeOffset(node), out var w))
+                    holder.SetMeta("track_dummy", new Vector3(w.M41, w.M42, w.M43));
+            }
             holder.AddChild(drawn.Root);
             float yaw = (n.Heading + n.HalfTurn) * Mathf.Tau / 4096f;
             // Turned about the cell centre, where the post stands.
@@ -313,31 +331,52 @@ public partial class Viewer
                                   new Vector3(car.Fwd.X, car.Fwd.Y, car.Fwd.Z));
                 if (!v.Cars.TryGetValue(car, out var st))
                 {
-                    var node = CoasterCarModel(v) ?? new Node3D();
-                    v.Frame.AddChild(node);
-                    st = (node, now, now, b, b);
+                    st = CoasterCarModel(v) ?? new CoasterCarView { Node = new Node3D() };
+                    v.Frame.AddChild(st.Node);
+                    st.Was = st.Now = now; st.WasB = st.NowB = b;
+                    v.Cars[car] = st;
                 }
-                else if (ticked) st = (st.Node, st.Now, now, st.NowB, b);
+                else if (ticked) { st.Was = st.Now; st.Now = now; st.WasB = st.NowB; st.NowB = b; }
                 // Render position is quantised to 1/256 cell by the console (vt+0x74); the port draws
                 // between ticks, as it does the track rides' cars.
                 var q = st.WasB.GetRotationQuaternion().Slerp(st.NowB.GetRotationQuaternion(), alpha);
                 st.Node.Transform = new Transform3D(new Basis(q), st.Was.Lerp(st.Now, alpha));
-                v.Cars[car] = st;
             }
         }
     }
 
-    Node3D CoasterCarModel(CoasterView v)
+    CoasterCarView CoasterCarModel(CoasterView v)
     {
         string stem = v.Track.Type.CarModel;
         var assets = _lib.Rides.FirstOrDefault(r => r.Model != null
             && r.Model.Path.Equals(v.Dir + stem + ".mps", StringComparison.OrdinalIgnoreCase));
-        var built = LoadPlaceable(assets, out _, out _);
+        var built = LoadPlaceable(assets, out _, out var mesh);
         if (built?.Root == null) return null;
         built.Root.Scale = Vector3.One;
         var holder = new Node3D { Name = stem };
         holder.AddChild(built.Root);
-        return holder;
+        return new CoasterCarView { Node = holder, Model = built, Mesh = mesh };
+    }
+
+    /// <summary>⭐ Riders in the cars (`0x17d3a0`): the rider in seat s sits on the car's fitting of
+    /// id s + 1 in space 0x80. A missing id seats nobody, which is Caterpillar's fourth rider (its
+    /// seat ids are 1, 3, 3, 2). ⚠ The console detaches the HIGHEST occupied seat as the FIRST rider
+    /// leaves (`0x17d428`), so mid-unload a departed rider's head can linger; here each rider sits in
+    /// its own current slot.</summary>
+    void SeatCoasterRiders()
+    {
+        foreach (var v in _coasters.Values)
+            foreach (var car in v.Sim.Trains.SelectMany(t => t.Cars))
+            {
+                if (car.Riders.Count == 0 || !v.Cars.TryGetValue(car, out var cv)) continue;
+                if (cv.Mesh == null || cv.Model?.Root == null || !IsInstanceValid(cv.Model.Root) || cv.Model.LastWorld == null) continue;
+                for (int s = 0; s < car.Riders.Count; s++)
+                {
+                    if (cv.Mesh.FindFitting(s + 1, 0x80) is not { Node: >= 0 } fit) continue;
+                    if (!SeatPose(cv.Mesh, cv.Model, cv.Model.Root.GlobalTransform, fit, out var pose, out var forward, out _)) continue;
+                    _seated[car.Riders[s]] = (pose, $"{v.Track.Type.Name} seat {s + 1} on {cv.Mesh.NodeName(fit.Node)}", forward, "car", float.NaN);
+                }
+            }
     }
 
     void RemoveCoasterView(int id)

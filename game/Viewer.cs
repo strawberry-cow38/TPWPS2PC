@@ -4402,6 +4402,7 @@ public partial class Viewer : Node3D
     {
         _seated.Clear();
         SeatTrackRiders();
+        SeatCoasterRiders();
         foreach (var (ride, model, _, _, _) in _scripted)
         {
             if (ride.Host == null || ride.Host.Seats.Count == 0 || model?.Root == null

@@ -187,8 +187,14 @@ public partial class CoasterSmoke : Node3D
                 }
                 float floor = park.CellY(n.CellX, n.CellZ);
                 float rail = (frameT * new Vector3(n.X / 256f, n.TrackY / 256f, n.Z / 256f)).Y;
-                Check(MathF.Abs(lo - floor) < 0.05f && hi > rail - 0.05f && hi < rail + 0.4f,
-                      $"pylon ({n.CellX},{n.CellZ}) h{n.Height} stands on the floor ({lo - floor:F2} off) and reaches the track ({hi - rail:+0.00;-0.00} at its top)");
+                Check(holder.HasMeta("track_dummy"), $"pylon ({n.CellX},{n.CellZ}) resolves its track dummy (fitting 0x400000)");
+                var dummy = ((Node3D)holder.GetChild(0)).GlobalTransform * (Vector3)holder.GetMeta("track_dummy");
+                // ⚠ "Reaches the TRACK" is not the invariant: 0x19a420 sets the track at the dummy's LOCAL
+                // y + 0x60 (parent offset ignored), so the rail sits 0.125 under Temple's post top and
+                // 0.375 over Caterpillar's. The post is authored to meet its DUMMY; that is what holds.
+                Check(MathF.Abs(lo - floor) < 0.05f && MathF.Abs(hi - dummy.Y) < 0.15f,
+                      $"pylon ({n.CellX},{n.CellZ}) h{n.Height} stands on the floor ({lo - floor:F2} off) and meets its posed track dummy "
+                      + $"({hi - dummy.Y:+0.00;-0.00}); the rail is {rail - dummy.Y:+0.00;-0.00} from the dummy");
                 // The lattice tiles up the post: additive UV keys keep the authored U and add V with the
                 // loft (0x1ad378). Written as absolute UVs every U collapses to 0 and the post bands.
                 float u0 = float.MaxValue, u1 = float.MinValue, v0 = float.MaxValue, v1 = float.MinValue;
@@ -236,7 +242,7 @@ public partial class CoasterSmoke : Node3D
             var ride = sim.Rides.Single(r => r.Coaster == csim);
             int riders = nc * type.Seats + 2;
             for (int g = 9001; g < 9001 + riders; g++) ride.Join(g);
-            float top = 0; int left = 0;
+            float top = 0; int left = 0; bool ridersChecked = false;
             var cars = (IDictionary)F(view, "Cars");
             for (int i = 0; i < 9000 && left < riders; i++)
             {
@@ -245,19 +251,42 @@ public partial class CoasterSmoke : Node3D
                 left += ride.Left.Count; ride.ClearLeft();
                 if (i % 200 == 0) await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
                 if (i == 700) await Shot("cars");
+                // Riders sit in their cars' seats (fitting id seat + 1, space 0x80), once some are aboard.
+                if (!ridersChecked && csim.Trains.Any(t => t.State == CoasterTrainState.Run && t.Cars.Any(c => c.Riders.Count > 0)))
+                {
+                    await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                    Call(viewer, "SeatRiders");
+                    var seated = Field<IDictionary>(viewer, "_seated");
+                    foreach (var car in csim.Trains.SelectMany(t => t.Cars).Where(c => c.Riders.Count > 0))
+                    {
+                        var cv = cars[car];
+                        var node = (Node3D)F(cv, "Node");
+                        var carMesh = (Model)F(cv, "Mesh");
+                        for (int s = 0; s < car.Riders.Count; s++)
+                        {
+                            if (carMesh.FindFitting(s + 1, 0x80) == null) { Check(!seated.Contains(car.Riders[s]), $"a rider in seat {s + 1}, which the car has no fitting for, is not drawn"); continue; }
+                            Check(seated.Contains(car.Riders[s]), $"the rider in seat {s + 1} is seated");
+                            var at = ((Transform3D)((System.Runtime.CompilerServices.ITuple)seated[car.Riders[s]])[0]).Origin;
+                            Check(at.DistanceTo(node.GlobalPosition) < 1.2f, $"the rider in seat {s + 1} sits on their car ({at.DistanceTo(node.GlobalPosition):F2} from its origin)");
+                        }
+                    }
+                    ridersChecked = true;
+                    if (shots != null) { aimAt = ((Node3D)F(cars[csim.Trains.First(t => t.Cars.Any(c => c.Riders.Count > 0)).Cars.First(c => c.Riders.Count > 0)], "Node")).GlobalPosition; aimFar = 2.5f; await Shot("riders"); aimAt = null; aimFar = null; }
+                }
             }
             Check(left == riders, $"all {riders} queued guests board, ride and come off at the exit");
+            Check(ridersChecked, "riders were seen aboard a moving train and checked in their seats");
             Check(top > 0.1f, $"the trains run the hill on gravity (top speed {top:F3} cells a tick)");
             Check(cars.Count == csim.Trains.Sum(t => t.Cars.Length) && cars.Count > 0, $"every car is drawn ({cars.Count})");
             foreach (var car in csim.Trains.SelectMany(t => t.Cars))
             {
-                var node = (Node3D)F(cars[car], "Item1");
+                var node = (Node3D)F(cars[car], "Node");
                 var want3 = frame.GlobalTransform * new Vector3(car.Pos.X, car.Pos.Y, car.Pos.Z);
                 Check(node.GlobalPosition.DistanceTo(want3) < 0.6f, $"a car stands on its track point ({node.GlobalPosition.DistanceTo(want3):F2} off)");
             }
             if (shots != null && csim.Trains.Count > 0)
             {
-                var lead = (Node3D)F(cars[csim.Trains[0].Cars[0]], "Item1");
+                var lead = (Node3D)F(cars[csim.Trains[0].Cars[0]], "Node");
                 aimAt = lead.GlobalPosition; aimFar = 2.5f;
                 await Shot("closeup");
                 aimAt = null; aimFar = null;
