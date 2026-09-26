@@ -259,6 +259,85 @@ public partial class Viewer
         return new MeshInstance3D { Mesh = mesh, Name = $"seg_{n.CellX}_{n.CellZ}" };
     }
 
+    /// <summary>⚠⚠ A DELIBERATE DEPARTURE FROM THE CONSOLE (strawberry, 2026-09-26: "can u try to wrap it
+    /// so that they are perfectly square?"). The console tiles a lofted post at its author's rest density,
+    /// which on MineCart's 7-wide post is one cross per ~12.8 units at the tool's highest: crosses about
+    /// 1.8:1 tall. This re-wraps V on every vertex the loft's UV keys move (the lofted ring) so the
+    /// texture's texels come out square on its face: V = the V of the foot vertex below it (same column,
+    /// same U) + its height above that foot × the face's U per unit of width × the texture's width/height,
+    /// running the way the console's own V runs there. The foot, every U, and everything the loft's UV
+    /// keys do not move keep the console's values. Only the X-braced lattice posts, which is what was
+    /// asked about: 12 of the 14 posts tile over the loft, but stripes, bricks and trunks keep the
+    /// console's density. The console's numbers are in findings/coasters.md.</summary>
+    static readonly HashSet<string> SquareLatticePylons = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "MineCart",   // Temple of Gloom
+        "c_hade",     // Hades
+        // (Not coasta: Ghosta Coasta's and Bone Shaker's post is the same mesh as MineCart's, but its
+        // gt_pylon is stacked planks, not a lattice.)
+    };
+
+    Action<Model.Mesh, IReadOnlyList<System.Numerics.Vector3>, List<Vector2>> SquareLattice(Model model, Aps anim, Aps.Record loft, string owner)
+    {
+        var plan = new Dictionary<int, (int J, int Foot, float Rate)[]>();
+        foreach (var mesh in model.Meshes)
+        {
+            var uvMap = model.UvVertexMap(mesh);
+            if (uvMap == null) continue;
+            List<Aps.UvKey[]> keys = null;
+            for (int i = 0; i < loft.TrackCount && keys == null; i++)
+            {
+                int t = anim.TrackAt(loft, i);
+                if (anim.TrackNode(t) == mesh.Index && (anim.TrackFlags(t) & 0x10000) != 0) keys = anim.UvTrack(t);
+            }
+            if (keys == null || uvMap.Max() + 1 != keys.Count) continue;
+            var (pos, uv, _) = model.Vertices(mesh);
+            var tris = model.Triangles(mesh);
+            bool Ring(int j) => MathF.Abs(keys[uvMap[j]][^1].V - keys[uvMap[j]][0].V) > 1e-3f;
+            var rows = new List<(int, int, float)>();
+            for (int j = 0; j < pos.Count; j++)
+            {
+                if (!Ring(j)) continue;
+                int foot = -1;
+                for (int k = 0; k < pos.Count; k++)
+                    if (!Ring(k) && pos[k].Y < pos[j].Y && MathF.Abs(pos[k].X - pos[j].X) < 0.01f && MathF.Abs(pos[k].Z - pos[j].Z) < 0.01f
+                        && MathF.Abs(uv[k].X - uv[j].X) < 0.01f && (foot < 0 || pos[k].Y < pos[foot].Y)) foot = k;
+                // The face's U per unit of width, off a level edge of a triangle through this vertex.
+                float rate = 0;
+                foreach (var tri in tris.Where(t => t.A == j || t.B == j || t.C == j))
+                {
+                    int[] v = { tri.A, tri.B, tri.C };
+                    for (int a = 0; a < 3 && rate == 0; a++)
+                        for (int b = a + 1; b < 3 && rate == 0; b++)
+                        {
+                            var d = new Vector2(pos[v[a]].X - pos[v[b]].X, pos[v[a]].Z - pos[v[b]].Z).Length();
+                            if (d > 0.01f && MathF.Abs(pos[v[a]].Y - pos[v[b]].Y) < 0.01f && MathF.Abs(uv[v[a]].X - uv[v[b]].X) > 0.01f)
+                                rate = MathF.Abs(uv[v[a]].X - uv[v[b]].X) / d;
+                        }
+                    if (rate != 0)
+                    {
+                        var tex = TextureNear(owner, model.Materials[tri.Material]).Tex;
+                        if (tex != null) rate *= (float)tex.GetWidth() / tex.GetHeight();
+                        break;
+                    }
+                }
+                if (foot >= 0 && rate > 0) rows.Add((j, foot, rate));
+            }
+            if (rows.Count > 0) plan[mesh.Index] = rows.ToArray();
+        }
+        if (plan.Count == 0) return null;
+        return (mesh, pos, uv) =>
+        {
+            if (!plan.TryGetValue(mesh.Index, out var rows)) return;
+            foreach (var (j, foot, rate) in rows)
+            {
+                float dir = MathF.Sign(uv[j].Y - uv[foot].Y);
+                if (dir == 0) dir = -1;
+                uv[j] = new Vector2(uv[j].X, uv[foot].Y + dir * (pos[j].Y - pos[foot].Y) * rate);
+            }
+        };
+    }
+
     /// <summary>The pylon (`stdpylon.mps`), posed as `0x19cdd0` poses it, on all four of its channels:
     /// loft = `clamp(h/2560, 0, 1)` along `.aps` section 3, yaw = heading + half-turn (section 10),
     /// incline held at 0.5 (section 2) and bank = `(bank + 512) / 1024` (section 9, absent on some).
@@ -283,6 +362,7 @@ public partial class Viewer
             static float At(Aps.Record r, float value) => Math.Min(value * r.DurationFrames, r.DurationFrames - 0.0001f);
             if (anim?.Records().FirstOrDefault(r => r.Slot == 2) is { } incline) drawn.AddLayer(incline, At(incline, 0.5f));
             if (anim?.Records().FirstOrDefault(r => r.Slot == 9) is { } bank) drawn.AddLayer(bank, At(bank, (n.Bank + 512) / 1024f));
+            if (rec != null && SquareLatticePylons.Contains(folder)) drawn.UvRewrite = SquareLattice(mesh, anim, rec, assets.Model.Path);
             float loft = Math.Clamp(n.Height / 2560f, 0f, 1f);
             if (rec != null) drawn.SetFrame(At(rec, loft));
             // ⭐ `0x199c90`: the stacker is the node of fitting (0x80000, id 1) by the ENGINE's rule,

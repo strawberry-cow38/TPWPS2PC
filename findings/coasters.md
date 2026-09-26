@@ -200,6 +200,20 @@ ParkSimAudit checks (`coaster:`) and the `CoasterSmoke` viewer scene:
   the record's duration (the port had duration − 1). The bank channel also tilts the post's top when
   the track banks, which the port did not draw before (`AnimatedModel.AddLayer`). MineCart's numbers;
   the other 13 pylons take the same code path but their UVs were not individually checked.
+- ⚠ **The port squares the lattice, and the console does not** (strawberry's call, 2026-09-26: "can u
+  try to wrap it so that they are perfectly square?"). `SquareLattice` rewrites V on every vertex the
+  loft's UV keys move: the V of the foot below it + its height × the face's U per unit width × the
+  texture's width/height, in the direction the console's V runs. Only the X-braced lattice posts:
+  Temple of Gloom's and Hades'. (Ghosta Coasta's, which Bone Shaker also draws, is MineCart's mesh
+  wearing stacked planks, so it stays as the console tiles it.) 12 of the 14 `stdpylon.mps`
+  tile over the loft (all but Dare Devil and Moonshot), but the stripes, bricks and trunks keep the
+  console's density. The foot, every U, and everything above the ring keep the console's values, so
+  the top section still meets the lofted part with the console's seam.
+- Oddity in the data, not acted on: MineCart's loft adds **+**7.493 V to its ring, while Ghosta Coasta,
+  whose `mc_pylon` is the same 90-vertex mesh, and Bone Shaker and Candy Coaster (`cc_pylon`) all add
+  **−**7.493. With +, MineCart's lattice runs mirrored against its rest pose and its span passes
+  through zero near L 0.07; with −, it would tile at the rest density throughout. It reads like an
+  export sign slip on one ride. The console plays the + as written; the square wrap makes it moot.
 - **What a post meets is its track dummy, not the track.** Every post is authored to meet its posed
   `TrackDummyCentre` exactly (checked on all nine pylons of Temple of Gloom and of Caterpillar: +0.00).
   `0x19a420` then puts the track at the dummy's LOCAL y + 0x60, ignoring the parent's offset. So the

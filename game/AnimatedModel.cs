@@ -110,6 +110,11 @@ public sealed class AnimatedModel
     /// collapsed the post onto its origin and left the parts above it floating.</summary>
     public bool Additive { get; }
 
+    /// <summary>A last word on a part's UVs after the channels have run, given its drawn positions, or
+    /// null. The pylon's square lattice uses it (a DEPARTURE from the console, see CoasterPylon). Gets
+    /// its own copy of the list, so the bind UVs are never written.</summary>
+    public Action<Model.Mesh, IReadOnlyList<System.Numerics.Vector3>, List<Godot.Vector2>> UvRewrite { get; set; }
+
     /// <summary>Which texture each material slot is currently showing. ⭐ The animation's OUTPUT,
     /// so a check can watch it change instead of watching the clock and hoping.</summary>
     public IReadOnlyList<int> TextureChoices => _textureIndices;
@@ -700,6 +705,7 @@ public sealed class AnimatedModel
                           : p.UvMap.Select(i => sampled[i]).ToList();
         }
         if (p.LayerUv != null) uv = uv.Select((x, j) => x + p.LayerUv[j]).ToList();
+        if (UvRewrite != null) { uv = new List<Godot.Vector2>(uv); UvRewrite(p.Mesh, pos, uv); }
         int si = 0;
         foreach (var grp in p.Tris.GroupBy(t => t.Material))
         {
