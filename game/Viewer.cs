@@ -74,6 +74,13 @@ public partial class Viewer : Node3D
     AnimatedModel _gate;
     /// <summary>The park's sky, rebuilt when the archive changes.</summary>
     WorldEnvironment _sky;
+    ShaderMaterial _skyMat;
+    Weather.Kind? _wantWeather;
+    Vector2 _skyDrift;
+    /// <summary>⚠ The console turns the cloud heading over time and the rate is NOT read
+    /// (findings/sky.md), so the port holds it at the initial pair's own direction:
+    /// atan2(0.0037, 0.0067) from `0x231848`.</summary>
+    const float SkyWindHeading = 0.5045f;
     /// <summary>Kept so the sky can be taken away outside park mode and put back without a rebuild.
     /// ⚠ WorldEnvironment is a plain Node, so it has no Visible to toggle.</summary>
     Godot.Environment _skyEnv;
@@ -235,6 +242,8 @@ public partial class Viewer : Node3D
     bool _shopInfoTest;
     bool _linkTest;
     bool _placeTest;
+    int _selectAtStart = -1;
+    string _placeName;
     bool _walkAudit;
     bool _typeAudit;
     bool _guestTest;
@@ -392,6 +401,15 @@ public partial class Viewer : Node3D
             else if (a.StartsWith("--laptop-screen=")) _laptopScreen = a["--laptop-screen=".Length..];
             else if (a.StartsWith("--laptop-menu-row=")) int.TryParse(a["--laptop-menu-row=".Length..], out _laptopMenuSelected);
             else if (a == "--laptop-park-open") _laptopParkOpen = true;
+            // ⭐ So a render can SHOW the debug panel. Master sees the pictures and I do not, so a
+            // panel that only opens on a keypress is a panel neither of us has checked.
+            else if (a == "--cheats") _cheatsAtStart = true;
+            else if (a == "--footprint-audit") _footprintAudit = true;
+            else if (a.StartsWith("--place-name=")) _placeName = a["--place-name=".Length..];
+            // ⭐ Select a placed thing from the command line, so a render can show the selection
+            // box. A visual bug in it is otherwise only reachable by clicking, which a headless
+            // shot cannot do -- and master reports these by looking at the picture.
+            else if (a.StartsWith("--select=")) _selectAtStart = int.Parse(a["--select=".Length..]);
             else if (a.StartsWith("--laptop-ride=")) int.TryParse(a["--laptop-ride=".Length..], out _laptopRide);
             else if (a.StartsWith("--laptop-hover=")) int.TryParse(a["--laptop-hover=".Length..], out _laptopHoverRow);
             else if (a.StartsWith("--laptop-hover-btn=")) int.TryParse(a["--laptop-hover-btn=".Length..], out _laptopHoverBtn);
@@ -429,6 +447,12 @@ public partial class Viewer : Node3D
             else if (a == "--build-test") _buildTest = true;
             else if (a.StartsWith("--segments=")) _wantSegments = a["--segments=".Length..];
             else if (a.StartsWith("--cam=")) _wantCam = a["--cam=".Length..];
+            // ⭐ So a render can show the weather. V cycles it and the debug panel has buttons,
+            // and a headless shot can press neither.
+            else if (a.StartsWith("--weather=")) _wantWeather = a["--weather=".Length..] switch
+            {
+                "rain" => Weather.Kind.Rain, "snow" => Weather.Kind.Snow, _ => Weather.Kind.None,
+            };
             else if (a.StartsWith("--ride=")) _wantRide = a["--ride=".Length..];
             else if (a.StartsWith("--anim=")) _wantAnim = a["--anim=".Length..];
             else if (a.StartsWith("--wad=")) _wantWad = a["--wad=".Length..];
@@ -755,6 +779,8 @@ public partial class Viewer : Node3D
         ui.AddChild(_moneyShadow);
         ui.AddChild(_money);
         _uiRoot = ui;
+        BuildDebugHud(ui);
+        if (_cheatsAtStart) ToggleCheats();
 
         // ⭐⭐ THE TOOL SAYS WHAT IT THINKS, ON SCREEN. Every refusal already printed a reason to
         // the console, which nobody playing the game can see -- so a click over the panel, or one
@@ -819,6 +845,8 @@ public partial class Viewer : Node3D
     {
         if (e is InputEventKey { Pressed: true, Keycode: Key.F3 } && _panel != null)
             _panel.Visible = !_panel.Visible;
+        // ⭐ F4 beside F3: one hides the port's readout, the other shows the testing buttons.
+        if (e is InputEventKey { Pressed: true, Keycode: Key.F4 }) ToggleCheats();
         // ⚠ `Echo: false`. The comment on the turn keys below already said "turning is an EVENT,
         // not a held key", but nothing enforced it: a held key repeats at the OS rate and every
         // repeat counted as another press. That is the other half of master's backwards rotation.
@@ -1825,6 +1853,8 @@ public partial class Viewer : Node3D
     {
         var sky = SkyDome.Build(_lib, out var report);
         GD.Print($"[sky] {report}");
+        _skyMat = sky?.SkyMaterial as ShaderMaterial;
+        _skyDrift = Vector2.Zero;
         if (sky == null) { _skyEnv = null; _sky.Environment = _flatEnv; return; }
         _skyEnv = new Godot.Environment
         {
@@ -2529,6 +2559,7 @@ public partial class Viewer : Node3D
         // world plane would land a cell or two off wherever the park is not at zero.
         var mouse = GetViewport().GetMousePosition();
         if (_panel != null && _panel.Visible && mouse.X < PanelW) return false;
+        if (PointerOverCheats(mouse)) return false;
         return CellAtScreen(mouse, out bx, out by);
     }
 
@@ -2944,6 +2975,7 @@ public partial class Viewer : Node3D
                              UiSoundGroup, -1, CannotAffordSound, 0, Cell(ParkPaths.Centre(new ParkCell(cx, cy))));
                 return false;
             }
+            _paidFor[id] = _paidFor.GetValueOrDefault(id) + due;
             GD.Print($"[money] {Leaf(assets.Name)} cost {Money.Format(due)}; the park holds {Money.Format(_sim.Finances.Balance)}");
             _sounds?.Cue(0, "build", _parkTicks * ParkSim.TickMilliseconds, RseOpcode.EVENT,
                          UiSoundGroup, -1, PurchaseSound, 0, Cell(ParkPaths.Centre(new ParkCell(cx, cy))));
@@ -5826,6 +5858,27 @@ public partial class Viewer : Node3D
         _buildChecked = true;
         ShowBuildCategory("Rides");
         int chosen = -1;
+        // ⭐ --place-name=gokarts puts the harness on a NAMED ride, so a visual change can be shown
+        // on the ride that actually demonstrates it rather than on whichever one the scan picks.
+        if (_placeName != null)
+        {
+            // ⚠ ACROSS EVERY CATEGORY. The harness opens "Rides" and the named one is as likely to
+            // be a shop, a sideshow or a track ride -- the first attempt matched nothing for
+            // exactly that reason and the run silently fell through to its usual pick.
+            foreach (var (kind, _) in BuildCategoryNames.Order)
+            {
+                ShowBuildCategory(kind.ToString());
+                for (int row = 0; row < _buildRows.Count && chosen < 0; row++)
+                    if (Leaf(_lib.Rides[_buildRows[row]].Name)
+                            .Contains(_placeName, StringComparison.OrdinalIgnoreCase)) chosen = row;
+                if (chosen >= 0) { GD.Print($"[place] --place-name={_placeName} found in {kind}"); break; }
+            }
+            if (chosen < 0)
+            {
+                GD.Print($"[place] --place-name={_placeName} matched nothing in any category");
+                ShowBuildCategory("Rides");
+            }
+        }
         for (int row = 0; row < _buildRows.Count && chosen < 0; row++)
         {
             var d = DefinitionFor(_lib.Rides[_buildRows[row]].Model);
@@ -6806,6 +6859,7 @@ public partial class Viewer : Node3D
         if (_cam == null) return -1;
         var mouse = GetViewport().GetMousePosition();
         if (_panel != null && _panel.Visible && mouse.X < PanelW) return -1;
+        if (PointerOverCheats(mouse)) return -1;
         var from = _cam.ProjectRayOrigin(mouse);
         var dir = _cam.ProjectRayNormal(mouse);
         int best = -1; float near = float.MaxValue;
@@ -7139,6 +7193,36 @@ public partial class Viewer : Node3D
 
     /// <summary>Delete the selected object. ⭐ Drops it from the park AND the simulation: a ride
     /// left in `ParkSim` with no model is one guests keep walking to.</summary>
+    /// <summary>What the park actually paid for each thing standing in it, in tenths, so that
+    /// deleting it can hand half of it back.
+    ///
+    /// ⭐ THE LEDGER RECORDS WHAT WAS CHARGED, not what the catalogue says the thing costs.
+    /// Re-pricing at delete time would drift the moment anything is priced per unit -- a track
+    /// ride's legs are bought a leg at a time and a coaster is priced per track piece, so "half
+    /// its price" and "half of what you paid" are different numbers for the same ride.</summary>
+    readonly Dictionary<int, int> _paidFor = new();
+
+    /// <summary>Master: "deleting anything should give you a 50% refund."</summary>
+    public const int RefundPercent = 50;
+
+    /// <summary>Hand back <see cref="RefundPercent"/>% of what was paid for <paramref name="id"/>,
+    /// plus the queue tiles that went with it, and forget the entry.
+    ///
+    /// ⚠ Filed as a PLAIN credit with no category. The console files income by category and
+    /// switches on two of them; which number a refund would carry is not read, and inventing one
+    /// would put made-up rows in the income breakdown.</summary>
+    int RefundFor(int id, int queueCells)
+    {
+        int paid = _paidFor.TryGetValue(id, out int v) ? v : 0;
+        _paidFor.Remove(id);
+        // The queue was bought by the tile and is being destroyed with the ride, so it is part of
+        // what is being given up. ⚠ Queue tiles, not path tiles -- ClearQueue leaves Path and Both.
+        paid += queueCells * PathPrices.Tenths(PathPrices.QueuePounds);
+        int back = paid * RefundPercent / 100;
+        if (back > 0) _sim?.Finances.Credit(back);
+        return back;
+    }
+
     void DeleteSelected()
     {
         if (_selected < 0 || _selected >= _park.Placed.Count) { Status("nothing selected"); return; }
@@ -7169,9 +7253,15 @@ public partial class Viewer : Node3D
         ClearSelection();
         _shownBox = -1;
         ShowBoxFor(-1);
+        // ⭐ AFTER the removal has actually succeeded -- refunding a delete that then fails would
+        // pay the park for something it still owns.
+        int back = RefundFor(p.Id, queueCells);
         GD.Print($"[menu] deleted {name} (id {p.Id}); {queueCells} queue cells and {doors} doors "
-               + "with it; floor rebuilt");
-        Status(queueCells > 0 ? $"deleted {name} and its queue" : $"deleted {name}");
+               + $"with it; floor rebuilt; refunded {Money.Format(back)} "
+               + $"({RefundPercent}%), the park holds {Money.Format(_sim?.Finances?.Balance ?? 0)}");
+        Status(back > 0
+            ? $"deleted {name} -- {Money.Format(back)} back"
+            : queueCells > 0 ? $"deleted {name} and its queue" : $"deleted {name}");
     }
 
     bool SelectUnderCursor()
@@ -8948,6 +9038,20 @@ public partial class Viewer : Node3D
     public override void _Process(double delta)
     {
         ShowMoney();
+        TickDebugHud(delta);
+        // ⭐⭐ THE CLOUDS SHIFT AND THE SKY GREYS. Master: "clouds ARE meant to shift; sky gets
+        // gray when raining." ⚠ The console drives the grey from a weather AMOUNT whose state
+        // machine is not ported (it is pinned at 0), so the port drives it from the weather the
+        // port actually has -- V, or the debug panel's Rain button. That is a port choice and is
+        // marked as one; when the amount lands it replaces this one line.
+        if (_wantWeather is { } ww && _mode == Mode.Park && _lib != null && _cam != null)
+        {
+            _wantWeather = null;
+            GD.Print($"[weather] --weather={ww}: {_weather.Set(_lib, ww, _cam.GlobalPosition)}");
+        }
+        if (_skyMat != null && _mode == Mode.Park)
+            SkyDome.Step(_skyMat, ref _skyDrift, delta,
+                         _weather.Current == Weather.Kind.None ? 0f : 1f, SkyWindHeading);
         // ⚠ The camera is placed FIRST, before any early return. It used to sit below the capture
         // branch, so a --shot run photographed the origin and produced a perfectly black frame with
         // a perfectly correct UI beside it -- the geometry was fine the whole time.
@@ -9053,6 +9157,29 @@ public partial class Viewer : Node3D
         if (_ghostTest && !_pickChecked && _mode == Mode.Park) CheckMousePicking();
         if (_animTest && !_animChecked && _mode == Mode.Park) CheckParkAnimation();
         if (_buildTest && !_buildChecked && _mode == Mode.Park) { if (_placeTest) CheckPlacement(); else CheckBuildMenu(); }
+        if (_footprintAudit && _mode == Mode.Park && _lib != null)
+        { _footprintAudit = false; FootprintAudit(); GetTree().Quit(); }
+        // ⚠⚠ AFTER the build test has FINISHED, not merely after its call. CheckPlacement runs
+        // over several frames and ends by clicking empty ground to prove that drops the selection
+        // -- so selecting on the first frame a ride exists logged "selected Belly Bounce" and then
+        // the harness quietly cleared it, and three renders came back with no box in them.
+        if (_selectAtStart >= 0 && _mode == Mode.Park && (!_buildTest || _buildChecked)
+            && _selectAtStart < _park.Placed.Count)
+        {
+            var sel = _park.Placed[_selectAtStart];
+            _selected = _selectAtStart; _selectAtStart = -1;
+            // ⚠ A FREE CURSOR FIRST. A selection box is deliberately suppressed while a tool or a
+            // blueprint owns the cursor (two answers to one question), and --place-test ends by
+            // leaving a blueprint on it for its own picture -- so the flag selected correctly,
+            // logged that it had, and rendered nothing. Clearing them is what a player's click
+            // does anyway.
+            _toolOpen = false; _place.Clear(); _ghostView?.Clear();
+            ShowBoxFor(_selected);
+            // ⚠ And point the camera at it, or the flag selects something off screen and the
+            // render it exists to produce shows nothing.
+            LookAtCell(sel.X + sel.Fp.Width / 2, sel.Y + sel.Fp.Height / 2);
+            GD.Print($"[select] --select: {_park.Placed[_selected].Name}");
+        }
         // ⚠ PER FRAME, not at park load: the menu needs something PLACED, and placement happens
         // after the park is built. Hooked here with the other capture tests for that reason.
         if (_menuTest && !_menuShown && _mode == Mode.Park) ShowTestMenu();

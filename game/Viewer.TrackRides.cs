@@ -311,7 +311,7 @@ public partial class Viewer
         if (v.Layout.Closed)
         {
             int k = v.Sim.RemoveLastWaypoint();
-            if (k > 0) _sim?.Finances.Credit(v.Price * 10 * k);
+            if (k > 0) { _sim?.Finances.Credit(v.Price * 10 * k); UnbillTrack(v.Id, v.Price * 10 * k); }
             RebuildTrackView(v);
         }
         OpenTrackTool(v, null);
@@ -400,6 +400,16 @@ public partial class Viewer
         Status($"Track Stock {stock}   Cost: {Money.Format(cost)}" + (ok ? "" : "   (blocked)"));
     }
 
+    /// <summary>A leg taken back is refunded IN FULL by the console (0x129A00) -- it is an undo,
+    /// not a demolition -- so it must also come off the ride's tab. Leaving it on would pay the
+    /// player 50% again for track they had already been given all their money back for.</summary>
+    void UnbillTrack(int id, int amount)
+    {
+        if (!_paidFor.TryGetValue(id, out int had)) return;
+        int left = had - amount;
+        if (left > 0) _paidFor[id] = left; else _paidFor.Remove(id);
+    }
+
     /// <summary>Cross (0x129840): lay the previewed leg, charge it, and finish when it closes the loop
     /// or has no length.</summary>
     void PressTrackTool()
@@ -411,6 +421,9 @@ public partial class Viewer
         var (end, n, _, _) = v.Layout.Leg(new ParkCell(x, y));
         int cost = v.Price * 10 * n;
         if (cost > 0 && _sim != null && !_sim.Finances.Debit(cost)) { _toolSfx?.Play(ToolSounds.Cue.Refused); return; }
+        // ⭐ Track legs go on the ride's tab, so deleting the ride gives half of them back too.
+        // A track ride's price is not one number: it is however many legs the player drew.
+        if (cost > 0) _paidFor[v.Id] = _paidFor.GetValueOrDefault(v.Id) + cost;
         v.Sim.AddWaypoint(end);
         RebuildTrackView(v);
         _toolSfx?.Play(ToolSounds.Cue.Lay);
@@ -425,7 +438,7 @@ public partial class Viewer
         var v = _trackTool;
         if (v == null || v.Layout.Waypoints.Count < 2) return false;
         int k = v.Sim.RemoveLastWaypoint();
-        if (k > 0) _sim?.Finances.Credit(v.Price * 10 * k);
+        if (k > 0) { _sim?.Finances.Credit(v.Price * 10 * k); UnbillTrack(v.Id, v.Price * 10 * k); }
         RebuildTrackView(v);
         _toolSfx?.Play(ToolSounds.Cue.Undo);
         return true;

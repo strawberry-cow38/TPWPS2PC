@@ -67,7 +67,29 @@ public sealed class Park
                 for (int x = 0; x < rows[y].TrimEnd().Length; x++)
                 {
                     char c = rows[y][x];
-                    if (c is ' ' or '\t') continue;
+                    // ⭐⭐ `.` IS AN EMPTY CELL, NOT A FULL ONE. Censused over every .sam in all
+                    // four world WADs: 17 cells in 10 files, and they are all CORNERS --
+                    // `.**.` / `****` / `****` / `****` on the 4x4 rock, `.****` .. `****.` on the
+                    // 5x5, one corner on the plant pot and the brick pile. It is a chamfer: a
+                    // blocky footprint with its corners taken off, so a path can round them.
+                    // Reading `.` as solid made every rock claim and clear cells the author cut
+                    // out of it -- master: "some footprints may be wrong".
+                    //
+                    // ⚠ The other characters, for the record: `*` 2291 cells, `2` the entrance
+                    // (171), `+` 76 cells in 10 files and ALL of them Upgrades -- a cell kind, not
+                    // a size, since the eight `*++*` upgrades measure 4x4 and their models do too.
+                    // `S`/`N`/`E`/`W` are the exit and its facing.
+                    //
+                    // ⭐ `<` and `>` -- 14 files each, always as a PAIR on a middle row beside an
+                    // existing `2` entrance and `N`/`S` exit (`****` / `<**>` / `*2N*`). ANSWERED,
+                    // by tinyclaw against the DBA: they are the station's two TRACK cells, every
+                    // one of the 14 a coaster station (no track rides), and they land exactly on
+                    // DBA +0xbc/+0xc0 which StationLink already reads -- so nothing is lost by
+                    // keeping them as ordinary cells here, which is what this does.
+                    // ⚠ The character is the STEP OUT (`<` = x-1, `>` = x+1), NOT exit versus
+                    // entry: `>` is the exit on 12 of them but Chak Atak and Moonshot have `<`.
+                    // Only +0xd3 says which. So do not read a direction off the glyph.
+                    if (c is ' ' or '\t' or '.') continue;
                     cells[x, y] = true;
                     if (c == '2') { ex = x; ey = y; }
                     else if (c is 'N' or 'S' or 'E' or 'W')
@@ -1060,43 +1082,93 @@ public sealed class Park
         // the shape it had before it turned.
         if ((turns & 3) != 0)
             model.Basis = new Basis(Vector3.Up, Mathf.Pi * 0.5f * (turns & 3)) * model.Basis;
-        // ⭐⭐ A RIDE THAT BRINGS ITS OWN FLOOR IS ALIGNED BY THAT FLOOR. The Belly Bounce carries
-        // `jb_floor#0..11` -- twelve flat tiles that measure EXACTLY 3.0 x 4.0, which is its
-        // footprint to the last decimal. Its fence, signs and hoarding hang off one side, so the
-        // whole model's bounding box is lopsided and centring THAT put the floor 0.40 out in x
-        // while the box itself sat dead centre. Master: "the belly bounce is the only ride in the
-        // game that is misaligned in its footprint... just try to re-align it in its hole."
+        // ⭐⭐ A RIDE IS ANCHORED BY ITS OWN ORIGIN, NOT BY A BOX MEASURED AT RUNTIME.
+        // Master: "some rides are misaligned in their footprint. some a lot more than others."
         //
-        // ⚠ FALLS BACK to the whole model. Most rides have no part called floor, and for the ones
-        // that do the two answers agree -- the control prints both, so a ride this moves is a ride
-        // that says so rather than one that quietly shifts.
-        var (fmin, fmax) = DrawnBounds(model, inParent: true, onlyNamed: "floor");
-        bool onFloor = fmax.X > fmin.X && fmax.Z > fmin.Z;
-        var (min, max) = onFloor ? (fmin, fmax) : DrawnBounds(model, inParent: true);
-        var centre = (min + max) * 0.5f;
-        model.Position += new Vector3(
-            Origin.X + (x + fp.Width * 0.5f) * CellSize - centre.X,
-            // ⭐⭐ THE MODEL'S OWN ORIGIN GOES ON THE FLOOR, not the bottom of its bounding box.
-            // Lifting a ride until its lowest drawn point rested on the surface pushed every ride
-            // with a buried base UP INTO THE AIR by the depth of that base -- master: "a lot of our
-            // rides are floating (because they have stuff thats usually meant to sit under the
-            // ground surface)". Those parts are meant to be under it, so the origin is the ground
-            // plane and what hangs below it hangs below it.
-            BaseY,
-            // ⚠⚠ MINUS, because `centre` is measured IN THE PARENT'S SPACE. `DrawnBounds(model,
-            // inParent: true)` starts its walk from `model.Transform`, so the bounds already include
-            // the model's own position AND its Scale(1,1,-1). Adding a delta to `Position` shifts
-            // parent-space bounds by exactly that delta whatever the scale, so the delta that lands
-            // the drawn centre on the target is `target - centre` on every axis -- mirrored or not.
-            //
-            // History, because this line has flipped three times: main had `DrawnBounds(model)`
-            // (local space, excludes the mirror) with `+ centre.Z`, which was right for that frame.
-            // visitor-ai had `inParent: true` with `- centre.Z`, also right for ITS frame. The merge
-            // took visitor-ai's frame and main's sign -- two halves that are each correct and wrong
-            // together. Measured on SPACE t1 (Orbiter, model centre.Z = 1.5002): with `+`, the drawn
-            // centre landed 3.0005 off target -- exactly TWICE the centre, for every ride, in the
-            // ordinary viewer too. With `-` it lands on the target exactly.
-            Origin.Y + (Height - y - fp.Height * 0.5f) * CellSize - centre.Z);
+        // `--footprint-audit` over JUNGLE's 64 buildables: **47 have their model origin at exactly
+        // (0.00, 0.00) of their drawn bounds**. The models are authored IN their footprint's box --
+        // local X 0..w and Z 0..h in cells, the same box the Info.Shape grid describes -- so the
+        // origin IS the anchor and there is nothing to measure.
+        //
+        // ⚠⚠ WHAT THIS REPLACES centred the drawn BOUNDING BOX on the footprint's centre. The two
+        // rules agree only while a model's extent equals its shape, and eleven do not: gokarts is a
+        // 4x4 model declared 4x3, lavajump a 4x4 declared 2x2. Centring those splits the difference
+        // and lands the ride half a cell off in both axes -- "some a lot more than others" exactly.
+        // It also needed a hand-written special case for the Belly Bounce (its fence and signs hang
+        // off one side, so its box centre is nowhere near its floor); that special case is gone,
+        // because the origin was never lopsided in the first place.
+        //
+        // ⭐ WHICH CORNER THE ORIGIN GOES TO IS DERIVED, NOT PICKED. The models carry Scale(1,1,-1),
+        // so local X 0..W and Z 0..H land in parent space at X 0..W and Z -H..0, and the turn is
+        // pre-multiplied about the origin. Sending +X to -Z a quarter at a time walks the authored
+        // corner round the footprint:
+        //
+        //   turns 0 -> (minX, maxZ)   turns 1 -> (maxX, maxZ)
+        //   turns 2 -> (maxX, minZ)   turns 3 -> (minX, minZ)
+        //
+        // ⚠ `fp` arrives already turned, so its Width/Height are the world box's, not the
+        // authored one's -- which is what these corners are taken from.
+        // ⭐ MEASURE THE NODE ACTUALLY BEING PLACED. The census loaded models through the
+        // blueprint's loader and got clean whole-cell extents; the placement code needed a special
+        // case for a lopsided box on the same ride. Only one of those can be true of one model, so
+        // print what arrives HERE rather than reasoning about which loader is right.
+        if (System.Environment.GetEnvironmentVariable("TPW_PLACE_AUDIT") == "1")
+        {
+            var (am, aM) = DrawnBounds(model, inParent: true);
+            var (fm, fM) = DrawnBounds(model, inParent: true, onlyNamed: "floor");
+            var (lm, lM) = DrawnBounds(model, inParent: false);
+            GD.Print($"[place.audit] {name} fp {fp.Width}x{fp.Height} turns {turns}"
+                   + $" | parent {(aM.X - am.X) / CellSize:F2}x{(aM.Z - am.Z) / CellSize:F2}"
+                   + $" | local {(lM.X - lm.X) / CellSize:F2}x{(lM.Z - lm.Z) / CellSize:F2}"
+                   + $" | floor {(fM.X > fm.X ? $"{(fM.X - fm.X) / CellSize:F2}x{(fM.Z - fm.Z) / CellSize:F2}" : "none")}"
+                   + $" | origin-in-parent-box ({(0f - am.X) / CellSize:F2},{(0f - am.Z) / CellSize:F2})"
+                   + $" | model.Position ({model.Position.X:F2},{model.Position.Z:F2})");
+        }
+        float x0 = Origin.X + x * CellSize, x1 = x0 + fp.Width * CellSize;
+        float z1 = Origin.Y + (Height - y) * CellSize, z0 = z1 - fp.Height * CellSize;
+        var anchor = (turns & 3) switch
+        {
+            0 => new Vector2(x0, z1),
+            1 => new Vector2(x1, z1),
+            2 => new Vector2(x1, z0),
+            _ => new Vector2(x0, z0),
+        };
+        // ⭐⭐ AND THE CORNER SEQUENCE IS NOT DERIVED-AND-HOPED, IT IS MEASURED. `TPW_PLACE_AUDIT=1`
+        // printed the Belly Bounce at three turns, and the model's origin sat at exactly the corner
+        // the derivation says, every time:
+        //
+        //   turns 0 -> (0.00, 4.00) = (minX, maxZ)      turns 1 -> (4.00, 3.00) = (maxX, maxZ)
+        //   turns 2 -> (3.00, 0.00) = (maxX, minZ)
+        //
+        // ⚠ It also dissolved the objection that held this back. The Belly Bounce needed a
+        // hand-written `onlyNamed: "floor"` case for a box centre 0.40 out -- but its floor box now
+        // measures 3.00x4.00 and its WHOLE box measures 3.00x4.00, the same numbers, so there is no
+        // lopsidedness left for that case to correct and it has been carrying nothing. Whatever
+        // made the two disagree was fixed elsewhere; the special case outlived the fault.
+        //
+        // ⭐ Where a model's extent equals its shape -- 47 of JUNGLE's 64 -- anchoring the origin
+        // and centring the box give the IDENTICAL answer, so this changes nothing for them. It is
+        // the eleven that disagree where it matters, and there it puts the overhang on the side the
+        // author put it rather than splitting it across both. ⚠ Whether those ELEVEN SHAPES are
+        // themselves right is a separate question and master's to answer; see --footprint-audit.
+        if (System.Environment.GetEnvironmentVariable("TPW_PLACE_CENTRE") == "1")
+        {
+            // The shipped rule: centre the drawn box on the footprint's centre.
+            var (bmin, bmax) = DrawnBounds(model, inParent: true, onlyNamed: "floor");
+            if (!(bmax.X > bmin.X && bmax.Z > bmin.Z)) (bmin, bmax) = DrawnBounds(model, inParent: true);
+            var c = (bmin + bmax) * 0.5f;
+            model.Position += new Vector3(
+                Origin.X + (x + fp.Width * 0.5f) * CellSize - c.X, BaseY - model.Position.Y,
+                Origin.Y + (Height - y - fp.Height * 0.5f) * CellSize - c.Z);
+            return true;
+        }
+        // ⭐⭐ THE MODEL'S OWN ORIGIN GOES ON THE FLOOR, not the bottom of its bounding box. Lifting
+        // a ride until its lowest drawn point rested on the surface pushed every ride with a buried
+        // base UP INTO THE AIR by the depth of that base -- master: "a lot of our rides are floating
+        // (because they have stuff thats usually meant to sit under the ground surface)". Those
+        // parts are meant to be under it, so the origin is the ground plane and what hangs below it
+        // hangs below it.
+        model.Position = new Vector3(anchor.X, BaseY, anchor.Y);
         return true;
     }
 

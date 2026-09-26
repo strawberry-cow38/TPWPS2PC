@@ -120,6 +120,42 @@ At full weather an opaque cloud texel keeps `0.5` of its colour and a clear-sky 
 into flat overcast. Alpha moves the other way: a fully clear texel goes to `1.0`, so the cloud
 sheet thickens and covers.
 
+## ⭐⭐ THE SKY TEXTURES ARE PALETTED -- which is WHY the greying is a palette rewrite
+
+Read straight out of the shipped `.ssh` headers (type byte, low 7 bits):
+
+| file | size | ssh type |
+| --- | --- | --- |
+| `*_back.ssh` | 256x256 | **2, paletted** |
+| `*_front2.ssh` | 256x256 | **2, paletted** |
+| `*_cloud.ssh` | 64x64 | 5, RGB+ALPHA |
+| `Space_front.ssh` (Space only) | 256x256 | 5, RGB+ALPHA |
+
+So the 256-entry palette `0x232700` walks is the palette of these two textures, and the effect
+lands on the backdrop and the far sheet but NOT on the cloud sheet, which has no palette.
+
+⭐⭐ **AND EVERY PALETTE ENTRY SHIPS AT ALPHA 128** (PS2 opaque) in both, so `a = A/127` is 1.0
+throughout and the multiply collapses:
+
+```text
+mul = (1 - f) + f * (1.0 * 0.2 + 0.3)  =  1 - 0.5f          the same number for every texel
+A   = ((1 - f) * 1 + f * (1 - 0.15))   =  1 - 0.15f
+```
+
+⚠ **This corrects the paragraph above.** I wrote "an opaque cloud texel keeps 0.5 of its colour and
+a clear-sky texel only 0.3 -- the sky darkens harder than the clouds do". That is what the formula
+would do with VARYING palette alpha; the shipped palettes do not vary. It is a flat darkening.
+
+⭐ It also settles the open worry at the bottom of this file: a shader multiply is not merely
+"linear-equivalent" to the palette rewrite here, it is the **identical operation**, because the
+per-entry factor is constant. Verified in a render: a clear-sky patch reads (60, 228, 255) and the
+same patch under rain reads (43, 170, 191) -- a ratio of 0.748 in sRGB, which is linear 0.52, and
+`1 - 0.5 x Eased(1) = 1 - 0.5 x 0.96 = 0.52`.
+
+⚠⚠ **AND THE PORT WAS NEVER LOADING `*_cloud.tga` AT ALL.** `SkyDome` picked up `_back` and
+`_front2` only. The cloud sheet is the one layer with real alpha (mean 39 against the other two's
+flat 255), which makes it the near layer the console scrolls at double rate.
+
 ## ⚠ OPEN
 
 - **Where the weather amount comes from.** The curve and both consumers are read; the state machine
