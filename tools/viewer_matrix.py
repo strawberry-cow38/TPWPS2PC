@@ -37,6 +37,9 @@ SCENES = {
     'disruption': ('NativeDepartureDisruptionSmoke', 'NATIVE DEPARTURE DISRUPTION SMOKE', 1000),
     # Queue item 10. Per-update stop checks dominate (73473 on JUNGLE-1); the floor only proves it ran.
     'soak': ('NativeEntranceSoak', 'NATIVE ENTRANCE SOAK SMOKE', 5000),
+    # The restored seaplane and ferry. JUNGLE loads neither and passes on 4; every other park runs 12,
+    # and its PASS line prints only after all of them, so the floor is JUNGLE's.
+    'vehicles': ('ParkVehiclesSmoke', 'PARK VEHICLES SMOKE', 4),
 }
 MAP_LINE = re.compile(r'^\[map\] loaded world=([A-Z]+) terrain=(terrain_[12])\.mps$', re.M)
 
