@@ -4414,7 +4414,13 @@ public partial class Viewer : Node3D
         if (!model.LastWorld.TryGetValue(mesh.NodeOffset(fit.Node), out var w)) return null;
         // ⚠ +0x20/24/28 is the THIRD row of the 4x4: M31/M32/M33 in System.Numerics.
         var z = new Vector3(w.M31, w.M32, w.M33);
-        if ((fit.Flags & 0x10) != 0) z = -z;
+        // ⚠⚠ NO NEGATE. I wired one here this morning off `0x1f2ac0`'s `flags & 0x10` branch,
+        // reading it as the FILE fitting's flag. It is not: that test is on the RUNTIME entry's
+        // flags, whose bit 0x10 is copied from the parent NODE's flag 0x80 (`0x1f1a04`:
+        // `lw v0,(node); andi 0x80; ori v0,a1,0x11`). A census of the disc finds 581 fittings
+        // with FILE flag 0x10 and **zero** fitting nodes with node flag 0x80 -- so the console
+        // never takes that branch for shipped data, and negating on the file flag flipped 581
+        // fittings the game leaves alone. Two different flags that happen to share a number.
         if (z.LengthSquared() <= 0f) return null;
         // ⚠ Into world through the model's own transform -- the BASIS only, so no translation.
         var world = (model.Root.GlobalTransform.Basis * z).Normalized();
