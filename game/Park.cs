@@ -80,12 +80,15 @@ public sealed class Park
                     // a size, since the eight `*++*` upgrades measure 4x4 and their models do too.
                     // `S`/`N`/`E`/`W` are the exit and its facing.
                     //
-                    // ⚠⚠ `<` and `>` -- 14 files each, always as a PAIR on a middle row beside an
-                    // existing `2` entrance and `N`/`S` exit (`****` / `<**>` / `*2N*`). They are a
-                    // third pair of markers this reader does not understand; it keeps them as
-                    // ordinary cells, which they are, but records nothing about them. Every one is
-                    // a track ride or a coaster, so what they mark is almost certainly where the
-                    // track attaches -- unread, and flagged rather than guessed.
+                    // ⭐ `<` and `>` -- 14 files each, always as a PAIR on a middle row beside an
+                    // existing `2` entrance and `N`/`S` exit (`****` / `<**>` / `*2N*`). ANSWERED,
+                    // by tinyclaw against the DBA: they are the station's two TRACK cells, every
+                    // one of the 14 a coaster station (no track rides), and they land exactly on
+                    // DBA +0xbc/+0xc0 which StationLink already reads -- so nothing is lost by
+                    // keeping them as ordinary cells here, which is what this does.
+                    // ⚠ The character is the STEP OUT (`<` = x-1, `>` = x+1), NOT exit versus
+                    // entry: `>` is the exit on 12 of them but Chak Atak and Moonshot have `<`.
+                    // Only +0xd3 says which. So do not read a direction off the glyph.
                     if (c is ' ' or '\t' or '.') continue;
                     cells[x, y] = true;
                     if (c == '2') { ex = x; ey = y; }
