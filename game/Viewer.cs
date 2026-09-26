@@ -187,6 +187,7 @@ public partial class Viewer : Node3D
     /// <summary>`--ride-film=N` (+ `--film-fps=F`, default 12): film the guest test's ride for N
     /// frames at F park-frames a second with the orbit on the ride, one PNG per frame; the
     /// `[film]` lines carry the park time so every `[snd]` cue maps to a video timestamp.</summary>
+    int _fxBurst, _fxBurstEvery = 15, _fxBurstNode = 1;
     int _rideFilm, _filmFps = 12; long _filmStartMs; float _filmYaw0 = 0.8f;
     /// <summary>The particles the scripted rides ask for, drawn as the demo scene draws them.</summary>
     RideParticles _burst;
@@ -413,6 +414,14 @@ public partial class Viewer : Node3D
             else if (a.StartsWith("--sound-census=")) { int.TryParse(a["--sound-census=".Length..], out _soundCensus); _guestTest = true; }
             else if (a.StartsWith("--ride-film=")) { int.TryParse(a["--ride-film=".Length..], out _rideFilm); _guestTest = true; }
             else if (a.StartsWith("--film-fps=")) { int.TryParse(a["--film-fps=".Length..], out _filmFps); if (_filmFps <= 0) _filmFps = 12; }
+            // `--fx-burst=ID[,everyN[,node]]` -- see RideFilmFrame.
+            else if (a.StartsWith("--fx-burst="))
+            {
+                var f = a["--fx-burst=".Length..].Split(',');
+                int.TryParse(f[0], out _fxBurst);
+                if (f.Length > 1) int.TryParse(f[1], out _fxBurstEvery);
+                if (f.Length > 2) int.TryParse(f[2], out _fxBurstNode);
+            }
             else if (a.StartsWith("--guest-ride=")) _guestRide = a["--guest-ride=".Length..];
             else if (a == "--type-audit") _typeAudit = true;
             else if (a == "--ghost-press") { _ghostTest = true; _ghostPress = true; }
@@ -3697,6 +3706,22 @@ public partial class Viewer : Node3D
             GetTree().Quit(); return;
         }
         StepPark(1.0 / _filmFps);
+        // ⭐⭐ A PARTICLE IN THE REAL PARK, ON FILM. Master: "try rendering it in-park as a gif or
+        // mp4." The filmed ride's own script only emits once it has riders, and a ten-second film
+        // of an empty queue emits nothing at all -- which is a true picture of the script and a
+        // useless one of the particles. `--fx-burst=ID[,everyN]` fires the effect straight at the
+        // ride's fitting every N frames so the film has the thing being filmed in it.
+        // ⚠ It is a HARNESS burst, not the script's: the script decides WHEN in the real game and
+        // this does not pretend to.
+        if (_fxBurst > 0 && _burst != null && _filmFrame % Math.Max(1, _fxBurstEvery) == 0
+            && _scripted.FirstOrDefault().Ride is { } fr)
+        {
+            var at = NodeWorld(fr.Id, _fxBurstNode, 0x100);
+            var made = at is { } q ? _burst.Emit(_fxBurst, q) : null;
+            GD.Print($"[film] f{_filmFrame:D4} burst {_fxBurst} at node {_fxBurstNode} -> "
+                   + (made?.Name ?? "(no fitting or no such effect)")
+                   + (at is { } r ? $" ({r.X:F1},{r.Y:F1},{r.Z:F1})" : ""));
+        }
         RideFilmCamera();
         if (_filmFrame % (_filmFps * 5) == 0)
         {
