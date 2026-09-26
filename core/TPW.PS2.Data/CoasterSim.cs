@@ -46,6 +46,24 @@ public sealed class CoasterTrain
     /// <summary>`+0x2a4`, `+0x2a8` (the car being unloaded or boarded), `+0x2ac`.</summary>
     public int Timer, Cursor, Attempts;
     public CoasterCar[] Cars;
+
+    // ---- sound state (findings/coaster-trains.md §10)
+    /// <summary>`+0x26c`: the rumble's parameter 7, which picks its clip band -- 10 grate
+    /// (departure), 20 winch, 30 roll, 40 accel, 50 slow, 60 fast winch, 70 brake (arrival).</summary>
+    public int RumbleCode;
+    /// <summary>`+0x270`, parameter 6: 10 while splashing (family 1) or while car 0 points along
+    /// world z, back to 0 after 1900 ms.</summary>
+    public int Splash;
+    /// <summary>`+0x274`, parameter 8: `min(999, speed / 0.4 × 1000)`; `+0x2c8` slews toward it by
+    /// at most 40 a tick.</summary>
+    public int SpeedCode, SlewedSpeed;
+    /// <summary>`+0x278`: the first climb after the station is still ahead.</summary>
+    public bool FirstClimb = true;
+    /// <summary>`+0x2c0`: when the chain last let go, −1 once 2600 ms have passed.</summary>
+    public long ChainExitAt = -1;
+    internal long SplashOffAt = -1, ClimbAt = long.MinValue / 2, DiveArmed = 1;
+    internal CoasterNode SoundNode;
+    internal readonly long[] SpeedAt = { long.MinValue / 2, long.MinValue / 2, long.MinValue / 2 };
 }
 
 /// <summary>⭐⭐ A ROLLER COASTER'S TRAINS, run as the console runs them (findings/coaster-trains.md,
@@ -75,6 +93,15 @@ public sealed class CoasterSim
     public event Action<int> Released;
     /// <summary>`+0x120`: riders aboard every train.</summary>
     public int Riders { get; private set; }
+    /// <summary>The millisecond clock the sound cooldowns run on (`0x147158`), 40 a tick.</summary>
+    public long Now { get; private set; }
+    /// <summary>`0x2b72a4`: screams need the park open as well as a rider aboard.</summary>
+    public bool ParkOpen { get; set; } = true;
+    /// <summary>A scream (native category 7, the kids map) from a train's car 0: crest 0x115 + band,
+    /// climb 0xf5, speed 0x105, dive 0x4e. Always the "fewer than 2 riders" row: `0x1af330` picks it
+    /// from car 0 right after the cars are zeroed.</summary>
+    public event Action<CoasterTrain, int> Scream;
+    bool _silent;
     /// <summary>Bumped whenever the winch flags change, so a viewer knows to rebuild meshes.</summary>
     public int WinchVersion { get; private set; }
 
@@ -86,6 +113,7 @@ public sealed class CoasterSim
     /// which spawns when the ring is closed and there are none (`0x122af8`, valid NOT checked).</summary>
     public void Step()
     {
+        Now += 40;
         if (!(Track.Closed && Track.Valid)) RemoveTrains();
         if (Status != 5)
             foreach (var tr in Trains.ToList())
@@ -101,6 +129,17 @@ public sealed class CoasterSim
                     case CoasterTrainState.Board: Board(tr); break;
                 }
         if (Status is 2 or 10 or 4 && Track.Closed && Trains.Count == 0) Spawn();
+        foreach (var tr in Trains) SoundTick(tr);
+    }
+
+    /// <summary>`0x1af858`, every tick: the speed code and its slew, the 2600 ms chain-exit latch and
+    /// the splash's 1900 ms tail.</summary>
+    void SoundTick(CoasterTrain tr)
+    {
+        tr.SpeedCode = Math.Min(999, (int)(tr.PrevSpeed / 0.4f * 1000f));
+        tr.SlewedSpeed += Math.Clamp(tr.SpeedCode - tr.SlewedSpeed, -40, 40);
+        if (tr.ChainExitAt >= 0 && Now - tr.ChainExitAt >= 2600) tr.ChainExitAt = -1;
+        if (tr.Splash != 0 && tr.SplashOffAt >= 0 && Now >= tr.SplashOffAt) tr.Splash = 0;
     }
 
     static void SetState(CoasterTrain tr, CoasterTrainState s)
@@ -154,6 +193,7 @@ public sealed class CoasterSim
     public void MarkLift()
     {
         if (!(Track.Closed && Track.Valid)) return;
+        _silent = true;
         for (var n = Track.Exit; n != null && n != Track.Entry; n = n.Next) CoasterTrack.ClearWinch(n);
         Track.MarkWinch(0, 2.0f);
         var saved = Trains.ToList();
@@ -171,6 +211,7 @@ public sealed class CoasterSim
         Trains.Clear();
         Trains.AddRange(saved);
         WinchVersion++;
+        _silent = false;
     }
 
     /// <summary>⭐ The physics step, state 0 (`0x1b0518`).</summary>
@@ -197,9 +238,11 @@ public sealed class CoasterSim
         float m = sum / nc;
         float f = tr.Node == Track.Entry || tr.Node == Track.Exit ? 0.04f : 0.001f;
         float v = m - m * f;
-        if (!tr.Chain) { if (v <= 0.02f) { v = 0.04f; tr.Chain = true; } }
-        else if (v > 0.04f) tr.Chain = false;
+        bool entered = false, left = false;
+        if (!tr.Chain) { if (v <= 0.02f) { v = 0.04f; tr.Chain = true; entered = true; } }
+        else if (v > 0.04f) { tr.Chain = false; left = true; }
         else v = 0.04f;
+        if (!_silent) Sounds(tr, v, entered, left);
         if (tr.Node.Kind == CoasterNodeKind.Loop && v >= 0.08f) v = tr.PrevSpeed;
         foreach (var c in tr.Cars) c.Speed = v;
         tr.PrevSpeed = v;
@@ -209,7 +252,58 @@ public sealed class CoasterSim
             tr.Cursor = 0;
             SetState(tr, CoasterTrainState.Dwell);
             tr.Pos -= L;
+            tr.RumbleCode = 70; tr.SpeedCode = 0; tr.Splash = 0; tr.FirstClimb = true;
         }
+    }
+
+    /// <summary>The rumble codes and the screams, from inside the physics step (§10.4, §10.5).
+    /// ⚠ The chain-exit and running codes are never written on the approach, station or departure
+    /// segments; screams need a rider aboard and the park open.</summary>
+    void Sounds(CoasterTrain tr, float v, bool entered, bool left)
+    {
+        bool fam1 = Type.SoundFamily == 1;
+        bool edge = tr.Node == Track.Entry || tr.Node == Track.Exit || tr.Node == Track.Exit.Next;
+        if (entered) tr.RumbleCode = tr.FirstClimb || fam1 ? 20 : 60;
+        if (left && !edge)
+        {
+            if (tr.FirstClimb) { tr.RumbleCode = 30; tr.FirstClimb = false; }
+            else tr.RumbleCode = 40;
+            tr.ChainExitAt = Now;
+        }
+        else if (!tr.Chain && !edge && tr.ChainExitAt < 0)
+            tr.RumbleCode = !fam1 && v < 0.04f ? 60 : 50;
+        // Parameter 6: along world z, or (family 1) the node just left was a height minimum.
+        var c0 = tr.Cars[0];
+        bool splash = MathF.Abs(c0.Fwd.Z) > 0.99f;
+        bool newNode = tr.Node != tr.SoundNode;
+        tr.SoundNode = tr.Node;
+        if (fam1 && newNode && tr.Node.Prev is { } pn && pn.Prev is { } ppn && tr.Node.Height > pn.Height && pn.Height < ppn.Height)
+            splash = true;
+        if (tr.Node != Track.Exit && tr.Node != Track.Exit.Next)
+        {
+            if (splash) { tr.Splash = 10; tr.SplashOffAt = -1; }
+            else if (tr.Splash != 0 && tr.SplashOffAt < 0) tr.SplashOffAt = Now + 1900;
+        }
+        if (!ParkOpen || !tr.Cars.Any(c => c.Riders.Count > 0)) return;
+        float up = c0.Fwd.Y;
+        if (left && !edge)
+        {
+            float y = c0.Pos.Y * 256f;
+            int band = y > 9850 ? 3 : y > 8066 ? 2 : y > 6283 ? 1 : y > 4500 ? 0 : -1;
+            if (band >= 0) Scream?.Invoke(tr, 0x115 + band);
+        }
+        if (tr.Chain) return;
+        if (up > 0.6f && v > 0.08f && Now - tr.ClimbAt >= 3500) { tr.ClimbAt = Now; Scream?.Invoke(tr, 0xf5); }
+        if (up > -0.5f && up <= 0.6f)
+        {
+            float[] at = { 0.3f, 0.34f, 0.38f };
+            for (int k = 0; k < 3; k++)
+                if (v > at[k] && Now - tr.SpeedAt[k] >= 3000) { tr.SpeedAt[k] = Now; Scream?.Invoke(tr, 0x105); }
+        }
+        // ⚠ The console replays the dive only when its handle has stopped playing; the port has no
+        // handle here and re-arms it once the train is out of the dive instead.
+        if (v > 0.08f && up < -0.66f) { if (tr.DiveArmed != 0) { tr.DiveArmed = 0; Scream?.Invoke(tr, 0x4e); } }
+        else tr.DiveArmed = 1;
     }
 
     /// <summary>`0x1aed90`. ⚠ Two quirks kept on purpose: crossing into the next segment subtracts
@@ -245,6 +339,7 @@ public sealed class CoasterSim
         var tr = NewTrain(0);
         Trains.Add(tr);
         PlaceCars(tr, 1.0f);
+        _silent = true;
         float duration = 0, maxSpeed = 0, vPos = 0, vNeg = 0, lat = 0;
         float last = tr.Pos;
         for (int guard = 0; guard < 200000; guard++)
@@ -261,6 +356,7 @@ public sealed class CoasterSim
             if (!(last < tr.Pos)) break;
             last = tr.Pos;
         }
+        _silent = false;
         RemoveTrains();
         Spawn();
         float length = 0, drops = 0, steep = 0;
@@ -368,9 +464,10 @@ public sealed class CoasterSim
         {
             tr.Attempts--;
             SetState(tr, tr.Attempts < 0 ? CoasterTrainState.Run : CoasterTrainState.Board);
+            if (tr.State == CoasterTrainState.Run) tr.RumbleCode = 10;
             return;
         }
-        if (Behind(tr).Held) SetState(tr, CoasterTrainState.Run);
+        if (Behind(tr).Held) { SetState(tr, CoasterTrainState.Run); tr.RumbleCode = 10; }
     }
 
     CoasterTrain Behind(CoasterTrain tr) => Trains[(tr.Index + 1) % Trains.Count];
@@ -395,5 +492,6 @@ public sealed class CoasterSim
             if (!Behind(tr).Held) { SetState(tr, CoasterTrainState.Wait); return; }
         }
         SetState(tr, CoasterTrainState.Run);
+        tr.RumbleCode = 10;
     }
 }

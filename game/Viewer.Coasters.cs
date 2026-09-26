@@ -30,6 +30,8 @@ public partial class Viewer
         public Material[] Slots, Red;
         public int WinchSeen = -1;
         public long SeenTime = -1;
+        /// <summary>Sound voices started for this coaster's trains, so a gone train's are stopped.</summary>
+        public readonly HashSet<int> Voices = new();
         /// <summary>The last test lap's record, for the stats screen.</summary>
         public CoasterStats Stats = CoasterStats.None;
     }
@@ -170,6 +172,7 @@ public partial class Viewer
         frame.Transform = new Transform3D(new Basis(ax, new Vector3(0, ax.Length(), 0), az), new Vector3(o.X, _park.BaseY, o.Z));
         LoadCoasterMaterials(view);
         RebuildCoaster(view);
+        sim.Scream += (tr, evt) => CoasterScream(view, tr, evt);
         GD.Print($"[coaster] {type.Name}: station at ({cx},{cy}) turned {turns}, track exit {exit} step {exitStep}, entry {entry}, "
                + $"heights {type.ExitHeight}/{type.EntryHeight}, style {type.Style}, {type.CarsPerTrain} car(s) of {type.Seats}, {view.Price} a pylon");
         return true;
@@ -324,6 +327,7 @@ public partial class Viewer
                 if (IsInstanceValid(v.Cars[gone].Node)) v.Cars[gone].Node.QueueFree();
                 v.Cars.Remove(gone);
             }
+            if (ticked) CoasterRumble(v);
             foreach (var car in live)
             {
                 var now = new Vector3(car.Pos.X, car.Pos.Y, car.Pos.Z);
@@ -382,6 +386,7 @@ public partial class Viewer
     void RemoveCoasterView(int id)
     {
         if (!_coasters.Remove(id, out var v)) return;
+        foreach (int voice in v.Voices) { _sounds?.Kill(voice, "coaster", RumbleTag, (long)_busElapsedMs); _sounds?.Follow(voice, RumbleTag, null); }
         if (_coasterTool == v) { _coasterTool = null; _afterCoaster = null; _coasterGhost = null; _ghostView?.Clear(); }
         v.Sim.RemoveTrains();
         if (IsInstanceValid(v.Frame)) v.Frame.QueueFree();
@@ -391,6 +396,76 @@ public partial class Viewer
     void ClearCoasterViews()
     {
         foreach (var id in _coasters.Keys.ToList()) RemoveCoasterView(id);
+    }
+
+    // ------------------------------------------------------------------ sounds
+
+    const int RumbleTag = 0x6000;
+
+    /// <summary>A voice id per TRAIN, because the rumble's parameters are the train's own and
+    /// <see cref="RideSounds.ParameterValue"/> asks by voice owner. Clear of every ride serial.</summary>
+    static int CoasterVoice(CoasterView v, CoasterTrain tr) => 0x40000000 | (v.Id << 4) | (tr.Index & 15);
+
+    RideSounds _coasterChainedOn;
+
+    /// <summary>Parameters 6, 7 and 8 of a train's rumble: splash, clip band, speed.</summary>
+    void ChainCoasterParameters()
+    {
+        if (_sounds == null || ReferenceEquals(_coasterChainedOn, _sounds)) return;
+        _coasterChainedOn = _sounds;
+        var previous = _sounds.ParameterValue;
+        _sounds.ParameterValue = (ride, parameter) =>
+        {
+            if ((ride & 0x40000000) == 0) return previous?.Invoke(ride, parameter) ?? 0;
+            int id = (ride & 0x3fffffff) >> 4, index = ride & 15;
+            var tr = _coasters.TryGetValue(id, out var v) ? v.Sim.Trains.FirstOrDefault(t => t.Index == index) : null;
+            return tr == null ? 0 : parameter switch { 7 => tr.RumbleCode, 6 => tr.Splash, 8 => tr.SpeedCode, _ => 0 };
+        };
+    }
+
+    /// <summary>The rumble (`+0x260`): category 4 event 0x11 at each train's car 0, started again
+    /// whenever it is not playing (`0x1af858`), its clip band chosen by parameter 7. ⚠ Family 1 (the
+    /// three troughs and Dare Devil) asks category 5 for event 0x11, which WTRSFX.MAP does not hold, so
+    /// on the console those trains rumble silently; they do here too.</summary>
+    void CoasterRumble(CoasterView v)
+    {
+        _sounds ??= MakeSounds();
+        if (_sounds == null) return;
+        ChainCoasterParameters();
+        var alive = new HashSet<int>();
+        foreach (var tr in v.Sim.Trains)
+        {
+            int voice = CoasterVoice(v, tr);
+            alive.Add(voice);
+            if (v.Track.Type.SoundFamily == 1) continue;
+            if (!v.Cars.TryGetValue(tr.Cars[0], out var cv) || !IsInstanceValid(cv.Node)) continue;
+            if (v.Voices.Add(voice))
+            {
+                var node = cv.Node;
+                _sounds.Follow(voice, RumbleTag, () => IsInstanceValid(node) ? node.GlobalPosition : null);
+            }
+            // ⚠ The handle, not the clip: the rumble is a persistent object (ADDOBJ, like the bus's
+            // loop) whose graph walks its 32 sets by parameter 7; cued as a plain EVENT it replayed
+            // set 0 (Whir01) forever. It is started again only once its graph has actually stopped.
+            if (!_sounds.Running(voice, RumbleTag) && !_sounds.Sounding(voice, RumbleTag))
+                _sounds.Cue(voice, "coaster", (long)_busElapsedMs, RseOpcode.ADDOBJ, (int)SoundGroup.NativeRidesGrc,
+                            -1, 0x11, RumbleTag, cv.Node.GlobalPosition);
+        }
+        foreach (int gone in v.Voices.Where(x => !alive.Contains(x)).ToList())
+        {
+            _sounds.Kill(gone, "coaster", RumbleTag, (long)_busElapsedMs);
+            _sounds.Follow(gone, RumbleTag, null);
+            v.Voices.Remove(gone);
+        }
+    }
+
+    /// <summary>A scream from the sim (category 7, the kids map) at the train's car 0.</summary>
+    void CoasterScream(CoasterView v, CoasterTrain tr, int evt)
+    {
+        _sounds ??= MakeSounds();
+        if (_sounds == null || !v.Cars.TryGetValue(tr.Cars[0], out var cv) || !IsInstanceValid(cv.Node)) return;
+        _sounds.Cue(CoasterVoice(v, tr), "coaster", (long)_busElapsedMs, RseOpcode.EVENT, (int)SoundGroup.GlobalKids,
+                    -1, evt, RumbleTag + 0x100 + evt, cv.Node.GlobalPosition);
     }
 
     // ------------------------------------------------------------------ the tool

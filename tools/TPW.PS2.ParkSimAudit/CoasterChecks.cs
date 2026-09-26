@@ -265,6 +265,56 @@ static class CoasterChecks
                   $"the join quirk releases the chain on the climb into a longer segment ({l0:F2} -> {l1:F2} cells), "
                   + "so the lift texture is patchy exactly where the console's would be");
         }
+        // ---- sounds (findings/coaster-trains.md §10)
+        {
+            var t = Build(Temple, hills, out _); t.AddPylon(EntryCell, 0, 0, false, CoasterNodeKind.Normal);
+            var sim = new CoasterSim(t);
+            var queue = new Queue<int>(Enumerable.Range(1, 60));
+            sim.TakeHead = () => queue.Count > 0 ? queue.Dequeue() : null;
+            sim.SetOpen(true);
+            var codes = new List<int>();
+            bool speedOk = true, slewOk = true;
+            int lastSlew = 0;
+            CoasterTrain watched = null;
+            for (int i = 0; i < 6000; i++)
+            {
+                sim.Step();
+                watched ??= sim.Trains.FirstOrDefault();
+                if (watched == null) continue;
+                if (codes.Count == 0 || codes[^1] != watched.RumbleCode) codes.Add(watched.RumbleCode);
+                speedOk &= watched.SpeedCode == Math.Min(999, (int)(watched.PrevSpeed / 0.4f * 1000f));
+                slewOk &= Math.Abs(watched.SlewedSpeed - lastSlew) <= 40;
+                lastSlew = watched.SlewedSpeed;
+            }
+            string seq = string.Join(" ", codes);
+            int i10 = codes.IndexOf(10), i30 = i10 < 0 ? -1 : codes.IndexOf(30, i10), i70 = i30 < 0 ? -1 : codes.IndexOf(70, i30);
+            int i50 = i30 < 0 ? -1 : codes.IndexOf(50, i30);
+            Check(i10 >= 0 && i30 > i10 && i70 > i30 && i50 > i30 && i50 < i70,
+                  $"the rumble's clip band follows the lap: grate (10) at departure, roll (30) off the first chain, slow (50) "
+                  + $"once 2600 ms have passed, brake (70) on arrival [{seq}]");
+            Check(speedOk && slewOk, "parameter 8 is min(999, speed / 0.4 x 1000), and its slewed copy moves at most 40 a tick");
+        }
+        {
+            // Screams need a rider and a steep dive; the same ring with nobody aboard stays silent.
+            int[] cliff = { 1280, 0, 0, 0, 0, 0, 0, 375, 375 };
+            List<int> Screams(bool riders)
+            {
+                var t = Build(Temple, cliff, out _); t.AddPylon(EntryCell, 0, 0, false, CoasterNodeKind.Normal);
+                var sim = new CoasterSim(t);
+                var q = new Queue<int>(riders ? Enumerable.Range(1, 60) : Enumerable.Empty<int>());
+                sim.TakeHead = () => q.Count > 0 ? q.Dequeue() : null;
+                sim.SetOpen(true);
+                var heard = new List<int>();
+                sim.Scream += (tr, e) => heard.Add(e);
+                for (int i = 0; i < 6000; i++) sim.Step();
+                return heard;
+            }
+            var loud = Screams(true); var quiet = Screams(false);
+            Check(loud.Count > 0 && loud.All(e => e is 0x4e or 0xf5 or 0x105 or >= 0x115 and <= 0x118) && quiet.Count == 0,
+                  $"screams (kids 0x4e dive, 0xf5 climb, 0x105 speed, 0x115+ crest) come only with riders aboard: "
+                  + $"{loud.Count} with [{string.Join(" ", loud.Distinct().Select(e => $"0x{e:x}"))}], {quiet.Count} without");
+        }
+
         // ---- the test lap (0x122d48), statistics and rating
         {
             Check(CoasterSim.Rate(0.4f, 60f, 2f) == (0x256, true) && CoasterSim.Rate(0.4f, 60f, 4f) == (0x2bc, false)

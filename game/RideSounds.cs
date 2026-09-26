@@ -337,6 +337,11 @@ public sealed class RideSounds
     readonly List<Repeater> _repeats = new();
     public int Repeating => _repeats.Count;
 
+    /// <summary>Whether an owner's repeater or graph on a tag is still running. ⭐ A GRAPH IS ALIVE
+    /// BETWEEN ITS CLIPS: asking <see cref="Sounding"/> instead restarts it at its first set in every
+    /// gap, so it never walks its links (the coaster rumble played Whir01 forever).</summary>
+    public bool Running(int ride, int tag) => _repeats.Any(t => t.Ride == ride && t.Tag == tag);
+
     /// <summary>⭐⭐ OWNERS WHOSE VOICES FOLLOW A MOVING SOURCE. astraclaw needs this for the bus:
     /// its event is native category 1 -- `AUDIO/GLOBAL/amb` -- which maps to
     /// <see cref="SoundGroup.GlobalAmbient"/>, and <see cref="Positional"/> deliberately excludes

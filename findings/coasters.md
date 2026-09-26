@@ -214,6 +214,14 @@ length (INFERRED from the READ code; not seen on hardware).
 Riders sit on their cars' seat fittings (id seat + 1, space 0x80; Caterpillar's missing seat 4 seats
 nobody, as on the console).
 
-Not built yet: the stats screen as a screen; the Ultimate award record; coaster sounds; the Test
+**Sounds**: each train's rumble is category 4 event 0x11 (`GRCSFX.MAP`, 32 sets), a persistent
+object whose graph walks its sets by parameter 7, the train's state code (§10.4 of the trains
+file): grate at departure, winch, roll off the first chain, accel, slow, fast winch, brake on
+arrival. Parameters 6 and 8 carry the splash and the speed. Family 1 asks category 5, whose map
+lacks event 0x11, so those trains are silent on the console and here. Screams (kids map: dive 0x4e,
+climb 0xf5, speed 0x105, crest 0x115+) need a rider aboard. Not done: the far loop and pass-by
+(ride-cam camera modes only), the rider ambience, the chain-anticipation scream (mode 3).
+
+Not built yet: the stats screen as a screen; the Ultimate award record; the Test
 Park; moving a pylon (mode 13's Move); breakdowns; stacked pylons use the pylon below's attach point
 instead of its posed stack helper.

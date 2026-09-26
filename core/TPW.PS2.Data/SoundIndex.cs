@@ -23,6 +23,9 @@ public enum SoundGroup
     /// cars' `0x111428(audio, 6, 4 | 0xf, ...)`. Numbered well clear of the script range so that
     /// no script operand can ever select it.</summary>
     NativeRidesTrack = 0x106,
+    /// <summary>Native category 4, `AUDIO/RIDES/grc` (bank `sound\Coast`): the coaster trains'
+    /// rumble, event 0x11, whose parameter 7 picks the clip band (findings/coaster-trains.md §10).</summary>
+    NativeRidesGrc = 0x104,
 }
 
 /// <summary>A `*SFX.MAP` -- the event-to-clip index beside a `.SDT` bank. Record sizes and the
@@ -226,6 +229,7 @@ public sealed class SoundCatalogue
         SoundGroup.GlobalUi => "/AUDIO/GLOBAL/UISFX.MAP",
         SoundGroup.GlobalBumper => "/AUDIO/RIDES/BUMPSFX.MAP",
         SoundGroup.NativeRidesTrack => "/AUDIO/RIDES/TRCKSFX.MAP",
+        SoundGroup.NativeRidesGrc => "/AUDIO/RIDES/GRCSFX.MAP",
         _ => null,
     };
 

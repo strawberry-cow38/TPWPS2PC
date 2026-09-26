@@ -243,6 +243,7 @@ public partial class CoasterSmoke : Node3D
             int riders = nc * type.Seats + 2;
             for (int g = 9001; g < 9001 + riders; g++) ride.Join(g);
             float top = 0; int left = 0; bool ridersChecked = false;
+            var rumbleClips = new HashSet<string>();
             var cars = (IDictionary)F(view, "Cars");
             for (int i = 0; i < 9000 && left < riders; i++)
             {
@@ -251,6 +252,13 @@ public partial class CoasterSmoke : Node3D
                 left += ride.Left.Count; ride.ClearLeft();
                 if (i % 200 == 0) await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
                 if (i == 700) await Shot("cars");
+                if (i % 5 == 0 && Field<RideSounds>(viewer, "_sounds") is { } snd
+                    && typeof(RideSounds).GetField("_voices", BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(snd) is IEnumerable vs)
+                    foreach (var vo in vs)
+                    {
+                        int owner = (int)vo.GetType().GetField("Ride").GetValue(vo);
+                        if ((owner & 0x40000000) != 0) rumbleClips.Add((string)vo.GetType().GetField("Name").GetValue(vo));
+                    }
                 // Riders sit in their cars' seats (fitting id seat + 1, space 0x80), once some are aboard.
                 if (!ridersChecked && csim.Trains.Any(t => t.State == CoasterTrainState.Run && t.Cars.Any(c => c.Riders.Count > 0)))
                 {
@@ -276,6 +284,11 @@ public partial class CoasterSmoke : Node3D
             }
             Check(left == riders, $"all {riders} queued guests board, ride and come off at the exit");
             Check(ridersChecked, "riders were seen aboard a moving train and checked in their seats");
+            // The rumble (category 4 event 0x11) walks its graph by parameter 7, the train's state:
+            // more than one band's clip plays over a lap. Family 1 asks a map without the event.
+            if (type.SoundFamily == 1) Check(rumbleClips.Count == 0, "a family-1 coaster's rumble is silent: WTRSFX.MAP has no event 0x11");
+            else Check(rumbleClips.Select(n => new string(n.TakeWhile(char.IsLetter).ToArray())).Distinct().Count() >= 2,
+                       $"the rumble's clip band follows the train: {string.Join(", ", rumbleClips.OrderBy(n => n))}");
             Check(top > 0.1f, $"the trains run the hill on gravity (top speed {top:F3} cells a tick)");
             Check(cars.Count == csim.Trains.Sum(t => t.Cars.Length) && cars.Count > 0, $"every car is drawn ({cars.Count})");
             foreach (var car in csim.Trains.SelectMany(t => t.Cars))
