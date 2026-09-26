@@ -10,7 +10,8 @@ namespace TPWPS2Viewer.Tests;
 /// ring press by press and closing it on the entry cell, the pylon edit raising a hill, the track and
 /// pylons drawn, then trains spawned, riders boarded from the ride's own queue and handed back.
 /// Run with --map=WORLD --mode=park. `TPW_COASTER_SHOT=dir` saves pictures; `TPW_COASTER=folder`
-/// picks a coaster (default: the park's first); `TPW_COASTER_TURNS` turns the station.</summary>
+/// picks a coaster (default: the park's first on terrain 1, its second on terrain 2); `TPW_COASTER_TURNS`
+/// turns the station.</summary>
 public partial class CoasterSmoke : Node3D
 {
     const BindingFlags Hidden = BindingFlags.Instance | BindingFlags.NonPublic;
@@ -60,7 +61,10 @@ public partial class CoasterSmoke : Node3D
             var rows = Field<List<int>>(viewer, "_buildRows");
             Check(rows.Count > 0, $"{world}: the Roller Coasters category lists {rows.Count}");
             string want = System.Environment.GetEnvironmentVariable("TPW_COASTER");
-            int chosen = want == null ? 0 : Enumerable.Range(0, rows.Count).First(r =>
+            // Terrain 2 builds the park's second coaster, so the matrix's eight runs cover eight coasters
+            // rather than four twice (Temple of Gloom's lattice check never ran in it otherwise).
+            int terrain = map.Contains("terrain_2", StringComparison.OrdinalIgnoreCase) ? 2 : 1;
+            int chosen = want == null ? (terrain - 1) % rows.Count : Enumerable.Range(0, rows.Count).First(r =>
                 lib.Rides[rows[r]].Model.Path.Contains("/" + want + "/", StringComparison.OrdinalIgnoreCase));
             string stationPath = lib.Rides[rows[chosen]].Model.Path;
             Call(viewer, "ArmFromList", chosen);
@@ -193,12 +197,12 @@ public partial class CoasterSmoke : Node3D
                 // ⭐ THE LOFT, NOT A REFERENCE POINT. The posts are authored to different things --
                 // Temple's and Caterpillar's tops meet their track dummy, Chak Atak's and Hades' meet the
                 // rail -- so neither is the invariant. What the loft guarantees is that every post's top
-                // rises 9 cells per full loft (the keys' +90 at 0.1 scale): top - 9h/2560 is one number
-                // per coaster. The broken absolute morph pinned the top instead.
-                // Rest height = the measured top minus the loft's 9L, which must be the post's own BIND
+                // rises its loft per full loft (the keys' +90 at 0.1 scale, +80 on Gorilla Thrilla): top -
+                // loft·h/2560 is one number per coaster. The broken absolute morph pinned the top instead.
+                // Rest height = the measured top minus the loft's rise (9L on most), which must be the post's own BIND
                 // top out of the .mps: the loft ADDS to the bind pose. (The collapsed absolute morph
                 // rose 9L too, from nothing: rest -0.01 against a bind top of 1.0 on Chak Atak.)
-                float rest = hi - floor - 9f * Math.Clamp(n.Height / 2560f, 0f, 1f);
+                float rest = hi - floor - (type.LoftTo - type.LoftFrom) / 10f * Math.Clamp(n.Height / 2560f, 0f, 1f);
                 float bindTop = holder.HasMeta("rest_top") ? (float)holder.GetMeta("rest_top") : float.NaN;
                 restTop ??= rest;
                 Check(MathF.Abs(lo - floor) < 0.05f && MathF.Abs(rest - bindTop) < 0.05f && MathF.Abs(rest - restTop.Value) < 0.05f,
@@ -206,6 +210,11 @@ public partial class CoasterSmoke : Node3D
                       + $"(rest {rest:F2}, bind top {bindTop:F2}); rail {rail - hi:+0.00;-0.00} from its top, dummy {dummy.Y - hi:+0.00;-0.00}");
                 // The lattice tiles up the post: additive UV keys keep the authored U and add V with the
                 // loft (0x1ad378). Written as absolute UVs every U collapses to 0 and the post bands.
+                // ⭐ And ALL FOUR channels add, not just the loft: incline held at 0.5 and bank at 0 each
+                // put V deltas on the lofted ring even though they morph nothing there. Summed by hand
+                // off the .aps (bind 0.496 + loft 7.493L + incline 0.498 + bank 0.249 on the ring, the
+                // top face's 0 + bank 0.332 at the bottom of the range), MineCart's post spans V
+                // 0.911 + 7.493L. Loft alone spans 0.496 + 7.493L, and a low post drew a quarter-cross.
                 float u0 = float.MaxValue, u1 = float.MinValue, v0 = float.MaxValue, v1 = float.MinValue;
                 foreach (var mi in holder.FindChildren("*", "MeshInstance3D", true, false).OfType<MeshInstance3D>())
                     if (mi.IsVisibleInTree() && mi.Mesh != null)
@@ -214,8 +223,9 @@ public partial class CoasterSmoke : Node3D
                             { u0 = Math.Min(u0, uv.X); u1 = Math.Max(u1, uv.X); v0 = Math.Min(v0, uv.Y); v1 = Math.Max(v1, uv.Y); }
                 float loft = Math.Clamp(n.Height / 2560f, 0f, 1f);
                 if (type.Folder == "MineCart")
-                    Check(u1 - u0 > 0.5f && v1 - v0 >= 7.493f * loft - 0.01f,
-                          $"pylon ({n.CellX},{n.CellZ}) keeps its lattice: U spans {u1 - u0:F2}, V spans {v1 - v0:F2} for loft {loft:F3} (keys add 7.493 per full loft)");
+                    Check(u1 - u0 > 0.5f && (n.Bank != 0 ? v1 - v0 >= 7.493f * loft - 0.01f : MathF.Abs(v1 - v0 - (0.911f + 7.493f * loft)) < 0.01f),
+                          $"pylon ({n.CellX},{n.CellZ}) keeps its lattice: U spans {u1 - u0:F2}, V spans {v1 - v0:F2} for loft {loft:F3}, bank {n.Bank} "
+                          + "(four channels: 0.911 + 7.493L at bank 0)");
                 var across = (holder.GlobalTransform.Basis.X).Normalized();
                 var s0 = n.S[2];
                 var sideV = (frameT.Basis * new Vector3(s0.X, s0.Y, s0.Z)).Normalized();
@@ -248,6 +258,15 @@ public partial class CoasterSmoke : Node3D
             Check(csim.Trains.Count == expect, $"{csim.Trains.Count} trains of {nc} spawn: clamp((pylons/3+2)/cars, 2, 6) = {expect}");
             await Shot("track");
             lift = 0.15f; await Shot("side"); lift = 0.8f;
+            // The tallest post and the shortest, close up: the lattice's crosses are what gets checked by eye.
+            foreach (var (tag, pick) in new[] { ("pylon_tall", track.Pylons.MaxBy(p => p.Height)), ("pylon_short", track.Pylons.MinBy(p => p.Height)) })
+            {
+                var box = ((Node3D)pylons[pick]).FindChildren("*", "MeshInstance3D", true, false).OfType<MeshInstance3D>()
+                    .Where(m => m.IsVisibleInTree() && m.Mesh != null).Select(m => m.GlobalTransform * m.GetAabb()).Aggregate((x, y) => x.Merge(y));
+                aimAt = box.GetCenter(); aimFar = box.Size.Y * 1.2f + 1.5f;
+                await Shot(tag);
+            }
+            aimAt = null; aimFar = null;
             var ride = sim.Rides.Single(r => r.Coaster == csim);
             int riders = nc * type.Seats + 2;
             for (int g = 9001; g < 9001 + riders; g++) ride.Join(g);

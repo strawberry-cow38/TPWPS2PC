@@ -371,12 +371,12 @@ Record layout, from `+0xd8 + i·0x48`:
 - Four channels are started by `vt+0x5c(1.0, inst, section, 0, channel)`. Section = the `.aps`
   section, whose port names are the ride-script slot names:
 
-  | channel | `.aps` section | driven by (`0x19cdd0`, via vt `+0x64` → `0x1ad2d8`: time = value × record duration) | what the data does (READ, all 14 pylons) |
+  | channel | `.aps` section | driven by (`0x19cdd0`, via vt `+0x64` → `0x1ad2d8`: time = value × the channel's length, which is the record's `+4` duration as a float, clamped 0.0001 under it — READ `0x1acdd8`/`0x1ad180`) | what the data does (READ, all 14 pylons) |
   |---|---|---|---|
   | 0 loft | 3 | `clamp(+0x44 / 2560, 0, 1)` | vertex-morphs the post; moves `TrackDummyCentre` and the stacker on a 2-point linear path 0 → **90** model units over 100 frames (Gorilla Thrilla 0 → 80, Caterpillar −4.5 → 85.5) |
   | 1 rotate | 10 | (θ in radians wrapped to [0, 2π]) / 2π, with θ = `+0x4a + +0x4c` | yaw of the post: 0 → 360° over 100 frames |
-  | 2 incline | 2 | **constant 0.5** | ±45° (±36° on some) about X on the dummy; 0.5 = neutral, so never used |
-  | 3 bank | 9 | `(+0x4e + 512) / 1024` | dummy rolls +45° (bank −512) … 0 … −45° (bank +512) about Z (not every pylon has section 9: Chak Atak, Hades and Caterpillar lack it) |
+  | 2 incline | 2 | **constant 0.5** | ±45° (±36° on some) about X on the dummy. 0.5 is neutral for the MORPH (MineCart's ±3.5 on the post's top ring is 0 at frame 10) but **not for the UVs**: the post's lofted ring gets V +0.498 there (READ, MineCart) |
+  | 3 bank | 9 | `(+0x4e + 512) / 1024` | dummy rolls +45° (bank −512) … 0 … −45° (bank +512) about Z (not every pylon has section 9: Chak Atak, Hades and Caterpillar lack it). **Also deforms the post**: MineCart's morphs its top ring ±3.5 / ±2.6 in y (0 at bank 0) and moves its UVs, +0.25 V on the lofted ring and +0.33..+0.58 on the top section at bank 0 (READ) |
 
 - `vt+0x6c` then applies the pose (→ `0x1ac6e8`). The re-pose is skipped when all four values are
   unchanged.

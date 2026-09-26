@@ -259,11 +259,15 @@ public partial class Viewer
         return new MeshInstance3D { Mesh = mesh, Name = $"seg_{n.CellX}_{n.CellZ}" };
     }
 
-    /// <summary>The pylon (`stdpylon.mps`), posed as `0x19cdd0` poses it: loft = `clamp(h/2560, 0, 1)`
-    /// along `.aps` section 3, yaw = heading + half-turn. Placed at the cell's min corner at its base
-    /// height; the mesh is authored centred on the cell. ⚠ The yaw channel (section 10) turns the
-    /// whole post, so it is applied to the holder rather than through a second record; the bank
-    /// channel only rolls the invisible track dummy and is left out.</summary>
+    /// <summary>The pylon (`stdpylon.mps`), posed as `0x19cdd0` poses it, on all four of its channels:
+    /// loft = `clamp(h/2560, 0, 1)` along `.aps` section 3, yaw = heading + half-turn (section 10),
+    /// incline held at 0.5 (section 2) and bank = `(bank + 512) / 1024` (section 9, absent on some).
+    /// A channel's frame is value × the record's duration (`0x1ad2d8`; the length is the record's
+    /// `+4` as a float, the time clamped 0.0001 under it). Placed at the cell's min corner at its base
+    /// height; the mesh is authored centred on the cell. ⚠ The yaw channel turns the whole post, so it
+    /// is applied to the holder rather than through a record. ⭐ Incline and bank are NOT idle at
+    /// neutral: they morph nothing there but add to the post's UVs, and the bank channel tilts the
+    /// post's top when the track banks (<see cref="AnimatedModel.AddLayer"/>).</summary>
     Node3D CoasterPylon(CoasterView v, CoasterNode n)
     {
         string folder = v.Track.Type.PylonFolder;
@@ -276,8 +280,11 @@ public partial class Viewer
             Aps anim = assets.Animation != null ? new Aps(_lib.Read(assets.Animation)) : null;
             var rec = anim?.Records().FirstOrDefault(r => r.Slot == 3);
             var drawn = new AnimatedModel(mesh, anim, rec, m => TextureNear(assets.Model.Path, m));
+            static float At(Aps.Record r, float value) => Math.Min(value * r.DurationFrames, r.DurationFrames - 0.0001f);
+            if (anim?.Records().FirstOrDefault(r => r.Slot == 2) is { } incline) drawn.AddLayer(incline, At(incline, 0.5f));
+            if (anim?.Records().FirstOrDefault(r => r.Slot == 9) is { } bank) drawn.AddLayer(bank, At(bank, (n.Bank + 512) / 1024f));
             float loft = Math.Clamp(n.Height / 2560f, 0f, 1f);
-            drawn.SetFrame(loft * Math.Max(drawn.Frames - 1, 0));
+            if (rec != null) drawn.SetFrame(At(rec, loft));
             // ⭐ `0x199c90`: the stacker is the node of fitting (0x80000, id 1) by the ENGINE's rule,
             // fitting index + header u16 @0x34 (not the port's meshes + index), and it carries hide
             // flag 0x8000 unless a pylon is stacked on this one. ⚠ The same function hides the

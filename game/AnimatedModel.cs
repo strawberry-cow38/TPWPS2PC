@@ -43,6 +43,10 @@ public sealed class AnimatedModel
         /// <summary>The mesh's skin, or null for a mesh that is not skinned (every ride part).</summary>
         public Model.Skin Skin;
         public List<(int[] Times, System.Numerics.Vector3[] Keys)> Morph;
+        /// <summary>Per-vertex sums of every <see cref="AddLayer"/> record's morph and UV deltas, or
+        /// null. Constant: a layer is posed once, the record now playing moves on top of it.</summary>
+        public System.Numerics.Vector3[] LayerPos;
+        public Godot.Vector2[] LayerUv;
         public MeshInstance3D[] Surfaces;          // one per material
         public int[] SurfaceMaterial;
         /// <summary>This mesh's node and every node above it, for inherited visibility.</summary>
@@ -504,10 +508,11 @@ public sealed class AnimatedModel
     /// groups as the track has entries, or an entry index would address a group that does not
     /// exist. For `cn_stall` both are 49 over 68 vertices. A mismatch means this is not the list
     /// the track meant, so the keys are dropped rather than guessed at.</summary>
-    void BindUvTrack(Part p, Aps.Record rec)
+    void BindUvTrack(Part p, Aps.Record rec) => p.UvKeys = UvKeysFor(rec, p);
+
+    List<Aps.UvKey[]> UvKeysFor(Aps.Record rec, Part p)
     {
-        p.UvKeys = null;
-        if (_anim == null || rec == null || rec.Skeletal || rec.Tracks == 0 || p.UvMap == null) return;
+        if (_anim == null || rec == null || rec.Skeletal || rec.Tracks == 0 || p.UvMap == null) return null;
         for (int t = 0; t < rec.TrackCount; t++)
         {
             int off = _anim.TrackAt(rec, t);
@@ -515,8 +520,42 @@ public sealed class AnimatedModel
             if (!string.Equals(_model.NodeName(_anim.TrackNode(off)), p.Mesh.Name,
                                StringComparison.OrdinalIgnoreCase)) continue;
             var keys = _anim.UvTrack(off);
-            if (keys != null && p.UvMap.Max() + 1 == keys.Count) p.UvKeys = keys;
-            return;
+            return keys != null && p.UvMap.Max() + 1 == keys.Count ? keys : null;
+        }
+        return null;
+    }
+
+    /// <summary>⭐⭐ A SECOND CHANNEL POSED UNDER THE ONE PLAYING, the way a pylon is posed: `0x19cdd0`
+    /// starts four channels on one instance (loft, rotate, incline, bank) and `0x1ac6e8` applies
+    /// them all, and on an <see cref="Additive"/> model each one ADDS its morph and UV deltas to
+    /// what the last left. So a record whose keys are not zero at the frame it is held at still
+    /// changes the mesh: MineCart's incline, held at its neutral 0.5 (frame 10 of 20), morphs
+    /// nothing but adds +0.5 to the V of the post's lofted ring, and its bank adds +0.25. Without
+    /// them a h100 post drew a fifth of a cross where the console draws half of one.
+    ///
+    /// Morph and UV only. The layer's node transforms (the incline and bank roll the invisible
+    /// `TrackCentreDummy`) are not composed; nothing the port draws hangs off them.</summary>
+    public void AddLayer(Aps.Record rec, float frame)
+    {
+        if (!Additive || _anim == null || rec == null || rec.Skeletal) return;
+        foreach (var p in _parts)
+        {
+            if (MorphFor(rec, p.Mesh.Index) is { } morph && p.AnimMap != null && p.AnimMap.Max() < morph.Count)
+            {
+                var ev = morph.Select(v => Sample(v.Times, v.Keys, frame)).ToArray();
+                p.LayerPos ??= new System.Numerics.Vector3[p.BindPos.Count];
+                for (int j = 0; j < p.LayerPos.Length; j++) p.LayerPos[j] += ev[p.AnimMap[j]];
+            }
+            if (UvKeysFor(rec, p) is { } keys)
+            {
+                p.LayerUv ??= new Godot.Vector2[p.Uv.Count];
+                for (int j = 0; j < p.LayerUv.Length; j++)
+                {
+                    var (u, v) = Aps.SampleUv(keys[p.UvMap[j]], frame);
+                    p.LayerUv[j] += new Godot.Vector2(u, v);
+                }
+            }
+            if (p.LayerPos != null || p.LayerUv != null) RebuildGeometry(p, 0);
         }
     }
 
@@ -638,6 +677,7 @@ public sealed class AnimatedModel
             pos = Additive ? p.AnimMap.Select((i, j) => p.BindPos[j] + ev[i]).ToList()
                            : p.AnimMap.Select(i => ev[i]).ToList();
         }
+        if (p.LayerPos != null && pose == null) pos = pos.Select((x, j) => x + p.LayerPos[j]).ToList();
         // ⭐ Kept now that it is final, for fittings pinned to this surface. Same list object as
         // BindPos when nothing deforms, which is correct: then the bind pose IS what is drawn.
         p.LivePos = pos;
@@ -659,6 +699,7 @@ public sealed class AnimatedModel
             uv = Additive ? p.UvMap.Select((i, j) => p.Uv[j] + sampled[i]).ToList()
                           : p.UvMap.Select(i => sampled[i]).ToList();
         }
+        if (p.LayerUv != null) uv = uv.Select((x, j) => x + p.LayerUv[j]).ToList();
         int si = 0;
         foreach (var grp in p.Tris.GroupBy(t => t.Material))
         {
@@ -785,7 +826,7 @@ public sealed class AnimatedModel
             // ⚠ `|| p.UvKeys != null` -- a part whose ONLY animation is its UVs has no morph and
             // no skin, so the old gate skipped it and it would never have been rebuilt at all.
             if (((p.Morph != null || (pose != null && p.Skin != null)) && p.AnimMap != null)
-                || p.UvKeys != null) RebuildGeometry(p, now, pose);
+                || p.UvKeys != null || p.LayerPos != null || p.LayerUv != null) RebuildGeometry(p, now, pose);
             var w = world[p.NodeOffset];
             var t = new Transform3D(
                 new Godot.Basis(new Godot.Vector3(w.M11, w.M12, w.M13),

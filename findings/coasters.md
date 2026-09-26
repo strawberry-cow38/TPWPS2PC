@@ -187,6 +187,19 @@ ParkSimAudit checks (`coaster:`) and the `CoasterSmoke` viewer scene:
   consumer `0x1ad378` takes `(hdr +0x1c >> 2) & 1` and ADDS its keys with it (`+=`, MIPS read in the
   decompile). Written as absolute UVs every U collapsed to 0 and the post drew as horizontal bands
   (strawberry: "should have crosses up the whole thing").
+- **All four pose channels add, and two of them are not idle at neutral.** `0x1ac6e8` applies loft,
+  rotate, incline and bank, and on an additive model each one's morph and UV deltas pile onto the
+  last. Incline is held at 0.5 and bank sits at 0.5 when the track is flat; both morph nothing there,
+  but both carry UV keys that are not zero there (MineCart's lofted ring: +0.498 and +0.249 V). With
+  only the loft, the lofted section's V ran from 0.996 at the foot to 0.496 + 7.493L at the ring,
+  which passes through zero span at L ≈ 0.067: a h100 post drew about a fifth of a cross over its
+  ~1 cell where the console draws about half of one, and a h1200 post one cross per 16.0 units where
+  the console draws one per 12.8 (strawberry: "the texture of the pylons is just vertically
+  stretched"). The console's crosses are still taller than the 7-unit-wide post (about 1.8:1 at the
+  tool's highest post): the author's rest density is 0.5 V per 6 units. A channel's frame is value ×
+  the record's duration (the port had duration − 1). The bank channel also tilts the post's top when
+  the track banks, which the port did not draw before (`AnimatedModel.AddLayer`). MineCart's numbers;
+  the other 13 pylons take the same code path but their UVs were not individually checked.
 - **What a post meets is its track dummy, not the track.** Every post is authored to meet its posed
   `TrackDummyCentre` exactly (checked on all nine pylons of Temple of Gloom and of Caterpillar: +0.00).
   `0x19a420` then puts the track at the dummy's LOCAL y + 0x60, ignoring the parent's offset. So the
