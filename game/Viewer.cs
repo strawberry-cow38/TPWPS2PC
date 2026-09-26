@@ -3040,7 +3040,10 @@ public partial class Viewer : Node3D
                     // 0x100 (0x1bbf28), and a fitting that does not resolve draws nothing.
                     if (_burst == null) return;
                     var at = NodeWorld(ride.Id, a[1], 0x100);
-                    var made = at is { } p ? _burst.Emit(a[2], p) : null;
+                    // ⭐ Kind 2 fires along the FITTING's direction; kind 1 uses the template's
+                    // own velocity. Passing null for kind 1 is the difference, not an omission.
+                    var dir = a[0] == 2 ? NodeWorldDir(ride.Id, a[1], 0x100) : null;
+                    var made = at is { } p ? _burst.Emit(a[2], p, dir) : null;
                     GD.Print($"[fx] {fx.Time / 1000.0,7:F1}s {ride.Name,-22} {fx.Opcode,-7} kind {a[0]} node {a[1],3} id {a[2],3} -> {made?.Name ?? "(no fitting or no such effect)"}"
                            + (at is { } q ? $" at ({q.X:F1},{q.Y:F1},{q.Z:F1})" : ""));
                     break;
@@ -3717,7 +3720,7 @@ public partial class Viewer : Node3D
             && _scripted.FirstOrDefault().Ride is { } fr)
         {
             var at = NodeWorld(fr.Id, _fxBurstNode, 0x100);
-            var made = at is { } q ? _burst.Emit(_fxBurst, q) : null;
+            var made = at is { } q ? _burst.Emit(_fxBurst, q, NodeWorldDir(fr.Id, _fxBurstNode, 0x100)) : null;
             GD.Print($"[film] f{_filmFrame:D4} burst {_fxBurst} at node {_fxBurstNode} -> "
                    + (made?.Name ?? "(no fitting or no such effect)")
                    + (at is { } r ? $" ({r.X:F1},{r.Y:F1},{r.Z:F1})" : ""));
@@ -4366,6 +4369,35 @@ public partial class Viewer : Node3D
     /// <summary>A script node's place in the world, or null: the fitting by id and space, its
     /// node's world matrix from the animated model, FittingLocal through it, then the ride root.
     /// The one resolver behind NodeSource, the seats and the walkers, so all three agree.</summary>
+    /// <summary>⭐⭐ THE DIRECTION A FITTING EMITS ALONG, which is what `EVENT 2` fires particles
+    /// down. Master, from a video: "could the particle direction be relative to the part that
+    /// emits it?" -- it is, and the chain is now read end to end.
+    ///
+    /// `0x1bbf28` case 2 asks `0x1b9388` for a position AND a direction (case 1 passes null for
+    /// the direction and gets the template's own velocity, which is why EVENT 1 is nearly always
+    /// straight up). `0x1b9388` fills it from `0x1f2ac0` and scales by 1024; `0x18b0f8` then
+    /// stores `dir * DirectionSpeed >> 10` -- so the 1024 and the shift cancel and the velocity is
+    /// simply **the fitting's unit direction times `DirectionSpeed`**.
+    ///
+    /// ⭐ And `0x1f2ac0` says which axis: the node's world matrix at +0x20/+0x24/+0x28, i.e. its
+    /// **Z basis**, NEGATED when the fitting's flag bit `0x10` is set, then normalised. (With a
+    /// nonzero fourth argument it also returns +0x10..0x18, the Y axis; this caller passes 0.)</summary>
+    Vector3? NodeWorldDir(int rideId, int node, uint space)
+    {
+        if (!_rideMeshes.TryGetValue(rideId, out var mesh)) return null;
+        var model = _scripted.FirstOrDefault(e => e.Ride.Id == rideId).Model;
+        if (model?.Root == null || !IsInstanceValid(model.Root) || model.LastWorld == null) return null;
+        if (mesh.FindFitting(node, space) is not { Node: >= 0 } fit) return null;
+        if (!model.LastWorld.TryGetValue(mesh.NodeOffset(fit.Node), out var w)) return null;
+        // ⚠ +0x20/24/28 is the THIRD row of the 4x4: M31/M32/M33 in System.Numerics.
+        var z = new Vector3(w.M31, w.M32, w.M33);
+        if ((fit.Flags & 0x10) != 0) z = -z;
+        if (z.LengthSquared() <= 0f) return null;
+        // ⚠ Into world through the model's own transform -- the BASIS only, so no translation.
+        var world = (model.Root.GlobalTransform.Basis * z).Normalized();
+        return world.LengthSquared() > 0f ? world : null;
+    }
+
     Vector3? NodeWorld(int rideId, int node, uint space)
     {
         if (!_rideMeshes.TryGetValue(rideId, out var mesh)) return null;

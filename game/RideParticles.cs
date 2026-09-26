@@ -73,7 +73,7 @@ public sealed class RideParticles
     /// speed in the first few ticks and crawls after; this slows evenly. Right destination, wrong
     /// journey -- said plainly because "drag is wired" would imply both.</summary>
     static (Vector3 Direction, float SpreadDegrees, float SpeedMin, float SpeedMax, float Gravity,
-            float Damping) Motion(ParticleTemplate t)
+            float Damping) Motion(ParticleTemplate t, Vector3? fireAlong)
     {
         const float cell = ParticleTemplate.PositionUnitsPerCell;
         float tick = ParticleTemplate.TickMilliseconds / 1000f;
@@ -84,6 +84,18 @@ public sealed class RideParticles
         // ⚠ k is the per-tick fraction the console removes; 0 means no drag and no damping.
         float k = t.Drag / 1024f;
         float Damping(float v) => k > 0f && v > 0f ? v * k / (2f * tick) : 0f;
+
+        // ⭐⭐ EVENT 2: the fitting points, and DirectionSpeed says how hard. The template's own
+        // velocity never runs for these -- see the parameter's note on Emit.
+        if (fireAlong is { } along && t.DirectionSpeed != 0)
+        {
+            float ds = PerSecond(t.DirectionSpeed);
+            float j = PerSecond(t.VelocityJitter);
+            float sp = Math.Abs(ds);
+            return (ds >= 0 ? along : -along,
+                    Mathf.Clamp(sp > 0.001f ? Mathf.RadToDeg(Mathf.Atan2(j, sp)) : (j > 0f ? 180f : 0f), 0f, 180f),
+                    Math.Max(0f, sp - j), Math.Max(0.01f, sp + j), gravity, Damping(sp));
+        }
 
         if (t.RadialSpeed > 0)
         {
@@ -230,7 +242,15 @@ public sealed class RideParticles
     }
 
     /// <summary>Put one burst of <paramref name="id"/> at <paramref name="where"/>.</summary>
-    public ParticleEffect Emit(int id, Vector3 where)
+    /// <param name="fireAlong">The fitting's direction, for an `EVENT 2`. ⭐⭐ When it is given
+    /// the template's own <see cref="ParticleTemplate.ParticleVelocity"/> is DEAD and the velocity
+    /// is `direction * DirectionSpeed` -- read end to end from `0x1bbf28` case 2 -> `0x1b9388`
+    /// (position + direction, scaled 1024) -> `0x18b0f8` (`dir * DirectionSpeed >> 10`, the 1024
+    /// and the shift cancelling). Null means `EVENT 1`, which does use the template's velocity.
+    /// ⚠ Master spotted this from a video -- ApeSnot puffing straight up instead of out of the
+    /// ape's nose -- and my own decode notes had already said EVENT 2 replaces the velocity. I had
+    /// applied the EVENT 1 path to an EVENT 2 effect.</param>
+    public ParticleEffect Emit(int id, Vector3 where, Vector3? fireAlong = null)
     {
         var e = _library?[id];
         if (e == null || e.Ramp.All(c => c == 0)) return null;
@@ -267,14 +287,16 @@ public sealed class RideParticles
         float emitterSeconds = t.Immortal ? life
             : Math.Clamp(t.EmitterLife * ParticleTemplate.TickMilliseconds / 1000f, 0f, 8f);
 
-        var motion = Motion(t);
+        var motion = Motion(t, fireAlong);
         // ⚠ Printed so the numbers can be checked against the record rather than judged by eye:
         // a puff that looks plausible and a puff that is right are different claims.
         GD.Print($"[fx] {e.Name}: dir {motion.Direction.Snapped(Vector3.One * 0.01f)} "
                + $"spread {motion.SpreadDegrees:F0}deg speed {motion.SpeedMin:F2}..{motion.SpeedMax:F2} "
                + $"cells/s gravity {motion.Gravity:F2} cells/s2 "
                + $"(raw v={t.ParticleVelocity} jitter={t.VelocityJitter} radial={t.RadialSpeed} "
-               + $"g={t.Gravity} drag={t.Drag} -> damping {motion.Damping:F1})");
+               + $"g={t.Gravity} drag={t.Drag} dirspeed={t.DirectionSpeed} "
+               + $"along={(fireAlong is { } fa ? fa.Snapped(Vector3.One * 0.01f).ToString() : "(EVENT 1)")} "
+               + $"-> damping {motion.Damping:F1})");
         var p = new CpuParticles3D
         {
             Amount = count,
