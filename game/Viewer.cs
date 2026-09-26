@@ -74,6 +74,13 @@ public partial class Viewer : Node3D
     AnimatedModel _gate;
     /// <summary>The park's sky, rebuilt when the archive changes.</summary>
     WorldEnvironment _sky;
+    ShaderMaterial _skyMat;
+    Weather.Kind? _wantWeather;
+    Vector2 _skyDrift;
+    /// <summary>⚠ The console turns the cloud heading over time and the rate is NOT read
+    /// (findings/sky.md), so the port holds it at the initial pair's own direction:
+    /// atan2(0.0037, 0.0067) from `0x231848`.</summary>
+    const float SkyWindHeading = 0.5045f;
     /// <summary>Kept so the sky can be taken away outside park mode and put back without a rebuild.
     /// ⚠ WorldEnvironment is a plain Node, so it has no Visible to toggle.</summary>
     Godot.Environment _skyEnv;
@@ -437,6 +444,12 @@ public partial class Viewer : Node3D
             else if (a == "--build-test") _buildTest = true;
             else if (a.StartsWith("--segments=")) _wantSegments = a["--segments=".Length..];
             else if (a.StartsWith("--cam=")) _wantCam = a["--cam=".Length..];
+            // ⭐ So a render can show the weather. V cycles it and the debug panel has buttons,
+            // and a headless shot can press neither.
+            else if (a.StartsWith("--weather=")) _wantWeather = a["--weather=".Length..] switch
+            {
+                "rain" => Weather.Kind.Rain, "snow" => Weather.Kind.Snow, _ => Weather.Kind.None,
+            };
             else if (a.StartsWith("--ride=")) _wantRide = a["--ride=".Length..];
             else if (a.StartsWith("--anim=")) _wantAnim = a["--anim=".Length..];
             else if (a.StartsWith("--wad=")) _wantWad = a["--wad=".Length..];
@@ -1817,6 +1830,8 @@ public partial class Viewer : Node3D
     {
         var sky = SkyDome.Build(_lib, out var report);
         GD.Print($"[sky] {report}");
+        _skyMat = sky?.SkyMaterial as ShaderMaterial;
+        _skyDrift = Vector2.Zero;
         if (sky == null) { _skyEnv = null; _sky.Environment = _flatEnv; return; }
         _skyEnv = new Godot.Environment
         {
@@ -8953,6 +8968,19 @@ public partial class Viewer : Node3D
     {
         ShowMoney();
         TickDebugHud(delta);
+        // ⭐⭐ THE CLOUDS SHIFT AND THE SKY GREYS. Master: "clouds ARE meant to shift; sky gets
+        // gray when raining." ⚠ The console drives the grey from a weather AMOUNT whose state
+        // machine is not ported (it is pinned at 0), so the port drives it from the weather the
+        // port actually has -- V, or the debug panel's Rain button. That is a port choice and is
+        // marked as one; when the amount lands it replaces this one line.
+        if (_wantWeather is { } ww && _mode == Mode.Park && _lib != null && _cam != null)
+        {
+            _wantWeather = null;
+            GD.Print($"[weather] --weather={ww}: {_weather.Set(_lib, ww, _cam.GlobalPosition)}");
+        }
+        if (_skyMat != null && _mode == Mode.Park)
+            SkyDome.Step(_skyMat, ref _skyDrift, delta,
+                         _weather.Current == Weather.Kind.None ? 0f : 1f, SkyWindHeading);
         // ⚠ The camera is placed FIRST, before any early return. It used to sit below the capture
         // branch, so a --shot run photographed the origin and produced a perfectly black frame with
         // a perfectly correct UI beside it -- the geometry was fine the whole time.
