@@ -370,11 +370,11 @@ public sealed class ParkSim : IRseDirectory
 
     /// <summary>Give a placed track ride its track. The cars board from the ride's own queue and hand
     /// riders back through <see cref="ParkRide.Left"/>, the same way a script's leavers go.</summary>
-    public TrackRideSim AttachTrack(int id, TrackLayout layout, int seed = 0)
+    public TrackRideSim AttachTrack(int id, TrackLayout layout, int seed = 0, bool? karts = null)
     {
         var ride = _rides.FirstOrDefault(r => r.Id == id);
         if (ride == null) return null;
-        var track = new TrackRideSim(layout, seed)
+        var track = new TrackRideSim(layout, seed, karts)
         {
             TakeHead = () => ride.TryTakeFromQueue(out int g) ? g : null,
         };

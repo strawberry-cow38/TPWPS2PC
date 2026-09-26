@@ -897,6 +897,7 @@ public partial class Viewer : Node3D
             _ghostView?.Clear();
             Status("nothing held");
         }
+        else if (k.Keycode == Key.Escape && _trackTool != null) FinishTrackTool();
         else if (k.Keycode == Key.Escape && _toolOpen) { CloseTool(); GD.Print("[tool] closed"); }
         // ⭐ M switches between a straight segment and an elbow. Both are kept: straight is what
         // the game allows, the elbow is what the executable's own walker does, and which one the
@@ -1828,7 +1829,7 @@ public partial class Viewer : Node3D
         ResetGuests();
         _walkGrid = null;
         // ⭐ AND THE SIM WITH IT: it was made on that grid, and its rides stood on that park.
-        _sim = null; _scripted.Clear(); _rideMeshes.Clear(); _shotWound = false;
+        _sim = null; _scripted.Clear(); _rideMeshes.Clear(); _shotWound = false; ClearTrackViews();
         // ⭐⭐ AND THE SOUND, FOR THE SAME REASON THE GRID IS RESET TWO LINES UP. `_sounds` is
         // built `??=` from `SoundCatalogue(disc, world, 1)` and `(.., 2)` -- the CURRENT world's
         // event maps -- so keeping it across a world change resolves the new park's cues against
@@ -3744,6 +3745,7 @@ public partial class Viewer : Node3D
         // proof the script played its build rather than being dropped into its cycle.
         while (_parkTicks * ParkSim.TickMilliseconds < target && guard++ < 100_000) { TickPark(); PresentScripted(frames: false); }
         PresentScripted();
+        PresentTracks(1f);
         if (_guests != null) PlaceActors(1f);
         GD.Print($"[sim] wound to {_parkTicks * ParkSim.TickMilliseconds}ms for the shot ({_scripted.Count} scripted, {_guests?.Guests.Count ?? 0} walking)");
     }
@@ -3984,6 +3986,7 @@ public partial class Viewer : Node3D
         PresentScripted(alpha: _parkClock.Alpha);
         PresentNativeBus(); // including rendered frames in which the park executes no tick
         PresentParkVehicles();
+        PresentTracks(_parkClock.Alpha);
         if (_guests != null) PlaceActors(_parkClock.Alpha);
     }
 
@@ -6329,11 +6332,15 @@ public partial class Viewer : Node3D
         RefreshFloor();
         _toolSfx?.Play(ToolSounds.Cue.Lay);
         GD.Print($"[build] placed {_place.Display} at ({cx},{cy}) turned {_place.Turns * 90}");
+        // ⭐⭐ A TRACK RIDE DRAWS ITS TRACK FIRST. The console's order: station (mode 7), then the
+        // track tool (mode 8), and only when that finishes the queue tool (mode 3). See
+        // Viewer.TrackRides.cs and findings/track-ride-tool.md §2.
+        bool trackRide = IsTrackRide(_armedRide) && BeginTrackRide(ride, _armedRide, cx, cy, _place.Turns, _place.Base);
         _ghostAt = (-1, -1, -1, -1);
         // ⭐ SHIFT STAMPS. Held, the blueprint stays on the cursor for the next one; let go, one
         // press puts one thing down and the cursor comes away empty, which is what a build tool
         // that is not being used to lay a row should do.
-        if (Input.IsKeyPressed(Key.Shift))
+        if (Input.IsKeyPressed(Key.Shift) && !trackRide)
         {
             Status($"stamped {_place.Display} at ({cx},{cy}) -- still holding it");
             return;
@@ -6361,6 +6368,8 @@ public partial class Viewer : Node3D
         // a run already started outside its entrance, and when that run finishes the tool hands
         // over to the PATH tool starting outside the exit. Read from the PSX build, where the
         // queue tool's press does exactly that on a ride just placed.
+        void HandOff()
+        {
         if (queued && queueFrom is { } q)
         {
             OpenTool(PathTool.Kind.Queue, ride);
@@ -6381,6 +6390,9 @@ public partial class Viewer : Node3D
         {
             StartExitPath(only);
         }
+        }
+        if (trackRide) OpenTrackTool(_tracks[ride], HandOff);
+        else HandOff();
     }
 
     /// <summary>The model for the held thing, built the same way the viewer builds any other.</summary>
@@ -6732,6 +6744,9 @@ public partial class Viewer : Node3D
         // queue", so the menu cannot offer one for a thing whose entrance was laid as a path.
         if (TakesQueueStub(KindOfPlaced(placed)))
             yield return HasQueueNear(placed) ? "Edit Queue" : "Build Queue";
+        // ⭐ The console's ride list box offers "Edit Track" (string 12) on a track ride.
+        if (placed >= 0 && placed < _park.Placed.Count && _tracks.ContainsKey(_park.Placed[placed].Id))
+            yield return "Edit Track";
         yield return "Delete";
     }
 
@@ -6788,6 +6803,9 @@ public partial class Viewer : Node3D
                     _shopPanel.ShowFor(shop, _park.Placed[_selected].Name);
                     Status($"{_park.Placed[_selected].Name} -- details");
                 }
+                break;
+            case "Edit Track":
+                EditTrack(_selected);
                 break;
             case "Delete":
                 DeleteSelected();
@@ -6916,6 +6934,7 @@ public partial class Viewer : Node3D
         // the path beside a deleted ride kept reaching into empty grass. RemoveDoors forgets them
         // and repicks the ground that was joined to them.
         int doors = _paths?.RemoveDoors(p.Id) ?? 0;
+        RemoveTrackView(p.Id);
         _sim?.Remove(p.Id);
         if (!_park.Remove(p.Id)) { Status($"could not delete {name}"); return; }
         // ⭐⭐ ALWAYS, NOT ONLY FOR A QUEUE. Master: "make sure terrain holes heal when we delete
@@ -8805,6 +8824,7 @@ public partial class Viewer : Node3D
             Ps2Materials.TextureTime = _waterTime;
         }
         if (_place.Active) UpdatePlacementGhost();
+        else if (_trackTool != null) UpdateTrackGhost();
         else if (_toolOpen) UpdateGhost();
         // ⚠ AFTER the camera has been placed for this frame, or the projection is a frame stale
         // and the check is of the wrong camera.
@@ -9012,6 +9032,12 @@ public partial class Viewer : Node3D
                             _ghostView?.Clear();
                             _ghostAt = (-1, -1, -1, -1);
                         }
+                        else if (mb.ButtonIndex == MouseButton.Right && _trackTool != null)
+                        {
+                            // The track tool's Circle: take the last leg back; with nothing left
+                            // to take back, finish.
+                            if (!UndoTrackLeg()) FinishTrackTool();
+                        }
                         else if (mb.ButtonIndex == MouseButton.Right && UndoLeg())
                         {
                             // ⭐⭐ THE QUEUE'S RIGHT BUTTON STEPS BACK. Handled inside UndoLeg so
@@ -9047,6 +9073,7 @@ public partial class Viewer : Node3D
                             else OpenTool(PathTool.Kind.Path);
                         }
                         else if (_place.Active) PlaceHeld();
+                        else if (_trackTool != null) PressTrackTool();
                         else if (_toolOpen) PressTool();
                         // ⭐⭐ A LEFT CLICK REACHES A RIDE BEFORE IT REACHES THE GROUND. That was
                         // always the intent -- the comment on the right button says so -- and it

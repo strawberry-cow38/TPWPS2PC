@@ -94,10 +94,13 @@ public sealed class TrackRideSim
     /// other three worlds the other way round.</summary>
     public static bool KartsFor(int world, int park) => world == 0 ? park == 0 : park == 1;
 
-    public TrackRideSim(TrackLayout track, int seed = 0)
+    /// <param name="karts">Which car class, when the caller knows the ride (its station folder). The
+    /// console reads the per-park table because each park offers exactly one track ride; a port that
+    /// lets either be built anywhere must not give a water ride karts.</param>
+    public TrackRideSim(TrackLayout track, int seed = 0, bool? karts = null)
     {
         Track = track ?? throw new ArgumentNullException(nameof(track));
-        Karts = KartsFor(track.Ground.World, track.Ground.Park);
+        Karts = karts ?? KartsFor(track.Ground.World, track.Ground.Park);
         _rng = new Random(seed);
         Rebuilt();
     }
