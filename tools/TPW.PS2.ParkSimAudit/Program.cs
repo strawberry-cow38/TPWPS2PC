@@ -87,6 +87,13 @@ if (args.Contains("--native-consumer-only"))
     return bad == 0 ? 0 : 1;
 }
 
+if (args.Contains("--track-rides-only"))
+{
+    TrackRideChecks.Run(Check);
+    TrackRideChecks.RunParkSim(new ParkPaths(terrain), wad, world, Check);
+    Console.WriteLine(bad==0 ? "PASS native track rides: layout, samples, boarding, laps and unloading, and through ParkSim (viewer not exercised)" : $"FAIL: {bad}");
+    return bad==0?0:1;
+}
 if (args.Contains("--removal-only"))
 {
     Check(RideRemovalChecks.RunIsolated(terrain, wad, Check), "isolated removal fixture was exercised");
@@ -640,6 +647,8 @@ SfxGraphChecks.Run(disc, Check);
 BridgeChecks.Run(terrain, PathPieces.Read(disc), world, Check);
 QueueRemovalChecks.Run(terrain, PathPieces.Read(disc), world, Check);
 QueueWalkChecks.Run(terrain, PathPieces.Read(disc), world, Check);
+TrackRideChecks.Run(Check);
+TrackRideChecks.RunParkSim(new ParkPaths(terrain), wad, world, Check);
 RideValueChecks.Run(Wad("DATA"), wad, world, Check);
 GuestAnimationChecks.Run(Wad("DATA"), Check);
 CompiledShopPurchaseChecks.Run(terrain, loopPaths, corridorStops[0], onPath[^1], Wad("DATA"), wad, world, Check);
