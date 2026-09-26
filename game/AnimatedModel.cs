@@ -91,6 +91,15 @@ public sealed class AnimatedModel
     };
     public int Frames { get; private set; }
 
+    /// <summary>⭐⭐ MODEL HEADER `+0x1c & 4`: THE CHANNELS ADD TO THE BIND POSE. `0x1a7f48` passes that
+    /// bit to the morph player `0x1a6d68` as its last argument, and with it set each vertex is
+    /// `lerp(keys) + its current position` instead of `lerp(keys)`; a path adds to the bind
+    /// translation and a rotation composes onto the bind (findings/coaster-geometry.md §4.2).
+    /// 18 of the disc's 496 models carry it: the 15 coaster pylons and three coaster cars. A pylon's
+    /// loft keys are DELTAS (16 vertices +0 → +90 in y, 4 fixed at +0), so read as positions they
+    /// collapsed the post onto its origin and left the parts above it floating.</summary>
+    public bool Additive { get; }
+
     /// <summary>Which texture each material slot is currently showing. ⭐ The animation's OUTPUT,
     /// so a check can watch it change instead of watching the clock and hoping.</summary>
     public IReadOnlyList<int> TextureChoices => _textureIndices;
@@ -106,6 +115,7 @@ public sealed class AnimatedModel
     {
         _model = model; _anim = anim; _texture = texture;
         _nativeNodeVisibility = nativeNodeVisibility;
+        Additive = model.D.Length >= 0x20 && (BitConverter.ToUInt32(model.D, 0x1c) & 4) != 0;
         if (nativeNodeVisibility)
             foreach (int offset in model.LocalTransforms().Keys)
                 if ((BitConverter.ToUInt32(model.D, offset) & 0x10) != 0)
@@ -618,7 +628,8 @@ public sealed class AnimatedModel
         else if (p.Morph != null && p.AnimMap != null)
         {
             var ev = p.Morph.Select(v => Sample(v.Times, v.Keys, now)).ToArray();
-            pos = p.AnimMap.Select(i => ev[i]).ToList();
+            pos = Additive ? p.AnimMap.Select((i, j) => p.BindPos[j] + ev[i]).ToList()
+                           : p.AnimMap.Select(i => ev[i]).ToList();
         }
         // ⭐⭐ AUTHORED UV KEYFRAMES, the game's real moving-texture channel. One sample per
         // GROUP, fanned out to vertices through the +0x9c run list -- the same shape the position
@@ -798,7 +809,7 @@ public sealed class AnimatedModel
                 // Composing it onto the bind applies the rest orientation TWICE; for the Super Bog's
                 // sign, whose bind is a +90 pitch and whose key 0 is a -90 pitch, the two cancelled
                 // and a sign that should stand up lay flat on the roof.
-                L = Compose ? Matrix4x4.CreateFromQuaternion(q) * L : Replace(L, q);
+                L = Compose || Additive ? Matrix4x4.CreateFromQuaternion(q) * L : Replace(L, q);
             }
             if (_scale.TryGetValue(node, out var sk))
                 L = Renormalise(L, Sample(sk.Select(x => x.Time).ToArray(),
@@ -807,9 +818,11 @@ public sealed class AnimatedModel
             L.M41 = bind.M41; L.M42 = bind.M42; L.M43 = bind.M43;   // translation stays put
             if (_path.TryGetValue(node, out var path))
             {
-                // The path REPLACES the bind translation: the curve is where the thing actually is.
+                // The path REPLACES the bind translation: the curve is where the thing actually is --
+                // unless the model is additive, when it is added to it.
                 var at = path.At(now);
-                L.M41 = at.X; L.M42 = at.Y; L.M43 = at.Z;
+                if (Additive) { L.M41 = bind.M41 + at.X; L.M42 = bind.M42 + at.Y; L.M43 = bind.M43 + at.Z; }
+                else { L.M41 = at.X; L.M42 = at.Y; L.M43 = at.Z; }
                 if (_facing.Contains(node))
                 {
                     // Orient along travel: point the node's Z down the tangent and keep it upright.

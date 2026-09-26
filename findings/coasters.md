@@ -116,9 +116,9 @@ These came out of the coaster work but reach beyond it:
     example gokarts.mps and wateride.mps.
   - The general accessor `0x1f2978` reads a prebuilt table whose builder is not read yet, so whether
     every model follows the same rule is open. (geometry §4.4)
-- **Additive path animation.** `0x1a7f48` adds an animated path translation to the bind pose, rather
-  than replacing it, for models with header flag `+0x1c & 4`. Only the coaster pylons set it.
-  `AnimatedModel.cs:810` always replaces. (geometry §4)
+- **Additive animation.** `0x1a7f48` adds an animated path translation to the bind pose, rather
+  than replacing it, for models with header flag `+0x1c & 4`, and the morph player adds its keys to
+  the vertices. The port implements it as `AnimatedModel.Additive` (see "The pylons" below). (geometry §4)
 - **`0x2b72a8` is the test-park flag.** `track-ride-operation.md` lists it as an untraced "global
   switch" that zeroes wear; it is the same flag. (operation §8.1)
 - Bone Shaker draws Ghosta Coasta's pylon, because registry id 435 names the `coasta` folder.
@@ -173,6 +173,22 @@ ParkSimAudit checks (`coaster:`) and the `CoasterSmoke` viewer scene:
   the lift marking.
 - **The test lap** on finishing the tool: car 0's statistics, the per-segment length, drops and
   steepest drop, and the rating text (shown on the status line; the stats screen itself is not drawn).
+
+**The pylons (fixed after strawberry saw them floating).**
+- The loft keys are DELTAS. `stdpylon`'s section 3 moves 16 of the post's 20 animated vertices
+  +0 → +90 in y and leaves 4 at +0. The morph player `0x1a6d68` takes `model header +0x1c & 4` as its
+  last argument (from `0x1a7f48`), and with it set writes `lerp(keys) + the vertex's current value`.
+  The port wrote the keys as positions, collapsing the post onto its origin: posts floated 0.37–0.5
+  cells above the floor and stopped short of the track. `AnimatedModel.Additive` now adds morphs,
+  adds path translations and composes rotations for the 18 of 496 models that set the bit: the 15
+  pylons and three coaster cars (Ghosta Coasta's `cart`, Escape Velocity's `cart`, the Shocker's `car`).
+- Section 10's key at 25 % is +90° about +Y, taking the model's +Z to +X, so the yaw is +heading (the
+  port had −heading, skewing every diagonal).
+- **The stacker is hidden unless something is stacked on it** (`0x199c90`, run by the stack setters
+  `0x199c50`/`0x199dd0`). The node is fitting (0x80000, id 1) by the engine's rule, index + header
+  `u16 @0x34`: `mc_bridge`, `STACKER`, `sc_bridge`. It gets hide flag 0x8000 while the pylon has
+  nothing above it. The same function hides the record at instance `+0xc` → `+0x70` while the pylon
+  stands on another; that this is the post is INFERRED.
 
 **The join quirk decides where the chain texture goes** (`0x1aee48..0x1aee68`, re-read in MIPS for
 the port). Going into a longer segment on a climb, the look-ahead lands up to a cell behind the car,

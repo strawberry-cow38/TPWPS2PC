@@ -43,7 +43,7 @@ SCENES = {
     # Track rides: build menu -> station -> the track tool pressed round a loop -> riders on and off.
     'trackride': ('TrackRideSmoke', 'TRACK RIDE SMOKE', 24),
     # Roller coasters: build menu -> station with its queue -> pylons pressed round a ring -> trains -> riders.
-    'coaster': ('CoasterSmoke', 'COASTER SMOKE', 26),
+    'coaster': ('CoasterSmoke', 'COASTER SMOKE', 44),
 }
 MAP_LINE = re.compile(r'^\[map\] loaded world=([A-Z]+) terrain=(terrain_[12])\.mps$', re.M)
 

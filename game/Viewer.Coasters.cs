@@ -137,7 +137,13 @@ public partial class Viewer
             return false;
         }
         var (exit, exitStep, entry) = StationLink(pl, cx, cy, turns, baseFp.Width, baseFp.Height);
-        var track = new CoasterTrack(type, exit, exitStep, entry);
+        // A ground pylon's base is the floor under its cell. ⚠ The console's is tile byte 1 × 4 units
+        // (0x149d90); the port draws its floor from the field's raise bit instead, and a pylon has
+        // to stand on the floor that is drawn.
+        var track = new CoasterTrack(type, exit, exitStep, entry)
+        {
+            GroundY = (x, z) => (int)MathF.Round((_park.CellY(x, z) - _park.BaseY) / Park.CellSize * 256f),
+        };
         var sim = _sim.AttachCoaster(id, track);
         var frame = new Node3D { Name = $"Coaster_{id}" };
         AddChild(frame);
@@ -259,13 +265,26 @@ public partial class Viewer
             var drawn = new AnimatedModel(mesh, anim, rec, m => TextureNear(assets.Model.Path, m));
             float loft = Math.Clamp(n.Height / 2560f, 0f, 1f);
             drawn.SetFrame(loft * Math.Max(drawn.Frames - 1, 0));
+            // ⭐ `0x199c90`: the stacker is the node of fitting (0x80000, id 1) by the ENGINE's rule,
+            // fitting index + header u16 @0x34 (not the port's meshes + index), and it carries hide
+            // flag 0x8000 unless a pylon is stacked on this one. ⚠ The same function hides the
+            // record at instance+0xc → +0x70 when this pylon stands on another; that it is the
+            // first mesh (the post) is INFERRED.
+            void Hide(string meshName) { foreach (var (m, _, node) in drawn.Surfaces()) if (m == meshName) node.Visible = false; }
+            if (mesh.FindFitting(1, 0x80000) is { } fit)
+            {
+                int engineNode = fit.Node - mesh.Meshes.Count + BitConverter.ToUInt16(mesh.D, 0x34);
+                if (n.Above == null && engineNode >= 0 && engineNode < mesh.Meshes.Count) Hide(mesh.Meshes[engineNode].Name);
+            }
+            if (n.Below != null && mesh.Meshes.Count > 0) Hide(mesh.Meshes[0].Name);
             drawn.Root.Scale = Vector3.One;
             var holder = new Node3D { Name = $"pylon_{n.CellX}_{n.CellZ}" };
             holder.AddChild(drawn.Root);
             float yaw = (n.Heading + n.HalfTurn) * Mathf.Tau / 4096f;
             // Turned about the cell centre, where the post stands.
             var centre = new Vector3(n.X / 256f, n.YBase / 256f, n.Z / 256f);
-            var basis = new Basis(Vector3.Up, -yaw);
+            // Section 10's key at 25 % is +90° about +Y, taking the model's +Z to +X: heading 0x400.
+            var basis = new Basis(Vector3.Up, yaw);
             holder.Transform = new Transform3D(basis, centre - basis * new Vector3(0.5f, 0, 0.5f));
             return holder;
         }

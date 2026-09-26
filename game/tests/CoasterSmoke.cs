@@ -167,6 +167,34 @@ public partial class CoasterSmoke : Node3D
                   $"every visible segment is drawn ({segments.Count} of {expectSegs}) and every pylon ({pylons.Count})");
             Check(segments.Values.Cast<MeshInstance3D>().All(m => m.Mesh.GetSurfaceCount() > 0),
                   $"every segment has its {type.Style}-style strips");
+            // ⭐ The pylons, measured rather than looked at: each stands on the drawn floor, reaches
+            // the track, and turns with it. Strawberry saw them floating: the loft keys are deltas and
+            // were read as positions (AnimatedModel.Additive), and the yaw sign was assumed.
+            var frameT = ((Node3D)F(view, "Frame")).GlobalTransform;
+            foreach (var n in track.Pylons)
+            {
+                var holder = (Node3D)pylons[n];
+                float lo = float.MaxValue, hi = float.MinValue;
+                foreach (var mi in holder.FindChildren("*", "MeshInstance3D", true, false).OfType<MeshInstance3D>())
+                {
+                    if (!mi.IsVisibleInTree() || mi.Mesh == null) continue;
+                    var box = mi.GetAabb();
+                    for (int c = 0; c < 8; c++)
+                    {
+                        var w = mi.GlobalTransform * box.GetEndpoint(c);
+                        lo = Math.Min(lo, w.Y); hi = Math.Max(hi, w.Y);
+                    }
+                }
+                float floor = park.CellY(n.CellX, n.CellZ);
+                float rail = (frameT * new Vector3(n.X / 256f, n.TrackY / 256f, n.Z / 256f)).Y;
+                Check(MathF.Abs(lo - floor) < 0.05f && hi > rail - 0.05f && hi < rail + 0.4f,
+                      $"pylon ({n.CellX},{n.CellZ}) h{n.Height} stands on the floor ({lo - floor:F2} off) and reaches the track ({hi - rail:+0.00;-0.00} at its top)");
+                var across = (holder.GlobalTransform.Basis.X).Normalized();
+                var s0 = n.S[2];
+                var sideV = (frameT.Basis * new Vector3(s0.X, s0.Y, s0.Z)).Normalized();
+                Check(MathF.Abs(across.Dot(sideV)) > 0.99f,
+                      $"pylon ({n.CellX},{n.CellZ}) turns with the track: its cross axis lies along the side vector (|dot| {MathF.Abs(across.Dot(sideV)):F3}, heading {n.Heading}+{n.HalfTurn})");
+            }
 
             var frame = (Node3D)F(view, "Frame");
             var cells = ring.Append(track.Exit.Cell).ToList();
