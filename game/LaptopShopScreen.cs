@@ -277,7 +277,7 @@ public sealed partial class LaptopShopScreen : Control
         // anywhere on e.g. the Build screen fired MenuActivated and navigated. Master: "i click
         // it, and it takes me to the ride info (with sliders) page for the crazy ape ride."
         _menu.Clear();
-        _menuHover = -1; _menuScroll = 0;
+        _menuHover = -1; _menuScroll = 0; _focusSent = -2;
         _buildRow = buildRow; _buildHover = false;
         _cells.Clear();
         if (cells != null) _cells.AddRange(cells);
@@ -305,7 +305,7 @@ public sealed partial class LaptopShopScreen : Control
         _menuSelected = selected;
         // ⚠ A new list starts at the top. Carrying the old scroll over would open a short list
         // scrolled past its own end (the draw clamps, but the first frame would jump).
-        _menuScroll = 0; _menuHover = -1;
+        _menuScroll = 0; _menuHover = -1; _focusSent = -2;
         _buildRow = false; _buildHover = false;
         bool wasShut = !Open;
         Open = true; Visible = true;
@@ -360,6 +360,31 @@ public sealed partial class LaptopShopScreen : Control
     /// console has no pointer, so highlight-under-cursor is this port's addition and must not
     /// quietly move the selection a controller would be driving.</summary>
     int _menuHover = -1;
+
+    /// <summary>⭐ The menu row the 3D preview should be showing, hover first and the keyboard
+    /// selection when the pointer is away. Master, 2026-09-27: "add a preview of the 3d model in
+    /// the building rides/etc list in the bottom right when hovering over each thing" -- hovering
+    /// leads, but a list driven by the arrow keys has no pointer to hover with, so the selection
+    /// is the fallback rather than a blank pane.</summary>
+    public int MenuFocus => _menu.Count == 0 ? -1
+                          : _menuHover >= 0 && _menuHover < _menu.Count ? _menuHover
+                          : _menuSelected >= 0 && _menuSelected < _menu.Count ? _menuSelected : -1;
+
+    int _focusSent = -2;
+
+    /// <summary>Raised when <see cref="MenuFocus"/> lands on a different row. ⚠ Fired from the
+    /// draw, not from each of the six places that move hover or selection: a preview that rebuilds
+    /// a model is too expensive to fire per mouse-move event, and one edge-triggered notice per
+    /// frame is both cheaper and impossible to forget when a seventh mover is added.</summary>
+    public event System.Action<int> MenuFocusChanged;
+
+    void PumpMenuFocus()
+    {
+        int now = MenuFocus;
+        if (now == _focusSent) return;
+        _focusSent = now;
+        MenuFocusChanged?.Invoke(now);
+    }
 
     /// <summary>⭐⭐ THE BACK AND CLOSE BUTTONS, which master asked for on every laptop screen.
     /// They live in the chrome's top-right lump -- cols 321..499, rows 17..183, measured off the
@@ -822,6 +847,26 @@ public sealed partial class LaptopShopScreen : Control
     void DrawMenu(float s, Vector2 o)
     {
         var layout = LayoutFor(_menuScene ?? LaptopMainMenu.MainScene);
+
+        // ⭐⭐ THE 3D PREVIEW, BOTTOM RIGHT, FOLLOWING THE HOVERED ROW. Master, 2026-09-27:
+        // "add a preview of the 3d model in the building rides/etc list in the bottom right when
+        // hovering over each thing".
+        //
+        // ⚠ The frame is NOT invented and NOT hardcoded. `main.sce` -- the scene a menu draws
+        // through -- declares only `textoptions`, no model pane, because the console never shows
+        // a plain menu here: its build list IS `main_bh_items.sce`, one screen carrying the list
+        // (`ItemSelect` row 115 col 45), the numbers AND the model. This port split that into a
+        // menu plus a detail page, so the pane is read from the screen the console would have
+        // used, and lands exactly where the console puts it.
+        //
+        // ⭐ All 14 model-bearing screens author this window at the SAME frame -- row 208,
+        // col 315, 147x240 -- so there is no per-screen geometry to get wrong.
+        if (ModelTexture != null
+            && LayoutFor(LaptopScreen.Build.SceneFile)[LaptopScreen.Build.ModelElement] is { } pane)
+            DrawTextureRect(ModelTexture,
+                new Rect2(o + new Vector2(pane.X, pane.Y) * s, new Vector2(pane.Width, pane.Height) * s),
+                false);
+
         if (layout[LaptopMainMenu.ListElement] is not { } list) return;
         var at = o + new Vector2(list.X, list.Y) * s;
         int max = RowWindow;
@@ -1091,7 +1136,7 @@ public sealed partial class LaptopShopScreen : Control
             DrawButtons(s, o);
             return;
         }
-        if (_menu.Count > 0) { DrawMenu(s, o); DrawBalance(s, o); DrawButtons(s, o); return; }
+        if (_menu.Count > 0) { DrawMenu(s, o); DrawBalance(s, o); DrawButtons(s, o); PumpMenuFocus(); return; }
 
         Vector2 At(SceneLayout.Element e) => o + new Vector2(e.X, e.Y) * s;
 

@@ -3468,7 +3468,7 @@ public partial class Viewer : Node3D
                 _shopPanel.ShowScreen(target.Spec, DisplayName(subject), cells);
                 RefreshLaptopBalance();
                 Status($"{DisplayName(subject)} -- {index + 1} of {items.Count} in the park"
-                     + (items.Count > 1 ? "; paging between them is not wired yet" : ""));
+                     + (items.Count > 1 ? "; Up/Down to page" : ""));
                 break;
             }
             case "buildcats":
@@ -3569,8 +3569,20 @@ public partial class Viewer : Node3D
     void BuildLaptopModelFor(ParkRide r)
     {
         if (AssetsFor(r) is not { } a) return;
+        BuildLaptopModelFor(a);
+    }
+
+    /// <summary>The same, for a thing that is not in the park yet -- a build-list row is an
+    /// archive record, not a <see cref="ParkRide"/>, and both want the same preview.
+    ///
+    /// ⚠ The texture handle must be re-taken every time, because `BuildLaptopModel` frees the
+    /// old SubViewport and makes a new one: keeping the previous handle is how a preview ends up
+    /// showing the model it showed before.</summary>
+    void BuildLaptopModelFor(AssetLibrary.RideAssets a)
+    {
+        if (a == null) return;
         BuildLaptopModel(a);
-        if (_laptopView != null) _shopPanel.ModelTexture = _laptopView.GetTexture();
+        _shopPanel.ModelTexture = _laptopView?.GetTexture();
     }
 
     /// <summary>⭐⭐ ONE ROW'S REAL VALUE, BY ITS TEXT ID -- and a blank where the port has no
@@ -3683,6 +3695,29 @@ public partial class Viewer : Node3D
         ShowLaptopLevel();
     }
 
+    /// <summary>⭐ THE BUILD LIST'S 3D PREVIEW FOLLOWS THE HOVERED ROW. Master, 2026-09-27:
+    /// "add a preview of the 3d model in the building rides/etc list in the bottom right when
+    /// hovering over each thing".
+    ///
+    /// ⚠ ONLY the build list. A menu row on any other level names a category or a kind, not a
+    /// thing with a model, and rebuilding a viewport for "Rides" or "Information" would be both
+    /// meaningless and expensive. Everything else clears the pane rather than leaving the last
+    /// build's model sitting under an unrelated list.
+    ///
+    /// ⚠ Rebuilt only on a CHANGE of row -- the panel edge-triggers this -- because each call
+    /// frees a SubViewport and loads a model, which is not something to do per mouse-move.</summary>
+    void OnLaptopMenuFocus(int row)
+    {
+        bool isBuildList = _laptopBack.Count > 0 && _laptopBack[^1].Kind == "buildlist";
+        if (!isBuildList || row < 0 || row >= _buildRows.Count)
+        {
+            if (_laptopView != null) { _laptopView.QueueFree(); _laptopView = null; _laptopModel = null; }
+            _shopPanel.ModelTexture = null;
+            return;
+        }
+        BuildLaptopModelFor(_lib.Rides[_buildRows[row]]);
+    }
+
     void OnLaptopInspect(int row)
     {
         if (row < 0 || _laptopBack.Count == 0 || _laptopBack[^1].Kind != "buildlist") return;
@@ -3713,6 +3748,11 @@ public partial class Viewer : Node3D
         // ⚠ The row goes IN THE STACK, because the Build button at the foot of this screen has to
         // arm the same thing later and `_buildRows` is the only index that knows which one it is.
         _laptopBack.Add(("screen", row.ToString()));
+        // ⭐⭐ THE PAGE SHOWS ITS OWN RIDE'S MODEL. Master, 2026-09-27: "on the rmb from
+        // rides list menus, it only shows the crazy ape for every ride" -- and it did: this page
+        // called `ShowScreen` and nothing else, so `_laptopModel` kept whatever the last screen
+        // had built and every ride in the catalogue wore it.
+        BuildLaptopModelFor(r);
         int owned = _sim?.Rides?.Count(pr => ReferenceEquals(pr.Definition, def)
                       || (pr.Definition?.Id is { } pid && def.Id is { } did && pid == did)) ?? 0;
         int bal = _sim?.Finances?.Balance ?? ParkFinances.OpeningBalance;
@@ -3876,11 +3916,26 @@ public partial class Viewer : Node3D
                 _laptopBack.Add(("buildcats", null));
                 if (_laptopScreen.StartsWith("buildlist", StringComparison.OrdinalIgnoreCase))
                 {
+                    // ⚠ Only as far as the NEXT colon: `buildlist:Rides:2` carries a row after
+                    // the category, and taking the whole tail made the category "Rides:2".
                     int colon = _laptopScreen.IndexOf(':');
-                    string cat = colon >= 0 ? _laptopScreen[(colon + 1)..] : "Rides";
+                    string tail = colon >= 0 ? _laptopScreen[(colon + 1)..] : "Rides";
+                    int nextColon = tail.IndexOf(':');
+                    string cat = nextColon >= 0 ? tail[..nextColon] : tail;
+                    if (cat.Length == 0) cat = "Rides";
                     _laptopBack.Add(("buildlist", cat));
                 }
                 ShowLaptopLevel();
+                // ⭐ `buildlist:<cat>:<row>` then opens that row's DETAIL page through the real
+                // `OnLaptopInspect`, which is how a render can show the page carrying its own
+                // ride's model rather than the last one built.
+                if (_laptopScreen.Split(':') is { Length: > 2 } dparts
+                    && int.TryParse(dparts[2], out var drow))
+                {
+                    OnLaptopInspect(drow);
+                    GD.Print($"[laptop] inspect row {drow} -> "
+                           + $"{(drow < _buildRows.Count ? Leaf(_lib.Rides[_buildRows[drow]].Name) : "out of range")}");
+                }
                 // ⚠ The scroll is forced AFTER the level draws: ShowMenu resets it to the top.
                 if (_laptopScroll > 0) _shopPanel.Scroll(_laptopScroll);
                 GD.Print($"[laptop] {_laptopBack[^1].Kind} {_laptopBack[^1].Arg ?? ""}: "
@@ -7006,7 +7061,7 @@ public partial class Viewer : Node3D
     }
 
     /// <summary>The model for the held thing, built the same way the viewer builds any other.</summary>
-    SubViewport _laptopView; AnimatedModel _laptopModel; Camera3D _laptopCam; int _laptopModelFrame;
+    SubViewport _laptopView; AnimatedModel _laptopModel; Camera3D _laptopCam; float _laptopModelTime;
     /// <summary>⭐ Hold the pose instead of stepping it. Set when the subject has no slot 6 to
     /// play, so the window shows the finished building rather than looping its construction.</summary>
     bool _laptopModelHold;
@@ -7146,7 +7201,7 @@ public partial class Viewer : Node3D
         GD.Print($"[laptop] model {modelW:F2}x{modelH:F2}, window aspect {aspect:F2}; "
                + $"orthographic height {orthoH:F2}, {(heightBinds ? "height" : "width")} binds"
                + (heightBinds ? "" : " -- top-aligned, as the console leaves it"));
-        _laptopModel = drawn; _laptopModelFrame = 0;
+        _laptopModel = drawn; _laptopModelTime = 0f;
         GD.Print($"[laptop] model: {Leaf(ride.Name)}, "
                + (rec != null ? $"slot 5 v0 (Main), {rec.DurationFrames} frames"
                   : anim?.Records().FirstOrDefault(r => r.Slot == 0) is { } c0
@@ -7155,12 +7210,27 @@ public partial class Viewer : Node3D
     }
 
     /// <summary>One frame of the info screen's model. ⚠ Its own clock: the screen is a menu and
-    /// does not step the park.</summary>
-    void StepLaptopModel()
+    /// does not step the park.
+    ///
+    /// ⭐⭐ IT RUNS AT `Animation.Fps`, OFF REAL TIME -- not one record frame per rendered frame.
+    /// Master, 2026-09-27: "the animation speed is WAYYY too fast". It was exactly 2x: the step
+    /// was `++` per `_Process`, which is 60 record frames a second against records authored at
+    /// **30** (`Animation.Fps`, read out of the game's own parser). The widget's init passes rate
+    /// **1.0f** as its first argument, so there is no extra multiplier to find -- normal speed IS
+    /// 30/s, and `bee.mps`'s 60-frame loop should take two seconds, not one.
+    ///
+    /// ⚠ An integer `++` is also wrong whatever the rate, because it ties playback to the render
+    /// rate: the same model would run at a different speed on a machine drawing 30 or 144. The
+    /// accumulator is real seconds scaled to record frames, and `SetFrame` takes a float and
+    /// interpolates, so this is smoother than stepping whole frames as well as correct.</summary>
+    void StepLaptopModel(double delta)
     {
         if (_laptopModel == null || _laptopModelHold) return;
-        _laptopModelFrame++;
-        _laptopModel.SetFrame(_laptopModelFrame % Math.Max(1, _laptopModel.Frames));
+        _laptopModelTime += (float)delta * Aps.Fps;
+        float frames = Math.Max(1, _laptopModel.Frames);
+        // ⚠ `%` on a float that has grown for minutes loses precision; wrap the accumulator too.
+        if (_laptopModelTime >= frames) _laptopModelTime -= frames * (float)Math.Floor(_laptopModelTime / frames);
+        _laptopModel.SetFrame(_laptopModelTime);
     }
 
     AnimatedModel LoadPlaceable(AssetLibrary.RideAssets ride) => LoadPlaceable(ride, out _, out _);
@@ -9797,6 +9867,7 @@ public partial class Viewer : Node3D
                     _shopPanel.ShopSettingChanged += OnShopSetting;
                     _shopPanel.PriceNudged += OnShopPriceNudge;
                     _shopPanel.RowNudged += OnRowNudge;
+                    _shopPanel.MenuFocusChanged += OnLaptopMenuFocus;
                     // ⭐ The laptop's voice. ⚠ A bank that will not read leaves it null and the
                     // laptop silent, never unusable -- Report says which cues resolved.
                     _laptopSounds = new LaptopSounds(_lib, this);
@@ -9998,7 +10069,7 @@ public partial class Viewer : Node3D
         // exactly ONE caller and it was inside the --laptop-film harness, so the model was built,
         // posed at frame 0 and left there. The loop itself was already right -- the stepper wraps
         // on Frames -- it simply was not being driven outside a capture.
-        if (_shopPanel is { Open: true }) StepLaptopModel();
+        if (_shopPanel is { Open: true }) StepLaptopModel(delta);
         TickDebugHud(delta);
         // ⭐⭐ THE CLOUDS SHIFT AND THE SKY GREYS. Master: "clouds ARE meant to shift; sky gets
         // gray when raining." ⚠ The console drives the grey from a weather AMOUNT whose state
