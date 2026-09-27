@@ -362,8 +362,29 @@ zeroes each id. The two the lobby uses:
 
 ⭐ Both are `STR_MAP_*`, which is the map screen's own prefix -- the same family as the park names.
 
+### ⭐⭐⭐ THERE IS NO FRAME -- the whole border is stubs
+
+`FUN_00138780` turns out to only STORE a rect (`gfx+0x1C..0x22`), so it is a clip, not a draw. The
+paint goes through `FUN_00141F68`, which dispatches on the widget kind at `this+0x18` -- the box's
+constructor sets that to **2** -- reaching `FUN_00142610`. That is an **eight-piece border**:
+
+| piece | call | at |
+|---|---|---|
+| corners | `0x142740` `0x142738` `0x142748` `0x142750` | `(x,y)` `(x+w,y)` `(x+w,y+h)` `(x,y+h)` |
+| edges | `0x142758` `0x1427C8` `0x1427A0` `0x142778` | top, bottom, left, right; take `w` or `h` |
+
+⚠⚠ **Every one of the eight is a stub** -- `jr ra; nop`, 8 bytes -- and so is every painter the
+edges call (`0x1424C0`, `0x1424C8`, `0x1424D0`, `0x1424D8`). The border compiles to nothing. The
+console draws the centred **text and buttons over the scene with no panel behind them**.
+
+⭐ **The control, because "everything is a stub" is what a broken stub-detector says:** the text
+call `0x138798` and the colour call `0x1388E8` on the same path are REAL code. It is the frame
+specifically that is empty.
+
+⭐ A detail that survives even so: the top edge calls its painter with `x - 10` and `w + 0x14`,
+i.e. **overhanging 10 either side** -- which is how the corners would have been covered had any of
+it been implemented.
+
 ### Still open on the box
 
-- The frame ART. `FUN_00138780` sets the rect and `FUN_00141f68` (vtable slot 2) runs at the end
-  of the draw; neither has been read, so what actually paints the panel is unknown.
 - Which button index maps to which action, and what the other prompt modes (4..8) say.

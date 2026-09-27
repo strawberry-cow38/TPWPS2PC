@@ -118,14 +118,26 @@ public partial class LobbyMessageBox : Control
         // ⭐ (0x1FF - size) >> 1 on BOTH axes -- the original's own centring, not "put it in the
         // middle" reimplemented.
         float x = (0x1FF - _w) * 0.5f, y = (0x1FF - _h) * 0.5f;
+        // ⚠ Still computed: it is the LAYOUT rect the text and buttons are placed inside, even
+        // though nothing paints it.
         var rect = new Rect2(origin + new Vector2(x, y) * s, new Vector2(_w, _h) * s);
 
-        // ⚠ PLACEHOLDER FRAME. `FUN_00138780` sets the rect and `FUN_00141F68` runs at the end of
-        // the draw; neither is read yet, so what actually paints the panel on the console is
-        // unknown. This is the laptop's palette so it does not look alien, and it is flagged in
-        // findings/lobby-menu.md as the one part of this box that is not from the source.
-        DrawRect(rect, new Color(0.08f, 0.11f, 0.45f, 0.88f));
-        DrawRect(rect, new Color(0.45f, 0.55f, 1f, 0.9f), false, Mathf.Max(1f, 2f * s));
+        // ⭐⭐⭐ THERE IS NO FRAME. Master: "then get it from the source" -- so I did, and the
+        // source draws nothing at all.
+        //
+        // `FUN_00141F68` dispatches on the widget kind (`this+0x18`, which the box's constructor
+        // sets to **2**) to `FUN_00142610`, which is an eight-piece border: four corners at the
+        // rect's corners and four edges taking the width or the height. **Every one of the eight
+        // is a stub** -- `jr ra; nop`, 8 bytes -- and so is every painter they call
+        // (`0x1424C0`, `0x1424C8`, `0x1424D0`, `0x1424D8`). The whole border compiles to nothing.
+        //
+        // ⚠ The control matters here, because "everything is a stub" is exactly what a broken
+        // stub-detector says: the text call `0x138798` and the colour call `0x1388E8` on the same
+        // path are REAL code. It is the frame specifically that is empty.
+        //
+        // ⭐ So the console shows centred TEXT and BUTTONS over the lobby with no panel behind
+        // them, and the blue rectangle that used to be here was mine. `1:1` means drawing what it
+        // draws, including nothing.
 
         // ⭐ CONTENT ONLY ONCE THE BOX HAS FINISHED GROWING -- `if (!bVar1)` in FUN_0012c968.
         if (!Settled) return;
