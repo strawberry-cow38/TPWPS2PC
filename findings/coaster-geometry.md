@@ -425,6 +425,24 @@ That is 0.9 u of track rise per unit of pylon height. bind_y (model units) per p
   mesh rebuild reads its own. That is INFERRED; the index path runs through
   `0x2eaad0[instance+0x14]`.
 
+**Measured in the port, 2026-09-27** (`TPW_COASTER_PROBE=1` in `CoasterSmoke`, all 14 coasters, turn
+0): the drawn track's underside within 0.35 cells of each pylon node, against the drawn post's top,
+in cells (+ = track above the post). Every value is the formula above to 0.01, so the port draws what
+this reading predicts; whether the CONSOLE looks the same is the open question (strawberry: "some
+... may be floating above their pylons").
+
+| coaster | style | gap | why |
+|---|---|---|---|
+| Caterpillar | A | +0.37 | dummy is the post top; +0x60 lifts the ribbon clear |
+| Scatty Batty | D | +0.17 (bottom of its triangle) | as Caterpillar, less the triangle's 0.2 |
+| Big Dripper | B | floor +0.29, keel −0.28 | bind 9.179 |
+| Chak Atak, Hades | B | floor −0.03, keel −0.58 | bind 6 |
+| Temple, Candy, Dare Devil, Ghosta, Bone Shaker, Escape Velocity | G/A/F | −0.12 | the dummy's parent adds 0.5 that 0x19a420 does not read |
+| Gorilla Thrilla, The Shocker | C/A | −0.5..−0.6 | suspended, off 0 |
+| Moonshot | E | tube −0.31..−1.53 | off 0x100 |
+
+Horizontally every track passes within 0.07 cells of its post-top centre.
+
 ### 4.4 Fittings → nodes (READ `0x19a4dc..0x19a518` against the data)
 
 The engine resolves a fitting to a model node as `node = fitting index + header u16 @+0x34`:

@@ -412,6 +412,35 @@ public partial class CoasterSmoke : Node3D
                 // Rest height = the measured top minus the loft's rise (9L on most), which must be the post's own BIND
                 // top out of the .mps: the loft ADDS to the bind pose. (The collapsed absolute morph
                 // rose 9L too, from nothing: rest -0.01 against a bind top of 1.0 on Chak Atak.)
+                if (System.Environment.GetEnvironmentVariable("TPW_COASTER_PROBE") == "1")
+                {
+                    // PROBE: the drawn track near this node against the post: bottom/top gap and centre offset.
+                    var cellC = holder.GlobalTransform * new Vector3(0.5f, 0, 0.5f);
+                    var postLo = new Vector2(float.MaxValue, float.MaxValue); var postHi = new Vector2(float.MinValue, float.MinValue);
+                    foreach (var mi in holder.FindChildren("*", "MeshInstance3D", true, false).OfType<MeshInstance3D>())
+                        if (mi.IsVisibleInTree() && mi.Mesh != null)
+                            for (int sfc = 0; sfc < mi.Mesh.GetSurfaceCount(); sfc++)
+                                foreach (var pv in mi.Mesh.SurfaceGetArrays(sfc)[(int)Mesh.ArrayType.Vertex].AsVector3Array())
+                                {
+                                    var w = mi.GlobalTransform * pv;
+                                    if (w.Y > hi - 0.3f) { postLo = postLo.Min(new Vector2(w.X, w.Z)); postHi = postHi.Max(new Vector2(w.X, w.Z)); }
+                                }
+                    var postTopC = (postLo + postHi) / 2;
+                    float trB = float.MaxValue, trT = float.MinValue; Vector2 sum = Vector2.Zero; int cnt = 0;
+                    foreach (var seg in segments.Values.Cast<MeshInstance3D>())
+                        for (int sfc = 0; sfc < seg.Mesh.GetSurfaceCount(); sfc++)
+                            foreach (var pv in seg.Mesh.SurfaceGetArrays(sfc)[(int)Mesh.ArrayType.Vertex].AsVector3Array())
+                            {
+                                var w = seg.GlobalTransform * pv;
+                                if (new Vector2(w.X - cellC.X, w.Z - cellC.Z).Length() > 0.35f) continue;
+                                trB = Math.Min(trB, w.Y); trT = Math.Max(trT, w.Y); sum += new Vector2(w.X, w.Z); cnt++;
+                            }
+                    var tc = cnt > 0 ? sum / cnt : Vector2.Zero;
+                    GD.Print($"[probe] {type.Name} pylon ({n.CellX},{n.CellZ}) h{n.Height}: post top {hi - floor:F3} above floor, "
+                           + $"track bottom {trB - hi:+0.000;-0.000} / top {trT - hi:+0.000;-0.000} from the post top ({cnt} verts); "
+                           + $"track centre - post-top centre ({tc.X - postTopC.X:+0.000;-0.000}, {tc.Y - postTopC.Y:+0.000;-0.000}), "
+                           + $"post-top centre - cell centre ({postTopC.X - cellC.X:+0.000;-0.000}, {postTopC.Y - cellC.Z:+0.000;-0.000}); spline {rail - hi:+0.000;-0.000}");
+                }
                 float rest = hi - floor - (type.LoftTo - type.LoftFrom) / 10f * Math.Clamp(n.Height / 2560f, 0f, 1f);
                 float bindTop = holder.HasMeta("rest_top") ? (float)holder.GetMeta("rest_top") : float.NaN;
                 restTop ??= rest;
