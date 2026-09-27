@@ -261,6 +261,8 @@ public partial class Viewer : Node3D
     int _selectAtStart = -1;
     bool _hidePanel, _wantLobby, _lobbyOverview;
     int _lobbyEnter;   // 1-based: 0 means "not asked for"
+    int _loadedMap = -1, _lobbyWantRecord = -1;
+    bool _closeParkTest;
     string _placeName;
     bool _walkAudit;
     bool _typeAudit;
@@ -412,6 +414,9 @@ public partial class Viewer : Node3D
             // not inherit `set` -- the overview simply never switched on and the log looked as if
             // the code were unreachable.
             else if (a == "--lobby-overview") { _wantLobby = true; _lobbyOverview = true; }
+            // ⭐ Opens the laptop's main menu and picks Close Park THROUGH `OnLaptopRow`, so a
+            // render shows the route a player takes rather than a direct call to the handler.
+            else if (a == "--close-park-test") _closeParkTest = true;
             // ⭐ `--lobby-enter=<record>` drives the REAL selection and the REAL entry, so a render
             // shows the park the lobby actually handed off to rather than one a flag loaded.
             else if (a.StartsWith("--lobby-enter="))
@@ -1621,6 +1626,10 @@ public partial class Viewer : Node3D
     void LoadMap(int i)
     {
         if (i < 0 || i >= _maps.Count) return;
+        // ⚠ Remembered so "Close Park" can put the lobby back on the park you closed. Nothing
+        // else knows which of the eight is loaded once the wad is open -- the archive alone cannot
+        // tell terrain_1 from terrain_2.
+        _loadedMap = i;
         var m = _maps[i];
         // Canonical witness: runners assert THIS, not texture paths (tools/viewer_matrix.py).
         GD.Print($"[map] loaded world={Leaf(m.Wad).Replace(".WAD", "")} terrain={Leaf(m.Path)}");
@@ -3667,6 +3676,12 @@ public partial class Viewer : Node3D
                 var opts = System.Linq.Enumerable.ToArray(LaptopMainMenu.VisibleMain(parkOpen: _laptopParkOpen));
                 if (row >= opts.Length) return;
                 var picked = opts[row];
+                // ⭐⭐ CLOSE PARK GOES TO THE LOBBY, and the disc says so rather than me: text 844
+                // is `STR_MAINMENU_EXIT_TO_MAP_SCREEN`. It is not the opposite of Open Park -- it
+                // is "leave for the map screen", which is why the console appends it
+                // unconditionally. Master: "route close park to the lobby, on the park u pressed
+                // close park in".
+                if (picked.Index == LaptopMainMenu.CloseParkIndex) { CloseParkToLobby(); return; }
                 switch (picked.Opens)
                 {
                     case "main_info":      _laptopBack.Add(("info", null)); ShowLaptopLevel(); return;
@@ -10218,6 +10233,18 @@ public partial class Viewer : Node3D
         // doing that here rather than inside `_Draw` keeps scene-tree changes out of a drawing
         // callback and puts the new model in place for the frame that is about to be drawn.
         if (_shopPanel is { Open: true }) { _shopPanel.PumpMenuFocus(); StepLaptopModel(delta); }
+        // ⚠ Once, and only after the park has actually loaded -- `_loadedMap` is the signal, since
+        // firing before it would close a park that is not there and land on the wrong record.
+        if (_closeParkTest && _loadedMap >= 0 && !_lobbyMode)
+        {
+            _closeParkTest = false;
+            var main = System.Linq.Enumerable.ToArray(LaptopMainMenu.VisibleMain(parkOpen: _laptopParkOpen));
+            int row = System.Array.FindIndex(main, o => o.Index == LaptopMainMenu.CloseParkIndex);
+            GD.Print($"[lobby] close-park test: row {row} of {main.Length} on the main menu");
+            _laptopBack.Clear();
+            ShowLaptopLevel();
+            if (row >= 0) OnLaptopRow(row);
+        }
         StepLobby(delta);
         TickDebugHud(delta);
         // ⭐⭐ THE CLOUDS SHIFT AND THE SKY GREYS. Master: "clouds ARE meant to shift; sky gets

@@ -181,6 +181,15 @@ public partial class Viewer
 
         _lobbyMode = true;
         _lobbyRecord = 0;
+        // ⭐ Stand on the park we just closed, if that is how we got here.
+        if (_lobbyWantRecord >= 0)
+        {
+            int w = _lobbyWantRecord >> 8, pk = _lobbyWantRecord & 0xFF;
+            _lobbyWantRecord = -1;
+            for (int i = 0; i < _lobbySlots.All.Count; i++)
+                if (_lobbySlots.All[i].IsPark && _lobbySlots.All[i].World == w
+                    && _lobbySlots.All[i].ParkInWorld == pk) { _lobbyRecord = i; break; }
+        }
         _lobbyAimed = false;
         GD.Print($"[lobby] base + {_lobbyParks.Count} parks, {seated} seated on base fittings; "
                + $"{_lobbySlots.All.Count} slot records ({_lobbySlots.Parks.Count} parks)");
@@ -304,6 +313,69 @@ public partial class Viewer
                + $"{_game.Behind} behind");
     }
 
+    /// <summary>⭐⭐ "CLOSE PARK" LEAVES FOR THE MAP SCREEN, standing on the park you left.
+    ///
+    /// Master: "route close park to the lobby, on the park u pressed close park in". The disc
+    /// agrees with the name: `Close Park` is text 844, **`STR_MAINMENU_EXIT_TO_MAP_SCREEN`**, so
+    /// it was never the opposite of Open Park -- which is also why the console appends it with no
+    /// condition while Open Park is conditional.
+    ///
+    /// ⚠ The park you were in is found from the MAP that is loaded, not from anything the lobby
+    /// remembers: archive name gives the world, `terrain_1`/`terrain_2` gives the park, and the
+    /// record with that pair is the slot to stand on. That is the exact inverse of
+    /// <see cref="LobbyEnterPark"/>, so the two cannot disagree.</summary>
+    /// <summary>⚠⚠ THE PARK IS NOT ONE NODE. `_park.Root` holds the placed things, but the
+    /// terrain, the entrance gate, the flags, the guests and the tool overlays are all SEPARATE
+    /// children of the viewer -- so hiding the park root alone leaves the gate, the ground and the
+    /// crowd standing in the middle of the lobby. The first close-park render came back showing
+    /// HALLOW's gate with the lobby camera behind it, which is exactly that.
+    ///
+    /// ⚠ The sky and the weather stay: the lobby is an island in the sea and wants both.</summary>
+    void ShowParkScene(bool on)
+    {
+        // ⚠ NAME WHAT WAS ACTUALLY TOUCHED. The first attempt reported nothing and the render
+        // was unchanged, which reads identically to "the nodes are not the park" and to "the call
+        // never ran". A count of what was found tells those two apart.
+        var hit = new List<string>();
+        if (_park?.Root != null) hit.Add("park");
+        if (_terrain?.Root != null && IsInstanceValid(_terrain.Root)) hit.Add("terrain");
+        if (_gateBox?.Root != null && IsInstanceValid(_gateBox.Root)) hit.Add("gate");
+        if (_flags?.Root != null && IsInstanceValid(_flags.Root)) hit.Add("flags");
+        GD.Print($"[lobby] park scene -> {(on ? "shown" : "hidden")}: {(hit.Count == 0 ? "NOTHING" : string.Join(",", hit))}");
+        if (_park != null) _park.Root.Visible = on;
+        if (_terrain?.Root != null && IsInstanceValid(_terrain.Root)) _terrain.Root.Visible = on;
+        if (_gateBox?.Root != null && IsInstanceValid(_gateBox.Root)) _gateBox.Root.Visible = on;
+        if (_flags?.Root != null && IsInstanceValid(_flags.Root)) _flags.Root.Visible = on;
+        if (_thoughts?.Root != null && IsInstanceValid(_thoughts.Root)) _thoughts.Root.Visible = on;
+        if (_selectView?.Root != null && IsInstanceValid(_selectView.Root)) _selectView.Root.Visible = on;
+        if (_ghostView?.Root != null && IsInstanceValid(_ghostView.Root)) _ghostView.Root.Visible = on;
+        // ⚠ NOT `_player` -- that is an AudioStreamPlayer, not a visual node. It is a child of
+        // the viewer like the rest, which is exactly why "hide everything I added" is the wrong
+        // rule and each node has to be named.
+    }
+
+    void CloseParkToLobby()
+    {
+        _lobbyWantRecord = -1;
+        if (_loadedMap >= 0 && _loadedMap < _maps.Count)
+        {
+            string world = Leaf(_maps[_loadedMap].Wad).Replace(".WAD", "").ToUpperInvariant();
+            int w = world switch
+            {
+                "JUNGLE" => 0, "HALLOW" => 1, "FANTASY" => 2, "SPACE" => 3, _ => -1
+            };
+            // ⚠ `terrain_2` is the SECOND park; anything else is the first. Matched on the leaf,
+            // because the full path differs per archive.
+            int pk = Leaf(_maps[_loadedMap].Path).Contains("_2", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+            _lobbyWantRecord = (w << 8) | pk;      // packed; EnterLobby resolves it against the table
+            GD.Print($"[lobby] close park: {_maps[_loadedMap].Label} -> world {w} park {pk}");
+        }
+        _shopPanel?.Hide();
+        _laptopBack.Clear();
+        ShowParkScene(false);            // the island REPLACES the park, it does not join it
+        EnterLobby();
+    }
+
     /// <summary>⭐⭐ CHOOSE THE SELECTED PARK AND GO. The lobby's whole job.
     ///
     /// ⚠ The record already says which park this is, in the game's own terms -- `World` 0..3 and
@@ -336,6 +408,7 @@ public partial class Viewer
         string name = LobbyName(_lobbyRecord).Replace("\n", " / ");
         GD.Print($"[lobby] entering {name} -> {_maps[idx].Label}");
         LeaveLobby();
+        ShowParkScene(true);             // hidden by CloseParkToLobby
         LoadMap(idx);
         Status($"{name}");
     }

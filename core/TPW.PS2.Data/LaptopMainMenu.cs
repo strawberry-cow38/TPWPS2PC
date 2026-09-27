@@ -79,6 +79,10 @@ public static class LaptopMainMenu
     /// <summary>⚠ Index 13 (`Build`, text 801) replaces the whole first group in
     /// `FUN_0016e558`'s ELSE arm, taken when `FUN_00153410()` is non-zero -- a mode this port has
     /// not identified. Recorded rather than drawn.</summary>
+    /// <summary>⭐ `Close Park`'s menu index. Its text is 844, `STR_MAINMENU_EXIT_TO_MAP_SCREEN`,
+    /// so it means "leave for the map screen" -- the lobby -- and not "shut the gates".</summary>
+    public const int CloseParkIndex = 12;
+
     public static readonly Option AltModeBuild = new(13, BuildTextId, "FUN_001c7650", "FUN_00153410 != 0");
 
     /// <summary>⭐⭐ The INFORMATION submenu, `FUN_0016e710`. Every row is conditional: an entry
