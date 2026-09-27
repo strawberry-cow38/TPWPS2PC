@@ -7445,7 +7445,10 @@ public partial class Viewer : Node3D
             cells.Add(row.TextId switch
             {
                 61   => (null, ride.Value ?? 0),                                   // Excitement
-                1060 => (null, ride.Definition.ShopfrontReliability ?? 0),         // Reliability
+                // ⭐ LIVE, from all three sliders -- FUN_001183F0. Not ShopfrontReliability, which
+                // is this same arithmetic frozen at speed 50 and half capacity for the build menu.
+                1060 => (null, NativeRideReliability.Calculate(ride.Definition.CompiledEntry,
+                                   ride.Speed, ride.Capacity, ride.Duration) ?? 0),
                 644  => (null, Math.Clamp(ride.Condition, 0, 100)),                // State of Repair
                 436  => (null, Pct(ride.Speed, t.MinSpeed, t.MaxSpeed)),           // Speed
                 919  => (null, Pct(ride.Capacity, 1, Math.Max(1, t.CapacityParameter))),
@@ -7466,7 +7469,10 @@ public partial class Viewer : Node3D
         GD.Print($"[laptop] details {DisplayName(ride)}: speed {ride.Speed} in {t.MinSpeed}..{t.MaxSpeed}, "
                + $"capacity {ride.Capacity} in 1..{t.CapacityParameter}, "
                + $"duration {ride.Duration} in {t.MinDuration}..{t.MaxDuration}; "
-               + $"basis {ride.Definition.CompiledEntry.BaseExcitement}, excitement {ride.Value?.ToString() ?? "-"}");
+               + $"basis {ride.Definition.CompiledEntry.BaseExcitement}, excitement {ride.Value?.ToString() ?? "-"}, "
+               + $"reliability {NativeRideReliability.Calculate(ride.Definition.CompiledEntry, ride.Speed, ride.Capacity, ride.Duration)}"
+               + $" [shopfront {ride.Definition.ShopfrontReliability}, control "
+               + $"{(NativeRideReliability.MatchesShopfront(ride.Definition.CompiledEntry) ? "PASS" : "FAIL")}]");
     }
 
     /// <summary>⭐ A slider moved: turn its percent back into the console's own units and write it
@@ -7487,6 +7493,25 @@ public partial class Viewer : Node3D
             default: return;
         }
         ShowRideDetails(_detailsRide);
+    }
+
+    /// <summary>⭐ A shop's quality or additive was dragged. Both are 0..100 -- the console's own
+    /// clamp, from the shop screen's setup `0x1D6D28`, which also holds the price to 1..500 -- and
+    /// both feed ONE expression that is at once the guest's want and the cost of goods:
+    /// `record[0x2e] * ((quality &gt;&gt; 2) + 75 - (additive &gt;&gt; 2)) / 100`. So turning quality up makes
+    /// a sale more attractive AND dearer to supply, and the additive does the opposite on both.
+    /// ⚠ The price is NOT here: the scene gives it arrows, not a slider, and those are drawn but
+    /// not yet hit-tested.</summary>
+    void OnShopSetting(ShopScreen.Selection which, int pct)
+    {
+        if (_selected < 0 || ShopFor(_selected) is not { } shop) return;
+        int v = Math.Clamp(pct, 0, 100);
+        if (which == ShopScreen.Selection.Quality) shop.Quality = v;
+        else if (which == ShopScreen.Selection.Additive) shop.Setting0xAC = v;
+        else return;
+        _shopPanel.ShowFor(shop, _park.Placed[_selected].Name);
+        GD.Print($"[laptop] shop {_park.Placed[_selected].Name}: quality {shop.Quality}, "
+               + $"additive {shop.Setting0xAC}");
     }
 
     ParkRide ShopFor(int placed)
@@ -9574,6 +9599,7 @@ public partial class Viewer : Node3D
                     _shopPanel.MenuInspected += OnLaptopInspect;
                     _shopPanel.Paged += OnLaptopPage;
                     _shopPanel.SliderMoved += OnLaptopSlider;
+                    _shopPanel.ShopSettingChanged += OnShopSetting;
                     // ⭐ The laptop's voice. ⚠ A bank that will not read leaves it null and the
                     // laptop silent, never unusable -- Report says which cues resolved.
                     _laptopSounds = new LaptopSounds(_lib, this);

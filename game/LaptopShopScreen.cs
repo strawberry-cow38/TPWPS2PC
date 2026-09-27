@@ -623,6 +623,17 @@ public sealed partial class LaptopShopScreen : Control
     /// <summary>Which slider the pointer is dragging, or -1.</summary>
     int _dragSlider = -1;
 
+    /// <summary>⭐ The SHOP screen's own sliders by what they set. That screen draws through the
+    /// `_rows` path rather than a <see cref="LaptopScreen"/> spec, so it keeps its own rects.</summary>
+    readonly Dictionary<ShopScreen.Selection, Rect2> _shopSliders = new();
+
+    /// <summary>⭐ A shop's quality or additive was dragged, as a percent of its track.
+    /// ⚠ A percent, like <see cref="SliderMoved"/>: the clamps (both 0..100, and the price 1..500)
+    /// are the console's, live in its screen setup `0x1D6D28`, and are applied by the caller.</summary>
+    public event Action<ShopScreen.Selection, int> ShopSettingChanged;
+
+    ShopScreen.Selection? _dragShop;
+
     /// <summary>The percent along a slider's track that a point sits at, clamped to it.</summary>
     static int PercentIn(Rect2 r, Vector2 at)
         => r.Size.X <= 0 ? 0 : Math.Clamp((int)Math.Round((at.X - r.Position.X) / r.Size.X * 100f), 0, 100);
@@ -644,8 +655,14 @@ public sealed partial class LaptopShopScreen : Control
             { SliderMoved?.Invoke(_dragSlider, PercentIn(dr, drag.Position)); AcceptEvent(); }
             return;
         }
-        if (_dragSlider >= 0 && @event is InputEventMouseButton { Pressed: false })
-        { _dragSlider = -1; QueueRedraw(); AcceptEvent(); return; }
+        if (_dragShop is { } ds && @event is InputEventMouseMotion sdrag)
+        {
+            if (_shopSliders.TryGetValue(ds, out var sr))
+            { ShopSettingChanged?.Invoke(ds, PercentIn(sr, sdrag.Position)); AcceptEvent(); }
+            return;
+        }
+        if ((_dragSlider >= 0 || _dragShop != null) && @event is InputEventMouseButton { Pressed: false })
+        { _dragSlider = -1; _dragShop = null; QueueRedraw(); AcceptEvent(); return; }
 
         if (@event is InputEventMouseMotion motion)
         {
@@ -690,6 +707,16 @@ public sealed partial class LaptopShopScreen : Control
                         _dragSlider = idx;
                         Cue(LaptopSounds.Cue.Move);
                         SliderMoved?.Invoke(idx, PercentIn(rect, b.Position));
+                        AcceptEvent();
+                        return;
+                    }
+            if (b.ButtonIndex == MouseButton.Left)
+                foreach (var (which, rect) in _shopSliders)
+                    if (rect.HasPoint(b.Position))
+                    {
+                        _dragShop = which; _selected = which;
+                        Cue(LaptopSounds.Cue.Move);
+                        ShopSettingChanged?.Invoke(which, PercentIn(rect, b.Position));
                         AcceptEvent();
                         return;
                     }
@@ -1041,12 +1068,21 @@ public sealed partial class LaptopShopScreen : Control
 
         if (_layout["SatisfactionBar"] is { } bar)
             DrawBar(new Rect2(At(bar), new Vector2(bar.Width, bar.Height) * s), _satisfaction, s);
+        _shopSliders.Clear();
         if (_layout["QualitySlider"] is { } quality)
-            DrawSlider(new Rect2(At(quality), new Vector2(quality.Width, quality.Height) * s), _quality, s,
-                       _selected == ShopScreen.Selection.Quality);
+        {
+            var qr = new Rect2(At(quality), new Vector2(quality.Width, quality.Height) * s);
+            _shopSliders[ShopScreen.Selection.Quality] = qr;
+            DrawSlider(qr, _quality, s, _selected == ShopScreen.Selection.Quality);
+        }
+        // ⚠ Only when the shop HAS an additive. A shop without one authors no control, and a
+        // rect registered for a slider that is not drawn would eat clicks over empty chrome.
         if (_hasAdditive && _layout["AdditiveSlider"] is { } additive)
-            DrawSlider(new Rect2(At(additive), new Vector2(additive.Width, additive.Height) * s), _additive, s,
-                       _selected == ShopScreen.Selection.Additive);
+        {
+            var ar = new Rect2(At(additive), new Vector2(additive.Width, additive.Height) * s);
+            _shopSliders[ShopScreen.Selection.Additive] = ar;
+            DrawSlider(ar, _additive, s, _selected == ShopScreen.Selection.Additive);
+        }
 
         if (_layout["CostItem"] is { } cost)
             DrawRun(Money(_price), At(cost), s,

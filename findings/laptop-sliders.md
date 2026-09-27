@@ -103,26 +103,78 @@ value    = min(100, (basis * ((speed * duration) >> 12)) >> 12)
 excitement with no further wiring. ⭐ **Capacity has no term in it** -- which is consistent with
 `vt+0x314` being a separate setting the value producer never reads.
 
-## ⚠⚠ Reliability is NOT recomputed from the sliders
+## ⚠⚠ RELIABILITY IS RECOMPUTED LIVE -- I REPORTED THE OPPOSITE AND WAS WRONG
 
-`FUN_00198A98(a,b,c)` is the reliability arithmetic --
-`((Half(a) + Half(b)) / 2) * c` with `Half(p) = 0x800 + p/2` -- and
-`RideCatalogue.ShopfrontReliability` folds it with the tier's durations into `100 - min(v, 100)`.
+This section previously said reliability was not slider-driven. It is. Master, 2026-09-27:
+*"it absolutely does recomp reliability live. your ctrl f just failed. dont assume, actually
+research."* Both halves of that are correct.
 
-**A caller census over the whole image finds exactly ONE caller, `0x198B08`, in the shopfront
-path.** Nothing computes reliability from a placed ride's live settings. So a placed ride's
-"State of Repair" is its `Condition`, which WEARS, and the sliders can only reach it *indirectly*
-by changing how fast it wears -- the tier's `MinSpeedDamage`, `MinCapacityDamage` and `WearRate`
-are the per-ride-cycle damage inputs the shopfront preview uses as constants.
+**What I did wrong.** `FUN_00198A98` is the shopfront preview's arithmetic, and a caller census
+over it finds exactly one caller. That census was TRUE. The conclusion drawn from it -- "nothing
+computes reliability from live settings" -- does not follow from it: it says nothing about any
+OTHER function computing reliability, and one does. A search bounded to one function cannot
+answer a question about the whole program. This is the repo's own rule about negative searches,
+broken by the person who wrote it down.
 
-⭐ That matters for the wiring: dragging a slider must NOT change a reliability number on the spot.
-Anything that did would be inventing a behaviour the console does not have.
+**The way in was the screen's own draw, not a search.** `FUN_001D5210` fills its four bars from:
+
+| bar | source |
+|---|---|
+| Excitement | `vt+0x1D4`, the value producer |
+| **Reliability** | **`vt+0x2EC`** |
+| Repair | `FUN_00118228` = `ride[0xE4] >> 12`, the worn condition |
+| Life | `FUN_00118238` = `ride[0x94]` |
+
+`vt+0x2EC` is `FUN_001183F0`:
+
+```c
+wear     = vt[0x36C](ride, 1);
+duration = vt[0x304](ride);              // the DURATION slider
+v        = wear * duration * 9 >> 15;
+return 100 - min(v, 100);
+```
+
+and `vt+0x36C` is per family -- `0x1B80E0` ride, `0x1E9E10` tour, `0x201F78` track. ⚠ Those are
+exactly the three functions an earlier census in this document had already listed as reading BOTH
+speed and capacity. The evidence was in my own output and I did not follow it.
+
+### The wear term, `FUN_001B80E0`
+
+```c
+sp = (0x1000 - MinSpeedDamage) * ((speed << 12) / 100) >> 12;
+sp = speed < 100 ? sp + MinSpeedDamage                  // added below 100
+                 : (MinSpeedDamage + sp + 0x1000) / 2;  // averaged at or above
+cp = (capacity << 12) / maxCapacity;                    // vt[0x2FC], the CAPACITY slider
+t  = (0x1000 - MinCapacityDamage) * cp;
+capTerm = (t >> 12) + MinCapacityDamage;
+if (cp > 0xCCB)                                          // past four fifths of maximum
+    capTerm = MinCapacityDamage + (t >> 12) + ((cp - 0xCCC) >> 6) * ((cp - 0xCCC) >> 6);
+wear = ((sp + capTerm) / 2) * WearRate;
+```
+
+⭐ **So ALL THREE SLIDERS drive reliability**: speed and capacity through the wear term, duration
+as its multiplier. And capacity's consumer -- listed as unread a page ago -- is this.
+
+⭐⭐ **AND IT HAS A CONTROL THAT PASSES.** `ShopfrontReliability` is this same arithmetic frozen
+at the middle: its `Half(p) = ((0x1000-p) * 0x800 >> 12) + p` is the speed term with
+`(speed << 12)/100` equal to `0x800`, i.e. speed 50, and the capacity term at half of maximum.
+Evaluating the live wear term at speed 50 and half capacity must reproduce the shopfront's `inner`
+exactly, and it does -- `NativeRideReliability.MatchesShopfront` asserts it and the running port
+prints `control PASS`.
+
+Measured in the port, Acorn: speed 50 -> reliability 79, speed 100 -> reliability 72.
+⚠ The shopfront shows 86 for the same ride because it assumes half capacity where the placed one
+is at maximum; the two disagreeing by that much is the formula working, not a fault.
 
 ## What is still unread, and must be before it is wired
 
-1. **What CONSUMES `P+0xEC`.** The field and its setter are read; what capacity then feeds -- a
-   queue throughput, a car count, the wear model -- is not.
-2. **Where wear is applied per ride cycle** -- the consumer of `MinSpeedDamage` /
+1. **Where the WORN condition comes from.** `ride[0xE4]` is the Repair bar and it is a separate
+   quantity from the reliability computed above; what decrements it per ride cycle is not read.
+2. **`vt+0x344`, the capacity MAXIMUM.** The wear term divides by it and the screen takes its
+   slider bound from it; this port substitutes the tier's `CapacityParameter`, which is a stated
+   assumption rather than a reading.
+3. **Life**, `ride[0x94]`, is read but nothing is known about what moves it.
+4. ⚠ Superseded -- the consumer of `MinSpeedDamage` /
    `MinCapacityDamage` / `WearRate` on a live ride, as opposed to the shopfront preview.
 3. ⚠ `ride-value-producer.md`'s own warning stands: the final speed bridge
    (`0x118240 -> 0x1FA818 -> 0x1C0DE8`) and whether `VAR_DURATION` is the same quantity as the
