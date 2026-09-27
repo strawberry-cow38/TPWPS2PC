@@ -1647,6 +1647,24 @@ public partial class Viewer : Node3D
     /// one at a time, and loading all sixteen cost minutes of sector reads at startup.</summary>
     void IndexRides()
     {
+        // ⚠⚠ DROP EVERYTHING KEYED TO THE OLD ARCHIVE'S RIDE LIST FIRST. `_buildThings` caches
+        // INDICES INTO `_lib.Rides`, and `AssetLibrary.OpenWad` rebuilds that list -- so after a
+        // world change the cached indices point into a list that no longer exists in that shape.
+        // They then read the wrong ride, or throw IndexOutOfRange when the new park has fewer.
+        //
+        // ⭐ That is the park-switch bug master reported on 2026-09-27: "the laptop ui loses all
+        // function when switching parks in the same session ... the build menu kinda opens but i
+        // dont get the build menu, the back button still acts as if it opened the build menu".
+        // The symptom is the diagnosis: `OnLaptopRow` pushes ("buildcats", null) and THEN
+        // `ShowLaptopLevel` builds the list, so a throw inside the build leaves the stack pushed
+        // -- Back believes it is in a menu that never drew.
+        //
+        // ⚠ The cache itself is right; what was missing is an owner. It is invalidated HERE
+        // because this is the one place the ride catalogue is rebuilt, and everything derived from
+        // it dies at the same moment. `_buildRows` holds indices too, and is cleared for the same
+        // reason even though its own rebuild is more frequent.
+        _buildThings = null;
+        _buildRows.Clear();
         try
         {
             _cat = new RideCatalogue();
