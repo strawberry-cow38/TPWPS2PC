@@ -278,16 +278,22 @@ public sealed class VisitorNeeds
     /// are what <see cref="TicksPerRise"/> now carries, and the RATIO between them (thirst 1.25x
     /// as often as hunger) is read even though seconds-per-tick is not.
     ///
-    /// ⚠ The toilet, sickness and litter rates ARE still invented: nothing in this function
-    /// raises them, so their riser lives somewhere not yet found.</summary>
+    /// ⚠ The toilet and sickness rates ARE still invented: nothing in this function raises them,
+    /// so their riser lives somewhere not yet found. Litter has none at all (below).</summary>
     public Dictionary<string, Rate> Rates { get; } = new()
     {
         ["hunger"] = new Rate(0, 1, High: false),
         ["thirst"] = new Rate(0, 1, High: false),
         ["toilet"] = new Rate(0, 1, High: true),
         ["sick"] = new Rate(0, 0, High: false),
-        ["litter"] = new Rate(0, 1, High: false),
     };
+    // ⭐ No "litter" rate: the carried-rubbish meter `+0x74` has NO timed riser. Every write to it in
+    // the ELF is spawn `rand(40)` (0x20BD4C), the food/drink purchase arms `+30 + rand(25)`
+    // (0x20E528, 0x20E6A0), the drop and the bin arrival (= 0), load, and one unreferenced setter
+    // (findings/staff-handymen-entertainers.md §5.8). So a guest only litters after BUYING. The
+    // port used to roll an invented `Rate(0, 1)` here every rise, which made guests litter
+    // without ever visiting a shop (strawberry, 2026-09-27: "are guests gated on having bought
+    // from shops ... in the real game?").
 
     /// <summary>How much SIMULATED time passes between one rise and the next.
     ///
@@ -660,7 +666,6 @@ public sealed class VisitorNeeds
             var w = _byGuest[guest];
             w.Toilet = Clamp(w.Toilet + Roll(Rates["toilet"]));
             w.Sick = Clamp(w.Sick + Roll(Rates["sick"]));
-            w.Litter = Clamp(w.Litter + Roll(Rates["litter"]));
             _byGuest[guest] = w;
         }
     }

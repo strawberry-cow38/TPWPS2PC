@@ -334,5 +334,17 @@ static class MoodChecks
             n.Queue(1);
             Check(n.Of(1).Unknown78 == 5, "it rises by 5 when the guest QUEUES, which is its only found riser");
         }
+
+        // ⚠ THE SAME CONTROL FOR THE CARRIED RUBBISH `+0x74`: its only risers are spawn and the
+        // food/drink purchase arms (findings/staff-handymen-entertainers.md §5.8). The port rolled an
+        // invented timed rise here, so guests littered without buying anything. DEFAULT rates, many
+        // rises: a guest who buys nothing keeps exactly the rubbish it spawned with.
+        {
+            var n = new VisitorNeeds(7);
+            n.Set(1, new VisitorWants { Litter = 20 });
+            n.SickBar = n.ToiletBar = n.HungerBar = n.ThirstBar = n.Unknown78Bar = 101;
+            n.Step(n.SecondsPerRise * 400);
+            Check(n.Of(1).Litter == 20, $"+0x74 does not rise on the clock: 400 rises, no purchase, 20 -> {n.Of(1).Litter}");
+        }
     }
 }

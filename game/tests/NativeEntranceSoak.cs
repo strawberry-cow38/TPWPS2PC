@@ -95,7 +95,12 @@ public partial class NativeEntranceSoak : Node3D
             }
             // BUSY: LoadsOfKids batches at the constructor fee.
             for(int i=0;i<3000;i++)await Step();
-            Check(flow.GroupFlips>0,$"an incoming group reached 11 and the ONE flip sent a guest to the other group ({flow.GroupFlips} flips, peak group {peakGroup})");
+            // ⚠ The FLIP itself is chance here: it needs the RNG(2) pick to land on a group already at 11,
+            // and a correct change that altered guests' need rolls (the invented carried-rubbish rise,
+            // removed) left SPACE 1 at peak group 12 with no flip in 3000 ticks. The RULE is pinned
+            // deterministically by the audit (NativeEntranceFlowChecks Threshold(11, 1): the pick forced
+            // onto a group of 11 flips). What this soak must show is that a busy park REACHES the threshold.
+            Check(peakGroup>=11,$"an incoming group reached the literal-11 flip threshold (peak group {peakGroup}, {flow.GroupFlips} flips)");
             Check(Births()>=40,$"the soak was busy: {Births()} bus births");
             // EXODUS: no more births, and everyone the entrance has handed over goes broke (20C930's cash<100).
             Set(viewer,"_guestCap",0);
