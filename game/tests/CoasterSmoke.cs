@@ -244,6 +244,48 @@ public partial class CoasterSmoke : Node3D
                 try { Call(viewer, "UpdateCoasterGhost", 0.0); Call(viewer, "PressCoasterTool"); }
                 finally { Set(viewer, "_cursorOverride", null); }
                 if (ri == 2) await FieldCheck(c, ring[ri + 1]);
+                if (ri == ring.Length - 1) await EntryCheck(c);
+            }
+            // ⭐ The entry cell, once the ring can close on it, wears the field (171) under its chevron (166):
+            // strawberry, "show both the i/o icon and the 'can build here' icon under it".
+            async Task EntryCheck(ParkCell at)
+            {
+                Set(viewer, "_cursorOverride", (at.X, at.Z));
+                try { for (int f = 0; f < 6; f++) Call(viewer, "UpdateCoasterGhost", 0.0); }
+                finally { Set(viewer, "_cursorOverride", null); }
+                var field = Field<List<ParkCell>>(viewer, "_coasterField");
+                var entry = track.Entry.Cell;
+                Check(field.Contains(entry), $"the ring can close on the entry cell {entry}, so the field lists it");
+                // Cursor off the entry, on another listed cell, so the entry shows its chevron.
+                var other = field.First(q => q != entry);
+                Set(viewer, "_cursorOverride", (other.X, other.Z));
+                try { Call(viewer, "UpdateCoasterGhost", 0.0); }
+                finally { Set(viewer, "_cursorOverride", null); }
+                var root = ((GhostMarkers)Member("_ghostView").GetValue(viewer)).Root;
+                var at0 = park.CellCentre(entry.X, entry.Z);
+                // (Not the ones queued for deletion: each redraw QueueFrees the last, and they linger to frame end.)
+                int layers = root.GetChildren().OfType<MeshInstance3D>().Where(mi => !mi.IsQueuedForDeletion()).Count(mi =>
+                {
+                    var vs = mi.Mesh.SurfaceGetArrays(0)[(int)Mesh.ArrayType.Vertex].AsVector3Array();
+                    for (int i = 0; i + 2 < vs.Length; i += 3)
+                    {
+                        var ctr = mi.GlobalTransform * ((vs[i] + vs[i + 1] + vs[i + 2]) / 3f);
+                        if (MathF.Abs(ctr.X - at0.X) < Park.CellSize * 0.5f && MathF.Abs(ctr.Z - at0.Z) < Park.CellSize * 0.5f) return true;
+                    }
+                    return false;
+                });
+                Check(layers == 2, $"the entry cell carries both markers ({layers} layers: the field under the chevron)");
+                if (shots != null)
+                {
+                    foreach (var layer in viewer.FindChildren("*", "CanvasLayer", true, false).OfType<CanvasLayer>()) layer.Visible = false;
+                    Set(viewer, "_freeCam", true);
+                    var cam = Field<Camera3D>(viewer, "_cam");
+                    cam.GlobalPosition = at0 + new Vector3(2f, 6f, 4f);
+                    cam.LookAt(at0, Vector3.Up);
+                    for (int i = 0; i < 3; i++) await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                    Call(viewer, "SaveShot", System.IO.Path.Combine(shots, $"{world.ToLowerInvariant()}_{folder.ToLowerInvariant()}_entry.png"));
+                    foreach (var layer in viewer.FindChildren("*", "CanvasLayer", true, false).OfType<CanvasLayer>()) layer.Visible = true;
+                }
             }
             // ⭐ The valid-cell field (0x11aa70, §4.7): after a press the scan restarts around the cursor,
             // 4 rows a frame, and is drawn once complete. Every cell it lists is one the next pylon could

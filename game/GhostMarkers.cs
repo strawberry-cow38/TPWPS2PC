@@ -47,6 +47,8 @@ public sealed class GhostMarkers
             made = new StandardMaterial3D
             {
                 AlbedoColor = new Color(135 / 255f, 135 / 255f, 135 / 255f, 0.75f),
+                // Under any other marker on the same cell (the entry's chevron), not fighting it.
+                RenderPriority = -1,
                 Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
                 ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
                 CullMode = BaseMaterial3D.CullModeEnum.Disabled,

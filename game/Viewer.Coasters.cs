@@ -720,7 +720,10 @@ public partial class Viewer
             // cursor tile also carries.
             int field = _coasterGhost != null && t.IsValid(_coasterGhost, Ground, true) ? 171 : 175;
             foreach (var c in _coasterField)
-                if ((c.X, c.Z) != (x, y) && c != e) marks.Add((c.X, c.Z, field, 0));
+                // The entry cell keeps its 166 chevron AND wears the field under it when it is a place the
+                // track can close (strawberry: "show both the i/o icon and the 'can build here' icon under
+                // it"); 171 draws below every other marker (GhostMarkers), so the two do not fight.
+                if ((c.X, c.Z) != (x, y)) marks.Add((c.X, c.Z, field, 0));
         }
         marks.Add((x, y, ok ? 165 : 175, 0));
         if ((e.X, e.Z) != (x, y)) marks.Add((e.X, e.Z, 166, CoasterEntryTurn(t)));
