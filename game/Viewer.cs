@@ -74,6 +74,12 @@ public partial class Viewer : Node3D
     AnimatedModel _gate;
     /// <summary>The park's sky, rebuilt when the archive changes.</summary>
     WorldEnvironment _sky;
+    /// <summary>⭐ The park's calendar. The port had none at all until the date HUD needed one.
+    /// ⚠ Not `_clock` -- that is the console FRAME clock (ConsoleClock) and they are different
+    /// things: this one counts days, that one counts ticks.</summary>
+    readonly ParkClock _calendar = new();
+    TextureRect _date, _dateShadow;
+    string _dateShown;
     ShaderMaterial _skyMat;
     Weather.Kind? _wantWeather;
     Vector2 _skyDrift;
@@ -778,6 +784,20 @@ public partial class Viewer : Node3D
         _moneyShadow.SetAnchorsPreset(Control.LayoutPreset.TopLeft);
         ui.AddChild(_moneyShadow);
         ui.AddChild(_money);
+        // ⭐ The date, same treatment as the money because it IS the same treatment: master's HUD
+        // capture shows both in the white bitmap face with the dark drop-shadow, which is why no
+        // `%d/%d/%d` exists to be found -- the glyphs are composed, not formatted.
+        TextureRect Hud(Color? tint) => new()
+        {
+            MouseFilter = Control.MouseFilterEnum.Ignore, Visible = false,
+            StretchMode = TextureRect.StretchModeEnum.Keep,
+            TextureFilter = CanvasItem.TextureFilterEnum.Nearest,
+            Modulate = tint ?? Colors.White,
+        };
+        _dateShadow = Hud(MoneyShadowTint); _dateShadow.SetAnchorsPreset(Control.LayoutPreset.TopLeft);
+        _date = Hud(null); _date.SetAnchorsPreset(Control.LayoutPreset.TopLeft);
+        ui.AddChild(_dateShadow);
+        ui.AddChild(_date);
         _uiRoot = ui;
         BuildDebugHud(ui);
         if (_cheatsAtStart) ToggleCheats();
@@ -8920,6 +8940,14 @@ public partial class Viewer : Node3D
     const int PurchaseSound = 31, CannotAffordSound = 175, UiSoundGroup = 9;
 
     const int MoneyX = 0x26, MoneyY = 0x32, MoneyShadow = 2, MoneyFontIndex = 1;
+    /// <summary>⭐ THE DATE SHARES THE MONEY'S COLUMN, MEASURED. In master's HUD capture the
+    /// money's leftmost glyph and the date's leftmost glyph both begin at x=118 of a 1600-wide
+    /// frame, and `MoneyX / 512 * 1600` predicts 118.75 -- so the date is at col 38 too, and that
+    /// is read off the picture rather than picked.
+    /// ⚠ The ROW is not decoded. It is measured off the same capture: the date's ink sits about
+    /// 25px above a 885px frame's bottom edge, which is ~14 rows of a 512 space. Anchored to the
+    /// BOTTOM because that is what it is: a bottom-left element.</summary>
+    const int DateX = MoneyX, DateBottomRows = 14;
     const float ConsoleUiWidth = 512f, ConsoleUiHeight = 512f;
     static readonly Color MoneyNormal = new(1f, 1f, 0f), MoneyBroke = new(200 / 255f, 130 / 255f, 0f);
     /// ⚠ The shadow is drawn in palette slot `colour + 8`, and what that slot holds is not read.
@@ -9033,12 +9061,38 @@ public partial class Viewer : Node3D
         float k = view.Y / ConsoleUiHeight;
         _money.Scale = _moneyShadow.Scale = new Vector2(k, k);
         _moneyShadow.Position = _money.Position + new Vector2(MoneyShadow * k, MoneyShadow * k);
+        ShowDate(view, k);
+    }
+
+    /// <summary>The park's date, bottom left. ⚠ Advanced on the SAME frame-time unit the console
+    /// uses (`0x1000` a tick, `FUN_001c4920`), so a day is 240 ticks -- 4.8 seconds at 50Hz -- and
+    /// the rate is the game's rather than one that felt right.</summary>
+    void ShowDate(Vector2 view, float k)
+    {
+        if (_date == null) return;
+        bool on = _hudFont != null && _mode == Mode.Park;
+        _date.Visible = _dateShadow.Visible = on;
+        if (!on) return;
+        string want = _calendar.Format();
+        if (want != _dateShown)
+        { _dateShown = want; _date.Texture = _dateShadow.Texture = _hudFont.Render(want); }
+        _date.Scale = _dateShadow.Scale = new Vector2(k, k);
+        float h = (_date.Texture?.GetHeight() ?? 0) * k;
+        var at = new Vector2(DateX / ConsoleUiWidth * view.X,
+                             view.Y - DateBottomRows / ConsoleUiHeight * view.Y - h);
+        _date.Position = at;
+        _dateShadow.Position = at + new Vector2(MoneyShadow * k, MoneyShadow * k);
     }
 
     public override void _Process(double delta)
     {
         ShowMoney();
         TickDebugHud(delta);
+        // ⚠ Only while a park is up: the model/texture tabs have no calendar and stepping one
+        // there would have the date running while nobody is playing.
+        if (_mode == Mode.Park)
+            _calendar.Advance((int)Math.Round(delta * GameCamera.TicksPerSecond * GameCamera.FrameTick),
+                              out _, out _, out _);
         // ⭐⭐ THE CLOUDS SHIFT AND THE SKY GREYS. Master: "clouds ARE meant to shift; sky gets
         // gray when raining." ⚠ The console drives the grey from a weather AMOUNT whose state
         // machine is not ported (it is pinned at 0), so the port drives it from the weather the
