@@ -1095,6 +1095,27 @@ public sealed partial class LaptopShopScreen : Control
 
         Vector2 At(SceneLayout.Element e) => o + new Vector2(e.X, e.Y) * s;
 
+        // ⭐⭐ THE MODEL WINDOW, ON THE PATH THAT NEVER HAD ONE. Master, 2026-09-27:
+        // "everything should animate on that menu".
+        //
+        // A shop, sideshow or toilet opened from its own RMB "Details" draws through THIS path --
+        // the original `_rows` panel, written before the spec screens existed -- and the model
+        // draw was only ever added to `DrawSpecScreen`. So the one screen you reach by right-
+        // clicking a shop was the one screen with an empty model pane.
+        //
+        // ⚠ The tell was that an instrument in the spec draw printed NOTHING: not a wrong
+        // rect, not a null texture, no line at all. A block that never runs looks exactly like a
+        // block that runs and draws nothing -- see the build-cache and slider-rect faults above,
+        // all three of them "two paths, one of them forgotten".
+        //
+        // ⭐ `main_i_shop_data`, `main_i_bathroom_data`, `main_i_sideshow_data` and the ride's
+        // `main_i_ride_data` all author this window at the SAME frame -- row 208, col 315,
+        // 147x240 -- so the ride page's geometry was already the right geometry for all of them.
+        if (ModelTexture != null && _layout["Model"] is { } modelWindow)
+            DrawTextureRect(ModelTexture,
+                new Rect2(At(modelWindow), new Vector2(modelWindow.Width, modelWindow.Height) * s),
+                false);
+
         if (_layout["ItemText"] is { } title)
             DrawRun(_title, At(title), s, Of(ShopScreen.Highlight), title.Justify);
         DrawButtons(s, o);

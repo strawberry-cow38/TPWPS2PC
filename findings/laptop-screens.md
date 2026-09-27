@@ -444,3 +444,50 @@ All Shops 175/175, All Sideshows 175/175). All Staff does not, so the stepping t
 other four cannot be assumed to serve it: stepping both columns by 32 from their own origins puts
 its two value rows above their own labels. Whatever it does is its own arrangement, and it is
 still unread. The screen waits.
+
+## ⭐⭐ The laptop model plays APS section 5, and the shop screen never drew one at all (2026-09-27)
+
+Master: *"everything should animate on that menu. i think u might be playing the wrong animation
+too. do research on how the actual game does it"*. Both halves were real, and they were two
+different bugs.
+
+**1. The section was wrong — 6, should be 5.** The model widget's init `FUN_00144068` ends with
+`(**(code **)(vt + 0x5c))(1.0f, this, 5, 0, 0, 1)`, so the number it asks for is **5**. The port
+asked for 6 because an earlier note followed the LOGICAL-animation path, where logical 5 maps
+through table `0x2AAD48` to section 6. But `FUN_0017C5D8` switches on the object's **type** first,
+and only the 6/7 arm treats that argument as a logical; the 4 and 8/E/F arms take it as a **direct
+section**, bounds-checked against what the model actually carries. A laptop model is not a person,
+so 5 stays 5.
+
+⭐ **The data says the same thing independently** — section 5 is on **292 of 339** animations
+across the four worlds, section 6 on 52:
+
+| kind | has section 5 | has section 6 |
+|---|---|---|
+| shops | 20 of 32 | **0** |
+| sideshows | 30 of 30 | 1 |
+| features | 74 of 75 | — |
+| rides | 155 of 189 | — |
+
+Asking for 6 is why a shop never moved: not because the disc had nothing, but because 6 is the one
+section shops do not carry. Confirmed on three subjects — `arcade.mps` 95 frames, `bee.mps` 60
+(wings flap), `acorn.mps` 150 (visibly rotated between filmed frames).
+
+**2. The shop's Details screen had no model window in the port at all.** Every one of these `.sce`
+files authors the window, at the **same frame — row 208, col 315, 147×240**:
+
+| scene | element |
+|---|---|
+| `main_i_ride_data.sce` | `thingmodel` |
+| `main_i_shop_data.sce` | `Model` |
+| `main_i_sideshow_data.sce` | `Model` |
+| `main_i_bathroom_data.sce` | `Model` |
+
+Ride, sideshow and toilet open via `ShowScreen(spec, ...)` → `DrawSpecScreen`, which draws it.
+The **shop** opens via `ShowFor` → the legacy `_rows` path, written before the spec screens
+existed, and the model draw had only ever been added to the spec path.
+
+⚠ **The tell was an instrument that printed NOTHING.** A probe in the spec draw reported no line
+at all — not a null texture, not a bad rect. A block that never runs and a block that runs and
+draws nothing look identical from the outside. Same shape as the build cache that survived a park
+switch and the slider rects cleared per-branch: **two paths, one of them forgotten.**

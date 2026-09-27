@@ -7019,11 +7019,11 @@ public partial class Viewer : Node3D
     /// initialises the new object FROM AN ID at `shop + 0x78`, caching on that id so it rebuilds
     /// only when the subject changes. So the port needs a viewport, which is what this is.
     ///
-    /// ⭐ AND IT PLAYS APS SECTION 6. The factory's vtable slot reaches `0x17C5D8`, whose types
-    /// 6/7 arm calls `0x10E910(a0 = 5, ...)`; logical 5 in the `0x2AAD48` table is descriptor
-    /// `0x2AA9C8`, main pair slot **6** variant 0, with first and last both the inactive sentinel.
-    /// Asked for BY SLOT, the way LoadPlaceable asks for slot 0, because a model with no section 6
-    /// must fall back rather than silently play whatever its first record happens to be.
+    /// ⭐ AND IT PLAYS APS SECTION 5, "Main" -- see the body, which carries the evidence and
+    /// the census. This comment used to say section 6, from reading the LOGICAL-animation path;
+    /// that is the wrong arm of `FUN_0017C5D8` for a laptop model. Asked for BY SLOT, the way
+    /// LoadPlaceable asks for slot 0, because a model with no section 5 must fall back rather
+    /// than silently play whatever its first record happens to be.
     ///
     /// ⚠ FRONT ON, NOT SPINNING. The scene file's own comment says ";3D Spinning model" and the
     /// comment is wrong about the shipped behaviour -- master, who has played it: "the model isnt
@@ -7035,17 +7035,33 @@ public partial class Viewer : Node3D
         if (ride == null) return;
         var drawn = LoadPlaceable(ride, out var anim, out _);
         if (drawn?.Root == null) return;
-        // ⭐ Slot 6, per the dispatcher; anything else is a fallback and says so in the log.
-        var rec = anim?.Records().FirstOrDefault(r => r.Slot == 6 && r.Skeletal)
-               ?? anim?.Records().FirstOrDefault(r => r.Slot == 6);
-        // ⚠⚠ A MODEL WITH NO SLOT 6 MUST NOT BE LEFT IN ITS BIND POSE. A shop's parts are
+        // ⭐⭐ SECTION 5, "Main" -- and section 6 was WRONG. Master, 2026-09-27: "everything should
+        // animate on that menu. i think u might be playing the wrong animation too". Both true.
+        //
+        // The widget's own init, `FUN_00144068`, ends with
+        //     (**(code **)(vt + 0x5c))(1.0f, this, 5, 0, 0, 1);
+        // so the number it asks for is **5**. This port asked for 6 because an earlier note read
+        // the LOGICAL-animation path: logical 5 maps through the 0x2AAD48 table to section 6. But
+        // `FUN_0017C5D8` switches on the object's TYPE first, and only the 6/7 arm treats that
+        // argument as a logical -- the 4 and 8/E/F arms take it as a DIRECT section, bounds-checked
+        // against what the model actually has. A laptop model is not a person, so 5 stays 5.
+        //
+        // ⭐ And the census says the same thing from the data side. Section 5 is on 292 of 339
+        // animations across the four worlds; section 6 on 52:
+        //     shops 20 of 32 have 5 and NONE has 6;  sideshows 30 of 30 have 5 and one has 6;
+        //     features 74 of 75;  rides 155 of 189.
+        // Asking for 6 is why a shop never moved -- not because the disc had nothing, but because
+        // I was asking for the one section shops do not carry.
+        var rec = anim?.Records().FirstOrDefault(r => r.Slot == 5 && r.Skeletal)
+               ?? anim?.Records().FirstOrDefault(r => r.Slot == 5);
+        // ⚠⚠ A MODEL WITH NO SLOT 5 MUST NOT BE LEFT IN ITS BIND POSE. A shop's parts are
         // stacked flat there and the window drew a sliver: `bee.mps` measured 3.00 x 0.12 and
         // `arcade.mps` 3.00 x 0.01, against `loo.mps` -- which does pose in bind -- at 1.34 x 0.81.
         // Master: "can u do a pass to get all buildings' 3d models on laptop pages to show?".
         //
         // ⭐ The park never shows that pose either: the script plays slot 0, Create, and the
         // building EXISTS at the END of it. So that is the fallback, held rather than stepped --
-        // there is no idle to play without slot 6, and looping Create would rebuild the shop over
+        // there is no idle to play without slot 5, and looping Create would rebuild the shop over
         // and over in a window master has already said is "just a front facing render of it".
         _laptopModelHold = rec == null;
         if (rec != null) { drawn.UseRecord(rec); drawn.SetFrame(0); }
@@ -7132,10 +7148,10 @@ public partial class Viewer : Node3D
                + (heightBinds ? "" : " -- top-aligned, as the console leaves it"));
         _laptopModel = drawn; _laptopModelFrame = 0;
         GD.Print($"[laptop] model: {Leaf(ride.Name)}, "
-               + (rec != null ? $"slot 6 v0, {rec.DurationFrames} frames"
+               + (rec != null ? $"slot 5 v0 (Main), {rec.DurationFrames} frames"
                   : anim?.Records().FirstOrDefault(r => r.Slot == 0) is { } c0
-                    ? $"no slot 6 -- held at the last frame of Create (slot 0, {c0.DurationFrames} frames)"
-                    : "no slot 6 and no Create -- its bind pose, which may be flat"));
+                    ? $"no slot 5 -- held at the last frame of Create (slot 0, {c0.DurationFrames} frames)"
+                    : "no slot 5 and no Create -- its bind pose, which may be flat"));
     }
 
     /// <summary>One frame of the info screen's model. ⚠ Its own clock: the screen is a menu and
@@ -7725,6 +7741,11 @@ public partial class Viewer : Node3D
                 if (shop != null)
                 {
                     _shopPanel.ShowFor(shop, _park.Placed[_selected].Name);
+                    // ⚠ THE SHOP PAGE HAD NO MODEL AT ALL. ShowFor is its own draw path and never
+                    // built one, so the window sat empty on the one screen that has always been
+                    // reachable. Master asked for "all buildings' 3d models on laptop pages" and
+                    // this was the page still missing one.
+                    BuildLaptopModelFor(shop);
                     Status($"{_park.Placed[_selected].Name} -- details");
                 }
                 else if (RideFor(_selected) is { } ride) ShowRideDetails(ride);
