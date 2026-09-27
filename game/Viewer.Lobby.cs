@@ -647,6 +647,11 @@ public partial class Viewer
             if (_lobbyOverview) LobbyOverviewCamera();
             // ⚠ After the aim, and once: entering tears the scene down, and doing that from
             // inside EnterLobby would free the nodes the rest of startup still walks.
+            // ⚠ Snapped, because a wound render draws at about 1 fps and the open takes ~11
+            // steps -- the picture would otherwise always catch it mid-grow, which is exactly what
+            // it did twice.
+            if (_lobbyPromptTest)
+            { _lobbyPromptTest = false; ShowLobbyPrompt(); _lobbyBox?.SnapForShot(); }
             if (_lobbyEnter > 0)
             {
                 int want = _lobbyEnter - 1;

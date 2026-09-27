@@ -44,6 +44,7 @@ public partial class LobbyMessageBox : Control
     // forever and NEVER settles; the box drew its frame and never its text, because the content
     // is gated on having settled.
     int _w, _h, _wTarget, _hTarget;
+    string _probe;
 
     public bool Open { get; private set; }
 
@@ -91,6 +92,12 @@ public partial class LobbyMessageBox : Control
         Button = Mathf.Clamp(Button + by, 0, _buttons.Length - 1);
         QueueRedraw();
     }
+
+    /// <summary>⚠ FOR THE SHOT HARNESS. The open eases about eleven steps, roughly 0.2 s at 60fps
+    /// -- correct in play and impossible to photograph at the 1 fps a wound render manages, which
+    /// is why the prompt kept coming back as an empty frame. This skips the ease; nothing in the
+    /// game calls it.</summary>
+    public void SnapForShot() { _w = _wTarget; _h = _hTarget; QueueRedraw(); }
 
     public new void Hide() { Open = false; Visible = false; QueueRedraw(); }
 
@@ -156,7 +163,16 @@ public partial class LobbyMessageBox : Control
         _panel?.Draw(this, rect, s);
 
         // ⭐ CONTENT ONLY ONCE THE BOX HAS FINISHED GROWING -- `if (!bVar1)` in FUN_0012c968.
-        if (!Settled) return;
+        if (!Settled)
+        {
+            if (_probe != $"{_w}x{_h}->{_wTarget}x{_hTarget}")
+            {
+                _probe = $"{_w}x{_h}->{_wTarget}x{_hTarget}";
+                GD.Print($"[box] not settled: {_w}x{_h} -> {_wTarget}x{_hTarget}, "
+                       + $"lines \"{_line1}\" / \"{_line2}\", {_buttons.Length} buttons");
+            }
+            return;
+        }
 
         void Centred(string text, float lineY)
         {

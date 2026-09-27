@@ -263,6 +263,7 @@ public partial class Viewer : Node3D
     MainMenu _mainMenu;
     int _menuGo;
     int _lobbyEnter;   // 1-based: 0 means "not asked for"
+    bool _lobbyPromptTest;
     int _loadedMap = -1, _lobbyWantRecord = -1;
     bool _closeParkTest;
     string _placeName;
@@ -423,6 +424,8 @@ public partial class Viewer : Node3D
             // not inherit `set` -- the overview simply never switched on and the log looked as if
             // the code were unreachable.
             else if (a == "--lobby-overview") { _wantLobby = true; _lobbyOverview = true; }
+            // ⭐ Raise the mode 6 prompt, so a render can show the thing rather than the caption.
+            else if (a == "--lobby-prompt") { _wantLobby = true; _lobbyPromptTest = true; }
             // ⭐ Opens the laptop's main menu and picks Close Park THROUGH `OnLaptopRow`, so a
             // render shows the route a player takes rather than a direct call to the handler.
             else if (a == "--close-park-test") _closeParkTest = true;
