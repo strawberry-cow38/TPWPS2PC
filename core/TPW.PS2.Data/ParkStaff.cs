@@ -121,6 +121,7 @@ public sealed partial class ParkStaff
         RouteRequests = new StaffRouteService(Visitors.Walk.Paths, Tiles, Routes);
         Litter = new ParkLitter(Random, Activations);
         Features = () => Visitors.Sim.Rides.Select(StaffFeature.Of).Where(f => f != null);
+        Visitors.Walk.Paused = g => Visitors.Staff?.IsWatching(g.Id) == true;   // a guest watching a show stands still
         _poolEpoch = Routes.ResetGeneration;
         // 0x147EB0: every pool built once, its five slots pushed on the free list AT THE HEAD, so
         // the first allocation gets slot 4.
@@ -135,6 +136,7 @@ public sealed partial class ParkStaff
                     _ => new StaffMember(this, kind, i),
                 };
             _slots[kind] = slots;
+            AttachSecurityJobs(kind, slots);                             // ParkStaff.Security.cs: guards, entertainers
             _free[kind] = new List<StaffMember>();
             _active[kind] = new List<StaffMember>();
             for (int i = 0; i < slots.Length; i++) _free[kind].Insert(0, slots[i]);
@@ -351,9 +353,11 @@ public sealed partial class ParkStaff
         Tiles.Refresh();
         if (Routes.ResetGeneration != _poolEpoch) RouteSystemReset();
         NoticeRemovals();
+        SecurityBeforeMembers();                                         // guests' removal notices; the gate
         RouteRequests.Pump();                                            // 0x18D7F8, before 0x14BE60
         foreach (var member in _mapList.ToArray())                       // ⚠ a snapshot: the native
             if (member.Active) member.Update();                          // next-pointer hazard is not copied
+        GuestThink();                                                    // the guests' show-watching (0x20FB88, 0x2107A0)
         Now = unchecked(Now + 1);                                        // 0x1C4A58 bumps [0x397644]
     }
 

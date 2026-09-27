@@ -93,6 +93,12 @@ if (args.Contains("--native-consumer-only"))
     return bad == 0 ? 0 : 1;
 }
 
+if (args.Contains("--guard-only"))
+{
+    GuardChecks.Run(disc, terrain, Wad("DATA"), wad, world, Check);
+    Console.WriteLine(bad==0 ? "PASS guards and entertainers, and the guests' side, through ParkStaff/ParkVisitors (viewer: GuardSmoke)" : $"FAIL: {bad}");
+    return bad==0?0:1;
+}
 if (args.Contains("--staff-only"))
 {
     StaffChecks.Run(disc, terrain, Wad("DATA"), wad, world, Check);
@@ -685,6 +691,7 @@ TerminalWalkingChecks.Run(terrain, Wad("DATA"), wad, world, Check);
 DestinationScoreChecks.Run(disc, Check);
     NativeRideValueChecks.Run(Check);
 DecisionSchedulingChecks.Run(terrain, loopPaths, corridorStops[0], onPath[^1], Wad("DATA"), wad, world, Check);
+GuardChecks.Run(disc, terrain, Wad("DATA"), wad, world, Check);
 StaffChecks.Run(disc, terrain, Wad("DATA"), wad, world, Check);
 MechanicChecks.Run(disc, terrain, Wad("DATA"), wad, world, Check);
 Check(looEntry.Entry != null, $"the world ships a lavatory to exercise ({looEntry.Entry?.Path ?? "none found"})");

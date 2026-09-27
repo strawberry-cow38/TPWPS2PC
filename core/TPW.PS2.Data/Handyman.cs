@@ -151,7 +151,9 @@ public sealed class Handyman : StaffMember
         Morale = (sbyte)(litter.Vomit ? Math.Max(0, Morale - 6) : Math.Min(100, Morale + 1));
         Tiredness = (sbyte)Math.Min(100, Tiredness + 5);
         litter.Claimant = null;
-        // 0x1824A8(litter cell): stop a prank stink there -- ⚠ pranks are not ported, so none exist.
+        // 0x1824A8(litter cell): stop a prank stink in the swept LITTER's cell -- the prank keyed it by the
+        // GUEST's, up to 100/256 cell away, so an edge prank's stink outlives the sweep (findings §1.5).
+        Park.Stinks.Remove(litter.Cell.X, litter.Cell.Z);
         Park.Litter.Remove(litter);                                        // 0x14B460, its ONLY caller
         State = StateIdle; Target = null; GoalDepth = 0;
     }

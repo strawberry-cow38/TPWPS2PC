@@ -89,6 +89,17 @@ REQUIRED_WITNESSES = (
     'ok   mechanic: call mechanic: the predicate tests the MODE byte for 0x32',
 )
 
+# Staff step 4, guards and entertainers (GuardChecks.cs, findings/staff-mechanics-guards.md §5-§6,
+# staff-handymen-entertainers.md §4-§5): 51 and 28 on every park. A statement of its own, so the staff
+# steps' parallel edits to the table above merge cleanly. The one-leg chase and the prank's allocation
+# gate are shipped behaviour that reads like a bug to fix; the camera rule is the guard's one range.
+REQUIRED_CHECKS.update({'guard': 51, 'entertainer': 28})
+REQUIRED_WITNESSES += (
+    'ok   guard: one leg: dispatched with deadline',
+    'ok   guard: prank with the litter pool full (40): no litter, NO STINK',
+    'ok   guard: camera rule: a camera 8 cells from the PRANKSTER',
+)
+
 
 def classify(world: str, raw_exit: int | None, text: str, *, timed_out: bool = False,
              truncated: bool = False, launch_error: str | None = None, terrain: int | None = None) -> dict:

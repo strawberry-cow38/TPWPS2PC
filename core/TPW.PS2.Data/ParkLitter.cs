@@ -49,9 +49,10 @@ public sealed class LitterItem
 /// - Free `0x14B460`: clear vomit, hide, unregister, back to the free list, count-1. It sends NO
 ///   "object removed" notice, which is safe only because only the claimant removes it.
 ///
+/// ⭐ The third producer, the guest's PRANK (hidden litter plus a `YellowStink` in the stink table
+/// `0x1822D0/0x1824A8`), is <see cref="ParkStaff.Prank"/>; the sweep stops the stink.
 /// ⚠ NOT PORTED, and said so: test-park mode (`0x153410` → `DAT_002B72A8`), which makes allocation
-/// fail; the prank producer (hidden litter plus a `YellowStink` stink table, `0x1822D0/0x1824A8`)
-/// and so the sweep's stink stop; the load scatter `0x14D8D8` and the two-count save `0x14D868`
+/// fail; the load scatter `0x14D8D8` and the two-count save `0x14D868`
 /// (positions and claims are never saved natively). Save/load is out of scope for this step.</summary>
 public sealed class ParkLitter
 {

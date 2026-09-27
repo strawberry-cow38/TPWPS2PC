@@ -7,8 +7,11 @@ namespace TPW.PS2.Data
     /// not silently turned into destination picks or invented movement.
     /// Litter and Vomit are 20C930's arms 3 and 4 (findings/staff-handymen-entertainers.md
     /// §5.5): the arm is only DRAWN here; its own test (+0x74 &gt; 89, +0x76 &gt; 92 and rand(4))
-    /// and effect belong to the caller, which acts on them only with a staff system attached.</summary>
-    public enum GuestIdleAction { None, SelectDestination, Move, Litter, Vomit }
+    /// and effect belong to the caller, which acts on them only with a staff system attached.
+    /// Heckle and Prank are arms 2 and 5 (§5.5, READ in the corpus FUN_0020c930 and MIPS
+    /// 0x20CDE4): again only the arm is drawn here; the rand(1000) &lt; 10 roll, the entertainer
+    /// search and the happiness &lt; 25 test are the caller's, with staff attached.</summary>
+    public enum GuestIdleAction { None, SelectDestination, Move, Litter, Vomit, Heckle, Prank }
 
     /// <summary>
     /// Post-completion destination-selection gate, in caller-supplied counter units.
@@ -71,8 +74,10 @@ namespace TPW.PS2.Data
             uint threshold = unchecked(gate.Deadline + 60u + extra);
             // Deliberately plain unsigned comparison, NOT signed elapsed-time math.
             if (arm == 1u) return GuestIdleAction.Move;
+            if (arm == 2u) return GuestIdleAction.Heckle;   // 20C930 arm 2 -> 12E278 when rand(1000) < 10, ent < 5
             if (arm == 3u) return GuestIdleAction.Litter;   // 20C930 arm 3 -> 20D010 when +0x74 > 89
             if (arm == 4u) return GuestIdleAction.Vomit;    // arm 4 -> state 0x1D when +0x76 > 92, rand(4) == 0
+            if (arm == 5u) return GuestIdleAction.Prank;    // arm 5 -> 20D010(g, 1) when +0x75 < 25, rand(1000) < 10
             return arm == 0u && now > threshold ? GuestIdleAction.SelectDestination : GuestIdleAction.None;
         }
 

@@ -320,6 +320,13 @@ public sealed partial class GuestWalk
         return ticks;
     }
 
+    /// <summary>⚠ A guest the caller has stopped where it stands: an ordinary walker for whom this
+    /// returns true is not stepped, mid-edge or not, and keeps its route. The guests' watch state
+    /// 0x1C (findings/staff-handymen-entertainers.md §5.2: "the guest is not routed; state 0x1C has no
+    /// movement") is its one user, through <see cref="ParkStaff"/>. Null: nobody is paused.
+    /// ⚠ Native-route leases are stepped by their owners and are never paused here.</summary>
+    public Func<Guest, bool> Paused { get; set; }
+
     /// <summary>One tick for everybody, in spawn order.</summary>
     public void Step()
     {
@@ -332,7 +339,7 @@ public sealed partial class GuestWalk
         {
             if (!IsLive(g)) continue;
             if (g.HasNativeRoute) { if (g.NativeMotion.Inputs.AutomaticStep) StepNative(g); continue; }
-            if (g.State != GuestState.Walking) continue;
+            if (g.State != GuestState.Walking || Paused?.Invoke(g) == true) continue;
             int budget = UnitsPerTick;
             while (budget > 0 && g.State == GuestState.Walking)
             {

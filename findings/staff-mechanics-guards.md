@@ -638,6 +638,18 @@ To the port's findings:
 - native-booth-admission.md "second staging population positively identified as guards": confirmed, and its
   mode-16 completion is `0x140cd8` case 0x10 → 0x30 (outbound) or 0x37 (inbound).
 
+Found while porting guards (2026-09-27, `core/TPW.PS2.Data/Guard.cs`, `ParkStaff.Security.cs`), each READ:
+- §5.4 "`0x1409e8` … rotated to facing + 3π (i.e. facing + π)": the angle handed to the copy is
+  **`0 − fmod(facing + 3π, 2π)`** -- `0x2960e0`, called at `0x140a70` with `a0 = 0`, flips the second operand's
+  sign (`xori v0, v0, 1` at `0x296120`) and adds, so it is `__subdf3(0, x)`; the modulus `[0x35f170]` is 2π. That
+  is **π − facing** mod 2π: the same yaw the person sync gives the guard himself. The copy faces with him.
+- §6 "Prank `0x20d010(g, 1)`: allocate litter …, spawn particle template 50": the place **and the stink** are
+  skipped when the allocation fails -- `beqz $a0, 0x20d1f0` at `0x20d148` jumps past both `0x15e2b8` and
+  `0x1822d0`. So a prank with the 40-litter pool full leaves no stink; the counters 2/0x14 and the guard
+  dispatch `0x14d3e0` still happen.
+- §5.2 the camera test is made per candidate inside `0x14d3e0` (after `d < best` and `d < 64`), not once; it
+  depends only on the guest's position, so the result is the same.
+
 ---------------------------------------------------------------------------------------------------
 
 ## 9. Still unknown (tried)

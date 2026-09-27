@@ -114,6 +114,10 @@ public class StaffMember
     /// <summary>`C+0x2C &amp; 0x200`: the next logical push cuts the current record (flags 2 to
     /// `10E910`). Only the guard's carry sets it (area C).</summary>
     public bool CutRecordOnPush => (Flags & FlagCutRecord) != 0;
+    /// <summary>`0x1921D0` step 4: the visual sync clears 0x200 once it has pushed with flags 2 -- a
+    /// one-shot, not a carry flag (findings/staff-mechanics-guards.md §5.4). A view calls this after
+    /// its push; a hidden member is not synced and keeps it.</summary>
+    public void CutRecordPushed() => Flags &= unchecked((ushort)~FlagCutRecord);
     public float FacingRadians => FacingQuarterTurns * (MathF.PI / 2f);
     /// <summary>In cell space (x across, z down the grid, y 0), the frame of <see cref="Guest.Position"/>.</summary>
     public Vector3 CellPosition => new(Position.X / 256f, 0, Position.Z / 256f);

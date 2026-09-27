@@ -174,6 +174,20 @@ public sealed class NativeEntranceFlow
     public (int Group0, int Group1) Counts => (_incoming[0].Count, _incoming[1].Count);
     public int StagingPending { get; private set; }
     public int EpisodeProcessed { get; private set; }
+
+    /// <summary>⭐ THE SECOND STAGING POPULATION: GUARDS (the list `0x14D228`), findings/
+    /// staff-mechanics-guards.md §5.5. A guard carrying a caught guest out, and walking back in, waits
+    /// at this same turnstile: his arrival `0x140CD8` counts himself in with `0x153298` (P++, modes 0xE
+    /// and 0xF, `0x140D70`/`0x140D90`), his crossing leg ends with `0x1532B0` (P--, R++, mode 0x10,
+    /// `0x140DC4`), and the coordinator sends event 9 to every guard in state 0x2E as it does to the
+    /// guests (<see cref="MemberEvent9"/>). The SAME two counters, so guards and guests cross in the
+    /// same batches and hold each other up. Called by <see cref="ParkStaff"/>, outside <see cref="Tick"/>.</summary>
+    public void StageMember() => StagingPending++;
+    /// <summary>`0x1532B0` from a guard's crossing leg: P--, R++.</summary>
+    public void CrossMember() { StagingPending--; EpisodeProcessed++; }
+    /// <summary>The coordinator's event 9 to the guard list (`0x14BCC0` over `0x14D228`), raised in the
+    /// same pass as the guests' and only when it sends theirs. The receiver must not mutate this flow.</summary>
+    public Action? MemberEvent9 { get; set; }
     /// <summary>Ordered A4 contributions from live active entries BEFORE their update.
     /// Includes guests removed later in this pass; new deferrals count next pass.</summary>
     public int DeparturePressure { get; private set; }
@@ -362,6 +376,7 @@ public sealed class NativeEntranceFlow
                     }
                     node = next;
                 }
+                MemberEvent9?.Invoke(); // then the guard list (0x14D228), same test, same pass
             }
             if ((StagingPending == 0 || (EpisodeProcessed >= 11 && busState == 2)) && traffic == 1)
                 traffic = 0; // never clear E==2

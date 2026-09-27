@@ -795,6 +795,21 @@ public sealed class ParkVisitors
     /// <summary>They reach the gate and are gone. ⭐ Dropping the PLAN is what retires them:
     /// `Needs.Reconcile(_plans.Keys)` reaps any record with no plan behind it, so a departure
     /// cannot leave a needs row behind to be inherited by whoever gets that id next.</summary>
+    /// <summary>⭐ CAUGHT BY A GUARD: the guest's event 4 (`0x20F588` case 4 → `0x14B368`), READ in
+    /// findings/staff-mechanics-guards.md §5.4 -- released and gone at once, its cash, needs and stats with
+    /// it, NOT counted as going home. Only <see cref="ParkStaff"/>'s guards call it. False when the guest
+    /// is not in the park.</summary>
+    public bool Eject(int guest)
+    {
+        if (!_plans.ContainsKey(guest)) return false;
+        ShowOut(guest, countDeparture: false);
+        Ejected++;
+        Needs?.Reconcile(_plans.Keys);
+        return true;
+    }
+    /// <summary>Guests a guard caught and removed (<see cref="Eject"/>).</summary>
+    public int Ejected { get; private set; }
+
     void ShowOut(int guest, bool countDeparture = true)
     {
         Walk.Remove(guest);
@@ -818,7 +833,7 @@ public sealed class ParkVisitors
         foreach (var g in Walk.Guests.ToArray())
         {
             if (g.HasNativeRoute || !_plans.TryGetValue(g.Id, out var plan) || plan.Intent != VisitorIntent.Heading) continue;
-            if (g.State != GuestState.Arrived) continue;
+            if (g.State != GuestState.Arrived || Staff?.IsWatching(g.Id) == true) continue;
             // ⚠⚠ ARRIVED SOMEWHERE IS NOT ARRIVED HERE. This used to join the queue on State alone,
             // so a guest heading for a ride who finished any other walk -- re-routed round a dug
             // path, or re-sent while still Heading -- was handed to that ride's queue from
@@ -895,6 +910,7 @@ public sealed class ParkVisitors
         foreach (var g in Walk.Guests.ToArray())
         {
             if (g.HasNativeRoute) continue; // native owner handles requests/completion/recovery
+            if (Staff?.IsWatching(g.Id) == true) continue; // state 0x1C: watching a show, not deciding
 
             // ⚠ A GUEST WHO CANNOT GET THERE MUST BE ABLE TO GIVE UP. Only Arrived was handled
             // here, so somebody Heading for a ride whose path was dug up under them stayed
@@ -959,8 +975,8 @@ public sealed class ParkVisitors
             // post-completion destination gate only, not the full weighted native chooser.
             // Going home above still has priority; no affordability veto is invented here.
             var action = _decisions.NextAction(g.Id, DecisionTick);
-            // Arms 3 and 4 used to fall through as None; they still do unless staff are attached.
-            if (action is GuestIdleAction.Litter or GuestIdleAction.Vomit)
+            // Arms 2..5 used to fall through as None; they still do unless staff are attached.
+            if (action is GuestIdleAction.Litter or GuestIdleAction.Vomit or GuestIdleAction.Heckle or GuestIdleAction.Prank)
             {
                 if (Staff != null) IdleArm(g, action);
                 continue;
@@ -1066,8 +1082,8 @@ public sealed class ParkVisitors
     /// **Arm 3**, `+0x74 &gt; 89` → `0x20D010(g, 0)`: the nearest placed object with DBA `+0x2E` bit 2
     /// (`0x1307E8`), Manhattan in cells, strict `&lt;`, first wins. None, or `dist &gt; 5` (MIPS
     /// `0x20D2E0` `sltiu 6`): DROP -- litter at the guest's 1/256 position ± 100, shown
-    /// (`0x15E5F0` from `0x20D4CC`), and the meter to 0 EVEN IF THE POOL WAS FULL. ⚠ Advisor counter
-    /// 0x15 (v77) is not modelled. ⚠⚠ A bin within 5: natively the guest routes to the bin (mode 0x13,
+    /// (`0x15E5F0` from `0x20D4CC`), and the meter to 0 EVEN IF THE POOL WAS FULL; advisor event
+    /// counter 0x15 (v77) += 1 (<see cref="ParkStaff.AdvisorEvents"/>). ⚠⚠ A bin within 5: natively the guest routes to the bin (mode 0x13,
     /// flags 1) and empties the meter on ARRIVAL; bins have no capacity and are never emptied. The
     /// walk to the bin is NOT ported: the meter empties at once, which is the arrival's effect
     /// without the walk.
@@ -1083,6 +1099,14 @@ public sealed class ParkVisitors
     /// state-0 update.</summary>
     void IdleArm(Guest g, GuestIdleAction action)
     {
+        // Arm 2 (heckle) and arm 5 (prank), READ in the corpus FUN_0020c930 cases 2 and 5: the rand(1000)
+        // rolls come from this coordinator's stream, as the vomit arm's rand(4) does (ParkStaff.Security.cs).
+        if (action == GuestIdleAction.Heckle) { Staff.HeckleArm(g, n => unchecked((uint)_random()) % n); return; }
+        if (action == GuestIdleAction.Prank)
+        {
+            if (Needs != null && Needs.Has(g.Id)) Staff.PrankArm(g, Needs.Of(g.Id).Happiness, n => unchecked((uint)_random()) % n);
+            return;
+        }
         if (Needs == null || !Needs.Has(g.Id)) return;
         var w = Needs.Of(g.Id);
         if (action == GuestIdleAction.Litter)
@@ -1095,7 +1119,7 @@ public sealed class ParkVisitors
                 int d = Math.Abs(f.Origin.X - g.Cell.X) + Math.Abs(f.Origin.Z - g.Cell.Z);
                 if (d < best) { best = d; bin = f; }
             }
-            if (bin == null || best > 5) { Staff.Litter.Drop(GuestPoint(g), vomit: false); LitterDropped++; }
+            if (bin == null || best > 5) { Staff.Litter.Drop(GuestPoint(g), vomit: false); LitterDropped++; Staff.AdvisorEvent(0x15, 1); }
             else LitterBinned++;
             w.Litter = 0;
             Needs.Set(g.Id, w);

@@ -61,6 +61,15 @@ def known(world):
     return COVERAGE + '\n  FAIL ' + EXPECTED[world] + ' -- KNOWN documented retail evidence\nFAIL: 1\n'
 
 
+# Staff step 4 (guards and entertainers): kept as its own statement, as in audit_matrix.py, and
+# after known() so the staff steps' parallel edits to the list above merge cleanly.
+COVERAGE += '\n' + '\n'.join(['  ok   guard: check'] * 48 +
+                              ['  ok   guard: one leg: dispatched with deadline 3600 (now + 3600), the re-route stored now over it',
+                               '  ok   guard: prank with the litter pool full (40): no litter, NO STINK (beqz at 0x20D148)',
+                               '  ok   guard: camera rule: a camera 8 cells from the PRANKSTER (d2 64 <= 64) lets a guard 7 away be sent'] +
+                              ['  ok   entertainer: check'] * 28)
+
+
 class ClassificationTests(unittest.TestCase):
     def test_staff_family_count_and_witnesses_required(self):
         for text in ('\n'.join(x for x in COVERAGE.splitlines() if 'staff:' not in x),
@@ -275,6 +284,17 @@ class ParkIdentity(unittest.TestCase):
     def test_no_park_line_is_wrong_park(self):
         self.assertEqual(classify('JUNGLE', 0, COVERAGE + '\nPASS\n', terrain=1)['status'], 'wrong_park')
 
+
+
+class GuardFamily(unittest.TestCase):
+    def test_guard_family_counts_and_witnesses_required(self):
+        for text in ('\n'.join(x for x in COVERAGE.splitlines() if 'guard:' not in x),
+                     '\n'.join(x for x in COVERAGE.splitlines() if 'entertainer:' not in x),
+                     COVERAGE.replace('  ok   entertainer: check\n', '', 1),
+                     COVERAGE.replace('NO STINK', 'a stink'),
+                     COVERAGE.replace('one leg: dispatched', 'two legs: dispatched')):
+            self.assertEqual(classify('JUNGLE', 0, text + '\nPASS')['status'], 'missing_coverage')
+        self.assertEqual(classify('JUNGLE', 0, COVERAGE + '\nPASS')['status'], 'pass')
 
 if __name__ == '__main__':
     unittest.main()

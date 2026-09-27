@@ -650,6 +650,11 @@ handymen: none):**
 - **ParkVisitors.cs:484..487** ("bumps the staff's own `+0x53`/`+0x54`"): those are `P`-relative
   **tiredness +5 (+10 if under 40)** and **morale +5 / −10**.
 - **ParkSim/VisitorNeeds "Rates[litter]"**: no console counterpart (§5.8).
+- **This file's §1.3 row 2 and §1.5** (found porting the prank, 2026-09-27): the stink is spawned ONLY when
+  the prank's litter was allocated -- `beqz $a0, 0x20d1f0` at `0x20d148` skips both the place `0x15e2b8`
+  and `0x1822d0`; the counters and `0x14d3e0` follow regardless (MIPS `0x20d13c..0x20d21c`).
+- **§5.3 facing**: with the entertainer on the guest's own cell (dx = dz = 0) the rule gives **π**
+  (`dz > 0` fails, MIPS `0x210890..0x2108b0`) -- the case the list above does not spell out.
 
 ---------------------------------------------------------------------------------------------------
 
