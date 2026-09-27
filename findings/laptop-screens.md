@@ -319,10 +319,21 @@ different `AssetKind`s, and the filter values are an enum this port already deco
 menu (see `BuildCategoryNames`, which derived the same enum from the other end -- the
 `STR_PURCHASE_*` names and master's requested ordering).
 
-⚠ **All Toilets is the one that does NOT simply read.** It registers `Feature` (2), and features
-are also bins, benches and trees -- so either toilets are Features and the screen narrows by
-something further that is not read here, or 2 means something else in this position. Do not build
-that screen on the assumption that `Feature` is the whole filter.
+⭐⭐ **All Toilets did not simply read, and reading one more function said why.** `FUN_0015c710`
+is not a "register" call at all: it walks the world's object list from `FUN_0014da50`, asks each
+object its kind through a virtual at `vtable+0xa4`, and appends every match. So the number is a
+kind and the call populates -- **and it carries exactly one special case, for kind 2 only.** When
+the kind is `Feature` it asks the object a second question, a virtual at `vtable+0x134`, and skips
+it when that returns zero.
+
+That is the narrowing All Toilets needs, and it was found by reading the populate function instead
+of guessing at the number. Toilets are Features that answer that predicate. ⚠ The predicate itself
+is still undecoded, so the filter is named but not finished.
+
+⚠ One tension left honest rather than resolved: the base's state machine reads `*(int*)(this+0x2f4)`
+as a small mode (0, 2, 3), while this function treats `this+0x2f4` as a list object with its own
+vtable. Both are observed. They are compatible only if word 0 of that member is a mode field, which
+is plausible but not shown here.
 
 ⚠⚠ **`this + 0x178` IS NOT A TEXT ID, and calling it one was my error.** I named it "a second
 text id" purely because the title id sits nearby. Passing the actual values through the table is

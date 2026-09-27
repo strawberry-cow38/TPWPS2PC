@@ -20,10 +20,17 @@ using Kind = AssetResourceDatabase.AssetKind;
 /// ⭐ THE TITLE is the id the constructor hands to `FUN_00165948(this+0xa0, id)`, resolved through
 /// `Text/translations/eur/id.dat`. That one call names every screen class in the executable.
 ///
-/// ⚠⚠ ALL TOILETS IS NOT PROVEN AND IS MARKED SO. It registers `Feature` (2), but features are
-/// also bins, benches and trees, so `Feature` cannot be the whole filter -- the screen must narrow
-/// further by something not yet read. <see cref="Toilets"/> carries the kind the console actually
-/// registers rather than a guess, and <see cref="Bathroom.Complete"/> is false to say so out loud.
+/// ⭐⭐ WHAT `FUN_0015c710` ACTUALLY DOES, and it names the All Toilets filter. It is not a
+/// "register a tab" call: it walks the world's object list from `FUN_0014da50`, asks each object
+/// its kind through a virtual at `vtable+0xa4`, and appends every match to the screen's list. So
+/// the number IS a kind, and the call POPULATES.
+///
+/// ⚠⚠ AND IT CARRIES ONE SPECIAL CASE, FOR KIND 2 ONLY. When the kind is `Feature`, it asks the
+/// object a second question -- a virtual at `vtable+0x134` -- and SKIPS it when that returns zero.
+/// That is the extra narrowing All Toilets needs, found by reading the populate function rather
+/// than assumed away: toilets are Features that answer that predicate. <see cref="Toilets"/> is
+/// still <c>Complete: false</c> because the predicate itself is not decoded -- what it asks is
+/// unread -- but it is no longer an unexplained gap, it is one named virtual.
 ///
 /// ⚠ ALL STAFF REGISTERS NO KIND AT ALL. Staff are not assets, so no <see cref="Kind"/> applies and
 /// its list comes from somewhere else. Its entry carries an empty set, which is the truth, not a
@@ -64,8 +71,10 @@ public sealed record LaptopListScreen(
     public static readonly LaptopListScreen Staff = new(
         "main_i_staff.sce", 15, 999, System.Array.Empty<Kind>(), 3, Complete: false);
 
-    /// <summary>⚠ All Toilets: registers `Feature`, which also covers bins and benches, so this
-    /// filter is incomplete by the console's own numbers. One bar (cleanliness).</summary>
+    /// <summary>⚠ All Toilets: registers `Feature`, which also covers bins and benches. The
+    /// populate call narrows it with a per-object predicate applied to kind 2 alone
+    /// (`vtable+0x134`); that predicate is not decoded, so this stays incomplete. One bar
+    /// (cleanliness).</summary>
     public static readonly LaptopListScreen Toilets = new(
         "main_i_bathroom.sce", 26, 848, new[] { Kind.Feature }, 1, Complete: false);
 
