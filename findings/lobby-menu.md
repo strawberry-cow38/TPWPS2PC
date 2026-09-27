@@ -256,6 +256,35 @@ dest `+0x0C` and source `+0x0C..0x0F` to dest `+0x0E..0x11`. Both appear in the 
 `FUN_00217e20` reads the neighbours at dest `+0x0E`, this file's table lists them at source
 `+0x0C` -- and reading one against the other shifts every field by two.
 
+## ⭐⭐⭐ The camera IS authored -- a second fitting per park
+
+Every park id carries **two** fittings on `base.mps`: `0x411` and `0x1031`. The first is the seat.
+**The second is the camera**, and `FUN_00217b48` is what reads it -- it searches the same table
+with mask **`0x1000`** and the record's key from `0x36DCC0`, which is the same
+`modelIndex + 1`.
+
+Measured through the port, all eight, relative to each park's own seat:
+
+| id | model | camera offset (x, y, z) | distance |
+|---|---|---|---|
+| 1 | `jungle1` | (8.7, 20.0, -13.8) | 25.8 |
+| 2 | `hallow1` | (9.5, 22.6, -12.6) | 27.6 |
+| 3 | `fantasy1` | (10.9, 22.2, -15.9) | 29.4 |
+| 4 | `jungle2` | (10.0, 17.9, -4.5) | 21.0 |
+| 5 | `space1` | (13.5, 22.6, -10.9) | 28.5 |
+| 6 | `hallow2` | (-1.8, 22.6, -18.1) | 29.0 |
+| 7 | `fantasy2` | (9.0, 22.6, -13.8) | 28.0 |
+| 8 | `space2` | (13.7, 22.4, -9.1) | 27.8 |
+
+⭐ Eighteen to twenty-three units up and a steady twenty-one to twenty-nine out, eight times over.
+That is a rig, not a coincidence -- and it is per park, so `hallow2` looking almost straight down
+its z axis while `space2` leans further along x is authored, not derived.
+
+⚠ The port drove this from a distance computed off the scene's span before the nodes were found.
+That looked reasonable and was not the game's. The authored node also settles the framing question
+the console camera could not answer: it sits at an arbitrary eye point, which `GameCamera` cannot
+do at all because its `Behind` couples distance to pitch.
+
 ## Still open
 
 - Vtable slots 3, 5, 6, 7.
@@ -263,4 +292,5 @@ dest `+0x0C` and source `+0x0C..0x0F` to dest `+0x0E..0x11`. Both appear in the 
 - What the prompt modes 4..8 actually SAY (the text ids the other cases format) and what confirming
   one does -- `FUN_00218f78` builds the dialogue but the accept path is not yet read.
 - The two `u16` at record `+0x02` / `+0x04`.
-- Choosing a park does not load it -- the lobby is a scene and a selector, not yet a hand-off.
+- The four `u16` yaws at record `+0x10` are still unused; the camera comes from the node instead,
+  so what they add is unknown.

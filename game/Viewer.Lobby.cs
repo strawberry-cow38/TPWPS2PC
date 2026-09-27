@@ -30,6 +30,15 @@ public partial class Viewer
     Node3D _lobbyRoot;
     Model _lobbyBaseMesh;
     readonly List<AnimatedModel> _lobbyParks = new();
+    /// <summary>⭐⭐ THE CONSOLE'S OWN LOBBY CAMERA, one authored node per park. Each park has TWO
+    /// fittings on `base` under the same id: `0x400` is where the park STANDS and **`0x1000` is
+    /// where the camera sits** -- and `FUN_00217b48` looks the second one up with exactly that
+    /// mask and the record->model key. Measured, all eight: 18..23 units above the park and a
+    /// steady 21..29 away from it. That is a camera rig, not a coincidence.
+    ///
+    /// ⚠ Stored in `base`'s space, like the seats, and taken through `base.Root` when used.</summary>
+    readonly List<Transform3D> _lobbyCams = new();
+    Node3D _lobbyBaseRoot;
     float _lobbyModelTime;
     bool _lobbyAimed;
 
@@ -98,6 +107,8 @@ public partial class Viewer
         // ⭐⭐ EACH PARK SITS ON A FITTING OF `base`, found by ID, under mask 0x400.
         // `FUN_00216f90` searches with its own loop index plus one -- so the id is the MODEL's
         // number, which is why nothing here is indexed by record.
+        _lobbyBaseRoot = room.Root;
+        _lobbyCams.Clear();
         var fits = _lobbyBaseMesh.Fittings;
         var world = _lobbyBaseMesh.WorldTransforms();
         int seated = 0;
@@ -155,6 +166,14 @@ public partial class Viewer
             // does -- and it cannot drift if that transform ever changes.
             room.Root.AddChild(drawn.Root);
             _lobbyParks.Add(drawn);
+
+            // ⭐ The camera node for this same id, under the OTHER mask.
+            var camFit = fits.FirstOrDefault(f => f.Id == wantId && (f.Flags & LobbySlots.CameraMask) != 0);
+            var camAt = seat;
+            if (camFit.Id == wantId && world.TryGetValue(_lobbyBaseMesh.NodeOffset(camFit.Node), out var cm))
+                camAt = ToGodot(cm);
+            else GD.PrintErr($"[lobby] {LobbySlots.ModelNames[model]}: no {LobbySlots.CameraMask:x} camera node");
+            _lobbyCams.Add(camAt);
             var (plo, phi) = Park.DrawnBounds(drawn.Root, inParent: true);
             GD.Print($"[lobby]   {LobbySlots.ModelNames[model],-9} drawn x {plo.X:F0}..{phi.X:F0} "
                    + $"z {plo.Z:F0}..{phi.Z:F0}");
@@ -216,6 +235,33 @@ public partial class Viewer
         int mi = _lobbySlots?.ModelIndex(_lobbyRecord) ?? -1;
         if (_game == null || mi < 0 || mi >= _lobbyParks.Count) return;
         var at = _lobbyParks[mi].Root.GlobalPosition;
+
+        // ⭐⭐ STAND WHERE THE GAME STANDS. The authored camera node beats anything computed: it
+        // is per park, it is already in the island's frame, and it carries the height and the
+        // offset the console uses. What this port had instead was a distance derived from the
+        // scene's span -- a reasonable guess, and not the game's.
+        //
+        // ⚠ The free camera is used rather than the console's `_game`, because that one couples
+        // zoom to pitch through `Behind` and cannot be put at an arbitrary eye point at all.
+        // Inverting its own placement -- eye = focus + (cos p sin y, sin -p, cos p cos y) * dist.
+        if (mi < _lobbyCams.Count && _lobbyBaseRoot != null && IsInstanceValid(_lobbyBaseRoot))
+        {
+            var eye = (_lobbyBaseRoot.GlobalTransform * _lobbyCams[mi]).Origin;
+            var off = eye - at;
+            float d = off.Length();
+            if (d > 0.01f)
+            {
+                _freeCam = true;
+                _focus = at;
+                _dist = d;
+                _pitch = -Mathf.Asin(Mathf.Clamp(off.Y / d, -1f, 1f));
+                _yaw = Mathf.Atan2(off.X, off.Z);
+                GD.Print($"[lobby] camera on {LobbySlots.ModelNames[mi]}: authored eye "
+                       + $"({eye.X:F0},{eye.Y:F0},{eye.Z:F0}) -> focus ({at.X:F0},{at.Y:F0},{at.Z:F0}), "
+                       + $"dist {d:F0}, pitch {Mathf.RadToDeg(_pitch):F0} deg");
+                return;
+            }
+        }
         _freeCam = false;
         // ⚠ The lobby sets no plot, so the camera would keep the last park's border. Widen it to
         // the scene itself or the clamp drags every aim back inside a rectangle that is not here.
@@ -256,6 +302,56 @@ public partial class Viewer
         _game.PlaceAt(at.X, at.Z);
         GD.Print($"[lobby] camera on {LobbySlots.ModelNames[mi]} at ({at.X:F1}, {at.Y:F1}, {at.Z:F1}), "
                + $"{_game.Behind} behind");
+    }
+
+    /// <summary>⭐⭐ CHOOSE THE SELECTED PARK AND GO. The lobby's whole job.
+    ///
+    /// ⚠ The record already says which park this is, in the game's own terms -- `World` 0..3 and
+    /// `ParkInWorld` 0..1 -- so nothing here has to be derived from a model name or a slot order.
+    /// Those two fields ARE the map: world picks the archive, park picks `terrain_1` or
+    /// `terrain_2`.
+    ///
+    /// ⚠ The world NAMES are the archives', not the display names. The lobby shows "Lost
+    /// Kingdom" and "Wonder Land"; the files are `JUNGLE` and `FANTASY`. Mapping display names to
+    /// files would be a second table to keep in step with this one.</summary>
+    void LobbyEnterPark()
+    {
+        if (_lobbySlots == null || !_lobbySlots.All[_lobbyRecord].IsPark) return;
+        var rec = _lobbySlots.All[_lobbyRecord];
+        string world = rec.World switch
+        {
+            0 => "JUNGLE", 1 => "HALLOW", 2 => "FANTASY", 3 => "SPACE", _ => null
+        };
+        if (world == null) { Status($"world {rec.World} has no archive"); return; }
+        string want = $"terrain_{rec.ParkInWorld + 1}.mps";
+        int idx = _maps.FindIndex(m => m.Label.Contains(world, StringComparison.OrdinalIgnoreCase)
+                                    && m.Label.EndsWith(want, StringComparison.OrdinalIgnoreCase));
+        if (idx < 0)
+        {
+            GD.PrintErr($"[lobby] no map for world {world} {want}; have "
+                      + string.Join(", ", _maps.Select(m => m.Label)));
+            Status($"no map for {world} {want}");
+            return;
+        }
+        string name = LobbyName(_lobbyRecord).Replace("\n", " / ");
+        GD.Print($"[lobby] entering {name} -> {_maps[idx].Label}");
+        LeaveLobby();
+        LoadMap(idx);
+        Status($"{name}");
+    }
+
+    /// <summary>Tear the scene down. ⚠ The models hang off `base.Root`, so freeing the lobby root
+    /// takes all nine with it -- but the list has to be cleared too or the stepper keeps walking
+    /// freed nodes.</summary>
+    void LeaveLobby()
+    {
+        _lobbyMode = false;
+        _lobbyParks.Clear();
+        _lobbyCams.Clear();
+        _lobbyBaseRoot = null;
+        _lobbyBaseMesh = null;
+        if (_lobbyRoot != null && IsInstanceValid(_lobbyRoot)) _lobbyRoot.QueueFree();
+        _lobbyRoot = null;
     }
 
     /// <summary>The middle of the seated parks, in world units.</summary>
@@ -299,7 +395,22 @@ public partial class Viewer
         // on the plot centre, and it runs after the mode dispatch that builds this scene -- so an
         // aim inside EnterLobby is simply overwritten. The lobby has no plot, so the reset left
         // the camera wherever the default is, looking at open water.
-        if (!_lobbyAimed) { _lobbyAimed = true; LobbyAimCamera(); }
+        if (!_lobbyAimed)
+        {
+            _lobbyAimed = true;
+            LobbyAimCamera();
+            // ⚠ After the aim, and once: entering tears the scene down, and doing that from
+            // inside EnterLobby would free the nodes the rest of startup still walks.
+            if (_lobbyEnter > 0)
+            {
+                int want = _lobbyEnter - 1;
+                _lobbyEnter = 0;
+                if (want >= 0 && want < _lobbySlots.All.Count && _lobbySlots.All[want].IsPark)
+                { _lobbyRecord = want; LobbyReport(); }
+                LobbyEnterPark();
+                return;
+            }
+        }
         _lobbyModelTime += (float)delta * Aps.Fps;
         foreach (var m in _lobbyParks)
         {

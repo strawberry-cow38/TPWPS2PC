@@ -260,6 +260,7 @@ public partial class Viewer : Node3D
     bool _placeTest;
     int _selectAtStart = -1;
     bool _hidePanel, _wantLobby, _lobbyOverview;
+    int _lobbyEnter;   // 1-based: 0 means "not asked for"
     string _placeName;
     bool _walkAudit;
     bool _typeAudit;
@@ -411,6 +412,10 @@ public partial class Viewer : Node3D
             // not inherit `set` -- the overview simply never switched on and the log looked as if
             // the code were unreachable.
             else if (a == "--lobby-overview") { _wantLobby = true; _lobbyOverview = true; }
+            // ⭐ `--lobby-enter=<record>` drives the REAL selection and the REAL entry, so a render
+            // shows the park the lobby actually handed off to rather than one a flag loaded.
+            else if (a.StartsWith("--lobby-enter="))
+            { _wantLobby = true; int.TryParse(a["--lobby-enter=".Length..], out _lobbyEnter); _lobbyEnter++; }
             else if (a.StartsWith("--map=")) _wantMap = a["--map=".Length..];
             else if (a.StartsWith("--mode=")) _wantMode = a["--mode=".Length..];
             else if (a == "--path-test") _pathTest = true;
@@ -949,6 +954,8 @@ public partial class Viewer : Node3D
                 case Key.Down:  LobbyMove(1); return;
                 case Key.Left:  LobbyMove(2); return;
                 case Key.Right: LobbyMove(3); return;
+                // ⭐ The console confirms with ✕; on a keyboard that is Enter or Space.
+                case Key.Enter: case Key.KpEnter: case Key.Space: LobbyEnterPark(); return;
             }
         }
         // ⭐ The panel takes Escape before anything else while it is up.

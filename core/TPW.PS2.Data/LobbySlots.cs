@@ -79,6 +79,12 @@ public sealed class LobbySlots
     /// the SAME table, so the mask is what tells the two kinds of node apart, not the id.</summary>
     public const uint SeatMask = 0x400;
 
+    /// <summary>⭐⭐ The flag bit on the park's OTHER fitting -- the camera node. Each park id
+    /// carries two fittings on `base.mps`, `0x411` and `0x1031`; `FUN_00217b48` searches with
+    /// `0x1000` and the record's key. Measured across all eight: the `0x1000` node sits 18..23
+    /// units above its park and a steady 21..29 away, which is a camera rig.</summary>
+    public const uint CameraMask = 0x1000;
+
     /// <summary>⭐ Every park model is scaled by this. `UNK_0036DCE0` is eight floats and all
     /// eight are 0.7 -- it is per-slot in the code and uniform in the data, so it is read as a
     /// constant here and noted as a table there.</summary>
