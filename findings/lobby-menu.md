@@ -199,14 +199,6 @@ is seated on, so one value answers both "which model" and "which seat".
 lookup they are actually passed to is a record search over `0x14`-byte entries, not the text
 table. A string table will happily answer any index you give it.
 
-## Still open
-
-- Vtable slots 3, 5, 6, 7 are not yet read.
-- Where the `0x1C`-byte slot records (and their neighbour bytes) are filled from.
-- What `FUN_002187f0` / `FUN_00218880` / `FUN_00218f78` do — the confirm, back and
-  leave actions.
-- Whether the three 4-word runs zeroed by the constructor are per-world state.
-
 
 ## ⭐⭐ Implemented -- and the shared-code bug it exposed
 
@@ -241,9 +233,33 @@ times the size its own root draws it at: at 1x the island is 113 units across wh
 `GameCamera.MinBehind` is **384**, so no camera distance frames it and every render came back as
 open water.
 
+## ⭐⭐ The buttons, and the confirmation prompt
+
+`FUN_00218f78(this, mode)` is a **prompt builder**, not an action: it formats text into two stack
+buffers (100 and 0x100 bytes) via `FUN_001dfa58` + `FUN_0029e1c0`, then switches on `mode`. Its
+`case 0` formats **`record + 0x0C`** -- which the Enter copy shows is source bytes `0x0A..0x0B`,
+the `STR_MAP_*` text id. The dialogue carries the park's own name, and that is a second,
+independent confirmation that `+0x0A` is the name.
+
+The buttons route into it, keyed on the record's runtime kind byte (`record + 0x06`, which Enter
+writes as `2` for a park and `1` for a filler):
+
+| logical button | handler | mode |
+|---|---|---|
+| 0 | `FUN_002187f0` | kind 0 -> **6**, kind 1 -> **4**; also sets `0x2ef8c4` and `0x2ef8c8` |
+| 1 | `FUN_00218880` | kind 0 -> **5**; sets `0x2ef8c4` |
+| 2 | -- | **7** |
+| 0xE | -- | **8**, then latches `this+0x82 = 1` ("leaving") and clears `this+0x74` |
+
+⚠⚠ **A record's DEST offsets are its SOURCE offsets plus two.** Enter copies source `+0x0A` to
+dest `+0x0C` and source `+0x0C..0x0F` to dest `+0x0E..0x11`. Both appear in the decompiles --
+`FUN_00217e20` reads the neighbours at dest `+0x0E`, this file's table lists them at source
+`+0x0C` -- and reading one against the other shifts every field by two.
+
 ## Still open
 
 - Vtable slots 3, 5, 6, 7.
+- Whether the three 4-word runs zeroed by the constructor are per-world state.
 - What the prompt modes 4..8 actually SAY (the text ids the other cases format) and what confirming
   one does -- `FUN_00218f78` builds the dialogue but the accept path is not yet read.
 - The two `u16` at record `+0x02` / `+0x04`.
