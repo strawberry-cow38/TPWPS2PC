@@ -379,6 +379,8 @@ public partial class Viewer
         if (v == null) return;
         _trackTool = null;
         _ghostView?.Clear();
+        // ⚠ Or the cost and stock lines stay on screen after the tool has gone.
+        _previewCost = null; _previewStock = null;
         GD.Print($"[track] tool closed for ride {v.Id}: {v.Layout.Waypoints.Count} waypoints, {v.Layout.Pieces.Count} pieces, "
                + (v.Layout.Closed ? "loop closed" : "loop OPEN -- the ride stays closed"));
         // Said on screen, not only in the log: an open loop never runs, and nothing else looks wrong.
@@ -459,6 +461,9 @@ public partial class Viewer
                 for (int dz = 0; dz < 2; dz++) marks.Add((ret.X + dx, ret.Z + dz, 166, inTurn));
         _trackLegOk = ok;
         _ghostView?.ShowTurnedCells(marks, _park);
+        // ⭐ The same two numbers the console puts on the HUD in white, rather than only in the
+        // debug status line. See Viewer.CostX for the decode.
+        _previewCost = cost; _previewStock = stock; _previewStockTextId = TrackStockTextId;
         Status($"Track Stock {stock}   Cost: {Money.Format(cost)}" + (ok ? "" : "   (blocked)"));
     }
 

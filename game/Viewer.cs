@@ -82,6 +82,12 @@ public partial class Viewer : Node3D
     readonly ParkAwards _awards = new();
     TextureRect _ticketIcon, _starIcon, _ticketNum, _ticketNumShadow, _starNum, _starNumShadow;
     string _ticketShown, _starShown;
+    TextureRect _costLine, _costShadow, _stockLine, _stockShadow;
+    string _costShown, _stockShown;
+    /// <summary>What the live tool wants previewed, in tenths, and its stock line. Null when the
+    /// tool has nothing to say -- a held blueprint answers from its own definition instead.</summary>
+    int? _previewCost, _previewStock;
+    int _previewStockTextId = TrackStockTextId;
     TextureRect _date, _dateShadow;
     string _dateShown;
     ShaderMaterial _skyMat;
@@ -815,7 +821,10 @@ public partial class Viewer : Node3D
         _ticketIcon = HudTL(null); _starIcon = HudTL(null);
         _ticketNumShadow = HudTL(MoneyShadowTint); _ticketNum = HudTL(null);
         _starNumShadow = HudTL(MoneyShadowTint); _starNum = HudTL(null);
-        foreach (var r in new[] { _ticketIcon, _starIcon, _ticketNumShadow, _ticketNum, _starNumShadow, _starNum })
+        _costShadow = HudTL(MoneyShadowTint); _costLine = HudTL(null);
+        _stockShadow = HudTL(MoneyShadowTint); _stockLine = HudTL(null);
+        foreach (var r in new[] { _ticketIcon, _starIcon, _ticketNumShadow, _ticketNum, _starNumShadow,
+                                  _starNum, _costShadow, _costLine, _stockShadow, _stockLine })
             ui.AddChild(r);
         _dateShadow = Hud(MoneyShadowTint); _dateShadow.SetAnchorsPreset(Control.LayoutPreset.TopLeft);
         _date = Hud(null); _date.SetAnchorsPreset(Control.LayoutPreset.TopLeft);
@@ -9006,6 +9015,27 @@ public partial class Viewer : Node3D
     /// decoded, which is why <see cref="ParkAwards"/> is still counters only.</summary>
     const int TicketIconX = 0x26, TicketIconY = 0x4c, TicketIconSize = 0x20;
     const int StarIconX = 0x26, StarIconY = 0x6e, StarIconSize = 0x18;
+    /// <summary>⭐⭐ THE PLACEMENT COST PREVIEW, read out of `FUN_001b3210`:
+    /// <code>
+    ///   FUN_001388e8(ctx, 0xff, 0xff, 0xff);                 // WHITE
+    ///   FUN_001dfa58(0x23);                                  // STR_COST -> "Cost:"
+    ///   FUN_0029d628(buf, "%s $%ld", label, cost);
+    ///   FUN_00138798(ctx, buf, DAT_002e74a0 - 0x2a, DAT_002e74a4, 1, 1);
+    /// </code>
+    /// ⚠⚠ THE POSITION LOOKS DYNAMIC AND IS NOT. Those two globals had me expecting the line to
+    /// follow the cursor; an xref finds **no writer anywhere**, and the image holds 80 and 160 --
+    /// so it draws at `80 - 0x2a` = **38**, which is exactly <see cref="MoneyX"/>, and y **160**.
+    /// ⚠ An image value is not a runtime value (this port has been caught by that before), so it
+    /// is corroborated against master's capture rather than trusted: the stock line below predicts
+    /// x 112 in a 1600-wide frame and measures 111.
+    ///
+    /// ⭐ And the STOCK line under it, `FUN_0011b2f8` (pylons) and `FUN_001293c8` (track) -- both
+    /// white, both `"%s %d"`, and BOTH at the same (0x24, 0xc4). The pylon one counts `0x20 - used`,
+    /// so pylon stock is out of 32.</summary>
+    const int CostX = 0x26, CostY = 0xa0;
+    const int StockX = 0x24, StockY = 0xc4;
+    const int CostTextId = 35, TrackStockTextId = 337, PylonStockTextId = 223;
+
     const int TicketCountX = 0x50, TicketCountY = 0x50;
     const int StarCountX = 0x50, StarCountY = 0x6e;
     const string TicketIcon = "/Gticket/gticket.tga", StarIcon = "/UltimateC/Star.tga";
@@ -9124,6 +9154,39 @@ public partial class Viewer : Node3D
         _moneyShadow.Position = _money.Position + new Vector2(MoneyShadow * k, MoneyShadow * k);
         ShowDate(view, k);
         ShowAwards(view, k);
+        ShowPlacementCost(view, k);
+    }
+
+    /// <summary>⭐ "Cost: $N" and the stock line under it, both WHITE, at the console's own
+    /// coordinates -- see <see cref="CostX"/> for where each one was read out of.
+    ///
+    /// ⚠ Shown only while something is actually being placed. The console draws the cost inside
+    /// `if (held != 0)`, so an empty cursor shows nothing rather than "Cost: $0".</summary>
+    void ShowPlacementCost(Vector2 view, float k)
+    {
+        if (_costLine == null) return;
+        int? tenths = _place.Active ? _place.Def?.PlacementCost : _previewCost;
+        bool on = _hudFont != null && _mode == Mode.Park;
+        string Label(int id) => _text?.Text("eng", id) ?? "";
+        void Line(TextureRect t, TextureRect sh, ref string shown, string want, int x, int y)
+        {
+            bool show = on && want != null;
+            t.Visible = sh.Visible = show;
+            if (!show) return;
+            if (want != shown) { shown = want; t.Texture = sh.Texture = _hudFont.Render(want); }
+            // ⚠ WHITE, not the money's yellow -- FUN_001388e8(ctx, 0xff, 0xff, 0xff) in both draws.
+            t.Modulate = Colors.White;
+            var at = new Vector2(x / ConsoleUiWidth * view.X, y / ConsoleUiHeight * view.Y);
+            t.Scale = sh.Scale = new Vector2(k, k);
+            t.Position = at;
+            sh.Position = at + new Vector2(MoneyShadow * k, MoneyShadow * k);
+        }
+        // `"%s $%ld"`. ⚠ Money.Format already carries the console's own /10 and its '$'.
+        Line(_costLine, _costShadow, ref _costShown,
+             tenths is { } c ? $"{Label(CostTextId)} {Money.Format(c)}" : null, CostX, CostY);
+        // `"%s %d"`.
+        Line(_stockLine, _stockShadow, ref _stockShown,
+             _previewStock is { } n ? $"{Label(_previewStockTextId)} {n}" : null, StockX, StockY);
     }
 
     /// <summary>The ticket and award counters, the two rows under the money. Every coordinate is
