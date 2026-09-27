@@ -49,6 +49,10 @@ SCENES = {
     # (65 with the valid-cell field's, the pylon edit's keys', the station chevrons', the refusal
     # reason's and the entry cell's checks).
     'coaster': ('CoasterSmoke', 'COASTER SMOKE', 65),
+    # Staff: the laptop's Hire panel clicked through to a handyman, the real drop press, his walk
+    # (section 0), a sweep of litter and vomit, a toilet cleaned and stamped. Every park runs the same
+    # 53; the floor sits just under it.
+    'staff': ('StaffSmoke', 'STAFF SMOKE', 50),
 }
 MAP_LINE = re.compile(r'^\[map\] loaded world=([A-Z]+) terrain=(terrain_[12])\.mps$', re.M)
 
