@@ -235,3 +235,50 @@ the same code twice.
 - **The `--` rows.** Not attributed, not disproven: try a `$gp`-relative sweep before concluding
   anything about them.
 
+
+## ⭐⭐⭐ How much of this is actually CODE: eleven of the screens are configuration
+
+The per-screen `slot 2` forwards into the base, and the base (`FUN_001d98c8`) turns out to be a
+**state machine**: it reads the screen's state at `this+0x2f4` and dispatches to a handler at
+vtable slot 26, 28 or 29 depending on it. ⭐ Control: that reading predicts the shop's state-0
+handler is slot 26, and slot 26 of `0x368ae0` is **`FUN_001d70c8`** — the draw identified by hand,
+from the other direction, before any of this. The state machine is right.
+
+Reading each vtable to ITS OWN END (stop at the first word that is not a code pointer) then gives
+the real measure of how much code each screen has:
+
+| screen | vtable slots | own methods beyond the shared 0..8 |
+|---|---:|---|
+| `main_i_ride`, `main_i_shop`, `main_i_sideshow` | 17 | **none** |
+| `main_i_staff`, `main_i_bathroom` | 18 | **none** |
+| `main_gameoptions`, `main_research`, `main_goldtickets` | 17-18 | **none** |
+| `main_ps_visitorinfo`, `main_buildhire` | 17 | **none** |
+| "Not Implemented" | 17 | **none** |
+| `main_i_staff_opts`, Staff Room, `main_i_staff_opts_training` | 18 | one (slot 16) |
+| `main` (laptop menu) | 22 | 3 |
+| finance family | 30 | 11 |
+| `main_i_shop_data`, `main_i_sideshow_data`, `main_i_bathroom_data` | 32 | 15 |
+| `main_i_ride_data` | 48 | 28 |
+
+⚠ Every screen does override slots 1..3 (destructor, per-frame forwarder, lifecycle hook) — the
+column above counts what it adds *beyond* that.
+
+**So the remaining 21 screens are not 21 jobs.** Eleven of them add no behaviour at all: they are
+the base class plus a constructor's worth of constants — a title text id, which list to walk, and
+which `.sce` elements to bind. The code that must actually be written is:
+
+1. the **All-list base** (`FUN_0010c928`, 17 slots) — and `main_i_ride`, `main_i_shop`,
+   `main_i_sideshow`, `main_i_staff`, `main_i_bathroom` all fall out of it,
+2. the **Single-item base** (`FUN_001d9500`, 32 slots, the state machine) — and `main_i_shop_data`,
+   `main_i_sideshow_data`, `main_i_bathroom_data` are it plus one state-0 handler each
+   (`1d70c8`, `1d8288`, `1da008`),
+3. the **finance family** (`FUN_00134188`, 30 slots),
+4. the **laptop menu** (`FUN_0012bfa8`, 22 slots).
+
+⭐ `main_i_ride_data` is the outlier at 48 slots, and its slots 38..47 are byte-identical to the
+finance family's 18..27 — it carries a finance sub-object. Expect it to be the most work of any
+single screen, and do it AFTER the finance family rather than before.
+
+⚠ This measures how much each screen OVERRIDES, which is not the same as how much behaviour it
+has — a screen with no overrides still does whatever its constructor's constants make the base do,
+and those constants are not decoded here. It bounds the work; it does not describe the screens.
