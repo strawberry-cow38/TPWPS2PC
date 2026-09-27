@@ -88,6 +88,39 @@ public sealed class RideParticles
     ///
     /// I matched total travel with a linear damping and called the easing "still wrong". It was;
     /// the curve was the fixable part all along.</summary>
+    /// <summary>⭐⭐ THE EMISSION AREA, from the record's own extent (`+0x44..0x4C`).
+    ///
+    /// A zero extent stays a POINT -- most effects are one, and a puff that should come from a
+    /// single spot must not be spread. The ones that carry an extent are the ones master noticed:
+    /// the drinks shop's bubbles are a disc, so they rise from scattered points rather than one
+    /// stream.
+    ///
+    /// ⚠ The DISC is the default and the box is the exception (`+0xc2`), which is the opposite
+    /// way round from how it reads. And `+0xa8` means born on the disc's EDGE, not inside it --
+    /// a ring rather than a filled circle, which Godot does with an inner radius.</summary>
+    static CpuParticles3D.EmissionShapeEnum EmissionOf(
+        ParticleTemplate t, out Vector3 box, out float ringRadius, out float ringInner, out float ringHeight)
+    {
+        const float cell = ParticleTemplate.PositionUnitsPerCell;
+        box = Vector3.Zero; ringRadius = 0f; ringInner = 0f; ringHeight = 0f;
+        var (ex, ey, ez) = t.Extent;
+        if (ex == 0 && ey == 0 && ez == 0) return CpuParticles3D.EmissionShapeEnum.Point;
+
+        float x = Math.Abs(ex) / cell, y = Math.Abs(ey) / cell, z = Math.Abs(ez) / cell;
+        if (t.BoxShape)
+        {
+            box = new Vector3(x, y, z);
+            return CpuParticles3D.EmissionShapeEnum.Box;
+        }
+        // ⚠ A disc with no radius is not a disc; fall back to the point rather than to a ring of
+        // radius zero, which Godot draws as a single line of particles.
+        if (x <= 0f) return CpuParticles3D.EmissionShapeEnum.Point;
+        ringRadius = x;
+        ringInner = t.RingEdge ? x : 0f;            // `+0xa8`: on the edge
+        ringHeight = t.PositiveYOnly ? y : y * 2f;  // `+0xa0`: one-sided in Y
+        return CpuParticles3D.EmissionShapeEnum.Ring;
+    }
+
     static (Vector3 Direction, float SpreadDegrees, float SpeedMin, float SpeedMax, float Gravity,
             float Damping, float Lambda) Motion(ParticleTemplate t, Vector3? fireAlong)
     {
@@ -499,6 +532,25 @@ public sealed class RideParticles
                 : (emitterSeconds <= 0f ? 1f : 0.1f),
             Emitting = false,
             ColorRamp = RampOf(e),
+            // ⭐⭐ PARTICLES ARE BORN OVER AN AREA, NOT AT A POINT. Master, 2026-09-27: "the
+            // bubbles are meant to emit from multiple random points, but they all come up as one
+            // stream". They did: this port DECODED the emission extent and then never used it, so
+            // every particle was born at the emitter's exact position.
+            //
+            // ⭐ `0x1888a8` births at the emitter's position plus, when any extent is non-zero,
+            // either a BOX `(rand % X, rand % Y, rand % Z)` when `+0xc2`, or otherwise a DISC in XZ
+            // at a random 12-bit angle with radius `X` -- on the EDGE when `+0xa8`, anywhere inside
+            // it otherwise -- with Y taken from the box and one-sided when `+0xa0`.
+            //
+            // ⚠ Godot's box extents are HALF-extents, which is what the console's signed
+            // `rand % X` gives (±X); only Y is one-sided, and `+0xa0` says when.
+            EmissionShape = EmissionOf(t, out var boxExtents, out var ringRadius,
+                                       out var ringInner, out var ringHeight),
+            EmissionBoxExtents = boxExtents,
+            EmissionRingRadius = ringRadius,
+            EmissionRingInnerRadius = ringInner,
+            EmissionRingHeight = ringHeight,
+            EmissionRingAxis = Vector3.Up,
             // ⭐⭐ THE MOTION IS THE RECORD'S NOW, not mine. Every one of these used to be a
             // number I picked -- straight up, a 35-degree cone, a speed derived from the SIZE of
             // all things, and a gravity of 1.5. See `Motion` for the conversion out of the

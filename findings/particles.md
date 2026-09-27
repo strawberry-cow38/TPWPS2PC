@@ -448,3 +448,41 @@ Two real bugs fell out on the way:
 - `DecayCurve` also had **zero tangents on every point** — `AddPoint(position)` leaves them at 0, so
   the cubic Hermite left and entered each point flat: a staircase of smoothsteps, not an
   exponential. It now carries the analytic slope.
+
+## ⭐⭐ The emission EXTENT was decoded and never applied (fixed 2026-09-27)
+
+Master: *"the bubbles are meant to emit from multiple random points, but they all come up as one
+stream"*. They did. `ParticleTemplate` exposed `Extent` (`+0x44..0x4C`), `BoxShape` (`+0xC2`) and
+`RingEdge` (`+0xA8`) — and **nothing in the tree read any of them**, so every particle was born at
+the emitter's exact position.
+
+⭐ `0x1888A8` births at the emitter's position plus, when any extent is non-zero:
+- a **box** `(rand % X, rand % Y, rand % Z)` when `+0xC2`;
+- otherwise a **disc** in XZ at a random 12-bit angle, radius `X` — on the **edge** when `+0xA8`,
+  anywhere inside otherwise — with Y from the box, one-sided when `+0xA0`.
+
+⚠ The disc is the DEFAULT and the box is the exception, which is the opposite way round from how
+it reads.
+
+### The census — it is not one effect
+
+**74 of 105 effects carry a non-zero extent: 63 disc, 10 box, 1 ring-edge.** So this was never a
+drinks-shop bug; it was every emitter in the library that is meant to cover an area. A sample:
+
+| effect | shape | extent |
+|---|---|---|
+| `Bubbles` (the drinks shop) | disc | 312, 312, 312 |
+| `LaserRing`, `LaserLaunch`, `GocartFireballs`, `GreenFumes` | disc | 312, 0, 312 |
+| `GoldSparkles` | disc | 310, 124, 310 |
+| `SmokeTrailR/B/W` | disc | 124, 124, 124 |
+| `Create1..4`, `Destroy1..4`, `Upgrade` | box | 873 / 437 / 249 / 218, y one-sided |
+| `MessageTag1` | ring edge | 121, 0, 121 |
+| `KeySparkle` | disc | 1564, 0, 433 |
+
+⭐ Position units are cells × 640, so `Bubbles`' 312 is a disc of about **half a cell** — small,
+and the difference between a stream and a scatter.
+
+⚠ In the port this maps onto `CpuParticles3D`: box → `Box` with the extent as HALF-extents (the
+console's signed `rand % X` is ±X); disc → `Ring` about Y with `inner = radius` when `RingEdge`,
+and a height of `Y` one-sided or `2Y` otherwise. A zero extent stays a `Point` — most of the other
+31 effects are meant to come from one spot and must not be spread.
