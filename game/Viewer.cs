@@ -10075,6 +10075,20 @@ public partial class Viewer : Node3D
         catch (Exception e) { GD.PrintErr($"[hud] Large.bff would not load: {e.Message}"); }
     }
 
+    /// <summary>⭐⭐ ONE GATE FOR THE WHOLE PARK HUD -- the balance, the date, the gold tickets,
+    /// the medals and the placement cost.
+    ///
+    /// Master, 2026-09-27: "hide the date, balance, tickets and medals ui when on the lobby
+    /// screen". They are park chrome and the lobby is not a park: a balance over an island you
+    /// have not entered is reporting on a park that is not on screen, and "Cost:" has nothing to
+    /// cost.
+    ///
+    /// ⚠ A PROPERTY RATHER THAN FOUR EDITS, on purpose. The same expression was written out in
+    /// four places and hiding the park scene had already taught me what that costs -- I patched
+    /// three nodes by name, shipped it, and master found the gate and the bus still standing. One
+    /// gate means the fifth HUD row somebody adds is covered without anybody remembering.</summary>
+    bool HudVisible => _hudFont != null && _mode == Mode.Park && !_lobbyMode;
+
     void ShowMoney()
     {
         if (_money == null) return;
@@ -10103,7 +10117,7 @@ public partial class Viewer : Node3D
         // silent forever after.
         if (_mode == Mode.Park) ReserveGateHold();
         var bank = _sim?.Finances;
-        _money.Visible = _moneyShadow.Visible = _hudFont != null && _mode == Mode.Park;
+        _money.Visible = _moneyShadow.Visible = HudVisible;
         if (_hudFont == null) return;
         // ⚠ Integer division toward zero, and the sign carried explicitly: the console's own
         // rounding of a negative balance has not been read, and -5 tenths reading as "0" with no
@@ -10141,7 +10155,7 @@ public partial class Viewer : Node3D
     {
         if (_costLine == null) return;
         int? tenths = _place.Active ? _place.Def?.PlacementCost : _previewCost;
-        bool on = _hudFont != null && _mode == Mode.Park;
+        bool on = HudVisible;
         string Label(int id) => _text?.Text("eng", id) ?? "";
         void Line(TextureRect t, TextureRect sh, ref string shown, string want, int x, int y)
         {
@@ -10169,7 +10183,7 @@ public partial class Viewer : Node3D
     void ShowAwards(Vector2 view, float k)
     {
         if (_ticketIcon == null) return;
-        bool on = _hudFont != null && _mode == Mode.Park;
+        bool on = HudVisible;
         foreach (var r in new[] { _ticketIcon, _starIcon, _ticketNumShadow, _ticketNum, _starNumShadow, _starNum })
             r.Visible = on;
         if (!on) return;
@@ -10241,7 +10255,7 @@ public partial class Viewer : Node3D
     void ShowDate(Vector2 view, float k)
     {
         if (_date == null) return;
-        bool on = _hudFont != null && _mode == Mode.Park;
+        bool on = HudVisible;
         _date.Visible = _dateShadow.Visible = on;
         if (!on) return;
         string want = _calendar.Format();
