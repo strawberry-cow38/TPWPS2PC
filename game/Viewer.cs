@@ -3434,6 +3434,25 @@ public partial class Viewer : Node3D
                 Status("information -- pick a kind, or Back");
                 break;
             }
+            case "infoitem":
+            {
+                var bits = (arg ?? "0:0").Split(':');
+                int which = int.TryParse(bits[0], out var w) ? w : 0;
+                int index = bits.Length > 1 && int.TryParse(bits[1], out var ix) ? ix : 0;
+                if (InfoScreenFor(which) is not { } target) { _laptopBack.RemoveAt(_laptopBack.Count - 1); return; }
+                var items = LaptopInfoItems(target.Kinds);
+                if (items.Count == 0) { _laptopBack.RemoveAt(_laptopBack.Count - 1); ShowLaptopLevel(); return; }
+                index = Math.Clamp(index, 0, items.Count - 1);
+                var subject = items[index];
+                var cells = new List<(string, int)>();
+                foreach (var r in target.Spec.Rows) cells.Add(LaptopInfoCell(r, subject));
+                BuildLaptopModelFor(subject);
+                _shopPanel.ShowScreen(target.Spec, DisplayName(subject), cells);
+                RefreshLaptopBalance();
+                Status($"{DisplayName(subject)} -- {index + 1} of {items.Count} in the park"
+                     + (items.Count > 1 ? "; paging between them is not wired yet" : ""));
+                break;
+            }
             case "buildcats":
             {
                 // ⭐ Master: "build should go into a list of categories, ie Rides, track rides,
@@ -3494,6 +3513,69 @@ public partial class Viewer : Node3D
     /// the viewport showed `_GuiInput` firing, the rect equal to the viewport and the right row
     /// hit -- and then `MenuActivated` was raised with NO SUBSCRIBER. The event went into the
     /// void, which is indistinguishable from a click that never landed.</summary>
+    /// <summary>⭐ Which laptop screen an Information row opens, and which asset kinds it lists.
+    /// The kind sets are <see cref="LaptopListScreen"/>'s, read off the console's own populate call.
+    /// ⚠ Row 4 (All Staff) answers null on purpose: that screen is decoded but held back because
+    /// its three bars share one authored element -- see findings/laptop-screens.md.</summary>
+    (LaptopScreen Spec, AssetResourceDatabase.AssetKind[] Kinds)? InfoScreenFor(int row) => row switch
+    {
+        0 => (LaptopScreen.AllRides,     LaptopListScreen.Rides.Kinds),
+        1 => (LaptopScreen.AllShops,     LaptopListScreen.Shops.Kinds),
+        2 => (LaptopScreen.AllSideshows, LaptopListScreen.Sideshows.Kinds),
+        3 => (LaptopScreen.AllToilets,   LaptopListScreen.Toilets.Kinds),
+        _ => null,
+    };
+
+    /// <summary>The park's PLACED things of those kinds, in the sim's order. ⚠ The real park, not
+    /// the catalogue: an Information screen is about what the player has built.</summary>
+    List<ParkRide> LaptopInfoItems(AssetResourceDatabase.AssetKind[] kinds)
+    {
+        var found = new List<ParkRide>();
+        if (_sim?.Rides == null || kinds == null) return found;
+        foreach (var r in _sim.Rides)
+            if (r.Definition?.CompiledEntry?.Kind is { } k && Array.IndexOf(kinds, k) >= 0) found.Add(r);
+        return found;
+    }
+
+    /// <summary>The archive assets behind a placed thing, for its model and its display name.</summary>
+    AssetLibrary.RideAssets AssetsFor(ParkRide r)
+        => r?.Definition == null || _lib?.Rides == null ? null
+         : _lib.Rides.FirstOrDefault(a => ReferenceEquals(DefinitionFor(a.Model), r.Definition));
+
+    string DisplayName(ParkRide r)
+    {
+        var a = AssetsFor(r);
+        return a != null ? DisplayName(a, DefinitionFor(a.Model)) : r?.Name ?? "";
+    }
+
+    void BuildLaptopModelFor(ParkRide r)
+    {
+        if (AssetsFor(r) is not { } a) return;
+        BuildLaptopModel(a);
+        if (_laptopView != null) _shopPanel.ModelTexture = _laptopView.GetTexture();
+    }
+
+    /// <summary>⭐⭐ ONE ROW'S REAL VALUE, BY ITS TEXT ID -- and a blank where the port has no
+    /// figure, rather than a number that looks like one.
+    ///
+    /// The ids are the screens' own, read out of their draws: Users 771, Customers 691 and 488,
+    /// Takings 106, Profit 986, Total Profit 365, State of Repair 128.
+    ///
+    /// ⚠⚠ EVERYTHING NOT LISTED RETURNS NOTHING ON PURPOSE. Excitement, Remaining Life,
+    /// Satisfaction and Cleanliness are drawn by these screens and are NOT tracked by this port's
+    /// sim yet -- the shop screen's own code says the same of satisfaction ("decoded but not yet
+    /// tracked"). A text row answers null so nothing is drawn, and a bar answers 0 so it reads
+    /// empty. An invented sweep would make an unfinished screen look finished, which is exactly
+    /// what these screens looked like an hour ago.</summary>
+    (string, int) LaptopInfoCell(LaptopRow row, ParkRide r) => row.TextId switch
+    {
+        771 or 691 or 488 => (r.Customers.ToString(), 0),
+        106               => (Money.Format(r.Takings), 0),
+        986 or 365        => (Money.Format(r.Profit), 0),
+        128               => (null, Math.Clamp(r.Condition, 0, 100)),
+        _                 => (null, 0),
+    };
+
     void OnLaptopRow(int row)
     {
         if (row < 0) return;
@@ -3521,8 +3603,24 @@ public partial class Viewer : Node3D
             {
                 var info = LaptopMainMenu.Information;
                 if (row >= info.Length) return;
-                Status($"{_text?.Text("eng", info[row].TextId) ?? "that"} has no live figures in this "
-                     + "port yet -- the screen is decoded, the data is not");
+                // ⭐⭐ THE INFORMATION MENU OPENS A REAL SCREEN NOW. Master, 2026-09-27: "is any of
+                // it actually wired lol" -- it was not. The screens were decoded and reachable only
+                // behind `--laptop-screen=`, with harness numbers, while this handler printed a
+                // line saying so. The route was already named on the disc side: each
+                // LaptopMainMenu.Information row carries the scene it Opens.
+                if (InfoScreenFor(row) is not { } target)
+                {
+                    Status($"{_text?.Text("eng", info[row].TextId) ?? "that"} has no screen in this "
+                         + "port yet -- All Staff is decoded but held back, see findings");
+                    return;
+                }
+                if (LaptopInfoItems(target.Kinds).Count == 0)
+                {
+                    Status($"no {_text?.Text("eng", info[row].TextId) ?? "items"} in the park yet");
+                    return;
+                }
+                _laptopBack.Add(("infoitem", $"{row}:0"));
+                ShowLaptopLevel();
                 return;
             }
             case "buildcats":
@@ -3668,6 +3766,32 @@ public partial class Viewer : Node3D
         // `--laptop-screen=buildlist:Rides` push the same stack a click pushes and call the same
         // `ShowLaptopLevel`, so the render is evidence about the shipped path rather than about a
         // second copy of it built for the harness -- which is how the click bug survived two shots.
+        // ⭐⭐ AND SO DOES THE INFORMATION LEVEL. `--laptop-screen=info:1` drives the real
+        // handler -- OnLaptopRow on the Information menu -- rather than calling ShowScreen with
+        // made-up cells, so the render is evidence that the MENU reaches the screen. Master asked
+        // the right question of the earlier shots: "is any of it actually wired lol". They were
+        // not; this is the flag that can tell the difference, and it must go through the click.
+        if (_laptopScreen.StartsWith("info:", StringComparison.OrdinalIgnoreCase))
+        {
+            if (_laptopFrame == 0)
+            {
+                int colon = _laptopScreen.IndexOf(':');
+                int pick = int.TryParse(_laptopScreen[(colon + 1)..], out var pv) ? pv : 0;
+                _laptopBack.Clear();
+                _laptopBack.Add(("info", null));
+                ShowLaptopLevel();          // the Information MENU, as a click on Information gives it
+                OnLaptopRow(pick);          // ⭐ the real row handler, not a shortcut past it
+                GD.Print($"[laptop] info row {pick} -> stack {(_laptopBack.Count == 0 ? "empty" : _laptopBack[^1].Kind + " " + (_laptopBack[^1].Arg ?? ""))}");
+            }
+            if (_laptopClick != null && _laptopFrame == 0) LaptopClickProbe();
+            _shopPanel.ForceHoverForShot(_laptopHoverRow, _laptopHoverBtn);
+            PrepareUiShotView();
+            SaveShot(ShotSibling(_shotPath, $"-f{_laptopFrame:D4}"));
+            _laptopFrame++;
+            if (_laptopFrame >= _laptopFilm) GetTree().Quit();
+            return;
+        }
+
         if (_laptopScreen.StartsWith("buildcat", StringComparison.OrdinalIgnoreCase)
             || _laptopScreen.StartsWith("buildlist", StringComparison.OrdinalIgnoreCase))
         {
