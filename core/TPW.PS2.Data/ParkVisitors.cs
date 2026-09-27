@@ -535,8 +535,11 @@ public sealed class ParkVisitors
     /// ⭐⭐ AND NOW THE PORT HAS HIM: <see cref="Handyman"/>. With a <see cref="ParkStaff"/> attached
     /// (<see cref="Staff"/>) this stand-in is OFF -- <see cref="Maintain"/> returns at once -- and
     /// only hired handymen clean, day stamped; with none hired the lavatories stay dirty, as on the
-    /// console. It still runs for a park with NO staff system attached, which is today's viewer
-    /// until its staff step lands; delete it then.
+    /// console. ⭐ The viewer attaches staff to every park it builds (game/Viewer.Staff.cs), so this
+    /// never runs in the game. ⚠ KEPT FOR THE AUDIT ONLY: ServiceChecks' ratchet check ("somebody
+    /// cleans the lavatories") and StaffChecks' stand-in control exercise it by name, and every other
+    /// ParkSimAudit fixture that builds an unattached coordinator has it on by default -- deleting it
+    /// would change what those fixtures measure, so it stays until they attach staff.
     ///
     /// ⚠⚠ SO THIS IS A STAND-IN AND IS LABELLED AS ONE. The console's OUTCOME is reproduced
     /// (lavatories get cleaned, so dirt is a recurring cost rather than a death spiral); WHO
@@ -638,8 +641,8 @@ public sealed class ParkVisitors
     {
         // ⭐ STAFF ATTACHED, STAND-IN OFF. With a ParkStaff on this park the lavatories are cleaned by
         // handymen (0x1456D8 -> 0x130978, day stamped), so this timer must not also clean them; with
-        // none hired they stay dirty, which is the console. Unattached -- today's viewer, which has no
-        // hire UI yet -- keeps the stand-in exactly as it was.
+        // none hired they stay dirty, which is the console. Unattached -- only the audit's fixtures
+        // now; the viewer always attaches -- keeps the stand-in exactly as it was.
         if (Staff != null) return;
         if (!AutoService || deltaSeconds <= 0) return;
         _sinceService += deltaSeconds;
@@ -651,8 +654,8 @@ public sealed class ParkVisitors
 
     /// <summary>⚠ Off switches the stand-in off, for a check that wants to watch dirt accumulate.
     /// ⭐ Staff have arrived (<see cref="ParkStaff"/>): attaching them via <see cref="Staff"/> already
-    /// stops the stand-in whatever this says; it survives only for the unattached viewer and should
-    /// be deleted with the stand-in once the viewer attaches staff.</summary>
+    /// stops the stand-in whatever this says, and the viewer always attaches them; the switch
+    /// survives with the stand-in, for the audit fixtures only (see <see cref="SecondsPerService"/>).</summary>
     public bool AutoService { get; set; } = true;
     public int Serviced { get; private set; }
 

@@ -119,7 +119,8 @@ public sealed record LaptopScreen(
 
     /// <summary>⭐ The HIRE screen, `main_bh_staff`. Drawn by `FUN_00199008`, label ids
     /// **773, 886, 833**. ⚠ Three rows, and the scene comment agrees for once.
-    /// Motivation is both a label and a slider, which is why 833 carries an element.</summary>
+    /// Motivation is both a label and a slider, which is why 833 carries an element.
+    /// ⭐ The name pages through the tab's candidates by `StaffSelectArrows` (findings/staff.md §6).</summary>
     public static readonly LaptopScreen Hire = new(
         "main_bh_staff.sce", 0x00, "StaffSelect", "TextItems", "NumericItems", "Model",
         new LaptopRow[]
@@ -127,7 +128,8 @@ public sealed record LaptopScreen(
             new(773, LaptopRowKind.Text),                            // Pay Grade
             new(886, LaptopRowKind.Money),                           // Monthly Wage
             new(833, LaptopRowKind.Bar, "MotivationSlider"),         // Motivation
-        });
+        },
+        TitleArrowElement: "StaffSelectArrows");
 
     /// <summary>⭐ The SIDESHOW screen, `main_i_sideshow_data`, menu 0x13, bound by `FUN_001D7A30`
     /// and drawn by `FUN_001D8288`. Labels are `STR_SINGLESHOW_*`.

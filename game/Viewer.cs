@@ -3509,6 +3509,13 @@ public partial class Viewer : Node3D
                 Status("information -- pick a kind, or Back");
                 break;
             }
+            case "hiretabs": ShowHireTabs(); break;
+            case "hire":
+            {
+                var (hireKind, hireIndex) = HireArg(arg);
+                ShowHireCandidate(hireKind, hireIndex);
+                break;
+            }
             case "infoitem":
             {
                 var bits = (arg ?? "0:0").Split(':');
@@ -3687,8 +3694,9 @@ public partial class Viewer : Node3D
                     case "main_info":      _laptopBack.Add(("info", null)); ShowLaptopLevel(); return;
                     case "main_bh_items":  _laptopBack.Add(("buildcats", null)); ShowLaptopLevel(); return;
                     case "main_bh_staff":
-                        Status("hire has no staff to list -- this port has no staff system yet");
-                        return;
+                        // ⭐ The Hire panel (Viewer.Staff.cs): its tabs, then a tab's candidates.
+                        if (_staff == null) { Status("hire -- no park is running yet, so there is nobody to hire into"); return; }
+                        _laptopBack.Add(("hiretabs", null)); ShowLaptopLevel(); return;
                     default:
                         Status($"{_text?.Text("eng", picked.TextId) ?? "that"} has no screen in this port yet");
                         return;
@@ -3715,6 +3723,14 @@ public partial class Viewer : Node3D
                     return;
                 }
                 _laptopBack.Add(("infoitem", $"{row}:0"));
+                ShowLaptopLevel();
+                return;
+            }
+            case "hiretabs":
+            {
+                var tabs = HireTabs();
+                if (row >= tabs.Count) return;
+                _laptopBack.Add(("hire", $"{(int)tabs[row]}:0"));
                 ShowLaptopLevel();
                 return;
             }
@@ -3745,6 +3761,7 @@ public partial class Viewer : Node3D
     /// so paging goes down the shipped path rather than round it.</summary>
     void OnLaptopPage(int by)
     {
+        if (PageHire(by)) return;
         if (_laptopBack.Count == 0 || _laptopBack[^1].Kind != "infoitem") return;
         var bits = (_laptopBack[^1].Arg ?? "0:0").Split(':');
         int which = int.TryParse(bits[0], out var w) ? w : 0;
@@ -3842,6 +3859,7 @@ public partial class Viewer : Node3D
     /// and a Back out of the list would have left both holding the wrong category.</summary>
     void OnLaptopBuild()
     {
+        if (ConfirmHire()) return;
         var screen = _laptopBack.FindLast(l => l.Kind == "screen");
         var list = _laptopBack.FindLast(l => l.Kind == "buildlist");
         if (screen.Kind == null || list.Kind == null || !int.TryParse(screen.Arg, out int row))
@@ -4335,6 +4353,7 @@ public partial class Viewer : Node3D
         PresentTracks(1f);
         PresentCoasters(1f);
         if (_guests != null) PlaceActors(1f);
+        PlaceStaff(1f);
         // ⭐ `--look` WINS, AND IT HAS TO BE APPLIED HERE TO DO IT. Setting it at park start is
         // not enough: every mode that can latch this wind takes the camera afterwards -- the idle
         // scene puts it on a guest, `--place-test` puts it on the ride it placed -- so the flag
@@ -4512,6 +4531,7 @@ public partial class Viewer : Node3D
 
     void ResetGuests()
     {
+        ResetStaff();
         if (_guestRoot != null && IsInstanceValid(_guestRoot)) _guestRoot.QueueFree();
         _guestRoot = null; _guests = null; _visitors = null; _mouth = null; _gateClosed = false;
         _thoughts.Clear();
@@ -4583,6 +4603,7 @@ public partial class Viewer : Node3D
         PresentTracks(_parkClock.Alpha);
         PresentCoasters(_parkClock.Alpha);
         if (_guests != null) PlaceActors(_parkClock.Alpha);
+        PlaceStaff(_parkClock.Alpha);
     }
 
     /// <summary>One console tick of everything that moves in the park.
@@ -4633,8 +4654,13 @@ public partial class Viewer : Node3D
         if (_visitors != null)
         {
             EnsureNativeEntrance();
+            // ⭐ STAFF ON EVERY PARK: attached before the step, so the step runs them (Viewer.Staff.cs).
+            EnsureStaff();
             Snapshot();
+            SnapshotStaff();
+            uint staffBefore = _staff?.Now ?? 0;
             _visitors.Step(ConsoleClock.TickSeconds, Wander);
+            TickStaffAnimations(_staff == null ? 0 : unchecked(_staff.Now - staffBefore));
             Retry();
             TickNativeBus(); // batch admission follows the guest update, not an independent timer
             return;
@@ -10418,6 +10444,8 @@ public partial class Viewer : Node3D
             _waterTime += (float)delta;
             Ps2Materials.TextureTime = _waterTime;
         }
+        // ⭐ The hire tool's carry, every frame (0x128760).
+        if (_hireHeld != null) UpdateHireCarry();
         if (_place.Active) UpdatePlacementGhost();
         else if (_trackTool != null) UpdateTrackGhost();
         else if (_addonTool != null) UpdateAddonGhost();
@@ -10648,6 +10676,8 @@ public partial class Viewer : Node3D
                         {
                             _objMenu.Confirm();
                         }
+                        // ⭐ The hire tool's Triangle: right lets go of the carried staff member (0x128A90).
+                        else if (mb.ButtonIndex == MouseButton.Right && _hireHeld != null) CancelHireTool();
                         else if (mb.ButtonIndex == MouseButton.Right && _place.Active)
                         {
                             // ⭐ The right button puts the blueprint down before it touches the
@@ -10707,6 +10737,7 @@ public partial class Viewer : Node3D
                             else if (_selected >= 0 || _gateSelected) ClearSelection();
                             else OpenTool(PathTool.Kind.Path);
                         }
+                        else if (_hireHeld != null) PressHireTool();
                         else if (_place.Active) PlaceHeld();
                         else if (_trackTool != null) PressTrackTool();
                         else if (_addonTool != null) PressAddonTool();

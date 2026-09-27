@@ -266,7 +266,7 @@ public sealed partial class LaptopShopScreen : Control
     /// leaves that row blank, which is how the shop's ingredient row disappears while keeping
     /// its slot.</summary>
     public void ShowScreen(LaptopScreen spec, string title, IReadOnlyList<(string Text, int Fraction)> cells,
-                           bool buildRow = false)
+                           bool buildRow = false, int buildTextId = LaptopMainMenu.BuildTextId)
     {
         _spec = spec ?? throw new ArgumentNullException(nameof(spec));
         _title = title ?? "";
@@ -278,7 +278,7 @@ public sealed partial class LaptopShopScreen : Control
         // it, and it takes me to the ride info (with sliders) page for the crazy ape ride."
         _menu.Clear();
         _menuHover = -1; _menuScroll = 0; _focusSent = -2;
-        _buildRow = buildRow; _buildHover = false;
+        _buildRow = buildRow; _buildHover = false; _buildTextId = buildTextId;
         _cells.Clear();
         if (cells != null) _cells.AddRange(cells);
         bool wasShut = !Open;
@@ -335,6 +335,8 @@ public sealed partial class LaptopShopScreen : Control
     /// <summary>The Build row under the info list on a purchase screen, when there is one.</summary>
     bool _buildRow, _buildHover;
     Rect2 _buildRowRect;
+    /// <summary>The confirm row's text: 801 Build on a purchase screen, 291 Hire on the Hire screen.</summary>
+    int _buildTextId = LaptopMainMenu.BuildTextId;
     public event Action BuildRequested;
 
     /// <summary>⭐ RIGHT-CLICK ON A MENU ROW. Master: "rmb opens the current ride build info page.
@@ -1128,7 +1130,7 @@ public sealed partial class LaptopShopScreen : Control
     {
         _buildRowRect = new Rect2();
         if (!_buildRow) return;
-        string label = Row(LaptopMainMenu.BuildTextId);
+        string label = Row(_buildTextId);
         if (string.IsNullOrEmpty(label)) return;
         if (layout[_spec.LabelElement] is not { } l) return;
         // ⚠ One row BELOW the last one, on the info list's own grid, and never past the panel's

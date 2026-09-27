@@ -60,6 +60,9 @@ public sealed class AnimatedModel
     readonly Model _model;
     readonly Aps _anim;
     readonly bool _nativeNodeVisibility;
+    /// <summary>⚠ Opt-in (the staff view): a SKELETAL record's own `+0x0C/+0x18` list hides and un-hides
+    /// like an ordinary one's. See <see cref="AnimationNodeVisibility.ListedNodes"/>.</summary>
+    readonly bool _skeletalHideLists;
     readonly Func<string, (ImageTexture Tex, bool Soft)> _texture;
     readonly List<Aps.TextureTrack> _textureTracks = new();
     readonly Dictionary<int, ShaderMaterial> _materials = new();
@@ -132,10 +135,12 @@ public sealed class AnimatedModel
     public int BlendSurfaces { get; private set; }
 
     public AnimatedModel(Model model, Aps anim, Aps.Record rec,
-                         Func<string, (ImageTexture Tex, bool Soft)> texture, bool nativeNodeVisibility = false)
+                         Func<string, (ImageTexture Tex, bool Soft)> texture, bool nativeNodeVisibility = false,
+                         bool skeletalHideLists = false)
     {
         _model = model; _anim = anim; _texture = texture;
         _nativeNodeVisibility = nativeNodeVisibility;
+        _skeletalHideLists = skeletalHideLists;
         Additive = model.D.Length >= 0x20 && (BitConverter.ToUInt32(model.D, 0x1c) & 4) != 0;
         if (nativeNodeVisibility)
             foreach (int offset in model.LocalTransforms().Keys)
@@ -238,11 +243,21 @@ public sealed class AnimatedModel
                 track.Keys.Any(k => k.TextureIndex >= _model.MaterialTextures[track.Material].Length))
                 throw new InvalidDataException($"APS texture track targets invalid material/texture: slot {track.Material}");
         }
+        // ⚠ Opt-in: the OLD skeletal record's list is cleaned first, as 1AA460 cleans an old list,
+        // so the new record's list (below, or the ordinary Transition's) has the last word.
+        if (_skeletalHideLists && !_model.IsLegacyMd2 && Record is { Skeletal: true, Shared: false } oldSkeletal)
+            AnimationNodeVisibility.ShowListed(_model, _anim, oldSkeletal, _hidden);
         if (!_model.IsLegacyMd2 && (AnimationNodeVisibility.Ordinary(rec) || _ordinaryVisibility))
         {
             if (!_ordinaryVisibility) AnimationNodeVisibility.Initialize(_model, _hidden);
             _ordinaryVisibility = true;
             AnimationNodeVisibility.Transition(_model, _anim, Record, rec, _hidden);
+        }
+        if (_skeletalHideLists && !_model.IsLegacyMd2 && rec is { Skeletal: true, Shared: false })
+        {
+            if (!_ordinaryVisibility) AnimationNodeVisibility.Initialize(_model, _hidden);
+            _ordinaryVisibility = true;
+            AnimationNodeVisibility.HideListed(_model, _anim, rec, _hidden);
         }
         Record = rec;
         // ⚠ EVERY CHANNEL IS EMPTIED BEFORE THE NEW RECORD FILLS IT. They are keyed by node, and a
