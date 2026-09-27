@@ -184,6 +184,56 @@ public partial class CoasterSmoke : Node3D
                 .Count(c => paths.KindAt(c.x, c.y) == PathTool.Kind.Queue);
             Check(queueStubs >= 1, $"the station laid its queue stub ({queueStubs} queue tile)");
 
+            // ⭐ A STACK (TPW_COASTER_STACK=height, run by hand; the audit pins the base in the matrix): the
+            // audit's pentagon back onto its first pylon, the upper pylon at the given height. On the console
+            // the upper pylon's own post stands on the lower one's stacker, at its own angle (strawberry's
+            // capture). Its drawn foot must meet the stacker's drawn top -- the helper the base is read from.
+            if (System.Environment.GetEnvironmentVariable("TPW_COASTER_STACK") is { } stackH)
+            {
+                var (sfx, sfz) = Dir(step); int ssx = -sfz * side, ssz = sfx * side;
+                (int F, int S)[] penta = { (6, 0), (11, 3), (11, 9), (6, 11), (2, 6), (6, 0) };
+                var e0 = track.Exit.Cell;
+                for (int i = 0; i < penta.Length; i++)
+                    track.AddPylon(e0.Offset(penta[i].F * sfx + penta[i].S * ssx, penta[i].F * sfz + penta[i].S * ssz),
+                                   i == penta.Length - 1 ? int.Parse(stackH) : 375, 0, false, CoasterNodeKind.Normal);
+                var upper = track.Last; var low = upper.Below;
+                Check(low != null && track.IsValid(upper, (CoasterTrack.IGround)Call(viewer, "get_Ground"), true),
+                      $"a pylon h{upper.Height} stacks on the first (h{low?.Height}) and is valid");
+                Call(viewer, "RebuildCoaster", view);
+                var pyl = (IDictionary)F(view, "Pylons");
+                (float Lo, float Hi, bool Shown) Span(CoasterNode nn, string part)
+                {
+                    float lo = float.MaxValue, hi = float.MinValue; bool shown = false;
+                    foreach (var mi in ((Node3D)pyl[nn]).FindChildren("*", "MeshInstance3D", true, false).OfType<MeshInstance3D>())
+                    {
+                        if (mi.Mesh == null || !mi.GetParent().Name.ToString().Contains(part, StringComparison.OrdinalIgnoreCase) && !mi.Name.ToString().Contains(part, StringComparison.OrdinalIgnoreCase)) continue;
+                        if (!mi.IsVisibleInTree()) continue;
+                        shown = true;
+                        var box = mi.GlobalTransform * mi.GetAabb();
+                        lo = Math.Min(lo, box.Position.Y); hi = Math.Max(hi, box.End.Y);
+                    }
+                    return (lo, hi, shown);
+                }
+                var mesh0 = new Model(lib.Read(lib.Rides.First(r => r.Model != null && r.Model.Path.EndsWith($"/{type.PylonFolder}/stdpylon.mps", StringComparison.OrdinalIgnoreCase)).Model));
+                string post = mesh0.Meshes[0].Name, stacker = mesh0.Meshes.Count > 1 ? mesh0.Meshes[1].Name : null;
+                var up = Span(upper, post); var sk = stacker == null ? (Lo: 0f, Hi: 0f, Shown: false) : Span(low, stacker);
+                Check(up.Shown && sk.Shown, $"the upper pylon's post ({post}) is drawn, and the lower one's stacker ({stacker})");
+                Check(MathF.Abs(up.Lo - sk.Hi) < 0.05f, $"the upper post stands on the stacker's top: foot {up.Lo:F2}, stacker top {sk.Hi:F2}");
+                if (shots != null)
+                {
+                    foreach (var layer in viewer.FindChildren("*", "CanvasLayer", true, false).OfType<CanvasLayer>()) layer.Visible = false;
+                    Set(viewer, "_freeCam", true);
+                    var cam = Field<Camera3D>(viewer, "_cam");
+                    var aim = park.CellCentre(upper.CellX, upper.CellZ) + new Vector3(0, 3f, 0);
+                    cam.GlobalPosition = aim + new Vector3(4f, 2f, 5f);
+                    cam.LookAt(aim, Vector3.Up);
+                    for (int i = 0; i < 3; i++) await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                    Call(viewer, "SaveShot", System.IO.Path.Combine(shots, $"{world.ToLowerInvariant()}_{folder.ToLowerInvariant()}_stack_{stackH}.png"));
+                }
+                GD.Print($"COASTER SMOKE PASS checks={_checks}; world={world} (stack)");
+                GetTree().Quit(0);
+                return;
+            }
             // Lay the ring press by press, then close it on the entry cell.
             var ring = OvalOf(track.Exit.Cell, step, side);
             var sim = Field<ParkSim>(viewer, "_sim");
@@ -205,6 +255,10 @@ public partial class CoasterSmoke : Node3D
                 try { for (int f = 0; f < 6; f++) Call(viewer, "UpdateCoasterGhost", 0.0); }
                 finally { Set(viewer, "_cursorOverride", null); }
                 var field = Field<List<ParkCell>>(viewer, "_coasterField");
+                // The status line names the rule that refuses (CoasterTrack.Why): on the pylon just laid,
+                // the distance rule.
+                Check(Field<string>(viewer, "_coasterWhy") is { } why0 && why0.StartsWith("too close"),
+                      $"on the pylon just laid the tool says why not: \"{Field<string>(viewer, "_coasterWhy")}\"");
                 var last = track.Last;
                 double Dist(ParkCell q) => Math.Sqrt(Math.Pow((q.X - last.CellX) * 256.0, 2) + Math.Pow((q.Z - last.CellZ) * 256.0, 2));
                 Check(Field<bool>(viewer, "_coasterFieldDone") && field.Count > 0 && field.All(q => Dist(q) >= 0x300 && Dist(q) <= 0x800)

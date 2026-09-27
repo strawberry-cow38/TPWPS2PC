@@ -47,6 +47,29 @@ public sealed record CoasterType(
     /// (`0x19d1e0`).</summary>
     public bool IsMoonshot => World == 3 && Park == 0 && Ordinal == 0;
 
+    /// <summary>⭐ The stack-height helper's posed height above the pylon's base, in cells, at rest and at
+    /// full loft: the fitting (0x100000, id 1) by the engine's node rule, which `0x19cae0` reads as the
+    /// base of a pylon stacked on this one. Measured off every `stdpylon.mps`/`.aps` (the loft's spline
+    /// paths added to the bind pose, `WorldTransforms`); the track dummy measured the same way gives
+    /// this table's own loft, the control. It sits on the stacker's top -- MineCart's 2.5 cells above its
+    /// attach point -- which is where the upper pylon's post stands (strawberry's console capture).</summary>
+    static readonly Dictionary<string, (float AtRest, float AtFull)> StackHelpers = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Coaster1"] = (2.00f, 11.00f), ["Coaster3"] = (1.84f, 9.84f), ["MineCart"] = (3.00f, 12.00f),
+        ["c_hade"] = (2.00f, 11.00f), ["c_scat"] = (1.40f, 10.40f), ["coasta"] = (3.00f, 12.00f),
+        ["devil"] = (3.27f, 12.27f), ["shake"] = (2.81f, 11.81f), ["b_drip"] = (3.00f, 12.00f),
+        ["candy_c"] = (2.81f, 11.81f), ["cat_co"] = (2.26f, 11.26f), ["megacost"] = (3.00f, 12.00f),
+        ["moonshot"] = (1.77f, 10.77f), ["shocker"] = (1.78f, 10.78f),
+    };
+
+    /// <summary>`0x19cae0`'s base for a pylon stacked on one of height <paramref name="h"/>: that pylon's
+    /// posed stack-height helper, in units above its base (the loft is `clamp(h/2560, 0, 1)`).</summary>
+    public int StackY(int h)
+    {
+        var (rest, full) = StackHelpers.TryGetValue(PylonFolder, out var s) ? s : (0.5f, 9.5f);
+        return (int)((rest + (full - rest) * Math.Clamp(h / 2560f, 0f, 1f)) * 256f);
+    }
+
     /// <summary>`0x19a420`: the track height above a node's base for a pylon of height
     /// <paramref name="h"/>, in units. `attachY` is the posed `TrackDummyCentre` local y, loft
     /// channel `clamp(h/2560, 0, 1)` along the pylon's own path, added to the bind pose.</summary>
@@ -337,13 +360,12 @@ public sealed class CoasterTrack
         foreach (var n in ring) BuildSamples(n);
     }
 
-    /// <summary>`0x19cae0`: station −0x100; a stacked node the top of the pylon below (⚠ the
-    /// stack helper's posed y is not read here: the below node's attach point stands in for it);
-    /// otherwise the terrain at the cell's min corner.</summary>
+    /// <summary>`0x19cae0`: station −0x100; a stacked node the posed stack-height helper of the pylon
+    /// below, the stacker's top (<see cref="StackY"/>); otherwise the terrain at the cell's min corner.</summary>
     int BaseY(CoasterNode n)
     {
         if (n.IsStation) return -0x100;
-        if (n.Below != null) return n.Below.TrackY - Type.AttachOffset;
+        if (n.Below != null) return n.Below.YBase + Type.StackY(n.Below.Height);
         return GroundY(n.CellX, n.CellZ);
     }
 
@@ -512,60 +534,60 @@ public sealed class CoasterTrack
 
     /// <summary>`0x1216d8`: the node's placement rules. <paramref name="clearance"/> adds the segment
     /// clearance test (`0x121000`); the valid-cell field scan leaves it out.</summary>
-    public bool IsValid(CoasterNode n, IGround g, bool clearance)
+    public bool IsValid(CoasterNode n, IGround g, bool clearance) => Why(n, g, clearance) == null;
+
+    /// <summary>The same rules as <see cref="IsValid"/>, in the same order, naming the one that refuses
+    /// (null when none does). The console says nothing -- a red tile -- so the words are the port's, for
+    /// the tool's status line: a grey field cell can still be refused by the clearance sweep the field
+    /// leaves out, and saying which rule did it is the difference between "blocked" and a bug report.</summary>
+    public string Why(CoasterNode n, IGround g, bool clearance)
     {
         var P = n.Prev ?? n; var X = n.Next ?? n;
-        bool ok = true;
         int d1 = HDist(n, n.Prev), d2 = HDist(X, X.Prev);
         if (!n.LoopFlag)
         {
-            if (d1 < 0x300 || d1 > 0x800) ok = false;
-            if (d2 < 0x300 || d2 > 0x800) ok = false;
+            if (d1 < 0x300 || d2 < 0x300) return "too close: pylons are 3 to 8 cells apart";
+            if (d1 > 0x800 || d2 > 0x800) return "too far: pylons are 3 to 8 cells apart";
             for (var r = Exit; r != null && r != Entry; r = r.Next)
-                if (r != n && r.LoopFlag && r.CellX == n.CellX && r.CellZ == n.CellZ) { ok = false; break; }
+                if (r != n && r.LoopFlag && r.CellX == n.CellX && r.CellZ == n.CellZ) return "a loop stands there";
             int lim = P == Exit ? 0x200 : 0x400;
             int t = Math.Abs((short)(n.Heading - P.Heading));
-            if (!(P.LoopFlag && n.Next != null) && lim <= t && t < 0x1000 - lim) ok = false;
-            if (!ok) return false;
+            if (!(P.LoopFlag && n.Next != null) && lim <= t && t < 0x1000 - lim)
+                return P == Exit ? "too sharp a turn off the station" : "too sharp a turn";
             if (g.InGrid(n.Cell))
             {
                 var b = g.CoasterNodeAt(n.Cell);
                 if (b != null && b != n && b != n.Prev)
                 {
-                    if (b.LoopFlag) ok = false;
-                    else if (!Owns(b)) ok = false;
-                    else if (b == Exit) ok = false;
-                    else
-                    {
-                        int count = 0;
-                        for (var s = b; s != null; s = s.Above) if (s != n) count++;
-                        if (count >= 2) ok = false;
-                    }
+                    if (b.LoopFlag) return "a loop stands there";
+                    if (!Owns(b)) return "another coaster's pylon is there";
+                    if (b == Exit) return "the station's exit is there";
+                    int count = 0;
+                    for (var s = b; s != null; s = s.Above) if (s != n) count++;
+                    if (count >= 2) return "that stack is full";
                 }
-                else if (b == null && !g.EmptyLand(n.Cell)) ok = false;
+                else if (b == null && !g.EmptyLand(n.Cell)) return "not empty land";
             }
         }
-        if (ok)
-            for (int dx = -1; dx <= 1 && ok; dx++)
-                for (int dz = -1; dz <= 1; dz++)
-                {
-                    if (dx == 0 && dz == 0) continue;
-                    var c = n.Cell.Offset(dx, dz);
-                    if (!g.InGrid(c)) continue;
-                    var m = g.CoasterNodeAt(c);
-                    if (m != null && m != n && !m.LoopFlag) { ok = false; break; }
-                }
-        if (!ok) return false;
-        if (clearance && !n.LoopFlag && P != n && !SegmentClear(P, n, g)) return false;
+        for (int dx = -1; dx <= 1; dx++)
+            for (int dz = -1; dz <= 1; dz++)
+            {
+                if (dx == 0 && dz == 0) continue;
+                var c = n.Cell.Offset(dx, dz);
+                if (!g.InGrid(c)) continue;
+                var m = g.CoasterNodeAt(c);
+                if (m != null && m != n && !m.LoopFlag) return "right next to another pylon";
+            }
+        if (clearance && !n.LoopFlag && P != n && SegmentRefusal(P, n, g) is { } hit) return hit;
         int stack = 0;
         { var top = n; while (top.Above != null) top = top.Above; for (var s = top; s != null; s = s.Below) stack += s.Height; }
-        if (stack > 0x600) return false;
+        if (stack > 0x600) return "that stack would be too tall";
         if (n.CellX == Entry.CellX && n.CellZ == Entry.CellZ)
         {
             int t = Math.Abs((short)(Exit.Heading - P.Heading));
-            if ((ushort)(t - 0x400) <= 0x7ff) return false;
+            if ((ushort)(t - 0x400) <= 0x7ff) return "the track can't turn into the station from here";
         }
-        return true;
+        return null;
     }
 
     /// <summary>`0x19adf0`: horizontal distance in units, truncated.</summary>
@@ -580,11 +602,11 @@ public sealed class CoasterTrack
     /// <paramref name="b"/>, each above the clearance of the cells passed so far (the value carries
     /// over; a flag-bit-0 tile resets it to 2.0). ⚠ The segment-against-segment test (`0x1209b0`) is
     /// reduced to "no two segments of this coaster share a cell within one cell of height".</summary>
-    bool SegmentClear(CoasterNode a, CoasterNode b, IGround g)
+    string SegmentRefusal(CoasterNode a, CoasterNode b, IGround g)
     {
         if (a.CellX == b.CellX && a.CellZ == b.CellZ && (a.LoopFlag || b.LoopFlag || a.Above != null || b.Above != null))
-            return false;
-        if (b == Exit) return true;
+            return "the track can't climb straight up a stack";
+        if (b == Exit) return null;
         float clear = 0;
         (int, int) last = (-1, -1);
         var mine = new List<Vector3>();
@@ -599,7 +621,7 @@ public sealed class CoasterTrack
                 float cl = g.Clearance(new ParkCell(c.Item1, c.Item2), this);
                 if (cl == 2.0f) clear = 2.0f; else clear = Math.Max(clear, cl);
             }
-            if (p.Y <= clear) return false;
+            if (p.Y <= clear) return $"the track would hit something at ({c.Item1},{c.Item2})";
         }
         foreach (var other in Nodes())
         {
@@ -611,9 +633,9 @@ public sealed class CoasterTrack
                 foreach (var p in mine)
                     if ((int)MathF.Floor(p.X) == (int)MathF.Floor(q.X) && (int)MathF.Floor(p.Z) == (int)MathF.Floor(q.Z)
                         && MathF.Abs(p.Y - q.Y) < 1f)
-                        return false;
+                        return $"the track would run into itself at ({(int)MathF.Floor(p.X)},{(int)MathF.Floor(p.Z)})";
             }
         }
-        return true;
+        return null;
     }
 }

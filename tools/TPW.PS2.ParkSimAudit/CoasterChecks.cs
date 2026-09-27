@@ -198,8 +198,10 @@ static class CoasterChecks
             bool second = Try(t1, g1, 46, 41, 375, false);
             var s1 = t1.AddPylon(new ParkCell(46, 41), 375, 0, false, CoasterNodeKind.Normal);
             second &= s1.Below == t1.Pylons[0];
-            Check(s1.YBase == t1.Pylons[0].TrackY - Temple.AttachOffset && s1.YBase > 0,
-                  $"a stacked pylon's model stands on the pylon below (YBase {s1.YBase} = {t1.Pylons[0].TrackY} - {Temple.AttachOffset})");
+            // Its base is the lower pylon's posed stack-height helper, the stacker's top: (3.00 + 9 x 375/2560)
+            // cells on Temple of Gloom = 1105 units, not the lower's attach point (465) the port used.
+            Check(s1.YBase == 1105 && s1.YBase == t1.Pylons[0].YBase + Temple.StackY(375) && s1.TrackY == 1105 + Temple.Attach(375),
+                  $"a stacked pylon stands on the stacker's top: YBase {s1.YBase} (the helper, 1105), track {s1.TrackY}");
             t1.RemoveLast();
             // A third on that cell: lay the second, then a ghost back onto it from the same side.
             t1.AddPylon(new ParkCell(46, 41), 375, 0, false, CoasterNodeKind.Normal);

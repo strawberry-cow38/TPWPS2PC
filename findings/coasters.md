@@ -229,7 +229,15 @@ ParkSimAudit checks (`coaster:`) and the `CoasterSmoke` viewer scene:
   `0x199c50`/`0x199dd0`). The node is fitting (0x80000, id 1) by the engine's rule, index + header
   `u16 @0x34`: `mc_bridge`, `STACKER`, `sc_bridge`. It gets hide flag 0x8000 while the pylon has
   nothing above it. The same function hides the record at instance `+0xc` → `+0x70` while the pylon
-  stands on another; that this is the post is INFERRED.
+  stands on another. ⚠ **That record is NOT the post** (corrected 2026-09-27): strawberry's console
+  capture shows the upper pylon's own lattice post standing on the lower one's stacker, turned at its
+  own angle, and the port hid it. What the record is stays unread.
+- **A stacked pylon stands on the stacker's top.** `0x19cae0` bases it on the lower pylon's posed
+  stack-height helper (fitting 0x100000, id 1), not on the lower's attach point, which the port used:
+  measured on every `stdpylon.mps`/`.aps` (loft paths added to the bind pose) the helper is 2.5 cells
+  above it on MineCart, exactly the stacker's drawn top (4.32 against 4.32 at h375; Chak Atak 3.32
+  against 3.32). `CoasterType.StackY` carries the 14 helpers at rest and full loft; the track dummy,
+  measured the same way, reproduces the type table's own loft, the control.
 
 **The join quirk decides where the chain texture goes** (`0x1aee48..0x1aee68`, re-read in MIPS for
 the port). Going into a longer segment on a climb, the look-ahead lands up to a cell behind the car,
@@ -250,5 +258,4 @@ climb 0xf5, speed 0x105, crest 0x115+) need a rider aboard. Not done: the far lo
 (ride-cam camera modes only), the rider ambience, the chain-anticipation scream (mode 3).
 
 Not built yet: the stats screen as a screen; the Ultimate award record; the Test
-Park; moving a pylon (mode 13's Move); breakdowns; stacked pylons use the pylon below's attach point
-instead of its posed stack helper.
+Park; moving a pylon (mode 13's Move); breakdowns.

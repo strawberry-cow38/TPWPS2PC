@@ -54,6 +54,8 @@ public partial class Viewer
     CoasterNode _coasterGhost;
     (int X, int Y) _coasterGhostAt = (int.MinValue, 0);
     bool _coasterGhostOk, _coasterFromStation;
+    /// <summary>Why the ghost at the cursor is refused, in words, or null (`CoasterTrack.Why`).</summary>
+    string _coasterWhy;
 
     /// <summary>⭐ THE VALID-CELL FIELD (`0x11aa70` / `0x11acc8`, coaster-building.md §4.7): the grey
     /// patch that shows where the next pylon may go. Scanned 4 rows a frame over a 17×17 window,
@@ -406,9 +408,8 @@ public partial class Viewer
             if (rec != null) drawn.SetFrame(At(rec, loft));
             // ⭐ `0x199c90`: the stacker is the node of fitting (0x80000, id 1) by the ENGINE's rule,
             // fitting index + header u16 @0x34 (not the port's meshes + index), and it carries hide
-            // flag 0x8000 unless a pylon is stacked on this one. ⚠ The same function hides the
-            // record at instance+0xc → +0x70 when this pylon stands on another; that it is the
-            // first mesh (the post) is INFERRED.
+            // flag 0x8000 unless a pylon is stacked on this one. (The same function's other hide, on a
+            // pylon standing on another, is not the post: see below.)
             var hidden = new HashSet<string>();
             void Hide(string meshName) { hidden.Add(meshName); foreach (var (m, _, node) in drawn.Surfaces()) if (m == meshName) node.Visible = false; }
             if (mesh.FindFitting(1, 0x80000) is { } fit)
@@ -416,7 +417,11 @@ public partial class Viewer
                 int engineNode = fit.Node - mesh.Meshes.Count + BitConverter.ToUInt16(mesh.D, 0x34);
                 if (n.Above == null && engineNode >= 0 && engineNode < mesh.Meshes.Count) Hide(mesh.Meshes[engineNode].Name);
             }
-            if (n.Below != null && mesh.Meshes.Count > 0) Hide(mesh.Meshes[0].Name);
+            // ⚠⚠ The post is NOT hidden on a stacked pylon. 0x199c90 does set 0x8000 on the record at
+            // instance +0xc → +0x70 while the pylon stands on another, and the port read that record as
+            // the post -- but strawberry's console capture shows the upper pylon's own lattice post
+            // standing on the stacker, turned at its own angle ("it adds the stacked piece, and then it
+            // adds a separate pylon piece atop that"). What that record is stays unread.
             drawn.Root.Scale = Vector3.One;
             var holder = new Node3D { Name = $"pylon_{n.CellX}_{n.CellZ}" };
             // The visible parts' top at REST (bind pose, loft 0), from the .mps bounds: what the loft
@@ -697,13 +702,16 @@ public partial class Viewer
         _coasterGhost = null;
         var marks = new List<(int X, int Y, int Marker, int Turns)>();
         bool ok = false;
+        string why = "out of pylons";
         if (t.Pylons.Count < CoasterTrack.MaxPylons)
         {
             _coasterGhost = t.LinkGhost(new ParkCell(x, y), _coasterStartHeight, _coasterStartBank);
             int cost = v.Price * 10;
             bool afford = _sim == null || _sim.Finances.Unlimited || _sim.Finances.Balance >= cost;
-            ok = afford && t.IsValid(_coasterGhost, Ground, true);
+            why = afford ? t.Why(_coasterGhost, Ground, true) : "can't afford it";
+            ok = why == null;
         }
+        _coasterWhy = ok ? null : why;
         _coasterGhostOk = ok;
         var e = t.Entry.Cell;
         if (_coasterFieldDone)
@@ -720,7 +728,7 @@ public partial class Viewer
         RebuildCoaster(v);
         bool closing = new ParkCell(x, y) == t.Entry.Cell && t.Pylons.Count > 0;
         Status($"Pylon Stock {CoasterTrack.MaxPylons - t.Pylons.Count}   " + (closing ? "close the ring" : $"Cost: {Money.Format(v.Price * 10)}")
-             + (ok ? "" : "   (not here)") + (t.Type.Loops ? "   Space: loop" : ""));
+             + (ok ? "" : $"   (not here: {why})") + (t.Type.Loops ? "   Space: loop" : ""));
     }
 
     /// <summary>The 166 chevron on the entry cell points the way the track must come in.</summary>
