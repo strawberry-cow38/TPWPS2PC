@@ -610,6 +610,23 @@ public sealed partial class LaptopShopScreen : Control
     /// <summary>The paging arrows' drawn rectangle, in screen pixels, or empty when none is up.</summary>
     Rect2 _pageArrows;
 
+    /// <summary>⭐ Each SLIDER's drawn rectangle, by row index. Remembered rather than re-derived,
+    /// for the same reason the arrows are: `_GuiInput` must test the very rect that was drawn.</summary>
+    readonly Dictionary<int, Rect2> _sliderRects = new();
+
+    /// <summary>⭐ A slider was moved: the ROW INDEX it belongs to and its new value as a percent
+    /// of its own track, 0..100. ⚠ A percent, not a setting: this control knows where the knob is
+    /// and nothing about speed, capacity or duration. The caller owns the range and the clamp,
+    /// because the console's ranges are per ride and live in its tier.</summary>
+    public event Action<int, int> SliderMoved;
+
+    /// <summary>Which slider the pointer is dragging, or -1.</summary>
+    int _dragSlider = -1;
+
+    /// <summary>The percent along a slider's track that a point sits at, clamped to it.</summary>
+    static int PercentIn(Rect2 r, Vector2 at)
+        => r.Size.X <= 0 ? 0 : Math.Clamp((int)Math.Round((at.X - r.Position.X) / r.Size.X * 100f), 0, 100);
+
     public override void _GuiInput(InputEvent @event)
     {
         GuiEvents++;
@@ -619,6 +636,17 @@ public sealed partial class LaptopShopScreen : Control
         if (!Open) return;
         FitToViewport();
         float s = Scale; var o = Origin;
+        // ⭐ DRAGGING A SLIDER. The press starts it, motion carries it, and the release ends it --
+        // so the knob follows the pointer instead of jumping once per click.
+        if (_dragSlider >= 0 && @event is InputEventMouseMotion drag)
+        {
+            if (_sliderRects.TryGetValue(_dragSlider, out var dr))
+            { SliderMoved?.Invoke(_dragSlider, PercentIn(dr, drag.Position)); AcceptEvent(); }
+            return;
+        }
+        if (_dragSlider >= 0 && @event is InputEventMouseButton { Pressed: false })
+        { _dragSlider = -1; QueueRedraw(); AcceptEvent(); return; }
+
         if (@event is InputEventMouseMotion motion)
         {
             GuiMotion++;
@@ -653,6 +681,18 @@ public sealed partial class LaptopShopScreen : Control
             && b.ButtonIndex is MouseButton.Left or MouseButton.Right)
         {
             GuiClicks++;
+            // ⭐ A SLIDER TAKES THE CLICK BEFORE ANYTHING ELSE, and keeps it until the button is
+            // released. ⚠ Tested against the rect that was DRAWN, never a re-derivation.
+            if (b.ButtonIndex == MouseButton.Left)
+                foreach (var (idx, rect) in _sliderRects)
+                    if (rect.HasPoint(b.Position))
+                    {
+                        _dragSlider = idx;
+                        Cue(LaptopSounds.Cue.Move);
+                        SliderMoved?.Invoke(idx, PercentIn(rect, b.Position));
+                        AcceptEvent();
+                        return;
+                    }
             // ⭐ THE PAGING ARROWS, LEFT HALF BACK AND RIGHT HALF ON. `UIarrow.ssh` is one
             // sprite holding both triangles, symmetric about its middle (208 opaque pixels left,
             // 205 right), so the halves are the two buttons.
@@ -785,6 +825,7 @@ public sealed partial class LaptopShopScreen : Control
         Vector2 At(SceneLayout.Element e) => o + new Vector2(e.X, e.Y) * s;
 
         _pageArrows = new Rect2();
+        _sliderRects.Clear();
         if (layout[_spec.TitleElement] is { } title)
             DrawRun(_title, At(title), s, Of(ShopScreen.Highlight), title.Justify);
 
@@ -843,7 +884,7 @@ public sealed partial class LaptopShopScreen : Control
                 if (row.Element == null || layout[row.Element] is not { } w) continue;
                 var rect = new Rect2(At(w), new Vector2(w.Width, w.Height) * s);
                 if (row.Kind == LaptopRowKind.Bar) DrawBar(rect, fraction, s);
-                else DrawSlider(rect, fraction, s, selected: false);
+                else { _sliderRects[i] = rect; DrawSlider(rect, fraction, s, selected: _dragSlider == i); }
                 continue;
             }
 

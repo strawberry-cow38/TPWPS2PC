@@ -3809,6 +3809,36 @@ public partial class Viewer : Node3D
         // made-up cells, so the render is evidence that the MENU reaches the screen. Master asked
         // the right question of the earlier shots: "is any of it actually wired lol". They were
         // not; this is the flag that can tell the difference, and it must go through the click.
+        // ⭐ `--laptop-screen=details[:<sliderPct>]` drives the REAL right-click handler --
+        // OnObjectMenu("Details") on the selected placed thing -- and then, if asked, the real
+        // slider callback. Same discipline as the info route: a render is only evidence about the
+        // shipped path if it goes down the shipped path.
+        if (_laptopScreen.StartsWith("details", StringComparison.OrdinalIgnoreCase))
+        {
+            if (_laptopFrame == 0)
+            {
+                if (_selected < 0 && _park.Placed.Count > 0) _selected = 0;
+                GD.Print($"[laptop] details: selected {_selected} of {_park.Placed.Count} placed; "
+                       + $"ride={(RideFor(_selected) != null)} shop={(ShopFor(_selected) != null)}; "
+                       + $"menu offers [{string.Join(",", MenuEntriesFor(_selected))}]");
+                OnObjectMenu("Details");
+                var bits = _laptopScreen.Split(':');
+                if (bits.Length > 1 && int.TryParse(bits[1], out var pct))
+                {
+                    // Row 4 is the SPEED slider on LaptopScreen.Ride.
+                    int speedRow = LaptopScreen.Ride.Rows.ToList().FindIndex(r => r.TextId == 436);
+                    GD.Print($"[laptop] details: dragging speed row {speedRow} to {pct}%");
+                    OnLaptopSlider(speedRow, pct);
+                }
+            }
+            _shopPanel.ForceHoverForShot(_laptopHoverRow, _laptopHoverBtn);
+            PrepareUiShotView();
+            SaveShot(ShotSibling(_shotPath, $"-f{_laptopFrame:D4}"));
+            _laptopFrame++;
+            if (_laptopFrame >= _laptopFilm) GetTree().Quit();
+            return;
+        }
+
         if (_laptopScreen.StartsWith("info:", StringComparison.OrdinalIgnoreCase))
         {
             if (_laptopFrame == 0)
@@ -7335,7 +7365,12 @@ public partial class Viewer : Node3D
         // ⭐ "Details" is the shop panel's own tab name (`STR_SINGLESHOP_INFORMATION`), so a shop
         // offers it. ⚠ Only a shop: the panel's rows are Takings/Profit/Quality/Sale Price and a
         // ride has none of them.
-        if (_shopPanel != null && ShopFor(placed) != null) yield return "Details";
+        // ⭐ … AND SO DOES A RIDE. Master, 2026-09-27: "add a details button the the rmb menu of
+        // rides and shops, this opens the laptop ui with sliders". A ride's panel is a different
+        // screen from a shop's -- LaptopScreen.Ride, four bars and three sliders -- so the caption
+        // is the same and the handler routes by what the thing IS.
+        if (_shopPanel != null && (ShopFor(placed) != null || RideFor(placed) != null))
+            yield return "Details";
         // ⭐⭐ ONLY THINGS THAT TAKE A QUEUE OFFER ONE. Master: "make sure on the rmb details page
         // that we only show relevant options, ie no build queue for things that arent meant to
         // have queues." A tree, a bin and a lamp were all offering to have a queue built to them.
@@ -7370,6 +7405,90 @@ public partial class Viewer : Node3D
     /// <summary>The simulation's record for a placed object, when it is a SHOP. ⚠ Matched by the
     /// compiled entry's own kind rather than by name -- a name test would call anything with
     /// "shop" in its title a shop, and miss the ones without.</summary>
+    /// <summary>The placed thing as a RIDE with operating settings, or null. ⚠ Tiers are the test,
+    /// not the kind name: a thing with no tier has no speed, capacity or duration to show.</summary>
+    ParkRide RideFor(int placed)
+    {
+        if (_sim == null || placed < 0 || placed >= _park.Placed.Count) return null;
+        int id = _park.Placed[placed].Id;
+        foreach (var r in _sim.Rides)
+            if (r.Id == id && r.Definition?.CompiledEntry is { HasRideTiers: true }) return r;
+        return null;
+    }
+
+    ParkRide _detailsRide;
+
+    /// <summary>⭐⭐ THE RIDE'S DETAILS PAGE, with its three sliders live.
+    ///
+    /// The ranges are the console's own, from the ride's tier -- speed MinSpeed..MaxSpeed and
+    /// duration MinDuration..MaxDuration, which is where `NativeRideValue.CreateDefaultState`
+    /// already takes its midpoints from. See findings/laptop-sliders.md for how the screen's own
+    /// setup (`FUN_001D4C80`) clamps each slider into exactly those bounds.
+    ///
+    /// ⚠⚠ CAPACITY'S RANGE IS THE ONE ASSUMPTION HERE AND IT IS MARKED. The console takes its
+    /// maximum from a screen field (`this[0x18D4]`) whose source is not read; `CapacityParameter`
+    /// is the only capacity-shaped number in the tier and is used as that maximum. Everything else
+    /// on this screen is read.
+    ///
+    /// ⚠ EXCITEMENT MOVES, RELIABILITY DOES NOT. `ParkRide.Value` recomputes from speed and
+    /// duration, so those two sliders change the excitement bar as they are dragged. Reliability
+    /// is NOT recomputed from a slider anywhere on the disc -- `FUN_00198A98` has exactly one
+    /// caller and it is the shopfront preview -- so a placed ride's repair bar is its Condition,
+    /// which wears. Making it respond to a drag would be inventing behaviour.</summary>
+    void ShowRideDetails(ParkRide ride)
+    {
+        _detailsRide = ride;
+        var t = ride.Definition.CompiledEntry.Tier(0);
+        int Pct(int v, int lo, int hi) => hi <= lo ? 0 : Math.Clamp((v - lo) * 100 / (hi - lo), 0, 100);
+        var cells = new List<(string, int)>();
+        foreach (var row in LaptopScreen.Ride.Rows)
+            cells.Add(row.TextId switch
+            {
+                61   => (null, ride.Value ?? 0),                                   // Excitement
+                1060 => (null, ride.Definition.ShopfrontReliability ?? 0),         // Reliability
+                644  => (null, Math.Clamp(ride.Condition, 0, 100)),                // State of Repair
+                436  => (null, Pct(ride.Speed, t.MinSpeed, t.MaxSpeed)),           // Speed
+                919  => (null, Pct(ride.Capacity, 1, Math.Max(1, t.CapacityParameter))),
+                769  => (null, Pct(ride.Duration, t.MinDuration, t.MaxDuration)),  // Duration
+                415  => (ride.Customers.ToString(), 0),                            // Users
+                // ⚠ Life, Upgrades, Addons and Age are drawn by this screen and are not tracked
+                // by this port, so they are blank rather than a number that looks like one.
+                _    => (null, 0),
+            });
+        _shopPanel.ShowScreen(LaptopScreen.Ride, DisplayName(ride), cells);
+        BuildLaptopModelFor(ride);
+        Status($"{DisplayName(ride)} -- speed {ride.Speed}, capacity {ride.Capacity}, "
+             + $"duration {ride.Duration}; excitement {ride.Value?.ToString() ?? "-"}");
+        // ⭐ The numbers, so a render can be READ rather than eyeballed. The excitement formula
+        // clamps (speed << 12)/100 into 0xC00..0x1400 -- i.e. speed 75..125 -- so a ride whose tier
+        // tops out below 75 cannot move it at all, and that would be the console's behaviour and
+        // not a dead slider. Printing the bounds is what tells the two apart.
+        GD.Print($"[laptop] details {DisplayName(ride)}: speed {ride.Speed} in {t.MinSpeed}..{t.MaxSpeed}, "
+               + $"capacity {ride.Capacity} in 1..{t.CapacityParameter}, "
+               + $"duration {ride.Duration} in {t.MinDuration}..{t.MaxDuration}; "
+               + $"basis {ride.Definition.CompiledEntry.BaseExcitement}, excitement {ride.Value?.ToString() ?? "-"}");
+    }
+
+    /// <summary>⭐ A slider moved: turn its percent back into the console's own units and write it
+    /// to the ride, then redraw so the excitement bar follows.
+    /// ⚠ The panel sends a PERCENT because it knows nothing about these settings; the range and
+    /// the clamp are owned here, where the tier is.</summary>
+    void OnLaptopSlider(int row, int pct)
+    {
+        if (_detailsRide?.Definition?.CompiledEntry is not { HasRideTiers: true } e) return;
+        if (row < 0 || row >= LaptopScreen.Ride.Rows.Count) return;
+        var t = e.Tier(0);
+        int Val(int lo, int hi) => lo + (hi - lo) * Math.Clamp(pct, 0, 100) / 100;
+        switch (LaptopScreen.Ride.Rows[row].TextId)
+        {
+            case 436: _detailsRide.Speed = Val(t.MinSpeed, t.MaxSpeed); break;
+            case 919: _detailsRide.Capacity = Val(1, Math.Max(1, t.CapacityParameter)); break;
+            case 769: _detailsRide.Duration = Val(t.MinDuration, t.MaxDuration); break;
+            default: return;
+        }
+        ShowRideDetails(_detailsRide);
+    }
+
     ParkRide ShopFor(int placed)
     {
         if (_sim == null || placed < 0 || placed >= _park.Placed.Count) return null;
@@ -7409,6 +7528,7 @@ public partial class Viewer : Node3D
                     _shopPanel.ShowFor(shop, _park.Placed[_selected].Name);
                     Status($"{_park.Placed[_selected].Name} -- details");
                 }
+                else if (RideFor(_selected) is { } ride) ShowRideDetails(ride);
                 break;
             case "Edit Track":
                 if (_selected >= 0 && _selected < _park.Placed.Count && _coasters.ContainsKey(_park.Placed[_selected].Id))
@@ -9453,6 +9573,7 @@ public partial class Viewer : Node3D
                     _shopPanel.BuildRequested += OnLaptopBuild;
                     _shopPanel.MenuInspected += OnLaptopInspect;
                     _shopPanel.Paged += OnLaptopPage;
+                    _shopPanel.SliderMoved += OnLaptopSlider;
                     // ⭐ The laptop's voice. ⚠ A bank that will not read leaves it null and the
                     // laptop silent, never unusable -- Report says which cues resolved.
                     _laptopSounds = new LaptopSounds(_lib, this);

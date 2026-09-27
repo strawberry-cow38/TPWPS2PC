@@ -145,6 +145,34 @@ public sealed class ParkRide
     NativeRideValue.State? InitialValueState => _valueState ??= NativeRideValue.CreateDefaultState(Definition?.CompiledEntry);
     public int Speed { get => _speed ?? InitialValueState?.Speed ?? 100; set => _speed=value; }
     public int Duration { get => _duration ?? InitialValueState?.Duration ?? 5; set => _duration=value; }
+
+    /// <summary>⭐⭐ `P+0xEC`, THE THIRD OPERATING SETTING -- the ride screen's middle slider, which
+    /// the scene calls `capacityslider`. The three sit in three adjacent words and their accessors
+    /// sit in order: `0x118384` stores `P+0xE8` (speed), `0x1183AC` stores `P+0xEC` (this) and
+    /// `0x1183D4` stores `P+0xF0` (duration), reached through vtable slots `+0x30C`, `+0x314` and
+    /// `+0x31C`. See findings/laptop-sliders.md.
+    ///
+    /// ⭐ ITS ONLY LIVE WRITER IS THE LAPTOP. A dispatch census over the whole image -- controlled
+    /// against the two functions already known to write it -- finds exactly two call sites for each
+    /// of the three setters: `0x116BA8`, the savegame restore, and `0x1D4FD0`, this screen.
+    ///
+    /// ⚠ IT DOES NOT AFFECT EXCITEMENT, and that is a measured negative rather than an omission.
+    /// The four families' value producers (`0x1227D8`, `0x1B82D0`, `0x1EA038`, `0x202188`) all read
+    /// speed and duration and NONE of them reads this -- which is why
+    /// <see cref="NativeRideValue.State"/> has no capacity term. What does read it is those same
+    /// families' operation code, so it is a throughput setting; its consumer is not decoded here.
+    ///
+    /// ⚠⚠ THE DEFAULT IS THE PORT'S CHOICE, NOT THE CONSOLE'S. `FUN_00116120` sets defaults for
+    /// speed and duration and says nothing about this one, so where a new ride starts is UNREAD.
+    /// It opens at the tier's <c>CapacityParameter</c> -- the slider's maximum -- which is a stated
+    /// assumption, not a reading.</summary>
+    int? _capacity;
+    public int Capacity
+    {
+        get => _capacity ?? Math.Max(1, Definition?.CompiledEntry is { HasRideTiers: true } e
+                                        ? e.Tier(0).CapacityParameter : 1);
+        set => _capacity = value;
+    }
     public byte CachedTrackWeight { get; set; }
     int? _prize; ushort? _price, _win;
     public int SideshowPrizeValue { get => _prize ?? InitialValueState?.SideshowPrizeValue ?? 0; set => _prize=value; }
