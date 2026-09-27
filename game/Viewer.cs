@@ -3960,7 +3960,10 @@ public partial class Viewer : Node3D
             BuildLaptopModel(pick);
             if (_laptopView != null) _shopPanel.ModelTexture = _laptopView.GetTexture();
         }
-        StepLaptopModel();
+        // ⚠ NOT STEPPED HERE ANY MORE. `_Process` drives the model whenever the panel is
+        // open, and this path runs from `_Process` too -- so calling it here as well stepped
+        // the model TWICE a frame and ran every filmed animation at double speed. One driver.
+        
 
         // ⭐⭐ THE BUILD SCREEN SHOWS REAL PRICES AND THE REAL BALANCE. Everything else on these
         // demo screens is a cosine sweep; these two rows are not, which is the point.
