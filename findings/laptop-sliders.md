@@ -49,9 +49,40 @@ if (state < 3) {                                  // the settings tab only
 `P+0xE8` -- speed; `vt+0x31C` is `0x1183C8`, which writes `P+0xF0` -- duration. Their getters are
 `vt+0x2F4` (`0x118398`) and `vt+0x304` (`0x1183E8`).
 
-⭐ **So `vt+0x314` is a THIRD operating setting**, the middle slider, whose getter by the same
-spacing is `vt+0x2FC`. The screen authors it as `capacityslider`. ⚠ Its target field is NOT read
-here, and this port has no field for it: `NativeRideValue.State` carries Speed and Duration only.
+⭐⭐ **`vt+0x314` WRITES `P+0xEC`, AND THE THREE SETTINGS ARE THREE ADJACENT WORDS.** Reading the
+accessor block straight off the instructions settles it -- they sit in order and each is a one-line
+leaf:
+
+```
+0x118384  sw -> P+0xE8    speed      (setter vt+0x30C, getter vt+0x2F4 at 0x11839C)
+0x1183AC  sw -> P+0xEC    CAPACITY   (setter vt+0x314, getter vt+0x2FC at 0x1183C4)
+0x1183D4  sw -> P+0xF0    duration   (setter vt+0x31C, getter vt+0x304 at 0x1183EC)
+```
+
+Three adjacent fields, three adjacent setter slots, three sliders. The screen's own setup reads
+them back through `vt+0x2F4`, `vt+0x2FC` and `vt+0x304` in that order, which is the second reading
+that agrees. ⚠ This port has no field for capacity: `NativeRideValue.State` carries Speed and
+Duration only, because the value producer genuinely does not read capacity.
+
+## The slider ranges, from the screen's setup `FUN_001D4C80`
+
+Each slider is a widget with a **min / max / value triple**, and the value is stored `<< 16`:
+
+| slider | widget | min | max | value |
+|---|---|---|---|---|
+| speed | `+0xB98` | `+0xBBC` | `+0xBC0` | `+0xBC4` |
+| capacity | `+0xCD0` | `+0xCF4` = **1** | `+0xCF8` = `this[0x18D4]` | `+0xCFC` |
+| duration | `+0xE08` | `+0xE2C` | `+0xE30` | `+0xE34` |
+
+Each is clamped into its own range as it is read back out of the ride.
+
+⭐⭐ **THE TWO READINGS CORROBORATE EACH OTHER.** The setup stores the value `<< 0x10`, and the
+write-back reads a `u16` at `+0xBC6` / `+0xCFE` / `+0xE36` -- exactly two bytes on, the HIGH
+halfword of that fixed-point word, which is its integer part. Neither read was made looking for the
+other.
+
+⭐ **And `this[0x18D4]` is the CAPACITY MAXIMUM**, which also explains the gate on sliders 2 and 3:
+`>= 2` means "this ride holds more than one", so a single-car ride is offered neither.
 
 ⚠⚠ **SLIDERS 2 AND 3 ARE CONDITIONAL.** `extra` is `kindOf(ride) != 1 && this[0x18D4] >= 2`, and
 `vt+0xA4` is the kind getter (the same one `FUN_0015C710` asks every object). Kind 1 is `Coaster`.
@@ -89,13 +120,11 @@ Anything that did would be inventing a behaviour the console does not have.
 
 ## What is still unread, and must be before it is wired
 
-1. **What `vt+0x314` writes** -- the capacity field's offset and its consumer.
-2. **The ride screen's clamps.** The shop's live in its setup `0x1D6D28`; the ride's equivalent is
-   its own setup (vtable slot 19, `0x1D4C80`) and is not read.
-3. **What `this[0x18D4]` counts**, which gates two of the three sliders.
-4. **Where wear is applied per ride cycle** -- the consumer of `MinSpeedDamage` /
+1. **What CONSUMES `P+0xEC`.** The field and its setter are read; what capacity then feeds -- a
+   queue throughput, a car count, the wear model -- is not.
+2. **Where wear is applied per ride cycle** -- the consumer of `MinSpeedDamage` /
    `MinCapacityDamage` / `WearRate` on a live ride, as opposed to the shopfront preview.
-5. ⚠ `ride-value-producer.md`'s own warning stands: the final speed bridge
+3. ⚠ `ride-value-producer.md`'s own warning stands: the final speed bridge
    (`0x118240 -> 0x1FA818 -> 0x1C0DE8`) and whether `VAR_DURATION` is the same quantity as the
    native operating duration are NOT established. Do not overwrite script variables on the strength
    of this.
