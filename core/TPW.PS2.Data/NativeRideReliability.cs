@@ -74,10 +74,14 @@ public static class NativeRideReliability
     }
 
     /// <summary>Reliability for a ride at its current settings, or null without a tier.</summary>
-    public static int? Calculate(AssetResourceDatabase.Entry? entry, int speed, int capacity, int duration)
+    /// <param name="tier">The ride's CURRENT tier (`ParkRide.CurrentTier`, the `+0x126` byte), not
+    /// zero: every tier getter on the disc strides by it, so an upgraded ride has different
+    /// damages and a different capacity bound.</param>
+    public static int? Calculate(AssetResourceDatabase.Entry? entry, int speed, int capacity,
+                                 int duration, int tier = 0)
     {
         if (entry is not { HasRideTiers: true }) return null;
-        var t = entry.Tier(0);
+        var t = entry.Tier(tier);
         int max = t.CapacityParameter <= 0 ? 1 : t.CapacityParameter;
         return FromWear(Wear(t.MinSpeedDamage, t.MinCapacityDamage, t.WearRate,
                              speed, Math.Clamp(capacity, 1, max), max), duration);
@@ -89,6 +93,8 @@ public static class NativeRideReliability
     /// wrong and neither should be trusted until it is settled.</summary>
     public static bool MatchesShopfront(AssetResourceDatabase.Entry? entry)
     {
+        // ⚠ Tier ZERO on purpose: the shopfront figure this checks against is about an unbuilt
+        // ride, which has no tier yet.
         if (entry is not { HasRideTiers: true }) return false;
         var t = entry.Tier(0);
         int max = t.CapacityParameter <= 0 ? 1 : t.CapacityParameter;

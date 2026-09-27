@@ -191,11 +191,26 @@ public sealed class ParkRide
     /// and strides 0x34 by it. This port asks for `Tier(0)` everywhere, which is right only while a
     /// ride is at tier zero -- nothing here tracks that byte yet, and an upgraded ride would read
     /// the wrong tier.</summary>
+    /// <summary>⭐ `+0x126`, WHICH TIER THIS RIDE IS ON. Every tier getter on the disc reads this
+    /// byte and strides `0x34` by it -- `FUN_00117B28` returns `payload + tier*0x34 + 0x30`, and
+    /// its neighbours the same with other offsets -- so a ride that is not on tier zero reads a
+    /// different set of speeds, durations, damages and capacities entirely.
+    ///
+    /// ⚠ Four functions write it (`0x116048` twice, `0x116268`, and the savegame restore
+    /// `0x116BA8`) and seventeen read it, so it is a real field and not a constant. What RAISES it
+    /// -- presumably a ride upgrade -- is not decoded, and this port has no mechanism that would,
+    /// so it stays 0 here.
+    ///
+    /// ⭐ It exists so the live paths ask for the RIGHT tier rather than hardcoding zero. ⚠ The
+    /// shopfront figures deliberately do NOT use it: `PlacementCost` and `ShopfrontReliability`
+    /// describe a thing that has not been built yet, which starts at tier zero by definition.</summary>
+    public int CurrentTier { get; set; }
+
     int? _capacity;
     public int Capacity
     {
         get => _capacity ?? Math.Max(1, Definition?.CompiledEntry is { HasRideTiers: true } e
-                                        ? e.Tier(0).CapacityParameter : 1);
+                                        ? e.Tier(CurrentTier).CapacityParameter : 1);
         set => _capacity = value;
     }
     public byte CachedTrackWeight { get; set; }

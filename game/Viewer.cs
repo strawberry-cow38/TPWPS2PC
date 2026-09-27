@@ -7462,7 +7462,8 @@ public partial class Viewer : Node3D
         if (_detailsSpec == LaptopScreen.Sideshow) { ShowSideshowDetails(ride); return; }
         if (_detailsSpec == LaptopScreen.Toilet) { ShowToiletDetails(ride); return; }
         _detailsRide = ride;
-        var t = ride.Definition.CompiledEntry.Tier(0);
+        // ⚠ The ride's OWN tier, not zero -- every tier getter strides by ride[0x126].
+        var t = ride.Definition.CompiledEntry.Tier(ride.CurrentTier);
         int Pct(int v, int lo, int hi) => hi <= lo ? 0 : Math.Clamp((v - lo) * 100 / (hi - lo), 0, 100);
         var cells = new List<(string, int)>();
         foreach (var row in LaptopScreen.Ride.Rows)
@@ -7472,7 +7473,7 @@ public partial class Viewer : Node3D
                 // ⭐ LIVE, from all three sliders -- FUN_001183F0. Not ShopfrontReliability, which
                 // is this same arithmetic frozen at speed 50 and half capacity for the build menu.
                 1060 => (null, NativeRideReliability.Calculate(ride.Definition.CompiledEntry,
-                                   ride.Speed, ride.Capacity, ride.Duration) ?? 0),
+                                   ride.Speed, ride.Capacity, ride.Duration, ride.CurrentTier) ?? 0),
                 644  => (null, Math.Clamp(ride.Condition, 0, 100)),                // State of Repair
                 436  => (null, Pct(ride.Speed, t.MinSpeed, t.MaxSpeed)),           // Speed
                 919  => (null, Pct(ride.Capacity, 1, Math.Max(1, t.CapacityParameter))),
@@ -7494,7 +7495,7 @@ public partial class Viewer : Node3D
                + $"capacity {ride.Capacity} in 1..{t.CapacityParameter}, "
                + $"duration {ride.Duration} in {t.MinDuration}..{t.MaxDuration}; "
                + $"basis {ride.Definition.CompiledEntry.BaseExcitement}, excitement {ride.Value?.ToString() ?? "-"}, "
-               + $"reliability {NativeRideReliability.Calculate(ride.Definition.CompiledEntry, ride.Speed, ride.Capacity, ride.Duration)}"
+               + $"reliability {NativeRideReliability.Calculate(ride.Definition.CompiledEntry, ride.Speed, ride.Capacity, ride.Duration, ride.CurrentTier)}"
                + $" [shopfront {ride.Definition.ShopfrontReliability}, control "
                + $"{(NativeRideReliability.MatchesShopfront(ride.Definition.CompiledEntry) ? "PASS" : "FAIL")}]");
     }
@@ -7565,7 +7566,7 @@ public partial class Viewer : Node3D
             return;
         }
         if (_detailsRide.Definition?.CompiledEntry is not { HasRideTiers: true } e) return;
-        var t = e.Tier(0);
+        var t = e.Tier(_detailsRide.CurrentTier);
         int Val(int lo, int hi) => lo + (hi - lo) * Math.Clamp(pct, 0, 100) / 100;
         switch (spec.Rows[row].TextId)
         {
