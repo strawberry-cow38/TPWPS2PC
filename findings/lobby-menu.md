@@ -243,6 +243,8 @@ open water.
 
 ## Still open
 
-- Vtable slots 3, 5, 6, 7, and `FUN_002187f0` / `FUN_00218880` / `FUN_00218f78` (confirm, back, leave).
+- Vtable slots 3, 5, 6, 7.
+- What the prompt modes 4..8 actually SAY (the text ids the other cases format) and what confirming
+  one does -- `FUN_00218f78` builds the dialogue but the accept path is not yet read.
 - The two `u16` at record `+0x02` / `+0x04`.
 - Choosing a park does not load it -- the lobby is a scene and a selector, not yet a hand-off.
