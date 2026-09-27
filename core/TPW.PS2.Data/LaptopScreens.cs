@@ -180,7 +180,7 @@ public sealed record LaptopScreen(
         new LaptopRow[]
         {
             new(168,  LaptopRowKind.Value),                     // Users         int
-            new(1077, LaptopRowKind.Value),                     // Last Cleaned  DAYS, FUN_00142948
+            new(1077, LaptopRowKind.Days),                      // Last Cleaned  "15d", FUN_00142948
             new(132,  LaptopRowKind.Bar, "cleanlinessbar"),     // Cleanliness
         });
 
@@ -339,6 +339,10 @@ public enum LaptopRowKind
     Money,
     /// <summary>A word, not a number -- "Unavailable", "1yr".</summary>
     Text,
+    /// <summary>⭐ A count of DAYS, written with a `d` suffix -- "15d". Master, 2026-09-27:
+    /// "the last cleaned should have a d suffix". `FUN_00142948` is the writer; it is the toilet
+    /// screen's Last Cleaned and is neither the money formatter nor the plain-digits one.</summary>
+    Days,
     /// <summary>An orange frame with a cyan fill; full scale 100.</summary>
     Bar,
     /// <summary>A yellow track with a green knob.</summary>

@@ -1344,6 +1344,21 @@ public partial class Viewer : Node3D
     ///
     /// ⚠ A thing with no compiled record falls back to the folder rather than vanishing, and the
     /// `sCoasterType` test stays as the coaster fallback for the same reason.</summary>
+    /// <summary>⭐ Which asset kinds a laptop screen is ABOUT, so its model window can show one.
+    /// The sets are <see cref="LaptopListScreen"/>'s, which were read off the console's own
+    /// populate call (`FUN_0015c710`) rather than chosen here.
+    /// ⚠ Hire is empty on purpose: staff are not assets, so no kind applies and the caller falls
+    /// back rather than showing a building on a staff page.</summary>
+    static AssetResourceDatabase.AssetKind[] LaptopModelKinds(LaptopScreen spec) =>
+          spec == LaptopScreen.AllShops     || spec == LaptopScreen.Shop
+            ? LaptopListScreen.Shops.Kinds
+        : spec == LaptopScreen.AllSideshows || spec == LaptopScreen.Sideshow
+            ? LaptopListScreen.Sideshows.Kinds
+        : spec == LaptopScreen.AllToilets   || spec == LaptopScreen.Toilet
+            ? LaptopListScreen.Toilets.Kinds
+        : spec == LaptopScreen.Hire ? Array.Empty<AssetResourceDatabase.AssetKind>()
+        : LaptopListScreen.Rides.Kinds;
+
     AssetResourceDatabase.AssetKind? BuildKind(AssetLibrary.RideAssets r)
     {
         var def = r.Model == null ? null : DefinitionFor(r.Model);
@@ -3714,14 +3729,30 @@ public partial class Viewer : Node3D
         // ⭐ Build the model once, from the ride the screen is about, then step it per frame.
         if (_laptopModel == null && _laptopFrame == 0 && _lib?.Rides != null)
         {
-            // ⚠ This picks out of `_lib.Rides` by substring, so it is only honest for the screens
-            // whose subject IS a ride. Shop, sideshow and staff models live elsewhere and are not
-            // wired, which is why those screens render the wrong model or none -- a HARNESS gap,
-            // recorded in findings rather than passed off as the port's behaviour.
-            string want = spec == LaptopScreen.Sideshow ? "arcade"
-                        : spec == LaptopScreen.Shop ? "balloon" : "monkey";   // Crazy Ape's asset
-            var pick = _lib.Rides.FirstOrDefault(r => r.Name.Contains(want, StringComparison.OrdinalIgnoreCase))
+            // ⭐⭐ THE MODEL IS PICKED BY THE SCREEN'S OWN ASSET KIND NOW, not by a hardcoded
+            // name. This used to be `"arcade"` / `"balloon"` / else `"monkey"`, so every screen
+            // whose subject was not a ride showed Crazy Ape -- master: "can u do a pass to get all
+            // buildings' 3d models on laptop pages to show?". `LaptopListScreen` already carries
+            // which AssetKinds each screen lists, read off the console's own populate call, and
+            // `BuildKind` reads a kind off the compiled record, so the two meet here.
+            var kinds = LaptopModelKinds(spec);
+            var ofKind = _lib.Rides.Where(r => BuildKind(r) is { } k && Array.IndexOf(kinds, k) >= 0).ToList();
+            // ⚠ THE TOILET SCREENS ARE A NAME GUESS AND ARE MARKED AS ONE. They list `Feature`,
+            // which is also bins, benches and trees, and the console narrows it with a per-object
+            // predicate (`vtable+0x134`) that is NOT decoded -- see findings/laptop-screens.md. So
+            // the toilet pages prefer an asset that READS like a toilet and fall back to the first
+            // feature. That is a harness choice to put something sensible in the window, not a
+            // decode, and it must not be mistaken for the console's rule.
+            bool wantToilet = spec == LaptopScreen.Toilet || spec == LaptopScreen.AllToilets;
+            var pick = (wantToilet
+                        ? ofKind.FirstOrDefault(r => r.Name.Contains("toilet", StringComparison.OrdinalIgnoreCase)
+                                                  || r.Name.Contains("bog", StringComparison.OrdinalIgnoreCase)
+                                                  || r.Name.Contains("loo", StringComparison.OrdinalIgnoreCase))
+                        : null)
+                    ?? ofKind.FirstOrDefault()
                     ?? _lib.Rides.FirstOrDefault();
+            GD.Print($"[laptop] model pick: kinds [{string.Join(",", kinds)}] -> "
+                   + $"{ofKind.Count} candidates, chose {(pick == null ? "nothing" : Leaf(pick.Name))}");
             BuildLaptopModel(pick);
             if (_laptopView != null) _shopPanel.ModelTexture = _laptopView.GetTexture();
         }
@@ -3802,6 +3833,9 @@ public partial class Viewer : Node3D
             {
                 LaptopRowKind.Bar or LaptopRowKind.Slider => (null, pct),
                 LaptopRowKind.Money => ($"${pct * 37:N0}", 0),
+                // ⭐ A day count carries its `d`, per master: "the last cleaned should have a d
+                // suffix". The NUMBER here is still a harness sweep, only its unit is real.
+                LaptopRowKind.Days  => ($"{pct}d", 0),
                 // The ride's three word rows read as they do on the real screen.
                 // ⚠ Upgrades (7) carries the word, Addons (8) does not -- that is which rows the
                 // SCENE gives a value element to, and this harness had the two the wrong way round.
@@ -6766,6 +6800,9 @@ public partial class Viewer : Node3D
 
     /// <summary>The model for the held thing, built the same way the viewer builds any other.</summary>
     SubViewport _laptopView; AnimatedModel _laptopModel; Camera3D _laptopCam; int _laptopModelFrame;
+    /// <summary>⭐ Hold the pose instead of stepping it. Set when the subject has no slot 6 to
+    /// play, so the window shows the finished building rather than looping its construction.</summary>
+    bool _laptopModelHold;
 
     /// <summary>⭐⭐ THE INFO SCREEN'S MODEL, which is a real model and not a picture of one.
     ///
@@ -6794,8 +6831,23 @@ public partial class Viewer : Node3D
         // ⭐ Slot 6, per the dispatcher; anything else is a fallback and says so in the log.
         var rec = anim?.Records().FirstOrDefault(r => r.Slot == 6 && r.Skeletal)
                ?? anim?.Records().FirstOrDefault(r => r.Slot == 6);
-        if (rec != null) drawn.UseRecord(rec);
-        drawn.SetFrame(0);
+        // ⚠⚠ A MODEL WITH NO SLOT 6 MUST NOT BE LEFT IN ITS BIND POSE. A shop's parts are
+        // stacked flat there and the window drew a sliver: `bee.mps` measured 3.00 x 0.12 and
+        // `arcade.mps` 3.00 x 0.01, against `loo.mps` -- which does pose in bind -- at 1.34 x 0.81.
+        // Master: "can u do a pass to get all buildings' 3d models on laptop pages to show?".
+        //
+        // ⭐ The park never shows that pose either: the script plays slot 0, Create, and the
+        // building EXISTS at the END of it. So that is the fallback, held rather than stepped --
+        // there is no idle to play without slot 6, and looping Create would rebuild the shop over
+        // and over in a window master has already said is "just a front facing render of it".
+        _laptopModelHold = rec == null;
+        if (rec != null) { drawn.UseRecord(rec); drawn.SetFrame(0); }
+        else if (anim?.Records().FirstOrDefault(r => r.Slot == 0) is { } create)
+        {
+            drawn.UseRecord(create);
+            drawn.SetFrame(Math.Max(0, create.DurationFrames - 1));
+        }
+        else drawn.SetFrame(0);
 
         _laptopView = new SubViewport
         {
@@ -6866,15 +6918,17 @@ public partial class Viewer : Node3D
                + (heightBinds ? "" : " -- top-aligned, as the console leaves it"));
         _laptopModel = drawn; _laptopModelFrame = 0;
         GD.Print($"[laptop] model: {Leaf(ride.Name)}, "
-               + (rec == null ? "NO slot-6 record -- showing its default pose"
-                              : $"slot 6 v0, {rec.DurationFrames} frames"));
+               + (rec != null ? $"slot 6 v0, {rec.DurationFrames} frames"
+                  : anim?.Records().FirstOrDefault(r => r.Slot == 0) is { } c0
+                    ? $"no slot 6 -- held at the last frame of Create (slot 0, {c0.DurationFrames} frames)"
+                    : "no slot 6 and no Create -- its bind pose, which may be flat"));
     }
 
     /// <summary>One frame of the info screen's model. ⚠ Its own clock: the screen is a menu and
     /// does not step the park.</summary>
     void StepLaptopModel()
     {
-        if (_laptopModel == null) return;
+        if (_laptopModel == null || _laptopModelHold) return;
         _laptopModelFrame++;
         _laptopModel.SetFrame(_laptopModelFrame % Math.Max(1, _laptopModel.Frames));
     }
