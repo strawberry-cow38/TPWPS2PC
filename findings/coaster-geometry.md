@@ -446,7 +446,20 @@ Horizontally every track passes within 0.07 cells of its post-top centre.
 strawberry, who knows the console: **"the 'poking up' is intentional."** That is the −0.12 group, and it
 is the part of the table that exists only because `0x19a420` reads the helper's LOCAL y and not its
 drawn height, so it corroborates that reading from outside the code. The same rule is what floats
-Caterpillar and Scatty Batty; not yet confirmed either way.
+Caterpillar and Scatty Batty.
+
+strawberry, 2026-09-27: **"caterpillar isnt meant to float."** OPEN, with what was checked:
+- cat_co's `TrackDummyCentre` (local 9.5 on `PYLON_TOWER`, whose own y is 0) with its loft path
+  starting at **−4.5** (the only pylon whose path does not start at 0) sits exactly on the stake's tip
+  at every loft. The +0.375 is `0x19a420`'s `+0x60`, which it gives every coaster but the three
+  named there, cat_co included (READ).
+- A general change cannot sink it alone: Temple of Gloom and Chak Atak land within 3 u of their
+  station rails under exactly this rule (§4.5), and cat_co's dummy is authored like theirs.
+- **The hidden stacker is not it.** cat_co's `STACKER` (bind 0..2.27, lofted 0 → 90 like the
+  others' stackers) is the column a stacked pylon stands on (`HeightDummy` on it at 2.26 + 9L). Shown
+  on an unstacked pylon, it stands a log beside the track with the stake inside it (rendered with the
+  hide off).
+- Whether the console floats it too is unknown: nobody here can run the PS2 build.
 
 ### 4.4 Fittings → nodes (READ `0x19a4dc..0x19a518` against the data)
 
@@ -502,7 +515,35 @@ the two rules may coincide.
   together with the pylon-only header flag. The stations only corroborate it in part.
 - Moonshot's exit node is at 1125 (exit y ≈ 1011 u, about 4 cells) against the entry at 335.
   **Moonshot's station segment is hidden** (`0x19d1e0`: track visible = 0 for (3,0,0)'s exit
-  node).
+  node). Against its cannon: the beam's exit end is 0.28 cells under `StartPylonPosn` and its entry
+  end 0.57 under `EndPylonPosn` (strawberry: "doesnt fully connect to the station? may be
+  intentional"). Moonshot's bind is −0.058, so additive and "replace" agree and no pose reading
+  closes that gap.
+
+**⭐ The Shocker's station model says where its rail goes, and it is not 1425.** strawberry: "shocker is
+meant to run through its station (the two balls) ... theres holes in the balls as if the track goes
+through there." Ray-cast through `shocker.mps` mesh `EXIT` along the station's axis (z = 1.5):
+- each ball has a **tunnel from y 3.55 to 4.45 cells**, about 0.64 wide;
+- the car (`car.mps`) hangs **0.87** below its origin, so a rail at **4.41** (`Start/Mid/EndPylonPosn`
+  are all at 4.409) carries it exactly through both holes. Two independent features of the model agree.
+
+The port puts the station nodes at **5.57** (1425 u: y_base −256 + 25.6·(14 + 90·1470/2560) + 0), over
+the balls, and that is what the code reads. Every link was checked on 2026-09-27:
+- the table: 1470 at `0x2acb60 + 3·0x48 + 0x18 + 8`, read off the ELF;
+- the base: −0x100 for both station nodes (`0x19cae0`, `0x122060`);
+- the pose: `0x1a87f8` hands the MODEL HEADER to `0x1a7f48`, which tests its `+0x1c & 4` (0xa5 → add)
+  and writes the posed matrix into the header's own node records, the ones `0x19a420` reads;
+- the lookup: `0x1f1f78(model, 0x400000, 2)` matches `id == 2 && flags & 0x400000` →
+  `TrackDummyCentre` (index 1 + hdr `+0x34` 1 = helper record 1 on this one-mesh model);
+- the other channels: incline key t10 is the identity, and the Shocker has no section 9;
+- the height: its only readers are the getter `0x19a1d0`, the stack sum (≤ 0x600), the loft
+  (`h/2560` clamped to 0..1) and the tool's edits. **Nothing clamps 1470**, the only station height
+  above the tool's 0x500 cap.
+
+So the model wants 4.41 and the code, as read, gives 5.57. The code would need attachY ≈ 54.1 where
+it reads 65.7, i.e. a bind of ≈ 2.4 instead of 14. INFERRED, not tested: the station model and 1470
+were set for a pylon whose dummy sat lower, and the PS2's `stdpylon` moved it. **Unresolved without
+a console capture**; the port keeps the code reading.
 
 ---------------------------------------------------------------------------------------------------
 

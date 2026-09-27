@@ -523,7 +523,31 @@ public partial class CoasterSmoke : Node3D
                 top = Math.Max(top, csim.Trains.Max(t => t.PrevSpeed));
                 left += ride.Left.Count; ride.ClearLeft();
                 if (i % 200 == 0) await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
-                if (i == 700) await Shot("cars");
+                if (i == 700)
+                {
+                    await Shot("cars");
+                    // The station side-on, once it has built: where the track meets the station model.
+                    var frameS = frame.GlobalTransform;
+                    Vector3 At(CoasterNode n) => frameS * new Vector3(n.X / 256f, n.TrackY / 256f, n.Z / 256f);
+                    Vector3 ex = At(track.Exit), en = At(track.Entry);
+                    if (System.Environment.GetEnvironmentVariable("TPW_COASTER_PROBE") == "1")
+                        GD.Print($"[probe] {type.Name} station: exit track y {ex.Y:F3}, entry {en.Y:F3}; "
+                                 + $"floor at the station {park.CellY(park.Placed[^1].X, park.Placed[^1].Y):F3}, at the exit cell {park.CellY(track.Exit.CellX, track.Exit.CellZ):F3}");
+                    if (shots != null)
+                    {
+                        var mid = (ex + en) / 2; mid.Y = (ex.Y + park.CellY(track.Exit.CellX, track.Exit.CellZ)) / 2;
+                        var run = en - ex; run.Y = 0; run = run.Normalized();
+                        var across = new Vector3(-run.Z, 0, run.X);
+                        foreach (var layer in viewer.FindChildren("*", "CanvasLayer", true, false).OfType<CanvasLayer>()) layer.Visible = false;
+                        Set(viewer, "_freeCam", true);
+                        var cam = Field<Camera3D>(viewer, "_cam");
+                        float back = (ex - en).Length() * 1.1f + 3f;
+                        cam.GlobalPosition = mid + across * back + Vector3.Up * 0.6f;
+                        cam.LookAt(mid, Vector3.Up);
+                        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                        Call(viewer, "SaveShot", System.IO.Path.Combine(shots, $"{world.ToLowerInvariant()}_{folder.ToLowerInvariant()}_station.png"));
+                    }
+                }
                 if (i % 5 == 0 && Field<RideSounds>(viewer, "_sounds") is { } snd
                     && typeof(RideSounds).GetField("_voices", BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(snd) is IEnumerable vs)
                     foreach (var vo in vs)
