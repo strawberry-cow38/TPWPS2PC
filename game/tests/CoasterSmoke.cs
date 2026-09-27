@@ -163,6 +163,16 @@ public partial class CoasterSmoke : Node3D
                 Check(Field<bool>(viewer, "_coasterFieldDone") && field.Count > 0 && field.All(q => Dist(q) >= 0x300 && Dist(q) <= 0x800)
                       && field.Contains(next) && !field.Contains(last.Cell),
                       $"the valid-cell field is scanned in 5 frames: {field.Count} cells, all 3..8 from the last pylon, the ring's next among them");
+                // Wherever the mouse is when the scan restarts, the field is the same: the window sits on
+                // the last pylon (strawberry: "some tiles that are valid targets arent being shown").
+                var here = field.ToHashSet();
+                Call(viewer, "RestartCoasterField");
+                Set(viewer, "_cursorOverride", (at.X + 12, at.Z + 12));
+                try { for (int f = 0; f < 6; f++) Call(viewer, "UpdateCoasterGhost", 0.0); }
+                finally { Set(viewer, "_cursorOverride", null); }
+                var away = Field<List<ParkCell>>(viewer, "_coasterField").ToHashSet();
+                Check(Field<bool>(viewer, "_coasterFieldDone") && away.SetEquals(here),
+                      $"the field does not follow the mouse: scanned with it 12 cells off, {away.Count} cells, the same {here.Count}");
                 var ghost = (GhostMarkers)Member("_ghostView").GetValue(viewer);
                 Check(ghost.Root.GetChildren().OfType<MeshInstance3D>().Count() >= 2,
                       "the field is drawn (171 beside the cursor's own tile)");
@@ -194,6 +204,18 @@ public partial class CoasterSmoke : Node3D
                   "a press on the entry cell closes the ring without a pylon, and every node is valid");
             Check(Member("_coasterTool").GetValue(viewer) == view && Member("_coasterMode").GetValue(viewer).ToString() == "Edit",
                   "closing from the station session goes on to the pylon edit (0x11b6a4)");
+            // ⭐ The pylon edit's keys do not pause the park. Through Godot's own input pipeline, so the
+            // event reaches every handler it would in play: Left/Right were also the model viewer's
+            // frame step and Space its play toggle, and `_playing` is the park's clock too.
+            Set(viewer, "_playing", true);
+            foreach (var key in new[] { Key.Left, Key.Right, Key.Space })
+            {
+                Input.ParseInputEvent(new InputEventKey { Keycode = key, PhysicalKeycode = key, Pressed = true });
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                Input.ParseInputEvent(new InputEventKey { Keycode = key, PhysicalKeycode = key, Pressed = false });
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            }
+            Check(Field<bool>(viewer, "_playing"), "Left, Right and Space in the pylon edit leave the park running");
             // The D-pad in the edit: raise a hill, as a player would, one pylon at a time.
             for (int i = 0; i < track.Pylons.Count; i++) track.Pylons[i].Height = Hills[i];
             track.Recompute();

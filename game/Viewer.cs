@@ -881,9 +881,14 @@ public partial class Viewer : Node3D
             Status("details closed");
             return;
         }
-        if (CoasterToolKey(k.Keycode)) return;
+        // ⚠⚠ A KEY A TOOL OR MENU TAKES IS MARKED HANDLED. Returning is not enough: Godot hands the same
+        // event on to _UnhandledInput, whose model-viewer switch pauses on Space and on Left/Right
+        // (StepFrame) -- and `_playing` is the park's clock too, so editing pylons with the arrows
+        // stopped the sim (strawberry: "the game also pauses sim sometimes when im editing pylons").
+        if (CoasterToolKey(k.Keycode)) { GetViewport()?.SetInputAsHandled(); return; }
         if (_objMenu is { Open: true })
         {
+            GetViewport()?.SetInputAsHandled();
             switch (k.Keycode)
             {
                 case Key.Up: _objMenu.Move(-1); return;
@@ -9504,7 +9509,9 @@ public partial class Viewer : Node3D
         {
             switch (k2.Keycode)
             {
-                case Key.Space: _playing = !_playing; break;
+                // A toggle on key-REPEAT flips it back and forth while held; _UnhandledKeyInput drops
+                // echoes before a tool can claim them, so a held Space in the pylon edit landed here.
+                case Key.Space when !k2.Echo: _playing = !_playing; break;
                 // ⚠ Panning can lose the model off-screen with no way back. R re-frames it.
                 case Key.R: ReFrame(); break;
                 // Keyboard panning, because a right-drag is not delivered on every setup.
@@ -9512,8 +9519,9 @@ public partial class Viewer : Node3D
                 case Key.S: Pan(0, -1); break;
                 case Key.A: Pan(1, 0); break;
                 case Key.D: Pan(-1, 0); break;
-                case Key.Left: StepFrame(-1); break;
-                case Key.Right: StepFrame(1); break;
+                // Frame-stepping is the model viewer's; in the park it would only stop the clock.
+                case Key.Left when _mode != Mode.Park: StepFrame(-1); break;
+                case Key.Right when _mode != Mode.Park: StepFrame(1); break;
             }
         }
     }

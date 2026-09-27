@@ -419,11 +419,16 @@ cut straight where the 17×17 window ends; the cursor tile (165) is teal inside 
 is still not established.
 
 **In the port** (`Viewer.Coasters.cs`, 2026-09-27): the field is scanned as §4.7 says (4 rows a
-frame over the cursor's 17 columns, restarted on a press, an Undo or a loop, drawn once complete,
+frame, restarted on a press, an Undo or a loop, drawn once complete,
 171 while the ghost is valid under the full rules and 175 while it is not), with `CoasterTrack.FieldCell`
 as the cheap rule set on a scratch node. `GhostMarkers` draws 171 as that measured grey; the port's
 render of it reads (109, 134, 107) over grass (28, 131, 23), the same 135 at 0.75. Build mode only:
 the edit-mode field, whose third condition also checks the next pylon, is not drawn.
+⚠ The port's 17×17 window is centred on the **last pylon**, not on the cursor. On the console the
+two coincide: the cursor is warped onto the current node when the tool opens, a pylon goes down at
+the cursor, and a d-pad moves it a cell or two in the scan's five frames. The port's cursor is a free
+mouse, and centring on it lost valid cells (strawberry: "some tiles that are valid targets arent
+being shown"): with the mouse 12 cells away the window listed 8 of 83.
 
 Button bars (`0x13e340` order Triangle, Circle, Cross, Square; rows resolved from the EUR text DB):
 

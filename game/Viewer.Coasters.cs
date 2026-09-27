@@ -56,10 +56,17 @@ public partial class Viewer
     bool _coasterGhostOk, _coasterFromStation;
 
     /// <summary>⭐ THE VALID-CELL FIELD (`0x11aa70` / `0x11acc8`, coaster-building.md §4.7): the grey
-    /// patch that shows where the next pylon may go. Scanned 4 rows a frame over the 17 columns around
-    /// the cursor, from `cursor.z − 8` at the restart to `cursor.z + 8` now; restarted on every
-    /// selection and every Undo, NOT when the cursor moves, so it stays centred where the last pylon
-    /// went down. Drawn only once complete.</summary>
+    /// patch that shows where the next pylon may go. Scanned 4 rows a frame over a 17×17 window,
+    /// restarted on every selection and every Undo, NOT when the cursor moves, and drawn only once
+    /// complete.
+    ///
+    /// ⚠ CENTRED ON THE LAST PYLON, NOT THE CURSOR -- a deliberate difference. The console centres the
+    /// window on its cursor (`cursor.z − 8` at the restart, the columns around the cursor each frame),
+    /// but that cursor is warped onto the current node when the tool opens and a pylon goes down AT it,
+    /// and a d-pad moves it a cell or two in the five frames. So on the console the window sits on
+    /// the last pylon, and since no rule lists a cell more than 8 from it, it holds every cell there
+    /// is. The port's cursor is a free mouse: wherever it was at the restart, the window went, and
+    /// valid cells fell outside it (strawberry: "some tiles that are valid targets arent being shown").</summary>
     readonly List<ParkCell> _coasterField = new();
     int _coasterFieldZ = int.MinValue;
     bool _coasterFieldDone;
@@ -67,11 +74,12 @@ public partial class Viewer
     void RestartCoasterField() { _coasterField.Clear(); _coasterFieldZ = int.MinValue; _coasterFieldDone = false; }
 
     /// <summary>One frame of the scan; true on the frame it completes.</summary>
-    bool StepCoasterField(CoasterView v, int cx, int cz)
+    bool StepCoasterField(CoasterView v)
     {
         if (_coasterFieldDone) return false;
         var t = v.Track;
         if (t.Pylons.Count >= CoasterTrack.MaxPylons) { _coasterFieldDone = true; return true; }
+        int cx = t.Last.CellX, cz = t.Last.CellZ;
         if (_coasterFieldZ == int.MinValue) _coasterFieldZ = cz - 8;
         for (int r = 0; r < 4 && _coasterFieldZ <= cz + 8; r++, _coasterFieldZ++)
             for (int x = cx - 8; x <= cx + 8; x++)
@@ -681,7 +689,7 @@ public partial class Viewer
         if (v == null) return;
         if (_coasterMode == CoasterMode.Edit) { StepPylonEdit(v, delta); return; }
         if (!CursorCell(out int x, out int y)) return;
-        bool fieldDone = StepCoasterField(v, x, y);
+        bool fieldDone = StepCoasterField(v);
         if ((x, y) == _coasterGhostAt && !fieldDone) return;
         _coasterGhostAt = (x, y);
         var t = v.Track;
@@ -876,6 +884,9 @@ public partial class Viewer
                 FinishCoasterTool(); return true;
             case Key.Space when _coasterMode == CoasterMode.Build:
                 CoasterLoop(); return true;
+            // Space is Square, and in the pylon edit Square is Prev (bar Exit / Next / Move / Prev).
+            case Key.Space when _coasterMode == CoasterMode.Edit:
+                CoasterPick(-1); return true;
             case Key.Period when _coasterMode == CoasterMode.Edit:
                 CoasterPick(1); return true;
             case Key.Comma when _coasterMode == CoasterMode.Edit:
