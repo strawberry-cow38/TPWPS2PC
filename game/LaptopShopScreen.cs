@@ -297,6 +297,7 @@ public sealed partial class LaptopShopScreen : Control
     {
         _menuScene = sceneFile;
         _spec = null;
+        _pageArrows = new Rect2();   // ⚠ a menu has none; a stale rect would eat clicks
         _menu.Clear();
         if (options != null) _menu.AddRange(options);
         _menuSelected = selected;
@@ -600,6 +601,15 @@ public sealed partial class LaptopShopScreen : Control
         QueueRedraw();
     }
 
+    /// <summary>⚠ Modulate so the YELLOW art lands on the orange the real screen shows. Godot
+    /// multiplies, so the factor is rendered/art per channel.</summary>
+    static Color ArrowTint => new(LaptopArrows.Rendered.R / (float)LaptopArrows.Art.R,
+                                  LaptopArrows.Rendered.G / (float)LaptopArrows.Art.G,
+                                  LaptopArrows.Rendered.B / 255f);
+
+    /// <summary>The paging arrows' drawn rectangle, in screen pixels, or empty when none is up.</summary>
+    Rect2 _pageArrows;
+
     public override void _GuiInput(InputEvent @event)
     {
         GuiEvents++;
@@ -643,6 +653,17 @@ public sealed partial class LaptopShopScreen : Control
             && b.ButtonIndex is MouseButton.Left or MouseButton.Right)
         {
             GuiClicks++;
+            // ⭐ THE PAGING ARROWS, LEFT HALF BACK AND RIGHT HALF ON. `UIarrow.ssh` is one
+            // sprite holding both triangles, symmetric about its middle (208 opaque pixels left,
+            // 205 right), so the halves are the two buttons.
+            if (b.ButtonIndex == MouseButton.Left && _pageArrows.Size.X > 0
+                && _pageArrows.HasPoint(b.Position))
+            {
+                Cue(LaptopSounds.Cue.Move);
+                Paged?.Invoke(b.Position.X < _pageArrows.Position.X + _pageArrows.Size.X / 2f ? -1 : +1);
+                AcceptEvent();
+                return;
+            }
             // ⚠⚠ HIT-TEST THE CLICK, DO NOT TRUST THE HOVER. `_menuHover` is set by MOTION, and
             // the wheel moves rows under a cursor that never moved -- so a scroll followed by a
             // click with no twitch in between would have activated whatever row used to be there.
@@ -763,8 +784,21 @@ public sealed partial class LaptopShopScreen : Control
         var layout = LayoutFor(_spec);
         Vector2 At(SceneLayout.Element e) => o + new Vector2(e.X, e.Y) * s;
 
+        _pageArrows = new Rect2();
         if (layout[_spec.TitleElement] is { } title)
             DrawRun(_title, At(title), s, Of(ShopScreen.Highlight), title.Justify);
+
+        // ⭐ THE `◀▶` BESIDE A PAGEABLE TITLE. The list screens step through the park's items of
+        // their kind, and until now the only way to do it was the keyboard -- the arrows the scene
+        // authors were not drawn at all. ⚠ The rect is REMEMBERED, not re-derived: `_GuiInput`
+        // hit-tests this very rectangle, which is the rule the rest of this file already follows.
+        if (_spec.TitleArrowElement != null && _arrows != null
+            && layout[_spec.TitleArrowElement] is { } pager)
+        {
+            var asize = new Vector2(LaptopArrows.NativeWidth, LaptopArrows.NativeHeight) * s;
+            _pageArrows = new Rect2(At(pager) - new Vector2(0, asize.Y / 2f), asize);
+            DrawTextureRect(_arrows, _pageArrows, false, ArrowTint);
+        }
 
         // ⭐ The model window. Drawn before the rows so nothing it overlaps can be hidden by it.
         if (ModelTexture != null && layout[_spec.ModelElement] is { } window)
@@ -819,9 +853,7 @@ public sealed partial class LaptopShopScreen : Control
             {
                 // ⚠ Modulate so the YELLOW art lands on the orange the real screen shows; see
                 // LaptopArrows. Godot multiplies, so the factor is rendered/art per channel.
-                var want = new Color(LaptopArrows.Rendered.R / (float)LaptopArrows.Art.R,
-                                     LaptopArrows.Rendered.G / (float)LaptopArrows.Art.G,
-                                     LaptopArrows.Rendered.B / 255f);
+                var want = ArrowTint;
                 // ⚠⚠ THE ELEMENT'S ROW IS THE SPRITE'S CENTRE, and getting this wrong twice is
                 // what master saw: "the thing misaligned were the arrows on prize and price for
                 // sideshows". Derived rather than nudged -- a label row is the TEXT'S TOP and

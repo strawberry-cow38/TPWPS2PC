@@ -30,7 +30,12 @@ public sealed record LaptopScreen(
     string LabelElement,
     string ValueElement,
     string ModelElement,
-    IReadOnlyList<LaptopRow> Rows)
+    IReadOnlyList<LaptopRow> Rows,
+    /// <summary>⭐ The `◀▶` beside a PAGEABLE title, for the list screens whose subject you step
+    /// through. Null on a screen about one fixed thing. ⚠ The scene's name for it differs per
+    /// screen -- `ItemSelectArrows` on rides and shops, `ItemSelectArrow` on sideshows and
+    /// toilets, `itemarrows` on staff -- so it is carried here rather than guessed at.</summary>
+    string TitleArrowElement = null)
 {
     /// <summary>The console's row step, `DAT_002E9CA8` = 32. The sideshow's draw shows it in the
     /// clear: its labels go out at `iVar9`, `+0x20`, `+0x40`, `+0x60`, i.e. 32 apart.</summary>
@@ -213,7 +218,7 @@ public sealed record LaptopScreen(
             new(857, LaptopRowKind.Bar, "ExcitementBar"),            // Excitement
             new(128, LaptopRowKind.Bar, "StateOfRepairBar"),         // State of Repair
             new(636, LaptopRowKind.Bar, "RemainingLifeBar"),         // Remaining Life
-        });
+        }, "ItemSelectArrows");
 
     /// <summary>⚠ Two of its four labels are `STR_SINGLESHOP_*` rather than `STR_ALLSHOPS_*`
     /// (Takings 106 and Profit 986) -- the console reuses the single-shop strings for the same two
@@ -226,7 +231,7 @@ public sealed record LaptopScreen(
             new(106, LaptopRowKind.Money),                           // Takings          $
             new(986, LaptopRowKind.Money),                           // Profit           $
             new(451, LaptopRowKind.Bar, "satisfactionbar"),          // Satisfaction
-        });
+        }, "ItemSelectArrows");
 
     public static readonly LaptopScreen AllSideshows = new(
         "main_i_sideshow.sce", 20, "ItemSelect", "InfoText", "InfoValues", "Model",
@@ -236,7 +241,7 @@ public sealed record LaptopScreen(
             new(365, LaptopRowKind.Money),                           // Total Profit     $
             new(907, LaptopRowKind.Bar, "excitementbar"),            // Excitement
             new(537, LaptopRowKind.Bar, "satisfactionbar"),          // Satisfaction
-        });
+        }, "ItemSelectArrow");
 
     /// <summary>⚠ ONE ROW, and its draw is the shortest on the laptop: a single label
     /// (`STR_ALLTOILETS_OVERALL_CLEANLINESS`) and a single bar, with NO value formatter called at
@@ -250,7 +255,7 @@ public sealed record LaptopScreen(
         new LaptopRow[]
         {
             new(269, LaptopRowKind.Bar, "CleanlinessBar"),           // Cleanliness
-        });
+        }, "ItemSelectArrow");
 
     /// <summary>The "All ..." list screens that are ready to draw.
     ///
