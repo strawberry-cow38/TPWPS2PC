@@ -54,6 +54,44 @@ public partial class Viewer
     /// <summary>⭐ `base` first (load id 1), then the eight parks. ⚠ The archive is opened as the
     /// CURRENT wad so the existing indexer enumerates its `.mps`/`.aps` pairs for us -- the same
     /// move `LoadMap` makes when it switches world.</summary>
+    /// <summary>⭐ THE FRONT END. The console starts here and reaches the lobby through it, so
+    /// this is the route rather than `--lobby` being the front door.
+    ///
+    /// ⚠ Movies are skipped with a note on screen, on master's instruction -- the sequencing is
+    /// decoded (pair table `0x35ED50`, pair index = the lobby's world index) but nothing plays an
+    /// `.MPC` here.</summary>
+    void EnterMainMenu()
+    {
+        LoadHudFont();
+        if (_uiRoot == null || _hudFont == null)
+        { GD.PrintErr("[menu] no UI root or font -- front end stays off"); return; }
+        _mainMenu ??= MainMenu.Create(_lib, _hudFont, _text);
+        if (_mainMenu == null) return;
+        if (_mainMenu.GetParent() == null) _uiRoot.AddChild(_mainMenu);
+        _mainMenu.Chosen -= OnMenuChosen;
+        _mainMenu.Chosen += OnMenuChosen;
+        HideParkScene();
+        _mainMenu.Open_();
+        GD.Print("[menu] front end open");
+        Status("main menu -- arrows, Enter to choose");
+    }
+
+    void OnMenuChosen(MainMenu.Action what)
+    {
+        GD.Print($"[menu] chose {what}");
+        switch (what)
+        {
+            case MainMenu.Action.MainGame:
+                _mainMenu.Hide();
+                EnterLobby();           // ⭐ the console's own route: front end -> world map
+                return;
+            case MainMenu.Action.Exit:
+                _mainMenu.Hide();
+                Status("exit -- nothing to quit to in this port");
+                return;
+        }
+    }
+
     void EnterLobby()
     {
         var wad = _lib.WadFiles().FirstOrDefault(

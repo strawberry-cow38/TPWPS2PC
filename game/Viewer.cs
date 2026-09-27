@@ -259,7 +259,9 @@ public partial class Viewer : Node3D
     bool _linkTest;
     bool _placeTest;
     int _selectAtStart = -1;
-    bool _hidePanel, _wantLobby, _lobbyOverview;
+    bool _hidePanel, _wantLobby, _lobbyOverview, _wantMenu;
+    MainMenu _mainMenu;
+    int _menuGo;
     int _lobbyEnter;   // 1-based: 0 means "not asked for"
     int _loadedMap = -1, _lobbyWantRecord = -1;
     bool _closeParkTest;
@@ -409,6 +411,13 @@ public partial class Viewer : Node3D
             // Start-Process on the render box and the child did not inherit the switches, so
             // everything a shot needs has a command-line form too. The env reads below are the
             // fallback, not the other way round.
+            // ⭐ `--menu` opens the FRONT END, which is where the console starts. Choosing
+            // New Game -> Main Game hands off to the lobby, the same route the state thread takes.
+            else if (a == "--menu") _wantMenu = true;
+            // ⭐ `--menu-go=N` presses Confirm N times through the REAL handler, so a render can
+            // show where the front end actually hands off to rather than a flag jumping there.
+            else if (a.StartsWith("--menu-go="))
+            { _wantMenu = true; int.TryParse(a["--menu-go=".Length..], out _menuGo); }
             else if (a == "--lobby") _wantLobby = true;
             // ⚠ A FLAG, NOT AN ENV VAR. The capture is launched through a .bat and the child does
             // not inherit `set` -- the overview simply never switched on and the log looked as if
@@ -530,7 +539,7 @@ public partial class Viewer : Node3D
         // tab, and the matrices, smokes and shot harnesses all pass one of these or an explicit
         // --mode/--map -- so this changes the bare launch and nothing that is already scripted.
         // Defaulting unconditionally would have quietly redirected every existing capture.
-        if (_wantLobby) { _hidePanel = true; }
+        if (_wantMenu || _wantLobby) { _hidePanel = true; }
         else if (_wantMode == null && _wantRide == null && _wantImage == null
             && _wantSound == null && _wantPlay == null && _wantAnim == null)
         {
@@ -597,7 +606,12 @@ public partial class Viewer : Node3D
         // cmd's quoting and a silent empty argument presents as a hang rather than an error.
         // ⭐ `--lobby` opens the world map instead of any asset-viewer tab. It is its own scene
         // (LOBBY.WAD), so it takes the branch before the tabs rather than being a mode of them.
-        if (_wantLobby)
+        if (_wantMenu)
+        {
+            _tabs.CurrentTab = ModeTab(Mode.Park); SetMode(Mode.Park);
+            EnterMainMenu();
+        }
+        else if (_wantLobby)
         {
             _tabs.CurrentTab = ModeTab(Mode.Park); SetMode(Mode.Park);
             EnterLobby();
@@ -949,6 +963,17 @@ public partial class Viewer : Node3D
         // ⭐⭐ AN OPEN MENU EATS ITS KEYS. The console drives this with the d-pad and ✕, so up /
         // down / confirm / cancel, and nothing else sees them while it is up -- otherwise the
         // arrows would still be driving the camera behind the menu.
+        // ⭐ The front end owns its keys while it is up, and it sits in front of the lobby.
+        if (_mainMenu is { Open: true })
+        {
+            switch (k.Keycode)
+            {
+                case Key.Up:    _mainMenu.Move(-1); return;
+                case Key.Down:  _mainMenu.Move(+1); return;
+                case Key.Enter: case Key.KpEnter: case Key.Space: _mainMenu.Confirm(); return;
+                case Key.Escape: _mainMenu.Cancel(); return;
+            }
+        }
         // ⭐ THE LOBBY OWNS THE ARROWS WHILE IT IS UP -- it is a selector, and its four
         // directions are the console's four d-pad directions.
         if (_lobbyMode)
@@ -10113,7 +10138,10 @@ public partial class Viewer : Node3D
     /// four places and hiding the park scene had already taught me what that costs -- I patched
     /// three nodes by name, shipped it, and master found the gate and the bus still standing. One
     /// gate means the fifth HUD row somebody adds is covered without anybody remembering.</summary>
-    bool HudVisible => _hudFont != null && _mode == Mode.Park && !_lobbyMode;
+    // ⭐ And the front end too. This is the payoff for making it a property an hour ago: the
+    // menu needed the same exclusion as the lobby and it is ONE edit, not five.
+    bool HudVisible => _hudFont != null && _mode == Mode.Park
+                    && !_lobbyMode && _mainMenu is not { Open: true };
 
     void ShowMoney()
     {
@@ -10318,6 +10346,12 @@ public partial class Viewer : Node3D
             _laptopBack.Clear();
             ShowLaptopLevel();
             if (row >= 0) OnLaptopRow(row);
+        }
+        // ⚠ After the menu exists and before the lobby step, once.
+        if (_menuGo > 0 && _mainMenu is { Open: true })
+        {
+            int n = _menuGo; _menuGo = 0;
+            for (int i = 0; i < n; i++) _mainMenu.Confirm();
         }
         StepLobby(delta);
         TickDebugHud(delta);
