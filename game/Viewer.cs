@@ -7717,9 +7717,21 @@ public partial class Viewer : Node3D
     }
 
     /// <summary>⭐ A TOILET'S DETAILS PAGE -- Users, Last Cleaned and Cleanliness.
-    /// ⚠ Users, Cleanliness and Last Cleaned are all live now. Last Cleaned is blank only for a
-    /// lavatory that has never been cleaned -- its stamp is 0 from activation, and printing
-    /// "today minus zero" would show the park's age as though somebody had scrubbed it on day one.</summary>
+    /// ⚠ Users, Cleanliness and Last Cleaned are all live. Last Cleaned is never blank -- see
+    /// <see cref="FormatWeeksDays"/> for why zero prints as "0d" rather than nothing.</summary>
+    /// <summary>⭐ A day count the way `FUN_00142948` writes one: `"2w 3d"`, or just `"3d"` under
+    /// a week. ⚠ The unit letters are the disc's -- text `0xE1` `STR_GUI_W` and `0xDD` `STR_GUI_D`
+    /// -- not typed in English here, so a German build says what the German build says.
+    ///
+    /// ⚠ Zero is `"0d"`, not blank: the console's `if (weeks != 0)` guards only the weeks half.</summary>
+    string FormatWeeksDays(int days)
+    {
+        string w = _text != null && 0xE1 < _text.Keys.Length ? _text.Text("eng", 0xE1) ?? "w" : "w";
+        string d = _text != null && 0xDD < _text.Keys.Length ? _text.Text("eng", 0xDD) ?? "d" : "d";
+        int weeks = days / 7;
+        return (weeks != 0 ? $"{weeks}{w} " : "") + $"{days - weeks * 7}{d}";
+    }
+
     void ShowToiletDetails(ParkRide loo)
     {
         _detailsRide = loo; _detailsSpec = LaptopScreen.Toilet;
@@ -7739,19 +7751,20 @@ public partial class Viewer : Node3D
                 // `return facility[0xB4]`. So the bar IS Condition, read from the console's own
                 // reader, rather than a quantity chosen to fill the row.
                 132  => (null, Math.Clamp(loo.Condition, 0, 100)),      // Cleanliness
-                // ⭐⭐ LAST CLEANED IS LIVE NOW. tinyclaw landed `LastCleanedDay` (`+0xA8`, written
-                // by the handyman's clean `FUN_00130978`), so the row this screen has been holding
-                // blank can finally say something true.
+                // ⭐⭐ LAST CLEANED, through the console's OWN formatter.
                 //
-                // ⭐ TODAY MINUS THE STAMP, in days, which is the console's own arithmetic:
-                // `FUN_001DA008` takes the second value row from `FUN_00130940`, and ParkSim
-                // documents that reader as "today MINUS this, in days".
+                // ⚠⚠ AND IT DOES NOT BLANK AT ZERO. I first wrote this to leave a never-cleaned
+                // lavatory empty, reasoning that "today minus a zero stamp" would print the park's
+                // whole age. tinyclaw asked the right question -- "does `0x1DA008` actually test
+                // for a zero stamp? if it doesn't, the console prints it and 1:1 means printing it
+                // too" -- and it does not. `FUN_001DA008` passes the raw value straight to
+                // `FUN_00142948`, whose `if (param_2 != 0)` guards ONLY the weeks half; the days
+                // half always prints. Zero shows **"0d"**. The blank was my rule, not the game's.
                 //
-                // ⚠ A lavatory that has NEVER been cleaned stamps 0 at activation, which would
-                // read as "cleaned on day zero" and print the park's whole age. Blank is the honest
-                // answer there -- the same rule the rest of this screen follows.
-                1077 => (loo.LastCleanedDay <= 0 ? null
-                         : $"{Math.Max(0, _calendar.TotalDays - loo.LastCleanedDay)}d", 0),
+                // ⭐ The format is WEEKS AND DAYS, not a bare day count: `FUN_00142948` divides by
+                // 7, prints the quotient with text `0xE1` (`STR_GUI_W` = "w") when it is non-zero,
+                // then always prints the remainder with `0xDD` (`STR_GUI_D` = "d").
+                1077 => (FormatWeeksDays(Math.Max(0, _calendar.TotalDays - loo.LastCleanedDay)), 0),
                 _    => (null, 0),
             });
         _shopPanel.ShowScreen(LaptopScreen.Toilet, DisplayName(loo), cells);
