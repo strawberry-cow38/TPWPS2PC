@@ -40,6 +40,7 @@ MUT = [
  ('advisor-38-39-swapped', M, 'if (m is Mechanic mech && mech.Available) return ParkSim.AdvisorMechanicOnIt;\n        return ParkSim.AdvisorBusyMechanics;', 'if (m is Mechanic mech && mech.Available) return ParkSim.AdvisorBusyMechanics;\n        return ParkSim.AdvisorMechanicOnIt;', 0),
  ('pending-only-if-added', M, 'ride.UpgradePending = true;\n        return added', 'ride.UpgradePending = added;\n        return added', 0),
  ('request-no-strike-refusal', M, 'if (IsStriking(StaffKind.Mechanic)) return UpgradeRequest.MechanicsOnStrike;', '', 0),
+ ('no-facing', M, 'if (Target is ParkRide ride) FacingQuarterTurns = ride.NativeRotation;', '', 0),
  ('fire-last-keeps-list', P, 'if (Count(StaffKind.Mechanic) == 0) Sim.ClearUpgrades();', '', 0),
  ('wear-every-other-tick', S, 'if ((tick & 3) != 0) return;', 'if ((tick & 1) != 0) return;', 0),
  ('wear-shift-4', S, '(WearRate(r, 0) >> 5)', '(WearRate(r, 0) >> 4)', 0),

@@ -104,6 +104,17 @@ public partial class Viewer
         _staff.Advisor = id => GD.Print($"[staff] advisor message 0x{id:X} raised -- this port has no in-park advisor to post it");
         _staff.Litter.Added = OnLitterAdded;
         _staff.Litter.Removed = OnLitterRemoved;
+        // ⭐ Mechanics (findings/staff-mechanics-guards.md): the ride side's breakdown advisors and
+        // sounds, the staff's HANDLE plays (chatter, repair noise) and the mouth a mechanic leaves by.
+        // ⚠ No in-park advisor here either, so the ride messages (0x36/0x37/0x38/0x39/0x87) are logged.
+        _visitors.Sim.Advisor = (id, ride) =>
+            GD.Print($"[ride] advisor message 0x{id:X} about {(ride == null ? "the park" : DisplayName(ride))} -- this port has no in-park advisor to post it");
+        _visitors.Sim.RideSound = PlayRideServiceSound;
+        _staff.HandleSound = PlayStaffHandleSound;
+        _staff.HandlePlaying = StaffHandlePlaying;
+        // ⚠ ADAPTER for vt+0xF4 (0x117280, the last cell of the ride's queue list): the drawn queue's
+        // mouth when the path tool has one, else the core falls back to the stub (ParkStaff.LeaveCell).
+        _staff.QueueMouth = ride => RideQueueShape(ride)?.Mouth;
         try { _modelRegistry ??= NativeModelRegistry.Read(_lib.Disc); }
         catch (Exception e) { GD.PrintErr($"[staff] model registry unreadable: {e.Message} -- staff and litter are not drawn"); }
         try
@@ -185,6 +196,48 @@ public partial class Viewer
         if (bank != 8) { GD.Print($"[staff] {m}: sound bank {bank} event 0x{eventId:X} has no mapping here"); return; }
         _sounds?.Cue(0, $"staff {m.Kind}#{m.PoolSlot}", _parkTicks * ParkSim.TickMilliseconds, RseOpcode.EVENT,
                      (int)SoundGroup.GlobalStaff, -1, eventId, 0, StaffWorld(m.CellPosition));
+    }
+
+    /// <summary>A voice key per member for <see cref="RideSounds"/>: its handles (`P+0x58`/`+0x5C`/`+0x60`)
+    /// are the tags, so "is that handle still playing" is <see cref="RideSounds.Sounding"/>.</summary>
+    static int StaffVoice(StaffMember m) => 0x20000000 | (int)(m.Serial & 0xFFFFFF);
+
+    /// <summary>⭐ A staff HANDLE play (`0x111428` with a handle): bank 8 (`AUDIO/GLOBAL/staf`,
+    /// <see cref="SoundGroup.GlobalStaff"/>) for the mechanic's chatter 0xA2/0xA3, bank 2
+    /// (`AUDIO/GLOBAL/ride`, <see cref="SoundGroup.GlobalRide"/>) for his repair noise 0x6F.
+    /// ⚠ A handle that is still sounding is not started again (INFERRED, findings §3.2): without that
+    /// the chatter, raised on 62 of every 63 ticks, would stack a voice per tick.</summary>
+    void PlayStaffHandleSound(StaffMember m, int bank, int eventId, int handle)
+    {
+        int group = bank switch { 8 => (int)SoundGroup.GlobalStaff, 2 => (int)SoundGroup.GlobalRide, _ => -1 };
+        if (group < 0) { GD.Print($"[staff] {m}: sound bank {bank} event 0x{eventId:X} has no mapping here"); return; }
+        _sounds ??= MakeSounds();
+        if (_sounds == null || _sounds.Sounding(StaffVoice(m), handle)) return;
+        _sounds.Cue(StaffVoice(m), $"staff {m.Kind}#{m.PoolSlot}", _parkTicks * ParkSim.TickMilliseconds, RseOpcode.EVENT,
+                    group, -1, eventId, handle, StaffWorld(m.CellPosition));
+    }
+
+    /// <summary>⚠ ADAPTER for `0x111CC8(audio, &amp;handle)`: the view's own voice on that handle.</summary>
+    bool StaffHandlePlaying(StaffMember m, int handle) => _sounds != null && _sounds.Sounding(StaffVoice(m), handle);
+
+    /// <summary>⭐ A ride-side sound from <see cref="ParkSim.RideSound"/>: native category 2 is
+    /// `AUDIO/GLOBAL/ride` (<see cref="SoundGroup.GlobalRide"/>) -- 0x70 on a breakdown for good, 0x18 on
+    /// condemnation, 0xB8/0xE1 on an upgrade -- at the ride's centre. ⚠ The enter-4 call's first
+    /// argument (0xC) is not a registry id (0x111150 special-cases it, untraced), so it is logged.
+    /// ⚠ Whether the voice is 3D is <see cref="RideSounds"/>' rule for the group, so the native
+    /// non-positional 0x18 (`{0,0,0}`, flag 1) is placed at the ride like the others.</summary>
+    void PlayRideServiceSound(ParkRide ride, int category, int eventId, bool positional)
+    {
+        if (category != 2)
+        {
+            GD.Print($"[ride] {DisplayName(ride)}: native sound ({category}, 0x{eventId:X}) has no mapping here");
+            return;
+        }
+        _sounds ??= MakeSounds();
+        if (_sounds == null || _park == null) return;
+        var centre = new Vector3(ride.Origin.X + ride.Width / 2f, 0, ride.Origin.Z + ride.Height / 2f);
+        _sounds.Cue(ride.Id, DisplayName(ride), _parkTicks * ParkSim.TickMilliseconds, RseOpcode.EVENT,
+                    (int)SoundGroup.GlobalRide, -1, eventId, 0x6000 + eventId, GuestWorld(centre, ride.Origin));
     }
 
     Vector3 StaffWorld(System.Numerics.Vector3 cellPosition)

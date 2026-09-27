@@ -466,7 +466,14 @@ static class MechanicChecks
             {
                 byte stateBefore = m.State;
                 p.Step();
-                if (arrivedAt < 0 && m.State == Mechanic.StateClosingRide) { arrivedAt = t; arrivedCell = m.Cell; }
+                if (arrivedAt < 0 && m.State == Mechanic.StateClosingRide)
+                {
+                    arrivedAt = t; arrivedCell = m.Cell;
+                    // ⚠ FIXTURE: turn him AWAY from the ride as he arrives. His last step already points
+                    // at the door, so without this "faces the ride" would pass on the walk's facing alone;
+                    // now only 0x1787D0 in the 0xE ticks can turn him back.
+                    typeof(StaffMember).GetProperty("FacingQuarterTurns")!.SetValue(m, (r.NativeRotation + 2) & 3);
+                }
                 if (sixAt < 0 && r.Status == 6) sixAt = t;
                 if (stateBefore == Mechanic.StateRepairing)
                 {

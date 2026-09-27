@@ -636,8 +636,8 @@ public sealed class RideParticles
         // would free the probe mid-flight -- the one thing that would make the fix invisible.
         // ⚠⚠ AND THE CULL MUST NOT KILL IT. The deadline is one particle-lifetime, which is right
         // for a burst and fatal for an emitter that is supposed to run for ever -- it would put the
-        // bubbles back to a few seconds and then silence. The stop path is not traced (no script on
-        // this disc turns one off), so a continuous emitter is kept until its holder goes, and
+        // bubbles back to a few seconds and then silence. So a continuous emitter is kept until its
+        // holder goes or the script stops its object (<see cref="Stop"/>, `KILLOBJ tag`), and
         // `Emit` refuses to start a second one in the same place rather than stacking them.
         if (loops) { _continuous[ContinuousKey(id, where)] = p; Spawned++; return e; }
         _live.Add((p, Time.GetTicksMsec()
@@ -645,6 +645,24 @@ public sealed class RideParticles
         Spawned++;
         return e;
     }
+
+    /// <summary>⚠ INFERRED STOP PATH for a continuous emitter: the script's `KILLOBJ tag` on the object its
+    /// `ADDOBJ` started. A breakdown's smoke is exactly that -- snake, slide and bigapple raise
+    /// `ADDOBJ(2, node, 16 Smoke2, tag 1)` when VAR_BREAKSTAT goes to 1 and their fixed branch says
+    /// `KILLOBJ(1)` (core probe over the scripts, 2026-09-27) -- so without this a repaired ride smoked
+    /// for ever. That KILLOBJ reaches particle objects as it does sounds is the tag semantics' reading
+    /// (the console's object list at instance +0xB0 is not walked). Emission stops, the particles
+    /// alive finish their life, then the node is freed. Returns whether one was running there.</summary>
+    public bool Stop(int id, Vector3 where)
+    {
+        var key = ContinuousKey(id, where);
+        if (!_continuous.Remove(key, out var node) || !GodotObject.IsInstanceValid(node)) return false;
+        node.Emitting = false;
+        _live.Add((node, Time.GetTicksMsec() + (ulong)(node.Lifetime * 1000 / Math.Max(0.01, Engine.TimeScale)) + 500));
+        Stopped++;
+        return true;
+    }
+    public int Stopped { get; private set; }
 
     /// <summary>Drop the bursts that have finished. ⚠ A freed node answers as if it were alive
     /// right until it throws, so validity is checked and not assumed.</summary>

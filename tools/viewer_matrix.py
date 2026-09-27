@@ -53,6 +53,11 @@ SCENES = {
     # (section 0), a sweep of litter and vomit, a toilet cleaned and stamped. Every park runs the same
     # 53; the floor sits just under it.
     'staff': ('StaffSmoke', 'STAFF SMOKE', 50),
+    # Mechanics: an ordinary ride forced below 10.0 (the one test hook) breaks and smokes through its
+    # own script; a mechanic hired through the laptop, called from the ride's menu, repairs it (logical
+    # 16, facing, the noise), the smoke is killed, the Details bar reads 100; then an upgrade installed
+    # and paid for at completion. Every park runs the same 38; the floor sits just under it.
+    'mechanic': ('MechanicSmoke', 'MECHANIC SMOKE', 36),
 }
 MAP_LINE = re.compile(r'^\[map\] loaded world=([A-Z]+) terrain=(terrain_[12])\.mps$', re.M)
 

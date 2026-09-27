@@ -214,6 +214,9 @@ public partial class Viewer : Node3D
     int _rideFilm, _filmFps = 12; long _filmStartMs; float _filmYaw0 = 0.8f;
     /// <summary>The particles the scripted rides ask for, drawn as the demo scene draws them.</summary>
     RideParticles _burst;
+    /// <summary>Particle OBJECTS a ride's script started with `ADDOBJ kind node id tag`, by (ride, tag),
+    /// so its `KILLOBJ tag` can stop them (<see cref="RideParticles.Stop"/>).</summary>
+    readonly Dictionary<(int Ride, int Tag), List<(int Id, Vector3 At)>> _particleObjects = new();
     /// <summary>Each scripted ride's own <see cref="Model"/>, by ride id, for its fittings -- the
     /// seats ADDHEAD names are the model's `0x80` fittings, found by slot + 1.</summary>
     readonly Dictionary<int, Model> _rideMeshes = new();
@@ -2093,7 +2096,7 @@ public partial class Viewer : Node3D
         // it would be waste. The live emitters are NOT global: they were parented to the last
         // park's rides, and keeping the holder kept them too. Cache retained, instances cleared.
         _sounds?.Clear(); _sounds = null;
-        _burst?.Clear();
+        _burst?.Clear(); _particleObjects.Clear();
         _standingPlaces.Clear(); _standing.Clear();
         if (_terrainModel?.Field == null) return;
         if (_pieces == null)
@@ -3286,6 +3289,12 @@ public partial class Viewer : Node3D
                     // own velocity. Passing null for kind 1 is the difference, not an omission.
                     var dir = a[0] == 2 ? NodeWorldDir(ride.Id, a[1], 0x100) : null;
                     var made = at is { } p ? _burst.Emit(a[2], p, dir) : null;
+                    // An OBJECT, with a tag its KILLOBJ can name (the breakdown smoke's is 1).
+                    if (fx.Opcode == RseOpcode.ADDOBJ && a.Count > 3 && made != null && at is { } objAt)
+                    {
+                        if (!_particleObjects.TryGetValue((ride.Id, a[3]), out var objs)) _particleObjects[(ride.Id, a[3])] = objs = new();
+                        objs.Add((a[2], objAt));
+                    }
                     GD.Print($"[fx] {fx.Time / 1000.0,7:F1}s {ride.Name,-22} {fx.Opcode,-7} kind {a[0]} node {a[1],3} id {a[2],3} -> {made?.Name ?? "(no fitting or no such effect)"}"
                            + (at is { } q ? $" at ({q.X:F1},{q.Y:F1},{q.Z:F1})" : ""));
                     break;
@@ -3363,7 +3372,14 @@ public partial class Viewer : Node3D
                     }
                     break;
                 }
-                case RseOpcode.KILLOBJ when a.Count >= 1: _sounds?.Kill(ride.Id, ride.Name, a[0], fx.Time); break;
+                case RseOpcode.KILLOBJ when a.Count >= 1:
+                    _sounds?.Kill(ride.Id, ride.Name, a[0], fx.Time);
+                    if (_particleObjects.Remove((ride.Id, a[0]), out var killed))
+                    {
+                        int stopped = killed.Count(o => _burst?.Stop(o.Id, o.At) == true);
+                        GD.Print($"[fx] {fx.Time / 1000.0,7:F1}s {ride.Name,-22} KILLOBJ tag {a[0],4} -> stops {stopped} particle object(s)");
+                    }
+                    break;
                 case RseOpcode.FADEOBJ when a.Count >= 1: _sounds?.Fade(ride.Id, ride.Name, a[0], fx.Time); break;
             }
         }
@@ -3704,7 +3720,9 @@ public partial class Viewer : Node3D
         771 or 691 or 488 => (r.Customers.ToString(), 0),
         106               => (Money.Format(r.Takings), 0),
         986 or 365        => (Money.Format(r.Profit), 0),
-        128               => (null, Math.Clamp(r.Condition, 0, 100)),
+        // ⭐ State of Repair on a serviced ride is its worn reliability, `ride[0xE4] >> 12` (`FUN_00118228`,
+        // the bar `FUN_001D5210` fills) -- mechanics port, 2026-09-27. Anything else keeps what it showed.
+        128               => (null, Math.Clamp(r.ServiceClass != RideServiceClass.None ? r.ReliabilityPercent : r.Condition, 0, 100)),
         _                 => (null, 0),
     };
 
@@ -7645,6 +7663,12 @@ public partial class Viewer : Node3D
         // is the same and the handler routes by what the thing IS.
         if (_shopPanel != null && (ShopFor(placed) != null || RideFor(placed) != null))
             yield return "Details";
+        // ⭐ "Call Mechanic" (`STR_LISTBOX_CALL_MECHANIC`, list box row 179 -> `0x124250` ->
+        // `0x124158(1)`) on a ride of the four serviced classes. ⚠ Offered whether or not it is broken:
+        // the per-type filter is not decoded (above), and the native handler silently sends nobody to
+        // a ride that is not broken, which ParkStaff.CallMechanic reproduces.
+        if (_staff != null && RideFor(placed) is { ServiceClass: not RideServiceClass.None })
+            yield return "Call Mechanic";
         // ⭐⭐ ONLY THINGS THAT TAKE A QUEUE OFFER ONE. Master: "make sure on the rmb details page
         // that we only show relevant options, ie no build queue for things that arent meant to
         // have queues." A tree, a bin and a lamp were all offering to have a queue built to them.
@@ -7720,11 +7744,10 @@ public partial class Viewer : Node3D
     /// is the only capacity-shaped number in the tier and is used as that maximum. Everything else
     /// on this screen is read.
     ///
-    /// ⚠ EXCITEMENT MOVES, RELIABILITY DOES NOT. `ParkRide.Value` recomputes from speed and
-    /// duration, so those two sliders change the excitement bar as they are dragged. Reliability
-    /// is NOT recomputed from a slider anywhere on the disc -- `FUN_00198A98` has exactly one
-    /// caller and it is the shopfront preview -- so a placed ride's repair bar is its Condition,
-    /// which wears. Making it respond to a drag would be inventing behaviour.</summary>
+    /// ⭐ Excitement moves with the sliders: `ParkRide.Value` recomputes from speed and duration.
+    /// The Reliability bar (1060) is recomputed live from the sliders too (`FUN_001183F0`, see
+    /// <see cref="NativeRideReliability"/>); the State of Repair bar (644) is the WORN reliability
+    /// `ride[0xE4] &gt;&gt; 12` (`FUN_00118228`) that ParkSim wears and a mechanic restores.</summary>
     void ShowRideDetails(ParkRide ride)
     {
         _detailsSpec = DetailsSpecFor(ride);
@@ -7743,7 +7766,9 @@ public partial class Viewer : Node3D
                 // is this same arithmetic frozen at speed 50 and half capacity for the build menu.
                 1060 => (null, NativeRideReliability.Calculate(ride.Definition.CompiledEntry,
                                    ride.Speed, ride.Capacity, ride.Duration, ride.CurrentTier) ?? 0),
-                644  => (null, Math.Clamp(ride.Condition, 0, 100)),                // State of Repair
+                // ⭐ State of Repair = `ride[0xE4] >> 12` (`FUN_00118228`), which ParkSim now wears and a
+                // mechanic restores (mechanics port, 2026-09-27; it read Condition, which a ride never wears).
+                644  => (null, Math.Clamp(ride.ReliabilityPercent, 0, 100)),       // State of Repair
                 436  => (null, Pct(ride.Speed, t.MinSpeed, t.MaxSpeed)),           // Speed
                 919  => (null, Pct(ride.Capacity, 1, Math.Max(1, t.CapacityParameter))),
                 769  => (null, Pct(ride.Duration, t.MinDuration, t.MaxDuration)),  // Duration
@@ -8034,6 +8059,15 @@ public partial class Viewer : Node3D
                 break;
             case "Edit Pylons":
                 EditCoaster(_selected, pylons: true);
+                break;
+            case "Call Mechanic":
+                if (_staff != null && RideFor(_selected) is { } called)
+                {
+                    bool sent = _staff.CallMechanic(called);
+                    GD.Print($"[staff] Call Mechanic on {DisplayName(called)} (status {called.Status}): "
+                           + (sent ? $"{called.AssignedMechanic} dispatched" : "nobody sent (0x124158)"));
+                    Status($"{DisplayName(called)} -- " + (sent ? "a mechanic is on the way" : "no mechanic sent"));
+                }
                 break;
             case "Delete":
                 DeleteSelected();
