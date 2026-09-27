@@ -185,9 +185,21 @@ public partial class Viewer
             if (p.Type >= 4)
                 for (int dx = 0; dx < size; dx++)
                     for (int dz = 0; dz < size; dz++) v.Cells.Add((p.Anchor.X + dx, p.Anchor.Z + dz));
-            string stem = TrackMesh(info.Shape);
-            if (stem == null) continue;
-            var node = TrackModel(v, v.Prefix + stem, out var model, out _, out var anim);
+            Node3D node; AnimatedModel model; Aps anim;
+            if (info.Shape is 12 or 13)
+            {
+                // An add-on: its mesh is the park's add-on asset (0x2ECAD0's shape-12/13 ids are the
+                // catalogue keys), not a piece from the ride's folder.
+                var addon = AddonAsset(info.Shape - 12);
+                if (addon == null) { GD.PrintErr($"[addon] no asset for shape {info.Shape} in this park"); continue; }
+                node = AddonModel(addon, out model, out anim);
+            }
+            else
+            {
+                string stem = TrackMesh(info.Shape);
+                if (stem == null) continue;
+                node = TrackModel(v, v.Prefix + stem, out model, out _, out anim);
+            }
             if (node == null) continue;
             // ⭐ `0x1fd818`, on giving a piece its model, starts it on `.aps` section 5 (Main) at speed 1.0
             // with flag 1 (vt +0x5c → 0x17c5d8 → 0x1abc80), and flag bit 0 is the channel's LOOP bit
@@ -199,20 +211,8 @@ public partial class Viewer
                 model.UseRecord(main);
                 v.Flowing.Add(model);
             }
-            int r = info.Rot, w = info.Width << 8, d = info.Depth << 8;
-            int ox = p.Anchor.X * 256, oz = p.Anchor.Z * 256;
-            switch (r) { case 1: oz += w; break; case 2: ox += w; oz += d; break; case 3: ox += d; break; }
-            float angle = r * Mathf.Pi / 2;
-            float yaw;
-            if (p.Type is >= 12 and <= 19 or >= 28 and <= 31) yaw = 2 * Mathf.Pi - angle;
-            else
-            {
-                yaw = Mathf.Pi - angle;
-                (int cx, int cz) = r switch { 0 => (w, d), 1 => (w, -d), 2 => (-w, -d), _ => (-w, d) };
-                ox += cx; oz += cz;
-            }
             // Console yaw φ maps (x,z) to (x cosφ − z sinφ, x sinφ + z cosφ): Godot's RotY(−φ).
-            node.Transform = new Transform3D(new Basis(Vector3.Up, -yaw), new Vector3(ox / 256f, 0, oz / 256f));
+            node.Transform = PieceTransform(p);
             v.Frame.AddChild(node);
             v.Pieces.Add(node);
         }

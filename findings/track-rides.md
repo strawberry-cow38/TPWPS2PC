@@ -294,9 +294,13 @@ The first version of this file got these wrong:
 
 - **Add-on tables.** The per-park tables overlap: one park's kind-1 rows are another park's kind-0
   rows. The tool file reads three kinds per park straight through the overlap; the geometry file
-  reads which rows have meshes. Which catalogue entry becomes which kind index is **unresolved**, so
-  whether, say, Dino Karts could be offered the water tunnel is open. Space Racers' table pointer is
-  NULL: placing an add-on there would crash.
+  reads which rows have meshes. **Resolved 2026-09-27:** the kind index is the position in the
+  PARK's kind-8 catalogue list, built at boot by the static initialiser `0x158cf0` (not on the disc;
+  read by emulating it). JUNGLE 1 MammTunn, LavaJump | JUNGLE 2 WaterTun | HALLOW 1 Ogre | HALLOW 2
+  Chopper, Firepit | FANTASY 1 none | FANTASY 2 BeeJump, HoneyPot | SPACE 1 Meteor | SPACE 2 none.
+  The piece table's selectors agree on every row. So Dino Karts is never offered the water tunnel,
+  and the two parks whose tables are empty or NULL sell no add-ons: nothing reaches the crash.
+  Detail in `track-ride-tool.md` §13 and `core/TPW.PS2.Data/TrackUpgrades.cs`.
 - **Station footprint.** The station building is the ride's own 4×3 model. Its **piece** occupies
   2×2 tiles, but its samples sit in a 4×4 local frame. That is why the connector after a station
   shifts its lanes by −256.
@@ -313,7 +317,6 @@ The first version of this file got these wrong:
   so its "two build levels" reading is unconfirmed. This needs a live savestate.
 - Which physical buttons drive the race's confirm/back masks. The sound event names.
 - Mechanic dispatch.
-- The add-on catalogue mapping (above).
 
 ## In the port
 
@@ -332,7 +335,13 @@ Built 2026-09-26:
   - Every car plays native category 6 (`AUDIO/RIDES/trck`) event 4, `Engine.mp2` from `TRACKHD.SDT`. The console restarts it whenever it has stopped (`0x111CC8`, then vtable `+0x34`), and so does the port.
   - Karts play event 0xF when they start an overtake or a spin.
   - ⚠ Parameter 4 (speed × 100 / target) is set every step, but what the audio object does with it is not read, so pitch doesn't follow speed.
-- **Not yet.** Add-ons; wear, breakdown and repair (the port has no mechanics); the drive-it-yourself race; laying a path under an existing track.
+- **Built 2026-09-27.** Laying a path or queue under an existing track (`0x1e81e0`'s track arm, the
+  `0x1e6cf0` re-lay; `track-ride-tool.md` §5.4). Add-ons (`game/Viewer.TrackAddons.cs`,
+  `TrackLayout.AddUpgrade`): the build menu's Addons, filtered to the park's catalogue, arm tool mode 10;
+  the ghost is `0x1fea58`; a press is `0x202980`; the chooser's rule 1, the `0x202c00` post-pass and the
+  add-on samples are in the layout. Departures are named in the file's header.
+- **Not yet.** Wear, breakdown and repair (the port has no mechanics); the drive-it-yourself race;
+  the ride panel's route to the add-on tool (`0x1d5dc8`, needs the laptop's ride screen).
 - **Kept, because the console has them:**
   - the b2 bend's jump and stall;
   - one guest per car;

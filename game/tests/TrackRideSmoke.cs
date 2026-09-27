@@ -349,6 +349,81 @@ public partial class TrackRideSmoke : Node3D
                       $"undoing the second path puts its straight back and the first is a hump again ({hump}, {back})");
             }
 
+            // ⭐ ADD-ONS (tool mode 10): the build menu lists this park's catalogue in order, a pick arms
+            // the tool, the ghost judges 0x1FEA58's box, and a press lays the add-on into the chain.
+            {
+                int addonWorld = (int)typeof(Viewer).GetProperty("TrackWorld", Hidden).GetValue(viewer);
+                int addonPark = (int)typeof(Viewer).GetProperty("TrackPark", Hidden).GetValue(viewer);
+                var sold = TrackUpgrades.ForPark(addonWorld, addonPark);
+                Call(viewer, "ShowBuildCategory", "upgrades");
+                var addonRows = Field<List<int>>(viewer, "_buildRows");
+                var keys = addonRows.Select(r => (uint?)Call(viewer, "DbaKey", lib.Rides[r])).ToList();
+                Check(keys.SequenceEqual(sold.Select(k => (uint?)k)),
+                      $"{world} park {addonPark + 1}: Addons lists this park's catalogue, in order [{string.Join(",", keys)}] (want [{string.Join(",", sold)}])");
+                if (sold.Count > 0)
+                {
+                    var wp1 = layout.Waypoints[2];
+                    var wp2 = layout.Waypoints[3];
+                    int px = Math.Sign(wp2.X - wp1.X), pz = Math.Sign(wp2.Z - wp1.Z);
+                    ParkCell Along(int k) => wp1.Offset(2 * px * k, 2 * pz * k);
+                    var first = layout.PieceAt(Along(1));
+                    int d = first.Type - 4;
+                    var box = d switch { 0 => first.Anchor.Offset(-1, 0), 1 => first.Anchor.Offset(-1, -2), 2 => first.Anchor.Offset(0, -1), _ => first.Anchor.Offset(-2, -1) };
+                    Check(first.Type is >= 4 and <= 7 && layout.PieceAt(Along(2)).Type == first.Type,
+                          $"the long leg's first two pieces after the bend are straights of one type ({first}, {layout.PieceAt(Along(2))})");
+                    int paidBefore = sim.Finances.Balance;
+                    Call(viewer, "ArmFromList", sold.Count - 1);
+                    var tool = Member("_addonTool").GetValue(viewer);
+                    Check(tool != null && (int)F(tool, "Kind") == sold.Count - 1, $"picking the park's last add-on arms the add-on tool, kind {sold.Count - 1}");
+                    int addonPrice = (int)F(tool, "Price");
+                    // Off in the grass: no pair of straights, so nothing to buy.
+                    var far = Enumerable.Range(0, 40).Select(n => new ParkCell(wp1.X - 6 * pz - n * pz, wp1.Z + 6 * px + n * px))
+                        .Concat(Enumerable.Range(0, 40).Select(n => new ParkCell(wp1.X + 6 * pz + n * pz, wp1.Z - 6 * px - n * px)))
+                        .First(c => park.IsPlayable(c.X, c.Z) && layout.PieceAt(c) == null && Enumerable.Range(-4, 9).All(o => layout.PieceAt(c.Offset(o, 0)) == null && layout.PieceAt(c.Offset(0, o)) == null));
+                    Set(viewer, "_cursorOverride", (far.X, far.Z));
+                    try { Call(viewer, "UpdateAddonGhost"); Call(viewer, "PressAddonTool"); }
+                    finally { Set(viewer, "_cursorOverride", null); }
+                    Check(!(bool)F(tool, "Valid") && layout.Upgrades.Count == 0 && Member("_addonTool").GetValue(viewer) == tool,
+                          $"on bare ground ({far}) the ghost is refused and a press buys nothing");
+                    // On the track, one cell in: the port tries every box over the cursor and keeps the valid one.
+                    var aim = Along(1).Offset(px != 0 ? 0 : 1, pz != 0 ? 0 : 1);
+                    Set(viewer, "_cursorOverride", (aim.X, aim.Z));
+                    try { Call(viewer, "UpdateAddonGhost"); }
+                    finally { Set(viewer, "_cursorOverride", null); }
+                    var got = (ParkCell)F(tool, "Box");
+                    var preview = (Node3D)F(tool, "Preview");
+                    Check((bool)F(tool, "Valid") && got == box && preview != null && preview.FindChildren("*", "MeshInstance3D", true, false).Count > 0,
+                          $"over the straights the ghost finds 0x1FEA58's box {got} (want {box}) and shows the add-on's model");
+                    aimAt = preview.GlobalPosition; aimFar = 6f;
+                    await Shot("addon_ghost");
+                    Set(viewer, "_cursorOverride", (aim.X, aim.Z));
+                    try { Call(viewer, "PressAddonTool"); }
+                    finally { Set(viewer, "_cursorOverride", null); }
+                    int slot = layout.Pieces.ToList().FindIndex(p => p.Type >= 40);
+                    var up = slot < 0 ? null : layout.Pieces[slot];
+                    Check(layout.Upgrades.Count == 1 && up != null && up.Type == 40 + (sold.Count - 1) * 4 + d && up.Anchor == box
+                          && layout.Pieces[slot + 1].Type == 8 + d && layout.Closed && layout.Pieces.Count == 22,
+                          $"a press lays it: {up} at slot {slot}, connector {layout.Pieces[slot + 1]} after it, still a closed loop of {layout.Pieces.Count}");
+                    Check(sim.Finances.Unlimited || paidBefore - sim.Finances.Balance == addonPrice * 10,
+                          $"and charges its price, {addonPrice} x 10 = {Money.Format(addonPrice * 10)} ({paidBefore - sim.Finances.Balance})");
+                    Check(Member("_addonTool").GetValue(viewer) == null && !IsInstanceValid(preview) || preview.IsQueuedForDeletion(),
+                          "the tool closes and the preview goes");
+                    var addonNodes = pieces.Cast<Node3D>().Where(n => IsInstanceValid(n) && !n.IsQueuedForDeletion() && n.Name.ToString().StartsWith("addon_")).ToList();
+                    Check(addonNodes.Count == 1 && addonNodes[0].FindChildren("*", "MeshInstance3D", true, false).Count > 0,
+                          $"the add-on is drawn ({string.Join(",", addonNodes.Select(n => n.Name))})");
+                    var lift = TrackUpgrades.Offset(addonWorld, addonPark, sold.Count - 1, 1);
+                    Check(up.Samples[1].Height == up.Samples[0].Height + lift.Y,
+                          $"the cars' height through it follows the park's offsets ({string.Join(",", up.Samples.Select(q => q.Height))}; +{lift.Y} at sample 1)");
+                    aimAt = addonNodes[0].GlobalPosition; aimFar = 6f;
+                    await Shot("addon");
+                    aimAt = null; aimFar = null;
+                }
+                else
+                {
+                    Check(addonRows.Count == 0, $"{world} park {addonPark + 1} sells no add-ons, and the menu offers none");
+                }
+            }
+
             // Deleting the ride takes the track with it.
             Set(viewer, "_selected", 0);
             Call(viewer, "DeleteSelected");

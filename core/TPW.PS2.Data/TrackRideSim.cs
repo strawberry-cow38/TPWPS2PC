@@ -136,6 +136,15 @@ public sealed class TrackRideSim
         Rebuilt();
     }
 
+    /// <summary>0x202980 (through 0x202B18, which ends in 0x2009C0): an add-on onto the track, which
+    /// unloads everyone like any rebuild.</summary>
+    public bool AddUpgrade(int kind, ParkCell box)
+    {
+        if (!Track.AddUpgrade(kind, box)) return false;
+        Rebuilt();
+        return true;
+    }
+
     /// <summary>0x2017D0 then 0x2009C0. Returns the removed leg's piece count.</summary>
     public int RemoveLastWaypoint()
     {

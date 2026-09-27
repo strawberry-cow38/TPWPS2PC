@@ -318,6 +318,20 @@ averages byte1 over its w×d cells and writes that average to all (w+1)×(d+1) v
 - After every rebuild, `0x202c00` drops add-ons with `index ≥ count − (closed?2:1)`, and requires
   each add-on piece to be followed by a straight, which it converts to the hidden connector
   (`type+4` → 8–11); otherwise it deletes that add-on and rebuilds again. **No refund** on drop.
+- READ in full 2026-09-27 (`0x202980..0x202b90`, `0x202c00..0x202d44`, `0x1fea58..0x1fef68`):
+  - `0x202980` takes, of the pieces over (x+1, z+1) and (x+2, z+2), whichever comes first in the chain
+    (`s2.next == s1`, else `s1.next == s2`), walks from slot 0 to find its position `v`, and stores
+    `v` when closed, `v − 1` when open (`movz` at `0x202adc`). The chooser adds 1 while open, so the
+    add-on lands on `v` either way -- but **one bought on an open loop sits a slot earlier once the
+    loop closes**. Native; the port keeps it.
+  - `0x1fea58`: the pair must be two different straights of one type (4→r 0, 5→2, 6→1, 7→3), both
+    this ride's. Then per in-grid cell: height steps to +x, +z, +xz ≤ 64 (`slti 0x41`); `0x1e66c8`
+    -- a track cell must be this ride's shape-0 piece not refused by `0x202848` (closed: slot 2 or the
+    last; open: slots 0, 3 or the last), a bare cell must be kind 0 with flag 2 clear (`0x1e63c0`);
+    and no piece but the two. Marks 0xa5 / 0xaf. With the pair wrong it still paints: cells on the
+    ride's straights 0xa5, the rest 0xaf.
+  - Sample offsets `0x2edd60`, and the connector's carry-over: kind 0's sample-3 y for i < 3, and for
+    i = 3 only when (world, park) = (0, 0); kind 1's likewise only for (1, 1) (`0x1fe1d8..0x1fe2b8`).
 
 ## 6. How the first leg attaches and how the loop closes
 
@@ -502,8 +516,23 @@ status-tick 1..11:  +25c 0x1e4f58 +264 0x200518★ +26c 0x1e50f0 +274 0x2006f8�
 - **Tile type names** 5, 7, 8, 10, 12, 13 and flags 1, 2, 8: only predicate code exists
   (`0x1e6338..0x1e65b8`); the writers I found (`0x1e6138` callers with constants 2, 5, 7, 8, 10)
   were not traced to their tools.
-- **Which add-on is which catalogue index per park**: the category-8 list lives in the runtime
-  catalogue (`0x360850[world]` → bss `0x395488…`); no static copy found. The piece tables are READ.
+- ~~Which add-on is which catalogue index per park~~ **READ 2026-09-27.** The bss world structs are
+  filled by the static initialiser `0x158cf0` (called with `a0 = 1, a1 = 0xffff`): each world's
+  kind-8 lists are 16-byte records `{DBA key, 0, handle…}` in bss, and the struct takes the park-0
+  list at `+0x50`, park-1 list at `+0x54`, counts at `+0x5c` / `+0x60` (from words in `.data`,
+  e.g. `0x2b76d8` = 2, `0x2b7718` = 1 for JUNGLE). `0x12ad78`/`0x12adc8` index them by
+  `mgr+8` (world) and `mgr+4` (park); `0x12b070` returns the count. Emulated to its `jr $ra`
+  (784 steps):
+
+  | world | park 1 | park 2 |
+  |---|---|---|
+  | JUNGLE | 237 MammTunn, 236 LavaJump | 238 WaterTun |
+  | HALLOW | 167 Ogre | 165 Chopper, 166 Firepit |
+  | FANTASY | — (a list holding 62, count 0) | 81 BeeJump, 82 HoneyPot |
+  | SPACE | 402 Meteor | — (no list) |
+
+  Control: `0x1fd6c0`'s selectors for kinds 0/1 of each park (11/12, 6, 9, 12/11, —, 9/8, 8, NULL)
+  are exactly these records' DBA `+0x2c`, in the same order. Two routes, one answer.
 - **Meaning of `*0x395430 == 8`** (alternative button layout / rotate button swap): not traced.
 - **Sound names** for ids `0xaf, 0xce, 0xdc, 0x130, 0x8e`: runtime tables `0x2abe38…` only.
 - **Tutorial handlers** behind `vt+0xcc/+0xd4/+0xe4` of the tutorial object: not traced.

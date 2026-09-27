@@ -997,6 +997,7 @@ public partial class Viewer : Node3D
             Status("nothing held");
         }
         else if (k.Keycode == Key.Escape && _trackTool != null) FinishTrackTool();
+        else if (k.Keycode == Key.Escape && _addonTool != null) CancelAddonTool();
         else if (k.Keycode == Key.Escape && _toolOpen) { CloseTool(); GD.Print("[tool] closed"); }
         // ⭐ M switches between a straight segment and an elbow. Both are kept: straight is what
         // the game allows, the elbow is what the executable's own walker does, and which one the
@@ -6308,6 +6309,7 @@ public partial class Viewer : Node3D
     /// Counting models promised "Rides (47)" over a list of eighteen.
     List<(string Key, int Count)> BuildCategories() =>
         BuildableRows()
+            .Where(i => SoldHere(_lib.Rides[i]))
             .GroupBy(i => BuildCategory(_lib.Rides[i]), StringComparer.OrdinalIgnoreCase)
             // ⭐ THE CONSOLE'S ORDER, not mine and not the counts'. Master: "build should be
             // ordered Rides, Track rides, Roller Coasters, Shops, Sideshows, Features" -- which is
@@ -6356,10 +6358,15 @@ public partial class Viewer : Node3D
         {
             // ⭐ Compare KINDS, not strings, so "Rides" and "Ride" both select the same things.
             var want = KindFromWord(category);
+            if (!SoldHere(_lib.Rides[i])) continue;
             if (want is { } k ? BuildKind(_lib.Rides[i]) == k
                               : BuildCategory(_lib.Rides[i]).Equals(category, StringComparison.OrdinalIgnoreCase))
                 _buildRows.Add(i);
         }
+        // ⭐ Add-ons in the park's catalogue order: a row's position is the kind the tool builds.
+        if (KindFromWord(category) == AssetResourceDatabase.AssetKind.TrackUpgrade)
+            _buildRows.Sort((a, b) => TrackUpgrades.KindOf(TrackWorld, TrackPark, DbaKey(_lib.Rides[a]) ?? 0)
+                                      .CompareTo(TrackUpgrades.KindOf(TrackWorld, TrackPark, DbaKey(_lib.Rides[b]) ?? 0)));
         // ⚠ THE CONTROL, kept: after the collapse this must print NOTHING. It is what showed the
         // duplicates were one .sam each rather than sixteen rides, and it is what would catch the
         // collapse silently stopping.
@@ -6511,6 +6518,8 @@ public partial class Viewer : Node3D
     {
         if (row < 0 || row >= _buildRows.Count) return;
         var r = _lib.Rides[_buildRows[row]];
+        // ⭐ An add-on is not placed like a building: it is tool mode 10, onto a track ride's straights.
+        if (BuildKind(r) == AssetResourceDatabase.AssetKind.TrackUpgrade) { BeginAddonTool(r); return; }
         var def = DefinitionFor(r.Model);
         if (def == null) { Status($"{Leaf(r.Name)} has no .sam beside it -- nothing to place it by"); return; }
         var fp = FootprintFor(r, def);
@@ -9472,6 +9481,7 @@ public partial class Viewer : Node3D
         }
         if (_place.Active) UpdatePlacementGhost();
         else if (_trackTool != null) UpdateTrackGhost();
+        else if (_addonTool != null) UpdateAddonGhost();
         else if (_coasterTool != null) UpdateCoasterGhost(delta);
         else if (_toolOpen) UpdateGhost();
         // ⚠ AFTER the camera has been placed for this frame, or the projection is a frame stale
@@ -9710,6 +9720,7 @@ public partial class Viewer : Node3D
                             if (_coasterMode == CoasterMode.Edit) CoasterPick(1);
                             else if (!UndoCoasterPylon()) FinishCoasterTool();
                         }
+                        else if (mb.ButtonIndex == MouseButton.Right && _addonTool != null) CancelAddonTool();
                         else if (mb.ButtonIndex == MouseButton.Right && _trackTool != null)
                         {
                             // The track tool's Circle: take the last leg back; with nothing left
@@ -9752,6 +9763,7 @@ public partial class Viewer : Node3D
                         }
                         else if (_place.Active) PlaceHeld();
                         else if (_trackTool != null) PressTrackTool();
+                        else if (_addonTool != null) PressAddonTool();
                         else if (_coasterTool != null) PressCoasterTool();
                         else if (_toolOpen) PressTool();
                         // ⭐⭐ A LEFT CLICK REACHES A RIDE BEFORE IT REACHES THE GROUND. That was

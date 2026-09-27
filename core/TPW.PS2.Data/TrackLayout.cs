@@ -120,10 +120,13 @@ public sealed class TrackGround
 /// scale is not settled (findings/track-rides.md, "Still unknown"). This is the only reading in which
 /// the cars and the pieces agree.
 ///
-/// Add-ons (types 40–51) are not laid yet. The per-park add-on tables overlap, and which catalogue
-/// entry becomes which kind is unresolved.</summary>
+/// ⭐ Add-ons (types 40–47) are laid by the chooser's first rule from up to three stored entries,
+/// and a post-pass (0x202C00) hides the straight after each one; see <see cref="AddUpgrade"/>.</summary>
 public sealed class TrackLayout
 {
+    /// <summary>0x202980 refuses a fourth ("Tried to add too many upgrades to track ride").</summary>
+    public const int MaxUpgrades = 3;
+
     /// <summary>0x2016E0: at most 34 waypoints (`sltiu count, 0x22`).</summary>
     public const int MaxWaypoints = 34;
     /// <summary>0x154E40 builds 36 piece slots; the tool refuses a leg past them (0x202F78).</summary>
@@ -133,12 +136,15 @@ public sealed class TrackLayout
 
     readonly List<ParkCell> _waypoints = new();
     readonly List<TrackPiece> _pieces = new();
+    readonly List<TrackUpgrade> _upgrades = new();
 
     public ParkCell Station { get; }
     public int Rotation { get; }
     public TrackGround Ground { get; }
     public IReadOnlyList<ParkCell> Waypoints => _waypoints;
     public IReadOnlyList<TrackPiece> Pieces => _pieces;
+    /// <summary>Ride +0x288A, count +0x2890: the add-ons, in the order they were bought.</summary>
+    public IReadOnlyList<TrackUpgrade> Upgrades => _upgrades;
     /// <summary>Ride +0x1C6: the last waypoint is the station's entry. The ONLY validity rule.</summary>
     public bool Closed { get; private set; }
     public int Length => _pieces.Count * PieceLength;
@@ -210,6 +216,26 @@ public sealed class TrackLayout
         return null;
     }
 
+    /// <summary>⭐ 0x202980: put add-on <paramref name="kind"/> (the park's catalogue index) on the
+    /// two straights under the 4×4 box anchored at <paramref name="box"/>, then rebuild. It finds the
+    /// pieces over (x+1, z+1) and (x+2, z+2), takes whichever of them comes FIRST in the chain, and
+    /// stores its chain position, less one while the loop is open -- the chooser adds the one back
+    /// (0x200FB8), so the add-on lands in the same slot either way. ⚠ Its grid-margin test
+    /// (x ≥ 0, x + 4 &lt; W − 1, and the same in z) needs the park's size: the caller's. The two
+    /// pieces being straights of one type on this ride is the ghost's rule (0x1FEA58), not this one's.</summary>
+    public bool AddUpgrade(int kind, ParkCell box)
+    {
+        if (_upgrades.Count >= MaxUpgrades) return false;
+        var a = PieceAt(box.Offset(1, 1));
+        var b = PieceAt(box.Offset(2, 2));
+        if (a == null) return false;
+        int ia = _pieces.IndexOf(a), ib = b == null ? -1 : _pieces.IndexOf(b);
+        if (ib >= 0 && ib + 1 == ia) ia = ib;   // `s1.next == s2`: the other one is first
+        _upgrades.Add(new TrackUpgrade(Closed ? ia : ia - 1, kind & 0xf));
+        Rebuild();
+        return true;
+    }
+
     /// <summary>0x2009C0: throw the track away and lay it again.</summary>
     public void Rebuild()
     {
@@ -222,6 +248,7 @@ public sealed class TrackLayout
         }
         for (int i = 0; i + 1 < _waypoints.Count; i++)
             LayLeg(_waypoints[i], _waypoints[i + 1], i == _waypoints.Count - 2);
+        if (!CheckUpgrades()) return;   // it dropped one and laid the track again, samples and all
         // 0x2027E0 builds the samples lazily, one piece per update, in chain order. The connector
         // reads "the previous non-connector piece" through a global (0x2EE4C0), so building them in
         // order here gives the same answer without the global.
@@ -233,7 +260,49 @@ public sealed class TrackLayout
         }
     }
 
-    void Place(ParkCell at, int type) => _pieces.Add(new TrackPiece(type, at));
+    /// <summary>0x201410. An add-on's 4×4 is anchored so it straddles the 2-wide track with a cell to
+    /// spare either side and runs over this step and the next (READ, `0x201440..0x2014cc`).</summary>
+    void Place(ParkCell at, int type)
+    {
+        if (type is >= 0x28 and <= 0x33)
+            at = (type & 3) switch
+            {
+                0 => at.Offset(-1, 0),
+                1 => at.Offset(-1, -2),
+                2 => at.Offset(0, -1),
+                _ => at.Offset(-2, -1),
+            };
+        _pieces.Add(new TrackPiece(type, at));
+    }
+
+    /// <summary>⭐ 0x202C00, run at the end of every rebuild. First, from the last entry back, an add-on
+    /// whose index is not below pieces − (closed ? 2 : 1) is dropped. Then the chain is walked: every
+    /// add-on must be followed by a plain straight (4–7), which becomes the hidden connector (+4, types
+    /// 8–11) the 4×4 model covers; if one is not, the entry numbered by how many add-ons came before
+    /// it in the chain is dropped and the track laid again. No refund either way. False when it
+    /// re-laid.</summary>
+    bool CheckUpgrades()
+    {
+        int keep = Closed ? 2 : 1;
+        for (int j = _upgrades.Count - 1; j >= 0; j--)
+            if (!(_upgrades[j].Index < _pieces.Count - keep)) _upgrades.RemoveAt(j);
+        int seen = 0;
+        for (int i = 0; i < _pieces.Count; i++)
+        {
+            if (_pieces[i].Type < 0x28) continue;
+            var next = i + 1 < _pieces.Count ? _pieces[i + 1] : null;
+            if (next == null || next.Type is < 4 or >= 8)
+            {
+                if (seen < _upgrades.Count) _upgrades.RemoveAt(seen);
+                Rebuild();
+                return false;
+            }
+            seen++;
+            next.Type += 4;
+            i++;
+        }
+        return true;
+    }
 
     /// <summary>0x200CD0. A leg must be axis-aligned; the x test comes first, so a diagonal one is
     /// treated as an x leg. Pieces go every 2 cells starting ON the first waypoint; a non-final leg
@@ -256,9 +325,17 @@ public sealed class TrackLayout
         }
     }
 
-    /// <summary>0x200FB8, without the add-on rule: a crossing, then a bridge, then the corner table.</summary>
+    /// <summary>0x200FB8: an add-on, a crossing, then a bridge, then the corner table.</summary>
     void Choose(ParkCell pos, int dir, bool isLast)
     {
+        // Rule 1: an add-on whose stored index, plus one while the loop is open, is the slot about to
+        // be filled. It takes the leg's own direction, not the corner table's.
+        foreach (var u in _upgrades)
+            if (_pieces.Count == u.Index + (Closed ? 0 : 1))
+            {
+                Place(pos, 0x28 + u.Kind * 4 + dir);
+                return;
+            }
         var last = _pieces[^1];
         // Rule 2: the new piece lands exactly on an existing piece's anchor (any but the last).
         for (int k = 0; k < _pieces.Count - 1; k++)
@@ -317,6 +394,13 @@ public sealed class TrackLayout
                     break;
                 case >= 8 and <= 11:
                     if (previousType is >= 0 and < 4) { p1x -= 256; p2x -= 256; }
+                    // After an add-on, its last sample's height carries on over the hidden connector:
+                    // for the first three samples, and for the fourth only in JUNGLE's first park
+                    // (kind 0) or HALLOW's second (kind 1) -- as the code has it (0x1FE1D8..0x1FE2B8).
+                    if (previousType is >= 40 and <= 43 && (i < 3 || (world == 0 && park == 0)))
+                        h += TrackUpgrades.Offset(world, park, 0, 3).Y;
+                    if (previousType is >= 44 and <= 47 && (i < 3 || (world == 1 && park == 1)))
+                        h += TrackUpgrades.Offset(world, park, 1, 3).Y;
                     break;
                 case >= 12 and <= 15:
                 {
@@ -344,6 +428,14 @@ public sealed class TrackLayout
                 case >= 32 and <= 39:
                     h = 0x100;
                     break;
+                case >= 40 and <= 47:
+                {
+                    // The per-park add-on offsets (0x2EDD60): every retail x is 256, which centres the
+                    // lanes in the 4-wide frame; y lifts or sinks the cars through it.
+                    var e = TrackUpgrades.Offset(world, park, (t - 40) >> 2, i);
+                    p1x += e.X; p2x += e.X; p1z += e.Z; p2z += e.Z; h += e.Y;
+                    break;
+                }
             }
             if (world == 3 && park == 1) h += 0x5a;
             var (a1, b1) = Rotate(r, (int)p1x, (int)p1z);

@@ -117,6 +117,91 @@ static class TrackRideChecks
                   $"a path under {n} block(s) of a leg becomes {(n == 1 ? "h" : n == 2 ? "h_u h_d" : "h_u h_a h_d")}, with the deck at 256 [{string.Join(",", span)}]");
         }
 
+        // ---- add-ons (0x202980, 0x200FB8 rule 1, 0x202C00, 0x1FDBA8 types 40-47 and the connector after)
+        {
+            // The 4x4 box over a straight at chain slot i, as 0x201410 anchors it.
+            static ParkCell BoxFor(TrackPiece p) => (p.Type & 3) switch
+            {
+                0 => p.Anchor.Offset(-1, 0), 1 => p.Anchor.Offset(-1, -2), 2 => p.Anchor.Offset(0, -1), _ => p.Anchor.Offset(-2, -1),
+            };
+            static int StraightPair(TrackLayout l, int from)
+            {
+                for (int i = Math.Max(3, from); i + 2 < l.Pieces.Count; i++)
+                    if (l.Pieces[i].Type is >= 4 and <= 7 && l.Pieces[i + 1].Type == l.Pieces[i].Type) return i;
+                return -1;
+            }
+            foreach (int rot in new[] { 0, 1, 2, 3 })
+            {
+                var plain = Loop(rot, 1, jungle);
+                var l = Loop(rot, 1, jungle);
+                int i = StraightPair(l, 8);
+                var at = l.Pieces[i];
+                int d = at.Type - 4;
+                var box = BoxFor(at);
+                bool took = l.AddUpgrade(0, box);
+                var u = l.Pieces[i]; var c = l.Pieces[i + 1];
+                Check(took && l.Upgrades.Count == 1 && l.Upgrades[0].Index == i && u.Type == 40 + d && u.Anchor == box
+                      && c.Type == 8 + d && l.Pieces.Count == plain.Pieces.Count && plain.Pieces[i].Type == 4 + d,
+                      $"rot {rot}: an add-on on the straights at slots {i},{i + 1} is laid there as type {u.Type} (40+dir {d}) at its 4x4 box {box}, "
+                      + $"the next straight becomes connector {c.Type}, and the count stays {l.Pieces.Count} (control: {plain.Pieces[i].Type} without it)");
+                Check(Steps(l).SequenceEqual(Steps(plain)),
+                      $"rot {rot}: the centre line through the add-on is the plain track's (x += 256 recentres the lanes in the 4-wide frame)");
+                Check(u.Samples.Select(q => q.Height).SequenceEqual(new[] { 80, -48, -48, -48 })
+                      && c.Samples.All(q => q.Height == -48),
+                      $"rot {rot}: Dino Karts' mammoth tunnel dips the cars 128 through it and its connector (JUNGLE's first park keeps the 4th sample down too) "
+                      + $"[{string.Join(",", u.Samples.Select(q => q.Height))} | {string.Join(",", c.Samples.Select(q => q.Height))}]");
+                l.Rebuild();
+                Check(l.Pieces[i].Type == 40 + d && l.Pieces[i + 1].Type == 8 + d, $"rot {rot}: the add-on survives a rebuild");
+            }
+            {
+                var l = Loop(0, 1, jungle);
+                int i = StraightPair(l, 8);
+                l.AddUpgrade(1, BoxFor(l.Pieces[i]));
+                Check(l.Pieces[i].Samples.Select(q => q.Height).SequenceEqual(new[] { 80, 144, 144, 144 })
+                      && l.Pieces[i + 1].Samples.Select(q => q.Height).SequenceEqual(new[] { 144, 144, 144, 80 }),
+                      $"the lava jump lifts them 64 and drops back on the connector's last sample [{string.Join(",", l.Pieces[i + 1].Samples.Select(q => q.Height))}]");
+                // Three is the most; a fourth is refused and changes nothing.
+                int j = StraightPair(l, i + 2), k = j < 0 ? -1 : StraightPair(l, j + 2);
+                bool two = j >= 0 && l.AddUpgrade(0, BoxFor(l.Pieces[j]));
+                bool three = k >= 0 && l.AddUpgrade(0, BoxFor(l.Pieces[k]));
+                int m = k < 0 ? -1 : StraightPair(l, k + 2);
+                var before = string.Join(",", l.Pieces.Select(p => p.Type));
+                bool four = m >= 0 && l.AddUpgrade(0, BoxFor(l.Pieces[m]));
+                Check(two && three && m >= 0 && !four && l.Upgrades.Count == 3 && string.Join(",", l.Pieces.Select(p => p.Type)) == before,
+                      $"three add-ons fit and a fourth is refused (slots {i}, {j}, {k}, then {m})");
+            }
+            {
+                // 0x202C00: an add-on whose next piece is not a straight is dropped, and the track re-laid.
+                var l = Loop(0, 1, jungle);
+                int i = Enumerable.Range(3, l.Pieces.Count - 4).First(n => l.Pieces[n].Type is >= 4 and <= 7 && l.Pieces[n + 1].Type is >= 12 and <= 19);
+                var plain = string.Join(",", l.Pieces.Select(p => p.Type));
+                l.AddUpgrade(0, BoxFor(l.Pieces[i]));
+                Check(l.Upgrades.Count == 0 && string.Join(",", l.Pieces.Select(p => p.Type)) == plain,
+                      $"an add-on on the straight before a bend (slot {i}) is dropped by the post-pass and the track is as it was");
+            }
+            {
+                // Bought while the loop is open, the index is stored one short (0x202980 at 0x202adc) and
+                // the chooser adds the one back (0x200FB8); once the loop closes, nothing adds it, so the
+                // add-on moves back a slot. Native, if odd.
+                var probe = Loop(0, 1, jungle);
+                var l = new TrackLayout(Station, 0, jungle);
+                foreach (var wp in probe.Waypoints.Skip(1).Take(3)) l.Add(wp);
+                int i = StraightPair(l, 8);
+                l.AddUpgrade(0, BoxFor(l.Pieces[i]));
+                bool open = !l.Closed && l.Upgrades[0].Index == i - 1 && l.Pieces[i].Type is >= 40 and <= 43;
+                foreach (var wp in probe.Waypoints.Skip(4)) l.Add(wp);
+                Check(open && l.Closed && l.Pieces[i - 1].Type is >= 40 and <= 43,
+                      $"on an open loop the add-on at slot {i} is stored as {i - 1}, and closing the loop moves it to slot {i - 1}");
+            }
+            {
+                var t = TrackUpgrades.ForPark(0, 0);
+                Check(t.SequenceEqual(new uint[] { 237, 236 }) && TrackUpgrades.ForPark(0, 1).SequenceEqual(new uint[] { 238 })
+                      && TrackUpgrades.ForPark(2, 0).Count == 0 && TrackUpgrades.ForPark(3, 1).Count == 0
+                      && TrackUpgrades.KindOf(0, 0, 236) == 1 && TrackUpgrades.KindOf(0, 1, 236) == -1,
+                      "the parks' add-on catalogues: Dino Karts MammTunn then LavaJump, Splish Splash WaterTun, Taptastic Rapids and Space Racers none");
+            }
+        }
+
         // ---- operation
         RunSim(check, karts: true);
         RunSim(check, karts: false);
