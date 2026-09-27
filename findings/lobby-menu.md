@@ -70,11 +70,11 @@ Entries are the usual `{short thisAdjust, u32 fnptr}` 8-byte pairs, so slot *i*'
 |---|---|---|
 | 1 | `0x216f90` | **Enter**: opens the archives, loads `base` + the 8 parks, seats and starts them |
 | 2 | `0x2178a0` | **Leave**: frees all 8 park objects and handles |
-| 3 | `0x2183a8` | — |
+| 3 | `0x2183a8` | **Draw**: a chain of sub-draws (`0x218c20`, `c38`, `c40`, `c58`, `c60`, `e00`, `e68`) |
 | 4 | `0x217e20` | **Update**: reads the pad and moves the selection |
-| 5 | `0x2179b0` | — (frameless) |
-| 6 | `0x2179c8` | — |
-| 7 | `0x217ae0` | — |
+| 5 | `0x2179b0` | a frameless leaf, not read |
+| 6 | `0x2179c8` | **Release**: drops the refcount on the sub-object at `this+0x2f0` |
+| 7 | `0x217ae0` | **Destructor** -- rewrites the vptr and logs `0x36dbd8`, `~WorldMapSelector()` |
 | 8 | `0x2179b8` | **Name** → `"WORLD MAP"` |
 
 Fields established by the Enter and Leave pair:
@@ -287,7 +287,7 @@ do at all because its `Behind` couples distance to pitch.
 
 ## Still open
 
-- Vtable slots 3, 5, 6, 7.
+- Vtable slot 5 (`0x2179b0`), a frameless leaf.
 - Whether the three 4-word runs zeroed by the constructor are per-world state.
 - What the prompt modes 4..8 actually SAY (the text ids the other cases format) and what confirming
   one does -- `FUN_00218f78` builds the dialogue but the accept path is not yet read.
