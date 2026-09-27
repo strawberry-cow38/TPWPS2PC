@@ -47,7 +47,10 @@ COVERAGE = '\n'.join([f'  ok   {category.replace("_", " ")}: filler'
                      ['  ok   disruption: check'] * 18 +
                      ['  ok   disruption: identical disruption inputs replay the entire observed ledger',
                       '  ok   disruption: late-run negative control catches changed cash through ordinary per-step sampling',
-                      '  ok   disruption: late-run negative control catches orphan needs through ordinary per-step sampling'])
+                      '  ok   disruption: late-run negative control catches orphan needs through ordinary per-step sampling'] +
+                     ['  ok   staff: check'] * 78 +
+                     ['  ok   staff: toilet score: |dx| + |dz|*(c+1) EXACTLY as shipped picks the same-row c59 toilet',
+                      '  ok   staff: no staff room: a tired handyman never works again, he patrols forever'])
 
 
 
@@ -56,6 +59,13 @@ def known(world):
 
 
 class ClassificationTests(unittest.TestCase):
+    def test_staff_family_count_and_witnesses_required(self):
+        for text in ('\n'.join(x for x in COVERAGE.splitlines() if 'staff:' not in x),
+                     COVERAGE.replace('  ok   staff: check\n', '', 1),
+                     COVERAGE.replace('toilet score: |dx| + |dz|*(c+1) EXACTLY as shipped', 'toilet score: some formula')):
+            self.assertEqual(classify('JUNGLE', 0, text + '\nPASS')['status'], 'missing_coverage')
+        self.assertEqual(classify('JUNGLE', 0, COVERAGE + '\nPASS')['status'], 'pass')
+
     def test_post_service_motion_cannot_be_omitted_or_replaced_with_counts(self):
         for label in ('post service movement:',
                       'relief1234 ordinary arm walks away before the facility deadline',

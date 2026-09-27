@@ -93,6 +93,12 @@ if (args.Contains("--native-consumer-only"))
     return bad == 0 ? 0 : 1;
 }
 
+if (args.Contains("--staff-only"))
+{
+    StaffChecks.Run(disc, terrain, Wad("DATA"), wad, world, Check);
+    Console.WriteLine(bad==0 ? "PASS staff person and handymen through ParkStaff/ParkVisitors (viewer not exercised)" : $"FAIL: {bad}");
+    return bad==0?0:1;
+}
 if (args.Contains("--track-rides-only"))
 {
     TrackRideChecks.Run(Check);
@@ -673,6 +679,7 @@ TerminalWalkingChecks.Run(terrain, Wad("DATA"), wad, world, Check);
 DestinationScoreChecks.Run(disc, Check);
     NativeRideValueChecks.Run(Check);
 DecisionSchedulingChecks.Run(terrain, loopPaths, corridorStops[0], onPath[^1], Wad("DATA"), wad, world, Check);
+StaffChecks.Run(disc, terrain, Wad("DATA"), wad, world, Check);
 Check(looEntry.Entry != null, $"the world ships a lavatory to exercise ({looEntry.Entry?.Path ?? "none found"})");
 Check(availabilityChecked, "availability regression exercised a real ride with both availability flags");
 Check(removalChecked, "removal regression exercised a real non-track ride with seats");

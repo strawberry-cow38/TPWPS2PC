@@ -10,6 +10,9 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="tpwps2sshscore" />
+    <!-- The staff checks set a member's tiredness, morale and level directly (the native only has
+         setters behind training); nothing else in the audit uses internals. -->
+    <InternalsVisibleTo Include="TPW.PS2.ParkSimAudit" />
     <!-- ⭐ NLayer decodes MPEG Layer I/II/III in pure managed C#, which is the whole point: the
          engine's own decoder is built for Layer III and hands back nothing for the Layer II the
          disc actually uses, and a native plugin would have to be built per platform. 1,849 of the
