@@ -87,7 +87,9 @@ Implemented in `core/TPW.PS2.Data/ParkClock.cs`; the full derivation is in that 
 short: a six-word struct, a day every `0xF0000` frame-time units (**240 ticks, 4.8 s at 50Hz, a year
 in 29.2 minutes**), month 0-based against the table at `0x361d88`, and **no leap years**.
 
-⚠ The epoch year is not read — no year literal exists in the executable.
+⭐ A park starts on **01/01/2000** — master: *"its meant to be 1/1/2000 as the start date"*, which
+matches what the port rendered before he said so. ⚠ Still not read out of the image: the executable
+holds no year literal at all, so the epoch arrives from a scenario or save that is not traced.
 
 ## ⭐ The calendar is the economy's spine
 

@@ -49,11 +49,15 @@ public sealed class ParkClock
     /// game rather than a rate to tune by feel.</summary>
     public const int TicksPerDay = UnitsPerDay / UnitsPerTick;
 
-    /// <summary>⚠⚠ NOT READ. The executable holds no year literal -- 1999, 2000, 2001 and 2002
-    /// appear nowhere as an immediate -- so the displayed year is either this plus the counter, or
-    /// it arrives from a scenario/save that is not traced. Master's HUD read 2002 on a park that
-    /// had been running. This is a placeholder and is marked as one.</summary>
-    public const int UnreadEpochYear = 2000;
+    /// <summary>⭐ A park starts on <b>01/01/2000</b>. Master, who can see the real game, settled
+    /// it: "its meant to be 1/1/2000 as the start date". So the counters all start at zero and the
+    /// year is this plus <see cref="Year"/>.
+    ///
+    /// ⚠ Still not read out of the image -- the executable holds no year literal at all (1999,
+    /// 2000, 2001 and 2002 appear nowhere as an immediate), so the epoch arrives from a scenario
+    /// or save that is not traced. It is master's observation, which is a source, not a guess --
+    /// but it is not the disc, and that distinction is kept here on purpose.</summary>
+    public const int EpochYear = 2000;
 
     /// <summary>`clock[0]`.</summary>
     public int Accumulator { get; private set; }
@@ -72,7 +76,7 @@ public sealed class ParkClock
     /// <summary>Day and month as people read them, both 1-based.</summary>
     public int DayOfMonth => Day + 1;
     public int MonthOfYear => Month + 1;
-    public int DisplayYear => UnreadEpochYear + Year;
+    public int DisplayYear => EpochYear + Year;
 
     /// <summary>`FUN_0016d2e8`: how long the PREVIOUS month was, wrapping -1 to December.</summary>
     public int DaysInPreviousMonth => DaysInMonth[Month == 0 ? 11 : Month - 1];
