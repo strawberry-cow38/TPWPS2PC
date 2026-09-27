@@ -42,6 +42,7 @@ public partial class Viewer
     LobbyMessageBox _lobbyBox;
     bool _lobbyBoxHasFont;
     UiPanel _lobbyPanel;
+    bool _lobbyPrompt;
     float _lobbyModelTime;
     bool _lobbyAimed;
 
@@ -526,6 +527,7 @@ public partial class Viewer
     void LeaveLobby()
     {
         _lobbyMode = false;
+        _lobbyPrompt = false;
         if (_lobbyBox != null && IsInstanceValid(_lobbyBox)) _lobbyBox.Hide();
         _lobbyParks.Clear();
         _lobbyCams.Clear();
@@ -550,12 +552,42 @@ public partial class Viewer
         }
         string raw = LobbyName(record);
         var parts = raw.Split('\n');
-        string ok = _text != null && 0x1E9 < _text.Keys.Length ? _text.Text("eng", 0x1E9) ?? "OK" : "OK";
-        string cancel = _text != null && 0x130 < _text.Keys.Length ? _text.Text("eng", 0x130) ?? "Cancel" : "Cancel";
-        _lobbyBox.Show(parts[0], parts.Length > 1 ? parts[1] : "", ok, cancel);
+        // ⚠⚠ NO BUTTONS ON THE NAME BOX. The prompt table at `0x36DF18` is 6 bytes a mode
+        // -- {title id, body id, button bits} -- and the buttons belong to the PROMPTS (modes 2,
+        // 4, 5 and 6 carry OK+Cancel; 1, 3 and 7 carry OK alone). The park's name is not one of
+        // them, so hanging OK/Cancel on it, as I first did, put a prompt's furniture on a caption.
+        _lobbyBox.Show(parts[0], parts.Length > 1 ? parts[1] : "");
         GD.Print($"[lobby] message box: font={(_hudFont == null ? "NULL" : "ok")} "
                + $"\"{parts[0]}\" / \"{(parts.Length > 1 ? parts[1] : "")}\" "
-               + $"[{ok}|{cancel}] target {_lobbyBox.TargetWidth}x{_lobbyBox.TargetHeight}");
+               + $"no buttons, target {_lobbyBox.TargetWidth}x{_lobbyBox.TargetHeight}");
+    }
+
+    /// <summary>⭐⭐ PROMPT MODE 6 -- "do you want to enter this park?".
+    ///
+    /// The mode table at `0x36DF18` is 6 bytes a mode: `{u16 title id, u16 body id, u8 buttons}`.
+    /// Mode 6 is `{1062, 810, 0x03}` -- `STR_MAP_TITLE_DO_YOU_WANT_TO_PLAY_THIS_ISLAND` /
+    /// `STR_MAP_BODY_...`, with bit 0 = OK and bit 1 = Cancel. The key names name the mode.
+    ///
+    /// ⭐ And `FUN_00219338`'s case 6 is what the buttons do: index **0** confirms -- it sets the
+    /// park (`FUN_001C38B0`), latches leaving and writes **`+0x74 = 1`**, which is the very flag
+    /// the story movie is gated on (`findings/main-menu.md`) -- and ANY OTHER index cancels.</summary>
+    void ShowLobbyPrompt()
+    {
+        if (_lobbyBox == null || !IsInstanceValid(_lobbyBox) || _text == null) return;
+        string T(int id) => id >= 0 && id < _text.Keys.Length ? _text.Text("eng", id) ?? $"#{id}" : $"#{id}";
+        string ok = T(0x1E9), cancel = T(0x130);
+        _lobbyPrompt = true;
+        _lobbyBox.Show(T(1062).Replace("\n", " "), T(810).Replace("\n", " "), ok, cancel);
+    }
+
+    /// <summary>⚠ Index 0 is OK and anything else cancels -- `FUN_00219338` tests exactly that
+    /// (`if (param_2 != 0) { ...clear...; return; }`), so it is the INDEX that decides, not the
+    /// label.</summary>
+    void LobbyPromptAnswer()
+    {
+        _lobbyPrompt = false;
+        if (_lobbyBox is { Button: 0 }) { LobbyEnterPark(); return; }
+        ShowLobbyBox(_lobbyRecord);        // cancelled: back to the park's name
     }
 
     /// <summary>The middle of the seated parks, in world units.</summary>

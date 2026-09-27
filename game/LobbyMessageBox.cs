@@ -47,6 +47,13 @@ public partial class LobbyMessageBox : Control
 
     public bool Open { get; private set; }
 
+    /// <summary>Which button is picked, or -1 when the box has none. ⚠ A box with no buttons is
+    /// not a degenerate prompt -- it is the normal case: the park-name box carries none.</summary>
+    public int Button { get; private set; } = -1;
+
+    /// <summary>True when this box is a PROMPT (has buttons) rather than a plain caption.</summary>
+    public bool IsPrompt => _buttons.Length > 0;
+
     /// <summary>⚠ For the instrument only: the size `FUN_0012CCE0` would have computed.</summary>
     public int TargetWidth => _wTarget;
     public int TargetHeight => _hTarget;
@@ -71,8 +78,17 @@ public partial class LobbyMessageBox : Control
         _line1 = line1 ?? ""; _line2 = line2 ?? "";
         _buttons = buttons ?? Array.Empty<string>();
         Measure();
+        Button = _buttons.Length > 0 ? 0 : -1;    // ⚠ OK is index 0, as `FUN_00219338` reads it
         _w = 0; _h = 0;
         Open = true; Visible = true;
+        QueueRedraw();
+    }
+
+    /// <summary>⚠ CLAMPED, not wrapped -- and a box with no buttons ignores it entirely.</summary>
+    public void MoveButton(int by)
+    {
+        if (!Open || _buttons.Length == 0) return;
+        Button = Mathf.Clamp(Button + by, 0, _buttons.Length - 1);
         QueueRedraw();
     }
 
@@ -163,9 +179,11 @@ public partial class LobbyMessageBox : Control
         {
             var tex = _font.Render(_buttons[i]);
             var size = tex.GetSize() * s;
+            // ⭐ The picked button is yellow, like every other selected row in this game's UI.
             DrawTextureRect(tex, new Rect2(
                 rect.Position + new Vector2(slot * i + slot / 2f - size.X / 2f,
-                                            rect.Size.Y - size.Y - 8f * s), size), false);
+                                            rect.Size.Y - size.Y - 8f * s), size), false,
+                i == Button ? new Color(1f, 1f, 0f) : Colors.White);
         }
     }
 }

@@ -400,6 +400,41 @@ specifically that is empty.
 i.e. **overhanging 10 either side** -- which is how the corners would have been covered had any of
 it been implemented.
 
+### ⭐⭐⭐ The prompt table -- `0x36DF18`, six bytes a mode
+
+`FUN_00218f78` indexes it as `&UNK_0036DF18 + mode * 6`: **`{u16 title id, u16 body id, u8 button
+bits}`**, with bit 0 = OK (`STR_MAP_OK`, 489) and bit 1 = Cancel (`STR_MAP_CANCEL`, 304).
+
+| mode | title | body | buttons |
+|---|---|---|---|
+| 0 | 410 | *Not Implemented* | **none** |
+| 1 | 176 Not Enough Gold... | 666 You don't have enough tickets to open this... | OK |
+| 2 | 962 Open New Park | 628 To open this park you will need to use %d... | OK, Cancel |
+| 3 | 339 You already have... | 634 You'll need to close a park before you can... | OK |
+| 4 | 944 Do you want to... | 678 To open this park, select OK | OK, Cancel |
+| 5 | 946 Do you want to... | 340 To delete this park, select OK / Everything... | OK, Cancel |
+| 6 | **1062 Do you want to enter this park?** | **810 To play this park, select OK** | OK, Cancel |
+| 7 | 198 Gold ticket in... | 406 Tickets earnt: %d/%d... | OK |
+
+⭐ Mode 6's ids name themselves: `STR_MAP_TITLE_DO_YOU_WANT_TO_PLAY_THIS_ISLAND` and
+`STR_MAP_BODY_...`. ⚠ Mode **0 carries no buttons and says "Not Implemented"** -- it is the CLEAR,
+not a display mode, which is why `FUN_00219338` calls `FUN_00218f78(this, 0)` first thing.
+
+### ⭐ What the buttons do -- `FUN_00219338(this, index)`
+
+`FUN_00217E20` routes to it when the box reports a choice: `this+0x1BCE` is the "chosen" flag and
+**`this+0x1BCD` the chosen INDEX**. Case 6:
+
+- **index 0 (OK)** -- `FUN_001C38B0(slot)` sets the park, then `FUN_00218F78(this, 8)`,
+  `this+0x74 = 1` and `this+0x82 = 1` (leaving).
+- **any other index** -- clears `0x2EF8C4`/`0x2EF8C8` and returns. It is the INDEX that decides,
+  not the label.
+
+⭐⭐ **`+0x74 = 1` is the story-movie gate.** `findings/main-menu.md` found the per-world intro
+`FUN_0013B3C8` gated on exactly that flag -- so confirming a park here is what makes its movie
+play. Two independent traces meeting.
+
 ### Still open on the box
 
-- Which button index maps to which action, and what the other prompt modes (4..8) say.
+- Modes 1, 2, 3, 5 and 7 are decoded but unreachable in this port (no tickets, no park opening or
+  deleting).

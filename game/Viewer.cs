@@ -980,12 +980,20 @@ public partial class Viewer : Node3D
         {
             switch (k.Keycode)
             {
-                case Key.Up:    LobbyMove(0); return;
-                case Key.Down:  LobbyMove(1); return;
-                case Key.Left:  LobbyMove(2); return;
-                case Key.Right: LobbyMove(3); return;
-                // ⭐ The console confirms with ✕; on a keyboard that is Enter or Space.
-                case Key.Enter: case Key.KpEnter: case Key.Space: LobbyEnterPark(); return;
+                case Key.Up:    if (!_lobbyPrompt) LobbyMove(0); return;
+                case Key.Down:  if (!_lobbyPrompt) LobbyMove(1); return;
+                case Key.Left:
+                    if (_lobbyPrompt) _lobbyBox?.MoveButton(-1); else LobbyMove(2);
+                    return;
+                case Key.Right:
+                    if (_lobbyPrompt) _lobbyBox?.MoveButton(+1); else LobbyMove(3);
+                    return;
+                // ⭐ ✕ raises the PROMPT; the prompt's own OK is what enters the park. Left/Right
+                // pick between OK and Cancel while it is up, so the arrows mean two different
+                // things depending on whether a prompt is open -- which is what the console does.
+                case Key.Enter: case Key.KpEnter: case Key.Space:
+                    if (_lobbyPrompt) LobbyPromptAnswer(); else ShowLobbyPrompt();
+                    return;
             }
         }
         // ⭐ The panel takes Escape before anything else while it is up.
