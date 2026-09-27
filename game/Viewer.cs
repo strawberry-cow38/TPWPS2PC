@@ -7525,7 +7525,25 @@ public partial class Viewer : Node3D
         _detailsRide = loo; _detailsSpec = LaptopScreen.Toilet;
         var cells = new List<(string, int)>();
         foreach (var row in LaptopScreen.Toilet.Rows)
-            cells.Add(row.TextId == 168 ? (loo.Customers.ToString(), 0) : (null, 0));
+            cells.Add(row.TextId switch
+            {
+                168  => (loo.Customers.ToString(), 0),                  // Users
+                // ⭐⭐ CLEANLINESS IS THE LAVATORY'S CONDITION, `+0xB4`, and this port already had
+                // it -- tinyclaw pointed at it and ParkSim's own note confirms: it starts at 100,
+                // FALLS with use, and `FUN_00130978` resets it to 100 while stamping a time at
+                // `+0xA8`, which is why that call is a servicing and not an initialisation.
+                //
+                // ⭐ It also closes the toilet draw I read this morning without knowing the names.
+                // `FUN_001DA008` fills its bar from `FUN_00130938` and its second value row from
+                // `FUN_00130940`; ParkSim documents `FUN_00130938` as the one-line
+                // `return facility[0xB4]`. So the bar IS Condition, read from the console's own
+                // reader, rather than a quantity chosen to fill the row.
+                132  => (null, Math.Clamp(loo.Condition, 0, 100)),      // Cleanliness
+                // ⚠ Last Cleaned stays blank: it is today MINUS the day stamped at `+0xA8`, and
+                // nothing stamps it until handymen land. tinyclaw is adding it as LastCleanedDay
+                // beside Condition; this row wires to it then and not before.
+                _    => (null, 0),
+            });
         _shopPanel.ShowScreen(LaptopScreen.Toilet, DisplayName(loo), cells);
         BuildLaptopModelFor(loo);
         GD.Print($"[laptop] details {DisplayName(loo)}: a toilet by record[0x2E] bit 0; users {loo.Customers}");
