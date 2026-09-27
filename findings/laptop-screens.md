@@ -324,15 +324,20 @@ are also bins, benches and trees -- so either toilets are Features and the scree
 something further that is not read here, or 2 means something else in this position. Do not build
 that screen on the assumption that `Feature` is the whole filter.
 
-⚠ And the second text id at `this + 0x178` (321 for All Rides) is unread -- it is stored, not
-passed to the title call, so what it labels is not established.
+⚠⚠ **`this + 0x178` IS NOT A TEXT ID, and calling it one was my error.** I named it "a second
+text id" purely because the title id sits nearby. Passing the actual values through the table is
+the control, and it fails: 321 -> "Pretty Good", 322 -> "Welcome message", 323 -> "deg", 325 ->
+"Your stock of rides is running". They are also not unique per screen -- All Rides and All Toilets
+both store 321, All Shops and Single Shop both store 322 -- which a per-screen label could not be.
+So it is **an unidentified constant**, and the shared values hint at a kind or class tag rather
+than a string. Recorded as unread.
 
 ### What this leaves
 
 The research question is answered: the remaining screens are four implementations plus a table of
 constants, and for the five list screens the table is **a title id and a set of `AssetKind`s**,
-both of which this port can already produce. The honest gaps are the `this+0x178` id, the All
-Toilets filter, and the menu-id -> class routing.
+both of which this port can already produce. The honest gaps are the `this+0x178`
+constant, the All Toilets filter, and the menu-id -> class routing.
 
 ## ⭐⭐ The widget inventory is in the CONSTRUCTOR, not the draw
 
