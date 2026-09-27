@@ -179,6 +179,29 @@ public partial class Viewer
                    + $"z {plo.Z:F0}..{phi.Z:F0}");
         }
 
+        // ⭐ CENSUS, ONCE, AT LOAD: which node axis points at each park. One run answers it for
+        // all eight instead of eight runs answering it for one -- and if they disagree, that is
+        // the finding rather than a wrong camera I would have to notice by eye.
+        for (int i = 0; i < _lobbyCams.Count && i < _lobbyParks.Count; i++)
+        {
+            var ct = _lobbyBaseRoot.GlobalTransform * _lobbyCams[i];
+            var dir = (_lobbyParks[i].Root.GlobalPosition - ct.Origin).Normalized();
+            var cand = new (string N, Vector3 V)[]
+            {
+                ("+X", ct.Basis.X), ("-X", -ct.Basis.X), ("+Y", ct.Basis.Y),
+                ("-Y", -ct.Basis.Y), ("+Z", ct.Basis.Z), ("-Z", -ct.Basis.Z),
+            };
+            string bn = "?"; float bd = float.MinValue;
+            foreach (var (n, v) in cand)
+            {
+                if (v.LengthSquared() < 1e-6f) continue;
+                float d = v.Normalized().Dot(dir);
+                if (d > bd) { bd = d; bn = n; }
+            }
+            GD.Print($"[lobby] axis census {LobbySlots.ModelNames[i],-9} -> {bn} (dot {bd:F2}), "
+                   + $"basis det {ct.Basis.Determinant():F2}");
+        }
+
         _lobbyMode = true;
         _lobbyRecord = 0;
         // ⭐ Stand on the park we just closed, if that is how we got here.
@@ -236,81 +259,86 @@ public partial class Viewer
         LobbyAimCamera();
     }
 
-    /// <summary>Put the game camera over the selected park. ⚠ The park models sit on `base`'s
-    /// fittings, so the camera follows the SEATED model's world position rather than anything
-    /// computed from the record.</summary>
-    void LobbyAimCamera()
+    Transform3D _lobbyCamNow, _lobbyCamTarget;
+    bool _lobbyCamReady;
+
+    /// <summary>⭐⭐⭐ THE CAMERA IS THE NODE'S WHOLE TRANSFORM -- POSITION **AND** FACING.
+    ///
+    /// Master, who has played it: "the camera positions for each park is completely wrong". They
+    /// were. This used to aim at the park's CENTRE from the node's position; the node carries its
+    /// own rotation, the console uses it, and I was throwing it away.
+    ///
+    /// ⭐ `FUN_00217b48` says so plainly -- it takes the `0x1000` node's matrix and then
+    ///   - `FUN_001a9940` makes a quaternion of it and `FUN_001a9bb8(0.8f, ...)` SLERPS that into
+    ///     `this+0x2a0`, so the ORIENTATION is the node's, eased at 0.8;
+    ///   - the translation LERPs into `this+0x2e0..0x2e8` at **0.2** (0.1 while `0x2ef8c4` is set,
+    ///     and **1.0** when its second argument is non-zero -- the snap).
+    /// Nothing in it looks at the park. Reading the consumer settled what measuring the node could
+    /// not: the offsets were real, and the use I made of them was the invention.</summary>
+    void LobbyAimCamera(bool snap = false)
     {
         int mi = _lobbySlots?.ModelIndex(_lobbyRecord) ?? -1;
-        if (_game == null || mi < 0 || mi >= _lobbyParks.Count) return;
-        var at = _lobbyParks[mi].Root.GlobalPosition;
-
-        // ⭐⭐ STAND WHERE THE GAME STANDS. The authored camera node beats anything computed: it
-        // is per park, it is already in the island's frame, and it carries the height and the
-        // offset the console uses. What this port had instead was a distance derived from the
-        // scene's span -- a reasonable guess, and not the game's.
+        if (mi < 0 || mi >= _lobbyCams.Count || _lobbyBaseRoot == null
+            || !IsInstanceValid(_lobbyBaseRoot)) return;
+        // ⚠⚠ THE AUTHORED BASIS IS MIRRORED AND CANNOT BE USED AS A CAMERA BASIS DIRECTLY.
+        // The plot frame reflects, so `GlobalTransform.Basis` here has a NEGATIVE determinant --
+        // `Orthonormalized()` keeps the reflection, `Basis.Slerp` then throws
+        // "Quaternion is not normalized", and the whole frame dies before the shot is saved.
         //
-        // ⚠ The free camera is used rather than the console's `_game`, because that one couples
-        // zoom to pitch through `Behind` and cannot be put at an arbitrary eye point at all.
-        // Inverting its own placement -- eye = focus + (cos p sin y, sin -p, cos p cos y) * dist.
-        if (mi < _lobbyCams.Count && _lobbyBaseRoot != null && IsInstanceValid(_lobbyBaseRoot))
+        // ⭐ So the facing is taken as a DIRECTION and a clean right-handed basis is built from
+        // it. Which of the node's axes is "forward" is not assumed: each of the six is tested
+        // against the direction to the park and the best one wins, which both gets the view right
+        // and MEASURES the convention. The chosen axis is logged, so if it is the same one on all
+        // eight parks that is a fact worth writing down rather than a guess worth keeping.
+        var t = _lobbyBaseRoot.GlobalTransform * _lobbyCams[mi];
+        var toPark = _lobbyParks[mi].Root.GlobalPosition - t.Origin;
+        var axes = new (string Name, Vector3 V)[]
         {
-            var eye = (_lobbyBaseRoot.GlobalTransform * _lobbyCams[mi]).Origin;
-            var off = eye - at;
-            float d = off.Length();
-            if (d > 0.01f)
-            {
-                _freeCam = true;
-                _focus = at;
-                _dist = d;
-                _pitch = -Mathf.Asin(Mathf.Clamp(off.Y / d, -1f, 1f));
-                _yaw = Mathf.Atan2(off.X, off.Z);
-                GD.Print($"[lobby] camera on {LobbySlots.ModelNames[mi]}: authored eye "
-                       + $"({eye.X:F0},{eye.Y:F0},{eye.Z:F0}) -> focus ({at.X:F0},{at.Y:F0},{at.Z:F0}), "
-                       + $"dist {d:F0}, pitch {Mathf.RadToDeg(_pitch):F0} deg");
-                return;
-            }
-        }
-        _freeCam = false;
-        // ⚠ The lobby sets no plot, so the camera would keep the last park's border. Widen it to
-        // the scene itself or the clamp drags every aim back inside a rectangle that is not here.
-        _game.MinTileX = float.NegativeInfinity; _game.MaxTileX = float.PositiveInfinity;
-        _game.MinTileZ = float.NegativeInfinity; _game.MaxTileZ = float.PositiveInfinity;
-        // ⚠ AND SET THE DISTANCE HERE. `StartGameCam` runs after the mode dispatch and calls
-        // `_game.Reset()`, which puts `Behind` back to its park default -- so a `--cam=` passed on
-        // the command line was being discarded before the lobby ever drew. Explicit, overridable.
-        // ⭐ DISTANCE FROM THE SCENE'S OWN SIZE, not a number picked by eye. `base` spans about
-        // 85 x 113 world units and a seated park is a fraction of that, so the park default (700,
-        // tuned for a 128-cell park) put the camera five islands away and everything on screen was
-        // a dot. Two thirds of the island's span frames a park with its neighbours around it.
-        _game.Behind = Mathf.Clamp(
-            int.TryParse(System.Environment.GetEnvironmentVariable("TPW_LOBBY_BEHIND"), out int b)
-                ? b : (int)(LobbySpan() * 0.66f),
-            GameCamera.MinBehind, GameCamera.MaxBehind);
-        // ⚠ A CONTROL, NOT A FEATURE. Aiming at one park cannot show whether the other seven are
-        // seated right -- and jungle1 happens to sit on the island's edge, so its view is mostly
-        // sea and looks like a mistake either way. `TPW_LOBBY_OVERVIEW=1` centres on all eight so
-        // one render answers the question the per-park view cannot.
-        if (_lobbyOverview)
+            ("+X", t.Basis.X), ("-X", -t.Basis.X), ("+Y", t.Basis.Y),
+            ("-Y", -t.Basis.Y), ("+Z", t.Basis.Z), ("-Z", -t.Basis.Z),
+        };
+        string best = "-Z"; var fwd = -t.Basis.Z; float bestDot = float.MinValue;
+        foreach (var (name, v) in axes)
         {
-            // ⚠⚠ THE FREE CAMERA, NOT THE CONSOLE ONE. On the console camera the zoom IS the
-            // pitch: 679 behind sits inside one park, 1029 and 3132 both look flat across the sea
-            // and the island never enters frame. There is no `Behind` that frames a 1029-unit
-            // island from above, because that camera was never meant to. The overview is a
-            // DEBUG view, so it uses the orbit camera and aims exactly.
-            var c = LobbyCentre();
-            float span = LobbySpan();
-            _freeCam = true;
-            _focus = c;
-            _dist = span * 1.1f;
-            _pitch = -0.95f;              // most of the way down, so the whole island is in frame
-            _yaw = 0f;
-            GD.Print($"[lobby] OVERVIEW at ({c.X:F0}, {c.Z:F0}), free cam {_dist:F0} out, span {span:F0}");
-            return;
+            if (v.LengthSquared() < 1e-6f) continue;
+            float d = v.Normalized().Dot(toPark.Normalized());
+            if (d > bestDot) { bestDot = d; best = name; fwd = v; }
         }
-        _game.PlaceAt(at.X, at.Z);
-        GD.Print($"[lobby] camera on {LobbySlots.ModelNames[mi]} at ({at.X:F1}, {at.Y:F1}, {at.Z:F1}), "
-               + $"{_game.Behind} behind");
+        // ⚠ `LookingAt` needs an up that is not parallel to the forward; world up unless the
+        // camera is looking straight down, which these do not but a future one might.
+        var up = Mathf.Abs(fwd.Normalized().Dot(Vector3.Up)) > 0.99f ? Vector3.Forward : Vector3.Up;
+        _lobbyCamTarget = new Transform3D(Basis.LookingAt(fwd.Normalized(), up), t.Origin);
+        GD.Print($"[lobby] {LobbySlots.ModelNames[mi]} camera forward = node {best} "
+               + $"(dot {bestDot:F2} with the direction to the park)");
+        if (snap || !_lobbyCamReady) { _lobbyCamNow = _lobbyCamTarget; _lobbyCamReady = true; }
+        _freeCam = true;                 // keep the console camera out of it; the lobby drives
+        GD.Print($"[lobby] camera on {LobbySlots.ModelNames[mi]}: authored node at "
+               + $"({_lobbyCamTarget.Origin.X:F0},{_lobbyCamTarget.Origin.Y:F0},{_lobbyCamTarget.Origin.Z:F0})"
+               + (snap ? " (snapped)" : ""));
+    }
+
+    /// <summary>⚠ A DEBUG view, not the game's: straight down over the middle of the islands so
+    /// one render shows all eight. The console has no such camera.</summary>
+    void LobbyOverviewCamera()
+    {
+        var c = LobbyCentre();
+        float span = LobbySpan();
+        var eye = c + new Vector3(0.01f, span * 1.1f, 0.01f);
+        _lobbyCamTarget = new Transform3D(Basis.LookingAt(c - eye, Vector3.Forward), eye);
+        _lobbyCamNow = _lobbyCamTarget; _lobbyCamReady = true;
+        GD.Print($"[lobby] OVERVIEW (debug) over ({c.X:F0},{c.Z:F0}), {span * 1.1f:F0} up");
+    }
+
+    /// <summary>Ease toward the authored node the way the console does: orientation fast (0.8),
+    /// position slower (0.2), per CONSOLE frame so the glide runs at one speed anywhere.</summary>
+    void StepLobbyCamera(double delta)
+    {
+        if (!_lobbyCamReady || _cam == null) return;
+        float step = Mathf.Clamp((float)delta * ConsoleClock.TicksPerSecond, 0f, 1f);
+        _lobbyCamNow = new Transform3D(
+            _lobbyCamNow.Basis.Slerp(_lobbyCamTarget.Basis, Mathf.Clamp(0.8f * step, 0f, 1f)).Orthonormalized(),
+            _lobbyCamNow.Origin.Lerp(_lobbyCamTarget.Origin, Mathf.Clamp(0.2f * step, 0f, 1f)));
+        _cam.Transform = _lobbyCamNow;
     }
 
     /// <summary>⭐⭐ "CLOSE PARK" LEAVES FOR THE MAP SCREEN, standing on the park you left.
@@ -324,34 +352,43 @@ public partial class Viewer
     /// remembers: archive name gives the world, `terrain_1`/`terrain_2` gives the park, and the
     /// record with that pair is the slot to stand on. That is the exact inverse of
     /// <see cref="LobbyEnterPark"/>, so the two cannot disagree.</summary>
-    /// <summary>⚠⚠ THE PARK IS NOT ONE NODE. `_park.Root` holds the placed things, but the
-    /// terrain, the entrance gate, the flags, the guests and the tool overlays are all SEPARATE
-    /// children of the viewer -- so hiding the park root alone leaves the gate, the ground and the
-    /// crowd standing in the middle of the lobby. The first close-park render came back showing
-    /// HALLOW's gate with the lobby camera behind it, which is exactly that.
+    readonly List<Node3D> _hiddenForLobby = new();
+
+    /// <summary>⚠⚠ THE PARK IS NOT ONE NODE, AND NAMING THEM ALL DOES NOT WORK.
     ///
-    /// ⚠ The sky and the weather stay: the lobby is an island in the sea and wants both.</summary>
-    void ShowParkScene(bool on)
+    /// First attempt hid `_park.Root` and HALLOW's gate stayed. The second named the terrain, gate
+    /// and flags too, and master: "the gate and bus (and probably more stuff) of the park u exited
+    /// still exist". There is no fixed list -- the bus, the park vehicles and the entrance
+    /// furniture are each added straight to the viewer by their own file, and the next one added
+    /// would be missed the same way.
+    ///
+    /// ⭐ So the rule is inverted: hide EVERY top-level 3D child except what the lobby itself
+    /// needs, and remember exactly what was hidden so leaving restores that and nothing else. A
+    /// node added tomorrow is covered without touching this.
+    ///
+    /// ⚠ The sky and the weather stay -- the lobby is an island in the sea and wants both -- as
+    /// do the camera and the lobby's own root.</summary>
+    void HideParkScene()
     {
-        // ⚠ NAME WHAT WAS ACTUALLY TOUCHED. The first attempt reported nothing and the render
-        // was unchanged, which reads identically to "the nodes are not the park" and to "the call
-        // never ran". A count of what was found tells those two apart.
-        var hit = new List<string>();
-        if (_park?.Root != null) hit.Add("park");
-        if (_terrain?.Root != null && IsInstanceValid(_terrain.Root)) hit.Add("terrain");
-        if (_gateBox?.Root != null && IsInstanceValid(_gateBox.Root)) hit.Add("gate");
-        if (_flags?.Root != null && IsInstanceValid(_flags.Root)) hit.Add("flags");
-        GD.Print($"[lobby] park scene -> {(on ? "shown" : "hidden")}: {(hit.Count == 0 ? "NOTHING" : string.Join(",", hit))}");
-        if (_park != null) _park.Root.Visible = on;
-        if (_terrain?.Root != null && IsInstanceValid(_terrain.Root)) _terrain.Root.Visible = on;
-        if (_gateBox?.Root != null && IsInstanceValid(_gateBox.Root)) _gateBox.Root.Visible = on;
-        if (_flags?.Root != null && IsInstanceValid(_flags.Root)) _flags.Root.Visible = on;
-        if (_thoughts?.Root != null && IsInstanceValid(_thoughts.Root)) _thoughts.Root.Visible = on;
-        if (_selectView?.Root != null && IsInstanceValid(_selectView.Root)) _selectView.Root.Visible = on;
-        if (_ghostView?.Root != null && IsInstanceValid(_ghostView.Root)) _ghostView.Root.Visible = on;
-        // ⚠ NOT `_player` -- that is an AudioStreamPlayer, not a visual node. It is a child of
-        // the viewer like the rest, which is exactly why "hide everything I added" is the wrong
-        // rule and each node has to be named.
+        _hiddenForLobby.Clear();
+        foreach (var child in GetChildren())
+        {
+            if (child is not Node3D n || !IsInstanceValid(n)) continue;
+            if (ReferenceEquals(n, _lobbyRoot) || ReferenceEquals(n, _cam)
+                || ReferenceEquals(n, _sky) || ReferenceEquals(n, _weather?.Root)) continue;
+            if (!n.Visible) continue;                 // already hidden: not ours to restore
+            n.Visible = false;
+            _hiddenForLobby.Add(n);
+        }
+        GD.Print($"[lobby] hid {_hiddenForLobby.Count} park nodes: "
+               + string.Join(",", _hiddenForLobby.Select(n => n.Name.ToString())));
+    }
+
+    /// <summary>Put back exactly what <see cref="HideParkScene"/> took away.</summary>
+    void ShowParkScene()
+    {
+        foreach (var n in _hiddenForLobby) if (IsInstanceValid(n)) n.Visible = true;
+        _hiddenForLobby.Clear();
     }
 
     void CloseParkToLobby()
@@ -372,7 +409,7 @@ public partial class Viewer
         }
         _shopPanel?.Hide();
         _laptopBack.Clear();
-        ShowParkScene(false);            // the island REPLACES the park, it does not join it
+        HideParkScene();                 // the island REPLACES the park, it does not join it
         EnterLobby();
     }
 
@@ -408,7 +445,7 @@ public partial class Viewer
         string name = LobbyName(_lobbyRecord).Replace("\n", " / ");
         GD.Print($"[lobby] entering {name} -> {_maps[idx].Label}");
         LeaveLobby();
-        ShowParkScene(true);             // hidden by CloseParkToLobby
+        ShowParkScene();                 // put back exactly what CloseParkToLobby hid
         LoadMap(idx);
         Status($"{name}");
     }
@@ -464,6 +501,7 @@ public partial class Viewer
     void StepLobby(double delta)
     {
         if (!_lobbyMode) return;
+        StepLobbyCamera(delta);
         // ⚠⚠ AIM AFTER STARTUP, NOT DURING IT. `StartGameCam` resets the camera and places it
         // on the plot centre, and it runs after the mode dispatch that builds this scene -- so an
         // aim inside EnterLobby is simply overwritten. The lobby has no plot, so the reset left
@@ -471,7 +509,8 @@ public partial class Viewer
         if (!_lobbyAimed)
         {
             _lobbyAimed = true;
-            LobbyAimCamera();
+            LobbyAimCamera(snap: true);     // the opening view does not glide in from nowhere
+            if (_lobbyOverview) LobbyOverviewCamera();
             // ⚠ After the aim, and once: entering tears the scene down, and doing that from
             // inside EnterLobby would free the nodes the rest of startup still walks.
             if (_lobbyEnter > 0)

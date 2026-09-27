@@ -280,6 +280,28 @@ Measured through the port, all eight, relative to each park's own seat:
 That is a rig, not a coincidence -- and it is per park, so `hallow2` looking almost straight down
 its z axis while `space2` leans further along x is authored, not derived.
 
+### ⭐⭐ And it is the node's FACING too, not just its place
+
+`FUN_00217b48` takes the node's matrix and then:
+- `FUN_001a9940` makes a quaternion of it and `FUN_001a9bb8(0.8f, ...)` **SLERPs the ORIENTATION**
+  into `this+0x2a0`;
+- the translation **LERPs** into `this+0x2e0..0x2e8` at **0.2** -- 0.1 while `0x2ef8c4` is set, and
+  **1.0** when the second argument is non-zero, which is the snap.
+
+⚠⚠ Nothing in it looks at the park. This port first used the node's POSITION and aimed at the
+park's centre, and master, who has played it: *"the camera positions for each park is completely
+wrong"*. The measurement agrees: the angle between the node's own forward and the direction to the
+park centre gives a dot of **0.88..0.93**, not 1.0 -- so the authored aim is deliberately off the
+centre, and "look at the park" throws exactly that away.
+
+⚠⚠ **The basis is MIRRORED** -- determinant **-1.00** on all eight, from the plot frame's
+reflection. It cannot be used as a camera basis: `Orthonormalized()` keeps the reflection and
+`Basis.Slerp` throws *"Quaternion is not normalized"*, killing the frame before the shot is saved.
+Take the facing as a DIRECTION and build a clean right-handed basis from it.
+
+⭐ **Which axis is forward was measured, not assumed: `+Z`, on 8 of 8** (dots 0.88..0.93 against
+the direction to each park). One census at load answers it for every park at once.
+
 ⚠ The port drove this from a distance computed off the scene's span before the nodes were found.
 That looked reasonable and was not the game's. The authored node also settles the framing question
 the console camera could not answer: it sits at an arbitrary eye point, which `GameCamera` cannot

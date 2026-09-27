@@ -10346,7 +10346,11 @@ public partial class Viewer : Node3D
         if (_playing) _selectView?.Step(delta);
         if (_playing && _mode == Mode.Park) _gateBox?.Step(delta);
         if (_playing && _mode == Mode.Park) _flags.Step(delta);
-        if (GameCamActive) StepGameCam(delta);
+        // ⚠⚠ THE LOBBY OWNS THE CAMERA OUTRIGHT. It runs earlier in _Process, so without this
+        // the orbit branch below recomputed the transform from _focus/_dist/_pitch/_yaw and threw
+        // the authored node away every frame. Last stage wins, as ever.
+        if (_lobbyMode) { }
+        else if (GameCamActive) StepGameCam(delta);
         else
         {
             var eye = _focus + new Vector3(
@@ -10527,9 +10531,14 @@ public partial class Viewer : Node3D
             // the tool is open. Panning is the MIDDLE drag, and shift with the left button when
             // the tool is shut. The camera's own keys -- WASD, Q/E, R/F -- are untouched.
             bool tools = _mode == Mode.Park && _paths != null && GameCamActive;
-            bool orbiting = lDown && !tools && (_left.Dragged || !_left.Down);
-            bool panning = (rDown && !tools && (_right.Dragged || !_right.Down)) || mDown
-                        || (orbiting && Input.IsKeyPressed(Key.Shift));
+            // ⭐ NO MOUSE CAMERA IN THE LOBBY. Master: "remove free mouse control on the lobby,
+            // just nav between islands". The lobby's camera is authored per park and the only way
+            // to move it is to move the SELECTION, so an orbit or a pan there is a way to lose
+            // the view with nothing to put it back.
+            bool orbiting = lDown && !tools && !_lobbyMode && (_left.Dragged || !_left.Down);
+            bool panning = !_lobbyMode
+                        && ((rDown && !tools && (_right.Dragged || !_right.Down)) || mDown
+                            || (orbiting && Input.IsKeyPressed(Key.Shift)));
             // LEFT drag orbits.
             if (orbiting && !panning)
             {
@@ -10547,8 +10556,10 @@ public partial class Viewer : Node3D
         }
         if (e is InputEventMouseButton mb)
         {
-            if (mb.Pressed && mb.ButtonIndex == MouseButton.WheelUp) _dist = Mathf.Max(_dist * 0.9f, 0.05f);
-            if (mb.Pressed && mb.ButtonIndex == MouseButton.WheelDown) _dist *= 1.1f;
+            // ⚠ The wheel too: it drives `_dist`, which the lobby camera does not use, so a scroll
+            // there would silently change a value that takes effect the moment you leave.
+            if (!_lobbyMode && mb.Pressed && mb.ButtonIndex == MouseButton.WheelUp) _dist = Mathf.Max(_dist * 0.9f, 0.05f);
+            if (!_lobbyMode && mb.Pressed && mb.ButtonIndex == MouseButton.WheelDown) _dist *= 1.1f;
             // ⭐ RIGHT CLICK OPENS AND CLOSES THE TOOL, left click is the press -- but only a
             // CLICK. A drag of either button is the camera's, so the button is judged on release.
             // ⚠ The two buttons are tracked SEPARATELY. One slot meant pressing the second button
