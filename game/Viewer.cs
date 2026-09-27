@@ -3684,7 +3684,16 @@ public partial class Viewer : Node3D
         // ⭐ `toilet` completes the four "Single ..." screens. The console draws all four from ONE
         // base class, so this screen needed no new drawing code at all -- only its row data, which
         // is why it is a one-line addition here. See findings/laptop-screens.md.
-        var spec = _laptopScreen.StartsWith("side", StringComparison.OrdinalIgnoreCase) ? LaptopScreen.Sideshow
+        // ⚠ THE "all..." NAMES ARE TESTED FIRST, and the order is load-bearing: `allshops`
+        // StartsWith "shop" is false, but `allsideshows` would never be reached if a looser match
+        // came first, and the next name added could easily collide. First match wins, so the
+        // specific ones lead.
+        var spec = _laptopScreen.StartsWith("allride", StringComparison.OrdinalIgnoreCase) ? LaptopScreen.AllRides
+                 : _laptopScreen.StartsWith("allshop", StringComparison.OrdinalIgnoreCase) ? LaptopScreen.AllShops
+                 : _laptopScreen.StartsWith("allside", StringComparison.OrdinalIgnoreCase) ? LaptopScreen.AllSideshows
+                 : _laptopScreen.StartsWith("alltoilet", StringComparison.OrdinalIgnoreCase)
+                   || _laptopScreen.StartsWith("allbog", StringComparison.OrdinalIgnoreCase) ? LaptopScreen.AllToilets
+                 : _laptopScreen.StartsWith("side", StringComparison.OrdinalIgnoreCase) ? LaptopScreen.Sideshow
                  : _laptopScreen.StartsWith("shop", StringComparison.OrdinalIgnoreCase) ? LaptopScreen.Shop
                  : _laptopScreen.StartsWith("toilet", StringComparison.OrdinalIgnoreCase)
                    || _laptopScreen.StartsWith("bog", StringComparison.OrdinalIgnoreCase) ? LaptopScreen.Toilet
@@ -3695,6 +3704,10 @@ public partial class Viewer : Node3D
                      : spec == LaptopScreen.Sideshow ? "Arcade"
                      : spec == LaptopScreen.Build ? "Crazy Ape"
                      : spec == LaptopScreen.Toilet ? "Toilet"
+                     : spec == LaptopScreen.AllRides ? "Crazy Ape"
+                     : spec == LaptopScreen.AllShops ? "Drinks Shop"
+                     : spec == LaptopScreen.AllSideshows ? "Arcade"
+                     : spec == LaptopScreen.AllToilets ? "Toilet"
                      : spec == LaptopScreen.Hire ? "Mechanic" : "Drinks Shop";
 
         // ⭐ Build the model once, from the ride the screen is about, then step it per frame.

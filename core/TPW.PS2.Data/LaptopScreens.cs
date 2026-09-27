@@ -189,6 +189,85 @@ public sealed record LaptopScreen(
             new(132,  LaptopRowKind.Bar, "cleanlinessbar"),     // Cleanliness
         });
 
+    /// <summary>⭐⭐ THE "ALL ..." LIST SCREENS. Structurally these are the same thing as the
+    /// "Single ..." screens -- a title, a label column, a value column, widgets and a model -- with
+    /// one difference: the title is a SELECTOR you page through (`ItemSelect` + its arrows) instead
+    /// of a fixed name. So they need no new drawing, only rows. Which asset kinds each one lists is
+    /// <see cref="LaptopListScreens"/>; this is what it draws about the selected item.
+    ///
+    /// ⭐ EVERY ROW BELOW IS THREE AGREEING MEASUREMENTS, not one reading:
+    /// 1. the LABELS and their order, from the draw's `FUN_00138580` calls (ids read out of the
+    ///    instructions, because these draws decompile badly at their vtable entry points);
+    /// 2. how many of the rows are BARS, from the CONSTRUCTOR's `FUN_00115468` count -- the draws
+    ///    call the bar function zero times because the base draws them;
+    /// 3. which of the rest are money, from the formatter each value goes through: `FUN_00142908`
+    ///    is the money writer and `FUN_00142B68` the plain digits one (see <see cref="Money"/>).
+    ///
+    /// ⭐ That formatter census has two controls and passes both: Single Shop comes out
+    /// `digits, money, money, money` and Single Toilet `digits, date`, which is exactly what
+    /// <see cref="Shop"/> and <see cref="Toilet"/> already declare from other evidence.
+    ///
+    /// ⚠ And the bar ELEMENT names match the bar LABELS one for one on every screen here
+    /// (ExcitementBar against Excitement, and so on), which is the check that the bars were paired
+    /// with the right rows rather than just counted.</summary>
+    public static readonly LaptopScreen AllRides = new(
+        "main_i_ride.sce", 13, "ItemSelect", "InfoText", "InfoVal", "ThingModel",
+        new LaptopRow[]
+        {
+            new(771, LaptopRowKind.Value),                           // Users            digits
+            new(857, LaptopRowKind.Bar, "ExcitementBar"),            // Excitement
+            new(128, LaptopRowKind.Bar, "StateOfRepairBar"),         // State of Repair
+            new(636, LaptopRowKind.Bar, "RemainingLifeBar"),         // Remaining Life
+        });
+
+    /// <summary>⚠ Two of its four labels are `STR_SINGLESHOP_*` rather than `STR_ALLSHOPS_*`
+    /// (Takings 106 and Profit 986) -- the console reuses the single-shop strings for the same two
+    /// concepts. That is the disc's own choice and is left as it is.</summary>
+    public static readonly LaptopScreen AllShops = new(
+        "main_i_shop.sce", 16, "ItemSelect", "InfoText", "InfoValues", "Model",
+        new LaptopRow[]
+        {
+            new(691, LaptopRowKind.Value),                           // Customers        digits
+            new(106, LaptopRowKind.Money),                           // Takings          $
+            new(986, LaptopRowKind.Money),                           // Profit           $
+            new(451, LaptopRowKind.Bar, "satisfactionbar"),          // Satisfaction
+        });
+
+    public static readonly LaptopScreen AllSideshows = new(
+        "main_i_sideshow.sce", 20, "ItemSelect", "InfoText", "InfoValues", "Model",
+        new LaptopRow[]
+        {
+            new(488, LaptopRowKind.Value),                           // Customers        digits
+            new(365, LaptopRowKind.Money),                           // Total Profit     $
+            new(907, LaptopRowKind.Bar, "excitementbar"),            // Excitement
+            new(537, LaptopRowKind.Bar, "satisfactionbar"),          // Satisfaction
+        });
+
+    /// <summary>⚠ ONE ROW, and its draw is the shortest on the laptop: a single label
+    /// (`STR_ALLTOILETS_OVERALL_CLEANLINESS`) and a single bar, with NO value formatter called at
+    /// all -- which agrees with the constructor's one bar and the scene's `CleanlinessBar`.
+    ///
+    /// ⚠ This screen authors NO value column. `CleanlinessText` is given as the value element
+    /// only because the lookup cannot take a null, and it is never consulted: the one row is a Bar
+    /// that carries its own element.</summary>
+    public static readonly LaptopScreen AllToilets = new(
+        "main_i_bathroom.sce", 26, "ItemSelect", "CleanlinessText", "CleanlinessText", "Model",
+        new LaptopRow[]
+        {
+            new(269, LaptopRowKind.Bar, "CleanlinessBar"),           // Cleanliness
+        });
+
+    /// <summary>The "All ..." list screens that are ready to draw.
+    ///
+    /// ⚠⚠ ALL STAFF IS DELIBERATELY NOT HERE, and it is not an oversight. Its five rows are read
+    /// (Skill Level 683, Motivation 827, Tiredness 363, Time Employed 669, Monthly Wage 886) and
+    /// its constructor builds THREE bars -- but its scene authors a single element named `infobars`
+    /// for all three. One element cannot place three widgets: shipping it would stack them on top
+    /// of each other, which is a visible bug wearing the look of a finished screen. How the console
+    /// steps three bars from one authored region is not read yet, so the screen waits for that
+    /// instead of being guessed at.</summary>
+    public static readonly LaptopScreen[] AllList = { AllRides, AllShops, AllSideshows, AllToilets };
+
     /// <summary>The four "Single ..." item screens the console builds on one base class. ⚠ Build
     /// and Hire are NOT here: they are sub-panels of Build &amp; Hire, not registered scenes.</summary>
     public static readonly LaptopScreen[] SingleItem = { Shop, Ride, Sideshow, Toilet };
