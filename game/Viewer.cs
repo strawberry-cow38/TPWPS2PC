@@ -3645,6 +3645,26 @@ public partial class Viewer : Node3D
     /// ⚠ Only the build LIST has a page behind a row. Right-clicking the main menu, the
     /// information submenu or the category list does nothing rather than doing the left-click's
     /// job, which would make the two buttons indistinguishable there.</summary>
+    /// <summary>⭐ Page an Information screen onto the next or previous item of its kind. It
+    /// rewrites the top of the same stack the click pushed and redraws through `ShowLaptopLevel`,
+    /// so paging goes down the shipped path rather than round it.</summary>
+    void OnLaptopPage(int by)
+    {
+        if (_laptopBack.Count == 0 || _laptopBack[^1].Kind != "infoitem") return;
+        var bits = (_laptopBack[^1].Arg ?? "0:0").Split(':');
+        int which = int.TryParse(bits[0], out var w) ? w : 0;
+        int index = bits.Length > 1 && int.TryParse(bits[1], out var ix) ? ix : 0;
+        if (InfoScreenFor(which) is not { } target) return;
+        int count = LaptopInfoItems(target.Kinds).Count;
+        if (count == 0) return;
+        // ⚠ Clamped, not wrapped: at either end the key moves nothing. The menu's own
+        // MoveSelection clamps for the same reason, so the two feel the same.
+        int next = Math.Clamp(index + by, 0, count - 1);
+        if (next == index) return;
+        _laptopBack[^1] = ("infoitem", $"{which}:{next}");
+        ShowLaptopLevel();
+    }
+
     void OnLaptopInspect(int row)
     {
         if (row < 0 || _laptopBack.Count == 0 || _laptopBack[^1].Kind != "buildlist") return;
@@ -3776,11 +3796,18 @@ public partial class Viewer : Node3D
             if (_laptopFrame == 0)
             {
                 int colon = _laptopScreen.IndexOf(':');
-                int pick = int.TryParse(_laptopScreen[(colon + 1)..], out var pv) ? pv : 0;
+                var pieces = _laptopScreen.Split(':');
+                int pick = pieces.Length > 1 && int.TryParse(pieces[1], out var pv) ? pv : 0;
                 _laptopBack.Clear();
                 _laptopBack.Add(("info", null));
                 ShowLaptopLevel();          // the Information MENU, as a click on Information gives it
                 OnLaptopRow(pick);          // ⭐ the real row handler, not a shortcut past it
+                // ⭐ `info:<row>:<steps>` then presses Down that many times THROUGH OnLaptopPage,
+                // so a render can show paging having actually happened rather than a second item
+                // drawn by the harness.
+                if (_laptopScreen.Split(':') is { Length: > 2 } parts3
+                    && int.TryParse(parts3[2], out var steps))
+                    for (int i = 0; i < steps; i++) OnLaptopPage(+1);
                 GD.Print($"[laptop] info row {pick} -> stack {(_laptopBack.Count == 0 ? "empty" : _laptopBack[^1].Kind + " " + (_laptopBack[^1].Arg ?? ""))}");
             }
             if (_laptopClick != null && _laptopFrame == 0) LaptopClickProbe();
@@ -9407,6 +9434,7 @@ public partial class Viewer : Node3D
                     _shopPanel.Dismissed += OnLaptopDismiss;
                     _shopPanel.BuildRequested += OnLaptopBuild;
                     _shopPanel.MenuInspected += OnLaptopInspect;
+                    _shopPanel.Paged += OnLaptopPage;
                     // ⭐ The laptop's voice. ⚠ A bank that will not read leaves it null and the
                     // laptop silent, never unusable -- Report says which cues resolved.
                     _laptopSounds = new LaptopSounds(_lib, this);

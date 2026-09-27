@@ -377,6 +377,13 @@ public sealed partial class LaptopShopScreen : Control
     /// <summary>Raised when Back or Close is clicked.</summary>
     public event Action<bool> Dismissed;   // true = close, false = back
 
+    /// <summary>⭐ Page between the park's items on a DATA screen: -1 back, +1 on. The console's
+    /// list screens carry an `ItemSelect` with its own arrows, and this is the keyboard half of it.
+    /// ⚠ Only fires when a spec screen is up with no menu, which is exactly when Up and Down do
+    /// nothing else -- `MoveSelection` returns immediately with an empty list, so nothing is taken
+    /// away from the menus to pay for this.</summary>
+    public event Action<int> Paged;
+
     Rect2 Screen(Rect2 authored, float s, Vector2 o) =>
         new(o + authored.Position * s, authored.Size * s);
 
@@ -536,8 +543,8 @@ public sealed partial class LaptopShopScreen : Control
         if (!Open || @event is not InputEventKey { Pressed: true } k) return;
         switch (k.Keycode)
         {
-            case Key.Up:   MoveSelection(-1); break;
-            case Key.Down: MoveSelection(+1); break;
+            case Key.Up:   if (PageInstead(-1)) break; MoveSelection(-1); break;
+            case Key.Down: if (PageInstead(+1)) break; MoveSelection(+1); break;
             case Key.Enter or Key.KpEnter or Key.Space:
                 if (k.Echo) return;
                 // ⭐ The same thing the LEFT button does, so a pad and a mouse agree: activate the
@@ -568,6 +575,16 @@ public sealed partial class LaptopShopScreen : Control
     /// <summary>Move the selection and keep it on screen. ⚠ It also drops the HOVER: the draw
     /// prefers hover over selection, so without this the highlight would stay under a stationary
     /// mouse while the arrows moved something invisible.</summary>
+    /// <summary>On a data screen, Up and Down page between items instead of moving a selection
+    /// there is none of. Answers whether it took the key.</summary>
+    bool PageInstead(int by)
+    {
+        if (_spec == null || _menu.Count > 0) return false;
+        Cue(LaptopSounds.Cue.Move);
+        Paged?.Invoke(by);
+        return true;
+    }
+
     void MoveSelection(int by)
     {
         if (_menu.Count == 0) return;
