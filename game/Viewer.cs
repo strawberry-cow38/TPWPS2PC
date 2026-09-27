@@ -269,7 +269,7 @@ public partial class Viewer : Node3D
     /// <summary>Which main-menu row the cursor is on, and whether the park is open -- the latter
     /// decides Open Park against Close Park. Both are harness knobs until the laptop takes input.</summary>
     int _laptopMenuSelected; bool _laptopParkOpen; int _laptopRide;
-    int _laptopHoverRow = -1, _laptopHoverBtn = -1;
+    int _laptopHoverRow = -1, _laptopHoverBtn = -1, _laptopHoverStep;
     /// <summary>⚠ DIAGNOSTIC: "X,Y" -- push a real click through the viewport at that point and
     /// report what the laptop received. Two reasoned fixes failed; this measures instead.</summary>
     string _laptopClick;
@@ -443,6 +443,7 @@ public partial class Viewer : Node3D
             else if (a.StartsWith("--laptop-ride=")) int.TryParse(a["--laptop-ride=".Length..], out _laptopRide);
             else if (a.StartsWith("--laptop-hover=")) int.TryParse(a["--laptop-hover=".Length..], out _laptopHoverRow);
             else if (a.StartsWith("--laptop-hover-btn=")) int.TryParse(a["--laptop-hover-btn=".Length..], out _laptopHoverBtn);
+            else if (a.StartsWith("--laptop-hover-step=")) int.TryParse(a["--laptop-hover-step=".Length..], out _laptopHoverStep);
             else if (a.StartsWith("--laptop-click=")) _laptopClick = a["--laptop-click=".Length..];
             else if (a.StartsWith("--laptop-rclick=")) { _laptopClick = a["--laptop-rclick=".Length..]; _laptopRight = true; }
             else if (a.StartsWith("--laptop-scroll=")) int.TryParse(a["--laptop-scroll=".Length..], out _laptopScroll);
@@ -3709,12 +3710,7 @@ public partial class Viewer : Node3D
     void OnLaptopMenuFocus(int row)
     {
         bool isBuildList = _laptopBack.Count > 0 && _laptopBack[^1].Kind == "buildlist";
-        if (!isBuildList || row < 0 || row >= _buildRows.Count)
-        {
-            if (_laptopView != null) { _laptopView.QueueFree(); _laptopView = null; _laptopModel = null; }
-            _shopPanel.ModelTexture = null;
-            return;
-        }
+        if (!isBuildList || row < 0 || row >= _buildRows.Count) { ClearLaptopModel(); return; }
         BuildLaptopModelFor(_lib.Rides[_buildRows[row]]);
     }
 
@@ -3942,7 +3938,19 @@ public partial class Viewer : Node3D
                        + $"scrolled to row {_shopPanel.ScrollRow}, balance shown {_shopPanel.BalanceShown}");
             }
             if (_laptopClick != null && _laptopFrame == 0) LaptopClickProbe();
-            _shopPanel.ForceHoverForShot(_laptopHoverRow, _laptopHoverBtn);
+            // ⭐ `--laptop-hover-step=1` MOVES the hover one row per filmed frame. Master,
+            // 2026-09-27: "when i switch it changes to a white block" -- a fixed hover never
+            // exercises a switch, so the harness could not see the bug at all.
+            int hoverNow = _laptopHoverStep > 0
+                         ? _laptopHoverRow + _laptopFrame * _laptopHoverStep : _laptopHoverRow;
+            _shopPanel.ForceHoverForShot(hoverNow, _laptopHoverBtn);
+            // ⚠ The harness sets hover from inside `_Process`, AFTER the frame's pump has already
+            // run, so without this the render would lag a frame that live input does not -- the
+            // instrument would be reporting its own ordering as a defect in the game.
+            _shopPanel.PumpMenuFocus();
+            GD.Print($"[preview] f{_laptopFrame} hover={hoverNow} focus={_shopPanel.MenuFocus} "
+                   + $"view={(_laptopView == null ? "null" : "live")} "
+                   + $"tex={(_shopPanel.ModelTexture == null ? "null" : _shopPanel.ModelTexture.GetSize().ToString())}");
             if (_laptopSwoop >= 0) _shopPanel.SetBalanceSwoop(_laptopSwoop / 100f);
             PrepareUiShotView();
             SaveShot(ShotSibling(_shotPath, $"-f{_laptopFrame:D4}"));
@@ -7084,12 +7092,74 @@ public partial class Viewer : Node3D
     /// comment is wrong about the shipped behaviour -- master, who has played it: "the model isnt
     /// meant to spin in the viewport. its just a front facing render of it. playing an animation".
     /// Nothing here turns the camera or the subject.</summary>
+    Node3D _laptopStage;
+
+    /// <summary>⭐⭐ THE PREVIEW'S VIEWPORT IS BUILT ONCE AND KEPT. Master, 2026-09-27:
+    /// "when i switch it changes to a white block".
+    ///
+    /// Rebuilding the SubViewport per subject is what made the block white. A freshly created
+    /// viewport has **not rendered yet**, so the ViewportTexture the panel samples that same frame
+    /// is empty -- and the panel draws it as a white rectangle. With a fixed subject nobody
+    /// noticed, because the viewport had rendered long before anyone looked; with the hover
+    /// preview every mouse-move across a row made a new viewport, so it was white the whole time.
+    ///
+    /// ⚠ The instrument said it outright: at the frame a switch happened the log read
+    /// `view=null tex=null` BEFORE the model line, i.e. the panel sampled the texture on the very
+    /// frame the viewport was created. A fixed-hover render could never show this -- the harness
+    /// held one row, so there was no switch to catch. The repro needed `--laptop-hover-step`.
+    ///
+    /// Keeping one viewport means the texture always holds the LAST rendered frame: at worst the
+    /// pane shows the previous model for a frame, which is invisible, instead of nothing.</summary>
+    void EnsureLaptopView()
+    {
+        if (_laptopView != null && IsInstanceValid(_laptopView)) return;
+        _laptopView = new SubViewport
+        {
+            Size = new Vector2I(LaptopScreen.ModelWidth * 4, LaptopScreen.ModelHeight * 4),
+            RenderTargetUpdateMode = SubViewport.UpdateMode.Always,
+            TransparentBg = true,
+            // ⚠⚠ ITS OWN WORLD, or it shares the parent viewport's. Without this the window
+            // rendered THE PARK from wherever this camera stood -- 15 units up, inside the
+            // terrain -- which came back as a flat olive wash that looked like a broken model
+            // rather than a correct render of the wrong scene.
+            OwnWorld3D = true,
+        };
+        AddChild(_laptopView);
+        _laptopStage = new Node3D();
+        _laptopView.AddChild(_laptopStage);
+        _laptopStage.AddChild(new DirectionalLight3D { RotationDegrees = new Vector3(-35, -25, 0), LightEnergy = 1.5f });
+        // ⚠ NOT BGMode.Canvas: that composites the 2D canvas -- the laptop panel itself -- into
+        // the viewport, which came out as a flat olive wash over the model. A transparent clear
+        // is what a window onto a model wants.
+        _laptopView.AddChild(new WorldEnvironment { Environment = new Godot.Environment {
+            BackgroundMode = Godot.Environment.BGMode.Color,
+            BackgroundColor = new Color(0, 0, 0, 0),
+            AmbientLightSource = Godot.Environment.AmbientSource.Color,
+            AmbientLightColor = Colors.White, AmbientLightEnergy = 0.9f } });
+        _laptopCam = new Camera3D
+        {
+            Current = true,
+            Projection = Camera3D.ProjectionType.Orthogonal,
+            Near = 0.05f,
+        };
+        _laptopView.AddChild(_laptopCam);
+    }
+
+    /// <summary>Drop the subject but keep the scaffolding. ⚠ The pane must also be told to stop
+    /// drawing, or it keeps showing the last model under an unrelated screen.</summary>
+    void ClearLaptopModel()
+    {
+        if (_laptopModel?.Root is { } root && IsInstanceValid(root) && _laptopStage != null)
+        { _laptopStage.RemoveChild(root); root.QueueFree(); }
+        _laptopModel = null;
+        if (_shopPanel != null) _shopPanel.ModelTexture = null;
+    }
+
     void BuildLaptopModel(AssetLibrary.RideAssets ride)
     {
-        if (_laptopView != null) { _laptopView.QueueFree(); _laptopView = null; _laptopModel = null; }
-        if (ride == null) return;
+        if (ride == null) { ClearLaptopModel(); return; }
         var drawn = LoadPlaceable(ride, out var anim, out _);
-        if (drawn?.Root == null) return;
+        if (drawn?.Root == null) { ClearLaptopModel(); return; }
         // ⭐⭐ SECTION 5, "Main" -- and section 6 was WRONG. Master, 2026-09-27: "everything should
         // animate on that menu. i think u might be playing the wrong animation too". Both true.
         //
@@ -7127,29 +7197,12 @@ public partial class Viewer : Node3D
         }
         else drawn.SetFrame(0);
 
-        _laptopView = new SubViewport
-        {
-            Size = new Vector2I(LaptopScreen.ModelWidth * 4, LaptopScreen.ModelHeight * 4),
-            RenderTargetUpdateMode = SubViewport.UpdateMode.Always,
-            TransparentBg = true,
-            // ⚠⚠ ITS OWN WORLD, or it shares the parent viewport's. Without this the window
-            // rendered THE PARK from wherever this camera stood -- 15 units up, inside the
-            // terrain -- which came back as a flat olive wash that looked like a broken model
-            // rather than a correct render of the wrong scene.
-            OwnWorld3D = true,
-        };
-        AddChild(_laptopView);
-        var stage = new Node3D(); _laptopView.AddChild(stage);
-        stage.AddChild(drawn.Root);
-        stage.AddChild(new DirectionalLight3D { RotationDegrees = new Vector3(-35, -25, 0), LightEnergy = 1.5f });
-        // ⚠ NOT BGMode.Canvas: that composites the 2D canvas -- the laptop panel itself -- into
-        // the viewport, which came out as a flat olive wash over the model. A transparent clear
-        // is what a window onto a model wants.
-        _laptopView.AddChild(new WorldEnvironment { Environment = new Godot.Environment {
-            BackgroundMode = Godot.Environment.BGMode.Color,
-            BackgroundColor = new Color(0, 0, 0, 0),
-            AmbientLightSource = Godot.Environment.AmbientSource.Color,
-            AmbientLightColor = Colors.White, AmbientLightEnergy = 0.9f } });
+        EnsureLaptopView();
+        // ⚠ REMOVED from the tree, not just queued: a QueueFree'd node lives until the end of
+        // the frame, so the outgoing model would render on top of the incoming one.
+        if (_laptopModel?.Root is { } old && IsInstanceValid(old))
+        { _laptopStage.RemoveChild(old); old.QueueFree(); }
+        _laptopStage.AddChild(drawn.Root);
 
         // Frame the model on its own drawn bounds, so any ride fills the window the same way.
         var (lo, hi) = Park.DrawnBounds(drawn.Root, inParent: true);
@@ -7186,15 +7239,9 @@ public partial class Viewer : Node3D
         // reading of WHICH end of the window the model is pinned to.
         float cy = heightBinds ? (lo.Y + hi.Y) / 2f : lo.Y + orthoH / 2f;
         float depth = Mathf.Max(modelW, modelH) * 4f;      // far enough to clear the model
-        _laptopCam = new Camera3D
-        {
-            Current = true,
-            Projection = Camera3D.ProjectionType.Orthogonal,
-            Size = orthoH,
-            Near = 0.05f,
-            Far = depth * 3f,
-        };
-        _laptopView.AddChild(_laptopCam);
+        _laptopCam.Size = orthoH;
+        _laptopCam.Near = 0.05f;
+        _laptopCam.Far = depth * 3f;
         // Straight on, per master: "its just a front facing render of it". No turntable.
         _laptopCam.Position = new Vector3(cx, cy, hi.Z + depth);
         _laptopCam.LookAt(new Vector3(cx, cy, (lo.Z + hi.Z) / 2f), Vector3.Up);
@@ -10069,7 +10116,10 @@ public partial class Viewer : Node3D
         // exactly ONE caller and it was inside the --laptop-film harness, so the model was built,
         // posed at frame 0 and left there. The loop itself was already right -- the stepper wraps
         // on Frames -- it simply was not being driven outside a capture.
-        if (_shopPanel is { Open: true }) StepLaptopModel(delta);
+        // ⚠ BEFORE the step and before the draw: the pump can swap the previewed model, and
+        // doing that here rather than inside `_Draw` keeps scene-tree changes out of a drawing
+        // callback and puts the new model in place for the frame that is about to be drawn.
+        if (_shopPanel is { Open: true }) { _shopPanel.PumpMenuFocus(); StepLaptopModel(delta); }
         TickDebugHud(delta);
         // ⭐⭐ THE CLOUDS SHIFT AND THE SKY GREYS. Master: "clouds ARE meant to shift; sky gets
         // gray when raining." ⚠ The console drives the grey from a weather AMOUNT whose state

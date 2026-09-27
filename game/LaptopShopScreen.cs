@@ -372,13 +372,18 @@ public sealed partial class LaptopShopScreen : Control
 
     int _focusSent = -2;
 
-    /// <summary>Raised when <see cref="MenuFocus"/> lands on a different row. ⚠ Fired from the
-    /// draw, not from each of the six places that move hover or selection: a preview that rebuilds
-    /// a model is too expensive to fire per mouse-move event, and one edge-triggered notice per
-    /// frame is both cheaper and impossible to forget when a seventh mover is added.</summary>
+    /// <summary>Raised when <see cref="MenuFocus"/> lands on a different row. ⚠ Edge-triggered and
+    /// PUMPED ONCE A FRAME FROM `_Process`, not from each of the six places that move hover or
+    /// selection: a preview that rebuilds a model is too expensive to fire per mouse-move event,
+    /// and one notice per frame is impossible to forget when a seventh mover is added.
+    ///
+    /// ⚠⚠ NOT from `_Draw`, where this started. A subscriber that swaps a model is mutating the
+    /// scene tree, which a drawing callback is the wrong place to do -- and it also lands one
+    /// frame late, so the pane showed the PREVIOUS subject for a frame. `_Process` runs before
+    /// the frame is drawn, so the model is in place by the time the panel samples it.</summary>
     public event System.Action<int> MenuFocusChanged;
 
-    void PumpMenuFocus()
+    public void PumpMenuFocus()
     {
         int now = MenuFocus;
         if (now == _focusSent) return;
@@ -1136,7 +1141,7 @@ public sealed partial class LaptopShopScreen : Control
             DrawButtons(s, o);
             return;
         }
-        if (_menu.Count > 0) { DrawMenu(s, o); DrawBalance(s, o); DrawButtons(s, o); PumpMenuFocus(); return; }
+        if (_menu.Count > 0) { DrawMenu(s, o); DrawBalance(s, o); DrawButtons(s, o); return; }
 
         Vector2 At(SceneLayout.Element e) => o + new Vector2(e.X, e.Y) * s;
 
