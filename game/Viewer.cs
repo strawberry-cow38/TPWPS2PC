@@ -9093,11 +9093,6 @@ public partial class Viewer : Node3D
     {
         ShowMoney();
         TickDebugHud(delta);
-        // ⚠ Only while a park is up: the model/texture tabs have no calendar and stepping one
-        // there would have the date running while nobody is playing.
-        if (_mode == Mode.Park)
-            _calendar.Advance((int)Math.Round(delta * GameCamera.TicksPerSecond * GameCamera.FrameTick),
-                              out _, out _, out _);
         // ⭐⭐ THE CLOUDS SHIFT AND THE SKY GREYS. Master: "clouds ARE meant to shift; sky gets
         // gray when raining." ⚠ The console drives the grey from a weather AMOUNT whose state
         // machine is not ported (it is pinned at 0), so the port drives it from the weather the
@@ -9184,6 +9179,16 @@ public partial class Viewer : Node3D
         // ⭐ The selection breathes on its own clock, and like the console's it stands still
         // while the game is paused.
         if (_mode == Mode.Park) UpdateHover();
+        // ⚠⚠ PAUSED MEANS PAUSED, AND THE CALENDAR FORGOT. Master, on the pylon editor: "the game
+        // also pauses sim sometimes when im editing pylons." This advance was gated on the MODE
+        // alone, so the date kept running through every pause -- and the console does the
+        // opposite: `0x14DD68` skips the clock's add while held, which is the same gate the
+        // selection box's breath already respects on the line below. It sits here now, with the
+        // other things that run themselves, rather than at the top of _Process where it could not
+        // see the pause.
+        if (_playing && _mode == Mode.Park)
+            _calendar.Advance((int)Math.Round(delta * GameCamera.TicksPerSecond * GameCamera.FrameTick),
+                              out _, out _, out _);
         if (_playing) _selectView?.Step(delta);
         if (_playing && _mode == Mode.Park) _gateBox?.Step(delta);
         if (_playing && _mode == Mode.Park) _flags.Step(delta);

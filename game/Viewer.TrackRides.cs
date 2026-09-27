@@ -28,6 +28,8 @@ public partial class Viewer
         /// <summary>The laid pieces playing their Main record (the water pieces' flow).</summary>
         public readonly List<AnimatedModel> Flowing = new();
         public int FlowFrame = -1;
+        /// <summary>So the open-loop warning is said ONCE, not sixty times a second.</summary>
+        public bool WarnedOpenLoop;
         public readonly Dictionary<TrackCar, CarView> Cars = new();
         public int NextTag = CarSoundTagBase;
         public readonly HashSet<(int X, int Y)> Cells = new();
@@ -217,6 +219,27 @@ public partial class Viewer
         RefreshFloor();
     }
 
+    /// <summary>⚠⚠ A TRACK RIDE WITH AN UNCLOSED LOOP IS SILENTLY DEAD, and that silence is the
+    /// bug behind master's "guests never ride kart rides?". The status machine starts at `Closed`;
+    /// the only state that boards is `Loading`; and `Loading` is reachable ONLY through
+    /// `Running -> Unloading`, with `Running` gated on `Track.Closed`. So an unfinished loop means
+    /// guests walk over, join the queue, and stand there for ever with nothing said anywhere.
+    ///
+    /// ⭐ This only REPORTS it. Whether a guest should refuse to queue for an unfinished ride is a
+    /// behaviour question -- `ParkVisitors.Takes` exists to stop exactly this kind of stranding --
+    /// but what the console does here is not read, and changing who queues where on a guess is how
+    /// a park ends up behaving plausibly and wrongly.</summary>
+    void WarnUnclosedLoop(TrackRideView v)
+    {
+        int waiting = v.Ride?.Queue?.Count ?? 0;
+        if (v.WarnedOpenLoop || waiting == 0 || v.Layout.Closed) return;
+        v.WarnedOpenLoop = true;
+        GD.Print($"[track] {v.Ride?.Name ?? v.Id.ToString()}: {waiting} guest"
+               + $"{(waiting == 1 ? "" : "s")} queuing and the loop is NOT CLOSED -- status "
+               + $"{v.Sim.Status}, {v.Layout.Pieces.Count} pieces laid. Nobody can board until the "
+               + "track closes back on the station, and the ride says nothing about it.");
+    }
+
     /// <summary>Per rendered frame: the pieces' looping Main, the cars, between the last two ticks, and
     /// their engine voices.</summary>
     void PresentTracks(float alpha)
@@ -229,6 +252,7 @@ public partial class Viewer
         int flow = (int)(((_sim?.Time ?? 0) + alpha * ParkSim.TickMilliseconds) * Aps.Fps / 1000f);
         foreach (var v in _tracks.Values)
         {
+            WarnUnclosedLoop(v);
             if (flow != v.FlowFrame)
             {
                 v.FlowFrame = flow;
