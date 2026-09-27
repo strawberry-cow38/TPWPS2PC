@@ -492,6 +492,7 @@ public sealed partial class ParkStaff
         foreach (var m in Active(StaffKind.Guard)) m.NoticeRemoved(t);
         _watching.Remove(guestId);
         _watchCooldown.Remove(guestId);
+        _firstSeen.Remove(guestId);
         _liveTargets.Remove(guestId);
     }
 
@@ -529,6 +530,8 @@ public sealed partial class ParkStaff
     }
     readonly Dictionary<int, Watch> _watching = new();
     readonly Dictionary<int, uint> _watchCooldown = new();
+    /// <summary>⚠ The tick the phase first saw each guest: the port's stand-in for its spawn time.</summary>
+    readonly Dictionary<int, uint> _firstSeen = new();
     /// <summary>The guests watching a show now, by id.</summary>
     public IReadOnlyDictionary<int, Watch> Watching => _watching;
     public bool IsWatching(int guest) => _watching.ContainsKey(guest);
@@ -554,9 +557,15 @@ public sealed partial class ParkStaff
     /// it was doing. The +5 is paid whether the show ran its course or was cut short.
     /// ⚠ ADAPTERS: the guest id stands in for its activation serial (as in <see cref="VisitorNeeds"/>);
     /// the goal depth (&lt; 2) is not kept for the port's guests; a guest on a NATIVE lease (the entrance
-    /// flow, a native queue or departure) is stepped by its owner and does not watch; `G+0x6C`'s spawn
-    /// value `spawn + rand(300)` (`0x20BF10`) is drawn the first time the phase sees the guest, and its
-    /// facility-exit value `now + 60 + rand(60)` (`0x20EE40`) is not written.</summary>
+    /// flow, a native queue or departure) is stepped by its owner and does not watch; `G+0x6C`'s
+    /// facility-exit value `now + 60 + rand(60)` (`0x20EE40`) is not written.
+    /// ⚠⚠ `G+0x6C`'s SPAWN value `spawn + rand(300)` (`0x20BF10`): the port's guests are not built by
+    /// `0x20BF10`, so `spawn` is the first tick this phase saw the guest, and the rand(300) is drawn
+    /// LAZILY, the first time the guest stands on a show's effector (the only time the value is read to
+    /// any effect). Drawn at every guest's first sight instead, it cost the guests' `1448E0` stream one
+    /// draw per guest in every park, show or no show, and moved every later draw on it -- the entrance's
+    /// group pick included: the SPACE-1 entrance soak lost its group flip (0 flips, peak group 12) with
+    /// no entertainer in the park (tinyclaw 2026-09-27). A park with no show now draws nothing here.</summary>
     void GuestThink()
     {
         uint now = Now;
@@ -567,12 +576,11 @@ public sealed partial class ParkStaff
         {
             if (g.HasNativeRoute || !Visitors.Plans.ContainsKey(g.Id)) continue;
             var cell = GuestCell(g);
+            if (!_firstSeen.ContainsKey(g.Id)) _firstSeen[g.Id] = now;
             if ((now & 7) == ((uint)g.Id & 7))
             {
-                if (!_watchCooldown.TryGetValue(g.Id, out uint cooldown))
-                    _watchCooldown[g.Id] = cooldown = unchecked(now + (uint)Random(300));
                 int f = Effectors.Query(cell);
-                if (cooldown < now && !_watching.ContainsKey(g.Id) && (f & 2) != 0)
+                if (!_watching.ContainsKey(g.Id) && (f & 2) != 0 && SpawnCooldown(g.Id) < now)
                 {
                     Entertainer best = null; uint bestDistance = 0xFFFFFFFF;
                     foreach (var m in Active(StaffKind.Entertainer))
@@ -605,6 +613,17 @@ public sealed partial class ParkStaff
         }
         foreach (var id in _watchCooldown.Keys.ToArray())
             if (!Visitors.Plans.ContainsKey(id)) _watchCooldown.Remove(id);
+        foreach (var id in _firstSeen.Keys.ToArray())
+            if (!Visitors.Plans.ContainsKey(id)) _firstSeen.Remove(id);
+    }
+
+    /// <summary>`G+0x6C`, drawing its spawn value `first sight + rand(300)` the first time it is asked for
+    /// (see <see cref="GuestThink"/>'s ⚠⚠).</summary>
+    uint SpawnCooldown(int guest)
+    {
+        if (!_watchCooldown.TryGetValue(guest, out uint cooldown))
+            _watchCooldown[guest] = cooldown = unchecked(_firstSeen[guest] + (uint)Random(300));
+        return cooldown;
     }
 
     /// <summary>`0x210900`: happiness +5 at a watch's end; `0x21092C`: `G+0x6C = now + 0x384`.</summary>

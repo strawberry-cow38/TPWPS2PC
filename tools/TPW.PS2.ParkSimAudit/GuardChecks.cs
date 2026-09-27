@@ -465,6 +465,27 @@ static class GuardChecks
               $"facing: the entertainer one cell to -x -> 3pi/2 (quarter turns {p.Staff.Watching[g.Id].FacingQuarterTurns}); on his own cell "
               + $"dx = dz = 0 -> pi ({p.Staff.Watching[own.Id].FacingQuarterTurns}): dx decides before dz");
         }
+        // The spawn value G+0x6C = spawn + rand(300): with no show nothing is drawn (the guests' stream is
+        // the entrance's too); the first meeting with a show draws it once, from the FIRST SIGHT, not now.
+        {
+            var p = newPark(64);
+            int draws = 0;
+            p.Rng.Override = n => { if (n == 300) { draws++; return 299; } return n == 3 ? 0 : n == 16 ? 1 : null; };
+            var g = p.Guest(p.At(11, 2));
+            var far = p.Guest(p.At(20, 2));
+            for (int t = 0; t < 400; t++) p.Tick();
+            int noShow = draws;
+            var e = p.Hire<Entertainer>(StaffKind.Entertainer, p.At(10, 2));
+            int began = -1, waited = 0;
+            while (!p.Staff.IsWatching(g.Id) && waited < 700)
+            {
+                p.Tick(); waited++;
+                if (began < 0 && e.State == Entertainer.StatePerforming) began = waited;
+            }
+            E(noShow == 0 && draws == 1 && began > 0 && p.Staff.IsWatching(g.Id) && waited - began <= 8 && !p.Staff.IsWatching(far.Id),
+              $"spawn cooldown: 400 ticks with no show draw rand(300) {noShow} times; the first show draws it {draws - noShow} time(s) "
+              + $"(the guest out of range: none), and first sight + 299 is long past: the guest watches {waited - began} ticks after the show starts");
+        }
     }
 
     readonly record struct Vector3Like(float X, float Z);

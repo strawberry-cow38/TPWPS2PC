@@ -66,6 +66,10 @@ MUT = [
  ('watch-cooldown-600', S, 'public const uint WatchCooldownTicks = 0x384;', 'public const uint WatchCooldownTicks = 600;', 0),
  ('watch-happiness-6', S, 'public const int WatchHappiness = 5;', 'public const int WatchHappiness = 6;', 0),
  ('watcher-walks-on', P, 'Visitors.Walk.Paused = g => Visitors.Staff?.IsWatching(g.Id) == true;', '', 0),
+ ('cooldown-drawn-at-sight', S, 'if (!_firstSeen.ContainsKey(g.Id)) _firstSeen[g.Id] = now;',
+  'if (!_firstSeen.ContainsKey(g.Id)) { _firstSeen[g.Id] = now; SpawnCooldown(g.Id); }', 0),
+ ('cooldown-from-now', S, '_watchCooldown[guest] = cooldown = unchecked(_firstSeen[guest] + (uint)Random(300));',
+  '_watchCooldown[guest] = cooldown = unchecked(Now + (uint)Random(300));', 0),
  ('watch-facing-dz-first', S, 'w.FacingQuarterTurns = dx != 0 ? (dx < 0 ? 3 : 1) : (dz > 0 ? 0 : 2);', 'w.FacingQuarterTurns = dz != 0 ? (dz > 0 ? 0 : 2) : (dx < 0 ? 3 : 1);', 0),
  # The gate.
  ('gate-uncounted', S, 'internal void GateStage(Guard g) { Gate?.StageMember(); GateStaged++; }', 'internal void GateStage(Guard g) { GateStaged++; }', 0),

@@ -67,7 +67,8 @@ COVERAGE += '\n' + '\n'.join(['  ok   guard: check'] * 48 +
                               ['  ok   guard: one leg: dispatched with deadline 3600 (now + 3600), the re-route stored now over it',
                                '  ok   guard: prank with the litter pool full (40): no litter, NO STINK (beqz at 0x20D148)',
                                '  ok   guard: camera rule: a camera 8 cells from the PRANKSTER (d2 64 <= 64) lets a guard 7 away be sent'] +
-                              ['  ok   entertainer: check'] * 28)
+                              ['  ok   entertainer: check'] * 28 +
+                              ['  ok   entertainer: spawn cooldown: 400 ticks with no show draw rand(300) 0 times; the first show draws it 1 time(s)'])
 
 
 class ClassificationTests(unittest.TestCase):
@@ -292,7 +293,8 @@ class GuardFamily(unittest.TestCase):
                      '\n'.join(x for x in COVERAGE.splitlines() if 'entertainer:' not in x),
                      COVERAGE.replace('  ok   entertainer: check\n', '', 1),
                      COVERAGE.replace('NO STINK', 'a stink'),
-                     COVERAGE.replace('one leg: dispatched', 'two legs: dispatched')):
+                     COVERAGE.replace('one leg: dispatched', 'two legs: dispatched'),
+                     COVERAGE.replace('with no show draw rand(300) 0 times', 'with no show draw rand(300) 2 times')):
             self.assertEqual(classify('JUNGLE', 0, text + '\nPASS')['status'], 'missing_coverage')
         self.assertEqual(classify('JUNGLE', 0, COVERAGE + '\nPASS')['status'], 'pass')
 

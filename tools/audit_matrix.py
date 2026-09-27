@@ -90,14 +90,16 @@ REQUIRED_WITNESSES = (
 )
 
 # Staff step 4, guards and entertainers (GuardChecks.cs, findings/staff-mechanics-guards.md §5-§6,
-# staff-handymen-entertainers.md §4-§5): 51 and 28 on every park. A statement of its own, so the staff
+# staff-handymen-entertainers.md §4-§5): 51 and 29 on every park. A statement of its own, so the staff
 # steps' parallel edits to the table above merge cleanly. The one-leg chase and the prank's allocation
-# gate are shipped behaviour that reads like a bug to fix; the camera rule is the guard's one range.
-REQUIRED_CHECKS.update({'guard': 51, 'entertainer': 28})
+# gate are shipped behaviour that reads like a bug to fix; the camera rule is the guard's one range; the
+# lazy spawn-cooldown draw keeps a park with no show off the guests' stream (the entrance soak's flip).
+REQUIRED_CHECKS.update({'guard': 51, 'entertainer': 29})
 REQUIRED_WITNESSES += (
     'ok   guard: one leg: dispatched with deadline',
     'ok   guard: prank with the litter pool full (40): no litter, NO STINK',
     'ok   guard: camera rule: a camera 8 cells from the PRANKSTER',
+    'ok   entertainer: spawn cooldown: 400 ticks with no show draw rand(300) 0 times',
 )
 
 
