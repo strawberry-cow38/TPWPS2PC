@@ -78,6 +78,10 @@ public partial class Viewer : Node3D
     /// ⚠ Not `_clock` -- that is the console FRAME clock (ConsoleClock) and they are different
     /// things: this one counts days, that one counts ticks.</summary>
     readonly ParkClock _calendar = new();
+    /// <summary>⚠ Counters only -- nothing in this port earns a ticket or a medal yet.</summary>
+    readonly ParkAwards _awards = new();
+    TextureRect _ticketIcon, _starIcon, _ticketNum, _ticketNumShadow, _starNum, _starNumShadow;
+    string _ticketShown, _starShown;
     TextureRect _date, _dateShadow;
     string _dateShown;
     ShaderMaterial _skyMat;
@@ -411,6 +415,14 @@ public partial class Viewer : Node3D
             // panel that only opens on a keypress is a panel neither of us has checked.
             else if (a == "--cheats") _cheatsAtStart = true;
             else if (a == "--footprint-audit") _footprintAudit = true;
+            // ⭐ `--awards=3,0` so a render can be put beside master's own capture with the SAME
+            // numbers in it. Comparing a 0 against their 3 would prove nothing about placement.
+            else if (a.StartsWith("--awards="))
+            {
+                var bits = a["--awards=".Length..].Split(',');
+                if (bits.Length > 0 && int.TryParse(bits[0], out int gt)) _awards.GoldTickets = gt;
+                if (bits.Length > 1 && int.TryParse(bits[1], out int uc)) _awards.UltimateCoasters = uc;
+            }
             else if (a.StartsWith("--place-name=")) _placeName = a["--place-name=".Length..];
             // ⭐ Select a placed thing from the command line, so a render can show the selection
             // box. A visual bug in it is otherwise only reachable by clicking, which a headless
@@ -794,6 +806,13 @@ public partial class Viewer : Node3D
             TextureFilter = CanvasItem.TextureFilterEnum.Nearest,
             Modulate = tint ?? Colors.White,
         };
+        TextureRect HudTL(Color? tint) { var r = Hud(tint); r.SetAnchorsPreset(Control.LayoutPreset.TopLeft); return r; }
+        // ⭐ Icons first so the counts draw over them if they ever overlap.
+        _ticketIcon = HudTL(null); _starIcon = HudTL(null);
+        _ticketNumShadow = HudTL(MoneyShadowTint); _ticketNum = HudTL(null);
+        _starNumShadow = HudTL(MoneyShadowTint); _starNum = HudTL(null);
+        foreach (var r in new[] { _ticketIcon, _starIcon, _ticketNumShadow, _ticketNum, _starNumShadow, _starNum })
+            ui.AddChild(r);
         _dateShadow = Hud(MoneyShadowTint); _dateShadow.SetAnchorsPreset(Control.LayoutPreset.TopLeft);
         _date = Hud(null); _date.SetAnchorsPreset(Control.LayoutPreset.TopLeft);
         ui.AddChild(_dateShadow);
@@ -8953,6 +8972,23 @@ public partial class Viewer : Node3D
     /// 25px above a 885px frame's bottom edge, which is ~14 rows of a 512 space. Anchored to the
     /// BOTTOM because that is what it is: a bottom-left element.</summary>
     const int DateX = MoneyX, DateBottomRows = 14;
+
+    /// <summary>⭐ THE TICKET AND AWARD COUNTERS, measured off master's HUD capture rather than
+    /// placed by eye. In a 1600x885 frame the money's `$`, the ticket icon and the star icon all
+    /// begin at x 116-122 -- the same column, which `MoneyX / 512 * 1600 = 118.75` predicts. The
+    /// three rows' digits sit at y 67, 122 and 176: a pitch of 54-55px, and 32 console rows at
+    /// that frame size is 55.3px. So the rows are exactly <see cref="ShopScreen.RowStep"/> apart,
+    /// which is the console's own row step and not a number I chose.
+    ///
+    /// ⭐ The counts are RIGHT-aligned. Single digits could not show that; the two-digit mail
+    /// counter beside the date could -- its right edge lands at 276 against the ticket's 280 and
+    /// the star's 284, while the left edges vary with the digit count.
+    ///
+    /// ⚠ The ICONS are the solid yellow pair, `Gticket/gticket` (registry 0x2d) and
+    /// `UltimateC/Star` (0x2e) -- NOT `award_star_32` / `award_medal_32`, which are blue-keyed
+    /// cut-outs for the laptop. Decided by decoding all four and comparing them with the capture.</summary>
+    const int AwardCountRight = 90, AwardRowStep = 32;
+    const string TicketIcon = "/Gticket/gticket.tga", StarIcon = "/UltimateC/Star.tga";
     const float ConsoleUiWidth = 512f, ConsoleUiHeight = 512f;
     static readonly Color MoneyNormal = new(1f, 1f, 0f), MoneyBroke = new(200 / 255f, 130 / 255f, 0f);
     /// ⚠ The shadow is drawn in palette slot `colour + 8`, and what that slot holds is not read.
@@ -9067,6 +9103,77 @@ public partial class Viewer : Node3D
         _money.Scale = _moneyShadow.Scale = new Vector2(k, k);
         _moneyShadow.Position = _money.Position + new Vector2(MoneyShadow * k, MoneyShadow * k);
         ShowDate(view, k);
+        ShowAwards(view, k);
+    }
+
+    /// <summary>The ticket and award counters, the two rows under the money. See
+    /// <see cref="AwardCountRight"/> for where every number here was measured from.</summary>
+    void ShowAwards(Vector2 view, float k)
+    {
+        if (_ticketIcon == null) return;
+        bool on = _hudFont != null && _mode == Mode.Park;
+        foreach (var r in new[] { _ticketIcon, _starIcon, _ticketNumShadow, _ticketNum, _starNumShadow, _starNum })
+            r.Visible = on;
+        if (!on) return;
+        _ticketIcon.Texture ??= LoadHudIcon(TicketIcon);
+        _starIcon.Texture ??= LoadHudIcon(StarIcon);
+        void Row(TextureRect icon, TextureRect num, TextureRect shadow, ref string shown, int value, int row)
+        {
+            float y = row / ConsoleUiHeight * view.Y;
+            if (icon.Texture != null)
+            {
+                icon.Scale = new Vector2(k, k);
+                icon.Position = new Vector2(MoneyX / ConsoleUiWidth * view.X, y);
+            }
+            string want = value.ToString();
+            if (want != shown) { shown = want; num.Texture = shadow.Texture = _hudFont.Render(want); }
+            // ⭐ The money's yellow, because that is what the capture shows: the ticket and star
+            // counts are the same colour as the balance above them, not plain white.
+            num.Modulate = MoneyNormal;
+            // ⚠ RIGHT-aligned: the width comes off the rendered texture, so a two-digit count grows
+            // leftwards the way the mail counter in master's capture does.
+            float w = (num.Texture?.GetWidth() ?? 0) * k;
+            var at = new Vector2(AwardCountRight / ConsoleUiWidth * view.X - w, y);
+            num.Scale = shadow.Scale = new Vector2(k, k);
+            num.Position = at;
+            shadow.Position = at + new Vector2(MoneyShadow * k, MoneyShadow * k);
+        }
+        Row(_ticketIcon, _ticketNum, _ticketNumShadow, ref _ticketShown,
+            _awards.GoldTickets, MoneyY + AwardRowStep);
+        Row(_starIcon, _starNum, _starNumShadow, ref _starShown,
+            _awards.UltimateCoasters, MoneyY + AwardRowStep * 2);
+    }
+
+    /// <summary>⚠ Through the archive, not a res:// path: these live in UI.WAD like every other
+    /// piece of the game's own chrome.</summary>
+    ImageTexture LoadHudIcon(string path)
+    {
+        try
+        {
+            // ⚠ ReadUi, not ReadGeneric: these live in UI.WAD with the rest of the game's chrome,
+            // and ReadGeneric looks in DATA.WAD -- which quietly returned nothing and left the
+            // icons missing while the counts beside them drew perfectly.
+            var raw = _lib?.ReadUi(path);
+            if (raw == null) { GD.Print($"[hud] {path} not in UI.WAD"); return null; }
+            // ⚠⚠ SOME OF THESE ".tga" FILES ARE PNGs. `/UltimateC/Star.tga` opens with the PNG
+            // magic `89 50 4E 47`, and handing it to the TGA reader produced "unsupported TGA:
+            // kind 78, 0bpp, 18505x21060" -- 18505 is `IH` and 21060 is `RD`, i.e. the parser was
+            // reading the letters of `IHDR` as a width and a height. The extension is not the
+            // format, so the MAGIC decides. (`/Gticket/gticket.tga` really is a TGA.)
+            var img = new Image();
+            if (raw.Length > 4 && raw[0] == 0x89 && raw[1] == 'P' && raw[2] == 'N' && raw[3] == 'G')
+            {
+                if (img.LoadPngFromBuffer(raw) != Error.Ok)
+                { GD.Print($"[hud] {path}: PNG would not load"); return null; }
+            }
+            else
+            {
+                var t = new Targa(raw);
+                img = Image.CreateFromData(t.Width, t.Height, false, Image.Format.Rgba8, t.Pixels);
+            }
+            return ImageTexture.CreateFromImage(img);
+        }
+        catch (Exception e) { GD.PrintErr($"[hud] {path}: {e.Message}"); return null; }
     }
 
     /// <summary>The park's date, bottom left. ⚠ Advanced on the SAME frame-time unit the console

@@ -65,6 +65,8 @@ public partial class Viewer
                      ("Unlimited", CheatUnlimited));
         Row("Park", ("Open/Shut", CheatToggleOpen), ("Clear guests", CheatClearGuests));
         Row("Weather", ("Rain", () => CheatWeather(true)), ("Clear", () => CheatWeather(false)));
+        Row("Awards", ("+Ticket", () => CheatAward(1, 0)), ("+Star", () => CheatAward(0, 1)),
+                      ("Reset", () => CheatAward(-999, -999)));
         _cheatStatus = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart,
                                    CustomMinimumSize = new Vector2(0, 0) };
         _cheatStatus.AddThemeColorOverride("font_color", new Color(0.95f, 0.85f, 0.55f));
@@ -164,6 +166,17 @@ public partial class Viewer
     {
         var k = rain ? Weather.Kind.Rain : Weather.Kind.None;
         CheatSay($"weather {k}: {_weather.Set(_lib, k, _cam.GlobalPosition)}");
+    }
+
+    /// <summary>⚠ There is nothing in this port that EARNS a ticket or an award -- no threshold
+    /// for any of the five medals has been read, nor the rule that makes a coaster "Ultimate". So
+    /// these buttons are the only way to see the counters move, and that is the honest state.</summary>
+    void CheatAward(int tickets, int stars)
+    {
+        if (tickets == -999) { _awards.GoldTickets = 0; _awards.UltimateCoasters = 0; }
+        else { _awards.GoldTickets += tickets; _awards.UltimateCoasters += stars; }
+        CheatSay($"tickets {_awards.GoldTickets}, ultimate coasters {_awards.UltimateCoasters} "
+               + "(nothing earns these yet)");
     }
 
     void CheatMoney(int pounds)
