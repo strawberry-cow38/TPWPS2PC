@@ -260,7 +260,13 @@ public sealed record LaptopScreen(
     /// for all three. One element cannot place three widgets: shipping it would stack them on top
     /// of each other, which is a visible bug wearing the look of a finished screen. How the console
     /// steps three bars from one authored region is not read yet, so the screen waits for that
-    /// instead of being guessed at.</summary>
+    /// instead of being guessed at.
+    ///
+    /// ⚠ And its scene gives a SECOND, independent reason: its value column is not on its label
+    /// column's row. `textoptions` is at 175 and `InfoValues` at 220, forty-five lower, where every
+    /// other list screen authors the two on the same row (All Rides 108/108, All Shops and All
+    /// Sideshows 175/175). So the stepping that serves the other four cannot be assumed to serve
+    /// this one either.</summary>
     public static readonly LaptopScreen[] AllList = { AllRides, AllShops, AllSideshows, AllToilets };
 
     /// <summary>The four "Single ..." item screens the console builds on one base class. ⚠ Build

@@ -394,3 +394,42 @@ and this is what settles it.
 
 So the scene file names a REGION in at least some cases, not one widget each, and a port that
 assumes one element = one widget will be wrong on those four.
+
+## ⭐⭐ The upgrade page is a TAB of the ride screen, not a screen
+
+`main_i_ride_data_upgrd.sce` is a layout with no screen behind it. Four things say so together:
+
+- **No class.** The vtable census found 25 screen classes and read a title out of 20 of them.
+  None is the upgrade page. Every other `.sce` that is a screen has one.
+- **It shares a binder** with `main_i_ride_data` (`FUN_001D3F98`), which is what a second layout
+  belonging to the same screen would do.
+- **The `STR_SINGLER_*` family carries tab strings**: Details (8), Upgrades (119), Options (218),
+  Addons (454). "Upgrades" is a tab of the ride screen, named in the ride screen's own family.
+- **The ride screen has the extra state handlers to serve them.** The Single-item base dispatches
+  on state to vtable slots 26/28/29; `main_i_ride_data` overrides all three (`1d5210`, `1d6058`,
+  `1d6338`) where shop, sideshow and toilet override only slot 26 and inherit the rest.
+
+⚠ **What that does NOT establish** is a rule "own state slots = number of tabs" -- it fails:
+`STR_SINGLEBOG_*` has three tab strings (Details, Options, Upgrades) and the toilet screen
+overrides only one slot, while shop and sideshow have two tabs each and also override one. The
+count is not the tab count; only the *direction* holds (the richest screen has the most).
+
+⭐ So the earlier "four implementations" figure is one better than it looked: the upgrade page is
+a mode of a screen already ported, not a fourteenth screen to write.
+
+## ⚠ All Staff: a SECOND reason it is held back
+
+Its three bars share one authored element, which was the first reason. Reading its scene gives
+another, independent one: **its value column is not on its label column's row.**
+
+```
+textoptions   row 175 col  45      the labels
+infobars      row 175 col 215      72x22, one element for three bars
+InfoValues    row 220 col 250      the values -- FORTY-FIVE rows lower
+```
+
+Every other list screen authors the label and value elements on the SAME row (All Rides 108/108,
+All Shops 175/175, All Sideshows 175/175). All Staff does not, so the stepping that serves the
+other four cannot be assumed to serve it: stepping both columns by 32 from their own origins puts
+its two value rows above their own labels. Whatever it does is its own arrangement, and it is
+still unread. The screen waits.
