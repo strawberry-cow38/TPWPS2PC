@@ -43,9 +43,11 @@ models are `base` (the room) and one per park, plus a `/Backup` copy of `base`.
 
 `base` itself is loaded first with id 1 and its handle kept at `this+0x2c`.
 
-⭐ That slot order **is** the game's park progression. It is a table, not an arrangement derived
-from the worlds: the worlds interleave (jungle, hallow, fantasy, jungle, space, hallow, fantasy,
-space) and no rule over world names produces it.
+⚠⚠ **CORRECTION, same day: this is the MODEL LOAD order and nothing else.** I first wrote that
+it "is the game's park progression". It is not -- it is only the order the eight `.mps` files are
+read in. The lobby's own slots are ordered differently, grouped by world (see **The slot records**
+below). Two orderings exist, the game converts between them with the table at `0x36dcc0`, and
+treating either as the other is the easiest mistake to make here -- I made it.
 
 ### The class
 
@@ -144,7 +146,41 @@ section 5 is the port's default "show this thing doing its idle".
 masks — `0x400` for the seating node above, and `0x1000` in `FUN_00217b48` keyed by the table at
 `0x36dcc0`.
 
-### The slot → key table at `0x36dcc0`
+### ⭐⭐ The slot records -- `0x36dd00`, **nineteen** of them
+
+`FUN_00216f90` copies this table into the object at `this+0x8c`, `0x1C` bytes a record, from
+`0x36dd00` to `0x36df14`: **19 records**, not 8. The first eight are the parks (kind 0) and the
+other eleven are empty kind-1 fillers -- and `base.mps` carries fitting ids 9..19 for exactly
+those eleven, which confirms the count from the data side.
+
+| offset | meaning |
+|---|---|
+| +0x00 | kind (0 = a park, 1 = empty filler) |
+| +0x02, +0x04 | two `u16`, unread |
+| +0x06 | **world**, 0..3 |
+| +0x07 | **park within world**, 0..1 |
+| +0x08 | `u16` id, 15..22 |
+| +0x0A | `u16` **text id** -- the `STR_MAP_*` name |
+| +0x0C..+0x0F | **the four neighbour records**; `20` means none |
+| +0x10..+0x17 | four `u16` yaws, one per direction, zero where there is no neighbour |
+
+⭐ **Record order is grouped BY WORLD**, and three independent sources say so: the `+0x06`/`+0x07`
+pair, the `STR_MAP_*` text ids, and the key table below.
+
+| record | world | park | text id | name | model |
+|---|---|---|---|---|---|
+| 0 | 0 | 0 | 1000 | Lost Kingdom: Prehistoric World | `jungle1` |
+| 1 | 0 | 1 | 1001 | Lost Kingdom: The Park That Time Forgot | `jungle2` |
+| 2 | 1 | 0 | 392 | Halloween World: Realm of Terror | `hallow1` |
+| 3 | 1 | 1 | 393 | Halloween World: Ghost World | `hallow2` |
+| 4 | 2 | 0 | 796 | Wonder Land: Land of Dreams | `fantasy1` |
+| 5 | 2 | 1 | 797 | Wonder Land: Enchanted Island | `fantasy2` |
+| 6 | 3 | 0 | 426 | Space Zone: The Final Frontier | `space1` |
+| 7 | 3 | 1 | 427 | Space Zone: Star Park | `space2` |
+
+World 0 is Lost Kingdom (the jungle), 1 Halloween, 2 Wonder Land (fantasy), 3 Space Zone.
+
+### The record → model table at `0x36dcc0`
 
 Indexed by the selected slot (`this+0x7b`), used with mask `0x1000`:
 
@@ -153,9 +189,9 @@ Indexed by the selected slot (`this+0x7b`), used with mask `0x1000`:
 | model | jungle1 | hallow1 | fantasy1 | jungle2 | space1 | hallow2 | fantasy2 | space2 |
 | key | 1 | 4 | 2 | 6 | 3 | 7 | 5 | 8 |
 
-⭐ Sorted by key, the **first** parks take 1–4 (jungle1, fantasy1, space1, hallow1) and the
-**second** parks take 5–8 (fantasy2, jungle2, hallow2, space2). So the key is a park identity in a
-different ordering from the lobby's own, and the table exists to convert between the two.
+⭐⭐ **SOLVED: `table[record] == modelIndex + 1`, checked on all eight.** It converts the record
+order (by world) into the model load order -- and the same number is also the fitting id the park
+is seated on, so one value answers both "which model" and "which seat".
 
 ⚠⚠ **These are NOT text ids, and it is worth saying so.** Read as indices into
 `/Text/translations/eur/eng.dat` they resolve to `Salt`, `Welcome message`, `Bank Balance`,
@@ -170,3 +206,37 @@ table. A string table will happily answer any index you give it.
 - What `FUN_002187f0` / `FUN_00218880` / `FUN_00218f78` do — the confirm, back and
   leave actions.
 - Whether the three 4-word runs zeroed by the constructor are per-world state.
+
+
+## ⭐⭐ Implemented -- and the shared-code bug it exposed
+
+`game/Viewer.Lobby.cs` + `core/TPW.PS2.Data/LobbySlots.cs` build the scene: `base` plus the eight
+parks, each seated on the `0x400` fitting whose id is its model index + 1, scaled 0.7, playing APS
+section 5, with the authored neighbour table on the arrows and the record's `STR_MAP_*` name for
+the selection. `--lobby` opens it; `--lobby-overview` frames all eight.
+
+⚠⚠ **`Model.Fitting.Node` was wrong, and the lobby is where it shows.** It read
+`Meshes.Count + i`; the consumer reads **`u16 @0x34 + i`**, a separate header field. The two are
+equal often and not always -- across JUNGLE's 88 models with fittings they agree on 61 and differ
+on 27, and on `base.mps` it is 2 against a mesh count of 13. Under the old reading 3 of 8 parks
+seated and 5 did not, and **the 3 that worked were right by coincidence**.
+
+⭐ Why it survived: it was validated on `monkey.mps`, whose mesh count is 9 and whose `0x34` is
+also 9 -- a case where both readings give the identical answer. A rule confirmed only where it
+agrees with its rival has not been tested against it. Fixed centrally; the 61 agreeing models do
+not move.
+
+⚠ **Two scales, both load-bearing.** Every seat fitting carries a basis scale of exactly `0.100`
+-- they are markers drawn small -- so a park must take the seat's POSITION and FACING but not its
+size, or it draws at 0.07 and the overview shows eight specks. And `base.mps` is authored ten
+times the size its own root draws it at: at 1x the island is 113 units across while
+`GameCamera.MinBehind` is **384**, so no camera distance frames it and every render came back as
+open water.
+
+## Still open
+
+- Vtable slots 3, 5, 6, 7, and `FUN_002187f0` / `FUN_00218880` / `FUN_00218f78` (confirm, back, leave).
+- The two `u16` at record `+0x02` / `+0x04`.
+- `base`'s bridges draw clustered rather than spanning between the islands; the park seating is
+  right, that geometry's placement is not yet.
+- Choosing a park does not load it -- the lobby is a scene and a selector, not yet a hand-off.
