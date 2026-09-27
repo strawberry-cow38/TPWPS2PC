@@ -3805,14 +3805,9 @@ public partial class Viewer : Node3D
                 // The ride's three word rows read as they do on the real screen.
                 // ⚠ Upgrades (7) carries the word, Addons (8) does not -- that is which rows the
                 // SCENE gives a value element to, and this harness had the two the wrong way round.
-                // ⚠ HARNESS PLACEHOLDERS, not decoded values. The toilet's one Text row is its
-                // Last Cleaned DATE (`FUN_00142948`), and that formatter is NOT read -- this stands
-                // something date-shaped in the slot so the layout can be looked at, and must not be
-                // taken as the console's format.
-                // ⚠ Digits and '/' only: the first try used dashes and spaces and the bitmap font
-                // drew them as garbage glyphs, which reads as a bug rather than as a placeholder.
-                LaptopRowKind.Text  => (spec == LaptopScreen.Toilet ? "00/00/0000"
-                                        : i == 7 ? "Unavailable" : i == 8 ? null : "1yr", 0),
+                // ⚠ Digits only: an early placeholder used dashes and spaces the bitmap font does
+                // not carry and drew as garbage glyphs, which reads as a bug rather than a stand-in.
+                LaptopRowKind.Text  => (i == 7 ? "Unavailable" : i == 8 ? null : "1yr", 0),
                 _ => (pct.ToString(), 0),
             });
         }

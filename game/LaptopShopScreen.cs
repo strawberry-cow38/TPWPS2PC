@@ -31,6 +31,10 @@ public sealed partial class LaptopShopScreen : Control
     /// coordinates are in the same units.</summary>
     public const float Native = 512f;
 
+    /// <summary>What one line of `Large.bff` advances, in native units. A label element's row is
+    /// the TEXT'S TOP, so a line's middle is its row plus half of this.</summary>
+    public const float LineAdvance = 30f;
+
     ImageTexture _chrome;
     readonly ImageTexture _barFrame, _barFill, _slideTrack, _slideKnob;
     ImageTexture _arrows;
@@ -757,6 +761,24 @@ public sealed partial class LaptopShopScreen : Control
             var row = _spec.Rows[i];
             var (text, fraction) = i < _cells.Count ? _cells[i] : (null, 0);
             float dy = LaptopScreen.RowStep * i * s;
+
+            // ⭐⭐ A ROW THAT OWNS A SIZED WIDGET TAKES ITS LABEL'S HEIGHT FROM THE WIDGET, not
+            // from the step. The label grid steps 32, but an authored widget sits exactly where the
+            // scene puts it, and the two disagree: All Rides' bars are 34 apart (148, 182, 216)
+            // against labels stepping 32 from 108, so by the third bar the label is 8px above its
+            // own bar. Master, 2026-09-27: "ur formatting on these pages is a little misaligned".
+            //
+            // ⭐ THE RULE IS THE DISC'S, AND ALL TOILETS IS THE CONTROL -- it has ONE row, so no
+            // stepping is involved and only the authored numbers speak. CleanlinessText sits at 175
+            // and CleanlinessBar at 180: the label's middle is 175 + 15 = 190, and the 22-tall bar's
+            // middle is 180 + 11 = 191. One pixel apart. The console authors a label CENTRED on its
+            // widget, and that is what this reproduces rather than a nudge that looked right.
+            //
+            // ⚠ Only SIZED elements re-anchor a label. A row whose Element is a text position
+            // (the sideshow's CostOfPrizeValue, say) has no width or height and must keep the step.
+            if (labels is { } lrow && row.Element != null
+                && layout[row.Element] is { HasSize: true } sized)
+                dy = (sized.Y + sized.Height / 2f - LineAdvance / 2f - lrow.Y) * s;
 
             string label = Row(row.TextId);
             if (labels is { } l && label != null)

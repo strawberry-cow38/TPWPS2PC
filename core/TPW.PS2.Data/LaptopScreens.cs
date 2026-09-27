@@ -169,12 +169,7 @@ public sealed record LaptopScreen(
     /// ⚠ LAST CLEANED IS A DATE, NOT A NUMBER, and the draw says so before the comment does: the
     /// two values go through DIFFERENT formatters. Users takes `FUN_00142B68`, which
     /// <see cref="Money"/> documents as the digits-with-thousands-separators writer; Last Cleaned
-    /// takes `FUN_00142948`, which is neither that nor the money formatter (`FUN_00142908`). The
-    /// scene's "int/date" then names what the second one is. It is <see cref="LaptopRowKind.Text"/>
-    /// because this enum has no date kind and the value is not a bare integer -- calling it a Value
-    /// would have flattened two different formatters into one because they sat next to each other.
-    /// ⚠ `FUN_00142948` itself is NOT decoded, so the date's format is unknown; do not assume it
-    /// matches <see cref="ParkClock"/>'s dd/MM/yyyy without reading it.
+    /// takes `FUN_00142948`, which is neither that nor the money formatter (`FUN_00142908`).
     ///
     /// ⚠ One bar and no sliders, which agrees with the constructor's widget census
     /// (`FUN_00115468` once, `FUN_001DA630` never) and with the scene's single `cleanlinessbar`.
@@ -185,7 +180,7 @@ public sealed record LaptopScreen(
         new LaptopRow[]
         {
             new(168,  LaptopRowKind.Value),                     // Users         int
-            new(1077, LaptopRowKind.Text),                      // Last Cleaned  date, FUN_00142948
+            new(1077, LaptopRowKind.Value),                     // Last Cleaned  DAYS, FUN_00142948
             new(132,  LaptopRowKind.Bar, "cleanlinessbar"),     // Cleanliness
         });
 
