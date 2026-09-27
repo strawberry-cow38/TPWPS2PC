@@ -7800,7 +7800,11 @@ public partial class Viewer : Node3D
                + $"{string.Join("/", Enumerable.Range(0, 3).Select(i => ride.Definition.CompiledEntry.Tier(i).PurchaseCost))}"
                + $", upgrade {UpgradeAbove(ride)}, addon {AddonHere(ride)}"
                + $" [shopfront {ride.Definition.ShopfrontReliability}, control "
-               + $"{(NativeRideReliability.MatchesShopfront(ride.Definition.CompiledEntry) ? "PASS" : "FAIL")}]");
+               // ⚠ The control needs a capacity of EXACTLY half the bound (the shopfront's 0x800), which
+               // an ODD bound does not have: Snake's is 1, so max/2 = 0 and the comparison says nothing.
+               // "n/a" there rather than a FAIL that is not one (mechanics port, 2026-09-27: the first
+               // matrix scene to open a ride's Details page tripped the runner's FAIL scan on it).
+               + $"{((ride.Definition.CompiledEntry.Tier(0).CapacityParameter & 1) != 0 ? "n/a (odd capacity bound)" : NativeRideReliability.MatchesShopfront(ride.Definition.CompiledEntry) ? "PASS" : "FAIL")}]");
     }
 
     /// <summary>⭐ A TOILET'S DETAILS PAGE -- Users, Last Cleaned and Cleanliness.
