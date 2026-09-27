@@ -7764,7 +7764,18 @@ public partial class Viewer : Node3D
                 // ⭐ The format is WEEKS AND DAYS, not a bare day count: `FUN_00142948` divides by
                 // 7, prints the quotient with text `0xE1` (`STR_GUI_W` = "w") when it is non-zero,
                 // then always prints the remainder with `0xDD` (`STR_GUI_D` = "d").
-                1077 => (FormatWeeksDays(Math.Max(0, _calendar.TotalDays - loo.LastCleanedDay)), 0),
+                //
+                // ⭐⭐ AND IT IS THE DAY OF THE CLEAN, NOT THE TIME SINCE. There is no subtraction
+                // anywhere in `FUN_001DA008` -- the stamp goes to the formatter raw. tinyclaw
+                // settled which side that leaves standing (`ed9b5fe`): `cal+0x10` (`0x16B218`) is
+                // the running day TOTAL, and the code that does want an elapsed time subtracts
+                // explicitly -- `0x1DC458` computes time-employed as that total minus the hire
+                // day. This screen does not, so "2w 3d" means the clean happened on park day 17.
+                //
+                // ⚠ So the row reads as a DATE, and the port briefly showed an age instead. Both
+                // of us had it wrong from opposite ends: my first version blanked a zero stamp,
+                // then subtracted from today; the decode it was following said "today MINUS this".
+                1077 => (FormatWeeksDays(Math.Max(0, loo.LastCleanedDay)), 0),
                 _    => (null, 0),
             });
         _shopPanel.ShowScreen(LaptopScreen.Toilet, DisplayName(loo), cells);
