@@ -27,9 +27,10 @@ namespace TPWPS2Viewer;
 /// - Every owned guest is pushed. The native pushes only a shown guest (B+2C bit 0, set via
 ///   192C10), whose producer for bus-born guests was not traced.
 /// - The random stream is NewlibRand, the same LCG as 29CF08, not the console's shared stream.
-/// - Section 0 is a baked-vertex walk (1A7E18) that AnimatedModel cannot play. It is DRAWN
-///   with the section-1 skeletal walk, which is the same 16 frames and a measured-equivalent
-///   stride. Its TIMING is still section 0's own record.
+/// - Section 0 is a baked-vertex walk (1A7E18). AnimatedModel can play it now
+///   (findings/baked-walk.md), but guests are still DRAWN with the section-1 skeletal walk, which
+///   is the same 16 frames and a measured-equivalent stride. Its TIMING is still section 0's own
+///   record.
 /// - 1C4930's update counter is taken to be the park tick, for the N+2C stamp and 2106E8's
 ///   120-update hold. The picker's draws come from the flow's 1448E0 stream (_guestRng).
 ///
@@ -201,7 +202,7 @@ public partial class Viewer
     static Aps.Record DrawableRecord(Aps anim, int slot, int variant)
     {
         if (anim == null) return null;
-        // Section 0 is the baked-vertex walk; draw its skeletal equivalent (see summary).
+        // Section 0 is the baked-vertex walk; guests still draw its skeletal equivalent (see summary).
         int drawSlot = slot == 0 ? 1 : slot, drawVariant = slot == 0 ? 0 : variant;
         var record = anim.Records().Where(r => r.Slot == drawSlot).Skip(drawVariant).FirstOrDefault();
         return record is { Skeletal: true, Shared: false } ? record : null;

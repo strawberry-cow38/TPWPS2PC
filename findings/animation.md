@@ -767,7 +767,8 @@ type Crazy Ape uses. That is a real result and it is not "the format".
 - record `small` array at `+0x14`: used by 37 of 279 records, unread
 - the **20-byte skeletal path**: decoded from the parser and interpolators, **exercised by zero
   files in JUNGLE.WAD**. Read, not proven. Guests and staff are likely in `DATA.WAD`, unexamined
-- `FUN_001a7e18`, the alternate player selected by track flag `0x40000` — not decompiled
+- `FUN_001a7e18`, the alternate player selected by track flag `0x40000` — decoded 2026-09-27: baked
+  int16 poses per frame, truncated, through mesh+0x98 (findings/baked-walk.md)
 - the instruction that READS `+0x28` — still not located, so the appear frame stays evidence
 - M3D2: mesh `+0x64`, `+0x68`, and helper entries past the shared header
 
@@ -1253,7 +1254,8 @@ then `CatmullRom(points, floor(s), frac(s))` with the indices taken modulo the p
 `TrackFlag.OrientAlongPath` (0x400, **89 tracks**) additionally points the node down its own
 tangent, sampled 0.1 frames ahead.
 
-⚠ Still not applied: `AlternatePlayer` (0x40000, 81 tracks).
+⚠ Still not applied: `AlternatePlayer` (0x40000, 81 tracks). **Applied 2026-09-27**, see
+findings/baked-walk.md.
 
 
 ## ⭐⭐⭐ THE TRACK FLAGS, MAPPED BY BICONDITIONAL (2026-09-21)

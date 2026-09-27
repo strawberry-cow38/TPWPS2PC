@@ -533,6 +533,90 @@ public sealed class Animation
         return x >> 22;
     }
 
+    /// <summary>⭐⭐ THE BAKED-VERTEX CHANNEL, track flag 0x40000 -- every character's section 0, the
+    /// walk. Whole poses, one per frame, written straight into the mesh. findings/baked-walk.md.
+    ///
+    /// The player is <c>FUN_001a7e18(mesh, header)</c>. The model updater 0x1acfc0 reaches it through
+    /// the record player 0x1a8da8, which for a record WITHOUT flag 0x20 walks the 48-byte tracks and
+    /// sends each one to 0x1a7e18 when <c>track+4 &amp; 0x40000</c> and to the morph player 0x1a6d68
+    /// otherwise (0x1a9460..0x1a9498). ⚠ Not the ride evaluator 0x1a7f48: that one never calls it.
+    ///
+    /// <code>
+    /// header = *(track+0x20)            // relocated by the loader's 0x1676d8, which moves ONE pointer
+    /// header+0  ptr  frames             // always header+8 on the disc
+    /// header+4  u16  stored triples     // never read by the player; = groups x (duration+1) on 81/81
+    /// header+6  u16  groups             // read at 0x1a7e3c
+    /// frames:   int16 x,y,z per group, frame-major: frame f group g at (f*groups + g)*6
+    /// </code>
+    ///
+    /// Per frame the player takes <c>(int)playback+0xC</c> through <c>__fixsfsi</c> (0x297b68), a
+    /// TRUNCATION, so there is no interpolation. Each triple is converted int to float with no scale
+    /// and REPLACES the vertex: groups are fanned out through the same mesh+0x98 run list the morph
+    /// and skin paths use (<see cref="Model.AnimVertexMap"/>). There is no additive argument, so the
+    /// model header's +0x1c bit 4 does not apply to this channel.</summary>
+    public sealed class BakedVertexTrack
+    {
+        /// <summary>track+0. 0x1a8da8 resolves a node below the mesh count to the 0xA0-byte mesh
+        /// object, whose +0x98 run list and +0x68 vertex buffer 0x1a7e18 writes.</summary>
+        public int Node;
+        /// <summary>header+6: one int16 triple per run-list group per frame.</summary>
+        public int Groups;
+        /// <summary>header+4 / header+6. ⚠ INFERRED: the player reads no count and bounds nothing;
+        /// the playback clock keeps the frame in [0, duration], and the table holds duration+1 frames
+        /// on every track on the disc, the last a copy of the first.</summary>
+        public int Frames;
+        public short[] Xyz;
+
+        /// <summary>The frame 0x1a7e18 reads: truncated, as <c>__fixsfsi</c> does. ⚠ Refuses a
+        /// frame outside the table rather than wrapping or clamping it: the console cannot reach
+        /// one, so a caller that asks for one has a clock bug worth hearing about.</summary>
+        public int FrameIndex(float now)
+        {
+            if (!float.IsFinite(now) || now < 0) throw new ArgumentOutOfRangeException(nameof(now));
+            int f = (int)MathF.Truncate(now);
+            if (f >= Frames) throw new ArgumentOutOfRangeException(nameof(now), $"frame {f} of a {Frames}-frame baked table");
+            return f;
+        }
+
+        public Vector3 Position(int frame, int group)
+        {
+            int o = (frame * Groups + group) * 3;
+            return new Vector3(Xyz[o], Xyz[o + 1], Xyz[o + 2]);
+        }
+
+        /// <summary>Every group's position at a time in APS frames. One per group, not per vertex.</summary>
+        public Vector3[] Sample(float now)
+        {
+            int f = FrameIndex(now);
+            var outArr = new Vector3[Groups];
+            for (int g = 0; g < Groups; g++) outArr[g] = Position(f, g);
+            return outArr;
+        }
+    }
+
+    /// <summary>The record's baked-vertex tracks, or an empty list. A skeletal record has none: its
+    /// tracks are the 20-byte form, and 0x1a8da8 sends it down the other branch.</summary>
+    public List<BakedVertexTrack> BakedVertexTracks(Record rec)
+    {
+        var outList = new List<BakedVertexTrack>();
+        if (rec == null || rec.Skeletal || rec.Tracks == 0) return outList;
+        for (int i = 0; i < rec.TrackCount; i++)
+        {
+            int t = TrackAt(rec, i);
+            if ((TrackFlags(t) & (uint)TrackFlag.AlternatePlayer) == 0) continue;
+            int h = (int)U32(t + 0x20);
+            if (h <= 0 || h + 8 > D.Length)
+                throw new InvalidDataException($"APS record 0x{rec.Offset:x}, track {i}: baked header outside the file");
+            int frames = (int)U32(h), stored = U16(h + 4), groups = U16(h + 6);
+            if (groups == 0 || stored % groups != 0 || frames <= 0 || (long)frames + stored * 6L > D.Length)
+                throw new InvalidDataException($"APS record 0x{rec.Offset:x}, track {i}: baked table does not fit ({groups} groups, {stored} triples)");
+            var xyz = new short[stored * 3];
+            for (int k = 0; k < xyz.Length; k++) xyz[k] = I16(frames + k * 2);
+            outList.Add(new BakedVertexTrack { Node = TrackNode(t), Groups = groups, Frames = stored / groups, Xyz = xyz });
+        }
+        return outList;
+    }
+
     /// <summary>node -> its VISIBILITY TIMELINE, from <c>track+0x28</c>.
     ///
     /// ⭐⭐ Read out of the evaluator, <c>FUN_001a7f48</c>: it is not an appear/disappear pair, it
@@ -607,6 +691,9 @@ public sealed class Animation
                     for (int j = 0; j < 8; j++) { int q = (int)U32(t + 0x10 + j * 4); if (q != 0) set.Add(q); }
                     int h = (int)U32(t + 0x20);
                     if (h == 0) continue;
+                    // ⚠ The +0x20 union again: a baked header holds ONE pointer (0x1676d8), and its
+                    // +0x08 is the first int16 triple, not a key-schedule pointer.
+                    if ((TrackFlags(t) & (uint)TrackFlag.AlternatePlayer) != 0) { int q = (int)U32(h); if (q != 0) set.Add(q); continue; }
                     foreach (var o2 in new[] { 8, 0x24, 0x28 }) { int q = (int)U32(h + o2); if (q != 0) set.Add(q); }
                     int recs = (int)U32(h + 8);
                     for (int j = 0; j < U16(h + 2); j++) { int q = (int)U32(recs + j * 12 + 4); if (q != 0) set.Add(q); }
@@ -640,6 +727,8 @@ public sealed class Animation
             var mor = Morph(t);
             if (mor != null) foreach (var (times, _) in mor) if (times.Length > 0) max = Math.Max(max, times[^1]);
         }
+        // A baked table's last frame is its highest key, like a key time: Frames-1, i.e. the duration.
+        foreach (var baked in BakedVertexTracks(rec)) max = Math.Max(max, baked.Frames - 1);
         return max;
     }
 }

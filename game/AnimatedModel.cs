@@ -14,6 +14,8 @@ namespace TPWPS2Viewer;
 ///   is what keeps the rest pose intact at frame 0;
 /// * scale renormalises each basis vector to the interpolated length;
 /// * vertex morph replaces positions through the model's own `mesh+0x98` map;
+/// * ⭐ a BAKED-VERTEX track (flag 0x40000, every character's section 0 walk) replaces them through
+///   the same map with a whole stored pose per frame, truncated, never interpolated -- `0x1a7e18`;
 /// * a node is not drawn before its appear frame or after its disappear frame;
 /// * ⭐ a SKELETAL record (the characters in DATA.WAD) is sampled into one bone matrix per
 ///   helper the way `FUN_001a8da8` does -- no hierarchy, the keys are the whole transform -- and
@@ -43,6 +45,8 @@ public sealed class AnimatedModel
         /// <summary>The mesh's skin, or null for a mesh that is not skinned (every ride part).</summary>
         public Model.Skin Skin;
         public List<(int[] Times, System.Numerics.Vector3[] Keys)> Morph;
+        /// <summary>The record's baked-vertex track for this mesh (flag 0x40000, section 0's walk), or null.</summary>
+        public Aps.BakedVertexTrack Baked;
         /// <summary>Per-vertex sums of every <see cref="AddLayer"/> record's morph and UV deltas, or
         /// null. Constant: a layer is posed once, the record now playing moves on top of it.</summary>
         public System.Numerics.Vector3[] LayerPos;
@@ -75,6 +79,8 @@ public sealed class AnimatedModel
     readonly Dictionary<int, ModelPathChannel> _modelPath = new();
     readonly HashSet<int> _facing = new();
     List<Aps.SkeletalTrack> _skel;
+    /// <summary>The record's baked-vertex tracks, parsed once per UseRecord and handed to each part.</summary>
+    List<Aps.BakedVertexTrack> _baked = new();
     /// <summary>True when the selected record drives a biped rather than vertex morph.</summary>
     public bool Skeletal { get; private set; }
     /// <summary>The record the channels are bound to; null for a model shown in its bind pose.</summary>
@@ -157,6 +163,7 @@ public sealed class AnimatedModel
                 Ancestry = _model.Ancestry(mesh.Index),
                 Morph = MorphFor(rec, mesh.Index),
             };
+            p.Baked = BakedFor(p);
             try { p.Skin = _model.ReadSkin(mesh); }
             catch (InvalidDataException e) { GD.PrintErr($"[part] {mesh.Name}: skin rejected: {e.Message}"); }
             // ⚠ The mesh+0x98 run list must name exactly the skin's animated vertices, or a slot
@@ -173,6 +180,7 @@ public sealed class AnimatedModel
             var vs = _vis.TryGetValue(mesh.Index, out var vv) ? "vis[" + string.Join(",", vv) + "]" : "always";
             GD.Print($"[part] {mesh.Name,-10} tris={tris.Count,-5} verts={pos.Count,-5} " +
                      $"morph={(p.Morph != null ? p.Morph.Count.ToString() : "-"),-5} " +
+                     (p.Baked != null ? $"baked={p.Baked.Groups}x{p.Baked.Frames} " : "") +
                      $"skin={(p.Skin != null ? p.Skin.Bones.Count() + "b" : "-"),-4} " +
                      $"map={(p.AnimMap != null ? "yes" : "NO "),-4} {vs}");
         }
@@ -242,6 +250,7 @@ public sealed class AnimatedModel
         // and carry on moving after the animation changed.
         _textureTracks.Clear(); _rot.Clear(); _rotTrack.Clear(); _scale.Clear(); _path.Clear(); _modelPath.Clear(); _facing.Clear();
         _vis = new(); _meshVis = new(); _skel = null; Frames = 0;
+        _baked = BakedOff ? new() : _anim?.BakedVertexTracks(rec) ?? new();
         // ⭐ _textureIndices is left alone on purpose. It is model-sized and mirrors what each
         // material is showing NOW, which is the `previous` that TextureTrack.Sample retains before
         // a track's first key -- the game's own consumer does (0x1a6b60-0x1a6bd4) -- so a slot the
@@ -291,12 +300,17 @@ public sealed class AnimatedModel
         // frozen at whatever frame the old record left it on.
         // ⚠ And a part the old record SKINNED goes back to its bind positions the same way when
         // the new record has no pose to give it.
+        // ⭐ A baked part the new record leaves alone goes back the same way, and a part the new
+        // record bakes is rebuilt at once on its frame 0 instead of showing the old record's shape
+        // until the first SetFrame.
         bool posed = _posed; _posed = false;
         foreach (var p in _parts)
         {
-            bool morphed = p.Morph != null;
+            bool morphed = p.Morph != null, baked = p.Baked != null;
             p.Morph = MorphFor(rec, p.Mesh.Index);
-            if ((morphed && p.Morph == null) || (posed && p.Skin != null && _skel == null)) RebuildGeometry(p, 0);
+            p.Baked = BakedFor(p);
+            if ((morphed && p.Morph == null) || (baked && p.Baked == null) || p.Baked != null
+                || (posed && p.Skin != null && _skel == null)) RebuildGeometry(p, 0);
         }
         RefreshSummary();
         RefreshOrdinaryVisibility();
@@ -328,6 +342,31 @@ public sealed class AnimatedModel
         return null;
     }
 
+    /// <summary>The record's baked-vertex track for a part, or null when it has none.
+    ///
+    /// ⚠ The mesh+0x98 run list must name exactly the track's groups: 0x1a7e18 consumes one run per
+    /// group and bounds nothing, so a mismatch would write past one end or leave vertices unwritten.
+    /// All 81 tracks on the disc agree; a file that does not is refused rather than half-drawn.
+    ///
+    /// `TPW_PS2_BAKED=off` leaves the parts in the pose they had before this channel was played,
+    /// which is the control the baked-walk checks run against.</summary>
+    Aps.BakedVertexTrack BakedFor(Part p)
+    {
+        var track = _baked.FirstOrDefault(t => t.Node == p.Mesh.Index);
+        if (track == null) return null;
+        if (p.AnimMap == null || p.AnimMap.Max() + 1 != track.Groups)
+            throw new InvalidDataException($"baked track on {p.Mesh.Name}: {track.Groups} groups against a run list of "
+                                         + (p.AnimMap == null ? "nothing" : (p.AnimMap.Max() + 1).ToString()));
+        return track;
+    }
+
+    static bool BakedOff =>
+        (System.Environment.GetEnvironmentVariable("TPW_PS2_BAKED") ?? "").ToLowerInvariant() == "off";
+
+    /// <summary>How many parts the record now playing drives with a baked-vertex track. ⭐ An
+    /// instrument: a character on section 0 that reports 0 is standing in whatever pose it had.</summary>
+    public int BakedParts => _parts.Count(p => p.Baked != null);
+
     void RefreshOrdinaryVisibility()
     {
         if (!_ordinaryVisibility) return;
@@ -339,6 +378,7 @@ public sealed class AnimatedModel
     void RefreshSummary() =>
         Summary = $"{_parts.Count} parts, {Frames} frames, {_model.Materials.Count} materials"
                   + $", {_textureTracks.Count} texture tracks"
+                  + (_parts.Any(p => p.Baked != null) ? $", {BakedParts} baked-vertex parts" : "")
                   + (Skeletal ? $", {_skel?.Count ?? 0} bone tracks over {_parts.Count(p => p.Skin != null)} skinned parts"
                                + (_skel == null ? " (shared record, no tracks here: bind pose)" : "") : "");
 
@@ -685,6 +725,13 @@ public sealed class AnimatedModel
             for (int i = 0; i < ev.Length; i++) ev[i] = p.Skin.Deform(i, pose);
             pos = p.AnimMap.Select(i => ev[i]).ToList();
         }
+        else if (p.Baked != null && p.AnimMap != null)
+        {
+            // ⭐ 0x1a7e18: the stored pose for the truncated frame, one per group, fanned out through
+            // the same run list. It REPLACES the vertex; there is no additive form of this channel.
+            var ev = p.Baked.Sample(now);
+            pos = p.AnimMap.Select(i => ev[i]).ToList();
+        }
         else if (p.Morph != null && p.AnimMap != null)
         {
             var ev = p.Morph.Select(v => Sample(v.Times, v.Keys, now)).ToArray();
@@ -841,7 +888,7 @@ public sealed class AnimatedModel
             if (!shown && !_ordinaryVisibility && !_nativeNodeVisibility) continue;
             // ⚠ `|| p.UvKeys != null` -- a part whose ONLY animation is its UVs has no morph and
             // no skin, so the old gate skipped it and it would never have been rebuilt at all.
-            if (((p.Morph != null || (pose != null && p.Skin != null)) && p.AnimMap != null)
+            if (((p.Morph != null || p.Baked != null || (pose != null && p.Skin != null)) && p.AnimMap != null)
                 || p.UvKeys != null || p.LayerPos != null || p.LayerUv != null) RebuildGeometry(p, now, pose);
             var w = world[p.NodeOffset];
             var t = new Transform3D(

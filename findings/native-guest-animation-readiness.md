@@ -264,6 +264,9 @@ from the track formats: section 0 has 2â€“3 vertex tracks and section 1 has 22â€
 
 **9 and 13 are the two walk forms**, which is why 191E10 accepts either.
 
+The player's format is decoded and `AnimatedModel` plays it (September 27): see
+findings/baked-walk.md. The Viewer still draws guests' section 0 as section 1.
+
 ### Guest execution state is N+37, dispatched by 1920D0
 
 1920D0 dispatches on B+2F = N+37 through the table at 364840:

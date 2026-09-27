@@ -51,6 +51,12 @@ if (args.Contains("--logical-animation-only"))
     Console.WriteLine(bad==0 ? "PASS native logical-animation table, control block, playback and idle picker (viewer integration: NativeAnimationReadinessSmoke)" : $"FAIL: {bad}");
     return bad==0?0:1;
 }
+if (args.Contains("--baked-walk-only"))
+{
+    BakedWalkChecks.Run(Wad("DATA"), Check);
+    Console.WriteLine(bad==0 ? "PASS baked-vertex walk tables, map, legs and truncation (drawing: BakedWalkFilm; guests still draw section 1)" : $"FAIL: {bad}");
+    return bad==0?0:1;
+}
 if (args.Contains("--guest-motion-only"))
 {
     NativeGuestMotionChecks.Run(Check);
