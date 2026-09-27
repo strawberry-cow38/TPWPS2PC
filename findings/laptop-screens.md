@@ -282,3 +282,54 @@ single screen, and do it AFTER the finance family rather than before.
 ⚠ This measures how much each screen OVERRIDES, which is not the same as how much behaviour it
 has — a screen with no overrides still does whatever its constructor's constants make the base do,
 and those constants are not decoded here. It bounds the work; it does not describe the screens.
+
+## ⭐⭐⭐ What the eleven "configuration" screens are configured WITH
+
+Reading a list screen's constructor (`FUN_00109b90`, All Rides) shows exactly what a subclass
+supplies. Beyond the vtable and its sub-objects it is three things:
+
+```c
+FUN_0010c928();                      // the All-list base constructor
+*(this + 0x10) = &DAT_00358eb8;      // its vtable
+FUN_00165948(this + 0xa0, 0x1b0);    // TITLE text id -- 432, STR_ALLRIDES_ALLRIDES
+*(this + 0x178) = 0x141;             // a second text id
+FUN_0015c710(this + 0x2f4, 3);       // and a list of CATEGORY numbers
+FUN_0015c710(this + 0x2f4, 7);
+FUN_0015c710(this + 0x2f4, 6);
+FUN_0015c710(this + 0x2f4, 1);
+```
+
+`this + 0x2f4` is the same field the base's state machine reads. The numbers pushed into it are
+**`AssetResourceDatabase.AssetKind` values** -- the enum this port already has:
+
+> `Coaster = 1, Feature = 2, Ride = 3, Shop = 4, Sideshow = 5, TrackRide = 6, TourRide = 7,`
+> `TrackUpgrade = 8`
+
+| screen | registers | reads as |
+|---|---|---|
+| All Rides | 3, 7, 6, 1 | Ride, TourRide, TrackRide, Coaster -- **every ride kind** |
+| All Shops | 4 | Shop |
+| All Sideshows | 5 | Sideshow |
+| All Toilets | 2 | Feature |
+| All Staff | (none) | staff are not assets, so no kind applies |
+
+⭐⭐ **Four of the five land on exactly the kind set their title promises, with no interpretation
+required.** That is what makes the five list screens one class: they are the same code filtered to
+different `AssetKind`s, and the filter values are an enum this port already decoded for the Build
+menu (see `BuildCategoryNames`, which derived the same enum from the other end -- the
+`STR_PURCHASE_*` names and master's requested ordering).
+
+⚠ **All Toilets is the one that does NOT simply read.** It registers `Feature` (2), and features
+are also bins, benches and trees -- so either toilets are Features and the screen narrows by
+something further that is not read here, or 2 means something else in this position. Do not build
+that screen on the assumption that `Feature` is the whole filter.
+
+⚠ And the second text id at `this + 0x178` (321 for All Rides) is unread -- it is stored, not
+passed to the title call, so what it labels is not established.
+
+### What this leaves
+
+The research question is answered: the remaining screens are four implementations plus a table of
+constants, and for the five list screens the table is **a title id and a set of `AssetKind`s**,
+both of which this port can already produce. The honest gaps are the `this+0x178` id, the All
+Toilets filter, and the menu-id -> class routing.
