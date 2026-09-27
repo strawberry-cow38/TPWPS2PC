@@ -87,6 +87,13 @@ public partial class Viewer
         if (room?.Root == null) { GD.PrintErr("[lobby] base.mps would not load"); return; }
         room.SetFrame(0);
         _lobbyRoot.AddChild(room.Root);
+        // ⚠ MEASURE WHAT IS ACTUALLY DRAWN, not what the matrices say. The bridges look
+        // clustered on the overview while `base`'s own node origins span x 0..85, z 0..113 -- so
+        // either the parts are not being placed by those matrices or the geometry is not where
+        // the origins are, and a picture cannot tell those two apart.
+        var (rlo, rhi) = Park.DrawnBounds(room.Root, inParent: true);
+        GD.Print($"[lobby] base drawn bounds x {rlo.X:F0}..{rhi.X:F0} y {rlo.Y:F0}..{rhi.Y:F0} "
+               + $"z {rlo.Z:F0}..{rhi.Z:F0}");
 
         // ⭐⭐ EACH PARK SITS ON A FITTING OF `base`, found by ID, under mask 0x400.
         // `FUN_00216f90` searches with its own loop index plus one -- so the id is the MODEL's
@@ -137,8 +144,20 @@ public partial class Viewer
             // models carry a mirrored basis and Godot's euler round trip does not survive one.
             var placed = new Transform3D(seat.Basis.Orthonormalized(), seat.Origin);
             drawn.Root.Transform = placed.ScaledLocal(Vector3.One * LobbySlots.ModelScale);
-            _lobbyRoot.AddChild(drawn.Root);
+            // ⭐⭐ PARENTED TO `base`, NOT TO THE LOBBY ROOT. The seat matrix is expressed in
+            // `base`'s OWN space -- it came out of `base`'s node table -- but `AnimatedModel`
+            // gives `base.Root` a transform of its own, so its drawn geometry lands at
+            // x -138..258, z -258..138 while the raw node origins are x 0..85, z 0..113. Adding
+            // the parks beside `base` put them in the second frame and the island in the first:
+            // they overlapped enough to look nearly right and were nowhere near aligned.
+            //
+            // ⚠ Hanging them off `base.Root` makes the seat mean what it says, whatever that root
+            // does -- and it cannot drift if that transform ever changes.
+            room.Root.AddChild(drawn.Root);
             _lobbyParks.Add(drawn);
+            var (plo, phi) = Park.DrawnBounds(drawn.Root, inParent: true);
+            GD.Print($"[lobby]   {LobbySlots.ModelNames[model],-9} drawn x {plo.X:F0}..{phi.X:F0} "
+                   + $"z {plo.Z:F0}..{phi.Z:F0}");
         }
 
         _lobbyMode = true;

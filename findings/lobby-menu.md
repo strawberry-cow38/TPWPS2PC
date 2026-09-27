@@ -226,6 +226,14 @@ also 9 -- a case where both readings give the identical answer. A rule confirmed
 agrees with its rival has not been tested against it. Fixed centrally; the 61 agreeing models do
 not move.
 
+⚠⚠ **AND THE SEAT IS IN `base`'S OWN FRAME.** The parks must be parented to `base.Root`, not
+placed beside it. `AnimatedModel` gives `base` a root transform of its own -- its drawn geometry
+lands at x -138..258, z -258..138 while its raw node origins are x 0..85, z 0..113, a different
+frame and a mirrored one. Parked beside it the eight islands overlapped the island enough to look
+nearly right while every bridge missed them; hung off `base.Root` the bridges join the parks up
+exactly as the console draws them. ⚠ The tell was numeric, not visual: two bounding boxes that
+should have shared a frame and did not.
+
 ⚠ **Two scales, both load-bearing.** Every seat fitting carries a basis scale of exactly `0.100`
 -- they are markers drawn small -- so a park must take the seat's POSITION and FACING but not its
 size, or it draws at 0.07 and the overview shows eight specks. And `base.mps` is authored ten
@@ -237,6 +245,4 @@ open water.
 
 - Vtable slots 3, 5, 6, 7, and `FUN_002187f0` / `FUN_00218880` / `FUN_00218f78` (confirm, back, leave).
 - The two `u16` at record `+0x02` / `+0x04`.
-- `base`'s bridges draw clustered rather than spanning between the islands; the park seating is
-  right, that geometry's placement is not yet.
 - Choosing a park does not load it -- the lobby is a scene and a selector, not yet a hand-off.
