@@ -229,7 +229,16 @@ by-name search once put Mumbo's sign on Crazy Ape, because 22 rides each ship a 
 
     flowerpot   hpa_ctr2   jpa_que4 (x8)   mutant_eye   wr_flap (x3)
 
-Dead references in EA's own art. `jpa_que4` is requested by **SPACE**'s terrain while carrying a
+Dead references in EA's own art. **What the console draws for them** (READ 2026-09-27): the
+loader `0x2275f8` stores `0x2351a8`'s result into the handle array whether or not it is null
+(`0x227638`), and the model renderer fetches `handles[selected]` (`0x227f1c`) and calls `0x22a068`
+with it regardless. `0x22a068` ORs the texture's flag word and bit `0x10` in only when the handle
+is non-null (`0x22a06c..0x22a080`); the strip is still queued. Bit `0x10` is set on every textured
+draw and `0x40` is tested next as blending, which is the GS PRIM layout (TME bit 4, ABE bit 6) --
+INFERRED from that match, the packet writer was not followed. So the part draws untextured, in its
+lit vertex colour: the port's fallback is `128/255` for that reason. `wr_flap` is the water ride's
+roller-ramp flaps (`wr_trckh`, `wr_trckh_u` nodes `wr_flap`, `wr_flap01`): grey strips on the console
+too, if this reading holds. `jpa_que4` is requested by **SPACE**'s terrain while carrying a
 *jungle* prefix, which reads like a copied model nobody re-pointed.
 
 ⚠ **So the floor is 14, and the gate this job was given ("zero unresolved") was unmeetable.** That

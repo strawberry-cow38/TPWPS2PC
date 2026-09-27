@@ -165,7 +165,7 @@ stays zero. `Park.cs` routes its fallback floor through the same material.
 
 Named defaults: `DefaultWeatherAmount = 0` until the actual weather state machine is ported;
 `UnconfiguredNeutral` is only for standalone callers without a disc (the viewer always loads
-the ELF). Missing-texture grey remains the viewer's `fallback_colour = 0.72`. Generated ground
+the ELF). Missing-texture grey is `fallback_colour = 128/255` (was a chosen 0.72): the console draws a slot whose texture it could not load untextured, so the lit vertex colour itself shows (`texture-fallback.md`). Generated ground
 uses its synthetic normal times 127; its exact PS2 terrain-normal generation is not established.
 
 ## Identity audit and mutation

@@ -43,7 +43,15 @@ render_mode unshaded, {{cull}}{{(soft ? ", depth_prepass_alpha" : "")}};
 // Deliberately no source_color: GS modulates texture bytes, not linear-light RGB.
 uniform sampler2D albedo_tex : {{(linearFilter ? "filter_linear_mipmap" : "filter_nearest_mipmap")}}, {{(clamp ? "repeat_disable" : "repeat_enable")}};
 uniform bool has_tex = true;
-uniform vec3 fallback_colour = vec3(0.72); // named viewer default for missing textures
+// ⭐ A texture the disc does not have draws UNTEXTURED on the console, not missing: the material
+// loader keeps the null handle (0x22762c stores it whatever 0x2351a8 returned) and the model
+// renderer still submits the strip (0x227f88 -> 0x22a068), leaving out the texture's flag word and
+// bit 0x10 -- which it sets on every textured draw and which is where the GS PRIM register keeps
+// TME (INFERRED from that layout; 0x40, tested right after, is PRIM's ABE). With TME off the GS
+// writes the lit vertex colour as it is, and under this shader's modulate that is a texel of 128.
+// Was 0.72, a viewer default with no console behind it. wr_flap.ssh (the water ride's ramp flaps)
+// is the case that showed it: no file of that stem is anywhere on the disc.
+uniform vec3 fallback_colour = vec3(0.5019608); // 128 / 255: a uniform default must be a literal
 uniform float cutout = 0.0627;
 uniform vec3 ps2_ambient;
 uniform vec3 ps2_directional;
