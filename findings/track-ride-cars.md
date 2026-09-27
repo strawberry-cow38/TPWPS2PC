@@ -430,6 +430,17 @@ Timers are only processed for non-player cars.
   - One-shot `(6, 0xf)` on entering state 3 or 5.
   - The event names are not resolved.
 
+### The wheels do not turn (READ 2026-09-27)
+Every kart model's `.aps` has a Main (slot 5; 20 frames in JUNGLE and HALLOW, 100 in FANTASY) whose two
+tracks are UV tracks (flag `0x10000`) on nodes 1 and 2, `wheel01` and `wheel02`: a wheel-roll texture
+animation. Nothing starts it. A track piece sets its model (vt `+0xc` with `0, −1`, `0x17ce10`,
+`+0xac(1)`) and then starts section 5 through vt `+0x5c` (`0x1fd8f0..0x1fd914`). The car's base init
+`0x2053a0` makes the same three calls with the same arguments (`0x2054f8..0x20552c`) and stops. There
+is no vt `+0x5c` load anywhere in `0x203000..0x205800`, and a whole-executable scan for a model loaded
+from `+0x90` (the car's model slot) followed by a vt `+0x5c` call finds none, while the same scan on
+`+0x08` finds the piece's (`0x1fd8ec`) and nine others. So on the console the wheels stand still: the
+art is shipped and unused. The water ride's `wr_ring.aps` has no tracks at all.
+
 ### Kart pose extras (0x204c38)
 - The mesh drawn through the ride instance is compiled-record word `+0xdc + (colour+5)·4`.
 - For the player's car (race mode):
