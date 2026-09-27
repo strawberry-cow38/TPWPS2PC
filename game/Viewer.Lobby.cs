@@ -39,6 +39,8 @@ public partial class Viewer
     /// ⚠ Stored in `base`'s space, like the seats, and taken through `base.Root` when used.</summary>
     readonly List<Transform3D> _lobbyCams = new();
     Node3D _lobbyBaseRoot;
+    LobbyMessageBox _lobbyBox;
+    bool _lobbyBoxHasFont;
     float _lobbyModelTime;
     bool _lobbyAimed;
 
@@ -59,6 +61,13 @@ public partial class Viewer
         _lib.OpenWad(wad.Path);
         _texCache.Clear();
         IndexRides();
+
+        // ⚠⚠ THE HUD FONT IS LOADED LAZILY FROM `ShowMoney`, WHICH HAS NOT RUN YET. EnterLobby
+        // happens during startup, before the first `_Process`, so the message box was being
+        // configured with a null font and silently drew nothing -- the instrument said
+        // "font=NULL" with the right text and the right size sitting behind it. `LoadHudFont` is
+        // idempotent, so asking for it here costs nothing and removes the ordering entirely.
+        LoadHudFont();
 
         try { _lobbySlots = LobbySlots.Read(_lib.Disc); }
         catch (Exception e) { GD.PrintErr($"[lobby] no slot table: {e.Message}"); return; }
@@ -202,6 +211,20 @@ public partial class Viewer
                    + $"basis det {ct.Basis.Determinant():F2}");
         }
 
+        // ⭐ The centred box that names the park. ⚠ Parented to the UI root, not to the lobby's
+        // 3D root -- it is a Control, and it must outlive nothing but the lobby itself.
+        if (_uiRoot != null && (_lobbyBox == null || !IsInstanceValid(_lobbyBox)))
+        {
+            _lobbyBox = new LobbyMessageBox();
+            _lobbyBox.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+            // ⚠ The Viewer is a Node3D, so there is no `this` to fall back on for a Control --
+            // without a UI root the box simply is not built, rather than being parented somewhere
+            // that would never draw it.
+            _uiRoot?.AddChild(_lobbyBox);
+        }
+        _lobbyBox?.Configure(_hudFont);
+        _lobbyBoxHasFont = _hudFont != null;
+
         _lobbyMode = true;
         _lobbyRecord = 0;
         // ⭐ Stand on the park we just closed, if that is how we got here.
@@ -244,6 +267,11 @@ public partial class Viewer
         GD.Print($"[lobby] on record {_lobbyRecord} (world {s.World} park {s.ParkInWorld}) "
                + $"= model {mi} {(mi >= 0 ? LobbySlots.ModelNames[mi] : "?")}: {name}");
         Status($"{name} -- arrows to move, or Esc");
+        // ⭐⭐ The box carries the park's own `STR_MAP_*` name, and the console's own buttons:
+        // `STR_MAP_OK` (489) and `STR_MAP_CANCEL` (304). ⚠ The name is TWO lines on the disc
+        // ("Lost Kingdom:\nPrehistoric World"), which is exactly why the box has a second line and
+        // sizes itself differently when one is present.
+        ShowLobbyBox(_lobbyRecord);
     }
 
     /// <summary>⭐ Move the way the console moves: the record's own neighbour byte for that
@@ -456,12 +484,36 @@ public partial class Viewer
     void LeaveLobby()
     {
         _lobbyMode = false;
+        if (_lobbyBox != null && IsInstanceValid(_lobbyBox)) _lobbyBox.Hide();
         _lobbyParks.Clear();
         _lobbyCams.Clear();
         _lobbyBaseRoot = null;
         _lobbyBaseMesh = null;
         if (_lobbyRoot != null && IsInstanceValid(_lobbyRoot)) _lobbyRoot.QueueFree();
         _lobbyRoot = null;
+    }
+
+    /// <summary>⭐ Put the selected park's name in the centred box. The disc's names are two
+    /// lines -- "Lost Kingdom:\nPrehistoric World" -- and the box's own sizing has a separate
+    /// branch for a second line, so the split is the data's rather than a wrap invented here.</summary>
+    void ShowLobbyBox(int record)
+    {
+        // ⚠ Say WHICH precondition failed. A box that never appears reads the same whether it was
+        // never built, has no font, or was built and told nothing.
+        if (_lobbyBox == null || !IsInstanceValid(_lobbyBox) || _lobbySlots == null)
+        {
+            GD.PrintErr($"[lobby] no message box: box={(_lobbyBox == null ? "null" : "live")} "
+                      + $"uiRoot={(_uiRoot == null ? "null" : "live")} slots={(_lobbySlots == null ? "null" : "ok")}");
+            return;
+        }
+        string raw = LobbyName(record);
+        var parts = raw.Split('\n');
+        string ok = _text != null && 0x1E9 < _text.Keys.Length ? _text.Text("eng", 0x1E9) ?? "OK" : "OK";
+        string cancel = _text != null && 0x130 < _text.Keys.Length ? _text.Text("eng", 0x130) ?? "Cancel" : "Cancel";
+        _lobbyBox.Show(parts[0], parts.Length > 1 ? parts[1] : "", ok, cancel);
+        GD.Print($"[lobby] message box: font={(_hudFont == null ? "NULL" : "ok")} "
+               + $"\"{parts[0]}\" / \"{(parts.Length > 1 ? parts[1] : "")}\" "
+               + $"[{ok}|{cancel}] target {_lobbyBox.TargetWidth}x{_lobbyBox.TargetHeight}");
     }
 
     /// <summary>The middle of the seated parks, in world units.</summary>
@@ -502,6 +554,14 @@ public partial class Viewer
     {
         if (!_lobbyMode) return;
         StepLobbyCamera(delta);
+        if (_lobbyBox != null && IsInstanceValid(_lobbyBox))
+        {
+            // ⚠ If the font arrives after the box was shown, its measurement is stale -- re-show
+            // rather than just re-configure, because the SIZE came from the fallback.
+            if (!_lobbyBoxHasFont && _hudFont != null)
+            { _lobbyBoxHasFont = true; _lobbyBox.Configure(_hudFont); ShowLobbyBox(_lobbyRecord); }
+            _lobbyBox.Step(delta);
+        }
         // ⚠⚠ AIM AFTER STARTUP, NOT DURING IT. `StartGameCam` resets the camera and places it
         // on the plot centre, and it runs after the mode dispatch that builds this scene -- so an
         // aim inside EnterLobby is simply overwritten. The lobby has no plot, so the reset left
