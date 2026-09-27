@@ -156,7 +156,11 @@ public sealed partial class ObjectMenu : Control
         _entries.Clear();
         _entries.AddRange(entries.Where(e => !string.IsNullOrEmpty(e)));
         if (_entries.Count == 0) { Hide(); return; }
-        _index = 0;
+        // ⭐ NOTHING IS LIT UNTIL THE POINTER IS ON A ROW. Master, 2026-09-27: "if not hovering
+        // over an option (on laptop and on the rmb ride context menu) dont highlight any option".
+        // Opening on row 0 meant the menu always appeared with a live-looking choice under a
+        // pointer that was nowhere near it.
+        _index = -1;
         Open = true;
         Visible = true;
         // ⚠ Keep it on screen: the native draw culls rather than clamps, but a menu that opens
@@ -182,20 +186,28 @@ public sealed partial class ObjectMenu : Control
         float rowH = RowStep * Scale;
         float top = (SheetInset + Pad / 2f) * Scale;
         var size = Measure();
-        if (local.X < 0 || local.X > size.X) return false;
-        int row = (int)Mathf.Floor((local.Y - top) / rowH);
-        if (row < 0 || row >= _entries.Count) return false;
+        int row = local.X < 0 || local.X > size.X ? -1 : (int)Mathf.Floor((local.Y - top) / rowH);
+        if (row < 0 || row >= _entries.Count) row = -1;
+        // ⚠ OFF THE ROWS CLEARS IT. This used to return early and leave the last row lit, so
+        // the menu kept a highlight the pointer had walked away from -- and a click then acted on
+        // it. Master: "dont allow clicking unless hovering an option".
         if (row != _index) { _index = row; QueueRedraw(); }
-        return true;
+        return row >= 0;
     }
 
     public void Move(int delta)
     {
         if (!Open || _entries.Count == 0) return;
-        _index = (_index + delta % _entries.Count + _entries.Count) % _entries.Count;
+        // ⚠ From "nothing lit" the arrows must land on an END, not wherever the modulo of -1
+        // happens to fall: Down enters at the top, Up enters at the bottom.
+        _index = _index < 0 ? (delta >= 0 ? 0 : _entries.Count - 1)
+                            : (_index + delta % _entries.Count + _entries.Count) % _entries.Count;
         QueueRedraw();
     }
 
+    /// <summary>⭐ Take the lit row, if there is one. ⚠ With nothing lit this CLOSES and does
+    /// nothing -- master: "dont allow clicking unless hovering an option". `Selected` is already
+    /// null at index -1, so the guard is really about not pretending a click was a choice.</summary>
     public void Confirm()
     {
         if (!Open) return;

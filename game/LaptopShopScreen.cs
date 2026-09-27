@@ -303,6 +303,9 @@ public sealed partial class LaptopShopScreen : Control
         _menu.Clear();
         if (options != null) _menu.AddRange(options);
         _menuSelected = selected;
+        // ⚠ OFF BY DEFAULT on every screen change. A capability that has to be turned OFF by
+        // each caller is one that will be left on by the caller that forgets.
+        RightClickInspects = false;
         // ⚠ A new list starts at the top. Carrying the old scroll over would open a short list
         // scrolled past its own end (the draw clamps, but the first frame would jump).
         _menuScroll = 0; _menuHover = -1; _focusSent = -2;
@@ -361,14 +364,27 @@ public sealed partial class LaptopShopScreen : Control
     /// quietly move the selection a controller would be driving.</summary>
     int _menuHover = -1;
 
+    /// <summary>Which device owns the highlight. ⚠ Set by the movers, not guessed from state:
+    /// hover and selection are both always SET, so only the order of events can tell them apart.</summary>
+    bool _keyboardCursor;
+
     /// <summary>⭐ The menu row the 3D preview should be showing, hover first and the keyboard
     /// selection when the pointer is away. Master, 2026-09-27: "add a preview of the 3d model in
     /// the building rides/etc list in the bottom right when hovering over each thing" -- hovering
     /// leads, but a list driven by the arrow keys has no pointer to hover with, so the selection
     /// is the fallback rather than a blank pane.</summary>
-    public int MenuFocus => _menu.Count == 0 ? -1
-                          : _menuHover >= 0 && _menuHover < _menu.Count ? _menuHover
-                          : _menuSelected >= 0 && _menuSelected < _menu.Count ? _menuSelected : -1;
+    public int MenuFocus
+    {
+        get
+        {
+            // ⭐⭐ THE PREVIEW SHOWS THE ROW THAT IS LIT, AND ONLY THAT ROW. These were two
+            // rules and they disagreed: once "no hover" stopped lighting anything, the preview
+            // still fell back to the selection, so a model could sit in the pane belonging to a
+            // row nothing was highlighting. One notion of "focused" drives both.
+            int row = _keyboardCursor ? _menuSelected : _menuHover;
+            return row >= 0 && row < _menu.Count ? row : -1;
+        }
+    }
 
     int _focusSent = -2;
 
@@ -543,6 +559,22 @@ public sealed partial class LaptopShopScreen : Control
     ///
     /// ⚠ And I had already written that the anchored size was untested in game and assumed it
     /// worked. It did not. Setting it outright removes the assumption rather than re-testing it.</summary>
+    /// <summary>⭐⭐ ONLY THE BLUE PANEL EATS THE MOUSE. Master, 2026-09-27: "the laptop ui
+    /// should block all interaction behind it (but not in the open space either side of it, just
+    /// under the blue panel)."
+    ///
+    /// The Control has to FILL the viewport, because the panel is centred and its rect moves with
+    /// the window -- but filling it with `MouseFilter.Stop` made the whole screen swallow clicks,
+    /// including the park either side of a 512-square panel on a wide monitor. Godot asks this
+    /// before picking, so answering for the panel's rect alone gives blocking exactly under the
+    /// chrome and a live park beside it.
+    ///
+    /// ⚠ A closed panel must answer false for every point, or an invisible screen keeps eating
+    /// clicks; `Open` also drops MouseFilter to Ignore, and these two agree rather than one
+    /// covering for the other.</summary>
+    public override bool _HasPoint(Vector2 point)
+        => Open && new Rect2(Origin, new Vector2(Native, Native) * Scale).HasPoint(point);
+
     void FitToViewport()
     {
         var want = GetViewportRect().Size;
@@ -553,6 +585,10 @@ public sealed partial class LaptopShopScreen : Control
     /// <summary>⚠ DIAGNOSTIC. Two fixes for master's click bug were reasoned from the code and
     /// both failed ("identical behavior"). These record what actually reaches the Control, so the
     /// third attempt starts from a measurement instead of a third theory.</summary>
+    /// <summary>Whether a right-click on a row means "inspect" on the screen now showing. ⚠ Only
+    /// the build list has an inspect; everywhere else right-click is Back.</summary>
+    public bool RightClickInspects { get; set; }
+
     public int GuiEvents, GuiMotion, GuiClicks;
     public string LastGui = "(none)";
 
@@ -621,6 +657,7 @@ public sealed partial class LaptopShopScreen : Control
     void MoveSelection(int by)
     {
         if (_menu.Count == 0) return;
+        _keyboardCursor = true;
         int was = _menuSelected;
         _menuSelected = Math.Clamp(_menuSelected + by, 0, _menu.Count - 1);
         // ⚠ At either end the arrow moves nothing, and a tick there would say otherwise.
@@ -718,6 +755,7 @@ public sealed partial class LaptopShopScreen : Control
             _buildHover = _buildRow && _buildRowRect.HasPoint(motion.Position);
             if (_buildHover != wasBuild) QueueRedraw();
             _menuHover = RowAt(motion.Position, s, o);
+            _keyboardCursor = false;
             // ⚠ Only when it lands ON a row, and only when it CHANGES -- otherwise every pixel of
             // mouse movement across one row would tick.
             if (_menuHover >= 0 && _menuHover != wasMenu) Cue(LaptopSounds.Cue.Move);
@@ -803,20 +841,34 @@ public sealed partial class LaptopShopScreen : Control
             // right-click on them should not quietly perform them.
             if (b.ButtonIndex == MouseButton.Right)
             {
-                if (row >= 0)
+                // ⭐ RIGHT-CLICK IS INSPECT ONLY WHERE INSPECT EXISTS -- and BACK everywhere else.
+                // Master, 2026-09-27: "pressing rmb on a laptop menu option that doesnt already
+                // have a rmb interaction should go back". It used to raise MenuInspected on every
+                // screen; the handler ignored it off the build list, so right-click was simply
+                // dead on most of the laptop.
+                if (RightClickInspects && row >= 0)
                 {
                     _menuSelected = row; QueueRedraw();
                     Cue(LaptopSounds.Cue.Choose);
                     MenuInspected?.Invoke(row); AcceptEvent();
+                    return;
                 }
+                Cue(LaptopSounds.Cue.Back);
+                Dismissed?.Invoke(false);   // false = Back, the same as the Back button
+                AcceptEvent();
                 return;
             }
             if (_buildRow && _buildRowRect.HasPoint(b.Position))
             { Cue(LaptopSounds.Cue.Choose); BuildRequested?.Invoke(); AcceptEvent(); return; }
-            if (_btnHover >= 0)
+            // ⚠⚠ HIT-TEST THE CLICK HERE TOO. `_btnHover` is set by MOTION, exactly like
+            // `_menuHover` -- and the comment above already says why trusting that is wrong. A
+            // click away from the buttons must not fire whichever one the pointer last crossed.
+            int btn = Screen(BackBox, s, o).HasPoint(b.Position) ? 0
+                    : Screen(CloseBox, s, o).HasPoint(b.Position) ? 1 : -1;
+            if (btn >= 0)
             {
-                Cue(_btnHover == 1 ? LaptopSounds.Cue.Close : LaptopSounds.Cue.Back);
-                Dismissed?.Invoke(_btnHover == 1); AcceptEvent(); return;
+                Cue(btn == 1 ? LaptopSounds.Cue.Close : LaptopSounds.Cue.Back);
+                Dismissed?.Invoke(btn == 1); AcceptEvent(); return;
             }
             if (row >= 0)
             {
@@ -904,7 +956,15 @@ public sealed partial class LaptopShopScreen : Control
             // ⭐ While the pointer is over a row, THAT row is the highlight; with the pointer
             // away, the selection shows through again. The selection itself is untouched either
             // way, so a pad and a mouse still agree on what is chosen.
-            int lit = _menuHover >= 0 ? _menuHover : _menuSelected;
+            // ⭐⭐ NOTHING IS LIT WHEN THE POINTER IS OFF THE ROWS. Master, 2026-09-27: "if not
+            // hovering over an option ... dont highlight any option". This used to fall back to
+            // `_menuSelected`, so a row stayed yellow under a pointer that had left it -- and it
+            // read as clickable when clicking it did nothing.
+            //
+            // ⚠ BUT THE ARROW KEYS STILL NEED A VISIBLE CURSOR, or `MoveSelection` would move an
+            // invisible one. So the highlight follows whichever device was used last: the pointer
+            // while it is being moved, the selection once a key has been pressed.
+            int lit = MenuFocus;
             var colour = Of(i == lit ? ShopScreen.Highlight : ShopScreen.Label);
             int slot = i - first;   // ⚠ the ROW's place on screen, not its index in the list
             DrawRun(_menu[i], at + new Vector2(0, LaptopMainMenu.RowStep * slot * s), s, colour, list.Justify);

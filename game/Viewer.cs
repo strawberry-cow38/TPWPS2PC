@@ -508,6 +508,21 @@ public partial class Viewer : Node3D
             _shotPath = Env("TPW_PS2_SHOT");
             int.TryParse(Env("TPW_PS2_FRAME") ?? "0", out _shotFrame);
         }
+        // ⭐⭐ A BARE LAUNCH OPENS THE PARK, NOT THE ASSET VIEWER. Master, 2026-09-27: "dont
+        // launch the game into the asset viewer, launch straight into jungle1 park".
+        //
+        // ⚠ ONLY when nothing else was asked for. Every selector below picks an asset-viewer
+        // tab, and the matrices, smokes and shot harnesses all pass one of these or an explicit
+        // --mode/--map -- so this changes the bare launch and nothing that is already scripted.
+        // Defaulting unconditionally would have quietly redirected every existing capture.
+        if (_wantMode == null && _wantRide == null && _wantImage == null
+            && _wantSound == null && _wantPlay == null && _wantAnim == null)
+        {
+            _wantMode = "park";
+            _wantMap ??= "JUNGLE";       // JUNGLE's first park -- the documented bare-world shorthand
+            _hidePanel = true;           // ⚠ the tabs live INSIDE this panel, so one flag hides both
+            GD.Print("[v] no mode asked for -- opening the park on JUNGLE 1");
+        }
         BuildUi();
         GD.Print($"[v] start; args={string.Join(" ", argv)}");
         if (string.IsNullOrWhiteSpace(disc) || !File.Exists(disc))
@@ -3498,8 +3513,10 @@ public partial class Viewer : Node3D
                     names.Add(DisplayName(r, DefinitionFor(r.Model)));
                 }
                 _shopPanel.ShowMenu(names, 0, LaptopMainMenu.MainScene);
+                // ⭐ The one screen where right-click means something other than Back.
+                _shopPanel.RightClickInspects = true;
                 RefreshLaptopBalance();
-                Status($"{CategoryName(arg)} -- {names.Count} to choose from, or Back");
+                Status($"{CategoryName(arg)} -- {names.Count} to choose from; rmb for details, or Back");
                 break;
             }
         }
@@ -9117,6 +9134,7 @@ public partial class Viewer : Node3D
         // stopped, and there was then no way to go and look at that spot.
         // ⚠ The plot border still clamps it -- raise TPW_CAM_MARGIN to look past the edge.
         ApplyLookAt();
+        if (string.IsNullOrWhiteSpace(_lookAt)) PlaceAtEntranceView();
         GD.Print($"[cam] game camera at the plot centre, {_game.Behind} behind and "
                + $"{_game.Above} up -- {_game.PitchDegrees:F1} degrees down");
     }
@@ -9124,6 +9142,50 @@ public partial class Viewer : Node3D
     /// <summary>`--look=x,z`: aim the game camera at an authored WORLD position. Called at park
     /// start AND at the end of a wound shot, because the harnesses that make a wind possible take
     /// the camera after the park is built.</summary>
+    /// <summary>⭐⭐ THE OPENING VIEW: BETWEEN THE BUS STOPS, LOOKING AT THE GATE. Master,
+    /// 2026-09-27: "camera between the bus stops, facing the gate".
+    ///
+    /// ⭐ Both halves come from the entrance table, not from numbers read off a picture.
+    /// `0x14E5B0` paints the walkway as a row at <c>ZRow</c> from <c>XStart</c> to <c>XCol+1</c>,
+    /// two columns running inward, and the mouth at <c>ZEnd-1</c>. `ZRow` is 6 and `ZEnd` is 19 in
+    /// all twelve entries and only x moves, so the outer row is where the bus stops stand and the
+    /// midpoint of its two ends is "between" them.
+    ///
+    /// ⚠⚠ AND BOTH POINTS GO THROUGH `Park.CellCentre`, WHICH IS THE WHOLE TRICK. A grid cell
+    /// is NOT a world position: the plot frame MIRRORS (grid +y -> world **-Z**) and individual
+    /// parks are rotated and translated besides (HALLOW t1 is a 180-degree yaw, FANTASY sits at
+    /// -80). Passing a grid z straight to `PlaceAt` -- which takes WORLD units -- put the opening
+    /// shot out over the sea, facing away from a gate that was behind the camera.
+    ///
+    /// ⭐ The facing is then DERIVED rather than assumed: `Face` takes the world direction from
+    /// the stops to the mouth and snaps it to the nearest quarter turn, using its own documented
+    /// `atan2(x, z)` convention. Deriving it means a park whose plot is turned still looks the
+    /// right way, and there is no angle here to fall out of step with the turn code.
+    ///
+    /// ⚠ Silently keeps the plot centre if no entrance fits, rather than aiming at (0,0).</summary>
+    void PlaceAtEntranceView()
+    {
+        if (_game == null || _entranceTable == null || _park == null
+            || _terrainModel?.Field is not { } field) return;
+        var e = _entranceTable.Fit(field, ParkEntrance.WalkwayColumnFromPoles(_terrainModel), out _);
+        if (e.Empty) { GD.Print("[cam] no entrance fits this park -- keeping the plot centre"); return; }
+        // The two ends of the outer row, averaged: literally between the stops, and no rounding.
+        var stops = (_park.CellCentre(e.XStart, e.ZRow) + _park.CellCentre(e.XCol + 1, e.ZRow)) / 2f;
+        var mouth = _park.CellCentre(e.XCol, e.ZEnd - 1);
+        _freeCam = false;
+        _game.PlaceAt(stops.X, stops.Z);
+        _game.Face(mouth.X - stops.X, mouth.Z - stops.Z);
+        // ⚠ SNAP TO A QUARTER. `Face` sets a free angle, but the console's camera only ever sits
+        // on one of four: Q and E add a QuarterTurn and there is no other way to turn it. The
+        // walkway is not exactly axis-aligned (the mouth is one cell across from the row's
+        // midpoint), so an unsnapped aim opened the game about five degrees off every orientation
+        // the player can actually reach, and the first Q would have squared it up.
+        int q = (int)Math.Round(_game.TargetYaw / (float)GameCamera.QuarterTurn) * GameCamera.QuarterTurn;
+        _game.Yaw = _game.TargetYaw = q & (GameCamera.TurnUnits - 1);   // and it does not ease at startup
+        GD.Print($"[cam] opening view between the bus stops at world ({stops.X:F1}, {stops.Z:F1}), "
+               + $"facing the gate mouth at ({mouth.X:F1}, {mouth.Z:F1}) -- yaw {_game.Yaw}");
+    }
+
     void ApplyLookAt()
     {
         if (string.IsNullOrWhiteSpace(_lookAt) || _game == null) return;
