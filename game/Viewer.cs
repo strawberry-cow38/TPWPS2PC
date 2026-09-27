@@ -3929,6 +3929,14 @@ public partial class Viewer : Node3D
         // proof the script played its build rather than being dropped into its cycle.
         while (_parkTicks * ParkSim.TickMilliseconds < target && guard++ < 100_000) { TickPark(); PresentScripted(frames: false); }
         PresentScripted();
+        // ⭐ THE BUS AND THE SEAPLANE TOO. TickPark advances both on every wound tick -- it is
+        // TickNativeBus that drives them -- but this path presented only the scripted rides, the
+        // tracks and the coasters. So no screenshot of a park has ever contained the bus or the
+        // seaplane however far it was wound, and TPW_VEHICLE could not frame one either: a
+        // vehicle's position lives in its animated NODE matrices, and those are only written by a
+        // presenter. StepPark has always presented both; only the still path did not.
+        PresentNativeBus();
+        PresentParkVehicles();
         PresentTracks(1f);
         PresentCoasters(1f);
         if (_guests != null) PlaceActors(1f);

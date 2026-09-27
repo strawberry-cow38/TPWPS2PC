@@ -57,15 +57,27 @@ public partial class Viewer
         if (_vehiclesKey == key) return;
         ResetParkVehicles();
         _vehiclesKey = key;
-        // ⚠⚠ NOT IN JUNGLE. The routes are authored in world space, the same numbers in every
-        // archive, and they only fit a park whose bay is where the other three worlds put it. In
-        // both JUNGLE terrains the seaplane's first stop is inside the grass bank by the road bend
-        // (rendered and looked at, 2026-09-25), and JUNGLE's ferry ships no model at all.
-        if (Path.GetFileNameWithoutExtension(_lib.WadName).Equals("JUNGLE", StringComparison.OrdinalIgnoreCase))
-        {
-            GD.Print($"[vehicle] {key}: none -- the seaplane's authored stop is inside the jungle's hillside and its ferry has no model");
-            return;
-        }
+        // ⭐ EVERY WORLD, JUNGLE INCLUDED. strawberry, 2026-09-27: "it should be on all maps?" --
+        // and for the seaplane the disc agrees. All four world archives ship it complete, 22 files
+        // each: model, three-variant animation, script. This used to early-return for JUNGLE because
+        // the route is shared and its first stop looked like it landed on the grass bank by the road
+        // bend. That is a judgement about how it LOOKS, not about what is on disc, so it is no longer
+        // a reason to refuse to load it -- render it and look instead (TPW_VEHICLE below).
+        //
+        // ⭐ The route really is shared, and that was MEASURED, not assumed: seaplane.aps is
+        // BYTE-IDENTICAL across all four archives, and neither script carries a single coordinate --
+        // both disassemble to pure ADDOBJ / animation-trigger / wait / branch. JUNGLE's differs only
+        // in its departure (TRIGANIM 5 2 0 + WAIT 3000 where the others FADEOBJ straight into the
+        // leaving animation) and omits the others' NAME "Plane"; its .sam reads Info.Id 1602
+        // "Seaplane" against 2602 "Plane" elsewhere. The jungle pair looks like the earlier authoring.
+        //
+        // ⚠ JUNGLE'S FERRY IS GENUINELY NOT ON THE DISC -- this half is the data, not a choice.
+        // It ships the ferry's script and definition (ferry.rse is 377 bytes there, the same size as
+        // every other world's) but no .mps model and no .aps animation: 27 ferry/seaplane files
+        // against 40 in each other world, and nothing in DATA.WAD either. Control for that search:
+        // the bus's .mps appears in all four world archives and in no other WAD, so it does reach
+        // what it should. The per-stem check below skips the ferry and says why; drawing one in the
+        // jungle would mean borrowing another world's boat.
         foreach (var stem in new[] { "seaplane", "ferry" })
         {
             var assets = _lib.Rides.FirstOrDefault(r => r.Name.Equals($"features/{stem}/{stem}.mps", StringComparison.OrdinalIgnoreCase));

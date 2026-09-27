@@ -154,7 +154,23 @@ public partial class Viewer
     void CheatVehicle(string stem)
     {
         var v = _vehicles.Find(x => x.Stem == stem);
-        if (v == null) { CheatSay($"no {stem} in this park"); return; }
+        if (v == null)
+        {
+            // ⭐ SAY WHICH REASON. "no ferry in this park" sent master hunting a bug in this
+            // button on 2026-09-27 when the real answer was that the jungle ships no ferry model at
+            // all. A missing asset, a switched-off feature and a park that has not loaded yet were
+            // all printing the same line, so the message named nothing.
+            string world = _lib == null ? "?" : Path.GetFileNameWithoutExtension(_lib.WadName);
+            var a = _lib?.Rides.FirstOrDefault(r =>
+                r.Name.Equals($"features/{stem}/{stem}.mps", StringComparison.OrdinalIgnoreCase));
+            CheatSay(!VehiclesOn ? $"{stem}: switched off by --no-seaplane-ferry"
+                : _terrainPath == null ? $"{stem}: no park loaded yet"
+                : a?.Model == null ? $"{world} ships no {stem} model -- features/{stem}/{stem}.mps is not on the disc, only its script"
+                : a.Animation == null ? $"{world} ships a {stem} model but no animation"
+                : a.Script == null ? $"{world} ships a {stem} model but no script"
+                : $"{stem}: loaded nothing -- see the log for why");
+            return;
+        }
         long now = (long)_busElapsedMs;
         if (now < v.StartMs) { v.StartMs = now; CheatSay($"{stem}: first visit now"); return; }
         v.HeldSince = 0;
