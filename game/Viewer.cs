@@ -299,6 +299,8 @@ public partial class Viewer : Node3D
     bool _buildChecked;
     string _wantSegments;
     string _wantCam;
+    /// <summary>`--look=x,z`: park the game camera on an authored WORLD position.</summary>
+    string _lookAt;
     /// <summary>Nudge on the gate's z, in units -- the by-eye correction on top of the z that
     /// comes out of the disc.
     ///
@@ -475,6 +477,7 @@ public partial class Viewer : Node3D
             else if (a == "--build-test") _buildTest = true;
             else if (a.StartsWith("--segments=")) _wantSegments = a["--segments=".Length..];
             else if (a.StartsWith("--cam=")) _wantCam = a["--cam=".Length..];
+            else if (a.StartsWith("--look=")) _lookAt = a["--look=".Length..];
             // ⭐ So a render can show the weather. V cycles it and the debug panel has buttons,
             // and a headless shot can press neither.
             else if (a.StartsWith("--weather=")) _wantWeather = a["--weather=".Length..] switch
@@ -3940,6 +3943,12 @@ public partial class Viewer : Node3D
         PresentTracks(1f);
         PresentCoasters(1f);
         if (_guests != null) PlaceActors(1f);
+        // ⭐ `--look` WINS, AND IT HAS TO BE APPLIED HERE TO DO IT. Setting it at park start is
+        // not enough: every mode that can latch this wind takes the camera afterwards -- the idle
+        // scene puts it on a guest, `--place-test` puts it on the ride it placed -- so the flag
+        // that says "look HERE" was always overruled by whichever harness made the wind possible.
+        // Applied last, and clearing the free camera so the game camera is the one driving.
+        ApplyLookAt();
         GD.Print($"[sim] wound to {_parkTicks * ParkSim.TickMilliseconds}ms for the shot ({_scripted.Count} scripted, {_guests?.Guests.Count ?? 0} walking)");
     }
 
@@ -8383,8 +8392,30 @@ public partial class Viewer : Node3D
             if (f.Length > 2 && int.TryParse(f[2], out var d))
                 _game.Dolly = Mathf.Clamp(d, GameCamera.MinDolly, GameCamera.MaxDolly);
         }
+        // ⭐ `--look=x,z` PUTS THE CAMERA ON AN AUTHORED WORLD POSITION instead of the plot
+        // centre, so "what is actually at (52.6, 2.9)?" is answered by a render rather than by
+        // argument. It came out of the seaplane's first stop: the control prints where a vehicle
+        // stopped, and there was then no way to go and look at that spot.
+        // ⚠ The plot border still clamps it -- raise TPW_CAM_MARGIN to look past the edge.
+        ApplyLookAt();
         GD.Print($"[cam] game camera at the plot centre, {_game.Behind} behind and "
                + $"{_game.Above} up -- {_game.PitchDegrees:F1} degrees down");
+    }
+
+    /// <summary>`--look=x,z`: aim the game camera at an authored WORLD position. Called at park
+    /// start AND at the end of a wound shot, because the harnesses that make a wind possible take
+    /// the camera after the park is built.</summary>
+    void ApplyLookAt()
+    {
+        if (string.IsNullOrWhiteSpace(_lookAt) || _game == null) return;
+        var g = _lookAt.Split(',');
+        if (g.Length > 1 && float.TryParse(g[0], out var lx) && float.TryParse(g[1], out var lz))
+        {
+            _freeCam = false;          // the game camera only drives while this is off
+            _game.PlaceAt(lx, lz);
+            GD.Print($"[cam] --look at world ({lx:F1}, {lz:F1})");
+        }
+        else GD.PrintErr($"[cam] --look={_lookAt} is not x,z");
     }
 
     /// <summary>One frame of the game's camera, and the keys that drive it. ⚠ Held keys, not

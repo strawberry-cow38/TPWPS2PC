@@ -158,8 +158,38 @@ public partial class Viewer
         var world = v.Presenter.Drawn?.LastWorld;
         if (world == null || world.Count == 0) { GD.Print($"[vehicle] {want} at stop 1 has no animated nodes"); _vehicleShotIn = 2; return; }
         var sum = Vector3.Zero;
-        foreach (var m in world.Values) sum += v.Root.GlobalTransform * new Vector3(m.M41, m.M42, m.M43);
-        var centre = sum / world.Count;
+        var lo = new Vector3(float.MaxValue, float.MaxValue, float.MaxValue);
+        var hi = new Vector3(float.MinValue, float.MinValue, float.MinValue);
+        foreach (var m in world.Values)
+        {
+            var w = v.Root.GlobalTransform * new Vector3(m.M41, m.M42, m.M43);
+            sum += w; lo = lo.Min(w); hi = hi.Max(w);
+        }
+        // ⭐ FRAME THE AIRCRAFT, NOT THE AVERAGE. One of the seaplane's seven animated nodes is a
+        // helper sixteen units away from the other six, and letting it into the mean pulled both
+        // the printed "centre" and the camera's aim two units off the plane -- which is how a
+        // correctly working seaplane came to look like it had stopped somewhere it had not.
+        // Take the tightest cluster: the median position, then the mean of everything within five
+        // units of it. The full span is printed above, so an outlier is still visible.
+        static float Median(IEnumerable<float> xs)
+        { var a = xs.OrderBy(x => x).ToArray(); return a.Length == 0 ? 0f : a[a.Length / 2]; }
+        var pts = new List<Vector3>();
+        foreach (var m in world.Values) pts.Add(v.Root.GlobalTransform * new Vector3(m.M41, m.M42, m.M43));
+        var med = new Vector3(Median(pts.Select(q => q.X)), Median(pts.Select(q => q.Y)), Median(pts.Select(q => q.Z)));
+        var near = pts.Where(q => q.DistanceTo(med) <= 5f).ToList();
+        var centre = near.Count > 0 ? near.Aggregate(Vector3.Zero, (x, y) => x + y) / near.Count : sum / world.Count;
+        GD.Print($"[vehicle] {want} cluster: {near.Count} of {pts.Count} nodes within 5 of the median");
+        // ⭐ THE EXTENT, NOT JUST THE CENTRE. An average says nothing about whether the thing is
+        // in one piece: a model whose parts were scattered by a bad transform chain and a model
+        // sitting neatly at its stop have the same centre. A seaplane is a few units across, so an
+        // extent of hundreds means the parts are not together and the picture is not one aircraft.
+        GD.Print($"[vehicle] {want} nodes span x {lo.X:F1}..{hi.X:F1}, y {lo.Y:F1}..{hi.Y:F1}, "
+               + $"z {lo.Z:F1}..{hi.Z:F1} (size {hi.X - lo.X:F1} x {hi.Y - lo.Y:F1} x {hi.Z - lo.Z:F1})");
+        foreach (var kv in world)
+        {
+            var w = v.Root.GlobalTransform * new Vector3(kv.Value.M41, kv.Value.M42, kv.Value.M43);
+            GD.Print($"[vehicle]   node {kv.Key} at ({w.X:F1}, {w.Y:F1}, {w.Z:F1})");
+        }
         if (_panel != null) _panel.Visible = false;
         _freeCam = true; _focus = centre; _pitch = -0.5f;
         _dist = float.TryParse(System.Environment.GetEnvironmentVariable("TPW_VEHICLE_DIST"), out var dd) ? dd : 45f;
