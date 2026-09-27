@@ -33,6 +33,8 @@ public partial class Viewer
         public readonly Dictionary<TrackCar, CarView> Cars = new();
         public int NextTag = CarSoundTagBase;
         public readonly HashSet<(int X, int Y)> Cells = new();
+        /// <summary>The add-ons' footprints, whose floor goes like a placed building's.</summary>
+        public readonly HashSet<(int X, int Y)> FloorCut = new();
         public long SeenTime = -1;
     }
 
@@ -178,6 +180,7 @@ public partial class Viewer
         v.Flowing.Clear();
         v.FlowFrame = -1;
         v.Cells.Clear();
+        v.FloorCut.Clear();
         foreach (var p in v.Layout.Pieces)
         {
             var info = p.Info;
@@ -185,6 +188,13 @@ public partial class Viewer
             if (p.Type >= 4)
                 for (int dx = 0; dx < size; dx++)
                     for (int dz = 0; dz < size; dz++) v.Cells.Add((p.Anchor.X + dx, p.Anchor.Z + dz));
+            // ⭐ An add-on takes its ground, as a placed building does (strawberry: "missing the footprint
+            // cutout of terrain tiles"). Its footprint is the DBA's, which 0x1E2AD0 stamps when the piece
+            // commits: 4x4 for every add-on on the disc. The .sam shapes disagree among themselves
+            // (LavaJump 2x2, MammTunn 3x4, the rest 4x4) and are not what the console stamps.
+            if (p.Type >= 40)
+                for (int dx = 0; dx < 4; dx++)
+                    for (int dz = 0; dz < 4; dz++) v.FloorCut.Add((p.Anchor.X + dx, p.Anchor.Z + dz));
             Node3D node; AnimatedModel model; Aps anim;
             if (info.Shape is 12 or 13)
             {

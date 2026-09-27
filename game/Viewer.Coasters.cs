@@ -220,8 +220,11 @@ public partial class Viewer
     }
 
     /// <summary>Track-ride cells and coaster pylon cells both keep their floor and refuse building.</summary>
-    void ClaimFloor() =>
+    void ClaimFloor()
+    {
         _park.Claimed = (x, y) => _tracks.Values.Any(v => v.Cells.Contains((x, y))) || _coasters.Values.Any(v => v.Cells.Contains((x, y)));
+        _park.CutFloor = (x, y) => _tracks.Values.Any(v => v.FloorCut.Contains((x, y)));
+    }
 
     /// <summary>The style's three texture slots from the coaster's `GTexture/`, and `red.ssh` for an
     /// invalid segment. Every strip is double-sided (fn0 sets `+0xc |= 1` on all of them).</summary>

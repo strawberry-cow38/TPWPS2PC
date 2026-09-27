@@ -628,6 +628,15 @@ public sealed class Park
     /// is the placed footprints; a track lies ON the grass.</summary>
     public System.Func<int, int, bool> Claimed { get; set; }
 
+    /// <summary>Cells that lose their floor without being a placed footprint: a track ride's add-ons,
+    /// which stand in the track's chain rather than in <see cref="Placed"/>.</summary>
+    public System.Func<int, int, bool> CutFloor { get; set; }
+
+    /// <summary>Whether the plot floor is drawn on a cell: playable, nothing placed on it, not cut.</summary>
+    public bool HasFloor(int x, int y)
+        => x >= 0 && y >= 0 && x < Width && y < Height && IsPlayable(x, y) && _occupied[x, y] == 0
+           && !(CutFloor?.Invoke(x, y) ?? false);
+
     /// <summary>Whether a cell is inside a no-build zone.</summary>
     public bool Reserved(int x, int y)
         => _reserved != null && x >= 0 && y >= 0 && x < _reserved.GetLength(0) && y < _reserved.GetLength(1)
@@ -711,7 +720,7 @@ public sealed class Park
                 // ⭐ A ride standing on a tile and a rule saying you may not build on a tile are
                 // different facts. The first removes the ground; the second must not, or every
                 // no-build zone becomes a pit.
-                if (_occupied[x, y] != 0) continue;
+                if (_occupied[x, y] != 0 || (CutFloor?.Invoke(x, y) ?? false)) continue;
                 int mat = Field != null && x < Field.Width && y < Field.Height ? Field.Material(x, y) : 0;
                 if (!surfaces.TryGetValue(mat, out var st))
                 {

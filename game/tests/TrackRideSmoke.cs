@@ -411,6 +411,11 @@ public partial class TrackRideSmoke : Node3D
                     var addonNodes = pieces.Cast<Node3D>().Where(n => IsInstanceValid(n) && !n.IsQueuedForDeletion() && n.Name.ToString().StartsWith("addon_")).ToList();
                     Check(addonNodes.Count == 1 && addonNodes[0].FindChildren("*", "MeshInstance3D", true, false).Count > 0,
                           $"the add-on is drawn ({string.Join(",", addonNodes.Select(n => n.Name))})");
+                    int cut = 0;
+                    for (int dz = 0; dz < 4; dz++) for (int dx = 0; dx < 4; dx++) if (!park.HasFloor(box.X + dx, box.Z + dz)) cut++;
+                    var beyond = Along(4);
+                    Check(cut == 16 && park.HasFloor(beyond.X, beyond.Z) && park.HasFloor(box.X - 1, box.Z - 1),
+                          $"its 4x4 takes the floor ({cut} of 16 cells cut), the track beside it and the ground round it keep theirs");
                     var lift = TrackUpgrades.Offset(addonWorld, addonPark, sold.Count - 1, 1);
                     Check(up.Samples[1].Height == up.Samples[0].Height + lift.Y,
                           $"the cars' height through it follows the park's offsets ({string.Join(",", up.Samples.Select(q => q.Height))}; +{lift.Y} at sample 1)");
