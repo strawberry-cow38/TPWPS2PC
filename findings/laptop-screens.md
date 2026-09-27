@@ -333,3 +333,48 @@ The research question is answered: the remaining screens are four implementation
 constants, and for the five list screens the table is **a title id and a set of `AssetKind`s**,
 both of which this port can already produce. The honest gaps are the `this+0x178` id, the All
 Toilets filter, and the menu-id -> class routing.
+
+## ⭐⭐ The widget inventory is in the CONSTRUCTOR, not the draw
+
+Starting to build the list screens immediately hit a wall worth recording. `LaptopScreens` gets a
+screen's rows by counting widget calls in its DRAW (`FUN_00115590` a bar, `FUN_001DAAE0` a
+slider), and that method does not transfer to the list screens: `main_i_ride`'s `.sce` declares
+three bars and its draw calls the bar function **zero** times. The bars are drawn by the base.
+
+⚠ Those draws also decompile badly at their vtable entry points -- `unaff_s0`, `unaff_retaddr`,
+register saves read as uninitialised -- so Ghidra's bounds there are not to be trusted either.
+
+⭐ **The constructor answers it instead, and cleanly.** A screen builds its widgets as members:
+`FUN_00115468` constructs a bar, `FUN_001da630` a slider. Counting those calls per constructor
+gives an inventory that can be checked against the `.sce`, which declares the same widgets by name:
+
+| screen | ctor bars | ctor sliders | `.sce` declares |
+|---|---:|---:|---|
+| `main_i_ride` | 3 | 0 | ExcitementBar, StateOfRepairBar, RemainingLifeBar |
+| `main_i_shop` | 1 | 0 | satisfactionbar |
+| `main_i_sideshow` | 2 | 0 | excitementbar, satisfactionbar |
+| `main_i_bathroom` | 1 | 0 | CleanlinessBar |
+| `main_i_ride_data` | 4 | 3 | 4 bars, 3 sliders |
+| `main_i_shop_data` | 1 | 2 | satisfactionbar, qualityslider, additiveslider |
+| `main_i_bathroom_data` | 1 | 0 | cleanlinessbar |
+| `main_i_staff_opts_training` | 1 | 0 | SkillLevelBar |
+| `main_gameoptions` | 0 | 2 | musicslider, sfxslider |
+
+**Nine screens agree exactly**, including `main_i_ride_data` at 4 bars and 3 sliders and
+`main_i_shop_data` at 1 and 2 -- and `main_i_shop_data`'s counts are the control, because
+`LaptopScreens.Shop` already declared that shape from the draw.
+
+⭐⭐ **`main_gameoptions` builds exactly two sliders**, matching the `musicslider` and `sfxslider`
+its `.sce` declares -- even though those element names appear nowhere in the executable. That
+closes the question this document opened: the screen is implemented, its layout does match the
+authored file, and only the by-name lookup is missing. The first reading of that finding was wrong
+and this is what settles it.
+
+⚠ Three screens do NOT agree, and they are flagged rather than smoothed:
+- `main_i_staff` builds 3 bars against one element named `infobars` -- a plural name covering three.
+- `main_i_sideshow_data` builds 3 bars, its scene names 2.
+- `main_i_staff_opts` builds 3 bars and its scene names none at all.
+- `main_research` builds 1 slider against an element named `researchbars`.
+
+So the scene file names a REGION in at least some cases, not one widget each, and a port that
+assumes one element = one widget will be wrong on those four.
