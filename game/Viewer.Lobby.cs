@@ -41,6 +41,7 @@ public partial class Viewer
     Node3D _lobbyBaseRoot;
     LobbyMessageBox _lobbyBox;
     bool _lobbyBoxHasFont;
+    UiPanel _lobbyPanel;
     float _lobbyModelTime;
     bool _lobbyAimed;
 
@@ -222,7 +223,10 @@ public partial class Viewer
             // that would never draw it.
             _uiRoot?.AddChild(_lobbyBox);
         }
-        _lobbyBox?.Configure(_hudFont);
+        // ⚠ The panel art comes from UI.WAD, so it needs the library -- loaded once and kept.
+        _lobbyPanel ??= UiPanel.Load(_lib);
+        if (_lobbyPanel == null) GD.PrintErr("[lobby] UI.WAD/messages panel art missing -- box draws bare");
+        _lobbyBox?.Configure(_hudFont, _lobbyPanel);
         _lobbyBoxHasFont = _hudFont != null;
 
         _lobbyMode = true;
@@ -559,7 +563,7 @@ public partial class Viewer
             // ⚠ If the font arrives after the box was shown, its measurement is stale -- re-show
             // rather than just re-configure, because the SIZE came from the fallback.
             if (!_lobbyBoxHasFont && _hudFont != null)
-            { _lobbyBoxHasFont = true; _lobbyBox.Configure(_hudFont); ShowLobbyBox(_lobbyRecord); }
+            { _lobbyBoxHasFont = true; _lobbyBox.Configure(_hudFont, _lobbyPanel); ShowLobbyBox(_lobbyRecord); }
             _lobbyBox.Step(delta);
         }
         // ⚠⚠ AIM AFTER STARTUP, NOT DURING IT. `StartGameCam` resets the camera and places it

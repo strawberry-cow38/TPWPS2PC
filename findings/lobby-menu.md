@@ -362,7 +362,22 @@ zeroes each id. The two the lobby uses:
 
 ⭐ Both are `STR_MAP_*`, which is the map screen's own prefix -- the same family as the park names.
 
-### ⭐⭐⭐ THERE IS NO FRAME -- the whole border is stubs
+### ⚠⚠ CORRECTION: THERE **IS** A FRAME. I said there was not, and I was wrong.
+
+Master, who has played it: *"there is a frame btw"*. The art settles it --
+`UI.WAD/messages/` carries **`Messcorner`, `Messedge` and `Messfill`**, all **16x16**, and
+`FUN_00216028` registers them in the UI sprite table as ids **0x2F** and **0x30**
+(`wboxfill` is **0x31**). This port was ALREADY drawing that exact nine-slice for the in-world
+context menu; the lobby box now shares it through `game/UiPanel.cs`.
+
+⭐⭐ **The lesson, because the mistake was well-defended.** Everything below this line is still
+true: those eight functions really are stubs, and I even put a control on the detector -- the text
+and colour calls on the same path came back as real code, so it was not a broken instrument. The
+step I skipped was asking whether the ARTWORK existed. **An empty function proves that function
+draws nothing; it does not prove the thing is not drawn.** A negative result about one code path
+is not a negative result about the feature. See `feedback_a_negative_search_proves_nothing`.
+
+### The border path that IS stubs (still true, just not the whole story)
 
 `FUN_00138780` turns out to only STORE a rect (`gfx+0x1C..0x22`), so it is a clip, not a draw. The
 paint goes through `FUN_00141F68`, which dispatches on the widget kind at `this+0x18` -- the box's

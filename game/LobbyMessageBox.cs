@@ -34,6 +34,7 @@ public partial class LobbyMessageBox : Control
     const int Line2Y = 0x30;        // 48
 
     FontText _font;
+    UiPanel _panel;
     string _line1 = "", _line2 = "";
     string[] _buttons = Array.Empty<string>();
 
@@ -56,7 +57,11 @@ public partial class LobbyMessageBox : Control
         Visible = false;
     }
 
-    public void Configure(FontText font) => _font = font;
+    public void Configure(FontText font, UiPanel panel = null)
+    {
+        _font = font;
+        if (panel != null) _panel = panel;
+    }
 
     /// <summary>Show the box. ⚠ It opens from NOTHING every time -- `FUN_0012c968`'s ease starts
     /// from whatever the current size is, and a fresh prompt has been zeroed, so the grow is part
@@ -122,22 +127,17 @@ public partial class LobbyMessageBox : Control
         // though nothing paints it.
         var rect = new Rect2(origin + new Vector2(x, y) * s, new Vector2(_w, _h) * s);
 
-        // ⭐⭐⭐ THERE IS NO FRAME. Master: "then get it from the source" -- so I did, and the
-        // source draws nothing at all.
+        // ⭐⭐⭐ THE FRAME, from the disc. `UI.WAD/messages/Messcorner|Messedge|Messfill`, the
+        // same nine-slice the context menu already drew -- registered by `FUN_00216028` as sprite
+        // ids 0x2F / 0x30, all three pieces 16x16.
         //
-        // `FUN_00141F68` dispatches on the widget kind (`this+0x18`, which the box's constructor
-        // sets to **2**) to `FUN_00142610`, which is an eight-piece border: four corners at the
-        // rect's corners and four edges taking the width or the height. **Every one of the eight
-        // is a stub** -- `jr ra; nop`, 8 bytes -- and so is every painter they call
-        // (`0x1424C0`, `0x1424C8`, `0x1424D0`, `0x1424D8`). The whole border compiles to nothing.
-        //
-        // ⚠ The control matters here, because "everything is a stub" is exactly what a broken
-        // stub-detector says: the text call `0x138798` and the colour call `0x1388E8` on the same
-        // path are REAL code. It is the frame specifically that is empty.
-        //
-        // ⭐ So the console shows centred TEXT and BUTTONS over the lobby with no panel behind
-        // them, and the blue rectangle that used to be here was mine. `1:1` means drawing what it
-        // draws, including nothing.
+        // ⚠⚠ I SHIPPED THIS WITH NO FRAME AT ALL FOR ONE COMMIT. The widget path that looks like
+        // it draws one (`FUN_00142610`: four corners, four edges) is EIGHT STUBS, and so is every
+        // painter they call, so reading only the code said "nothing is drawn" -- and I even put a
+        // control on the stub detector, which passed. What I never checked was whether the ART
+        // existed. Master, who has played it: "there is a frame btw". An empty function proves
+        // that function draws nothing; it does not prove the thing is not drawn.
+        _panel?.Draw(this, rect, s);
 
         // ⭐ CONTENT ONLY ONCE THE BOX HAS FINISHED GROWING -- `if (!bVar1)` in FUN_0012c968.
         if (!Settled) return;
