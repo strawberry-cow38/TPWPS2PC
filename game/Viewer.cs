@@ -3936,22 +3936,27 @@ public partial class Viewer : Node3D
             // `BuildKind` reads a kind off the compiled record, so the two meet here.
             var kinds = LaptopModelKinds(spec);
             var ofKind = _lib.Rides.Where(r => BuildKind(r) is { } k && Array.IndexOf(kinds, k) >= 0).ToList();
-            // ⚠ THE TOILET SCREENS ARE A NAME GUESS AND ARE MARKED AS ONE. They list `Feature`,
-            // which is also bins, benches and trees, and the console narrows it with a per-object
-            // predicate (`vtable+0x134`) that is NOT decoded -- see findings/laptop-screens.md. So
-            // the toilet pages prefer an asset that READS like a toilet and fall back to the first
-            // feature. That is a harness choice to put something sensible in the window, not a
-            // decode, and it must not be mistaken for the console's rule.
+            // ⭐ THE TOILET SCREENS USE THE CONSOLE'S OWN PREDICATE NOW, not a name. `record[0x2E]`
+            // bit 0 is what `FUN_0015C710` asks of a Feature before listing it, and on FANTASY it
+            // picks 2 of 36 features -- `loo.mps` and `royaloo.mps` -- and no bin, bench or tree.
             bool wantToilet = spec == LaptopScreen.Toilet || spec == LaptopScreen.AllToilets;
             var pick = (wantToilet
-                        ? ofKind.FirstOrDefault(r => r.Name.Contains("toilet", StringComparison.OrdinalIgnoreCase)
-                                                  || r.Name.Contains("bog", StringComparison.OrdinalIgnoreCase)
-                                                  || r.Name.Contains("loo", StringComparison.OrdinalIgnoreCase))
+                        ? ofKind.FirstOrDefault(r => DefinitionFor(r.Model)?.CompiledEntry?.FeatureFlag0 == true)
                         : null)
                     ?? ofKind.FirstOrDefault()
                     ?? _lib.Rides.FirstOrDefault();
             GD.Print($"[laptop] model pick: kinds [{string.Join(",", kinds)}] -> "
                    + $"{ofKind.Count} candidates, chose {(pick == null ? "nothing" : Leaf(pick.Name))}");
+            if (wantToilet)
+            {
+                // ⭐ THE CONTROL for the decoded predicate: of every Feature, which ones set
+                // record[0x2E] bit 0? If that list is the toilets and nothing else, the reading is
+                // right; if it is bins and benches, it is not and must not be shipped.
+                var flagged = ofKind.Where(r => DefinitionFor(r.Model)?.CompiledEntry?.FeatureFlag0 == true)
+                                    .Select(r => Leaf(r.Name)).ToList();
+                GD.Print($"[laptop] feature flag0: {flagged.Count} of {ofKind.Count} features -- "
+                       + string.Join(", ", flagged));
+            }
             BuildLaptopModel(pick);
             if (_laptopView != null) _shopPanel.ModelTexture = _laptopView.GetTexture();
         }
@@ -7420,16 +7425,16 @@ public partial class Viewer : Node3D
     /// screen for. A ride is anything with TIERS -- that is what gives it speed, capacity and
     /// duration -- and a sideshow is its own screen with its own three controls.
     ///
-    /// ⚠⚠ TOILETS ARE DELIBERATELY ABSENT. `LaptopScreen.Toilet` exists and is decoded, but a
-    /// toilet is kind `Feature` and so are bins, benches and trees; the console tells them apart
-    /// with a per-object predicate at `vtable+0x134` that is NOT read (see
-    /// findings/laptop-screens.md). Offering every bin a Single Toilet page would be worse than
-    /// offering none, so this waits for that predicate rather than guessing at a name.</summary>
+    /// ⭐ AND TOILETS, NOW THAT THE PREDICATE IS READ. A toilet is kind `Feature` and so are bins
+    /// and benches; the console separates them with `record[0x2E]` bit 0, which is what
+    /// `FUN_0015C710` asks of a Feature before listing it. Measured on FANTASY: 2 of 36 features
+    /// pass it, `loo.mps` and `royaloo.mps`. A bin still gets no page, which is the point.</summary>
     LaptopScreen DetailsSpecFor(ParkRide r)
     {
         if (r?.Definition?.CompiledEntry is not { } e) return null;
         if (e.HasRideTiers) return LaptopScreen.Ride;
-        return e.Kind == AssetResourceDatabase.AssetKind.Sideshow ? LaptopScreen.Sideshow : null;
+        if (e.Kind == AssetResourceDatabase.AssetKind.Sideshow) return LaptopScreen.Sideshow;
+        return e.FeatureFlag0 ? LaptopScreen.Toilet : null;
     }
 
     ParkRide _detailsRide; LaptopScreen _detailsSpec;
@@ -7455,6 +7460,7 @@ public partial class Viewer : Node3D
     {
         _detailsSpec = DetailsSpecFor(ride);
         if (_detailsSpec == LaptopScreen.Sideshow) { ShowSideshowDetails(ride); return; }
+        if (_detailsSpec == LaptopScreen.Toilet) { ShowToiletDetails(ride); return; }
         _detailsRide = ride;
         var t = ride.Definition.CompiledEntry.Tier(0);
         int Pct(int v, int lo, int hi) => hi <= lo ? 0 : Math.Clamp((v - lo) * 100 / (hi - lo), 0, 100);
@@ -7491,6 +7497,21 @@ public partial class Viewer : Node3D
                + $"reliability {NativeRideReliability.Calculate(ride.Definition.CompiledEntry, ride.Speed, ride.Capacity, ride.Duration)}"
                + $" [shopfront {ride.Definition.ShopfrontReliability}, control "
                + $"{(NativeRideReliability.MatchesShopfront(ride.Definition.CompiledEntry) ? "PASS" : "FAIL")}]");
+    }
+
+    /// <summary>⭐ A TOILET'S DETAILS PAGE -- Users, Last Cleaned and Cleanliness.
+    /// ⚠ Only Users is tracked by this port. `Last Cleaned` is a day count written by
+    /// `FUN_00142948` and `Cleanliness` is a bar, and neither quantity exists in our sim yet, so
+    /// both are blank rather than a number that looks like one.</summary>
+    void ShowToiletDetails(ParkRide loo)
+    {
+        _detailsRide = loo; _detailsSpec = LaptopScreen.Toilet;
+        var cells = new List<(string, int)>();
+        foreach (var row in LaptopScreen.Toilet.Rows)
+            cells.Add(row.TextId == 168 ? (loo.Customers.ToString(), 0) : (null, 0));
+        _shopPanel.ShowScreen(LaptopScreen.Toilet, DisplayName(loo), cells);
+        BuildLaptopModelFor(loo);
+        GD.Print($"[laptop] details {DisplayName(loo)}: a toilet by record[0x2E] bit 0; users {loo.Customers}");
     }
 
     /// <summary>⭐⭐ A SIDESHOW'S DETAILS PAGE. Its three controls are its own -- chance of

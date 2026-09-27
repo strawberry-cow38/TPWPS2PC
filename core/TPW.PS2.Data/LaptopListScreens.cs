@@ -71,12 +71,13 @@ public sealed record LaptopListScreen(
     public static readonly LaptopListScreen Staff = new(
         "main_i_staff.sce", 15, 999, System.Array.Empty<Kind>(), 3, Complete: false);
 
-    /// <summary>⚠ All Toilets: registers `Feature`, which also covers bins and benches. The
-    /// populate call narrows it with a per-object predicate applied to kind 2 alone
-    /// (`vtable+0x134`); that predicate is not decoded, so this stays incomplete. One bar
-    /// (cleanliness).</summary>
+    /// <summary>⭐ All Toilets: registers `Feature`, and the populate call narrows it with a
+    /// per-object predicate applied to kind 2 alone -- `record[0x2E]` bit 0, now READ. On FANTASY
+    /// it passes 2 of 36 features, `loo.mps` and `royaloo.mps`, and no bin, bench or tree, so the
+    /// filter is complete: see <see cref="AssetResourceDatabase.Entry.FeatureFlag0"/>.
+    /// One bar (cleanliness).</summary>
     public static readonly LaptopListScreen Toilets = new(
-        "main_i_bathroom.sce", 26, 848, new[] { Kind.Feature }, 1, Complete: false);
+        "main_i_bathroom.sce", 26, 848, new[] { Kind.Feature }, 1);
 
     public static readonly LaptopListScreen[] All = { Rides, Shops, Sideshows, Staff, Toilets };
 

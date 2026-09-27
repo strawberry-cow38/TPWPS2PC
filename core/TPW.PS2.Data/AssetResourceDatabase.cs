@@ -58,6 +58,19 @@ public sealed class AssetResourceDatabase
         public Connection ConnectionB => new(I16(16), I16(18), B(21));
         public ushort Minigame => U16(22);
         public int BaseExcitement => I32(24);
+
+        /// <summary>⭐⭐ THE PREDICATE THAT PICKS TOILETS OUT OF THE FEATURES. `FUN_0015C710`
+        /// populates a list by kind, and for kind 2 -- `Feature`, which is also bins, benches and
+        /// trees -- it asks each object one more question, a virtual at `vtable+0x134`, and skips
+        /// it when the answer is zero. That virtual has exactly TWO implementations across the ten
+        /// world-object classes that share the kind getter: nine take the base, and one class
+        /// (vtable `0x35DC70`) overrides it with `FUN_00130718`, which returns
+        /// <c>record[0x2E] &amp; 1</c>.
+        ///
+        /// So the flag is this bit. ⚠ Named for what the console DOES with it -- it is the test
+        /// that makes All Toilets show toilets -- and not "IsToilet", because the byte's other
+        /// bits are unread and nothing names it on the disc.</summary>
+        public bool FeatureFlag0 => Kind == AssetKind.Feature && (B(0x2E) & 1) != 0;
         public int TypeDataLength => checked((int)U32(28));
         public int FootprintOffset => 32 + TypeDataLength;
         public ReadOnlyMemory<byte> TypeData => Payload.Slice(32, TypeDataLength);

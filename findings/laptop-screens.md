@@ -327,8 +327,19 @@ the kind is `Feature` it asks the object a second question, a virtual at `vtable
 it when that returns zero.
 
 That is the narrowing All Toilets needs, and it was found by reading the populate function instead
-of guessing at the number. Toilets are Features that answer that predicate. ⚠ The predicate itself
-is still undecoded, so the filter is named but not finished.
+of guessing at the number.
+
+⭐⭐ **AND THE PREDICATE IS NOW READ: it is `record[0x2E] & 1`.** Across the ten world-object
+classes that share the kind getter at `vt+0xA4`, `vt+0x134` has exactly TWO implementations --
+nine take the base and one class (vtable `0x35DC70`) overrides it with `FUN_00130718`, which
+returns that bit.
+
+⭐ **The control passes and is worth stating precisely:** on FANTASY the bit is set by **2 of 36
+features -- `loo.mps` and `royaloo.mps`** -- and by no bin, bench or tree. A predicate that picked
+half the features, or none, would have been the wrong one; this picks exactly the toilets.
+
+⚠ It is carried as `Entry.FeatureFlag0` rather than `IsToilet`: the byte's other bits are unread
+and nothing on the disc names it. What is established is what the console DOES with bit 0.
 
 ⚠ One tension left honest rather than resolved: the base's state machine reads `*(int*)(this+0x2f4)`
 as a small mode (0, 2, 3), while this function treats `this+0x2f4` as a list object with its own
