@@ -42,6 +42,19 @@ public sealed class ParkPaths
     /// z 6..18. A two-tile walkway, not a fifteen-wide apron, and somewhere else entirely.</summary>
     public IReadOnlyCollection<ParkCell> EntranceCells => _entrance;
 
+    /// <summary>The table entry <see cref="SetEntrance"/> fitted, or null before one fits. ⭐ Kept for
+    /// the strike point `0x1497C0`, which reads this same entry's `+0x10` (XCol) and `+0x11` (ZEnd)
+    /// -- natively by world and park number, here by the entry the grid itself chose.</summary>
+    public ParkEntranceEntry? EntranceEntry { get; private set; }
+
+    /// <summary>The native tile KIND `0x14E5B0` paints on an entrance cell: 0x0C for the walkway,
+    /// 0x0E for the mouth (<see cref="ParkEntranceEntry.Cells"/>), or null off the entrance. ⭐ Kept
+    /// because the route planner treats them differently -- kind 12 is admitted by request flag 0x01,
+    /// kind 14 only by 0x20 or restricted mode (findings/native-route-planner.md) -- and
+    /// <see cref="EntranceCells"/> alone cannot tell them apart.</summary>
+    public int? EntranceKind(ParkCell c) => _entranceKind.TryGetValue(c, out int k) ? k : null;
+    readonly Dictionary<ParkCell, int> _entranceKind = new();
+
     /// <summary>⭐⭐ THE GATE'S OWN GROUND, master's rule: "give the gate an occupancy over the
     /// tiles it sits on, + 1 on each side. mark a 2x2 of paths (right under the gate) as
     /// un-deleteable."
@@ -71,13 +84,20 @@ public sealed class ParkPaths
     public string SetEntrance(ParkEntrance table)
     {
         _entrance.Clear();
+        _entranceKind.Clear();
+        EntranceEntry = null;
         _protected.Clear();
         _gateHold.Clear();
         if (table == null) return "no entrance table";
         var entry = table.Fit(Field, _walkwayColumn, out string report);
+        if (!entry.Empty) EntranceEntry = entry;
         if (!entry.Empty)
-            foreach (var (x, z, _) in entry.Cells())
-                if (x >= 0 && z >= 0 && x < Field.Width && z < Field.Height) _entrance.Add(new ParkCell(x, z));
+            foreach (var (x, z, kind) in entry.Cells())
+                if (x >= 0 && z >= 0 && x < Field.Width && z < Field.Height)
+                {
+                    _entrance.Add(new ParkCell(x, z));
+                    _entranceKind[new ParkCell(x, z)] = kind;
+                }
         int gate = 0, held = 0;
         if (!entry.Empty)
         {
@@ -263,8 +283,11 @@ public sealed class ParkPaths
     /// whether something NEW may go down.</summary>
     /// <summary>Whether this cell is the park's own bridge -- authored, not built.</summary>
     public bool IsBridge(ParkCell c)
-        => Contains(c) && IsBridgeDeck(Materials.Count > Field.Material(c.X, c.Z)
-                                      ? Materials[Field.Material(c.X, c.Z)] : null);
+    {
+        if (!Contains(c)) return false;
+        int material = Field.Material(c.X, c.Z);
+        return material < Materials.Count && MaterialIsBridge(material);
+    }
 
     public ParkPathKind Kind(ParkCell c)
     {
@@ -274,8 +297,25 @@ public sealed class ParkPaths
         // ⭐ The bridge reads as PATH here even though it is not a path sprite: it is ground a
         // guest may stand on and a network a laid path joins. See IsBridgeDeck for why it does
         // not go through Classify.
-        if (IsBridgeDeck(Materials[material])) return ParkPathKind.Path;
-        return Classify(Materials[material]);
+        if (MaterialIsBridge(material)) return ParkPathKind.Path;
+        return MaterialKind(material);
+    }
+
+    // ⚠ PERFORMANCE ONLY: the two regexes above answered per CELL, and the staff route search asks
+    // Kind of thousands of cells a tick. A material's name cannot change after the terrain is
+    // loaded (Model adds materials only while constructing), so each answer is kept per material
+    // INDEX, computed on first use by exactly the calls the per-cell code made.
+    bool?[] _bridgeByMaterial;
+    ParkPathKind?[] _kindByMaterial;
+    bool MaterialIsBridge(int material)
+    {
+        _bridgeByMaterial ??= new bool?[Materials.Count];
+        return _bridgeByMaterial[material] ??= IsBridgeDeck(Materials[material]);
+    }
+    ParkPathKind MaterialKind(int material)
+    {
+        _kindByMaterial ??= new ParkPathKind?[Materials.Count];
+        return _kindByMaterial[material] ??= Classify(Materials[material]);
     }
     /// <summary>Anything a visitor can legitimately be standing on: public ground or a queue.</summary>
     public bool Walkable(ParkCell c) => IsEntrance(c) || Kind(c) != ParkPathKind.None;
@@ -316,8 +356,17 @@ public sealed class ParkPaths
     /// <summary>Cardinal BFS, including both endpoints; null means disconnected. Queue restrictions
     /// belong to the ride, so a guest cannot use a different ride's queue as a public shortcut.</summary>
     public IReadOnlyList<ParkCell> Route(ParkCell from, ParkCell to, Func<ParkCell, bool> allowed = null)
+        => RouteOver(from, to, c => Walkable(c) && (allowed?.Invoke(c) ?? true));
+
+    /// <summary>The same cardinal BFS as <see cref="Route"/>, over a caller-supplied passability
+    /// instead of <see cref="Walkable"/>. ⭐ Exists so the staff route service can search the
+    /// request flags' passable SET (open ground for 0x03/0x23, the target-only building tiles) with
+    /// THIS search rather than a second one; <see cref="Route"/> is now this plus Walkable, with the
+    /// identical neighbour order and queue, so its callers see no change.
+    /// ⚠ Still a BFS: no costs, no link directions, no native tie order (findings/native-route-planner.md).</summary>
+    public IReadOnlyList<ParkCell> RouteOver(ParkCell from, ParkCell to, Func<ParkCell, bool> can)
     {
-        bool Can(ParkCell c) => Walkable(c) && (allowed?.Invoke(c) ?? true);
+        bool Can(ParkCell c) => can(c);
         if (!Can(from) || !Can(to)) return null;
         var previous = new Dictionary<ParkCell, ParkCell> { [from] = from };
         var pending = new Queue<ParkCell>(); pending.Enqueue(from);
