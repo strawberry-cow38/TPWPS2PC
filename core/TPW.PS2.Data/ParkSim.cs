@@ -275,8 +275,13 @@ public sealed class ParkRide
 
     /// <summary>`+0xA8` on a lavatory: the calendar day count of its last clean, written only by
     /// <see cref="Service(int)"/> (`0x130978`); the facility's activation `0x1302D8` writes 0, which
-    /// is this default. Its only reader is the Single Bog screen's "Last Cleaned" (`0x1DA008` via
-    /// `0x130940`), which shows today MINUS this, in days ("15d"). ⚠ Lavatories only, like
+    /// is this default. Its only reader is the Single Bog screen's "Last Cleaned": `0x1DA008` calls
+    /// `0x130940` (`lw v0,0xa8`) at `0x1DA080` and passes the value RAW to the weeks/days formatter
+    /// `0x142948` -- there is NO subtraction. ⚠⚠ The stamp is the calendar's running total
+    /// (`0x16B218` = `cal+0x10`, the same total `0x1DC458` subtracts a hire day from for "time
+    /// employed"), so the console prints the DAY OF the last clean ("2w 3d" = park day 17), and "0d"
+    /// for a lavatory never cleaned -- not "days since". (An earlier note here said "today MINUS
+    /// this"; the call site does not.) ⚠ Lavatories only, like
     /// <see cref="Condition"/>; saved natively (record `+8`), and save/load is not ported.</summary>
     public int LastCleanedDay { get; private set; }
 
