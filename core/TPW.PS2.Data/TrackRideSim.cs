@@ -128,6 +128,14 @@ public sealed class TrackRideSim
         return ok;
     }
 
+    /// <summary>0x2009C0 alone, as the path hooks call it (0x1E6CF0, 0x18E4B8): the track is laid again
+    /// from the same waypoints over the ground as it now is, and everyone is unloaded.</summary>
+    public void Relay()
+    {
+        Track.Rebuild();
+        Rebuilt();
+    }
+
     /// <summary>0x2017D0 then 0x2009C0. Returns the removed leg's piece count.</summary>
     public int RemoveLastWaypoint()
     {

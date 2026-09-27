@@ -615,9 +615,13 @@ public sealed class Park
     /// <summary>Whether nothing is standing on a cell. ⚠ Bounds-checked here rather than by the
     /// caller: a placement ghost is routinely dragged off the edge of the plot, and that has to
     /// read as "no" instead of throwing.</summary>
-    public bool Vacant(int x, int y)
-        => x >= 0 && y >= 0 && x < Width && y < Height && _occupied[x, y] == 0 && !Reserved(x, y)
-           && !(Claimed?.Invoke(x, y) ?? false);
+    public bool Vacant(int x, int y) => Unbuilt(x, y) && !(Claimed?.Invoke(x, y) ?? false);
+
+    /// <summary><see cref="Vacant"/> without the <see cref="Claimed"/> cells: nothing placed there and
+    /// no no-build zone, whatever track may be lying on it. For the one rule that looks under a track
+    /// piece rather than refusing its cells outright (a path laid under a track ride).</summary>
+    public bool Unbuilt(int x, int y)
+        => x >= 0 && y >= 0 && x < Width && y < Height && _occupied[x, y] == 0 && !Reserved(x, y);
 
     /// <summary>Cells something stands on WITHOUT removing the ground under it: a track ride's
     /// pieces. ⚠ Not in <see cref="_occupied"/>, whose cells lose their floor, and whose invariant

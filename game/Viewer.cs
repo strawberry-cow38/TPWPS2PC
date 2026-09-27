@@ -1989,6 +1989,7 @@ public partial class Viewer : Node3D
         }
         if (_pieces == null) return;
         _paths = new PathTool(_terrainModel, _pieces);
+        _paths.KindChanged += TrackOverPathChanged;
         // ⭐ The park's own entrance walkway, from the game's table. It joins like path and
         // nothing may be laid on it, so a run brought up to the gate attaches to the way in.
         var entry = default(ParkEntranceEntry);
@@ -2000,7 +2001,8 @@ public partial class Viewer : Node3D
         }
         _ghost = new PathGhost(_paths)
         {
-            Occupied = (x, y) => !_park.Vacant(x, y),
+            // ⭐ Except under a track ride's straights and humps, where 0x1E81E0 lets a path go in.
+            Occupied = PathBlocked,
             // ⚠ A LAMBDA, NOT THE FIGURE. The ghost is built before the sim is, so reading
             // `_sim.Finances.Balance` here would freeze a null park's zero into the tool and every
             // run would draw refused.

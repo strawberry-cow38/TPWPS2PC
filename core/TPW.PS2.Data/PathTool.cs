@@ -83,6 +83,11 @@ public sealed class PathTool
     /// <summary>Start recording a leg. Everything laid until the next call goes back together.</summary>
     public void BeginLeg() { _leg = new List<Was>(); _legs.Add(_leg); }
 
+    /// <summary>A cell's kind changed, through <see cref="Lay"/> or <see cref="UndoLeg"/>. The console's
+    /// equivalent is the tile event a path lay raises (0x1E6CF0, event 0x84), which is how a track
+    /// ride hears that a path went in under it.</summary>
+    public event Action<int, int> KindChanged;
+
     /// <summary>Put the most recent leg back. Returns false when there is none.</summary>
     public bool UndoLeg()
     {
@@ -97,6 +102,7 @@ public sealed class PathTool
             _field.Cells[w.At * 2 + 1] = w.Tile; _turns[w.At] = w.Turns;
         }
         foreach (var w in leg) RepickAround(w.At % _field.Width, w.At / _field.Width);
+        foreach (var w in leg) KindChanged?.Invoke(w.At % _field.Width, w.At / _field.Width);
         return true;
     }
 
@@ -391,6 +397,7 @@ public sealed class PathTool
         if (owner != 0) _owner[at] = owner;
         Laid++;
         RepickAround(x, y);
+        KindChanged?.Invoke(x, y);
         return true;
     }
 

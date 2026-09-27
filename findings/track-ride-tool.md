@@ -279,6 +279,15 @@ success paints `0xa5` and arrow tiles `0xa6` oriented by `(rot+2)&3`.
   those). The path-change hooks `0x1e6cf0` (events `0x32`, `0x84`) and `0x18e4b8` then set the
   piece under the tile to type 8 and **rebuild** its ride, which re-lays the leg with crossing
   pieces (the type-8 write is superseded by the rebuild — INFERRED).
+- READ in full, 2026-09-27. `0x1E81E0`'s track arm (at `0x1e83e8`): a tile with flag `0x10` looks up
+  its piece (`0x14a420`); shape 15, 1, 2, 4 or 99 → 1 (refused), type ≥ 40 → 1, a tile inside the 2×2
+  block at `0x200078` (exit) or `0x2001a8` (entry) → 1; otherwise the kind switch at `0x1e8590` answers
+  0 (allowed) for path (2), kind 13 and queue (4). The hook `0x1E6CF0` event `0x84` fires when the tile
+  IS path (`0x1e6338`), queue/7 (`0x1e6348`) or 13 (`0x1e6370`), skips a piece of shape 3, and otherwise
+  retypes it to 8 and calls `0x2009c0`. Nothing re-lays the ride when a path is taken away.
+- **Port** (`PathMayGoUnderTrack`, `TrackOverPathChanged`): the rule above on the path ghost, the re-lay
+  on every cell `PathTool.Lay` changes. ⚠ DEPARTURE: the port's path undo also re-lays, so an undone
+  path takes its bridge with it; on the console the bridge would stand until the next rebuild.
 
 ### 5.5 Bounding box and tile ownership
 

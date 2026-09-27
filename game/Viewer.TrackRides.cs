@@ -417,6 +417,60 @@ public partial class Viewer
         return true;
     }
 
+    /// <summary>⭐ 0x1E81E0's track arm, the path and queue tools' verdict on a cell a track piece covers
+    /// (the piece found by 0x14A420). Refused under a piece of shape 15 (station), 1 or 2 (the bends),
+    /// 4 (the crossing) or 99 (hidden: the station connector, the crossing's other half), under an
+    /// add-on (type 40 and up), and on the 2×2 blocks at the station's exit (0x200078) and entry
+    /// (0x2001A8). Allowed, then, under straights, humps and ramps, for path (2), queue (4) and kind 13
+    /// alike. False when no track covers the cell: that is not this rule's to allow.</summary>
+    bool PathMayGoUnderTrack(int x, int z)
+    {
+        bool under = false;
+        foreach (var v in _tracks.Values)
+        {
+            var p = v.Layout.PieceAt(new ParkCell(x, z));
+            if (p == null) continue;
+            under = true;
+            if (p.Info.Shape is 15 or 1 or 2 or 4 or 99 || p.Type >= 40) return false;
+            if (InBlock(v.Layout.ExitCell) || InBlock(v.Layout.ReturnCell)) return false;
+        }
+        return under;
+        bool InBlock(ParkCell b) => x - b.X is 0 or 1 && z - b.Z is 0 or 1;
+    }
+
+    /// <summary>What the path ghost refuses for standing on the cell: anything <see cref="Park.Vacant"/>
+    /// says no to, except track a path may go under. A coaster's pylon cell stays refused.</summary>
+    bool PathBlocked(int x, int y)
+        => !_park.Vacant(x, y)
+           && !(_park.Unbuilt(x, y) && !_coasters.Values.Any(c => c.Cells.Contains((x, y))) && PathMayGoUnderTrack(x, y));
+
+    /// <summary>⭐ 0x1E6CF0 (tile event 0x84) and 0x18E4B8: when a cell under a track piece becomes path,
+    /// queue or kind 13, the piece is set to type 8 and its ride re-laid (0x2009C0), so the chooser's
+    /// bridge rule turns the straight into a hump, or a run of them into ramp-up, raised, ramp-down.
+    /// A piece that is already a hump (shape 3) is left alone.
+    ///
+    /// ⚠ PORT DEPARTURE, the undo half: the console hook fires only when the cell IS path, so taking a
+    /// path away leaves its bridge standing until something else re-lays the ride. The port's path
+    /// undo re-lays it at once, on the ground that an undo should put back what was there.</summary>
+    void TrackOverPathChanged(int x, int z)
+    {
+        var kind = _paths?.KindAt(x, z) ?? PathTool.Kind.None;
+        bool path = kind is PathTool.Kind.Path or PathTool.Kind.Queue or PathTool.Kind.Both;
+        foreach (var v in _tracks.Values)
+        {
+            var p = v.Layout.PieceAt(new ParkCell(x, z));
+            if (p == null) continue;
+            int shape = p.Info.Shape;
+            bool relay = path ? shape != 3 : shape is 3 or 9 or 10 or 11;
+            if (!relay) continue;
+            v.Sim.Relay();
+            RebuildTrackView(v);
+            GD.Print($"[track] ride {v.Id}: {(path ? "path laid under" : "path taken from under")} ({x},{z}), "
+                   + $"piece was {p} -> now {v.Layout.PieceAt(new ParkCell(x, z))}; re-laid, everyone unloaded");
+            break;
+        }
+    }
+
     /// <summary>0x1293C8's direction rule: from a plain straight any way; from a piece with one exit
     /// (a crossing, a hump, a ramp) only straight on; from anything else (a bend, the station) nowhere.</summary>
     static bool TrackDirectionOk(TrackPiece p0, int dir)

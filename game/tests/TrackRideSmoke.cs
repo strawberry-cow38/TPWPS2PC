@@ -294,6 +294,61 @@ public partial class TrackRideSmoke : Node3D
             Check(left == 4 && trackSim.Cars.Count == 0, $"all four riders come off after {trackSim.Duration} laps and the cars are gone");
             Check(cars.Count == 0, "and so are their models");
 
+            // ⭐ A path laid UNDER the track (0x1E81E0's track arm, then 0x1E6CF0's re-lay): allowed
+            // under a straight, refused under a bend and on the station's exit block, and the straight
+            // it crosses becomes a hump; a second crossing beside it makes ramp-up + ramp-down.
+            {
+                var ghost = Field<PathGhost>(viewer, "_ghost");
+                var paths = Field<PathTool>(viewer, "_paths");
+                var wp1 = layout.Waypoints[2];   // the long leg, 14 cells: a bend, then six straights
+                var wp2 = layout.Waypoints[3];
+                int px = Math.Sign(wp2.X - wp1.X), pz = Math.Sign(wp2.Z - wp1.Z);   // along the long leg
+                int ux = pz != 0 ? 1 : 0, uz = px != 0 ? 1 : 0;                      // across it
+                ParkCell Along(int k) => wp1.Offset(2 * px * k, 2 * pz * k);
+                PathGhost.Verdict One(ParkCell c) { ghost.Set(c.X, c.Z, c.X, c.Z, PathTool.Kind.Path); return ghost.Tiles[0].Verdict; }
+                var a = Along(3); var b = Along(4);
+                var pa = layout.PieceAt(a); var pb = layout.PieceAt(b);
+                Check(pa?.Info.Shape == 0 && pb?.Info.Shape == 0 && pa.Anchor == a && pb.Anchor == b,
+                      $"the long leg's middle pieces are plain straights ({pa}, {pb})");
+                Check(One(a) == PathGhost.Verdict.Lay, $"a path may go under a straight ({a}: {One(a)})");
+                var bend = layout.PieceAt(wp1);
+                Check(bend?.Info.Shape is 1 or 2 && One(wp1) == PathGhost.Verdict.Refused,
+                      $"but not under a bend ({bend}: {One(wp1)})");
+                var exitPiece = layout.PieceAt(layout.ExitCell);
+                Check(exitPiece?.Info.Shape == 0 && One(layout.ExitCell) == PathGhost.Verdict.Refused,
+                      $"nor on the station's exit block, though the piece there is a straight ({exitPiece}: {One(layout.ExitCell)})");
+                bool Across(ParkCell c)
+                {
+                    ghost.Set(c.X - ux, c.Z - uz, c.X + 2 * ux, c.Z + 2 * uz, PathTool.Kind.Path);
+                    if (!ghost.Layable) return false;
+                    paths.BeginLeg();
+                    return ghost.Lay(PathTool.Kind.Path, 0) == 4;
+                }
+                bool laidA = Across(a);
+                var ha = layout.PieceAt(a);
+                Check(laidA && ha?.Type is >= 24 and <= 27 && paths.KindAt(a.X, a.Z) == PathTool.Kind.Path,
+                      $"a path laid across it turns that straight into a hump ({ha}), the path under it ({paths.KindAt(a.X, a.Z)})");
+                Check(layout.Closed && layout.Pieces.Count == 22 && trackSim.Status != TrackRideStatus.Closed,
+                      $"the re-laid track is the same loop: {layout.Pieces.Count} pieces, closed, {trackSim.Status}");
+                bool laidB = Across(b);
+                var ua = layout.PieceAt(a); var db = layout.PieceAt(b);
+                Check(laidB && ua?.Type is >= 28 and <= 31 && db?.Type is >= 36 and <= 39,
+                      $"a second path beside it makes ramp-up then ramp-down ({ua}, {db})");
+                Check(One(a) == PathGhost.Verdict.Already || One(a) == PathGhost.Verdict.Lay,
+                      $"the path under the ramp is still path ground to the tool ({One(a)})");
+                int drawnNow = layout.Pieces.Count(p => p.Info.Shape is not (15 or 99));
+                Check(pieces.Count == drawnNow && pieces.Cast<Node3D>().All(n => IsInstanceValid(n) && n.FindChildren("*", "MeshInstance3D", true, false).Count > 0),
+                      $"the ramps are drawn ({pieces.Count} of {drawnNow})");
+                aimAt = ((Node3D)pieces[layout.Pieces.Where(p => p.Info.Shape is not (15 or 99)).ToList().IndexOf(ua)]).GlobalPosition;
+                aimFar = 5f;
+                await Shot("bridge");
+                aimAt = null; aimFar = null;
+                paths.UndoLeg();
+                var back = layout.PieceAt(b); var hump = layout.PieceAt(a);
+                Check(back?.Info.Shape == 0 && hump?.Type is >= 24 and <= 27,
+                      $"undoing the second path puts its straight back and the first is a hump again ({hump}, {back})");
+            }
+
             // Deleting the ride takes the track with it.
             Set(viewer, "_selected", 0);
             Call(viewer, "DeleteSelected");
