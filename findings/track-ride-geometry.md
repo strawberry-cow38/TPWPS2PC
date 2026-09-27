@@ -260,6 +260,17 @@ even for upgrades, so upgrades get shape 12 or 13.
 - any other shape: `id = *(u32*)(0x2ecad0 + world*0x4a4 + park*0x18c + shape*4)`. If `id ≠ 0` and
   `id ≠ +0x100`, set the model to it (model vtable `+0xc`, then `0x17ce10`, `+0xac(1)`).
   `id == 0` keeps whatever model is there (station pieces, shape 15).
+- **Having set it, `0x1fd818` starts the model on `.aps` section 5 (Main), looping** (READ, 2026-09-26):
+  model vt `+0x5c` (`0x228958` → `0x17c5d8` → `0x1abc80`) with speed 1.0 and flags 1. Flag bit 0
+  becomes the channel's `+0x14 & 1` (`0x1ab7b4`), and the end-of-record handler (`0x1ac254`) restarts
+  the record while that bit is set. Every water piece's `.aps` is exactly that: a Main whose UV keys
+  scroll the water mesh's V (JUNGLE's: 1.0 over 50 frames; HALLOW's, FANTASY's and SPACE's move half
+  as far in the same frames, 0.06 V over 6; the crossings' `water3` is a keyed whirl instead). The
+  port never played it, so the water stood still (strawberry: the pieces' textures "dont scroll/flow").
+  It now loops on the park clock, every piece in one phase; on the console each piece's loop starts
+  when it gets its model, so pieces laid at different moments are out of step there. Whether the
+  station's own Main (`wateride.aps`, water UV keys too) is ever played is **not established**: the
+  track-ride code's other vt `+0x5c` calls are on other objects.
 
 `0x2ecad0` has only two readers, `0x1fd818` and `0x1fefc8` (xrefs + full lui/addiu scan). Shapes
 5–8 are **car** meshes, read by `0x1fefc8(n)` = shape 5+n; the kart init `0x2053a0` uses

@@ -69,7 +69,10 @@ public partial class TrackRideSmoke : Node3D
             Check(rows.Count > 0, $"{world}: the Track Rides category lists {rows.Count} rides");
             int chosen = Enumerable.Range(0, rows.Count).FirstOrDefault(r =>
                 lib.Rides[rows[r]].Model.Path.Contains("gokarts", StringComparison.OrdinalIgnoreCase));
-            if (System.Environment.GetEnvironmentVariable("TPW_TRACK_WATER") == "1")
+            // Terrain 2 builds the water ride, so the matrix runs both kinds (it only ever built karts).
+            bool water = System.Environment.GetEnvironmentVariable("TPW_TRACK_WATER") is { } tw
+                ? tw == "1" : map.Contains("terrain_2", StringComparison.OrdinalIgnoreCase);
+            if (water)
                 chosen = Enumerable.Range(0, rows.Count).First(r => lib.Rides[rows[r]].Model.Path.Contains("wateride", StringComparison.OrdinalIgnoreCase));
             string stationPath = lib.Rides[rows[chosen]].Model.Path;
             Call(viewer, "ArmFromList", chosen);
@@ -153,6 +156,44 @@ public partial class TrackRideSmoke : Node3D
                   $"every piece that has a mesh is drawn ({pieces.Count} of {drawn}), from {F(view, "Prefix")}*");
             Check(trackSim.Status == TrackRideStatus.Running || trackSim.Status == TrackRideStatus.Unloading || trackSim.Status == TrackRideStatus.Loading,
                   $"a closed loop runs ({trackSim.Status})");
+            // ⭐ The water flows: 0x1fd818 starts every piece on its Main record, looping (strawberry: the
+            // track pieces' textures "dont scroll/flow"). Between two moments a straight piece's water has
+            // moved by exactly what its own Main keys say for the frames between (JUNGLE's run V 1.0 per
+            // 50 frames, the other worlds' half that: the rate is not assumed).
+            var flowing = ((IList)F(view, "Flowing")).Cast<AnimatedModel>().ToList();
+            if (water)
+            {
+                Check(flowing.Count == pieces.Count, $"every water piece plays its Main loop ({flowing.Count} of {pieces.Count})");
+                // By layout order, not name: Godot renames the sibling holders @Node3D@n. Pieces and Flowing are
+                // appended in step with the drawn layout pieces (every water piece has a Main, checked above).
+                var drawnShapes = layout.Pieces.Where(p => p.Info.Shape is not (15 or 99)).Select(p => p.Info.Shape).ToList();
+                int si = drawnShapes.IndexOf(0);
+                var straight = si >= 0 && drawnShapes.Count == flowing.Count ? flowing[si] : null;
+                Check(straight != null, $"a straight piece (shape 0) is among them, piece {si} of {drawnShapes.Count}");
+                List<Vector2> Uvs() => straight.Root.FindChildren("*", "MeshInstance3D", true, false).OfType<MeshInstance3D>().Where(mi => mi.Mesh != null)
+                    .SelectMany(mi => Enumerable.Range(0, mi.Mesh.GetSurfaceCount()).SelectMany(sf => mi.Mesh.SurfaceGetArrays(sf)[(int)Mesh.ArrayType.TexUV].AsVector2Array())).ToList();
+                Call(viewer, "PresentTracks", 0f);
+                int f0 = (int)F(view, "FlowFrame"); var uv0 = Uvs();
+                for (int i = 0; i < 5; i++) Call(viewer, "StepPark", .04);
+                Call(viewer, "PresentTracks", 0f);
+                int f1 = (int)F(view, "FlowFrame"); var uv1 = Uvs();
+                string dir = (string)F(view, "Dir"), prefix = (string)F(view, "Prefix");
+                var straightAssets = lib.Rides.First(r => r.Model != null && r.Model.Path.Equals(dir + prefix + "trcks.mps", StringComparison.OrdinalIgnoreCase));
+                var aps = new TPW.PS2.Data.Animation(lib.Read(straightAssets.Animation));
+                var main = aps.Records().First(r => r.Slot == 5);
+                float want = 0;
+                for (int t = 0; t < main.TrackCount; t++)
+                {
+                    int off = aps.TrackAt(main, t);
+                    if ((aps.TrackFlags(off) & 0x10000) == 0 || aps.UvTrack(off) is not { } groups) continue;
+                    foreach (var g in groups)
+                        want = MathF.Max(want, MathF.Abs(TPW.PS2.Data.Animation.SampleUv(g, f1 % main.DurationFrames).V
+                                                         - TPW.PS2.Data.Animation.SampleUv(g, f0 % main.DurationFrames).V));
+                }
+                float moved = uv0.Zip(uv1, (a, b) => MathF.Abs(b.Y - a.Y)).Max();
+                Check(f1 > f0 && want > 0.01f && uv0.Count == uv1.Count && MathF.Abs(moved - want) < 0.01f,
+                      $"the water moves: frame {f0} -> {f1}, a straight piece's V by {moved:F3} (keys: {want:F3})");
+            }
 
             var frame = (Node3D)F(view, "Frame");
             var loopCells = legs.Append(e).ToList();

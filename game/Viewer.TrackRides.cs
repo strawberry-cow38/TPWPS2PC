@@ -1,5 +1,6 @@
 using Godot;
 using TPW.PS2.Data;
+using Aps = TPW.PS2.Data.Animation;
 
 namespace TPWPS2Viewer;
 
@@ -24,6 +25,9 @@ public partial class Viewer
         public int Price;
         public Node3D Frame;
         public readonly List<Node3D> Pieces = new();
+        /// <summary>The laid pieces playing their Main record (the water pieces' flow).</summary>
+        public readonly List<AnimatedModel> Flowing = new();
+        public int FlowFrame = -1;
         public readonly Dictionary<TrackCar, CarView> Cars = new();
         public int NextTag = CarSoundTagBase;
         public readonly HashSet<(int X, int Y)> Cells = new();
@@ -149,10 +153,13 @@ public partial class Viewer
     Node3D TrackModel(TrackRideView v, string stem) => TrackModel(v, stem, out _, out _);
 
     Node3D TrackModel(TrackRideView v, string stem, out AnimatedModel model, out Model mesh)
+        => TrackModel(v, stem, out model, out mesh, out _);
+
+    Node3D TrackModel(TrackRideView v, string stem, out AnimatedModel model, out Model mesh, out Aps animation)
     {
         var assets = _lib.Rides.FirstOrDefault(r => r.Model != null
             && r.Model.Path.Equals(v.Dir + stem + ".mps", StringComparison.OrdinalIgnoreCase));
-        model = LoadPlaceable(assets, out _, out mesh);
+        model = LoadPlaceable(assets, out animation, out mesh);
         if (model?.Root == null) return null;
         model.Root.Scale = Vector3.One;
         var holder = new Node3D { Name = stem };
@@ -166,6 +173,8 @@ public partial class Viewer
     {
         foreach (var n in v.Pieces) if (IsInstanceValid(n)) n.QueueFree();
         v.Pieces.Clear();
+        v.Flowing.Clear();
+        v.FlowFrame = -1;
         v.Cells.Clear();
         foreach (var p in v.Layout.Pieces)
         {
@@ -176,8 +185,18 @@ public partial class Viewer
                     for (int dz = 0; dz < size; dz++) v.Cells.Add((p.Anchor.X + dx, p.Anchor.Z + dz));
             string stem = TrackMesh(info.Shape);
             if (stem == null) continue;
-            var node = TrackModel(v, v.Prefix + stem);
+            var node = TrackModel(v, v.Prefix + stem, out var model, out _, out var anim);
             if (node == null) continue;
+            // ⭐ `0x1fd818`, on giving a piece its model, starts it on `.aps` section 5 (Main) at speed 1.0
+            // with flag 1 (vt +0x5c → 0x17c5d8 → 0x1abc80), and flag bit 0 is the channel's LOOP bit
+            // (0x1ab7b4 → +0x14 & 1; the end-of-record handler 0x1ac254 restarts the record while it is
+            // set). Every water piece's Main is a 50-frame UV loop on its water mesh, so that is the flow.
+            // (The kart pieces take the same call; whatever their Main does, it runs too.)
+            if (model != null && anim?.Records().FirstOrDefault(r => r.Slot == 5) is { } main)
+            {
+                model.UseRecord(main);
+                v.Flowing.Add(model);
+            }
             int r = info.Rot, w = info.Width << 8, d = info.Depth << 8;
             int ox = p.Anchor.X * 256, oz = p.Anchor.Z * 256;
             switch (r) { case 1: oz += w; break; case 2: ox += w; oz += d; break; case 3: ox += d; break; }
@@ -198,11 +217,24 @@ public partial class Viewer
         RefreshFloor();
     }
 
-    /// <summary>Per rendered frame: the cars, between the last two ticks, and their engine voices.</summary>
+    /// <summary>Per rendered frame: the pieces' looping Main, the cars, between the last two ticks, and
+    /// their engine voices.</summary>
     void PresentTracks(float alpha)
     {
+        // The pieces' loop on the park's own clock, so a paused park holds still and a wound shot has
+        // run, in whole frames at the .aps's 30 a second: every water piece rebuilds its water mesh
+        // when the frame moves, so only when it moves. ⚠ One phase for every piece: the console starts
+        // each piece's loop when 0x1fd818 gives it its model, so pieces laid at different moments run
+        // out of step there. Not reproduced.
+        int flow = (int)(((_sim?.Time ?? 0) + alpha * ParkSim.TickMilliseconds) * Aps.Fps / 1000f);
         foreach (var v in _tracks.Values)
         {
+            if (flow != v.FlowFrame)
+            {
+                v.FlowFrame = flow;
+                foreach (var m in v.Flowing)
+                    if (m.Root != null && IsInstanceValid(m.Root) && m.Frames > 0) m.SetFrame(flow % m.Frames);
+            }
             bool ticked = _sim != null && _sim.Time != v.SeenTime;
             if (ticked) v.SeenTime = _sim.Time;
             foreach (var gone in v.Cars.Keys.Where(c => !v.Sim.Cars.Contains(c)).ToList())
