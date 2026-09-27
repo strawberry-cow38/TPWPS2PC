@@ -259,7 +259,7 @@ public partial class Viewer : Node3D
     bool _linkTest;
     bool _placeTest;
     int _selectAtStart = -1;
-    bool _hidePanel;
+    bool _hidePanel, _wantLobby, _lobbyOverview;
     string _placeName;
     bool _walkAudit;
     bool _typeAudit;
@@ -406,6 +406,11 @@ public partial class Viewer : Node3D
             // Start-Process on the render box and the child did not inherit the switches, so
             // everything a shot needs has a command-line form too. The env reads below are the
             // fallback, not the other way round.
+            else if (a == "--lobby") _wantLobby = true;
+            // ⚠ A FLAG, NOT AN ENV VAR. The capture is launched through a .bat and the child does
+            // not inherit `set` -- the overview simply never switched on and the log looked as if
+            // the code were unreachable.
+            else if (a == "--lobby-overview") { _wantLobby = true; _lobbyOverview = true; }
             else if (a.StartsWith("--map=")) _wantMap = a["--map=".Length..];
             else if (a.StartsWith("--mode=")) _wantMode = a["--mode=".Length..];
             else if (a == "--path-test") _pathTest = true;
@@ -515,7 +520,8 @@ public partial class Viewer : Node3D
         // tab, and the matrices, smokes and shot harnesses all pass one of these or an explicit
         // --mode/--map -- so this changes the bare launch and nothing that is already scripted.
         // Defaulting unconditionally would have quietly redirected every existing capture.
-        if (_wantMode == null && _wantRide == null && _wantImage == null
+        if (_wantLobby) { _hidePanel = true; }
+        else if (_wantMode == null && _wantRide == null && _wantImage == null
             && _wantSound == null && _wantPlay == null && _wantAnim == null)
         {
             _wantMode = "park";
@@ -579,7 +585,14 @@ public partial class Viewer : Node3D
         { _animPick.Select(ai); _recordIndex = ai; Rebuild(); }
         // ⚠ Every switch has an environment fallback, because arguments after `--` do not survive
         // cmd's quoting and a silent empty argument presents as a hang rather than an error.
-        if (_wantMode != null && _wantMode.StartsWith("mov", StringComparison.OrdinalIgnoreCase))
+        // ⭐ `--lobby` opens the world map instead of any asset-viewer tab. It is its own scene
+        // (LOBBY.WAD), so it takes the branch before the tabs rather than being a mode of them.
+        if (_wantLobby)
+        {
+            _tabs.CurrentTab = ModeTab(Mode.Park); SetMode(Mode.Park);
+            EnterLobby();
+        }
+        else if (_wantMode != null && _wantMode.StartsWith("mov", StringComparison.OrdinalIgnoreCase))
         {
             _tabs.CurrentTab = ModeTab(Mode.Movies); SetMode(Mode.Movies);
         }
@@ -926,6 +939,18 @@ public partial class Viewer : Node3D
         // ⭐⭐ AN OPEN MENU EATS ITS KEYS. The console drives this with the d-pad and ✕, so up /
         // down / confirm / cancel, and nothing else sees them while it is up -- otherwise the
         // arrows would still be driving the camera behind the menu.
+        // ⭐ THE LOBBY OWNS THE ARROWS WHILE IT IS UP -- it is a selector, and its four
+        // directions are the console's four d-pad directions.
+        if (_lobbyMode)
+        {
+            switch (k.Keycode)
+            {
+                case Key.Up:    LobbyMove(0); return;
+                case Key.Down:  LobbyMove(1); return;
+                case Key.Left:  LobbyMove(2); return;
+                case Key.Right: LobbyMove(3); return;
+            }
+        }
         // ⭐ The panel takes Escape before anything else while it is up.
         if (_shopPanel is { Open: true } && k.Keycode == Key.Escape)
         {
@@ -9085,7 +9110,11 @@ public partial class Viewer : Node3D
     }
 
     /// <summary>Is the game's own camera driving? Only in park mode, and only until G.</summary>
-    bool GameCamActive => _mode == Mode.Park && !_freeCam && _ground != null;
+    // ⚠ `_ground` IS THE PARK TERRAIN, and the lobby has none -- so without the lobby arm here
+    // the console camera never stepped at all and every lobby render came back byte-identical,
+    // looking at open water. The tell was two shots of two different camera aims with the same
+    // md5: equal output from inputs that must differ is the instrument, not the subject.
+    bool GameCamActive => _mode == Mode.Park && !_freeCam && (_ground != null || _lobbyMode);
 
     /// <summary>Drop the game camera onto the middle of the plot.</summary>
     void StartGameCam()
@@ -10182,6 +10211,7 @@ public partial class Viewer : Node3D
         // doing that here rather than inside `_Draw` keeps scene-tree changes out of a drawing
         // callback and puts the new model in place for the frame that is about to be drawn.
         if (_shopPanel is { Open: true }) { _shopPanel.PumpMenuFocus(); StepLaptopModel(delta); }
+        StepLobby(delta);
         TickDebugHud(delta);
         // ⭐⭐ THE CLOUDS SHIFT AND THE SKY GREYS. Master: "clouds ARE meant to shift; sky gets
         // gray when raining." ⚠ The console drives the grey from a weather AMOUNT whose state

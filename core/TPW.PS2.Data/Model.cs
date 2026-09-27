@@ -593,7 +593,22 @@ public sealed partial class Model
                     surf = new Surface(U16(p), U16(p + 2), F32(p + 4), F32(p + 8), F32(p + 0xc),
                                        D[p + 0x10], D[p + 0x11], D[p + 0x12]);
                 // ⚠ The nth fitting is the nth HELPER, not whatever the record's own u16 says.
-                _fittings.Add(new Fitting(flags, id, Meshes.Count + i, x, y, z) { OnSurface = surf });
+                //
+                // ⚠⚠ AND THE BASE IS `u16 @0x34`, NOT `Meshes.Count`. The consumer is explicit:
+                //     uVar15 = FUN_001f1f78(...) + *(ushort *)(iVar25 + 0x34);
+                //     iVar25 = uVar15 < *(ushort *)(iVar25 + 0x30)      // 0x30 IS the mesh count
+                //            ? meshTable + uVar15 * 0xa0 : helperTable + (uVar15 - meshCount) * 0x60;
+                // so `0x34` is a separate field that happens to equal the mesh count OFTEN and not
+                // always: across JUNGLE's 88 models with fittings the two agree on 61 and differ on
+                // 27, and on `LOBBY.WAD/base.mps` it is 2 against a mesh count of 13.
+                //
+                // ⭐⭐ THE VALIDATION THAT MISSED IT WAS IN THE AGREEING REGION. `monkey.mps` -- the
+                // model the seat decode above was checked on, bananas and all -- has mesh count 9
+                // and `0x34` = 9, so BOTH readings give the identical 24 nodes there. The rule was
+                // confirmed on a case that cannot tell the two rules apart. The lobby is where they
+                // disagree: the game's arithmetic seats all 8 parks on `base`, `Meshes.Count + i`
+                // seats 3 and misses 5 -- and the 3 it gets are right by coincidence.
+                _fittings.Add(new Fitting(flags, id, U16(0x34) + i, x, y, z) { OnSurface = surf });
             }
             return _fittings;
         }
