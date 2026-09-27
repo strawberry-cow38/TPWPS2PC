@@ -253,6 +253,7 @@ public partial class Viewer : Node3D
     bool _linkTest;
     bool _placeTest;
     int _selectAtStart = -1;
+    bool _hidePanel;
     string _placeName;
     bool _walkAudit;
     bool _typeAudit;
@@ -414,6 +415,9 @@ public partial class Viewer : Node3D
             // ⭐ So a render can SHOW the debug panel. Master sees the pictures and I do not, so a
             // panel that only opens on a keypress is a panel neither of us has checked.
             else if (a == "--cheats") _cheatsAtStart = true;
+            // ⭐ The left panel sits over the HUD's own corner, so a shot OF the HUD needs it gone.
+            // The same thing F3 does, from the command line.
+            else if (a == "--no-panel") _hidePanel = true;
             else if (a == "--footprint-audit") _footprintAudit = true;
             // ⭐ `--awards=3,0` so a render can be put beside master's own capture with the SAME
             // numbers in it. Comparing a 0 against their 3 would prove nothing about placement.
@@ -820,6 +824,7 @@ public partial class Viewer : Node3D
         _uiRoot = ui;
         BuildDebugHud(ui);
         if (_cheatsAtStart) ToggleCheats();
+        if (_hidePanel && _panel != null) _panel.Visible = false;
 
         // ⭐⭐ THE TOOL SAYS WHAT IT THINKS, ON SCREEN. Every refusal already printed a reason to
         // the console, which nobody playing the game can see -- so a click over the panel, or one
