@@ -5312,14 +5312,16 @@ public partial class Viewer : Node3D
             if (actor == null) continue;
             Show(g.Id, headOnly: false);
             Pose(g.Id, sitting: false);
-            Gait(g.Id, g.State == GuestState.Walking, alpha);
+            Gait(g.Id, g.State == GuestState.Walking && !GuestWatching(g.Id), alpha);   // a watcher stands (0x1C)
             var now = Cell(g.Position);
             var was = _guestPrev.TryGetValue(g.Id, out var p) ? p : now;
             actor.Position = GuestWorld(was.Lerp(now, alpha), g.Cell);
             // Facing the step, in the same mirrored frame. Standing guests keep their last facing.
             // ⚠ Assigned as a whole basis, not through Rotation: a kid back from a seat still carries
             // the seat's full basis, and Euler on that is the round trip this codebase already lost.
-            if (g.NativeHeading is { } nativeHeading)
+            if (WatchHeading(g.Id) is { } watching)                     // 0x2107A0 faces the entertainer
+                actor.Basis = WalkBasis(GuestHeading(watching));
+            else if (g.NativeHeading is { } nativeHeading)
                 actor.Basis = WalkBasis(GuestHeading(Cell(nativeHeading)));
             else if (g.Next is ParkCell next)
                 actor.Basis = WalkBasis(GuestHeading(new Vector3(next.X - g.Cell.X, 0, next.Z - g.Cell.Z)));

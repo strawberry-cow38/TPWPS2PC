@@ -60,6 +60,12 @@ SCENES = {
     'mechanic': ('MechanicSmoke', 'MECHANIC SMOKE', 36),
 }
 MAP_LINE = re.compile(r'^\[map\] loaded world=([A-Z]+) terrain=(terrain_[12])\.mps$', re.M)
+# Guards and entertainers: an entertainer and a guard hired through the laptop's tabs and the real press,
+# guests stopping to watch a show and drawn facing him, a forced prank (the one test hook) with its
+# YellowStink on screen, the catch, the guest's copy carried out through the entrance turnstile and
+# dropped at the corridor start, and a sweep stopping the stink. Every park runs the same 38. Added as a
+# statement of its own so the staff steps' parallel additions to the table above merge cleanly.
+SCENES['guard'] = ('GuardSmoke', 'GUARD SMOKE', 38)
 
 
 def map_argument(world: str, terrain: int) -> str:

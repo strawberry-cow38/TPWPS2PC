@@ -130,11 +130,13 @@ public partial class Viewer
         }
         GD.Print($"[staff] attached to this park: world {_staffWorld} park {_staffPark}, "
                + $"{_modelRegistry?.Entries.Count ?? 0} registry entries; the toilet stand-in is off, handymen clean");
+        AttachSecurity();                                                // Viewer.Security.cs: guards, entertainers
     }
 
     /// <summary>Drop the old park's staff, their nodes and the hire tool's hold.</summary>
     void ResetStaff()
     {
+        ResetSecurity();
         foreach (var a in _staffActors.Values) if (a.Node != null && IsInstanceValid(a.Node)) a.Node.QueueFree();
         foreach (var l in _litterActors.Values) if (l.Node != null && IsInstanceValid(l.Node)) l.Node.QueueFree();
         _staffActors.Clear(); _litterActors.Clear(); _staffModelMisses.Clear();
@@ -271,9 +273,11 @@ public partial class Viewer
                 {
                     a.Animation.Requested = (a.Animation.Requested & ~0x1f) | (m.LogicalRequest & 0x1f);
                     a.Animation.Push(m.CutRecordOnPush ? 2 : 0);
+                    m.CutRecordPushed();                                 // 0x1921D0 clears 0x200 after the push
                 }
                 a.Animation.Update(ParkSim.TickMilliseconds, _staffAnimationRand.Next);
             }
+        TickSecurity(updates);
     }
 
     /// <summary>One node per member of <see cref="ParkStaff.Members"/>, rebuilt when the slot is
@@ -404,6 +408,7 @@ public partial class Viewer
             a.Node.Basis = WalkBasis(GuestHeading(StaffHeading(a.Yaw)));
             if (a.Drawn != null && a.Animation != null) PoseStaff(a, alpha);
         }
+        PlaceCarried();
     }
 
     /// <summary>⚠ The grid direction a native yaw points the model along. `0x1921D0` hands the visual
