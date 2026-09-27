@@ -316,3 +316,54 @@ do at all because its `Behind` couples distance to pitch.
 - The two `u16` at record `+0x02` / `+0x04`.
 - The four `u16` yaws at record `+0x10` are still unused; the camera comes from the node instead,
   so what they add is unknown.
+
+## ⭐⭐⭐ The centred message box (`this+0x1950`)
+
+The panel the lobby puts the park's name in. Built by the `WorldMapSelector` constructor
+(`FUN_0012c818` on `this+0x1950`), filled by `FUN_00218f78`, drawn by `FUN_0012c968`.
+
+### Layout — all of it is in the code, none of it authored
+
+| what | where it comes from |
+|---|---|
+| **width** | `max(textWidth(line1), textWidth(line2)) + 0x3C` (60), **capped at `0x1C2`** (450) |
+| **height** | one line: `textHeight(line1) + 0x32` (50); two: `h1 + 100 + h2` |
+| **x** | **`(0x1FF - width) >> 1`** |
+| **y** | **`(0x1FF - height) >> 1`** |
+| line 1 | at `x + width/2`, `y + 0x10` (16), centred |
+| line 2 | at `x + width/2`, `y + 0x30` (48), centred, drawn only when non-empty |
+| buttons | up to **3**, each drawn through its own vtable at `+0x14`, from `(x, y)` |
+
+⭐ `0x1FF` is **511** -- the box is centred in the console's 512-square UI space, the same
+`Native` the laptop panel uses. The centring is literally `(511 - size) / 2` on both axes.
+
+⚠ The 450 cap sits INSIDE the two-line branch, so a very wide single line is not clamped. That is
+the code's shape, not a tidy-up.
+
+### It animates open, and the content waits for it
+
+`FUN_0012c968` eases the current size toward the target by **halving the gap each frame**
+(`(target - current) >> 1`), and a step of zero snaps. ⚠ **The text and the buttons are drawn
+only once that has settled** -- while it is growing, only the frame is on screen.
+
+### Contents
+
+Two lines at `box+0x5C` and `box+0xDC`, 127 bytes each, copied in by `FUN_00218f78`. The park's
+name goes in through the record's `STR_MAP_*` text id.
+
+Buttons are `0x60`-byte records from `box+0x15C`, their text id at `+0x5C` of each (so
+`box+0x1B8 + n*0x60`), with the count at `box+0x27C`. The constructor makes exactly three and
+zeroes each id. The two the lobby uses:
+
+| text id | key | English |
+|---|---|---|
+| `0x1E9` (489) | `STR_MAP_OK` | OK |
+| `0x130` (304) | `STR_MAP_CANCEL` | Cancel |
+
+⭐ Both are `STR_MAP_*`, which is the map screen's own prefix -- the same family as the park names.
+
+### Still open on the box
+
+- The frame ART. `FUN_00138780` sets the rect and `FUN_00141f68` (vtable slot 2) runs at the end
+  of the draw; neither has been read, so what actually paints the panel is unknown.
+- Which button index maps to which action, and what the other prompt modes (4..8) say.
