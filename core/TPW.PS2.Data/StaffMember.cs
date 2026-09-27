@@ -280,8 +280,8 @@ public class StaffMember
     /// <summary>⭐ `vt+0x1A4`, state 0: FIND WORK. The base `0x1DB800` is EMPTY and every native
     /// subclass overrides it.
     ///
-    /// ⚠⚠ ADAPTER for the types whose job step is not built yet (mechanic, entertainer, guard,
-    /// researcher -- areas C and later B): the common skeleton every native find-work shares --
+    /// ⚠⚠ ADAPTER for the types whose job step is not built yet (entertainer, guard, researcher --
+    /// areas B, C and D; the handyman and the mechanic have theirs): the common skeleton every native find-work shares --
     /// the tired/strike check `vt+0x1BC`, then the job search, then "nothing found → state 0xD
     /// (patrol)" -- with the job search FINDING NOTHING. So they walk, patrol, tire, rest and strike
     /// exactly as the base does, and never work. ⚠ Their idle-sound draws and any job-search draws
@@ -422,12 +422,9 @@ public class StaffMember
     // Walking (§4).
 
     /// <summary>`vt+0x18C`: the walk speed in 1/256 cell per tick. Base `0x1DC928` = the speed
-    /// bits; the handyman (`0x144D38`, <see cref="Handyman.Speed"/>) and the mechanic (`0x179308`)
-    /// override it with their level tables. ⚠ The mechanic has no class of his own until area C, so
-    /// his override is kept here, keyed on the kind; move it into that class when it lands.</summary>
-    public virtual int Speed => Kind == StaffKind.Mechanic
-        ? StaffTables.MechanicSpeed[Level]                               // 0x179308: u16 [0x3627CA + 4L]
-        : SpeedBits;
+    /// bits; the handyman (`0x144D38`, <see cref="Handyman.Speed"/>) and the mechanic (`0x179308`,
+    /// <see cref="Mechanic.Speed"/>) override it with their level tables.</summary>
+    public virtual int Speed => SpeedBits;
 
     /// <summary>State 3, `vt+0x14C` = `0x191E98` (the guard overrides it, area C): the walk step,
     /// through the SAME cursor the guests walk with (<see cref="NativeGuestRoute"/>) over the SAME

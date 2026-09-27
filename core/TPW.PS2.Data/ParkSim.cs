@@ -7,7 +7,7 @@ namespace TPW.PS2.Data;
 /// compiled RSE program beside its model, and <see cref="RseMachine"/> is the interpreter for it.
 /// So a ride here is a machine, a host for the animation it asks to play, and the cells it
 /// occupies; everything else about it is the script's business.</summary>
-public sealed class ParkRide
+public sealed partial class ParkRide
 {
     public int Id { get; init; }
     public string Name { get; init; } = "";
@@ -183,23 +183,23 @@ public sealed class ParkRide
     /// returns `+0x24`, `MinSpeedDamage`, which is the offset `RideCatalogue` already documents, so
     /// the stride and the base both check out.
     ///
-    /// ⚠⚠ THE DEFAULT IS STILL THE PORT'S CHOICE. `FUN_00116120` sets defaults for speed and
-    /// duration and says nothing about this one, so where a NEW ride starts is unread; it opens at
-    /// the maximum.
+    /// ⚠⚠ THE BUILD DEFAULT IS STILL THE PORT'S CHOICE -- it opens at the maximum. ⚠ CORRECTED
+    /// (staff mechanics, 2026-09-27): `FUN_00116120` DOES set this one -- MIPS `0x116164..0x116194`
+    /// stores `max(1, vt+0x344 >> 1)`, half the maximum -- and the upgrade install uses it
+    /// (<see cref="ParkSim.ApplyTierDefaults"/>). Whether a NEWLY BUILT ride goes through `0x116120`
+    /// is not traced, so the build default is left for the ride screen's owner to settle.
     ///
-    /// ⚠⚠ AND THE TIER INDEX IS `ride[0x126]`, NOT ALWAYS ZERO. Every tier getter reads that byte
-    /// and strides 0x34 by it. This port asks for `Tier(0)` everywhere, which is right only while a
-    /// ride is at tier zero -- nothing here tracks that byte yet, and an upgraded ride would read
-    /// the wrong tier.</summary>
+    /// ⚠ THE TIER INDEX IS `ride[0x126]` (<see cref="CurrentTier"/>), which an upgrade raises
+    /// (`0x116268`); the wear rate and the tier defaults stride by it.</summary>
     /// <summary>⭐ `+0x126`, WHICH TIER THIS RIDE IS ON. Every tier getter on the disc reads this
     /// byte and strides `0x34` by it -- `FUN_00117B28` returns `payload + tier*0x34 + 0x30`, and
     /// its neighbours the same with other offsets -- so a ride that is not on tier zero reads a
     /// different set of speeds, durations, damages and capacities entirely.
     ///
     /// ⚠ Four functions write it (`0x116048` twice, `0x116268`, and the savegame restore
-    /// `0x116BA8`) and seventeen read it, so it is a real field and not a constant. What RAISES it
-    /// -- presumably a ride upgrade -- is not decoded, and this port has no mechanism that would,
-    /// so it stays 0 here.
+    /// `0x116BA8`) and seventeen read it, so it is a real field and not a constant. ⭐ What RAISES it
+    /// is the upgrade install `0x116268`, READ: a mechanic finishing a requested upgrade
+    /// (<see cref="ParkSim.InstallUpgrade"/>, via <see cref="ParkStaff.RequestUpgrade"/>).
     ///
     /// ⭐ It exists so the live paths ask for the RIGHT tier rather than hardcoding zero. ⚠ The
     /// shopfront figures deliberately do NOT use it: `PlacementCost` and `ShopfrontReliability`
@@ -355,7 +355,7 @@ public sealed class ParkRide
 /// <see cref="TickMilliseconds"/> steps and keeps the remainder, so the same sequence of events
 /// comes out at any frame rate. Master's standing rule for this port is console speed with
 /// everything interpolated, and the interpolation belongs to the view.</summary>
-public sealed class ParkSim : IRseDirectory
+public sealed partial class ParkSim : IRseDirectory
 {
     /// <summary>The console runs its logic at 25 a second; the RSE's own clock is milliseconds.</summary>
     public const long TickMilliseconds = 40;
@@ -365,6 +365,11 @@ public sealed class ParkSim : IRseDirectory
     {
         "VAR_LETMEON", "VAR_LETMEOFF", "VAR_CAPACITY", "VAR_DURATION", "VAR_ONRIDE",
         "VAR_RIDECLOSED", "VAR_BROKEN", "VAR_RUNNING", "VAR_SPACELEFT", "VAR_STARTNOW",
+        // ⭐ Variable 4 of the common set ("All ride scripts must have these", Wateride.rss 7-18),
+        // which the native service flag writes: `0x118568 → 0x1FA690 → 0x1C0E28(inst, 4, 1)`, and
+        // `0x118678 → 0x1FA700 → 0x1C0E28(inst, 4, 0)` (findings/staff-mechanics-guards.md §1.3).
+        // ⚠ The native write is BY INDEX; see ParkSim.WriteBreakStat, which writes index 4.
+        "VAR_BREAKSTAT",
     };
 
     public ParkPaths Paths { get; }
@@ -469,6 +474,10 @@ public sealed class ParkSim : IRseDirectory
         var track = new TrackRideSim(layout, seed, karts)
         {
             TakeHead = () => ride.TryTakeFromQueue(out int g) ? g : null,
+            // ⭐ The ride side of area C, called from inside the class's own update at the points the
+            // console calls them (0x2023B0's wear, then 0x200358) -- see RideService.cs.
+            Wear = () => ApplyWear(ride, Tick),
+            BreakdownCheck = () => TrackBreakdown(ride),
         };
         track.Released += ride.Leaves;
         ride.Track = track;
@@ -482,7 +491,13 @@ public sealed class ParkSim : IRseDirectory
     {
         var ride = _rides.FirstOrDefault(r => r.Id == id);
         if (ride == null) return null;
-        var sim = new CoasterSim(track) { TakeHead = () => ride.TryTakeFromQueue(out int g) ? g : null };
+        var sim = new CoasterSim(track)
+        {
+            TakeHead = () => ride.TryTakeFromQueue(out int g) ? g : null,
+            // ⭐ 0x122AF8/0x122BB8's wear and 0x1228D0, called at the console's points (RideService.cs).
+            Wear = () => ApplyWear(ride, Tick),
+            BreakdownCheck = () => CoasterBreakdown(ride),
+        };
         sim.Released += ride.Leaves;
         sim.SetOpen(ride.DestinationState == 2);
         ride.Coaster = sim;
@@ -506,8 +521,15 @@ public sealed class ParkSim : IRseDirectory
         r.CachedTrackWeight = (byte)Math.Min(255, r.Track.Track.Weight);
     }
 
-    public void Remove(int id) => _rides.RemoveAll(r => r.Id == id);
-    public void Clear() { _rides.Clear(); Time = 0; _carry = 0; }
+    /// <summary>⭐ The removal notice `0x14B9D0` also takes the ride off the upgrade list (`0x153D70`,
+    /// findings/staff-mechanics-guards.md §2.7).</summary>
+    public void Remove(int id)
+    {
+        foreach (var r in _rides) if (r.Id == id) _upgrades.Remove(r);
+        _rides.RemoveAll(r => r.Id == id);
+    }
+    /// <summary>Park init `0x151498` empties the upgrade list too (n = 0).</summary>
+    public void Clear() { _rides.Clear(); _upgrades.Clear(); Time = 0; _carry = 0; }
 
     /// <summary>Open or close a ride. ⭐ Closed is the state a ride is BUILT in; opening it is what
     /// starts the cycle the script describes.</summary>
@@ -547,7 +569,7 @@ public sealed class ParkSim : IRseDirectory
             r.Host.AdvanceTo(Time);
             if (r.Track != null)
             {
-                r.Track.Step(unchecked((uint)(Time / TickMilliseconds)));
+                r.Track.Step(Tick);
                 SyncTrack(r);
             }
             else if (r.Coaster != null)
@@ -555,7 +577,10 @@ public sealed class ParkSim : IRseDirectory
                 r.Coaster.Step();
                 SyncCoaster(r);
             }
-            else Handshake(r);
+            else ScriptedStatusTick(r, Tick);
+            // ⭐ The parent update `0x1169C0`'s tail, the Life / condemned check, after every class's
+            // status tick (RideService.cs; a no-op for anything that is not one of the four ride classes).
+            LifeCheck(r);
             // ⭐ A SPAWNED CHILD IS ITS OWN SCHEDULED SCRIPT, not something the parent steps. The
             // PS2's scheduler visits every live instance, children included, so they are visited
             // here too -- and a child faulting leaves its parent running.

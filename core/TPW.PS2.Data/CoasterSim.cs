@@ -84,8 +84,19 @@ public sealed class CoasterSim
     public List<CoasterTrain> Trains { get; } = new();
 
     /// <summary>`+0x9a`: 2 and 10 open (the same state), 3 closed by the player, 4 broken,
-    /// 5 reliability 0 (trains freeze). 11 never occurs (coaster-operation.md §1).</summary>
-    public int Status { get; private set; } = 3;
+    /// 5 reliability 0 (trains freeze). 11 never occurs (coaster-operation.md §1).
+    /// ⭐ Internal set: <see cref="ParkSim.SetRideStatus"/> stores 4/5/6/7 here (the coaster's own
+    /// enter handlers for them change nothing in this class: enter 6 is the flag-only `0x1E4CF8`, so
+    /// the trains keep running and carry their riders home).</summary>
+    public int Status { get; internal set; } = 3;
+
+    /// <summary>⭐ `vt+0x364` = `0x117B88` at the coaster's two call sites: the status-4 tick `0x122BB8`
+    /// (every update) and the status-10 tick `0x122AF8` when the ring is closed and riders are aboard
+    /// (coaster-operation.md §4.3). Null = no wear.</summary>
+    public Action Wear { get; set; }
+    /// <summary>⭐ `0x1228D0`, called after the trains (`0x1238C0`) and before the status tick, the
+    /// console's order (coaster-operation.md §1).</summary>
+    public Action BreakdownCheck { get; set; }
 
     /// <summary>The front of the queue, if anyone is there. Set by <see cref="ParkSim.AttachCoaster"/>.</summary>
     public Func<int?> TakeHead { get; set; }
@@ -128,7 +139,16 @@ public sealed class CoasterSim
                     case CoasterTrainState.Wait: Wait(tr); break;
                     case CoasterTrainState.Board: Board(tr); break;
                 }
-        if (Status is 2 or 10 or 4 && Track.Closed && Trains.Count == 0) Spawn();
+        BreakdownCheck?.Invoke();                                   // 0x1228D0
+        // The status tick 0x1E5138: 4 = 0x122BB8 (wear, then tick 10); 2 = 0x122AB0 (tick 10);
+        // 10 = 0x122AF8: (a) spawn when the ring is closed and none exist, (b) the station
+        // animation (not here), (c) wear when the ring is closed and riders are aboard.
+        if (Status == 4) Wear?.Invoke();
+        if (Status is 2 or 10 or 4)
+        {
+            if (Track.Closed && Trains.Count == 0) Spawn();
+            if (Track.Closed && Riders != 0) Wear?.Invoke();
+        }
         foreach (var tr in Trains) SoundTick(tr);
     }
 

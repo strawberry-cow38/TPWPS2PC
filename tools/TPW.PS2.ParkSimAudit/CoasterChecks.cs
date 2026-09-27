@@ -10,11 +10,11 @@ using TPW.PS2.Data;
 /// check has a flat control on which the chain must cover everything.</summary>
 static class CoasterChecks
 {
-    static readonly ParkCell ExitCell = new(40, 41), EntryCell = new(35, 41);
+    internal static readonly ParkCell ExitCell = new(40, 41), EntryCell = new(35, 41);
     static readonly (int X, int Z)[] Oval =
         { (46, 41), (51, 45), (51, 51), (46, 55), (40, 55), (34, 55), (29, 51), (29, 46), (31, 41) };
 
-    sealed class Ground : CoasterTrack.IGround
+    internal sealed class Ground : CoasterTrack.IGround
     {
         public readonly List<CoasterTrack> Tracks = new();
         public readonly HashSet<ParkCell> Blocked = new();
@@ -35,7 +35,7 @@ static class CoasterChecks
         return ok;
     }
 
-    static CoasterTrack Build(CoasterType type, int[] heights, out List<bool> valid, Ground g = null)
+    internal static CoasterTrack Build(CoasterType type, int[] heights, out List<bool> valid, Ground g = null)
     {
         var t = new CoasterTrack(type, ExitCell, 3, EntryCell);
         g ??= new Ground();

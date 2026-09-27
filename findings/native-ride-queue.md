@@ -23,7 +23,7 @@ states.
 |---|---|---|
 | ride+F4 | queue head; a doubly linked list threaded through each guest's link node (B+0 next, B+4 prev, B = N+8) | 118540 counts it; 1180B0 and 117C90 unlink from it |
 | ride+A0 | list of queue CELLS (byte x, byte z), starting at the ride and ending at the far end of the queue | 117340, 20F4D8 via 1A3368 |
-| ride vtable +17C | the ride's rotated entrance connection cell, where spots start. 116EC0 adds the placed origin (+74) to the rotated compiled record +0xC that 1E1760 reads, which is connection A: the cell INSIDE the footprint whose door faces the stub (the port's `ShopEntrance.Connection`) | 117340 |
+| ride vtable +17C | the ride's rotated entrance connection cell, where spots start. 116EC0 adds the placed origin (+74) to the rotated compiled record +0xC that 1E1760 reads, which is connection A: the cell INSIDE the footprint whose door faces the stub (the port's `ShopEntrance.Connection`). ⚠ CORRECTED 2026-09-27 (mechanics port, MIPS `0x116EC0..0x117014` re-read): it then takes ONE STEP along `d = (0x1E1DE8() + 0x1E1998()) & 3` -- 0 z-1, 1 x-1, 2 z+1, 3 x+1 (`0x116FB8..0x117010`) -- so +17C is the cell just OUTSIDE the door, the stub, not the inside cell. The mechanic's work cell is this function (`ParkSim.WorkCell`); what that means for 117340's spots is not re-checked here | 117340 |
 | ride vtable +F4 | the queue MOUTH: the last cell of the list (117280) | quit walk 2112D0 |
 | ride+126 | upgrade tier byte | 20D530 |
 | ride+108 | rider list; boarding links the guest here | 117C90 |

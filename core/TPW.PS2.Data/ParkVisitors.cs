@@ -194,7 +194,7 @@ public sealed class ParkVisitors
     }
 
     /// <summary>⭐⭐ THE PARK'S STAFF, ATTACHED -- null by default, and then this coordinator behaves
-    /// exactly as it did before staff existed. Setting it (the viewer's staff step does) changes four
+    /// exactly as it did before staff existed. Setting it (the viewer's staff step does) changes five
     /// things and nothing else:
     /// 1. <see cref="Step"/> runs <see cref="ParkStaff.Update"/> once per executed park tick;
     /// 2. guests PRODUCE LITTER into <see cref="ParkStaff.Litter"/>: the idle arms 3 and 4 of
@@ -202,7 +202,10 @@ public sealed class ParkVisitors
     ///    sick guest vomits after 15 ticks, state 0x1D `0x210950`) -- see <see cref="IdleArm"/>;
     /// 3. guests FEEL nearby litter every 64 ticks (<see cref="VisitorNeeds.NearbyLitter"/>);
     /// 4. the toilet stand-in <see cref="Maintain"/> stops: handymen clean the lavatories instead,
-    ///    and with none hired they STAY dirty, as on the console.</summary>
+    ///    and with none hired they STAY dirty, as on the console;
+    /// 5. a ride breaking down for good (enter 5) posts the advisor `0x103658` picks by asking the
+    ///    mechanics (0x37/0x38/0x39, <see cref="ParkStaff.BreakdownAdvisorMessage"/>) instead of 0x37.
+    /// ⚠ Rides wear and break WITHOUT staff too (<see cref="ParkSim"/>): only repairs need them.</summary>
     public ParkStaff Staff
     {
         get => _staff;
@@ -213,6 +216,8 @@ public sealed class ParkVisitors
             if (value != null && !ReferenceEquals(value.Visitors, this))
                 throw new ArgumentException("this ParkStaff was built for a different ParkVisitors", nameof(value));
             _staff = value; WireLitter();
+            // ⭐ The enter-5 advisor `0x103658` asks the mechanics (area C); with no staff it is 0x37.
+            Sim.BreakdownMessage = value == null ? null : value.BreakdownAdvisorMessage;
         }
     }
     ParkStaff _staff;
@@ -677,6 +682,16 @@ public sealed class ParkVisitors
                 QueueReturn(plan, ride, completed: true);
             }
             ride.ClearLeft();
+            // ⭐ A breakdown emptied the queue (`0x117798(ride, 0)`, event 7): each guest who was still
+            // waiting walks back out from the queue, not off the ride (findings/staff-mechanics-guards.md
+            // §1.2; the guest's event-7 handler sends it to state 0x3A).
+            foreach (int guest in ride.Ejected)
+            {
+                if (!_plans.TryGetValue(guest, out var plan) || plan.Intent != VisitorIntent.Queued
+                    || !_owners.TryGetValue(guest, out var owner) || !ReferenceEquals(owner, ride)) continue;
+                QueueReturn(plan, ride, completed: false, waiting: true);
+            }
+            ride.ClearEjected();
         }
     }
 
@@ -687,9 +702,9 @@ public sealed class ParkVisitors
         _returning.Remove(guest);
     }
 
-    void QueueReturn(Plan plan, ParkRide ride, bool completed, uint? completedAt = null)
+    void QueueReturn(Plan plan, ParkRide ride, bool completed, uint? completedAt = null, bool? waiting = null)
     {
-        bool stillWaiting = !completed && (ride.Queue.Contains(plan.Guest) || ride.Get("VAR_LETMEON") == plan.Guest);
+        bool stillWaiting = waiting ?? (!completed && (ride.Queue.Contains(plan.Guest) || ride.Get("VAR_LETMEON") == plan.Guest));
         var preferred = new[] { stillWaiting ? ride.Entrance : ride.Exit,
                                 stillWaiting ? ride.Exit : ride.Entrance, (ParkCell?)plan.At }
             .Where(c => c.HasValue).Select(c => c.Value).Distinct().ToArray();

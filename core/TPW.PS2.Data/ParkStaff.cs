@@ -91,7 +91,7 @@ public sealed record StaffFeature(ParkCell Origin, ParkCell Entry, byte Flags, b
 /// strikes' monthly ladder, training purchases, patrol and grab tools (area D; the strike FLAG per
 /// type is here for it to drive, default off); the jobs of mechanics, guards, entertainers and
 /// researchers (areas B/C/D); the prank and the load scatter of litter.</summary>
-public sealed class ParkStaff
+public sealed partial class ParkStaff
 {
     readonly Dictionary<StaffKind, StaffMember[]> _slots = new();
     readonly Dictionary<StaffKind, List<StaffMember>> _free = new();     // index 0 = head
@@ -128,7 +128,12 @@ public sealed class ParkStaff
         {
             var slots = new StaffMember[StaffTables.PoolSize];
             for (int i = 0; i < slots.Length; i++)
-                slots[i] = kind == StaffKind.Handyman ? new Handyman(this, i) : new StaffMember(this, kind, i);
+                slots[i] = kind switch
+                {
+                    StaffKind.Handyman => new Handyman(this, i),
+                    StaffKind.Mechanic => new Mechanic(this, i),
+                    _ => new StaffMember(this, kind, i),
+                };
             _slots[kind] = slots;
             _free[kind] = new List<StaffMember>();
             _active[kind] = new List<StaffMember>();
@@ -172,7 +177,25 @@ public sealed class ParkStaff
     public Action<StaffMember, int, int> Sound { get; set; }
     internal void RaiseSound(StaffMember member, int eventId) => Sound?.Invoke(member, 8, eventId);
 
-    /// <summary>An advisor message id the staff code posts (so far ADD_MAX from the hire drop).</summary>
+    /// <summary>⭐ A HANDLE play: (member, native category, event, handle offset `P+`). The mechanic's
+    /// chatter (bank 8 0xA2 at `P+0x58`, 0xA3 at `P+0x5C`) and repair noise (bank 2 0x6F at `P+0x60`)
+    /// pass their handle to `0x111428`; a view should not start a second voice on a handle that is
+    /// still sounding (INFERRED, findings/staff-mechanics-guards.md §3.2). Null falls back to
+    /// <see cref="Sound"/>.</summary>
+    public Action<StaffMember, int, int, int> HandleSound { get; set; }
+    /// <summary>⚠ ADAPTER for `0x111CC8(audio, &amp;handle)`, "is that handle still playing" -- which the
+    /// repair noise asks before every restart. Null = never playing, so the noise is raised on every
+    /// repairing tick and the view's own handle test decides.</summary>
+    public Func<StaffMember, int, bool> HandlePlaying { get; set; }
+    internal void RaiseSound(StaffMember member, int bank, int eventId, int handle)
+    {
+        if (HandleSound != null) HandleSound(member, bank, eventId, handle);
+        else Sound?.Invoke(member, bank, eventId);
+    }
+    internal bool IsHandlePlaying(StaffMember member, int handle) => HandlePlaying?.Invoke(member, handle) ?? false;
+
+    /// <summary>An advisor message id the staff code posts (ADD_MAX from the hire drop). ⚠ The ride
+    /// side's breakdown messages go to <see cref="ParkSim.Advisor"/>, with the ride.</summary>
     public Action<int> Advisor { get; set; }
 
     // --------------------------------------------------------------------------------------------
@@ -266,7 +289,8 @@ public sealed class ParkStaff
     /// handyman unclaims his litter; unlink; count-1; active → FREE-LIST HEAD). No confirmation.
     /// ⚠ The wage accumulator `park+0x12D0` is not modelled (area D); the debit is.
     /// ⚠ A pending route request is CANCELLED -- a deliberate difference, see <see cref="StaffRouteService"/>.
-    /// ⚠ "No mechanics left clears the ride upgrade list" (`0x1542A0`) is area C's.</summary>
+    /// ⭐ Then, whoever was fired, `0x124300` asks the MECHANIC list (`0x14D650`) and an empty one clears
+    /// the ride upgrade list (`0x1542A0`) -- so firing the last mechanic drops every pending upgrade.</summary>
     public void Fire(StaffMember member)
     {
         RequireActive(member);
@@ -274,6 +298,7 @@ public sealed class ParkStaff
         member.Dismiss();
         if (wage > 0) Sim.Finances.Debit(wage * 10);                      // 0x100C78: += 0x12D0, then debit
         FreeMember(member);
+        if (Count(StaffKind.Mechanic) == 0) Sim.ClearUpgrades();           // 0x124300 → 0x14D650 → 0x1542A0
     }
 
     /// <summary>`0x14B608`: `vt+0x194` release, then the pool free (`0x14B8B0` etc.): unlink the map

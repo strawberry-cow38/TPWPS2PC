@@ -50,7 +50,10 @@ COVERAGE = '\n'.join([f'  ok   {category.replace("_", " ")}: filler'
                       '  ok   disruption: late-run negative control catches orphan needs through ordinary per-step sampling'] +
                      ['  ok   staff: check'] * 78 +
                      ['  ok   staff: toilet score: |dx| + |dz|*(c+1) EXACTLY as shipped picks the same-row c59 toilet',
-                      '  ok   staff: no staff room: a tired handyman never works again, he patrols forever'])
+                      '  ok   staff: no staff room: a tired handyman never works again, he patrols forever'] +
+                     ['  ok   mechanic: check'] * 64 +
+                     ['  ok   mechanic: priority: the duplicated 0x153D40 is DEAD -- 5 coin-1 decisions repair nothing',
+                      '  ok   mechanic: call mechanic: the predicate tests the MODE byte for 0x32 (refused) -- the shipped slip'])
 
 
 
@@ -63,6 +66,14 @@ class ClassificationTests(unittest.TestCase):
         for text in ('\n'.join(x for x in COVERAGE.splitlines() if 'staff:' not in x),
                      COVERAGE.replace('  ok   staff: check\n', '', 1),
                      COVERAGE.replace('toilet score: |dx| + |dz|*(c+1) EXACTLY as shipped', 'toilet score: some formula')):
+            self.assertEqual(classify('JUNGLE', 0, text + '\nPASS')['status'], 'missing_coverage')
+        self.assertEqual(classify('JUNGLE', 0, COVERAGE + '\nPASS')['status'], 'pass')
+
+    def test_mechanic_family_count_and_witnesses_required(self):
+        for text in ('\n'.join(x for x in COVERAGE.splitlines() if 'mechanic:' not in x),
+                     COVERAGE.replace('  ok   mechanic: check\n', '', 1),
+                     COVERAGE.replace('the duplicated 0x153D40 is DEAD', 'the duplicated 0x153D40 repairs'),
+                     COVERAGE.replace('the predicate tests the MODE byte', 'the predicate tests the STATE byte')):
             self.assertEqual(classify('JUNGLE', 0, text + '\nPASS')['status'], 'missing_coverage')
         self.assertEqual(classify('JUNGLE', 0, COVERAGE + '\nPASS')['status'], 'pass')
 

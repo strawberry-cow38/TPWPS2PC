@@ -170,6 +170,10 @@ public static class StaffTables
     public const uint MechanicTable = 0x3627C8;
     public static readonly int[] MechanicWorkTicks = { 240, 180, 120, 60, 60 };  // u16 0x3627C8 + 4L
     public static readonly int[] MechanicSpeed = { 9, 12, 14, 16, 18 };          // u16 0x3627CA + 4L
+    /// <summary>`[0x2BED10]` = 63, read only by the mechanic's chatter `0x1781B8` (at `0x1781D4`): he
+    /// chatters on every tick whose count is NOT a multiple of it (findings/staff-mechanics-guards.md §3.2).</summary>
+    public const uint MechanicChatterPeriodAddress = 0x2BED10;
+    public const uint MechanicChatterPeriod = 63;
 
     /// <summary>Research work points per quantum, `0x366150` (reader `0x1B61C0`). Area D.</summary>
     public const uint ResearcherWorkTable = 0x366150;

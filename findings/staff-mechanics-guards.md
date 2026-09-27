@@ -276,9 +276,13 @@ available(m) = target(P+0x28) == 0
 - **First** available mechanic in list order, no distance test; if the ride is not broken or is condemned the
   dispatch fails silently and nobody else is tried.
 - **`mode != 0x32` is a slip for `state != 0x32`**: the MIPS compares the mode byte (`lbu v1, 0x2e(a1)` in
-  the delay slot at `0x1241e4`, `bne v1, a3=0x32` at `0x1241fc`), and no mode 0x32 exists. So a mechanic
-  **resting in a staff room (state 0x32, model hidden) counts as available** and can be called out; nothing
-  shows its model until `0x1786d0` finishes the job. (READ compare; intent and visible consequence INFERRED.)
+  the delay slot at `0x1241e4`, `bne v1, a3=0x32` at `0x1241fc`), and no mode 0x32 exists, so that test
+  never refuses anyone. (READ compare; intent INFERRED.)
+  ⚠ **CORRECTED 2026-09-27 (mechanics port): the slip is NOT observable in play.** This bullet used to
+  infer that a mechanic resting in a staff room (state 0x32) counts as available and can be called out.
+  He cannot: going to rest stores the staff ROOM as his target (`0x1dbb80`, `sw s0, 0x20(s1)` at
+  `0x1dbd64`), so the predicate's FIRST test (`target == 0`) already refuses him. The wrong byte is kept
+  as shipped (`Mechanic.Available`) and the audit checks the compare, not a consequence it does not have.
 - The same predicate is inlined in `0x103658` (advisor) and `0x178458` (hand-off).
 
 ### 2.6 Route failure hand-off `0x178458` (mechanic `vt+0x16c`; READ)

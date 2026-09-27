@@ -44,13 +44,31 @@ public static class NativeRideReliability
     {
         unchecked
         {
+            int sp = SpeedTerm(minSpeedDamage, speed);
+            if (maxCapacity == 0) return 0;          // the console traps here; answering 0 is kinder
+            return ((sp + CapacityTerm(minCapacityDamage, capacity, maxCapacity)) / 2) * wearRate;
+        }
+    }
+
+    /// <summary>The speed half every family shares (`0x1B80E0`, `0x1225F8`, `0x201F78`).</summary>
+    static int SpeedTerm(int minSpeedDamage, int speed)
+    {
+        unchecked
+        {
             int sp = (0x1000 - minSpeedDamage) * ((speed << 12) / 100) >> 12;
             // ⚠ NOT a clamp, a branch: below 100 the damage is ADDED, at or above it the two are
             // averaged with unity. Reproduced as written rather than tidied into one expression.
-            sp = speed < 100 ? sp + minSpeedDamage : (minSpeedDamage + sp + 0x1000) / 2;
+            return speed < 100 ? sp + minSpeedDamage : (minSpeedDamage + sp + 0x1000) / 2;
+        }
+    }
 
-            if (maxCapacity == 0) return 0;          // the console traps here; answering 0 is kinder
-            int cp = (capacity << 12) / maxCapacity;
+    /// <summary>The load half every family shares: `(load &lt;&lt; 12) / max`, then the quadratic knee
+    /// above four fifths. ⚠ `maxCapacity` must not be 0 (the console traps; callers answer 0).</summary>
+    static int CapacityTerm(int minCapacityDamage, int load, int maxCapacity)
+    {
+        unchecked
+        {
+            int cp = (load << 12) / maxCapacity;
             int t = (0x1000 - minCapacityDamage) * cp;
             int capTerm = (t >> 12) + minCapacityDamage;
             if (cp > 0xCCB)
@@ -58,7 +76,25 @@ public static class NativeRideReliability
                 int e = (cp - 0xCCC) >> 6;
                 capTerm = minCapacityDamage + (t >> 12) + e * e;
             }
-            return ((sp + capTerm) / 2) * wearRate;
+            return capTerm;
+        }
+    }
+
+    /// <summary>⭐ `0x201F78`, THE TRACK RIDE's wear term (vt `+0x36C`), READ in MIPS
+    /// `0x201F78..0x202158` (findings/track-ride-operation.md §6.1): the same speed and load halves
+    /// plus a track-length third, `lenTerm = (pieces &lt;&lt; 12) / 30` with `pieces` the u8 at ride
+    /// `+0x26F8` (`lbu` at `0x202128`), and the three are averaged -- `/ 3` at `0x202150` -- before
+    /// the wear rate multiplies (`0x202158`). So a longer track wears faster.</summary>
+    public static int TrackWear(int minSpeedDamage, int minCapacityDamage, int wearRate,
+                                int speed, int load, int maxCapacity, int pieces)
+    {
+        unchecked
+        {
+            int sp = SpeedTerm(minSpeedDamage, speed);
+            if (maxCapacity == 0) return 0;          // the console traps (break 7 at 0x2020B8); 0 is kinder
+            int capTerm = CapacityTerm(minCapacityDamage, load, maxCapacity);
+            int lenTerm = ((pieces & 0xFF) << 12) / 30;
+            return ((lenTerm + sp + capTerm) / 3) * wearRate;
         }
     }
 

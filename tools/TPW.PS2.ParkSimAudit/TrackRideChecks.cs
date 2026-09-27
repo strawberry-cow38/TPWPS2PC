@@ -9,11 +9,11 @@ using TPW.PS2.Data;
 /// because the rule never fired shows up as its control failing.</summary>
 static class TrackRideChecks
 {
-    static readonly ParkCell Station = new(40, 40);
+    internal static readonly ParkCell Station = new(40, 40);
 
     /// <summary>A rectangle out of the exit and back into the entry, turning to one side.
     /// Every leg is even, so no holes.</summary>
-    static TrackLayout Loop(int rot, int side, TrackGround ground)
+    internal static TrackLayout Loop(int rot, int side, TrackGround ground)
     {
         var l = new TrackLayout(Station, rot, ground);
         var e = l.ExitCell; var r = l.ReturnCell;

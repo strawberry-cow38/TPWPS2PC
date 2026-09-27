@@ -8,6 +8,15 @@ public enum TrackRideStatus : byte
     Closed = 3,
     Loading = 10,
     Unloading = 11,
+    /// <summary>⭐ Area C (findings/staff-mechanics-guards.md §1.2, track-ride-operation.md §3, §6):
+    /// 4 broken down (below reliability 10.0, forced by `0x200358` from ANY status); 5 broken at
+    /// reliability 0; 6 being repaired (entering it removes every car, `0x200310`); 7 repaired (the
+    /// parent `0x116660`: 2, reliability 100.0, then 10). Ticks 4/5/6 are the unload pass
+    /// `0x2006F8/0x200698/0x2006C8 → vt+0x2AC = 0x2005C8`.</summary>
+    Broken = 4,
+    BrokenZero = 5,
+    Repairing = 6,
+    Repaired = 7,
 }
 
 /// <summary>A car on a track ride: one 0x98-byte object (findings/track-ride-cars.md §2). Fields
@@ -60,8 +69,10 @@ public sealed class TrackCar
 /// the status tick (0x1E5138). The tick counter is the park's update counter (0x1C4930), passed in,
 /// because boarding and unloading run on its multiples of 20 and 10.
 ///
-/// Not here yet: wear, breakdown and repair (the port has no mechanics), and the drive-it-yourself
-/// kart race.</summary>
+/// ⭐ Wear, breakdown and repair are wired in by <see cref="ParkSim.AttachTrack"/> through
+/// <see cref="Wear"/> and <see cref="BreakdownCheck"/>, which this class calls at the console's
+/// points; the reliability they act on is the ride's (<see cref="ParkRide.Reliability"/>). Not here
+/// yet: the drive-it-yourself kart race.</summary>
 public sealed class TrackRideSim
 {
     readonly List<TrackCar> _cars = new();
@@ -73,8 +84,9 @@ public sealed class TrackRideSim
     public IReadOnlyList<TrackCar> Cars => _cars;
     /// <summary>+0x128. One guest per car, so this is the car count.</summary>
     public int Riders => _cars.Count(c => c.Guest != null);
-    /// <summary>+0x12A: counts the status-2 updates.</summary>
-    public int RunTimer { get; private set; }
+    /// <summary>+0x12A: counts the status-2 updates. ⚠ Internal set: `0x116120` (the tier defaults an
+    /// upgrade re-runs) zeroes it too.</summary>
+    public int RunTimer { get; internal set; }
 
     /// <summary>Settings (0x116120 defaults): Speed 50 (1..100), Capacity 4 (1..8), Duration 5 (1..10).
     /// Duration is the lap target (vtable +0x304 = ride +0xF8), read live.</summary>
@@ -89,6 +101,15 @@ public sealed class TrackRideSim
     public event Action<int> Released;
     /// <summary>A guest boarded a new car.</summary>
     public event Action<int, TrackCar> Boarded;
+    /// <summary>⭐ `vt+0x364` = `0x117B88` as `0x2023B0` calls it: under the car-step guard (cars exist and
+    /// status is not 10), BEFORE the cars step. ⚠ The console also skips it in camera mode 2
+    /// (`0x395288`), which the port has no producer for (camera.md: "not dispatched").
+    /// Null = no wear (a bare track sim with no ride behind it).</summary>
+    public Action Wear { get; set; }
+    /// <summary>⭐ `0x200358`, called every update between the cars (`0x2023B0`) and the status tick
+    /// (`0x1E5138`), which is the console's order (track-ride-operation.md §2).</summary>
+    public Action BreakdownCheck { get; set; }
+
     /// <summary>A car's one-shot sound: native category 6 event 0xF, on a kart entering the overtake
     /// or the spin state (0x2049D0). The engine loop, event 4, is the presenter's: the console
     /// restarts it whenever it has stopped.</summary>
@@ -113,10 +134,13 @@ public sealed class TrackRideSim
     int Rand(int n) => n <= 0 ? 0 : _rng.Next(n);
 
     /// <summary>The end of 0x2009C0, after the track changed: every car is unloaded first, then
-    /// status 2 if the loop is closed, else 3.</summary>
+    /// status 2 if the loop is closed, else 3 -- ⭐ ONLY WHEN THE RIDE IS NOT BROKEN: `vt+0xC4`
+    /// (status 4 or 5) is asked first and a broken ride keeps its status (MIPS `0x200BA4..0x200BB0`,
+    /// track-ride-operation.md §0 item 3). Unreachable in the port until breakdowns existed.</summary>
     public void Rebuilt()
     {
         while (_cars.Count > 0) Remove(0);
+        if (Status is TrackRideStatus.Broken or TrackRideStatus.BrokenZero) return;
         SetStatus(Track.Closed ? TrackRideStatus.Running : TrackRideStatus.Closed);
     }
 
@@ -164,6 +188,18 @@ public sealed class TrackRideSim
         if (s == TrackRideStatus.Running) RunTimer = 0; // 0x1164A8
     }
 
+    /// <summary>⭐ `vt+0x1F4` = `0x1E4D70` for the track class's own enter handlers, as
+    /// <see cref="ParkSim.SetRideStatus"/> calls it (every time, even unchanged): 2 zeroes the run
+    /// timer (`0x1164A8`); ⭐ 6 = `0x200310` REMOVES EVERY CAR at once (`0x2022A8(ride, 0)` until none
+    /// is left), every rider put off at the exit. The queue-emptying 4 (`0x2002D8`) and the parent's
+    /// 5 and 7 are the ride's (queue, advisors, reliability) and live in ParkSim.</summary>
+    internal void EnterStatus(TrackRideStatus s)
+    {
+        SetStatus(s);
+        if (s == TrackRideStatus.Repairing)
+            while (_cars.Count > 0) Remove(0);
+    }
+
     /// <summary>0x202188: Excitement from the record's base (75 or 80 by ride): the track's weight sum
     /// halved, times the speed and duration factors each clamped to 0.75..1.25, capped at 100.</summary>
     public int Excitement(int recordBase)
@@ -178,7 +214,12 @@ public sealed class TrackRideSim
     /// <summary>One ride update at park tick <paramref name="tick"/>.</summary>
     public void Step(uint tick)
     {
-        if (_cars.Count > 0 && Status != TrackRideStatus.Loading && Track.Length > 0) StepCars();
+        if (_cars.Count > 0 && Status != TrackRideStatus.Loading && Track.Length > 0)
+        {
+            Wear?.Invoke();                                  // 0x2023B0: vt+0x364 before the cars
+            StepCars();
+        }
+        BreakdownCheck?.Invoke();                            // 0x200358, before the status tick
         switch (Status)
         {
             case TrackRideStatus.Loading: // 0x200448
@@ -195,13 +236,25 @@ public sealed class TrackRideSim
                 if (++RunTimer >= 2 * Duration) SetStatus(TrackRideStatus.Unloading);
                 break;
             case TrackRideStatus.Unloading: // 0x2005C8
-                if (tick % 10 != 0) break;
-                if (Riders == 0) { SetStatus(TrackRideStatus.Loading); break; }
-                // i advances after a removal, so the car shifted into slot i waits a pass (kept).
-                for (int i = 0; i < _cars.Count; i++)
-                    if (_cars[i].Finished) Remove(i);
+            case TrackRideStatus.Broken:    // 0x2006F8 -> vt+0x2AC
+            case TrackRideStatus.BrokenZero: // 0x200698 -> vt+0x2AC
+            case TrackRideStatus.Repairing: // 0x2006C8 -> vt+0x2AC
+                UnloadPass(tick);
                 break;
         }
+    }
+
+    /// <summary>`0x2005C8`, the unload pass (MIPS `0x2005C8..0x200690`): only on `tick % 10 == 0`; with
+    /// riders aboard every car whose done flag is set goes; with none, ⭐ ONLY IN STATUS 11 does the ride
+    /// go on to 10 (`bne v1, 0xb` at `0x200658`) -- so ticks 4/5/6, which run this same pass, unload
+    /// finished cars and never reopen the ride.</summary>
+    void UnloadPass(uint tick)
+    {
+        if (tick % 10 != 0) return;
+        if (Riders == 0) { if (Status == TrackRideStatus.Unloading) SetStatus(TrackRideStatus.Loading); return; }
+        // i advances after a removal, so the car shifted into slot i waits a pass (kept).
+        for (int i = 0; i < _cars.Count; i++)
+            if (_cars[i].Finished) Remove(i);
     }
 
     /// <summary>0x201AC0: the "room in the last car" test 0x205638 is `return 0`, so every guest
