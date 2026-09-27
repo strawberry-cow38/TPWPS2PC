@@ -206,7 +206,14 @@ public sealed class ParkVisitors
     public ParkStaff Staff
     {
         get => _staff;
-        set { _staff = value; WireLitter(); }
+        set
+        {
+            // A ParkStaff routes into ITS coordinator's walk pool and reads its sim; attaching it to
+            // another park would split the one output-slot pool the two are meant to share.
+            if (value != null && !ReferenceEquals(value.Visitors, this))
+                throw new ArgumentException("this ParkStaff was built for a different ParkVisitors", nameof(value));
+            _staff = value; WireLitter();
+        }
     }
     ParkStaff _staff;
 

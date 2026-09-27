@@ -422,7 +422,9 @@ public class StaffMember
     // Walking (§4).
 
     /// <summary>`vt+0x18C`: the walk speed in 1/256 cell per tick. Base `0x1DC928` = the speed
-    /// bits; the handyman and the mechanic override it with their level tables.</summary>
+    /// bits; the handyman (`0x144D38`, <see cref="Handyman.Speed"/>) and the mechanic (`0x179308`)
+    /// override it with their level tables. ⚠ The mechanic has no class of his own until area C, so
+    /// his override is kept here, keyed on the kind; move it into that class when it lands.</summary>
     public virtual int Speed => Kind == StaffKind.Mechanic
         ? StaffTables.MechanicSpeed[Level]                               // 0x179308: u16 [0x3627CA + 4L]
         : SpeedBits;
