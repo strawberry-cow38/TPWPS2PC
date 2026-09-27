@@ -8973,21 +8973,36 @@ public partial class Viewer : Node3D
     /// BOTTOM because that is what it is: a bottom-left element.</summary>
     const int DateX = MoneyX, DateBottomRows = 14;
 
-    /// <summary>⭐ THE TICKET AND AWARD COUNTERS, measured off master's HUD capture rather than
-    /// placed by eye. In a 1600x885 frame the money's `$`, the ticket icon and the star icon all
-    /// begin at x 116-122 -- the same column, which `MoneyX / 512 * 1600 = 118.75` predicts. The
-    /// three rows' digits sit at y 67, 122 and 176: a pitch of 54-55px, and 32 console rows at
-    /// that frame size is 55.3px. So the rows are exactly <see cref="ShopScreen.RowStep"/> apart,
-    /// which is the console's own row step and not a number I chose.
+    /// <summary>⭐⭐ THE TICKET AND AWARD COUNTERS, READ OUT OF THE HUD DRAW ITSELF --
+    /// `FUN_0013dcb8`, found by asking which caller of the money formatter (`FUN_00142908`) also
+    /// mentions the ticket and star texture ids 0x2d and 0x2e as immediates. Exactly one does.
     ///
-    /// ⭐ The counts are RIGHT-aligned. Single digits could not show that; the two-digit mail
-    /// counter beside the date could -- its right edge lands at 276 against the ticket's 280 and
-    /// the star's 284, while the left edges vary with the digit count.
+    /// <code>
+    ///   money  text  FUN_00138798(ctx, buf, 0x26, 0x32, 10, 1)      x 38  y 50
+    ///   ticket count FUN_00138798(ctx, buf, 0x50, 0x50, 10, 1)      x 80  y 80
+    ///   star   count FUN_00138798(ctx, buf, 0x50, 0x6e, 10, 1)      x 80  y 110
+    ///   ticket icon  FUN_002137c0(spr, 0x26, 0x4c, 10) + (0x20,0x20)   x 38 y 76   32x32
+    ///   star   icon  FUN_002137c0(spr, 0x26, 0x6e, 10) + (0x18,0x18)   x 38 y 110  24x24
+    /// </code>
     ///
-    /// ⚠ The ICONS are the solid yellow pair, `Gticket/gticket` (registry 0x2d) and
-    /// `UltimateC/Star` (0x2e) -- NOT `award_star_32` / `award_medal_32`, which are blue-keyed
-    /// cut-outs for the laptop. Decided by decoding all four and comparing them with the capture.</summary>
-    const int AwardCountRight = 90, AwardRowStep = 32;
+    /// ⚠⚠ THIS REPLACES FOUR NUMBERS I HAD MEASURED OFF A SCREENSHOT, and master was right to ask
+    /// whether they were calculated or guessed. What the measurements got wrong:
+    /// * the counts are at x 80 and drawn by the SAME call as the money, so they are LEFT-aligned.
+    ///   I had them right-aligned at 90 -- which is indistinguishable on the single digits in the
+    ///   capture, and would have drifted the wrong way the moment a count reached two digits. The
+    ///   right-alignment came from the MAIL counter, a different element with its own rule.
+    /// * the row pitch is 30, not the 32 I inferred; `RowStep` matching to within a pixel or two
+    ///   of a measurement was a coincidence.
+    /// * the two icons are NOT the same size -- the ticket is 32x32 and the star is 24x24.
+    /// * the ticket's icon sits at y 76 while its count sits at y 80; the star's icon and count
+    ///   share y 110. The rows are not built from one offset.
+    ///
+    /// ⚠ The counts come from `FUN_001c36d8` (tickets) and `FUN_00154378` (awards); neither is
+    /// decoded, which is why <see cref="ParkAwards"/> is still counters only.</summary>
+    const int TicketIconX = 0x26, TicketIconY = 0x4c, TicketIconSize = 0x20;
+    const int StarIconX = 0x26, StarIconY = 0x6e, StarIconSize = 0x18;
+    const int TicketCountX = 0x50, TicketCountY = 0x50;
+    const int StarCountX = 0x50, StarCountY = 0x6e;
     const string TicketIcon = "/Gticket/gticket.tga", StarIcon = "/UltimateC/Star.tga";
     const float ConsoleUiWidth = 512f, ConsoleUiHeight = 512f;
     static readonly Color MoneyNormal = new(1f, 1f, 0f), MoneyBroke = new(200 / 255f, 130 / 255f, 0f);
@@ -9106,8 +9121,8 @@ public partial class Viewer : Node3D
         ShowAwards(view, k);
     }
 
-    /// <summary>The ticket and award counters, the two rows under the money. See
-    /// <see cref="AwardCountRight"/> for where every number here was measured from.</summary>
+    /// <summary>The ticket and award counters, the two rows under the money. Every coordinate is
+    /// the console's own; see the constants above for the draw calls they came out of.</summary>
     void ShowAwards(Vector2 view, float k)
     {
         if (_ticketIcon == null) return;
@@ -9117,31 +9132,32 @@ public partial class Viewer : Node3D
         if (!on) return;
         _ticketIcon.Texture ??= LoadHudIcon(TicketIcon);
         _starIcon.Texture ??= LoadHudIcon(StarIcon);
-        void Row(TextureRect icon, TextureRect num, TextureRect shadow, ref string shown, int value, int row)
+        // ⚠ The console sets each sprite's size explicitly (FUN_002131b8) and they DIFFER -- 32
+        // for the ticket, 24 for the star -- so the texture's own size is not the drawn size.
+        void Icon(TextureRect r, int x, int y, int size)
         {
-            float y = row / ConsoleUiHeight * view.Y;
-            if (icon.Texture != null)
-            {
-                icon.Scale = new Vector2(k, k);
-                icon.Position = new Vector2(MoneyX / ConsoleUiWidth * view.X, y);
-            }
+            if (r.Texture == null) return;
+            float px = size / ConsoleUiHeight * view.Y;
+            r.Scale = new Vector2(px / r.Texture.GetWidth(), px / r.Texture.GetHeight());
+            r.Position = new Vector2(x / ConsoleUiWidth * view.X, y / ConsoleUiHeight * view.Y);
+        }
+        // ⭐ LEFT-aligned, like the money: the counts go through the very same draw call it does.
+        void Count(TextureRect num, TextureRect shadow, ref string shown, int value, int x, int y)
+        {
             string want = value.ToString();
             if (want != shown) { shown = want; num.Texture = shadow.Texture = _hudFont.Render(want); }
-            // ⭐ The money's yellow, because that is what the capture shows: the ticket and star
-            // counts are the same colour as the balance above them, not plain white.
             num.Modulate = MoneyNormal;
-            // ⚠ RIGHT-aligned: the width comes off the rendered texture, so a two-digit count grows
-            // leftwards the way the mail counter in master's capture does.
-            float w = (num.Texture?.GetWidth() ?? 0) * k;
-            var at = new Vector2(AwardCountRight / ConsoleUiWidth * view.X - w, y);
+            var at = new Vector2(x / ConsoleUiWidth * view.X, y / ConsoleUiHeight * view.Y);
             num.Scale = shadow.Scale = new Vector2(k, k);
             num.Position = at;
             shadow.Position = at + new Vector2(MoneyShadow * k, MoneyShadow * k);
         }
-        Row(_ticketIcon, _ticketNum, _ticketNumShadow, ref _ticketShown,
-            _awards.GoldTickets, MoneyY + AwardRowStep);
-        Row(_starIcon, _starNum, _starNumShadow, ref _starShown,
-            _awards.UltimateCoasters, MoneyY + AwardRowStep * 2);
+        Icon(_ticketIcon, TicketIconX, TicketIconY, TicketIconSize);
+        Icon(_starIcon, StarIconX, StarIconY, StarIconSize);
+        Count(_ticketNum, _ticketNumShadow, ref _ticketShown, _awards.GoldTickets,
+              TicketCountX, TicketCountY);
+        Count(_starNum, _starNumShadow, ref _starShown, _awards.UltimateCoasters,
+              StarCountX, StarCountY);
     }
 
     /// <summary>⚠ Through the archive, not a res:// path: these live in UI.WAD like every other
