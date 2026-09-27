@@ -170,9 +170,13 @@ is at maximum; the two disagreeing by that much is the formula working, not a fa
 
 1. **Where the WORN condition comes from.** `ride[0xE4]` is the Repair bar and it is a separate
    quantity from the reliability computed above; what decrements it per ride cycle is not read.
-2. **`vt+0x344`, the capacity MAXIMUM.** The wear term divides by it and the screen takes its
-   slider bound from it; this port substitutes the tier's `CapacityParameter`, which is a stated
-   assumption rather than a reading.
+2. ⭐ **RESOLVED: `vt+0x344` IS `CapacityParameter`.** It is `FUN_00117B28`, which returns
+   `payload + tier*0x34 + 0x30`; its neighbour `FUN_00117A08` returns `+0x24`, `MinSpeedDamage`,
+   the offset `RideCatalogue` already documents, so base and stride both check out. The earlier
+   substitution was right, and is no longer an assumption.
+   ⚠⚠ But the SAME read turned up a new one: the tier index is `ride[0x126]`, not always zero.
+   Every tier getter strides `0x34` by that byte, and this port asks for `Tier(0)` everywhere --
+   correct only while a ride sits at tier zero. Nothing tracks that byte yet.
 3. **Life**, `ride[0x94]`, is read but nothing is known about what moves it.
 4. ⚠ Superseded -- the consumer of `MinSpeedDamage` /
    `MinCapacityDamage` / `WearRate` on a live ride, as opposed to the shopfront preview.

@@ -162,10 +162,20 @@ public sealed class ParkRide
     /// <see cref="NativeRideValue.State"/> has no capacity term. What does read it is those same
     /// families' operation code, so it is a throughput setting; its consumer is not decoded here.
     ///
-    /// ⚠⚠ THE DEFAULT IS THE PORT'S CHOICE, NOT THE CONSOLE'S. `FUN_00116120` sets defaults for
-    /// speed and duration and says nothing about this one, so where a new ride starts is UNREAD.
-    /// It opens at the tier's <c>CapacityParameter</c> -- the slider's maximum -- which is a stated
-    /// assumption, not a reading.</summary>
+    /// ⭐ ITS MAXIMUM IS `CapacityParameter`, AND THAT IS NOW READ RATHER THAN ASSUMED. The wear
+    /// term divides by `vt+0x344`, which is `FUN_00117B28`, which returns
+    /// `payload + tier*0x34 + 0x30` -- the tier's `CapacityParameter`. Its neighbour `FUN_00117A08`
+    /// returns `+0x24`, `MinSpeedDamage`, which is the offset `RideCatalogue` already documents, so
+    /// the stride and the base both check out.
+    ///
+    /// ⚠⚠ THE DEFAULT IS STILL THE PORT'S CHOICE. `FUN_00116120` sets defaults for speed and
+    /// duration and says nothing about this one, so where a NEW ride starts is unread; it opens at
+    /// the maximum.
+    ///
+    /// ⚠⚠ AND THE TIER INDEX IS `ride[0x126]`, NOT ALWAYS ZERO. Every tier getter reads that byte
+    /// and strides 0x34 by it. This port asks for `Tier(0)` everywhere, which is right only while a
+    /// ride is at tier zero -- nothing here tracks that byte yet, and an upgraded ride would read
+    /// the wrong tier.</summary>
     int? _capacity;
     public int Capacity
     {
