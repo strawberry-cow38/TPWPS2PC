@@ -168,7 +168,7 @@ public partial class Viewer
         foreach (var (c, dx, dz) in new[] { (exit, fx, fz), (entry, fx, fz) })
         {
             if (!Ground.InGrid(c)) continue;
-            yield return (c, GhostMarkers.TurnToward(dx, dz), Ground.EmptyLand(c) && Ground.CoasterNodeAt(c) == null);
+            yield return (c, GhostMarkers.ChevronToward(dx, dz), Ground.EmptyLand(c) && Ground.CoasterNodeAt(c) == null);
         }
     }
 
@@ -727,7 +727,7 @@ public partial class Viewer
     static int CoasterEntryTurn(CoasterTrack t)
     {
         int dx = t.Exit.CellX - t.Entry.CellX, dz = t.Exit.CellZ - t.Entry.CellZ;
-        return GhostMarkers.TurnToward(Math.Sign(dx), Math.Sign(dz));
+        return GhostMarkers.ChevronToward(Math.Sign(dx), Math.Sign(dz));
     }
 
     /// <summary>Cross (`0x11b550`): add a pylon at the ghost, or close the ring on the entry cell.</summary>

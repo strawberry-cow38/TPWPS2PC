@@ -137,11 +137,25 @@ public partial class TrackRideSmoke : Node3D
             var legs = LoopOf(e, ret, side);
             var sim = Field<ParkSim>(viewer, "_sim");
             int before = sim.Finances.Balance;
-            foreach (var c in legs)
+            for (int li = 0; li < legs.Length; li++)
             {
+                var c = legs[li];
                 Set(viewer, "_cursorOverride", (c.X, c.Z));
                 try { Call(viewer, "UpdateTrackGhost"); Call(viewer, "PressTrackTool"); }
                 finally { Set(viewer, "_cursorOverride", null); }
+                if (li != 0) continue;
+                // ⭐ A click on the last waypoint, or a cell off it, is a zero-length leg. The console
+                // finishes the tool there with the loop open; with a mouse that is a near-miss, so here
+                // it lays nothing and the tool stays open (strawberry's loop that "was closed").
+                int wp = layout.Waypoints.Count;
+                foreach (var near in new[] { c, c.Offset(1, 0), c.Offset(1, 1) })
+                {
+                    Set(viewer, "_cursorOverride", (near.X, near.Z));
+                    try { Call(viewer, "UpdateTrackGhost"); Call(viewer, "PressTrackTool"); }
+                    finally { Set(viewer, "_cursorOverride", null); }
+                }
+                Check(Member("_trackTool").GetValue(viewer) == view && layout.Waypoints.Count == wp,
+                      $"clicks on and a cell off the last waypoint lay nothing and leave the tool open ({layout.Waypoints.Count} waypoints)");
             }
             int price = (int)F(view, "Price");
             Check(layout.Closed && layout.Pieces.Count == 22, $"five presses close the loop: {layout.Pieces.Count} pieces, {string.Join(",", layout.Pieces.Select(p => p.Type))}");

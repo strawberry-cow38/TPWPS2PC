@@ -381,6 +381,8 @@ public partial class Viewer
         _ghostView?.Clear();
         GD.Print($"[track] tool closed for ride {v.Id}: {v.Layout.Waypoints.Count} waypoints, {v.Layout.Pieces.Count} pieces, "
                + (v.Layout.Closed ? "loop closed" : "loop OPEN -- the ride stays closed"));
+        // Said on screen, not only in the log: an open loop never runs, and nothing else looks wrong.
+        if (!v.Layout.Closed) Status($"the track is OPEN: the ride can't run until the loop closes at {v.Layout.ReturnCell}. Edit Track to finish it.");
         var after = _afterTrack; _afterTrack = null;
         after?.Invoke();
     }
@@ -448,9 +450,13 @@ public partial class Viewer
                 for (int dz = 0; dz < 2; dz++) marks.Add((c.X + dx, c.Z + dz, marker, 0));
         }
         var ret = v.Layout.ReturnCell;
+        // The chevron points the way the track runs into the station: from the return cell towards the
+        // exit's side. `(rotation + 2) & 3` got rotations 0 and 2 right and 1 and 3 backwards.
+        var exitCell = v.Layout.ExitCell;
+        int inTurn = GhostMarkers.ChevronToward(Math.Sign(exitCell.X - ret.X), Math.Sign(exitCell.Z - ret.Z));
         if (end != ret)
             for (int dx = 0; dx < 2; dx++)
-                for (int dz = 0; dz < 2; dz++) marks.Add((ret.X + dx, ret.Z + dz, 166, (v.Layout.Rotation + 2) & 3));
+                for (int dz = 0; dz < 2; dz++) marks.Add((ret.X + dx, ret.Z + dz, 166, inTurn));
         _trackLegOk = ok;
         _ghostView?.ShowTurnedCells(marks, _park);
         Status($"Track Stock {stock}   Cost: {Money.Format(cost)}" + (ok ? "" : "   (blocked)"));
@@ -466,8 +472,14 @@ public partial class Viewer
         if (left > 0) _paidFor[id] = left; else _paidFor.Remove(id);
     }
 
-    /// <summary>Cross (0x129840): lay the previewed leg, charge it, and finish when it closes the loop
-    /// or has no length.</summary>
+    /// <summary>Cross (0x129840): lay the previewed leg, charge it, and finish when it closes the loop.
+    ///
+    /// ⚠⚠ A ZERO-LENGTH LEG DOES NOTHING HERE -- A DELIBERATE DEPARTURE. On the console Cross with the
+    /// cursor within a cell of the last waypoint (`n = |d| >> 1 = 0`) appends a duplicate waypoint and
+    /// FINISHES the tool, loop open (track-ride-tool.md §4, READ): on a d-pad that takes a deliberate
+    /// press without moving. With a mouse it is the ring of cells round the last waypoint, a near-miss
+    /// or a second click on the same spot, and it left strawberry's loop open while it looked closed
+    /// ("loop was closed. maybe it wasnt registering as closed?"). Esc still finishes an open track.</summary>
     void PressTrackTool()
     {
         var v = _trackTool;
@@ -475,6 +487,12 @@ public partial class Viewer
         UpdateTrackGhost();
         if (!_trackLegOk) { _toolSfx?.Play(ToolSounds.Cue.Refused); return; }
         var (end, n, _, _) = v.Layout.Leg(new ParkCell(x, y));
+        if (n == 0)
+        {
+            _toolSfx?.Play(ToolSounds.Cue.Refused);
+            Status("that's on the last waypoint: legs go 2 cells at a time, along one axis. Esc finishes.");
+            return;
+        }
         int cost = v.Price * 10 * n;
         if (cost > 0 && _sim != null && !_sim.Finances.Debit(cost)) { _toolSfx?.Play(ToolSounds.Cue.Refused); return; }
         // ⭐ Track legs go on the ride's tab, so deleting the ride gives half of them back too.
@@ -484,7 +502,7 @@ public partial class Viewer
         RebuildTrackView(v);
         _toolSfx?.Play(ToolSounds.Cue.Lay);
         GD.Print($"[track] leg to {end}: {n} pieces for {Money.Format(cost)}; {v.Layout.Pieces.Count} pieces, closed {v.Layout.Closed}");
-        if (v.Layout.Closed || n == 0) FinishTrackTool();
+        if (v.Layout.Closed) FinishTrackTool();
     }
 
     /// <summary>Circle (0x129A00): take the last leg back and refund it. False when only the exit is

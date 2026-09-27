@@ -205,6 +205,12 @@ chosen exactly as in the preview (`|dz| < |dx|` → x). Displayed as "Cost: $cos
 Zero-length legs: with the cursor on the last waypoint, `n = 0`, the only cell is the leg start
 (always OK), `+0x1c = 1`, so Cross appends a duplicate waypoint (charging 0) and **finishes**. This
 is how a player leaves the tool with an open track (INFERRED intent; mechanism READ).
+⚠ **The port does not copy this** (2026-09-27): a zero-length Cross lays nothing and keeps the tool
+open, and only Esc finishes an open track, with an on-screen "the track is OPEN" status. The dead zone
+is every cell within one of the last waypoint (`n = |d| >> 1`), which a d-pad reaches only by pressing
+without moving but a mouse reaches on a near-miss or a second click; it left strawberry's loop open
+while it looked closed. (The cursor itself stays free, as §1.1 reads: snapping it to the lattice is not
+the console.)
 
 ## 5. Placement constraints
 

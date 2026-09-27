@@ -114,6 +114,15 @@ public sealed class GhostMarkers
     public static int TurnToward(int dx, int dy)
         => dy > 0 ? 0 : dx < 0 ? 1 : dy < 0 ? 2 : 3;
 
+    /// <summary>⭐ THE CHEVRON 166 POINTS LEFT IN ITS OWN TEXTURE, not up, so <see cref="TurnToward"/>
+    /// laid it a quarter off: strawberry, "the i/o tiles for track into the station are facing the
+    /// wrong way". Its point is the texture's left edge, which turn 0 lays along grid -x and each turn
+    /// takes round with the top (-x, -y, +x, +y), so pointing it along d means pointing the TOP along d
+    /// turned a quarter clockwise. ⚠ Checked against the console: for Temple of Gloom at r 0, 0x1e3978's
+    /// `(r + dirExit + 3) & 3` gives 2 for both cells, and 2 is this for the track's +x; the console's
+    /// codes agree with this on x and are mirrored on z, the loader's Z mirror.</summary>
+    public static int ChevronToward(int dx, int dy) => TurnToward(dy, -dx);
+
     /// <summary>Draw marked cells, each with its own quarter turn.</summary>
     public void ShowTurnedCells(IEnumerable<(int X, int Y, int Marker, int Turns)> cells, Park park)
     {

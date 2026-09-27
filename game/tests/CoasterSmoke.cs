@@ -121,6 +121,53 @@ public partial class CoasterSmoke : Node3D
                 }
             Check(spot != null, $"{world}: found clear ground for a station and a 23x15 ring");
             int placedBefore = park.Placed.Count;
+            // ⭐ The two track chevrons (166) point the way the track runs: out at the exit, in at the
+            // entry, which is the same way. Read off the DRAWN preview, not off the turn formula: the
+            // chevron's point is its texture's left edge, so its direction on the ground is the vertex
+            // at UV (0,0) minus the one at (1,0) (strawberry: "the i/o tiles for track into the station
+            // are facing the wrong way" -- they were a quarter off).
+            {
+                Set(viewer, "_cursorOverride", spot.Value);
+                try { Call(viewer, "UpdatePlacementGhost"); } finally { Set(viewer, "_cursorOverride", null); }
+                var (cx0, cy0) = blueprint.CornerFor(spot.Value.X, spot.Value.Y);
+                var (ex0, st0, en0) = Ends(cx0, cy0);
+                var (fx0, fz0) = Dir(st0);
+                var run = park.CellCentre(ex0.X, ex0.Z) - park.CellCentre(ex0.X - fx0, ex0.Z - fz0);
+                run.Y = 0; run = run.Normalized();
+                var ghostRoot = ((GhostMarkers)Member("_ghostView").GetValue(viewer)).Root;
+                foreach (var (cell, name) in new[] { (ex0, "exit"), (en0, "entry") })
+                {
+                    var at = park.CellCentre(cell.X, cell.Z);
+                    Vector3? u0 = null, u1 = null;
+                    foreach (var mi in ghostRoot.GetChildren().OfType<MeshInstance3D>())
+                    {
+                        var arr = mi.Mesh.SurfaceGetArrays(0);
+                        var vs = arr[(int)Mesh.ArrayType.Vertex].AsVector3Array(); var uvs = arr[(int)Mesh.ArrayType.TexUV].AsVector2Array();
+                        for (int i = 0; i < vs.Length; i++)
+                        {
+                            var w = mi.GlobalTransform * vs[i];
+                            if (MathF.Abs(w.X - at.X) > Park.CellSize * 0.51f || MathF.Abs(w.Z - at.Z) > Park.CellSize * 0.51f) continue;
+                            if (uvs[i].DistanceTo(new Vector2(0, 0)) < 0.01f) u0 = w;
+                            if (uvs[i].DistanceTo(new Vector2(1, 0)) < 0.01f) u1 = w;
+                        }
+                    }
+                    Check(u0 != null && u1 != null, $"the {name} chevron is drawn at {cell}");
+                    var tip = u0.Value - u1.Value; tip.Y = 0; tip = tip.Normalized();
+                    Check(tip.Dot(run) > 0.99f, $"the {name} chevron at {cell} points the way the track runs (dot {tip.Dot(run):F2})");
+                }
+                if (shots != null)
+                {
+                    foreach (var layer in viewer.FindChildren("*", "CanvasLayer", true, false).OfType<CanvasLayer>()) layer.Visible = false;
+                    Set(viewer, "_freeCam", true);
+                    var cam = Field<Camera3D>(viewer, "_cam");
+                    var aim = park.CellCentre(ex0.X, ex0.Z).Lerp(park.CellCentre(en0.X, en0.Z), 0.5f);
+                    cam.GlobalPosition = aim + new Vector3(0.5f, 9f, 5f);
+                    cam.LookAt(aim, Vector3.Up);
+                    for (int i = 0; i < 3; i++) await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                    Call(viewer, "SaveShot", System.IO.Path.Combine(shots, $"{world.ToLowerInvariant()}_{folder.ToLowerInvariant()}_station_preview.png"));
+                    foreach (var layer in viewer.FindChildren("*", "CanvasLayer", true, false).OfType<CanvasLayer>()) layer.Visible = true;
+                }
+            }
             Set(viewer, "_cursorOverride", spot.Value);
             try { Call(viewer, "PlaceHeld"); } finally { Set(viewer, "_cursorOverride", null); }
             var coasters = Field<IDictionary>(viewer, "_coasters");

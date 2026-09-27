@@ -41,8 +41,9 @@ SCENES = {
     # and its PASS line prints only after all of them, so the floor is JUNGLE's.
     'vehicles': ('ParkVehiclesSmoke', 'PARK VEHICLES SMOKE', 4),
     # Track rides: build menu -> station -> the track tool pressed round a loop -> riders on and off.
-    # Terrain 1 builds the karts, terrain 2 the water ride (36, with its flow); the floor is the karts'.
-    'trackride': ('TrackRideSmoke', 'TRACK RIDE SMOKE', 33),
+    # Terrain 1 builds the karts, terrain 2 the water ride (37, with its flow); the floor is the karts'
+    # (34 with the zero-length leg's check).
+    'trackride': ('TrackRideSmoke', 'TRACK RIDE SMOKE', 34),
     # Roller coasters: build menu -> station with its queue -> pylons pressed round a ring -> trains -> riders.
     # Terrain 2 builds the park's last listed coaster, so eight coasters; the floor is HALLOW's Hades
     # (58 with the valid-cell field's and the pylon edit's keys' checks).
