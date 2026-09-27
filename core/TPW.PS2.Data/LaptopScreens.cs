@@ -182,10 +182,15 @@ public sealed record LaptopScreen(
     /// corroboration and not the authority (the ride's comment omits a row the draw plainly emits),
     /// but here the two independent readings match.
     ///
-    /// ⚠ LAST CLEANED IS A DATE, NOT A NUMBER, and the draw says so before the comment does: the
-    /// two values go through DIFFERENT formatters. Users takes `FUN_00142B68`, which
-    /// <see cref="Money"/> documents as the digits-with-thousands-separators writer; Last Cleaned
-    /// takes `FUN_00142948`, which is neither that nor the money formatter (`FUN_00142908`).
+    /// ⚠⚠ LAST CLEANED IS A COUNT OF DAYS WITH A `d` SUFFIX -- "15d" -- and NOT a date. Master,
+    /// 2026-09-27: "the last cleaned should have a d suffix". I had it as a date and this comment
+    /// said so; the correction is recorded here because the wrong reading was the confident one.
+    ///
+    /// ⭐ What the draw shows is that the two values take DIFFERENT formatters, and THAT part was
+    /// right: Users takes `FUN_00142B68`, which <see cref="Money"/> documents as the
+    /// digits-with-thousands-separators writer, while Last Cleaned takes `FUN_00142948`, which is
+    /// neither that nor the money formatter (`FUN_00142908`). ⚠ What was wrong was reading the
+    /// scene's word "date" as the answer to what `FUN_00142948` writes. It writes days.
     ///
     /// ⚠ One bar and no sliders, which agrees with the constructor's widget census
     /// (`FUN_00115468` once, `FUN_001DA630` never) and with the scene's single `cleanlinessbar`.
