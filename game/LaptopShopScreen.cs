@@ -157,7 +157,9 @@ public sealed partial class LaptopShopScreen : Control
         if (shop == null) { Hide(); return; }
 
         var settings = shop.Definition?.CompiledEntry?.Shop;
-        _price = settings?.InitialPrice ?? 0;
+        // ⭐ The LIVE price, not the compiled one. This read the record directly, so the number
+        // could be shown and never changed; the player's price lives on the shop.
+        _price = shop.SalePrice;
         int baseCost = settings?.BaseCostOfGoods ?? 0;
         _quality = shop.Quality;
         _additive = shop.Setting0xAC;
@@ -634,6 +636,18 @@ public sealed partial class LaptopShopScreen : Control
 
     ShopScreen.Selection? _dragShop;
 
+    /// <summary>⭐ A NUDGE ARROW's drawn rect, by row index -- the pairs a row gets when its value
+    /// can be stepped. Same rule as the others: hit-test the rect that was drawn.</summary>
+    readonly Dictionary<int, Rect2> _rowArrows = new();
+    /// <summary>The shop's own price arrows, which live outside the row list.</summary>
+    Rect2 _shopPriceArrows;
+
+    /// <summary>⭐ A nudge arrow was clicked: the ROW INDEX and -1 or +1. ⚠ A direction, not a
+    /// value -- the step and the clamp are the caller's, where the field is.</summary>
+    public event Action<int, int> RowNudged;
+    /// <summary>The shop's price arrows: -1 or +1.</summary>
+    public event Action<int> PriceNudged;
+
     /// <summary>The percent along a slider's track that a point sits at, clamped to it.</summary>
     static int PercentIn(Rect2 r, Vector2 at)
         => r.Size.X <= 0 ? 0 : Math.Clamp((int)Math.Round((at.X - r.Position.X) / r.Size.X * 100f), 0, 100);
@@ -720,6 +734,23 @@ public sealed partial class LaptopShopScreen : Control
                         AcceptEvent();
                         return;
                     }
+            if (b.ButtonIndex == MouseButton.Left)
+            {
+                if (_shopPriceArrows.Size.X > 0 && _shopPriceArrows.HasPoint(b.Position))
+                {
+                    Cue(LaptopSounds.Cue.Move);
+                    PriceNudged?.Invoke(b.Position.X < _shopPriceArrows.Position.X
+                                        + _shopPriceArrows.Size.X / 2f ? -1 : +1);
+                    AcceptEvent(); return;
+                }
+                foreach (var (idx, rect) in _rowArrows)
+                    if (rect.HasPoint(b.Position))
+                    {
+                        Cue(LaptopSounds.Cue.Move);
+                        RowNudged?.Invoke(idx, b.Position.X < rect.Position.X + rect.Size.X / 2f ? -1 : +1);
+                        AcceptEvent(); return;
+                    }
+            }
             // ⭐ THE PAGING ARROWS, LEFT HALF BACK AND RIGHT HALF ON. `UIarrow.ssh` is one
             // sprite holding both triangles, symmetric about its middle (208 opaque pixels left,
             // 205 right), so the halves are the two buttons.
@@ -851,8 +882,6 @@ public sealed partial class LaptopShopScreen : Control
         var layout = LayoutFor(_spec);
         Vector2 At(SceneLayout.Element e) => o + new Vector2(e.X, e.Y) * s;
 
-        _pageArrows = new Rect2();
-        _sliderRects.Clear();
         if (layout[_spec.TitleElement] is { } title)
             DrawRun(_title, At(title), s, Of(ShopScreen.Highlight), title.Justify);
 
@@ -929,7 +958,9 @@ public sealed partial class LaptopShopScreen : Control
                 // at 353 and 384 against labels at 339 and 371, i.e. 14 and 13 below. That is the
                 // half-line, so the row is where the arrow's middle goes.
                 var size = new Vector2(LaptopArrows.NativeWidth, LaptopArrows.NativeHeight) * s;
-                DrawTextureRect(_arrows, new Rect2(At(arrow) - new Vector2(0, size.Y / 2f), size), false, want);
+                var arect = new Rect2(At(arrow) - new Vector2(0, size.Y / 2f), size);
+                _rowArrows[i] = arect;
+                DrawTextureRect(_arrows, arect, false, want);
             }
 
             if (text == null) continue;
@@ -1030,6 +1061,23 @@ public sealed partial class LaptopShopScreen : Control
     public override void _Draw()
     {
         if (!Open) return;
+        // ⚠⚠ EVERY HIT-TEST RECT IS CLEARED HERE, ONCE, BEFORE ANY OF THEM IS DRAWN.
+        //
+        // Master, 2026-09-27: "clicking on an empty progress bar on a shop's config panel... opens
+        // a ride details page?" -- and it did. `_sliderRects` was cleared at the top of the SPEC
+        // draw, but a shop draws through the `_rows` path, which cleared only its own
+        // `_shopSliders`. So a ride's slider rects survived into a shop's panel, a click on that
+        // spot raised SliderMoved, and the handler re-opened the last ride it had been shown.
+        //
+        // ⭐ The invariant these rects need is "what was drawn THIS frame", and the only place
+        // that can hold unconditionally is before the branch. Clearing them in each path is what
+        // let one path forget. This is the same fault as the build cache that survived a park
+        // switch: a cache is only as good as its owner, and per-branch owners are not one owner.
+        _sliderRects.Clear();
+        _shopSliders.Clear();
+        _rowArrows.Clear();
+        _pageArrows = new Rect2();
+        _shopPriceArrows = new Rect2();
         FitToViewport();
         RefreshChrome();
         float s = Scale;
@@ -1068,7 +1116,6 @@ public sealed partial class LaptopShopScreen : Control
 
         if (_layout["SatisfactionBar"] is { } bar)
             DrawBar(new Rect2(At(bar), new Vector2(bar.Width, bar.Height) * s), _satisfaction, s);
-        _shopSliders.Clear();
         if (_layout["QualitySlider"] is { } quality)
         {
             var qr = new Rect2(At(quality), new Vector2(quality.Width, quality.Height) * s);
@@ -1084,6 +1131,15 @@ public sealed partial class LaptopShopScreen : Control
             DrawSlider(ar, _additive, s, _selected == ShopScreen.Selection.Additive);
         }
 
+        // ⭐ THE SHOP'S PRICE ARROWS. The scene authors CostItemArrows beside the price, and until
+        // now nothing drew them -- so the one control on this screen the console lets you step was
+        // invisible as well as dead.
+        if (_arrows != null && _layout["CostItemArrows"] is { } pricearrow)
+        {
+            var psz = new Vector2(LaptopArrows.NativeWidth, LaptopArrows.NativeHeight) * s;
+            _shopPriceArrows = new Rect2(At(pricearrow) - new Vector2(0, psz.Y / 2f), psz);
+            DrawTextureRect(_arrows, _shopPriceArrows, false, ArrowTint);
+        }
         if (_layout["CostItem"] is { } cost)
             DrawRun(Money(_price), At(cost), s,
                     Of(_selected == ShopScreen.Selection.SalePrice ? ShopScreen.Highlight : ShopScreen.Label),

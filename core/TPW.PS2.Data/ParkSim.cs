@@ -115,6 +115,21 @@ public sealed class ParkRide
     /// label anybody read.</summary>
     public int Setting0xAC { get; set; }
 
+    /// <summary>⭐ `+0xB8`, THE SALE PRICE, and the third thing the shop screen writes back:
+    /// `shop[0xb8] = ui[0xd2c]` at `0x1D7070`, beside the quality and <see cref="Setting0xAC"/>
+    /// setters. ⚠ The screen's setup `0x1D6D28` clamps it to **1..500**, which is a different
+    /// bound from the other two controls' 0..100 and is the console's, not a chosen one.
+    ///
+    /// It starts at the compiled record's `InitialPrice`, which is what the panel used to read
+    /// directly -- so before this field existed the screen could show a price and never change
+    /// one.</summary>
+    int? _salePrice;
+    public int SalePrice
+    {
+        get => _salePrice ?? Definition?.CompiledEntry?.Shop.InitialPrice ?? 0;
+        set => _salePrice = value;
+    }
+
     /// <summary>`inst + 0xC0`, a u16 the scream arithmetic averages with the script's own operand
     /// -- `FUN_001B96D8` computes `clamp((operand + this) / 2, 0, 100)` and `FUN_001B98B0` bands
     /// on `(operand + this) / 50`. See <see cref="RideScreams"/>.

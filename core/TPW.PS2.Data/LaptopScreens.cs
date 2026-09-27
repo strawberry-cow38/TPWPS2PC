@@ -152,8 +152,19 @@ public sealed record LaptopScreen(
             // PricePerGameValue (340). Pair each arrow with its NEAREST value and they agree:
             // 353 is 13 below 340, and 384 is 12 below 372. One consistent offset beats two
             // contradictory ones, so each row takes the arrow that actually belongs to it.
-            new(832, LaptopRowKind.Money,  "CostOfPrizeValue",  "PricePerGameArrow"),
-            new(190, LaptopRowKind.Money,  "PricePerGameValue", "CostOfPrizeArrow"),
+            // ⚠⚠ AND THE VALUE NAMES ARE CROSSED TOO, not just the arrows. Rendered and read:
+            // with the names paired the obvious way, a prize of 30 printed "$3" against **Game
+            // Price** and a price of 10 printed "$1" against **Prize Cost** -- each number under
+            // the other's label. The cause is the authored rows: `PricePerGameValue` sits at 340
+            // and `CostOfPrizeValue` at 372, so the one NAMED for the price is the HIGHER of the
+            // two, and Cost of Prize is the higher LABEL. Pairing by position rather than by name
+            // puts each number under its own label, which is the same correction this file already
+            // makes for the arrows one line below -- the scene's names for this pair of rows do
+            // not describe their contents.
+            // ⭐ The magnitudes are right and were checked: the console formats both through
+            // `FUN_00142908`, which is what <see cref="Money.Format"/> reproduces, tenths and all.
+            new(832, LaptopRowKind.Money,  "PricePerGameValue", "PricePerGameArrow"),
+            new(190, LaptopRowKind.Money,  "CostOfPrizeValue",  "CostOfPrizeArrow"),
         });
 
     /// <summary>⭐ The TOILET screen, `main_i_bathroom_data`, menu 23, drawn by `FUN_001DA008`.

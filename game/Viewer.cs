@@ -7412,11 +7412,27 @@ public partial class Viewer : Node3D
         if (_sim == null || placed < 0 || placed >= _park.Placed.Count) return null;
         int id = _park.Placed[placed].Id;
         foreach (var r in _sim.Rides)
-            if (r.Id == id && r.Definition?.CompiledEntry is { HasRideTiers: true }) return r;
+            if (r.Id == id && DetailsSpecFor(r) != null) return r;
         return null;
     }
 
-    ParkRide _detailsRide;
+    /// <summary>⭐ Which details screen a placed thing gets, or null for one this port has no
+    /// screen for. A ride is anything with TIERS -- that is what gives it speed, capacity and
+    /// duration -- and a sideshow is its own screen with its own three controls.
+    ///
+    /// ⚠⚠ TOILETS ARE DELIBERATELY ABSENT. `LaptopScreen.Toilet` exists and is decoded, but a
+    /// toilet is kind `Feature` and so are bins, benches and trees; the console tells them apart
+    /// with a per-object predicate at `vtable+0x134` that is NOT read (see
+    /// findings/laptop-screens.md). Offering every bin a Single Toilet page would be worse than
+    /// offering none, so this waits for that predicate rather than guessing at a name.</summary>
+    LaptopScreen DetailsSpecFor(ParkRide r)
+    {
+        if (r?.Definition?.CompiledEntry is not { } e) return null;
+        if (e.HasRideTiers) return LaptopScreen.Ride;
+        return e.Kind == AssetResourceDatabase.AssetKind.Sideshow ? LaptopScreen.Sideshow : null;
+    }
+
+    ParkRide _detailsRide; LaptopScreen _detailsSpec;
 
     /// <summary>⭐⭐ THE RIDE'S DETAILS PAGE, with its three sliders live.
     ///
@@ -7437,6 +7453,8 @@ public partial class Viewer : Node3D
     /// which wears. Making it respond to a drag would be inventing behaviour.</summary>
     void ShowRideDetails(ParkRide ride)
     {
+        _detailsSpec = DetailsSpecFor(ride);
+        if (_detailsSpec == LaptopScreen.Sideshow) { ShowSideshowDetails(ride); return; }
         _detailsRide = ride;
         var t = ride.Definition.CompiledEntry.Tier(0);
         int Pct(int v, int lo, int hi) => hi <= lo ? 0 : Math.Clamp((v - lo) * 100 / (hi - lo), 0, 100);
@@ -7475,17 +7493,60 @@ public partial class Viewer : Node3D
                + $"{(NativeRideReliability.MatchesShopfront(ride.Definition.CompiledEntry) ? "PASS" : "FAIL")}]");
     }
 
+    /// <summary>⭐⭐ A SIDESHOW'S DETAILS PAGE. Its three controls are its own -- chance of
+    /// winning, the cost of a prize and the price per game -- and all three feed
+    /// <see cref="NativeRideValue"/>'s sideshow arm, which is a different producer from a ride's:
+    /// `(prize - price)` squared over sixteen when positive, plus a third of the win percentage,
+    /// plus fifty, floored at the compiled base. So all three move the excitement bar.
+    ///
+    /// ⚠ Winners and Satisfaction are drawn by this screen and are not tracked by this port's
+    /// sim, so they are blank and empty rather than a plausible number.</summary>
+    void ShowSideshowDetails(ParkRide show)
+    {
+        _detailsRide = show; _detailsSpec = LaptopScreen.Sideshow;
+        var cells = new List<(string, int)>();
+        foreach (var row in LaptopScreen.Sideshow.Rows)
+            cells.Add(row.TextId switch
+            {
+                707 => (show.Customers.ToString(), 0),                       // Customers
+                949 => (Money.Format(show.Takings), 0),                      // Takings
+                238 => (Money.Format(show.Profit), 0),                       // Profit
+                899 => (null, show.Value ?? 0),                              // Excitement
+                295 => (null, Math.Clamp((int)show.SideshowWinPercentage, 0, 100)),
+                832 => (Money.Format(show.SideshowPrizeValue), 0),           // Cost of Prize
+                190 => (Money.Format(show.SideshowPrice), 0),                // Price per Game
+                _   => (null, 0),                                            // Winners, Satisfaction
+            });
+        _shopPanel.ShowScreen(LaptopScreen.Sideshow, DisplayName(show), cells);
+        BuildLaptopModelFor(show);
+        GD.Print($"[laptop] details {DisplayName(show)}: prize {show.SideshowPrizeValue}, "
+               + $"price {show.SideshowPrice}, win {show.SideshowWinPercentage}%; "
+               + $"excitement {show.Value?.ToString() ?? "-"}");
+    }
+
     /// <summary>⭐ A slider moved: turn its percent back into the console's own units and write it
     /// to the ride, then redraw so the excitement bar follows.
     /// ⚠ The panel sends a PERCENT because it knows nothing about these settings; the range and
     /// the clamp are owned here, where the tier is.</summary>
     void OnLaptopSlider(int row, int pct)
     {
-        if (_detailsRide?.Definition?.CompiledEntry is not { HasRideTiers: true } e) return;
-        if (row < 0 || row >= LaptopScreen.Ride.Rows.Count) return;
+        // ⚠ The SPEC the screen is showing, not LaptopScreen.Ride: a sideshow's sliders are its
+        // own, and indexing a ride's row list with a sideshow's row would set the wrong thing.
+        var spec = _detailsSpec;
+        if (_detailsRide == null || spec == null || row < 0 || row >= spec.Rows.Count) return;
+        if (spec == LaptopScreen.Sideshow)
+        {
+            if (spec.Rows[row].TextId == 295)
+            {
+                _detailsRide.SideshowWinPercentage = (ushort)Math.Clamp(pct, 0, 100);
+                ShowSideshowDetails(_detailsRide);
+            }
+            return;
+        }
+        if (_detailsRide.Definition?.CompiledEntry is not { HasRideTiers: true } e) return;
         var t = e.Tier(0);
         int Val(int lo, int hi) => lo + (hi - lo) * Math.Clamp(pct, 0, 100) / 100;
-        switch (LaptopScreen.Ride.Rows[row].TextId)
+        switch (spec.Rows[row].TextId)
         {
             case 436: _detailsRide.Speed = Val(t.MinSpeed, t.MaxSpeed); break;
             case 919: _detailsRide.Capacity = Val(1, Math.Max(1, t.CapacityParameter)); break;
@@ -7512,6 +7573,35 @@ public partial class Viewer : Node3D
         _shopPanel.ShowFor(shop, _park.Placed[_selected].Name);
         GD.Print($"[laptop] shop {_park.Placed[_selected].Name}: quality {shop.Quality}, "
                + $"additive {shop.Setting0xAC}");
+    }
+
+    /// <summary>⭐ The shop's sale price, stepped. ⚠ 1..500 is the CONSOLE's clamp, from the shop
+    /// screen's setup `0x1D6D28`; the field is `shop[0xB8]`.</summary>
+    void OnShopPriceNudge(int by)
+    {
+        if (_selected < 0 || ShopFor(_selected) is not { } shop) return;
+        int now = shop.SalePrice > 0 ? shop.SalePrice
+                : shop.Definition?.CompiledEntry?.Shop.InitialPrice ?? 1;
+        shop.SalePrice = Math.Clamp(now + by, 1, 500);
+        _shopPanel.ShowFor(shop, _park.Placed[_selected].Name);
+        GD.Print($"[laptop] shop {_park.Placed[_selected].Name}: price {shop.SalePrice}");
+    }
+
+    /// <summary>⭐ A row's nudge arrows. Only the sideshow's two money rows carry them on a screen
+    /// this port opens: the cost of a prize and the price per game, both feeding its excitement.
+    /// ⚠ Stepped by one and floored at zero. The console's UPPER clamp for these two is not read,
+    /// so none is imposed rather than one being invented.</summary>
+    void OnRowNudge(int row, int by)
+    {
+        if (_detailsRide == null || _detailsSpec != LaptopScreen.Sideshow) return;
+        if (row < 0 || row >= LaptopScreen.Sideshow.Rows.Count) return;
+        switch (LaptopScreen.Sideshow.Rows[row].TextId)
+        {
+            case 832: _detailsRide.SideshowPrizeValue = Math.Max(0, _detailsRide.SideshowPrizeValue + by); break;
+            case 190: _detailsRide.SideshowPrice = (ushort)Math.Max(0, _detailsRide.SideshowPrice + by); break;
+            default: return;
+        }
+        ShowSideshowDetails(_detailsRide);
     }
 
     ParkRide ShopFor(int placed)
@@ -9600,6 +9690,8 @@ public partial class Viewer : Node3D
                     _shopPanel.Paged += OnLaptopPage;
                     _shopPanel.SliderMoved += OnLaptopSlider;
                     _shopPanel.ShopSettingChanged += OnShopSetting;
+                    _shopPanel.PriceNudged += OnShopPriceNudge;
+                    _shopPanel.RowNudged += OnRowNudge;
                     // ⭐ The laptop's voice. ⚠ A bank that will not read leaves it null and the
                     // laptop silent, never unusable -- Report says which cues resolved.
                     _laptopSounds = new LaptopSounds(_lib, this);
