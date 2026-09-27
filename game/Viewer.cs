@@ -7717,9 +7717,9 @@ public partial class Viewer : Node3D
     }
 
     /// <summary>⭐ A TOILET'S DETAILS PAGE -- Users, Last Cleaned and Cleanliness.
-    /// ⚠ Only Users is tracked by this port. `Last Cleaned` is a day count written by
-    /// `FUN_00142948` and `Cleanliness` is a bar, and neither quantity exists in our sim yet, so
-    /// both are blank rather than a number that looks like one.</summary>
+    /// ⚠ Users, Cleanliness and Last Cleaned are all live now. Last Cleaned is blank only for a
+    /// lavatory that has never been cleaned -- its stamp is 0 from activation, and printing
+    /// "today minus zero" would show the park's age as though somebody had scrubbed it on day one.</summary>
     void ShowToiletDetails(ParkRide loo)
     {
         _detailsRide = loo; _detailsSpec = LaptopScreen.Toilet;
@@ -7739,9 +7739,19 @@ public partial class Viewer : Node3D
                 // `return facility[0xB4]`. So the bar IS Condition, read from the console's own
                 // reader, rather than a quantity chosen to fill the row.
                 132  => (null, Math.Clamp(loo.Condition, 0, 100)),      // Cleanliness
-                // ⚠ Last Cleaned stays blank: it is today MINUS the day stamped at `+0xA8`, and
-                // nothing stamps it until handymen land. tinyclaw is adding it as LastCleanedDay
-                // beside Condition; this row wires to it then and not before.
+                // ⭐⭐ LAST CLEANED IS LIVE NOW. tinyclaw landed `LastCleanedDay` (`+0xA8`, written
+                // by the handyman's clean `FUN_00130978`), so the row this screen has been holding
+                // blank can finally say something true.
+                //
+                // ⭐ TODAY MINUS THE STAMP, in days, which is the console's own arithmetic:
+                // `FUN_001DA008` takes the second value row from `FUN_00130940`, and ParkSim
+                // documents that reader as "today MINUS this, in days".
+                //
+                // ⚠ A lavatory that has NEVER been cleaned stamps 0 at activation, which would
+                // read as "cleaned on day zero" and print the park's whole age. Blank is the honest
+                // answer there -- the same rule the rest of this screen follows.
+                1077 => (loo.LastCleanedDay <= 0 ? null
+                         : $"{Math.Max(0, _calendar.TotalDays - loo.LastCleanedDay)}d", 0),
                 _    => (null, 0),
             });
         _shopPanel.ShowScreen(LaptopScreen.Toilet, DisplayName(loo), cells);
