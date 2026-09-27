@@ -54,6 +54,37 @@ public partial class Viewer
     CoasterNode _coasterGhost;
     (int X, int Y) _coasterGhostAt = (int.MinValue, 0);
     bool _coasterGhostOk, _coasterFromStation;
+
+    /// <summary>⭐ THE VALID-CELL FIELD (`0x11aa70` / `0x11acc8`, coaster-building.md §4.7): the grey
+    /// patch that shows where the next pylon may go. Scanned 4 rows a frame over the 17 columns around
+    /// the cursor, from `cursor.z − 8` at the restart to `cursor.z + 8` now; restarted on every
+    /// selection and every Undo, NOT when the cursor moves, so it stays centred where the last pylon
+    /// went down. Drawn only once complete.</summary>
+    readonly List<ParkCell> _coasterField = new();
+    int _coasterFieldZ = int.MinValue;
+    bool _coasterFieldDone;
+
+    void RestartCoasterField() { _coasterField.Clear(); _coasterFieldZ = int.MinValue; _coasterFieldDone = false; }
+
+    /// <summary>One frame of the scan; true on the frame it completes.</summary>
+    bool StepCoasterField(CoasterView v, int cx, int cz)
+    {
+        if (_coasterFieldDone) return false;
+        var t = v.Track;
+        if (t.Pylons.Count >= CoasterTrack.MaxPylons) { _coasterFieldDone = true; return true; }
+        if (_coasterFieldZ == int.MinValue) _coasterFieldZ = cz - 8;
+        for (int r = 0; r < 4 && _coasterFieldZ <= cz + 8; r++, _coasterFieldZ++)
+            for (int x = cx - 8; x <= cx + 8; x++)
+            {
+                var c = new ParkCell(x, _coasterFieldZ);
+                // (x,z) and (x+1,z+1) in grid, then the cheap rules on the current node moved there.
+                if (Ground.InGrid(c) && Ground.InGrid(c.Offset(1, 1))
+                    && t.FieldCell(c, _coasterStartHeight, _coasterStartBank, Ground)) _coasterField.Add(c);
+            }
+        if (_coasterFieldZ <= cz + 8) return false;
+        _coasterFieldDone = true;
+        return true;
+    }
     int _coasterStartHeight, _coasterStartBank, _coasterPick;
     double _coasterHold;
     System.Action _afterCoaster;
@@ -590,6 +621,7 @@ public partial class Viewer
         _coasterStartBank = start.Bank;
         _coasterGhost = null;
         _coasterGhostAt = (int.MinValue, 0);
+        RestartCoasterField();
         RebuildCoaster(v);
         LookAtCell(v.Track.Exit.CellX, v.Track.Exit.CellZ, null);
         GD.Print($"[coaster] tool open for ride {v.Id}: start height {_coasterStartHeight} bank {_coasterStartBank}");
@@ -641,14 +673,16 @@ public partial class Viewer
     }
 
     /// <summary>Per frame (`0x11aef0`): the ghost follows the cursor and is validated with the full
-    /// rules; the cursor tile says so (165 / 175) and the entry cell wears the 166 chevron.</summary>
+    /// rules; the cursor tile says so (165 / 175), the entry cell wears the 166 chevron, and the
+    /// valid-cell field, once scanned, is 171 while the ghost is valid and 175 while it is not.</summary>
     void UpdateCoasterGhost(double delta)
     {
         var v = _coasterTool;
         if (v == null) return;
         if (_coasterMode == CoasterMode.Edit) { StepPylonEdit(v, delta); return; }
         if (!CursorCell(out int x, out int y)) return;
-        if ((x, y) == _coasterGhostAt) return;
+        bool fieldDone = StepCoasterField(v, x, y);
+        if ((x, y) == _coasterGhostAt && !fieldDone) return;
         _coasterGhostAt = (x, y);
         var t = v.Track;
         if (_coasterGhost != null) t.UnlinkGhost(_coasterGhost);
@@ -663,8 +697,16 @@ public partial class Viewer
             ok = afford && t.IsValid(_coasterGhost, Ground, true);
         }
         _coasterGhostOk = ok;
-        marks.Add((x, y, ok ? 165 : 175, 0));
         var e = t.Entry.Cell;
+        if (_coasterFieldDone)
+        {
+            // The field's colour is the ghost's own verdict under the full rules, not the cash test the
+            // cursor tile also carries.
+            int field = _coasterGhost != null && t.IsValid(_coasterGhost, Ground, true) ? 171 : 175;
+            foreach (var c in _coasterField)
+                if ((c.X, c.Z) != (x, y) && c != e) marks.Add((c.X, c.Z, field, 0));
+        }
+        marks.Add((x, y, ok ? 165 : 175, 0));
         if ((e.X, e.Z) != (x, y)) marks.Add((e.X, e.Z, 166, CoasterEntryTurn(t)));
         _ghostView?.ShowTurnedCells(marks, _park);
         RebuildCoaster(v);
@@ -706,6 +748,7 @@ public partial class Viewer
         t.AddPylon(cell, _coasterStartHeight, _coasterStartBank, false, CoasterNodeKind.Normal);
         _toolSfx?.Play(ToolSounds.Cue.Lay);
         _coasterGhostAt = (int.MinValue, 0);
+        RestartCoasterField();
         RebuildCoaster(v);
     }
 
@@ -724,6 +767,7 @@ public partial class Viewer
         _coasterStartBank = t.Last.Bank;
         _toolSfx?.Play(ToolSounds.Cue.Undo);
         _coasterGhostAt = (int.MinValue, 0);
+        RestartCoasterField();
         RebuildCoaster(v);
         return true;
     }
@@ -764,6 +808,7 @@ public partial class Viewer
         }
         _toolSfx?.Play(ToolSounds.Cue.Lay);
         _coasterGhostAt = (int.MinValue, 0);
+        RestartCoasterField();
         RebuildCoaster(v);
     }
 

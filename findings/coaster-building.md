@@ -411,8 +411,19 @@ segment turns red live.
 | "Cost: $%ld" | at the cursor (`0x1b3210`, when tool `+8 ≠ 0`) | row **0x23** `STR_COST`; shows 100 in B and M (moving is free), hidden in E |
 
 ⚠ `ghost-cursor.md` §1 found that the tile loader `0x220dc0` **does not load ids 171 and 174**; their
-handle slots are gaps. So how the valid-cell field (171) and the loop-cursor tile (174) look on a PS2
-is **not established**.
+handle slots are gaps, and the disc ships no `171.tga` or `174.tga`. ⭐ **What 171 looks like is now
+MEASURED** (strawberry's console capture of the tool, 2026-09-27): the valid-cell field is an
+untextured **flat grey at 75 %** -- it reads (109, 135, 108) over grass of (32, 133, 26), which is
+(135, 135, 135) at alpha 0.75 on all three channels. It is a wedge of cells ahead of the last pylon,
+cut straight where the 17×17 window ends; the cursor tile (165) is teal inside it. How 174 looks
+is still not established.
+
+**In the port** (`Viewer.Coasters.cs`, 2026-09-27): the field is scanned as §4.7 says (4 rows a
+frame over the cursor's 17 columns, restarted on a press, an Undo or a loop, drawn once complete,
+171 while the ghost is valid under the full rules and 175 while it is not), with `CoasterTrack.FieldCell`
+as the cheap rule set on a scratch node. `GhostMarkers` draws 171 as that measured grey; the port's
+render of it reads (109, 134, 107) over grass (28, 131, 23), the same 135 at 0.75. Build mode only:
+the edit-mode field, whose third condition also checks the next pylon, is not drawn.
 
 Button bars (`0x13e340` order Triangle, Circle, Cross, Square; rows resolved from the EUR text DB):
 
@@ -1026,9 +1037,8 @@ not the DBA `+0xbc/+0xc0` values. The coaster code derives the station link only
 
 ## 9. Still unknown (what I tried)
 
-- **What the valid-cell field and the loop-cursor tile look like on screen.** They draw marker ids 171
-  and 174, which the tile loader does not load (`ghost-cursor.md`). Not run on hardware or in an
-  emulator; no savestate is on this box.
+- **What the loop-cursor tile looks like on screen.** It draws marker id 174, which the tile loader
+  does not load (`ghost-cursor.md`). (171, the valid-cell field, is now measured: §2.6.)
 - **Snapped cursor step size per press.** One repeat pulse is 128 units (half a cell), READ. How
   pulses map to presses is in `0x1812f8` (the pad repeat), not traced.
 - **Units of the clearance and overlap heights.** Model height `0x17c578` (`*(model+0xc)+0x64`) is

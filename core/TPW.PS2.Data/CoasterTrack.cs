@@ -234,6 +234,30 @@ public sealed class CoasterTrack
         return g;
     }
 
+    /// <summary>One cell of the valid-cell field (`0x11aa70`, coaster-building.md §4.7): the current node
+    /// -- the ghost after the last pylon -- moved to <paramref name="cell"/> and held to the CHEAP rules
+    /// (distance, turn, occupancy, stacking, neighbours, stack height, closing angle), without the
+    /// clearance and overlap tests. A scratch node that is never linked, so nothing is recomputed per
+    /// cell: what <see cref="IsValid"/> reads of it (heading, chord, base, stack) is set here the way
+    /// <see cref="LinkGhost"/> and <see cref="Recompute"/> would set it.</summary>
+    public bool FieldCell(ParkCell cell, int height, int bank, IGround g)
+    {
+        var last = Last;
+        var n = new CoasterNode
+        {
+            CellX = cell.X, CellZ = cell.Z, Height = height, Bank = Type.IsMoonshot ? 0 : bank, Prev = last,
+        };
+        var b = BottomAt(cell);
+        if (b != null && !b.IsStation && !b.LoopFlag && b != last)
+        {
+            var top = b; while (top.Above != null) top = top.Above;
+            n.Below = top;
+        }
+        n.TrackY = BaseY(n) + Type.Attach(n.Height);
+        ChordOf(n);
+        return IsValid(n, g, false);
+    }
+
     public void UnlinkGhost(CoasterNode g)
     {
         if (g?.Prev != null && g.Prev.Next == g) g.Prev.Next = null;

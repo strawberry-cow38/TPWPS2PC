@@ -140,11 +140,50 @@ public partial class CoasterSmoke : Node3D
             // Lay the ring press by press, then close it on the entry cell.
             var ring = OvalOf(track.Exit.Cell, step, side);
             var sim = Field<ParkSim>(viewer, "_sim");
-            foreach (var c in ring)
+            for (int ri = 0; ri < ring.Length; ri++)
             {
+                var c = ring[ri];
                 Set(viewer, "_cursorOverride", (c.X, c.Z));
                 try { Call(viewer, "UpdateCoasterGhost", 0.0); Call(viewer, "PressCoasterTool"); }
                 finally { Set(viewer, "_cursorOverride", null); }
+                if (ri == 2) await FieldCheck(c, ring[ri + 1]);
+            }
+            // ⭐ The valid-cell field (0x11aa70, §4.7): after a press the scan restarts around the cursor,
+            // 4 rows a frame, and is drawn once complete. Every cell it lists is one the next pylon could
+            // take under the cheap rules, so each lies 3..8 cells (0x300..0x800) from the last pylon; the
+            // ring's own next cell is among them and the last pylon's cell is not.
+            async Task FieldCheck(ParkCell at, ParkCell next)
+            {
+                Set(viewer, "_cursorOverride", (at.X, at.Z));
+                try { for (int f = 0; f < 6; f++) Call(viewer, "UpdateCoasterGhost", 0.0); }
+                finally { Set(viewer, "_cursorOverride", null); }
+                var field = Field<List<ParkCell>>(viewer, "_coasterField");
+                var last = track.Last;
+                double Dist(ParkCell q) => Math.Sqrt(Math.Pow((q.X - last.CellX) * 256.0, 2) + Math.Pow((q.Z - last.CellZ) * 256.0, 2));
+                Check(Field<bool>(viewer, "_coasterFieldDone") && field.Count > 0 && field.All(q => Dist(q) >= 0x300 && Dist(q) <= 0x800)
+                      && field.Contains(next) && !field.Contains(last.Cell),
+                      $"the valid-cell field is scanned in 5 frames: {field.Count} cells, all 3..8 from the last pylon, the ring's next among them");
+                var ghost = (GhostMarkers)Member("_ghostView").GetValue(viewer);
+                Check(ghost.Root.GetChildren().OfType<MeshInstance3D>().Count() >= 2,
+                      "the field is drawn (171 beside the cursor's own tile)");
+                // The field's colour follows the ghost: on the pylon just laid it is refused (175, red), on
+                // the next ring cell it is valid, so the field goes to 171 -- the grey in the console shot.
+                Set(viewer, "_cursorOverride", (next.X, next.Z));
+                try { Call(viewer, "UpdateCoasterGhost", 0.0); }
+                finally { Set(viewer, "_cursorOverride", null); }
+                Check(Field<bool>(viewer, "_coasterGhostOk"), $"the ghost on the ring's next cell {next} is valid, so the field draws as 171");
+                if (shots != null)
+                {
+                    foreach (var layer in viewer.FindChildren("*", "CanvasLayer", true, false).OfType<CanvasLayer>()) layer.Visible = false;
+                    Set(viewer, "_freeCam", true);
+                    var cam = Field<Camera3D>(viewer, "_cam");
+                    var aim = park.CellCentre(at.X, at.Z);
+                    cam.GlobalPosition = aim + new Vector3(6f, 9f, 8f);
+                    cam.LookAt(aim, Vector3.Up);
+                    for (int i = 0; i < 3; i++) await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                    Call(viewer, "SaveShot", System.IO.Path.Combine(shots, $"{world.ToLowerInvariant()}_{folder.ToLowerInvariant()}_field.png"));
+                    foreach (var layer in viewer.FindChildren("*", "CanvasLayer", true, false).OfType<CanvasLayer>()) layer.Visible = true;
+                }
             }
             Check(track.Pylons.Count == ring.Length && !track.Closed && track.Pylons.All(n => n.Height == type.ExitHeight),
                   $"{ring.Length} presses lay {track.Pylons.Count} pylons, every one at the station's height {type.ExitHeight}");

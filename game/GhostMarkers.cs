@@ -37,6 +37,24 @@ public sealed class GhostMarkers
         // by the engine, logged, and the frame is abandoned -- so the app never reaches the next
         // thing it was going to do and simply sits there looking hung. Whatever goes wrong, it
         // must come out as one line and a marker that does not draw.
+        // ⭐⭐ 171, THE COASTER TOOL'S VALID-CELL FIELD, HAS NO TEXTURE: the disc ships no 171.tga and the
+        // tile loader 0x220dc0 leaves its handle slot a gap (findings/ghost-cursor.md §1), so the PS2
+        // draws those quads untextured. strawberry's capture of the tool (2026-09-27) shows what that is:
+        // the field reads (109,135,108) over grass of (32,133,26), which is a flat (135,135,135) at 0.75
+        // on all three channels. Drawn as that, not as an invented texture.
+        if (id == 171)
+        {
+            made = new StandardMaterial3D
+            {
+                AlbedoColor = new Color(135 / 255f, 135 / 255f, 135 / 255f, 0.75f),
+                Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
+                ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+                CullMode = BaseMaterial3D.CullModeEnum.Disabled,
+                DepthDrawMode = BaseMaterial3D.DepthDrawModeEnum.Disabled,
+            };
+            _cache[id] = made;
+            return made;
+        }
         byte[] bytes = null;
         try { bytes = _read?.Invoke($"/Generic/Tiles/{id}.tga"); }
         catch (System.Exception e) { GD.PrintErr($"[ghost] marker {id} would not read: {e.Message}"); }
