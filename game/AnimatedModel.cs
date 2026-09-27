@@ -664,6 +664,15 @@ public sealed class AnimatedModel
         RebuildGeometry(p, 0);
     }
 
+    float _now;
+
+    /// <summary>Build the named parts again at the last <see cref="SetFrame"/> time: for a hook such as
+    /// <see cref="UvRewrite"/> set after construction, on parts no channel ever rebuilds.</summary>
+    public void Rebuild(Func<Model.Mesh, bool> which)
+    {
+        foreach (var p in _parts) if (p.Surfaces != null && which(p.Mesh)) RebuildGeometry(p, _now);
+    }
+
     void RebuildGeometry(Part p, float now, Matrix4x4[] pose = null)
     {
         var pos = p.BindPos;
@@ -777,6 +786,7 @@ public sealed class AnimatedModel
 
     public void SetFrame(float now)
     {
+        _now = now;
         // The APS clock drives texture choices too. Shared materials update every surface using
         // the slot; image lookup still goes through the viewer's owner-scoped texture cache.
         foreach (var track in _textureTracks)

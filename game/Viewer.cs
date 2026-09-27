@@ -6904,6 +6904,13 @@ public partial class Viewer : Node3D
                 rec = anim.Records().FirstOrDefault(r => r.Slot == 0) ?? anim.Records().FirstOrDefault();
             }
             var drawn = new AnimatedModel(mesh, anim, rec, m => TextureNear(ride.Model.Path, m));
+            var loaded = mesh;
+            if (StandInUv(loaded) is { } rewrite)
+            {
+                var standIn = new HashSet<int>(loaded.Materials.Select((m, i) => (m, i)).Where(x => TextureStandIns.ContainsKey(x.m)).Select(x => x.i));
+                drawn.UvRewrite = rewrite;
+                drawn.Rebuild(part => loaded.Triangles(part).Any(tr => standIn.Contains(tr.Material)));
+            }
             // ⭐⭐ HANDED BACK ON ITS LAST FRAME -- the BUILT thing. The park centres a model on its
             // drawn bounds, and frame 0 of a Create animation is the ride flat-packed: the Belly
             // Bounce is an inflatable dinosaur and its first frame is the deflated heap, which is
@@ -8876,6 +8883,70 @@ public partial class Viewer : Node3D
     /// ⚠ The cache is keyed by OWNER AND MATERIAL. Keying on the material alone let the terrain and
     /// a ride that share a material name -- and they do, both draw from Sharetex -- hand each other
     /// the other's texture, whichever was built first.</summary>
+    /// <summary>For a model that uses a stand-in texture: the stand-in's own faces' UV map, carried onto
+    /// the faces that borrow it, so the borrowed art is laid at its own scale and runs on across the seam
+    /// rather than squeezed into the strip's authored 0..1. The map is the largest source triangle's,
+    /// in model space (<see cref="Model.WorldTransforms"/>): u and v as linear functions of position
+    /// in its plane, evaluated at each borrowing vertex. Null when the model has none.</summary>
+    static Action<Model.Mesh, IReadOnlyList<System.Numerics.Vector3>, List<Vector2>> StandInUv(Model mesh)
+    {
+        var borrow = new HashSet<int>();
+        var source = new HashSet<int>();
+        for (int i = 0; i < mesh.Materials.Count; i++)
+            if (TextureStandIns.TryGetValue(mesh.Materials[i], out var to))
+            {
+                borrow.Add(i);
+                int s = mesh.Materials.FindIndex(m => m.Equals(to, StringComparison.OrdinalIgnoreCase));
+                if (s >= 0) source.Add(s);
+            }
+        if (borrow.Count == 0 || source.Count == 0) return null;
+        var world = mesh.WorldTransforms();
+        System.Numerics.Vector3 A = default, gu = default, gv = default;
+        System.Numerics.Vector2 ua = default;
+        float best = 0;
+        foreach (var m in mesh.Meshes)
+        {
+            var (pos, uv, _) = mesh.Vertices(m);
+            var w = world[m.Offset];
+            foreach (var t in mesh.Triangles(m).Where(t => source.Contains(t.Material)))
+            {
+                var a = System.Numerics.Vector3.Transform(pos[t.A], w);
+                var e1 = System.Numerics.Vector3.Transform(pos[t.B], w) - a;
+                var e2 = System.Numerics.Vector3.Transform(pos[t.C], w) - a;
+                float area = System.Numerics.Vector3.Cross(e1, e2).Length();
+                if (area <= best) continue;
+                float g11 = System.Numerics.Vector3.Dot(e1, e1), g12 = System.Numerics.Vector3.Dot(e1, e2), g22 = System.Numerics.Vector3.Dot(e2, e2);
+                float det = g11 * g22 - g12 * g12;
+                if (MathF.Abs(det) < 1e-12f) continue;
+                System.Numerics.Vector3 Grad(float d1, float d2) => (g22 * d1 - g12 * d2) / det * e1 + (g11 * d2 - g12 * d1) / det * e2;
+                best = area; A = a; ua = uv[t.A];
+                gu = Grad(uv[t.B].X - uv[t.A].X, uv[t.C].X - uv[t.A].X);
+                gv = Grad(uv[t.B].Y - uv[t.A].Y, uv[t.C].Y - uv[t.A].Y);
+            }
+        }
+        if (best == 0) return null;
+        return (m, pos, uv) =>
+        {
+            var w = world[m.Offset];
+            foreach (var t in mesh.Triangles(m).Where(t => borrow.Contains(t.Material)))
+                foreach (int i in new[] { t.A, t.B, t.C })
+                {
+                    var d = System.Numerics.Vector3.Transform(pos[i], w) - A;
+                    uv[i] = new Vector2(ua.X + System.Numerics.Vector3.Dot(gu, d), ua.Y + System.Numerics.Vector3.Dot(gv, d));
+                }
+        };
+    }
+
+    /// <summary>⚠ PORT CHOICES, not the console: a texture the disc does not have, drawn with one it does.
+    /// Kept out of <see cref="AssetLibrary.TextureNear"/> so the texture audit still counts the name as
+    /// missing. `wr_flap.ssh` (the water ride's roller-lift flaps) is in no WAD; the console draws those
+    /// strips untextured (texture-fallback.md). strawberry, 2026-09-27, chose the rollers over grey and
+    /// over water, "the roller version"; <see cref="StandInUv"/> lays them at the roller face's scale.</summary>
+    static readonly Dictionary<string, string> TextureStandIns = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["wr_flap.ssh"] = "wr_roll.ssh",
+    };
+
     (ImageTexture Tex, bool Soft) TextureNear(string ownerPath, string material)
     {
         if (material == null || _texOn?.ButtonPressed == false) return (null, false);
@@ -8884,7 +8955,7 @@ public partial class Viewer : Node3D
         (ImageTexture, bool) made = (null, false);
         try
         {
-            var texture = _lib.TextureNear(ownerPath, material);
+            var texture = _lib.TextureNear(ownerPath, TextureStandIns.GetValueOrDefault(material, material));
             if (texture != null)
             {
                 var img = Image.CreateFromData(texture.Width, texture.Height, false, Image.Format.Rgba8, texture.Pixels);

@@ -339,6 +339,22 @@ public partial class TrackRideSmoke : Node3D
                 int drawnNow = layout.Pieces.Count(p => p.Info.Shape is not (15 or 99));
                 Check(pieces.Count == drawnNow && pieces.Cast<Node3D>().All(n => IsInstanceValid(n) && n.FindChildren("*", "MeshInstance3D", true, false).Count > 0),
                       $"the ramps are drawn ({pieces.Count} of {drawnNow})");
+                // ⚠ PORT CHOICE (strawberry): JUNGLE's water-ride ramp flaps ask for wr_flap.ssh, which the disc
+                // lacks; they borrow the rollers, laid at the roller face's own scale.
+                var flaps = pieces.Cast<Node3D>().Where(n => IsInstanceValid(n) && !n.IsQueuedForDeletion())
+                    .SelectMany(n => n.FindChildren("wr_flap*", "MeshInstance3D", true, false).Cast<MeshInstance3D>()).ToList();
+                if (world == "JUNGLE" && water)
+                {
+                    float VSpan(MeshInstance3D f)
+                    {
+                        var uvs = (Vector2[])((ArrayMesh)f.Mesh).SurfaceGetArrays(0)[(int)Mesh.ArrayType.TexUV];
+                        return uvs.Max(q => q.Y) - uvs.Min(q => q.Y);
+                    }
+                    Check(flaps.Count > 0 && flaps.All(f => f.MaterialOverride is ShaderMaterial sm && sm.GetShaderParameter("has_tex").AsBool()),
+                          $"the ramp's flap strips are textured with the stand-in ({flaps.Count} surfaces)");
+                    float span = flaps.Max(VSpan);
+                    Check(span < 0.5f, $"and at the rollers' scale: the widest flap spans {span:F3} of the texture in V, not its authored 0..1 squeezed into the strip");
+                }
                 aimAt = ((Node3D)pieces[layout.Pieces.Where(p => p.Info.Shape is not (15 or 99)).ToList().IndexOf(ua)]).GlobalPosition;
                 aimFar = 5f;
                 await Shot("bridge");

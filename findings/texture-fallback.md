@@ -238,7 +238,10 @@ draw and `0x40` is tested next as blending, which is the GS PRIM layout (TME bit
 INFERRED from that match, the packet writer was not followed. So the part draws untextured, in its
 lit vertex colour: the port's fallback is `128/255` for that reason. `wr_flap` is the water ride's
 roller-ramp flaps (`wr_trckh`, `wr_trckh_u` nodes `wr_flap`, `wr_flap01`): grey strips on the console
-too, if this reading holds. `jpa_que4` is requested by **SPACE**'s terrain while carrying a
+too, if this reading holds.
+**Port choice, 2026-09-27:** strawberry chose to draw the flaps with the rollers instead (`wr_roll`,
+laid at the roller face's own UV scale) -- `Viewer.TextureStandIns`, kept out of `AssetLibrary` so this
+audit still counts `wr_flap` as unresolved. It is a departure from the console, named as one. `jpa_que4` is requested by **SPACE**'s terrain while carrying a
 *jungle* prefix, which reads like a copied model nobody re-pointed.
 
 ⚠ **So the floor is 14, and the gate this job was given ("zero unresolved") was unmeetable.** That
