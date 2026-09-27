@@ -66,10 +66,15 @@ public sealed record StaffFeature(ParkCell Origin, ParkCell Entry, byte Flags, b
 /// <see cref="CancelHire"/>; <see cref="Fire"/>;</item>
 /// <item><see cref="Members"/> (update order) and <see cref="Active"/> (per type) for drawing and
 /// the laptop: position, facing, logical request, shown, model id, tiredness, morale, level, wage;</item>
-/// <item><see cref="Sound"/> and <see cref="Advisor"/>;</item>
+/// <item><see cref="Litter"/> for the litter models; <see cref="Sound"/> and <see cref="Advisor"/>;</item>
 /// <item><see cref="AnimationReady"/> for the model's readiness, and <see cref="Features"/> to add
 /// scriptless bins and staff rooms.</item>
 /// </list>
+///
+/// **Attach** with <c>visitors.Staff = staff</c>: then <see cref="ParkVisitors.Step"/> runs
+/// <see cref="Update"/> once per park tick, guests drop litter and vomit into <see cref="Litter"/>
+/// and feel it every 64 ticks, and the toilet stand-in `ParkVisitors.Maintain` stops -- handymen
+/// clean instead. Unattached, nothing in the guest code changes.
 ///
 /// Native order within a frame (§2.5): the route pump `0x18D7F8`, then every map object's `vt+0x3C`
 /// newest first (`0x14BE60` over `[0x395208]`), then the render bumps the tick counter `[0x397644]`.
@@ -114,6 +119,7 @@ public sealed class ParkStaff
         Random = random;
         Tiles = new NativeTileView(Visitors.Walk.Paths, () => Visitors.Sim.Rides);
         RouteRequests = new StaffRouteService(Visitors.Walk.Paths, Tiles, Routes);
+        Litter = new ParkLitter(Random, Activations);
         Features = () => Visitors.Sim.Rides.Select(StaffFeature.Of).Where(f => f != null);
         _poolEpoch = Routes.ResetGeneration;
         // 0x147EB0: every pool built once, its five slots pushed on the free list AT THE HEAD, so
@@ -122,7 +128,7 @@ public sealed class ParkStaff
         {
             var slots = new StaffMember[StaffTables.PoolSize];
             for (int i = 0; i < slots.Length; i++)
-                slots[i] = new StaffMember(this, kind, i);
+                slots[i] = kind == StaffKind.Handyman ? new Handyman(this, i) : new StaffMember(this, kind, i);
             _slots[kind] = slots;
             _free[kind] = new List<StaffMember>();
             _active[kind] = new List<StaffMember>();
@@ -140,6 +146,7 @@ public sealed class ParkStaff
     public Func<int, int> Random { get; }
     public NativeTileView Tiles { get; }
     public StaffRouteService RouteRequests { get; }
+    public ParkLitter Litter { get; }
 
     /// <summary>⚠ ADAPTER for `[0x397644]`, the frame counter `0x1C4930` reads: the port's own count
     /// of staff updates, bumped at the END of <see cref="Update"/> as the render bumps the native one

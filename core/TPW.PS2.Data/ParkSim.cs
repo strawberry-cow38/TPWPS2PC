@@ -263,8 +263,22 @@ public sealed class ParkRide
     /// relief path at `0x20ef48`.</summary>
     public void Wear(int amount) => Condition = Math.Max(0, Condition - Math.Max(0, amount));
 
-    /// <summary>Put it back to new. ⭐ The console's `FUN_00130978`; the hook a cleaner wants.</summary>
+    /// <summary>Put it back to new, WITHOUT the day stamp. ⚠ Only the labelled stand-in
+    /// (`ParkVisitors.Maintain`) calls this; a real clean is <see cref="Service(int)"/>.</summary>
     public void Service() => Condition = 100;
+
+    /// <summary>⭐⭐ `FUN_00130978`, the handyman's clean: condition back to **100** and `+0xA8` =
+    /// the calendar day (`0x16AE90 -> 0x16B218`, i.e. <see cref="ParkClock.TotalDays"/>). Its ONLY
+    /// caller is the handyman's toilet completion `0x1456D8` (findings/staff-handymen-entertainers.md
+    /// §2.2-§3.7) -- which is what makes it a servicing rather than an initialisation.</summary>
+    public void Service(int day) { Condition = 100; LastCleanedDay = day; }
+
+    /// <summary>`+0xA8` on a lavatory: the calendar day count of its last clean, written only by
+    /// <see cref="Service(int)"/> (`0x130978`); the facility's activation `0x1302D8` writes 0, which
+    /// is this default. Its only reader is the Single Bog screen's "Last Cleaned" (`0x1DA008` via
+    /// `0x130940`), which shows today MINUS this, in days ("15d"). ⚠ Lavatories only, like
+    /// <see cref="Condition"/>; saved natively (record `+8`), and save/load is not ported.</summary>
+    public int LastCleanedDay { get; private set; }
 
     public RseMachine Machine { get; init; }
     public RsePreviewHost Host { get; init; }

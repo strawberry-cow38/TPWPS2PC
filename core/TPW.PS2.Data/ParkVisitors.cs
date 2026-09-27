@@ -186,10 +186,42 @@ public sealed class ParkVisitors
         get => _needs;
         set
         {
-            if (_needs != null) _needs.Sounded -= ForwardSound;
+            if (_needs != null) { _needs.Sounded -= ForwardSound; _needs.NearbyLitter = null; }
             _needs = value;
             if (_needs != null) _needs.Sounded += ForwardSound;
+            WireLitter();
         }
+    }
+
+    /// <summary>⭐⭐ THE PARK'S STAFF, ATTACHED -- null by default, and then this coordinator behaves
+    /// exactly as it did before staff existed. Setting it (the viewer's staff step does) changes four
+    /// things and nothing else:
+    /// 1. <see cref="Step"/> runs <see cref="ParkStaff.Update"/> once per executed park tick;
+    /// 2. guests PRODUCE LITTER into <see cref="ParkStaff.Litter"/>: the idle arms 3 and 4 of
+    ///    `0x20C930` (a full rubbish meter with no bin within 5 cells drops litter, `0x20D010`; a
+    ///    sick guest vomits after 15 ticks, state 0x1D `0x210950`) -- see <see cref="IdleArm"/>;
+    /// 3. guests FEEL nearby litter every 64 ticks (<see cref="VisitorNeeds.NearbyLitter"/>);
+    /// 4. the toilet stand-in <see cref="Maintain"/> stops: handymen clean the lavatories instead,
+    ///    and with none hired they STAY dirty, as on the console.</summary>
+    public ParkStaff Staff
+    {
+        get => _staff;
+        set { _staff = value; WireLitter(); }
+    }
+    ParkStaff _staff;
+
+    void WireLitter()
+    {
+        if (_needs != null) _needs.NearbyLitter = _staff == null ? null : NearbyLitter;
+    }
+
+    /// <summary>The litter within reach of a guest's BODY (the walk's cell); none for a guest the
+    /// walk has handed to a ride or facility (⚠ natively the hidden guest's stored position still
+    /// counts; the port has no position for it).</summary>
+    (int Plain, int Vomit) NearbyLitter(int guest)
+    {
+        var body = Walk.Guests.FirstOrDefault(g => g.Id == guest);
+        return body == null || _staff == null ? (0, 0) : _staff.Litter.Near(body.Cell);
     }
 
     /// <summary>What a ride does to a rider, applied ONCE on genuine completion.
@@ -421,6 +453,10 @@ public sealed class ParkVisitors
         uint startTick=DecisionTick;
         int parkTicks=Sim.Advance(deltaSeconds);
         AdvanceRelief(startTick,parkTicks);
+        // ⭐ Attached staff tick with the park, once per executed tick (ParkStaff.Update). ⚠ Batched
+        // after the rides, as the port already batches guests before them; the native frame runs
+        // every map object once per tick in one list.
+        if (Staff != null) for (int i = 0; i < parkTicks; i++) Staff.Update();
         RecoverGuests();
         Deliver();
         Idle(wander);
@@ -468,6 +504,8 @@ public sealed class ParkVisitors
         _decisions.Reconcile(_plans.Keys);
         foreach(int stale in _destinationHistory.Keys.Where(id=>!_plans.ContainsKey(id)).ToArray())
             _destinationHistory.Remove(stale);
+        foreach(int stale in _vomiting.Keys.Where(id=>!_plans.ContainsKey(id)).ToArray())
+            _vomiting.Remove(stale);
         Maintain(deltaSeconds);
     }
 
@@ -483,9 +521,15 @@ public sealed class ParkVisitors
     ///
     /// ⭐ THE CONSOLE HAS A HANDYMAN. `FUN_00130978` -- condition back to 100, plus a timestamp
     /// -- has exactly ONE caller, `0x1456D8`, which is a STAFF MEMBER finishing a clean: it bumps
-    /// the staff's own `+0x53`/`+0x54` stats, resets the facility, then clears their goal stack
-    /// and activity the same way a guest's ride exit does. Staff are a whole entity this port
-    /// does not have.
+    /// the handyman's `P+0x53`/`P+0x54` -- tiredness +5 (+10 below condition 40) and morale +5
+    /// (-10 below 40) (findings/staff-handymen-entertainers.md §3.7, §8) -- resets the facility,
+    /// then clears his goal stack and activity.
+    ///
+    /// ⭐⭐ AND NOW THE PORT HAS HIM: <see cref="Handyman"/>. With a <see cref="ParkStaff"/> attached
+    /// (<see cref="Staff"/>) this stand-in is OFF -- <see cref="Maintain"/> returns at once -- and
+    /// only hired handymen clean, day stamped; with none hired the lavatories stay dirty, as on the
+    /// console. It still runs for a park with NO staff system attached, which is today's viewer
+    /// until its staff step lands; delete it then.
     ///
     /// ⚠⚠ SO THIS IS A STAND-IN AND IS LABELLED AS ONE. The console's OUTCOME is reproduced
     /// (lavatories get cleaned, so dirt is a recurring cost rather than a death spiral); WHO
@@ -585,6 +629,11 @@ public sealed class ParkVisitors
 
     void Maintain(double deltaSeconds)
     {
+        // ⭐ STAFF ATTACHED, STAND-IN OFF. With a ParkStaff on this park the lavatories are cleaned by
+        // handymen (0x1456D8 -> 0x130978, day stamped), so this timer must not also clean them; with
+        // none hired they stay dirty, which is the console. Unattached -- today's viewer, which has no
+        // hire UI yet -- keeps the stand-in exactly as it was.
+        if (Staff != null) return;
         if (!AutoService || deltaSeconds <= 0) return;
         _sinceService += deltaSeconds;
         if (_sinceService < SecondsPerService) return;
@@ -593,9 +642,10 @@ public sealed class ParkVisitors
             if (ride.ProvidesRelief && ride.Condition < 100) { ride.Service(); Serviced++; }
     }
 
-    /// <summary>⚠ Off switches the stand-in off, for a check that wants to watch dirt accumulate
-    /// -- and for the day staff arrive, when this should be deleted rather than left switched
-    /// off. An unused knob reads like a decision.</summary>
+    /// <summary>⚠ Off switches the stand-in off, for a check that wants to watch dirt accumulate.
+    /// ⭐ Staff have arrived (<see cref="ParkStaff"/>): attaching them via <see cref="Staff"/> already
+    /// stops the stand-in whatever this says; it survives only for the unattached viewer and should
+    /// be deleted with the stand-in once the viewer attaches staff.</summary>
     public bool AutoService { get; set; } = true;
     public int Serviced { get; private set; }
 
@@ -730,6 +780,7 @@ public sealed class ParkVisitors
         _decisions.Forget(guest);
         _serviceTerminals.Remove(guest);
         _reliefVisits.Remove(guest);
+        _vomiting.Remove(guest);
         if (countDeparture) WentHome++;
     }
 
@@ -855,6 +906,12 @@ public sealed class ParkVisitors
             }
             if (g.State != GuestState.Arrived) continue;
             if (_plans.TryGetValue(g.Id, out var plan) && plan.Intent == VisitorIntent.Heading) continue;
+            // Native state 0x1D (0x210950): a vomiting guest does nothing else until its deadline.
+            if (_vomiting.TryGetValue(g.Id, out uint sickUntil))
+            {
+                if (DecisionTick > sickUntil) FinishVomiting(g);
+                continue;
+            }
             // ⭐⭐ AND HAVING HAD ENOUGH BEATS BOTH. `WantsToGoHome` was decoded, documented
             // and CALLED FROM NOWHERE -- the arithmetic had its own checks while the park it
             // described could never lose a single guest. Dead code reads exactly like a feature
@@ -877,6 +934,12 @@ public sealed class ParkVisitors
             // post-completion destination gate only, not the full weighted native chooser.
             // Going home above still has priority; no affordability veto is invented here.
             var action = _decisions.NextAction(g.Id, DecisionTick);
+            // Arms 3 and 4 used to fall through as None; they still do unless staff are attached.
+            if (action is GuestIdleAction.Litter or GuestIdleAction.Vomit)
+            {
+                if (Staff != null) IdleArm(g, action);
+                continue;
+            }
             if (action == GuestIdleAction.Move)
             {
                 // Native state0 arm1 -> states1/5 runs even before the destination deadline.
@@ -962,6 +1025,77 @@ public sealed class ParkVisitors
             if (wander?.Invoke() is { } cell) Walk.Send(g, cell);
         }
     }
+
+    readonly Dictionary<int, uint> _vomiting = new();
+    /// <summary>Instrumentation for the staff checks: litter dropped by guests, rubbish binned (the
+    /// adapter below), and vomit left.</summary>
+    public int LitterDropped { get; private set; }
+    public int LitterBinned { get; private set; }
+    public int Vomited { get; private set; }
+    /// <summary>Guests currently in the 15-tick vomiting state 0x1D.</summary>
+    public bool IsVomiting(int guest) => _vomiting.ContainsKey(guest);
+
+    /// <summary>⭐⭐ `0x20C930`'s idle arms 3 and 4, READ (findings/staff-handymen-entertainers.md
+    /// §5.5-§5.7); only called with a staff system attached.
+    ///
+    /// **Arm 3**, `+0x74 &gt; 89` → `0x20D010(g, 0)`: the nearest placed object with DBA `+0x2E` bit 2
+    /// (`0x1307E8`), Manhattan in cells, strict `&lt;`, first wins. None, or `dist &gt; 5` (MIPS
+    /// `0x20D2E0` `sltiu 6`): DROP -- litter at the guest's 1/256 position ± 100, shown
+    /// (`0x15E5F0` from `0x20D4CC`), and the meter to 0 EVEN IF THE POOL WAS FULL. ⚠ Advisor counter
+    /// 0x15 (v77) is not modelled. ⚠⚠ A bin within 5: natively the guest routes to the bin (mode 0x13,
+    /// flags 1) and empties the meter on ARRIVAL; bins have no capacity and are never emptied. The
+    /// walk to the bin is NOT ported: the meter empties at once, which is the arrival's effect
+    /// without the walk.
+    ///
+    /// **Arm 4**, `+0x76 &gt; 92` and `rand(4) == 0` (the draw only when sick enough) → state 0x1D with
+    /// `G+0x2C = now + 15`; <see cref="FinishVomiting"/> when `now &gt; G+0x2C`. ⚠ The arm's own sound
+    /// (bank 7, 0xCC) stays where the port already raises it, <see cref="VisitorNeeds.Decide"/>'s Sick
+    /// thought, so it is not played twice; logical 12 has no guest-animation consumer here.
+    ///
+    /// ⚠ Where the port rolls these arms: <see cref="GuestDecisionSchedule.NextAction"/> draws the
+    /// arm only for a guest with a completion gate (one who has used a facility) -- the port's
+    /// existing adapter for guests without one picks a destination instead. The native rolls every
+    /// state-0 update.</summary>
+    void IdleArm(Guest g, GuestIdleAction action)
+    {
+        if (Needs == null || !Needs.Has(g.Id)) return;
+        var w = Needs.Of(g.Id);
+        if (action == GuestIdleAction.Litter)
+        {
+            if (w.Litter <= 89) return;
+            StaffFeature bin = null; int best = int.MaxValue;
+            foreach (var f in Staff.Features?.Invoke() ?? Enumerable.Empty<StaffFeature>())
+            {
+                if (!f.IsBin) continue;
+                int d = Math.Abs(f.Origin.X - g.Cell.X) + Math.Abs(f.Origin.Z - g.Cell.Z);
+                if (d < best) { best = d; bin = f; }
+            }
+            if (bin == null || best > 5) { Staff.Litter.Drop(GuestPoint(g), vomit: false); LitterDropped++; }
+            else LitterBinned++;
+            w.Litter = 0;
+            Needs.Set(g.Id, w);
+            return;
+        }
+        if (w.Sick <= 92 || unchecked((uint)_random()) % 4u != 0) return;
+        _vomiting[g.Id] = unchecked(DecisionTick + 15);
+    }
+
+    /// <summary>State 0x1D's end, `0x210950` (READ): litter at the guest's position ± 100 with the
+    /// VOMIT flag, shown (the `puke` model); sickness `+0x76 = 0` -- also when the pool was full.</summary>
+    void FinishVomiting(Guest g)
+    {
+        _vomiting.Remove(g.Id);
+        if (Staff != null) { Staff.Litter.Drop(GuestPoint(g), vomit: true); Vomited++; }
+        if (Needs == null || !Needs.Has(g.Id)) return;
+        var w = Needs.Of(g.Id);
+        w.Sick = 0;
+        Needs.Set(g.Id, w);
+    }
+
+    /// <summary>A standing guest's 1/256 position: the centre of its cell (<see cref="Guest.Position"/>
+    /// with no edge in progress).</summary>
+    static NativeGuestMotion.Point GuestPoint(Guest g)
+        => new(unchecked((short)(g.Cell.X * 256 + 0x80)), unchecked((short)(g.Cell.Z * 256 + 0x80)));
 
     /// <summary>Shipping placed-candidate selection. Native arithmetic/order/history,
     /// with explicit existing transport/lifecycle safety boundaries: Takes still refuses

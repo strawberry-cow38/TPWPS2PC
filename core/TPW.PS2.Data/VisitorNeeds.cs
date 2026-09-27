@@ -514,6 +514,7 @@ public sealed class VisitorNeeds
 
         long before = _tick; _tick += ticks;
         Moods(before, _tick);
+        LitterPhase(before, _tick);
         _hungerTicks += ticks; int hunger = _hungerTicks / HungerTicks; _hungerTicks %= HungerTicks;
         _thirstTicks += ticks; int thirst = _thirstTicks / ThirstTicks; _thirstTicks %= ThirstTicks;
         if (hunger == 0 && thirst == 0) return;
@@ -608,6 +609,47 @@ public sealed class VisitorNeeds
             }
             w.Thought = picked.Value;
             _byGuest[guest] = w;
+        }
+    }
+
+    /// <summary>⭐⭐ LITTER NEAR A GUEST COSTS THEM, every 64 ticks -- `FUN_0020FB88`'s litter phase,
+    /// READ (findings/staff-handymen-entertainers.md §5.4, MIPS `0x20FF00` `slti $a0,$a0,2`):
+    /// <code>
+    ///   if ((now &amp; 0x3F) == (serial &amp; 0x3F))
+    ///       for each active litter item with |dx| + |dz| &lt; 2:      // cells: own cell or 4 neighbours
+    ///           if (item.vomit) sick = min(100, sick + 3);
+    ///           happiness = max(0, happiness - 3);
+    /// </code>
+    /// No visibility test: hidden litter counts the same. ⚠ visitors.md's "Manhattan 2" is `&lt; 2`.
+    ///
+    /// ⚠ NULL BY DEFAULT, and then nothing happens -- the park is exactly as it was. The coordinator
+    /// supplies it only when a staff system is attached (the litter lives there): it returns how many
+    /// plain and vomit items lie within reach of this guest's body, and (0,0) for a guest the walk has
+    /// handed to a ride. ⚠ Like <see cref="Moods"/>, the guest's ID stands in for its activation
+    /// serial in the stagger.</summary>
+    public Func<int, (int Plain, int Vomit)> NearbyLitter { get; set; }
+
+    /// <summary>`0x20FB88`'s litter cadence: `(now &amp; 0x3F) == (serial &amp; 0x3F)`.</summary>
+    public const int LitterTicks = 64;
+    /// <summary>Happiness lost per item, and sickness gained per VOMIT item, in one litter phase.</summary>
+    public const int LitterHappiness = 3, VomitSickness = 3;
+
+    void LitterPhase(long from, long to)
+    {
+        if (NearbyLitter == null || to <= from) return;
+        foreach (int guest in _byGuest.Keys.ToArray())
+        {
+            long phase = ((guest & (LitterTicks - 1)) - from) % LitterTicks;
+            if (phase < 0) phase += LitterTicks;
+            for (long t = from + phase; t < to; t += LitterTicks)
+            {
+                var (plain, vomit) = NearbyLitter(guest);
+                if (plain + vomit == 0) continue;
+                var w = _byGuest[guest];
+                w.Sick = Clamp(w.Sick + VomitSickness * vomit);
+                w.Happiness = Clamp(w.Happiness - LitterHappiness * (plain + vomit));
+                _byGuest[guest] = w;
+            }
         }
     }
 

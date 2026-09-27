@@ -3,9 +3,12 @@ using System.Collections.Generic;
 
 namespace TPW.PS2.Data
 {
-    /// <summary>The two decoded state0 actions integrated here. Other native arms are
-    /// not silently turned into destination picks or invented movement.</summary>
-    public enum GuestIdleAction { None, SelectDestination, Move }
+    /// <summary>The decoded state0 actions integrated here. Other native arms are
+    /// not silently turned into destination picks or invented movement.
+    /// Litter and Vomit are 20C930's arms 3 and 4 (findings/staff-handymen-entertainers.md
+    /// §5.5): the arm is only DRAWN here; its own test (+0x74 &gt; 89, +0x76 &gt; 92 and rand(4))
+    /// and effect belong to the caller, which acts on them only with a staff system attached.</summary>
+    public enum GuestIdleAction { None, SelectDestination, Move, Litter, Vomit }
 
     /// <summary>
     /// Post-completion destination-selection gate, in caller-supplied counter units.
@@ -68,6 +71,8 @@ namespace TPW.PS2.Data
             uint threshold = unchecked(gate.Deadline + 60u + extra);
             // Deliberately plain unsigned comparison, NOT signed elapsed-time math.
             if (arm == 1u) return GuestIdleAction.Move;
+            if (arm == 3u) return GuestIdleAction.Litter;   // 20C930 arm 3 -> 20D010 when +0x74 > 89
+            if (arm == 4u) return GuestIdleAction.Vomit;    // arm 4 -> state 0x1D when +0x76 > 92, rand(4) == 0
             return arm == 0u && now > threshold ? GuestIdleAction.SelectDestination : GuestIdleAction.None;
         }
 
