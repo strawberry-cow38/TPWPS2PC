@@ -37,9 +37,9 @@ SCENES = {
     'disruption': ('NativeDepartureDisruptionSmoke', 'NATIVE DEPARTURE DISRUPTION SMOKE', 1000),
     # Queue item 10. Per-update stop checks dominate (73473 on JUNGLE-1); the floor only proves it ran.
     'soak': ('NativeEntranceSoak', 'NATIVE ENTRANCE SOAK SMOKE', 5000),
-    # The restored seaplane and ferry. JUNGLE loads neither and passes on 4; every other park runs 12,
-    # and its PASS line prints only after all of them, so the floor is JUNGLE's.
-    'vehicles': ('ParkVehiclesSmoke', 'PARK VEHICLES SMOKE', 4),
+    # The restored seaplane and ferry. JUNGLE loads the seaplane alone and passes on 8; every other park
+    # runs 12, and its PASS line prints only after all of them, so the floor is JUNGLE's.
+    'vehicles': ('ParkVehiclesSmoke', 'PARK VEHICLES SMOKE', 8),
     # Track rides: build menu -> station -> the track tool pressed round a loop -> riders on and off.
     # Terrain 1 builds the karts, terrain 2 the water ride (37, with its flow); the floor is the karts'
     # (34 with the zero-length leg's check).

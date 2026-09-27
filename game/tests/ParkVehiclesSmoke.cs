@@ -10,7 +10,7 @@ namespace TPWPS2Viewer.Tests;
 ///
 /// HALLOW, FANTASY and SPACE must load both, draw them, and run each one's own script through a
 /// whole visit -- VAR_STATUS 1 (arriving) to 6 (away) and back to 1 -- moving between its stops.
-/// JUNGLE must load neither: its seaplane stop is inside the hillside and its ferry has no model.
+/// JUNGLE loads the seaplane only: its ferry has no model or animation on the disc (fcf890e).
 /// `--no-seaplane-ferry` (the field behind it) must leave none in any world.</summary>
 public partial class ParkVehiclesSmoke : Node3D
 {
@@ -51,15 +51,12 @@ public partial class ParkVehiclesSmoke : Node3D
             var vehicles = Field<IList>(viewer, "_vehicles");
 
             Call(viewer, "StepPark", .04);
-            if (world == "JUNGLE")
+            // JUNGLE ships the seaplane complete but the ferry with no model or animation (fcf890e), so
+            // it loads the seaplane alone; every other world loads both.
             {
-                Check(vehicles.Count == 0 && Field<string>(viewer, "_vehiclesKey") != null,
-                    "JUNGLE considered the park and loaded no seaplane or ferry");
-            }
-            else
-            {
+                var want = world == "JUNGLE" ? new[] { "seaplane" } : new[] { "ferry", "seaplane" };
                 var stems = vehicles.Cast<object>().Select(v => (string)F(v, "Stem")).OrderBy(s => s).ToArray();
-                Check(stems.SequenceEqual(new[] { "ferry", "seaplane" }), $"{world} loads the seaplane and the ferry ({string.Join(",", stems)})");
+                Check(stems.SequenceEqual(want), $"{world} loads {string.Join(" and ", want)} ({string.Join(",", stems)})");
                 var seen = vehicles.Cast<object>().ToDictionary(v => (string)F(v, "Stem"), _ => new List<int>());
                 var at = vehicles.Cast<object>().ToDictionary(v => (string)F(v, "Stem"), _ => new Dictionary<int, Vector3>());
                 for (int tick = 0; tick < 8000 && seen.Values.Any(s => !Cycled(s)); tick++)
