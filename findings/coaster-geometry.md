@@ -472,8 +472,9 @@ In all 14 pylons `@+0x34 = 1`, while 12 of them have 2 meshes. Under the engine 
 - (0x400000, id 2 or 1) lands on `TrackDummyCentre`/`TrackCentreDummy` in **every** file;
 - (0x100000, id 1) lands on the stack-height helper in every file.
 
-The port's `Model.Fittings` assigns `node = meshes + index`, which puts these on `TrackDummyOut` and
-`base`. **For the port:** use `index + hdr[0x34]`. Only monkey.mps was checked by the port, where
+The port's `Model.Fittings` assigned `node = meshes + index`, which puts these on `TrackDummyOut` and
+`base`. (Fixed centrally in 90eb0d6: `Fitting.Node` is now `index + hdr[0x34]`, and the coaster code
+that corrected it by hand reads it as is.) **For the port:** use `index + hdr[0x34]`. Only monkey.mps was checked by the port, where
 the two rules may coincide.
 
 ### 4.5 Station nodes (READ `0x122060`)

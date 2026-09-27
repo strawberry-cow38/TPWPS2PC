@@ -410,14 +410,15 @@ public partial class Viewer
             float loft = Math.Clamp(n.Height / 2560f, 0f, 1f);
             if (rec != null) drawn.SetFrame(At(rec, loft));
             // ⭐ `0x199c90`: the stacker is the node of fitting (0x80000, id 1) by the ENGINE's rule,
-            // fitting index + header u16 @0x34 (not the port's meshes + index), and it carries hide
+            // fitting index + header u16 @0x34, which `Model.Fitting.Node` now is (90eb0d6; it was
+            // meshes + index, and this site corrected it by hand until then), and it carries hide
             // flag 0x8000 unless a pylon is stacked on this one. (The same function's other hide, on a
             // pylon standing on another, is not the post: see below.)
             var hidden = new HashSet<string>();
             void Hide(string meshName) { hidden.Add(meshName); foreach (var (m, _, node) in drawn.Surfaces()) if (m == meshName) node.Visible = false; }
             if (mesh.FindFitting(1, 0x80000) is { } fit)
             {
-                int engineNode = fit.Node - mesh.Meshes.Count + BitConverter.ToUInt16(mesh.D, 0x34);
+                int engineNode = fit.Node;
                 if (n.Above == null && engineNode >= 0 && engineNode < mesh.Meshes.Count) Hide(mesh.Meshes[engineNode].Name);
             }
             // ⚠⚠ The post is NOT hidden on a stacked pylon. 0x199c90 does set 0x8000 on the record at
@@ -447,7 +448,7 @@ public partial class Viewer
             // one 0x19a420 reads), kept for the checks: the post is authored to meet it.
             if ((mesh.FindFitting(2, 0x400000) ?? mesh.FindFitting(1, 0x400000)) is { } dummyFit && drawn.LastWorld != null)
             {
-                int node = dummyFit.Node - mesh.Meshes.Count + BitConverter.ToUInt16(mesh.D, 0x34);
+                int node = dummyFit.Node;
                 if (drawn.LastWorld.TryGetValue(mesh.NodeOffset(node), out var w))
                     holder.SetMeta("track_dummy", new Vector3(w.M41, w.M42, w.M43));
             }
