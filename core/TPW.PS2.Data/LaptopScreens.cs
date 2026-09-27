@@ -150,6 +150,48 @@ public sealed record LaptopScreen(
             new(832, LaptopRowKind.Money,  "CostOfPrizeValue",  "PricePerGameArrow"),
             new(190, LaptopRowKind.Money,  "PricePerGameValue", "CostOfPrizeArrow"),
         });
+
+    /// <summary>⭐ The TOILET screen, `main_i_bathroom_data`, menu 23, drawn by `FUN_001DA008`.
+    /// Labels are the `STR_SINGLEBOG_*` family. This completes the four "Single ..." screens, which
+    /// the console builds on one shared base class (`FUN_001D9500`) -- see `findings/laptop-screens.md`.
+    ///
+    /// ⭐ THE ROWS CAME FROM THE DRAW, which is short and unusually clear: three `FUN_00138580`
+    /// label calls at ids 168, 1077 and 132, stepped 0x20 apart, then two values and one bar. All
+    /// three resolve inside `STR_SINGLEBOG_*`, which is the check that they belong to this screen
+    /// and not a neighbour.
+    ///
+    /// ⭐⭐ AND THE SCENE FILE'S OWN COMMENTS AGREE, WHICH IS WHY THIS ONE IS SOLID. It labels
+    /// `textoptions` *"text - users/lastcleaned/cleanliness"* -- the same three rows in the same
+    /// order the draw emits them -- and `NumericItems` *"numbers - int/date"*. The comment is
+    /// corroboration and not the authority (the ride's comment omits a row the draw plainly emits),
+    /// but here the two independent readings match.
+    ///
+    /// ⚠ LAST CLEANED IS A DATE, NOT A NUMBER, and the draw says so before the comment does: the
+    /// two values go through DIFFERENT formatters. Users takes `FUN_00142B68`, which
+    /// <see cref="Money"/> documents as the digits-with-thousands-separators writer; Last Cleaned
+    /// takes `FUN_00142948`, which is neither that nor the money formatter (`FUN_00142908`). The
+    /// scene's "int/date" then names what the second one is. It is <see cref="LaptopRowKind.Text"/>
+    /// because this enum has no date kind and the value is not a bare integer -- calling it a Value
+    /// would have flattened two different formatters into one because they sat next to each other.
+    /// ⚠ `FUN_00142948` itself is NOT decoded, so the date's format is unknown; do not assume it
+    /// matches <see cref="ParkClock"/>'s dd/MM/yyyy without reading it.
+    ///
+    /// ⚠ One bar and no sliders, which agrees with the constructor's widget census
+    /// (`FUN_00115468` once, `FUN_001DA630` never) and with the scene's single `cleanlinessbar`.
+    /// ⚠ Its title element is named `text`, not `ItemText` -- and it is authored at row 115 col 45,
+    /// the SAME place as the shop's, which is how the mapping was settled rather than by the name.</summary>
+    public static readonly LaptopScreen Toilet = new(
+        "main_i_bathroom_data.sce", 23, "text", "textoptions", "NumericItems", "Model",
+        new LaptopRow[]
+        {
+            new(168,  LaptopRowKind.Value),                     // Users         int
+            new(1077, LaptopRowKind.Text),                      // Last Cleaned  date, FUN_00142948
+            new(132,  LaptopRowKind.Bar, "cleanlinessbar"),     // Cleanliness
+        });
+
+    /// <summary>The four "Single ..." item screens the console builds on one base class. ⚠ Build
+    /// and Hire are NOT here: they are sub-panels of Build &amp; Hire, not registered scenes.</summary>
+    public static readonly LaptopScreen[] SingleItem = { Shop, Ride, Sideshow, Toilet };
 }
 
 /// <summary>One labelled row. <paramref name="Element"/> names the scene element that carries the

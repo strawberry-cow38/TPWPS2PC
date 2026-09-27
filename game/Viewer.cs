@@ -3681,14 +3681,20 @@ public partial class Viewer : Node3D
             return;
         }
 
+        // ⭐ `toilet` completes the four "Single ..." screens. The console draws all four from ONE
+        // base class, so this screen needed no new drawing code at all -- only its row data, which
+        // is why it is a one-line addition here. See findings/laptop-screens.md.
         var spec = _laptopScreen.StartsWith("side", StringComparison.OrdinalIgnoreCase) ? LaptopScreen.Sideshow
                  : _laptopScreen.StartsWith("shop", StringComparison.OrdinalIgnoreCase) ? LaptopScreen.Shop
+                 : _laptopScreen.StartsWith("toilet", StringComparison.OrdinalIgnoreCase)
+                   || _laptopScreen.StartsWith("bog", StringComparison.OrdinalIgnoreCase) ? LaptopScreen.Toilet
                  : _laptopScreen.StartsWith("build", StringComparison.OrdinalIgnoreCase) ? LaptopScreen.Build
                  : _laptopScreen.StartsWith("hire", StringComparison.OrdinalIgnoreCase) ? LaptopScreen.Hire
                  : LaptopScreen.Ride;
         string title = spec == LaptopScreen.Ride ? "Crazy Ape"
                      : spec == LaptopScreen.Sideshow ? "Arcade"
                      : spec == LaptopScreen.Build ? "Crazy Ape"
+                     : spec == LaptopScreen.Toilet ? "Toilet"
                      : spec == LaptopScreen.Hire ? "Mechanic" : "Drinks Shop";
 
         // ⭐ Build the model once, from the ride the screen is about, then step it per frame.
@@ -3785,7 +3791,14 @@ public partial class Viewer : Node3D
                 // The ride's three word rows read as they do on the real screen.
                 // ⚠ Upgrades (7) carries the word, Addons (8) does not -- that is which rows the
                 // SCENE gives a value element to, and this harness had the two the wrong way round.
-                LaptopRowKind.Text  => (i == 7 ? "Unavailable" : i == 8 ? null : "1yr", 0),
+                // ⚠ HARNESS PLACEHOLDERS, not decoded values. The toilet's one Text row is its
+                // Last Cleaned DATE (`FUN_00142948`), and that formatter is NOT read -- this stands
+                // something date-shaped in the slot so the layout can be looked at, and must not be
+                // taken as the console's format.
+                // ⚠ Digits and '/' only: the first try used dashes and spaces and the bitmap font
+                // drew them as garbage glyphs, which reads as a bug rather than as a placeholder.
+                LaptopRowKind.Text  => (spec == LaptopScreen.Toilet ? "00/00/0000"
+                                        : i == 7 ? "Unavailable" : i == 8 ? null : "1yr", 0),
                 _ => (pct.ToString(), 0),
             });
         }
