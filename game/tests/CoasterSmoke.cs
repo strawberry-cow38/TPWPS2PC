@@ -338,6 +338,11 @@ public partial class CoasterSmoke : Node3D
                     foreach (var layer in viewer.FindChildren("*", "CanvasLayer", true, false).OfType<CanvasLayer>()) layer.Visible = true;
                 }
             }
+            // The HUD's stock and cost lines follow the tool: 32 less the pylons laid, and the pylon's price.
+            Check(Member("_previewStock").GetValue(viewer) is int stockLeft && stockLeft == CoasterTrack.MaxPylons - ring.Length
+                  && Member("_previewCost").GetValue(viewer) is int costNow && costNow == (int)F(view, "Price") * 10
+                  && (int)Member("_previewStockTextId").GetValue(viewer) == 223,
+                  $"the HUD reads Pylon Stock {Member("_previewStock").GetValue(viewer)} (32 less {ring.Length}) and Cost {Member("_previewCost").GetValue(viewer)}");
             Check(track.Pylons.Count == ring.Length && !track.Closed && track.Pylons.All(n => n.Height == type.ExitHeight),
                   $"{ring.Length} presses lay {track.Pylons.Count} pylons, every one at the station's height {type.ExitHeight}");
             Set(viewer, "_cursorOverride", (track.Entry.CellX, track.Entry.CellZ));

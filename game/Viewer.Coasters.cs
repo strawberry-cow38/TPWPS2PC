@@ -535,7 +535,7 @@ public partial class Viewer
     {
         if (!_coasters.Remove(id, out var v)) return;
         foreach (int voice in v.Voices) { _sounds?.Kill(voice, "coaster", RumbleTag, (long)_busElapsedMs); _sounds?.Follow(voice, RumbleTag, null); }
-        if (_coasterTool == v) { _coasterTool = null; _afterCoaster = null; _coasterGhost = null; _ghostView?.Clear(); }
+        if (_coasterTool == v) { _coasterTool = null; _afterCoaster = null; _coasterGhost = null; _ghostView?.Clear(); _previewCost = null; _previewStock = null; }
         v.Sim.RemoveTrains();
         if (IsInstanceValid(v.Frame)) v.Frame.QueueFree();
         RefreshFloor();
@@ -668,6 +668,7 @@ public partial class Viewer
         if (_coasterGhost != null) { v.Track.UnlinkGhost(_coasterGhost); _coasterGhost = null; }
         _coasterTool = null;
         _ghostView?.Clear();
+        _previewCost = null; _previewStock = null;
         RebuildCoaster(v);
         // Triangle (0x11ba00 / 0x11bbd8): the advisor's voice for an open (204) or invalid (203) ring,
         // then the test lap (0x122d48) and its stats screen (0x11bd28).
@@ -692,6 +693,12 @@ public partial class Viewer
     {
         var v = _coasterTool;
         if (v == null) return;
+        // The HUD's white lines under the medals (cow tools' ShowPlacementCost): "Pylon Stock %d", 32 less
+        // the pylons laid, loops included (`FUN_0011b2f8`), in both modes; "Cost: $%ld" only while
+        // laying -- the console hides it in the pylon edit (coaster-building.md §2.6).
+        _previewStockTextId = PylonStockTextId;
+        _previewStock = CoasterTrack.MaxPylons - v.Track.Pylons.Count;
+        _previewCost = _coasterMode == CoasterMode.Build ? v.Price * 10 : null;
         if (_coasterMode == CoasterMode.Edit) { StepPylonEdit(v, delta); return; }
         if (!CursorCell(out int x, out int y)) return;
         bool fieldDone = StepCoasterField(v);
