@@ -3220,3 +3220,15 @@ and the port table are in findings/native-ride-queue.md.
 - ParkVehiclesSmoke, viewer matrix `vehicles`: 8/8 after 95304e8's teardown fix (the first run flagged
   3 parks for leaked ambient AudioStreamPlaybackWAV at exit, not vehicle objects). Disabling the
   trigger stops the seaplane at status 2 and fails the smoke.
+
+## Potential improvements — coasters, parked by strawberry — September 27, 2026 UTC
+
+strawberry: "mark as a potential area for improvement and move on." Each of these is drawn where the
+console code, as read, puts it; the station models disagree. Details and every link checked are in
+`findings/coaster-geometry.md` §4.3 and §4.5.
+
+| Coaster | Port (code reading) | What the model says | Open because |
+|---|---|---|---|
+| The Shocker | station rail 5.57 cells, over the balls | tunnels through both balls at 3.55–4.45, rail helpers at 4.41 | nothing in the code moves it; no console capture |
+| Caterpillar Coaster | track 0.375 above each stake tip (`+0x60`) | the dummy is authored on the tip | the same rule lands Temple and Chak Atak on their stations |
+| Moonshot | beam 0.28 under the cannon's tube helper, 0.57 under the landing's | the helpers | may be intentional (strawberry) |
