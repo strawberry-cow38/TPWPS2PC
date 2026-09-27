@@ -1168,7 +1168,17 @@ public sealed class Park
         // (because they have stuff thats usually meant to sit under the ground surface)". Those
         // parts are meant to be under it, so the origin is the ground plane and what hangs below it
         // hangs below it.
-        model.Position = new Vector3(anchor.X, BaseY, anchor.Y);
+        // ⭐⭐ AND IT SITS ON ITS OWN LEVEL. Master: "pylons arent following elevated terrain
+        // (although no rides do lol)" -- no ride did, because this line pinned every model to the
+        // flat `BaseY`. `CellY` already answers the per-cell height, reading the step out of the
+        // field header (+0x18, 2.0 in all eight parks).
+        //
+        // ⚠ I held off on this because I did not know which cell of a multi-cell footprint the
+        // height should come from. Master settled it: "there IS no mixed height ground. its two
+        // distinct levels." So a footprint is wholly on one level or the other and any of its
+        // cells answers the same -- the anchor cell is taken because it is the one the model's
+        // own origin lands on.
+        model.Position = new Vector3(anchor.X, CellY(x, y), anchor.Y);
         return true;
     }
 

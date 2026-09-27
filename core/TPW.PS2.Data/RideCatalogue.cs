@@ -71,7 +71,12 @@ public sealed class RideDefinition
     /// <summary>⚠ "this is a fixed item whose animation should be played relative to world (0,0),
     /// not the object pos" -- the .sam's own words. Exposed and UNUSED.</summary>
     public bool DontApplyOffset => Int("Info.DontApplyOffset") == 1;
-    public string[]? Shape => Blocks.TryGetValue("Info.Shape", out var v) ? v : null;
+    /// <summary>The footprint. ⭐ A <see cref="ShapeOverrides"/> entry wins over the disc's own,
+    /// and it is applied HERE rather than at one call site so every consumer -- placement, the
+    /// ghost, the floor, the audit -- sees the same shape. A correction that only some of them
+    /// honoured would be worse than none.</summary>
+    public string[]? Shape => ShapeOverrides.For(Source)
+        ?? (Blocks.TryGetValue("Info.Shape", out var v) ? v : null);
     public string[]? Hoarding => Blocks.TryGetValue("Info.Hoarding", out var v) ? v : null;
 
     public int? Int(string key) =>
