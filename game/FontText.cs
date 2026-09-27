@@ -65,6 +65,24 @@ public sealed class FontText
                 }
             pen += g.Advance;
         }
+        // ⚠⚠ INSTRUMENT, for master's "sometimes in the ui the text is replaced by blocks"
+        // (2026-09-27). A run that comes out FULLY OPAQUE is a block: every pixel reached alpha
+        // 255, which means every glyph's coverage read as solid. It is not reproducible here --
+        // every label on every screen rendered correctly across a dozen shots -- so rather than
+        // guess at a fix this says so the moment it happens, and names the string, the glyph each
+        // character resolved to, and that glyph's size. Whoever sees it next gets the diagnosis
+        // instead of another screenshot.
+        bool solid = pixels.Length > 0;
+        for (int i = 3; i < pixels.Length; i += 4) if (pixels[i] != 255) { solid = false; break; }
+        if (solid && width > 2 && height > 2)
+        {
+            var seen = new System.Text.StringBuilder();
+            foreach (char c in text)
+                seen.Append(_font.TryGetGlyph(c, out var g)
+                            ? $" '{c}'->#{g.Index} {g.Width}x{g.Height}" : $" '{c}'->MISSING");
+            GD.PrintErr($"[font] SOLID BLOCK: \"{text}\" rendered {width}x{height} with every "
+                      + $"pixel opaque -- glyphs:{seen}");
+        }
         var image = Image.CreateFromData(width, height, false, Image.Format.Rgba8, pixels);
         var tex = ImageTexture.CreateFromImage(image);
         // ⚠ Bounded: a money readout has few distinct strings, but a caller could feed it

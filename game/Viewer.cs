@@ -7103,7 +7103,14 @@ public partial class Viewer : Node3D
         // the WIDTH binds the model sits at the TOP of the window rather than centred. That is
         // the original's behaviour, not an oversight here; it is flagged rather than tidied.
         float cx = (lo.X + hi.X) / 2f;
-        float cy = heightBinds ? (lo.Y + hi.Y) / 2f : hi.Y - orthoH / 2f;
+        // ⭐ BOTTOM, NOT TOP. Master: "and be aligned to the bottom". When the WIDTH binds there is
+        // spare height in the window, and this port used to spend it above the model because
+        // `FUN_001441C8` re-centres on one axis only -- it has an x branch and no y branch, which
+        // reads as "sits at the top". Master has played it and says the model sits on the bottom
+        // of its window, so the spare height goes above it.
+        // ⚠ The console's asymmetry is still real and still where it was; what is corrected is my
+        // reading of WHICH end of the window the model is pinned to.
+        float cy = heightBinds ? (lo.Y + hi.Y) / 2f : lo.Y + orthoH / 2f;
         float depth = Mathf.Max(modelW, modelH) * 4f;      // far enough to clear the model
         _laptopCam = new Camera3D
         {
@@ -7479,6 +7486,12 @@ public partial class Viewer : Node3D
                 919  => (null, Pct(ride.Capacity, 1, Math.Max(1, t.CapacityParameter))),
                 769  => (null, Pct(ride.Duration, t.MinDuration, t.MaxDuration)),  // Duration
                 415  => (ride.Customers.ToString(), 0),                            // Users
+                // ⭐ "Unavailable" where there is nothing to buy. Master: "upgrades/addons should
+                // have unavailable text next to them if they are unavailable". The word is the
+                // disc's own, `STR_LISTBOX_NOT_AVAILABLE` (335), resolved through the text table
+                // rather than typed in English here.
+                119  => (UpgradeAbove(ride) ? null : Unavailable(), 0),             // Upgrades
+                454  => (AddonHere(ride)    ? null : Unavailable(), 0),             // Addons
                 // ⚠ Life, Upgrades, Addons and Age are drawn by this screen and are not tracked
                 // by this port, so they are blank rather than a number that looks like one.
                 _    => (null, 0),
@@ -7496,6 +7509,9 @@ public partial class Viewer : Node3D
                + $"duration {ride.Duration} in {t.MinDuration}..{t.MaxDuration}; "
                + $"basis {ride.Definition.CompiledEntry.BaseExcitement}, excitement {ride.Value?.ToString() ?? "-"}, "
                + $"reliability {NativeRideReliability.Calculate(ride.Definition.CompiledEntry, ride.Speed, ride.Capacity, ride.Duration, ride.CurrentTier)}"
+               + $"; tier {ride.CurrentTier} costs "
+               + $"{string.Join("/", Enumerable.Range(0, 3).Select(i => ride.Definition.CompiledEntry.Tier(i).PurchaseCost))}"
+               + $", upgrade {UpgradeAbove(ride)}, addon {AddonHere(ride)}"
                + $" [shopfront {ride.Definition.ShopfrontReliability}, control "
                + $"{(NativeRideReliability.MatchesShopfront(ride.Definition.CompiledEntry) ? "PASS" : "FAIL")}]");
     }
@@ -7544,6 +7560,31 @@ public partial class Viewer : Node3D
         GD.Print($"[laptop] details {DisplayName(show)}: prize {show.SideshowPrizeValue}, "
                + $"price {show.SideshowPrice}, win {show.SideshowWinPercentage}%; "
                + $"excitement {show.Value?.ToString() ?? "-"}");
+    }
+
+    /// <summary>The disc's own word for a row with nothing to offer, `STR_LISTBOX_NOT_AVAILABLE`.</summary>
+    string Unavailable() => _text?.Text("eng", 335) ?? "Unavailable";
+
+    /// <summary>⭐ Is there a tier ABOVE this ride's current one to buy? A tiered entry holds
+    /// exactly THREE tiers -- they run from payload 0x20 at a 0x34 stride and `Extra` begins at
+    /// 0xBC, which is 0x20 + 3*0x34 -- so the index cannot exceed 2. ⚠ A tier that costs nothing
+    /// is not something the player can buy, so the cost is what decides, not the slot existing.</summary>
+    bool UpgradeAbove(ParkRide r)
+    {
+        if (r?.Definition?.CompiledEntry is not { HasRideTiers: true } e) return false;
+        int next = r.CurrentTier + 1;
+        return next <= 2 && e.Tier(next).PurchaseCost > 0;
+    }
+
+    /// <summary>⭐ Does THIS PARK sell an add-on for this ride? The per-park lists are the boot
+    /// initialiser's, read off the executable -- Dino Karts gets a tunnel and a lava jump, Splish
+    /// Splash a water tunnel, Taptastic Rapids and Space Racers none -- so on most rides in most
+    /// parks this row genuinely has nothing, which is the case master asked to see.</summary>
+    bool AddonHere(ParkRide r)
+    {
+        var assets = AssetsFor(r);
+        return assets != null && SoldHere(assets)
+            && DbaKey(assets) is uint k && TrackUpgrades.KindOf(TrackWorld, TrackPark, k) >= 0;
     }
 
     /// <summary>⭐ A slider moved: turn its percent back into the console's own units and write it
@@ -9910,6 +9951,12 @@ public partial class Viewer : Node3D
     public override void _Process(double delta)
     {
         ShowMoney();
+        // ⭐ THE INFO SCREEN'S MODEL ANIMATES. Master, 2026-09-27: "the models on the ride info
+        // pages should play their animations on loop". It never did in play: StepLaptopModel had
+        // exactly ONE caller and it was inside the --laptop-film harness, so the model was built,
+        // posed at frame 0 and left there. The loop itself was already right -- the stepper wraps
+        // on Frames -- it simply was not being driven outside a capture.
+        if (_shopPanel is { Open: true }) StepLaptopModel();
         TickDebugHud(delta);
         // ⭐⭐ THE CLOUDS SHIFT AND THE SKY GREYS. Master: "clouds ARE meant to shift; sky gets
         // gray when raining." ⚠ The console drives the grey from a weather AMOUNT whose state
