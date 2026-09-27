@@ -1178,6 +1178,15 @@ public sealed class Park
         // distinct levels." So a footprint is wholly on one level or the other and any of its
         // cells answers the same -- the anchor cell is taken because it is the one the model's
         // own origin lands on.
+        //
+        // ⚠⚠ AND THIS IS SAFE EVEN THOUGH `CellY` RESTS ON TWO UNPROVEN READINGS. Its own sources
+        // say so out loud: `Raw0` is "NOT a height, and NOT decoded", and `HeightField.Step` is
+        // "NOT PROVEN". Wiring every ride's Y to that looks reckless until you notice what else
+        // uses it -- the FLOOR MESH is built at `CellY` (see the plot builder above), and so are
+        // the ghost markers, the coaster's ground and the path overlays. So this does not add a
+        // guess; it makes a ride agree with the ground it is standing on. If the reading is wrong
+        // the floor is wrong with it and they are wrong TOGETHER, which is strictly better than a
+        // ride hanging in the air over its own raised floor.
         model.Position = new Vector3(anchor.X, CellY(x, y), anchor.Y);
         return true;
     }
