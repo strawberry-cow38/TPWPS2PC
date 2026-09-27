@@ -443,6 +443,11 @@ this reading predicts; whether the CONSOLE looks the same is the open question (
 
 Horizontally every track passes within 0.07 cells of its post-top centre.
 
+strawberry, who knows the console: **"the 'poking up' is intentional."** That is the −0.12 group, and it
+is the part of the table that exists only because `0x19a420` reads the helper's LOCAL y and not its
+drawn height, so it corroborates that reading from outside the code. The same rule is what floats
+Caterpillar and Scatty Batty; not yet confirmed either way.
+
 ### 4.4 Fittings → nodes (READ `0x19a4dc..0x19a518` against the data)
 
 The engine resolves a fitting to a model node as `node = fitting index + header u16 @+0x34`:
