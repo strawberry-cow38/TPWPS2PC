@@ -310,7 +310,15 @@ public sealed class CoasterTrack
     {
         var ring = Nodes().ToList();
         if (ghost != null) ring.Add(ghost);
-        foreach (var n in ring) n.TrackY = BaseY(n) + Type.Attach(n.Height);
+        // ⭐ YBase is where the pylon MODEL stands (`0x19cae0`): the terrain at the cell, or the pylon below.
+        // Only the two station nodes were ever given one, so every pylon stood at the park's base height
+        // while its track, reading the terrain here, rose over a raised cell (strawberry: "pylons arent
+        // following elevated terrain").
+        foreach (var n in ring)
+        {
+            if (!n.IsStation) n.YBase = BaseY(n);
+            n.TrackY = BaseY(n) + Type.Attach(n.Height);
+        }
         foreach (var n in ring) ChordOf(n);
         foreach (var n in ring)
         {

@@ -173,6 +173,15 @@ static class CoasterChecks
             Check(!nextTo && clearOf, "no coaster node, of any coaster, in the 8 cells around a pylon; one cell further is fine");
         }
         {
+            // A pylon on a raised cell stands ON it (0x19cae0): the model's base and the track both read the
+            // terrain there. Only the track did -- every pylon model stood at the park's base height.
+            var raised = new CoasterTrack(Temple, ExitCell, 3, EntryCell) { GroundY = (x, z) => x == 46 && z == 41 ? 512 : 0 };
+            var onRaised = raised.AddPylon(new ParkCell(46, 41), 375, 0, false, CoasterNodeKind.Normal);
+            var onFlat = raised.AddPylon(new ParkCell(51, 44), 375, 0, false, CoasterNodeKind.Normal);
+            Check(onRaised.YBase == 512 && onRaised.TrackY == 512 + Temple.Attach(375) && onFlat.YBase == 0 && onFlat.TrackY == Temple.Attach(375),
+                  $"a pylon on a raised cell stands on it: YBase {onRaised.YBase}, track {onRaised.TrackY}; the one on flat ground {onFlat.YBase}, {onFlat.TrackY}");
+        }
+        {
             // Stacking needs a way back to a pylon's cell with every turn under 90°: a pentagon.
             // The fifth side lands on p0, which is not the new node's prev, so the stack rule runs.
             (int, int)[] penta = { (46, 41), (51, 44), (51, 50), (46, 52), (42, 47) };
@@ -189,6 +198,8 @@ static class CoasterChecks
             bool second = Try(t1, g1, 46, 41, 375, false);
             var s1 = t1.AddPylon(new ParkCell(46, 41), 375, 0, false, CoasterNodeKind.Normal);
             second &= s1.Below == t1.Pylons[0];
+            Check(s1.YBase == t1.Pylons[0].TrackY - Temple.AttachOffset && s1.YBase > 0,
+                  $"a stacked pylon's model stands on the pylon below (YBase {s1.YBase} = {t1.Pylons[0].TrackY} - {Temple.AttachOffset})");
             t1.RemoveLast();
             // A third on that cell: lay the second, then a ghost back onto it from the same side.
             t1.AddPylon(new ParkCell(46, 41), 375, 0, false, CoasterNodeKind.Normal);
