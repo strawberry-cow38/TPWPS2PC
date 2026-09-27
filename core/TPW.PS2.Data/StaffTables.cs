@@ -132,6 +132,16 @@ public static class StaffTables
         _ => throw new ArgumentOutOfRangeException(nameof(kind)),
     };
 
+    /// <summary>⭐ The Hire panel's tabs, in the order `0x197C40` adds them (selector s = 0..4): Guards,
+    /// Mechanics, Cleaners, Researchers, Entertainers. Their text rows are u16 at `0x365020` (576,
+    /// 622, 658, 63, 518 -- <see cref="PurchaseTextRow"/>) and their keys u32 at `0x365050` (type
+    /// codes 3, 2, 5, 4, 1), and `0x15D238`'s jump table `0x360C10` turns the selector into the DB kind
+    /// (0→3, 1→0, 2→2, 3→4, 4→1). A tab is added only while `0x14CA20(10, key) &gt; 0`, i.e. 5 − the
+    /// hired count (findings/staff-management.md §2.1).</summary>
+    public const uint HireTabTextTable = 0x365020, HireTabKeyTable = 0x365050;
+    public static readonly StaffKind[] HireTabs =
+        { StaffKind.Guard, StaffKind.Mechanic, StaffKind.Handyman, StaffKind.Researcher, StaffKind.Entertainer };
+
     /// <summary>The ADD_MAX advisor message the hire drop `0x128918` posts when a type's raw count
     /// reaches 5: 0x5C mechanic, 0x5A entertainer, 0x58 handyman, 0x5E guard, 0x60 researcher
     /// (text, no voice; findings/staff-management.md §2.2).</summary>

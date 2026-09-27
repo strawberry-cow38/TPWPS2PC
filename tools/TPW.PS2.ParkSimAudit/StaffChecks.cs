@@ -50,6 +50,7 @@ static class StaffChecks
 
         Tables(elf, Check);
         Candidates(Check);
+        Registry(elf, data, Check);
 
         // ---- the park -------------------------------------------------------------------------
         var compiled = new CompiledAssets(new AssetResourceDatabase(data.Read(data.Find("/arsdb.dba"))),
@@ -241,6 +242,57 @@ static class StaffChecks
         Check(StaffTables.EntertainerCostumeVariant(0) == 1 && StaffTables.EntertainerCostumeVariant(1) == 2
               && StaffTables.EntertainerCostumeVariant(2) == null,
               "costume: 0x17D7E8 matches variant park+1 -- park 0 wears 1, park 1 wears 2, park 2 none");
+    }
+
+    /// <summary>The model registry `0x2BF2B8` as the viewer reads it (<see cref="NativeModelRegistry"/>):
+    /// every staff id and every litter id resolves to a file DATA.WAD holds, and the entertainer's 424
+    /// to the park's costume -- park 0 variant 1, park 1 variant 2, park 2 none (0x17D7E8).</summary>
+    static void Registry(byte[] elf, WadArchive data, Action<bool, string> Check)
+    {
+        var reg = new NativeModelRegistry(elf);
+        Check(reg.Entries.Count > 400 && reg.Shared == "Data" && reg.Worlds.SequenceEqual(new[] { @"Data\Jungle", @"Data\Hallow", @"Data\Fantasy", @"Data\Space" }),
+              $"registry: {reg.Entries.Count} entries up to EOL, base [0x2BF2B0] = {reg.Shared}, worlds {string.Join(" ", reg.Worlds)}");
+        string[][] costumes = { new[] { "dino", "hunter" }, new[] { "franky", "vampire" }, new[] { "flower", "gnome" }, new[] { "spaceman", "alien" } };
+        var fixedStaff = new (int Id, string Name)[] { (423, "Researcher"), (425, "Guard"), (426, "Handyman"), (427, "FatMechanic") };
+        int ok = 0, cases = 0; var wrong = new List<string>();
+        for (int w = 0; w < 4; w++)
+            for (int park = 0; park < 2; park++)
+            {
+                foreach (var (id, name) in fixedStaff.Append((424, costumes[w][park])))
+                {
+                    cases++;
+                    var e = reg.Find(id, w, park);
+                    var (archive, path) = e == null ? (null, null) : reg.ModelPath(e);
+                    if (e != null && e.Name.Equals(name, StringComparison.OrdinalIgnoreCase) && archive == "DATA"
+                        && path.Equals($"/Chars/{name}/{name}.mps", StringComparison.OrdinalIgnoreCase) && data.Find(path) != null) ok++;
+                    else wrong.Add($"{id}@{w}/{park}->{e?.Name}:{path}");
+                }
+            }
+        Check(ok == cases, $"registry: staff 423/425/426/427 and the costume 424 resolve in every world and park to a /Chars file in DATA.WAD ({ok} of {cases}) {string.Join(" ", wrong)}");
+        Check(Enumerable.Range(0, 4).All(w => reg.Find(424, w, 2) == null && reg.Find(426, w, 2)?.Name == "Handyman"),
+              "registry: in park index 2 no costume matches (and the handyman still does)");
+        var litter = new (int Id, string Name)[] { (487, "puke"), (598, "litter1"), (599, "litter2"), (600, "litter3") };
+        int lok = litter.Count(l => reg.Find(l.Id, 0, 0) is { } e && e.Name == l.Name
+            && reg.ModelPath(e) == ("DATA", $"/Generic/MiscMesh/{l.Name}.mps") && data.Find($"/Generic/MiscMesh/{l.Name}.mps") != null);
+        Check(lok == 4, $"registry: litter 598/599/600 and vomit 487 are /Generic/MiscMesh/litter1..3 and puke in DATA.WAD ({lok} of 4)");
+
+        uint U32(int off) => BinaryPrimitives.ReadUInt32LittleEndian(elf.AsSpan(off, 4));
+        int U16(int off) => BinaryPrimitives.ReadUInt16LittleEndian(elf.AsSpan(off, 2));
+        int At(uint va)
+        {
+            int ph = checked((int)U32(28));
+            for (int i = 0; i < U16(44); i++)
+            {
+                int p = ph + i * U16(42);
+                if (U32(p) == 1 && va >= U32(p + 8) && va < U32(p + 8) + U32(p + 16)) return checked((int)(U32(p + 4) + va - U32(p + 8)));
+            }
+            throw new InvalidDataException($"0x{va:x} is not file-backed");
+        }
+        var rows = Enumerable.Range(0, 5).Select(i => U16(At(StaffTables.HireTabTextTable + (uint)i * 2))).ToArray();
+        var keys = Enumerable.Range(0, 5).Select(i => (int)U32(At(StaffTables.HireTabKeyTable + (uint)i * 4))).ToArray();
+        Check(rows.SequenceEqual(StaffTables.HireTabs.Select(StaffTables.PurchaseTextRow))
+              && keys.SequenceEqual(StaffTables.HireTabs.Select(StaffTables.TypeCode)),
+              $"hire tabs: 0x365020 rows {string.Join(",", rows)} and 0x365050 keys {string.Join(",", keys)} are Guards, Mechanics, Cleaners, Researchers, Entertainers");
     }
 
     static void Candidates(Action<bool, string> Check)
