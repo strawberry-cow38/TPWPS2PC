@@ -46,8 +46,8 @@ SCENES = {
     'trackride': ('TrackRideSmoke', 'TRACK RIDE SMOKE', 34),
     # Roller coasters: build menu -> station with its queue -> pylons pressed round a ring -> trains -> riders.
     # Terrain 2 builds the park's last listed coaster, so eight coasters; the floor is HALLOW's Hades
-    # (58 with the valid-cell field's and the pylon edit's keys' checks).
-    'coaster': ('CoasterSmoke', 'COASTER SMOKE', 58),
+    # (62 with the valid-cell field's, the pylon edit's keys' and the station chevrons' checks).
+    'coaster': ('CoasterSmoke', 'COASTER SMOKE', 62),
 }
 MAP_LINE = re.compile(r'^\[map\] loaded world=([A-Z]+) terrain=(terrain_[12])\.mps$', re.M)
 
