@@ -68,9 +68,18 @@ public sealed class ParkFinances
     /// park with no starting money, which is a behaviour nothing in the executable asks for.</summary>
     public bool Unlimited { get; set; } = true;
 
-    /// <summary>`park[0x12d8]` and `park[0x12e4]` -- lifetime totals, unaffected by the period
-    /// counter this port does not model.</summary>
+    /// <summary>`park[0x12d8]` -- the LIFETIME income, unaffected by the period counter this port
+    /// does not model. This is the figure the Balance Sheet's "Cash In" reads.</summary>
     public int TotalIncome { get; private set; }
+
+    /// <summary>⚠⚠ MISLABELLED UNTIL 2026-09-28: this is `park[0x12e4]`, which is the spend SINCE
+    /// THE YEAR ROLL, not a lifetime total. The lifetime spend is `park[0x12d4]`, and the Balance
+    /// Sheet's "Cash Out" reads THAT one. `FUN_00100698` bumps both on every debit, so they are
+    /// numerically identical in this port -- which has no year roll to separate them -- and the
+    /// error is invisible today and would appear the moment one is added.
+    ///
+    /// ⚠ Park Finance wants `0x12e4`'s real meaning (this year) alongside `0x12e8` (last year),
+    /// so when the year roll lands these need to become two different numbers rather than one.</summary>
     public int TotalSpending { get; private set; }
 
     /// <summary>⭐ Income filed by category, as `FUN_001007D8` does. The console switches on two

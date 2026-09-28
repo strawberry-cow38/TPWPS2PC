@@ -3600,9 +3600,17 @@ public partial class Viewer : Node3D
             case "awards":
             {
                 var aw = _awards;
+                // ⚠⚠ THE CELL ORDER IS NOT THE REGISTRY'S. The draw walks bit k of stats+0x28 to
+                // sprites 0x26, 0x25, 0x29, 0x28, 0x27 -- security, upgrade, aesthetic, green,
+                // path -- which is ParkAwards.MedalOfHiddenAward exactly. Laying them out in
+                // registry order shows the right five icons in the wrong places.
                 var medals = new List<bool>();
-                for (int i = 0; i < GoldTicketScreen.Medals.Length; i++)
-                    medals.Add(aw != null && i < aw.Medals.Length && aw.Medals[i]);
+                var medalArtOrder = new List<int>();
+                foreach (int slot in ParkAwards.MedalOfHiddenAward)
+                {
+                    medalArtOrder.Add(slot);
+                    medals.Add(aw != null && slot < aw.Medals.Length && aw.Medals[slot]);
+                }
                 // ⚠ The port keeps a COUNT of ultimate coasters, not which ones, so the first N
                 // stars light in the registry's authored order. Flagged rather than presented as
                 // the console's own set -- it is the right number of stars, not certainly the
@@ -3611,6 +3619,7 @@ public partial class Viewer : Node3D
                 var stars = new List<bool>();
                 for (int i = 0; i < GoldTicketScreen.UltimateStars.Length; i++) stars.Add(i < uc);
                 _shopPanel.EnsureAwardArt(_lib);
+                _shopPanel.MedalCellOrder = medalArtOrder;
                 _shopPanel.ShowScreen(LaptopScreen.Awards, "",
                     Blank(LaptopScreen.Awards.Rows.Count), medals: medals, stars: stars);
                 ClearLaptopModel();
