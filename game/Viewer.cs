@@ -3666,14 +3666,14 @@ public partial class Viewer : Node3D
                 // ⭐ Most of this page IS real: Cash In, Staff Wages and Cash Out are the port's
                 // own totals, and Shop/Sideshow are the categorised income the console files as
                 // categories 4 and 5.
-                bf.IncomeByCategory.TryGetValue(4, out int shop);
-                bf.IncomeByCategory.TryGetValue(5, out int side);
+                // ⭐ The running totals tinyclaw filed, which ARE the console's park+0x12C8 /
+                // +0x12CC / +0x12C4 -- so this page reads the same three figures the disc does
+                // rather than my earlier guess at the categorised income.
+                int gate = bf.GateTotal, shop = bf.ShopTotal, side = bf.SideshowTotal;
                 int cashIn = bf.TotalIncome, cashOut = bf.TotalSpending, wages = bf.WageAccumulator;
                 var bcells = new List<(string, int)>
                 {
-                    // ⚠ Gate takings are filed by a path this port does not separate out yet, so
-                    // this one is a dash rather than a zero that would read as "nobody paid in".
-                    ("--", 0),
+                    (Money.Format(gate), 0),
                     (Money.Format(shop), 0),
                     (Money.Format(side), 0),
                     (Money.Format(cashIn), 0),
@@ -4061,8 +4061,11 @@ public partial class Viewer : Node3D
     static Func<int, int> FinanceSeries(ParkFinances fin, int row) => row switch
     {
         0 => fin.IncomeInPeriod,      // Money In
+        1 => fin.GateInPeriod,        // Gate
+        2 => fin.ShopInPeriod,        // Shop
+        3 => fin.SideshowInPeriod,    // Sideshow
         4 => fin.WagesInPeriod,       // Staff Wages
-        _ => _ => 0,                  // Gate / Shop / Sideshow -- no per-month ring in this port
+        _ => _ => 0,
     };
 
     /// <summary>Research's bar colours    /// <summary>Research's bar colours, straight off the disc: `0x365ed8` idle, `0x365ee0`
