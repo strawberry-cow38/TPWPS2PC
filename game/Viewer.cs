@@ -3592,6 +3592,41 @@ public partial class Viewer : Node3D
             }
             case "stafftypes": ShowStaffInfoTypes(); break;
             case "staffitem": ShowStaffInfoMember(arg); break;
+            // ⭐⭐ RESEARCH (menu id 9). The five rows ARE the manager's five slots.
+            //
+            // ⚠⚠ NO BUDGET CONTROL, deliberately: the PS2 screen's overall-research slider was
+            // CUT (the scene authors neither `OverallBar` nor `OverallText`, nothing reads their
+            // globals, and the ctor's one slider is never drawn or updated). Opening the screen
+            // just forces the budget to 100, which is what `OpenResearchScreen` does.
+            case "research":
+            {
+                var mgr = _staff?.Research;
+                if (mgr == null)
+                { _laptopBack.RemoveAt(_laptopBack.Count - 1); Status("no park is running yet"); ShowLaptopLevel(); return; }
+                mgr.OpenResearchScreen();
+                var rcells = new List<(string, int)>();
+                var rtints = new List<Color?>();
+                foreach (var slot in mgr.Slots)
+                {
+                    // ⚠ An idle slot reads "Nothing" and sits at zero -- and with the research
+                    // DATABASE not ported yet every slot is idle, so this screen is honestly
+                    // empty rather than faked full. It comes alive when the database lands.
+                    bool on = slot.Active;
+                    rcells.Add((on ? ResearchItemName(slot) : TextRow(LaptopScreen.ResearchNothingTextId),
+                                on ? (int)slot.Percent : 0));
+                    rtints.Add(on ? ResearchActive : ResearchIdle);
+                }
+                // ⚠ NO TITLE DRAWN. The class registers one (1013 "Research") but the scene authors no
+                // element for it, and this screen's TitleElement is TextOptions -- the labels' own
+                // element -- so drawing it there puts "Research" straight on top of "Rides".
+                // Where the console's base class puts a title with no authored frame is not read
+                // yet; an empty string is honest until it is.
+                _shopPanel.ShowScreen(LaptopScreen.Research, "", rcells, barTints: rtints);
+                ClearLaptopModel();
+                RefreshLaptopBalance();
+                Status($"research -- {mgr.ActiveCount} of {ResearchManager.SlotCount} slots running");
+                break;
+            }
             // ⭐⭐ GAME OPTIONS (menu id 1). Six rows, NO title, and not a Single-item screen --
             // see `LaptopScreen.GameOptionsFor`. ⚠ Save Game is drawn but refused; persistence is
             // the save coordinator's, and a save that filed only what the laptop knows would be
@@ -3757,7 +3792,24 @@ public partial class Viewer : Node3D
     const int StaffInfoRow = 4;
     string StaffName(StaffMember m) => m.Candidate.Name(_text) ?? $"#{m.Candidate.NameRow}";
 
-    /// <summary>⭐ The four settings Game Options owns. ONE owner, with capture/restore, because
+    /// <summary>Research's bar colours, straight off the disc: `0x365ed8` idle, `0x365ee0`
+    /// active. They are the screen's entire state signal, so they are named rather than tuned.
+    /// </summary>
+    static readonly Color ResearchIdle = Color.Color8(240, 64, 64),
+                          ResearchActive = Color.Color8(64, 240, 64);
+
+    /// <summary>A running project's item name. ⚠ Resolving it needs the research DATABASE
+    /// (`0x389650` and the per-world catalogues), which is not ported: until it is, an active slot
+    /// can only say WHICH category is running. Deliberately not faked with a plausible name.
+    /// </summary>
+    string ResearchItemName(ResearchProject slot) =>
+        slot.Category >= 0 ? $"#{slot.Category}:{slot.Item}" : TextRow(LaptopScreen.ResearchNothingTextId);
+
+    /// <summary>A text row as the laptop's own language renders it. ⚠ Named `TextRow` because
+    /// `Row(int)` is already taken by the grid, and it returns an int.</summary>
+    string TextRow(int textId) => _text?.Text("eng", textId) ?? "";
+
+    /// <summary>⭐ The four settings Game Options owns.    /// <summary>⭐ The four settings Game Options owns. ONE owner, with capture/restore, because
     /// they are GAME settings that outlive a park -- see <see cref="GameSettings"/>.</summary>
     readonly GameSettings _settings = new();
 
@@ -4017,6 +4069,7 @@ public partial class Viewer : Node3D
                     case "main_info":      _laptopBack.Add(("info", null)); ShowLaptopLevel(); return;
                     case "main_bh_items":  _laptopBack.Add(("buildcats", null)); ShowLaptopLevel(); return;
                     case "main_gameoptions": _laptopBack.Add(("gameoptions", null)); ShowLaptopLevel(); return;
+                    case "main_research":    _laptopBack.Add(("research", null)); ShowLaptopLevel(); return;
                     case "main_bh_staff":
                         // ⭐ The Hire panel (Viewer.Staff.cs): its tabs, then a tab's candidates.
                         if (_staff == null) { Status("hire -- no park is running yet, so there is nobody to hire into"); return; }

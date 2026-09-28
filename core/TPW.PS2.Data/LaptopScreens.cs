@@ -66,6 +66,13 @@ public sealed record LaptopScreen(
     /// element, not two steps below it. The console reads those four from its own table at
     /// `0x2b6288`, which is the same statement in the other direction.</summary>
     int StepBase = 0,
+    /// <summary>⚠ Draw a row's VALUE at its widget element's row rather than its label's.
+    ///
+    /// Research is why: the binder keeps only `ResearchItem`'s COLUMN, and the draw puts the item
+    /// names on the BARS' row (MIPS `0x1b5a9c` reads `ResearchBars`' row, `0x1b5b40` the item's
+    /// column). Labels are at 215 + 32i and the names at 220 + 32i -- five pixels apart. Taking
+    /// the label's row instead would be a plausible five-pixel lie.</summary>
+    bool ValueOnWidgetRow = false,
     /// <summary>⚠ When a row carries its own value element, take only its COLUMN and keep the
     /// label's row. All Staff again: `InfoValues` is authored at row 220 and **that row is never
     /// read** -- `0x10b980` stores only `DAT_002AA8D4`, its column -- and Monthly Wage draws at
@@ -412,6 +419,36 @@ public sealed record LaptopScreen(
     /// <summary>Game Options' row indices, named rather than spelled at the use site.</summary>
     public const int OptMusic = 0, OptSfx = 1, OptTutorial = 2, OptVibration = 3,
                      OptSaveGame = 4, OptQuit = 5;
+
+    /// <summary>⭐ RESEARCH (menu id 9). `findings/hardcoded-screens.md`; draw `0x1b5920`, input
+    /// `0x1b5668`, binder `FUN_001b5218`. Title 1013 `STR_RESEARCH_RESEARCH`.
+    ///
+    /// The five rows ARE the manager's five slots, one per category. Each shows its project's
+    /// name (or "Nothing") and a progress bar, RED while the slot is idle and GREEN while it is
+    /// researching.
+    ///
+    /// ⚠⚠ THE BUDGET SLIDER WAS CUT ON PS2 -- do not port it. The scene does not author
+    /// `OverallBar` or `OverallText`, their globals are written by the binder only when authored
+    /// and **nothing reads them**, and the constructor's one slider is never drawn or updated by
+    /// either slot. `STR_RESEARCH_OVER_ALL_RESEARCH`, `_ALTER_RESEARCH` and `_APPLY` have no
+    /// reader in the class. The budget is simply forced to 100 when the screen opens.
+    ///
+    /// ⚠ One authored element, five bars, stepping the same 32 the labels step -- the All Staff
+    /// shape, hence <see cref="LaptopScreen.WidgetStep"/>.</summary>
+    public static readonly LaptopScreen Research = new(
+        "main_research.sce", 9, "TextOptions", "TextOptions", "ResearchItem", "TextOptions",
+        new LaptopRow[]
+        {
+            new(531, LaptopRowKind.Bar, "ResearchBars"),   // Rides
+            new(65,  LaptopRowKind.Bar, "ResearchBars"),   // Shops
+            new(185, LaptopRowKind.Bar, "ResearchBars"),   // Sideshows
+            new(155, LaptopRowKind.Bar, "ResearchBars"),   // Features
+            new(834, LaptopRowKind.Bar, "ResearchBars"),   // Upgrades
+        },
+        WidgetStep: RowStep, ValueOnWidgetRow: true);
+
+    /// <summary>`STR_RESEARCH_NOTHING` -- an idle slot's item column.</summary>
+    public const int ResearchNothingTextId = 605;
 
     public static readonly LaptopScreen[] AllList = { AllRides, AllShops, AllSideshows, AllToilets };
 
