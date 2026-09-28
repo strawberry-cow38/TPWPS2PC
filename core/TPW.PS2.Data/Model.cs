@@ -534,6 +534,21 @@ public sealed partial class Model
     /// bit 31 -- and nothing targets the terminator either, which is the half the one-directional
     /// guard would have let a future `Show()` break silently.
     ///
+    /// ⚠⚠ AND THE TERMINATOR IS EXCLUDED BY THE DATA, NOT BY THE API. `WriteNodeFlags` guards with
+    /// `NodeIndex(off) != node`, which looks like it bounds the node to the walk. It does not: for a
+    /// non-legacy model <see cref="NodeIndex"/>'s upper-bound clause is
+    /// `(!IsLegacyMd2 || (offset - HelperTable) / stride &lt; _md2NodeCount - Meshes.Count)`, and
+    /// `!IsLegacyMd2` is TRUE, so the `||` short-circuits and **no bound is evaluated at all**.
+    /// <see cref="NodeOffset"/> is pure arithmetic with no bit-31 check either, so
+    /// `NodeIndex(NodeOffset(n)) == n` round-trips for EVERY n past the walk's end. That guard is an
+    /// alignment check, not a membership check, and there is no node count for a non-legacy model --
+    /// the walk IS the count.
+    ///
+    /// ⭐ So what actually keeps the terminator safe is that the only callers take their node from
+    /// `FindFitting`, and the disc's authored costume fittings sit inside the walk. That is a fact
+    /// about the DATA. It holds, but nothing in the code enforces it, so a caller that computes a
+    /// node index by arithmetic rather than from a fitting can still reach the terminating helper.
+    ///
     /// A future reader who took the
     /// old "D is never written" line at face value would have had no way to know that, which is
     /// precisely the failure a too-strong justification causes: it is not merely wrong, it hides the
