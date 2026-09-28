@@ -73,6 +73,10 @@ public sealed record LaptopScreen(
     /// column). Labels are at 215 + 32i and the names at 220 + 32i -- five pixels apart. Taking
     /// the label's row instead would be a plausible five-pixel lie.</summary>
     bool ValueOnWidgetRow = false,
+    /// <summary>⚠ The scene element holding this screen's GRAPH, or null. `findings/graph-widget.md`.
+    /// The three graph screens author it as `graph`, 147x200 at (315, 208) -- the model window's
+    /// frame, which is why no graph screen also has a model.</summary>
+    string GraphElement = null,
     /// <summary>⚠ When a row carries its own value element, take only its COLUMN and keep the
     /// label's row. All Staff again: `InfoValues` is authored at row 220 and **that row is never
     /// read** -- `0x10b980` stores only `DAT_002AA8D4`, its column -- and Monthly Wage draws at
@@ -449,6 +453,41 @@ public sealed record LaptopScreen(
 
     /// <summary>`STR_RESEARCH_NOTHING` -- an idle slot's item column.</summary>
     public const int ResearchNothingTextId = 605;
+
+    /// <summary>⭐ FINANCE STATISTICS (menu id 21). `findings/graph-widget.md` §2; draw
+    /// `FUN_00135620`, binder `FUN_00133960`. Five series, ONE shown at a time -- selecting an
+    /// item clears every toggle then flips that one, and the first is on by default.</summary>
+    public static readonly LaptopScreen FinanceStats = new(
+        "main_fi_financestats.sce", 21, "Items", "Items", "Items", "Items",
+        new LaptopRow[]
+        {
+            new(447, LaptopRowKind.Text),   // Money In
+            new(565, LaptopRowKind.Text),   // Gate Takings
+            new(954, LaptopRowKind.Text),   // Shop Takings
+            new(818, LaptopRowKind.Text),   // Sideshow Takings
+            new(371, LaptopRowKind.Text),   // Staff Wages
+        },
+        LabelsOnGrid: true, GraphElement: "graph");
+
+    /// <summary>⭐ OVERALL STATISTICS (menu id 22). §3; draw `FUN_00135190`. Two series.
+    /// ⚠ Bank Balance can go NEGATIVE and `min` is still 0, so a negative month clamps to the
+    /// bottom edge rather than plotting below it. That is the console's, not a guard of ours.</summary>
+    public static readonly LaptopScreen OverallStats = new(
+        "main_fi_overallstats.sce", 22, "Items", "Items", "Items", "Items",
+        new LaptopRow[]
+        {
+            new(3,   LaptopRowKind.Text),   // Bank Balance
+            new(813, LaptopRowKind.Text),   // Park Value
+        },
+        LabelsOnGrid: true, GraphElement: "graph");
+
+    /// <summary>The five FinanceStats series colours (`0x35e4a0 + 4i`) and the two OverallStats
+    /// ones (`0x35e490`), in row order. ⚠ Straight off the disc -- they are the only thing telling
+    /// the player which line is which, because `GraphLegend` is bound and never read.</summary>
+    public static readonly (byte R, byte G, byte B)[] FinanceSeriesRgb =
+        { (254, 1, 1), (231, 102, 27), (254, 254, 1), (1, 176, 60), (64, 64, 64) };
+    public static readonly (byte R, byte G, byte B)[] OverallSeriesRgb =
+        { (254, 0, 0), (231, 102, 27) };
 
     public static readonly LaptopScreen[] AllList = { AllRides, AllShops, AllSideshows, AllToilets };
 

@@ -270,11 +270,18 @@ public sealed partial class LaptopShopScreen : Control
     /// which is the screen's whole state signal.</summary>
     IReadOnlyList<Color?> _barTints;
 
+    /// <summary>⭐ The one series a graph screen is showing, or null. Only ONE shows at a time on
+    /// all three graph screens: selecting an item clears every toggle then flips that one.</summary>
+    public readonly record struct GraphSeries(IReadOnlyList<int> Values, int Min, int Max,
+                                              Color Colour, int Years);
+    GraphSeries? _graph;
+
     public void ShowScreen(LaptopScreen spec, string title, IReadOnlyList<(string Text, int Fraction)> cells,
                            bool buildRow = false, int buildTextId = LaptopMainMenu.BuildTextId,
-                           IReadOnlyList<Color?> barTints = null)
+                           IReadOnlyList<Color?> barTints = null, GraphSeries? graph = null)
     {
         _barTints = barTints;
+        _graph = graph;
         _spec = spec ?? throw new ArgumentNullException(nameof(spec));
         _title = title ?? "";
         _rows.Clear();
@@ -1027,6 +1034,24 @@ public sealed partial class LaptopShopScreen : Control
             var asize = new Vector2(LaptopArrows.NativeWidth, LaptopArrows.NativeHeight) * s;
             _pageArrows = new Rect2(At(pager) - new Vector2(0, asize.Y / 2f), asize);
             DrawTextureRect(_arrows, _pageArrows, false, ArrowTint);
+        }
+
+        // ⭐ The GRAPH, drawn before the rows for the same reason the model window is. ⚠ Its
+        // element is the model window's own frame (315, 208, 147x200), which is why no graph
+        // screen also has a model.
+        if (_spec.GraphElement != null && _graph is { } g && layout[_spec.GraphElement] is { } gbox)
+        {
+            var rect = new Rect2(At(gbox), new Vector2(gbox.Width, gbox.Height) * s);
+            LaptopGraph.DrawSeries(this, rect, g.Values, g.Min, g.Max, g.Colour, s);
+            // ⚠ The year ticks appear ONLY when the span is more than one year, and they are
+            // BLUE -- the console's own colour, and the nearest thing this screen has to a legend.
+            if (g.Years > 1)
+                for (int y = 1; y < g.Years; y++)
+                {
+                    float fx = rect.Position.X + rect.Size.X * y / g.Years;
+                    DrawRun(y.ToString(), new Vector2(fx, rect.End.Y - LineAdvance * s), s,
+                            LaptopGraph.YearTick, "left");
+                }
         }
 
         // ⭐ The model window. Drawn before the rows so nothing it overlaps can be hidden by it.

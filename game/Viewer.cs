@@ -421,6 +421,7 @@ public partial class Viewer : Node3D
             // ⭐ `--staff-test` hires one of each kind through the REAL `ParkStaff.Hire`, so a
             // render of All Staff has somebody on it. ⚠ A harness, not a gameplay path.
             else if (a == "--staff-test") _staffTest = true;
+            else if (a == "--graph-demo") _graphDemo = true;
             else if (a == "--menu") _wantMenu = true;
             // ⭐ `--menu-go=N` presses Confirm N times through the REAL handler, so a render can
             // show where the front end actually hands off to rather than a flag jumping there.
@@ -3592,6 +3593,43 @@ public partial class Viewer : Node3D
             }
             case "stafftypes": ShowStaffInfoTypes(); break;
             case "staffitem": ShowStaffInfoMember(arg); break;
+            // ⭐⭐ FINANCE STATISTICS (menu id 21) -- the first graph screen.
+            //
+            // ⚠ ONE SERIES AT A TIME, which is the console's own rule: selecting an item clears
+            // every toggle then flips that one, and the first is on by default.
+            case "financestats":
+            {
+                var fin = _sim?.Finances;
+                if (fin == null)
+                { _laptopBack.RemoveAt(_laptopBack.Count - 1); Status("no park is running yet"); ShowLaptopLevel(); return; }
+                int pick = Math.Clamp(int.TryParse(arg, out var gp) ? gp : 0, 0,
+                                      LaptopScreen.FinanceStats.Rows.Count - 1);
+                _graphRow = pick;
+                var rgb = LaptopScreen.FinanceSeriesRgb[pick];
+                int[] buckets; int gmax;
+                if (_graphDemo)
+                {
+                    // ⭐ A CONTROL WITH A KNOWN ANSWER. A brand new park has no completed months,
+                    // so every bucket is 0 and the graph is a flat line -- which looks identical
+                    // whether the plotter works or not. This feeds a shape whose every feature is
+                    // predictable: a rise, a plateau, a fall, a zero floor and a spike that must
+                    // clamp to the top edge.
+                    buckets = new[] { 0, 10, 20, 30, 40, 50, 50, 50, 50, 40, 30, 20,
+                                      10, 0, 0, 25, 25, 60, 60, 15, 15, 45, 80, 100 };
+                    gmax = (int)(100 * 1.1001f);
+                }
+                else buckets = LaptopGraphData.Build(FinanceSeries(fin, pick),
+                                                     fin.PeriodCount, _graphYears, out gmax);
+                _shopPanel.ShowScreen(LaptopScreen.FinanceStats, "",
+                    Blank(LaptopScreen.FinanceStats.Rows.Count),
+                    graph: new LaptopShopScreen.GraphSeries(
+                        buckets, 0, gmax, Color.Color8(rgb.R, rgb.G, rgb.B), _graphYears));
+                ClearLaptopModel();
+                RefreshLaptopBalance();
+                Status($"{TextRow(LaptopScreen.FinanceStats.Rows[pick].TextId)} -- "
+                     + $"{_graphYears}y, {fin.PeriodCount} months on the books, peak {gmax}");
+                break;
+            }
             // ⭐⭐ RESEARCH (menu id 9). The five rows ARE the manager's five slots.
             //
             // ⚠⚠ NO BUDGET CONTROL, deliberately: the PS2 screen's overall-research slider was
@@ -3792,7 +3830,36 @@ public partial class Viewer : Node3D
     const int StaffInfoRow = 4;
     string StaffName(StaffMember m) => m.Candidate.Name(_text) ?? $"#{m.Candidate.NameRow}";
 
-    /// <summary>Research's bar colours, straight off the disc: `0x365ed8` idle, `0x365ee0`
+    /// <summary>Which series a graph screen is showing, and the span the year selector holds.
+    /// ⚠ The span is one of {1, 2, 6, 12} years (wrapping, initial 1); the selector itself is not
+    /// wired yet, so this stays at the console's initial value.</summary>
+    int _graphRow, _graphYears = 1;
+
+    /// <summary>`--graph-demo`: plot a known series instead of the park's, so the PLOTTER can be
+    /// checked independently of whether the park has any history. See the control in the case.</summary>
+    bool _graphDemo;
+
+    /// <summary>All-null cells, for a screen whose rows are labels only.</summary>
+    static List<(string, int)> Blank(int n)
+    {
+        var l = new List<(string, int)>(n);
+        for (int i = 0; i < n; i++) l.Add((null, 0));
+        return l;
+    }
+
+    /// <summary>⭐ Finance Statistics' five series, by row. ⚠ Only Money In and Staff Wages have a
+    /// source in this port: `IncomeInPeriod`/`WagesInPeriod` ARE the console's own getters
+    /// (`0x100FB8` and `0x101170`) over the same ring. Gate, Shop and Sideshow takings are not
+    /// retained per month anywhere yet, so they plot flat ZERO rather than a plausible invention --
+    /// the empty graph is the honest report that the ring is missing.</summary>
+    static Func<int, int> FinanceSeries(ParkFinances fin, int row) => row switch
+    {
+        0 => fin.IncomeInPeriod,      // Money In
+        4 => fin.WagesInPeriod,       // Staff Wages
+        _ => _ => 0,                  // Gate / Shop / Sideshow -- no per-month ring in this port
+    };
+
+    /// <summary>Research's bar colours    /// <summary>Research's bar colours, straight off the disc: `0x365ed8` idle, `0x365ee0`
     /// active. They are the screen's entire state signal, so they are named rather than tuned.
     /// </summary>
     static readonly Color ResearchIdle = Color.Color8(240, 64, 64),
