@@ -48,9 +48,9 @@ public interface IAdvisorHead
 
 /// <summary>⚠ STAND-IN HEAD: no model, only the records' lengths in APS frames (findings/advisor-messages.md
 /// §4.3, §4.7: enter 13 = 30, exit 14 = 20, talk 0..6 = 50, 75, 100, 125, 150, 225, 275), advanced at 30 APS
-/// frames a second by the milliseconds the advisor passes it. ⚠ The research leaves the ratio of an advisor
-/// tick to an APS frame OPEN (the timings mix ticks and frames, §"Still unknown"); this measures both in
-/// wall-clock time through <see cref="ParkAdvisor.MillisecondsPerTick"/>, which is the port's pass.</summary>
+/// frames a second by the milliseconds the advisor passes it -- the console's own rate: an APS channel's frame
+/// is `(ms − start)·30/1000` on the real-time ms clock (findings/clock-rate.md §6). ⚠ What it lacks is the
+/// model itself, and the channel's "section 12" test (`0x17C8C8`), whose meaning is open.</summary>
 public sealed class AdvisorTimedHead : IAdvisorHead
 {
     /// <summary>`advisor.aps` section 5 record lengths, frames.</summary>
@@ -106,9 +106,9 @@ public readonly record struct AdvisorPlayback(ushort Id, AdvisorRecordType Kind,
 /// ⭐ UNITS. A TICK is one call of <see cref="Update"/> = one simulation pass = one rendered frame, 40 ms at the
 /// console's 25 passes a second (findings/clock-rate.md; <see cref="ParkSim.TickMilliseconds"/>), so the
 /// 50-tick delay is 2 s and the 100-tick cooldown 4 s. The speech runs on the ms clock `0x147158`, measured here
-/// through <see cref="MillisecondsPerTick"/>. ⚠ STILL OPEN (research "Still unknown"): how the head's APS frames
-/// (the 30-frame enter, 20-frame exit) map onto passes -- the stand-in head assumes 30 frames a second of wall
-/// clock.
+/// through <see cref="MillisecondsPerTick"/>, and the head's APS frames are real-time 30 a second on that clock
+/// (`currentFrame = (ms − start)·30/1000`, findings/clock-rate.md §4, §6) -- which settles the research's open
+/// "tick ↔ 30 fps frame" question: the 30-frame enter is 25 passes, the 20-frame exit 16⅔.
 ///
 /// ⚠ ADAPTERS, each labelled where it lives: <see cref="SpeechLength"/> (the stream's length, audio is the
 /// view's), <see cref="Head"/> (the model), <see cref="SkipHeld"/> (the pad),
