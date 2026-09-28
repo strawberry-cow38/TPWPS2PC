@@ -3558,6 +3558,7 @@ public partial class Viewer : Node3D
         // outlive its screen. A stale subject here would let a click on some later screen's first
         // row buy training for whoever was last looked at.
         _trainingMember = null;
+        _singleStaff = null;
         if (_laptopBack.Count == 0) { ShowLaptopMain(); return; }
         var (kind, arg) = _laptopBack[^1];
         GD.Print($"[laptop] -> {kind}{(arg == null ? "" : " " + arg)} (depth {_laptopBack.Count})");
@@ -3582,6 +3583,29 @@ public partial class Viewer : Node3D
             }
             case "stafftypes": ShowStaffInfoTypes(); break;
             case "staffitem": ShowStaffInfoMember(arg); break;
+            // ⭐⭐ SINGLE STAFF -- one person's own options (§12.2). `arg` is the member's index
+            // in `ParkStaff.Members`, the same handle the other staff screens page with.
+            case "staffone":
+            {
+                var pool1 = _staff?.Members;
+                if (pool1 == null || pool1.Count == 0)
+                { _laptopBack.RemoveAt(_laptopBack.Count - 1); Status("no staff hired"); ShowLaptopLevel(); return; }
+                int sn = int.TryParse(arg, out var sv) ? sv : 0;
+                _singleStaffIndex = Math.Clamp(sn, 0, pool1.Count - 1);
+                var one = pool1[_singleStaffIndex];
+                _singleStaff = one;
+                // ⚠ Asked for ONCE and remembered: the list is conditional (Fire drops out mid-job,
+                // Training at the cap), so re-deriving it at click time could answer a different
+                // question than the one that was drawn.
+                _singleStaffOptions = _staff.SingleStaffOptions(one);
+                var ocells = new List<(string, int)>();
+                foreach (var _ in _singleStaffOptions) ocells.Add((null, 0));
+                _shopPanel.ShowScreen(LaptopScreen.SingleStaffFor(_singleStaffOptions), StaffName(one), ocells);
+                BuildLaptopModelFor((ParkRide)null);
+                RefreshLaptopBalance();
+                Status($"{StaffName(one)} -- {_singleStaffOptions.Count} options");
+                break;
+            }
             // ⭐⭐ TRAINING -- the one laptop screen you BUY from. `arg` is the member's index in
             // `ParkStaff.Members`, the same handle `staffitem` pages with, so Single Staff can
             // push it without a second way of naming a person.
@@ -3703,6 +3727,41 @@ public partial class Viewer : Node3D
     // Information's fifth row is the staff-type selector, not an asset list.
     const int StaffInfoRow = 4;
     string StaffName(StaffMember m) => m.Candidate.Name(_text) ?? $"#{m.Candidate.NameRow}";
+
+    /// <summary>⚠ Whose Single Staff screen is showing, the options that were DRAWN for him, and
+    /// his index in `ParkStaff.Members`. Cleared with <see cref="_trainingMember"/> on every
+    /// navigation.</summary>
+    StaffMember _singleStaff; IReadOnlyList<int> _singleStaffOptions; int _singleStaffIndex;
+
+    /// <summary>⭐ A row on Single Staff (§12.2). The options are conditional, so the row is read
+    /// against the list that was actually drawn rather than a fixed order.</summary>
+    void SingleStaffChose(StaffMember m, int row)
+    {
+        if (_singleStaffOptions == null || row < 0 || row >= _singleStaffOptions.Count) return;
+        switch (_singleStaffOptions[row])
+        {
+            case StaffTables.SetPatrolAreaTextRow: BeginPatrolArea(m); break;
+            case StaffTables.ZoomToTextRow:        ZoomToStaff(m); break;
+            // ⭐ The console opens Training by comparing the CHOSEN TEXT with 930 (§12.2), and the
+            // screen it opens is the one `stafftraining` draws, reached by its member index.
+            case StaffTables.TrainingTextRow:
+                _laptopBack.Add(("stafftraining", _singleStaffIndex.ToString()));
+                ShowLaptopLevel();
+                break;
+            case StaffTables.FireTextRow:
+            {
+                // ⚠ He is GONE after this, so his screen goes with him rather than being redrawn
+                // around a member who is no longer on the books.
+                string gone = StaffName(m);
+                _staff.Fire(m);
+                GD.Print($"[laptop] fired {gone}; {_staff.Members.Count} left on the books");
+                Status($"{gone} -- fired");
+                if (_laptopBack.Count > 0) _laptopBack.RemoveAt(_laptopBack.Count - 1);
+                ShowLaptopLevel();
+                break;
+            }
+        }
+    }
 
     /// <summary>⚠ Whose Training screen is showing, or null. Set by the `stafftraining` case and
     /// cleared by <see cref="ShowLaptopLevel"/> on every navigation, so it never outlives the
@@ -4016,6 +4075,7 @@ public partial class Viewer : Node3D
         // ⭐ Training's single list entry is row 0, and Cross on it buys (§12.3 -> §7.2). Checked
         // before the ride gate because both screens come through this one hook.
         if (_trainingMember is { } trainee) { if (row == 0) BuyTraining(trainee); return; }
+        if (_singleStaff is { } person) { SingleStaffChose(person, row); return; }
         if (_detailsSpec != LaptopScreen.Ride || _detailsRide is not { } ride) return;
         var rows = LaptopScreen.Ride.Rows;
         if (row < 0 || row >= rows.Count || rows[row].TextId != 119) return;   // Upgrades
@@ -4209,7 +4269,8 @@ public partial class Viewer : Node3D
         // ⭐ `--laptop-screen=training:<n>` opens Training for member n. The console reaches it
         // through Single Staff, which is not ported yet, so the harness pushes the SAME stack entry
         // that screen will push rather than inventing a second route to it.
-        if (_laptopScreen.StartsWith("training:", StringComparison.OrdinalIgnoreCase))
+        if (_laptopScreen.StartsWith("staffone:", StringComparison.OrdinalIgnoreCase)
+            || _laptopScreen.StartsWith("training:", StringComparison.OrdinalIgnoreCase))
         {
             if (_laptopFrame == 0)
             {
@@ -4217,10 +4278,15 @@ public partial class Viewer : Node3D
                 var tparts = _laptopScreen.Split(':');
                 int tn = tparts.Length > 1 && int.TryParse(tparts[1], out var tv) ? tv : 0;
                 _laptopBack.Clear();
-                _laptopBack.Add(("stafftraining", tn.ToString()));
+                _laptopBack.Add((_laptopScreen.StartsWith("staffone:", StringComparison.OrdinalIgnoreCase)
+                                 ? "staffone" : "stafftraining", tn.ToString()));
                 ShowLaptopLevel();
                 // ⚠ Reports the SUBJECT, not just that something drew: a refused screen pops
                 // itself and falls back, which otherwise looks identical to a good render.
+                // ⭐ `staffone:<n>:<row>` then presses that row THROUGH the real activation hook,
+                // so a render shows the route having actually been taken rather than the harness
+                // drawing the destination itself.
+                if (tparts.Length > 2 && int.TryParse(tparts[2], out var trow)) OnLaptopRowActivated(trow);
                 GD.Print($"[laptop] training {tn} -> stack "
                        + (_laptopBack.Count == 0 ? "empty" : _laptopBack[^1].Kind + " " + (_laptopBack[^1].Arg ?? "")));
             }
