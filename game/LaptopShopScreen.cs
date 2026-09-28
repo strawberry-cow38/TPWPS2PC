@@ -1027,13 +1027,25 @@ public sealed partial class LaptopShopScreen : Control
             DrawTextureRect(ModelTexture,
                 new Rect2(At(window), new Vector2(window.Width, window.Height) * s), false);
 
-        var labels = layout[_spec.LabelElement];
+        var screenLabels = layout[_spec.LabelElement];
         var values = layout[_spec.ValueElement];
         for (int i = 0; i < _spec.Rows.Count; i++)
         {
             var row = _spec.Rows[i];
             var (text, fraction) = i < _cells.Count ? _cells[i] : (null, 0);
-            float dy = LaptopScreen.RowStep * i * s;
+
+            // ⭐ A ROW CAN OWN ITS LABEL'S ELEMENT, and then it sits AT that element and does not
+            // step at all. Game Options is why: its two sliders are labelled at `MusicSliderText`
+            // (116) and `SfxSliderText` (150), while its four text rows step 32 from `TextOptions`
+            // (185). One grid cannot describe both, and the console does not try -- it reads those
+            // four from a table of its own.
+            //
+            // ⚠ Everything below this line that reads `labels` now reads the ROW's label, which is
+            // what makes the value column and the click rect follow a row that moved.
+            var labels = row.LabelElement != null ? layout[row.LabelElement] : screenLabels;
+            float dy = row.LabelElement != null
+                     ? 0f
+                     : LaptopScreen.RowStep * (i - _spec.StepBase) * s;
 
             // ⭐⭐ A ROW THAT OWNS A SIZED WIDGET TAKES ITS LABEL'S HEIGHT FROM THE WIDGET, not
             // from the step. The label grid steps 32, but an authored widget sits exactly where the
