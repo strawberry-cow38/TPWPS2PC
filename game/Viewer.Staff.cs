@@ -131,12 +131,14 @@ public partial class Viewer
         GD.Print($"[staff] attached to this park: world {_staffWorld} park {_staffPark}, "
                + $"{_modelRegistry?.Entries.Count ?? 0} registry entries; the toilet stand-in is off, handymen clean");
         AttachSecurity();                                                // Viewer.Security.cs: guards, entertainers
+        AttachManagement();                                              // Viewer.Management.cs: strikes, training, rooms
     }
 
     /// <summary>Drop the old park's staff, their nodes and the hire tool's hold.</summary>
     void ResetStaff()
     {
         ResetSecurity();
+        EndPatrolTool();
         foreach (var a in _staffActors.Values) if (a.Node != null && IsInstanceValid(a.Node)) a.Node.QueueFree();
         foreach (var l in _litterActors.Values) if (l.Node != null && IsInstanceValid(l.Node)) l.Node.QueueFree();
         _staffActors.Clear(); _litterActors.Clear(); _staffModelMisses.Clear();

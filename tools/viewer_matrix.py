@@ -66,6 +66,11 @@ MAP_LINE = re.compile(r'^\[map\] loaded world=([A-Z]+) terrain=(terrain_[12])\.m
 # dropped at the corridor start, and a sweep stopping the stink. Every park runs the same 38. Added as a
 # statement of its own so the staff steps' parallel additions to the table above merge cleanly.
 SCENES['guard'] = ('GuardSmoke', 'GUARD SMOKE', 38)
+# Staff management: a crew of five hired through the hire tool, All Staff opened through the real
+# Information menu and each page compared with its member, a researcher trained, a patrol area drawn with
+# the mode-17 tool (the off-by-one stored), the mechanic fired, and a month ended through the viewer's own
+# calendar advance with the wage bill debited. A statement of its own for the same merge reason.
+SCENES['management'] = ('ManagementSmoke', 'MANAGEMENT SMOKE', 17)
 
 
 def map_argument(world: str, terrain: int) -> str:

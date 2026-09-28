@@ -10662,9 +10662,10 @@ public partial class Viewer : Node3D
         // selection box's breath already respects on the line below. It sits here now, with the
         // other things that run themselves, rather than at the top of _Process where it could not
         // see the pause.
+        // ⭐ Through 0x16B060 now (Viewer.Management.cs): a month change runs strikes then wages, and
+        // days 1/8/15/22/29 the weekly pass -- the rollovers this line used to discard.
         if (_playing && _mode == Mode.Park)
-            _calendar.Advance((int)Math.Round(delta * GameCamera.TicksPerSecond * GameCamera.FrameTick),
-                              out _, out _, out _);
+            AdvanceCalendar((int)Math.Round(delta * GameCamera.TicksPerSecond * GameCamera.FrameTick));
         if (_playing) _selectView?.Step(delta);
         if (_playing && _mode == Mode.Park) _gateBox?.Step(delta);
         if (_playing && _mode == Mode.Park) _flags.Step(delta);
@@ -10694,7 +10695,8 @@ public partial class Viewer : Node3D
         }
         // ⭐ The hire tool's carry, every frame (0x128760).
         if (_hireHeld != null) UpdateHireCarry();
-        if (_place.Active) UpdatePlacementGhost();
+        if (_patrolTool != null) UpdatePatrolTool();                    // mode 17's cursor and draw
+        else if (_place.Active) UpdatePlacementGhost();
         else if (_trackTool != null) UpdateTrackGhost();
         else if (_addonTool != null) UpdateAddonGhost();
         else if (_coasterTool != null) UpdateCoasterGhost(delta);
@@ -10926,6 +10928,8 @@ public partial class Viewer : Node3D
                         }
                         // ⭐ The hire tool's Triangle: right lets go of the carried staff member (0x128A90).
                         else if (mb.ButtonIndex == MouseButton.Right && _hireHeld != null) CancelHireTool();
+                        // ⭐ The patrol-area tool's Triangle (0x128E78).
+                        else if (mb.ButtonIndex == MouseButton.Right && _patrolTool != null) CancelPatrolTool();
                         else if (mb.ButtonIndex == MouseButton.Right && _place.Active)
                         {
                             // ⭐ The right button puts the blueprint down before it touches the
@@ -10986,6 +10990,7 @@ public partial class Viewer : Node3D
                             else OpenTool(PathTool.Kind.Path);
                         }
                         else if (_hireHeld != null) PressHireTool();
+                        else if (_patrolTool != null) PressPatrolTool();
                         else if (_place.Active) PlaceHeld();
                         else if (_trackTool != null) PressTrackTool();
                         else if (_addonTool != null) PressAddonTool();
