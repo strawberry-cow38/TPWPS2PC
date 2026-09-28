@@ -77,6 +77,25 @@ public sealed record LaptopScreen(
     /// The three graph screens author it as `graph`, 147x200 at (315, 208) -- the model window's
     /// frame, which is why no graph screen also has a model.</summary>
     string GraphElement = null,
+    /// <summary>⚠ A SECOND value column, or null. Park Finance is why: it prints every row twice,
+    /// "This Year" at col 250 in YELLOW and "Last Year" at col 393 in the ordinary label colour.
+    /// One value element cannot describe a screen that answers each label twice.</summary>
+    string ValueElement2 = null,
+    /// <summary>⚠ EXPLICIT label rows, when the screen does not step uniformly. Null (the
+    /// default) means the usual grid.
+    ///
+    /// The Balance Sheet is why: it steps 32 like everything else EXCEPT after row 3, where it
+    /// steps 42 -- the gap that separates the income block from the outgoings. The console reads
+    /// its rows from a table and adds the odd step in the middle of the loop, so a list of rows
+    /// describes it exactly, where a step plus a special case would only describe it nearly.</summary>
+    IReadOnlyList<int> RowYs = null,
+    /// <summary>⚠ Draw the VALUES in the label colour instead of the highlight.
+    ///
+    /// The Balance Sheet is amber end to end -- `FUN_001388E8(ctx, 200, 0x82, 0)` is issued ONCE
+    /// before the row loop and nothing changes colour after it, so labels and figures are the
+    /// same amber and no row is highlighted. Every other data screen picks its values out in
+    /// yellow, so this is the screen's own property rather than a default.</summary>
+    bool MonochromeValues = false,
     /// <summary>⚠ When a row carries its own value element, take only its COLUMN and keep the
     /// label's row. All Staff again: `InfoValues` is authored at row 220 and **that row is never
     /// read** -- `0x10b980` stores only `DAT_002AA8D4`, its column -- and Monthly Wage draws at
@@ -488,6 +507,210 @@ public sealed record LaptopScreen(
         { (254, 1, 1), (231, 102, 27), (254, 254, 1), (1, 176, 60), (64, 64, 64) };
     public static readonly (byte R, byte G, byte B)[] OverallSeriesRgb =
         { (254, 0, 0), (231, 102, 27) };
+
+    /// <summary>⭐ The PARK STATISTICS menu (id 8), in draw order at (45, 115 + 32i).
+    /// `findings/parkstats-screens.md` §2. All four rows are appended ENABLED, so all four are
+    /// selectable; the laptop's title stays 530 "Information" on the menu and on every page.
+    ///
+    /// ⚠ Note the fourth: Awards is a page of this menu, which makes five screens on this one
+    /// class (with Gold Tickets), not four.</summary>
+    public static readonly (int TextId, string Opens)[] ParkStatsMenu =
+    {
+        (841,  "visitorinfo"),   // STR_PARKSTATS_PARK_INFORMATION -- "Visitor Information"
+        (1063, "statistics"),    // STR_PARKSTATS_GRAPH            -- the graph page
+        (164,  "parkfinance"),   // STR_PARKSTATS_DETAILS          -- "Park Finance"
+        (101,  "awards"),        // STR_GIZMO_CPP_AWARDS           -- "Awards"
+    };
+
+    /// <summary>⭐ PARK STATISTICS / Statistics (menu id 24) -- the third graph screen.
+    /// `findings/graph-widget.md` §4; draw `FUN_00185c48`.
+    /// ⚠ `GraphLegend` is authored and NEVER READ, so nothing draws a colour key.</summary>
+    public static readonly LaptopScreen ParkStatistics = new(
+        "main_ps_statistics.sce", 24, "Items", "Items", "Items", "Items",
+        new LaptopRow[]
+        {
+            new(512, LaptopRowKind.Text),   // People In Park
+            new(618, LaptopRowKind.Text),   // Arrival Rate
+            new(926, LaptopRowKind.Text),   // Happiness      (value is int + "%")
+            new(539, LaptopRowKind.Text),   // Time In Park   (value is int + "d")
+            new(727, LaptopRowKind.Text),   // Overall Rating (value is int + "%")
+        },
+        LabelsOnGrid: true, GraphElement: "graph");
+
+    /// <summary>The five Statistics series colours (`0x364150`), in row order.</summary>
+    public static readonly (byte R, byte G, byte B)[] ParkStatsSeriesRgb =
+        { (254, 1, 1), (231, 102, 27), (254, 254, 1), (1, 176, 60), (1, 178, 235) };
+
+    /// <summary>⭐ PARK FINANCE (menu id 11). `findings/parkstats-screens.md` §4; draw
+    /// `FUN_001867b8`, step 32, z 100.
+    ///
+    /// ⚠⚠ ROW 200 IS EMPTY IN THE LABEL COLUMN -- the labels start ONE STEP DOWN at 232, because
+    /// row 200 is where the two column HEADERS go ("This Year" at 250, "Last Year" at 393). Hence
+    /// `StepBase: -1`, which pushes the label grid down by one step.
+    ///
+    /// ⚠ The Park Rating row prints a WORD, not a number: `Poor` / `Average` / `Good` /
+    /// `Excellent` by `min(3, rating / 20)`. Nothing anywhere prints the rating itself.</summary>
+    public static readonly LaptopScreen ParkFinance = new(
+        "main_ps_parkfinance.sce", 11, "TextItems", "TextItems", "ThisYear", "TextItems",
+        new LaptopRow[]
+        {
+            new(9,   LaptopRowKind.Money),   // Money In
+            new(664, LaptopRowKind.Money),   // Money Out
+            new(682, LaptopRowKind.Money),   // Balance
+            new(115, LaptopRowKind.Money),   // Park Value
+            new(443, LaptopRowKind.Text),    // Park Rating -- a word, not a number
+        },
+        LabelsOnGrid: true, StepBase: -1, ValueElement2: "LastYear");
+
+    /// <summary>Park Finance's two column headers, drawn on the row the labels skip.</summary>
+    public const int ThisYearTextId = 889, LastYearTextId = 603;
+
+    /// <summary>⭐ The park rating WORD: `DAT_002c42c0[min(3, rating / 20)]`, so 0..19 Poor,
+    /// 20..39 Average, 40..59 Good, 60+ Excellent.</summary>
+    public static readonly int[] RatingWordTextIds = { 57, 767, 113, 1004 };
+    public static int RatingWord(int rating) =>
+        RatingWordTextIds[System.Math.Clamp(rating / 20, 0, 3)];
+
+    /// <summary>⭐ The FINANCIAL INFORMATION menu (id 4), at (45, 115 + 32i).
+    /// `findings/finance-screens.md` §1; rows from the u16 table at `0x35E630`.
+    ///
+    /// ⚠ The fifth row is CONDITIONAL: Existing Loans is appended only while some loan slot is
+    /// taken. The menu is rebuilt on every return from a page, so the row appears the moment a
+    /// loan is accepted -- and appending resets the highlight to row 0.</summary>
+    public static readonly (int TextId, string Opens, bool NeedsLoan)[] FinanceMenu =
+    {
+        (34,  "balancesheet",  false),   // STR_FINANCE_INFORMATION
+        (859, "overallstats",  false),   // STR_FINANCE_GRAPH_1
+        (861, "financestats",  false),   // STR_FINANCE_GRAPH_2
+        (741, "newloan",       false),   // STR_FINANCE_NEW_LOAN
+        (472, "existingloans", true),    // STR_FINANCE_EXISTING_LOANS
+    };
+
+    /// <summary>⭐ THE BALANCE SHEET (menu id 5). `findings/finance-screens.md` §2; draw
+    /// `FUN_00134B98`, rows from the u16 table at `0x35E648`.
+    ///
+    /// ⚠ THE WHOLE PAGE IS ONE COLOUR -- amber, labels and values alike (`FUN_001388E8(ctx, 200,
+    /// 0x82, 0)`). No highlight, no per-row colour, and nothing on it is clickable.
+    ///
+    /// ⚠⚠ `NumericOptions` is authored `justify=right` and that justify global has NO READER
+    /// ANYWHERE in the image -- the draw sets the mode once from `TextOptions` and draws BOTH
+    /// columns with it. So the values are LEFT-aligned from col 250, not right-aligned to it.
+    /// Honouring the authored justify would be reading the scene instead of the code.
+    ///
+    /// ⚠ Row 6, Purchases, is not a park figure at all: the draw COMPUTES it as
+    /// Cash Out - Staff Wages.</summary>
+    public static readonly LaptopScreen BalanceSheet = new(
+        "main_fi_balancesheet.sce", 5, "TextOptions", "TextOptions", "NumericOptions", "TextOptions",
+        new LaptopRow[]
+        {
+            new(565, LaptopRowKind.Money),   // Gate
+            new(954, LaptopRowKind.Money),   // Shop
+            new(818, LaptopRowKind.Money),   // Sideshow
+            new(774, LaptopRowKind.Money),   // Cash In
+            new(504, LaptopRowKind.Money),   // Loans -- outstanding debt
+            new(371, LaptopRowKind.Money),   // Staff Wages
+            new(578, LaptopRowKind.Money),   // Purchases = Cash Out - Staff Wages
+            new(607, LaptopRowKind.Money),   // Cash Out
+        },
+        LabelsOnGrid: true, MonochromeValues: true,
+        // ⚠ 32 apart except 175->207->239->271 then the 42 gap to 313, then 32 again.
+        RowYs: new[] { 175, 207, 239, 271, 313, 345, 377, 409 });
+
+    /// <summary>⭐ NEW LOAN (menu id 6). `findings/finance-screens.md` §3; draw `FUN_00136018`,
+    /// input `FUN_00135D98`.
+    ///
+    /// ⚠ The lender's NAME is drawn separately at (45, 115) in YELLOW with its arrows at
+    /// (250, 131) -- it is the spinner, not a row, so it is not in this list even though row 0
+    /// also shows it.
+    ///
+    /// ⚠⚠ Only the LENDER spinner takes input; the amount and term spinners are built and ranged
+    /// but never made live, so the offer is always the lender's maximum. See
+    /// <see cref="Lender.DefaultQuote"/>.</summary>
+    public static readonly LaptopScreen NewLoan = new(
+        "main_fi_newloan.sce", 6, "LenderName", "LoanText", "LoanInformation", "LoanText",
+        new LaptopRow[]
+        {
+            new(102, LaptopRowKind.Text),    // Lender
+            new(854, LaptopRowKind.Money),   // Max.Loan
+            new(387, LaptopRowKind.Text),    // Interest  -- "20%"
+            new(133, LaptopRowKind.Text),    // Max.Term  -- "3yrs"
+            new(60,  LaptopRowKind.Money),   // Repayment -- per month
+            new(951, LaptopRowKind.Money),   // Total
+        },
+        LabelsOnGrid: true);
+
+    /// <summary>`STR_FINANCE_LOAN_ALREADY_TAKEN`. ⚠ When a loan IS taken the page draws this one
+    /// label at (215, 207) and NOTHING else -- not the rows with a note, the rows are simply not
+    /// drawn.</summary>
+    public const int LoanAlreadyTakenTextId = 910;
+
+    /// <summary>⭐ VISITOR INFORMATION (menu id 10). `findings/parkstats-screens.md` §3; draw
+    /// `FUN_00185458`, z 100, amber throughout.
+    ///
+    /// Four text rows at explicit heights -- two headings and two labelled values -- with the
+    /// feelings block between them. ⚠ The headings are NOT on a grid with the values: 65, 243,
+    /// 350, 400 are authored positions, not a step.
+    ///
+    /// ⚠⚠ Both values are drawn LEFT at col 260 despite the scene saying `center`: the binder
+    /// stores no justify for `GatePriceVal` and none for `PeopleVisitedText` either, so whatever
+    /// justify was last set stays in force -- and that is the LEFT one from `GatePriceText`.
+    /// Honouring the authored centre would be reading the scene instead of the code.</summary>
+    public static readonly LaptopScreen VisitorInfo = new(
+        "main_ps_visitorinfo.sce", 10, "FeelingsText", "FeelingsText", "PeopleVisitedVal",
+        "FeelingsText",
+        new LaptopRow[]
+        {
+            new(853, LaptopRowKind.Text),    // People's Feelings   -- heading
+            new(308, LaptopRowKind.Text),    // Dominant Thoughts   -- heading
+            new(139, LaptopRowKind.Value),   // People Visited
+            new(50,  LaptopRowKind.Money),   // Ticket Price
+        },
+        LabelsOnGrid: true, MonochromeValues: true,
+        RowYs: new[] { 65, 243, 350, 400 });
+
+    /// <summary>⭐ The three feelings rows: icon left, bar right, in a blue pill.
+    /// `FeelingsClouds` (45, 105) is a REGION and the rows step 40 down it -- 105, 145, 185 --
+    /// while each PILL is 48 tall, so consecutive pills OVERLAP BY 8px. That is what the code
+    /// draws; it is not a rounding error of ours.</summary>
+    public const int FeelingsRow0 = 105, FeelingsRowStep = 40, FeelingsPillHeight = 48;
+
+    /// <summary>Icon 32x32 at col 45; the bar is 72x22 at col 127 (icon 32 + a 50 gap), centred
+    /// against the icon's height, so `y + 5`.</summary>
+    public const int FeelingsIconCol = 45, FeelingsBarCol = 127, FeelingsBarDy = 5;
+
+    /// <summary>The three thought faces, by their art path. ⚠ The console reaches these through a
+    /// sprite REGISTRY by id (5, 6, 7); this port has no registry, but the registry's own entries
+    /// name these files, so they load by path instead.</summary>
+    public static readonly string[] FeelingsIconPaths =
+        { "/laptop/thoughts/TIHAPPY.ssh", "/laptop/thoughts/TINORMAL.ssh", "/laptop/thoughts/TISAD.ssh" };
+
+    /// <summary>⭐⭐ THE RIDE'S UPGRADES PAGE -- state 2 of the ride screen, NOT a screen of its
+    /// own. `findings/laptop-tabs.md` §3; layout `main_i_ride_data_upgrd.sce` bound by
+    /// `FUN_001d3f98`, drawn by `FUN_001d6058`.
+    ///
+    /// ⚠⚠ THE "TABS" ARE NOT TABS. The Single-item base has a state field (0 Details, 1 Options,
+    /// 2 Upgrade, 3 Addons) but nothing SELECTS one: the only writes move 0 -> 2 or 0 -> 3 when
+    /// the Details cursor is on the Upgrades / Addons ROW and Confirm is pressed, and 2 -> 0 on
+    /// Back. State 1 is set only by a method no code calls, and shop, sideshow and toilet never
+    /// leave state 0 at all -- their Details/Options strings go into a widget that is constructed
+    /// and never drawn. So this is a page reached from a row, which is what our Upgrades row
+    /// already was; it just had no page behind it.
+    ///
+    /// ⚠ EXACTLY ONE UPGRADE IS EVER OFFERED: the next tier, and only while it is researched, the
+    /// ride is not condemned, and it is below tier 2. There is no paging here.
+    ///
+    /// ⚠ The title is the RIDE's name, not the tier's -- the "Upgrade 1"/"Upgrade 2" caption is
+    /// built and never drawn. The model shows the ride's CURRENT model, not the upgrade's.
+    ///
+    /// ⚠ Stock is for TRACK RIDES only, and is `3 - addons placed`.</summary>
+    public static readonly LaptopScreen RideUpgrade = new(
+        "main_i_ride_data_upgrd.sce", 25, "UpgradeName", "stocktext", "stockvalue", "UpgradeModel",
+        new LaptopRow[]
+        {
+            new(918, LaptopRowKind.Value),   // STR_PURCHASE_STOCK       -- track rides only
+            new(297, LaptopRowKind.Money),   // STR_SINGLER_UPGRADE_COST
+        },
+        LabelsOnGrid: true, RowYs: new[] { 200, 388 });
 
     public static readonly LaptopScreen[] AllList = { AllRides, AllShops, AllSideshows, AllToilets };
 

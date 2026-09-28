@@ -44,6 +44,25 @@ public static class LaptopGraph
     /// <summary>How far below the first pass the eraser pass is drawn.</summary>
     public const int EraseDrop = 3;
 
+    /// <summary>true = the dark pass is in front (a 3px stepped LINE); false = the colour pass is
+    /// in front (a filled AREA).
+    ///
+    /// ⭐⭐ SETTLED 2026-09-28 by reading the GS environment and the render list, not by argument
+    /// (`findings/graph-widget.md` §1.8). **The GS never rejects on depth**: every draw environment
+    /// writes `TEST_1 = 0x30000` (`ZTE=1, ZTST=ALWAYS`) and every `ZBUF_1` carries `ZMSK=1`, so the
+    /// Z buffer is never even updated. Ordering is a **CPU sort**: sprites whose texture carries
+    /// flag `0x40` -- which includes the flat sprite the plotter emits -- go into a sorted region
+    /// keyed on `z`, quicksorted DESCENDING and walked ascending, so a LARGER key is emitted
+    /// EARLIER and ends up BEHIND. **Smaller z is nearer.**
+    ///
+    /// The colour pass draws at `Z - 1` and the dark pass at `Z`, so the COLOUR pass is in front,
+    /// the dark pass is hidden behind it entirely, and a series reads as a filled AREA.
+    ///
+    /// ⭐ That also independently explains the container: the panel is issued at `Z` too, and
+    /// non-sorted chains are emitted before the sorted region, so it lands behind the data --
+    /// which is the constraint that made the old "dark in front" reading impossible.</summary>
+    public static bool LineStyle = false;
+
     /// <summary>The year ticks along the bottom are BLUE, and only appear when the span is more
     /// than one year.</summary>
     public static readonly Color YearTick = Color.Color8(0, 0, 255);
@@ -105,10 +124,25 @@ public static class LaptopGraph
         if (h <= 0) return;
         var steps = Steps(values, w, h, min, max);
 
-        // ⚠ Order IS the z rule here: the series colour first, then the eraser 3px lower on top.
-        // Reversing them paints the whole staircase dark and loses the line entirely.
-        Paint(ci, box, steps, colour, 0, scale);
-        Paint(ci, box, steps, EraseColour, EraseDrop, scale);
+        // ⚠⚠ WHICH PASS LANDS IN FRONT IS THE ONE THING THE RESEARCH COULD NOT READ.
+        // `zdraw = (colour == 0x35f0f0) ? Z : Z - 1` puts the dark pass and the colour pass on
+        // different z, and graph-widget.md marks the resulting order as INFERRED.
+        //
+        // Dark in front  -> it erases all but 3px and the series reads as a stepped LINE.
+        // Colour in front -> the dark pass is entirely hidden and the series reads as a filled AREA.
+        //
+        // Both are consistent with the instructions; only the picture tells them apart, which is
+        // why this is a switch and not a guess baked in.
+        if (LineStyle)
+        {
+            Paint(ci, box, steps, colour, 0, scale);
+            Paint(ci, box, steps, EraseColour, EraseDrop, scale);
+        }
+        else
+        {
+            Paint(ci, box, steps, EraseColour, EraseDrop, scale);
+            Paint(ci, box, steps, colour, 0, scale);
+        }
     }
 
     static void Paint(CanvasItem ci, Rect2 box, List<Step> steps, Color c, int drop, float scale)

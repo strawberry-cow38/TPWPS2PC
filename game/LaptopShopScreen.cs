@@ -276,12 +276,40 @@ public sealed partial class LaptopShopScreen : Control
                                               Color Colour, int Years);
     GraphSeries? _graph;
 
+    /// <summary>⚠ Park Finance answers every label TWICE. `_column2` is the second answer per row
+    /// and `_headers` the two column titles, drawn on the row the labels deliberately skip.</summary>
+    IReadOnlyList<string> _column2, _headers;
+
+    /// <summary>⭐ Visitor Information's three feelings fractions (0..100), or null. Drawn as an
+    /// icon and a bar inside a blue pill, three rows stepping 40 down the `FeelingsClouds` region.
+    /// </summary>
+    IReadOnlyList<int> _feelings;
+
+    /// <summary>The three thought faces and the pill's end cap. ⚠ Loaded by PATH because this
+    /// port has no sprite registry; the console reaches the same files by id 5/6/7 and 0x33.</summary>
+    public Texture2D[] FeelingsIcons { get; set; }
+    public Texture2D PillCap { get; set; }
+
+    /// <summary>⭐ The nine-slice the graph sits in. `findings/graph-widget.md` §1.3: the series
+    /// draw builds a temporary element over the plot rect and issues `FUN_00142090` -- sprite
+    /// `0x30` tiled in 16px rows with `0x2f` corners and `0x32` edges, which is the SAME
+    /// `UI.WAD/messages/Messcorner|Messedge|Messfill` art the lobby message box uses.
+    ///
+    /// ⚠ Master, on the first graph render: "may also b missing a 'container' box for the graphs".
+    /// It was -- I had skipped step 3 of the series draw entirely.</summary>
+    public UiPanel GraphPanel { get; set; }
+
     public void ShowScreen(LaptopScreen spec, string title, IReadOnlyList<(string Text, int Fraction)> cells,
                            bool buildRow = false, int buildTextId = LaptopMainMenu.BuildTextId,
-                           IReadOnlyList<Color?> barTints = null, GraphSeries? graph = null)
+                           IReadOnlyList<Color?> barTints = null, GraphSeries? graph = null,
+                           IReadOnlyList<string> column2 = null, IReadOnlyList<string> headers = null,
+                           IReadOnlyList<int> feelings = null)
     {
+        _feelings = feelings;
         _barTints = barTints;
         _graph = graph;
+        _column2 = column2;
+        _headers = headers;
         _spec = spec ?? throw new ArgumentNullException(nameof(spec));
         _title = title ?? "";
         _rows.Clear();
@@ -1036,12 +1064,53 @@ public sealed partial class LaptopShopScreen : Control
             DrawTextureRect(_arrows, _pageArrows, false, ArrowTint);
         }
 
+        // ⭐ VISITOR INFORMATION's feelings rows: a blue pill, then the icon and the bar on it.
+        // ⚠ The pills OVERLAP by 8px because the row advance (40) is less than the pill height
+        // (48). That is what the console draws, so they are not spaced out to look tidier.
+        if (_feelings != null && layout["FeelingsClouds"] is { } clouds)
+        {
+            var pillBlue = Color.Color8(0, 0, 255);
+            for (int r = 0; r < _feelings.Count && r < 3; r++)
+            {
+                float top = At(clouds).Y + LaptopScreen.FeelingsRowStep * r * s;
+                float bodyX = Origin.X + LaptopScreen.FeelingsIconCol * s;
+                float bodyW = (LaptopScreen.FeelingsBarCol + 72 - LaptopScreen.FeelingsIconCol) * s;
+                var body = new Rect2(new Vector2(bodyX, top - 8 * s),
+                                     new Vector2(bodyW, LaptopScreen.FeelingsPillHeight * s));
+                DrawRect(body, pillBlue);
+                // The end caps are 12x48, mirrored on the right, sitting just outside the body.
+                if (PillCap != null)
+                {
+                    var capL = new Rect2(new Vector2(bodyX - 9 * s, body.Position.Y),
+                                         new Vector2(9 * s, body.Size.Y));
+                    var capR = new Rect2(new Vector2(body.End.X, body.Position.Y),
+                                         new Vector2(9 * s, body.Size.Y));
+                    DrawTextureRect(PillCap, capL, false, pillBlue);
+                    DrawTextureRect(PillCap, capR, false, pillBlue);
+                }
+                if (FeelingsIcons != null && r < FeelingsIcons.Length && FeelingsIcons[r] != null)
+                    DrawTextureRect(FeelingsIcons[r],
+                        new Rect2(new Vector2(bodyX, top), new Vector2(32 * s, 32 * s)), false);
+                var bar = new Rect2(
+                    new Vector2(Origin.X + LaptopScreen.FeelingsBarCol * s,
+                                top + LaptopScreen.FeelingsBarDy * s),
+                    new Vector2(72 * s, 22 * s));
+                // ⚠ The three bars are given colours by the constructor, but style 1 never applies
+                // a tint -- so they draw in the art's own colour, like every other progress bar.
+                DrawBar(bar, _feelings[r], s);
+            }
+        }
+
         // ⭐ The GRAPH, drawn before the rows for the same reason the model window is. ⚠ Its
         // element is the model window's own frame (315, 208, 147x200), which is why no graph
         // screen also has a model.
         if (_spec.GraphElement != null && _graph is { } g && layout[_spec.GraphElement] is { } gbox)
         {
             var rect = new Rect2(At(gbox), new Vector2(gbox.Width, gbox.Height) * s);
+            // ⚠ BEHIND the plot. The console issues the panel at Z with the colour pass at Z-1,
+            // and the doc flags that z rule as inferred rather than read -- but a container the
+            // plot is drawn INSIDE is the only reading that produces a graph you can look at.
+            GraphPanel?.Draw(this, rect, s);
             LaptopGraph.DrawSeries(this, rect, g.Values, g.Min, g.Max, g.Colour, s);
             // ⚠ The year ticks appear ONLY when the span is more than one year, and they are
             // BLUE -- the console's own colour, and the nearest thing this screen has to a legend.
@@ -1059,6 +1128,16 @@ public sealed partial class LaptopShopScreen : Control
             DrawTextureRect(ModelTexture,
                 new Rect2(At(window), new Vector2(window.Width, window.Height) * s), false);
 
+        // ⭐ Column headers, drawn on the row the label grid skips (Park Finance's row 200).
+        if (_headers != null && _spec.ValueElement2 != null
+            && layout[_spec.ValueElement] is { } h1 && layout[_spec.ValueElement2] is { } h2)
+        {
+            if (_headers.Count > 0 && _headers[0] != null)
+                DrawRun(_headers[0], At(h1), s, Of(ShopScreen.Highlight), h1.Justify);
+            if (_headers.Count > 1 && _headers[1] != null)
+                DrawRun(_headers[1], At(h2), s, Of(ShopScreen.Label), h2.Justify);
+        }
+
         var screenLabels = layout[_spec.LabelElement];
         var values = layout[_spec.ValueElement];
         for (int i = 0; i < _spec.Rows.Count; i++)
@@ -1075,9 +1154,13 @@ public sealed partial class LaptopShopScreen : Control
             // ⚠ Everything below this line that reads `labels` now reads the ROW's label, which is
             // what makes the value column and the click rect follow a row that moved.
             var labels = row.LabelElement != null ? layout[row.LabelElement] : screenLabels;
+            // ⚠ An EXPLICIT row wins over the grid: the Balance Sheet steps 42 once, in the
+            // middle, and a uniform step cannot say that.
             float dy = row.LabelElement != null
                      ? 0f
-                     : LaptopScreen.RowStep * (i - _spec.StepBase) * s;
+                     : _spec.RowYs != null && i < _spec.RowYs.Count && labels is { } rg
+                       ? (_spec.RowYs[i] - rg.Y) * s
+                       : LaptopScreen.RowStep * (i - _spec.StepBase) * s;
 
             // ⭐⭐ A ROW THAT OWNS A SIZED WIDGET TAKES ITS LABEL'S HEIGHT FROM THE WIDGET, not
             // from the step. The label grid steps 32, but an authored widget sits exactly where the
@@ -1150,6 +1233,13 @@ public sealed partial class LaptopShopScreen : Control
                 DrawTextureRect(_arrows, arect, false, want);
             }
 
+            // ⭐ The SECOND value column, at its own element's column and this row's height.
+            if (_spec.ValueElement2 != null && _column2 != null && i < _column2.Count
+                && _column2[i] != null && layout[_spec.ValueElement2] is { } v2
+                && labels is { } l2)
+                DrawRun(_column2[i], new Vector2(At(v2).X, At(l2).Y + dy), s,
+                        Of(ShopScreen.Label), v2.Justify);
+
             if (text == null) continue;
             // ⭐⭐ CHECKED FIRST, and the order is the point: a Research row HAS its own element
             // (its bar), so the own-element branch below would win and stack all five item names
@@ -1160,7 +1250,7 @@ public sealed partial class LaptopShopScreen : Control
                 && layout[row.Element] is { } welem)
                 DrawRun(text,
                         new Vector2(At(vw).X, At(welem).Y + _spec.WidgetStep * i * s),
-                        s, Of(ShopScreen.Highlight), vw.Justify);
+                        s, ValueTint, vw.Justify);
             // A row with its own value element uses it; otherwise the shared value column, at the
             // label's height.
             else if (row.Element != null && layout[row.Element] is { } own)
@@ -1169,17 +1259,69 @@ public sealed partial class LaptopShopScreen : Control
                 DrawRun(text,
                         _spec.ValueColumnOnly && labels is { } lb
                           ? new Vector2(At(own).X, At(lb).Y + dy) : At(own),
-                        s, Of(ShopScreen.Highlight), own.Justify);
+                        s, ValueTint, own.Justify);
             else if (values is { } v && labels is { } lab)
                 // ⚠ THE VALUE COLUMN CONTRIBUTES ITS X, AND THE LABEL ITS Y. On the shop the two
                 // elements share a row (both 175) so either reading works; on the ride they do
                 // NOT -- its value elements sit at 338/400/436 against labels from 115 -- and
                 // taking the value element's row as a baseline threw the text off the screen.
-                DrawRun(text, new Vector2(At(v).X, At(lab).Y + dy), s, Of(ShopScreen.Highlight), v.Justify);
+                DrawRun(text, new Vector2(At(v).X, At(lab).Y + dy), s, ValueTint, v.Justify);
         }
     }
 
     static string Money(int v) => v < 0 ? $"-${-v:N0}" : $"${v:N0}";
+
+    /// <summary>⭐ Load Visitor Information's art once: the three thought faces and the pill's
+    /// end cap. ⚠ By PATH -- this port has no sprite registry, and the console's own registry
+    /// entries name these files, so the paths are the registry's answer rather than a guess.
+    /// A face that will not load leaves its slot null and the row draws without an icon.</summary>
+    public void EnsureVisitorArt(AssetLibrary lib)
+    {
+        if (FeelingsIcons != null || lib == null) return;
+        var icons = new Texture2D[LaptopScreen.FeelingsIconPaths.Length];
+        for (int i = 0; i < icons.Length; i++)
+        {
+            icons[i] = LoadSsh(lib, LaptopScreen.FeelingsIconPaths[i]);
+            if (icons[i] == null)
+                GD.PrintErr($"[laptop] visitor icon missing: {LaptopScreen.FeelingsIconPaths[i]}");
+        }
+        FeelingsIcons = icons;
+        PillCap ??= LoadSsh(lib, "/laptop/PROG_WBIT.ssh");
+    }
+
+    /// <summary>⚠ Measure text in NATIVE units, for checking a column against the font rather
+    /// than nudging it until it looks right.</summary>
+    public void ReportTextWidth(params string[] samples)
+    {
+        if (_font == null) return;
+        foreach (var t in samples)
+        {
+            var tex = _font.Render(t);
+            GD.Print($"[laptop] width \"{t}\" = {(tex == null ? -1 : tex.GetWidth())} native "
+                   + $"({(tex == null ? 0 : tex.GetWidth() / (float)Math.Max(1, t.Length)):F1}/char)");
+        }
+    }
+
+    /// <summary>One UI sprite off the disc, or null. Same shape as the local loader `Create` uses;
+    /// separate because this one runs later, when a screen first asks for its art.</summary>
+    static ImageTexture LoadSsh(AssetLibrary lib, string name)
+    {
+        var raw = lib?.ReadUi(name);
+        if (raw == null) return null;
+        try
+        {
+            var ssh = new Ssh(raw);
+            return ImageTexture.CreateFromImage(
+                Image.CreateFromData(ssh.Width, ssh.Height, false, Image.Format.Rgba8, ssh.Pixels));
+        }
+        catch (Exception ex) { GD.PrintErr($"[laptop] {name}: {ex.Message}"); return null; }
+    }
+
+    /// <summary>⚠ A value's colour. Almost every data screen picks its figures out in the
+    /// highlight, but the Balance Sheet issues ONE colour before its row loop and never changes
+    /// it, so its figures are the same amber as its labels.</summary>
+    Color ValueTint => _spec is { MonochromeValues: true }
+        ? Of(ShopScreen.Label) : Of(ShopScreen.Highlight);
 
     static Color Of((byte R, byte G, byte B) c) => Color.Color8(c.R, c.G, c.B);
 
@@ -1393,8 +1535,19 @@ public sealed partial class LaptopShopScreen : Control
         var tex = _font.Render(text);
         if (tex == null) return;
         float w = tex.GetWidth() * s;
-        float x = justify != null && justify.StartsWith("cent", StringComparison.OrdinalIgnoreCase) ? at.X - w / 2f
-                : justify != null && justify.StartsWith("right", StringComparison.OrdinalIgnoreCase) ? at.X - w
+        // ⚠⚠ `justify=right` NEVER RIGHT-ALIGNS IN THIS ENGINE, and the census is complete:
+        // exactly TWO scenes in the whole game author it -- main_fi_balancesheet and
+        // main_fi_newloan -- and the code for BOTH is documented as drawing the column LEFT
+        // (`FUN_001389C0(ctx, justify)` with mode 2 applies no shift; the balance sheet's justify
+        // global has no reader at all). So mode 2 is "no shift", not "right".
+        //
+        // Master saw the consequence: "the amounts overlapping the row names". It is not a
+        // rounding fudge -- MEASURED, "Repayment" is 111 native and ends at 156, while a value
+        // right-aligned to col 215 would START at 127. A 29px overlap the font cannot avoid.
+        // Left-aligned at 215 it clears the label by 59px. The scene says right; the code says
+        // left; the code wins.
+        float x = justify != null && justify.StartsWith("cent", StringComparison.OrdinalIgnoreCase)
+                ? at.X - w / 2f
                 : at.X;
         var size = new Vector2(w, tex.GetHeight() * s);
         float d = ShopScreen.TextShadowOffset * s;
