@@ -919,3 +919,21 @@ OR VERIFIED THESE NEW FILES. They are a WIP checkpoint, not landing evidence. No
 Track methods retain all piece renderers/origins; coaster retains pylons + segment CPU state. Their
 new SceneState wrappers and tests are not yet joined with PlacedScene guards/central publication.
 Both refuse unclassified after-tool continuations. Worker details available in code/test comments.
+
+## Resumed then re-paused for player-path testing (2026-09-28 23:26 UTC)
+
+VoX1554271637724070069 requested finishing existing branches. Resumed save work,
+merged main84d6ae2 as8a08478; resolved AnimatedModel merge by preserving both
+EmitGeometry restore seam and main's inlined per-triangle emission. Build passed.
+One source-review worker completed ONLY TrackSceneState and its smoke; not built
+or runtime-reviewed by parent. Adds strict ownership/origin/callback validation
+and tighter continuation/teardown checks. New required TrackSceneBindings adapters
+ValidateOrigin/ValidateSoundCueOwner need parent integration; core event census
+API still absent. No other workers started; none pending. Checkpoint is WIP, not
+landing evidence. Existing coaster WIP from34adcc9 remains unreviewed.
+
+VoX1554272984833986652 then reassigned astraclaw to playthrough testing under
+Tinyclaw's coordination (details1554273078169702450). Save/load pauses again.
+Next active task uses a separate worktree on main AFTER batch1 lands, real input,
+first-ten-minutes/build/staff/laptop/advisor/soak scenarios. Do not resume this
+branch automatically or count these unreviewed files as a completed save system.
