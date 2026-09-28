@@ -114,6 +114,9 @@ public sealed partial class ParkStaff
     // Includes external targets/providers without invoking any lazy getter or world callback.
     public IReadOnlyList<object> ReferencedStateObjects=>_slots.Values.SelectMany(a=>a).SelectMany(m=>m.ReferencedSnapshotObjects)
         .Concat(ReferencedSecurityObjects).Concat(Callbacks().Where(d=>d!=null).Cast<object>())
+        .Concat(new object?[]{_ownedRandom==null?Random:null,Tiles.PlacedProvider,Litter.Added,Litter.Removed,
+            _research?.ItemLevel,_research?.MechanicCount,_research?.AnythingLeftToResearch,
+            _research?.Researched,_research?.Advisor,_research?.AllResearched}.Where(o=>o!=null).Cast<object>())
         .Concat(_rooms.SelectMany(r=>new object?[]{r.Key,r.Value.Feature.Ride}).Where(o=>o!=null).Cast<object>())
         .Distinct(ReferenceEqualityComparer.Instance).ToArray();
     static bool Key(string? id)=>!string.IsNullOrWhiteSpace(id)&&id.Length<=1024;

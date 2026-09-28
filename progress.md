@@ -3343,3 +3343,15 @@ Next admission/ridequeue/request resources (+Viewer.Entrance pending seam), then
   runtime10/11, only existingFANTASYanchor. Evidence /tmp/tpw-save-controllers-{matrix,runtime}.
 - Still research only: next staff/jobs/managers, native bus/provider and advisor/presentation state,
   then complete transactional Viewer load. Player Save/Load still unavailable, not a partial save.
+
+### 2026-09-28 — Save research: staff and management graph
+- f8916b5 joins persistent staff slots/job fields, candidates, litter claims/variants, research,
+  security effectors/watchers, pending routes, strikes/room cache, management/calendar counters.
+- FILE continuation420 visitor updates includes actual cleaning, fire/re-hire, new litter,
+  researcher work, wages and weekly passes. Additional160 updates cover a dispatched mechanic;
+  two-phase ParkSim restore preserves its ride<->staff cycle without replaying dispatch.
+- Six deliberate mutations fail/restored. SaveAudit237412 PASS; focused staff1646;83Python.
+  Main58dbbf6 merged9cb0e1a. /tmp/tpw-save-staff-matrix4green/4retail;
+  runtime10/11 unchanged oldFANTASYanchor. Provider inventory expanded after gates (save-only).
+- Still NOT player-ready: native bus/animation providers, advisor and presentation, then whole
+  world registry and transactional Viewer load remain. Save/Load UI intentionally disabled.

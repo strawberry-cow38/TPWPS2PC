@@ -504,3 +504,84 @@ advisor Scheduler/ParkAdvisor/MessageStack and NEW visible/audio state from88407
 owners and final Viewer transaction last. ParkSim.ObjectRemoved is a NEW callback rebound through
 ParkAdvisor.Attach, not serialized as a delegate. Settings/HiddenAwards remain GAME scope. Read
 findings/advisor-viewer.md before capturing presentation. Full save requires all these joins.
+
+## Staff / job / management graph checkpoint — September 28
+
+ParkStaff.State now joins all 25 persistent slot objects (including stale fired slots), exact
+per-kind free/active order and map update order, hire-held identity, tick/pool epoch, strikes/stamps/
+stages, management flags, training count, lazy candidate DB and lazy research manager, litter,
+cached NativeTileView, pending StaffRouteService records, room polling cache, security owners and
+explicit provider/callback identities. AllocateState creates unpublished stable member shells;
+HydrateState resolves links against the staged world. Neither invokes Hire/Drop/Step/Activate,
+allocates output routes or replays litter/research/audio/advisor events. Constructor's Walk.Paused
+write and litter variant rolls are skipped on this path. Default staff RNG is now owned
+SnapshotRandom (same seeded .NET sequence); explicit external RNG delegates still require their
+provider owner/state, not seed substitution. Named default callback methods make built-in bindings
+reconstructible without compiler-generated closure names. StatePaused is exposed for GuestGraph.
+
+Member DTOs cover goals, flags/modes/states, target/candidate object keys, serials, routes/epoch,
+patrol/candidate/hire fields, tiredness/morale/settings and counters. Handyman has no extra mutable
+fields; Mechanic adds dispatch counters, Researcher adds work quanta. Guard/Entertainer private job
+fields are in SecuritySnapshot. Parent review removed the worker's UnsafeAccessor/backing-field
+string approach: Guard/Entertainer partials now write their OWN fields through internal hydration
+methods. NewlibRand exposes explicit current uint state; the owned PrankStinks generator persists
+that, not its original seed. No runtime-private reflection is used by production snapshots.
+
+Security includes all effector slots/free/active order (preserving SAME effector objects for job
+links), stink records/counters/RNG/callbacks, carried guest copies, guard leg/counters, entertainer
+show/effector/counters, watcher/cooldown/first-seen tables, live-target set, advisor counters and gate
+binding. Watching/time dictionaries now preserve free-slot history with SnapshotIntMap. Room
+polling uses the reference-map helper with its ORIGINAL default object equality (not a changed
+reference comparer), plus slot/free history. Restoring gate event wiring requires a STAGED gate;
+never resolve these keys to another live world's owners.
+
+Leaf DTOs: candidate records preserve immutable data/availability with no RNG; litter captures
+all slots/variants/claims, including inactive stale values, with two-phase claimant binding;
+research preserves project object identities and all progress/completion fields/callbacks; tiles
+retain the cached building cells without calling Refresh/provider. ParkManagement.State captures
+calendar driver counters/red-month chain/last wages and binds the SAME clock, awards, finances and
+staff. Clock/Awards themselves remain separately owned; Awards/HiddenAwards are GAME scope.
+
+A real cross-owner cycle required extending ParkSim: ride.AssignedMechanic -> member.Target ride,
+member -> ParkStaff -> ParkVisitors -> ParkSim. New AllocateScriptedState / AllocateState build the
+sim with deferred staff keys; HydrateStaffState resolves ALL members before assigning reverse
+links and binding callbacks. Advance/Capture on that unhydrated sim refuses. Existing one-phase
+FromState APIs retain their behavior. This avoids creating fake staff owners, replaying dispatch
+or substituting null permanently. The staff graph also validates output-chain disjointness across
+ALL walking guest cursors AND staff cursors against the ONE restored NativeRoutePool.
+
+Evidence: real FILE bundle ground/walk/visitors/needs/sim/staff/clock/activation/finance/management/
+awards, all five kinds hired, a visitor moving, pending route work and a claimed litter item. Fresh
+allocation continues420 actual ParkVisitors.Step calls with cleaning, new litter, firing/re-hiring,
+researcher updates, month-end wages and weekly checks; exact state/events match, with repeated
+loads during the run. Lazy never-created candidates stay absent and future hire rolls match.
+A separate actual Mechanic.Dispatch creates the bidirectional ride/member link before save;
+restored identities are asserted, then160 actual visitor updates match. Synthetic authored script/
+terrain fixtures here (not a claim of newly measured retail behavior). Leaf tests also exercise
+research completion and guard/entertainer jobs. Full guard catch/turnstile+native gate scene is NOT
+claimed by these staff tests. Leaf litter sweep uses a direct internal Remove probe; the JOINED
+parent test separately proves actual handyman cleaning, so that probe is not mistaken for a job.
+
+Graph negative tests reject missing RNG/resource IDs, bad active/map/held membership, bad watcher
+allocation history and two staff owning the same output chain, without changing the source world.
+Six mutations fail/restored: reseed owned RNG, extra litter construction roll, missing claimant,
+reverse map order, missing effectors, missing ride->mechanic backref. All3workers completed this
+turn, files reviewed/integrated, none pending. No mutant left.
+
+Code f8916b5; main advisor-visuals58dbbf6 merged at9cb0e1a. SaveAudit237412PASS with owner disc;
+--staff-only1646PASS;83PythonPASS. /tmp/tpw-save-staff-matrix:4PASS+4exactretailreds,exit2,
+landing_evidence=True. /tmp/tpw-save-staff-runtime:10/11PASS, only old FANTASY/1 anchor00e5cd9
+(actual37.99974,-32.00022 vs expected37.994743,-31.941021); advisor/bus/standing PASS. Last final
+save log /tmp/tpw-staff-merged-saveaudit.log. Final small follow-up expands external provider
+inventory; it does not change runtime update behavior. Save/Load UI remains disabled.
+
+NEXT native bus controller+demand/passenger/coarse animation-provider state and advisor core+
+presentation state, then WORLD registry/coordinator and transactional Viewer/menu Load. Three
+bounded workers can split bus/animation, advisor core, presentation inventory while parent joins.
+Read latest advisor-visuals.md / advisor-viewer.md: UI changed on main58dbbf6. Staff animation/audio
+readiness is EXTERNAL, not saved by StaffMember itself. Root must supply those live provider values.
+Retired ride instances in visitor history/staff targets and GuestTarget objects remain WORLD
+registry entries (explicit external keys); do not recreate them by reusable numeric IDs. Root
+must also fingerprint/stage GAME config tables (StaffTables etc), GameSettings and HiddenAwards.
+StaffPatrolTool and other active tool/presentation state still need an explicit root policy. Do
+not call this a complete player save until all required roots stage and publish together.
