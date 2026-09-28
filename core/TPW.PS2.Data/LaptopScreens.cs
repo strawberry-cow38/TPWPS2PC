@@ -358,6 +358,25 @@ public sealed record LaptopScreen(
             new(709, LaptopRowKind.Bar, "SkillLevelBar"),  // Skill Level  -- min(L+1,5) x 25
         });
 
+    /// <summary>⭐ SINGLE STAFF -- what a person's own screen offers. §12.2; ctor `0x1d8ee8`,
+    /// drawn by `0x1d9088`. **There are no statistics on it**: `Staffname` (45, 115), then the
+    /// option texts down `textoptions` (45, 175) stepping 32, and the model.
+    ///
+    /// ⚠ The OPTIONS ARE NOT FIXED -- Fire drops out for a mechanic who is mid-job and Training
+    /// at level 4 -- so the rows are whatever `ParkStaff.SingleStaffOptions` returned, in its
+    /// order, and this is a factory. Grab is never added (§5).
+    ///
+    /// ⚠ The scene authors no value column, and no row here carries a value, so `ValueElement`
+    /// names `textoptions` purely because the layout lookup cannot take a null. Nothing reads it.
+    /// </summary>
+    public static LaptopScreen SingleStaffFor(IReadOnlyList<int> optionRows)
+    {
+        var rows = new LaptopRow[optionRows.Count];
+        for (int i = 0; i < optionRows.Count; i++) rows[i] = new LaptopRow(optionRows[i], LaptopRowKind.Text);
+        return new LaptopScreen("main_i_staff_opts.sce", 18, "Staffname", "textoptions", "textoptions",
+                                "Model", rows);
+    }
+
     public static readonly LaptopScreen[] AllList = { AllRides, AllShops, AllSideshows, AllToilets };
 
     /// <summary>The four "Single ..." item screens the console builds on one base class. ⚠ Build
