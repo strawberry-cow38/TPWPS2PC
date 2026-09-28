@@ -48,13 +48,24 @@ public sealed class ResearchProject
 /// `R[L]` (`0x366150` = 20, 30, 35, 40, 43). ⭐ There is no money cost anywhere near it: the budget is a
 /// fixed 80 → 100 switch, and at 100 each quantum also costs the researcher 6 tiredness.
 ///
-/// ⚠⚠ WHAT IS NOT PORTED, said plainly: the research-state DATABASE (`0x389650`, records
-/// `{cat, item, percent, level}`, read by `0x12BA08`/`0x12B928`/`0x12B758`/`0x12B840`, written by
-/// `0x12BAF8`/`0x12AED8`), the rules that START a project (`0x1B6880`: the group threshold `+0x98` and
-/// `0x1B7130`), and what completing one UNLOCKS (`0x12AED8`). Those are the research area's; this class
-/// takes them as caller-supplied answers: <see cref="Start"/> is told the required work and the percent
-/// already done, <see cref="ItemLevel"/> answers `0x12BA08`, <see cref="Researched"/> is raised where
-/// `0x12AED8` would unlock, and <see cref="AnythingLeftToResearch"/> answers `0x104358(0xFFFF)`.</summary>
+/// ⚠⚠ WHAT IS NOT PORTED, said plainly: the research-state DATABASE (`0x389650`, **60 records of
+/// 4 bytes** `{cat, item, percent, level}`, lazily created and hard-capped at 60 -- find
+/// `0x12BEE8`, alloc `0x12BF38`, level `0x12BA08`, percent `0x12B928`, availability `0x12B6D0`,
+/// write `0x12BAF8`), the per-world catalogues (`PTR_DAT_00360850[world]`, item index = ordinal in
+/// the kind's list), the five group thresholds (`mgr+0x98[slot]`, `0x1B6BE0`/`0x1B6D68`/`0x1B6FB8`)
+/// and the eligibility rule that builds a row's candidate list (`0x15CA78` walking the catalogue,
+/// appending where `0x1B7208(mgr, slot, cat, item)` passes).
+///
+/// ⚠ CORRECTED 2026-09-28: an earlier note here said `0x12AED8` unlocks. **It does not** --
+/// `0x12AED8` is the RELEASE half of a fetch/release pair with `0x12AE78` (and for categories 1..7
+/// it calls the EMPTY `0x10F2A0`). The unlock is the **`level++` in `0x12BAF8`**, run when a
+/// record's filed percent reaches 100 during `0x1B7388`. Availability everywhere is
+/// `record.level > tier`, where a ride's tier is the item's research LEVEL.
+///
+/// This class takes those as caller-supplied answers: <see cref="Start"/> is told the required work
+/// and the percent already done, <see cref="ItemLevel"/> answers `0x12BA08`, <see cref="Researched"/>
+/// is raised where `0x12BAF8` does the level++, and <see cref="AnythingLeftToResearch"/> answers
+/// `0x104358(0xFFFF)`. Full shape: `findings/hardcoded-screens.md`.</summary>
 public sealed class ResearchManager
 {
     public const int SlotCount = 5;
@@ -95,8 +106,9 @@ public sealed class ResearchManager
     /// researched" call `0x151998` is then never made).</summary>
     public Func<bool> AnythingLeftToResearch { get; set; }
 
-    /// <summary>A completed project: `0x12AED8(db, cat, item)` would unlock it here (⚠ not ported: the
-    /// caller decides what the category/item opens).</summary>
+    /// <summary>A completed project. ⚠ The unlock is the `level++` in `0x12BAF8`, NOT `0x12AED8`
+    /// as this said before -- that one is a release, not an unlock. Not ported: the caller decides
+    /// what the category/item opens.</summary>
     public Action<ResearchProject> Researched { get; set; }
     /// <summary>The completion's advisor message (0x4B..0x4F, 0x7E), posted through `0x107CC0`.</summary>
     public Action<int> Advisor { get; set; }
@@ -157,7 +169,7 @@ public sealed class ResearchManager
         s.Active = false;                                                  // 0x1B7498(slot, 0)
         CompletedFlag = true;                                              // *0x1B6798() = 1
         Completions++;
-        Researched?.Invoke(s);                                             // 0x12AED8(db, cat, item)
+        Researched?.Invoke(s);                                             // level++ in 0x12BAF8
         if (CompletionMessage(s.Category, s.Item) is int message) Advisor?.Invoke(message);
         s.Item = -1;
     }
