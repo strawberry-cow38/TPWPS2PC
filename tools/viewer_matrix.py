@@ -59,6 +59,12 @@ SCENES = {
     # and paid for at completion. Every park runs the same 38; the floor sits just under it.
     'mechanic': ('MechanicSmoke', 'MECHANIC SMOKE', 36),
 }
+# ⭐ Parks START CLOSED, as on the console ([0x2B72A4], set only by Open Park 0x14E4C0; 2c274fe): no bus
+# admits a guest until the laptop opens the gate. These scenes are ABOUT guests arriving, so they open it with
+# the viewer's own `--laptop-park-open`; every other scene runs the closed default, which keeps it covered.
+# Proof the gate reaches admission: without the flag all six fail on every park ("normal bus batch
+# automatically acquired research entrance owners") and nothing else does.
+PARK_OPEN_SCENES = {'entrance', 'rejected', 'readiness', 'departure', 'disruption', 'soak'}
 MAP_LINE = re.compile(r'^\[map\] loaded world=([A-Z]+) terrain=(terrain_[12])\.mps$', re.M)
 # Guards and entertainers: an entertainer and a guard hired through the laptop's tabs and the real press,
 # guests stopping to watch a show and drawn facing him, a forced prank (the one test hook) with its
@@ -183,7 +189,8 @@ def main(argv=None) -> int:
                 run, record = execute(name, [args.xvfb, '-a', str(engine), '--rendering-method', 'gl_compatibility',
                                              '--audio-driver', 'Dummy', '--resolution', '640x360', '--path', 'game',
                                              f'res://tests/{SCENES[scene][0]}.tscn', '--',
-                                             map_argument(world, terrain), '--mode=park'])
+                                             map_argument(world, terrain), '--mode=park']
+                                            + (['--laptop-park-open'] if scene in PARK_OPEN_SCENES else []))
                 record.update(classify(scene, world, terrain, run), scene=scene)
                 manifest['results'].append(record); save()
                 print(f'{name}: {record["status"]} checks={record.get("checks")} loaded={record.get("loaded")}', flush=True)
