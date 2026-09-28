@@ -218,3 +218,14 @@ research/advisor/presentation; all required before transactional Viewer load. Th
 used this turn (ride DTO, graph DTO timedout with complete tested draft, independent review).
 No pending workers. Main/fellow agents moving: fetch/merge; preserve new live fields. Push
 research branch only, and do not claim a scripted graph is a total snapshot.
+
+Post-merge gates on b4ac5f4 (main throughc9f7717):
+- /tmp/tpw-save-graph-matrix-v2: 8parks,4PASS+4exactdocumentedretailfailures,
+  exit2, landing_evidence=True. First /tmp/tpw-save-graph-matrix was INTERRUPTED by
+  a short tool timeout and is not gate evidence; the v2 run completed normally.
+- /tmp/tpw-save-graph-runtime-v2:10/11, standing nowPASS aftertinyclaw'sb0ccdfe.
+  VisitorFANTASYholder remains exactbaseline: actual(37.99974,0,-32.00022), expected
+  (37.994743,0,-31.941021). Its firstbad00e5cd9 is under separate investigation.
+- postmergeownerdiscSaveAudit230633PASS; no snapshotscopeexpanded/no UIenabled.
+Cow9ad3d59 subsequently exposed Viewer.Settings for coordinator; not yet merged here.
+Settings and HiddenAwards remain GAME-scoped. UI selection/page are transient, not parkstate.

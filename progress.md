@@ -3285,3 +3285,7 @@ Independent review fixed strong child-metadata retention (weakkeys), lazyhead al
 budget perVM, and preflightbeforecapturecopies. Queue-reversal mutant exposed palindromic
 testdata; now asymmetric withduplicateIDs, mutantfails. Five mutationsallfail/restored.
 SaveAudit230633PASS (ownerdisc),83PythonPASS. No UI changes; next full nativevehicle+worldowners.
+Postmergeb4ac5f4 gates:8parkmatrix4PASS+4exactretailreds(exit2,landing_evidence=True);
+10/11runtimePASS,onlypreexistingFANTASYanchorred;standingfixmerged. OwnerdiscSaveAudit230633PASS.
+Evidence /tmp/tpw-save-graph-matrix-v2, /tmp/tpw-save-graph-runtime-v2,
+/tmp/tpw-save-graph-postmerge.log. Initialnon-v2matrixruninterrupted,notgateevidence.
