@@ -162,6 +162,13 @@ public static class NativeReliefPresentationChecks
             var visit = visits[id] ?? throw new InvalidOperationException("Missing native visit");
             return (ReliefServiceClock)visit.GetType().GetProperty("Clock").GetValue(visit);
         }
+        // ⭐ ESTABLISH THE PREMISE rather than assert an immediacy the console lacks. The ladder raises Toilet only
+        // at the guest's own 128-tick mood slot (findings/visitors.md, "The decision-time thought write"); a real
+        // guest reaching a toilet at need 100 has long since had that slot. Run the NEEDS clock alone -- rates are
+        // frozen, and the ride timeline below is untouched -- until it has.
+        int premise = 0;
+        while (premise < VisitorNeeds.MoodTicks && visitors.Needs.ThoughtOf(id) != Thought.Toilet) { visitors.Needs.Step(.04); premise++; }
+        GD.Print($"NATIVE RELIEF PRESENTATION premise: the ladder raised {visitors.Needs.ThoughtOf(id)} after {premise} needs tick(s)");
         Tick(1); Present();
         actors.TryGetValue(id, out var original);
         Check(guest.State == GuestState.Walking && guest.Progress > 0 && FullBody(original),
@@ -220,6 +227,11 @@ public static class NativeReliefPresentationChecks
         Check(actors.Count == 1 && guestRoot.GetChildCount() == 1
             && visitors.Walk.Guests.Count(g => g.Id == id) == 1 && !standing.ContainsKey(id),
             "exactly one body and one walker after reveal, no standing duplicate");
+        // ⭐ The relief arm `0x20EDD8` never clears the bubble; the ladder does, at the guest's next mood slot. This is
+        // the fixture's last check, so wait for that slot (at most one ladder period) instead of asserting at +524.
+        int moodWait = 0;
+        while (moodWait < VisitorNeeds.MoodTicks && !NoBubble()) { Tick(1); Present(); moodWait++; }
+        GD.Print($"NATIVE RELIEF PRESENTATION completion: after {moodWait} tick(s) the bubble is {(NoBubble() ? "gone" : "STILL UP")}");
         Check(visitors.Needs.Of(id).Cash == 1234 && visitors.Needs.Of(id).Toilet == 0 && NoBubble(),
             "completion preserves Cash, clears Toilet and removes toilet thought");
         // Leave the isolated fixture alive for the caller's normal final teardown.

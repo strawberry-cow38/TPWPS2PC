@@ -70,6 +70,10 @@ public partial class StandingServiceAudit : Node3D
             wants.Happiness = 50; wants.Cash = 1234; visitors.Needs.Set(guest.Id, wants);
 
             viewer = new Viewer(); Set(viewer, "_discPath", disc); Set(viewer, "_lib", library);
+            // ⭐ The fixture's park is JUNGLE park 1 (the WAD above, the sound banks below). Placement registers a
+            // native activation now that the native entrance is the default (0e6e5eb), and that keys its table on the
+            // SELECTED PARK; with no terrain named, NativeParkSelection.Ordinary threw on null and killed the scene at [96].
+            Set(viewer, "_terrainPath", "terrain_1.mps");
             Call(viewer, "BuildUi");
             stage = new Node3D(); AddChild(stage);
             // Viewer intentionally never enters the tree in this headless fixture. Give
@@ -168,6 +172,18 @@ public partial class StandingServiceAudit : Node3D
             Check(visitors.Soil.TryGetValue(ride.Id, out int soil) && soil == 20, "need 91 yields decoded soil 20");
             Check(visitors.Walk.Guests.Count(g => g.Id == guest.Id) == 1 && !standing.ContainsKey(guest.Id)
                   && actors.ContainsKey(guest.Id), "handback has one walking body and no standing duplicate");
+            // ⭐ The console does NOT clear the bubble at the handback: the relief arm `0x20EDD8` only ever SETS
+            // one, and clearing is the ladder's job at the guest's own 128-tick mood slot (findings/visitors.md,
+            // "CLEARING IS THE LADDER'S JOB"). So the bubble may still be up here; what the console guarantees is
+            // that it is gone by the next slot. Step tick by tick, at most one ladder period, then assert.
+            int moodWait = 0;
+            while (moodWait < VisitorNeeds.MoodTicks && thoughts.Root.GetChildren().OfType<Sprite3D>().Any(b => b.Visible))
+            {
+                visitors.Step(.04, null); moodWait++;
+                Call(viewer, "PlaceActors", 1f);
+            }
+            bool stillUp = thoughts.Root.GetChildren().OfType<Sprite3D>().Any(b => b.Visible);
+            GD.Print($"STANDING SERVICE note: after {moodWait} tick(s) the toilet bubble is {(stillUp ? "STILL UP" : "gone")} (the ladder's slot comes within {VisitorNeeds.MoodTicks})");
             Check(!thoughts.Root.GetChildren().OfType<Sprite3D>().Any(b => b.Visible), "satisfied guest clears visible toilet thought");
             for (int i = 0; i < 50; i++) visitors.Step(.04, null);
             Check(visitors.Relieved == 1 && visitors.Soil[ride.Id] == 20, "later ticks do not repeat satisfaction or soil");
