@@ -3567,6 +3567,7 @@ public partial class Viewer : Node3D
         // row buy training for whoever was last looked at.
         _trainingMember = null;
         _singleStaff = null;
+        _optionsOpen = false;
         if (_laptopBack.Count == 0) { ShowLaptopMain(); return; }
         var (kind, arg) = _laptopBack[^1];
         GD.Print($"[laptop] -> {kind}{(arg == null ? "" : " " + arg)} (depth {_laptopBack.Count})");
@@ -3591,6 +3592,26 @@ public partial class Viewer : Node3D
             }
             case "stafftypes": ShowStaffInfoTypes(); break;
             case "staffitem": ShowStaffInfoMember(arg); break;
+            // ⭐⭐ GAME OPTIONS (menu id 1). Six rows, NO title, and not a Single-item screen --
+            // see `LaptopScreen.GameOptionsFor`. ⚠ Save Game is drawn but refused; persistence is
+            // the save coordinator's, and a save that filed only what the laptop knows would be
+            // worse than none (astraclaw, 2026-09-28).
+            case "gameoptions":
+            {
+                _optionsOpen = true;
+                var oc = new List<(string, int)>
+                {
+                    (null, GameSettings.Fill(_settings.Music)),
+                    (null, GameSettings.Fill(_settings.Sfx)),
+                    (null, 0), (null, 0), (null, 0), (null, 0),
+                };
+                _shopPanel.ShowScreen(
+                    LaptopScreen.GameOptionsFor(_settings.Tutorial, _settings.Vibration), "", oc);
+                ClearLaptopModel();
+                RefreshLaptopBalance();
+                Status($"options -- music {_settings.Music}, sfx {_settings.Sfx}");
+                break;
+            }
             // ⭐⭐ SINGLE STAFF -- one person's own options (§12.2). `arg` is the member's index
             // in `ParkStaff.Members`, the same handle the other staff screens page with.
             case "staffone":
@@ -3735,6 +3756,51 @@ public partial class Viewer : Node3D
     // Information's fifth row is the staff-type selector, not an asset list.
     const int StaffInfoRow = 4;
     string StaffName(StaffMember m) => m.Candidate.Name(_text) ?? $"#{m.Candidate.NameRow}";
+
+    /// <summary>⭐ The four settings Game Options owns. ONE owner, with capture/restore, because
+    /// they are GAME settings that outlive a park -- see <see cref="GameSettings"/>.</summary>
+    readonly GameSettings _settings = new();
+
+    /// <summary>⚠ Whether Game Options is the screen showing. Cleared by
+    /// <see cref="ShowLaptopLevel"/> on every navigation with the other per-screen subjects.</summary>
+    bool _optionsOpen;
+
+    /// <summary>⭐ Raised when Game Options' Save Game row is chosen. An EVENT rather than a save:
+    /// persistence belongs to the save coordinator, and the laptop only knows what the laptop
+    /// knows. ⚠ With no handler attached the row refuses itself out loud rather than appearing to
+    /// work -- a save that filed some counters and not the running park would be worse than none.
+    /// </summary>
+    public event Action SaveGameRequested;
+
+    /// <summary>⭐ A row on Game Options (`0x139df0`). ⚠ The two sliders are NOT accept targets --
+    /// the console moves them with held left/right while the cursor is on them, and accepting does
+    /// nothing -- so rows 0 and 1 fall through here deliberately.</summary>
+    void GameOptionChose(int row)
+    {
+        switch (row)
+        {
+            case LaptopScreen.OptTutorial:
+                _settings.Tutorial = !_settings.Tutorial;
+                Status($"tutorial {(_settings.Tutorial ? "on" : "off")}");
+                ShowLaptopLevel();
+                break;
+            case LaptopScreen.OptVibration:
+                _settings.Vibration = !_settings.Vibration;
+                Status($"vibration {(_settings.Vibration ? "on" : "off")}");
+                ShowLaptopLevel();
+                break;
+            case LaptopScreen.OptSaveGame:
+                if (SaveGameRequested is { } save) { save(); Status("saving..."); }
+                else Status("save game -- not available yet; the park cannot be fully restored");
+                break;
+            case LaptopScreen.OptQuit:
+                // ⚠ The console posts 0xe0008 and unwinds to a cold front end. The nearest thing
+                // this port has is the main menu, which is where that chain ends up.
+                OnLaptopDismiss(close: true);
+                EnterMainMenu();
+                break;
+        }
+    }
 
     /// <summary>⚠ Whose Single Staff screen is showing, the options that were DRAWN for him, and
     /// his index in `ParkStaff.Members`. Cleared with <see cref="_trainingMember"/> on every
@@ -3950,6 +4016,7 @@ public partial class Viewer : Node3D
                 {
                     case "main_info":      _laptopBack.Add(("info", null)); ShowLaptopLevel(); return;
                     case "main_bh_items":  _laptopBack.Add(("buildcats", null)); ShowLaptopLevel(); return;
+                    case "main_gameoptions": _laptopBack.Add(("gameoptions", null)); ShowLaptopLevel(); return;
                     case "main_bh_staff":
                         // ⭐ The Hire panel (Viewer.Staff.cs): its tabs, then a tab's candidates.
                         if (_staff == null) { Status("hire -- no park is running yet, so there is nobody to hire into"); return; }
@@ -4084,6 +4151,7 @@ public partial class Viewer : Node3D
         // before the ride gate because both screens come through this one hook.
         if (_trainingMember is { } trainee) { if (row == 0) BuyTraining(trainee); return; }
         if (_singleStaff is { } person) { SingleStaffChose(person, row); return; }
+        if (_optionsOpen) { GameOptionChose(row); return; }
         if (_detailsSpec != LaptopScreen.Ride || _detailsRide is not { } ride) return;
         var rows = LaptopScreen.Ride.Rows;
         if (row < 0 || row >= rows.Count || rows[row].TextId != 119) return;   // Upgrades
@@ -4314,6 +4382,38 @@ public partial class Viewer : Node3D
         // ⭐ `--laptop-screen=training:<n>` opens Training for member n. The console reaches it
         // through Single Staff, which is not ported yet, so the harness pushes the SAME stack entry
         // that screen will push rather than inventing a second route to it.
+        // ⭐ `--laptop-screen=push:<kind>[:<arg>][:row=<n>]` opens ANY laptop stack entry and may
+        // then press a row through the real activation hook. One harness for every screen instead
+        // of a new flag per screen -- the stack entry IS the screen's name, so this cannot drift
+        // out of step with the navigation the game itself uses.
+        if (_laptopScreen.StartsWith("push:", StringComparison.OrdinalIgnoreCase))
+        {
+            if (_laptopFrame == 0)
+            {
+                TestHireOneOfEach();
+                var pp = _laptopScreen.Split(':');
+                string kind = pp.Length > 1 ? pp[1] : "main";
+                string parg = pp.Length > 2 && !pp[2].StartsWith("row=") ? pp[2] : null;
+                _laptopBack.Clear();
+                _laptopBack.Add((kind, parg));
+                ShowLaptopLevel();
+                foreach (var piece in pp)
+                    if (piece.StartsWith("row=") && int.TryParse(piece[4..], out var prow))
+                        OnLaptopRowActivated(prow);
+                // ⚠ Reports the stack, not just that something drew: a screen that refuses itself
+                // pops and falls back, which otherwise looks identical to a good render.
+                GD.Print($"[laptop] push {kind} -> stack "
+                       + (_laptopBack.Count == 0 ? "empty" : _laptopBack[^1].Kind + " " + (_laptopBack[^1].Arg ?? "")));
+            }
+            if (_laptopClick != null && _laptopFrame == 0) LaptopClickProbe();
+            _shopPanel.ForceHoverForShot(_laptopHoverRow, _laptopHoverBtn);
+            PrepareUiShotView();
+            SaveShot(ShotSibling(_shotPath, $"-f{_laptopFrame:D4}"));
+            _laptopFrame++;
+            if (_laptopFrame >= _laptopFilm) GetTree().Quit();
+            return;
+        }
+
         if (_laptopScreen.StartsWith("staffone:", StringComparison.OrdinalIgnoreCase)
             || _laptopScreen.StartsWith("training:", StringComparison.OrdinalIgnoreCase))
         {
@@ -8296,6 +8396,17 @@ public partial class Viewer : Node3D
     /// the clamp are owned here, where the tier is.</summary>
     void OnLaptopSlider(int row, int pct)
     {
+        // ⭐ Game Options owns no ride, so it is answered before the gate below. Its sliders are
+        // 0..128 (the console's range), not 0..100, so the percent is scaled rather than clamped.
+        if (_optionsOpen)
+        {
+            int v = Math.Clamp(pct, 0, 100) * GameSettings.MaxVolume / 100;
+            if (row == LaptopScreen.OptMusic) _settings.SetMusic(v);
+            else if (row == LaptopScreen.OptSfx) _settings.SetSfx(v);
+            else return;
+            ShowLaptopLevel();          // redraw: the fill IS the value
+            return;
+        }
         // ⚠ The SPEC the screen is showing, not LaptopScreen.Ride: a sideshow's sliders are its
         // own, and indexing a ride's row list with a sideshow's row would set the wrong thing.
         var spec = _detailsSpec;
