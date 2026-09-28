@@ -616,6 +616,34 @@ public sealed record LaptopScreen(
         // ⚠ 32 apart except 175->207->239->271 then the 42 gap to 313, then 32 again.
         RowYs: new[] { 175, 207, 239, 271, 313, 345, 377, 409 });
 
+    /// <summary>⭐ NEW LOAN (menu id 6). `findings/finance-screens.md` §3; draw `FUN_00136018`,
+    /// input `FUN_00135D98`.
+    ///
+    /// ⚠ The lender's NAME is drawn separately at (45, 115) in YELLOW with its arrows at
+    /// (250, 131) -- it is the spinner, not a row, so it is not in this list even though row 0
+    /// also shows it.
+    ///
+    /// ⚠⚠ Only the LENDER spinner takes input; the amount and term spinners are built and ranged
+    /// but never made live, so the offer is always the lender's maximum. See
+    /// <see cref="Lender.DefaultQuote"/>.</summary>
+    public static readonly LaptopScreen NewLoan = new(
+        "main_fi_newloan.sce", 6, "LenderName", "LoanText", "LoanInformation", "LoanText",
+        new LaptopRow[]
+        {
+            new(102, LaptopRowKind.Text),    // Lender
+            new(854, LaptopRowKind.Money),   // Max.Loan
+            new(387, LaptopRowKind.Text),    // Interest  -- "20%"
+            new(133, LaptopRowKind.Text),    // Max.Term  -- "3yrs"
+            new(60,  LaptopRowKind.Money),   // Repayment -- per month
+            new(951, LaptopRowKind.Money),   // Total
+        },
+        LabelsOnGrid: true);
+
+    /// <summary>`STR_FINANCE_LOAN_ALREADY_TAKEN`. ⚠ When a loan IS taken the page draws this one
+    /// label at (215, 207) and NOTHING else -- not the rows with a note, the rows are simply not
+    /// drawn.</summary>
+    public const int LoanAlreadyTakenTextId = 910;
+
     public static readonly LaptopScreen[] AllList = { AllRides, AllShops, AllSideshows, AllToilets };
 
     /// <summary>The four "Single ..." item screens the console builds on one base class. ⚠ Build

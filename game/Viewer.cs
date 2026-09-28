@@ -3594,6 +3594,33 @@ public partial class Viewer : Node3D
             }
             case "stafftypes": ShowStaffInfoTypes(); break;
             case "staffitem": ShowStaffInfoMember(arg); break;
+            // ⭐⭐ NEW LOAN (menu id 6). `arg` is the lender index, which the spinner steps.
+            case "newloan":
+            {
+                int li = int.TryParse(arg, out var lv) ? lv : 0;
+                li = ((li % Lender.All.Length) + Lender.All.Length) % Lender.All.Length;  // wraps
+                _loanLender = li;
+                var lend = Lender.All[li];
+                var (ltotal, lrepay) = lend.DefaultQuote();
+                var lcells = new List<(string, int)>
+                {
+                    (lend.Name, 0),
+                    (Money.Display(lend.MaxLoan), 0),
+                    ($"{lend.Rate}%", 0),
+                    ($"{lend.MaxTermYears}yrs", 0),
+                    (Money.Display(lrepay), 0),
+                    (Money.Display(ltotal), 0),
+                };
+                // ⚠ The lender's name is ALSO the title here: the page draws it at (45, 115) in
+                // yellow, which is this screen's TitleElement.
+                _shopPanel.ShowScreen(LaptopScreen.NewLoan, lend.Name, lcells);
+                ClearLaptopModel();
+                RefreshLaptopBalance();
+                Status($"{lend.Name} -- up to {Money.Display(lend.MaxLoan)} at {lend.Rate}% over "
+                     + $"{lend.MaxTermYears}yrs; {Money.Display(lrepay)}/month, "
+                     + $"{Money.Display(ltotal)} total. Left/Right for another lender");
+                break;
+            }
             // ⭐⭐ THE BALANCE SHEET (menu id 5). Nothing on it is clickable; it is a readout.
             case "balancesheet":
             {
@@ -3975,6 +4002,9 @@ public partial class Viewer : Node3D
     /// wired yet, so this stays at the console's initial value.</summary>
     int _graphRow, _graphYears = 1;
 
+    /// <summary>Which lender New Loan is showing (0..3), stepped by its spinner.</summary>
+    int _loanLender;
+
     /// <summary>`--graph-demo`: plot a known series instead of the park's, so the PLOTTER can be
     /// checked independently of whether the park has any history. See the control in the case.</summary>
     bool _graphDemo;
@@ -4295,8 +4325,6 @@ public partial class Viewer : Node3D
                 var fm = new List<(int TextId, string Opens, bool NeedsLoan)>();
                 foreach (var e in LaptopScreen.FinanceMenu) if (!e.NeedsLoan) fm.Add(e);
                 if (row < 0 || row >= fm.Count) return;
-                if (fm[row].Opens is "newloan")
-                { Status($"{TextRow(fm[row].TextId)} -- no screen in this port yet"); return; }
                 _laptopBack.Add((fm[row].Opens, null));
                 ShowLaptopLevel();
                 return;
