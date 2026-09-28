@@ -491,3 +491,63 @@ existed, and the model draw had only ever been added to the spec path.
 at all — not a null texture, not a bad rect. A block that never runs and a block that runs and
 draws nothing look identical from the outside. Same shape as the build cache that survived a park
 switch and the slider rects cleared per-branch: **two paths, one of them forgotten.**
+
+## ⭐ PORT STATUS, measured rather than remembered (2026-09-28)
+
+Counted by grepping every `"main*.sce"` string referenced anywhere in `core/` and `game/`. The
+control: every screen known to be ported appears by name in that sweep, so it reaches what it
+should. **27 registered scenes -> 14 ported, 13 not.**
+
+| not ported | id | owner of the research |
+|---|---:|---|
+| `main_gameoptions` | 1 | layout is NOT in the `.sce` -- see below |
+| `main_financialinfo` (menu) | 4 | menu, same shape as `main_info` |
+| `main_fi_balancesheet` | 5 | layout is NOT in the `.sce` |
+| `main_fi_newloan` | 6 | |
+| `main_buildhire` | 7 | ⭐ **NOT a gap** -- deliberately removed at master's request; `LaptopMainMenu` hoists Build and Hire to the top level, so this middle menu is by design absent |
+| `main_parkstats` (menu) | 8 | menu, same shape as `main_info` |
+| `main_research` | 9 | layout is NOT in the `.sce` |
+| `main_ps_visitorinfo` | 10 | |
+| `main_ps_parkfinance` | 11 | |
+| `main_fi_financestats` | 21 | needs the GRAPH widget |
+| `main_fi_overallstats` | 22 | needs the GRAPH widget |
+| `main_ps_statistics` | 24 | needs the GRAPH widget |
+| `main_i_ride_data_upgrd` | 25 | ⭐ **NOT a screen** -- a TAB of the ride screen (see the section above) |
+
+So the real remaining work is **11 screens**, plus the **tab system** (Details is all we draw;
+ride has Upgrades/Options/Addons, shop has Options, toilet has Options/Upgrades -- confirmed from
+the `STR_SINGLER_`/`STR_SINGLESHOP_`/`STR_SINGLEBOG_` tab strings), plus **Staff Room**.
+
+⚠ Three of the three graph screens are one widget, not three problems: `graph`, `GraphLegend`,
+`YearSelect`, `GraphValue` exist nowhere in this port.
+
+## ⭐⭐ The Staff Room's layout globals are NEVER WRITTEN -- six checks, each with a control
+
+`FUN_001dcca0` reads `DAT_002e9e50` (label column) and `DAT_002e9e54` (start row). Both are 0, and
+this is not "unknown", it is established:
+
+1. **0** in the disc image.
+2. **0** in live EE RAM from a PCSX2 savestate. ⭐ Calibrated first: `DAT_002e9ca8`, the row step
+   known to be 32, reads exactly 32 in the same dump.
+3. No `lui`/`addiu` store touches them; the sweep finds the loads, so it reaches what it should.
+4. **No `$gp` store can reach them, structurally.** The hypothesis was live -- this binary uses
+   `$gp` (192 loads, 223 stores) and an instruction sweep is blind to those. `.reginfo`'s
+   `ri_gp_value` is bogus (0x2010); the real gp follows `gp = .sdata + 0x7ff0 = 0x385e70`,
+   calibrated by all 223 gp stores resolving into `.sdata`/`.sbss`/`.bss` under it. `0x2e9e50`
+   sits in `.data`; reaching it would need gp in `0x2e1e51..0x2f1e50`, which cannot also cover
+   `.sdata`. Unreachable.
+5. Their address is never **materialised** outside the draw. `tools/re/xref.py` reports
+   `lui`/`addiu` materialisation on purpose, so a pointer handed to a helper would have shown.
+6. Their address appears in **no pointer table**. ⚠ The first control for this search was badly
+   chosen (a vtable address need not exist as a data word) and it failed, which proved nothing.
+   Re-picked to one that MUST hit -- the draw's own pointer `0x1dcca0`, which has to live inside
+   its vtable -- and it was found at `0x369714`, slot 2. Only then does "nowhere" mean anything.
+
+⚠ **So a savestate with the screen open would only show 0 again.** What remains is not the value
+but the COORDINATE SPACE: `FUN_00138580(gui, textid, col, row, alpha)` -> `FUN_00138798` ->
+`FUN_0020acf8(DAT_002eea58, col, row, alpha, string)`. Every `.sce` screen passes ABSOLUTE
+scene-file coordinates (col 45, row 115), so a literal 0,0 is the screen's top-left, outside the
+panel -- which cannot be what ships. Either `FUN_0020acf8` applies an origin from its context, or
+these screens set one elsewhere. ⚠ `FUN_0020acf8` decompiles badly (`unaff_*`, large frame): work
+from disassembly. **The same question governs Game Options and Research, so answering it once
+unlocks three screens.**
