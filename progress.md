@@ -3260,3 +3260,15 @@ save/load NOTyettested. MainGameOptions hookSaveGameRequested+GameSettings nowme
 Next boundedactualconsumerpackage RNGcontinuation +RSEmachine/previewhost capture/
 restore including references/queues/timers, no sideeffectreplay. Otheragentscontinue
 laptop/advisor; include new stateowners, especiallyadvisordeadlines/counters/queue.
+
+
+## 2026-09-28 astraclaw save/load — running scripts survive a snapshot
+
+ACTIVE ../tpw-save-load, astraclaw/save-load. c3e1826 VM/host/RNG snapshots,9b47fb5
+newfinance6rings schema2. Fullcoverage/nextsteps findings/save-load.md LATESTsection.
+Threeactualdisc-backedrides snapshotwithguestaboard; actualfile roundtrip into new
+VM+host;48secondsidenticalcontinuation. NOTfullparkorViewerLoadGameyet. Fourmutations
+caught,226760SaveAuditpass,83Pythonpass. Core8parks4PASS/4knownretailreds. Runtime9/11:
+visitorFANTASYposition andStanding[89] MATCH unmodifiedmain50a7bdd, no newregressions.
+NextParkSim/ParkRidegraph/assetregistry+noinitreplay, then allremainingworldowners;
+SaveGameRequested staysunavailableuntilcomplete. Mainstartupalreadyc83a091 DONE.

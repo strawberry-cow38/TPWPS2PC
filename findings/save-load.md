@@ -30,16 +30,16 @@ silently reset it. Cow's finance/research UI may add data consumers or new owner
 | Main Menu startup | implemented and rendered; bare launch -> New Game -> Main Game -> actual lobby; explicit map/mode preserved |
 | Save-file transport | foundation: version/size/hash-checked JSON DTO envelope, flushed temp + replacement + previous .bak; no automatic corrupt-file repair |
 | ParkClock | explicit DTO:partial accumulator,date,total days,countdown,calendar configuration |
-| ParkFinances | explicit DTO:balance/flags/totals,144-slot income/wage rings,period,wage accumulator,category ledger |
+| ParkFinances | schema2:balance/flags/totals,all six144-slot rings(income/wage/balance/gate/shop/sideshow),period,wage accumulator,category ledger |
 | ParkAwards | explicit DTO:tickets/earned tickets,stars,medals,hidden flags,medal mapping; GAME scope |
 | NativeRoutePool | explicit DTO:all1000words,hint,availability,generation; fresh pool factory,not beneath existing leases |
 | NativeActivationSequence | explicit DTO:serial/origin/verified marker/total/per-kind counts |
 | Terrain/placements/paths/queues/tracks | pending; asset IDs and edits, ownership/IDs, no raw resources |
-| ParkSim/ParkRide/RSE/hosts | pending; time/carry,handle allocator,settings,queues,full VM stacks/PC/yields/deadlines/children and shared hosts |
+| ParkSim/ParkRide/RSE/hosts | VM+host snapshots implemented/tested; ParkSim/ParkRide/time/carry/handles/asset+entity graph coordinator still pending |
 | Guests/needs/visitors/routes/entrance/ride queues | pending; exact guest objects and memberships,leases,allocator cursors,request tokens/results,decision timers |
 | Staff/litter/research/management | pending; candidates/pools,jobs/patrol/routes,month/weekly stamps,strikes,projects/progress,room occupancy |
 | Track/coaster operation | pending; track topology + cars/trains/riders/progress/speed/timers/state, not respawn |
-| RNG streams | pending; all streams and shared-provider identities; saving a seed alone is NOT continuation |
+| RNG streams | SnapshotRandom compatible explicit-state generator implemented; owned RSE default integrated. Other owners/shared-provider registry pending |
 | Presentation/runtime coordinator | pending; camera/pause/weather/controller clocks,script/animation/audio logical state; resource recreation |
 | Main-menu Load Game/file selection + in-park Save | pending until complete coordinator exists; do not offer partial foundation files as park saves |
 
@@ -118,3 +118,50 @@ All three delegates were used in this foundation turn. Clean+pushed handoff; do 
 repeat their inventories. Next package must exercise an actual runtime consumer,
 not merely add another unused helper. Other agents own laptop/advisor and may add
 new fields: fetch/merge, communicate, explicit commits. No restart or privatefiles.
+
+
+## Running script checkpoint — September28 (~09:00), supersedes next-step notes above
+
+c3e1826 implements SnapshotRandom (MIT .NET seeded compatibility; mixed-call tests),
+RseMachine.State (all mutable VM fields, nullable lazy tables, owned RNG vs explicit
+external-provider marker, child/parent/sound links by supplied IDs), and
+RsePreviewHost.State (current/pending/channels/seat/walker/visibility/effect state).
+RseMachine defaultowned RNG now uses SnapshotRandom; injected streams unchanged.
+Restore does not rerun Create, tick/spawn, or emit effects. Assets resolved against
+independently supplied expected keys. Allocateallmachines first thenhydrate; still
+NOT a graph-wide transaction until the whole-world coordinator is implemented.
+
+Parent fixed a real draft defect: hostcapture sortedchannels bykey, changing public
+iteration order. Snapshot now preserves enumeration; an independent direct-Keys
+check fails the sorted version. Host restores reserve dictionary storage before
+committing logical state. Four mutations (lost call stack, reseeded RNG, lost pending
+animation, sortedchannels) allfail thenrestoredPASS.
+
+DiscRseSaveChecks: actual VisitorScenario boards a guest on BugTV/Candle/Orbiter at
+10,000ms. VM+host state writes/reads a real ParkSaveFile, restores fresh owners,
+then both copies run48,000ms with identical surrounding acknowledgements. PC/yield,
+fullprivate state, boardedIDs and exactanimationframes agree. Three worldsPASS;
+this intentionally isolates VM/host, NOT the whole VisitorSimulation/park save.
+Assets stayRAM-only; saves containstate+assetkeys/hashes, notprogram/modelbytes.
+
+9b47fb5 includes newly landedbalance/gate/shop/sideshow rings+totals in finance
+schema2. Olddevelopment schema1 nowrejected(not a shippedsaveformat). All6rings
+and getters checked throughmultiplewraps, activepartialperiod retained. Also merged
+mainclock1c99a1b (2.4s/day) andFinance2032dc3; persistence didn't altertheirlogic.
+SaveAudit226760 checksPASS with ownerdiscoptional.83PythonPASS.
+Fullcorematrix /tmp/tpw-save-rse-matrix:4PASS+4exactretailreds,landing_evidence=True.
+Runtime /tmp/tpw-save-rse-runtime:9/11; visitorFANTASYholderposition andStanding[89]
+fail EXACTLYon unmodifiedmain50a7bdd also (/tmp/tpw-save-rse-baseline-runtime).
+No newfailure, no test weakened/expectedfailureexpanded. Researchbranchonly.
+
+NEXT: actual ParkSim/ParkRide graph snapshot+sideeffect-free reconstruction with
+stable asset/entity IDs, sharedhost+VM links and directory handleallocator, times/
+carry, orderedqueues/left/ejected, settings/services/upgrades/mechanicreferences.
+Use the existing VM/host code; don't reimplementit. Need preserve externalasset
+bindings/spawn/directory callbacks and shared RNG. Track/coaster state joins are
+separate required owners; don't call a scripted-ride-only restore a total park.
+Then Guests/Needs/NativeFlow queues+leases+pendingresults andstaff/litter/research/
+advisor globals, Viewer transaction/filepicker/SaveGameRequested. All3delegatesused
+thisturn; worker2 timedout but leftcompletefiles; parentcompiled/testedreviewedthem.
+No pending worker writes. Fresh turn may splitnonoverlapping DTO owners. Keep
+pushingboundedcommits; do NOT enable Save UI whileworldcoverageisincomplete.
