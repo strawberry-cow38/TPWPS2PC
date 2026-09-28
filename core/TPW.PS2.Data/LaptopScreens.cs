@@ -58,6 +58,14 @@ public sealed record LaptopScreen(
     /// where a click lands on whichever is tested first. Found by astraclaw on the merged
     /// screen, 2026-09-28.</summary>
     bool LabelsOnGrid = false,
+    /// <summary>⚠ The row index the label grid's stepping STARTS from. Zero (the default) means
+    /// row 0 sits on the element and every row steps from there, which is every screen but one.
+    ///
+    /// Game Options sets 2: its rows 0 and 1 are the sliders, drawn at their own label elements,
+    /// and the four text rows below them step 32 from `TextOptions` -- so row 2 belongs AT the
+    /// element, not two steps below it. The console reads those four from its own table at
+    /// `0x2b6288`, which is the same statement in the other direction.</summary>
+    int StepBase = 0,
     /// <summary>⚠ When a row carries its own value element, take only its COLUMN and keep the
     /// label's row. All Staff again: `InfoValues` is authored at row 220 and **that row is never
     /// read** -- `0x10b980` stores only `DAT_002AA8D4`, its column -- and Monthly Wage draws at
@@ -375,6 +383,36 @@ public sealed record LaptopScreen(
                                 "Model", rows);
     }
 
+    /// <summary>⭐ GAME OPTIONS (menu id 1). `findings/hardcoded-screens.md`; draw `0x13a258`,
+    /// input `0x139df0`, binder `FUN_00139968`.
+    ///
+    /// ⚠ NOT a Single-item screen: its vtable is 16 slots off the ROOT base, so there is no state
+    /// machine and no slot 26 -- the draw IS slot 2. It also registers **no title** (the ctor
+    /// makes no `FUN_00165948(this+0xa0, ...)` call), which is why this passes an empty one.
+    ///
+    /// ⚠⚠ "TV Mode" is NOT on this screen. An earlier note had the ctor registering
+    /// `STR_OPTIONS_TV_MODE`; that came from the immediate `0x328` at `0x139cc8`, which is
+    /// `addiu s0, s6, 0x328` -- a FIELD ADDRESS, not a text id. Six rows, no heading.
+    ///
+    /// ⚠ The tutorial and vibration rows' text ids are the CURRENT STATE (On/Off are different
+    /// strings, not a suffix), so this is a factory.</summary>
+    public static LaptopScreen GameOptionsFor(bool tutorialOn, bool vibrationOn) => new(
+        "main_gameoptions.sce", 1, "TextOptions", "TextOptions", "TextOptions", "TextOptions",
+        new LaptopRow[]
+        {
+            new(399, LaptopRowKind.Slider, "MusicSlider", LabelElement: "MusicSliderText"),
+            new(823, LaptopRowKind.Slider, "SfxSlider",   LabelElement: "SfxSliderText"),
+            new(tutorialOn  ? 210 : 843, LaptopRowKind.Text),   // STR_FRONTEND_SPEECH_ON / _OFF
+            new(vibrationOn ? 212 : 881, LaptopRowKind.Text),   // STR_OPTIONS_VIBRATION_ON / _OFF
+            new(235, LaptopRowKind.Text),                       // Save Game
+            new(763, LaptopRowKind.Text),                       // Quit Current Game
+        },
+        LabelsOnGrid: true, StepBase: 2);
+
+    /// <summary>Game Options' row indices, named rather than spelled at the use site.</summary>
+    public const int OptMusic = 0, OptSfx = 1, OptTutorial = 2, OptVibration = 3,
+                     OptSaveGame = 4, OptQuit = 5;
+
     public static readonly LaptopScreen[] AllList = { AllRides, AllShops, AllSideshows, AllToilets };
 
     /// <summary>The four "Single ..." item screens the console builds on one base class. ⚠ Build
@@ -386,7 +424,18 @@ public sealed record LaptopScreen(
 /// row's widget or value, when it has one of its own; a null means the row's value sits on the
 /// screen's shared value column at the label's own height.</summary>
 public readonly record struct LaptopRow(int TextId, LaptopRowKind Kind, string Element = null,
-                                       string ArrowElement = null);
+                                       string ArrowElement = null,
+                                       /// <summary>⚠ The scene element this row's LABEL sits at,
+                                       /// when the row does not sit on the screen's label grid.
+                                       /// Null (the default) means the grid, which is what every
+                                       /// screen built before Game Options does.
+                                       ///
+                                       /// Game Options is why this exists: its first two rows are
+                                       /// authored at their own elements (`MusicSliderText` row
+                                       /// 116, `SfxSliderText` row 150) while rows 2..5 step 32
+                                       /// from `TextOptions` at 185. One grid cannot describe
+                                       /// both.</summary>
+                                       string LabelElement = null);
 
 /// <summary>⭐⭐ HOW MANY BARS AND SLIDERS EACH DRAW ACTUALLY EMITS, counted as calls to
 /// `FUN_00115590` (bar) and `FUN_001DAAE0` (slider) in the decompiled draw. A spec whose row kinds

@@ -24,6 +24,9 @@ namespace TPWPS2Viewer;
 /// </summary>
 public partial class Viewer
 {
+    // Front-end/lobby animation may run, but no hidden park tick or calendar may advance.
+    bool ParkSimulationRunning => _playing && _mode == Mode.Park
+        && !_lobbyMode && _mainMenu is not { Open: true };
     bool _lobbyMode;
     LobbySlots _lobbySlots;
     int _lobbyRecord;                       // the RECORD index, 0..7 -- not the model index
