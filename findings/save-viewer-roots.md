@@ -150,3 +150,25 @@ identities and shared RNGs; placed/runtime IDs differ; retired references remain
 Bus placements and provider callbacks, ScriptEffects/tools/camera/native adapter census remain.
 An unpublished new Viewer currently constructs detached Weather/Flags/Thoughts nodes before Ready;
 staging cleanup MUST free those too (scalar smoke now does). No Save/Load UI enabled.
+
+
+## September 28 — Viewer core + actor join now implemented (1bb17be)
+
+See save-load.md newest checkpoint. WorldCoreRegistry, Capture/RestoreWorldCoreState,
+Capture/RestoreGuestPresentation, Capture/RestoreStaffPresentation and StageActorWorld now join
+actual fields into fresh detached owners. Providers close over restored RNGs BEFORE hydration.
+Staff/litter renderer owners, dictionary holes and child sibling order are explicit. Capture bindings
+use snapshot-local object identities, not numeric guest IDs or assumed active pool membership.
+
+Highest priority next: REMOVE ONLY AFTER JOINING WorldCorePreflight's explicit controller refusals:
+entranceFlow/entranceWalk/entranceVisitors/requests, rideQueues, parkAdvisor, nativeBus. Their DTOs
+already exist; native input/lease objects need registry allocation before walk/controller hydration,
+then fresh Viewer callback hooks installed ONCE. Do not remove guards to make tests pass.
+Actual saved core+guest+staff ActorWorld is now tested, but the normal runtime's native defaults are
+still refused. Staff actor restore is allowed after matching _staff/_staffVisitors core references.
+_litterDrawn is now owned by normal OnLitterAdded/Removed/ResetStaff, not an external reconstruction.
+Staff actor map iteration affects shared RNG: tracked dictionary slot/free-stack state is required.
+
+StageActorWorld is intentionally NOT publishable: adding its Viewer to SceneTree invokes _Ready,
+which would build/reset the park. Final coordinator needs a staged startup path and all remaining
+scene/asset/effect/audio roots before offering a publication operation or enabling Load Game.

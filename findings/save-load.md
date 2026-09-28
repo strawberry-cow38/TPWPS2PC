@@ -694,8 +694,74 @@ removed that production change entirely rather than ship/claim an untested fix. 
 restored. Logs /tmp/tpw-render-mutations*.{log,json}; final clean build afterwards.
 
 Full SaveAudit243950PASS,83PythonPASS. /tmp/tpw-save-render-matrix:4PASS+4exactretailreds,
-exit2,landing_evidence=True. /tmp/tpw-save-render-runtime:10/11 ONLYoldFANTASYanchor00e5cd9,
+exit2,landing_evidence=False (dirty-tree local gate; corrected from previous mistaken True claim). /tmp/tpw-save-render-runtime:10/11 ONLYoldFANTASYanchor00e5cd9,
 actual(37.99974,0,-32.00022) vs expected(37.994743,0,-31.941021). Main unchangeddd474a7.
 NEXT: actual WORLD registry+Viewer guest/staff render dictionaries/provider/ref join, bus placement
 order/assets, sound cold bindings, remaining effects/tools/camera/vehicle adapters. Then transactional
 load publication/UI. See findings/save-viewer-roots.md; do not repeat completed owner snapshots.
+
+
+## Actual Viewer logical + actor-world join checkpoint (September 28, 2026)
+
+Code1bb17be, mainf38954c merged d11a4bc (HUD shadow correction and cache invariant comments).
+STILL NOT TOTAL PLAYER SAVE. Three new actual Viewer partials and ActorWorld envelope now JOIN
+core and render ownership rather than testing only standalone DTOs:
+- WorldCoreRegistry assigns object IDs to live/inactive Guests, active/retained rides, pooled staff,
+  litter, terminals/features and trusted provider delegates. Guest display IDs are not object IDs.
+  Real Viewer sim/walk/needs/visitors/staff/calendar/management/awards/mailbox use existing DTOs.
+  ParkSim allocate -> staff -> hydrate closes the bidirectional mechanic cycle.
+- RuntimeState is restored BEFORE provider factories: a closure can hold the RNG object itself.
+  Restoring RNG afterwards makes that closure point at the old seed while Viewer holds another
+  object. A deliberately reversed order fails only at future hire tick40, not initial roundtrip.
+- GuestPresentation captures actual actor/native/gait/idle/parts/previous pose/retained failure
+  caches, shared asset bindings and actual record OBJECT relationships (not offsets alone).
+  Native animation test retains two distinct Guest bodies with same display ID, and compares
+  continued source against restored Viewer (parent changed worker's restored-vs-restored oracle).
+- StaffPresentation captures actual member/serial/actor/native/record/Prev/Yaw/litter/hire linkage.
+  Existing core _staff references from WorldCore are accepted only by identity. Parent retains the
+  real litter AnimatedModel in `_litterDrawn` at creation and removes it at ordinary lifetime end:
+  previously only the Node survived and a real load could not recover retained geometry without
+  replay. No caller-made lookup is needed for normal litter anymore.
+- Staff actor dictionary allocation holes are state: future hire/rebuild consumes shared animation
+  RNG in dictionary enumeration order. SnapshotReferenceMap now supports explicit placeholder
+  factories and nongeneric IDictionary tracking; staff/litter use unused pooled objects as temporary
+  keys (never Hire/construct them). Queue/room callers supply plain ParkRide/object factories.
+  Leading-hole fixture asserts the hole, then tests actual later insertion goes BEFORE the live actor.
+- ActorWorld staging combines logical registry + both actual render joins. Guest capture recognizes
+  staff/litter-owned child nodes rather than rejecting a normal staff root. Final sibling ordering
+  preserves staff root BETWEEN guests and litter BEFORE staff, not constructor/default order.
+  Failed later staff join disposes the entire unpublished stage and leaves live source untouched.
+
+Tests: ViewerGuestSaveSmoke357PASS (real DATA assets + native/ordinary gait source continuation),
+ViewerStaffSaveSmoke35PASS (real handyman/litter FILE +20native/PoseStaff updates),
+ViewerWorldCoreSaveSmoke180PASS: actual Viewer seeded with real SPACE ride and saved rider aboard;
+1000mixeddt visitor/staff/management updates, new arrivals/hire shared RNG, saved rider finishes;
+actual Dispatch creates ride<->mechanic cycle then80updates; FILE ActorWorld join restores core,
+guest/staff/litter graph and follows24sim/gait/staff-pose updates identically. Sibling order/free-slot
+controls nonvacuous. Fixtures seed actual private Viewer fields without _Ready: NOT a player-loaded
+park or proof that future lazy asset loading is wired. That distinction remains essential.
+
+Seven mutations fail: staff-map holes, sibling order, guest Record identity, staff Prev, reverse
+mechanic hydration, litter renderer registration, RNG/provider construction order. All restored.
+Logs /tmp/tpw-world-mutations.log and /tmp/tpw-mut-provider-rng-order.log. Extra retained-source
+controls changed after worker review; no failures hidden. Worker1 timed out after writing guest
+files/smoke, worker2 delivered staff+tested, worker3 delivered core compilation only and NO smoke.
+Parent ran/integrated all, wrote actual central/combined tests and fixes. All3 finished, NONEpending.
+
+Gates: SaveAudit243950PASS,83PythonPASS. Actual render9021 and advisor49518 rerun green.
+CLEAN code1bb17be gates: /tmp/tpw-save-world-matrix-clean4PASS+4exactretailreds,exit2,
+landing_evidence=True; /tmp/tpw-save-world-runtime-clean10/11ONLYknownFANTASYanchor00e5cd9.
+Earlier /tmp/tpw-save-world-matrix AND /tmp/tpw-save-render-matrix were dirty local gates with
+landing_evidence=False. Corrected the previous render checkpoint's mistaken True metadata claim;
+pass/failure results were accurate, but those runs were not clean-tree landing evidence.
+
+NEXT (specific blockers, do not redo logical/actor owners): WorldCorePreflight STILL REFUSES active
+native entrance/ride queues/advisor/bus. All their standalone DTOs exist; join them and provider
+objects/callbacks into the registry, preserving controller lease/shared-pool identity and ordering.
+Then actual advisor head/audio + bus presentation/placements + sound cold assets, remaining
+security copies/stink/effects, camera/tools/scene roots, future asset libraries and _Ready bypass
+for atomic publication. Guest/staff render joins currently require a trusted preloaded asset table;
+source libraries are not a cold-load registry. Retired scalar/isolated VM rides supported in code,
+but linked/spawning/native retired owners fail closed and were not exercised by this Viewer smoke.
+Game settings remain GAME scope; current Award semantics need reconciliation at final game/park
+root boundary. Save/Load stays disabled; no player session swap API yet.

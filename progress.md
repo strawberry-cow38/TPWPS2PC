@@ -3378,3 +3378,16 @@ Next admission/ridequeue/request resources (+Viewer.Entrance pending seam), then
 - New FILE smokes9021/49518/366/1002PASS; existing bus142518PASS. Seven mutations fail; graph RNG
   first survived a seed-only cut, now a real transition precondition catches it. Unexercised unrelated
   morph change removed. SaveAudit243950,83Python; matrices baseline4+4retail /10of11oldanchor.
+
+
+### Save research — actual Viewer actor-world join (1bb17be)
+- Central reference registry joins actual sim/walk/needs/visitors/staff/management and guest/staff
+  render dictionaries; real mechanic cycle and shared provider RNG identities preserved.
+- StageActorWorld FILE restores real SPACE ride with guest aboard, fresh core + actual actors;
+  continued sim/gait/staff poses agree. Staff dictionary holes and node sibling order explicit.
+- Smokes357/35/180PASS; seven mutants caught. Core243950+83Python. Clean-code matrices4+4retail,
+  landing_evidenceTrue and runtime10/11oldanchor. Prior render matrix metadata corrected: it had
+  passed at baseline but was dirty-tree evidence, not landing evidence.
+- Normal native entrance/queue/advisor/bus root joins still explicitly refused. Their DTOs exist;
+  next join these controllers, cold assets/effects/camera/tools and publication without _Ready replay.
+  Save/Load still unavailable; no claim of a complete player park restore.
