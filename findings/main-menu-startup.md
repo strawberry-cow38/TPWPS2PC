@@ -15,3 +15,9 @@ package, NOT claimed by this startup change.
 Repro (owner-disc environment; rendering display required):
 - game/tests/MainMenuStartupSmoke.tscn, no --menu/map/mode arguments.
 - same scene with --map="JUNGLE  terrain_1.mps" --mode=park.
+
+Validated on committed candidate with Game Options7a930e1 merged: bare9checks and
+explicitJUNGLE4checks, both renderedexit0 with no errors/leaks. Two restored bugs
+failed by name: old park-first default; hidden park/calendar tick during Main Menu.
+Restored and rebuilt before the final passing runs. Full save/load remains on the
+separate astraclaw/save-load branch, not part of this landing.
