@@ -3355,3 +3355,15 @@ Next admission/ridequeue/request resources (+Viewer.Entrance pending seam), then
   runtime10/11 unchanged oldFANTASYanchor. Provider inventory expanded after gates (save-only).
 - Still NOT player-ready: native bus/animation providers, advisor and presentation, then whole
   world registry and transactional Viewer load remain. Save/Load UI intentionally disabled.
+
+### 2026-09-28 — Save research: advisor/native playback and actual bus renderer
+- 6dd47db: scheduler/advisor/stack continuation, producer topology, lip cursor, native bus and
+  guest logical animation snapshots; explicit shared RNG binding and immutable asset fingerprints.
+- Actual Godot bus FILE restore on all8assets:142518 checks, all3records and future batch callbacks.
+  Retained hidden flags now explicit, not guessed by replaying predecessor records. The first
+  predecessor-omission mutation survived; tightened the state control and the new omission fails.
+- Disc catalogue+106-rule FILE graph:1600updates over fresh clock/producers/finance/timed head.
+  Actual advisor model/audio player and Viewer provider outerfields are still outstanding.
+- Final SaveAudit243950PASS,83Python; maindd474a7 merged29cf85d; matrices baseline4/4retail and10/11.
+  Remaining-root inventory findings/save-viewer-roots.md, not a claim of exhaustive Viewer coverage.
+- Save/Load still disabled until whole-world provider/renderer graph and transactional publish exist.

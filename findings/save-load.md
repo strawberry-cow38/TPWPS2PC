@@ -585,3 +585,60 @@ registry entries (explicit external keys); do not recreate them by reusable nume
 must also fingerprint/stage GAME config tables (StaffTables etc), GameSettings and HiddenAwards.
 StaffPatrolTool and other active tool/presentation state still need an explicit root policy. Do
 not call this a complete player save until all required roots stage and publish together.
+
+## Advisor / native animation / bus-presentation checkpoint — September 28
+
+AdvisorScheduler.State preserves variables/counters/cursors/warm-up/latches, every rule's next/
+last-failure, report/instrumentation, asset fingerprint and explicit producer/day bindings.
+ParkAdvisor.Snapshot retains all20ring slots INCLUDING stale object refs, pending/current/speech/
+flags/countdowns/variants, default mouth RNG and lip playback. AdvisorMessageStack.CoreState is
+separate from native CaptureState: all32slots, goals, deletion/sliding/input/selection and callbacks.
+Parent removed the worker's duplicate SavedLipPlayback implementation: the existing LipTrack.Playback
+now hydrates its OWN cursor/gate/Stepped state, so playback has one implementation. AdvisorProducers
+has a snapshot for its topology/hooks; delegate closure values still belong to their real owners.
+Capture freezes scheduler/advisor/UI between passes; in-update capture is guarded too.
+
+NativeBusController and NativeGuestAnimation/LogicalControl snapshots preserve clock/applied-state
+lag/timers/current record/frame/end-hold and dispatcher pending/phase/variant/held-pose/duration/
+stamp/boundaries. Assets have APS/logical fingerprints. Guest duration/RNG bindings are explicit;
+NewlibRand's current state is checked, NOT rewound by each guest restore. Root restores the shared
+RNG once and supplies the same instance to every model. BusDemand is static/pure, not a new owner.
+
+NativeBus GAME adapter restores a detached AnimatedModel/controller graph on eight real bus assets,
+including retained root transform/visibility/TopLevel and displayed fractional frame. It refuses
+unsampled-bind cuts and unsupported retained-texture/skeletal/index histories; final save safe-point
+must be after ordinary Present, or extend its ownership (never sample as a Capture side effect).
+Parent added explicit retained hidden-node state (including non-mesh helpers) via narrowly scoped
+AnimatedModel methods. No guessed predecessor-record replay is now used. Important test correction:
+removing the worker's proposed predecessor replay DID NOT fail its surface-only smoke. That was not
+proof of retained state. Added direct hidden-state comparison and an independent injected retained-
+flag probe; omitting the explicit hidden restore DOES fail. This is a state control, not a claim
+that a particular predecessor sequence was read from the console.
+GameAudioMix snapshots live ramp/targets/gains without touching global AudioServer; PublishGains is
+explicit commit-time. It does not save physical voice/sound schedulers or GAME preferences.
+
+Evidence: actual file graph with disc275-message catalogue +106rules, fresh real AdvisorProducers,
+clock/sim/finance, timed head and logical lip playback;1600 updates plus future inputs/credits/
+submissions match, with repeated loads and no voice/sound callback replay. Real head MODEL/Audio-
+StreamPlayer are NOT in that core graph. Godot FILE bus cuts on all8real bus assets continue900
+updates, exercise all3records, exact CPU matrices/hidden state, surface transforms/visibility and
+future state/batch callbacks;142518checks including audio-ramp continuation. No extraction: assets
+read in RAM from owner's disc. Six CORE mutations fail (warm/ring/speech/lip/busclock/pending), plus
+explicit hidden-state omission fails in Godot; all restored.3delegates used, two completed, third
+timed out with bus code/smoke complete but NO requested inventory; parent wrote inventory after
+source review. No workers pending. See findings/save-viewer-roots.md for remaining ACTUAL Viewer
+providers; that document explicitly is not a complete 11k-line-field census.
+
+Code6dd47db; maindd474a7 merged29cf85d. SaveAudit243950PASS withdisc; presentation-only6538PASS;
+83PythonPASS. Godot bus142518PASS /tmp/tpw-native-bus-save-merged.log. /tmp/tpw-save-presentation-matrix:
+4PASS+4exactretailreds,exit2,landing_evidence=True. /tmp/tpw-save-presentation-runtime:10/11,ONLYold
+FANTASYanchor00e5cd9; advisor/audio/bus/standingPASS. Save log /tmp/tpw-presentation-merged-saveaudit.log.
+
+NEXT actual Viewer provider/renderer/audio roots and WORLD coordinator. `_guestRng` remains plain
+Random in Viewer declaration/reset; ConsoleClock is distinct from ParkClock. Native bus outer
+time/traffic/demand/counters/placements and entrance outervalues still need DTOs. Guest/staff native
+animation dictionaries need GuestGraph/StaffMember identities and shared RNGs joined. Actual advisor
+head node flags/channel/pose and audio seek cannot be inferred from CORE Costume/SpeechElapsed
+alone. RideSounds/scheduled effects/park vehicle adapters remain to inventory. All logical owner
+DTOs exist for the main sim now, but provider values, render state and graph registration are NOT
+finished; do not enable or call it a total player save. Startup/menu task already shippedc83a091.
