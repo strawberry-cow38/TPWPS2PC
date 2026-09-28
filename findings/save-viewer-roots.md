@@ -172,3 +172,24 @@ Staff actor map iteration affects shared RNG: tracked dictionary slot/free-stack
 StageActorWorld is intentionally NOT publishable: adding its Viewer to SceneTree invokes _Ready,
 which would build/reset the park. Final coordinator needs a staged startup path and all remaining
 scene/asset/effect/audio roots before offering a publication operation or enabling Load Game.
+
+## September 28 — native joins now implemented (48b835b)
+
+WorldCore now allocates entrance/ride-queue controllers before walk lease hydration, stages actual
+bus before entrance services and joins placements afterwards, and restores optional advisor after
+logical world hydration. Existing guards now require matching owner/hooks/assets instead of blanket
+refusal. Normal and restored native controllers share pure service/tick factories. AdvisorStackView
+has a DTO; physical voice start and settings subscription still wait for publication. No production
+UnsafeAccessor remains. Actual retired-message object closure still relies on explicit retained IDs.
+
+The CURRENT next step is cold asset/provider binding and WHOLE SCENE assembly, not redoing native
+controller snapshots. Existing templates use preloaded trusted asset dictionaries; a normal player
+save needs to discover and register actual caches/instances, then load assets against the disc hash
+without any old Viewer closure or arbitrary filesystem path from a save. RideSounds has an owner
+DTO but not a cold root manifest; BusState explicitly requires that owner rather than silently
+restarting audio. Rendered rides/tracks/coasters, security effects, camera/tools and library/provider
+lifecycle are still outstanding. Complete all roots before _Ready bypass/publication/Load Game.
+
+Main e59fd64 supersedes staff render-dictionary hole preservation: RNG iteration is now the saved
+ParkStaff.Members newest-first list. Removed actor map-hole DTOs/wrappers; core queue/room map
+tracking is unchanged. Scene sibling order and actor/reference identity remain significant.

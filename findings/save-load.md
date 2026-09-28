@@ -765,3 +765,80 @@ source libraries are not a cold-load registry. Retired scalar/isolated VM rides 
 but linked/spawning/native retired owners fail closed and were not exercised by this Viewer smoke.
 Game settings remain GAME scope; current Award semantics need reconciliation at final game/park
 root boundary. Save/Load stays disabled; no player session swap API yet.
+
+## Native controllers + bus + advisor joined checkpoint (September 28, 2026)
+
+Code48b835b, maine59fd64 mergedc91dded. TOTAL SAVE/LOAD STILL NOT PLAYER-READY. Native controller
+blanket guards have been replaced by actual owner/hook checks and joins, not simply deleted.
+WorldCoreState now includes entrance/ride-queue controller state, pending mailbox/request diagnostics,
+shape cache, bus state and optional advisor state. Caller still must supply trusted asset/provider
+bindings; these tests do not constitute a cold-start asset registry or a published player load.
+
+Entrance/queue: capture exact StateOwner and NativeMotionInputs identities, including retained
+bodies/rides. Allocate controllers and register their input objects BEFORE GuestGraph.Hydrate,
+then hydrate leases/callbacks. Prior->entrance->queue hooks point only at fresh Viewer fields.
+Normal EnsureNativeEntrance/EnsureNativeRideQueues and restore now use the SAME pure services and
+tick-hook factories (not duplicate callback implementations). No Tick/route submission/Ensure is
+called by restore. Worker initially used UnsafeAccessor to read private Services: parent REMOVED it,
+added owner StateServices getters and uses those. No production private-layout access remains.
+
+Bus: actual _nativeBus/_nativeBusMesh/catalogue/placement order and runtime cut witness, plus
+fresh NativeBusState/AdmitBusBatch delegates. Early stage before entrance services; late node/ride
+placement join after Park. No Bind/Present/startup RNG replay. Source bus must have been sampled
+normally before cut. Physical RideSounds is NOT silently reset: default policy refuses sound-owner
+presence unless caller supplies a separately captured/restored physical owner and fresh base
+parameter provider. This registry is still missing from the total root. Bus Root stays detached
+until final scene publication; StageActorWorld discard now frees it.
+
+Advisor: actual scheduler producer/day getters, producer topology, core/ring/stack/head/lips,
+physical voice state, cache nulls/failure latches and mixer fields. Parent added AdvisorStackView
+owner: real smoothed scroll, allowed/visible/count cache and art/font bindings; Configure/providers
+are NOT replayed. Last-draw diagnostic rects/blits are explicitly not future inputs and recompute
+at next ordinary draw. HUD parent/layout is still outer-scene-owned. Source producer identity must
+be the scheduler's ACTUAL producer, not a newly constructed imitation.
+Stock sim/staff event/removal emitters are recorded and rebound only if present; ParkAdvisor.Attach
+now uses named equivalent owner method delegates so identity is checkable. Restore does not call
+Attach or emit anything. Non-stock emitter bundles fail closed. Settings subscription and physical
+voice/global mixer publication remain commit-time operations; do not mistake saved bound flags
+for a subscription already installed on the new world.
+
+STAFF ORDER UPDATE (tinyclaw e59fd64): TickStaffAnimations/TickSecurity now consume ParkStaff.Members
+newest-first, as the already-read console list specifies. Removed the now-unnecessary staff/litter
+actor dictionary hole fields and their tracked-map wrappers; returned SnapshotReferenceMap to its
+private core form. Core ParkStaff map-list order remains saved, as do scene sibling order and actor
+identity. Do not resurrect the earlier dictionary-hole policy for staff RNG: that was a bounded
+same-runtime preservation of the OLD port behavior, not claimed console fidelity or portability.
+
+Parent tests:
+- ViewerNativeWorldSaveSmoke: actual SPACE assets; FILE cut with pending entrance route/mailbox,
+  live input lease AND occupied native ride queue, then118 actual bus/GuestWalk.BeforeStep chain
+  updates match. First queue fixture failed because it never SendTo'd the ride; fixed the fixture's
+  legitimate plan before Queue.Arrive. No bypass of the owner rule. Not a normal _Ready park run.
+- ViewerAdvisorWorldSaveSmoke170PASS: central WorldCore FILE including real disc head,106rules,
+  stock sim event/removal bindings, UI art/stack with nonzero scroll137,160updates+ordinary stack
+  Pass. Active physical voice is NOT exercised through this join (standalone voice smoke covers
+  it); no populated staff/visitor advisor producer scenario claimed.
+- ViewerBusWorldSaveSmoke112PASS: eight real bus assets, FILE actual fields/new callbacks/placement
+  node identities, safe-point refusal and explicit physical-audio refusal. Tests use inert old bus
+  callbacks to prove restored callbacks target NEW Viewer. Constructor-owned Viewer node cleanup
+  fixed by parent; final smokes have no leak warning.
+- Actor/core176PASS, guest357PASS, staff35PASS after the ordering-policy change.
+Six VALID mutations fail: prior hook, pending mailbox, bus callback, advisor removal emitter, stack
+scroll, native input identity. The first input-clone mutant did not compile (invalid ctor), so it
+was NOT counted; corrected to `with {}` (same values, different identity), which fails hydrated
+lease identity. All mutants restored. /tmp/tpw-controller-mutations*.log; native/advisor/bus logs
+/tmp/tpw-native-final-*.log. Three delegates done (bus worker timed out with code/test complete),
+parent integrated/reviewed/extended tests and owner APIs; NO workers pending.
+
+Gates: SaveAudit243950PASS;83PythonPASS. CLEAN48b835b /tmp/tpw-save-nativejoin-matrix-clean:
+4PASS+4exactretailreds,exit2,landing_evidence=True. /tmp/tpw-save-nativejoin-runtime-clean:
+10/11 ONLYoldFANTASYanchor00e5cd9. Normal entrance factory refactor covered by those runtime gates.
+
+NEXT real blockers: cold trusted asset/provider manifest for actual Viewer captures (not fixture
+factories); whole scene/placed ride/track/coaster render joins; physical RideSounds/other audio
+roots; security copy/stink/effects, camera/editing tools/future library loading. Park placement,
+PathTool and render/walk grid aliases must be one resource graph, not independent resolver clones.
+Advisor ring references to retired rides still need registry closure supplied via retained objects;
+spawning/linked/native retired owners still refuse. GameSettings/HiddenAwards GAME scope remains
+separate. Then staged startup path (_Ready MUST NOT reinitialize), atomic publication, UI Save/
+Load file flow and full normal-play scenario tests. Do not enable buttons from these fixture passes.

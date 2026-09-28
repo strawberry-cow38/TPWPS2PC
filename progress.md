@@ -3391,3 +3391,15 @@ Next admission/ridequeue/request resources (+Viewer.Entrance pending seam), then
 - Normal native entrance/queue/advisor/bus root joins still explicitly refused. Their DTOs exist;
   next join these controllers, cold assets/effects/camera/tools and publication without _Ready replay.
   Save/Load still unavailable; no claim of a complete player park restore.
+
+### Save research — native controllers/bus/advisor world joins (48b835b)
+- Entrance + occupied native queue inputs/leases/pending routes restored in the correct allocation
+  phase; same pure callbacks used in normal play and staging. Actual bus/cache/placement state joins.
+- Advisor logical/render/cache/stack scroll and stock emitters join; voice/settings publication stays
+  deferred. No production UnsafeAccessor; owner getters replace the worker's private-field access.
+- Maine59fd64 makes staff RNG order follow saved newest-first Members. Removed obsolete actor-map
+  holes, kept child order/identity. Core queue/room layout tracking remains as before.
+- Native FILE/118tick continuation, advisor170, bus112(all8assets), actor176/guest357/staff35PASS;
+  six valid mutants fail. Core243950+83Python. Clean matrices4+4retail/10of11oldanchor.
+- Player Save/Load NOT ready: cold asset/provider manifest, complete scene/audio/effects/camera/tools
+  and staged startup/publication still required. No normal player park load claimed.
