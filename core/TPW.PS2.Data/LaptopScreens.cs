@@ -45,6 +45,19 @@ public sealed record LaptopScreen(
     /// at (215, 175) and draws THREE bars from it, stepping the same 32 the labels step
     /// (`findings/staff-management.md` §12.1). Without this the three would stack on one row.</summary>
     int WidgetStep = 0,
+    /// <summary>⚠ Keep the labels on the authored grid and never re-centre one on its widget.
+    ///
+    /// The centring rule exists for All Rides, whose bars are authored 34 apart (148, 182, 216)
+    /// against labels stepping 32 from 108, so by the third bar the label sits 8px above its own
+    /// bar. Where a screen's widget already sits ON the grid the rule does the opposite: it moves
+    /// the label OFF it, by half the difference between a 30-tall line and a 22-tall bar.
+    ///
+    /// ⚠⚠ Training is that case and the damage is not cosmetic. §12.3 authors its labels at
+    /// InfoText + 32 / 64 / 96, so Skill Level belongs at 271; centring drew it at 267, which put
+    /// its CLICK RECT at 267..297 against Monthly Wage's 239..269 -- two rows overlapping by 2px,
+    /// where a click lands on whichever is tested first. Found by astraclaw on the merged
+    /// screen, 2026-09-28.</summary>
+    bool LabelsOnGrid = false,
     /// <summary>⚠ When a row carries its own value element, take only its COLUMN and keep the
     /// label's row. All Staff again: `InfoValues` is authored at row 220 and **that row is never
     /// read** -- `0x10b980` stores only `DAT_002AA8D4`, its column -- and Monthly Wage draws at
@@ -341,7 +354,7 @@ public sealed record LaptopScreen(
             new(118, LaptopRowKind.Money),                 // Training Cost
             new(886, LaptopRowKind.Money),                 // Monthly Wage -- AFTER training
             new(709, LaptopRowKind.Bar, "SkillLevelBar"),  // Skill Level  -- min(L+1,5) x 25
-        });
+        }, LabelsOnGrid: true);
 
     /// <summary>⭐ SINGLE STAFF -- what a person's own screen offers. §12.2; ctor `0x1d8ee8`,
     /// drawn by `0x1d9088`. **There are no statistics on it**: `Staffname` (45, 115), then the
