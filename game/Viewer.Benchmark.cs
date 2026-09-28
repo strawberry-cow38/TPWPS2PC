@@ -162,8 +162,23 @@ public partial class Viewer
             // shallowest depth each name closed at, so reuse it rather than repeat the fix.
             double bracketed = _frameTimes.Where(t => _allocDepth.GetValueOrDefault(t.Name) == 0)
                                           .Sum(t => t.Ms);
+            // ⭐⭐ THE ENGINE'S OWN CLOCKS, so "outside my brackets" stops being a guess about WHERE.
+            // astraclaw, correctly: time outside the measured C# sections does not by itself prove
+            // GPU work -- it is equally consistent with unbracketed C#, engine CPU (scene tree,
+            // culling, physics) or a driver/vsync wait. TIME_PROCESS and TIME_PHYSICS_PROCESS are
+            // the engine's measurement of its own halves, so printing them beside the frame says
+            // which half grew instead of leaving it to inference.
+            //
+            // ⚠ TIME_PROCESS has never reconciled with frame time in this rig (the benchmark's own
+            // summary says so and refuses to read it as per-frame ms). It is quoted here as a
+            // RELATIVE signal -- did it spike on this frame -- and must not be subtracted from the
+            // frame time as though the two shared units.
+            double tProc = Performance.GetMonitor(Performance.Monitor.TimeProcess) * 1000.0;
+            double tPhys = Performance.GetMonitor(Performance.Monitor.TimePhysicsProcess) * 1000.0;
+            long draws = (long)Performance.GetMonitor(Performance.Monitor.RenderTotalDrawCallsInFrame);
             GD.Print($"[slow] frame {deltaMs:F1} ms (bracketed {bracketed:F1} ms, "
-                   + $"{deltaMs - bracketed:F1} ms outside every bracket) -- "
+                   + $"{deltaMs - bracketed:F1} ms outside every bracket) "
+                   + $"[engine: process {tProc:F1} physics {tPhys:F1} draws {draws}] -- "
                    + (worst.Any() ? string.Join(", ", worst.Select(t => $"{t.Name} {t.Ms:F1}ms"))
                                   : "NOTHING BRACKETED WAS SLOW (the cost is outside every bracket)"));
         }
