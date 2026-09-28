@@ -3818,10 +3818,13 @@ public partial class Viewer : Node3D
                 // and no valuation -- so they read as a dash rather than a confident zero, which
                 // would look like a park that earned nothing.
                 const string none = "--";
+                int pval = ParkValueTenths();
                 var thisYear = new List<(string, int)>
                 {
-                    (none, 0), (none, 0), (Money.Format(pf.Balance), 0), (none, 0),
-                    (TextRow(LaptopScreen.RatingWord(0)), 0),
+                    (none, 0), (none, 0), (Money.Format(pf.Balance), 0), (Money.Format(pval), 0),
+                    // ⚠ Still a dash: the rating word needs a park RATING, and nothing computes
+                    // one. Printing "Poor" would be a confident wrong answer, not a missing one.
+                    (none, 0),
                 };
                 var lastYear = new List<string> { none, none, none, none, none };
                 _shopPanel.ShowScreen(LaptopScreen.ParkFinance, "", thisYear,
@@ -3830,7 +3833,8 @@ public partial class Viewer : Node3D
                                      TextRow(LaptopScreen.LastYearTextId) });
                 ClearLaptopModel();
                 RefreshLaptopBalance();
-                Status($"park finance -- balance {Money.Format(pf.Balance)}; year-to-date and rating not retained yet");
+                Status($"park finance -- balance {Money.Format(pf.Balance)}, "
+                     + $"park value {Money.Format(pval)}; year-to-date and rating not retained yet");
                 break;
             }
             // ⭐⭐ THE PARK STATISTICS MENU (id 8). Four pages, all selectable.
@@ -3882,7 +3886,11 @@ public partial class Viewer : Node3D
                 var orgb = LaptopScreen.OverallSeriesRgb[opick];
                 // ⚠ Park Value has NO source in this port -- nothing computes a park valuation --
                 // so it plots flat zero rather than a plausible invention.
-                Func<int, int> oget = opick == 0 ? ofin.BalanceInPeriod : (_ => 0);
+                // ⚠ Park Value has no month ring, so the series is the LIVE value at every
+                // bucket -- a flat line at today's figure, which is honest about being one
+                // reading rather than a history.
+                int liveValue = ParkValueTenths();
+                Func<int, int> oget = opick == 0 ? ofin.BalanceInPeriod : (_ => liveValue);
                 var obuckets = LaptopGraphData.Build(oget, ofin.PeriodCount, _graphYears, out int omax);
                 _shopPanel.GraphPanel ??= UiPanel.Load(_lib);
                 _shopPanel.ShowScreen(LaptopScreen.OverallStats, "",
@@ -8640,6 +8648,29 @@ public partial class Viewer : Node3D
     /// "shop" in its title a shop, and miss the ones without.</summary>
     /// <summary>The placed thing as a RIDE with operating settings, or null. ⚠ Tiers are the test,
     /// not the kind name: a thing with no tier has no speed, capacity or duration to show.</summary>
+    /// <summary>⭐ THE PARK'S VALUE, in tenths: `FUN_001011c8` is HALF the catalogue price of
+    /// everything placed, times ten. Park Finance's "Park Value" row and Overall Statistics'
+    /// second series both want it, and both were drawing a dash for want of it.
+    ///
+    /// ⚠ A tiered ride is worth its CURRENT tier's price, not tier 0's -- an upgraded ride is
+    /// worth more, which is the point of the figure.
+    ///
+    /// ⚠ The halving is the console's, not a guess: a park is valued at half what it cost to
+    /// build. Do not "fix" it into a full valuation.</summary>
+    int ParkValueTenths()
+    {
+        if (_sim == null) return 0;
+        long total = 0;
+        foreach (var r in _sim.Rides)
+        {
+            if (r.Definition?.CompiledEntry is not { } e) continue;
+            total += e is { HasRideTiers: true }
+                   ? e.Tier(r.CurrentTier).PurchaseCost
+                   : e.SimpleEconomy?.PurchaseCost ?? 0;
+        }
+        return (int)(total / 2 * 10);
+    }
+
     /// <summary>⭐ The staff room a placed thing IS, or null. ⚠ Not `RideFor`, which only answers
     /// for things that have a laptop details screen -- a staff room is a feature and has none.
     /// </summary>
