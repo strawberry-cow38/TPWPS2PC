@@ -30,18 +30,21 @@ def walk(f, extent, length, path, out, depth=0):
         else:
             out.append((full, ext, size))
 
-f = open(sys.argv[1], 'rb')
-pvd = sector(f, 16)
-print('PVD id     :', pvd[1:6].decode('latin-1'), 'type', pvd[0])
-print('system     :', pvd[8:40].decode('latin-1').strip())
-print('volume     :', pvd[40:72].decode('latin-1').strip())
-print('sectors    :', struct.unpack_from('<I', pvd, 80)[0])
-root = pvd[156:156+34]
-rext = struct.unpack_from('<I', root, 2)[0]
-rlen = struct.unpack_from('<I', root, 10)[0]
-print('root extent:', rext, 'len', rlen)
-out = []
-walk(f, rext, rlen, '', out)
-print('%d entries' % len(out))
-for nm, ext, size in out:
-    print('%10d  %8d  %s' % (size, ext, nm))
+# ⚠ Guarded so `walk`/`sector` can be IMPORTED (tools/rip_movies.py does). Without this the
+# CLI body ran at import time and died on sys.argv.
+if __name__ == '__main__':
+    f = open(sys.argv[1], 'rb')
+    pvd = sector(f, 16)
+    print('PVD id     :', pvd[1:6].decode('latin-1'), 'type', pvd[0])
+    print('system     :', pvd[8:40].decode('latin-1').strip())
+    print('volume     :', pvd[40:72].decode('latin-1').strip())
+    print('sectors    :', struct.unpack_from('<I', pvd, 80)[0])
+    root = pvd[156:156+34]
+    rext = struct.unpack_from('<I', root, 2)[0]
+    rlen = struct.unpack_from('<I', root, 10)[0]
+    print('root extent:', rext, 'len', rlen)
+    out = []
+    walk(f, rext, rlen, '', out)
+    print('%d entries' % len(out))
+    for nm, ext, size in out:
+        print('%10d  %8d  %s' % (size, ext, nm))

@@ -479,6 +479,12 @@ public partial class Viewer : Node3D
             else if (a.StartsWith("--laptop-hover-btn=")) int.TryParse(a["--laptop-hover-btn=".Length..], out _laptopHoverBtn);
             else if (a.StartsWith("--laptop-hover-step=")) int.TryParse(a["--laptop-hover-step=".Length..], out _laptopHoverStep);
             else if (a.StartsWith("--laptop-click=")) _laptopClick = a["--laptop-click=".Length..];
+            // ⭐ `--movie-test=<path>` plays a ripped .ogv through Godot's own VideoStreamTheora,
+            // which is the only video format the engine reads without an import step. Answers two
+            // things at once: whether the rip plays at all, and what the engine does with the
+            // source's SAR (the story movies are 640x352 flagged 11:15 = 4:3).
+            else if (a.StartsWith("--movie-test=")) _movieTest = a["--movie-test=".Length..];
+            else if (a.StartsWith("--movie-film=")) int.TryParse(a["--movie-film=".Length..], out _movieFilm);
             else if (a.StartsWith("--laptop-rclick=")) { _laptopClick = a["--laptop-rclick=".Length..]; _laptopRight = true; }
             else if (a.StartsWith("--laptop-scroll=")) int.TryParse(a["--laptop-scroll=".Length..], out _laptopScroll);
             else if (a.StartsWith("--laptop-swoop="))
@@ -4190,6 +4196,43 @@ public partial class Viewer : Node3D
         }
         _laptopBack.RemoveAt(_laptopBack.Count - 1);
         ShowLaptopLevel();
+    }
+
+    string _movieTest; int _movieFilm = 3, _movieFrame;
+    VideoStreamPlayer _moviePlayer;
+
+    /// <summary>⭐ Play a ripped movie through the engine and photograph it.
+    ///
+    /// ⚠ `Expand = false` ON PURPOSE: the point is to see the frame at the size Godot decodes it,
+    /// not stretched to whatever rect the control happens to have. The texture's size is the
+    /// answer to the SAR question -- a 640x352 texture means the engine ignores the stream's
+    /// 11:15 sample aspect, and a rip that only TAGS the aspect will play squashed.</summary>
+    void MovieTestFrame()
+    {
+        if (_moviePlayer == null)
+        {
+            var layer = new CanvasLayer { Layer = 100 };
+            AddChild(layer);
+            _moviePlayer = new VideoStreamPlayer
+            {
+                Stream = new VideoStreamTheora { File = _movieTest },
+                Expand = false,
+                AnchorRight = 1,
+                AnchorBottom = 1,
+            };
+            layer.AddChild(_moviePlayer);
+            _moviePlayer.Play();
+            GD.Print($"[movie] {_movieTest}: playing={_moviePlayer.IsPlaying()} "
+                   + $"length={_moviePlayer.GetStreamLength():F2}s");
+        }
+        var tex = _moviePlayer.GetVideoTexture();
+        // ⚠ Names what it measured: the TEXTURE size, not the control's, because the control's
+        // size would be the window and would look like an answer while telling you nothing.
+        GD.Print($"[movie] f{_movieFrame} pos={_moviePlayer.StreamPosition:F2}s "
+               + $"texture={(tex == null ? "null" : tex.GetSize().X + "x" + tex.GetSize().Y)}");
+        SaveShot(ShotSibling(_shotPath, $"-f{_movieFrame:D4}"));
+        _movieFrame++;
+        if (_movieFrame >= _movieFilm) GetTree().Quit();
     }
 
     void LaptopFilmFrame()
@@ -10908,6 +10951,11 @@ public partial class Viewer : Node3D
             if (_soundCensus > 0) { }   // the census ends itself above, after its seconds of real frames
             // ⭐ The laptop film draws a UI screen, so it needs no park stepping and no camera --
             // only the panel out of the way and enough warm frames for the screen to exist.
+            else if (_movieTest != null)
+            {
+                if (_shotWait >= warm) { if (_panel != null) _panel.Visible = false; MovieTestFrame(); }
+                else _shotWait++;
+            }
             else if (_laptopFilm > 0)
             {
                 if (_shotWait >= warm)
