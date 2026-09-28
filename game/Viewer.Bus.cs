@@ -128,7 +128,10 @@ public partial class Viewer
         // This is deliberately NOT elapsed-ms delta: animation catches elapsed time,
         // countdowns count the updates actually executed by the park owner.
         _busTraffic=_nativeBus.Update(now,0x4000,_busTraffic,
-            open:_visitors!=null && !_gateClosed,specialObjectAbsent:true,flaggedGuestCount:_entranceFlow?.DeparturePressure ?? 0);
+            // ⚠⚠ `_laptopParkOpen` IS `[0x2B72A4]`: a park that has not been opened admits nobody,
+            // however good its gate. `_gateClosed` is a different thing -- the permanent "this park
+            // has no usable entrance" failure -- so both must hold.
+            open:_visitors!=null && !_gateClosed && _laptopParkOpen,specialObjectAbsent:true,flaggedGuestCount:_entranceFlow?.DeparturePressure ?? 0);
         UpdateBusAudio();
     }
 

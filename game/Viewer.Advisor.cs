@@ -85,7 +85,12 @@ public partial class Viewer
         }
         var producers = new AdvisorProducers(_calendar, _sim, _staff, _visitors)
         {
-            ParkOpen = () => _visitors != null && !_gateClosed,           // ⚠ the bus's adapter for [0x2B72A4]
+            // ⭐ THE REAL FLAG NOW, not an adapter. This used to read `_visitors != null &&
+            // !_gateClosed` with the note "the bus's adapter for [0x2B72A4]" -- a stand-in from
+            // before the port had a park-open state at all. Rule 0 asks whether the PLAYER opened
+            // the park, which is exactly `_laptopParkOpen`; the gate's usability is a separate
+            // condition and is still required for anyone to actually walk in (see Viewer.Bus).
+            ParkOpen = () => _laptopParkOpen,                             // [0x2B72A4] via 0x14E538
             Placements = AdvisorPlacements,
         };
         // ⚠ Its own random stream for the initial variants: drawing ~275 from the guests' stream here would

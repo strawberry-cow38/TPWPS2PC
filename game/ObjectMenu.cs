@@ -47,14 +47,29 @@ public sealed partial class ObjectMenu : Control
     /// and a wide gap from one 16px tile.</summary>
     public const int SheetInset = 10;
 
-    /// <summary>The console's UI space is 512 wide; everything here is authored in those units.</summary>
-    public const float NativeWidth = 512f;
+    /// <summary>The console's UI space is 512 units in BOTH axes -- 512 wide spans the frame's
+    /// width and 512 tall spans its height (see Viewer's ConsoleUiWidth: `NDC = x/256-1, 1-y/256`).
+    /// Everything here is authored in those units.</summary>
+    public const float NativeWidth = 512f, NativeHeight = 512f;
 
     /// <summary>⭐⭐ SCALE IS A PERCENTAGE OF THE VIEWPORT, not a constant. Master: "the
     /// scale/position was based off the ps2 resolution. we should measure percentages and apply."
     /// A fixed 2x is only correct on a 1024-wide window; this keeps the panel the same fraction of
-    /// the screen the console gives it at any size.</summary>
-    float Scale => Mathf.Max(1f, GetViewportRect().Size.X / NativeWidth);
+    /// the screen the console gives it at any size.
+    ///
+    /// ⚠⚠ FROM THE HEIGHT, NOT THE WIDTH. Master, 2026-09-28: "fix the scale of the rmb context
+    /// menu. its way too big." It was `Size.X / 512` applied to BOTH axes -- but 512 units span the
+    /// width AND the height, so on 1920x1080 the vertical scale was 1920/512 = 3.75 where it should
+    /// be 1080/512 = 2.11. The panel came out **1.78x too tall**: measured off a 1920x1080 capture
+    /// it filled 49% of the screen's height against the 33% its authored `40 + 32*entries` asks for.
+    ///
+    /// ⚠ Using the height for BOTH axes rather than a true per-axis scale is deliberate for now:
+    /// the frame is a 9-slice of 16x16 tiles, and scaling those non-uniformly distorts the corner
+    /// art. A per-axis version is correct on the console -- sprites are in HUD units and DO stretch
+    /// 1.25x across (tinyclaw, findings/hud-glyph-scale.md) -- but which box those units map to is
+    /// exactly the aspect question master has not settled yet, so this takes the safe axis and the
+    /// remaining 1.25x resolves with that decision rather than ahead of it.</summary>
+    float Scale => Mathf.Max(1f, GetViewportRect().Size.Y / NativeHeight);
 
     /// <summary>Selected rows draw blue, the rest black -- read straight off master's capture.</summary>
     static readonly Color Chosen = new(0.07f, 0.12f, 0.98f);

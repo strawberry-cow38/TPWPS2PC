@@ -278,7 +278,14 @@ public partial class Viewer : Node3D
     Vector2I? _uiSize; SubViewport _uiShotView; Camera3D _uiShotCam;
     /// <summary>Which main-menu row the cursor is on, and whether the park is open -- the latter
     /// decides Open Park against Close Park. Both are harness knobs until the laptop takes input.</summary>
-    int _laptopMenuSelected; bool _laptopParkOpen; int _laptopRide;
+    int _laptopMenuSelected; int _laptopRide;
+    /// <summary>⭐ `[0x2B72A4]`, the park's open flag -- the ONE thing "Open Park" sets. ⚠ Starts
+    /// FALSE, as the console does: a park is built closed and the player opens it when ready, which
+    /// is why the laptop offers Open Park only while it is false.</summary>
+    bool _laptopParkOpen;
+    /// <summary>⭐ `[0x2B7298]`, the month index the park was opened in -- stored by `0x14E4C0`
+    /// alongside the flag. Kept because the console keeps it; nothing reads it here yet.</summary>
+    int _parkOpenedMonth;
     int _laptopHoverRow = -1, _laptopHoverBtn = -1, _laptopHoverStep;
     /// <summary>⚠ DIAGNOSTIC: "X,Y" -- push a real click through the viewport at that point and
     /// report what the laptop received. Two reasoned fixes failed; this measures instead.</summary>
@@ -4498,6 +4505,23 @@ public partial class Viewer : Node3D
                 // unconditionally. Master: "route close park to the lobby, on the park u pressed
                 // close park in".
                 if (picked.Index == LaptopMainMenu.CloseParkIndex) { AdvisorLeavingPark("close park (0x1510F8)"); CloseParkToLobby(); return; }
+                // ⭐⭐ OPEN PARK, the real thing. Master, 2026-09-28: "wire up the park's actual
+                // open/closed state". `0x14E4C0` sets `[0x2B72A4]` AND stores the month index at
+                // `[0x2B7298]`, so the console records when you opened as well as that you did.
+                // ⚠ The row is only offered while closed (VisibleMain drops index 11 when open), so
+                // this cannot be pressed twice -- which is why the native handler needs no guard
+                // either, and why there is no laptop row that closes a park again.
+                if (picked.Index == LaptopMainMenu.OpenParkIndex)
+                {
+                    _laptopParkOpen = true;
+                    // ⚠ The ABSOLUTE month index, the same figure AdvisorProducers.Months uses
+                    // (`Clock.Month + 12 * Clock.Year`), not the month-of-year.
+                    _parkOpenedMonth = _calendar == null ? 0 : _calendar.Month + 12 * _calendar.Year;
+                    GD.Print($"[park] OPEN (0x14E4C0): [0x2B72A4]=1, opened in month {_parkOpenedMonth} ([0x2B7298])");
+                    Status("the park is open -- the bus starts bringing guests in");
+                    ShowLaptopMain();
+                    return;
+                }
                 switch (picked.Opens)
                 {
                     case "main_info":      _laptopBack.Add(("info", null)); ShowLaptopLevel(); return;
@@ -8644,10 +8668,23 @@ public partial class Viewer : Node3D
         if (_shopPanel != null && (ShopFor(placed) != null || RideFor(placed) != null))
             yield return "Details";
         // ⭐ "Call Mechanic" (`STR_LISTBOX_CALL_MECHANIC`, list box row 179 -> `0x124250` ->
-        // `0x124158(1)`) on a ride of the four serviced classes. ⚠ Offered whether or not it is broken:
-        // the per-type filter is not decoded (above), and the native handler silently sends nobody to
-        // a ride that is not broken, which ParkStaff.CallMechanic reproduces.
-        if (_staff != null && RideFor(placed) is { ServiceClass: not RideServiceClass.None })
+        // `0x124158(1)`) on a ride of the four serviced classes -- AND ONLY WHILE IT IS BROKEN.
+        // Master, 2026-09-28: "the 'call mechanic' button on the rmb context menu should only show
+        // if the ride is broken down."
+        //
+        // ⚠ This used to be offered unconditionally, with the note "the per-type filter is not
+        // decoded, and the native handler silently sends nobody to a ride that is not broken". The
+        // gate is the ride's OWN documented predicate, not a new rule invented here:
+        // `ParkRide.Broken` is `vt+0xC4` = `0x1E2830`, `(u8)(status - 4) < 2` -- statuses 4 and 5.
+        //
+        // ⚠⚠ THE CONSOLE'S OWN GATE IS BROKEN AND I AM NOT REPRODUCING IT. `0x1241B0` tests against
+        // 0x32, but `0x1241E4` loads `lbu v1,0x2E(a1)` -- the MODE byte, not the state (the audit in
+        // tools/TPW.PS2.ParkSimAudit/MechanicChecks.cs pins those two instruction words and calls it
+        // "the shipped slip"). So retail asks the wrong field. Port fidelity is normally
+        // bugs-and-all, so this is a DEPARTURE, taken on master's explicit instruction and recorded
+        // here rather than quietly: if the retail behaviour is wanted back, restore the
+        // unconditional offer -- the slip makes the console's test never select on brokenness.
+        if (_staff != null && RideFor(placed) is { ServiceClass: not RideServiceClass.None, Broken: true })
             yield return "Call Mechanic";
         // ⭐⭐ THE STAFF ROOM'S KICK-OUTS LIVE HERE, NOT ON A LAPTOP PAGE. Master, 2026-09-28:
         // "i dont think the staff room has a laptop page? its the rmb context menu which gains
