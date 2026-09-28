@@ -70,6 +70,13 @@ COVERAGE += '\n' + '\n'.join(['  ok   guard: check'] * 48 +
                               ['  ok   entertainer: check'] * 28 +
                               ['  ok   entertainer: spawn cooldown: 400 ticks with no show draw rand(300) 0 times; the first show draws it 1 time(s)'])
 
+# Staff step 5 (management): its own statement, for the same merge reason.
+COVERAGE += '\n' + '\n'.join(['  ok   management: check'] * 56 +
+                              ['  ok   management: wages high: with no income at all it cannot fire before the THIRD month end (False,False,True)',
+                               '  ok   management: patrol tool: first corner the SMALLER -- highlighted (1, 2, 3, 4), walked (2, 1, 4, 3)',
+                               '  ok   management: strike walk: the strike starts at a month change and that month is paid in full ($100)',
+                               '  ok   management: award: the hidden-award bit lives in [0x3975E8], not the park -- a second park wins nothing'])
+
 
 class ClassificationTests(unittest.TestCase):
     def test_staff_family_count_and_witnesses_required(self):
@@ -295,6 +302,15 @@ class GuardFamily(unittest.TestCase):
                      COVERAGE.replace('NO STINK', 'a stink'),
                      COVERAGE.replace('one leg: dispatched', 'two legs: dispatched'),
                      COVERAGE.replace('with no show draw rand(300) 0 times', 'with no show draw rand(300) 2 times')):
+            self.assertEqual(classify('JUNGLE', 0, text + '\nPASS')['status'], 'missing_coverage')
+        self.assertEqual(classify('JUNGLE', 0, COVERAGE + '\nPASS')['status'], 'pass')
+
+class ManagementFamily(unittest.TestCase):
+    def test_management_family_counts_and_witnesses_required(self):
+        for text in ('\n'.join(x for x in COVERAGE.splitlines() if 'management:' not in x),
+                     COVERAGE.replace('  ok   management: check\n', '', 1),
+                     COVERAGE.replace('first corner the SMALLER', 'first corner the smaller'),
+                     COVERAGE.replace('before the THIRD month end', 'before the second month end')):
             self.assertEqual(classify('JUNGLE', 0, text + '\nPASS')['status'], 'missing_coverage')
         self.assertEqual(classify('JUNGLE', 0, COVERAGE + '\nPASS')['status'], 'pass')
 

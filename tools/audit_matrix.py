@@ -102,6 +102,18 @@ REQUIRED_WITNESSES += (
     'ok   entertainer: spawn cooldown: 400 ticks with no show draw rand(300) 0 times',
 )
 
+# Staff step 5, management (ManagementChecks.cs, findings/staff-management.md): 62 on every park. A
+# statement of its own, so parallel staff edits merge cleanly. The first-month ring gap and the patrol
+# tool's off-by-one are shipped behaviour that reads like a bug to fix; the strike-then-wages month end
+# and the once-a-game Security Award are the two orders most likely to be "tidied".
+REQUIRED_CHECKS.update({'management': 60})
+REQUIRED_WITNESSES += (
+    'ok   management: wages high: with no income at all it cannot fire before the THIRD month end',
+    'ok   management: patrol tool: first corner the SMALLER',
+    'ok   management: strike walk: the strike starts at a month change and that month is paid in full',
+    'ok   management: award: the hidden-award bit lives in [0x3975E8], not the park',
+)
+
 
 def classify(world: str, raw_exit: int | None, text: str, *, timed_out: bool = False,
              truncated: bool = False, launch_error: str | None = None, terrain: int | None = None) -> dict:

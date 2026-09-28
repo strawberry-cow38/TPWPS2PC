@@ -111,6 +111,12 @@ if (args.Contains("--mechanic-only"))
     Console.WriteLine(bad==0 ? "PASS mechanics: ride wear, breakdown, repair and upgrades through ParkSim/ParkStaff (viewer: MechanicSmoke)" : $"FAIL: {bad}");
     return bad==0?0:1;
 }
+if (args.Contains("--management-only"))
+{
+    ManagementChecks.Run(disc, terrain, Wad("DATA"), wad, world, Check);
+    Console.WriteLine(bad==0 ? "PASS staff management: wages, strikes, training, research, patrol tool, kick-out, advisor producers and the Security Award (viewer: ManagementSmoke)" : $"FAIL: {bad}");
+    return bad==0?0:1;
+}
 if (args.Contains("--track-rides-only"))
 {
     TrackRideChecks.Run(Check);
@@ -694,6 +700,7 @@ DecisionSchedulingChecks.Run(terrain, loopPaths, corridorStops[0], onPath[^1], W
 GuardChecks.Run(disc, terrain, Wad("DATA"), wad, world, Check);
 StaffChecks.Run(disc, terrain, Wad("DATA"), wad, world, Check);
 MechanicChecks.Run(disc, terrain, Wad("DATA"), wad, world, Check);
+ManagementChecks.Run(disc, terrain, Wad("DATA"), wad, world, Check);
 Check(looEntry.Entry != null, $"the world ships a lavatory to exercise ({looEntry.Entry?.Path ?? "none found"})");
 Check(availabilityChecked, "availability regression exercised a real ride with both availability flags");
 Check(removalChecked, "removal regression exercised a real non-track ride with seats");
