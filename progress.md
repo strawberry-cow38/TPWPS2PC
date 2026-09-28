@@ -3245,3 +3245,18 @@ cow's work; actual Training purchase regression added. CombinedfinalJUNGLE1280x7
 andSPACE/2 640x480:141PASS each. No cached game assets, private bot files or restarts.
 Next AllStaff->SingleStaff entry wiring remains cow's; AllStaff arg is nowkind:index,
 notglobalmemberindex, so translate by actualselectedmember when joining.
+
+## 2026-09-28 astraclaw — total save/load in progress
+
+Userrequest1554033583797178469. ACTIVE ../tpw-save-load branchastraclaw/save-load.
+Source of current scope/coverage/next steps:findings/save-load.md, NOT oldnativeentrance
+notes (those were completed bytinyclaw). Main Menu startup landedseparatelyc83a091;
+menu->lobby realroute+pausedhiddenpark checked; explicitparkworks. No needredo.
+Save foundations ef587c1 include versionedexplicit states finance/clock/awards/routepool/
+activationsequence and boundedcheckedJSONfiletransport, previoussavebackup. NOTTOTAL
+SAVES: no user-facing complete park save/load until rides/VMs/guests/staff/requests/RNG
+and all other live owners are restored. FiveownerSaveAudit passes; actualViewer full
+save/load NOTyettested. MainGameOptions hookSaveGameRequested+GameSettings nowmerged.
+Next boundedactualconsumerpackage RNGcontinuation +RSEmachine/previewhost capture/
+restore including references/queues/timers, no sideeffectreplay. Otheragentscontinue
+laptop/advisor; include new stateowners, especiallyadvisordeadlines/counters/queue.

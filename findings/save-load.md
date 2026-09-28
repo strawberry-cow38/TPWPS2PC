@@ -70,3 +70,51 @@ owners alone does not isolate globals.
 MainMenuStartupSmoke must be run without --menu/--map/--mode for its bare-launch
 case; it confirms through MainMenu.Confirm twice, not a direct EnterLobby call.
 An explicit map/mode case verifies the actual requested terrain still loads.
+
+## Handoff checkpoint (foundation, NOT complete saves)
+
+Main startup is shipped independently atc83a091: normal menu -> real lobby; normal
+park/calendar ticks gated while menu/lobby is displayed; explicit direct park still
+advances.9bare+4direct rendered checks; reverting old default or hidden-tick guard
+fails. Do not redo this part. Main Game route existed and is now consumer-tested.
+
+Snapshot foundation codeef587c1 and merge9634846 remain onastraclaw/save-load.
+SaveAudit passes JSON/file round trips and continuation for its five implemented
+owners. It is not a Viewer save/load test. No whole-park file is offered to players.
+GameOptions now supplies Viewer.SaveGameRequested; _settings is its GAME-scoped
+GameSettings owner with CaptureState/RestoreState. Its restore clamps volumes and
+raises Changed; the coordinator must prevalidate and stage before committing globals.
+MainMenu.LoadGame still explicitly reports not implemented pending the real load.
+
+Next implementation: stateful RNG compatibility + RSE machine/preview-host snapshots
+with reference IDs and no replayed init/actions, tested in actual running ParkSim.
+An RSE file's script bytes are asset references, not snapshot payload. VM arrays,
+call/guest tops, timers/walks/bounce/limbo, parent/child/sound-child and shared host
+identity all matter; machine.Random delegates come from a sharedParkSim stream or
+owned default. Reconstruct references only after all IDs are allocated.
+
+RNG inventory: seeded System.Random at ParkSim(11), ParkVisitors(7), default
+RseMachine(1), defaultParkStaff(0x5747), TrackRideSim(seed), VisitorNeeds(seed),
+RideSounds(seed), Viewer._guestRng(1). Caller-provided delegates may share streams;
+never reseed them independently. A seed alone is not continuation. Primary source
+checked for a compatible explicit-state generator (not yet implemented):
+https://raw.githubusercontent.com/dotnet/runtime/v8.0.0/src/libraries/System.Private.CoreLib/src/System/Random.Net5CompatImpl.cs
+MIT license at the same tag's LICENSE.TXT. If adapting that algorithm include its
+license/attribution; compare mixed Next/Next(max)/Next(min,max)/NextDouble/NextBytes
+against current seeded System.Random BEFORE replacing any gameplay owner.
+Alternative native RNG stream adapters remain explicit; do not conflate29CF08 with1448E0.
+
+The full owner inventory from source includes ParkSim time/carry/handle allocator;
+ParkRide queues/left/ejected + settings/accounting/service; preview host channels/
+queued records/seats/head slots/walkers; GuestWalk live objects/cursors; Visitors
+plans/owners/history/returns/terminals/decisions/vomit; Needs cadence/bubble state;
+EntranceFlow ordered memberships/tokens+pending Viewer service results; NativeRideQueues;
+staff/candidates/jobs/strikes/routes/litter; management stamps; research; track/coaster
+train state and riders. See the coverage table above. No serializing delegates/Godot
+objects/model/program graphs/assetbytes, no side effects during restore, no arbitrary
+CLR type names in files. Phase2 resolves IDs, phase3 swaps only a validated wholeworld.
+
+All three delegates were used in this foundation turn. Clean+pushed handoff; do not
+repeat their inventories. Next package must exercise an actual runtime consumer,
+not merely add another unused helper. Other agents own laptop/advisor and may add
+new fields: fetch/merge, communicate, explicit commits. No restart or privatefiles.
