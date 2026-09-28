@@ -3299,3 +3299,8 @@ sharedlayoutidentity kept. Standalone6000ticktests forboat/kart/coaster, all14co
 Five mutations fail/restored; lostreleasebinding fails integratedconsumer atframe1100.
 216264disc-freeSaveAuditPASS;83PythonPASS. FULLSAVE STILLUNAVAILABLE: geometrypaths/placements,
 visitors/needs/nativependingwork/staff/advisor/presentation and Viewertransaction remain.
+Postmerge d4c7a74 native gates: ownerdiscSaveAudit231021PASS,83Python;
+8parkmatrix4PASS+4exactretailreds(exit2,landing_evidence=True), runtime10/11 (knownFANTASYanchoronly).
+Evidence /tmp/tpw-save-vehicle-matrix, /tmp/tpw-save-vehicle-runtime, /tmp/tpw-vehicle-postmerge.log.
+Nextgeometryinventory in findings/save-load.md: placementowner game/Park.cs, pathstate split
+ParkPaths/PathTool (sharedfield, queueowner/run bits, originaltiles, undo records). No live UI save yet.

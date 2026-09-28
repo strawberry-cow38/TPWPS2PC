@@ -282,3 +282,19 @@ ParkAdvisor flags/state/countdown/ring+headtail/current speech progress; message
 already exists on mainbb7b0cc. No Save/Load UI enablement, research branch only.
 All3delegates used this turn (track owners, coaster draft timeout, coaster tests/review timeout);
 all outputs integrated/tested, no workers pending. Fetch movingmain before next slice.
+
+Postmerge native gates on d4c7a74 (includes main advisorbb7b0cc/deletebd0dab2):
+/tmp/tpw-save-vehicle-matrix: 8parks,4PASS+4exactretailreds,exit2,landing_evidence=True.
+/tmp/tpw-save-vehicle-runtime:10/11PASS,onlytheunchangedFANTASYanchorbaselinefailure.
+/tmp/tpw-vehicle-postmerge.log: ownerdiscSaveAudit231021PASS (includes14coldtypechecks).
+83PythonPASS. New RideService.AdvisorEvent is a CALLBACK, not new owned storage; later
+wholeworld binder must reattach it to staged advisor alongside the other service sinks.
+
+Geometry next inventory: ParkPaths is core/TPW.PS2.Data/ParkPaths.cs; the placement owner
+is game/Park.cs (Godot), NOT core/Park.cs. Snapshot placement metadata/assets/footprints by
+IDs, never Node3D. PathTool has separate kind/turn/owner/run arrays, bridge/walkway sets,
+doors dictionary, original tile _before, and undo _legs/_leg alias plus Laid. Its _field is
+shared with the live ground; preserve that identity, not two independently restored grids.
+Tool UI mode/cursor are transient; committed path/queue topology and deletion restoration
+are not. ParkPaths also owns occupied/scenery/entrance/protected/gatehold sets and entrance
+kinds/entry, beyond Field.Cells. Incomplete tracks are now covered; ground/placement isn't.
