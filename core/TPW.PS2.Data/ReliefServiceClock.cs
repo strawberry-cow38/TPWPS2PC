@@ -3,7 +3,7 @@ namespace TPW.PS2.Data;
 /// <summary>Native relief states35 ->22 -> completion, in guest-update counter units.
 /// 20D708 adds522;20E160 uses strict unsigned greater-than. The dispatcher returns
 /// after the35 handler, so22 completes on a later update, not in that same call.</summary>
-public sealed class ReliefServiceClock
+public sealed partial class ReliefServiceClock
 {
     public const uint Duration = 522;
     public uint Deadline { get; }

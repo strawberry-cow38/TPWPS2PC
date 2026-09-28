@@ -30,7 +30,7 @@ public sealed partial class GuestWalk
 {
     /// <summary>One real output-slot pool shared by this park's native walkers and route service.
     /// Search-node/request resources remain distinct and are not supplied by this property.</summary>
-    public NativeRoutePool NativeRoutes { get; } = new();
+    public NativeRoutePool NativeRoutes { get; }
     public enum NativeAssignment { Assigned, Refused, Exhausted }
 
     bool MayAssignNative(Guest guest, object owner, NativeMotionInputs inputs)

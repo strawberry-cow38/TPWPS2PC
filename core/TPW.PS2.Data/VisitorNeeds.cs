@@ -39,7 +39,7 @@ public enum Thought
 /// convention adopted here: both spawn paths (`FUN_0020BCD0` and `FUN_00211A00`) write each need
 /// then immediately clamp below at 0 and above at 100, and the accessor bank at `0x212330..` does
 /// the same on every set.</summary>
-public struct VisitorWants
+public partial struct VisitorWants
 {
     /// <summary>`+0x75`. Spawns at exactly 50 — the only need seeded to a constant.</summary>
     public byte Happiness;
@@ -171,7 +171,7 @@ public struct VisitorWants
 /// ⚠ Keyed by GUEST ID, never held on a walking Guest object: readmission after a ride preserves
 /// the id but builds a NEW Guest (astraclaw, reviewing the boundary). <see cref="Reconcile"/>
 /// against the coordinator's live ids, or a reused id inherits a dead stranger's hunger.</summary>
-public sealed class VisitorNeeds
+public sealed partial class VisitorNeeds
 {
     public const byte Full = 100;
 
@@ -405,10 +405,10 @@ public sealed class VisitorNeeds
         public const int Mixed = 307;       // 0x20CA60  angry4/kidsad1/huh1
     }
 
-    readonly Dictionary<int, VisitorWants> _byGuest = new();
-    readonly Random _rng;
+    readonly SnapshotIntMap<VisitorWants> _byGuest = new();
+    readonly SnapshotRandom _rng;
 
-    public VisitorNeeds(int seed = 0) => _rng = new Random(seed);
+    public VisitorNeeds(int seed = 0) => _rng = new SnapshotRandom(seed);
 
     public IReadOnlyDictionary<int, VisitorWants> All => _byGuest;
     public bool Has(int guest) => _byGuest.ContainsKey(guest);

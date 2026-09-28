@@ -93,10 +93,20 @@ public static class PathToolSaveChecks
         Both(t => { C(t.TearUp(x + 4, y + 2), "plain path deleted");
             t.RepickAfterTear(new[] { (x + 4, y + 2) }); }, "plain path tear");
         C(shared.Cells[At(4, 2) * 2 + 1] == grass[At(4, 2) * 2 + 1], "plain path deletion returns original grass");
-        // Current ClearQueue removes Both's before record. Preserve that behavior, including its
-        // GroundUnknown event, rather than silently fixing gameplay in the snapshot implementation.
-        Both(t => t.TearUp(x + 3, y + 1), "demoted Both ground-unknown continuation");
-        C(bEvents.Any(e => e.StartsWith("ground:")), "GroundUnknown event rebound by caller");
+        // Gameplay fix 12352fb keeps the original ground while the demoted junction is a path.
+        // Snapshot continuation must now retain that entry, not codify the former bug.
+        C(original.GroundKnownAt(x+3,y+1)&&restored.GroundKnownAt(x+3,y+1), "demoted Both keeps ground backup");
+        int unknownBefore=bEvents.Count(e=>e.StartsWith("ground:"));
+        Both(t => C(t.TearUp(x + 3, y + 1),"demoted path tears up"), "demoted Both restores ground");
+        C(bEvents.Count(e=>e.StartsWith("ground:"))==unknownBefore
+            &&shared.Cells[At(3,1)*2+1]==grass[At(3,1)*2+1], "demoted Both restores original grass without GroundUnknown");
+        // An authored/no-backup path still legitimately needs the external GroundUnknown sink.
+        // Exercise it explicitly, rather than depending on ClearQueue losing data.
+        var noBackup=state with { OriginalTilesBefore=state.OriginalTilesBefore.Where(g=>g.At!=At(4,1)).ToArray() };
+        var unknownField=new Model.HeightField{Width=field.Width,Height=field.Height,Step=field.Step,Cells=bytes.ToArray()};
+        var unknown=Restore(noBackup,unknownField);var unknownEvents=new List<string>();Bind(unknown,unknownEvents);
+        C(!unknown.GroundKnownAt(x+4,y+1)&&unknown.TearUp(x+4,y+1)
+            &&unknownEvents.Any(e=>e.StartsWith("ground:")),"explicit no-backup GroundUnknown event rebound by caller");
         Both(t => t.UndoLeg(), "undo after delete");
         Both(t => t.Undo(), "full Undo");
         C(aEvents.Count > 0, "continuation exercised actual events");

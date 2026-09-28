@@ -362,3 +362,56 @@ Cow's subsequent ClearQueue fix is12352fb and perf7f76494 oncatboy/frame-allocat
 NOT main yet at this checkpoint; tinyclaw reviewing/rebasing. Prefer reviewedmain when landed.
 Update PathToolSaveChecks after merging: demotedBoth should keepbackup and NOT emitGroundUnknown;
 exercise GroundUnknown explicitly with an authored/no-backup fixture instead of relying onbug.
+
+## Visitor/walking graph checkpoint — September28
+
+GuestWalk.State captures time/carry/allocator, ordered live membership and separately identified
+Guest objects (GraphId != reusable numeric Guest.Id), including caller-supplied inactive bodies.
+Two-phase AllocateState/Hydrate handles external terminal/controller/input callback cycles without
+Spawn/AssignRoute/pathfinding/Step. ALL native cursors adopt the ONE restored NativeRoutePool;
+position/state/slot/facing/generation/disposal/terminal flags persist. Reject overlapping owned
+chains, unknown bindings and incorrect pool epochs. Input provider VALUES remain their owners'
+responsibility; delegate IDs alone are not a saved controller or animation readiness state.
+
+VisitorNeeds/VisitorWants.State captures every want byte/flag/cash/thought, RNG, timing/cadence,
+rates/budget and occupied bubble slots. Preferences is a GAME/config fingerprint; restore validates
+but does NOT mutate the static table. Root config staging still needs to account for such globals.
+ParkVisitors.State owns plans, ride-instance/history references (including retired rides), returning/
+service/vomit state, decision deadlines, relief clocks, settings/accounting and RNG. It exposes
+referenced guest/ride/terminal inventories and stages callbacks after cycles resolve. A bounded
+body registry retains the visitor's last body while aboard; readmission replaces it as before,
+retirement removes it. SendTo adopts externally supplied walking bodies too. No spawning, decisions,
+service or sound replay during restore. Shared external RNG providers require explicit bindings.
+
+A continuation hole found during parent review: live dictionary entries alone lose future insertion
+order after removals. Added IntMapLayout/SnapshotIntMap for the order-sensitive integer visitor maps:
+tracks slot/free-stack history while retaining stock Dictionary values/enumerators; reconstructs
+through public Add/Remove with temporary private construction keys, not runtime-private reflection.
+Source behavior checked against independent stock Dictionary through350 mixed removal/addition
+operations and repeated checkpoints. The layout is not inferred just from current enumeration.
+The helper is internal; owner maps expose read-only interfaces. Mutation via an explicit cast to
+the Dictionary base bypasses tracking and is unsupported; normal mutation interfaces are tracked.
+Do not replace this with sorting guests: need/RNG/bubble/queue order is observable.
+
+Actual consumer evidence: a FILE bundle joins ground + ParkSim + GuestWalk + Needs + ParkVisitors,
+with a real disc ride occupied and another person walking, across FANTASY/HALLOW/SPACE. Restore
+fresh owners in phases, bind Needs→visitor callbacks without setter replay, then run actual
+ParkVisitors.Step for79960ms, with NEW arrivals too. Full state sampled every20frames and ordered
+sounds each frame match. Saved riders unload/return/continue:5/3/5 completed rides respectively.
+No native admission controller, staff, pending route-service requests or Viewer were claimed in
+this bundle. Native leased walking/readiness/pool-exhaustion continuation is separately exercised
+by GuestWalkSaveChecks, including duplicate numeric IDs and inactive objects.
+
+Five deliberate mutations fail/restored: dropped map hole history, reset needs RNG, separate cursor
+pool, lost bubble occupancy, zeroed decision deadlines. Full owner-disc SaveAudit233925PASS;
+83PythonPASS. Added --visitors-only focused gate. No mutant left. Existing GroundSaveAudit updated
+for main12352fb: demoted Both retains ground, tears up to grass WITHOUT GroundUnknown. Unknown-
+ground callback now has an explicit no-backup fixture, not dependence on the previous defect.
+Main perf7f76494/ClearQueue12352fb merged. Final broader gates recorded below after running.
+
+NEXT: native entrance/ride queue/controller resources and pending service outputs, staff/litter/
+research/management/advisor ownership, then presentation + complete Viewer load transaction.
+GuestTerminal bindings and retired ride objects need the WORLD reference registry; current owner
+factories deliberately demand those references rather than substituting reused numeric IDs.
+Save/Load remains unavailable. All3delegates used/timedout with complete files; outputs integrated,
+reviewed and consumer-tested; no pending workers. Fetch main before next ownership slice.

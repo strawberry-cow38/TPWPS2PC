@@ -18,10 +18,10 @@ namespace TPW.PS2.Data
     /// This is not the full native AI; cadence is the caller's responsibility and
     /// the original wall-clock rate is not guaranteed to be 25 Hz.
     /// </summary>
-    public sealed class GuestDecisionSchedule
+    public sealed partial class GuestDecisionSchedule
     {
         private readonly Func<int> random;
-        private readonly Dictionary<int, Gate> gates = new Dictionary<int, Gate>();
+        private readonly SnapshotIntMap<Gate> gates = new();
 
         private struct Gate
         {

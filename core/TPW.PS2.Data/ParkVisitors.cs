@@ -45,7 +45,7 @@ public enum VisitorIntent
 /// In particular, native shops use common guest walking/service states, not an RSE WALKON
 /// handshake merely because this managed adapter currently connects them through scripts.
 /// See findings/native-shop-flow.md for proven consumer paths and remaining boundaries.</summary>
-public sealed class ParkVisitors
+public sealed partial class ParkVisitors
 {
     public GuestWalk Walk { get; }
     public ParkSim Sim { get; }
@@ -53,20 +53,20 @@ public sealed class ParkVisitors
     /// <summary>A guest's plan. ⚠ Keyed by guest id and NOT by <see cref="Guest"/>, because a
     /// queued guest has no Guest object at all -- they left the walking layer.</summary>
     public sealed record Plan(int Guest, VisitorIntent Intent, int RideId, ParkCell At);
-    readonly Dictionary<int, Plan> _plans = new();
+    readonly SnapshotIntMap<Plan> _plans = new();
     // Numeric ride IDs may be reused after deletion. Ownership belongs to the
     // actual instance, so a replacement cannot silently inherit the old riders.
-    readonly Dictionary<int, ParkRide> _owners = new();
+    readonly SnapshotIntMap<ParkRide> _owners = new();
     /// <summary>⚠ <paramref name="Ride"/> is the place they were IN, kept because `_owners` is
     /// cleared the moment they start coming back and <see cref="RecoverGuests"/> still has to ask
     /// what that place was. ⚠ Positional component added deliberately: this record is only ever a
     /// dictionary VALUE and is never compared or Distinct()ed -- the same addition to
     /// ParkEntrance silently changed its equality and cost two worlds their entrance.</summary>
     sealed record ReturnToPark(ParkCell[] Preferred, bool CompletedRide, ParkRide Ride, uint? CompletedAt = null);
-    readonly Dictionary<int, ReturnToPark> _returning = new();
-    readonly Dictionary<int, GuestTerminal> _serviceTerminals = new();
+    readonly SnapshotIntMap<ReturnToPark> _returning = new();
+    readonly SnapshotIntMap<GuestTerminal> _serviceTerminals = new();
     sealed record ReliefVisit(ParkRide Owner, ReliefServiceClock Clock);
-    readonly Dictionary<int, ReliefVisit> _reliefVisits = new();
+    readonly SnapshotIntMap<ReliefVisit> _reliefVisits = new();
 
     /// <summary>Native guest-state visibility, independent of RSE LIMBO/host visibility.</summary>
     public bool ServiceHidden(int guest) => _reliefVisits.ContainsKey(guest);
@@ -94,7 +94,7 @@ public sealed class ParkVisitors
 
     // Runtime instance identity, not reusable display IDs. Native history survives
     // completion/deletion but is reset on activation and retired with the guest.
-    readonly Dictionary<int, ParkRide[]> _destinationHistory = new();
+    readonly SnapshotIntMap<ParkRide[]> _destinationHistory = new();
     readonly Func<int> _random;
     readonly GuestDecisionSchedule _decisions;
     // One monotonic producer for this coordinator: actual executed park ticks, not render
@@ -106,8 +106,8 @@ public sealed class ParkVisitors
     {
         Sim = sim ?? throw new ArgumentNullException(nameof(sim));
         Walk = walk ?? throw new ArgumentNullException(nameof(walk));
-        var rng = new Random(7);
-        _random = random ?? (() => rng.Next());
+        _ownedRandom = random == null ? new SnapshotRandom(7) : null;
+        _random = random ?? _ownedRandom.Next;
         _decisions = new GuestDecisionSchedule(_random);
     }
 
@@ -279,6 +279,7 @@ public sealed class ParkVisitors
     public Guest Arrive(ParkCell at, ParkCell to)
     {
         var g = Walk.Spawn(at, to);
+        _guestObjects[g.Id] = g;
         _destinationHistory.Remove(g.Id);
         _decisions.Forget(g.Id); // a reused identity must not inherit somebody else's deadline
         Wander(g.Id, at);
@@ -330,6 +331,7 @@ public sealed class ParkVisitors
         ride.Join(guest.Id);
         Boardings++;
         _plans[guest.Id] = plan with { Intent = VisitorIntent.Queued, At = guest.Cell };
+        _guestObjects[guest.Id] = guest;
         Walk.Remove(guest.Id);
         return true;
     }
@@ -439,6 +441,7 @@ public sealed class ParkVisitors
             if (!Walk.SendToTerminal(guest,terminal)) return false;
         }
         else if (!Walk.Send(guest, NativeQueueMouth?.Invoke(ride) ?? ride.Entrance.Value)) return false;
+        _guestObjects[guest.Id] = guest;
         _plans[guest.Id] = new Plan(guest.Id, VisitorIntent.Heading, ride.Id, guest.Cell);
         _owners[guest.Id] = ride;
         _returning.Remove(guest.Id);
@@ -739,7 +742,7 @@ public sealed class ParkVisitors
                 QueueReturn(plan, ride, completed);
             }
             else if (walking != null) Wander(guest, walking.Cell);
-            else { _plans.Remove(guest); _owners.Remove(guest); }
+            else { _plans.Remove(guest); _guestObjects.Remove(guest); _owners.Remove(guest); }
         }
     }
 
@@ -768,6 +771,7 @@ public sealed class ParkVisitors
                 if (at == null) continue; // retain explicit ownership, retry when ground is restored
                 walking = Walk.Readmit(guest, at.Value, at.Value);
             }
+            _guestObjects[guest] = walking;
             Wander(guest, walking.Cell); // only relinquish recovery ownership after readmission
             if (returning.CompletedRide)
             {
@@ -814,6 +818,7 @@ public sealed class ParkVisitors
     {
         Walk.Remove(guest);
         _plans.Remove(guest);
+        _guestObjects.Remove(guest);
         _owners.Remove(guest);
         _returning.Remove(guest);
         _destinationHistory.Remove(guest);
@@ -870,6 +875,7 @@ public sealed class ParkVisitors
             if (g.OccupiedTerminal is { } terminal) _serviceTerminals[g.Id]=terminal;
             Boardings++;
             _plans[g.Id] = plan with { Intent = VisitorIntent.Queued, At = g.Cell };
+            _guestObjects[g.Id] = g;
             Walk.Remove(g.Id);
         }
     }
@@ -880,6 +886,7 @@ public sealed class ParkVisitors
         _reliefVisits[guest.Id]=new ReliefVisit(ride,new ReliefServiceClock(DecisionTick));
         _plans[guest.Id]=plan with { Intent=VisitorIntent.Servicing, At=guest.Cell };
         Boardings++;
+        _guestObjects[guest.Id] = guest;
         Walk.Remove(guest.Id);
         // 130AA0 ->1FAD40 requests shared channel0, slot5, variant1. Do not flush an
         // unfinished animation or cancel scripts; the native consumer queues normally.
@@ -1067,7 +1074,7 @@ public sealed class ParkVisitors
         }
     }
 
-    readonly Dictionary<int, uint> _vomiting = new();
+    readonly SnapshotIntMap<uint> _vomiting = new();
     /// <summary>Instrumentation for the staff checks: litter dropped by guests, rubbish binned (the
     /// adapter below), and vomit left.</summary>
     public int LitterDropped { get; private set; }

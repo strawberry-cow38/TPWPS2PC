@@ -10,7 +10,7 @@ namespace TPW.PS2.Data;
 /// movement-purpose dispatch remain caller-owned. Supply native delta and the
 /// actual signed active speed; no seconds conversion or unused movement carry.
 /// </summary>
-public sealed class NativeGuestRoute : IDisposable
+public sealed partial class NativeGuestRoute : IDisposable
 {
     public enum Outcome { Pending, Completed, Failed, Idle }
 

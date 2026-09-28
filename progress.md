@@ -3318,3 +3318,13 @@ Geometry final gates a7275e8:231438SaveAudit,659+92Godotsmokes,83PythonPASS;
 8parkmatrix4PASS+4exactretailreds(landing_evidenceTrue), runtime10/11knownFANTASYanchoronly.
 Cow ClearQueue12352fb/perf7f76494 oncatboy/frame-allocations awaitingtinyreview/main;
 updateoldGroundUnknowncontrolwhenmerged (useexplicitno-backupfixture forunknown callback).
+
+### September28 save/load — visitor/walking/needs graph (research only)
+GuestWalk/NativeGuestRoute + VisitorNeeds/Wants + ParkVisitors/DecisionSchedule/ReliefClock now
+snapshot with identity-aware staged factories and ONE native output pool. Real3disc FILE visitor
+graph continues79.96s through ParkVisitors.Step incl new arrivals, saved riders unload andlive;
+5/3/5 rides completed. No staff/admission controller/pending service/Viewer claim.
+Review found dictionary-removal holes affect future arrival order; IntMapLayout tracks slot/free
+history, stockDictionary oracle350churn operations/repeatedcuts. Five mutants fail/restored.
+233925SaveAudit+83PythonPASS. Main12352fb pathfix/perf merged; demotedBoth control now expects
+retainedground/noGroundUnknown; explicitno-backup fixture coversunknowncallback.

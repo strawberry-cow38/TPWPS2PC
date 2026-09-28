@@ -19,7 +19,7 @@ public enum GuestState { Walking, Arrived, NoRoute, Stranded }
 /// drawing. An explicit native-route lease instead owns signed 1/256-cell coordinates;
 /// in that mode Position and NativeHeading are authoritative, Progress stays zero, and
 /// Cell/Next are only coarse observations, not the source of movement.</summary>
-public sealed class Guest
+public sealed partial class Guest
 {
     public int Id { get; init; }
     internal NativeWalkLease NativeMotion { get; set; }
@@ -120,8 +120,11 @@ public sealed partial class GuestWalk
     public bool IsLive(Guest guest) => guest != null && _live.Contains(guest);
     internal bool UniqueLive(Guest guest) => IsLive(guest) && _liveIdCounts[guest.Id] == 1;
 
-    public GuestWalk(ParkPaths paths)
+    public GuestWalk(ParkPaths paths) : this(paths, new NativeRoutePool()) { }
+
+    private GuestWalk(ParkPaths paths, NativeRoutePool nativeRoutes)
     {
+        NativeRoutes = nativeRoutes;
         Paths = paths ?? throw new ArgumentNullException(nameof(paths));
         Guests = _guests.AsReadOnly(); // mutations must maintain ordered list and liveness index together
     }
