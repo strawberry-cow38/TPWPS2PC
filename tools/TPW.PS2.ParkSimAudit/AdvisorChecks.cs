@@ -11,7 +11,8 @@ using TPW.PS2.Data;
 /// <see cref="AdvisorMessageStack"/> as the viewer drives them.
 ///
 /// Every native constant is re-read from the EXECUTABLE. tools/advisor_teeth.py mutates each rule and
-/// requires this family to go red.</summary>
+/// requires this family to go red. ⚠ The speech length is a FIXED value per check (2000, 3000, 5000 ms)
+/// standing in for the audio's stream length, which is the view's (<see cref="ParkAdvisor.SpeechLength"/>).</summary>
 static class AdvisorChecks
 {
     /// <summary>A producer set the checks control: every external variable from <see cref="Values"/>.</summary>
@@ -396,8 +397,9 @@ static class AdvisorChecks
         var s = new AdvisorMessageStack();
         int sounds = 0; s.UiSound = n => { if (n == AdvisorMessageStack.SoundAdded) sounds++; };
         for (short r = 1; r <= 33; r++) s.Add(AdvisorRecordType.Plain, r);
-        Check(s.Count == 32 && s.Records[0].Row == 2 && s.Records[31].Row == 33 && sounds == 33,
-              $"stack: 32 records; the 33rd removes the OLDEST (now rows {s.Records[0].Row}..{s.Records[31].Row}); every add plays 0x1E");
+        var held = s.Records;
+        Check(s.Count == 32 && held.Count == 32 && held[0].Row == 2 && held[^1].Row == 33 && sounds == 33,
+              $"stack: 32 records; the 33rd removes the OLDEST (now {held.Count}, rows {held.FirstOrDefault()?.Row}..{held.LastOrDefault()?.Row}); every add plays 0x1E");
         var q = new AdvisorMessageStack();
         foreach (short r in new short[] { 10, 11, 12, 13 }) q.Add(AdvisorRecordType.Plain, r);
         q.MarkForRemoval(0);
@@ -519,9 +521,9 @@ static class AdvisorChecks
         // rule 2: v4 < 24, v14 < 4, v12 > 0, v0 != 0, then held > 120 -- held for 0 days is result 2.
         prod.Values[12] = 1; prod.Values[0] = 1; prod.Values[14] = 0;
         foreach (int v in new[] { 0, 4, 12, 14 }) s.Produce(v);          // refreshed now, not when the cursor comes round
-        s.SetTimes(2, 0, 250);
+        s.SetTimes(2, 0, 240);
         day = 250; To(2);
-        Check(failed && s.Last.Result == AdvisorRules.Result.ElapsedBlocked && s.Next(2) == 0 && s.LastFail(2) == 250,
+        Check(failed && s.Last.Result == AdvisorRules.Result.ElapsedBlocked && s.Next(2) == 0 && s.LastFail(2) == 240,
               "next: a failed comparison sets lastFail = day and leaves next; a 'held' block (result 2) changes neither");
         s.SetTimes(2, 0, 0);
         day = 40000; To(2);
