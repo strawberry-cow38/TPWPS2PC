@@ -3594,6 +3594,42 @@ public partial class Viewer : Node3D
             }
             case "stafftypes": ShowStaffInfoTypes(); break;
             case "staffitem": ShowStaffInfoMember(arg); break;
+            // ⭐⭐ VISITOR INFORMATION (menu id 10). Two headings, the feelings block, and two
+            // labelled values.
+            case "visitorinfo":
+            {
+                // ⭐ The feelings ARE real: happiness >= 76 happy, 25..75 middling, < 25 unhappy,
+                // each as a fraction of the guests in the park (§3.5). Computed once on open,
+                // which is also when the console computes it -- it never refreshes while open.
+                int happy = 0, mid = 0, sad = 0, n = 0;
+                var needs = _visitors?.Needs;
+                if (_guests != null && needs != null)
+                    foreach (var g in _guests.Guests)
+                    {
+                        if (!needs.Has(g.Id)) continue;
+                        int h = needs.Of(g.Id).Happiness;
+                        if (h >= 76) happy++; else if (h >= 25) mid++; else sad++;
+                        n++;
+                    }
+                var feel = n > 0
+                    ? new List<int> { happy * 100 / n, mid * 100 / n, sad * 100 / n }
+                    : new List<int> { 0, 0, 0 };
+                _shopPanel.EnsureVisitorArt(_lib);
+                // ⚠ People Visited is a CUMULATIVE admissions counter (incremented once per guest
+                // let through the gate), not the number in the park now -- and this port keeps no
+                // such counter. Ticket Price needs a gate price, which it also does not have.
+                // Both are dashes; showing the live headcount for "people visited" would be a
+                // plausible wrong number rather than an obvious missing one.
+                var vcells = new List<(string, int)>
+                {
+                    (null, 0), (null, 0), ("--", 0), ("--", 0),
+                };
+                _shopPanel.ShowScreen(LaptopScreen.VisitorInfo, "", vcells, feelings: feel);
+                ClearLaptopModel();
+                RefreshLaptopBalance();
+                Status($"visitor information -- {n} guests: {happy} happy, {mid} middling, {sad} unhappy");
+                break;
+            }
             // ⭐⭐ NEW LOAN (menu id 6). `arg` is the lender index, which the spinner steps.
             case "newloan":
             {

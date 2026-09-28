@@ -644,6 +644,46 @@ public sealed record LaptopScreen(
     /// drawn.</summary>
     public const int LoanAlreadyTakenTextId = 910;
 
+    /// <summary>⭐ VISITOR INFORMATION (menu id 10). `findings/parkstats-screens.md` §3; draw
+    /// `FUN_00185458`, z 100, amber throughout.
+    ///
+    /// Four text rows at explicit heights -- two headings and two labelled values -- with the
+    /// feelings block between them. ⚠ The headings are NOT on a grid with the values: 65, 243,
+    /// 350, 400 are authored positions, not a step.
+    ///
+    /// ⚠⚠ Both values are drawn LEFT at col 260 despite the scene saying `center`: the binder
+    /// stores no justify for `GatePriceVal` and none for `PeopleVisitedText` either, so whatever
+    /// justify was last set stays in force -- and that is the LEFT one from `GatePriceText`.
+    /// Honouring the authored centre would be reading the scene instead of the code.</summary>
+    public static readonly LaptopScreen VisitorInfo = new(
+        "main_ps_visitorinfo.sce", 10, "FeelingsText", "FeelingsText", "PeopleVisitedVal",
+        "FeelingsText",
+        new LaptopRow[]
+        {
+            new(853, LaptopRowKind.Text),    // People's Feelings   -- heading
+            new(308, LaptopRowKind.Text),    // Dominant Thoughts   -- heading
+            new(139, LaptopRowKind.Value),   // People Visited
+            new(50,  LaptopRowKind.Money),   // Ticket Price
+        },
+        LabelsOnGrid: true, MonochromeValues: true,
+        RowYs: new[] { 65, 243, 350, 400 });
+
+    /// <summary>⭐ The three feelings rows: icon left, bar right, in a blue pill.
+    /// `FeelingsClouds` (45, 105) is a REGION and the rows step 40 down it -- 105, 145, 185 --
+    /// while each PILL is 48 tall, so consecutive pills OVERLAP BY 8px. That is what the code
+    /// draws; it is not a rounding error of ours.</summary>
+    public const int FeelingsRow0 = 105, FeelingsRowStep = 40, FeelingsPillHeight = 48;
+
+    /// <summary>Icon 32x32 at col 45; the bar is 72x22 at col 127 (icon 32 + a 50 gap), centred
+    /// against the icon's height, so `y + 5`.</summary>
+    public const int FeelingsIconCol = 45, FeelingsBarCol = 127, FeelingsBarDy = 5;
+
+    /// <summary>The three thought faces, by their art path. ⚠ The console reaches these through a
+    /// sprite REGISTRY by id (5, 6, 7); this port has no registry, but the registry's own entries
+    /// name these files, so they load by path instead.</summary>
+    public static readonly string[] FeelingsIconPaths =
+        { "/laptop/thoughts/TIHAPPY.ssh", "/laptop/thoughts/TINORMAL.ssh", "/laptop/thoughts/TISAD.ssh" };
+
     public static readonly LaptopScreen[] AllList = { AllRides, AllShops, AllSideshows, AllToilets };
 
     /// <summary>The four "Single ..." item screens the console builds on one base class. ⚠ Build

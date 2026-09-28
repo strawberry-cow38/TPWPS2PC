@@ -280,6 +280,16 @@ public sealed partial class LaptopShopScreen : Control
     /// and `_headers` the two column titles, drawn on the row the labels deliberately skip.</summary>
     IReadOnlyList<string> _column2, _headers;
 
+    /// <summary>⭐ Visitor Information's three feelings fractions (0..100), or null. Drawn as an
+    /// icon and a bar inside a blue pill, three rows stepping 40 down the `FeelingsClouds` region.
+    /// </summary>
+    IReadOnlyList<int> _feelings;
+
+    /// <summary>The three thought faces and the pill's end cap. ⚠ Loaded by PATH because this
+    /// port has no sprite registry; the console reaches the same files by id 5/6/7 and 0x33.</summary>
+    public Texture2D[] FeelingsIcons { get; set; }
+    public Texture2D PillCap { get; set; }
+
     /// <summary>⭐ The nine-slice the graph sits in. `findings/graph-widget.md` §1.3: the series
     /// draw builds a temporary element over the plot rect and issues `FUN_00142090` -- sprite
     /// `0x30` tiled in 16px rows with `0x2f` corners and `0x32` edges, which is the SAME
@@ -292,8 +302,10 @@ public sealed partial class LaptopShopScreen : Control
     public void ShowScreen(LaptopScreen spec, string title, IReadOnlyList<(string Text, int Fraction)> cells,
                            bool buildRow = false, int buildTextId = LaptopMainMenu.BuildTextId,
                            IReadOnlyList<Color?> barTints = null, GraphSeries? graph = null,
-                           IReadOnlyList<string> column2 = null, IReadOnlyList<string> headers = null)
+                           IReadOnlyList<string> column2 = null, IReadOnlyList<string> headers = null,
+                           IReadOnlyList<int> feelings = null)
     {
+        _feelings = feelings;
         _barTints = barTints;
         _graph = graph;
         _column2 = column2;
@@ -1052,6 +1064,43 @@ public sealed partial class LaptopShopScreen : Control
             DrawTextureRect(_arrows, _pageArrows, false, ArrowTint);
         }
 
+        // ⭐ VISITOR INFORMATION's feelings rows: a blue pill, then the icon and the bar on it.
+        // ⚠ The pills OVERLAP by 8px because the row advance (40) is less than the pill height
+        // (48). That is what the console draws, so they are not spaced out to look tidier.
+        if (_feelings != null && layout["FeelingsClouds"] is { } clouds)
+        {
+            var pillBlue = Color.Color8(0, 0, 255);
+            for (int r = 0; r < _feelings.Count && r < 3; r++)
+            {
+                float top = At(clouds).Y + LaptopScreen.FeelingsRowStep * r * s;
+                float bodyX = Origin.X + LaptopScreen.FeelingsIconCol * s;
+                float bodyW = (LaptopScreen.FeelingsBarCol + 72 - LaptopScreen.FeelingsIconCol) * s;
+                var body = new Rect2(new Vector2(bodyX, top - 8 * s),
+                                     new Vector2(bodyW, LaptopScreen.FeelingsPillHeight * s));
+                DrawRect(body, pillBlue);
+                // The end caps are 12x48, mirrored on the right, sitting just outside the body.
+                if (PillCap != null)
+                {
+                    var capL = new Rect2(new Vector2(bodyX - 9 * s, body.Position.Y),
+                                         new Vector2(9 * s, body.Size.Y));
+                    var capR = new Rect2(new Vector2(body.End.X, body.Position.Y),
+                                         new Vector2(9 * s, body.Size.Y));
+                    DrawTextureRect(PillCap, capL, false, pillBlue);
+                    DrawTextureRect(PillCap, capR, false, pillBlue);
+                }
+                if (FeelingsIcons != null && r < FeelingsIcons.Length && FeelingsIcons[r] != null)
+                    DrawTextureRect(FeelingsIcons[r],
+                        new Rect2(new Vector2(bodyX, top), new Vector2(32 * s, 32 * s)), false);
+                var bar = new Rect2(
+                    new Vector2(Origin.X + LaptopScreen.FeelingsBarCol * s,
+                                top + LaptopScreen.FeelingsBarDy * s),
+                    new Vector2(72 * s, 22 * s));
+                // ⚠ The three bars are given colours by the constructor, but style 1 never applies
+                // a tint -- so they draw in the art's own colour, like every other progress bar.
+                DrawBar(bar, _feelings[r], s);
+            }
+        }
+
         // ⭐ The GRAPH, drawn before the rows for the same reason the model window is. ⚠ Its
         // element is the model window's own frame (315, 208, 147x200), which is why no graph
         // screen also has a model.
@@ -1221,6 +1270,39 @@ public sealed partial class LaptopShopScreen : Control
     }
 
     static string Money(int v) => v < 0 ? $"-${-v:N0}" : $"${v:N0}";
+
+    /// <summary>⭐ Load Visitor Information's art once: the three thought faces and the pill's
+    /// end cap. ⚠ By PATH -- this port has no sprite registry, and the console's own registry
+    /// entries name these files, so the paths are the registry's answer rather than a guess.
+    /// A face that will not load leaves its slot null and the row draws without an icon.</summary>
+    public void EnsureVisitorArt(AssetLibrary lib)
+    {
+        if (FeelingsIcons != null || lib == null) return;
+        var icons = new Texture2D[LaptopScreen.FeelingsIconPaths.Length];
+        for (int i = 0; i < icons.Length; i++)
+        {
+            icons[i] = LoadSsh(lib, LaptopScreen.FeelingsIconPaths[i]);
+            if (icons[i] == null)
+                GD.PrintErr($"[laptop] visitor icon missing: {LaptopScreen.FeelingsIconPaths[i]}");
+        }
+        FeelingsIcons = icons;
+        PillCap ??= LoadSsh(lib, "/laptop/PROG_WBIT.ssh");
+    }
+
+    /// <summary>One UI sprite off the disc, or null. Same shape as the local loader `Create` uses;
+    /// separate because this one runs later, when a screen first asks for its art.</summary>
+    static ImageTexture LoadSsh(AssetLibrary lib, string name)
+    {
+        var raw = lib?.ReadUi(name);
+        if (raw == null) return null;
+        try
+        {
+            var ssh = new Ssh(raw);
+            return ImageTexture.CreateFromImage(
+                Image.CreateFromData(ssh.Width, ssh.Height, false, Image.Format.Rgba8, ssh.Pixels));
+        }
+        catch (Exception ex) { GD.PrintErr($"[laptop] {name}: {ex.Message}"); return null; }
+    }
 
     /// <summary>⚠ A value's colour. Almost every data screen picks its figures out in the
     /// highlight, but the Balance Sheet issues ONE colour before its row loop and never changes
