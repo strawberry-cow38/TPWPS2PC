@@ -11235,9 +11235,23 @@ public partial class Viewer : Node3D
     /// above is the proof.</summary>
     const float ConsoleUiWidth = 512f, ConsoleUiHeight = 512f;
     static readonly Color MoneyNormal = new(1f, 1f, 0f), MoneyBroke = new(200 / 255f, 130 / 255f, 0f);
-    /// ⚠ The shadow is drawn in palette slot `colour + 8`, and what that slot holds is not read.
-    /// Black at half alpha is a shadow's usual job; marked rather than claimed.
-    static readonly Color MoneyShadowTint = new(0f, 0f, 0f, 0.55f);
+    /// <summary>⭐ OPAQUE BLACK, with the glyph's own coverage as the alpha. `FUN_002138E0(0,0,0)`.
+    ///
+    /// ⚠⚠ I HAD BOTH HALVES OF THIS WRONG, and marked only one of them as a guess. The old comment
+    /// read "the shadow is drawn in palette slot `colour + 8`, and what that slot holds is not read;
+    /// black at half alpha is a shadow's usual job; marked rather than claimed", with the tint at
+    /// `0.55` alpha. tinyclaw traced it 2026-09-28 (`~/ghidra_tpw/notes/hud-glyph-scale.md`):
+    ///
+    /// - **The `+8` is DEPTH, not a palette slot.** The shadow is the same glyph strip issued at
+    ///   `z + 8`. I had read a z bias as a palette index and written that down as traced fact -- the
+    ///   half I did NOT flag was the half that was wrong, which is the worse way round.
+    /// - **The colour is opaque black**, not 55% alpha. There is no translucency: the softness comes
+    ///   entirely from the glyph bitmap's own coverage, which `Modulate` multiplies through.
+    ///
+    /// ⚠ The `MoneyShadow = 2` spatial offset is still mine and is still a guess -- a shadow at the
+    /// same x/y and a different z would simply be hidden behind the text, so SOME offset must exist,
+    /// but 2 units is chosen to look right rather than read. Flagged properly this time.</summary>
+    static readonly Color MoneyShadowTint = new(0f, 0f, 0f, 1f);
     TextureRect _moneyShadow;
 
     /// <summary>⚠ ONCE, and it remembers a failure so a missing font does not retry every frame
