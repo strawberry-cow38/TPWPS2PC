@@ -78,9 +78,12 @@ public partial class Viewer
         if (_staff == null) return;
         if (!ReferenceEquals(_staff.Gate, _entranceFlow)) _staff.Gate = _entranceFlow;
         SyncCopyActors();
+        // ⭐ The carrying guards in map-list order, not the dictionary's: the copies draw from the shared
+        // `_staffAnimationRand` too (see TickStaffAnimations).
         for (uint i = 0; i < updates; i++)
-            foreach (var c in _copyActors.Values)
-                c.Animation?.Update(ParkSim.TickMilliseconds, _staffAnimationRand.Next);
+            foreach (var m in _staff.Members)
+                if (m is Guard g && _copyActors.TryGetValue(g, out var c))
+                    c.Animation?.Update(ParkSim.TickMilliseconds, _staffAnimationRand.Next);
     }
 
     void ResetSecurity()
