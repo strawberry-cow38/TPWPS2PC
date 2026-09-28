@@ -99,9 +99,19 @@ The final coordinator must establish an omission policy only for truly diagnosti
 Perf7f76494/main reuses AnimatedModel.LastWorld=_worldScratch on animated paths and Part.LivePos=
 PosScratch on geometry rebuild. Checkpoints must COPY dictionary values/vertex arrays, never keep
 these references. Worse, the no-track path returns Model.BindWorld directly; multiple placed
-instances can share this dictionary. Model.BindWorld/BindLocals/BindParents are READ-ONLY shared
+actors can share this dictionary. CORRECTION (cow,16:26): rides use `_rideMeshes` keyed by ride ID,
+so two placed rides are NOT a valid sharing fixture. Guests/staff use `_charModels` keyed by model
+path. Skeletal records leave the ordinary transform channels empty and take the BindWorld early-
+out. Require explicit shared Model AND shared LastWorld assertions on two skeletal actors before
+testing isolation; otherwise the fixture is vacuous. Model.BindWorld/BindLocals/BindParents are READ-ONLY shared
 asset caches. Never restore by writing through them; use own dictionaries/WorldTransformsInto.
 Current NativeBus snapshot already stores copied arrays/scalars and rebuilds a fresh model, not
 LastWorld. Required controls for general actor snapshot: source Advance/SetFrame cannot mutate
 saved checkpoint; restoring instance A cannot mutate B sharing a Model; source asset caches remain
 unchanged. These are FUTURE checklist controls, not claimed implemented by the current bus smoke.
+
+Advisor head is the separate writable-model case (tinyclaw,16:26): costume/mouth WriteNodeFlags
+operate on its OWN cloned model; staff/guest character assets stay read-only. Stage the head from
+immutable asset plus its actual saved Dressed/MouthShown (including initial -1), channel/pose and
+retained visibility. Do not infer initial visual mouth solely from CORE MouthShape (0 differs from
+head MouthShown=-1), and do not serialize entire model bytes to preserve runtime flag writes.
