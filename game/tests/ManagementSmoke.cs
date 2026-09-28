@@ -16,8 +16,8 @@ namespace TPWPS2Viewer.Tests;
 /// Run with --map=WORLD --mode=park. `TPW_MGMT_SHOT=dir` saves the All Staff screen, the patrol-area
 /// highlight and the park after the month.
 ///
-/// ⚠ The Training and Single Staff screens are cow tools'; until they exist this drives the core calls
-/// they will make, and says so in the check labels.</summary>
+/// Training now exercises the real screen's row click; its opening is explicit because
+/// Single Staff navigation is a separate UI. Patrol/fire tests below still name their core calls.</summary>
 public partial class ManagementSmoke : Node3D
 {
     const BindingFlags Hidden = BindingFlags.Instance | BindingFlags.NonPublic;
@@ -217,11 +217,30 @@ public partial class ManagementSmoke : Node3D
             // ---------------------------------------------------------------------------------
             // Training: the Training screen's Cross (0x1FF6F8 -> 0x1FF610), through the core call it makes.
             int before = sim.Finances.Balance, level = researcher.Level;
-            var trained = staff.Train(researcher);
+            // The newly merged Training screen is a control: WidgetStep defaults to0, so
+            // its existing per-widget placement must survive the All Staff correction.
+            // Single Staff navigation is a separate screen; open its target through the real stack.
+            laptopBack.Clear();laptopBack.Add(("info",null));
+            laptopBack.Add(("stafftraining",staff.Members.ToList().IndexOf(researcher).ToString()));
+            Call(viewer,"ShowLaptopLevel");await Frames();
+            var trainingCells=Panel<List<(string Text,int Fraction)>>(panel,"_cells");
             int cost = StaffTables.TrainingCost(StaffKind.Researcher, level);
-            Check(trained == TrainingResult.Trained && before - sim.Finances.Balance == cost * 10 && researcher.Level == level + 1
+            Check(Panel<string>(panel,"_title")==researcher.Candidate.Name(text),"Training retains its screen and now shares the real candidate name");
+            Check(trainingCells.Count==4&&trainingCells[1].Text==Money.Format(cost*10)
+                &&trainingCells[2].Text==Money.Format(researcher.WageAfterTraining*10)
+                &&trainingCells[3].Fraction==researcher.TrainingBar,"Training's post-training figures survive the merge");
+            var trainRows=Panel<Dictionary<int,Rect2>>(panel,"_specRows");
+            // Preserve the existing per-widget centering on this independent screen:
+            // SkillLevelBar y271/h22 against a30-unit text line ->267, not All Staff's grid.
+            Check(trainRows.Count==4&&Math.Abs((trainRows[3].Position.Y-panel.PanelOrigin.Y)/panel.PanelScale-267)<.01f,
+                "Training retains its ordinary widget-centered skill row; shared staff grid does not leak into it");
+            if(shots!=null)Call(viewer,"SaveShot",ShotPath("training"));
+            Click(new Vector2(panel.PanelOrigin.X+65*panel.PanelScale,trainRows[0].GetCenter().Y));await Frames();
+            Check(before - sim.Finances.Balance == cost * 10 && researcher.Level == level + 1
                   && researcher.Tiredness == 0 && researcher.Morale == 100,
-                  $"training (core call of the Training screen): the researcher L{level} -> L{researcher.Level} for {Money.Format(cost * 10)}, tiredness 0, morale 100");
+                  $"training (real screen row click): the researcher L{level} -> L{researcher.Level} for {Money.Format(cost * 10)}, tiredness 0, morale 100");
+
+            Call(viewer,"ToggleLaptop");await Frames();
 
             // ---------------------------------------------------------------------------------
             // The patrol-area tool (mode 17): Single Staff's "Set Patrol Area", the cursor and two presses.
