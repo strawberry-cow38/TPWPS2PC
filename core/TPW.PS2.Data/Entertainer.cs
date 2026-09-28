@@ -18,7 +18,7 @@ namespace TPW.PS2.Data;
 /// the base 15. His level only feeds the guests' watch time `300 + 60·L` and his wage.
 /// ⚠ ADAPTERS: "a guest" is a guest with a body on the walk (<see cref="ParkStaff.GuestAdjacent"/>);
 /// natively a guest hidden in a ride or shop counts if its stored position is adjacent.</summary>
-public sealed class Entertainer : StaffMember
+public sealed partial class Entertainer : StaffMember
 {
     /// <summary>His own states: 0xC "Entertaining", 0x20 "Shocked" (debug table `0x10CA98`).</summary>
     public const byte StatePerforming = 0x0C, StateShocked = 0x20;

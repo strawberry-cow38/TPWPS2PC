@@ -66,7 +66,7 @@ public sealed class ResearchProject
 /// and the percent already done, <see cref="ItemLevel"/> answers `0x12BA08`, <see cref="Researched"/>
 /// is raised where `0x12BAF8` does the level++, and <see cref="AnythingLeftToResearch"/> answers
 /// `0x104358(0xFFFF)`. Full shape: `findings/hardcoded-screens.md`.</summary>
-public sealed class ResearchManager
+public sealed partial class ResearchManager
 {
     public const int SlotCount = 5;
     readonly ResearchProject[] _slots = new ResearchProject[SlotCount];

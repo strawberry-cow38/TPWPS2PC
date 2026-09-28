@@ -13,7 +13,7 @@ namespace TPW.PS2.Data;
 /// release `0x1B63F8` → `0x1DC780`). No idle 1-in-16 sound: the researcher's find-work has none. The
 /// research rate depends on how often he comes back to state 0 -- 70 % of his decisions are patrols
 /// (INFERRED, §10.2).</summary>
-public sealed class Researcher : StaffMember
+public sealed partial class Researcher : StaffMember
 {
     /// <summary>State 0x1F (`sb` at `0x1B6100`): researching, for one tick.</summary>
     public const byte StateResearching = 0x1F;

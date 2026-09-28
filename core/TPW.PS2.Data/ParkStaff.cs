@@ -103,6 +103,8 @@ public sealed partial class ParkStaff
     readonly bool[] _striking = new bool[6];                              // by type code 1..5
     StaffCandidateDatabase _candidates;
     ulong _poolEpoch;
+    SnapshotRandom _ownedRandom;
+    bool _snapshotReady = true;
 
     /// <param name="visitors">The park's coordinator: its walk's <see cref="GuestWalk.NativeRoutes"/>
     /// is THE output-slot pool the staff route into, shared with every guest.</param>
@@ -113,18 +115,23 @@ public sealed partial class ParkStaff
     /// console's interleaving of draws across guests, planner and staff is not reproducible in any
     /// case, so a caller may pass the guests' stream or its own. Default: a fixed-seed generator.</param>
     public ParkStaff(ParkVisitors visitors, ParkClock clock, NativeActivationSequence activations,
-                     Func<int, int> random = null)
+                     Func<int, int> random = null) : this(visitors, clock, activations, random, false) {}
+
+    // Restoring builds stable member shells without changing Walk or consuming litter RNG.
+    ParkStaff(ParkVisitors visitors, ParkClock clock, NativeActivationSequence activations,
+              Func<int,int> random, bool staged)
     {
+        _snapshotReady = !staged;
         Visitors = visitors ?? throw new ArgumentNullException(nameof(visitors));
         Clock = clock ?? throw new ArgumentNullException(nameof(clock));
         Activations = activations ?? throw new ArgumentNullException(nameof(activations));
-        if (random == null) { var rng = new Random(0x5747); random = n => n <= 0 ? 0 : rng.Next(n); }
+        if (random == null) { _ownedRandom = new SnapshotRandom(0x5747); random = DefaultRandom; }
         Random = random;
-        Tiles = new NativeTileView(Visitors.Walk.Paths, () => Visitors.Sim.Rides);
+        Tiles = new NativeTileView(Visitors.Walk.Paths, DefaultPlacedRides);
         RouteRequests = new StaffRouteService(Visitors.Walk.Paths, Tiles, Routes);
-        Litter = new ParkLitter(Random, Activations);
-        Features = () => Visitors.Sim.Rides.Select(StaffFeature.Of).Where(f => f != null);
-        Visitors.Walk.Paused = g => Visitors.Staff?.IsWatching(g.Id) == true;   // a guest watching a show stands still
+        if (!staged) Litter = new ParkLitter(Random, Activations);
+        Features = DefaultFeatures;
+        if (!staged) Visitors.Walk.Paused = DefaultPaused;   // a guest watching a show stands still
         _poolEpoch = Routes.ResetGeneration;
         // 0x147EB0: every pool built once, its five slots pushed on the free list AT THE HEAD, so
         // the first allocation gets slot 4.
@@ -155,9 +162,9 @@ public sealed partial class ParkStaff
     public ParkClock Clock { get; }
     public NativeActivationSequence Activations { get; }
     public Func<int, int> Random { get; }
-    public NativeTileView Tiles { get; }
-    public StaffRouteService RouteRequests { get; }
-    public ParkLitter Litter { get; }
+    public NativeTileView Tiles { get; private set; }
+    public StaffRouteService RouteRequests { get; private set; }
+    public ParkLitter Litter { get; private set; }
 
     /// <summary>⚠ ADAPTER for `[0x397644]`, the frame counter `0x1C4930` reads: the port's own count
     /// of staff updates, bumped at the END of <see cref="Update"/> as the render bumps the native one
@@ -235,6 +242,7 @@ public sealed partial class ParkStaff
     /// no guard (the Hire panel caps a type at 5 and lists only available candidates).</summary>
     public StaffMember Hire(StaffKind kind, int candidateSlot)
     {
+        RequireSnapshotReady();
         if ((uint)candidateSlot >= StaffTables.PoolSize) throw new ArgumentOutOfRangeException(nameof(candidateSlot));
         if (!CanHire(kind) || !Candidates.For(kind, candidateSlot).Available) return null;
         var member = _free[kind][0];
@@ -360,6 +368,7 @@ public sealed partial class ParkStaff
     /// bump <see cref="Now"/>.</summary>
     public void Update()
     {
+        RequireSnapshotReady();
         Tiles.Refresh();
         if (Routes.ResetGeneration != _poolEpoch) RouteSystemReset();
         NoticeRemovals();

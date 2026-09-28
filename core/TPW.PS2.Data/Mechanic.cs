@@ -29,7 +29,7 @@ namespace TPW.PS2.Data;
 /// the view's path tool); the handle test <see cref="ParkStaff.HandlePlaying"/>; the ride's native
 /// rotation (<see cref="ParkRide.NativeRotation"/>); the broken-ride iterator's order within a pool
 /// (newest first, INFERRED natively and PlacedDestination.InNativeOrder here).</summary>
-public sealed class Mechanic : StaffMember
+public sealed partial class Mechanic : StaffMember
 {
     /// <summary>Modes of his walks (`C+0x2E`, staff-person.md §8): 6 repair, 0x14 install, 0x16 leave.</summary>
     public const byte ModeRepair = 0x06, ModeInstall = 0x14, ModeLeave = 0x16;

@@ -36,7 +36,7 @@ namespace TPW.PS2.Data;
 /// - ⚠ `0x1E61E0`, the open-ground test behind flag 0x02, is unread; it is taken as "no no-build
 ///   bit", by analogy with its sibling `0x1E63C0` (kind 0 without property 2), so a request that
 ///   may cross grass still cannot walk off the plot or through scenery.</summary>
-public sealed class NativeTileView
+public sealed partial class NativeTileView
 {
     public const int KindNone = -1, KindGround = 0, KindPath = 2, KindNever = 3, KindQueue = 4,
                      KindBuilding = 5, KindBuildingEntry = 7, KindWalkway = 0x0C, KindQueueOnPath = 0x0D,

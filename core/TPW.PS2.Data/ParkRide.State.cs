@@ -148,6 +148,10 @@ public sealed partial class ParkRide
     /// graph ownership/back-links. This does not restore referenced objects or publish the ride.</summary>
     public static ParkRide FromState(State state, RideDefinition definition, RseMachine machine,
         RsePreviewHost host, TrackRideSim track, CoasterSim coaster, Func<string, StaffMember> resolveStaff)
+        => BuildState(state,definition,machine,host,track,coaster,resolveStaff,false);
+
+    internal static ParkRide BuildState(State state,RideDefinition definition,RseMachine machine,
+        RsePreviewHost host,TrackRideSim track,CoasterSim coaster,Func<string,StaffMember> resolveStaff,bool deferStaff)
     {
         Validate(state);
         Reference(state.DefinitionKey, definition, nameof(definition));
@@ -155,9 +159,9 @@ public sealed partial class ParkRide
         Reference(state.TrackId, track, nameof(track)); Reference(state.CoasterId, coaster, nameof(coaster));
         if (state.AssignedMechanicId != null && string.IsNullOrWhiteSpace(state.AssignedMechanicId))
             throw new ArgumentException("Empty assigned mechanic ID.");
-        var staff = state.AssignedMechanicId == null ? null :
+        var staff = state.AssignedMechanicId == null || deferStaff ? null :
             (resolveStaff ?? throw new ArgumentNullException(nameof(resolveStaff)))(state.AssignedMechanicId);
-        Reference(state.AssignedMechanicId, staff, nameof(AssignedMechanic));
+        if (!deferStaff) Reference(state.AssignedMechanicId, staff, nameof(AssignedMechanic));
         var r = new ParkRide
         {
             Id = state.Id, Name = state.Name, Origin = LoadCell(state.Origin).Value,

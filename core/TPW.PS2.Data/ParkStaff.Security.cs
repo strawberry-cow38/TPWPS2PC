@@ -23,7 +23,7 @@ public sealed class StaffEffector
 /// the entertainer), so every effector on PS2 is an entertainer's flags-2, radius²-1 zone and the
 /// guest code for flags 1 and 4 never fires (findings §4.4). ⚠ The free list's initial order is not
 /// read; the port pushes slot 0 first (so slot 19 is allocated first), as the staff pools do.</summary>
-public sealed class ParkEffectors
+public sealed partial class ParkEffectors
 {
     public const int Capacity = 20;
     readonly StaffEffector[] _slots = new StaffEffector[Capacity];
@@ -107,11 +107,15 @@ public sealed class PrankStink
 /// prank makes litter with no stink (INFERRED from the READ arithmetic, §1.5). ⚠ `rand` is `0x29CF08`,
 /// the C library's (<see cref="NewlibRand"/>): the generator, not the console's position in its
 /// stream. The particle itself is the view's (<see cref="Started"/>/<see cref="Stopped"/>).</summary>
-public sealed class PrankStinks
+public sealed partial class PrankStinks
 {
     public const int Capacity = 10;
     readonly List<PrankStink> _entries = new();
-    readonly Func<int> _rand;
+    Func<int> _rand;
+    NewlibRand _ownedRand;
+
+    /// <summary>Owned libc stream, including its current (not initial) state in snapshots.</summary>
+    public PrankStinks() { _ownedRand = new NewlibRand(); _rand = _ownedRand.Next; }
 
     public PrankStinks(Func<int> libcRand) => _rand = libcRand ?? throw new ArgumentNullException(nameof(libcRand));
 
@@ -187,7 +191,7 @@ public sealed partial class ParkStaff
     /// <summary>PoolOfEffectors `0x3952A8`.</summary>
     public ParkEffectors Effectors { get; } = new();
     /// <summary>The prank stink table `0x3AE140`.</summary>
-    public PrankStinks Stinks { get; } = new(new NewlibRand().Next);
+    public PrankStinks Stinks { get; } = new();
 
     /// <summary>⭐ The advisor's EVENT COUNTERS (`adv[0x264] + 0x9E + 2n`, n 0..21), which the rule VM
     /// reads as variables `0x38 + n` (<see cref="AdvisorRules.Evaluate"/>'s eventCounters). `0x1073C0`
@@ -523,10 +527,10 @@ public sealed partial class ParkStaff
         public uint Until { get; }
         public int FacingQuarterTurns { get; internal set; }
     }
-    readonly Dictionary<int, Watch> _watching = new();
-    readonly Dictionary<int, uint> _watchCooldown = new();
+    readonly SnapshotIntMap<Watch> _watching = new();
+    readonly SnapshotIntMap<uint> _watchCooldown = new();
     /// <summary>⚠ The tick the phase first saw each guest: the port's stand-in for its spawn time.</summary>
-    readonly Dictionary<int, uint> _firstSeen = new();
+    readonly SnapshotIntMap<uint> _firstSeen = new();
     /// <summary>The guests watching a show now, by id.</summary>
     public IReadOnlyDictionary<int, Watch> Watching => _watching;
     public bool IsWatching(int guest) => _watching.ContainsKey(guest);

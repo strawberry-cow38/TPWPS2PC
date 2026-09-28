@@ -100,6 +100,8 @@ public sealed class NativeLogicalAnimationTable
 public sealed class NewlibRand
 {
     uint state;
+    public uint CaptureState() => state;
+    public void RestoreState(uint value) => state = value;
     public NewlibRand(uint seed = 1) { state = seed; }
     public int Next() { state = unchecked(state * 1103515245u + 12345u); return (int)(state & 0x7fffffff); }
 }

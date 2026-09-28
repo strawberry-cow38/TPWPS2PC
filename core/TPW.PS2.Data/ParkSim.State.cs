@@ -103,6 +103,7 @@ public sealed partial class ParkSim
         Dictionary<TrackRideSim, string> tracks, Dictionary<CoasterSim, string> coasters)
     {
         ArgumentNullException.ThrowIfNull(bindings);
+        RequireStaffStateReady();
         // Preflight live counts BEFORE copying queues/VM tables or consulting asset resolvers.
         long budget = ScriptedValueLimit;
         void Bound(long count, long limit = ScriptedValueLimit)
@@ -180,9 +181,29 @@ public sealed partial class ParkSim
     public static ParkSim FromScriptedState(ScriptedState state, ParkPaths paths, ScriptedBindings bindings,
         Func<string, StaffMember> resolveStaff = null) => BuildScriptedState(state, paths, bindings, resolveStaff, true);
 
+
+    bool _staffStateReady=true;
+    readonly Dictionary<ParkRide,string> _pendingStaff=new(ReferenceEqualityComparer.Instance);
+    Action _pendingStateBinding;
+    void RequireStaffStateReady(){if(!_staffStateReady)throw new InvalidOperationException("ParkSim staff references are not hydrated.");}
+    public static ParkSim AllocateScriptedState(ScriptedState state,ParkPaths paths,ScriptedBindings bindings)
+        =>BuildScriptedState(state,paths,bindings,null,true,deferStaff:true);
+    /// <summary>Complete cyclic ride->staff->visitors->sim references on an unpublished graph.
+    /// Resolve EVERY member before assigning any ride or enabling simulation/callback binding.</summary>
+    public void HydrateStaffState(Func<string,StaffMember> resolve)
+    {
+        if(_staffStateReady)throw new InvalidOperationException("ParkSim already hydrated.");
+        var byId=new Dictionary<string,StaffMember>(StringComparer.Ordinal);var used=new HashSet<StaffMember>(ReferenceEqualityComparer.Instance);
+        foreach(var id in _pendingStaff.Values.Distinct(StringComparer.Ordinal)) {
+            var member=resolve(id);StateRequire(member!=null&&used.Add(member),"missing/aliased staff binding");byId.Add(id,member);
+        }
+        foreach(var p in _pendingStaff)p.Key.AssignedMechanic=byId[p.Value];
+        _pendingStateBinding?.Invoke();_pendingStateBinding=null;_pendingStaff.Clear();_staffStateReady=true;
+    }
+
     static ParkSim BuildScriptedState(ScriptedState s, ParkPaths paths, ScriptedBindings b,
         Func<string, StaffMember> resolveStaff, bool bind,
-        Dictionary<string, TrackRideSim> tracks = null, Dictionary<string, CoasterSim> coasters = null)
+        Dictionary<string, TrackRideSim> tracks = null, Dictionary<string, CoasterSim> coasters = null, bool deferStaff = false)
     {
         ArgumentNullException.ThrowIfNull(s); ArgumentNullException.ThrowIfNull(b);
         StateRequire(s.Version == ScriptedStateVersion && s.Time >= 0 && s.Time % TickMilliseconds == 0
@@ -300,7 +321,10 @@ public sealed partial class ParkSim
                     definitions.Add(r.DefinitionKey, definition); park._scriptedDefinitions.Add(definition, r.DefinitionKey);
                 }
             }
-            var ride = ParkRide.FromState(r, definition, machine, host, track, coaster, Staff);
+            var ride = ParkRide.BuildState(r, definition, machine, host, track, coaster, Staff, deferStaff);
+            if(deferStaff && r.AssignedMechanicId!=null) {
+                StateKey(r.AssignedMechanicId);park._pendingStaff.Add(ride,r.AssignedMechanicId);
+            }
             StateRequire(rides.TryAdd(r.Id, ride), "duplicate placement ID"); park._rides.Add(ride);
         }
         // Reject injected orphan nodes, but allow arbitrary cycles and links back through parents.
@@ -326,10 +350,11 @@ public sealed partial class ParkSim
             StateRequire(upgrades.Add(id) && rides.ContainsKey(id), "duplicate/dangling upgrade"); park._upgrades.Add(rides[id]);
         }
         StateRequire(usedTracks.Count == (tracks?.Count ?? 0) && usedCoasters.Count == (coasters?.Count ?? 0), "unowned native vehicle record");
-        if (bind)
-        {
-            park.BindRestoredVehicles();
-            b.BindCallbacks?.Invoke(park, hosts);
+        if(deferStaff) {
+            park._staffStateReady=false;
+            if(bind)park._pendingStateBinding=()=>{park.BindRestoredVehicles();b.BindCallbacks?.Invoke(park,hosts);};
+        } else if (bind) {
+            park.BindRestoredVehicles();b.BindCallbacks?.Invoke(park,hosts);
         }
         return park;
     }

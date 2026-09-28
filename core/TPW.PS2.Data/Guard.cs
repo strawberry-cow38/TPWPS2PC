@@ -68,7 +68,7 @@ public sealed class CarriedGuest
 /// (<see cref="ParkStaff.StagingCell"/>) and the animation phase query
 /// (<see cref="ParkStaff.AnimationState"/>) are the port's; a guest the port has no body for is
 /// treated like a null target (see <see cref="ParkStaff.LocateGuest"/>).</summary>
-public sealed class Guard : StaffMember
+public sealed partial class Guard : StaffMember
 {
     /// <summary>Modes of his walks (staff-person.md §8): 8 chase, 9 exit, 0xE/0xF the gate legs,
     /// 0x10 the straight crossing, 0x15 back to the park mouth.</summary>

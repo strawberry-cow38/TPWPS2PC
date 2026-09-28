@@ -18,7 +18,7 @@ namespace TPW.PS2.Data;
 /// updates after the arrival tick. The tired/strike check runs only in state 0, so a handyman never
 /// abandons a job to rest or strike: he finishes it. His patrol rectangle bounds ONLY where he idles;
 /// neither search reads it (§3.9).</summary>
-public sealed class Handyman : StaffMember
+public sealed partial class Handyman : StaffMember
 {
     /// <summary>Modes of the handyman's walks: 7 litter, 0x12 toilet (§3.4-§3.5).</summary>
     public const byte ModeLitter = 0x07, ModeToilet = 0x12;

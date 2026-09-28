@@ -8,8 +8,9 @@ namespace TPW.PS2.Data;
 internal sealed class SnapshotReferenceMap<TKey,T> : Dictionary<TKey,T>, IDictionary<TKey,T> where TKey : class, new()
 {
     readonly List<TKey> slots = new();
-    public SnapshotReferenceMap() : base(ReferenceEqualityComparer.Instance) {}
-    readonly Dictionary<TKey,int> positions = new(ReferenceEqualityComparer.Instance);
+    public SnapshotReferenceMap(IEqualityComparer<TKey> comparer = null) : base(comparer ?? ReferenceEqualityComparer.Instance)
+    {positions = new(comparer ?? ReferenceEqualityComparer.Instance);}
+    readonly Dictionary<TKey,int> positions;
     readonly List<int> free = new();
     void Added(TKey key)
     {
@@ -46,9 +47,9 @@ internal sealed class SnapshotReferenceMap<TKey,T> : Dictionary<TKey,T>, IDictio
 
     internal IntMapLayout CaptureLayout()
     {
-        if(slots.Count>100_000 || !base.Keys.SequenceEqual(slots.Where(k=>k != null), ReferenceEqualityComparer.Instance))
+        if(slots.Count>100_000 || !base.Keys.SequenceEqual(slots.Where(k=>k != null), Comparer))
             throw new ArgumentException("Reference map layout exceeded bounds or a mutation bypassed tracking.");
-        var ordinal = new Dictionary<TKey,int>(ReferenceEqualityComparer.Instance);
+        var ordinal = new Dictionary<TKey,int>(Comparer);
         foreach(var key in base.Keys) ordinal.Add(key, ordinal.Count);
         return new(){Slots=slots.Select(key=>key==null ? (int?)null : ordinal[key]).ToArray(),FreeBottomFirst=free.ToArray()};
     }

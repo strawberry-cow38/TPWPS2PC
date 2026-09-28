@@ -291,7 +291,7 @@ public static class NativeRideQueueSaveChecks
         check(unknown, typeof(T).Name + " rejects unknown JSON fields");
     }
 
-    static byte[] Script()
+    internal static byte[] Script()
     {
         uint[] words = { 0x80000000u | (uint)RseOpcode.NAME, 0x10000000,
             0x80000000u | (uint)RseOpcode.WAIT, 40,

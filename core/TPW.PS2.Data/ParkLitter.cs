@@ -54,7 +54,7 @@ public sealed class LitterItem
 /// ⚠ NOT PORTED, and said so: test-park mode (`0x153410` → `DAT_002B72A8`), which makes allocation
 /// fail; the load scatter `0x14D8D8` and the two-count save `0x14D868`
 /// (positions and claims are never saved natively). Save/load is out of scope for this step.</summary>
-public sealed class ParkLitter
+public sealed partial class ParkLitter
 {
     public const int Capacity = 40;
 

@@ -6,7 +6,7 @@ namespace TPW.PS2.Data;
 /// ⭐ The candidate is the PERSON, the staff member is the JOB. Firing hands the same record back
 /// unchanged (`0x1DC6F0` sets `+0x1C = 1`), so the name, pay grade and motivation come back with it
 /// -- but a trained level lives on the staff object and is lost (`0x1DB618` re-reads `+0x14`).</summary>
-public sealed class StaffCandidate
+public sealed partial class StaffCandidate
 {
     internal StaffCandidate(StaffKind kind, int slot, int payGrade, int motivation)
     {
@@ -61,7 +61,7 @@ public sealed class StaffCandidate
 ///
 /// ⚠ NOT SAVED: `0x1C2968` saves DB categories 1..8 (research) only, so a loaded park re-rolls the
 /// unhired candidates (INFERRED). Save/load is out of scope for this step.</summary>
-public sealed class StaffCandidateDatabase
+public sealed partial class StaffCandidateDatabase
 {
     readonly StaffCandidate[] _records;
 

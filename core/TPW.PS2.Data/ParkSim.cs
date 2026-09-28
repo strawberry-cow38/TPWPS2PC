@@ -569,6 +569,7 @@ public sealed partial class ParkSim : IRseDirectory
     /// <summary>Advance by a real delta, in whole ticks, keeping the remainder.</summary>
     public int Advance(double deltaSeconds)
     {
+        RequireStaffStateReady();
         _carry += (long)Math.Round(deltaSeconds * 1000.0);
         int ticks = 0;
         // ⚠ A CEILING. A caller that stalls for a second must not make the park run a thousand

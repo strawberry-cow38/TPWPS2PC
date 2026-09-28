@@ -257,7 +257,7 @@ public sealed partial class ParkStaff
     /// ⭐ `VAR_STAFFIN` HAS NO WRITER (findings §8.4): the room's own script particle `P_EFFECT_BrewUp` and
     /// sound `EVT_STAFF_ROOM` never start on PS2. Nothing here writes it, deliberately.</summary>
     public Action<StaffFeature, bool> StaffRoomAmbience { get; set; }
-    readonly Dictionary<object, (StaffFeature Feature, byte Status)> _rooms = new();
+    readonly SnapshotReferenceMap<object, (StaffFeature Feature, byte Status)> _rooms = new(EqualityComparer<object>.Default);
     void PollStaffRooms()
     {
         var seen = new HashSet<object>();
@@ -285,8 +285,8 @@ public sealed partial class ParkStaff
     /// is this park's.</summary>
     public ResearchManager Research => _research ??= new ResearchManager
     {
-        MechanicCount = () => Count(StaffKind.Mechanic),
-        Advisor = id => Advisor?.Invoke(id),
+        MechanicCount = DefaultMechanicCount,
+        Advisor = DefaultResearchAdvisor,
     };
 
     // ============================================================================================

@@ -19,7 +19,7 @@ namespace TPW.PS2.Data;
 /// but the Security Award's. ⚠ The loans `0x100A18` repays are not modelled (the port has none).
 ///
 /// Core, so the audit drives it exactly as the viewer does: one <see cref="Advance"/> per frame.</summary>
-public sealed class ParkManagement
+public sealed partial class ParkManagement
 {
     public ParkManagement(ParkClock clock, ParkAwards awards)
     {
@@ -43,10 +43,10 @@ public sealed class ParkManagement
     public Action<int> UiSound { get; set; }
     /// <summary>⚠ ADAPTER for `0x16C0E8()` = `0x16C008(world, park)`: the park's goals record. The weekly
     /// pass returns at once without one. Default: present (every ordinary park the port loads).</summary>
-    public Func<bool> GoalsRecordPresent { get; set; } = () => true;
+    public Func<bool> GoalsRecordPresent { get; set; } = DefaultGoalsRecordPresent;
     /// <summary>⚠ ADAPTER for `0x153410()` = `[0x2B72A8]` (test-park mode, which also zeroes ride wear):
     /// the weekly pass returns at once while it is set. Default: off.</summary>
-    public Func<bool> TestPark { get; set; } = () => false;
+    public Func<bool> TestPark { get; set; } = DefaultTestPark;
 
     /// <summary>`cal+0x1C`: months elapsed.</summary>
     public int MonthsElapsed { get; private set; }

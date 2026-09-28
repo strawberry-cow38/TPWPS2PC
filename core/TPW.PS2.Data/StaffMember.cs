@@ -20,7 +20,7 @@ namespace TPW.PS2.Data;
 /// staff update, standing in for `[0x397644]`); animation readiness <see cref="ParkStaff.AnimationReady"/>
 /// (null = no visual, which the native test permits); the tile bytes (<see cref="NativeTileView"/>);
 /// the route search (<see cref="StaffRouteService"/>).</summary>
-public class StaffMember
+public partial class StaffMember
 {
     /// <summary>`C+0x2C` flag bits (§1.3).</summary>
     public const ushort FlagShown = 0x0001, FlagMapCentre = 0x0020, FlagHeld = 0x0040, FlagCutRecord = 0x0200;

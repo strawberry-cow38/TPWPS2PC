@@ -92,7 +92,10 @@ public sealed partial class ParkSim
     }
 
     public static ParkSim FromState(State state, ParkPaths paths, StateBindings bindings,
-        Func<string,StaffMember> resolveStaff = null)
+        Func<string,StaffMember> resolveStaff = null) => BuildFullState(state,paths,bindings,resolveStaff,false);
+    public static ParkSim AllocateState(State state,ParkPaths paths,StateBindings bindings)
+        =>BuildFullState(state,paths,bindings,null,true);
+    static ParkSim BuildFullState(State state,ParkPaths paths,StateBindings bindings,Func<string,StaffMember> resolveStaff,bool deferStaff)
     {
         ArgumentNullException.ThrowIfNull(state); ArgumentNullException.ThrowIfNull(bindings);
         StateRequire(state.Version == StateVersion && state.Core != null, "ParkSim envelope version/core");
@@ -156,7 +159,7 @@ public sealed partial class ParkSim
             usedRings.Add(item.TrackId);
         }
         StateRequire(usedLayouts.Count==layouts.Count&&usedRings.Count==rings.Count,"unowned layout/track record");
-        return BuildScriptedState(state.Core,paths,bindings.Scripts,resolveStaff,true,tracks,coasters);
+        return BuildScriptedState(state.Core,paths,bindings.Scripts,resolveStaff,true,tracks,coasters,deferStaff);
     }
 
     // Equivalent callbacks to AttachTrack/AttachCoaster, WITHOUT Rebuilt/SetOpen/Sync, defaults,
