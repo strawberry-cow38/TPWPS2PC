@@ -65,6 +65,21 @@ static class AdvisorChecks
         Check(rules.Rules.Count == 106 && cat.Messages.Count == 275, $"the disc's rule VM: {rules.Rules.Count} rules, {cat.Messages.Count} messages");
 
         Constants(elf, Check);
+        // The head's model: registry 488 (0x106080), category 13 (flags 0x80, neither 0x40 nor 1), world 4 -- whose
+        // folder base is the word at 0x2BF2A0 + 4*4, which IS 0x2BF2B0, "Data" (0x17B324..0x17B334 reads it unbounded).
+        var registry = new NativeModelRegistry(elf);
+        var heads = new List<string>();
+        for (int w = 0; w < 4; w++)
+            for (int park = 0; park < 3; park++)
+            {
+                var e = registry.Find(0x1E8, w, park);
+                var (archive, path) = e == null ? (null, null) : registry.ModelPath(e);
+                heads.Add(e?.Name == "Advisor" && e.Category == 13 && archive == "DATA" && data.Find(path) != null
+                          && data.Find(Path.ChangeExtension(path, ".aps")) != null ? path : $"{w}/{park}:{e?.Name}:{archive}:{path}");
+            }
+        Check(heads.Distinct().Count() == 1 && heads[0].Equals("/Generic/Advisor/Advisor.mps", StringComparison.OrdinalIgnoreCase),
+              $"head: registry 488 resolves in all 4 worlds x 3 parks to {string.Join(" ", heads.Distinct())} in DATA.WAD, with its .aps "
+              + $"(world 4's folder base is the word at 0x2BF2A0 + 16 = 0x2BF2B0, '{registry.Shared}')");
         Routing(cat, rules, Check);
         Ring(cat, rules, Check);
         Timings(cat, rules, Check);
