@@ -276,6 +276,15 @@ public sealed partial class LaptopShopScreen : Control
                                               Color Colour, int Years);
     GraphSeries? _graph;
 
+    /// <summary>⭐ The nine-slice the graph sits in. `findings/graph-widget.md` §1.3: the series
+    /// draw builds a temporary element over the plot rect and issues `FUN_00142090` -- sprite
+    /// `0x30` tiled in 16px rows with `0x2f` corners and `0x32` edges, which is the SAME
+    /// `UI.WAD/messages/Messcorner|Messedge|Messfill` art the lobby message box uses.
+    ///
+    /// ⚠ Master, on the first graph render: "may also b missing a 'container' box for the graphs".
+    /// It was -- I had skipped step 3 of the series draw entirely.</summary>
+    public UiPanel GraphPanel { get; set; }
+
     public void ShowScreen(LaptopScreen spec, string title, IReadOnlyList<(string Text, int Fraction)> cells,
                            bool buildRow = false, int buildTextId = LaptopMainMenu.BuildTextId,
                            IReadOnlyList<Color?> barTints = null, GraphSeries? graph = null)
@@ -1042,6 +1051,10 @@ public sealed partial class LaptopShopScreen : Control
         if (_spec.GraphElement != null && _graph is { } g && layout[_spec.GraphElement] is { } gbox)
         {
             var rect = new Rect2(At(gbox), new Vector2(gbox.Width, gbox.Height) * s);
+            // ⚠ BEHIND the plot. The console issues the panel at Z with the colour pass at Z-1,
+            // and the doc flags that z rule as inferred rather than read -- but a container the
+            // plot is drawn INSIDE is the only reading that produces a graph you can look at.
+            GraphPanel?.Draw(this, rect, s);
             LaptopGraph.DrawSeries(this, rect, g.Values, g.Min, g.Max, g.Colour, s);
             // ⚠ The year ticks appear ONLY when the span is more than one year, and they are
             // BLUE -- the console's own colour, and the nearest thing this screen has to a legend.

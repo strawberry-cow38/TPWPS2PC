@@ -422,6 +422,7 @@ public partial class Viewer : Node3D
             // render of All Staff has somebody on it. ⚠ A harness, not a gameplay path.
             else if (a == "--staff-test") _staffTest = true;
             else if (a == "--graph-demo") _graphDemo = true;
+            else if (a == "--graph-area") LaptopGraph.LineStyle = false;
             else if (a == "--menu") _wantMenu = true;
             // ⭐ `--menu-go=N` presses Confirm N times through the REAL handler, so a render can
             // show where the front end actually hands off to rather than a flag jumping there.
@@ -3593,6 +3594,35 @@ public partial class Viewer : Node3D
             }
             case "stafftypes": ShowStaffInfoTypes(); break;
             case "staffitem": ShowStaffInfoMember(arg); break;
+            // ⭐⭐ OVERALL STATISTICS (menu id 22) -- the same widget, two series.
+            //
+            // ⚠ Bank Balance can go NEGATIVE and the scale's `min` is still 0, so a negative month
+            // clamps to the bottom edge rather than plotting below it. That is the console's
+            // arithmetic, not a guard of ours.
+            case "overallstats":
+            {
+                var ofin = _sim?.Finances;
+                if (ofin == null)
+                { _laptopBack.RemoveAt(_laptopBack.Count - 1); Status("no park is running yet"); ShowLaptopLevel(); return; }
+                int opick = Math.Clamp(int.TryParse(arg, out var op) ? op : 0, 0,
+                                       LaptopScreen.OverallStats.Rows.Count - 1);
+                _graphRow = opick;
+                var orgb = LaptopScreen.OverallSeriesRgb[opick];
+                // ⚠ Park Value has NO source in this port -- nothing computes a park valuation --
+                // so it plots flat zero rather than a plausible invention.
+                Func<int, int> oget = opick == 0 ? ofin.BalanceInPeriod : (_ => 0);
+                var obuckets = LaptopGraphData.Build(oget, ofin.PeriodCount, _graphYears, out int omax);
+                _shopPanel.GraphPanel ??= UiPanel.Load(_lib);
+                _shopPanel.ShowScreen(LaptopScreen.OverallStats, "",
+                    Blank(LaptopScreen.OverallStats.Rows.Count),
+                    graph: new LaptopShopScreen.GraphSeries(
+                        obuckets, 0, omax, Color.Color8(orgb.R, orgb.G, orgb.B), _graphYears));
+                ClearLaptopModel();
+                RefreshLaptopBalance();
+                Status($"{TextRow(LaptopScreen.OverallStats.Rows[opick].TextId)} -- "
+                     + $"{_graphYears}y, peak {omax}");
+                break;
+            }
             // ⭐⭐ FINANCE STATISTICS (menu id 21) -- the first graph screen.
             //
             // ⚠ ONE SERIES AT A TIME, which is the console's own rule: selecting an item clears
@@ -3620,6 +3650,7 @@ public partial class Viewer : Node3D
                 }
                 else buckets = LaptopGraphData.Build(FinanceSeries(fin, pick),
                                                      fin.PeriodCount, _graphYears, out gmax);
+                _shopPanel.GraphPanel ??= UiPanel.Load(_lib);
                 _shopPanel.ShowScreen(LaptopScreen.FinanceStats, "",
                     Blank(LaptopScreen.FinanceStats.Rows.Count),
                     graph: new LaptopShopScreen.GraphSeries(

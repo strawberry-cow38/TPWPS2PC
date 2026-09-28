@@ -119,6 +119,10 @@ public sealed class ParkFinances
     public const int PeriodSlots = 0x90;
     readonly int[] _income = new int[PeriodSlots];
     readonly int[] _wages = new int[PeriodSlots];
+    /// <summary>⭐ The bank balance AT EACH MONTH END -- the console's `park+0xbc`, which Overall
+    /// Statistics plots as its Bank Balance series. Filed by <see cref="MonthEnd"/> alongside the
+    /// wages, in the same slot.</summary>
+    readonly int[] _balance = new int[PeriodSlots];
     static int Slot(int period) => ((period % PeriodSlots) + PeriodSlots) % PeriodSlots;
 
     /// <summary>`park[0x12BC]`: completed months. The month end `0x100A18` bumps it after filing
@@ -156,6 +160,9 @@ public sealed class ParkFinances
         _wages[Slot(PeriodCount)] = wagesTenths;
         Debit(loans + wagesTenths);
         Credit(0);
+        // ⭐ The balance is filed for the month that just CLOSED, so it is recorded before the
+        // counter moves on -- the same slot the wages above went into.
+        _balance[Slot(PeriodCount)] = Balance;
         PeriodCount += 1;
         _income[Slot(PeriodCount)] = 0;
         _wages[Slot(PeriodCount)] = 0;
@@ -176,6 +183,15 @@ public sealed class ParkFinances
     public int IncomeInPeriod(int k) => PeriodIndex(k) is var i && i < 0 ? 0 : _income[i];
     /// <summary>`0x101170(park, k)`: wages of the k-th completed month back (0 before there was one).</summary>
     public int WagesInPeriod(int k) => PeriodIndex(k) is var i && i < 0 ? 0 : _wages[i];
+
+    /// <summary>`0x100DA8(park, k)`: the bank balance of the k-th completed month back.
+    ///
+    /// ⚠ IT DOES NOT BEHAVE LIKE THE ACCUMULATOR GETTERS. For `k = 0` the console answers the
+    /// LIVE balance (`park+4`) rather than a ring slot, which is why this is not just another
+    /// `PeriodIndex` call. That difference is also why the graph's leftmost-bucket quirk (always
+    /// zero for Money In and Wages) does NOT apply to this series.</summary>
+    public int BalanceInPeriod(int k) =>
+        k == 0 ? Balance : PeriodIndex(k) is var i && i < 0 ? 0 : _balance[i];
 
     /// <summary>⭐ Advisor variable 49, the WAGES_HIGH producer (MIPS `0x10E32C..0x10E3D8`):
     /// `income(1)/10 &lt; wages(1)/10 &amp;&amp; income(2)/10 &lt; wages(2)/10` -- wages above ALL income in

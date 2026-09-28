@@ -44,6 +44,10 @@ public static class LaptopGraph
     /// <summary>How far below the first pass the eraser pass is drawn.</summary>
     public const int EraseDrop = 3;
 
+    /// <summary>true = the dark pass is in front (a 3px stepped LINE); false = the colour pass is
+    /// in front (a filled AREA). See the note in <see cref="DrawSeries"/>.</summary>
+    public static bool LineStyle = true;
+
     /// <summary>The year ticks along the bottom are BLUE, and only appear when the span is more
     /// than one year.</summary>
     public static readonly Color YearTick = Color.Color8(0, 0, 255);
@@ -105,10 +109,25 @@ public static class LaptopGraph
         if (h <= 0) return;
         var steps = Steps(values, w, h, min, max);
 
-        // ⚠ Order IS the z rule here: the series colour first, then the eraser 3px lower on top.
-        // Reversing them paints the whole staircase dark and loses the line entirely.
-        Paint(ci, box, steps, colour, 0, scale);
-        Paint(ci, box, steps, EraseColour, EraseDrop, scale);
+        // ⚠⚠ WHICH PASS LANDS IN FRONT IS THE ONE THING THE RESEARCH COULD NOT READ.
+        // `zdraw = (colour == 0x35f0f0) ? Z : Z - 1` puts the dark pass and the colour pass on
+        // different z, and graph-widget.md marks the resulting order as INFERRED.
+        //
+        // Dark in front  -> it erases all but 3px and the series reads as a stepped LINE.
+        // Colour in front -> the dark pass is entirely hidden and the series reads as a filled AREA.
+        //
+        // Both are consistent with the instructions; only the picture tells them apart, which is
+        // why this is a switch and not a guess baked in.
+        if (LineStyle)
+        {
+            Paint(ci, box, steps, colour, 0, scale);
+            Paint(ci, box, steps, EraseColour, EraseDrop, scale);
+        }
+        else
+        {
+            Paint(ci, box, steps, EraseColour, EraseDrop, scale);
+            Paint(ci, box, steps, colour, 0, scale);
+        }
     }
 
     static void Paint(CanvasItem ci, Rect2 box, List<Step> steps, Color c, int drop, float scale)
