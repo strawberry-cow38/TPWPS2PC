@@ -265,9 +265,23 @@ public sealed partial class LaptopShopScreen : Control
     /// column for a text row, or the 0..100 fraction for a bar or slider. A null text on a row
     /// leaves that row blank, which is how the shop's ingredient row disappears while keeping
     /// its slot.</summary>
+    /// <summary>⭐ Per-row bar tints, or null for the art's own colour. Research is why: its bars
+    /// are RED while a slot is idle and GREEN while it is researching (`0x365ed8` / `0x365ee0`),
+    /// which is the screen's whole state signal.</summary>
+    IReadOnlyList<Color?> _barTints;
+
+    /// <summary>⭐ The one series a graph screen is showing, or null. Only ONE shows at a time on
+    /// all three graph screens: selecting an item clears every toggle then flips that one.</summary>
+    public readonly record struct GraphSeries(IReadOnlyList<int> Values, int Min, int Max,
+                                              Color Colour, int Years);
+    GraphSeries? _graph;
+
     public void ShowScreen(LaptopScreen spec, string title, IReadOnlyList<(string Text, int Fraction)> cells,
-                           bool buildRow = false, int buildTextId = LaptopMainMenu.BuildTextId)
+                           bool buildRow = false, int buildTextId = LaptopMainMenu.BuildTextId,
+                           IReadOnlyList<Color?> barTints = null, GraphSeries? graph = null)
     {
+        _barTints = barTints;
+        _graph = graph;
         _spec = spec ?? throw new ArgumentNullException(nameof(spec));
         _title = title ?? "";
         _rows.Clear();
@@ -1022,6 +1036,24 @@ public sealed partial class LaptopShopScreen : Control
             DrawTextureRect(_arrows, _pageArrows, false, ArrowTint);
         }
 
+        // ⭐ The GRAPH, drawn before the rows for the same reason the model window is. ⚠ Its
+        // element is the model window's own frame (315, 208, 147x200), which is why no graph
+        // screen also has a model.
+        if (_spec.GraphElement != null && _graph is { } g && layout[_spec.GraphElement] is { } gbox)
+        {
+            var rect = new Rect2(At(gbox), new Vector2(gbox.Width, gbox.Height) * s);
+            LaptopGraph.DrawSeries(this, rect, g.Values, g.Min, g.Max, g.Colour, s);
+            // ⚠ The year ticks appear ONLY when the span is more than one year, and they are
+            // BLUE -- the console's own colour, and the nearest thing this screen has to a legend.
+            if (g.Years > 1)
+                for (int y = 1; y < g.Years; y++)
+                {
+                    float fx = rect.Position.X + rect.Size.X * y / g.Years;
+                    DrawRun(y.ToString(), new Vector2(fx, rect.End.Y - LineAdvance * s), s,
+                            LaptopGraph.YearTick, "left");
+                }
+        }
+
         // ⭐ The model window. Drawn before the rows so nothing it overlaps can be hidden by it.
         if (ModelTexture != null && layout[_spec.ModelElement] is { } window)
             DrawTextureRect(ModelTexture,
@@ -1090,9 +1122,13 @@ public sealed partial class LaptopShopScreen : Control
                 // ⭐ Rows that SHARE one widget element step it; see LaptopScreen.WidgetStep.
                 var wat = At(w) + new Vector2(0, _spec.WidgetStep * i * s);
                 var rect = new Rect2(wat, new Vector2(w.Width, w.Height) * s);
-                if (row.Kind == LaptopRowKind.Bar) DrawBar(rect, fraction, s);
+                if (row.Kind == LaptopRowKind.Bar)
+                    DrawBar(rect, fraction, s, _barTints != null && i < _barTints.Count ? _barTints[i] : null);
                 else { _sliderRects[i] = rect; DrawSlider(rect, fraction, s, selected: _dragSlider == i); }
-                continue;
+                // ⭐ A WIDGET ROW CAN ALSO CARRY TEXT -- Research draws the project's name beside
+                // its bar. A row whose cell has no text stops here, which is every widget row
+                // written before Research, so nothing already drawn changes.
+                if (text == null) continue;
             }
 
             // ⭐ The nudge arrows, for a row whose value the player can change. They are drawn
@@ -1115,9 +1151,19 @@ public sealed partial class LaptopShopScreen : Control
             }
 
             if (text == null) continue;
+            // ⭐⭐ CHECKED FIRST, and the order is the point: a Research row HAS its own element
+            // (its bar), so the own-element branch below would win and stack all five item names
+            // on that one element's position. Research puts its names at `ResearchItem`'s COLUMN
+            // but the BARS' row -- MIPS `0x1b5a9c` reads the bars' row, `0x1b5b40` the item's
+            // column -- five pixels below their own labels.
+            if (_spec.ValueOnWidgetRow && values is { } vw && row.Element != null
+                && layout[row.Element] is { } welem)
+                DrawRun(text,
+                        new Vector2(At(vw).X, At(welem).Y + _spec.WidgetStep * i * s),
+                        s, Of(ShopScreen.Highlight), vw.Justify);
             // A row with its own value element uses it; otherwise the shared value column, at the
             // label's height.
-            if (row.Element != null && layout[row.Element] is { } own)
+            else if (row.Element != null && layout[row.Element] is { } own)
                 // ⚠ Column only where the screen says so -- All Staff's value elements carry a
                 // row that the console never reads.
                 DrawRun(text,
@@ -1569,7 +1615,7 @@ public sealed partial class LaptopShopScreen : Control
     /// across a 16-wide slot -- which is what the first attempt did -- leaves its empty tail
     /// showing as a gap, which is the "messed up" master saw. Each bit is drawn at its OWN width
     /// and the SOURCE is clipped when the fill ends mid-tile; the destination is never squashed.</summary>
-    void DrawBar(Rect2 r, int value, float s)
+    void DrawBar(Rect2 r, int value, float s, Color? tint = null)
     {
         // Measured off the art: 128 columns, the trough's interior spans 3..124.
         const float ArtWidth = 128f, InnerX = 3f, InnerWidth = 122f;
@@ -1578,9 +1624,11 @@ public sealed partial class LaptopShopScreen : Control
         // as a FLOAT and hands that to the sprite. Nothing quantises to a tile.
         float cut = InnerX + InnerWidth * fraction;
         if (_barFill != null && cut > 0f)
+            // ⚠ The FILL is tinted, never the frame: the console colours the bar's value, and the
+            // trough is the same orange art on every screen.
             DrawTextureRectRegion(_barFill,
                 new Rect2(r.Position, new Vector2(cut / ArtWidth * r.Size.X, r.Size.Y)),
-                new Rect2(0, 0, cut, _barFill.GetHeight()));
+                new Rect2(0, 0, cut, _barFill.GetHeight()), tint);
         DrawTextureRect(_barFrame, r, false);
     }
 
