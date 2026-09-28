@@ -3,7 +3,7 @@ namespace TPW.PS2.Data;
 /// <summary>APS-backed single-channel preview host. It queues an animation behind an unfinished
 /// one-shot and replaces loops immediately. Effects are surfaced as events for a renderer/audio
 /// host; this preview explicitly records them without rendering sound, particles or guest heads.</summary>
-public sealed class RsePreviewHost : IRseHost
+public sealed partial class RsePreviewHost : IRseHost
 {
     public sealed record Playback(Animation.Record Record, int Variant, long Start, bool Loop, int Speed = 1000);
     public sealed record Effect(long Time, RseOpcode Opcode, IReadOnlyList<int> Arguments);

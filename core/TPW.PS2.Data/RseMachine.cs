@@ -87,7 +87,7 @@ public enum RseYield { Budget, EndSlice, Unlock, Wait, Animation }
 
 /// <summary>Single-instance, deterministic slice interpreter. The caller supplies game time and
 /// changes host variables between slices. No wall clock, threads, processes or native code.</summary>
-public sealed class RseMachine
+public sealed partial class RseMachine
 {
     public RseProgram Program { get; }
     public int Pc { get; private set; }
@@ -105,6 +105,7 @@ public sealed class RseMachine
     uint _timer;
     readonly IRseHost _host;
     readonly Func<int> _random;
+    SnapshotRandom _ownedRandom;
     readonly Func<string, RseMachine> _spawn;
     readonly IRseDirectory _directory;
     readonly Walk[] _walks;
@@ -204,8 +205,8 @@ public sealed class RseMachine
         // ⚠ The bounce table is NOT doubled the way the walk table is (0x1bff48..0x1bff74).
         _bounce = new Bouncer[Math.Max(0, program.BounceCapacity)];
         _limbo = new LimboSlot[Math.Max(0, program.LimboCapacity)];
-        var rng = new Random(1);
-        _random = random ?? (() => rng.Next());
+        _ownedRandom = random == null ? new SnapshotRandom(1) : null;
+        _random = random ?? (() => _ownedRandom.Next());
     }
 
     /// <summary>One guest being moved by this script. 32 bytes on the PS2 at instance `+0x2c`;

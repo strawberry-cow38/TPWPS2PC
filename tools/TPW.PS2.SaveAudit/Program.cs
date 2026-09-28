@@ -35,6 +35,14 @@ void RequireEveryJsonMember<T>(T state)
     }
 }
 
+if(args.Length>0)
+{
+    using var disc=new Disc(args[0]);
+    DiscRseSaveChecks.Run(disc,Check);
+}
+SnapshotRandomChecks.Run(Check);
+RseMachineSaveChecks.Run(Check);
+RseHostSaveChecks.Run(Check);
 NativeResourceSaveChecks.Run(Check);
 SaveFileChecks.Run(Check);
 
@@ -223,7 +231,7 @@ try
     catch (JsonException) { malformedRejected = true; }
     Check(malformedRejected && before == Json(loadedFinances.CaptureState()), "malformed JSON rejected without mutation");
     Console.WriteLine($"PASS SaveAudit: {checks} checks (JSON, continuation, copies, schema/range rejection and atomic owner restore).");
-    Console.WriteLine("Scope: five state owners and save-file transport; NOT total park persistence or live Viewer loading.");
+    Console.WriteLine("Scope: owner/VM/host/file snapshots; optional disc-backed script continuation. NOT total park persistence or live Viewer loading.");
     return 0;
 }
 catch (Exception ex)
