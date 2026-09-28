@@ -144,6 +144,18 @@ public partial class Viewer
     void SlowFrameReport(double deltaMs)
     {
         if (_slowFrameMs <= 0) { _frameTimes.Clear(); _timeMarks.Clear(); return; }
+        // ⚠⚠ ONLY ONCE THE BENCHMARK IS PAST ITS WARM-UP -- WITHOUT THIS THE REPORTER MEASURES THE
+        // PARK LOAD AND NOTHING ELSE. It fired from the first frame and capped at 12 reports, so all
+        // twelve were spent on loading before the run ever reached steady state, and the stutter it
+        // exists to find was never sampled at all.
+        //
+        // ⭐ The tell was a CONTROL I nearly did not run: the slow frames reported 117-170 draw
+        // calls, and I read that as a spike. The benchmark's own regular sampler reads a flat 245
+        // for the entire run -- so those frames had FEWER draws than normal, not more, because the
+        // scene was still being built. An instrument that only samples the frames it selects has no
+        // baseline to compare them against, and I published "draw calls spike 156 -> 249" off
+        // exactly that gap. The regular sampler was the baseline and it was already there.
+        if (!_benchRunning || _benchElapsed < BenchWarmup) { _frameTimes.Clear(); _timeMarks.Clear(); return; }
         if (deltaMs >= _slowFrameMs && _slowFramesSeen < 12)
         {
             _slowFramesSeen++;
@@ -178,7 +190,15 @@ public partial class Viewer
             long draws = (long)Performance.GetMonitor(Performance.Monitor.RenderTotalDrawCallsInFrame);
             GD.Print($"[slow] frame {deltaMs:F1} ms (bracketed {bracketed:F1} ms, "
                    + $"{deltaMs - bracketed:F1} ms outside every bracket) "
-                   + $"[engine: process {tProc:F1} physics {tPhys:F1} draws {draws}] -- "
+                   // ⭐ ADVISOR STATE ON THE LINE, so the head is RULED OUT by correlation rather
+                   // than by argument. tinyclaw: it is 32 meshes / 56 materials and its SubViewport
+                   // only renders while a message is up (update mode Disabled otherwise,
+                   // AdvisorHead.cs:257), so it should read as a PLATEAU lasting the whole message
+                   // -- seconds -- not a one-frame spike every 1.76 s. If `head=1` never coincides
+                   // with a draw spike, that is the elimination; if it always does, the argument
+                   // was wrong. Either way the data settles it instead of two of us reasoning.
+                   + $"[engine: process {tProc:F1} physics {tPhys:F1} draws {draws} "
+                   + $"head={(_advisorHead?.Overlay?.Visible == true ? 1 : 0)}] -- "
                    + (worst.Any() ? string.Join(", ", worst.Select(t => $"{t.Name} {t.Ms:F1}ms"))
                                   : "NOTHING BRACKETED WAS SLOW (the cost is outside every bracket)"));
         }
