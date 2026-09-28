@@ -1289,6 +1289,19 @@ public sealed partial class LaptopShopScreen : Control
         PillCap ??= LoadSsh(lib, "/laptop/PROG_WBIT.ssh");
     }
 
+    /// <summary>⚠ Measure text in NATIVE units, for checking a column against the font rather
+    /// than nudging it until it looks right.</summary>
+    public void ReportTextWidth(params string[] samples)
+    {
+        if (_font == null) return;
+        foreach (var t in samples)
+        {
+            var tex = _font.Render(t);
+            GD.Print($"[laptop] width \"{t}\" = {(tex == null ? -1 : tex.GetWidth())} native "
+                   + $"({(tex == null ? 0 : tex.GetWidth() / (float)Math.Max(1, t.Length)):F1}/char)");
+        }
+    }
+
     /// <summary>One UI sprite off the disc, or null. Same shape as the local loader `Create` uses;
     /// separate because this one runs later, when a screen first asks for its art.</summary>
     static ImageTexture LoadSsh(AssetLibrary lib, string name)
@@ -1522,8 +1535,19 @@ public sealed partial class LaptopShopScreen : Control
         var tex = _font.Render(text);
         if (tex == null) return;
         float w = tex.GetWidth() * s;
-        float x = justify != null && justify.StartsWith("cent", StringComparison.OrdinalIgnoreCase) ? at.X - w / 2f
-                : justify != null && justify.StartsWith("right", StringComparison.OrdinalIgnoreCase) ? at.X - w
+        // ⚠⚠ `justify=right` NEVER RIGHT-ALIGNS IN THIS ENGINE, and the census is complete:
+        // exactly TWO scenes in the whole game author it -- main_fi_balancesheet and
+        // main_fi_newloan -- and the code for BOTH is documented as drawing the column LEFT
+        // (`FUN_001389C0(ctx, justify)` with mode 2 applies no shift; the balance sheet's justify
+        // global has no reader at all). So mode 2 is "no shift", not "right".
+        //
+        // Master saw the consequence: "the amounts overlapping the row names". It is not a
+        // rounding fudge -- MEASURED, "Repayment" is 111 native and ends at 156, while a value
+        // right-aligned to col 215 would START at 127. A 29px overlap the font cannot avoid.
+        // Left-aligned at 215 it clears the label by 59px. The scene says right; the code says
+        // left; the code wins.
+        float x = justify != null && justify.StartsWith("cent", StringComparison.OrdinalIgnoreCase)
+                ? at.X - w / 2f
                 : at.X;
         var size = new Vector2(w, tex.GetHeight() * s);
         float d = ShopScreen.TextShadowOffset * s;
