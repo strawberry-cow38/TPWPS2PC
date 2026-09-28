@@ -300,8 +300,13 @@ public partial class MechanicSmoke : Node3D
             while (Fence().Progress < 0.5f && fenceTicks < 500) FenceTick();
             var mid = Tops();
             int up = mid.Count(y => y >= 0.8f - 1e-4f), none = mid.Count(y => y <= 0f);
-            Check(up > 0 && none > 0 && mid.Length == Fence().Geometry.Panels.Count,
-                  $"half-way (p {Fence().Progress:F2}, {fenceTicks * 0.04f:F2} s) the first panels are up and the last still in the ground: "
+            // Rising out of the ground: the tops keep v = 1, the bottoms show v = 1 - f, so no panel's texture is squashed.
+            var midUv = fenceNode.Mesh.SurfaceGetArrays(0)[(int)Mesh.ArrayType.TexUV].AsVector2Array();
+            bool unsquashed = Enumerable.Range(0, mid.Length).All(i => midUv[i * 4].Y == 1f && midUv[i * 4 + 1].Y == 1f
+                && Mathf.Abs(midUv[i * 4 + 2].Y - (1f - mid[i])) < 1e-5f && Mathf.Abs(midUv[i * 4 + 3].Y - (1f - mid[i])) < 1e-5f);
+            Check(up > 0 && none > 0 && mid.Length == Fence().Geometry.Panels.Count && unsquashed,
+                  $"half-way (p {Fence().Progress:F2}, {fenceTicks * 0.04f:F2} s) the first panels are up and the last still in the ground, each "
+                  + $"carrying its texture's top edge (tops v = 1, bottoms v = 1 - f: {unsquashed}): "
                   + $"{up} up, {none} not started, of {mid.Length} ({string.Join(" ", mid.Select(y => y.ToString("0.00")))})");
             await Shot("hoard_rising", rideCentre, 4.5f, 0.5f);
             while (Fence().Progress < 1f && fenceTicks < 500) FenceTick();

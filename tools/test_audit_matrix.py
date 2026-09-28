@@ -88,6 +88,13 @@ COVERAGE += '\n' + '\n'.join(['  ok   advisor: check'] * 65 +
                                '  ok   advisor: mouth: with no lip track the gate stays set (until the head goes down)',
                                '  ok   advisor: removal: with a later type-2 record about ANOTHER ride, deleting the first ride removes the other\'s'])
 
+# The ride hoarding: its own statement, for the same merge reason.
+COVERAGE += '\n' + '\n'.join(['  ok   hoarding: check'] * 25 +
+                              ['  ok   hoarding: 1x1 offsets: 0x1f39b8\'s eight stores are (0.3, -0.3), (-0.3, -0.3), (0.3, 0.3), (0.3, 0.3)',
+                               '  ok   hoarding: order (0x1f3c70): Big Dripper\'s first panel is the -x edge of the top-left cell and its LAST the +z edge',
+                               '  ok   hoarding: textures (0x1f5948): broken Hoarding; condemned Condemn; broken again keeps Condemn; upgrade Upgrade replaces Condemn',
+                               '  ok   hoarding: re-raise: caught at p 0.520 on the way down, a raise rises again FROM THERE (0.528)'])
+
 
 class ClassificationTests(unittest.TestCase):
     def test_staff_family_count_and_witnesses_required(self):
@@ -102,6 +109,14 @@ class ClassificationTests(unittest.TestCase):
                      COVERAGE.replace('  ok   mechanic: check\n', '', 1),
                      COVERAGE.replace('the duplicated 0x153D40 is DEAD', 'the duplicated 0x153D40 repairs'),
                      COVERAGE.replace('the predicate tests the MODE byte', 'the predicate tests the STATE byte')):
+            self.assertEqual(classify('JUNGLE', 0, text + '\nPASS')['status'], 'missing_coverage')
+        self.assertEqual(classify('JUNGLE', 0, COVERAGE + '\nPASS')['status'], 'pass')
+
+    def test_hoarding_family_count_and_witnesses_required(self):
+        for text in ('\n'.join(x for x in COVERAGE.splitlines() if 'hoarding:' not in x),
+                     COVERAGE.replace('  ok   hoarding: check\n', '', 1),
+                     COVERAGE.replace('broken again keeps Condemn', 'broken again shows Hoarding'),
+                     COVERAGE.replace('order (0x1f3c70): Big Dripper', 'order (0x1f3c70): some ride')):
             self.assertEqual(classify('JUNGLE', 0, text + '\nPASS')['status'], 'missing_coverage')
         self.assertEqual(classify('JUNGLE', 0, COVERAGE + '\nPASS')['status'], 'pass')
 

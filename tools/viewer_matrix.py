@@ -56,8 +56,9 @@ SCENES = {
     # Mechanics: an ordinary ride forced below 10.0 (the one test hook) breaks and smokes through its
     # own script; a mechanic hired through the laptop, called from the ride's menu, repairs it (logical
     # 16, facing, the noise), the smoke is killed, the Details bar reads 100; then an upgrade installed
-    # and paid for at completion. Every park runs the same 38; the floor sits just under it.
-    'mechanic': ('MechanicSmoke', 'MECHANIC SMOKE', 36),
+    # and paid for at completion; and the ride's hoarding raised, risen, measured in the world (turned
+    # too), dropped and raised again for the upgrade. Every park runs the same 48; the floor sits just under it.
+    'mechanic': ('MechanicSmoke', 'MECHANIC SMOKE', 46),
 }
 # ⭐ Parks START CLOSED, as on the console ([0x2B72A4], set only by Open Park 0x14E4C0; 2c274fe): no bus
 # admits a guest until the laptop opens the gate. These scenes are ABOUT guests arriving, so they open it with
