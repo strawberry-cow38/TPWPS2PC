@@ -150,7 +150,7 @@ public static class ParkSimSaveChecks
         return forgotten;
     }
 
-    static byte[] Script(bool root)
+    internal static byte[] Script(bool root)
     {
         var words = new List<uint>();
         void Emit(RseOpcode op, params uint[] args) { words.Add(0x80000000u | (uint)op); words.AddRange(args); }

@@ -41,6 +41,9 @@ if(args.Length>0)
     DiscRseSaveChecks.Run(disc,Check);
     DiscParkSimSaveChecks.Run(disc,Check);
 }
+TrackRideSaveChecks.Run(Check);
+CoasterSaveChecks.Run(Check);
+ParkSimVehicleSaveChecks.Run(Check);
 ParkRideSaveChecks.Run(Check);
 ParkSimSaveChecks.Run(Check);
 SnapshotRandomChecks.Run(Check);

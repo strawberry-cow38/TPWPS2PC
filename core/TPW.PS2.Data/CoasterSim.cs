@@ -75,7 +75,7 @@ public sealed class CoasterTrain
 ///
 /// ⚠ ONE STEP PER PARK TICK, NOT SCALED. The console's D is 0x4000 every tick and physics ignores
 /// it; a timed state (the 0x27100 timer) lasts 10 ticks.</summary>
-public sealed class CoasterSim
+public sealed partial class CoasterSim
 {
     const int D = 0x4000, TimerStart = 0x27100;
 

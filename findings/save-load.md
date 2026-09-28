@@ -229,3 +229,56 @@ Post-merge gates on b4ac5f4 (main throughc9f7717):
 - postmergeownerdiscSaveAudit230633PASS; no snapshotscopeexpanded/no UIenabled.
 Cow9ad3d59 subsequently exposed Viewer.Settings for coordinator; not yet merged here.
 Settings and HiddenAwards remain GAME-scoped. UI selection/page are transient, not parkstate.
+
+## Native vehicle graph checkpoint — September28 (~10:40)
+
+TrackLayout.State saves exact ordered waypoints/pieces/four-sample caches/upgrades and
+Closed (including incomplete edits), with an independently resolved ground key. The fresh
+factory does NOT rebuild geometry or query bridge/ground callbacks. TrackRideSim.State saves
+all kart/boat fields and car order, settings/status/timer and full SnapshotRandom state.
+Only live behavior change is replacing seeded System.Random with the already compatibility-
+proven explicit-state generator; constructor/Step behavior is otherwise unchanged.
+
+CoasterTrack.State saves node IDs, station/pylon/ghost/stack links, exact spline/cache/sample/
+winch state, validity and type key. CoasterSim.State saves train/car order, rider lists, poses,
+node/sound cursors, status/timers/clock/sound deadlines/latches/winch version. No Spawn/Step/
+TestLap/SetState/recompute on restore. CoasterStats is a RETURN VALUE, not owned by CoasterSim;
+retained Viewer statistics still need the presentation/placement owner join. Unknown JSON
+members rejected. Closed-ring validation must visit EVERY owned pylon then Entry then Exit;
+merely allowing a cycle containing Exit accepted Exit.Next=Exit and could hang other walks.
+Cold/open/ghost/invalid/loop caches and all14coaster type identities tested separately.
+
+ParkSim.State / CaptureState / FromState is the new complete ParkSim envelope: script core
+plus ID tables for layouts/native sims. Shared layouts remain shared, but one native sim
+cannot silently serve two ride queues. Native factory callbacks bind TakeHead/Released/wear/
+breakdown without invoking AttachTrack/AttachCoaster/Rebuilt/SetOpen/Sync/defaults. Parent
+cached state remains verbatim. Old CaptureScriptedState remains explicitly script-only.
+Native allocation preflight is bounded both per owner and across the envelope; node IDs,
+asset bindings, unowned/duplicate records and callback publication all validated. Paths,
+walking visitors, staff, external model/audio bindings and the Viewer are STILL NOT INCLUDED.
+
+Evidence: real public standalone boat/kart Step continuation6000ticks each; multi-train,
+four-car loaded coaster6000ticks with all state/cache/pose/cooldown and ordered event equality,
+including boarding/release/wear/screams (non-inert controls). New integrated native ParkSim
+fixture runs boat+kart+coaster together, deliberately shares one track layout, saves a FILE
+at14280ms while all have riders, restores fresh owners and runs ParkSim.Advance for79960ms.
+Exact complete graph sampled every20frames, event order everyframe, with actual queue,
+release and wear consumers. No claims of saved terrain/visitor minds or full Viewer loading.
+
+Five mutations fail then restored: track RNG reset, reversed car order, erased winch marks,
+erased private sound cooldowns, and missing coaster Released→ride.Left binding (integrated
+consumer detects that one at continuation frame1100). First mutation batch hit tooltimeout
+mid-fourth case; inspected/restored the file explicitly, then reran remaining cases singly.
+No mutant left in source. Standalone SaveAudit216264PASS incl14coldtypecases; earlier full
+disc231007PASS before those14extra cases. Final postmerge gates recorded below.
+
+NEXT: geometry/placement/path owners (ParkPaths PLUS Park/PathTool owners, including original
+under-path tiles/queue owner IDs for delete/edit behavior), then walking/needs/visitors/native
+leases/queues/pending work, staff/litter/research/advisor, presentation and Viewer transaction.
+User requested TOTAL state, so advisor queue/rule deadlines will be captured even though the
+console rebuilds them on load; this departure was explicitly coordinated with tinyclaw.
+AdvisorScheduler needs79vars/22counters/bothcursors/warm/v53latch/perrule next+lastFail;
+ParkAdvisor flags/state/countdown/ring+headtail/current speech progress; message-stack DTO
+already exists on mainbb7b0cc. No Save/Load UI enablement, research branch only.
+All3delegates used this turn (track owners, coaster draft timeout, coaster tests/review timeout);
+all outputs integrated/tested, no workers pending. Fetch movingmain before next slice.

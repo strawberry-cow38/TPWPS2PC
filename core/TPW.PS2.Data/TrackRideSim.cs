@@ -73,10 +73,10 @@ public sealed class TrackCar
 /// <see cref="Wear"/> and <see cref="BreakdownCheck"/>, which this class calls at the console's
 /// points; the reliability they act on is the ride's (<see cref="ParkRide.Reliability"/>). Not here
 /// yet: the drive-it-yourself kart race.</summary>
-public sealed class TrackRideSim
+public sealed partial class TrackRideSim
 {
     readonly List<TrackCar> _cars = new();
-    readonly Random _rng;
+    readonly SnapshotRandom _rng;
 
     public TrackLayout Track { get; }
     public bool Karts { get; }
@@ -126,7 +126,7 @@ public sealed class TrackRideSim
     {
         Track = track ?? throw new ArgumentNullException(nameof(track));
         Karts = karts ?? KartsFor(track.Ground.World, track.Ground.Park);
-        _rng = new Random(seed);
+        _rng = new SnapshotRandom(seed);
         Rebuilt();
     }
 

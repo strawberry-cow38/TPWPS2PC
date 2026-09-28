@@ -122,7 +122,7 @@ public sealed class TrackGround
 ///
 /// ⭐ Add-ons (types 40–47) are laid by the chooser's first rule from up to three stored entries,
 /// and a post-pass (0x202C00) hides the straight after each one; see <see cref="AddUpgrade"/>.</summary>
-public sealed class TrackLayout
+public sealed partial class TrackLayout
 {
     /// <summary>0x202980 refuses a fourth ("Tried to add too many upgrades to track ride").</summary>
     public const int MaxUpgrades = 3;

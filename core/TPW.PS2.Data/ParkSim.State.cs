@@ -97,6 +97,10 @@ public sealed partial class ParkSim
     /// the scheduler's depth-limited Chain. Unsupported native track/coaster owners and external
     /// VM RNGs fail closed. Does not read lazy ride getters or change source state.</summary>
     public ScriptedState CaptureScriptedState(ScriptedBindings bindings, Func<StaffMember, string> identifyStaff = null)
+        => CaptureGraph(bindings, identifyStaff, null, null);
+
+    ScriptedState CaptureGraph(ScriptedBindings bindings, Func<StaffMember, string> identifyStaff,
+        Dictionary<TrackRideSim, string> tracks, Dictionary<CoasterSim, string> coasters)
     {
         ArgumentNullException.ThrowIfNull(bindings);
         // Preflight live counts BEFORE copying queues/VM tables or consulting asset resolvers.
@@ -126,7 +130,8 @@ public sealed partial class ParkSim
         }
         foreach (var r in _rides)
         {
-            if (r.Track != null || r.Coaster != null) throw new NotSupportedException("Track/Coaster owners are not supported by scripted saves.");
+            if ((r.Track != null && tracks == null) || (r.Coaster != null && coasters == null))
+                throw new NotSupportedException("Use the full ParkSim State envelope for native vehicle owners.");
             Add(r.Machine); Host(r.Host);
         }
         while (pending.TryDequeue(out var m)) { Host(m.SnapshotHost); Add(m.Parent); Add(m.Child); Add(m.SoundChild); }
@@ -142,7 +147,8 @@ public sealed partial class ParkSim
             Version = ScriptedStateVersion, Time = Time, Carry = _carry,
             Rides = _rides.Select(r => r.CaptureState(r.Definition == null ? null :
                 (_scriptedDefinitions.TryGetValue(r.Definition, out var key) ? key : StateKey(bindings.IdentifyDefinition?.Invoke(r.Definition))),
-                r.Machine == null ? null : machines[r.Machine], Host(r.Host), null, null, Staff)).ToArray(),
+                r.Machine == null ? null : machines[r.Machine], Host(r.Host),
+                r.Track == null ? null : tracks[r.Track], r.Coaster == null ? null : coasters[r.Coaster], Staff)).ToArray(),
             Machines = machines.Select(pair =>
             {
                 var a = CheckAsset(_scriptedAssets.TryGetValue(pair.Key, out var known) ? known : bindings.IdentifyProgram?.Invoke(pair.Key.Program));
@@ -163,7 +169,8 @@ public sealed partial class ParkSim
             UpgradesPastLastTier = UpgradesPastLastTier, Finances = Finances.CaptureState(), Random = _random.CaptureState()
         };
         // Validate using the same staged path, without installing callbacks or changing the source.
-        BuildScriptedState(result, Paths, bindings, id => staff.Single(p => p.Value == id).Key, false);
+        BuildScriptedState(result, Paths, bindings, id => staff.Single(p => p.Value == id).Key, false,
+            tracks?.ToDictionary(p=>p.Value,p=>p.Key), coasters?.ToDictionary(p=>p.Value,p=>p.Key));
         return result;
     }
 
@@ -174,7 +181,8 @@ public sealed partial class ParkSim
         Func<string, StaffMember> resolveStaff = null) => BuildScriptedState(state, paths, bindings, resolveStaff, true);
 
     static ParkSim BuildScriptedState(ScriptedState s, ParkPaths paths, ScriptedBindings b,
-        Func<string, StaffMember> resolveStaff, bool bind)
+        Func<string, StaffMember> resolveStaff, bool bind,
+        Dictionary<string, TrackRideSim> tracks = null, Dictionary<string, CoasterSim> coasters = null)
     {
         ArgumentNullException.ThrowIfNull(s); ArgumentNullException.ThrowIfNull(b);
         StateRequire(s.Version == ScriptedStateVersion && s.Time >= 0 && s.Time % TickMilliseconds == 0
@@ -265,11 +273,18 @@ public sealed partial class ParkSim
             }
             return member;
         }
+        var usedTracks = new HashSet<TrackRideSim>(); var usedCoasters = new HashSet<CoasterSim>();
         var rides = new Dictionary<int, ParkRide>();
         foreach (var r in s.Rides)
         {
             StateRequire(r != null, "ride record");
-            if (r.TrackId != null || r.CoasterId != null) throw new NotSupportedException("Track/Coaster owners are not supported by scripted saves.");
+            if ((r.TrackId != null && tracks == null) || (r.CoasterId != null && coasters == null))
+                throw new NotSupportedException("Native vehicle records need their full ParkSim State envelope.");
+            var track = r.TrackId == null ? null : Lookup(tracks, r.TrackId);
+            var coaster = r.CoasterId == null ? null : Lookup(coasters, r.CoasterId);
+            StateRequire(track == null || usedTracks.Add(track), "track sim has multiple ride owners");
+            StateRequire(coaster == null || usedCoasters.Add(coaster), "coaster sim has multiple ride owners");
+            StateRequire(track == null || coaster == null, "ride owns both native vehicle classes");
             ArrayBound(r.Queue); ArrayBound(r.Left); ArrayBound(r.Ejected); ArrayBound(r.Variables);
             var machine = Lookup(machines, r.MachineId); var host = Lookup(hosts, r.HostId);
             StateRequire(ReferenceEquals(machine.SnapshotHost, host), "ride/VM host mismatch");
@@ -285,7 +300,7 @@ public sealed partial class ParkSim
                     definitions.Add(r.DefinitionKey, definition); park._scriptedDefinitions.Add(definition, r.DefinitionKey);
                 }
             }
-            var ride = ParkRide.FromState(r, definition, machine, host, null, null, Staff);
+            var ride = ParkRide.FromState(r, definition, machine, host, track, coaster, Staff);
             StateRequire(rides.TryAdd(r.Id, ride), "duplicate placement ID"); park._rides.Add(ride);
         }
         // Reject injected orphan nodes, but allow arbitrary cycles and links back through parents.
@@ -310,7 +325,12 @@ public sealed partial class ParkSim
         {
             StateRequire(upgrades.Add(id) && rides.ContainsKey(id), "duplicate/dangling upgrade"); park._upgrades.Add(rides[id]);
         }
-        if (bind) b.BindCallbacks?.Invoke(park, hosts);
+        StateRequire(usedTracks.Count == (tracks?.Count ?? 0) && usedCoasters.Count == (coasters?.Count ?? 0), "unowned native vehicle record");
+        if (bind)
+        {
+            park.BindRestoredVehicles();
+            b.BindCallbacks?.Invoke(park, hosts);
+        }
         return park;
     }
 }

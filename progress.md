@@ -3289,3 +3289,13 @@ Postmergeb4ac5f4 gates:8parkmatrix4PASS+4exactretailreds(exit2,landing_evidence=
 10/11runtimePASS,onlypreexistingFANTASYanchorred;standingfixmerged. OwnerdiscSaveAudit230633PASS.
 Evidence /tmp/tpw-save-graph-matrix-v2, /tmp/tpw-save-graph-runtime-v2,
 /tmp/tpw-save-graph-postmerge.log. Initialnon-v2matrixruninterrupted,notgateevidence.
+
+### September28 save/load — native vehicle owners and ParkSim consumer (research branch)
+Track layout/sim + coaster topology/sim snapshots now allocation-only restore exact live
+cars/trains/riders/physics/sound/RNG and geometry caches; no rebuild/reboarding. ParkSim.State
+joins scripts+native owner ID tables and rebinds real queue/release/wear callbacks. Boat+kart+
+coaster mixed park FILEcheckpoint14.28s continues79.96s identically via actual ParkSim.Advance;
+sharedlayoutidentity kept. Standalone6000ticktests forboat/kart/coaster, all14coldcoaster types.
+Five mutations fail/restored; lostreleasebinding fails integratedconsumer atframe1100.
+216264disc-freeSaveAuditPASS;83PythonPASS. FULLSAVE STILLUNAVAILABLE: geometrypaths/placements,
+visitors/needs/nativependingwork/staff/advisor/presentation and Viewertransaction remain.

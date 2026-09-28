@@ -140,7 +140,7 @@ public sealed class CoasterNode
 ///
 /// ⭐ Coordinates are the console's, one frame for the park: x and z in units (256 a cell), cell
 /// (x, z) the park grid's (x, y). The viewer draws it in the same frame it draws the track rides in.</summary>
-public sealed class CoasterTrack
+public sealed partial class CoasterTrack
 {
     public const int MaxPylons = 32;
     public CoasterType Type { get; }
