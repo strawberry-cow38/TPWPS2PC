@@ -317,6 +317,32 @@ public sealed record LaptopScreen(
         },
         "itemarrows", WidgetStep: RowStep, ValueColumnOnly: true);
 
+    /// <summary>⭐ TRAINING -- the one laptop screen you BUY from rather than read. Layout from
+    /// `findings/staff-management.md` §12.3; ctor `0x1ff4a8`, drawn by `0x1ff830`.
+    ///
+    /// ⚠⚠ EVERY FIGURE ON IT IS THE LEVEL *AFTER* TRAINING, never the member's current one: the
+    /// bar is `min(L + 1, 5) x 25` and the wage is `wage(kind, min(L + 1, 5))`. A screen that
+    /// showed the present skill and wage would look entirely plausible and be one level stale on
+    /// every row at once, which is why this is called out here and not left to the caller.
+    ///
+    /// ⚠ The first row's LABEL is per-member -- the level being offered -- so this is a factory
+    /// rather than a static. Its text id comes from `StaffTables.TrainingLevelTextRows`, which is
+    /// a TABLE and not arithmetic: the ids are 110, 111, 112, 114, 116, because 113 and 115 are
+    /// `STR_PARKSTATS_GOOD` and `STR_PARKSTATS_PARK_VALUE`. `110 + L` would print "Good" as the
+    /// fourth training level.
+    ///
+    /// ⚠ `TrainingVal` (250, 125) is authored in the scene and bound by the ctor, but `0x1ff830`
+    /// never draws it, so it is not a row here.</summary>
+    public static LaptopScreen TrainingFor(int levelTextRow) => new(
+        "main_i_staff_opts_training.sce", 27, "Item", "InfoText", "CostWageVal", "Model",
+        new LaptopRow[]
+        {
+            new(levelTextRow, LaptopRowKind.Text),         // "Level L+2" -- the level being bought
+            new(118, LaptopRowKind.Money),                 // Training Cost
+            new(886, LaptopRowKind.Money),                 // Monthly Wage -- AFTER training
+            new(709, LaptopRowKind.Bar, "SkillLevelBar"),  // Skill Level  -- min(L+1,5) x 25
+        });
+
     public static readonly LaptopScreen[] AllList = { AllRides, AllShops, AllSideshows, AllToilets };
 
     /// <summary>The four "Single ..." item screens the console builds on one base class. ⚠ Build

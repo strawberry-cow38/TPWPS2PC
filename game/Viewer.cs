@@ -3554,6 +3554,10 @@ public partial class Viewer : Node3D
 
     void ShowLaptopLevel()
     {
+        // ⚠ Cleared BEFORE the dispatch and re-set by the `stafftraining` case, so it can never
+        // outlive its screen. A stale subject here would let a click on some later screen's first
+        // row buy training for whoever was last looked at.
+        _trainingMember = null;
         if (_laptopBack.Count == 0) { ShowLaptopMain(); return; }
         var (kind, arg) = _laptopBack[^1];
         GD.Print($"[laptop] -> {kind}{(arg == null ? "" : " " + arg)} (depth {_laptopBack.Count})");
@@ -3578,6 +3582,43 @@ public partial class Viewer : Node3D
             }
             case "stafftypes": ShowStaffInfoTypes(); break;
             case "staffitem": ShowStaffInfoMember(arg); break;
+            // ⭐⭐ TRAINING -- the one laptop screen you BUY from. `arg` is the member's index in
+            // `ParkStaff.Members`, the same handle `staffitem` pages with, so Single Staff can
+            // push it without a second way of naming a person.
+            //
+            // ⚠⚠ Every figure on it is the level AFTER training; see `LaptopScreen.TrainingFor`.
+            case "stafftraining":
+            {
+                var pool = _staff?.Members;
+                if (pool == null || pool.Count == 0)
+                { _laptopBack.RemoveAt(_laptopBack.Count - 1); Status("no staff hired"); ShowLaptopLevel(); return; }
+                int ti = int.TryParse(arg, out var tix) ? tix : 0;
+                var m = pool[Math.Clamp(ti, 0, pool.Count - 1)];
+                // ⚠ The console never reaches this screen at the cap (the list box tests L < 4), so
+                // refuse rather than draw a zero cost against a bar that cannot move.
+                if (!_staff.TrainingOffered(m))
+                {
+                    _laptopBack.RemoveAt(_laptopBack.Count - 1);
+                    Status($"{StaffName(m)} -- already at the top level");
+                    ShowLaptopLevel(); return;
+                }
+                _trainingMember = m;
+                // ⚠ `Money.Format` takes the console's TENTHS, which is why each figure is x10:
+                // §12.3 shows `$ cost` and `$ wage`, and `0x1FF610` debits `cost x 10`.
+                int tcost = m.TrainingCost(_sim?.Finances?.FreeBuild ?? false);
+                _shopPanel.ShowScreen(LaptopScreen.TrainingFor(m.TrainingLevelTextRow), StaffName(m),
+                    new List<(string, int)>
+                    {
+                        (null, 0),                                     // the level entry -- label only
+                        (Money.Format(tcost * 10), 0),                 // Training Cost
+                        (Money.Format(m.WageAfterTraining * 10), 0),   // Monthly Wage AFTER training
+                        (null, m.TrainingBar),                         // Skill Level min(L+1,5) x 25
+                    });
+                BuildLaptopModelFor((ParkRide)null);                   // ⚠ no model for a person yet
+                RefreshLaptopBalance();
+                Status($"{StaffName(m)} -- train to level {m.Level + 2} for {Money.Format(tcost * 10)}");
+                break;
+            }
             case "infoitem":
             {
                 var bits = (arg ?? "0:0").Split(':');
@@ -3662,6 +3703,58 @@ public partial class Viewer : Node3D
     // Information's fifth row is the staff-type selector, not an asset list.
     const int StaffInfoRow = 4;
     string StaffName(StaffMember m) => m.Candidate.Name(_text) ?? $"#{m.Candidate.NameRow}";
+
+    /// <summary>⚠ Whose Training screen is showing, or null. Set by the `stafftraining` case and
+    /// cleared by <see cref="ShowLaptopLevel"/> on every navigation, so it never outlives the
+    /// screen it belongs to.</summary>
+    StaffMember _trainingMember;
+
+    /// <summary>⭐ Cross on the Training screen (`0x1ff6f8` -> `0x1ff610`). The refusals are the
+    /// console's own and are answered with text rather than treated as errors; a success redraws,
+    /// because every figure on the screen has just changed.</summary>
+    void BuyTraining(StaffMember m)
+    {
+        var outcome = _staff.Train(m);
+        GD.Print($"[laptop] training {StaffName(m)} -> {outcome}");
+        Status(outcome switch
+        {
+            TrainingResult.Trained      => $"{StaffName(m)} trained to level {m.Level + 1}",
+            TrainingResult.CannotAfford => "not enough money for that training",
+            TrainingResult.NotOffered   => $"{StaffName(m)} -- already at the top level",
+            _                           => $"{StaffName(m)} -- training refused",
+        });
+        // ⚠ Redrawn through the stack rather than by calling the case, so a member who has just
+        // reached the cap leaves the screen the same way he would on any other navigation.
+        ShowLaptopLevel();
+    }
+
+    /// <summary>⭐ `--staff-test`: hires one of each kind through the REAL `ParkStaff.Hire`, so a
+    /// staff render shows people the game actually took on. ⚠ Silent without the flag -- the staff
+    /// rows refuse to open with nobody hired, which is correct and would otherwise read as a bug.
+    /// </summary>
+    void TestHireOneOfEach()
+    {
+        if (!_staffTest) return;
+        // ⚠⚠ A LAPTOP FILM NEVER TICKS THE PARK, and both `ParkVisitors` and `EnsureStaff` live
+        // inside `TickPark`, so without one real tick there is no staff system at all and every
+        // staff screen refuses itself -- which on a render is indistinguishable from a broken
+        // screen. One tick through the REAL path rather than reaching past it.
+        if (_staff == null) TickPark();
+        if (_staff == null)
+        {
+            // ⚠ Names the link that is missing. A silent return here reads exactly like a hire
+            // that ran and found nobody, and that cost a render to tell apart.
+            GD.PrintErr($"[staff] test hire: no staff system after a tick (sim={_sim != null}, "
+                      + $"guests={_guests != null}, visitors={_visitors != null})");
+            return;
+        }
+        int hired = 0;
+        foreach (StaffKind k in Enum.GetValues<StaffKind>())
+            for (int slot = 0; slot < 4; slot++)
+                if (_staff.CanHire(k) && _staff.Hire(k, slot) != null) { hired++; break; }
+        GD.Print($"[staff] test hire: {hired} taken on, {_staff.Members.Count} on the books");
+    }
+
 
     /// <summary>⭐⭐ ONE ALL STAFF ROW, by its text id -- every figure is the console's own.
     /// `findings/staff-management.md` §12.1.</summary>
@@ -3920,6 +4013,9 @@ public partial class Viewer : Node3D
     /// says can never disagree.</summary>
     void OnLaptopRowActivated(int row)
     {
+        // ⭐ Training's single list entry is row 0, and Cross on it buys (§12.3 -> §7.2). Checked
+        // before the ride gate because both screens come through this one hook.
+        if (_trainingMember is { } trainee) { if (row == 0) BuyTraining(trainee); return; }
         if (_detailsSpec != LaptopScreen.Ride || _detailsRide is not { } ride) return;
         var rows = LaptopScreen.Ride.Rows;
         if (row < 0 || row >= rows.Count || rows[row].TextId != 119) return;   // Upgrades
@@ -4110,20 +4206,40 @@ public partial class Viewer : Node3D
             return;
         }
 
+        // ⭐ `--laptop-screen=training:<n>` opens Training for member n. The console reaches it
+        // through Single Staff, which is not ported yet, so the harness pushes the SAME stack entry
+        // that screen will push rather than inventing a second route to it.
+        if (_laptopScreen.StartsWith("training:", StringComparison.OrdinalIgnoreCase))
+        {
+            if (_laptopFrame == 0)
+            {
+                TestHireOneOfEach();
+                var tparts = _laptopScreen.Split(':');
+                int tn = tparts.Length > 1 && int.TryParse(tparts[1], out var tv) ? tv : 0;
+                _laptopBack.Clear();
+                _laptopBack.Add(("stafftraining", tn.ToString()));
+                ShowLaptopLevel();
+                // ⚠ Reports the SUBJECT, not just that something drew: a refused screen pops
+                // itself and falls back, which otherwise looks identical to a good render.
+                GD.Print($"[laptop] training {tn} -> stack "
+                       + (_laptopBack.Count == 0 ? "empty" : _laptopBack[^1].Kind + " " + (_laptopBack[^1].Arg ?? "")));
+            }
+            if (_laptopClick != null && _laptopFrame == 0) LaptopClickProbe();
+            _shopPanel.ForceHoverForShot(_laptopHoverRow, _laptopHoverBtn);
+            PrepareUiShotView();
+            SaveShot(ShotSibling(_shotPath, $"-f{_laptopFrame:D4}"));
+            _laptopFrame++;
+            if (_laptopFrame >= _laptopFilm) GetTree().Quit();
+            return;
+        }
+
         if (_laptopScreen.StartsWith("info:", StringComparison.OrdinalIgnoreCase))
         {
             if (_laptopFrame == 0)
             {
                 // ⚠ Before the level is shown: the staff row refuses to open with nobody hired,
                 // which is correct behaviour and would otherwise make the render look like a bug.
-                if (_staffTest && _staff != null)
-                {
-                    int hired = 0;
-                    foreach (StaffKind k in Enum.GetValues<StaffKind>())
-                        for (int slot = 0; slot < 4; slot++)
-                            if (_staff.CanHire(k) && _staff.Hire(k, slot) != null) { hired++; break; }
-                    GD.Print($"[staff] test hire: {hired} taken on, {_staff.Members.Count} on the books");
-                }
+                TestHireOneOfEach();
                 int colon = _laptopScreen.IndexOf(':');
                 var pieces = _laptopScreen.Split(':');
                 int pick = pieces.Length > 1 && int.TryParse(pieces[1], out var pv) ? pv : 0;
