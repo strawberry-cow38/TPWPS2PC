@@ -835,11 +835,11 @@ public sealed partial class ParkAdvisor
     {
         if (sim != null)
         {
-            sim.Advisor = (id, ride) => Submit(new AdvisorRequest(unchecked((ushort)id), ride));
-            sim.AdvisorEvent = CountEvent;
-            sim.ObjectRemoved = ObjectLeftPark;
+            sim.Advisor = StateSimAdvisor;
+            sim.AdvisorEvent = StateEvent;
+            sim.ObjectRemoved = StateObjectRemoved;
         }
-        if (staff != null) staff.Advisor = id => Submit(new AdvisorRequest(unchecked((ushort)id)));
+        if (staff != null) staff.Advisor = StateStaffAdvisor;
         if (management != null) management.Advisor = id => Submit(new AdvisorRequest(unchecked((ushort)id)));
     }
 

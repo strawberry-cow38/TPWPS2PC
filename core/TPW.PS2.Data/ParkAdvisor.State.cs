@@ -2,6 +2,13 @@ namespace TPW.PS2.Data;
 
 public sealed partial class ParkAdvisor
 {
+    void EmitStateSim(int id,ParkRide ride)=>Submit(new AdvisorRequest(unchecked((ushort)id),ride));
+    void EmitStateStaff(int id)=>Submit(new AdvisorRequest(unchecked((ushort)id)));
+    public Action<int,ParkRide> StateSimAdvisor=>EmitStateSim;
+    public Action<int,int> StateEvent=>CountEvent;
+    public Action<ParkRide> StateObjectRemoved=>ObjectLeftPark;
+    public Action<int> StateStaffAdvisor=>EmitStateStaff;
+
     bool _updating;
     bool _hydrated = true;
     public LipTrack LipTrackBinding => _lip?.Track;

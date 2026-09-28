@@ -48,7 +48,7 @@ public partial class ViewerStaffSaveSmoke : Node
             foreach(var pair in new Dictionary<string,object>{{"Member",sc.Member},{"Serial",(uint)73},{"Node",node},{"Drawn",draw},{"Anim",aps},{"Animation",native},{"Records",records},{"Showing",walk},{"ModelPath",path},{"Prev",new Vector3(9,8,7)},{"Yaw",1.23f}})Put(actor,pair.Key,pair.Value);
             F<IDictionary>(source,"_staffActors").Add(sc.Member,actor);
             var ln=new Node3D{Name="actual-litter",Position=new(4,0,5)};var ld=new AnimatedModel(lm,null,null,_=>(null,false));ld.SetFrame(0);ln.AddChild(ld.Root);root.AddChild(ln);litterOwners.Add(ln,ld);
-            F<SnapshotReferenceMap<LitterItem,(Node3D,uint,int,string)>>(source,"_litterActors").Add(sc.Litter,(ln,81,sc.Litter.ModelId,la.Name));
+            F<Dictionary<LitterItem,(Node3D,uint,int,string)>>(source,"_litterActors").Add(sc.Litter,(ln,81,sc.Litter.ModelId,la.Name));
             var rng=F<NewlibRand>(source,"_staffAnimationRand");for(int i=0;i<8;i++){native.Push();native.Update(40,rng.Next);}
             var saved=source.CaptureStaffPresentation(sb);string frozen=Json(saved);ParkSaveFile.Write(file,saved);
             var disk=ParkSaveFile.Read<Viewer.StaffPresentationState>(file);target.RestoreRuntimeState(source.CaptureRuntimeState());

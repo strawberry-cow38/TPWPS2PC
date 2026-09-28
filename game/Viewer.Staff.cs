@@ -61,8 +61,8 @@ public partial class Viewer
         /// <summary>The native yaw last drawn, `π − facing` wrapped to [0, 2π).</summary>
         public float Yaw;
     }
-    readonly SnapshotReferenceMap<StaffMember, StaffActor> _staffActors = new(ReferenceEqualityComparer.Instance);
-    readonly SnapshotReferenceMap<LitterItem, (Node3D Node, uint Serial, int ModelId, string Path)> _litterActors = new(ReferenceEqualityComparer.Instance);
+    readonly Dictionary<StaffMember, StaffActor> _staffActors = new(ReferenceEqualityComparer.Instance);
+    readonly Dictionary<LitterItem, (Node3D Node, uint Serial, int ModelId, string Path)> _litterActors = new(ReferenceEqualityComparer.Instance);
     readonly HashSet<int> _staffModelMisses = new();
     // Retain the actual renderer, not just its Node, so saves can copy the last rendered pose
     // without calling SetFrame to manufacture one. Lifetime follows the existing litter owner.

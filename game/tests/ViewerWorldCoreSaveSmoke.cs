@@ -113,13 +113,10 @@ public partial class ViewerWorldCoreSaveSmoke:Node
         var native=new NativeGuestAnimation(table,(s,v)=>staffRecords.TryGetValue((s,v),out var r)?r.DurationFrames:null){Requested=9};
         var actorObject=Activator.CreateInstance(typeof(Viewer).GetNestedType("StaffActor",BindingFlags.NonPublic),true);
         foreach(var p in new Dictionary<string,object>{{"Member",member},{"Serial",member.Serial},{"Node",staffNode},{"Drawn",renderer},{"Anim",apsStaff},{"Animation",native},{"Records",staffRecords},{"Showing",record},{"ModelPath",staffAsset.Name},{"Prev",new Vector3(1,0,3)},{"Yaw",.8f}})actorObject.GetType().GetField(p.Key).SetValue(actorObject,p.Value);
-        var actorMap=F<IDictionary>(source,"_staffActors");
-        var spare=Enumerable.Range(0,StaffTables.PoolSize).Select(i=>staff.StateMember(StaffKind.Handyman,i)).First(m=>!ReferenceEquals(m,member));C(!ReferenceEquals(spare,member),"spare member fixture");
-        actorMap.Add(spare,null);actorMap.Add(member,actorObject);actorMap.Remove(spare); // real free slot BEFORE live entry
-
+        F<IDictionary>(source,"_staffActors").Add(member,actorObject);
         var litter=staff.Litter.Drop(new NativeGuestMotion.Point(384,384),false);
         var litterNode=new Node3D{Name="litter"};var litterDraw=new AnimatedModel(models["litter"].Model,null,null,_=>(null,false));litterDraw.SetFrame(0);litterNode.AddChild(litterDraw.Root);staffRoot.AddChild(litterNode);
-        F<SnapshotReferenceMap<LitterItem,(Node3D,uint,int,string)>>(source,"_litterActors").Add(litter,(litterNode,litter.Serial,litter.ModelId,litterAsset.Name));
+        F<Dictionary<LitterItem,(Node3D,uint,int,string)>>(source,"_litterActors").Add(litter,(litterNode,litter.Serial,litter.ModelId,litterAsset.Name));
         F<Dictionary<Node3D,AnimatedModel>>(source,"_litterDrawn").Add(litterNode,litterDraw);
         staffRoot.MoveChild(litterNode,0);root.MoveChild(staffRoot,1);
         var owners=new Dictionary<Viewer,Dictionary<int,Guest>>{{source,selected.ToDictionary(g=>g.Id)}};
@@ -131,17 +128,12 @@ public partial class ViewerWorldCoreSaveSmoke:Node
                 return new(){GuestAtSlot=r.GuestAtSlot,GuestId=r.GuestId,Guest=r.Guest,Models=models,Animations=animations,Textures=new Dictionary<string,Viewer.GuestTextureAsset>(),Texture=(_,_) =>(null,false),LogicalTable=table};},
             Staff=(r,c)=>new(){Staff=r.Staff,Visitors=r.Visitors,MemberId=r.MemberId,Member=r.Member,LitterId=r.LitterId,Litter=r.Litter,Characters=c,ModelRegistry=null}};
         var initial=Bind(source);var snapshot=source.CaptureActorWorld(initial);string frozen=Json(snapshot);
-        C(snapshot.Staff.ActorsLayout.FreeBottomFirst.Length==1&&snapshot.Staff.ActorsLayout.Slots[0]==null,"PRECONDITION: staff dictionary has a retained leading hole");
         string file=System.IO.Path.Combine(System.IO.Path.GetTempPath(),"tpw-actor-world-"+Guid.NewGuid()+".sav");
         try{ParkSaveFile.Write(file,snapshot);snapshot=ParkSaveFile.Read<Viewer.ActorWorldState>(file);}finally{System.IO.File.Delete(file);}
         using var stage=Viewer.StageActorWorld(snapshot,initial);var target=stage.Viewer;
         C(Json(target.CaptureActorWorld(Bind(target)))==frozen,"joined core+guest+staff FILE identity roundtrip");
         C(F<Node3D>(target,"_staffRoot").GetParent()==F<Node3D>(target,"_guestRoot"),"staff root retained beneath guest root");
         C(F<Dictionary<Node3D,AnimatedModel>>(target,"_litterDrawn").Count==1,"litter renderer is an owned live root");
-        foreach(var v in new[]{source,target}){
-            var m=F<ParkStaff>(v,"_staff").StateMember(StaffKind.Handyman,spare.PoolSlot);var map=F<IDictionary>(v,"_staffActors");
-            map.Add(m,null);C(ReferenceEquals(map.Keys.Cast<StaffMember>().First(),m),"future actor insertion reuses leading hole, preserving shared RNG processing order");map.Remove(m);
-        }
         for(int step=0;step<24;step++){
             foreach(var v in new[]{source,target}){
                 Set(v,"_parkTicks",1000+step);

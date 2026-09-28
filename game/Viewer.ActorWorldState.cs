@@ -27,7 +27,7 @@ public partial class Viewer
         public Viewer Viewer {get;}
         public WorldCoreRegistry Registry {get;internal set;}
         internal StagedActorWorld(){Viewer=new Viewer();}
-        public void Dispose(){if(IsInstanceValid(Viewer))Viewer.DisposeUnpublishedActorWorld();}
+        public void Dispose(){Registry?.UnpublishedAdvisor?.Dispose();if(IsInstanceValid(Viewer))Viewer.DisposeUnpublishedActorWorld();}
     }
     /// <summary>All state goes to NEW unpublished owners. If any later join rejects, discard
     /// every staged node, including nodes the Viewer constructor creates before _Ready. The
@@ -59,7 +59,7 @@ public partial class Viewer
     void DisposeUnpublishedActorWorld()
     {
         if(IsInsideTree()||GetParent()!=null)throw new InvalidOperationException("Only unpublished stages may be discarded here");
-        foreach(var node in new Node[]{_weather.Root,_flags.Root,_thoughts.Root,_park?.Root})
+        foreach(var node in new Node[]{_weather.Root,_flags.Root,_thoughts.Root,_park?.Root,_nativeBus?.Root})
             if(node!=null&&IsInstanceValid(node)&&node.GetParent()==null)node.Free();
         Free();
     }

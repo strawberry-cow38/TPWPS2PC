@@ -32,6 +32,8 @@ public sealed partial class NativeEntranceFlow
     public IReadOnlyList<Guest> ReferencedGuests => _allocated.Select(e => e.Guest)
         .Concat(_admitted.Keys).Distinct<Guest>(ReferenceEqualityComparer.Instance).ToArray();
     public object StateOwner => _owner;
+    /// <summary>Exact immutable callback bundle, for identity-checked world capture. Never invokes it.</summary>
+    public Services StateServices => _services;
     public NativeMotionInputs StateInputs(Guest guest) => _entries.TryGetValue(guest, out var e)
         ? e.Inputs : throw new ArgumentException("Guest is not an entrance entry.");
     public bool StateBindingsHydrated => _stateHydrated;

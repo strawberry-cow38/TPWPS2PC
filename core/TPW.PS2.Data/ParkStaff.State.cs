@@ -203,7 +203,7 @@ public sealed partial class ParkStaff
             return (key,feature:new StaffFeature(new(r.X,r.Z),new(r.EntryX,r.EntryZ),r.Flags,r.FeatureStatus,ride,key),status:r.PolledStatus);}).ToArray();
         Require(rooms.Select(r=>r.key).Distinct().Count()==rooms.Length,"duplicate room key");
         var roomProbe=new SnapshotReferenceMap<object,int>(EqualityComparer<object>.Default);
-        foreach(var r in rooms)roomProbe.Add(r.key,0);roomProbe.RestoreLayout(s.RoomsLayout,()=>new object());
+        foreach(var r in rooms)roomProbe.Add(r.key,0);roomProbe.RestoreLayout(s.RoomsLayout);
         foreach(var m in s.Members)_slots[m.Kind][m.PoolSlot].ValidateSnapshot(m,R);
         var used=new HashSet<int>();
         void Chain(NativeGuestRoute.State? route) {if(route==null)return;NativeGuestRoute.ValidateState(route,Routes);
@@ -219,7 +219,7 @@ public sealed partial class ParkStaff
             _active[p.Kind].Clear();_active[p.Kind].AddRange(p.Active.Select(i=>_slots[p.Kind][i]));}
         _mapList.Clear();_mapList.AddRange(s.MapOrder.Select(key=>Ref<StaffMember>(key)!));_hireHeld=held;
         _rooms.Clear();foreach(var r in rooms)_rooms.Add(r.key,(r.feature,r.status));
-        _rooms.RestoreLayout(s.RoomsLayout,()=>new object());
+        _rooms.RestoreLayout(s.RoomsLayout);
         s.Striking.CopyTo(_striking,0);s.StrikeStamp.CopyTo(_strikeStamp,0);s.StrikeStage.CopyTo(_strikeStage,0);
         Now=s.Now;_poolEpoch=s.PoolEpoch;ParkRunning=s.ParkRunning;DebugEveryoneStrikes=s.DebugEveryoneStrikes;TrainingsBought=s.TrainingsBought;
         Features=features;AnimationReady=ready;Sound=sound;HandleSound=handles;HandlePlaying=playing;Advisor=advisor;

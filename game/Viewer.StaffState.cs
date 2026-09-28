@@ -34,11 +34,7 @@ public partial class Viewer
     public sealed record StaffPresentationState(int Version,bool Core,bool Registry,bool LogicalTable,
         GuestNodeState Root,string RootParent,int World,int Park,uint Random,string HireHeld,bool HireCarried,
         short[] Cursor,int[] ModelMisses,string[] Models,string[] Animations,string[] Textures,
-        GuestRecordState[] Records,StaffActorState[] Actors,StaffLitterState[] Litter)
-    {
-        public required IntMapLayout ActorsLayout {get;init;}
-        public required IntMapLayout LitterLayout {get;init;}
-    }
+        GuestRecordState[] Records,StaffActorState[] Actors,StaffLitterState[] Litter);
     public sealed record StaffPresentationJoin(IReadOnlyDictionary<string,Node3D> Members,
         IReadOnlyDictionary<string,Node3D> Litter,IReadOnlyDictionary<string,AnimatedModel> LitterRenderers);
 
@@ -104,8 +100,7 @@ public partial class Viewer
             _charModels.Select(x=>M(x.Key)).ToArray(),
             _charAnims.Select(x=>GSId(c.Animations.Single(a=>a.Value.Path.Equals(x.Key,StringComparison.OrdinalIgnoreCase)&&ReferenceEquals(a.Value.Animation,x.Value)).Key)).ToArray(),
             _charTex.Select(x=>GSId(c.Textures.Single(t=>t.Value.Key==x.Key&&t.Value.Texture==x.Value.Tex&&t.Value.Soft==x.Value.Soft).Key)).ToArray(),
-            records.ToArray(),actors.ToArray(),litter.ToArray()) {
-                ActorsLayout=_staffActors.CaptureLayout(),LitterLayout=_litterActors.CaptureLayout()};
+            records.ToArray(),actors.ToArray(),litter.ToArray());
     }
 
     /// <summary>Run after RuntimeState and (when used) guest restore. Reuses readonly cache owners;
@@ -133,8 +128,8 @@ public partial class Viewer
         var records=s.Records.Select(r=>A(r.Animation)?.Records().SingleOrDefault(x=>x.Offset==r.Offset)??throw new InvalidDataException("staff record asset")).ToArray();
         Aps.Record R(int i,string aid) {SS(i>=-1&&i<records.Length,"record index");if(i<0)return null;SS(s.Records[i].Animation==aid,"record APS mismatch");return records[i];}
         var members=new Dictionary<string,Node3D>();var litterNodes=new Dictionary<string,Node3D>();var litterDrawn=new Dictionary<string,AnimatedModel>();
-        var stagedActors=new SnapshotReferenceMap<StaffMember,StaffActor>(ReferenceEqualityComparer.Instance);
-        var stagedLitter=new SnapshotReferenceMap<LitterItem,(Node3D Node,uint Serial,int ModelId,string Path)>(ReferenceEqualityComparer.Instance);
+        var stagedActors=new Dictionary<StaffMember,StaffActor>(ReferenceEqualityComparer.Instance);
+        var stagedLitter=new Dictionary<LitterItem,(Node3D Node,uint Serial,int ModelId,string Path)>(ReferenceEqualityComparer.Instance);
         StaffMember Member(string id) {if(id==null)return null;var m=b.Member(GSId(id));SS(m!=null&&b.MemberId(m)==id,"member identity");return m;}
         var held=Member(s.HireHeld);
         SS(s.Core||held==null&&s.Actors.Length==0&&s.Litter.Length==0,"render without core");
@@ -175,17 +170,6 @@ public partial class Viewer
                 stagedLitter.Add(item,(node,e.Serial,e.ModelId,e.Model==null?null:models[e.Model].Path));litterNodes.Add(e.Litter,node);
             }
         }catch {foreach(var n in allocated)if(IsInstanceValid(n)&&n.GetParent()==null)n.Free();throw;}
-        // Dictionary holes matter: future rehire fills a free slot and TickStaffAnimations
-        // consumes its shared RNG in enumeration order. Use unused existing pool members as
-        // construction placeholders, never invoke a staff constructor/Hire to build a hole.
-        var spareMembers=b.Staff==null?Array.Empty<StaffMember>():StaffTables.PoolBuildOrder.SelectMany(k=>Enumerable.Range(0,StaffTables.PoolSize).Select(i=>b.Staff.StateMember(k,i))).Where(m=>!stagedActors.ContainsKey(m)).ToArray();
-        var spareLitter=b.Staff==null?Array.Empty<LitterItem>():b.Staff.Litter.Slots.Where(l=>!stagedLitter.ContainsKey(l)).ToArray();
-        int mh=0,lh=0;
-        StaffMember MemberHole()=>mh<spareMembers.Length?spareMembers[mh++]:throw new InvalidDataException("staff actor holes exceed pool");
-        LitterItem LitterHole()=>lh<spareLitter.Length?spareLitter[lh++]:throw new InvalidDataException("litter actor holes exceed pool");
-        try {stagedActors.RestoreLayout(s.ActorsLayout,MemberHole);stagedLitter.RestoreLayout(s.LitterLayout,LitterHole);}
-        catch {foreach(var n in allocated)if(IsInstanceValid(n)&&n.GetParent()==null)n.Free();throw;}
-        mh=lh=0;
         // Validation/allocation complete. Readonly collection instances are never replaced.
         foreach(var a in attach)Parent(a.Parent).AddChild(a.Node);
         foreach(var v in models.Values)_charModels[v.Path]=v.Model;
@@ -193,7 +177,6 @@ public partial class Viewer
         foreach(var v in textures.Values)_charTex[v.Key]=(v.Texture,v.Soft);
         foreach(var a in stagedActors)_staffActors.Add(a.Key,a.Value);
         foreach(var l in stagedLitter)_litterActors.Add(l.Key,l.Value);
-        _staffActors.RestoreLayout(s.ActorsLayout,MemberHole);_litterActors.RestoreLayout(s.LitterLayout,LitterHole);
         foreach(var pair in litterDrawn)_litterDrawn.Add(litterNodes[pair.Key],pair.Value);
         _staffModelMisses.UnionWith(s.ModelMisses);_staffRoot=root;_staff=b.Staff;_staffVisitors=b.Visitors;
         _modelRegistry=b.ModelRegistry;_staffWorld=s.World;_staffPark=s.Park;

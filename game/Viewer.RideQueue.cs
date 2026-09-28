@@ -40,19 +40,11 @@ public partial class Viewer
         _nativeRideQueues = true;
         _rideQueueWalk = _guests;
         _rideQueueVisitors = _visitors;
-        _rideQueues = new Queues(_visitors, new Queues.Services
-        {
-            Shape = RideQueueShape,
-            Random = n => _guestRng.Next(n),
-            Phase = g => (uint)g.Id,
-            Speed = g => checked((sbyte)(15 + g.Id * 7 % 15)),
-            AnimationReady = g => !NativeIdleAllActive || NativeEntranceReady(g),
-            SlotAdvanced = NativeSlotAdvanced,
-        });
+        _rideQueues = new Queues(_visitors, CreateWorldQueueServices());
         _visitors.NativeQueueMouth = ride => _rideQueues?.Mouth(ride);
         _visitors.NativeQueueArrival = (guest, ride) => _rideQueues != null && _rideQueues.Arrive(guest, ride);
         _rideQueuePriorTick = _guests.BeforeStep;
-        _rideQueueTickHook = tick => { _rideQueuePriorTick?.Invoke(tick); _rideQueues?.Tick(tick); };
+        _rideQueueTickHook = CreateWorldQueueTickHook();
         _guests.BeforeStep = _rideQueueTickHook;
         GD.Print("[queue.native] OPT-IN native ride queues: head count 7+4*tier (tier 0), quarter-cell spots from the entrance connection, 210428 impatience, staggered close-up, boarding while VAR_ONRIDE < VAR_CAPACITY");
         GD.Print("[queue.native] NON-PARITY ADAPTERS: phase = guest id; speed 15+(id*7%15); queue routes follow the drawn queue cells, not the 0x10/0x11 planner; breakdown empties the queue at once (the ordinary state-4 +94 exception is not modelled); a boarded guest joins the ride's script queue for LETMEON; effect 0x7E and 2E28D0 unported");

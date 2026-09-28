@@ -32,6 +32,9 @@ public sealed class AdvisorStateBindings
 
 public sealed partial class AdvisorScheduler
 {
+    public IAdvisorProducers StateProducers => _producers;
+    public Func<uint> StateDay => _day;
+
     public sealed record Snapshot
     {
         public required int Version { get; init; }

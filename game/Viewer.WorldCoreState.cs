@@ -13,6 +13,8 @@ public partial class Viewer
         public required string TerrainKey { get; init; }
         public required Model Terrain { get; init; }
         public required ParkSim.StateBindings Simulation { get; init; }
+        public Func<WorldCoreRegistry,BusStateBindings> Bus {get;init;}
+        public Func<WorldCoreRegistry,AdvisorStateServices> Advisor {get;init;}
         // Trusted provider VALUES, not closure serialization. The root must account for every
         // stateful provider here, then build new-world delegates from these values on load.
         public IReadOnlyDictionary<string, JsonElement> ProviderValues { get; init; } = new Dictionary<string, JsonElement>();
@@ -30,6 +32,7 @@ public partial class Viewer
         // Verified host VALUES for detached VMs; their actual host is intentionally not public.
         public IReadOnlyDictionary<RseMachine, RsePreviewHost> RetiredMachineHosts { get; init; } = new Dictionary<RseMachine, RsePreviewHost>();
         public Func<ParkPaths, Park.StateBindings> ParkBindings { get; init; }
+        public Action<WorldCoreRegistry> BindNativeControllerProviders { get; init; }
     }
 
     [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
@@ -61,6 +64,9 @@ public partial class Viewer
         public required ParkManagement.State Management { get; init; }
         public required NativeActivationSequence.State Activations { get; init; }
         public required NativeEntranceMailbox.State Mailbox { get; init; }
+        public required NativeControllersState NativeControllers { get; init; }
+        public required BusState Bus {get;init;}
+        public required ViewerAdvisorState Advisor {get;init;}
         public required Dictionary<string, JsonElement> Providers { get; init; }
     }
 
@@ -88,6 +94,8 @@ public partial class Viewer
         public ParkManagement Management { get; internal set; }
         public Park Park { get; internal set; }
         public bool Hydrated { get; internal set; }
+        public StagedAdvisor UnpublishedAdvisor {get;internal set;}
+        public IReadOnlyDictionary<string,object> References=>objects;
         internal void Register(string id, object value)
         {
             WC(!string.IsNullOrWhiteSpace(id) && id.Length <= 1024 && value != null, "registry entry");
@@ -155,17 +163,17 @@ public partial class Viewer
             ResolveSounded=Resolve<Action<int,int>>, ResolveNearbyLitter=Resolve<Func<int,(int Plain,int Vomit)>> };
     }
     static void WC(bool ok, string reason) { if (!ok) throw new InvalidDataException("WORLD core: " + reason); }
-    void WorldCorePreflight()
+    void WorldCorePreflight(WorldCoreBindings b)
     {
         WC(_sim != null && _guests != null && _walkGrid != null, "requires initialized sim/walk/grid");
         WC(ReferenceEquals(_sim.Paths,_walkGrid) && ReferenceEquals(_guests.Paths,_walkGrid), "split path owners");
         WC(_visitors == null || ReferenceEquals(_visitors.Sim,_sim) && ReferenceEquals(_visitors.Walk,_guests), "visitor owners");
         WC(_staff == null || _visitors != null && ReferenceEquals(_staffVisitors,_visitors), "staff visitor owner");
-        WC(_entranceFlow == null && _entranceWalk == null && _entranceVisitors == null && _entranceRequests.Count == 0,
-            "entrance controller/request instrumentation join not included");
-        WC(_rideQueues == null, "native ride-queue controller join not included");
-        WC(_parkAdvisor == null, "advisor/controller join not included");
-        WC(_nativeBus == null, "bus controller/placement join not included");
+        NativeControllerPreflight();
+        WC(b.Advisor!=null || _parkAdvisor==null&&_advisorHead==null&&_advisorVoice==null&&_advisorStackView==null
+            &&_advisor==null&&_advisorRules==null&&_advisorStreams.Count==0&&_advisorBindings.Count==0
+            &&!_advisorUnavailable&&!_advisorSpeechTried&&!_advisorBoxFontTried,"advisor binding required for existing owners/caches");
+
     }
 
     /// <summary>Captures the ACTUAL _sim/_guests/_visitors.Needs/_staff (there is no Viewer
@@ -173,7 +181,7 @@ public partial class Viewer
     /// audio, vehicle presentation, scene, tool and UI owners remain separate snapshots.</summary>
     public WorldCoreState CaptureWorldCoreState(WorldCoreBindings b, out WorldCoreRegistry registry)
     {
-        ArgumentNullException.ThrowIfNull(b); WorldCorePreflight();
+        ArgumentNullException.ThrowIfNull(b); WorldCorePreflight(b);
         var r = new WorldCoreRegistry { Owner=this, bindings=b, providers=b.ProviderValues, Paths=_walkGrid, Sim=_sim,
             Visitors=_visitors, Needs=_visitors?.Needs, Staff=_staff, Calendar=_calendar, Awards=_awards,
             Activations=_nativeActivations, Management=_management, Park=_park };
@@ -181,8 +189,12 @@ public partial class Viewer
         r.Register("calendar",r.Calendar); r.Register("awards",r.Awards);
         if (r.Activations != null) r.Register("activations",r.Activations);
         r.RegisterVisitors(); if(r.Needs!=null)r.Register("needs",r.Needs); r.RegisterStaff();
+        RegisterBusPlacementNodes(r);
+        RegisterNativeCapture(r);
         foreach(var p in b.CaptureProviders) { WC(p.Value is Delegate,"external mutable owner is not included: "+p.Key); r.Register("provider/"+p.Key,p.Value); }
         var guests = (_visitors?.ReferencedGuests ?? Array.Empty<Guest>()).Concat(_nativeAnimations.Keys)
+            .Concat(_entranceFlow?.ReferencedGuests ?? Array.Empty<Guest>())
+            .Concat(_rideQueues?.ReferencedGuests ?? Array.Empty<Guest>()).Concat(_entranceRequests.Select(x=>x.Guest))
             .Concat(_entranceResults.ReferencedGuests).Concat(b.GuestCacheOwners.Values).Concat(b.RetainedGuests)
             .Concat(_staff?.ReferencedStateObjects.OfType<Guest>() ?? Array.Empty<Guest>()).Distinct<Guest>(ReferenceEqualityComparer.Instance).Take(GuestWalk.StateGuestLimit+1).ToArray();
         WC(guests.Length<=GuestWalk.StateGuestLimit,"retained guest bound");
@@ -190,7 +202,7 @@ public partial class Viewer
             .Concat(b.RetainedTerminals)
             .Distinct<GuestTerminal>(ReferenceEqualityComparer.Instance).ToArray();
         var features = (_staff?.ReferencedStateObjects.OfType<StaffFeature>() ?? Array.Empty<StaffFeature>()).ToArray();
-        var rides = _sim.Rides.Concat(_visitors?.ReferencedRides ?? Array.Empty<ParkRide>()).Concat(b.RetainedRides)
+        var rides = _sim.Rides.Concat(_rideQueues?.ReferencedRides ?? Array.Empty<ParkRide>()).Concat(_queueShapes.Keys).Concat(_visitors?.ReferencedRides ?? Array.Empty<ParkRide>()).Concat(b.RetainedRides)
             .Concat(terminals.Select(t=>t.Owner)).Concat(features.Select(f=>f.Ride).Where(x=>x!=null))
             .Concat(_staff?.ReferencedStateObjects.OfType<ParkRide>() ?? Array.Empty<ParkRide>())
             .Distinct<ParkRide>(ReferenceEqualityComparer.Instance).Take(4097).ToArray();
@@ -231,6 +243,8 @@ public partial class Viewer
             Needs=r.Needs?.CaptureState(r.NeedsBindings()),Visitors=r.Visitors?.CaptureState(r.VisitorBindings()),
             Staff=r.Staff?.CaptureState(r.StaffBindings()),Calendar=_calendar.CaptureState(),Awards=_awards.CaptureState(),
             Management=_management?.CaptureState(r.Id),Activations=_nativeActivations?.CaptureState(),Mailbox=_entranceResults.CaptureState(r.Graph),
+            NativeControllers=CaptureNativeControllers(r),Bus=CaptureBusState(r,b.Bus?.Invoke(r)??new BusStateBindings()),
+            Advisor=b.Advisor==null?null:CaptureAdvisorState(b.Advisor(r),true),
             Providers=b.ProviderValues.ToDictionary(p=>p.Key,p=>p.Value.Clone()) };
         r.Hydrated=true;registry=r;return state;
     }
@@ -255,6 +269,7 @@ public partial class Viewer
         _calendar.RestoreState(s.Calendar);_awards.RestoreState(s.Awards);
         r.Paths=ParkPaths.FromState(s.Paths,b.TerrainKey,b.Terrain);r.Register("paths",r.Paths);
         r.Register("calendar",r.Calendar);r.Register("awards",r.Awards);
+        StageBusState(s.Bus,r,b.Bus?.Invoke(r)??new BusStateBindings());
         r.Activations=s.Activations==null?null:NativeActivationSequence.FromState(s.Activations);
         if(r.Activations!=null)r.Register("activations",r.Activations);
         r.Sim=ParkSim.AllocateState(s.Simulation,r.Paths,b.Simulation);r.Register("sim",r.Sim);r.Register("finances",r.Sim.Finances);
@@ -283,7 +298,9 @@ public partial class Viewer
         r.Visitors=s.Visitors==null?null:ParkVisitors.AllocateState(s.Visitors,r.Sim,r.VisitorBindings());r.RegisterVisitors();
         r.Needs=s.Needs==null?null:VisitorNeeds.FromState(s.Needs,r.NeedsBindings());if(r.Needs!=null)r.Register("needs",r.Needs);
         r.Staff=s.Staff==null?null:ParkStaff.AllocateState(s.Staff,r.Visitors,r.Calendar,r.Activations,r.StaffBindings());r.RegisterStaff();
+        AllocateNativeControllers(s.NativeControllers,r);
         r.Graph.Hydrate(r.WalkBindings());r.Staff?.HydrateState(s.Staff,r.StaffBindings());
+        _entranceFlow?.HydrateStateBindings(); _rideQueues?.HydrateStateBindings();
         r.Visitors?.HydrateStateBindings(r.VisitorBindings());r.Sim.HydrateStaffState(r.Member);
         if(s.Management!=null){r.Management=new ParkManagement(r.Calendar,r.Awards);r.Management.RestoreState(s.Management,r.Resolve);}
         var mailbox=NativeEntranceMailbox.FromState(s.Mailbox,r.Graph);
@@ -292,6 +309,11 @@ public partial class Viewer
             ?? throw new InvalidDataException("WORLD: fresh Park geometry bindings required"));
         _walkGrid=r.Paths;_sim=r.Sim;_guests=r.Walk;_visitors=r.Visitors;_staff=r.Staff;
         _staffVisitors=r.Staff==null?null:r.Visitors;_management=r.Management;_nativeActivations=r.Activations;
-        _entranceResults=mailbox;_park=r.Park;r.Hydrated=true;return r;
+        _entranceResults=mailbox;_park=r.Park;
+        RegisterBusPlacementNodes(r);CompleteBusStateJoin(r);
+        r.Hydrated=true;
+        if(s.Advisor!=null)r.UnpublishedAdvisor=JoinAdvisorState(s.Advisor,b.Advisor?.Invoke(r)
+            ??throw new InvalidDataException("Advisor world bindings required"),r);
+        return r;
     }
 }

@@ -62,43 +62,10 @@ public partial class Viewer
         if (!NativeEntranceOn || _entranceFlow != null || _visitors == null || !EnsureNativeBus()) return;
         _entranceWalk = _guests;
         _entranceVisitors = _visitors;
-        Point stage = EntranceCentre(_busCatalogue.StagingPoint);
-        Point queue = EntranceCentre(_busCatalogue.IncomingQueuePoint);
-        _entranceFlow = new Flow(_visitors, new Flow.Services(
-            n => _guestRng.Next(n),
-            _ => new Point(unchecked((short)(stage.X + _guestRng.Next(256))), stage.Z),
-            queue, RequestEntranceRoute, PumpEntranceRoutes,
-            _ => true, // no extra admission gate; actual allocation is GuestWalk.NativeRoutes (1000 shared slots)
-            NativeEntranceReady, // 191E10 under --native-guest-animation; otherwise the documented bypass
-            () => 0x4000,
-            g => NativeEntranceAcceptance.TryCharge(_entranceVisitors.Needs, g.Id, _sim.Finances,
-                () => _entranceFee, EntranceValueSum, n => _guestRng.Next(n),
-                () => _entranceAccepted++, cls => _sim?.AdvisorEvent?.Invoke(19, cls)),   // 0x210C78: counter 19
-            EntranceExit,
-            g => {
-                _entranceRejected++;
-                GD.Print($"[entrance] guest {g.Id} rejected: native outgoing journey under represented-activation phase adapter");
-            },
-            _guests.StepOwnedNative, exitCandidates: EntranceExitCandidates,
-            busPoint: (g, index) => index == 0 ? EntranceCentre(_busCatalogue.Point0)
-                : throw new InvalidOperationException("Ordinary departure RNG(1) must select point0."),
-            requestDetailed: request => {
-                _entranceRequestFlags.Add(request.Flags);
-                _entranceRequests.Enqueue((request.Guest, request.Mode, request.Flags, _entranceTick));
-                while (_entranceRequests.Count > 4096) _entranceRequests.Dequeue();
-                // Flags reach the adapter but native 0x21/0x23 search policy is not yet reproduced by BFS.
-                return RequestEntranceRoute(request.Token, request.Guest, request.Mode, request.From, request.Target);
-            },
-            recovery: (g, mode) => GD.Print($"[entrance] guest {g.Id}: mode{mode} native failure hold; the queue-8 adapter resumes it next update"),
-            slotAdvanced: NativeSlotAdvanced));
+        _entranceFlow = new Flow(_visitors, CreateWorldEntranceServices());
 
         _entrancePriorTick = _guests.BeforeStep;
-        _entranceTickHook = tick => {
-            _entrancePriorTick?.Invoke(tick);
-            _entranceTick = tick;
-            _busTraffic = _entranceFlow.Tick(tick, _nativeBus.Controller.State, _busTraffic);
-            TickNativeAnimations();
-        };
+        _entranceTickHook = CreateWorldEntranceTickHook();
         _guests.BeforeStep = _entranceTickHook;
         _visitors.NativeDeparture = g => _entranceFlow != null && _entranceFlow.TryDepart(g);
         GD.Print($"[entrance] controller (default; --legacy-entrance for the old walk-in): actual bus identities -> two incoming groups -> fee -> normal handoff. point1={_busCatalogue.StagingPoint} point2={_busCatalogue.IncomingQueuePoint}");
