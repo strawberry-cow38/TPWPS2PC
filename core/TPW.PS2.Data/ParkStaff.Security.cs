@@ -206,19 +206,12 @@ public sealed partial class ParkStaff
     // --------------------------------------------------------------------------------------------
     // Sounds with handles.
 
-    /// <summary>⚠ A guard's or an entertainer's sound WITH its handle: (member, bank 8, event, handle
-    /// offset `P+`). Natively `0x111428(audio, 8, event, pos, &amp;handle, 0)`; the guard's 0x89 is raised
-    /// on EVERY walk tick while he carries, so a view must not start a second voice on a handle that is
-    /// still sounding. Null falls back to <see cref="Sound"/>. (The mechanics step adds a general form
-    /// of this; when both are in, this is its special case.)</summary>
-    public Action<StaffMember, int, int, int> SecuritySound { get; set; }
-    internal void RaiseGuardSound(Guard g, int eventId, int handle) => RaiseHandled(g, eventId, handle);
-    internal void RaiseEntertainerSound(Entertainer e, int eventId, int handle) => RaiseHandled(e, eventId, handle);
-    void RaiseHandled(StaffMember m, int eventId, int handle)
-    {
-        if (SecuritySound != null) SecuritySound(m, 8, eventId, handle);
-        else Sound?.Invoke(m, 8, eventId);
-    }
+    /// <summary>A guard's or an entertainer's sound WITH its handle offset `P+`: natively
+    /// `0x111428(audio, 8, event, pos, &amp;handle, 0)`, here the mechanics' <see cref="HandleSound"/>
+    /// (reused, bank 8; null falls back to <see cref="Sound"/>). The guard's 0x89 is raised on EVERY walk
+    /// tick while he carries, so the view's "handle still sounding" test is what keeps it one voice.</summary>
+    internal void RaiseGuardSound(Guard g, int eventId, int handle) => RaiseSound(g, 8, eventId, handle);
+    internal void RaiseEntertainerSound(Entertainer e, int eventId, int handle) => RaiseSound(e, 8, eventId, handle);
 
     /// <summary>⚠ ADAPTER for `0x10EC48` on a member's model: its CURRENT logical and phase (control
     /// block bytes +0 and +2, <see cref="NativeLogicalAnimationControl"/>). The guard's 0x3C waits for

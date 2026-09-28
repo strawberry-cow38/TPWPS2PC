@@ -62,7 +62,6 @@ public partial class Viewer
             _staff.StagingCell = null;
             GD.PrintErr($"[staff] no entrance table entry for the guards' staging point ({e.Message}): a guard who catches someone cannot carry him out");
         }
-        _staff.SecuritySound = PlaySecuritySound;
         _staff.AnimationState = StaffAnimationState;
         _staff.Stinks.Started = OnStinkStarted;
         _staff.Stinks.Stopped = OnStinkStopped;
@@ -93,18 +92,9 @@ public partial class Viewer
         if (_staff != null) { _staff.Stinks.Started = null; _staff.Stinks.Stopped = null; _staff.Gate = null; }
     }
 
-    /// <summary>⭐ A guard's or an entertainer's sound WITH its handle (`0x111428` with `&amp;handle`):
-    /// bank 8 is `AUDIO/GLOBAL/staf` (<see cref="SoundGroup.GlobalStaff"/>). A handle still sounding is
-    /// not started again -- the guard's 0x89 is raised on every walk tick while he carries.</summary>
-    void PlaySecuritySound(StaffMember m, int bank, int eventId, int handle)
-    {
-        if (bank != 8) { GD.Print($"[staff] {m}: sound bank {bank} event 0x{eventId:X} has no mapping here"); return; }
-        _sounds ??= MakeSounds();
-        int voice = 0x30000000 | (int)(m.Serial & 0xFFFFFF);
-        if (_sounds == null || _sounds.Sounding(voice, handle)) return;
-        _sounds.Cue(voice, $"staff {m.Kind}#{m.PoolSlot}", _parkTicks * ParkSim.TickMilliseconds, RseOpcode.EVENT,
-                    (int)SoundGroup.GlobalStaff, -1, eventId, handle, StaffWorld(m.CellPosition));
-    }
+    // A guard's or an entertainer's handle sounds (bank 8, `AUDIO/GLOBAL/staf`) reach the view through the
+    // staff's HandleSound, played by Viewer.Staff.cs's PlayStaffHandleSound with its handle test -- the
+    // guard's 0x89 is raised on every walk tick while he carries.
 
     /// <summary>`0x10EC48` on the member's drawn model: its control block's CURRENT logical and phase.
     /// No drawn model → null (the core then takes the carry's first section as played).</summary>

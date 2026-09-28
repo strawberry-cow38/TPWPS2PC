@@ -176,7 +176,7 @@ static class GuardChecks
             p.Staff = new ParkStaff(p.Visitors, p.Clock, new NativeActivationSequence(1000, "guard checks fixture"), rng.Next);
             p.Visitors.Staff = p.Staff;
             p.Staff.StagingCell = bus.StagingPoint;
-            p.Staff.SecuritySound = (m, bank, id, handle) => { if (bank == 8) p.Sounds.Add((m, id, handle)); };
+            p.Staff.HandleSound = (m, bank, id, handle) => { if (bank == 8) p.Sounds.Add((m, id, handle)); };
             // Deterministic defaults: never a 1-in-16 sound, the watch cooldown's spawn draw 0.
             rng.Override = n => n == 16 ? 1 : n == 300 ? 0 : null;
             return p;
