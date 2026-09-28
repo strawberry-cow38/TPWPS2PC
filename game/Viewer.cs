@@ -423,6 +423,9 @@ public partial class Viewer : Node3D
             else if (a == "--staff-test") _staffTest = true;
             else if (a == "--graph-demo") _graphDemo = true;
             else if (a.StartsWith("--delete-test=")) _deleteTest = a["--delete-test=".Length..];
+            // ⭐ `--benchmark=<seconds>`: measure frame time and what is accumulating, then quit.
+            else if (a.StartsWith("--benchmark="))
+                { if (double.TryParse(a["--benchmark=".Length..], out var bs)) _benchSeconds = bs; }
             else if (a == "--graph-line") LaptopGraph.LineStyle = true;
             else if (a == "--menu") _wantMenu = true;
             // ⭐ `--menu-go=N` presses Confirm N times through the REAL handler, so a render can
@@ -4167,6 +4170,9 @@ public partial class Viewer : Node3D
 
     /// <summary>`--delete-test=x0,z0,x1,z1`: one marquee through the real commit.</summary>
     string _deleteTest;
+
+    /// <summary>`--benchmark=<seconds>`, or 0 for off.</summary>
+    double _benchSeconds;
 
     /// <summary>All-null cells, for a screen whose rows are labels only.</summary>
     static List<(string, int)> Blank(int n)
@@ -11622,6 +11628,11 @@ public partial class Viewer : Node3D
         // marquee runs. A delete test that fired first would truthfully report an empty box.
         if (_deleteTest != null && _mode == Mode.Park && _park != null && _paths != null)
         { var t = _deleteTest; _deleteTest = null; RunDeleteTest(t); }
+        // ⚠ Started only once the PARK is up, not at boot: the load is not what is being measured
+        // and would otherwise be the first and slowest quarter of every run.
+        if (_benchSeconds > 0 && !_benchRunning && _mode == Mode.Park && _park != null)
+        { StartBenchmark(_benchSeconds); _benchSeconds = 0; }
+        TickBenchmark(delta);
         if (_footprintAudit && _mode == Mode.Park && _lib != null)
         { _footprintAudit = false; FootprintAudit(); GetTree().Quit(); }
         // ⚠⚠ AFTER the build test has FINISHED, not merely after its call. CheckPlacement runs
