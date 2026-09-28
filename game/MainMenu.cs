@@ -19,9 +19,8 @@ namespace TPWPS2Viewer;
 /// that says "Press START". Both ship `_US` and `_JAP` variants; this takes the European one to
 /// match the rest of the port.
 ///
-/// ⚠ MOVIES ARE SKIPPED, on master's instruction ("skip movies with placeholder text"). The
-/// sequencing is decoded -- pair table at `0x35ED50`, pair index = the lobby's world index -- but
-/// nothing here plays an `.MPC`; the entries that would start one say so on screen instead.</summary>
+/// Startup movies and language selection are coordinated by Viewer.Frontend; this control owns
+/// only menu pages. PC mouse hit regions use exactly the drawn row rectangles.</summary>
 public partial class MainMenu : Control
 {
     public const float Native = 512f;
@@ -73,7 +72,11 @@ public partial class MainMenu : Control
 
     public bool Open { get; private set; }
 
-    public MainMenu() { MouseFilter = MouseFilterEnum.Ignore; Visible = false; }
+    public string Language { get; set; } = "eng";
+    public int SelectedRow => _sel;
+    public int RowCount => _rows.Length;
+
+    public MainMenu() { MouseFilter = MouseFilterEnum.Stop; Visible = false; }
 
     /// <summary>⚠ `Mainback2` is the front end's; `Mainback1` is the legal screen's.</summary>
     public static MainMenu Create(AssetLibrary lib, FontText font, TextDatabase text)
@@ -99,7 +102,7 @@ public partial class MainMenu : Control
     public new void Hide() { Open = false; Visible = false; QueueRedraw(); }
 
     string Label(int id) => _text != null && id >= 0 && id < _text.Keys.Length
-                          ? _text.Text("eng", id) ?? $"#{id}" : $"#{id}";
+                          ? _text.Text(Language, id) ?? $"#{id}" : $"#{id}";
 
     /// <summary>⚠ Up/Down CLAMP rather than wrap -- the page keeps a row range 0..2 and the
     /// console's own move clamps inside it.</summary>
@@ -122,11 +125,11 @@ public partial class MainMenu : Control
                 // row on a rule it does not have.
                 _rows = Page3Unlocked; _sel = 0; _note = ""; QueueRedraw();
                 return;
+            case Action.Exit: // New Game Exit returns to page 0 (0x16DEA8), not an empty scene.
             case Action.Back:
-                _rows = Page0; _sel = 0; QueueRedraw();
+                _rows = Page0; _sel = 0; _note = ""; QueueRedraw();
                 return;
-            // ⚠ PLACEHOLDERS, on master's instruction. These are the entries whose real
-            // behaviour starts a movie or needs save/load, neither of which the port has.
+            // These services are still unavailable. Do not pretend the save pipeline is complete.
             case Action.LoadGame: _note = "Load Game -- no save/load in this port yet"; QueueRedraw(); return;
             case Action.Options:  _note = "Options -- not built yet"; QueueRedraw(); return;
             case Action.TestPark: _note = "Rollercoaster Test Park -- practice mode not built yet"; QueueRedraw(); return;
@@ -140,6 +143,39 @@ public partial class MainMenu : Control
     {
         if (!Open) return;
         if (_rows != Page0) { _rows = Page0; _sel = 0; _note = ""; QueueRedraw(); }
+    }
+
+    public Rect2 RowRect(int row)
+    {
+        if (row < 0 || row >= _rows.Length || _font == null) return default;
+        var view = GetViewportRect().Size;
+        float s = Mathf.Max(.05f, Mathf.Min(view.X, view.Y) / Native);
+        var origin = (view - new Vector2(Native, Native) * s) / 2f;
+        var size = _font.Render(Label(_rows[row].TextId)).GetSize() * s;
+        return new Rect2(origin + new Vector2(RowX*s-size.X/2, (YOrigin+RowPitch*row)*s),size);
+    }
+
+    public override void _Ready() => SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+    public override void _Notification(int what)
+    { if (what == NotificationResized) QueueRedraw(); }
+
+    public override void _GuiInput(InputEvent e)
+    {
+        if (!Open) return;
+        if (e is InputEventMouseMotion motion) Pick(motion.Position, false);
+        if (e is InputEventMouseButton {Pressed:true} click)
+        {
+            if (click.ButtonIndex == MouseButton.Left) Pick(click.Position, true);
+            else if (click.ButtonIndex == MouseButton.Right) Cancel();
+        }
+        AcceptEvent(); // background clicks must not select objects behind the menu
+    }
+
+    void Pick(Vector2 point, bool confirm)
+    {
+        for (int i=0; i<_rows.Length; i++)
+            if (RowRect(i).HasPoint(point))
+            { _sel=i; QueueRedraw(); if(confirm) Confirm(); return; }
     }
 
     public override void _Draw()
@@ -159,9 +195,7 @@ public partial class MainMenu : Control
         for (int i = 0; i < _rows.Length; i++)
         {
             var tex = _font.Render(Label(_rows[i].TextId));
-            var size = tex.GetSize() * s;
-            var at = origin + new Vector2(RowX * s - size.X / 2f, (YOrigin + RowPitch * i) * s);
-            DrawTextureRect(tex, new Rect2(at, size), false, i == _sel ? Selected : Plain);
+            DrawTextureRect(tex, RowRect(i), false, i == _sel ? Selected : Plain);
         }
 
         if (_note.Length == 0) return;

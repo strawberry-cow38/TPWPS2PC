@@ -26,7 +26,7 @@ public partial class Viewer
 {
     // Front-end/lobby animation may run, but no hidden park tick or calendar may advance.
     bool ParkSimulationRunning => _playing && _mode == Mode.Park
-        && !_lobbyMode && _mainMenu is not { Open: true };
+        && !_lobbyMode && _mainMenu is not { Open: true } && _frontend is not { Active:true };
     bool _lobbyMode;
     LobbySlots _lobbySlots;
     int _lobbyRecord;                       // the RECORD index, 0..7 -- not the model index
@@ -61,9 +61,7 @@ public partial class Viewer
     /// <summary>⭐ THE FRONT END. The console starts here and reaches the lobby through it, so
     /// this is the route rather than `--lobby` being the front door.
     ///
-    /// ⚠ Movies are skipped with a note on screen, on master's instruction -- the sequencing is
-    /// decoded (pair table `0x35ED50`, pair index = the lobby's world index) but nothing plays an
-    /// `.MPC` here.</summary>
+    /// Cold boot is separate; returning here never replays startup.</summary>
     void EnterMainMenu()
     {
         LoadHudFont();
@@ -72,6 +70,7 @@ public partial class Viewer
         _mainMenu ??= MainMenu.Create(_lib, _hudFont, _text);
         if (_mainMenu == null) return;
         if (_mainMenu.GetParent() == null) _uiRoot.AddChild(_mainMenu);
+        _mainMenu.Language = TextLanguage;
         _mainMenu.Chosen -= OnMenuChosen;
         _mainMenu.Chosen += OnMenuChosen;
         HideParkScene();
@@ -301,7 +300,7 @@ public partial class Viewer
         // ⚠ The record carries a text ROW INDEX, so it is read positionally -- the same way
         // every other id in this port is. `STR_MAP_LOSTKINGDOM_1` and friends live there.
         if (_text == null || id < 0 || id >= _text.Keys.Length) return $"#{id}";
-        return _text.Text("eng", id) ?? $"#{id}";
+        return _text.Text(TextLanguage, id) ?? $"#{id}";
     }
 
     void LobbyReport()
@@ -518,10 +517,14 @@ public partial class Viewer
         }
         string name = LobbyName(_lobbyRecord).Replace("\n", " / ");
         GD.Print($"[lobby] entering {name} -> {_maps[idx].Label}");
-        LeaveLobby();
-        ShowParkScene();                 // put back exactly what CloseParkToLobby hid
-        LoadMap(idx);
-        Status($"{name}");
+        // Capture this choice before playback; do not read mutable selection in Finished.
+        PlayParkIntro(rec.World, () =>
+        {
+            LeaveLobby();
+            ShowParkScene();
+            LoadMap(idx);
+            Status(name);
+        });
     }
 
     /// <summary>Tear the scene down. ⚠ The models hang off `base.Root`, so freeing the lobby root
@@ -577,7 +580,7 @@ public partial class Viewer
     void ShowLobbyPrompt()
     {
         if (_lobbyBox == null || !IsInstanceValid(_lobbyBox) || _text == null) return;
-        string T(int id) => id >= 0 && id < _text.Keys.Length ? _text.Text("eng", id) ?? $"#{id}" : $"#{id}";
+        string T(int id) => id >= 0 && id < _text.Keys.Length ? _text.Text(TextLanguage, id) ?? $"#{id}" : $"#{id}";
         string ok = T(0x1E9), cancel = T(0x130);
         _lobbyPrompt = true;
         _lobbyBox.Show(T(1062).Replace("\n", " "), T(810).Replace("\n", " "), ok, cancel);

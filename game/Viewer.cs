@@ -568,7 +568,7 @@ public partial class Viewer : Node3D
             _hidePanel = true;
             if (_wantMap == null && _wantWad == null)
             {
-                _wantMenu = true;
+                _wantMenu = true; _coldBoot = true;
                 GD.Print("[v] no content selector -- opening the main menu");
             }
             else
@@ -638,7 +638,7 @@ public partial class Viewer : Node3D
         if (_wantMenu)
         {
             _tabs.CurrentTab = ModeTab(Mode.Park); SetMode(Mode.Park);
-            EnterMainMenu();
+            if (_coldBoot) BeginFrontendBoot(); else EnterMainMenu();
         }
         else if (_wantLobby)
         {
@@ -981,6 +981,24 @@ public partial class Viewer : Node3D
     /// <summary>F3 hides the whole panel, for looking at the scene without it.</summary>
     public override void _UnhandledKeyInput(InputEvent e)
     {
+        if (_frontend is { Active:true })
+        {
+            if(e is InputEventKey {Pressed:true,Echo:false} key) _frontend.KeyInput(key);
+            GetViewport()?.SetInputAsHandled(); return;
+        }
+        // Frontend input outranks even a retained park's modal advisor and debug shortcuts.
+        if (_mainMenu is { Open:true })
+        {
+            if(e is InputEventKey {Pressed:true,Echo:false} menuKey)
+                switch(menuKey.Keycode)
+                {
+                    case Key.Up: _mainMenu.Move(-1); break;
+                    case Key.Down: _mainMenu.Move(1); break;
+                    case Key.Enter: case Key.KpEnter: case Key.Space: _mainMenu.Confirm(); break;
+                    case Key.Escape: _mainMenu.Cancel(); break;
+                }
+            GetViewport()?.SetInputAsHandled(); return;
+        }
         if (e is InputEventKey { Pressed: true, Keycode: Key.F3 } && _panel != null)
             _panel.Visible = !_panel.Visible;
         // ⭐ F4 beside F3: one hides the port's readout, the other shows the testing buttons.
@@ -992,20 +1010,6 @@ public partial class Viewer : Node3D
         // ⭐ The advisor's keys first: L2 and the open stack's buttons, and the pad lock of a modal message
         // (Viewer.Advisor.cs).
         if (AdvisorKeyInput(k)) { GetViewport()?.SetInputAsHandled(); return; }
-        // ⭐⭐ AN OPEN MENU EATS ITS KEYS. The console drives this with the d-pad and ✕, so up /
-        // down / confirm / cancel, and nothing else sees them while it is up -- otherwise the
-        // arrows would still be driving the camera behind the menu.
-        // ⭐ The front end owns its keys while it is up, and it sits in front of the lobby.
-        if (_mainMenu is { Open: true })
-        {
-            switch (k.Keycode)
-            {
-                case Key.Up:    _mainMenu.Move(-1); return;
-                case Key.Down:  _mainMenu.Move(+1); return;
-                case Key.Enter: case Key.KpEnter: case Key.Space: _mainMenu.Confirm(); return;
-                case Key.Escape: _mainMenu.Cancel(); return;
-            }
-        }
         // ⭐ THE LOBBY OWNS THE ARROWS WHILE IT IS UP -- it is a selector, and its four
         // directions are the console's four d-pad directions.
         if (_lobbyMode)
@@ -1234,19 +1238,17 @@ public partial class Viewer : Node3D
     void FillMovieList()
     {
         _wadPick.Clear(); ClearList(); _movies.Clear();
-        var dir = OS.GetEnvironment("TPW_PS2_MOVIES");
-        if (string.IsNullOrWhiteSpace(dir) && !string.IsNullOrEmpty(_discPath))
-            dir = Path.Combine(Path.GetDirectoryName(_discPath) ?? ".", "movies");
+        var dir = MovieDirectory();
         _wadPick.AddItem(dir ?? "(no movie folder)");
         if (dir == null || !Directory.Exists(dir))
         {
-            _info.Text = "No converted movies.\n\nThe disc's 11 .MPC files are MPEG-2 elementary\n"
-                       + "streams in EA's own container, which nothing off\nthe shelf opens. "
-                       + "Convert them once with ffmpeg and\npoint TPW_PS2_MOVIES at the folder.\n\n"
+            _info.Text = "No converted movies.\n\nPoint --movies-dir= or TPW_PS2_MOVIES at\n"
+                       + "the existing converted .ogv directory.\n"
+                       + "The raw disc .MPCs cannot be played by Godot.\n\n"
                        + "looked in: " + (dir ?? "nowhere");
             return;
         }
-        foreach (var f in Directory.GetFiles(dir, "*.ogv").OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
+        foreach (var f in Directory.GetFiles(dir).Where(f => Path.GetExtension(f).Equals(".ogv", StringComparison.OrdinalIgnoreCase)).OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
         { AddRow(Path.GetFileNameWithoutExtension(f), _movies.Count); _movies.Add(f); }
         _info.Text = _movies.Count + " movies in " + dir;
         if (_movies.Count > 0) { _rideList.Select(0); ShowMovie(0); }
@@ -1580,7 +1582,7 @@ public partial class Viewer : Node3D
                 {
                     if (string.IsNullOrEmpty(p2)) continue;
                     int row = _text.IndexOf(TextDatabase.GraphicsKey(world, p2));
-                    if (row >= 0 && _text.Text("eng", row) is { Length: > 0 } t) return t;
+                    if (row >= 0 && _text.Text(TextLanguage, row) is { Length: > 0 } t) return t;
                 }
             }
         }
@@ -3530,7 +3532,7 @@ public partial class Viewer : Node3D
     {
         var opts = new List<string>();
         foreach (var o in LaptopMainMenu.VisibleMain(parkOpen: _laptopParkOpen))
-            opts.Add(_text?.Text("eng", o.TextId) ?? $"#{o.TextId}");
+            opts.Add(_text?.Text(TextLanguage, o.TextId) ?? $"#{o.TextId}");
         return opts;
     }
 
@@ -3606,7 +3608,7 @@ public partial class Viewer : Node3D
             {
                 var names = new List<string>();
                 foreach (var o in LaptopMainMenu.Information)
-                    names.Add(_text?.Text("eng", o.TextId) ?? $"#{o.TextId}");
+                    names.Add(_text?.Text(TextLanguage, o.TextId) ?? $"#{o.TextId}");
                 _shopPanel.ShowMenu(names, 0, LaptopMainMenu.InfoScene);
                 RefreshLaptopBalance();
                 Status("information -- pick a kind, or Back");
@@ -4227,7 +4229,7 @@ public partial class Viewer : Node3D
 
     /// <summary>A text row as the laptop's own language renders it. ⚠ Named `TextRow` because
     /// `Row(int)` is already taken by the grid, and it returns an int.</summary>
-    string TextRow(int textId) => _text?.Text("eng", textId) ?? "";
+    string TextRow(int textId) => _text?.Text(TextLanguage, textId) ?? "";
 
     /// <summary>⭐ The four settings Game Options owns.    /// <summary>⭐ The four settings Game Options owns. ONE owner, with capture/restore, because
     /// they are GAME settings that outlive a park -- see <see cref="GameSettings"/>.</summary>
@@ -4400,7 +4402,7 @@ public partial class Viewer : Node3D
         if (days < 0) days = 0;
         int whole = days / 28, tenths = (days % 28) * 10 / 28;
         string unit = _text == null ? (days == 28 ? "mnth" : "mnths")
-                    : (days == 28 ? _text.Text("eng", 10) : _text.Text("eng", 349)) ?? "mnths";
+                    : (days == 28 ? _text.Text(TextLanguage, 10) : _text.Text(TextLanguage, 349)) ?? "mnths";
         return $"{whole}.{tenths}{unit}";
     }
 
@@ -4509,7 +4511,7 @@ public partial class Viewer : Node3D
                         if (_staff == null) { Status("hire -- no park is running yet, so there is nobody to hire into"); return; }
                         _laptopBack.Add(("hiretabs", null)); ShowLaptopLevel(); return;
                     default:
-                        Status($"{_text?.Text("eng", picked.TextId) ?? "that"} has no screen in this port yet");
+                        Status($"{_text?.Text(TextLanguage, picked.TextId) ?? "that"} has no screen in this port yet");
                         return;
                 }
             }
@@ -4560,12 +4562,12 @@ public partial class Viewer : Node3D
                 }
                 if (InfoScreenFor(row) is not { } target)
                 {
-                    Status($"{_text?.Text("eng", info[row].TextId) ?? "that"} has no screen in this port yet");
+                    Status($"{_text?.Text(TextLanguage, info[row].TextId) ?? "that"} has no screen in this port yet");
                     return;
                 }
                 if (LaptopInfoItems(target.Kinds).Count == 0)
                 {
-                    Status($"no {_text?.Text("eng", info[row].TextId) ?? "items"} in the park yet");
+                    Status($"no {_text?.Text(TextLanguage, info[row].TextId) ?? "items"} in the park yet");
                     return;
                 }
                 _laptopBack.Add(("infoitem", $"{row}:0"));
@@ -4852,7 +4854,7 @@ public partial class Viewer : Node3D
             {
                 opts = new List<string>();
                 foreach (var o in LaptopMainMenu.Information)
-                    opts.Add(_text?.Text("eng", o.TextId) ?? $"#{o.TextId}");
+                    opts.Add(_text?.Text(TextLanguage, o.TextId) ?? $"#{o.TextId}");
             }
             else opts = LaptopMainOptions();
             // ⚠ The panel holds eleven rows; anything more would draw onto the bevel, which is
@@ -7719,7 +7721,7 @@ public partial class Viewer : Node3D
     {
         if (KindOf(key) is not { } k) return Title(key);
         int id = BuildCategoryNames.TextId(k);
-        if (id > 0 && _text?.Text("eng", id) is { Length: > 0 } t) return t;
+        if (id > 0 && _text?.Text(TextLanguage, id) is { Length: > 0 } t) return t;
         return BuildCategoryNames.Fallback(k);
     }
 
@@ -8876,8 +8878,8 @@ public partial class Viewer : Node3D
 
     string FormatWeeksDays(int days)
     {
-        string w = _text != null && 0xE1 < _text.Keys.Length ? _text.Text("eng", 0xE1) ?? "w" : "w";
-        string d = _text != null && 0xDD < _text.Keys.Length ? _text.Text("eng", 0xDD) ?? "d" : "d";
+        string w = _text != null && 0xE1 < _text.Keys.Length ? _text.Text(TextLanguage, 0xE1) ?? "w" : "w";
+        string d = _text != null && 0xDD < _text.Keys.Length ? _text.Text(TextLanguage, 0xDD) ?? "d" : "d";
         int weeks = days / 7;
         return (weeks != 0 ? $"{weeks}{w} " : "") + $"{days - weeks * 7}{d}";
     }
@@ -8965,7 +8967,7 @@ public partial class Viewer : Node3D
     }
 
     /// <summary>The disc's own word for a row with nothing to offer, `STR_LISTBOX_NOT_AVAILABLE`.</summary>
-    string Unavailable() => _text?.Text("eng", 335) ?? "Unavailable";
+    string Unavailable() => _text?.Text(TextLanguage, 335) ?? "Unavailable";
 
     /// <summary>⭐ Is there a tier ABOVE this ride's current one to buy? A tiered entry holds
     /// exactly THREE tiers -- they run from payload 0x20 at a 0x34 stride and `Extra` begins at
@@ -9993,7 +9995,7 @@ public partial class Viewer : Node3D
             // "Track Rides" and 457 "Roller Coasters" -- the exact names master asked for, which
             // is what says the split is the game's and not a taxonomy I invented.
             if (!k.StartsWith("STR_PURCHASE_", StringComparison.OrdinalIgnoreCase)) continue;
-            GD.Print($"[type]   {i,4} {k} = \"{_text.Text("eng", i)}\"");
+            GD.Print($"[type]   {i,4} {k} = \"{_text.Text(TextLanguage, i)}\"");
         }
         // ⭐ EVERY key of a coaster's .sam, and every model in its folder. Master: "the object
         // you place when building a coaster shouldnt be a 1x1. its the bigger object, as the
@@ -10048,7 +10050,7 @@ public partial class Viewer : Node3D
         GD.Print("[type] --- end of STR_PURCHASE ---");
         GD.Print("[type] the first 26 rows, in case the index is simply the row:");
         for (int i = 0; i < 26 && i < _text.Keys.Length; i++)
-            GD.Print($"[type]   {i,4} {_text.Keys[i]} = \"{_text.Text("eng", i)}\"");
+            GD.Print($"[type]   {i,4} {_text.Keys[i]} = \"{_text.Text(TextLanguage, i)}\"");
 
         // And what the .sam files actually declare, per category.
         var byType = new Dictionary<int, List<string>>();
@@ -10083,7 +10085,7 @@ public partial class Viewer : Node3D
             string key2 = wi2 < 0 ? "(no WAD in source)"
                 : TextDatabase.GraphicsKey(parts2[wi2][..^4], string.Join('/', parts2.Skip(wi2 + 1)));
             GD.Print($"[type] {want,-12} source={def.Source}");
-            GD.Print($"[type] {want,-12} key={key2} -> row {_text.IndexOf(key2)} = \"{(_text.IndexOf(key2) >= 0 ? _text.Text("eng", _text.IndexOf(key2)) : "-")}\"");
+            GD.Print($"[type] {want,-12} key={key2} -> row {_text.IndexOf(key2)} = \"{(_text.IndexOf(key2) >= 0 ? _text.Text(TextLanguage, _text.IndexOf(key2)) : "-")}\"");
             GD.Print($"[type] {want,-12} name={def.Name ?? "(none)"} id={def.Id?.ToString() ?? "-"} "
                    + $"type={def.Int("Info.RideTypeStringIndex")?.ToString() ?? "-"} "
                    + $"shape={(def.Shape == null ? "none" : $"{def.Shape.Max(r => r.Length)}x{def.Shape.Length}")} "
@@ -10131,7 +10133,7 @@ public partial class Viewer : Node3D
         foreach (var (t, list) in byType.OrderBy(kv => kv.Key))
             GD.Print($"[type]   type {t,3} ({list.Count,2}) {string.Join(", ", list.Take(4))}"
                    + $"{(list.Count > 4 ? " ..." : "")}"
-                   + $"   text row {t}: \"{_text.Text("eng", t)}\"");
+                   + $"   text row {t}: \"{_text.Text(TextLanguage, t)}\"");
     }
 
     /// <summary>⭐ WHAT IS ALREADY WALKABLE, read off the disc rather than assumed.
@@ -10737,7 +10739,7 @@ public partial class Viewer : Node3D
             {
                 int row = _text.IndexOf(TextDatabase.GraphicsKey(
                     parts[wi][..^4], string.Join('/', parts.Skip(wi + 1))));
-                if (row >= 0) display = _text.Text("eng", row);
+                if (row >= 0) display = _text.Text(TextLanguage, row);
             }
         }
 
@@ -11409,7 +11411,7 @@ public partial class Viewer : Node3D
         if (_costLine == null) return;
         int? tenths = _place.Active ? _place.Def?.PlacementCost : _previewCost;
         bool on = HudVisible;
-        string Label(int id) => _text?.Text("eng", id) ?? "";
+        string Label(int id) => _text?.Text(TextLanguage, id) ?? "";
         void Line(TextureRect t, TextureRect sh, ref string shown, string want, int x, int y)
         {
             bool show = on && want != null;
@@ -11867,6 +11869,8 @@ public partial class Viewer : Node3D
 
     public override void _UnhandledInput(InputEvent e)
     {
+        if (_frontend is {Active:true} || _mainMenu is {Open:true})
+        { if (e is InputEventMouse) GetViewport()?.SetInputAsHandled(); return; }
         // 0x1817C0(1): a modal advisor message holds the pad -- the buttons that drive the tools included.
         if (AdvisorPadLocked && e is InputEventMouseButton) { GetViewport()?.SetInputAsHandled(); return; }
         if (e is InputEventMouseMotion mm)

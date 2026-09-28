@@ -14,7 +14,7 @@ public partial class Viewer
     void ShowStaffInfoTypes()
     {
         var names = StaffInfoTypes().Select(k =>
-            _text?.Text("eng", StaffTables.TypeLabelRow(k)) ?? k.ToString()).ToList();
+            _text?.Text(TextLanguage, StaffTables.TypeLabelRow(k)) ?? k.ToString()).ToList();
         _shopPanel.ShowMenu(names, 0, LaptopScreen.AllStaff.SceneFile);
         ClearLaptopModel(); RefreshLaptopBalance();
         Status(names.Count == 0 ? "no staff hired" : "staff information -- pick a type, or Back");

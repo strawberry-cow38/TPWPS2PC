@@ -57,7 +57,8 @@ public partial class Viewer
 
     /// <summary>⚠ The pad's L2 and Triangle, on the keyboard.</summary>
     public const Key AdvisorL2Key = Key.C, AdvisorTriangleKey = Key.T;
-    const string AdvisorAudioLanguage = "English", AdvisorTextLanguage = "eng";
+    string AdvisorAudioLanguage => SpeechLanguage;
+    string AdvisorTextLanguage => TextLanguage;
 
     /// <summary>`0x1817C0(1)`: a modal message holds the pad.</summary>
     bool AdvisorPadLocked => _parkAdvisor?.PadLocked == true && _mode == Mode.Park && !_lobbyMode;
