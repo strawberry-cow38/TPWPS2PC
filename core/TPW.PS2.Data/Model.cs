@@ -513,7 +513,28 @@ public sealed partial class Model
     /// -- bit 31 of each helper's flag word. So clearing bit 31 on a helper would end the walk early and
     /// change which nodes exist. Safe today: `WriteNodeFlags`' only caller (the advisor head's costume and
     /// mouth) SETS `0x80000000` and toggles `0x10`/`0x8000`, never clears bit 31, and only writes real
-    /// nodes. A future writer that clears bit 31 on a helper must invalidate these caches too. A future reader who took the
+    /// nodes.
+    ///
+    /// ⚠⚠⚠ AND THE GUARD IS NOT "DON'T CLEAR IT" -- IT IS BOTH DIRECTIONS, ON ONE CELL. The walk
+    /// stops at the FIRST helper whose bit 31 is clear, so:
+    /// <list type="bullet">
+    /// <item>CLEARING bit 31 on a helper inside the walk TRUNCATES it -- fewer keys.</item>
+    /// <item>SETTING bit 31 on the helper that currently TERMINATES the walk EXTENDS it -- more
+    /// keys, and just as stale.</item>
+    /// <item>Setting it on a helper after the terminator changes nothing (the walk already stopped);
+    /// setting it on one before is a no-op (already set). **The terminator is the only sensitive
+    /// cell.**</item>
+    /// </list>
+    ///
+    /// ⚠ Which matters because the operation cited as safe above is in the EXTENDING direction:
+    /// `Show`/`Hide` both pass `set: 0x80000000`. They are safe only on the extra, unstated
+    /// precondition that a costume fitting's node is already inside the walk, so setting the bit is
+    /// a no-op. Census of every caller on `e20fd50`: `Show` = set `0x80000000` / clear `0x10`,
+    /// `Hide` = set `0x80000010` / clear `0`, the mouth = set/clear `0x8000` only. Nothing clears
+    /// bit 31 -- and nothing targets the terminator either, which is the half the one-directional
+    /// guard would have let a future `Show()` break silently.
+    ///
+    /// A future reader who took the
     /// old "D is never written" line at face value would have had no way to know that, which is
     /// precisely the failure a too-strong justification causes: it is not merely wrong, it hides the
     /// real precondition.
