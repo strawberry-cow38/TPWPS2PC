@@ -193,14 +193,16 @@ public sealed partial class ParkStaff
     /// reads as variables `0x38 + n` (<see cref="AdvisorRules.Evaluate"/>'s eventCounters). `0x1073C0`
     /// → `0x10DDD8`: n &lt; 0x16, += d as s16, clamped to ±30000 (MIPS `0x10DDD8..0x10DE28`). Raised
     /// here: 2 by a heckle and a prank, 0x14 by a prank, 0x15 by a guest's ordinary litter drop.
-    /// ⚠ `0x1073C0` counts only while the advisor object's byte `+0` has bit 3 set; the port has no
-    /// advisor object, so it always counts.</summary>
+    /// ⚠ `0x1073C0` counts only while the advisor object's byte `+0` has bit 3 set: this array always
+    /// counts (instrumentation); the advisor's own counters get the event through
+    /// <see cref="ParkSim.AdvisorEvent"/>, gated there (<see cref="ParkAdvisor.CountEvent"/>).</summary>
     public short[] AdvisorEvents { get; } = new short[22];
     internal void AdvisorEvent(int n, int d)
     {
         if ((uint)n >= 0x16) return;
         int v = unchecked((short)(AdvisorEvents[n] + d));
         AdvisorEvents[n] = (short)Math.Clamp(v, -30000, 30000);
+        Sim.RaiseAdvisorEvent(n, d);
     }
 
     // --------------------------------------------------------------------------------------------

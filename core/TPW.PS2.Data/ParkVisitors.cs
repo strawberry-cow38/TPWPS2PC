@@ -1226,14 +1226,17 @@ public sealed class ParkVisitors
             // signal for "this definition never joined a compiled record", and VisitorNeeds.Buy
             // skips the want test rather than refusing everyone. Two facilities per world really
             // do fail to join.
-            if (Needs.Buy(guest, def.PricePerUse ?? 0, def.HungerEffect ?? 0, def.ThirstEffect ?? 0,
+            var before = Needs.Of(guest);
+            bool bought = Needs.Buy(guest, def.PricePerUse ?? 0, def.HungerEffect ?? 0, def.ThirstEffect ?? 0,
                           def.HappinessEffect ?? 0, def.VomitEffect ?? 0,
                           def.Compiled?.Product ?? VisitorNeeds.Food,
-                          def.Compiled?.BaseCostOfGoods ?? 0, used.Quality, used.Setting0xAC))
+                          def.Compiled?.BaseCostOfGoods ?? 0, used.Quality, used.Setting0xAC);
+            if (bought)
             {
                 Purchases++;
                 Take(used, def);
             }
+            AdvisorShopEvents(guest, used, def, before, bought);
             // ⚠ OUTSIDE the `if`, deliberately: the console's call is at the common exit, so a
             // guest who looked and left still makes the shop ring. See ShopSoundEvent.
             // ⚠ The guest's own cell where they still have one -- the console positions the
@@ -1250,6 +1253,46 @@ public sealed class ParkVisitors
         // audits build bare rides from a script alone -- and is still an invention, now confined
         // to the case where there is genuinely nothing to read.
         Needs.Ride(guest, used?.Value ?? RideIntensity, RideHappiness, RideSickScale, RideBoredomScale);
+    }
+
+    /// <summary>⭐ The advisor's event counters a shop visit raises (findings/advisor-rules.md §6; READ
+    /// `0x20E1A0`, `0x1D1E68`), through <see cref="ParkSim.AdvisorEvent"/>:
+    /// <code>
+    ///   bought only:   product 2 costume → 6; product 3 balloon → 5; product 6 gift → 7       (+1)
+    ///   every visit:   0x1D1E68(shop, (happyAfter − happyBefore)·5): x = max(0, that), (x − 50)/4 →
+    ///                  14 food (0, 4, 7) / 17 drink (1) / 15 merchandise (2, 3, 6) / 16 product 5
+    ///                  (W − P)/2 → 9 food / 12 drink / 10 merchandise / 11 product 5
+    /// </code>
+    /// W is the want score (<see cref="VisitorNeeds.WantScore"/>) over the wants BEFORE the visit, P the price.
+    /// ⚠ Only for a joined compiled record (product and base value known): an unjoined shop has no W, and the
+    /// port's Buy skips its want test too. ⚠ Counter 5 is counted on every balloon bought: natively only when
+    /// the guest had none (`+0x34` bit 4) and the balloon pool `0x14ADD8` gave one -- the port has neither.</summary>
+    void AdvisorShopEvents(int guest, ParkRide shop, RideDefinition def, VisitorWants before, bool bought)
+    {
+        if (def.Compiled is not { } rec || rec.BaseCostOfGoods <= 0) return;
+        int product = rec.Product;
+        if (bought)
+        {
+            if (product == 2) Sim.RaiseAdvisorEvent(6, 1);                // 0x20E6DC
+            else if (product == 3) Sim.RaiseAdvisorEvent(5, 1);           // 0x20E848
+            else if (product == 6) Sim.RaiseAdvisorEvent(7, 1);           // 0x20E8AC
+        }
+        int x = Math.Max(0, (Needs.Of(guest).Happiness - before.Happiness) * 5);
+        int satisfaction = (x - 50) / 4;                                   // 0x1D1E68: the compiler's signed /4
+        int value = (VisitorNeeds.WantScore(before, rec.BaseCostOfGoods, shop.Quality, shop.Setting0xAC,
+                         def.HungerEffect ?? 0, def.ThirstEffect ?? 0, def.HappinessEffect ?? 0, def.VomitEffect ?? 0)
+                     - (def.PricePerUse ?? 0)) / 2;                        // 0x20E97C: (W − P) / 2
+        (int sat, int val) = product switch
+        {
+            0 or 4 or 7 => (14, 9),
+            1 => (17, 12),
+            2 or 3 or 6 => (15, 10),
+            5 => (16, 11),
+            _ => (-1, -1),
+        };
+        if (sat < 0) return;
+        Sim.RaiseAdvisorEvent(sat, satisfaction);                          // 0x1D1EE4 / 0x1D1F00 / 0x1D1F1C / 0x1D1F38
+        Sim.RaiseAdvisorEvent(val, value);                                 // 0x20E9D0 / 0x20E9EC
     }
 
     /// <summary>Where a guest with something pressing on their mind is trying to get to, or null

@@ -592,8 +592,8 @@ static class ManagementChecks
         hireAt(q, StaffKind.Mechanic, q.At(9, 2), 0);
         int m3 = qm.CompletionMessage(6, 5) ?? -1;
         int[] others = { qm.CompletionMessage(4, 0) ?? -1, qm.CompletionMessage(5, 0) ?? -1, qm.CompletionMessage(8, 0) ?? -1, qm.CompletionMessage(9, 0) ?? -1 };
-        Check(m1 == 0x4B && m2 == 0x7E && m3 == 0x4C && others.SequenceEqual(new[] { 0x4D, 0x4E, 0x4C, -1 }),
-              $"research: category 1/3/6/7 posts RIDE 0x4B below level 2, else ADDON 0x4C -- or 0x7E with no mechanic; 4 shop 0x4D, 5 sideshow 0x4E, 8 addon 0x4C, others nothing ({m1:x},{m2:x},{m3:x},{string.Join(",", others.Select(o => o.ToString("x")))})");
+        Check(m1 == 0x4B && m2 == 0x7E && m3 == 0x4C && others.SequenceEqual(new[] { 0x4D, 0x4E, 0x4C, (int)AdvisorRequest.UnsetId }),
+              $"research: category 1/3/6/7 posts RIDE 0x4B below level 2, else ADDON 0x4C -- or 0x7E with no mechanic; 4 shop 0x4D, 5 sideshow 0x4E, 8 addon 0x4C, others the unset id 0x114 ({m1:x},{m2:x},{m3:x},{string.Join(",", others.Select(o => o.ToString("x")))})");
         // The rand(10) is drawn before the tired check.
         var t = newPark(15, null);
         var tr = hireAt(t, StaffKind.Researcher, t.At(5, 2), 0);

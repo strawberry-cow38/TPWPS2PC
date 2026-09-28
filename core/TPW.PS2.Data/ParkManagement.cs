@@ -6,7 +6,7 @@ namespace TPW.PS2.Data;
 ///   snapshot month, day, year; advance the clock (0x16B240)
 ///   MONTH changed:  0x16C120 strikes (gated by 0x151258)      -- ParkStaff.MonthlyStrikeCheck
 ///                   0x100A18 the park's month end: wages      -- ParkFinances.MonthEnd(ParkStaff.WagesDue)
-///                   balance &gt;= 0 ? 0x100E88(park), counter 0 : the in-the-red chain (cal+0x18)
+///                   balance &gt;= 0 ? 0x100E88(park), counter 0 : the in-the-red chain (cal+0x18) -- RedMonths
 ///                   0x16B478(cal); cal+0x1C += 1; year changed → 0x100EF8(park)
 ///   DAY changed and day-of-month % 7 == 0:  0x16BC70, the weekly pass (days 1, 8, 15, 22, 29 --
 ///                   so the 1st of every month is also a weekly day)
@@ -14,9 +14,9 @@ namespace TPW.PS2.Data;
 /// ⭐ STRIKES FIRST, THEN WAGES: a strike that starts at this change is paid in full (nobody is standing
 /// in 0xF yet); the month a strike covered is unpaid for those who reached 0xF.
 ///
-/// ⚠ NOT PORTED, said so: the in-the-red counter `cal+0x18` and its messages (0xCE+0x79, 0x7A, 0x7B),
-/// `0x100E88`, `0x16B478`, `0x100EF8` (not staff; untraced here) and every weekly test but the Security
-/// Award's. ⚠ The loans `0x100A18` repays are not modelled (the port has none).
+/// ⭐ The in-the-red chain IS ported (advisor step A, READ decompile `0x16B0E8..0x16B194`): <see cref="RedMonths"/>.
+/// ⚠ NOT PORTED, said so: `0x100E88`, `0x16B478`, `0x100EF8` (not staff; untraced here) and every weekly test
+/// but the Security Award's. ⚠ The loans `0x100A18` repays are not modelled (the port has none).
 ///
 /// Core, so the audit drives it exactly as the viewer does: one <see cref="Advance"/> per frame.</summary>
 public sealed class ParkManagement
@@ -35,7 +35,8 @@ public sealed class ParkManagement
     /// the placed-feature list through it).</summary>
     public ParkStaff Staff { get; set; }
 
-    /// <summary>The award's advisor message (0xA0) -- ⚠ the staff's own (strikes, research) go through
+    /// <summary>The calendar's advisor messages -- the award (0xA0) and the in-the-red chain (0xCE, 0x79, 0x7A,
+    /// 0x7B) -- <see cref="ParkAdvisor.Submit"/>. ⚠ The staff's own (strikes, research) go through
     /// <see cref="ParkStaff.Advisor"/>.</summary>
     public Action<int> Advisor { get; set; }
     /// <summary>The award's UI sound 0xC5 (`0x1C38C0` → `0x111150(audio, 0, 0xC5, 0)`).</summary>
@@ -49,6 +50,12 @@ public sealed class ParkManagement
 
     /// <summary>`cal+0x1C`: months elapsed.</summary>
     public int MonthsElapsed { get; private set; }
+    /// <summary>⭐ `cal+0x18`, the in-the-red counter: months ended with a negative balance in a row (0 again
+    /// at any month end at or above zero).</summary>
+    public int RedMonths { get; private set; }
+    /// <summary>The chain's messages (`0x16B0E8..0x16B194`): 0xCE IN_THE_RED (voiced) then 0x79 at the first red
+    /// month, 0x7A at the third, 0x7B BANKRUPTED (modal: its end is game over) at the fourth.</summary>
+    public const int MessageInTheRed = 0xCE, MessageRedFirst = 0x79, MessageRedThird = 0x7A, MessageBankrupted = 0x7B;
     /// <summary>Instrumentation: month changes and weekly passes run.</summary>
     public int MonthChanges { get; private set; }
     public int WeeklyPasses { get; private set; }
@@ -76,6 +83,16 @@ public sealed class ParkManagement
         {
             LastWages = Staff?.WagesDue() ?? 0;                           // 0x1008B8
             Finances.MonthEnd(LastWages);                                 // 0x100A18
+            // 0x100688 (the balance): at or above zero → 0x100E88 (⚠ untraced) and cal+0x18 = 0; below →
+            // cal+0x18 += 1 and at 1: 0xCE then 0x79; 3: 0x7A; 4: 0x7B; 2 and 5+: nothing.
+            if (Finances.Balance >= 0) RedMonths = 0;
+            else
+            {
+                RedMonths++;
+                if (RedMonths == 1) { Advisor?.Invoke(MessageInTheRed); Advisor?.Invoke(MessageRedFirst); }
+                else if (RedMonths == 3) Advisor?.Invoke(MessageRedThird);
+                else if (RedMonths == 4) Advisor?.Invoke(MessageBankrupted);
+            }
         }
         MonthsElapsed++;                                                  // cal+0x1C
     }

@@ -177,7 +177,9 @@ public sealed class ResearchManager
     /// <summary>⭐ `0x1B74A0`'s message, READ (jump table `0x3661F0`, MIPS `0x1B7510..0x1B75D8`): by category
     /// 1, 3, 6, 7 → `0x12BA08` &lt; 2 ? 0x4B RIDE_RESEARCHED : (no mechanics ? 0x7E NEW_UPGRADE_HIRE_MECHANIC
     /// : 0x4C ADDON_RESEARCHED); 2 → 0x4F FEATURE; 4 → 0x4D SHOP; 5 → 0x4E SIDESHOW; 8 → 0x4C ADDON; any
-    /// other category posts an EMPTY message (the id is never set). Only rows 740/566/713/652/556 carry
+    /// other category posts the request's UNSET id -- ⚠ CORRECTED (findings/advisor-messages.md §10.2): the id is
+    /// never set, so it is the ctor's 0x114 = 276 (<see cref="AdvisorRequest.UnsetId"/>), past the 275-record
+    /// table (INFERRED unreachable: categories 1..8 are all handled). Only rows 740/566/713/652/556 carry
     /// text; none has a voice; 0x7E is row 310, silent.</summary>
     public int? CompletionMessage(int category, int item) => category switch
     {
@@ -187,6 +189,6 @@ public sealed class ResearchManager
         4 => 0x4D,
         5 => 0x4E,
         8 => 0x4C,
-        _ => null,
+        _ => AdvisorRequest.UnsetId,
     };
 }

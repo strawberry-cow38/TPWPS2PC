@@ -394,6 +394,7 @@ public sealed class NativeRideQueues
             w.Thought = Thought.BadQueue; // N+40 = 9
             needs.Set(m.Guest.Id, w);
             Impatient++;
+            _visitors.Sim.RaiseAdvisorEvent(3, 8); // 0x21059C: 0x1073C0(adv, 3, 8), the advisor's queue-quit counter (v59)
             Quit(m);
             return;
         }
