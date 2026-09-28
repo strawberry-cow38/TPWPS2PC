@@ -123,3 +123,27 @@ pages and the lobby prompt, then plays DINO to completion when the test-only
 `--frontend-full-movies` is present. Without it, DINO is skipped as before. The
 full path passes53checks locally with synthetic movies; retail run still pending.
 No headless flag: scene requires a renderer. Allow120s+ for startup/assets/movies.
+
+## Retail-file confirmation (peer-run, 2026-09-28 21:56 UTC)
+
+Cow tools reported Discord message `1554250523111202827`: built `4f3a735`
+and ran the full-input smoke on the RTX4080 playtest machine using the actual
+corrected retail rips in `C:\claude-workspace\movies-ogv`. Exit0,53checks:
+
+```
+[frontend] BFLOGO decoded=640x480, display=4:3
+[frontend] BFLOGO: finished
+[frontend] BFLOGO decoded=640x480, display=4:3
+[frontend] BFLOGO: skipped
+[frontend] DINO decoded=640x480, display=4:3
+[frontend] DINO: finished
+MAIN MENU STARTUP SMOKE PASS checks=53; direct=False
+```
+
+This closes the previously pending **retail-file frontend-sequence** test:
+actual input selected French, BFLOGO completed and was separately skipped,
+mouse menu/lobby navigation ran, DINO completed, and the park loaded. It does
+not establish pixel-perfect UI aspect, all four world movies, or translated
+speech audibility; those are separate claims. This is peer-run evidence, not
+an EC2 test represented as remote execution. Tinyclaw's combined-main gate and
+merge remain pending at this checkpoint.
