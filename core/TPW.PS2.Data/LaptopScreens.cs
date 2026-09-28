@@ -77,6 +77,10 @@ public sealed record LaptopScreen(
     /// The three graph screens author it as `graph`, 147x200 at (315, 208) -- the model window's
     /// frame, which is why no graph screen also has a model.</summary>
     string GraphElement = null,
+    /// <summary>⚠ A SECOND value column, or null. Park Finance is why: it prints every row twice,
+    /// "This Year" at col 250 in YELLOW and "Last Year" at col 393 in the ordinary label colour.
+    /// One value element cannot describe a screen that answers each label twice.</summary>
+    string ValueElement2 = null,
     /// <summary>⚠ When a row carries its own value element, take only its COLUMN and keep the
     /// label's row. All Staff again: `InfoValues` is authored at row 220 and **that row is never
     /// read** -- `0x10b980` stores only `DAT_002AA8D4`, its column -- and Monthly Wage draws at
@@ -521,6 +525,36 @@ public sealed record LaptopScreen(
     /// <summary>The five Statistics series colours (`0x364150`), in row order.</summary>
     public static readonly (byte R, byte G, byte B)[] ParkStatsSeriesRgb =
         { (254, 1, 1), (231, 102, 27), (254, 254, 1), (1, 176, 60), (1, 178, 235) };
+
+    /// <summary>⭐ PARK FINANCE (menu id 11). `findings/parkstats-screens.md` §4; draw
+    /// `FUN_001867b8`, step 32, z 100.
+    ///
+    /// ⚠⚠ ROW 200 IS EMPTY IN THE LABEL COLUMN -- the labels start ONE STEP DOWN at 232, because
+    /// row 200 is where the two column HEADERS go ("This Year" at 250, "Last Year" at 393). Hence
+    /// `StepBase: -1`, which pushes the label grid down by one step.
+    ///
+    /// ⚠ The Park Rating row prints a WORD, not a number: `Poor` / `Average` / `Good` /
+    /// `Excellent` by `min(3, rating / 20)`. Nothing anywhere prints the rating itself.</summary>
+    public static readonly LaptopScreen ParkFinance = new(
+        "main_ps_parkfinance.sce", 11, "TextItems", "TextItems", "ThisYear", "TextItems",
+        new LaptopRow[]
+        {
+            new(9,   LaptopRowKind.Money),   // Money In
+            new(664, LaptopRowKind.Money),   // Money Out
+            new(682, LaptopRowKind.Money),   // Balance
+            new(115, LaptopRowKind.Money),   // Park Value
+            new(443, LaptopRowKind.Text),    // Park Rating -- a word, not a number
+        },
+        LabelsOnGrid: true, StepBase: -1, ValueElement2: "LastYear");
+
+    /// <summary>Park Finance's two column headers, drawn on the row the labels skip.</summary>
+    public const int ThisYearTextId = 889, LastYearTextId = 603;
+
+    /// <summary>⭐ The park rating WORD: `DAT_002c42c0[min(3, rating / 20)]`, so 0..19 Poor,
+    /// 20..39 Average, 40..59 Good, 60+ Excellent.</summary>
+    public static readonly int[] RatingWordTextIds = { 57, 767, 113, 1004 };
+    public static int RatingWord(int rating) =>
+        RatingWordTextIds[System.Math.Clamp(rating / 20, 0, 3)];
 
     public static readonly LaptopScreen[] AllList = { AllRides, AllShops, AllSideshows, AllToilets };
 

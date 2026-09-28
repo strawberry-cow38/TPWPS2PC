@@ -3594,6 +3594,32 @@ public partial class Viewer : Node3D
             }
             case "stafftypes": ShowStaffInfoTypes(); break;
             case "staffitem": ShowStaffInfoMember(arg); break;
+            // ⭐⭐ PARK FINANCE (menu id 11). Every label answered twice: This Year and Last Year.
+            case "parkfinance":
+            {
+                var pf = _sim?.Finances;
+                if (pf == null)
+                { _laptopBack.RemoveAt(_laptopBack.Count - 1); Status("no park is running yet"); ShowLaptopLevel(); return; }
+                // ⚠ Only the BALANCE has a source. Money in/out since the year roll, park value
+                // and park rating are not retained anywhere in this port -- there is no year roll
+                // and no valuation -- so they read as a dash rather than a confident zero, which
+                // would look like a park that earned nothing.
+                const string none = "--";
+                var thisYear = new List<(string, int)>
+                {
+                    (none, 0), (none, 0), (Money.Format(pf.Balance), 0), (none, 0),
+                    (TextRow(LaptopScreen.RatingWord(0)), 0),
+                };
+                var lastYear = new List<string> { none, none, none, none, none };
+                _shopPanel.ShowScreen(LaptopScreen.ParkFinance, "", thisYear,
+                    column2: lastYear,
+                    headers: new[] { TextRow(LaptopScreen.ThisYearTextId),
+                                     TextRow(LaptopScreen.LastYearTextId) });
+                ClearLaptopModel();
+                RefreshLaptopBalance();
+                Status($"park finance -- balance {Money.Format(pf.Balance)}; year-to-date and rating not retained yet");
+                break;
+            }
             // ⭐⭐ THE PARK STATISTICS MENU (id 8). Four pages, all selectable.
             case "parkstats":
             {

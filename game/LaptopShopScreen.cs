@@ -276,6 +276,10 @@ public sealed partial class LaptopShopScreen : Control
                                               Color Colour, int Years);
     GraphSeries? _graph;
 
+    /// <summary>⚠ Park Finance answers every label TWICE. `_column2` is the second answer per row
+    /// and `_headers` the two column titles, drawn on the row the labels deliberately skip.</summary>
+    IReadOnlyList<string> _column2, _headers;
+
     /// <summary>⭐ The nine-slice the graph sits in. `findings/graph-widget.md` §1.3: the series
     /// draw builds a temporary element over the plot rect and issues `FUN_00142090` -- sprite
     /// `0x30` tiled in 16px rows with `0x2f` corners and `0x32` edges, which is the SAME
@@ -287,10 +291,13 @@ public sealed partial class LaptopShopScreen : Control
 
     public void ShowScreen(LaptopScreen spec, string title, IReadOnlyList<(string Text, int Fraction)> cells,
                            bool buildRow = false, int buildTextId = LaptopMainMenu.BuildTextId,
-                           IReadOnlyList<Color?> barTints = null, GraphSeries? graph = null)
+                           IReadOnlyList<Color?> barTints = null, GraphSeries? graph = null,
+                           IReadOnlyList<string> column2 = null, IReadOnlyList<string> headers = null)
     {
         _barTints = barTints;
         _graph = graph;
+        _column2 = column2;
+        _headers = headers;
         _spec = spec ?? throw new ArgumentNullException(nameof(spec));
         _title = title ?? "";
         _rows.Clear();
@@ -1072,6 +1079,16 @@ public sealed partial class LaptopShopScreen : Control
             DrawTextureRect(ModelTexture,
                 new Rect2(At(window), new Vector2(window.Width, window.Height) * s), false);
 
+        // ⭐ Column headers, drawn on the row the label grid skips (Park Finance's row 200).
+        if (_headers != null && _spec.ValueElement2 != null
+            && layout[_spec.ValueElement] is { } h1 && layout[_spec.ValueElement2] is { } h2)
+        {
+            if (_headers.Count > 0 && _headers[0] != null)
+                DrawRun(_headers[0], At(h1), s, Of(ShopScreen.Highlight), h1.Justify);
+            if (_headers.Count > 1 && _headers[1] != null)
+                DrawRun(_headers[1], At(h2), s, Of(ShopScreen.Label), h2.Justify);
+        }
+
         var screenLabels = layout[_spec.LabelElement];
         var values = layout[_spec.ValueElement];
         for (int i = 0; i < _spec.Rows.Count; i++)
@@ -1162,6 +1179,13 @@ public sealed partial class LaptopShopScreen : Control
                 _rowArrows[i] = arect;
                 DrawTextureRect(_arrows, arect, false, want);
             }
+
+            // ⭐ The SECOND value column, at its own element's column and this row's height.
+            if (_spec.ValueElement2 != null && _column2 != null && i < _column2.Count
+                && _column2[i] != null && layout[_spec.ValueElement2] is { } v2
+                && labels is { } l2)
+                DrawRun(_column2[i], new Vector2(At(v2).X, At(l2).Y + dy), s,
+                        Of(ShopScreen.Label), v2.Justify);
 
             if (text == null) continue;
             // ⭐⭐ CHECKED FIRST, and the order is the point: a Research row HAS its own element
