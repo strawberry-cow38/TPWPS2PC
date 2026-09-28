@@ -10840,7 +10840,7 @@ public partial class Viewer : Node3D
         // ⚠ And under a sound census even with a shot asked for: a wound park fires every cue in
         // one frame and no voice can advance, which is exactly the "resolves but never plays"
         // that the census exists to catch.
-        else if (_playing && _mode == Mode.Park) StepPark(delta);
+        else if (ParkSimulationRunning) StepPark(delta);
         _sounds?.Step(delta); _burst?.Step();
         if (_soundCensus > 0 && _mode == Mode.Park && _parkTicks * ParkSim.TickMilliseconds >= _soundCensus * 1000L)
         {
@@ -10860,7 +10860,7 @@ public partial class Viewer : Node3D
         // see the pause.
         // ⭐ Through 0x16B060 now (Viewer.Management.cs): a month change runs strikes then wages, and
         // days 1/8/15/22/29 the weekly pass -- the rollovers this line used to discard.
-        if (_playing && _mode == Mode.Park)
+        if (ParkSimulationRunning)
             AdvanceCalendar((int)Math.Round(delta * GameCamera.TicksPerSecond * GameCamera.FrameTick));
         if (_playing) _selectView?.Step(delta);
         if (_playing && _mode == Mode.Park) _gateBox?.Step(delta);

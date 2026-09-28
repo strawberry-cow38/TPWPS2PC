@@ -27,17 +27,29 @@ public partial class MainMenuStartupSmoke : Node
             {
                 Check(menu is not {Open:true},"explicit content request bypasses the menu");
                 Check(Field<Model>(viewer,"_terrainModel")!=null&&Field<int>(viewer,"_loadedMap")>=0,"explicit park really loaded");
+                var clock=Field<ParkClock>(viewer,"_calendar");int before=clock.Accumulator;
+                viewer._Process(.04);
+                Check(clock.Accumulator!=before,"visible playing park still advances (counter-control to a permanently paused gate)");
             }
             else
             {
                 Check(menu is {Open:true,Visible:true},"bare launch opens the real Main Menu without --menu");
                 Check(!Field<bool>(viewer,"_lobbyMode"),"lobby is not entered until Main Game is chosen");
+                var calendar=Field<ParkClock>(viewer,"_calendar");
+                int beforeTicks=Field<int>(viewer,"_parkTicks"), beforeDayUnits=calendar.Accumulator;
+                viewer._Process(1.0); // the actual frame path, with the menu open
+                Check(Field<int>(viewer,"_parkTicks")==beforeTicks&&calendar.Accumulator==beforeDayUnits,
+                    "menu display time does not advance the hidden park or calendar");
                 menu.Confirm(); // New Game -> submenu; don't call OnMenuChosen directly
                 Check(menu.Open&&!Field<bool>(viewer,"_lobbyMode"),"New Game opens its submenu rather than jumping into a park");
                 menu.Confirm(); // Main Game -> Chosen -> OnMenuChosen -> EnterLobby
                 Check(!menu.Open&&Field<bool>(viewer,"_lobbyMode"),"Main Game enters lobby and closes main menu");
                 Check(Field<Node3D>(viewer,"_lobbyRoot") is {Visible:true},"actual 3D lobby is present");
                 Check(Field<LobbySlots>(viewer,"_lobbySlots")!=null,"authored lobby slot table loaded");
+                beforeTicks=Field<int>(viewer,"_parkTicks");beforeDayUnits=calendar.Accumulator;
+                viewer._Process(1.0);
+                Check(Field<int>(viewer,"_parkTicks")==beforeTicks&&calendar.Accumulator==beforeDayUnits,
+                    "lobby display time also leaves the park paused");
             }
             Field<RideSounds>(viewer,"_sounds")?.Clear();
             viewer.QueueFree();await ToSignal(GetTree(),SceneTree.SignalName.ProcessFrame);
