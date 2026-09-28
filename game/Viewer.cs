@@ -11099,10 +11099,16 @@ public partial class Viewer : Node3D
     /// and `(200,130,0)` amber. The `10` in the draw call is a palette slot the RGB path
     /// overrides; it is carried rather than interpreted.
     ///
-    /// ⚠ THE ONE NUMBER STILL NOT READ is the console's UI width that `x=38` is measured in.
-    /// 512 is the usual PS2 text space and the other constants sit inside it (the slide-in runs
-    /// from -80 and latches at 45), but no line has been traced that states it. Everything else
-    /// on this screen is the game's.
+    /// ⭐ THE UI WIDTH THAT `x=38` IS MEASURED IN IS NOW READ: **512**, and it is a UNIT space, not
+    /// a pixel one. This used to say it was the one number still untraced -- "512 is the usual PS2
+    /// text space and the other constants sit inside it, but no line has been traced that states
+    /// it". tinyclaw traced it for the advisor on 2026-09-28: `NDC = x/256 - 1, 1 - y/256`, plus
+    /// `0x1FBCD0` drawing sprite `0x3A` at x 0 and 512 wide (edge to edge) and centred texts at
+    /// x 256. See <see cref="ConsoleUiWidth"/> for the full evidence.
+    ///
+    /// ⚠ A STALE "not verified" MARKER COSTS AS MUCH AS A STALE CLAIM -- it sends the next reader
+    /// to re-derive something already settled, and it would now contradict the constant's own
+    /// comment fifteen lines below. Updated rather than left standing.
     ///
     /// ⚠ There is a second, ANIMATED placement (`DAT_002E9900 != 0`): x starts at `DAT_002B62F0`
     /// = **-80**, y = **69**, advances by `DAT_002B62F8` each frame and latches at `0x2D` = 45.
