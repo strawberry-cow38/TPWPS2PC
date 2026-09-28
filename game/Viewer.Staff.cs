@@ -263,11 +263,16 @@ public partial class Viewer
     {
         if (_staff == null || updates == 0) return;
         SyncStaffActors();
+        // ⭐ In the MAP-LIST order (`ParkStaff.Members`, newest first: `0x14BE60` walks it), not the actor
+        // dictionary's. Every update draws from the shared `_staffAnimationRand`, so the order IS the draw
+        // order; a Dictionary's enumeration after removals is a .NET implementation detail (cow tools,
+        // 2026-09-28, while astraclaw's save work was preserving dictionary "holes" to keep it stable).
+        // ⚠ Members' model updates still run as one pass after the staff updates rather than interleaved
+        // inside each member's update; that interleaving is not traced.
         for (uint i = 0; i < updates; i++)
-            foreach (var a in _staffActors.Values)
+            foreach (var m in _staff.Members)
             {
-                if (a.Animation == null) continue;
-                var m = a.Member;
+                if (!_staffActors.TryGetValue(m, out var a) || a.Animation == null) continue;
                 if (m.Shown)
                 {
                     a.Animation.Requested = (a.Animation.Requested & ~0x1f) | (m.LogicalRequest & 0x1f);
