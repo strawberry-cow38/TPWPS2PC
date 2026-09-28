@@ -8591,6 +8591,19 @@ public partial class Viewer : Node3D
         // a ride that is not broken, which ParkStaff.CallMechanic reproduces.
         if (_staff != null && RideFor(placed) is { ServiceClass: not RideServiceClass.None })
             yield return "Call Mechanic";
+        // ⭐⭐ THE STAFF ROOM'S KICK-OUTS LIVE HERE, NOT ON A LAPTOP PAGE. Master, 2026-09-28:
+        // "i dont think the staff room has a laptop page? its the rmb context menu which gains
+        // 'kick out entertainer' etc" -- and that explains every piece of evidence I had been
+        // treating as a puzzle: the class has NO `.sce` among the 29, its ctor calls no binder,
+        // its layout globals are never written, and its ctor instead hardcodes a listbox rect at
+        // (280, 80) 180x110. It was never a laptop screen; the listbox IS the context menu, and
+        // §12.4's "List box = the kick-outs" says so in as many words.
+        //
+        // ⚠ Self-gating: the options are the kinds with someone actually resting, so a thing that
+        // is not a staff room yields nothing and the menu is unchanged.
+        if (_staff != null && StaffRoomAt(placed) is { } room)
+            foreach (var kind in _staff.KickOutOptions(room.Key))
+                yield return TextRow(StaffTables.KickOutTextRow(kind));
         // ⭐⭐ ONLY THINGS THAT TAKE A QUEUE OFFER ONE. Master: "make sure on the rmb details page
         // that we only show relevant options, ie no build queue for things that arent meant to
         // have queues." A tree, a bin and a lamp were all offering to have a queue built to them.
@@ -8627,6 +8640,18 @@ public partial class Viewer : Node3D
     /// "shop" in its title a shop, and miss the ones without.</summary>
     /// <summary>The placed thing as a RIDE with operating settings, or null. ⚠ Tiers are the test,
     /// not the kind name: a thing with no tier has no speed, capacity or duration to show.</summary>
+    /// <summary>⭐ The staff room a placed thing IS, or null. ⚠ Not `RideFor`, which only answers
+    /// for things that have a laptop details screen -- a staff room is a feature and has none.
+    /// </summary>
+    StaffFeature StaffRoomAt(int placed)
+    {
+        if (_sim == null || _park == null || placed < 0 || placed >= _park.Placed.Count) return null;
+        int id = _park.Placed[placed].Id;
+        foreach (var r in _sim.Rides)
+            if (r.Id == id) return StaffFeature.Of(r);
+        return null;
+    }
+
     ParkRide RideFor(int placed)
     {
         if (_sim == null || placed < 0 || placed >= _park.Placed.Count) return null;
@@ -8991,6 +9016,19 @@ public partial class Viewer : Node3D
     /// (`0x124018` / `0x123FB8`) are not ported, so Edit Queue opens OUR queue tool.</summary>
     void OnObjectMenu(string caption)
     {
+        // ⭐ A kick-out caption is a STAFF KIND's text row, so it is matched back the way it was
+        // produced rather than by parsing the words.
+        if (_staff != null && StaffRoomAt(_selected) is { } kroom)
+            foreach (var kind in _staff.KickOutOptions(kroom.Key))
+                if (TextRow(StaffTables.KickOutTextRow(kind)) == caption)
+                {
+                    int before = _staff.RestingIn(kroom.Key, kind);
+                    _staff.KickOut(kroom.Key, kind);
+                    GD.Print($"[staff] kicked {kind} out of the staff room ({before} were resting)");
+                    Status($"{caption} -- {before} sent back to work");
+                    return;
+                }
+
         switch (caption)
         {
             case "Edit Queue":
