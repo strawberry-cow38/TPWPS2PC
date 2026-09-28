@@ -32,7 +32,7 @@ MUT = [
  ('no-duck', M, 'if (settings.Sfx > DuckLevel) SfxTarget = DuckLevel;', '', 0),
  ('duck-not-restored', M, 'else { SfxTarget = settings.Sfx; MusicTarget = settings.Music; }', 'else { }', 0),
  # The stack's drawing and keys.
- ('count-off-by-one', K, 'string count = _stack.Count.ToString();', 'string count = (_stack.Count - 1).ToString();', 0),
+ ('count-off-by-one', K, '_countText = _countValue.ToString();', '_countText = (_countValue - 1).ToString();', 0),
  ('text-of-newest', K, 'if (_stack.IsOpen && _stack.Selected is { } sel)', 'if (_stack.IsOpen && _stack.Records.LastOrDefault() is { } sel)', 0),
  ('l2-ignored', A, 'if (stack.IsOpen || AdvisorStackMayOpen()) _advisorL2 = true;', '', 0),
  ('delete-is-select', A, 'case Key.Delete: stack.Press(AdvisorStackButtons.Delete); return true;', 'case Key.Delete: stack.Press(AdvisorStackButtons.Select); return true;', 0),

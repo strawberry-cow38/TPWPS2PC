@@ -258,7 +258,8 @@ public sealed class AnimatedModel
     /// <summary>Whether a part draws now, by the rule <see cref="SetFrame"/> applies.</summary>
     bool PartShown(Part p)
     {
-        if (_ordinaryVisibility || _nativeNodeVisibility) return AnimationNodeVisibility.Shown(_model, p.Mesh.Index, _hidden);
+        // The cached chain, as SetFrame passes it (the overload that does not build a List per call).
+        if (_ordinaryVisibility || _nativeNodeVisibility) return AnimationNodeVisibility.Shown(_model, p.Mesh.Index, p.Ancestry, _hidden);
         foreach (var node in p.Ancestry ?? new List<int> { p.Mesh.Index })
             if (_hidden.Contains(node)) return false;
         return true;

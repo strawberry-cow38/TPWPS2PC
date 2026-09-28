@@ -116,6 +116,9 @@ public partial class AdvisorStackView : Control
 
     public void Present() => QueueRedraw();
 
+    int _countValue = -1;
+    string _countText;
+
     public override void _Draw()
     {
         EnvelopeShown = false; ShownRecords = 0; ShownText = null;
@@ -124,7 +127,9 @@ public partial class AdvisorStackView : Control
         float sx = view.X / Native, k = view.Y / Native;
         // 0x108D40: the count, then the envelope.
         int textY = EnvelopeBase - CountLift;
-        string count = _stack.Count.ToString();
+        // ⚠ PERF: the count's string is rebuilt only when the count changes -- this runs every frame.
+        if (_stack.Count != _countValue || _countText == null) { _countValue = _stack.Count; _countText = _countValue.ToString(); }
+        string count = _countText;
         if (_countFont?.Invoke() is { } countFont)
         {
             var tex = countFont.Render(count);
