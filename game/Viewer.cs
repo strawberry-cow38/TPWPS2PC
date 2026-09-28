@@ -3594,6 +3594,63 @@ public partial class Viewer : Node3D
             }
             case "stafftypes": ShowStaffInfoTypes(); break;
             case "staffitem": ShowStaffInfoMember(arg); break;
+            // ⭐⭐ AWARDS -- which IS main_goldtickets (menu id 3), the Park Statistics menu's
+            // fourth row. `findings/awards.md`: every string on it is STR_PARKSTATS_*, and there
+            // is no Gold Tickets row in the laptop's main menu, so it hangs off Park Statistics.
+            case "awards":
+            {
+                var aw = _awards;
+                var medals = new List<bool>();
+                for (int i = 0; i < GoldTicketScreen.Medals.Length; i++)
+                    medals.Add(aw != null && i < aw.Medals.Length && aw.Medals[i]);
+                // ⚠ The port keeps a COUNT of ultimate coasters, not which ones, so the first N
+                // stars light in the registry's authored order. Flagged rather than presented as
+                // the console's own set -- it is the right number of stars, not certainly the
+                // right stars.
+                int uc = aw?.UltimateCoasters ?? 0;
+                var stars = new List<bool>();
+                for (int i = 0; i < GoldTicketScreen.UltimateStars.Length; i++) stars.Add(i < uc);
+                _shopPanel.EnsureAwardArt(_lib);
+                _shopPanel.ShowScreen(LaptopScreen.Awards, "",
+                    Blank(LaptopScreen.Awards.Rows.Count), medals: medals, stars: stars);
+                ClearLaptopModel();
+                RefreshLaptopBalance();
+                Status($"awards -- {medals.FindAll(m => m).Count} of {medals.Count} medals, "
+                     + $"{uc} of {stars.Count} ultimate coasters, {aw?.GoldTickets ?? 0} gold tickets");
+                break;
+            }
+            // ⭐⭐ THE RIDE'S ADDONS PAGE (state 3). Same `.sce` as the Upgrades page, different
+            // content: the ADDON's name and price, the stock left, and the RIDE's model.
+            //
+            // ⚠ TRACK RIDES ONLY, and `arg` pages through the park's own add-on list -- which is
+            // per PARK on the console while our library is per world, hence TrackUpgrades.ForPark.
+            case "rideaddons":
+            {
+                var addons = TrackUpgrades.ForPark(TrackWorld, TrackPark);
+                if (addons.Count == 0)
+                { _laptopBack.RemoveAt(_laptopBack.Count - 1); Status("no add-ons in this park"); ShowLaptopLevel(); return; }
+                int asel = int.TryParse(arg, out var av) ? av : 0;
+                asel = ((asel % addons.Count) + addons.Count) % addons.Count;      // wraps, as list B does
+                _addonRow = asel;
+                var aasset = AddonAsset(asel);
+                var adef = aasset?.Model is { } am ? DefinitionFor(am) : null;
+                int aprice = adef?.CompiledEntry?.SimpleEconomy?.PurchaseCost ?? 0;
+                // ⭐ Stock is `3 - placed`, and the placed count is the ride's own layout.
+                TrackRideView av2 = null;
+                if (_detailsRide != null) _tracks.TryGetValue(_detailsRide.Id, out av2);
+                av2 ??= _tracks.Values.FirstOrDefault();
+                string astock = av2 != null
+                    ? (TrackLayout.MaxUpgrades - av2.Layout.Upgrades.Count).ToString() : null;
+                _shopPanel.ShowScreen(LaptopScreen.RideUpgrade,
+                    aasset != null ? DisplayName(aasset, adef) : "",
+                    new List<(string, int)> { (astock, 0), (Money.Display(aprice), 0) });
+                if (_detailsRide != null) BuildLaptopModelFor(_detailsRide);
+                RefreshLaptopBalance();
+                Status($"add-on {asel + 1} of {addons.Count}"
+                     + (aasset != null ? $": {DisplayName(aasset, adef)} {Money.Display(aprice)}" : "")
+                     + (astock != null ? $"; {astock} left on this ride" : ""));
+                break;
+            }
             // ⭐⭐ THE RIDE'S UPGRADES PAGE (state 2 of the ride screen). Reached from the
             // Upgrades ROW on Details, which is what the console does -- see LaptopScreen.RideUpgrade.
             case "rideupgrade":
@@ -4075,6 +4132,9 @@ public partial class Viewer : Node3D
     /// <summary>Which lender New Loan is showing (0..3), stepped by its spinner.</summary>
     int _loanLender;
 
+    /// <summary>Which add-on the Addons page is showing, paged by list B.</summary>
+    int _addonRow;
+
     /// <summary>`--graph-demo`: plot a known series instead of the park's, so the PLOTTER can be
     /// checked independently of whether the park has any history. See the control in the case.</summary>
     bool _graphDemo;
@@ -4408,7 +4468,6 @@ public partial class Viewer : Node3D
             {
                 var pm = LaptopScreen.ParkStatsMenu;
                 if (row < 0 || row >= pm.Length) return;
-                if (pm[row].Opens == "awards") { Status("awards -- no screen in this port yet"); return; }
                 _laptopBack.Add((pm[row].Opens, null));
                 ShowLaptopLevel();
                 return;
@@ -4543,6 +4602,14 @@ public partial class Viewer : Node3D
         // takes it; there is nothing else to click.
         if (_laptopBack.Count > 0 && _laptopBack[^1].Kind == "rideupgrade"
             && _detailsRide is { } upgrading) { BuyRideUpgrade(upgrading); return; }
+        // ⭐ Confirm on the Addons page ENTERS THE PLACEMENT TOOL and closes the laptop -- an
+        // add-on is not bought from a list, it is put on two straights of the track.
+        if (_laptopBack.Count > 0 && _laptopBack[^1].Kind == "rideaddons")
+        {
+            if (AddonAsset(_addonRow) is { } pick)
+            { OnLaptopDismiss(close: true); BeginAddonTool(pick); }
+            return;
+        }
         if (_detailsSpec != LaptopScreen.Ride || _detailsRide is not { } ride) return;
         var rows = LaptopScreen.Ride.Rows;
         if (row < 0 || row >= rows.Count || rows[row].TextId != 119) return;   // Upgrades
