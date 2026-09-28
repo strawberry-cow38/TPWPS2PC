@@ -11207,6 +11207,26 @@ public partial class Viewer : Node3D
     const int TicketCountX = 0x50, TicketCountY = 0x50;
     const int StarCountX = 0x50, StarCountY = 0x6e;
     const string TicketIcon = "/Gticket/gticket.tga", StarIcon = "/UltimateC/Star.tga";
+    /// <summary>⭐⭐ THE HUD IS AUTHORED IN A 512x512-UNIT SPACE, NOT IN FRAMEBUFFER PIXELS.
+    /// The transform is `NDC = x/256 - 1, 1 - y/256`, so 512 units span the whole frame in BOTH
+    /// axes whatever the display mode. Traced by tinyclaw for the advisor, 2026-09-28:
+    /// `0x1FBCD0` draws sprite `0x3A` at x 0 and 512 wide (i.e. edge to edge), and centred texts
+    /// sit at x 256 (`0x1513E0`, text row 973 at (256,128), justify 1) -- a centre of 256 is only
+    /// the middle of a 512-wide space. Derivation: `findings/advisor-visuals.md` §1.5.
+    ///
+    /// ⚠⚠ DO NOT "FIX" THE WIDTH TO 640. The PAL framebuffer is 640x512 and that 640 is a
+    /// PIXEL count, not a unit count -- so one unit is 1.25 px across and 1 px down. Both numbers
+    /// here being 512 looks exactly like a copy-paste, which is why this comment exists: it is
+    /// square on purpose. I flagged it as a suspected 1.25x error in every HUD element and tinyclaw
+    /// settled it from the draw -- the constant was right and the missing justification was the
+    /// actual defect. The only 640 in HUD code is a console quirk where the advisor's read box
+    /// centres itself using `0x20A120`'s pixel width INSIDE this 512-unit space, which is why that
+    /// box sits right of centre rather than centred.
+    ///
+    /// ⭐ Corroborated independently, by data rather than by the same trace: across all 29 `.sce`
+    /// files in MENUS.WAD the 157 authored `row=`/`col=` values top out at col 393 and row 436 --
+    /// consistent with a 512 space and nowhere near 640. Supporting, not proof; the NDC transform
+    /// above is the proof.</summary>
     const float ConsoleUiWidth = 512f, ConsoleUiHeight = 512f;
     static readonly Color MoneyNormal = new(1f, 1f, 0f), MoneyBroke = new(200 / 255f, 130 / 255f, 0f);
     /// ⚠ The shadow is drawn in palette slot `colour + 8`, and what that slot holds is not read.
