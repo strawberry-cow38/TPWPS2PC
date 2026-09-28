@@ -61,9 +61,12 @@ public partial class Viewer
         /// <summary>The native yaw last drawn, `π − facing` wrapped to [0, 2π).</summary>
         public float Yaw;
     }
-    readonly Dictionary<StaffMember, StaffActor> _staffActors = new(ReferenceEqualityComparer.Instance);
-    readonly Dictionary<LitterItem, (Node3D Node, uint Serial, int ModelId, string Path)> _litterActors = new(ReferenceEqualityComparer.Instance);
+    readonly SnapshotReferenceMap<StaffMember, StaffActor> _staffActors = new(ReferenceEqualityComparer.Instance);
+    readonly SnapshotReferenceMap<LitterItem, (Node3D Node, uint Serial, int ModelId, string Path)> _litterActors = new(ReferenceEqualityComparer.Instance);
     readonly HashSet<int> _staffModelMisses = new();
+    // Retain the actual renderer, not just its Node, so saves can copy the last rendered pose
+    // without calling SetFrame to manufacture one. Lifetime follows the existing litter owner.
+    readonly Dictionary<Node3D,AnimatedModel> _litterDrawn = new(ReferenceEqualityComparer.Instance);
 
     /// <summary>The member the hire tool (mode 1, object `0x388EF0`) is carrying, or null.</summary>
     StaffMember _hireHeld;
@@ -138,7 +141,7 @@ public partial class Viewer
         EndPatrolTool();
         foreach (var a in _staffActors.Values) if (a.Node != null && IsInstanceValid(a.Node)) a.Node.QueueFree();
         foreach (var l in _litterActors.Values) if (l.Node != null && IsInstanceValid(l.Node)) l.Node.QueueFree();
-        _staffActors.Clear(); _litterActors.Clear(); _staffModelMisses.Clear();
+        _staffActors.Clear(); _litterActors.Clear(); _litterDrawn.Clear(); _staffModelMisses.Clear();
         if (_staffRoot != null && IsInstanceValid(_staffRoot)) _staffRoot.QueueFree();
         _staffRoot = null;
         if (_staff != null) { _staff.Litter.Added = null; _staff.Litter.Removed = null; }
@@ -452,6 +455,7 @@ public partial class Viewer
                 var drawn = new AnimatedModel(CharModel(path), null, null, mat => CharTexture(path, mat));
                 drawn.SetFrame(0);
                 node.AddChild(drawn.Root);
+                _litterDrawn.Add(node,drawn);
             }
             catch (Exception e) { GD.PrintErr($"[staff] litter {item.ModelId} {path}: {e.Message}"); path = null; }
         }
@@ -465,6 +469,7 @@ public partial class Viewer
     void OnLitterRemoved(LitterItem item)
     {
         if (!_litterActors.Remove(item, out var had)) return;
+        _litterDrawn.Remove(had.Node);
         if (had.Node != null && IsInstanceValid(had.Node)) had.Node.QueueFree();
     }
 

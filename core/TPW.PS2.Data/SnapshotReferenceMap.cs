@@ -2,10 +2,11 @@ namespace TPW.PS2.Data;
 
 // Same stock-Dictionary allocation bookkeeping as SnapshotIntMap, for reference-key maps.
 // Serialized Slots contain ORDINALS in the accompanying live-entry array, not entity IDs.
-// Construction-only new TKey placeholders rebuild holes and never escape the private map.
-// Use only for side-effect-free plain key classes (ParkRide); no gameplay constructors.
+// Caller-supplied placeholder keys rebuild holes and are removed before the map is exposed.
+// Use side-effect-free plain keys (ParkRide/object), or UNUSED pooled members; never invoke
+// gameplay constructors. Factories are explicit so abstract/nonpublic owner types need no reflection.
 // Base-class mutation is unsupported; public collection interfaces are tracked.
-internal sealed class SnapshotReferenceMap<TKey,T> : Dictionary<TKey,T>, IDictionary<TKey,T> where TKey : class, new()
+public sealed class SnapshotReferenceMap<TKey,T> : Dictionary<TKey,T>, IDictionary<TKey,T>, System.Collections.IDictionary where TKey : class
 {
     readonly List<TKey> slots = new();
     public SnapshotReferenceMap(IEqualityComparer<TKey> comparer = null) : base(comparer ?? ReferenceEqualityComparer.Instance)
@@ -41,11 +42,15 @@ internal sealed class SnapshotReferenceMap<TKey,T> : Dictionary<TKey,T>, IDictio
     void ICollection<KeyValuePair<TKey,T>>.Add(KeyValuePair<TKey,T> value)=>Add(value.Key,value.Value);
     bool ICollection<KeyValuePair<TKey,T>>.Remove(KeyValuePair<TKey,T> value)
         =>TryGetValue(value.Key,out var current)&&EqualityComparer<T>.Default.Equals(current,value.Value)&&Remove(value.Key);
+    object System.Collections.IDictionary.this[object key] {get=>key is TKey k&&TryGetValue(k,out var value)?value:null;set=>this[(TKey)key]=(T)value;}
+    void System.Collections.IDictionary.Add(object key,object value)=>Add((TKey)key,(T)value);
+    void System.Collections.IDictionary.Remove(object key){if(key is TKey k)Remove(k);}
+    void System.Collections.IDictionary.Clear()=>Clear();
     public new void TrimExcess(){base.TrimExcess();Compact();}
     public new void TrimExcess(int capacity){base.TrimExcess(capacity);Compact();}
     void Compact(){positions.Clear();slots.Clear();free.Clear();foreach(TKey key in base.Keys){positions.Add(key,slots.Count);slots.Add(key);}}
 
-    internal IntMapLayout CaptureLayout()
+    public IntMapLayout CaptureLayout()
     {
         if(slots.Count>100_000 || !base.Keys.SequenceEqual(slots.Where(k=>k != null), Comparer))
             throw new ArgumentException("Reference map layout exceeded bounds or a mutation bypassed tracking.");
@@ -53,7 +58,7 @@ internal sealed class SnapshotReferenceMap<TKey,T> : Dictionary<TKey,T>, IDictio
         foreach(var key in base.Keys) ordinal.Add(key, ordinal.Count);
         return new(){Slots=slots.Select(key=>key==null ? (int?)null : ordinal[key]).ToArray(),FreeBottomFirst=free.ToArray()};
     }
-    internal void RestoreLayout(IntMapLayout layout)
+    public void RestoreLayout(IntMapLayout layout, Func<TKey> placeholder)
     {
         if(layout?.Slots==null || layout.FreeBottomFirst==null || layout.Slots.Length>100_000
             || layout.FreeBottomFirst.Length>layout.Slots.Length)
@@ -75,7 +80,8 @@ internal sealed class SnapshotReferenceMap<TKey,T> : Dictionary<TKey,T>, IDictio
             if(slotCopy[i] is TKey key)entries[i]=new(key,base[key]);
             else
             {
-                var dummy=new TKey();
+                var dummy=placeholder?.Invoke() ?? throw new ArgumentException("A side-effect-free placeholder key factory is required for holes.");
+                if(base.ContainsKey(dummy)||dummyKeys.Values.Contains(dummy,Comparer))throw new ArgumentException("Placeholder key must be distinct and unused.");
                 entries[i]=new(dummy,default);dummyKeys.Add(i,dummy);
             }
         }

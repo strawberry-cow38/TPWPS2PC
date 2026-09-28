@@ -169,7 +169,7 @@ public sealed partial class NativeRideQueues
         // Validate allocation history before external ride resolution or shell creation.
         var mapProbe = new SnapshotReferenceMap<ParkRide, int>();
         foreach(var row in s.Queues) mapProbe.Add(new ParkRide(), 0);
-        mapProbe.RestoreLayout(s.QueueLayout);
+        mapProbe.RestoreLayout(s.QueueLayout,()=>new ParkRide());
         var rides = new HashSet<string>(StringComparer.Ordinal); var linked = new HashSet<int>();
         int total = 0;
         foreach (var q in s.Queues)
@@ -219,7 +219,7 @@ public sealed partial class NativeRideQueues
             result._members.Add(m); members.Add(row.GuestGraphId, m); result._stateInputs.Add(row.InputsId, input);
         }
         foreach (var row in s.Queues) result._queues.Add(rides[row.RideId], row.Members.Select(id => members[id]).ToList());
-        result._queues.RestoreLayout(s.QueueLayout);
+        result._queues.RestoreLayout(s.QueueLayout,()=>new ParkRide());
         foreach (var h in s.Boardings) result._boardings.Enqueue(new(bindings.GuestGraph.GuestByGraphId(h.GuestGraphId),
             h.Step, h.Position.Point, h.Spot?.Point, h.OnRide, h.Capacity, h.LetMeOn, h.ScriptQueue, h.Tick));
         return result;
