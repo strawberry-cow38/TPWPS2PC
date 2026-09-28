@@ -290,21 +290,6 @@ public sealed record LaptopScreen(
             new(269, LaptopRowKind.Bar, "CleanlinessBar"),           // Cleanliness
         }, "ItemSelectArrow");
 
-    /// <summary>The "All ..." list screens that are ready to draw.
-    ///
-    /// ⚠⚠ ALL STAFF IS DELIBERATELY NOT HERE, and it is not an oversight. Its five rows are read
-    /// (Skill Level 683, Motivation 827, Tiredness 363, Time Employed 669, Monthly Wage 886) and
-    /// its constructor builds THREE bars -- but its scene authors a single element named `infobars`
-    /// for all three. One element cannot place three widgets: shipping it would stack them on top
-    /// of each other, which is a visible bug wearing the look of a finished screen. How the console
-    /// steps three bars from one authored region is not read yet, so the screen waits for that
-    /// instead of being guessed at.
-    ///
-    /// ⚠ And its scene gives a SECOND, independent reason: its value column is not on its label
-    /// column's row. `textoptions` is at 175 and `InfoValues` at 220, forty-five lower, where every
-    /// other list screen authors the two on the same row (All Rides 108/108, All Shops and All
-    /// Sideshows 175/175). So the stepping that serves the other four cannot be assumed to serve
-    /// this one either.</summary>
     /// <summary>⭐⭐ ALL STAFF, `main_i_staff` -- the screen this port held back until the shape of
     /// it was settled. Drawn by `0x10C138`; layout from `findings/staff-management.md` §12.1.
     ///

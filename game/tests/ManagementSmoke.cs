@@ -111,6 +111,15 @@ public partial class ManagementSmoke : Node3D
             }
             Check(crew.Count == 5 && crew.Select(m => m.Kind).Distinct().Count() == 5 && staff.Members.Count == 5,
                   $"a crew of five hired through the hire tool: {string.Join(", ", crew.Select(m => $"{m.Kind} L{m.Level}"))}");
+            // A second member of one type discriminates real per-type paging from a no-op
+            // pager and from a single mixed-person list. Retire this fixture before finance checks.
+            Call(viewer,"BeginHire",StaffKind.Entertainer,staff.Candidates.Available(StaffKind.Entertainer).First().Slot);
+            var screenExtra=Field<StaffMember>(viewer,"_hireHeld");
+            var extraCell=bar[0];
+            Set(viewer,"_cursorPointOverride",(Point?)new Point((short)(extraCell.X*256+128),(short)(extraCell.Y*256+128)));
+            Call(viewer,"PressHireTool");Set(viewer,"_cursorPointOverride",null);
+            Check(screenExtra!=null&&screenExtra.Active&&!screenExtra.Held&&staff.MembersOfType(StaffKind.Entertainer).Count()==2,
+                "a second real entertainer exercises within-type paging");
             // Some days on the books, so Time Employed has something to say.
             for (int d = 0; d < 20; d++) Call(viewer, "AdvanceCalendar", ParkClock.UnitsPerDay);
             for (int t = 0; t < 30; t++) Call(viewer, "TickPark");
@@ -151,29 +160,57 @@ public partial class ManagementSmoke : Node3D
             Check(laptopBack.Count == 1 && laptopBack[0].Kind == "info", "clicking Information opens its submenu");
             Click(panel.MenuRowScreenBox(4).GetCenter());
             await Frames(3);
-            Check(laptopBack.Count == 2 && laptopBack[^1].Kind == "staffitem", $"clicking row 4 (Staff Information, text 995) opens All Staff ({laptopBack[^1].Kind})");
+            Check(laptopBack.Count == 2 && laptopBack[^1].Kind == "stafftypes", "Staff Information opens the type list, not a mixed-person pager");
             var text = Field<TextDatabase>(viewer, "_text");
-            var pages = new List<string>();
-            int sane = 0;
-            for (int page = 0; page < staff.Members.Count; page++)
+            var types = staff.TypesWithStaff().ToList();
+            Check(Panel<List<string>>(panel, "_menu").SequenceEqual(new[]{68,864,421,887,69}.Select(id=>text.Text("eng",id))),
+                "type captions and order match Entertainers/Mechanics/Guards/Researchers/Cleaners");
+            if (shots != null) Call(viewer, "SaveShot", ShotPath("stafftypes"));
+            int sane=0;
+            var activated = new List<int>();
+            void RowClick(int i) => activated.Add(i);
+            panel.RowActivated += RowClick;
+            for (int typeIndex=0; typeIndex<types.Count; typeIndex++)
             {
-                if (page > 0) { Call(viewer, "OnLaptopPage", 1); await Frames(); }
-                var who = staff.Members[page];
-                var cells = Panel<List<(string Text, int Fraction)>>(panel, "_cells");
-                string title = Panel<string>(panel, "_title");
-                var (wholeMonths, tenths, unitRow) = who.TimeEmployed;
-                string time = $"{wholeMonths}.{tenths}{text?.Text("eng", unitRow)}";
-                bool ok = cells.Count == 5 && cells[0].Fraction == who.SkillBar && cells[1].Fraction == who.DisplayedMotivation
-                          && cells[2].Fraction == who.Tiredness && cells[3].Text == time && cells[4].Text == Money.Format(who.MonthlyWage * 10);
-                if (ok) sane++;
-                pages.Add($"[{title}: skill {cells.ElementAtOrDefault(0).Fraction} motivation {cells.ElementAtOrDefault(1).Fraction} "
-                        + $"tired {cells.ElementAtOrDefault(2).Fraction} time '{cells.ElementAtOrDefault(3).Text}' wage {cells.ElementAtOrDefault(4).Text}"
-                        + $"{(ok ? "" : $" -- expected {who.SkillBar}/{who.DisplayedMotivation}/{who.Tiredness}/'{time}'/{Money.Format(who.MonthlyWage * 10)}")}]");
-                if (shots != null && page < 2) { await Frames(2); Call(viewer, "SaveShot", ShotPath($"allstaff{page}")); }
+                Click(panel.MenuRowScreenBox(typeIndex).GetCenter()); await Frames();
+                Check(laptopBack.Count==3&&laptopBack[^1].Kind=="staffitem", "type click opens its member screen");
+                var members=staff.MembersOfType(types[typeIndex]).ToList();
+                for(int page=0;page<members.Count;page++)
+                {
+                    if(page>0){Call(viewer,"OnLaptopPage",1);await Frames();}
+                    var who=members[page];
+                    var cells=Panel<List<(string Text,int Fraction)>>(panel,"_cells");
+                    string title=Panel<string>(panel,"_title");
+                    var (wholeMonths,tenths,unitRow)=who.TimeEmployed;
+                    string time=$"{wholeMonths}.{tenths}{text.Text("eng",unitRow)}";
+                    Check(title==who.Candidate.Name(text),"page title is the selected candidate's real name");
+                    Check(cells.Count==5&&cells[0].Fraction==who.SkillBar&&cells[1].Fraction==who.DisplayedMotivation
+                        &&cells[2].Fraction==who.Tiredness&&cells[3].Text==time&&cells[4].Text==Money.Format(who.MonthlyWage*10),
+                        "all five displayed values belong to this named member");
+                    sane++;
+                    var boxes=Panel<Dictionary<int,Rect2>>(panel,"_specRows");
+                    Check(boxes.Count==5,"all five drawn rows have hitboxes");
+                    for(int row=0;row<5;row++)
+                    {
+                        float actual=(boxes[row].Position.Y-panel.PanelOrigin.Y)/panel.PanelScale;
+                        Check(Math.Abs(actual-(175+32*row))<.01f,$"drawn label/hitbox row {row} at native175+32*i, not shared-widget Y: {actual}");
+                        if(row>0)Check(!boxes[row-1].Intersects(boxes[row]),"adjacent staff rows do not overlap");
+                        int beforeClicks=activated.Count;
+                        Click(new Vector2(panel.PanelOrigin.X+65*panel.PanelScale,boxes[row].GetCenter().Y)); await Frames();
+                        Check(activated.Count==beforeClicks+1&&activated[^1]==row,"clicking a drawn row dispatches that row, not row zero");
+                    }
+                    if(shots!=null&&typeIndex<2)Call(viewer,"SaveShot",ShotPath($"allstaff{typeIndex}"));
+                }
+                string last=Panel<string>(panel,"_title");
+                Call(viewer,"OnLaptopPage",1);await Frames();
+                Check(Panel<string>(panel,"_title")==last,"pager cannot step into the next staff type");
+                Click(panel.PanelOrigin+new Vector2(365,75)*panel.PanelScale);await Frames();
+                Check(laptopBack.Count==2&&laptopBack[^1].Kind=="stafftypes","Back returns to staff types");
             }
-            GD.Print("[smoke] All Staff pages: " + string.Join(" ", pages));
-            Check(sane == staff.Members.Count,
-                  $"All Staff shows, for each of the {staff.Members.Count} members, Skill L x 25, Motivation ((100-t)+m)/2, Tiredness, Time Employed d/28.(d%28)x10/28 and the full wage ({sane} sane)");
+            panel.RowActivated-=RowClick;
+            Check(sane==staff.Members.Count,"every staff member visited through its type");
+            staff.Fire(screenExtra);
+            Check(staff.Members.Count==5,"screen-only second-member fixture retired before management finance checks");
             Call(viewer, "ToggleLaptop");
             await Frames();
 

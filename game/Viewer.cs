@@ -3576,27 +3576,8 @@ public partial class Viewer : Node3D
                 ShowHireCandidate(hireKind, hireIndex);
                 break;
             }
-            // ⭐⭐ ALL STAFF. ⚠ Its own level and NOT an `infoitem`, because staff are not assets:
-            // the info screens page a list of ParkRides picked by AssetKind, and this pages
-            // `ParkStaff.Members`. Bolting it onto the asset path would have meant pretending a
-            // staff member is a placed thing.
-            case "staffitem":
-            {
-                var crew = _staff?.Members;
-                if (crew == null || crew.Count == 0)
-                { _laptopBack.RemoveAt(_laptopBack.Count - 1); Status("no staff hired"); ShowLaptopLevel(); return; }
-                int at = int.TryParse(arg, out var si) ? si : 0;
-                at = Math.Clamp(at, 0, crew.Count - 1);
-                var who = crew[at];
-                var scells = new List<(string, int)>();
-                foreach (var row in LaptopScreen.AllStaff.Rows) scells.Add(StaffCell(row, who));
-                _shopPanel.ShowScreen(LaptopScreen.AllStaff, StaffName(who), scells);
-                BuildLaptopModelFor((ParkRide)null);      // ⚠ no model for a person yet; leave it blank
-                RefreshLaptopBalance();
-                Status($"{StaffName(who)} -- {at + 1} of {crew.Count}"
-                     + (crew.Count > 1 ? "; Up/Down to page" : ""));
-                break;
-            }
+            case "stafftypes": ShowStaffInfoTypes(); break;
+            case "staffitem": ShowStaffInfoMember(arg); break;
             case "infoitem":
             {
                 var bits = (arg ?? "0:0").Split(':');
@@ -3678,18 +3659,9 @@ public partial class Viewer : Node3D
     /// the viewport showed `_GuiInput` firing, the rect equal to the viewport and the right row
     /// hit -- and then `MenuActivated` was raised with NO SUBSCRIBER. The event went into the
     /// void, which is indistinguishable from a click that never landed.</summary>
-    /// <summary>⭐ Which laptop screen an Information row opens, and which asset kinds it lists.
-    /// The kind sets are <see cref="LaptopListScreen"/>'s, read off the console's own populate call.
-    /// ⚠ Row 4 (All Staff) answers null on purpose: that screen is decoded but held back because
-    /// its three bars share one authored element -- see findings/laptop-screens.md.</summary>
-    /// <summary>A staff member's name for the screen's title. ⚠ The console draws `vt+0x7c` at the
-    /// `item` element; this port has no per-person name table yet, so it shows the kind and the
-    /// slot rather than inventing one.</summary>
-    /// <summary>⚠ The Information menu's staff row -- `LaptopMainMenu.Information`'s fifth entry
-    /// (text 995), index 4. Named rather than spelled 4 at the use site.</summary>
+    // Information's fifth row is the staff-type selector, not an asset list.
     const int StaffInfoRow = 4;
-
-    static string StaffName(StaffMember m) => $"{m.Kind} {m.PoolSlot + 1}";
+    string StaffName(StaffMember m) => m.Candidate.Name(_text) ?? $"#{m.Candidate.NameRow}";
 
     /// <summary>⭐⭐ ONE ALL STAFF ROW, by its text id -- every figure is the console's own.
     /// `findings/staff-management.md` §12.1.</summary>
@@ -3847,7 +3819,7 @@ public partial class Viewer : Node3D
                 if (row == StaffInfoRow)
                 {
                     if ((_staff?.Members?.Count ?? 0) == 0) { Status("no staff hired"); return; }
-                    _laptopBack.Add(("staffitem", "0"));
+                    _laptopBack.Add(("stafftypes", null));
                     ShowLaptopLevel();
                     return;
                 }
@@ -3862,6 +3834,14 @@ public partial class Viewer : Node3D
                     return;
                 }
                 _laptopBack.Add(("infoitem", $"{row}:0"));
+                ShowLaptopLevel();
+                return;
+            }
+            case "stafftypes":
+            {
+                var types = StaffInfoTypes();
+                if (row >= types.Count) return;
+                _laptopBack.Add(("staffitem", $"{(int)types[row]}:0"));
                 ShowLaptopLevel();
                 return;
             }
@@ -3901,18 +3881,7 @@ public partial class Viewer : Node3D
     void OnLaptopPage(int by)
     {
         if (PageHire(by)) return;
-        // ⭐ All Staff pages its own list, the same way the info screens page theirs.
-        if (_laptopBack.Count > 0 && _laptopBack[^1].Kind == "staffitem")
-        {
-            int n = _staff?.Members?.Count ?? 0;
-            if (n == 0) return;
-            int cur = int.TryParse(_laptopBack[^1].Arg, out var v) ? v : 0;
-            int want = Math.Clamp(cur + by, 0, n - 1);
-            if (want == cur) return;                 // ⚠ clamped, not wrapped, like the others
-            _laptopBack[^1] = ("staffitem", want.ToString());
-            ShowLaptopLevel();
-            return;
-        }
+        if (PageStaffInfo(by)) return;
         if (_laptopBack.Count == 0 || _laptopBack[^1].Kind != "infoitem") return;
         var bits = (_laptopBack[^1].Arg ?? "0:0").Split(':');
         int which = int.TryParse(bits[0], out var w) ? w : 0;

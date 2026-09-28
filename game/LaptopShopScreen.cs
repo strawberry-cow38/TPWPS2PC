@@ -1049,7 +1049,9 @@ public sealed partial class LaptopShopScreen : Control
             //
             // ⚠ Only SIZED elements re-anchor a label. A row whose Element is a text position
             // (the sideshow's CostOfPrizeValue, say) has no width or height and must keep the step.
-            if (labels is { } lrow && row.Element != null
+            // Shared stepped widgets keep the authored label grid (All Staff:175+32*i).
+            // Its wage uses infobars for X ONLY; centering it on that box collapses it too.
+            if (_spec.WidgetStep == 0 && labels is { } lrow && row.Element != null
                 && layout[row.Element] is { HasSize: true } sized)
                 dy = (sized.Y + sized.Height / 2f - LineAdvance / 2f - lrow.Y) * s;
 
