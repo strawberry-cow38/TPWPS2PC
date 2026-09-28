@@ -422,6 +422,7 @@ public partial class Viewer : Node3D
             // render of All Staff has somebody on it. ⚠ A harness, not a gameplay path.
             else if (a == "--staff-test") _staffTest = true;
             else if (a == "--graph-demo") _graphDemo = true;
+            else if (a.StartsWith("--delete-test=")) _deleteTest = a["--delete-test=".Length..];
             else if (a == "--graph-line") LaptopGraph.LineStyle = true;
             else if (a == "--menu") _wantMenu = true;
             // ⭐ `--menu-go=N` presses Confirm N times through the REAL handler, so a render can
@@ -1088,6 +1089,14 @@ public partial class Viewer : Node3D
             var want = k.ShiftPressed ? PathTool.Kind.Queue : PathTool.Kind.Path;
             if (!_toolOpen || _toolKind != want) OpenTool(want); else PressTool();
         }
+        // ⭐ DELETE opens the delete tool, and Delete again shuts it. Master: "press del to turn
+        // on, rmb to turn off" -- right-click is the documented way out, and the same key being
+        // the way back out costs nothing and is what a player tries first.
+        else if (k.Keycode == Key.Delete && _mode == Mode.Park)
+        {
+            if (DeleteToolOpen) CloseDeleteTool(); else OpenDeleteTool();
+        }
+        else if (k.Keycode == Key.Escape && DeleteToolOpen) CloseDeleteTool();
         else if (k.Keycode == Key.Tab && _mode == Mode.Park) ToggleLaptop();
         // ⭐ R and . turn it clockwise, , turns it back. ⚠ R is the camera's zoom-in elsewhere;
         // while something is HELD it belongs to the thing being turned, which is the same bargain
@@ -4155,6 +4164,9 @@ public partial class Viewer : Node3D
     /// <summary>`--graph-demo`: plot a known series instead of the park's, so the PLOTTER can be
     /// checked independently of whether the park has any history. See the control in the case.</summary>
     bool _graphDemo;
+
+    /// <summary>`--delete-test=x0,z0,x1,z1`: one marquee through the real commit.</summary>
+    string _deleteTest;
 
     /// <summary>All-null cells, for a screen whose rows are labels only.</summary>
     static List<(string, int)> Blank(int n)
@@ -9264,7 +9276,20 @@ public partial class Viewer : Node3D
     void DeleteSelected()
     {
         if (_selected < 0 || _selected >= _park.Placed.Count) { Status("nothing selected"); return; }
-        var p = _park.Placed[_selected];
+        DeletePlaced(_selected);
+    }
+
+    /// <summary>⭐ Delete ONE placed thing by its index, with everything that has to go with it.
+    /// Split out of <see cref="DeleteSelected"/> so the delete TOOL can reuse it rather than
+    /// reimplement the queue, doors, views, floor healing and refund -- every one of which was
+    /// added here for a reason master reported, and none of which a second copy would have.
+    ///
+    /// <paramref name="quiet"/> suppresses the per-object status line, because a marquee that
+    /// deleted nine things would otherwise leave only the ninth one's message on screen.</summary>
+    bool DeletePlaced(int index, bool quiet = false)
+    {
+        if (_park == null || index < 0 || index >= _park.Placed.Count) return false;
+        var p = _park.Placed[index];
         string name = p.Name;
         // ⭐⭐ THE QUEUE GOES WITH IT. Master: "deletes the ride including the queue. (but not
         // exit paths + combo entry/exits)" -- ClearQueue takes Kind.Queue cells owned by this
@@ -9279,7 +9304,7 @@ public partial class Viewer : Node3D
         RemoveTrackView(p.Id);
         RemoveCoasterView(p.Id);
         _sim?.Remove(p.Id);
-        if (!_park.Remove(p.Id)) { Status($"could not delete {name}"); return; }
+        if (!_park.Remove(p.Id)) { Status($"could not delete {name}"); return false; }
         // ⭐⭐ ALWAYS, NOT ONLY FOR A QUEUE. Master: "make sure terrain holes heal when we delete
         // things." `Park.Build` skips every occupied cell -- `if (_occupied[x, y] != 0) continue`
         // -- so a ride's footprint has NO floor under it while it stands. Remove() frees those
@@ -9297,9 +9322,11 @@ public partial class Viewer : Node3D
         GD.Print($"[menu] deleted {name} (id {p.Id}); {queueCells} queue cells and {doors} doors "
                + $"with it; floor rebuilt; refunded {Money.Format(back)} "
                + $"({RefundPercent}%), the park holds {Money.Format(_sim?.Finances?.Balance ?? 0)}");
-        Status(back > 0
-            ? $"deleted {name} -- {Money.Format(back)} back"
-            : queueCells > 0 ? $"deleted {name} and its queue" : $"deleted {name}");
+        if (!quiet)
+            Status(back > 0
+                ? $"deleted {name} -- {Money.Format(back)} back"
+                : queueCells > 0 ? $"deleted {name} and its queue" : $"deleted {name}");
+        return true;
     }
 
     bool SelectUnderCursor()
@@ -11580,6 +11607,7 @@ public partial class Viewer : Node3D
         // ⭐ The hire tool's carry, every frame (0x128760).
         if (_hireHeld != null) UpdateHireCarry();
         if (_patrolTool != null) UpdatePatrolTool();                    // mode 17's cursor and draw
+        if (DeleteToolOpen) UpdateDeleteTool();                          // the delete marquee
         else if (_place.Active) UpdatePlacementGhost();
         else if (_trackTool != null) UpdateTrackGhost();
         else if (_addonTool != null) UpdateAddonGhost();
@@ -11590,6 +11618,10 @@ public partial class Viewer : Node3D
         if (_ghostTest && !_pickChecked && _mode == Mode.Park) CheckMousePicking();
         if (_animTest && !_animChecked && _mode == Mode.Park) CheckParkAnimation();
         if (_buildTest && !_buildChecked && _mode == Mode.Park) { if (_placeTest) CheckPlacement(); else CheckBuildMenu(); }
+        // ⚠ AFTER the placement check, so the thing --place-test puts down is standing before the
+        // marquee runs. A delete test that fired first would truthfully report an empty box.
+        if (_deleteTest != null && _mode == Mode.Park && _park != null && _paths != null)
+        { var t = _deleteTest; _deleteTest = null; RunDeleteTest(t); }
         if (_footprintAudit && _mode == Mode.Park && _lib != null)
         { _footprintAudit = false; FootprintAudit(); GetTree().Quit(); }
         // ⚠⚠ AFTER the build test has FINISHED, not merely after its call. CheckPlacement runs
@@ -11788,10 +11820,23 @@ public partial class Viewer : Node3D
                     held.At = mb.Position;
                     held.Ms = Time.GetTicksMsec();
                     held.Dragged = false;
+                    // ⭐ THE DELETE TOOL OWNS THE LEFT BUTTON WHOLE, press to release, because it
+                    // is a DRAG -- the click logic below judges a button on release only, which
+                    // cannot tell a box from a click.
+                    if (DeleteToolOpen && mb.ButtonIndex == MouseButton.Left) PressDeleteTool();
                 }
                 else if (held.Down)
                 {
                     held.Down = false;
+                    if (DeleteToolOpen)
+                    {
+                        // ⚠ Both buttons are answered HERE and nowhere else while the tool is up,
+                        // so a release cannot fall through and also select, place or open a menu
+                        // under the box that was just dragged.
+                        if (mb.ButtonIndex == MouseButton.Left) ReleaseDeleteTool();
+                        else CloseDeleteTool();
+                        return;
+                    }
                     // A quick press counts however far it slid; a slow one still counts if it
                     // barely moved. ⭐ And a button the tool owns needs no test at all: the right
                     // one whenever a park is up, the left one while the tool is open.

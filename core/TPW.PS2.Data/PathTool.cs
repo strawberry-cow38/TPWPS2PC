@@ -412,6 +412,46 @@ public sealed class PathTool
     /// ⚠ The ORIGINAL GROUND goes back with the cell. `Lay` stashes the tile it overwrote in
     /// `_before`; dropping the kind without restoring that leaves queue paving drawn on bare
     /// ground with nothing logically there -- the reverse of the invisible no-build patch.</summary>
+    /// <summary>⭐ TEAR UP ONE PLAIN PATH CELL, restoring the ground that was under it -- which is
+    /// what "paths return to grass" means: `_before` holds the terrain the path was laid over, so
+    /// putting it back IS the grass, not a guess at one.
+    ///
+    /// ⚠⚠ ONLY `Kind.Path`. A QUEUE cell is refused, and so is a `Both` cell (park path a queue
+    /// was drawn across). Master, 2026-09-28: "queue tiles themselves cannot be deleted, but if
+    /// their ride gets deleted, delete em ... only the ride that owns em can delete em" --
+    /// <see cref="ClearQueue"/> is that owner's route, and this one must not become a second way
+    /// in. A bridge is refused too: its deck is structure, not surface.
+    ///
+    /// ⚠ The caller repicks: like <see cref="ClearQueue"/>, a neighbour repicked while the rest
+    /// of the run still stands would choose its sprite against cells about to vanish. Sweep
+    /// first, then <see cref="RepickAfterTear"/>.</summary>
+    public bool TearUp(int x, int y)
+    {
+        if (!Ready || !In(x, y)) return false;
+        int at = At(x, y);
+        if (_kind[at] != Kind.Path) return false;      // queue, both, or nothing
+        if (_bridge.Contains(at)) return false;
+        Record(at);
+        if (_before.TryGetValue(at, out var ground))
+        {
+            _field.Cells[at * 2 + 1] = ground;
+            _before.Remove(at);
+        }
+        _kind[at] = Kind.None; _owner[at] = 0; _run[at] = 0; _turns[at] = 0;
+        Laid--;
+        // ⚠ RAISED, because `Lay` raises it. The viewer listens for a cell's kind changing to
+        // keep track-over-path in step; a tear that stayed silent would leave that belief behind.
+        KindChanged?.Invoke(x, y);
+        return true;
+    }
+
+    /// <summary>Repick the sprites around cells torn up by <see cref="TearUp"/>, after the whole
+    /// sweep. Separate from the tear for the reason given there.</summary>
+    public void RepickAfterTear(IEnumerable<(int X, int Y)> torn)
+    {
+        foreach (var (x, y) in torn) RepickAround(x, y);
+    }
+
     public int ClearQueue(int rideId)
     {
         if (rideId == 0 || !Ready) return 0;
