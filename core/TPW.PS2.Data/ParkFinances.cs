@@ -37,7 +37,7 @@ namespace TPW.PS2.Data;
 /// written natively too, and nothing the port runs reads them yet, so they are not kept.</summary>
 public sealed class ParkFinances
 {
-    public const int StateSchemaVersion = 1;
+    public const int StateSchemaVersion = 2;
 
     /// <summary>Versioned logical state, including the active and historical ring slots.
     /// Money is signed Int32, just as in the running simulation (including unchecked wraparound).
@@ -54,6 +54,13 @@ public sealed class ParkFinances
         public required int WageAccumulator { get; init; }
         public required int[] Income { get; init; }
         public required int[] Wages { get; init; }
+        public required int[] BalanceHistory { get; init; }
+        public required int[] Gate { get; init; }
+        public required int[] Shop { get; init; }
+        public required int[] Sideshow { get; init; }
+        public required int GateTotal { get; init; }
+        public required int ShopTotal { get; init; }
+        public required int SideshowTotal { get; init; }
         public required Dictionary<int, int> IncomeByCategory { get; init; }
     }
 
@@ -65,6 +72,9 @@ public sealed class ParkFinances
         TotalIncome = TotalIncome, TotalSpending = TotalSpending,
         PeriodCount = PeriodCount, WageAccumulator = WageAccumulator,
         Income = (int[])_income.Clone(), Wages = (int[])_wages.Clone(),
+        BalanceHistory = (int[])_balance.Clone(), Gate = (int[])_gate.Clone(),
+        Shop = (int[])_shop.Clone(), Sideshow = (int[])_sideshow.Clone(),
+        GateTotal = GateTotal, ShopTotal = ShopTotal, SideshowTotal = SideshowTotal,
         IncomeByCategory = new(_byCategory)
     };
 
@@ -77,10 +87,17 @@ public sealed class ParkFinances
         if (state.SchemaVersion != StateSchemaVersion || state.PeriodCount < 0
             || state.Income == null || state.Income.Length != PeriodSlots
             || state.Wages == null || state.Wages.Length != PeriodSlots
+            || state.BalanceHistory == null || state.BalanceHistory.Length != PeriodSlots
+            || state.Gate == null || state.Gate.Length != PeriodSlots
+            || state.Shop == null || state.Shop.Length != PeriodSlots
+            || state.Sideshow == null || state.Sideshow.Length != PeriodSlots
             || state.IncomeByCategory == null)
             throw new ArgumentException("Invalid finance state schema, period or collections.", nameof(state));
         var income = (int[])state.Income.Clone();
         var wages = (int[])state.Wages.Clone();
+        var balanceHistory = (int[])state.BalanceHistory.Clone();
+        var gate = (int[])state.Gate.Clone(); var shop = (int[])state.Shop.Clone();
+        var sideshow = (int[])state.Sideshow.Clone();
         var categories = new Dictionary<int, int>(state.IncomeByCategory);
         // Reserve before mutation; retain the existing live read-only ledger view.
         _byCategory.EnsureCapacity(categories.Count);
@@ -93,6 +110,9 @@ public sealed class ParkFinances
         WageAccumulator = state.WageAccumulator;
         income.CopyTo(_income, 0);
         wages.CopyTo(_wages, 0);
+        balanceHistory.CopyTo(_balance, 0); gate.CopyTo(_gate, 0);
+        shop.CopyTo(_shop, 0); sideshow.CopyTo(_sideshow, 0);
+        GateTotal = state.GateTotal; ShopTotal = state.ShopTotal; SideshowTotal = state.SideshowTotal;
         _byCategory.Clear();
         foreach (var entry in categories) _byCategory.Add(entry.Key, entry.Value);
     }

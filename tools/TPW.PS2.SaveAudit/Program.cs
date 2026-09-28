@@ -71,6 +71,13 @@ try
         finances.Debit(i);
         finances.MonthEnd(300 + i);
     }
+    // Distinct nonzero history/current values in all added rings, including wraparound.
+    for(int i=0;i<150;i++)
+    {
+        finances.CreditAdmission(31+i);finances.CreditByKind(4,71+i);finances.CreditByKind(5,131+i);
+        finances.MonthEnd(19+i);
+    }
+    finances.CreditAdmission(919);finances.CreditByKind(4,1923);finances.CreditByKind(5,2901);
     finances.Credit(987, int.MinValue); // Nonempty current slot, unusual supported category.
     var financeState = RoundTrip(finances.CaptureState());
     var loadedFinances = new ParkFinances();
@@ -79,6 +86,23 @@ try
     Equal(finances.CaptureState(), loadedFinances.CaptureState(), "finance JSON round trip");
     Check(!loadedFinances.IncomeByCategory.ContainsKey(999), "old ledger removed");
     RequireEveryJsonMember(financeState);
+    for(int k=0;k<ParkFinances.PeriodSlots;k++)
+        Check(finances.BalanceInPeriod(k)==loadedFinances.BalanceInPeriod(k)
+            &&finances.GateInPeriod(k)==loadedFinances.GateInPeriod(k)
+            &&finances.ShopInPeriod(k)==loadedFinances.ShopInPeriod(k)
+            &&finances.SideshowInPeriod(k)==loadedFinances.SideshowInPeriod(k),"all live graph getters agree after restore");
+    for(int k=0;k<150;k++)
+    {
+        foreach(var owner in new[]{finances,loadedFinances})
+        {owner.CreditAdmission(100+k);owner.CreditByKind(4,200+k);owner.CreditByKind(5,300+k);owner.MonthEnd(k);}
+        Equal(finances.CaptureState(),loadedFinances.CaptureState(),"six finance rings/totals continue across another wrap");
+    }
+    foreach(var invalid in new[]{financeState with{BalanceHistory=null!},financeState with{Gate=new int[143]},
+        financeState with{Shop=null!},financeState with{Sideshow=new int[145]}})
+        Reject(invalid,loadedFinances.RestoreState,loadedFinances.CaptureState,"new finance ring invalid state");
+    var copy=loadedFinances.CaptureState();int preserved=copy.BalanceHistory[0];
+    copy.BalanceHistory[0]^=1;copy.Gate[0]^=1;copy.Shop[0]^=1;copy.Sideshow[0]^=1;
+    Check(loadedFinances.CaptureState().BalanceHistory[0]==preserved,"new ring capture does not alias owner storage");
 
     var awards = new ParkAwards { UltimateCoasters = 9 };
     awards.AwardGoldTickets(12);
@@ -192,7 +216,7 @@ try
     // Each rejection checks every captured field, not just the public headline values.
     var f = loadedFinances.CaptureState();
     foreach (var invalid in new[] {
-        f with { SchemaVersion = 0 }, f with { SchemaVersion = 2 }, f with { PeriodCount = -1 },
+        f with { SchemaVersion = 0 }, f with { SchemaVersion = 1 }, f with { SchemaVersion = 3 }, f with { PeriodCount = -1 },
         f with { Balance = 42, Income = null! }, f with { Balance = 42, Income = new int[143] },
         f with { Balance = 42, Wages = null! }, f with { Balance = 42, Wages = new int[145] },
         f with { Balance = 42, IncomeByCategory = null! } })
