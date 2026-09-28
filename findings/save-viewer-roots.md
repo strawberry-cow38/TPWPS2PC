@@ -75,12 +75,14 @@ with RideSounds/ToolSounds/etc, not with the mixer DTO.
 
 ## Viewer.cs and cross-root registry
 
-`_guestRng` is STILL System.Random seeded1 in declaration and Reset; switch these owners to
-SnapshotRandom with the proven seeded-compatibility contract BEFORE attempting full capture.
+UPDATE: `_guestRng` now uses SnapshotRandom at declaration AND Reset. RuntimeState captures its
+current state, the two native animation generators, ConsoleClock carry/alpha and entrance/bus/gate
+outer scalars. This is NOT the reference/root join.
 Preserve one shared stream across bus admission, staff, idle picks and all other consumers.
 Calendar `_calendar` has a DTO, but `_parkClock` is ConsoleClock, the frame/tick carry owner:
-read/capture it separately. `_parkTicks`, legacy guest stage/since/dwell, park-open `_gateClosed`,
-guest-cap/test flags, selections and mode/root topology all need explicit ownership.
+ConsoleClock is now captured separately. RuntimeState covers `_parkTicks`, guest stage/since,
+park-open gate, cap and selected native flags. Guest dwell dictionaries, selections and mode/root
+topology still need explicit owners.
 Geometry/placement already stage the two HeightField wrappers sharing ONE Cells array. Runtime
 ride IDs/placed IDs/Node IDs are distinct; register them explicitly rather than conflating them.
 Retired rides in visitor history/advisor stale ring/staff targets need retained object entries even
@@ -108,10 +110,43 @@ asset caches. Never restore by writing through them; use own dictionaries/WorldT
 Current NativeBus snapshot already stores copied arrays/scalars and rebuilds a fresh model, not
 LastWorld. Required controls for general actor snapshot: source Advance/SetFrame cannot mutate
 saved checkpoint; restoring instance A cannot mutate B sharing a Model; source asset caches remain
-unchanged. These are FUTURE checklist controls, not claimed implemented by the current bus smoke.
+unchanged. These controls NOW run in AnimatedModelSaveSmoke: two real skeletal actors share Model AND
+LastWorld before capture; retained snapshots stay unchanged after SetFrame; other actor and all
+shared caches remain unchanged. Explicit read-only sharing on restore forbids WriteNodeFlags.
 
 Advisor head is the separate writable-model case (tinyclaw,16:26): costume/mouth WriteNodeFlags
 operate on its OWN cloned model; staff/guest character assets stay read-only. Stage the head from
 immutable asset plus its actual saved Dressed/MouthShown (including initial -1), channel/pose and
 retained visibility. Do not infer initial visual mouth solely from CORE MouthShape (0 differs from
 head MouthShown=-1), and do not serialize entire model bytes to preserve runtime flag writes.
+
+
+## September 28 — actual presentation owners checkpoint (still not whole Viewer)
+
+AnimatedModel snapshot copies retained positions/UVs, layer data, surface poses/visibility, texture
+choices, hidden flags, LastWorld values and actual record/time/pose. Restore uploads CPU geometry
+without SetFrame or predecessor replay, including UNSAMPLED record switches. Assets resolve by
+IDs/fingerprints, not save paths. Shared immutable actor Model is opt-in and refuses flag writes;
+advisor uses a private clone. UV rewrite is an explicit ID + newly rebound provider; staging does
+not execute either world's callback. Extra root children and external mesh/material mutations
+still fail closed: world topology must handle them explicitly.
+
+AdvisorHead now owns actual Dressed/MouthShown (-1 initial values included), channel/bound record,
+pivot/root adjustment, viewport/camera and Drawn state. AdvisorVoiceState stages stopped audio;
+attach + ApplyAfterCommit seeks/resumes once. Godot PAUSED means Playing=false but
+HasStreamPlayback=true. Both flags are required to restore a paused, nonzero cursor. Dummy mixer
+has an asynchronous ~256-sample block: tests retain immediate seek tolerance and then verify a
+stationary paused cursor after it drains. This is not sample-perfect audio-buffer persistence.
+
+RideSounds preserves clip/graph RNGs, repeat due times/order/set, cached streams including nulls,
+voices/fades/census and provider bindings. No Cue/Start/resolve/provider call during stage. The
+in-memory CaptureBindings helper is NOT a cold-load asset registry: root must rebuild trusted
+catalogue/event/stream bindings and moving/parameter closures. Head/voice/sounds helpers are not
+yet connected to actual Viewer load publication. GameAudioMix PublishGains remains commit-only.
+
+Next: assemble WORLD asset/entity registry and actual Viewer dictionaries/hooks; do not keep
+mistaking owner tests for full-world save. Guest/staff render adapters must join real Guest/Member
+identities and shared RNGs; placed/runtime IDs differ; retired references remain addressable.
+Bus placements and provider callbacks, ScriptEffects/tools/camera/native adapter census remain.
+An unpublished new Viewer currently constructs detached Weather/Flags/Thoughts nodes before Ready;
+staging cleanup MUST free those too (scalar smoke now does). No Save/Load UI enabled.

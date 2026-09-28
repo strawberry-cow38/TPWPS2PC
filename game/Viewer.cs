@@ -5543,7 +5543,7 @@ public partial class Viewer : Node3D
     int _gateEvery = 50, _guestCap = 12; // legacy capture options; only cap0 still disables auto-admission
     /// <summary>⚠ Seeded, so the same park with the same path gets the same crowd every run --
     /// which is what lets a capture's numbers be compared with the last capture's.</summary>
-    Random _guestRng = new(1);
+    SnapshotRandom _guestRng = new(1);
     /// <summary>The laid cells a guest may be sent to, and the tool's count they were read at.</summary>
     List<ParkCell> _guestPool;
     int _guestPoolLaid = -1;
@@ -5565,7 +5565,7 @@ public partial class Viewer : Node3D
         _actors.Clear(); _drawn.Clear(); _parts.Clear(); _headOnly.Clear(); _posed.Clear(); _guestPrev.Clear(); _guestDwell.Clear();
         _walkRec.Clear(); _gaitFrom.Clear(); _gaitRec.Clear(); _idles.Clear(); _idleSince.Clear();
         _guestPool = null; _guestPoolLaid = -1; _guestPoolAt = -1; _guestAt = null; _guestLabel = null;
-        _guestRng = new Random(1); _guestStage = 0; _guestSince = 0; _guestTestRide = null;
+        _guestRng = new SnapshotRandom(1); _guestStage = 0; _guestSince = 0; _guestTestRide = null;
         _parkTicks = 0;
         _parkClock.Reset();
     }

@@ -17,7 +17,7 @@ namespace TPWPS2Viewer;
 /// the PAL field rate, which is a different thing from how often the game's logic actually runs.
 /// Everything time-dependent should be on this clock, so when the number is settled one way or the
 /// other there is a single place to settle it.</summary>
-public sealed class ConsoleClock
+public sealed partial class ConsoleClock
 {
     public const int TicksPerSecond = 25;
     public const double TickSeconds = 1.0 / TicksPerSecond;

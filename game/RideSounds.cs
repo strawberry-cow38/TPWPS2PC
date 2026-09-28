@@ -32,7 +32,7 @@ namespace TPWPS2Viewer;
 /// whether the voice was playing and how far its playback position had moved. A resolved clip that
 /// nothing plays is the intensity readout that printed the right number while the guests were
 /// handed a different one.</summary>
-public sealed class RideSounds
+public sealed partial class RideSounds
 {
     public const float MaxDistance = 80f;
 
@@ -55,7 +55,7 @@ public sealed class RideSounds
 
     readonly Node3D _root;
     readonly SoundCatalogue _park1, _park2;
-    readonly Random _rng;
+    readonly SnapshotRandom _rng;
     readonly Dictionary<string, AudioStreamWav> _streams = new();
     readonly List<Voice> _voices = new();
     int _serial;
@@ -71,7 +71,7 @@ public sealed class RideSounds
 
     public RideSounds(Node3D parent, SoundCatalogue park1, SoundCatalogue park2, int seed = 1)
     {
-        _park1 = park1; _park2 = park2; _rng = new Random(seed);
+        _park1 = park1; _park2 = park2; _rng = new SnapshotRandom(seed);
         _root = new Node3D { Name = "RideSounds" };
         parent.AddChild(_root);
     }

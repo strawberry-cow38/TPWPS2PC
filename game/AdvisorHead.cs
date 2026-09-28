@@ -45,7 +45,7 @@ namespace TPWPS2Viewer;
 ///   the console's order there is NOT resolved.
 /// - Frames between passes are interpolated at the park clock's alpha, as the staff's are.
 /// </summary>
-public sealed class AdvisorHead : IAdvisorHead
+public sealed partial class AdvisorHead : IAdvisorHead
 {
     /// <summary>`0x106080`: `0x17BB48(0x1E8)` and `vt+0xC(0x1E8, 0, −1)` -- registry entry 287, `Advisor`,
     /// world 4, category 13.</summary>
@@ -93,10 +93,16 @@ public sealed class AdvisorHead : IAdvisorHead
     public int MouthShown { get; private set; } = -1;
     public string Summary { get; }
 
-    /// <param name="model">⚠ The head's OWN parse of `advisor.mps`: its node flags are written at run time.</param>
+    /// <param name="model">Immutable advisor asset; this head clones its bytes before writing flags.</param>
     public AdvisorHead(Model model, Aps aps, Func<string, (ImageTexture Tex, bool Soft)> texture)
+        : this(model, aps, texture, null) { }
+
+    // A restored renderer already owns its writable model. _model is structural lookup data only;
+    // every runtime flag read/write belongs to Drawn, never the registry asset.
+    AdvisorHead(Model model, Aps aps, Func<string, (ImageTexture Tex, bool Soft)> texture, AnimatedModel restored, Snapshot saved = null)
     {
-        _model = model ?? throw new ArgumentNullException(nameof(model));
+        ArgumentNullException.ThrowIfNull(model);
+        _model = new Model((byte[])model.D.Clone());
         if (aps == null) throw new ArgumentNullException(nameof(aps));
         _records = aps.Records().Where(r => r.Slot == Section).ToArray();
         if (_records.Length <= ParkAdvisor.RecordExit)
@@ -110,8 +116,8 @@ public sealed class AdvisorHead : IAdvisorHead
         _rootScale = 1f;
         if (root >= 0) RootOffset = _model.NodeOffset(root);
         // Built on the enter record, so the node visibility is the ordinary APS kind from the start.
-        Drawn = new AnimatedModel(_model, aps, _records[ParkAdvisor.RecordEnter], texture);
-        Drawn.SetFrame(0);
+        Drawn = restored ?? new AnimatedModel(_model, aps, _records[ParkAdvisor.RecordEnter], texture);
+        if (restored == null) Drawn.SetFrame(0);
         if (root >= 0 && _model.LocalTransforms().TryGetValue(_model.NodeOffset(root), out var bind))
         {
             // ⭐ 0x16FD18: each ROW of the root's 3×3 normalised and set to (s, 4s/3, s). A row is the image of one local
@@ -125,9 +131,16 @@ public sealed class AdvisorHead : IAdvisorHead
             _rootScale = r0.Length();
             var rot = new Basis(r0.Normalized(), r1.Normalized(), r2.Normalized());
             var rows = Basis.FromScale(new Vector3(Scale / r0.Length(), Scale * 4f / 3f / r1.Length(), Scale / r2.Length()));
-            var mirror = Drawn.Root.Transform.Basis;
+            var mirror = saved == null ? Drawn.Root.Transform.Basis : Basis.Identity;
             _rootRescale = mirror * (rot * rows * rot.Inverse()) * mirror.Inverse();
             _rootBindOrigin = mirror * new Vector3(bind.M41, bind.M42, bind.M43);
+        }
+
+        if (saved != null)
+        {
+            var adjustment = StateTransform(saved.RootAdjustment);
+            _rootRescale = adjustment.Basis;
+            _rootBindOrigin = adjustment.Origin;
         }
 
         _view = new SubViewport

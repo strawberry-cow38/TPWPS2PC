@@ -22,7 +22,7 @@ namespace TPWPS2Viewer;
 ///   every part that carries a skin at `mesh+0x90` is re-skinned from it each frame, through the
 ///   same `mesh+0x98` map the morph path uses. The arithmetic is core's (Model.Skin,
 ///   SkeletalPose) and tools/TPW.PS2.SkinAudit checks it against the disc without Godot.</summary>
-public sealed class AnimatedModel
+public sealed partial class AnimatedModel
 {
     sealed class Part
     {
@@ -35,6 +35,7 @@ public sealed class AnimatedModel
         /// tracks a face that is not there any more.</summary>
         public List<System.Numerics.Vector3> LivePos;
         public List<Godot.Vector2> Uv;
+        public List<Godot.Vector2> LiveUv;
         public List<Godot.Vector3> Normal;
         public List<Model.Triangle> Tris;
         public int[] AnimMap;
@@ -51,6 +52,7 @@ public sealed class AnimatedModel
         /// null. Constant: a layer is posed once, the record now playing moves on top of it.</summary>
         public System.Numerics.Vector3[] LayerPos;
         public Godot.Vector2[] LayerUv;
+        public Godot.Mesh[] EmittedMeshes;
         public MeshInstance3D[] Surfaces;          // one per material
         public int[] SurfaceMaterial;
         /// <summary>This mesh's node and every node above it, for inherited visibility.</summary>
@@ -153,6 +155,7 @@ public sealed class AnimatedModel
                          bool skeletalHideLists = false)
     {
         _model = model; _anim = anim; _texture = texture;
+        _assetFingerprint = StateHash(model.D);
         _nativeNodeVisibility = nativeNodeVisibility;
         _skeletalHideLists = skeletalHideLists;
         Additive = model.D.Length >= 0x20 && (BitConverter.ToUInt32(model.D, 0x1c) & 4) != 0;
@@ -256,9 +259,11 @@ public sealed class AnimatedModel
     /// caller that wants its own gives this model its own <see cref="Model"/>.</summary>
     public void WriteNodeFlags(int node, uint set, uint clear)
     {
+        if(_sharedReadOnlyModel)throw new InvalidOperationException("Writes to shared character assets are forbidden");
         int off = _model.NodeOffset(node);
         if (_model.NodeIndex(off) != node || off < 0 || off + 4 > _model.D.Length)
             throw new ArgumentOutOfRangeException(nameof(node), $"node {node} is not in this model");
+        _originalFlags.TryAdd(node, BitConverter.ToUInt32(_model.D, off));
         uint f = (BitConverter.ToUInt32(_model.D, off) & ~clear) | set;
         BitConverter.TryWriteBytes(_model.D.AsSpan(off, 4), f);
         if ((set & 0x10) != 0) _hidden.Add(node);
@@ -876,6 +881,13 @@ public sealed class AnimatedModel
         }
         if (p.LayerUv != null) uv = uv.Select((x, j) => x + p.LayerUv[j]).ToList();
         if (UvRewrite != null) { uv = new List<Godot.Vector2>(uv); UvRewrite(p.Mesh, pos, uv); }
+        EmitGeometry(p, pos, uv);
+    }
+
+    void EmitGeometry(Part p, List<System.Numerics.Vector3> pos, List<Godot.Vector2> uv)
+    {
+        p.LivePos = pos; p.LiveUv = uv;
+        p.EmittedMeshes ??= new Godot.Mesh[p.Surfaces.Length];
         int si = 0;
         foreach (var grp in p.Tris.GroupBy(t => t.Material))
         {
@@ -917,7 +929,8 @@ public sealed class AnimatedModel
                     st.AddVertex(new Godot.Vector3(v.X, v.Y, v.Z));
                 }
             }
-            p.Surfaces[si++].Mesh = st.Commit();
+            p.Surfaces[si].Mesh = p.EmittedMeshes[si] = st.Commit();
+            si++;
         }
     }
 

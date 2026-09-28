@@ -50,6 +50,10 @@ public static class SfxEventMachine
     {
         uint _s;
         public Rng(uint seed = 1) { _s = seed; }
+        /// <summary>The current LCG word, not its seed or rotated output.</summary>
+        public uint CurrentState => _s;
+        public void RestoreState(uint currentState) => _s = currentState;
+        public static Rng FromState(uint currentState) => new(currentState);
         public uint Next() { _s = unchecked(_s * 0x19660Du + 0x3C6EF35Fu); return (_s << 19) | (_s >> 13); }
     }
 

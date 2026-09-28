@@ -642,3 +642,60 @@ head node flags/channel/pose and audio seek cannot be inferred from CORE Costume
 alone. RideSounds/scheduled effects/park vehicle adapters remain to inventory. All logical owner
 DTOs exist for the main sim now, but provider values, render state and graph registration are NOT
 finished; do not enable or call it a total player save. Startup/menu task already shippedc83a091.
+
+## Actual render/audio + Viewer scalar checkpoint (September 28, 2026)
+
+STILL NOT TOTAL SAVE/LOAD. Startup/main-menu work remains done; player save/load stays unavailable.
+AnimatedModel.State now copies actual retained CPU render state (including unsampled record binds,
+forced surface transforms, UVs, layers, hidden flags, flags written to private assets and textures),
+not only animation time. Fresh renderer restore never samples/replays frames. Explicit read-only
+sharing preserves character asset sharing without writing cached dictionaries. Actual two skeletal
+actors assert shared Model AND LastWorld as fixture preconditions; restoring one leaves the other
+and shared caches/bytes unchanged. Writable advisor Model is private. Explicit UV provider binding
+rebuilds the closure outside the DTO; staging does not invoke it. External children/mesh/material
+edits and MD2 remain explicit refusals, not dropped fields.
+
+Actual AdvisorHead and voice: selectors -1 included, channel/bound/pivot/viewport/camera/renderer,
+plus stopped staged AudioStreamPlayer with explicit seek/pause publication. Godot paused players
+have Playing=false AND HasStreamPlayback=true. Initial restore lost paused nonzero playback;
+parent fixed BOTH advisor and RideSounds to preserve playback presence. Audio stop/free cleanup
+fixed leaked paused mixer resources; scalar-only Viewer test explicitly frees constructor-owned
+unattached Weather/Flags/Thoughts nodes. Dummy mixer queued 256-sample block can advance the
+reported cursor once after pause: test preserves immediate seek bound, then checks stationarity
+after .15s drain (three repeated passes), rather than claiming sample-perfect audio output.
+
+RideSounds.State captures both RNGs, graph repeats/deadlines/sets/order, streams/nulls, moving and
+parameter binding IDs, actual voices/fades/seek and census. Fresh stage no Cue/Start/provider calls;
+publication starts players only after world accepted. CaptureBindings is an in-memory manifest,
+NOT cold-load asset resolution; the world registry still must reconstruct it. Ordinary repeat
+fixture was absent from bounded real catalogue search; smoke uses TWO real graph repeats and
+claims no ordinary-repeat branch coverage. Voice test uses synthetic PCM, not retail voice decoding.
+
+Viewer.RuntimeState now captures actual outer bus/entrance/gate/guest/staff/advisor latches and
+three current RNG states; `_guestRng` declaration AND reset use proven seeded-compatible
+SnapshotRandom. ConsoleClock carry/alpha is distinct from ParkClock calendar and now saved.
+Restore requires unpublished Viewer and runs no Reset/Ensure/providers. Does NOT capture reference
+dictionaries, root topology, all UI/tools, effects or assets. This is an owner join, not whole Viewer.
+
+Godot FILE/continuation tests: AnimatedModel9021PASS (guest+staff+private head+ride+shop, exact
+retained CPU inputs and future evaluation); AdvisorPresentation49518PASS (real head assets and
+physical dummy audio seek/pause); RideSounds366PASS (real bank timers/graph transition +250ticks);
+ViewerRuntime1002PASS (actual Viewer scalars,500mixed dt/RNG calls). Previous NativeBus142518PASS.
+Final logs /tmp/tpw-render-final-*.log, no warnings/errors in four new final smokes. All assets read
+from owner disc into RAM, no extraction. Three delegates completed; parent integrated/reviewed,
+fixed actual runtime failures and ran all evidence. No pending worker.
+
+Mutations: shared-cache write, default-mouth substitution, paused-playback loss, ConsoleClock
+carry omission, UV provider execution during stage, graph-RNG reset and sound-deadline reset all
+fail (7 distinct). Graph-RNG reset FIRST SURVIVED: initial fixture cut before any transition, so seed
+1 == current state. Now forces a real transition and asserts nonseed before saving; mutation fails.
+An unrelated worker morph-buffer resize change was NOT exercised (its reversal survived); parent
+removed that production change entirely rather than ship/claim an untested fix. All mutants
+restored. Logs /tmp/tpw-render-mutations*.{log,json}; final clean build afterwards.
+
+Full SaveAudit243950PASS,83PythonPASS. /tmp/tpw-save-render-matrix:4PASS+4exactretailreds,
+exit2,landing_evidence=True. /tmp/tpw-save-render-runtime:10/11 ONLYoldFANTASYanchor00e5cd9,
+actual(37.99974,0,-32.00022) vs expected(37.994743,0,-31.941021). Main unchangeddd474a7.
+NEXT: actual WORLD registry+Viewer guest/staff render dictionaries/provider/ref join, bus placement
+order/assets, sound cold bindings, remaining effects/tools/camera/vehicle adapters. Then transactional
+load publication/UI. See findings/save-viewer-roots.md; do not repeat completed owner snapshots.

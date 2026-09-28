@@ -3367,3 +3367,14 @@ Next admission/ridequeue/request resources (+Viewer.Entrance pending seam), then
 - Final SaveAudit243950PASS,83Python; maindd474a7 merged29cf85d; matrices baseline4/4retail and10/11.
   Remaining-root inventory findings/save-viewer-roots.md, not a claim of exhaustive Viewer coverage.
 - Save/Load still disabled until whole-world provider/renderer graph and transactional publish exist.
+
+### Save research — retained render/audio + actual Viewer scalar owners
+- AnimatedModel copies retained geometry/UV/layers/pose/hidden/texture state; private head flags,
+  shared read-only actor assets, explicit UV-provider binding; no frame replay on restore.
+- AdvisorHead+voice and RideSounds now stage actual presentation/audio state; paused Godot
+  playback needs HasStreamPlayback even when Playing=false. Fixed and tested, not assumed.
+- ConsoleClock and Viewer outer provider scalars/current RNGs saved. Full reference/root join,
+  cold assets and transactional load still outstanding; player Save/Load remains unavailable.
+- New FILE smokes9021/49518/366/1002PASS; existing bus142518PASS. Seven mutations fail; graph RNG
+  first survived a seed-only cut, now a real transition precondition catches it. Unexercised unrelated
+  morph change removed. SaveAudit243950,83Python; matrices baseline4+4retail /10of11oldanchor.
