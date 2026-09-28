@@ -382,12 +382,18 @@ public sealed partial class ParkSim
     // The service flag and VAR_BREAKSTAT.
 
     /// <summary>⭐ `0x118568(ride, kind)`, READ (MIPS `0x1185B0..0x118648`): the flag is ALWAYS set; if
-    /// the ride's model has a script host, `0x1FA690(h, bits)` raises the floating status icon (bits 2
-    /// for kind 1, 8 for kind 2, 4 for kind 4 -- the icon is INFERRED) and sets the script's
-    /// VARIABLE 4 (`VAR_BREAKSTAT`) to 1; kind 4 (condemned) also plays bank 2 event 0x18,
-    /// non-positional (`0x111428(…, 2, 0x18, {0,0,0}, 0, 1)`).</summary>
+    /// the ride has a model instance (`(ride+8)->+0x14 = h != 0`), `0x1FA690(h, bits)` raises the
+    /// ride's HOARDING -- the construction fence, `0x1F5948` (bits 8 for kind 2, else 4 for kind 4, else
+    /// 2 for kind 1: Upgrade.ssh, Condemn.ssh, Hoarding.ssh; findings/ride-hoarding.md) -- and sets the
+    /// script's VARIABLE 4 (`VAR_BREAKSTAT`) to 1; kind 4 (condemned) also plays bank 2 event 0x18,
+    /// non-positional (`0x111428(…, 2, 0x18, {0,0,0}, 0, 1)`).
+    /// ⚠ The fence is raised through <see cref="HoardingRaise"/> for EVERY ride the call reaches: the
+    /// console gates it on the model instance, which every placed ride has, not on a script -- the
+    /// <c>Machine</c> test below stays the port's gate for the script half only.</summary>
     internal void Service(ParkRide r, int kind)
     {
+        int bits = (kind & 2) != 0 ? 8 : (kind & 4) != 0 ? 4 : (kind & 1) != 0 ? 2 : 0;
+        if (bits != 0) HoardingRaise?.Invoke(r, bits);                  // 0x1FA690 → 0x1F5948(inst, bits)
         if (r.Machine != null)
         {
             if ((kind & 2) != 0) WriteBreakStat(r, 1);                  // bits 8
@@ -397,14 +403,22 @@ public sealed partial class ParkSim
         r.ServiceFlag = true;
     }
 
-    /// <summary>`0x118678`: the flag cleared; with a model and host, `0x1FA700` fades the icon out and
-    /// sets variable 4 back to 0 -- which is what sends a scripted ride to its "fixed" branch.
+    /// <summary>`0x118678`: the flag cleared; with a model and host, `0x1FA700` starts the hoarding
+    /// DROPPING (`0x1F5AB0`, <see cref="HoardingLower"/>) and sets variable 4 back to 0 -- which is what
+    /// sends a scripted ride to its "fixed" branch, so the fence and the repair sparkle go together.
     /// ⚠ The model-ready test `(ride+8)->+0x24->vt+0x3C` is taken as passing.</summary>
     internal void ClearService(ParkRide r)
     {
+        HoardingLower?.Invoke(r);                                        // 0x1FA700 → 0x1F5AB0(inst)
         if (r.Machine != null) WriteBreakStat(r, 0);
         r.ServiceFlag = false;
     }
+
+    /// <summary>⭐ The hoarding sinks, per ride: raise with bits 2 / 4 / 8 (<see cref="RideHoarding.Raise"/>)
+    /// and lower (<see cref="RideHoarding.Lower"/>). The state is the model instance's, so it is the view's
+    /// to keep (Viewer.Hoarding.cs), as <see cref="RideSound"/>'s voices are. Null: nobody draws a fence.</summary>
+    public Action<ParkRide, int> HoardingRaise { get; set; }
+    public Action<ParkRide> HoardingLower { get; set; }
 
     /// <summary>`0x1C0E28(inst, 4, v)` on the instance `0x1C0DE8(ctrl+0x34)` finds -- the ride's own
     /// script. ⭐ BY INDEX, as the console writes it: variable 4 is `VAR_BREAKSTAT` in the common set

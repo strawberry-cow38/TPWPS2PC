@@ -1543,7 +1543,7 @@ Research.Group                 3
 ```
 
 ⭐ `Info.Shape` is the ride's **footprint as ASCII art**, `*` a cell and `2` the entrance; `Info.Hoarding`
-is its sign, also drawn. For a port this is the entire ride-tuning model handed over — prices, cost
+is the outline of its construction fence, one edge mask per character (see [ride-hoarding.md](ride-hoarding.md)). For a port this is the entire ride-tuning model handed over — prices, cost
 of goods, excitement, capacity, upgrade and research costs, entry/exit stand positions — with no
 reverse engineering required at all. (The developers' own typo, `InitChanceOfLoosing`, is in the
 retail data.)

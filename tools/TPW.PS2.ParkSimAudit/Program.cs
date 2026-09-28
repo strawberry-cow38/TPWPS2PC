@@ -111,6 +111,13 @@ if (args.Contains("--mechanic-only"))
     Console.WriteLine(bad==0 ? "PASS mechanics: ride wear, breakdown, repair and upgrades through ParkSim/ParkStaff (viewer: MechanicSmoke)" : $"FAIL: {bad}");
     return bad==0?0:1;
 }
+if (args.Contains("--hoarding-only"))
+{
+    HoardingChecks.Run(disc, Check);
+    MechanicChecks.Run(disc, terrain, Wad("DATA"), wad, world, Check);   // its ride-service half raises and lowers the fence
+    Console.WriteLine(bad==0 ? "PASS ride hoarding: the disc's blocks, the geometry, the state, and the fence on the ride service's own calls (viewer: MechanicSmoke)" : $"FAIL: {bad}");
+    return bad==0?0:1;
+}
 if (args.Contains("--advisor-only"))
 {
     AdvisorChecks.Run(disc, terrain, Wad("DATA"), wad, world, Check);
@@ -706,6 +713,7 @@ DecisionSchedulingChecks.Run(terrain, loopPaths, corridorStops[0], onPath[^1], W
 GuardChecks.Run(disc, terrain, Wad("DATA"), wad, world, Check);
 StaffChecks.Run(disc, terrain, Wad("DATA"), wad, world, Check);
 MechanicChecks.Run(disc, terrain, Wad("DATA"), wad, world, Check);
+HoardingChecks.Run(disc, Check);
 ManagementChecks.Run(disc, terrain, Wad("DATA"), wad, world, Check);
 AdvisorChecks.Run(disc, terrain, Wad("DATA"), wad, world, Check);
 Check(looEntry.Entry != null, $"the world ships a lavatory to exercise ({looEntry.Entry?.Path ?? "none found"})");

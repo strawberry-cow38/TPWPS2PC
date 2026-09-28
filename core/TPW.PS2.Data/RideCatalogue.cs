@@ -25,7 +25,8 @@ public sealed class RideDefinition
     public readonly Dictionary<string, string> Fields = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>The `---` fenced ASCII-art blocks, by key. `Info.Shape` is the footprint, one
-    /// string per row, `*` a cell and `2` the entrance; `Info.Hoarding` is the sign.</summary>
+    /// string per row, `*` a cell and `2` the entrance; `Info.Hoarding` is the outline of the ride's
+    /// construction fence, one edge mask per character (<see cref="HoardingGrid"/>).</summary>
     public readonly Dictionary<string, string[]> Blocks = new(StringComparer.OrdinalIgnoreCase);
 
     public string Source = "";

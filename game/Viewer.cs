@@ -2147,7 +2147,7 @@ public partial class Viewer : Node3D
         ResetGuests();
         _walkGrid = null;
         // ⭐ AND THE SIM WITH IT: it was made on that grid, and its rides stood on that park.
-        _sim = null; _scripted.Clear(); _rideMeshes.Clear(); _shotWound = false; ClearTrackViews(); ClearCoasterViews(); _placedHeight.Clear();
+        _sim = null; _scripted.Clear(); _rideMeshes.Clear(); _shotWound = false; ClearTrackViews(); ClearCoasterViews(); _placedHeight.Clear(); ClearHoardings();
         // ⭐⭐ AND THE SOUND, FOR THE SAME REASON THE GRID IS RESET TWO LINES UP. `_sounds` is
         // built `??=` from `SoundCatalogue(disc, world, 1)` and `(.., 2)` -- the CURRENT world's
         // event maps -- so keeping it across a world change resolves the new park's cues against
@@ -8163,6 +8163,8 @@ public partial class Viewer : Node3D
         int w = _place.Turned.Width, h = _place.Turned.Height;
         if (!StartScript(ride, _armedRide, built, builtAnim, cx, cy, w, h, queueStub, pathStub, builtMesh)
             && built.Frames > 1) { built.SetFrame(0); _building.Add((built, 0f)); }
+        // ⭐ Its construction fence, hidden until the ride service raises it (Viewer.Hoarding.cs).
+        BuildHoarding(ride, _place.Def, built, builtMesh, _place.Display);
         // ⭐ The ground under it goes now that the cells are claimed.
         RefreshFloor();
         _toolSfx?.Play(ToolSounds.Cue.Lay);
@@ -9385,6 +9387,7 @@ public partial class Viewer : Node3D
         int doors = _paths?.RemoveDoors(p.Id) ?? 0;
         RemoveTrackView(p.Id);
         RemoveCoasterView(p.Id);
+        RemoveHoarding(p.Id);
         _sim?.Remove(p.Id);
         if (!_park.Remove(p.Id)) { Status($"could not delete {name}"); return false; }
         // ⭐⭐ ALWAYS, NOT ONLY FOR A QUEUE. Master: "make sure terrain holes heal when we delete
@@ -11701,6 +11704,8 @@ public partial class Viewer : Node3D
         // one frame and no voice can advance, which is exactly the "resolves but never plays"
         // that the census exists to catch.
         else if (ParkSimulationRunning) { AllocBegin(); StepPark(delta); AllocEnd("StepPark"); }
+        // ⭐ The rides' construction fences, on the same pausable clock, after the step that raised them.
+        AllocBegin(); StepHoardings(delta); AllocEnd("StepHoardings");
         AllocMark("02 after StepPark/shot");
         AllocBegin(); _sounds?.Step(delta); AllocEnd("sounds.Step");
         AllocBegin(); _burst?.Step(); AllocEnd("burst.Step");

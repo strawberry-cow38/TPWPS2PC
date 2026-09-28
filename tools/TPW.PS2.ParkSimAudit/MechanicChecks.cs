@@ -16,7 +16,7 @@ using Point = TPW.PS2.Data.NativeGuestMotion.Point;
 /// ⚠ Reflection is used in exactly one place (the Call Mechanic predicate), to put a mechanic into a
 /// state the console can reach but a short fixture cannot; it is said where it is done.
 /// Teeth: the mutation runner named in the commit turns each rule red.</summary>
-static class MechanicChecks
+static partial class MechanicChecks
 {
     sealed class TestRandom
     {
@@ -175,6 +175,7 @@ static class MechanicChecks
         CallMechanic(f, Check);
         HandOff(f, Check);
         Upgrades(f, Check);
+        HoardingService(f, check);                                      // HoardingChecks.cs: the fence on the same calls
         Ejection(f, Check);
         WorkCells(ordinary, Check);
         TrackClass(paths, world, worldName, compiled, Check);

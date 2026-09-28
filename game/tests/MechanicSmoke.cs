@@ -13,8 +13,14 @@ namespace TPWPS2Viewer.Tests;
 /// door, the repair (logical 16: s4, s5, s6, facing the ride, the noise on its handle), the ride open
 /// again at 100 on the Details page; then an upgrade requested and installed, paid for at completion.
 ///
+/// ⭐ And the ride's HOARDING (findings/ride-hoarding.md, Viewer.Hoarding.cs): built hidden under the ride's
+/// placed node, raised by the breakdown through the real service call with Hoarding.ssh, rising panel by
+/// panel over 5.0 s of the park's pausable clock, standing round the footprint's perimeter with a gap at
+/// the entrance, dropped by the repair's end over 3.33 s and hidden; raised again with Upgrade.ssh for the
+/// install. The fence is ticked here as `_Process` would, one `StepHoardings(0.04)` per park tick.
+///
 /// Run with --map=WORLD --mode=park. `TPW_MECH_SHOT=dir` saves the broken ride, the repair, the ride
-/// reopened and the install.
+/// reopened and the install, and the fence mid-rise, fully up, and round the upgrade.
 ///
 /// ⚠ The ride is chosen per world from ones whose script sets VAR_BROKEN and raises a particle effect
 /// when VAR_BREAKSTAT goes to 1 (a core probe over every ordinary ride, 2026-09-27), so "visibly broken"
@@ -134,7 +140,7 @@ public partial class MechanicSmoke : Node3D
             Check(candidates.Count > 0, $"{world}: the Rides list has a subject ride ({string.Join("/", wanted)}): {candidates.Count}"
                                         + (candidates.Count > 0 ? "" : $" [of {string.Join(" ", rows.Select(r => Leaf(lib.Rides[r])))}]"));
             var blueprint = Field<Placement>(viewer, "_place");
-            bool placed = false; string subjectName = null;
+            bool placed = false; string subjectName = null; int subjectRow = -1;
             foreach (int row in candidates)
             {
                 for (int turn = 0; turn < 4 && !placed; turn++)
@@ -155,7 +161,7 @@ public partial class MechanicSmoke : Node3D
                             placed = park.Placed.Count == count + 1;
                         }
                 }
-                if (placed) { subjectName = lib.Rides[rows[row]].Name; break; }
+                if (placed) { subjectName = lib.Rides[rows[row]].Name; subjectRow = row; break; }
             }
             Check(placed, $"the build tool placed {subjectName ?? "a subject ride"} with its stub on the path");
             Call(viewer, "CloseTool");
@@ -184,6 +190,23 @@ public partial class MechanicSmoke : Node3D
             Check(ride.Status == 2 && ride.Reliability == ParkSim.FullReliability && !ride.ServiceFlag && ride.Machine[4] == 0,
                   $"it opens at status 2 with reliability 100.0 and VAR_BREAKSTAT 0 (status {ride.Status}, rel 0x{ride.Reliability:X})");
 
+            // The hoarding, built at placement and hidden (Viewer.Hoarding.cs).
+            var hoardings = (System.Collections.IDictionary)Member("_hoardings").GetValue(viewer);
+            object View() => hoardings[ride.Id] ?? throw new InvalidOperationException("no hoarding for the ride");
+            RideHoarding Fence() => (RideHoarding)F(View(), "State");
+            var fenceNode = (MeshInstance3D)F(View(), "Node");
+            var placedNode = park.Placed[placedIndex].Node;
+            var fenceGrid = HoardingGrid.Parse(ride.Definition.Hoarding, out _);
+            Check(fenceGrid != null && ReferenceEquals(fenceNode.GetParent(), placedNode) && !fenceNode.Visible && !Fence().Shown
+                  && Fence().Geometry.Panels.Count == fenceGrid.EdgeCount && Fence().Geometry.Panels.Count > 0,
+                  $"its hoarding is built hidden under the node Park.TryPlace placed (the instance transform): {Fence().Geometry.Panels.Count} "
+                  + $"panels = the {fenceGrid?.EdgeCount} edge bits of its {fenceGrid?.Width}x{fenceGrid?.Height} Info.Hoarding");
+            int fenceTicks = 0;
+            void FenceTick() { Call(viewer, "StepHoardings", 0.04); fenceTicks++; }
+            for (int i = 0; i < 50; i++) FenceTick();
+            Check(!Fence().Shown && !fenceNode.Visible && Fence().Progress == 0f,
+                  "a working ride's fence stays down: 50 frames of the fence tick raise nothing on their own");
+
             // The Details page: State of Repair (644) is ride[0xE4] >> 12 now.
             Call(viewer, "LoadHudFont");
             var panel = Field<LaptopShopScreen>(viewer, "_shopPanel");
@@ -208,6 +231,13 @@ public partial class MechanicSmoke : Node3D
             Check(ride.Status == 4 && ride.ServiceFlag && ride.Machine[4] == 1 && advisors.Contains(ParkSim.AdvisorBreakdownImminent),
                   $"below 10.0 it breaks: status 4, advisor 0x36, the service flag and VAR_BREAKSTAT = 1 (script variable 4) (status {ride.Status})");
             Check(Repair() == 5, $"Details: State of Repair reads 5 on the broken ride (0x5000 >> 12) -- the old Condition binding would still say 100 ({Repair()})");
+            var materials = Field<ShaderMaterial[]>(viewer, "_hoardingMaterials");
+            var textures = Field<ImageTexture[]>(viewer, "_hoardingTextures");
+            Check(Fence().Shown && Fence().Rising && Fence().Texture == HoardingTexture.Hoarding && fenceNode.Visible
+                  && materials != null && ReferenceEquals(fenceNode.MaterialOverride, materials[(int)HoardingTexture.Hoarding])
+                  && textures?[(int)HoardingTexture.Hoarding] is { } hoardTex && hoardTex.GetWidth() == 64 && hoardTex.GetHeight() == 64,
+                  $"the breakdown raises it through the ride service (0x118568 kind 1 -> bits 2): shown, rising, wearing Hoarding.ssh "
+                  + $"({textures?[(int)HoardingTexture.Hoarding]?.GetWidth()}x{textures?[(int)HoardingTexture.Hoarding]?.GetHeight()} from DATA.WAD) at p {Fence().Progress:F3}");
             int brokenVar = ride.Machine.Program.VariableNames.ToList().IndexOf("VAR_BROKEN");
             bool scriptBroken = false;
             for (int i = 0; i < 1500 && !(scriptBroken && effects.Any(Particle)); i++)
@@ -253,6 +283,74 @@ public partial class MechanicSmoke : Node3D
                 foreach (var layer in layers) layer.Visible = true;
                 foreach (var ui in uis) ui.Visible = true;
             }
+            // ---------------------------------------------------------------------------------
+            // The fence rises: paused, it holds; running, panel by panel over 5.0 s.
+            Set(viewer, "_playing", false);
+            float pausedAt = Fence().Progress;
+            for (int i = 0; i < 25; i++) FenceTick();
+            bool pauseHeld = Fence().Progress == pausedAt;
+            Set(viewer, "_playing", true);
+            Check(pauseHeld, $"paused (H), the fence holds at p {pausedAt:F3} over 25 frames: it runs on the park's pausable clock");
+            fenceTicks = 0;
+            float[] Tops()
+            {
+                var a = fenceNode.Mesh.SurfaceGetArrays(0)[(int)Mesh.ArrayType.Vertex].AsVector3Array();
+                return Enumerable.Range(0, a.Length / 4).Select(i => a[i * 4].Y).ToArray();
+            }
+            while (Fence().Progress < 0.5f && fenceTicks < 500) FenceTick();
+            var mid = Tops();
+            int up = mid.Count(y => y >= 0.8f - 1e-4f), none = mid.Count(y => y <= 0f);
+            Check(up > 0 && none > 0 && mid.Length == Fence().Geometry.Panels.Count,
+                  $"half-way (p {Fence().Progress:F2}, {fenceTicks * 0.04f:F2} s) the first panels are up and the last still in the ground: "
+                  + $"{up} up, {none} not started, of {mid.Length} ({string.Join(" ", mid.Select(y => y.ToString("0.00")))})");
+            await Shot("hoard_rising", rideCentre, 4.5f, 0.5f);
+            while (Fence().Progress < 1f && fenceTicks < 500) FenceTick();
+            int riseTicks = fenceTicks;
+            FenceTick();
+            var tops = Tops();
+            Check(Math.Abs(riseTicks * 0.04f - 5f) <= 0.08f && !Fence().Rising
+                  && tops.Select((y, i) => y == RideHoarding.PanelHeight(i, tops.Length, 1f)).All(ok => ok)
+                  && tops.Where((_, i) => i % 2 == 0).All(y => y == 1f) && tops.Where((y, i) => i % 2 == 1 && i < 16).All(y => y == 0.8f),
+                  $"fully up in {riseTicks} frames = {riseTicks * 0.04f:F2} s (+0.2 a second: 5.0 s), then still: even panels 1.0 cell high, odd 0.8 "
+                  + $"({string.Join(" ", tops.Select(y => y.ToString("0.#")))})");
+            // Where it stands in the WORLD: every panel on the placed footprint's perimeter, a gap at the entrance.
+            static float Flat(Vector3 a, Vector3 b) => new Vector2(a.X - b.X, a.Z - b.Z).Length();
+            (bool Ok, string Text) InWorld(int index, ParkRide r, object view)
+            {
+                var pl = park.Placed[index];
+                var node = (MeshInstance3D)F(view, "Node");
+                var st = (RideHoarding)F(view, "State");
+                var perimeter = new List<Vector3>();
+                for (int y = 0; y < pl.Fp.Height; y++)
+                    for (int x = 0; x < pl.Fp.Width; x++)
+                    {
+                        if (!pl.Fp.Cells[x, y]) continue;
+                        foreach (var (dx, dy) in new[] { (1, 0), (-1, 0), (0, 1), (0, -1) })
+                        {
+                            int nx = x + dx, ny = y + dy;
+                            if (nx >= 0 && ny >= 0 && nx < pl.Fp.Width && ny < pl.Fp.Height && pl.Fp.Cells[nx, ny]) continue;
+                            perimeter.Add(World(pl.X + x + 0.5f + dx * 0.5f, pl.Y + y + 0.5f + dy * 0.5f));
+                        }
+                    }
+                var mids = st.Geometry.Panels.Select(pn => node.GlobalTransform
+                    * new Vector3((pn.Top0.X + pn.Top1.X) * 0.5f, 0, (pn.Top0.Y + pn.Top1.Y) * 0.5f)).ToList();
+                int on = mids.Count(m => perimeter.Any(e => Flat(m, e) < 0.6f));
+                int covered = perimeter.Count(e => mids.Any(m => Flat(m, e) < 0.6f));
+                var stub = r.Entrance.Value;
+                var door = ParkPaths.Neighbours(stub).First(c => c.X >= pl.X && c.Z >= pl.Y
+                    && c.X < pl.X + pl.Fp.Width && c.Z < pl.Y + pl.Fp.Height && pl.Fp.Cells[c.X - pl.X, c.Z - pl.Y]);
+                var doorEdge = World((door.X + stub.X) * 0.5f + 0.5f, (door.Z + stub.Z) * 0.5f + 0.5f);
+                float gap = mids.Min(m => Flat(m, doorEdge));
+                float baseY = (node.GlobalTransform * Vector3.Zero).Y;
+                bool ok = on == mids.Count && covered >= perimeter.Count * 0.7f && gap > 0.4f
+                          && Math.Abs(baseY - World(r.Origin.X + 0.5f, r.Origin.Z + 0.5f).Y) < 0.01f;
+                return (ok, $"all {on} of {mids.Count} panels stand on the placed footprint's perimeter ({covered} of {perimeter.Count} perimeter "
+                          + $"edges fenced), none within {gap:F2} of the entrance edge by the queue stub {stub}, based at the ride's floor "
+                          + $"(turns {r.PlacementTurns}, {pl.Fp.Width}x{pl.Fp.Height})");
+            }
+            var world0 = InWorld(placedIndex, ride, View());
+            Check(world0.Ok, "in the world, " + world0.Text + " -- the instance frame, not the root mesh's 0.1 scale");
+            await Shot("hoard_up", rideCentre, 4.5f, 0.5f);
             await Shot("broken", rideCentre, 4.5f, 1.2f, 2.0);
 
             // ---------------------------------------------------------------------------------
@@ -324,11 +422,15 @@ public partial class MechanicSmoke : Node3D
             ParkCell arrivedCell = default, leftCell = default;
             var slots = new List<int>();
             bool shotRepair = false;
+            int loweredTick = -1, loweredFrame = -1, fenceDownWhileRepairing = 0;
             for (int t = 0; t < 6000 && leftAt < 0; t++)
             {
                 byte before = m.State;
                 Call(viewer, "TickPark");
                 Call(viewer, "PlaceStaff", 1f);
+                FenceTick();
+                if (loweredTick < 0 && Fence().Dropping) { loweredTick = t; loweredFrame = fenceTicks; }
+                if (before == Mechanic.StateRepairing && !(Fence().Shown && Fence().Progress == 1f)) fenceDownWhileRepairing++;
                 if (arrivedAt < 0 && m.State == Mechanic.StateClosingRide)
                 {
                     arrivedAt = t; arrivedCell = m.Cell;
@@ -381,6 +483,11 @@ public partial class MechanicSmoke : Node3D
             Check(burst.Stopped - stoppedBefore == spawned,
                   $"and its KILLOBJ stops the smoke it started: {burst.Stopped - stoppedBefore} of {spawned} continuous emitters stopped (RideParticles.Stop)");
             Check(Repair() == 100, $"Details: State of Repair reads 100 again ({Repair()})");
+            while (Fence().Shown && fenceTicks < loweredFrame + 500) FenceTick();
+            int dropFrames = fenceTicks - loweredFrame;
+            Check(fenceDownWhileRepairing == 0 && loweredTick >= 0 && loweredTick == sevenAt && Math.Abs(dropFrames * 0.04f - 1f / 0.3f) <= 0.12f && !fenceNode.Visible && Fence().Texture == HoardingTexture.Closed,
+                  $"the fence stands through the repair and drops when it ends (0x118678 at tick {loweredTick}; status left 6 at {sevenAt}), hidden "
+                  + $"{dropFrames} frames later ({dropFrames * 0.04f:F2} s; -0.3 a second: 3.33 s) with its texture back to Closed");
             await Shot("reopened", rideCentre, 4.5f, 1.2f, 4.5);
 
             // ---------------------------------------------------------------------------------
@@ -391,13 +498,21 @@ public partial class MechanicSmoke : Node3D
             Check(request == ParkStaff.UpgradeRequest.Queued && ride.UpgradePending && sim.UpgradeList.Contains(ride) && sim.Finances.Balance == balance,
                   $"RequestUpgrade (0x1D5C00): queued, +0x128 set, no money taken ({sim.Finances.Balance - balance})");
             cuesBefore = sounds?.Census.Count ?? 0;
-            int paid = 0, installTicks = 0; bool smokedForUpgrade = false, shotInstall = false;
+            int paid = 0, installTicks = 0; bool smokedForUpgrade = false, shotInstall = false, upgradeFence = false, shotUpgradeFence = false;
             for (int t = 0; t < 8000 && ride.CurrentTier == 0; t++)
             {
                 int bal = sim.Finances.Balance;
                 byte before = m.State;
                 Call(viewer, "TickPark");
                 Call(viewer, "PlaceStaff", 1f);
+                FenceTick();
+                if (before == Mechanic.StateInstalling)
+                {
+                    upgradeFence |= Fence().Shown && Fence().Texture == HoardingTexture.Upgrade && fenceNode.Visible
+                                    && ReferenceEquals(fenceNode.MaterialOverride, materials[(int)HoardingTexture.Upgrade]);
+                    if (!shotUpgradeFence && (Fence().Progress >= 1f || installTicks + 1 >= StaffTables.MechanicWorkTicks[m.Level]))
+                    { shotUpgradeFence = true; await Shot("hoard_upgrade", rideCentre, 4.5f, 0.5f); }
+                }
                 if (sim.Finances.Balance != bal && ride.CurrentTier == 0) paid++;
                 if (before == Mechanic.StateInstalling)
                 {
@@ -417,7 +532,57 @@ public partial class MechanicSmoke : Node3D
             for (int i = 0; i < 4; i++) { Call(viewer, "TickPark"); Call(viewer, "PlaceStaff", 1f); }
             Check(!ride.UpgradePending && !sim.UpgradeList.Contains(ride) && ride.Status == 10 && ride.ReliabilityPercent == 100,
                   $"then it opens again: off the list, status {ride.Status}, reliability {ride.ReliabilityPercent}");
+            bool dropping = Fence().Dropping;
+            for (int i = 0; i < 300 && Fence().Shown; i++) FenceTick();
+            Check(upgradeFence && dropping && !Fence().Shown && !fenceNode.Visible && Fence().Texture == HoardingTexture.Closed,
+                  "the install raises it again wearing Upgrade.ssh (0x118568 kind 2 -> bits 8), and its end drops and hides it");
             await Shot("installed", rideCentre, 4.5f, 1.2f, 1.0);
+
+            // ---------------------------------------------------------------------------------
+            // The fence turns with its ride: the same ride put down a quarter, a half and three quarters
+            // round, each fence measured in the world, and the half-turned one broken to be looked at.
+            var turnedOk = new List<string>();
+            ParkRide halfTurned = null; int halfIndex = -1;
+            for (int turn = 1; turn < 4; turn++)
+            {
+                Call(viewer, "ShowBuildCategory", "Rides");
+                Call(viewer, "ArmFromList", subjectRow); blueprint.Turn(turn);
+                bool down = false;
+                for (int z = entry.ZEnd - 12; z < entry.ZEnd + 30 && !down; z++)
+                    for (int x = entry.XCol - 24; x <= entry.XCol + 24 && !down; x++)
+                    {
+                        if (!blueprint.Fits(park, x, z)) continue;
+                        int count = park.Placed.Count;
+                        Set(viewer, "_cursorOverride", (x, z));
+                        try { Call(viewer, "PlaceHeld"); } finally { Set(viewer, "_cursorOverride", null); }
+                        down = park.Placed.Count == count + 1;
+                    }
+                Call(viewer, "CloseTool");
+                if (!down) continue;
+                int idx = park.Placed.Count - 1;
+                var copy = sim.Rides.Single(r => r.Id == park.Placed[idx].Id);
+                if (copy.Entrance == null || hoardings[copy.Id] is not { } view) continue;
+                var w = InWorld(idx, copy, view);
+                turnedOk.Add($"{(w.Ok ? "ok" : "WRONG")} {w.Text}");
+                if (turn == 2) { halfTurned = copy; halfIndex = idx; }
+            }
+            Check(turnedOk.Count >= 2 && turnedOk.All(t => t.StartsWith("ok")),
+                  $"turned, the fence turns with the ride's instance node ({turnedOk.Count} copies): {string.Join("; ", turnedOk)}");
+            if (halfTurned != null)
+            {
+                halfTurned.ForceReliabilityForTest(0x5000);
+                for (int i = 0; i < 4; i++) Call(viewer, "TickPark");
+                var half = (RideHoarding)F(hoardings[halfTurned.Id], "State");
+                for (int i = 0; i < 200 && half.Progress < 1f; i++) FenceTick();
+                if (half.Shown)
+                {
+                    // Looked at from its own door, which the half turn has put on the other side.
+                    var centre2 = World(halfTurned.Origin.X + halfTurned.Width / 2f, halfTurned.Origin.Z + halfTurned.Height / 2f);
+                    var door2 = World(halfTurned.Entrance.Value.X + 0.5f, halfTurned.Entrance.Value.Z + 0.5f);
+                    outward = ((door2 - centre2) with { Y = 0 }).Normalized();
+                    await Shot("hoard_turned", centre2, 4.5f, 0.5f);
+                }
+            }
 
             Field<RideSounds>(viewer, "_sounds")?.Clear();
             viewer.QueueFree();

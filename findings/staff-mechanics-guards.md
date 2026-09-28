@@ -147,11 +147,13 @@ controller `0x2eaad0[h]`) it also calls `0x1fa690(h, bits)`:
 | 4 | `0x1169c0` (condemned) | 4 | sound/effect bank 2 event **0x18**, non-positional (`0x111428(…,2,0x18,{0,0,0},0,1)`) |
 
 `0x1fa690(h, bits)` → `0x1f5948(ctrl, bits)`: points `(ctrl+0x20)->+0x70->+0x68` at one of four 8-byte
-entries `(ctrl+0x20)->+0x3c + {0, 8, 0x10, 0x18}` for bits 1/2/4/8 (`0x1f5638`) and starts a fade-in
+entries `(ctrl+0x20)->+0x3c + {0, 8, 0x10, 0x18}` for bits 1/2/4/8 (`0x1f5638`) and starts the fence rising
 (`+0x28 = 0.2`); then sets the ride **script's variable 4 to 1** (`0x1c0e28(inst, 4, 1)`, instance found by
-`0x1c0de8(ctrl+0x34)`). `0x118678` clears the flag and, if the host exists, `0x1fa700`: fade-out
-(`+0x28 = −0.3`) and script variable 4 := 0. (READ; that the four entries are the frames of the floating status
-icon above the ride is INFERRED, from staff-what's "raises the ride's icon" and the fade pair.)
+`0x1c0de8(ctrl+0x34)`). `0x118678` clears the flag and, if the host exists, `0x1fa700`: the fence drops
+(`+0x28 = −0.3`) and script variable 4 := 0. (READ.) **These are the ride's HOARDING, the construction fence**
+(TPHoarding.cpp): the four entries are its textures Closed/Hoarding/Condemn/Upgrade.ssh and `+0x28` is the
+panels' rise/drop rate -- see [ride-hoarding.md](ride-hoarding.md). This paragraph used to call them the frames
+of a floating status icon above the ride, marked INFERRED; that reading was wrong.
 
 Variable 4 in every ride script is **`VAR_BREAKSTAT`** ("Common variable set - All ride scripts must have
 these", `Rides_Wateride_Wateride.rss` lines 7–18). The scripts read it: GoKarts `.breaktest`: `TEST
@@ -165,7 +167,7 @@ the PS2 may stub `BUMP_SETBROKEN`, not checked.) Kind-2 (upgrade) and kind-4 (co
 
 ```
 if (Life(vt+0x2cc) == 0 && flag == 0) {
-    0x118568(ride, 4);                 // flag := 1, condemned icon, VAR_BREAKSTAT := 1, event 0x18
+    0x118568(ride, 4);                 // flag := 1, Condemn hoarding, VAR_BREAKSTAT := 1, event 0x18
     if (flag != 0) 0x153d70(ride);     // always true now: remove from the UPGRADE list
     if (!broken(vt+0xc4)) set 4;
 }
