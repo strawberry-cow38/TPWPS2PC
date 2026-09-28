@@ -3314,3 +3314,7 @@ OwnerdiscSaveAudit231438PASS; realGodot placement659 + fourworld ground/placemen
 Five mutations fail/restored (copy ownership, activeleg, originalground, sharedbytes, occupancy).
 No fullViewerload claim: visitors/staff/nativependingwork/advisor/presentation still required.
 ClearQueue Both backup loss found by continuation audit, reported; cow fixed separately.
+Geometry final gates a7275e8:231438SaveAudit,659+92Godotsmokes,83PythonPASS;
+8parkmatrix4PASS+4exactretailreds(landing_evidenceTrue), runtime10/11knownFANTASYanchoronly.
+Cow ClearQueue12352fb/perf7f76494 oncatboy/frame-allocations awaitingtinyreview/main;
+updateoldGroundUnknowncontrolwhenmerged (useexplicitno-backupfixture forunknown callback).

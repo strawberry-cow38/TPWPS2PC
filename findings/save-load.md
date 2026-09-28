@@ -352,3 +352,13 @@ now has owners, but Viewer allocator/asset registry and model/ride/world cross-l
 the complete coordinator. Save/Load UI remains unavailable until ALL required owners stage.
 All3delegates used this turn; no pending workers. Main perf changes moving fast; fetch/merge,
 review newly added persistent vs derived fields, explicit paths, gates and normal research push.
+
+Final geometry gates on a7275e8 (main6ee6c19): ownerdiscSaveAudit231438PASS;
+Godot placement659+fourworldground92PASS;83PythonPASS. /tmp/tpw-save-geometry-matrix:
+8parks,4PASS+4exactretailreds,exit2,landing_evidence=True. /tmp/tpw-save-geometry-runtime:
+10/11PASS,unchangedknownFANTASYanchorbaseline only. Evidence logs /tmp/tpw-placement-final.log,
+/tmp/tpw-ground-final.log,/tmp/tpw-geometry-final-saveaudit.log.
+Cow's subsequent ClearQueue fix is12352fb and perf7f76494 oncatboy/frame-allocations,
+NOT main yet at this checkpoint; tinyclaw reviewing/rebasing. Prefer reviewedmain when landed.
+Update PathToolSaveChecks after merging: demotedBoth should keepbackup and NOT emitGroundUnknown;
+exercise GroundUnknown explicitly with an authored/no-backup fixture instead of relying onbug.
