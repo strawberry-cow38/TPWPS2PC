@@ -45,8 +45,23 @@ public static class LaptopGraph
     public const int EraseDrop = 3;
 
     /// <summary>true = the dark pass is in front (a 3px stepped LINE); false = the colour pass is
-    /// in front (a filled AREA). See the note in <see cref="DrawSeries"/>.</summary>
-    public static bool LineStyle = true;
+    /// in front (a filled AREA).
+    ///
+    /// ⭐⭐ SETTLED 2026-09-28 by reading the GS environment and the render list, not by argument
+    /// (`findings/graph-widget.md` §1.8). **The GS never rejects on depth**: every draw environment
+    /// writes `TEST_1 = 0x30000` (`ZTE=1, ZTST=ALWAYS`) and every `ZBUF_1` carries `ZMSK=1`, so the
+    /// Z buffer is never even updated. Ordering is a **CPU sort**: sprites whose texture carries
+    /// flag `0x40` -- which includes the flat sprite the plotter emits -- go into a sorted region
+    /// keyed on `z`, quicksorted DESCENDING and walked ascending, so a LARGER key is emitted
+    /// EARLIER and ends up BEHIND. **Smaller z is nearer.**
+    ///
+    /// The colour pass draws at `Z - 1` and the dark pass at `Z`, so the COLOUR pass is in front,
+    /// the dark pass is hidden behind it entirely, and a series reads as a filled AREA.
+    ///
+    /// ⭐ That also independently explains the container: the panel is issued at `Z` too, and
+    /// non-sorted chains are emitted before the sorted region, so it lands behind the data --
+    /// which is the constraint that made the old "dark in front" reading impossible.</summary>
+    public static bool LineStyle = false;
 
     /// <summary>The year ticks along the bottom are BLUE, and only appear when the span is more
     /// than one year.</summary>

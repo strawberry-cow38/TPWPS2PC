@@ -422,7 +422,7 @@ public partial class Viewer : Node3D
             // render of All Staff has somebody on it. ⚠ A harness, not a gameplay path.
             else if (a == "--staff-test") _staffTest = true;
             else if (a == "--graph-demo") _graphDemo = true;
-            else if (a == "--graph-area") LaptopGraph.LineStyle = false;
+            else if (a == "--graph-line") LaptopGraph.LineStyle = true;
             else if (a == "--menu") _wantMenu = true;
             // ⭐ `--menu-go=N` presses Confirm N times through the REAL handler, so a render can
             // show where the front end actually hands off to rather than a flag jumping there.
