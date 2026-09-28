@@ -52,7 +52,7 @@ public readonly record struct AdvisorPlacement(AssetResourceDatabase.AssetKind K
 /// 0xE, 0x10) and `0x103718` does not. The port's build tool holds a GHOST, not a pool object, so there is
 /// nothing to subtract from v14..v16 and nothing extra in v50 -- v50 is one object short while a build tool
 /// is out (said, not modelled).</summary>
-public sealed class AdvisorProducers : IAdvisorProducers
+public sealed partial class AdvisorProducers : IAdvisorProducers
 {
     public AdvisorProducers(ParkClock clock, ParkSim sim = null, ParkStaff staff = null, ParkVisitors visitors = null)
     {

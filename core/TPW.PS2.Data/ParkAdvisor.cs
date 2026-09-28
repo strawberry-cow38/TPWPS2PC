@@ -79,7 +79,7 @@ public interface IAdvisorHead
 /// the start path; the timing initialiser `0x1A8920` was not re-read for this). "Section 12" (`0x17C8C8`) is
 /// the empty value of the channel's section and of the queue slot (READ `0x1AC1B0..0x1AC1B4`): a channel with
 /// no record here.</summary>
-public sealed class AdvisorHeadChannel
+public sealed partial class AdvisorHeadChannel
 {
     /// <summary>A record's authored length (APS record `+4`), frames.</summary>
     readonly Func<int, int> _frames;
@@ -215,8 +215,9 @@ public readonly record struct AdvisorPlayback(ushort Id, AdvisorRecordType Kind,
 /// draws `rand(5)` from the game's one stream, which the port does not share.
 ///
 /// ⚠ NOT SAVED (research §11): the ring, the pending and current message, the state, the rule object. The
-/// message stack IS saved per park (<see cref="AdvisorMessageStack.CaptureState"/>).</summary>
-public sealed class ParkAdvisor
+/// message stack IS saved per park (<see cref="AdvisorMessageStack.CaptureState"/>). CORE snapshots are a
+/// separate, complete continuation contract: see CaptureState/AllocateShell/Hydrate in ParkAdvisor.State.cs.</summary>
+public sealed partial class ParkAdvisor
 {
     // ---- flags byte adv+0 (findings/advisor-messages.md §1.2) -------------------------------------
     /// <summary>`0x01`: text to the message stack; opcode 8 acts.</summary>
@@ -255,9 +256,9 @@ public sealed class ParkAdvisor
     /// <summary>Head records (section 5): enter 13, exit 14.</summary>
     public const int RecordEnter = 13, RecordExit = 14;
 
-    readonly AdvisorCatalogue _catalogue;
+    AdvisorCatalogue _catalogue;
     readonly (ushort Id, AdvisorRecordType Kind, object Object)[] _ring = new (ushort, AdvisorRecordType, object)[RingSlots];
-    readonly byte[] _count, _variant;
+    byte[] _count, _variant;
 
     /// <param name="producers">The rule object's variables (<see cref="AdvisorProducers"/>). Unused without flag 8.</param>
     /// <param name="testPark">`0x153410()` = `[0x2B72A8]`, the Rollercoaster Test Park: no rule object, no greeting.</param>
@@ -295,16 +296,16 @@ public sealed class ParkAdvisor
             _variant[i] = c <= 1 ? (byte)0 : (byte)random(c);
         }
         Stack = new AdvisorMessageStack { TutorialEvent = n => TutorialEvent(n), Replay = r => TutorialMessage(r) };
-        var mouthRand = new NewlibRand(0xAD715);
-        Rand = mouthRand.Next;
+        _mouthRand = new NewlibRand(0xAD715);
+        Rand = _mouthRand.Next;
     }
 
-    public ParkClock Clock { get; }
+    public ParkClock Clock { get; private set; }
     /// <summary>The message stack `0x3928C8` (a HUD object natively; per park here, as its save is).</summary>
-    public AdvisorMessageStack Stack { get; }
+    public AdvisorMessageStack Stack { get; private set; }
     /// <summary>The rule object `adv+0x264`, or null (test park).</summary>
-    public AdvisorScheduler Scheduler { get; }
-    public bool TestPark { get; }
+    public AdvisorScheduler Scheduler { get; private set; }
+    public bool TestPark { get; private set; }
 
     /// <summary>`adv+0`.</summary>
     public byte Flags { get; private set; }
@@ -372,6 +373,7 @@ public sealed class ParkAdvisor
     /// <summary>Mouth changes (`0x105FC8` calls) -- instrumentation.</summary>
     public long MouthChanges { get; private set; }
     LipTrack.Playback _lip;
+    NewlibRand _mouthRand;
     /// <summary>Updates run -- instrumentation.</summary>
     public long Ticks { get; private set; }
 
@@ -471,6 +473,9 @@ public sealed class ParkAdvisor
     /// pass touches the stack.</summary>
     public void Update()
     {
+        if (_updating || !_hydrated) throw new InvalidOperationException("Advisor is busy or unhydrated");
+        _updating = true;
+        try {
         Stack.Update();
         Head?.Step(MillisecondsPerTick);
         Ticks++;
@@ -558,6 +563,7 @@ public sealed class ParkAdvisor
                 if (CurrentId == Bankrupted) GameOver?.Invoke();
             }
         }
+        } finally { _updating = false; }
     }
 
     /// <summary>`0x107530`: the state is 2..4 and the message is modal.</summary>

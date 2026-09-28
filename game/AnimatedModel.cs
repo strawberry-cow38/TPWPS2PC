@@ -230,6 +230,18 @@ public sealed class AnimatedModel
             foreach (var surface in part.Surfaces) surface.Visible = NativeMeshShown(part);
     }
 
+    // Retained self-hidden flags are state, including helpers that happen not to draw a
+    // mesh today. A snapshot must not infer them from only the last sampled record.
+    internal int[] CaptureHiddenNodes() => _hidden.OrderBy(n=>n).ToArray();
+    internal void RestoreHiddenNodes(int[] nodes)
+    {
+        if(nodes==null || nodes.Length>_model.Meshes.Count+_model.HelperCount
+            ||nodes.Any(n=>n<0||n>=_model.Meshes.Count+_model.HelperCount)||nodes.Distinct().Count()!=nodes.Length)
+            throw new InvalidDataException("Invalid retained animation visibility");
+        _hidden.Clear();_hidden.UnionWith(nodes);
+        foreach(var p in _parts)foreach(var surface in p.Surfaces)surface.Visible=PartShown(p);
+    }
+
     bool NativeMeshShown(Part part) =>
         AnimationNodeVisibility.Shown(_model, part.Mesh.Index, _hidden);
 

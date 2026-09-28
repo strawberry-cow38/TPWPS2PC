@@ -7,20 +7,40 @@ namespace TPWPS2Viewer;
 /// <summary>Actual bus model/controller adapter. It does not invent arrivals, sound graph
 /// scheduling, catalogue variant selection, traffic gates or a clock source: those inputs
 /// belong to the park integration. Kept separate from the unrelated Bus.RSE statuses.</summary>
-public sealed class NativeBus
+public sealed partial class NativeBus
 {
     public AnimatedModel Model { get; }
     public NativeBusController Controller { get; }
     public Node3D Root => Model.Root;
+    readonly TPW.PS2.Data.Model sourceModel;
+    readonly Aps sourceAnimation;
+    readonly string originalModelFingerprint;
+    float sampledFrame;
+    bool sampledCurrentRecord = true;
+
+    void Bind(Aps.Record record)
+    {
+        Model.ActivateNativeRecord(record);
+        sampledCurrentRecord = false;
+    }
+
+    void Sample(float frame)
+    {
+        Model.SetFrame(frame);
+        sampledFrame = frame;
+        sampledCurrentRecord = true;
+    }
 
     public NativeBus(TPW.PS2.Data.Model model, Aps animation,
         Func<string,(ImageTexture Tex,bool Soft)> texture, uint initialRandomRaw, uint clock,
         Action<int,uint> stateCommand, Action<int> arrivalBatch)
     {
+        sourceModel = model; sourceAnimation = animation;
+        originalModelFingerprint = Fingerprint(model.D);
         Model = new AnimatedModel(model, animation, null, texture, nativeNodeVisibility: true);
         Model.SetFrame(0); // instantiated source pose, with native own-node visibility
         Controller = new NativeBusController(animation, initialRandomRaw, clock,
-            Model.ActivateNativeRecord, Model.SetFrame, stateCommand, arrivalBatch);
+            Bind, Sample, stateCommand, arrivalBatch);
     }
 
     /// <summary>Sample between park ticks using the same authored curve, facing, wheels and
@@ -28,7 +48,7 @@ public sealed class NativeBus
     public void Present(uint activeMilliseconds, float fractionalMilliseconds = 0)
     {
         if (Controller.Active)
-            Model.SetFrame(Controller.PresentationFrame(activeMilliseconds, fractionalMilliseconds));
+            Sample(Controller.PresentationFrame(activeMilliseconds, fractionalMilliseconds));
     }
 
     public int Update(uint activeMilliseconds, int countdownDelta, int traffic,

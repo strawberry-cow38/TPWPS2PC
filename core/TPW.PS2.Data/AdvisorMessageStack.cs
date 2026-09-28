@@ -418,4 +418,59 @@ public sealed class AdvisorMessageStack
         Count = 0; IsOpen = false; Deleting = false; Cursor = 0; ScrollTop = 0; PendingRemoval = -1; Selected = null;
         foreach (var s in _slots) s.Reset();
     }
+    // CORE graph snapshot: unlike the native save above, retains ALL slots, goals, input and UI progress.
+    public sealed record CoreRecord([property: System.Text.Json.Serialization.JsonRequired] AdvisorRecordType Type, [property: System.Text.Json.Serialization.JsonRequired] int State, [property: System.Text.Json.Serialization.JsonRequired] string Text, [property: System.Text.Json.Serialization.JsonRequired] short Row, [property: System.Text.Json.Serialization.JsonRequired] int Lifetime, [property: System.Text.Json.Serialization.JsonRequired] int SlideCounter, [property: System.Text.Json.Serialization.JsonRequired] int SlideX, [property: System.Text.Json.Serialization.JsonRequired] int SlideY, [property: System.Text.Json.Serialization.JsonRequired] string ObjectId);
+    public sealed record CoreState
+    {
+        public required int Version { get; init; }
+        public required CoreRecord[] Slots { get; init; }
+        public required int Count { get; init; }
+        public required bool IsOpen { get; init; }
+        public required bool Deleting { get; init; }
+        public required int Cursor { get; init; }
+        public required int ScrollTop { get; init; }
+        public required int PendingRemoval { get; init; }
+        public required int SelectedSlot { get; init; }
+        public required AdvisorStackButtons Pressed { get; init; }
+        public required string UiSoundId { get; init; }
+        public required string TutorialEventId { get; init; }
+        public required string FocusObjectId { get; init; }
+        public required string ReplayId { get; init; }
+    }
+    /// <summary>Caller must freeze the park between passes (including UI input and callbacks).</summary>
+    public CoreState CaptureCoreState(AdvisorStateBindings b, bool quiescent)
+    {
+        if (!quiescent) throw new InvalidOperationException("Stack capture requires quiescence");
+        return new CoreState { Version = 1, Slots = _slots.Select(r => new CoreRecord(r.Type, r.State, r.Text,
+            r.Row, r.Lifetime, r.SlideCounter, r.SlideX, r.SlideY, b.Identify(r.Object))).ToArray(),
+            Count = Count, IsOpen = IsOpen, Deleting = Deleting, Cursor = Cursor, ScrollTop = ScrollTop,
+            PendingRemoval = PendingRemoval, SelectedSlot = Selected == null ? -1 : Array.IndexOf(_slots, Selected),
+            Pressed = _pressed, UiSoundId = b.Identify(UiSound), TutorialEventId = b.Identify(TutorialEvent),
+            FocusObjectId = b.Identify(FocusObject), ReplayId = b.Identify(Replay) };
+    }
+    public static AdvisorMessageStack FromCoreState(CoreState s, AdvisorStateBindings b)
+    {
+        if (s == null || s.Version != 1 || s.Slots?.Length != Capacity || (uint)s.Count > Capacity ||
+            (uint)s.Cursor >= Capacity || (uint)s.ScrollTop >= Capacity || s.PendingRemoval < -1 ||
+            s.SelectedSlot < -1 || s.SelectedSlot >= Capacity || ((int)s.Pressed & ~15) != 0 ||
+            s.Slots.Any(r => r == null || !Enum.IsDefined(r.Type) || r.State < 0 || r.State > 2 ||
+                r.SlideCounter < 0 || r.SlideX < -64 || r.SlideX > 24))
+            throw new InvalidDataException("Invalid advisor message stack");
+        // Validate/resolve EVERY reference before writing a destination. No Add, Clear, Update, sounds or events.
+        var objects = s.Slots.Select(r => b.Resolve<object>(r.ObjectId)).ToArray();
+        var sound = b.Resolve<Action<int>>(s.UiSoundId); var tutorial = b.Resolve<Action<int>>(s.TutorialEventId);
+        var focus = b.Resolve<Action<object>>(s.FocusObjectId); var replay = b.Resolve<Action<short>>(s.ReplayId);
+        var result = new AdvisorMessageStack { Count = s.Count, IsOpen = s.IsOpen, Deleting = s.Deleting,
+            Cursor = s.Cursor, ScrollTop = s.ScrollTop, PendingRemoval = s.PendingRemoval, _pressed = s.Pressed,
+            UiSound = sound, TutorialEvent = tutorial, FocusObject = focus, Replay = replay };
+        for (int i = 0; i < Capacity; i++)
+        {
+            var r = s.Slots[i]; var d = result._slots[i];
+            d.Type = r.Type; d.State = r.State; d.Text = r.Text; d.Row = r.Row; d.Lifetime = r.Lifetime;
+            d.SlideCounter = r.SlideCounter; d.SlideX = r.SlideX; d.SlideY = r.SlideY; d.Object = objects[i];
+        }
+        result.Selected = s.SelectedSlot < 0 ? null : result._slots[s.SelectedSlot];
+        return result;
+    }
+
 }

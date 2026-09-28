@@ -118,7 +118,7 @@ public sealed class NewlibRand
 /// happens inside <see cref="Advance"/>, and when the old descriptor has a last pair it happens
 /// one record later. The movement predicate reads <see cref="Current"/>, never Pending.
 /// </summary>
-public sealed class NativeLogicalAnimationControl
+public sealed partial class NativeLogicalAnimationControl
 {
     public const byte None = 0xff;
     readonly NativeLogicalAnimationTable table;
@@ -273,7 +273,7 @@ public sealed class NativeLogicalAnimationControl
 /// update of a shown guest. Which of guest update, push and model update comes first within one
 /// frame was NOT found: see findings/native-guest-animation-readiness.md.
 /// </summary>
-public sealed class NativeGuestAnimation
+public sealed partial class NativeGuestAnimation
 {
     public const float FramesPerSecond = 30f;
     readonly Func<int, int, int?> duration;

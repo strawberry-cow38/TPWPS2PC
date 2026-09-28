@@ -28,7 +28,7 @@ namespace TPWPS2Viewer;
 ///   (research "Still unknown"), so it is left out rather than guessed into one.
 /// - Pause (`0x153888`) sets both targets to 0; the port's pause is not wired to this (not the advisor's).
 /// </summary>
-public sealed class GameAudioMix
+public sealed partial class GameAudioMix
 {
     public const string MusicBus = "Music", SfxBus = "SFX";
     /// <summary>`0x1066B0` state 2's immediate `0x19`.</summary>

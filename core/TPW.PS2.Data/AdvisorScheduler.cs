@@ -37,11 +37,11 @@ public interface IAdvisorProducers
 /// every rule `next = 0`, `lastFail = day`, variables and counters 0, cursors 0, warm-up from the top.
 /// ⭐ A RESUMED park builds it at day 0 and restores the calendar AFTERWARDS (`0x151688` then `0x15172C`),
 /// so every rule is due at once and sees `v78 = (s16)D`: construct the advisor before a restored calendar
-/// is applied. ⚠ NOT SAVED: nothing saves the rule object (research §2.2, §11), so it has no save shape.
+/// is applied. ⚠ NOT SAVED: nothing saves the rule object (research §2.2, §11), so it has no native save shape. CORE continuation uses CaptureState instead of this reset.
 ///
 /// ⭐ THE DAY is `ParkClock.TotalDays` (`cal+0x10`): 0x4000 units a sim pass, 60 passes a day, 2.4 s a day at
 /// the console's 25 passes a second (findings/clock-rate.md). Every rule delay is in these days.</summary>
-public sealed class AdvisorScheduler
+public sealed partial class AdvisorScheduler
 {
     /// <summary>`0x10DE60` `sltiu 0x4F`: 79 variables, v78 last.</summary>
     public const int VariableCount = 79;
@@ -117,6 +117,9 @@ public sealed class AdvisorScheduler
     /// reads what they change, so the order of effects is the interpreter's).</summary>
     public void Step(Func<bool> ringEmpty, Action<ushort> textUi, Action<ushort> message)
     {
+        if (_stepping) throw new InvalidOperationException("Reentrant scheduler step");
+        _stepping = true;
+        try {
         Calls++;
         int refreshed = 0;
         if (!Warm)
@@ -156,6 +159,7 @@ public sealed class AdvisorScheduler
         }
         RuleCursor = (RuleCursor + 1) % RuleCount;
         Last = new StepReport(refreshed, false, cr, due, result, effects);
+        } finally { _stepping = false; }
     }
 
     /// <summary>⭐ `0x10DE38(ro, i)`: store variable i. `i ≥ 79` does nothing (`sltiu 0x4F`); 78 has no

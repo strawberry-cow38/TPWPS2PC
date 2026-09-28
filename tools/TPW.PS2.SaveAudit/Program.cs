@@ -35,6 +35,13 @@ void RequireEveryJsonMember<T>(T state)
     }
 }
 
+if(args.Length>0 && args[0]=="--presentation-only")
+{
+    checks+=AdvisorSaveChecks.Run();checks+=NativePresentationSaveChecks.Run();
+    if(args.Length==2){using var disc=new Disc(args[1]);checks+=AdvisorSaveChecks.Run(AdvisorCatalogue.Load(disc));checks+=AdvisorGraphSaveChecks.Run(disc);}
+    Console.WriteLine($"PASS PresentationSaveAudit: {checks} checks (native/advisor core; not a whole world save).");return 0;
+}
+
 if(args.Length>0 && args[0]=="--staff-only")
 {
     checks+=StaffMemberSaveChecks.Run();checks+=StaffLeafSaveChecks.Run();checks+=StaffSecuritySaveChecks.Run();checks+=ParkStaffGraphSaveChecks.Run();
@@ -70,6 +77,7 @@ if(args.Length>0 && args[0]=="--ground-only")
 if(args.Length>0)
 {
     using var disc=new Disc(args[0]);
+    checks+=AdvisorSaveChecks.Run(AdvisorCatalogue.Load(disc));checks+=AdvisorGraphSaveChecks.Run(disc);
     GuestWalkSaveChecks.Run(disc,Check);
     ParkPathsSaveChecks.Run(disc,Check);
     PathToolSaveChecks.Run(disc,Check);
@@ -77,6 +85,7 @@ if(args.Length>0)
     DiscParkSimSaveChecks.Run(disc,Check);
     DiscVisitorGraphSaveChecks.Run(disc,Check);
 }
+checks+=AdvisorSaveChecks.Run();checks+=NativePresentationSaveChecks.Run();
 checks+=StaffMemberSaveChecks.Run();checks+=StaffLeafSaveChecks.Run();checks+=StaffSecuritySaveChecks.Run();checks+=ParkStaffGraphSaveChecks.Run();
 checks += NativeEntranceFlowSaveChecks.Run();
 checks += NativeRideQueueSaveChecks.Run();

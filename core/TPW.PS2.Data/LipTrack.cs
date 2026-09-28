@@ -31,6 +31,16 @@ public sealed class LipTrack
         /// terminator was read (every call once past the end). The advisor's mouth (`0x106B54`) keys on it.</summary>
         public bool Stepped { get; private set; }
         public Playback(LipTrack track) { _track = track; }
+        public LipTrack Track => _track;
+        public int NextIndex => _next;
+        /// <summary>Hydrate playback without consuming a mark. The owning snapshot validates
+        /// the immutable track identity/fingerprint before calling this constructor.</summary>
+        public static Playback FromState(LipTrack track, int next, bool active, bool stepped)
+        {
+            ArgumentNullException.ThrowIfNull(track);
+            if(next<0 || next>track.Microseconds.Count)throw new InvalidDataException("Invalid lip cursor");
+            return new Playback(track){_next=next,Active=active,Stepped=stepped};
+        }
         public bool Advance(uint elapsedMilliseconds)
         {
             Stepped = false;

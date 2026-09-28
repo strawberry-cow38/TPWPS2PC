@@ -4,7 +4,7 @@ namespace TPW.PS2.Data;
 /// Animation time is pause-gated elapsed milliseconds; countdown time is the separate
 /// signed 397640 delta. The caller must not substitute one for the other.
 /// No batch size, audio graph, traffic simulation or scenario defaults are invented here.</summary>
-public sealed class NativeBusController
+public sealed partial class NativeBusController
 {
     readonly Animation animation;
     readonly IReadOnlyList<(int Count, int Offset)> sections;
