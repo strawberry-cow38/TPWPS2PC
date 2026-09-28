@@ -88,6 +88,25 @@ public sealed class PathTool
     /// ride hears that a path went in under it.</summary>
     public event Action<int, int> KindChanged;
 
+    /// <summary>⚠ Raised when a cell is torn up but the ground it was laid over is NOT known, so
+    /// the paving stays. The only way to reach it is restoring the path grid without `_before`.
+    /// See <see cref="TearUp"/>.</summary>
+    public event Action<int, int> GroundUnknown;
+
+    /// <summary>⭐ The ground each laid cell was laid OVER, as `(cellIndex, terrainByte)`. SAVE
+    /// STATE: without it a path cannot be torn back to the right ground after a load, and
+    /// <see cref="TearUp"/> will leave the paving behind. Restore it alongside the grid itself.
+    /// </summary>
+    public IReadOnlyDictionary<int, byte> GroundBeneath => _before;
+
+    /// <summary>Restore <see cref="GroundBeneath"/> after a load.</summary>
+    public void RestoreGroundBeneath(IEnumerable<KeyValuePair<int, byte>> saved)
+    {
+        _before.Clear();
+        if (saved == null) return;
+        foreach (var kv in saved) _before[kv.Key] = kv.Value;
+    }
+
     /// <summary>Put the most recent leg back. Returns false when there is none.</summary>
     public bool UndoLeg()
     {
@@ -436,6 +455,15 @@ public sealed class PathTool
         {
             _field.Cells[at * 2 + 1] = ground;
             _before.Remove(at);
+        }
+        else
+        {
+            // ⚠⚠ LOUD, NOT SILENT. `Lay` records the prior ground for every cell it lays, so in a
+            // live session this cannot happen. It CAN happen across a save/load that restores the
+            // path grid without `_before` -- and then the cell stops being a path while the
+            // terrain keeps the paving, which reads as a texture bug rather than as missing save
+            // state. Saying so is the difference between a bug you can find and one you cannot.
+            GroundUnknown?.Invoke(x, y);
         }
         _kind[at] = Kind.None; _owner[at] = 0; _run[at] = 0; _turns[at] = 0;
         Laid--;
