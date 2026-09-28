@@ -489,6 +489,39 @@ public sealed record LaptopScreen(
     public static readonly (byte R, byte G, byte B)[] OverallSeriesRgb =
         { (254, 0, 0), (231, 102, 27) };
 
+    /// <summary>⭐ The PARK STATISTICS menu (id 8), in draw order at (45, 115 + 32i).
+    /// `findings/parkstats-screens.md` §2. All four rows are appended ENABLED, so all four are
+    /// selectable; the laptop's title stays 530 "Information" on the menu and on every page.
+    ///
+    /// ⚠ Note the fourth: Awards is a page of this menu, which makes five screens on this one
+    /// class (with Gold Tickets), not four.</summary>
+    public static readonly (int TextId, string Opens)[] ParkStatsMenu =
+    {
+        (841,  "visitorinfo"),   // STR_PARKSTATS_PARK_INFORMATION -- "Visitor Information"
+        (1063, "statistics"),    // STR_PARKSTATS_GRAPH            -- the graph page
+        (164,  "parkfinance"),   // STR_PARKSTATS_DETAILS          -- "Park Finance"
+        (101,  "awards"),        // STR_GIZMO_CPP_AWARDS           -- "Awards"
+    };
+
+    /// <summary>⭐ PARK STATISTICS / Statistics (menu id 24) -- the third graph screen.
+    /// `findings/graph-widget.md` §4; draw `FUN_00185c48`.
+    /// ⚠ `GraphLegend` is authored and NEVER READ, so nothing draws a colour key.</summary>
+    public static readonly LaptopScreen ParkStatistics = new(
+        "main_ps_statistics.sce", 24, "Items", "Items", "Items", "Items",
+        new LaptopRow[]
+        {
+            new(512, LaptopRowKind.Text),   // People In Park
+            new(618, LaptopRowKind.Text),   // Arrival Rate
+            new(926, LaptopRowKind.Text),   // Happiness      (value is int + "%")
+            new(539, LaptopRowKind.Text),   // Time In Park   (value is int + "d")
+            new(727, LaptopRowKind.Text),   // Overall Rating (value is int + "%")
+        },
+        LabelsOnGrid: true, GraphElement: "graph");
+
+    /// <summary>The five Statistics series colours (`0x364150`), in row order.</summary>
+    public static readonly (byte R, byte G, byte B)[] ParkStatsSeriesRgb =
+        { (254, 1, 1), (231, 102, 27), (254, 254, 1), (1, 176, 60), (1, 178, 235) };
+
     public static readonly LaptopScreen[] AllList = { AllRides, AllShops, AllSideshows, AllToilets };
 
     /// <summary>The four "Single ..." item screens the console builds on one base class. ⚠ Build

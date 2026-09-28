@@ -3594,6 +3594,39 @@ public partial class Viewer : Node3D
             }
             case "stafftypes": ShowStaffInfoTypes(); break;
             case "staffitem": ShowStaffInfoMember(arg); break;
+            // ⭐⭐ THE PARK STATISTICS MENU (id 8). Four pages, all selectable.
+            case "parkstats":
+            {
+                var pnames = new List<string>();
+                foreach (var e in LaptopScreen.ParkStatsMenu) pnames.Add(TextRow(e.TextId));
+                _shopPanel.ShowMenu(pnames, 0, LaptopScreen.ParkStatsMenu.Length > 0
+                                               ? "main_parkstats.sce" : null);
+                ClearLaptopModel();
+                RefreshLaptopBalance();
+                Status("park statistics -- pick a page, or Back");
+                break;
+            }
+            // ⭐⭐ PARK STATISTICS / Statistics (id 24) -- the third screen on the graph widget.
+            case "statistics":
+            {
+                int spick = Math.Clamp(int.TryParse(arg, out var sp) ? sp : 0, 0,
+                                       LaptopScreen.ParkStatistics.Rows.Count - 1);
+                _graphRow = spick;
+                var srgb = LaptopScreen.ParkStatsSeriesRgb[spick];
+                // ⚠ NONE of the five park statistics are retained per month in this port -- there
+                // is no ring for people, arrivals, happiness, time in park or rating. They plot
+                // flat zero rather than a plausible invention, and the empty graph is the report.
+                var sbuckets = LaptopGraphData.Build(_ => 0, 0, _graphYears, out int smax);
+                _shopPanel.GraphPanel ??= UiPanel.Load(_lib);
+                _shopPanel.ShowScreen(LaptopScreen.ParkStatistics, "",
+                    Blank(LaptopScreen.ParkStatistics.Rows.Count),
+                    graph: new LaptopShopScreen.GraphSeries(
+                        sbuckets, 0, smax, Color.Color8(srgb.R, srgb.G, srgb.B), _graphYears));
+                ClearLaptopModel();
+                RefreshLaptopBalance();
+                Status($"{TextRow(LaptopScreen.ParkStatistics.Rows[spick].TextId)} -- no monthly ring in this port yet");
+                break;
+            }
             // ⭐⭐ OVERALL STATISTICS (menu id 22) -- the same widget, two series.
             //
             // ⚠ Bank Balance can go NEGATIVE and the scale's `min` is still 0, so a negative month
@@ -4168,6 +4201,7 @@ public partial class Viewer : Node3D
                     case "main_bh_items":  _laptopBack.Add(("buildcats", null)); ShowLaptopLevel(); return;
                     case "main_gameoptions": _laptopBack.Add(("gameoptions", null)); ShowLaptopLevel(); return;
                     case "main_research":    _laptopBack.Add(("research", null)); ShowLaptopLevel(); return;
+                    case "main_parkstats":   _laptopBack.Add(("parkstats", null)); ShowLaptopLevel(); return;
                     case "main_bh_staff":
                         // ⭐ The Hire panel (Viewer.Staff.cs): its tabs, then a tab's candidates.
                         if (_staff == null) { Status("hire -- no park is running yet, so there is nobody to hire into"); return; }
@@ -4176,6 +4210,17 @@ public partial class Viewer : Node3D
                         Status($"{_text?.Text("eng", picked.TextId) ?? "that"} has no screen in this port yet");
                         return;
                 }
+            }
+            // ⭐ The PARK STATISTICS menu's rows, in the order the console lists them.
+            // ⚠ Awards has no screen here yet, so it says so rather than opening something else.
+            case "parkstats":
+            {
+                var pm = LaptopScreen.ParkStatsMenu;
+                if (row < 0 || row >= pm.Length) return;
+                if (pm[row].Opens == "awards") { Status("awards -- no screen in this port yet"); return; }
+                _laptopBack.Add((pm[row].Opens, null));
+                ShowLaptopLevel();
+                return;
             }
             case "info":
             {
