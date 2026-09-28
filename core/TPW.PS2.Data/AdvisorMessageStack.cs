@@ -84,9 +84,9 @@ public enum AdvisorStackButtons
 /// `0x109100`, HUD `0x13D940`, `0x13D8C0`, save `0x1C2D50`, load `0x1608E8`).
 ///
 /// The advisor's text is not a subtitle: a message with a text row (≠ 310) is appended here when it is
-/// PLAYED, and the player reads it later with L2. This class is the stack's data and its methods; step B
-/// draws it (the envelope and count at (32, 420)/(80, 430), the records at y = 250 − 70·i + scroll, the
-/// 260×180 text box at y 210, the button labels).
+/// PLAYED, and the player reads it later with L2. This class is the stack's data and its methods; the view
+/// draws it (game/AdvisorStackView.cs: the envelope and count at (32, 420)/(80, 430), the records at
+/// y = 250 − 70·i + scroll, the 260×180 text box at y 210).
 ///
 /// ⭐ It is SAVED per park (<see cref="CaptureState"/>/<see cref="RestoreState"/>, the shape of
 /// `0x1C2D50`/`0x1608E8`); the advisor's queue, current message and rule state are not (research §11).
@@ -218,8 +218,8 @@ public sealed class AdvisorMessageStack
 
     /// <summary>`0x1088E0`, a ride removed (`0x1E12E0`): the FIRST record whose object is it is marked for
     /// removal at the next flush; every LATER one is flushed at once (with the same index shift as
-    /// <see cref="RemoveByRow"/>, so the record after each removed one is skipped). ⚠ The view's demolition
-    /// is not wired to this in step A.</summary>
+    /// <see cref="RemoveByRow"/>, so the record after each removed one is skipped). Reached from a delete through
+    /// <see cref="ParkSim.Remove"/> → <see cref="ParkAdvisor.ObjectLeftPark"/>, BEFORE <see cref="ObjectRemoved"/>.</summary>
     public void RideRemoved(object ride)
     {
         int first = -1;
@@ -233,8 +233,9 @@ public sealed class AdvisorMessageStack
     }
 
     /// <summary>`0x13D8C0`, ANY object removed (`0x14A7B0`): every type-2 record in turn is marked, so the
-    /// LAST type-2 record is the one pending -- whatever its object (no comparison; READ quirk). ⚠ Not
-    /// wired to the view's demolition in step A (which of 0x1E12E0/0x14A7B0 runs first is not traced).</summary>
+    /// LAST type-2 record is the one pending -- whatever its object (no comparison; READ quirk). It runs AFTER
+    /// <see cref="RideRemoved"/> (`0x14A7B0` calls the object's `vt+0x10C` = `0x1E12E0` first), so it overwrites
+    /// that call's pending mark -- see <see cref="ParkAdvisor.ObjectLeftPark"/>.</summary>
     public void ObjectRemoved()
     {
         for (int i = 0; i < Count; i++)

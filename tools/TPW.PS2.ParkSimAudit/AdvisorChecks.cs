@@ -69,6 +69,8 @@ static class AdvisorChecks
         Ring(cat, rules, Check);
         Timings(cat, rules, Check);
         Modal(cat, rules, Check);
+        var lipsFile = disc.Files().Single(f => f.Path.Equals("/DATA/LIPS.WAD", StringComparison.OrdinalIgnoreCase));
+        Mouth(cat, rules, new WadArchive(disc.Read(lipsFile.Extent, lipsFile.Size)), Check);
         Stack(cat, rules, Check);
         Scheduler(cat, rules, Check);
         Elapsed(rules, Check);
@@ -157,6 +159,7 @@ static class AdvisorChecks
             return m;
         }
         DiscRules(cat, rules, NewPark, PlaceFirst, HireAt, Check);
+        Removal(cat, rules, NewPark, PlaceFirst, Check);
         ParkProducers(NewPark, PlaceFirst, Check);
     }
 
@@ -333,8 +336,13 @@ static class AdvisorChecks
         RunUntil(v, () => { seen.Add(v.State); return seen.Count > 5 && v.State == AdvisorState.Idle; }, 1000);
         int up = seen.Count(s => s == AdvisorState.Entering), talk = seen.Count(s => s == AdvisorState.Speaking),
             down = seen.Count(s => s == AdvisorState.Exiting), cool = seen.Count(s => s == AdvisorState.Cooldown);
-        Check(up == 25 && talk == 50 && down == 17 && cool == 100 && log2.Played[0].P.TalkRecord == 1,
-              $"states: voiced OPEN_PARK at 40 ms a tick: {up} ticks entering (30 frames), {talk} speaking (2000 ms, talk record {log2.Played[0].P.TalkRecord}), {down} exiting (20 frames), {cool} cooling");
+        // ⭐ The channel (0x1ABC80/0x1AC048): a record ends on the first update STRICTLY past its length, and the
+        // normal exit (flags 0) is QUEUED behind the talk record's pass -- 75 frames (2500 ms) for 2000 ms of speech.
+        static int Past(int frames, int fromMs = 0) { int n = 0; while (!(frames < (fromMs + 40 * ++n) * 30f / 1000f)) { } return n; }
+        int wantUp = Past(30), wantDown = Past(75, 2000) + Past(20);
+        Check(up == wantUp && talk == 50 && down == wantDown && cool == 100 && log2.Played[0].P.TalkRecord == 1,
+              $"states: voiced OPEN_PARK at 40 ms a tick: {up} ticks entering (strictly past 30 frames: {wantUp}), {talk} speaking (2000 ms, talk record {log2.Played[0].P.TalkRecord}), "
+              + $"{down} exiting (the exit waits out the talk record's 75-frame pass, then 20 frames: {wantDown}), {cool} cooling");
         // flag 0x10 clear, or an immediate waiting, ends the cooldown at once.
         var i = Make(cat, rules, testPark: true);
         Tick(i, 50);
@@ -376,6 +384,9 @@ static class AdvisorChecks
         bool latched = b.SkipLatched && log2.Skips == 1 && b.State == AdvisorState.Speaking;
         b.SkipHeld = false; Tick(b, 1);
         bool skipped = b.State == AdvisorState.Exiting && !b.Speaking;
+        var bh = (AdvisorTimedHead)b.Head;
+        Check(skipped && bh.Record == ParkAdvisor.RecordExit && bh.ElapsedMs == 0 && bh.Channel.Queued == AdvisorHeadChannel.None,
+              $"modal: the skip's exit is CUT short (flags 2): record 14 starts on the skip's tick instead of queueing behind the talk loop (record {bh.Record}, {bh.ElapsedMs} ms in, queued {bh.Channel.Queued})");
         b.Submit(0xD1);
         bool pending = b.PendingSet;
         Tick(b, 1);
@@ -387,6 +398,78 @@ static class AdvisorChecks
         c.Submit(voiced);
         RunUntil(c, () => c.State == AdvisorState.Idle && c.Ticks > 55, 400);
         Check(c.Flags == (ParkAdvisor.RideAlongFlags | 0x21), $"modal: the end of a modal message sets flags | 0x21 -- from ride-along's 6, text and queue come back: 0x{c.Flags:x2}");
+    }
+
+    // =============================================================================================
+    // The lips and the mouth (0x105F30, 0x106B54..0x106BEC, 0x105FC8, 0x106600).
+
+    /// <summary>A head that records what the advisor asks of it: the stand-in's timing, and every mouth and
+    /// costume call.</summary>
+    sealed class RecordingHead : IAdvisorHead
+    {
+        public readonly AdvisorTimedHead Timed = new();
+        public readonly List<int> Mouths = new(), Dresses = new();
+        public void Play(int record, int flags) => Timed.Play(record, flags);
+        public bool ChannelDone => Timed.ChannelDone;
+        public void Step(int milliseconds) => Timed.Step(milliseconds);
+        public void Dress(int selector) => Dresses.Add(selector);
+        public void Mouth(int shape) => Mouths.Add(shape);
+    }
+
+    static void Mouth(AdvisorCatalogue cat, AdvisorRules rules, WadArchive lips, Action<bool, string> Check)
+    {
+        // OPEN_PARK variant 0 speaks sp_001 with ENGLISH/sp_001.lip: three marks, read off the disc.
+        var voice = cat.Messages[0].Voices[0];
+        var entry = lips.Entries.Single(e => e.Path.Equals($"/English/{voice.LipStem}.lip", StringComparison.OrdinalIgnoreCase));
+        var track = new LipTrack(lips.Read(entry));
+        // The tick each mark is consumed: the first whose ms since the voice began is STRICTLY above mark/1000
+        // (0x105F30), one mark a tick; state 3's first tick is 40 ms in.
+        var markTick = new List<int>();
+        int k = 0;
+        foreach (uint m in track.Microseconds)
+        {
+            k++;
+            while (!(unchecked((uint)((int)m / 1000)) < (uint)(40 * k))) k++;
+            markTick.Add(k);
+        }
+        (ParkAdvisor A, RecordingHead H, List<(int Tick, int Shape, bool Gate)> Seen) Speak(Func<int, int, LipTrack> lipsFor, int ms)
+        {
+            var a = Make(cat, rules, testPark: true);
+            var h = new RecordingHead();
+            a.Head = h; a.SpeechLength = (_, _, _) => ms; a.Lips = lipsFor;
+            var rng = new NewlibRand(7); a.Rand = rng.Next;
+            Tick(a, 50);
+            a.Submit(0x00);
+            RunUntil(a, () => a.State == AdvisorState.Speaking, 100);
+            var seen = new List<(int, int, bool)>();
+            for (int t = 1; a.State == AdvisorState.Speaking && t < 400; t++) { a.Update(); seen.Add((t, a.MouthShape, a.LipGate)); }
+            return (a, h, seen);
+        }
+        var (la, lh, lseen) = Speak((id, v) => id == 0 && v == 0 ? track : null, 5000);
+        bool gateAtMarks = markTick.Count == 3
+            && lseen.Where(x => x.Tick < markTick[0]).All(x => x.Gate)
+            && lseen.Where(x => x.Tick >= markTick[0] && x.Tick < markTick[1]).All(x => !x.Gate)
+            && lseen.Where(x => x.Tick >= markTick[1] && x.Tick < markTick[2]).All(x => x.Gate)
+            && lseen.Where(x => x.Tick >= markTick[2]).All(x => !x.Gate);
+        Check(gateAtMarks, $"lips: the gate starts SET and flips on the tick each of sp_001's marks ({string.Join(", ", track.Microseconds)} µs) "
+              + $"is strictly passed, one a tick: ticks {string.Join(", ", markTick)}, then the terminator clears it");
+        bool shapesAtMarks = lseen.Single(x => x.Tick == markTick[0]).Shape == 0 && lseen.Single(x => x.Tick == markTick[1]).Shape == 1
+            && lseen.Where(x => (x.Tick > markTick[0] && x.Tick < markTick[1]) || x.Tick >= markTick[2]).All(x => x.Shape == 0);
+        var early = lseen.Where(x => x.Tick < markTick[0]).Select(x => x.Shape).ToList();
+        Check(shapesAtMarks && early.Distinct().Count() > 1,
+              $"mouth: a consumed mark with the gate set is 1 (aah) (tick {markTick[1]}), with it clear 0; the gate clear holds 0; the gate set "
+              + $"and nothing consumed flaps at random ({early.Distinct().Count()} shapes before the first mark: {string.Join("", early.Take(24))}...)");
+        Check(lh.Mouths.Count == la.MouthChanges && lh.Mouths.Count > 0 && lh.Mouths[^1] == 0 && la.MouthShape == 0 && !la.LipGate,
+              $"mouth: every shape reaches the model (0x105FC8, {lh.Mouths.Count} calls) and the head going down sets 0 with the lips off (0x106600)");
+        // No lip track (message 268's PS2_): the gate never clears, so it flaps for the whole voice.
+        var (na, _, nseen) = Speak((_, _) => null, 3000);
+        int changes = nseen.Zip(nseen.Skip(1), (x, y) => x.Shape != y.Shape).Count(c => c);
+        Check(!na.LipTrackAttached && nseen.SkipLast(1).All(x => x.Gate) && !nseen[^1].Gate && nseen[^1].Shape == 0 && nseen[^2].Shape != 0 && changes >= 5 && nseen.Select(x => x.Shape).Distinct().Count() >= 3,
+              $"mouth: with no lip track the gate stays set (until the head goes down, which closes the mouth: {nseen[^2].Shape} → {nseen[^1].Shape}) and the mouth flaps at random for the whole voice ({changes} changes over {nseen.Count} ticks, "
+              + $"{nseen.Select(x => x.Shape).Distinct().Count()} shapes)");
+        // The costume: the take of a voiced message dresses the head with its variant's selector (0x107B90).
+        Check(lh.Dresses.SequenceEqual(new[] { (int)voice.AnimationSelector }) && la.Costume == voice.AnimationSelector,
+              $"costume: the take dresses the head with the variant's selector {voice.AnimationSelector} (0x107B90 → 0x107160), once");
     }
 
     // =============================================================================================
@@ -770,6 +853,79 @@ static class AdvisorChecks
               && qa.Scheduler.Counters[0] == 1 && qa.Scheduler.Counters[1] == 1
               && up == ParkStaff.UpgradeRequest.NoMechanics && qlog.Submitted.Any(s => s.Id == StaffTables.UpgradeNoMechanicsMessage && s.Obj == null),
               "routing: through Attach, a ride entering 4 and 5 submits 0x36 and 0x37 WITH the ride and counts events 0 and 1; the refused upgrade submits 0xCF");
+    }
+
+    // =============================================================================================
+    // An object leaving the park (0x14A7B0 → 0x1E12E0 → 0x1088E0, then 0x13D8C0), through ParkSim.Remove.
+
+    static void Removal(AdvisorCatalogue cat, AdvisorRules rules, Func<Park> newPark,
+                        Func<Park, AssetResourceDatabase.AssetKind, ParkCell, ParkRide> place, Action<bool, string> Check)
+    {
+        // Two rides on one park, the advisor attached; a ride's messages come in through the ride side (sim.Advisor,
+        // the ride attached by 0x107CB0) and are played to the stack as type-2 records.
+        (Park P, ParkAdvisor A, ParkRide R1, ParkRide R2) Fixture()
+        {
+            var p = newPark();
+            var r1 = place(p, AssetResourceDatabase.AssetKind.Ride, p.At(4, 4));
+            var r2 = place(p, AssetResourceDatabase.AssetKind.Ride, p.At(14, 4));
+            var a = Make(cat, rules, testPark: true);
+            a.Attach(p.Sim, p.Staff, p.Mgmt);
+            Tick(a, 50);
+            return (p, a, r1, r2);
+        }
+        // Rows the check posts (text, no voice): 0x36 BREAKDOWN_IMMINENT and 0x87 CONDEMNED, both about a ride.
+        const int Imminent = ParkSim.AdvisorBreakdownImminent, Condemned = 0x87;
+        bool Post(ParkAdvisor a, ParkSim sim, int id, ParkRide ride)
+        {
+            int before = a.Stack.Count;
+            sim.Advisor(id, ride);
+            return RunUntil(a, () => a.Stack.Count > before && a.State == AdvisorState.Idle, 400);
+        }
+        IEnumerable<string> Objs(ParkAdvisor a) => a.Stack.Records.Select(r => r.Object is ParkRide pr ? pr.Name + "#" + pr.Id : "-");
+
+        var (p1, a1, x1, y1) = Fixture();
+        bool posted1 = x1 != null && y1 != null && x1 != y1 && Post(a1, p1.Sim, Imminent, x1) && Post(a1, p1.Sim, Condemned, x1);
+        bool typed = a1.Stack.Records.All(r => r.Type == AdvisorRecordType.Object && ReferenceEquals(r.Object, x1));
+        p1.Sim.Remove(x1.Id);
+        bool marked = a1.Stack.Count == 1 && a1.Stack.PendingRemoval == 0;
+        Tick(a1, 1);
+        Check(posted1 && typed && marked && a1.Stack.Count == 0 && !p1.Sim.Rides.Contains(x1),
+              $"removal: deleting a ride (ParkSim.Remove) takes both its type-2 records -- the later one at once (0x1088E0), the first "
+              + $"marked and flushed on the next pass ({a1.Stack.Count} left)");
+
+        // ⭐ The quirk: 0x13D8C0 runs AFTER the ride's own 0x1088E0 and overwrites its one pending mark with the LAST
+        // type-2 record, whatever its object: the other ride's record goes, the deleted ride's stays.
+        var (p2, a2, x2, y2) = Fixture();
+        bool posted2 = Post(a2, p2.Sim, Imminent, x2) && Post(a2, p2.Sim, Condemned, y2);
+        p2.Sim.Remove(x2.Id);
+        Tick(a2, 1);
+        var left = a2.Stack.Records;
+        Check(posted2 && left.Count == 1 && ReferenceEquals(left[0].Object, x2) && left[0].Row == (short)cat.Messages[Imminent].TextRow,
+              $"removal: with a later type-2 record about ANOTHER ride, deleting the first ride removes the other's record and leaves its own "
+              + $"(0x13D8C0 overwrites 0x1088E0's pending mark -- READ quirk): left [{string.Join(", ", Objs(a2))}]");
+
+        // Any object: a placement the sim does not run still goes through 0x14A7B0 → 0x13D8C0, which takes the last
+        // type-2 record with no comparison.
+        var (p3, a3, x3, _) = Fixture();
+        bool posted3 = Post(a3, p3.Sim, Imminent, x3);
+        p3.Sim.Remove(99999);
+        Tick(a3, 1);
+        Check(posted3 && a3.Stack.Count == 0 && p3.Sim.Rides.Contains(x3),
+              "removal: deleting an object that is not a ride still removes the last type-2 record, about a ride that stays (0x13D8C0, no comparison)");
+
+        // The ring is not touched: a ride's message still queued when the ride goes is played later WITH the ride.
+        var (p4, a4, x4, _) = Fixture();
+        var log = new Log(); log.Hook(a4);
+        a4.Submit(SilentId(cat));                                          // occupies the advisor for its cycle
+        Tick(a4, 2);
+        p4.Sim.Advisor(Imminent, x4);                                      // queued behind it
+        bool queued = a4.RingIds.Contains((ushort)Imminent);
+        p4.Sim.Remove(x4.Id);
+        RunUntil(a4, () => log.Played.Any(x => x.P.Id == Imminent), 400);
+        Tick(a4, 1);
+        Check(queued && a4.Stack.Count == 1 && ReferenceEquals(a4.Stack.Records[0].Object, x4) && !p4.Sim.Rides.Contains(x4),
+              "removal: a ride's message still in the ring is played after the ride has gone, and its record keeps the ride "
+              + "(nothing clears a queued object: 0x107760/0x107870) -- the view's jump must refuse it");
     }
 
     // =============================================================================================

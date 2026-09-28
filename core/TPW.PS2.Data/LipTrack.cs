@@ -27,12 +27,16 @@ public sealed class LipTrack
         readonly LipTrack _track;
         int _next;
         public bool Active { get; private set; } = true;
+        /// <summary>`0x105F30`'s return for the last <see cref="Advance"/>: a mark was consumed, or the
+        /// terminator was read (every call once past the end). The advisor's mouth (`0x106B54`) keys on it.</summary>
+        public bool Stepped { get; private set; }
         public Playback(LipTrack track) { _track = track; }
         public bool Advance(uint elapsedMilliseconds)
         {
-            if (_next == _track.Microseconds.Count) Active = false;
+            Stepped = false;
+            if (_next == _track.Microseconds.Count) { Active = false; Stepped = true; }
             else if (unchecked((uint)((int)_track.Microseconds[_next] / 1000)) < elapsedMilliseconds)
-            { _next++; Active = !Active; }
+            { _next++; Active = !Active; Stepped = true; }
             return Active;
         }
     }

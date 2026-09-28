@@ -537,10 +537,17 @@ public sealed partial class ParkSim : IRseDirectory
         r.CachedTrackWeight = (byte)Math.Min(255, r.Track.Track.Weight);
     }
 
+    /// <summary>Hook: an object is leaving the park, `0x14A7B0` -- the ride, or null when the id is not one the
+    /// sim runs (a scriptless placement: natively an object all the same). The advisor's message stack listens
+    /// (<see cref="ParkAdvisor.ObjectLeftPark"/>, wired by <see cref="ParkAdvisor.Attach"/>).</summary>
+    public Action<ParkRide> ObjectRemoved { get; set; }
+
     /// <summary>⭐ The removal notice `0x14B9D0` also takes the ride off the upgrade list (`0x153D70`,
-    /// findings/staff-mechanics-guards.md §2.7).</summary>
+    /// findings/staff-mechanics-guards.md §2.7). ⭐ `0x14A7B0` runs first: <see cref="ObjectRemoved"/>.</summary>
     public void Remove(int id)
     {
+        // 0x14A7B0: the object leaving the park -- the ride (or null for a placement the sim does not run).
+        ObjectRemoved?.Invoke(_rides.FirstOrDefault(r => r.Id == id));
         foreach (var r in _rides) if (r.Id == id) _upgrades.Remove(r);
         _rides.RemoveAll(r => r.Id == id);
     }
