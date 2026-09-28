@@ -234,6 +234,23 @@ static class AdvisorChecks
         Check(Imm(0x10DCB4) == AdvisorScheduler.WarmUpRefreshes && Imm(0x10DC84) == AdvisorScheduler.VariableCount
               && Imm(0x10DE10) == AdvisorScheduler.CounterLimit && Imm(0x10DDD8) == AdvisorScheduler.CounterCount,
               $"code: the scheduler's warm-up sltiu {Imm(0x10DCB4)}, the refresh % {Imm(0x10DC84)}, the counters' slti {Imm(0x10DDD8)} and clamp {Imm(0x10DE10)}");
+        // The goals records: 0x16C008 returns lui 0x36 + the addiu at each world/park's return, and 0x16BA58 prints
+        // +0xC/+0x10/+0x14 with the rows in its three `addiu a0` (0x16BA9C, 0x16BAD0, 0x16BB04).
+        uint[,] goalAddiu = { { 0x16C058, 0x16C060 }, { 0x16C080, 0x16C088 }, { 0x16C0A8, 0x16C0B0 }, { 0x16C0D0, 0x16C0D8 } };
+        var goalRows = new List<string>();
+        bool goalsMatch = true;
+        for (int w = 0; w < 4; w++)
+            for (int park = 0; park < 2; park++)
+            {
+                uint rec = 0x360000u + (uint)Imm(goalAddiu[w, park]);
+                var g = ParkGoals.For(w, park);
+                goalsMatch &= g is { } v && U32(At(rec + 0xC)) == v.Visitors && U32(At(rec + 0x10)) == v.Profit && U32(At(rec + 0x14)) == v.Years;
+                goalRows.Add($"{w}/{park}@0x{rec:X}={U32(At(rec + 0xC))},{U32(At(rec + 0x10))},{U32(At(rec + 0x14))}");
+            }
+        Check(goalsMatch && ParkGoals.For(4, 0) == null && ParkGoals.For(0, 2) == null,
+              $"code: the 8 goals records 0x16C008 returns match ParkGoals ({string.Join(" ", goalRows)}); none past world 3 or park 1");
+        Check(Imm(0x16BA9C) == ParkGoals.RowPeople && Imm(0x16BAD0) == ParkGoals.RowProfit && Imm(0x16BB04) == ParkGoals.RowBusiness,
+              $"code: 0x16BA58 prints rows {Imm(0x16BA9C)} / {Imm(0x16BAD0)} / {Imm(0x16BB04)} (0x16BA9C, 0x16BAD0, 0x16BB04)");
         var table = Enumerable.Range(0, 79).Select(i => U32(At(0x359860 + (uint)(i * 4)))).ToArray();
         bool counterPath = table[52] == 0x10E484 && Enumerable.Range(56, 22).All(i => table[i] == 0x10E484);
         Check(counterPath && table[53] == 0x10E40C && table[78] == 0x10E498 && table.Take(52).All(t => t != 0x10E484),
@@ -331,6 +348,27 @@ static class AdvisorChecks
         ushort g171 = Greeting(null, null), g188 = Greeting(null, () => 1), g202 = Greeting(() => true, () => 1);
         Check(g171 == 0xAB && g188 == 0xBC && g202 == 0xCA,
               $"states: at the end of the delay the greeting: 171 with no gold ticket ever earned, 188 after one, 202 with the goals achieved (0x{g171:x}, 0x{g188:x}, 0x{g202:x})");
+        // The goal notices (0x16BA58): after the greeting, one type-4 record per goal not yet met, goal 3 the newest.
+        string Row(int row) => $"row{row}=%d";
+        var fresh = ParkGoals.Notices(0, 0, 0, false, Row);
+        var met2 = ParkGoals.Notices(3, 1, 1 << 2, false, Row);
+        Check(fresh.SequenceEqual(new[] { "row376=100", "row894=2000", "row515=1" })
+              && met2.SequenceEqual(new[] { "row376=500", "row515=5" })
+              && ParkGoals.Notices(0, 0, 0, true, Row).Count == 0 && ParkGoals.Notices(0, 0, 0xE, false, Row).Count == 0,
+              $"goals: jungle park 1's notices print 100 / 2000 / 1 into rows 376 / 894 / 515 ({string.Join(" | ", fresh)}); space park 2 with goal 2 met skips it; none in the test park or with all three met");
+        var gl = new Log();
+        var ga = Make(cat, rules, log: gl);
+        ga.GoalNotices = () => { foreach (var t in ParkGoals.Notices(2, 1, 0, ga.TestPark, Row)) ga.Stack.AddGoalNotice(t); };
+        Tick(ga, 49);
+        int before = ga.Stack.Count;
+        Tick(ga, 1);
+        var notes = ga.Stack.Records;
+        bool three = notes.Count == 3 && notes.All(r => r.Type == AdvisorRecordType.Goal && r.Row == -1 && r.Object == null)
+                     && notes.Select(r => r.Text).SequenceEqual(new[] { "row376=500", "row894=5000", "row515=5" });
+        ga.Stack.Open(); ga.Stack.Update();
+        Check(before == 0 && three && gl.Submitted.Count == 1 && ga.Stack.Selected?.Text == "row515=5",
+              $"goals: at tick 50, with the greeting, fantasy park 2's three notices land in the stack ({before} before, then {notes.Count}: "
+              + $"{string.Join(" | ", notes.Select(r => r.Text))}) and L2 opens on goal 3, the newest");
         // A silent message costs the cycle: take, play, end-and-exit, 100 of cooldown.
         ushort silent = SilentId(cat);
         a.Submit(silent); a.Submit(SilentIds(cat).Skip(1).First());
@@ -538,15 +576,27 @@ static class AdvisorChecks
         var o = new AdvisorMessageStack();
         var ride = new object();
         o.Add(AdvisorRecordType.Plain, 20); o.Add(AdvisorRecordType.Object, 21, ride); o.Add(AdvisorRecordType.Plain, 22);
-        bool opened = o.Open() && o.IsOpen && o.Cursor == 0;
+        bool opened = o.Open() && o.IsOpen && o.Cursor == 2 && o.ScrollTop == 0;
         o.Update();
-        o.Press(AdvisorStackButtons.Next); o.Update(); o.Update();
+        bool onNewest = o.Selected?.Row == 22;
+        o.Press(AdvisorStackButtons.Previous); o.Update(); o.Update();
         bool onRide = o.Cursor == 1 && o.Selected?.Row == 21 && o.CrossLabel == AdvisorMessageStack.LabelSelect;
         o.Press(AdvisorStackButtons.Delete); o.Update();
         bool sliding = o.Deleting && o.Records[1].State == 1;
         for (int t = 0; t < 20 && o.Count == 3; t++) o.Update();
-        Check(opened && onRide && sliding && o.Count == 2 && !o.Deleting && o.Records.Select(r => (int)r.Row).SequenceEqual(new[] { 20, 22 }),
-              "stack: L2 opens at the OLDEST; Next moves the cursor; Circle slides the selected record out, then removes it");
+        Check(opened && onNewest && onRide && sliding && o.Count == 2 && !o.Deleting && o.Records.Select(r => (int)r.Row).SequenceEqual(new[] { 20, 22 }),
+              "stack: L2 opens at the NEWEST (strawberry's deviation; the console opens at the oldest); Previous moves the cursor; Circle slides the selected record out, then removes it");
+        // Past four records the top is where Next presses from the oldest would leave it: the newest is the 4th row.
+        var deep = new AdvisorMessageStack();
+        for (short r = 60; r < 66; r++) deep.Add(AdvisorRecordType.Plain, r);
+        deep.Open(); deep.Update();
+        var walk = new AdvisorMessageStack();
+        for (short r = 60; r < 66; r++) walk.Add(AdvisorRecordType.Plain, r);
+        walk.Open();
+        for (int i = 0; i < 6; i++) { walk.Press(AdvisorStackButtons.Previous); walk.Update(); }
+        for (int i = 0; i < 5; i++) { walk.Press(AdvisorStackButtons.Next); walk.Update(); }
+        Check(deep.Cursor == 5 && deep.ScrollTop == 2 && deep.Selected?.Row == 65 && walk.Cursor == 5 && walk.ScrollTop == deep.ScrollTop,
+              $"stack: six records open on the newest (cursor {deep.Cursor}, top {deep.ScrollTop}), the same top a walk down to the oldest and back up leaves ({walk.ScrollTop})");
         var x = new AdvisorMessageStack();
         x.Add(AdvisorRecordType.Object, 30, ride); x.Add(AdvisorRecordType.Plain, 31); x.Add(AdvisorRecordType.Object, 32, new object());
         x.ObjectRemoved(); x.FlushRemoval();

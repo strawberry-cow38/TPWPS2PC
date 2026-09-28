@@ -322,6 +322,19 @@ public partial class AdvisorSmoke : Node3D
             var gp = played.FirstOrDefault(p => p.Id == ParkAdvisor.GreetingFirst);
             Check(gp.Id == ParkAdvisor.GreetingFirst && gp.SoundId != 0 && !gp.TextAdded,
                   $"the greeting 171 is presented after the 50-tick start delay: voice sound {gp.SoundId}, no text row ({greetMsg.TextRow})");
+            // The goal notices (0x16BA58), posted with the greeting: the park's three goals, printed from the text database.
+            int gw = Field<int>(viewer, "_staffWorld"), gpk = Field<int>(viewer, "_staffPark");
+            var goals = ParkGoals.For(gw, gpk);
+            var expectGoals = goals is { } gv
+                ? new[] { (ParkGoals.RowPeople, gv.Visitors), (ParkGoals.RowProfit, gv.Profit), (ParkGoals.RowBusiness, gv.Years) }
+                    .Select(x => ParkGoals.FormatInt(text.Text("eng", x.Item1), x.Item2)).ToArray()
+                : System.Array.Empty<string>();
+            var goalRecs = adv.Stack.Records.ToList();
+            Check(expectGoals.Length == 3 && goalRecs.Count == 3 && goalRecs.All(x => x.Type == AdvisorRecordType.Goal && x.Row == -1 && x.Object == null)
+                  && goalRecs.Select(x => x.Text).SequenceEqual(expectGoals) && goalRecs.All(x => !x.Text.Contains("%d"))
+                  && goalRecs.Zip(new[] { goals.Value.Visitors, goals.Value.Profit, goals.Value.Years }).All(z => z.First.Text.Contains(z.Second.ToString())),
+                  $"the park's three goals (world {gw} park {gpk}: {goals}) land in the stack with the greeting as type-4 records, goal 1 the oldest: "
+                  + string.Join(" | ", goalRecs.Select(x => x.Text?.Replace("\n", " "))));
             var enter = g.Where(p => p.State == AdvisorState.Entering).ToList();
             var talk = g.Where(p => p.State == AdvisorState.Speaking).ToList();
             var exit = g.Where(p => p.State == AdvisorState.Exiting).ToList();
@@ -397,8 +410,9 @@ public partial class AdvisorSmoke : Node3D
                   && Math.Abs(mix.SfxGain - 1f) < 1e-6 && Math.Abs(AudioServer.GetBusVolumeDb(AudioServer.GetBusIndex(GameAudioMix.SfxBus))) < 0.01f
                   && Math.Abs(AudioServer.GetBusVolumeDb(masterBus) - masterDb) < 1e-4 && voice.Bus == "Master",
                   $"and COME BACK from the exit on: targets {setting}, live {string.Join(" → ", up)}, the SFX bus back at 1; the speech is on Master, which never moved");
-            Check(!gp.TextAdded && greetMsg.TextRow == AdvisorCatalogue.BlankTextRow && adv.Stack.Count == 0,
-                  "a VOICE-ONLY message never reaches the stack: 171 (row 310) was spoken and the stack is still empty");
+            Check(!gp.TextAdded && greetMsg.TextRow == AdvisorCatalogue.BlankTextRow && adv.Stack.Count == 3
+                  && adv.Stack.Records.All(x => x.Type == AdvisorRecordType.Goal),
+                  "a VOICE-ONLY message never reaches the stack: 171 (row 310) was spoken and the stack still holds only the three goal notices");
 
             // ---------------------------------------------------------------------------------
             // 2. A ride's breakdown: its messages carry the ride into the stack.
@@ -468,25 +482,38 @@ public partial class AdvisorSmoke : Node3D
             await Shot("envelope");
 
             // ---------------------------------------------------------------------------------
-            // 4. The stack: L2 opens it on the oldest, the SELECTED record's text shows, Delete removes one, Select jumps.
+            // 4. The stack: L2 opens it on the NEWEST, the SELECTED record's text shows, Delete removes one, Select jumps.
             void Key(Key key)
             {
                 viewer._UnhandledKeyInput(new InputEventKey { Keycode = key, Pressed = true });
             }
             async Task Settle() { for (int i = 0; i < 12; i++) Tick(); await Present(); }
             string Words(AdvisorStackRecord x) => x.Row == -1 ? x.Text : text.Text("eng", x.Row);
+            // ⚠ The CURSOR's record, not `Selected`: the update picks the selection BEFORE it reads the press, so
+            // `Selected` trails a Down by one pass, and a walk that stops on it overshoots a record in the middle.
+            AdvisorStackRecord AtCursor() => adv.Stack.Count > 0 ? adv.Stack.Records[adv.Stack.Cursor] : null;
             Key(Viewer.AdvisorL2Key);
             Tick();
-            Check(adv.Stack.IsOpen && adv.Stack.Cursor == 0, $"L2 ({Viewer.AdvisorL2Key}) opens the stack on the next pass, the cursor on the OLDEST record");
-            await Settle();
-            var oldest = adv.Stack.Records[0];
-            Check(ReferenceEquals(oldest.Object, ride) && stackView.ShownText == Words(oldest) && stackView.ShownRecords >= 2,
-                  $"the box shows the SELECTED (oldest) record's text, not the newest's: \"{stackView.ShownText?.Replace("\n", " ")}\"; {stackView.ShownRecords} records drawn");
-            for (int i = 0; i < adv.Stack.Count && adv.Stack.Selected?.Row != (short)litterMsg.TextRow; i++) { Key(Godot.Key.Up); Tick(); }
-            await Settle();
             string words = text.Text("eng", litterMsg.TextRow);
+            Check(adv.Stack.IsOpen && adv.Stack.Cursor == adv.Stack.Count - 1 && adv.Stack.Records[^1].Row == (short)litterMsg.TextRow,
+                  $"L2 ({Viewer.AdvisorL2Key}) opens the stack on the next pass, the cursor on the NEWEST record ({adv.Stack.Cursor} of {adv.Stack.Count}; "
+                  + "strawberry's deviation -- the console opens on the oldest)");
+            await Settle();
             Check(adv.Stack.Selected?.Row == (short)litterMsg.TextRow && stackView.ShownText == words && !string.IsNullOrEmpty(words),
-                  $"Up moves to the newer record and its text is drawn in the 260-wide box from the text database: \"{stackView.ShownText?.Replace("\n", " ")}\"");
+                  $"the newest record's text is drawn in the 260-wide box from the text database: \"{stackView.ShownText?.Replace("\n", " ")}\"");
+            for (int i = 0; i < adv.Stack.Count && !ReferenceEquals(AtCursor()?.Object, ride); i++) { Key(Godot.Key.Down); Tick(); }
+            await Settle();
+            var rideRec = adv.Stack.Selected;
+            Check(ReferenceEquals(rideRec?.Object, ride) && stackView.ShownText == Words(rideRec) && stackView.ShownText != words && stackView.ShownRecords >= 2,
+                  $"Down walks to an older record and the box shows the SELECTED one's text, not the newest's: \"{stackView.ShownText?.Replace("\n", " ")}\"; {stackView.ShownRecords} records drawn");
+            for (int i = 0; i < adv.Stack.Count && adv.Stack.Cursor != 0; i++) { Key(Godot.Key.Down); Tick(); }
+            await Settle();
+            Check(adv.Stack.Cursor == 0 && adv.Stack.Selected?.Type == AdvisorRecordType.Goal && stackView.ShownText == expectGoals.FirstOrDefault(),
+                  $"at the bottom, the OLDEST is goal 1, drawn from its own text: \"{stackView.ShownText?.Replace("\n", " ")}\"");
+            for (int i = 0; i < adv.Stack.Count && AtCursor()?.Row != (short)litterMsg.TextRow; i++) { Key(Godot.Key.Up); Tick(); }
+            await Settle();
+            Check(adv.Stack.Selected?.Row == (short)litterMsg.TextRow && stackView.ShownText == words,
+                  $"Up walks back to the newest and its text is drawn again");
             // ---- The READ box (§1.3..§1.5), the test's own copy of the geometry in HUD units, through the port's mapping:
             // the box's centre line x 320 is a position (a fraction of the window), every other x hangs off it by k.
             var art = stackView.Panel;
@@ -555,8 +582,9 @@ public partial class AdvisorSmoke : Node3D
             Call(viewer, "StartGameCam");
             var home = (game.CursorX, game.CursorZ);
             if (!adv.Stack.IsOpen) { Key(Viewer.AdvisorL2Key); Tick(); }
-            for (int i = 0; i < adv.Stack.Count && !ReferenceEquals(adv.Stack.Selected?.Object, ride); i++) { Key(Godot.Key.Down); Tick(); }
-            Check(adv.Stack.IsOpen && ReferenceEquals(adv.Stack.Selected?.Object, ride), "the cursor is back on the ride's record");
+            for (int i = 0; i < adv.Stack.Count && !ReferenceEquals(AtCursor()?.Object, ride); i++) { Key(Godot.Key.Down); Tick(); }
+            Tick();
+            Check(adv.Stack.IsOpen && ReferenceEquals(AtCursor()?.Object, ride) && ReferenceEquals(adv.Stack.Selected?.Object, ride), "the cursor is back on the ride's record");
             Key(Godot.Key.Enter);
             Tick();
             var centre = park.CellCentre(ride.Origin.X + ride.Width / 2, ride.Origin.Z + ride.Height / 2);

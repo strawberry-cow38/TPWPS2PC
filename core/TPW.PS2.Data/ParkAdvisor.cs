@@ -205,7 +205,7 @@ public readonly record struct AdvisorPlayback(ushort Id, AdvisorRecordType Kind,
 /// ⚠ ADAPTERS, each labelled where it lives: <see cref="SpeechLength"/> (the stream's length, audio is the
 /// view's), <see cref="Head"/> (the model), <see cref="SkipHeld"/> (the pad),
 /// <see cref="GoalsAlreadyAchieved"/> and <see cref="GoldTicketsEarned"/> (the greeting's globals),
-/// <see cref="GoalNotices"/> (the port has no goals record), the random stream.
+/// <see cref="GoalNotices"/> (it needs the text database), the random stream.
 ///
 /// ⚠ OUT OF SCOPE, said: the TUTORIAL -- the dispatcher `0x107390` → `0x206358` and its 22 handlers; its
 /// entry points are the stubs <see cref="TutorialEvent"/> and <see cref="TutorialMessage"/> (`0x107C18`). The lip
@@ -393,8 +393,9 @@ public sealed class ParkAdvisor
     public Func<bool> GoalsAlreadyAchieved { get; set; }
     /// <summary>`[0x3975C0]` (<see cref="ParkAwards.GoldTicketsEarned"/>): 0 greets with 171. Null answers 0.</summary>
     public Func<int> GoldTicketsEarned { get; set; }
-    /// <summary>⚠ HOOK for `0x16BA58(cal)`, the goal notices (type-4 stack records, rows 376/894/515) posted at
-    /// the end of the start delay. The port has no goals record: null does nothing.</summary>
+    /// <summary>`0x16BA58(cal)`, the goal notices (type-4 stack records, rows 376/894/515) posted at the end of the
+    /// start delay, after the greeting: <see cref="ParkGoals.Notices"/> into <see cref="Stack"/>. It needs the text
+    /// database, so the host supplies it. Null does nothing.</summary>
     public Action GoalNotices { get; set; }
     /// <summary>`0x13BDD0` (game over, INFERRED name): 123 BANKRUPTED ended or was skipped.</summary>
     public Action GameOver { get; set; }
