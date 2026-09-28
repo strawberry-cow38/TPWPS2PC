@@ -55,6 +55,20 @@ public sealed class AnimatedModel
         public int[] SurfaceMaterial;
         /// <summary>This mesh's node and every node above it, for inherited visibility.</summary>
         public List<int> Ancestry;
+
+        /// <summary>⚠ PERF: per-part scratch for RebuildGeometry, which runs every frame for every
+        /// animated part. It used to build a fresh `Vector3[]` for the evaluated groups AND a fresh
+        /// `List` for the fanned-out vertices through LINQ `Select(...).ToList()` -- two heap objects
+        /// plus a closure and an enumerator, per part, per frame, for a fixed-size computation.
+        ///
+        /// ⚠⚠ THREE SEPARATE ARRAYS BECAUSE THE LENGTHS DIFFER: the skin branch wants one entry per
+        /// SKIN vertex, the morph branch one per MORPH group, and the baked branch one per BAKED
+        /// group. Sharing one buffer would silently truncate whichever branch wanted more.</summary>
+        public System.Numerics.Vector3[] SkinEval, MorphEval, BakedEval;
+        /// <summary>⚠ PERF: the fanned-out positions. ⚠⚠ This is what <see cref="LivePos"/> points
+        /// at once anything deforms, so it is only valid until the next rebuild -- which is what a
+        /// live position IS. A caller that wants to keep one must copy it.</summary>
+        public List<System.Numerics.Vector3> PosScratch;
     }
 
     readonly Model _model;
@@ -728,32 +742,70 @@ public sealed class AnimatedModel
         foreach (var p in _parts) if (p.Surfaces != null && which(p.Mesh)) RebuildGeometry(p, _now);
     }
 
+    /// <summary>The part's fan-out list, emptied and ready. ⚠ Clears in place, so anything still
+    /// holding the previous contents loses them -- which is exactly why the LayerPos branch checks
+    /// before calling it.</summary>
+    static List<System.Numerics.Vector3> Scratch(Part p)
+    {
+        var l = p.PosScratch ??= new List<System.Numerics.Vector3>();
+        l.Clear();
+        return l;
+    }
+
+    /// <summary>One evaluated value per strip slot, through the run list: `ev[AnimMap[j]]` for each
+    /// slot j -- literally what `AnimMap.Select(i => ev[i])` produced.</summary>
+    static List<System.Numerics.Vector3> FanOut(Part p, System.Numerics.Vector3[] ev)
+    {
+        var dst = Scratch(p);
+        for (int j = 0; j < p.AnimMap.Length; j++) dst.Add(ev[p.AnimMap[j]]);
+        return dst;
+    }
+
     void RebuildGeometry(Part p, float now, Matrix4x4[] pose = null)
     {
         var pos = p.BindPos;
         // (LivePos is assigned once `pos` is final, below.)
+        // ⚠ PERF: every branch below writes into per-part scratch instead of allocating. The
+        // arithmetic is unchanged -- `AnimMap[j]` is the group for strip slot j exactly as
+        // `Select(i => ev[i])` read it, the enumerator is just gone.
         if (pose != null && p.Skin != null && p.AnimMap != null)
         {
             // ⭐ The game's own skinning per animated vertex (Model.Skin.Deform), fanned out to
             // the strip slots through the same run list the morph path uses.
-            var ev = new System.Numerics.Vector3[p.Skin.VertexCount];
+            var ev = p.SkinEval ??= new System.Numerics.Vector3[p.Skin.VertexCount];
             for (int i = 0; i < ev.Length; i++) ev[i] = p.Skin.Deform(i, pose);
-            pos = p.AnimMap.Select(i => ev[i]).ToList();
+            pos = FanOut(p, ev);
         }
         else if (p.Baked != null && p.AnimMap != null)
         {
             // ⭐ 0x1a7e18: the stored pose for the truncated frame, one per group, fanned out through
             // the same run list. It REPLACES the vertex; there is no additive form of this channel.
-            var ev = p.Baked.Sample(now);
-            pos = p.AnimMap.Select(i => ev[i]).ToList();
+            var ev = p.BakedEval = p.Baked.Sample(now, p.BakedEval);
+            pos = FanOut(p, ev);
         }
         else if (p.Morph != null && p.AnimMap != null)
         {
-            var ev = p.Morph.Select(v => Sample(v.Times, v.Keys, now)).ToArray();
-            pos = Additive ? p.AnimMap.Select((i, j) => p.BindPos[j] + ev[i]).ToList()
-                           : p.AnimMap.Select(i => ev[i]).ToList();
+            var ev = p.MorphEval ??= new System.Numerics.Vector3[p.Morph.Count];
+            for (int i = 0; i < ev.Length; i++) ev[i] = Sample(p.Morph[i].Times, p.Morph[i].Keys, now);
+            var dst = Scratch(p);
+            if (Additive) for (int j = 0; j < p.AnimMap.Length; j++) dst.Add(p.BindPos[j] + ev[p.AnimMap[j]]);
+            else          for (int j = 0; j < p.AnimMap.Length; j++) dst.Add(ev[p.AnimMap[j]]);
+            pos = dst;
         }
-        if (p.LayerPos != null && pose == null) pos = pos.Select((x, j) => x + p.LayerPos[j]).ToList();
+        if (p.LayerPos != null && pose == null)
+        {
+            // ⚠⚠ `pos` MAY STILL BE `BindPos` HERE -- no branch above fired -- and writing into
+            // that would corrupt the bind pose for every frame after. Copy into the scratch first,
+            // and only skip the copy when `pos` ALREADY IS the scratch (a branch above filled it),
+            // because Scratch() clears it and would throw the data away.
+            if (!ReferenceEquals(pos, p.PosScratch))
+            {
+                var dst = Scratch(p);
+                for (int j = 0; j < pos.Count; j++) dst.Add(pos[j]);
+                pos = dst;
+            }
+            for (int j = 0; j < pos.Count; j++) pos[j] += p.LayerPos[j];
+        }
         // ⭐ Kept now that it is final, for fittings pinned to this surface. Same list object as
         // BindPos when nothing deforms, which is correct: then the bind pose IS what is drawn.
         p.LivePos = pos;
@@ -886,7 +938,10 @@ public sealed class AnimatedModel
         // ⭐ THE BIPED. A skeletal record's tracks are each bone's whole transform -- there is no
         // hierarchy to compose -- sampled the sampler's way into one matrix per helper and shared
         // by every part, exactly as FUN_001a8da8 fills one matrix array and then walks every mesh.
-        var pose = Skeletal && _skel != null ? SkeletalPose.At(_skel, now, _model.HelperCount) : null;
+        // ⚠ PERF: reuses _poseScratch. The pose is read by Skin.Deform inside this same call and
+        // kept by nobody, so recycling the array is safe -- see SkeletalPose.At's note.
+        var pose = Skeletal && _skel != null
+            ? _poseScratch = SkeletalPose.At(_skel, now, _model.HelperCount, _poseScratch) : null;
         if (pose != null) _posed = true;
         foreach (var p in _parts)
         {
@@ -897,7 +952,9 @@ public sealed class AnimatedModel
             foreach (var node in p.Ancestry ?? new List<int> { p.Mesh.Index })
                 if (_hidden.Contains(node)) { shown = false; break; }
             if (_ordinaryVisibility || _nativeNodeVisibility)
-                shown = AnimationNodeVisibility.Shown(_model, p.Mesh.Index, _hidden);
+                // ⚠ PERF: the cached chain, not the allocating overload -- this line runs per
+                // part per frame and `Model.Ancestry` builds a new List every call.
+                shown = AnimationNodeVisibility.Shown(_model, p.Mesh.Index, p.Ancestry, _hidden);
             foreach (var surface in p.Surfaces) surface.Visible = shown;
             // Native hiding is a draw state, not a reason to freeze evaluated pose.
             if (!shown && !_ordinaryVisibility && !_nativeNodeVisibility) continue;
@@ -919,16 +976,52 @@ public sealed class AnimatedModel
     /// and the animated scale applied to the basis lengths. Translation is kept from the bind pose,
     /// and the hierarchy is recomposed from the overridden locals so an animated parent carries its
     /// children with it.</summary>
+    /// <summary>⚠ PERF: hoisted out of the frame body. `GetEnvironmentVariable` allocates a string
+    /// on every call, and the one-shot dump below asked for it once per model per frame.</summary>
+    static readonly bool ScaleDump = System.Environment.GetEnvironmentVariable("TPW_PS2_SCALEDUMP") == "1";
+
+    /// <summary>⚠ PERF: the overridden locals, reused. WorldAt WRITES to this, so it can never be
+    /// the model's cached <see cref="Model.BindLocals"/> -- it is refilled from it each frame.</summary>
+    readonly Dictionary<int, Matrix4x4> _localsScratch = new();
+
+    /// <summary>⚠ PERF: the skeletal pose, reused frame to frame instead of a fresh Matrix4x4[]
+    /// per model per frame. Not readonly: HelperCount decides its length.</summary>
+    Matrix4x4[] _poseScratch;
+
+    /// <summary>⚠ PERF: the composed world transforms, reused. This is what <see cref="LastWorld"/>
+    /// points at on the animated path, and every caller of LastWorld only ever reads it.</summary>
+    readonly Dictionary<int, Matrix4x4> _worldScratch = new();
+
     Dictionary<int, Matrix4x4> WorldAt(float now)
     {
         if (_rot.Count == 0 && _scale.Count == 0 && _path.Count == 0 && _modelPath.Count == 0)
         {
-            OverriddenNodes = new HashSet<int>();
-            return LastWorld = _model.WorldTransforms();
+            // ⚠ PERF: `Clear`, not `new` -- an empty set is an empty set, and this is the path
+            // every static prop in the park takes every frame. Clearing rather than skipping also
+            // keeps ModelPathAudit's "record switch clears path binding" true for a model that
+            // LOSES its tracks, which the old `new` got right by accident.
+            OverriddenNodes.Clear();
+            // ⚠ PERF: the model's CACHED bind world. See Model.BindWorld -- with no overrides
+            // WorldTransforms is a pure function of the resource, so rebuilding three dictionaries
+            // and a float[16] per node every frame bought nothing.
+            return LastWorld = _model.BindWorld;
         }
 
-        var locals = _model.LocalTransforms();
-        foreach (var node in _rot.Keys.Concat(_scale.Keys).Concat(_path.Keys).Concat(_modelPath.Keys).Distinct())
+        // ⭐ The overridden set IS the set the loop walks, so build it ONCE here and walk it, rather
+        // than `Concat(...).Distinct()` in the loop header and `new HashSet<>(Concat(...))` again at
+        // the end -- that was four enumerators, three Concat iterators and a Distinct set, TWICE per
+        // frame per animated model. Nothing in the loop reads OverriddenNodes, so moving it earlier
+        // changes no answer, and every key still goes in whether or not its node resolves.
+        OverriddenNodes.Clear();
+        foreach (var k in _rot.Keys) OverriddenNodes.Add(k);
+        foreach (var k in _scale.Keys) OverriddenNodes.Add(k);
+        foreach (var k in _path.Keys) OverriddenNodes.Add(k);
+        foreach (var k in _modelPath.Keys) OverriddenNodes.Add(k);
+
+        var locals = _localsScratch;
+        locals.Clear();
+        foreach (var kv in _model.BindLocals) locals[kv.Key] = kv.Value;
+        foreach (var node in OverriddenNodes)
         {
             int off = _model.NodeOffset(node);
             if (!locals.TryGetValue(off, out var bind)) continue;
@@ -985,11 +1078,12 @@ public sealed class AnimatedModel
             if (_modelPath.TryGetValue(node, out var modelPath)) L = modelPath.Apply(L, now);
             locals[off] = L;
         }
-        var world = _model.WorldTransforms(locals);
+        // ⚠ PERF: composes into our own scratch instead of allocating three dictionaries a frame.
+        var world = _model.WorldTransformsInto(locals, _worldScratch);
         LastWorld = world;
-        OverriddenNodes = new HashSet<int>(_rot.Keys.Concat(_scale.Keys).Concat(_path.Keys).Concat(_modelPath.Keys));
+        // OverriddenNodes was built at the top of the method -- see the note there.
         // One-shot diagnostic: which node's scale changes between bind and world, and by how much.
-        if (System.Environment.GetEnvironmentVariable("TPW_PS2_SCALEDUMP") == "1" && !_dumped)
+        if (ScaleDump && !_dumped)
         {
             _dumped = true;
             var bindWorld = _model.WorldTransforms();

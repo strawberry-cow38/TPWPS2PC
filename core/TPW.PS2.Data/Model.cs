@@ -431,10 +431,7 @@ public sealed partial class Model
         var parent = new Dictionary<int, uint>();
         void Add(int o)
         {
-            var f = new float[16];
-            for (int k = 0; k < 16; k++) f[k] = F32(o + 0x10 + k * 4);
-            local[o] = new Matrix4x4(f[0], f[1], f[2], f[3], f[4], f[5], f[6], f[7],
-                                     f[8], f[9], f[10], f[11], f[12], f[13], f[14], f[15]);
+            local[o] = MatrixAt(o);
             parent[o] = U32(o + 4);
         }
         foreach (var m in Meshes) Add(m.Offset);
@@ -455,28 +452,107 @@ public sealed partial class Model
             world[o] = w;
             return w;
         }
-        foreach (var o in local.Keys.ToList()) Resolve(o, 0);
+        // ⚠ PERF: `local` is never written inside Resolve -- only `world` is -- so the defensive
+        // `.ToList()` copy that used to be here was a per-call List for nothing.
+        foreach (var o in local.Keys) Resolve(o, 0);
         return world;
     }
+
+    /// <summary>A node's own 4x4 at `+0x10`, read straight into the matrix.
+    ///
+    /// ⚠ PERF: this used to go through a `new float[16]` scratch, which is an 88-byte heap
+    /// allocation PER NODE PER CALL -- for a 30-node model that is 2.6 KB every time anything asked
+    /// for a transform, and the draw path asked once per model per frame. The intermediate array
+    /// never did anything the constructor could not take directly.</summary>
+    Matrix4x4 MatrixAt(int o) => new Matrix4x4(
+        F32(o + 0x10), F32(o + 0x14), F32(o + 0x18), F32(o + 0x1c),
+        F32(o + 0x20), F32(o + 0x24), F32(o + 0x28), F32(o + 0x2c),
+        F32(o + 0x30), F32(o + 0x34), F32(o + 0x38), F32(o + 0x3c),
+        F32(o + 0x40), F32(o + 0x44), F32(o + 0x48), F32(o + 0x4c));
 
     /// <summary>Every node's own parent-relative matrix, meshes and helpers alike, keyed by file
     /// offset -- what a caller overrides to animate one and have its children follow.</summary>
     public Dictionary<int, Matrix4x4> LocalTransforms()
     {
         var local = new Dictionary<int, Matrix4x4>();
-        void Add(int o)
-        {
-            var f = new float[16];
-            for (int k = 0; k < 16; k++) f[k] = F32(o + 0x10 + k * 4);
-            local[o] = new Matrix4x4(f[0], f[1], f[2], f[3], f[4], f[5], f[6], f[7],
-                                     f[8], f[9], f[10], f[11], f[12], f[13], f[14], f[15]);
-        }
+        void Add(int o) => local[o] = MatrixAt(o);
         foreach (var m in Meshes) Add(m.Offset);
         foreach (int o in HelperOffsets())
         {
             Add(o);
         }
         return local;
+    }
+
+    /// <summary>⭐ <see cref="WorldTransforms"/> with no overrides, and <see cref="LocalTransforms"/>,
+    /// computed ONCE and handed out thereafter.
+    ///
+    /// ⚠ PERF, and it is a big one: both of those rebuild a Dictionary and decode a `float[16]` PER
+    /// NODE out of the model bytes on every call, and the per-frame draw path called them once per
+    /// model per frame. `D` is assigned in the constructor and never written again, so with no
+    /// overrides they are PURE FUNCTIONS OF THE RESOURCE -- the same answer on frame 1 and frame
+    /// 10,000. A park of static props was recomposing its whole scene graph every frame for a
+    /// result it already had.
+    ///
+    /// ⚠⚠ SHARED, NOT COPIED. Read these; never write to them, and never hand one to something
+    /// that will. A caller that needs to override a node must copy into its own dictionary first
+    /// (see AnimatedModel.WorldAt) -- writing here would corrupt the bind pose for every instance
+    /// of the model at once. <see cref="WorldTransforms"/> and <see cref="LocalTransforms"/>
+    /// themselves still return a FRESH dictionary each call, so no existing caller changes.</summary>
+    public Dictionary<int, Matrix4x4> BindWorld => _bindWorld ??= WorldTransforms();
+    public Dictionary<int, Matrix4x4> BindLocals => _bindLocals ??= LocalTransforms();
+    Dictionary<int, Matrix4x4> _bindWorld, _bindLocals;
+
+    /// <summary>Each node's PARENT offset, from `+4`. Pure like the two above, and cached for the
+    /// same reason: the hierarchy of a loaded model does not change.</summary>
+    public Dictionary<int, uint> BindParents
+    {
+        get
+        {
+            if (_bindParents != null) return _bindParents;
+            _bindParents = new Dictionary<int, uint>();
+            foreach (var m in Meshes) _bindParents[m.Offset] = U32(m.Offset + 4);
+            foreach (int o in HelperOffsets()) _bindParents[o] = U32(o + 4);
+            return _bindParents;
+        }
+    }
+    Dictionary<int, uint> _bindParents;
+
+    /// <summary>⭐⭐ The scene-graph compose with NO ALLOCATION AT ALL, for the per-frame caller.
+    ///
+    /// <paramref name="locals"/> is the caller's own per-node locals -- normally
+    /// <see cref="BindLocals"/> copied into a scratch with the animated nodes overwritten -- and
+    /// <paramref name="into"/> is the caller's result dictionary, cleared here and returned.
+    ///
+    /// ⚠ PERF, and this was the last big one: <see cref="WorldTransforms"/> builds THREE
+    /// dictionaries every call (the locals, the parent links, the result) and the draw path called
+    /// it once per animated model per frame. Two of the three were pure functions of the resource
+    /// and are now cached; the third is the caller's to reuse. A dictionary of 50 matrices is ~5 KB
+    /// and it also grows by doubling on the way up, so the garbage was several times its final size.
+    ///
+    /// ⚠⚠ <paramref name="into"/> IS RETURNED, NOT COPIED. Whatever holds the result holds the
+    /// caller's scratch, so it is only valid until the next call -- a caller that needs to keep a
+    /// pose must copy it (ModelPathAudit already does, with ToDictionary).</summary>
+    public Dictionary<int, Matrix4x4> WorldTransformsInto(
+        Dictionary<int, Matrix4x4> locals, Dictionary<int, Matrix4x4> into)
+    {
+        var parent = BindParents;
+        into.Clear();
+        // ⚠ Same rule as WorldTransforms, kept literally: a parent of 0, a parent that is not a
+        // node of this model, or a chain deeper than 32 all stop at the node's own local, and the
+        // multiply is `local * parent` because the matrices are column-major.
+        Matrix4x4 Resolve(int o, int depth)
+        {
+            if (into.TryGetValue(o, out var w)) return w;
+            uint p = parent.GetValueOrDefault(o);
+            w = (p == 0 || !locals.ContainsKey((int)p) || depth > 32)
+                ? locals[o]
+                : locals[o] * Resolve((int)p, depth + 1);
+            into[o] = w;
+            return w;
+        }
+        foreach (var o in locals.Keys) Resolve(o, 0);
+        return into;
     }
 
     /// <summary>A node's index from its file offset -- the inverse of <see cref="NodeOffset"/>.

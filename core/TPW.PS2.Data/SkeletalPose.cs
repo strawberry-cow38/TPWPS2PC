@@ -140,8 +140,21 @@ public static class SkeletalPose
     /// are identity here -- the game leaves them as stack garbage, and the audit checks that no
     /// skin on the disc references a bone its records leave unkeyed.</summary>
     public static Matrix4x4[] At(IReadOnlyList<Animation.SkeletalTrack> tracks, float frame, int slots)
+        => At(tracks, frame, slots, null);
+
+    /// <summary>⚠ PERF: the same pose into an array the caller owns and reuses.
+    /// <paramref name="into"/> is used when it is exactly <paramref name="slots"/> long and a new
+    /// array allocated otherwise, so the RETURN VALUE is what to keep -- never assume `into` was
+    /// the one filled. Every slot is written before use (Array.Fill), so a recycled array carries
+    /// nothing over from the previous frame.
+    ///
+    /// ⚠⚠ Only safe because the pose does NOT escape the frame that asked for it: AnimatedModel
+    /// hands it to Skin.Deform, which reads it and keeps nothing. A caller that stores the pose
+    /// must pass null and own the copy.</summary>
+    public static Matrix4x4[] At(IReadOnlyList<Animation.SkeletalTrack> tracks, float frame, int slots,
+                                 Matrix4x4[] into)
     {
-        var pose = new Matrix4x4[slots];
+        var pose = into != null && into.Length == slots ? into : new Matrix4x4[slots];
         Array.Fill(pose, Matrix4x4.Identity);
         foreach (var t in tracks)
         {
