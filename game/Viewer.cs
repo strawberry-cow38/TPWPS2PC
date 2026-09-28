@@ -1036,7 +1036,7 @@ public partial class Viewer : Node3D
             return;
         }
         // ⚠⚠ A KEY A TOOL OR MENU TAKES IS MARKED HANDLED. Returning is not enough: Godot hands the same
-        // event on to _UnhandledInput, whose model-viewer switch pauses on Space and on Left/Right
+        // event on to _UnhandledInput, whose model-viewer switch pauses on H/Pause and on Left/Right
         // (StepFrame) -- and `_playing` is the park's clock too, so editing pylons with the arrows
         // stopped the sim (strawberry: "the game also pauses sim sometimes when im editing pylons").
         if (CoasterToolKey(k.Keycode)) { GetViewport()?.SetInputAsHandled(); return; }
@@ -10879,7 +10879,7 @@ public partial class Viewer : Node3D
                 _info.Text = $"{_ride.Name}\n{_current.Summary}\n" +
                              $"{_records.Count} animations\n" +
                              "left-drag orbit  |  right-drag or shift+drag or WASD to pan  |  wheel zoom\n" +
-                             "SPACE play/pause  |  arrows step a frame  |  R re-frame  |  F3 panel";
+                             "H / Pause play/pause  |  arrows step a frame  |  R re-frame  |  F3 panel";
         }
         catch (Exception ex)
         {
@@ -12068,7 +12068,10 @@ public partial class Viewer : Node3D
             {
                 // A toggle on key-REPEAT flips it back and forth while held; _UnhandledKeyInput drops
                 // echoes before a tool can claim them, so a held Space in the pylon edit landed here.
-                case Key.Space when !k2.Echo: _playing = !_playing; break;
+                // ⭐ H ("hold") or the Pause key, NOT Space (strawberry, 2026-09-28): Space confirms menus, the laptop
+                // and the advisor's message stack, so a pause on it fired whenever one of those let the key through.
+                case Key.H when !k2.Echo:
+                case Key.Pause when !k2.Echo: _playing = !_playing; break;
                 // ⚠ Panning can lose the model off-screen with no way back. R re-frames it.
                 case Key.R: ReFrame(); break;
                 // Keyboard panning, because a right-drag is not delivered on every setup.
