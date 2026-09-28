@@ -40,13 +40,21 @@ public sealed class UiPanel
 
     /// <summary>The pieces one at a time, already turned, for a caller that draws its own shape of frame --
     /// the advisor's message records (`0x108AB0`) blit `messfill` (0x30), `messcorner` (0x2F) raw and flipped in
-    /// y, and `messedge` (0x32) raw, flipped in y and turned, which are exactly these.</summary>
+    /// y, and `messedge` (0x32) raw, flipped in y and turned, which are exactly these; the advisor's read box
+    /// (`0x142090`, <see cref="AdvisorStackView"/>) adds the left-hand three.</summary>
     public ImageTexture Fill => _fill;
     public ImageTexture CornerTopRight => _cTR;
     public ImageTexture CornerBottomRight => _cBR;
+    /// <summary>`0x213668(prim, 1, 0)`: the corner flipped in x.</summary>
+    public ImageTexture CornerTopLeft => _cTL;
+    /// <summary>`0x213668(prim, 1, 1)`: the corner flipped in x and y.</summary>
+    public ImageTexture CornerBottomLeft => _cBL;
     public ImageTexture EdgeTop => _eTop;
     public ImageTexture EdgeBottom => _eBottom;
+    /// <summary>`0x2136D0(prim, 2)` (flags 0x1010), the quarter turn the record frames' side edge already uses.</summary>
     public ImageTexture EdgeRight => _eRight;
+    /// <summary>`0x2136D0(prim, 0)` (flags 0x1020): the opposite quarter turn -- the right edge mirrored.</summary>
+    public ImageTexture EdgeLeft => _eLeft;
 
     /// <summary>Load the set out of `UI.WAD`. ⚠ Through <see cref="AssetLibrary.ReadUi"/>, so the
     /// park's own open archive is left alone.</summary>

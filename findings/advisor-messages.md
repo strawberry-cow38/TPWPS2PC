@@ -459,7 +459,7 @@ Copy to index `count++`; UI sound **0x1e**. New = highest index.
   `0x2b` selected, `0x2a` others, framed by `0x108ab0`. Closed: all slide out to −64 in reverse
   order; open: they slide in one by one (counter per record), the selected one to +24.
 - Open: the selected record's text in a box (`0x108458`): x = (screenW − 260)/2, y = 210,
-  w 260, h 180, margins 16×14, background (48,48,48); text = `translate(row)` or its own text.
+  w 260, h 180, margins 16×14, (48,48,48) -- ⚠ the TEXT colour, not a background (advisor-visuals.md §1.1); text = `translate(row)` or its own text.
 - Sprite ids are keys of a runtime sprite table (`0x2156a0`); their files are not resolved here.
 
 ### 5.4 Input (standard layout; READ `0x13d940`, `0x1080a8`; buttons via `0x181250`, pad remap `0x230278`)
