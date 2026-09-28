@@ -290,6 +290,14 @@ public sealed partial class LaptopShopScreen : Control
     public Texture2D[] FeelingsIcons { get; set; }
     public Texture2D PillCap { get; set; }
 
+    /// <summary>⭐ The Awards rows: five medals and fourteen coaster stars, each either its own
+    /// art (earned) or the blank icon. `findings/awards.md`.</summary>
+    public Texture2D[] MedalArt { get; set; }
+    public Texture2D[] StarArt { get; set; }
+    public Texture2D BlankMedal { get; set; }
+    public Texture2D BlankStar { get; set; }
+    IReadOnlyList<bool> _medalsEarned, _starsEarned;
+
     /// <summary>⭐ The nine-slice the graph sits in. `findings/graph-widget.md` §1.3: the series
     /// draw builds a temporary element over the plot rect and issues `FUN_00142090` -- sprite
     /// `0x30` tiled in 16px rows with `0x2f` corners and `0x32` edges, which is the SAME
@@ -303,9 +311,12 @@ public sealed partial class LaptopShopScreen : Control
                            bool buildRow = false, int buildTextId = LaptopMainMenu.BuildTextId,
                            IReadOnlyList<Color?> barTints = null, GraphSeries? graph = null,
                            IReadOnlyList<string> column2 = null, IReadOnlyList<string> headers = null,
-                           IReadOnlyList<int> feelings = null)
+                           IReadOnlyList<int> feelings = null,
+                           IReadOnlyList<bool> medals = null, IReadOnlyList<bool> stars = null)
     {
         _feelings = feelings;
+        _medalsEarned = medals;
+        _starsEarned = stars;
         _barTints = barTints;
         _graph = graph;
         _column2 = column2;
@@ -1064,6 +1075,13 @@ public sealed partial class LaptopShopScreen : Control
             DrawTextureRect(_arrows, _pageArrows, false, ArrowTint);
         }
 
+        // ⭐ AWARDS: five medals across `MedalRow`, fourteen coaster stars across `StarRow`.
+        // ⚠ The SPACING is derived from the authored rect (265x96 for five, 427x180 for fourteen
+        // in two rows of seven), not read -- the registry gives the ORDER and the icons are 32px,
+        // but the row widget's own step was not found. Named so nobody takes it for measured.
+        if (_medalsEarned != null) DrawAwardRow(layout, "MedalRow", _medalsEarned, MedalArt, BlankMedal, 5, s, o);
+        if (_starsEarned  != null) DrawAwardRow(layout, "StarRow",  _starsEarned,  StarArt,  BlankStar,  7, s, o);
+
         // ⭐ VISITOR INFORMATION's feelings rows: a blue pill, then the icon and the bar on it.
         // ⚠ The pills OVERLAP by 8px because the row advance (40) is less than the pill height
         // (48). That is what the console draws, so they are not spaced out to look tidier.
@@ -1270,6 +1288,39 @@ public sealed partial class LaptopShopScreen : Control
     }
 
     static string Money(int v) => v < 0 ? $"-${-v:N0}" : $"${v:N0}";
+
+    /// <summary>One row of award icons, evenly spread across its authored rect.</summary>
+    void DrawAwardRow(SceneLayout layout, string element, IReadOnlyList<bool> earned,
+                      Texture2D[] art, Texture2D blank, int perRow, float s, Vector2 origin)
+    {
+        if (layout[element] is not { } box || earned == null) return;
+        // ⚠ `At` is a local function of the draw; this helper takes the same origin instead.
+        var at = origin + new Vector2(box.X, box.Y) * s;
+        float cell = box.Width * s / perRow;
+        float rowH = box.Height * s / Math.Max(1, (earned.Count + perRow - 1) / perRow);
+        for (int i = 0; i < earned.Count; i++)
+        {
+            var tex = earned[i] && art != null && i < art.Length && art[i] != null ? art[i] : blank;
+            if (tex == null) continue;
+            var pos = new Vector2(at.X + cell * (i % perRow), at.Y + rowH * (i / perRow));
+            DrawTextureRect(tex, new Rect2(pos, new Vector2(32 * s, 32 * s)), false);
+        }
+    }
+
+    /// <summary>⭐ Load the Awards art once: each medal and coaster star by the path the texture
+    /// registry names, plus the two blank icons an unearned slot shows.</summary>
+    public void EnsureAwardArt(AssetLibrary lib)
+    {
+        if (MedalArt != null || lib == null) return;
+        var m = new Texture2D[GoldTicketScreen.Medals.Length];
+        for (int i = 0; i < m.Length; i++) m[i] = LoadSsh(lib, "/" + GoldTicketScreen.Medals[i].Art);
+        MedalArt = m;
+        var st = new Texture2D[GoldTicketScreen.UltimateStars.Length];
+        for (int i = 0; i < st.Length; i++) st[i] = LoadSsh(lib, "/" + GoldTicketScreen.UltimateStars[i].Art);
+        StarArt = st;
+        BlankMedal ??= LoadSsh(lib, "/laptop/AWARD_MEDAL_32.ssh");
+        BlankStar  ??= LoadSsh(lib, "/laptop/AWARD_STAR_32.ssh");
+    }
 
     /// <summary>⭐ Load Visitor Information's art once: the three thought faces and the pill's
     /// end cap. ⚠ By PATH -- this port has no sprite registry, and the console's own registry

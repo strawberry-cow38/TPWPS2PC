@@ -712,6 +712,21 @@ public sealed record LaptopScreen(
         },
         LabelsOnGrid: true, RowYs: new[] { 200, 388 });
 
+    /// <summary>⭐ AWARDS -- which is `main_goldtickets.sce` (menu id 3), not a screen of its own.
+    /// `findings/awards.md`: every string on it is `STR_PARKSTATS_*` and there is NO Gold Tickets
+    /// row in the laptop's main menu, so it hangs off Park Statistics as that menu's fourth row.
+    ///
+    /// Two headings and two icon rows: `awardstext` (45, 65), `MedalRow` (45, 102) 265x96,
+    /// `uctext` (45, 227), `StarRow` (45, 265) 427x180.</summary>
+    public static readonly LaptopScreen Awards = new(
+        "main_goldtickets.sce", 3, "awardstext", "awardstext", "awardstext", "awardstext",
+        new LaptopRow[]
+        {
+            new(GoldTicketScreen.AwardsTextId,   LaptopRowKind.Text),   // "Awards"
+            new(GoldTicketScreen.UltimateTextId, LaptopRowKind.Text),   // "Ultimate Coasters"
+        },
+        LabelsOnGrid: true, RowYs: new[] { 65, 227 });
+
     public static readonly LaptopScreen[] AllList = { AllRides, AllShops, AllSideshows, AllToilets };
 
     /// <summary>The four "Single ..." item screens the console builds on one base class. ⚠ Build

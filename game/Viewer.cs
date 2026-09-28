@@ -3594,6 +3594,31 @@ public partial class Viewer : Node3D
             }
             case "stafftypes": ShowStaffInfoTypes(); break;
             case "staffitem": ShowStaffInfoMember(arg); break;
+            // ⭐⭐ AWARDS -- which IS main_goldtickets (menu id 3), the Park Statistics menu's
+            // fourth row. `findings/awards.md`: every string on it is STR_PARKSTATS_*, and there
+            // is no Gold Tickets row in the laptop's main menu, so it hangs off Park Statistics.
+            case "awards":
+            {
+                var aw = _awards;
+                var medals = new List<bool>();
+                for (int i = 0; i < GoldTicketScreen.Medals.Length; i++)
+                    medals.Add(aw != null && i < aw.Medals.Length && aw.Medals[i]);
+                // ⚠ The port keeps a COUNT of ultimate coasters, not which ones, so the first N
+                // stars light in the registry's authored order. Flagged rather than presented as
+                // the console's own set -- it is the right number of stars, not certainly the
+                // right stars.
+                int uc = aw?.UltimateCoasters ?? 0;
+                var stars = new List<bool>();
+                for (int i = 0; i < GoldTicketScreen.UltimateStars.Length; i++) stars.Add(i < uc);
+                _shopPanel.EnsureAwardArt(_lib);
+                _shopPanel.ShowScreen(LaptopScreen.Awards, "",
+                    Blank(LaptopScreen.Awards.Rows.Count), medals: medals, stars: stars);
+                ClearLaptopModel();
+                RefreshLaptopBalance();
+                Status($"awards -- {medals.FindAll(m => m).Count} of {medals.Count} medals, "
+                     + $"{uc} of {stars.Count} ultimate coasters, {aw?.GoldTickets ?? 0} gold tickets");
+                break;
+            }
             // ⭐⭐ THE RIDE'S ADDONS PAGE (state 3). Same `.sce` as the Upgrades page, different
             // content: the ADDON's name and price, the stock left, and the RIDE's model.
             //
@@ -4443,7 +4468,6 @@ public partial class Viewer : Node3D
             {
                 var pm = LaptopScreen.ParkStatsMenu;
                 if (row < 0 || row >= pm.Length) return;
-                if (pm[row].Opens == "awards") { Status("awards -- no screen in this port yet"); return; }
                 _laptopBack.Add((pm[row].Opens, null));
                 ShowLaptopLevel();
                 return;
