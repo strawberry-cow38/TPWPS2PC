@@ -97,3 +97,29 @@ and rebuilt. Logs `/tmp/tpw-fe-mut-*`, startup `/tmp/tpw-frontend-{movies,missin
 menu,direct}.log`, lifecycle `/tmp/tpw-frontend-lifecycle.log`. These are behavior
 and asset-decode checks, not a claim of pixel-perfect retail UI or audible output
 from the Dummy audio backend.
+
+## Regression gates / retail-file runner
+
+Clean implementation commit `a24d6f2`: core8-park matrix4PASS+4exact known retail
+failures (`landing_evidence=true`); runtime10/11, only existing FANTASY/1 holder
+anchor mismatch (actual37.99974,-32.00022 vs37.994743,-31.941021); rendered viewer
+subset entrance/staff/mechanic on JUNGLE/1 and HALLOW/2:6/6. Logs/manifests in
+`/tmp/tpw-frontend-core-matrix`, `-runtime`, `-viewer`.
+
+Cow tools rendered `a24d6f2` on the4080 with real language art, but SSH could not
+supply keys, so that run stopped at language selection. Use the EXISTING smoke
+scene (real Input.ParseInputEvent), not a new production auto-advance switch:
+
+```
+Godot --path game res://tests/MainMenuStartupSmoke.tscn -- \
+  --disc=<owner disc> --movies-dir=C:\claude-workspace\movies-ogv \
+  --frontend-full-movies
+```
+
+Harness now waits up to30s for BFLOGO (9.57s retail),90s for DINO (40.13s retail)
+using monotonic wall time, not an FPS-dependent frame count. It selects French,
+plays BFLOGO to completion, separately tests its skip, mouse-navigates both menu
+pages and the lobby prompt, then plays DINO to completion when the test-only
+`--frontend-full-movies` is present. Without it, DINO is skipped as before. The
+full path passes53checks locally with synthetic movies; retail run still pending.
+No headless flag: scene requires a renderer. Allow120s+ for startup/assets/movies.
