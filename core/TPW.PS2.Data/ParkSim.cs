@@ -183,11 +183,13 @@ public sealed partial class ParkRide
     /// returns `+0x24`, `MinSpeedDamage`, which is the offset `RideCatalogue` already documents, so
     /// the stride and the base both check out.
     ///
-    /// ⚠⚠ THE BUILD DEFAULT IS STILL THE PORT'S CHOICE -- it opens at the maximum. ⚠ CORRECTED
-    /// (staff mechanics, 2026-09-27): `FUN_00116120` DOES set this one -- MIPS `0x116164..0x116194`
-    /// stores `max(1, vt+0x344 >> 1)`, half the maximum -- and the upgrade install uses it
-    /// (<see cref="ParkSim.ApplyTierDefaults"/>). Whether a NEWLY BUILT ride goes through `0x116120`
-    /// is not traced, so the build default is left for the ride screen's owner to settle.
+    /// ⭐⭐ SETTLED (2026-09-28): a newly built ride DOES take these defaults -- half the
+    /// maximum. `FUN_00116120` stores `max(1, vt+0x344 >> 1)` (MIPS `0x116164..0x116194`) and has
+    /// exactly TWO callers: `0x116048`, which this file already names as the BUILD, and
+    /// `0x116268`, which it already names as the UPGRADE. Both land on functions identified
+    /// independently, which is what makes the census an answer. `ParkSim.Add` calls
+    /// <see cref="ParkSim.ApplyTierDefaults"/> accordingly; the old "opens at the maximum" was the
+    /// port's choice and is gone.
     ///
     /// ⚠ THE TIER INDEX IS `ride[0x126]` (<see cref="CurrentTier"/>), which an upgrade raises
     /// (`0x116268`); the wear rate and the tier defaults stride by it.</summary>
@@ -461,6 +463,20 @@ public sealed partial class ParkSim : IRseDirectory
         // the last frame of a 215-frame Create.
         try { machine.RunSlice(Time); }
         catch (Exception e) { fault = e.Message; return null; }
+        // ⭐⭐ A NEWLY BUILT RIDE TAKES THE TIER DEFAULTS -- half capacity, mid speed, half
+        // duration -- and that question is now SETTLED rather than left open.
+        //
+        // The note above used to read "whether a NEWLY BUILT ride goes through 0x116120 is not
+        // traced, so the build default is left for the ride screen's owner to settle". It does:
+        // `0x116120` has exactly TWO callers, `jal` from **`0x116048`** and from **`0x116268`** --
+        // and this file already names those two as the BUILD and the UPGRADE respectively (see
+        // `RideService.Life`, "at build (`0x116048`)", and `CurrentTier`, "which an upgrade raises
+        // (`0x116268`)"). Both ends of the census land on functions already identified, which is
+        // the check that makes it an answer and not a coincidence.
+        //
+        // ⚠ So the port's "opens at the maximum" was the port's choice, and it is now the
+        // console's: `max(1, CapacityParameter >> 1)`, via the same routine the upgrade uses.
+        ApplyTierDefaults(ride);
         _rides.Add(ride);
         return ride;
     }

@@ -3848,6 +3848,39 @@ public partial class Viewer : Node3D
     ///
     /// ⚠ Rebuilt only on a CHANGE of row -- the panel edge-triggers this -- because each call
     /// frees a SubViewport and loads a model, which is not something to do per mouse-move.</summary>
+    /// <summary>⭐⭐ CLICKING THE UPGRADES ROW ASKS FOR AN UPGRADE. tinyclaw landed the core side
+    /// (`ParkStaff.RequestUpgrade`) and handed the screen over; this is the hook it was missing.
+    ///
+    /// ⚠ Only the row that DOES something acts. Every spec row registers a clickable band, so
+    /// the screen does not have to know which ones matter -- but the handler does, and everything
+    /// other than Upgrades is deliberately ignored rather than falling through to a default.
+    ///
+    /// ⚠ And only where an upgrade EXISTS. `UpgradeAbove` is the same predicate the row already
+    /// uses to decide between a blank and "Unavailable", so what you can click and what the row
+    /// says can never disagree.</summary>
+    void OnLaptopRowActivated(int row)
+    {
+        if (_detailsSpec != LaptopScreen.Ride || _detailsRide is not { } ride) return;
+        var rows = LaptopScreen.Ride.Rows;
+        if (row < 0 || row >= rows.Count || rows[row].TextId != 119) return;   // Upgrades
+        if (!UpgradeAbove(ride)) { Status($"{DisplayName(ride)} -- no upgrade available"); return; }
+        if (_staff == null) { Status("no staff system"); return; }
+
+        // ⚠ The outcomes are the console's, including the two that are refusals rather than
+        // errors: no mechanic hired and mechanics on strike both mean "nothing happens", and the
+        // console answers them with a sound and blank text rather than a message.
+        var outcome = _staff.RequestUpgrade(ride);
+        GD.Print($"[laptop] upgrade requested for {DisplayName(ride)} -> {outcome}");
+        Status(outcome switch
+        {
+            ParkStaff.UpgradeRequest.Queued            => $"{DisplayName(ride)} -- upgrade ordered; a mechanic will install it",
+            ParkStaff.UpgradeRequest.ListFull          => "the upgrade list is full (15)",
+            ParkStaff.UpgradeRequest.NoMechanics       => "no mechanic hired -- nobody can install it",
+            ParkStaff.UpgradeRequest.MechanicsOnStrike => "the mechanics are on strike",
+            _                                          => $"upgrade: {outcome}",
+        });
+    }
+
     void OnLaptopMenuFocus(int row)
     {
         bool isBuildList = _laptopBack.Count > 0 && _laptopBack[^1].Kind == "buildlist";
@@ -10189,6 +10222,7 @@ public partial class Viewer : Node3D
                     _shopPanel.ShopSettingChanged += OnShopSetting;
                     _shopPanel.PriceNudged += OnShopPriceNudge;
                     _shopPanel.RowNudged += OnRowNudge;
+                    _shopPanel.RowActivated += OnLaptopRowActivated;
                     _shopPanel.MenuFocusChanged += OnLaptopMenuFocus;
                     // ⭐ The laptop's voice. ⚠ A bank that will not read leaves it null and the
                     // laptop silent, never unusable -- Report says which cues resolved.

@@ -708,12 +708,17 @@ public sealed partial class LaptopShopScreen : Control
     /// <summary>⭐ A NUDGE ARROW's drawn rect, by row index -- the pairs a row gets when its value
     /// can be stepped. Same rule as the others: hit-test the rect that was drawn.</summary>
     readonly Dictionary<int, Rect2> _rowArrows = new();
+    /// <summary>Every spec row's drawn band, by row index -- what a plain click hits.</summary>
+    readonly Dictionary<int, Rect2> _specRows = new();
     /// <summary>The shop's own price arrows, which live outside the row list.</summary>
     Rect2 _shopPriceArrows;
 
     /// <summary>⭐ A nudge arrow was clicked: the ROW INDEX and -1 or +1. ⚠ A direction, not a
     /// value -- the step and the clamp are the caller's, where the field is.</summary>
     public event Action<int, int> RowNudged;
+    /// <summary>A spec row was clicked, by row index. ⚠ Raised for ANY row; the handler decides
+    /// which ones mean something.</summary>
+    public event Action<int> RowActivated;
     /// <summary>The shop's price arrows: -1 or +1.</summary>
     public event Action<int> PriceNudged;
 
@@ -862,6 +867,14 @@ public sealed partial class LaptopShopScreen : Control
             }
             if (_buildRow && _buildRowRect.HasPoint(b.Position))
             { Cue(LaptopSounds.Cue.Choose); BuildRequested?.Invoke(); AcceptEvent(); return; }
+            // ⭐ A plain click on a spec row. ⚠ AFTER the sliders, the nudge arrows and the pager,
+            // all of which sit inside a row's band and must win -- a row-wide rect registered
+            // first would swallow every one of them.
+            if (b.ButtonIndex == MouseButton.Left)
+                foreach (var (idx, rect) in _specRows)
+                    if (rect.HasPoint(b.Position))
+                    { Cue(LaptopSounds.Cue.Choose); RowActivated?.Invoke(idx); AcceptEvent(); return; }
+
             // ⚠⚠ HIT-TEST THE CLICK HERE TOO. `_btnHover` is set by MOTION, exactly like
             // `_menuHover` -- and the comment above already says why trusting that is wrong. A
             // click away from the buttons must not fire whichever one the pointer last crossed.
@@ -1044,6 +1057,16 @@ public sealed partial class LaptopShopScreen : Control
             if (labels is { } l && label != null)
                 DrawRun(label, At(l) + new Vector2(0, dy), s, Of(ShopScreen.Label), l.Justify);
 
+            // ⭐ A ROW IS CLICKABLE. Only some do anything -- the Upgrades row asks for an upgrade
+            // -- but the rect is registered for every row and the CALLER decides, because which
+            // rows act is a property of the screen's data and not of the drawing.
+            // ⚠ Registered from the DRAWN position (label row plus the same `dy` the text got), so
+            // a row re-anchored onto a sized widget is clickable where it actually appears.
+            if (labels is { } lr)
+                _specRows[i] = new Rect2(
+                    new Vector2(Origin.X, At(lr).Y + dy),
+                    new Vector2(Native * s, LineAdvance * s));
+
             // ⭐ A widget sits at ITS OWN element's row, not on the label grid. The ride screen
             // places its seven widgets at 118/150/182/214/246/280/310 -- 32 apart for the bars and
             // then 34 and 30 -- so stepping them with the labels would drift by the third slider.
@@ -1188,6 +1211,7 @@ public sealed partial class LaptopShopScreen : Control
         _sliderRects.Clear();
         _shopSliders.Clear();
         _rowArrows.Clear();
+        _specRows.Clear();
         _pageArrows = new Rect2();
         _shopPriceArrows = new Rect2();
         FitToViewport();
