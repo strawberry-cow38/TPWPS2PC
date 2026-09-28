@@ -3332,3 +3332,14 @@ Visitor final gates9c5d475:233925SaveAudit,83Python,Godotground92+placement659PA
 8parkmatrix4PASS+4exactretailreds landing_evidenceTrue;runtime10/11onlyknownFANTASYanchor.
 Evidence /tmp/tpw-save-visitors-matrix,/tmp/tpw-save-visitors-runtime,/tmp/tpw-visitors-final-saveaudit.log.
 Next admission/ridequeue/request resources (+Viewer.Entrance pending seam), thenstaff/managers/advisor.
+
+### 2026-09-28 — Save research: native controllers and pending results
+- d1f47d9: NativeEntranceFlow and NativeRideQueues two-phase state; real Viewer entrance mailbox
+  preserves pending/stale result identity/order instead of re-running BFS on load; StaffRouteService
+  pending records/counters (staff-owner state not yet covered).
+- File continuation catches native-boarding detached guest slots and future queue-map hole reuse.
+  Six mutations fail; restored source SaveAudit235766 PASS, Python83 PASS.
+- Main advisor884079b merged at2a2991b. Eight-park audit unchanged4green/4retail;
+  runtime10/11, only existingFANTASYanchor. Evidence /tmp/tpw-save-controllers-{matrix,runtime}.
+- Still research only: next staff/jobs/managers, native bus/provider and advisor/presentation state,
+  then complete transactional Viewer load. Player Save/Load still unavailable, not a partial save.

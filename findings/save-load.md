@@ -426,3 +426,81 @@ StaffRouteService.cs is another pending-work owner; do not conflate its request 
 GuestWalk.NativeRoutes. Their references must adopt the restored ONE output pool where shared.
 For future maps whose enumeration affects play, reuse IntMapLayout instead of losing removed
 slots. Layout metadata tracks public Dictionary mutations, not private CLR internals.
+
+## Native controller / deferred-result checkpoint — September 28
+
+NativeEntranceFlow.Snapshot saves all allocated entries, independent active/group list orders,
+next request token, tick, baseline/activation serial, speed/mode/state, pending token, acceptance/
+rejection latches, staging population/pressure/counters, held/deferred/alternate/ordinary flags,
+and admitted identities. AllocateState makes an unpublished owner and input bundles, THEN the
+shared GuestGraph hydrates leases against those exact objects, THEN HydrateStateBindings verifies.
+No Add/Tick/admission/path request/RNG/lease acquisition replay. Busy capture and shell Tick reject.
+Services are external by explicit trusted identity: their RNG/fee/readiness/animation values,
+bus traffic and guard state must still be saved by the world coordinator. Snapshot != service code.
+
+NativeRideQueues.State saves ordered members/queues, movement states, routed latches, deadlines,
+clock/counters and bounded boarding history (including detached guest bodies). Same two-phase
+lease/owner/input hydration and same GuestWalk.NativeRoutes, never a second output pool. The
+input-key registry is staging-only and cleared after hydration, avoiding a restored queue retaining
+all its departed guests through input closures. Queue shapes and services remain external values.
+
+A parent continuation found TWO additional requirements:
+- native queue boarding Remove disposes/nulls the native lease but leaves the detached Guest's
+  old coarse slot (-1 or a prior valid slot). GuestWalk validation had rejected this real state.
+  Inactive bodies now preserve the bounded stale index; live bodies still require a matching lease
+  or an ordinary route. No gameplay reset was added to make the snapshot look tidier.
+- the reference-key ride->queue Dictionary ALSO reuses removed slots. SnapshotReferenceMap owns
+  slot/free-stack history like the existing integer helper; serialized slots reference ORDINALS in
+  the accompanying live queue array, not ride IDs. Restore uses private, side-effect-free ParkRide
+  placeholders, then removes them in saved free-stack order. A real three-queue test deletes the
+  first queue, loads, adds a fourth ride and checks it appears BEFORE the older two, plus150ticks.
+  This is behavior, not aesthetic dictionary order: boarding/RNG evaluation follows that order.
+
+NativeEntranceMailbox is now the Viewer's ACTUAL deferred result owner (Viewer.Entrance.cs), not
+an unused snapshot helper. It saves result order, tokens, detached waypoint arrays, null vs empty,
+failure strings and exact GuestGraph identities, including stale/duplicate/inactive results. The
+next Pump drains the saved batch; it does not redo BFS against possibly changed paths. Capture at
+quiescence; an in-progress drained batch is not a capture boundary. Diagnostics _entranceRequests,
+fee/tick/counters/flags and the remaining Viewer provider values still need the final root DTO.
+
+StaffRouteService.State stores its ten-record pending list newest-first, exact target/flags and
+stored clamped cells, counters and owner-object keys. Restores only onto an unpublished service
+with the SAME ParkStaff paths/tiles/output-pool references. Duplicate requests for one staff owner
+are allowed (Submit permits them). StaffMember/job cursor state is NOT implemented in this slice;
+its continuation test uses independently built same-state owners. NativeTileView cached building
+values/provider also remain outside this DTO. No Submit/Pump/event replay at restore.
+
+Evidence: file bundles join entrance+walk+visitors+mailbox and ridequeue+walk+visitors+needs+sim+
+ground. Actual Tick continuation covers both entrance groups, pending/stale results, accepted and
+rejected arrivals, blocked exits, ordinary departures, tokenless alternate failures, queue boarding,
+move-up/impatience, broken/demolished release and future queue insertions. Service test providers'
+values are explicitly copied separately; this does NOT claim production bus/fee/animation capture.
+Acceptance test asserts exactly six acceptance calls despite repeated loads. Observation probes
+call the queue's Shape service, so the test now samples BOTH branches before comparing call counts;
+the first asymmetric probe was a test defect, not a restore defect.
+
+Six deliberate mutations failed and were restored: reset next token, lose acceptance latch, reverse
+queue membership, discard reference-map holes, drop first mailbox result, reverse staff requests.
+A batched mutation tool timed out during the fourth; inspected files/processes and explicitly
+restored it before rerunning each remaining mutation individually. No mutant left.
+
+Code d1f47d9; merged advisor main884079b at2a2991b. Ownerdisc SaveAudit235766PASS;
+83PythonPASS. /tmp/tpw-save-controllers-matrix:4PASS+4exactretailreds,exit2,landing_evidence=True.
+/tmp/tpw-save-controllers-runtime:10/11PASS, ONLY existing FANTASY/1 anchor from00e5cd9
+(actual37.99974,-32.00022 vs expected37.994743,-31.941021). Bus, advisor, standing all pass.
+Full save log /tmp/tpw-controllers-merged-saveaudit.log. --controllers-only is focused gate.
+No full-world save/LoadGame UI enabled. All3delegates finished (first2timedout with complete files),
+reviewed/integrated; none pending. Explicitly do not present pending-request coverage as staff coverage.
+
+NEXT: staff/job/manager graph. ParkStaff.cs399 + Management565 + Security637; StaffMember647;
+ResearchManager194, StaffCandidates99, ParkLitter137, NativeTileView171. StaffRouteService is ready
+for joining. ParkStaff constructor currently writes Walk.Paused and builds pools: restore needs a
+no-side-effect staged construction path, retaining the ONE shared output pool/activation sequence.
+Default staff RNG is still System.Random(0x5747), requiring owned SnapshotRandom or explicit shared
+provider binding; no seed-only restore. Handyman/Mechanic subclasses and guard/entertainer job
+objects all have state. Staff targets may refer to features/litter/ride instances/other staff.
+Then native bus controller116lines + actual Viewer native bus/demand/guest animation providers;
+advisor Scheduler/ParkAdvisor/MessageStack and NEW visible/audio state from884079b; all presentation
+owners and final Viewer transaction last. ParkSim.ObjectRemoved is a NEW callback rebound through
+ParkAdvisor.Attach, not serialized as a delegate. Settings/HiddenAwards remain GAME scope. Read
+findings/advisor-viewer.md before capturing presentation. Full save requires all these joins.
