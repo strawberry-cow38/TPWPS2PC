@@ -506,7 +506,14 @@ public sealed partial class Model
     ///
     /// ⚠ SO THE GUARD IS: if anything is ever added that writes a node's PARENT LINK (`+4`) or its
     /// MATRIX (`+0x10..`), these three caches go stale silently and must be invalidated -- set
-    /// `_bindWorld`/`_bindLocals`/`_bindParents` to null at that write. A future reader who took the
+    /// `_bindWorld`/`_bindLocals`/`_bindParents` to null at that write.
+    ///
+    /// ⚠⚠ AND ONE BIT OF `+0` IS NOT DISJOINT (tinyclaw, reviewing the merge). The caches' KEY SET comes
+    /// from <see cref="HelperOffsets"/>, which walks the helper table only while `U32(o) & 0x80000000` is set
+    /// -- bit 31 of each helper's flag word. So clearing bit 31 on a helper would end the walk early and
+    /// change which nodes exist. Safe today: `WriteNodeFlags`' only caller (the advisor head's costume and
+    /// mouth) SETS `0x80000000` and toggles `0x10`/`0x8000`, never clears bit 31, and only writes real
+    /// nodes. A future writer that clears bit 31 on a helper must invalidate these caches too. A future reader who took the
     /// old "D is never written" line at face value would have had no way to know that, which is
     /// precisely the failure a too-strong justification causes: it is not merely wrong, it hides the
     /// real precondition.
