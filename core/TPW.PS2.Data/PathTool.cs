@@ -505,11 +505,22 @@ public sealed partial class PathTool
                 // ⚠ The ground is NOT restored here, unlike a cleared queue cell: this cell is
                 // still a path and Repick will choose it a path sprite. Restoring `_before` would
                 // put back whatever was under the path.
+                //
+                // ⚠⚠ AND `_before` IS *KEPT*, NOT REMOVED -- astraclaw, 2026-09-28, found while
+                // testing save/load. It used to `_before.Remove(at)` here, which conflated two
+                // different things: not APPLYING the record (right, the cell is still a path) with
+                // not KEEPING it (wrong). The cell survives as ordinary path, so the player can
+                // still delete it later with the delete tool -- and `TearUp` needs exactly this
+                // record to put grass back. Dropping it made that tear raise `GroundUnknown` and
+                // leave paving on a cell that had a perfectly good ground byte on file.
+                //
+                // ⭐ The rule: `_before[at]` is removed only when the ground it records has been
+                // PUT BACK, which is the Queue branch below. While a cell is still a path its
+                // original ground is still owed to it.
                 if (_kind[at] == Kind.Both)
                 {
                     Record(at);
                     _kind[at] = Kind.Path; _owner[at] = 0; _run[at] = 0;
-                    _before.Remove(at);
                     cleared.Add((x, y));
                     continue;
                 }
@@ -569,6 +580,16 @@ public sealed partial class PathTool
 
     /// <summary>Whose queue a cell is, or 0.</summary>
     public int OwnerAt(int x, int y) => In(x, y) ? _owner[At(x, y)] : 0;
+
+    /// <summary>⭐ Whether this cell's ORIGINAL GROUND is on file, so a <see cref="TearUp"/> of it
+    /// could put grass back rather than raising <see cref="GroundUnknown"/>.
+    ///
+    /// ⚠ This is the invariant a still-standing path cell must satisfy, and it exists because
+    /// <see cref="ClearQueue"/> broke it: a `Both` cell demoted to plain path kept being a path but
+    /// had its record deleted, so tearing it later left paving on the ground. Asking "is the ground
+    /// known" directly is worth more than exposing the cell index, because the index is not the
+    /// question anyone has.</summary>
+    public bool GroundKnownAt(int x, int y) => In(x, y) && _before.ContainsKey(At(x, y));
 
     /// <summary>Quarter turns for a cell's ground tile, for the plot to turn its UVs by.</summary>
     public int Turns(int x, int y) => In(x, y) ? _turns[At(x, y)] : 0;

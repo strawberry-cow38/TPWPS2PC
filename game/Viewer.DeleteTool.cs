@@ -1,4 +1,5 @@
 using Godot;
+using System.Linq;
 using System.Collections.Generic;
 using TPW.PS2.Data;
 
@@ -123,8 +124,64 @@ public partial class Viewer
     /// what the park held before and after. ⚠ Reports the BOX'S CONTENTS, not just a count of
     /// deletions -- "3 deleted" reads the same whether it took the right three or the wrong three.
     /// </summary>
+    /// <summary>⭐⭐ astraclaw's case, CONSTRUCTED rather than hoped for. The park-wide scan in
+    /// <see cref="RunDeleteTest"/> is honest but it reported VACUOUS on every run -- `--place-test`
+    /// never happens to make a queue-over-path junction, so a check that only observes could not
+    /// reject the bug it exists for. This builds one: lay path, lay queue over it (that cell is now
+    /// `Both`), clear the queue, and require the survivor to tear back to its ground.
+    ///
+    /// ⚠ ISOLATED BY A SYNTHETIC OWNER above every placed ride's id, so the `ClearQueue` here
+    /// cannot touch a real ride's queue. It ends by tearing its own cell up, which restores the
+    /// ground and leaves the grid as it was found.
+    ///
+    /// ⚠ It leaves undo entries behind (`Lay` snapshots), which is acceptable in a harness and
+    /// noted so nobody reads a longer undo stack as a defect.</summary>
+    void ProbeGroundRecordInvariant()
+    {
+        if (_paths == null || _park == null) return;
+        int owner = 9000;
+        foreach (var pl in _park.Placed) if (pl.Id >= owner) owner = pl.Id + 1;
+
+        int fx = -1, fz = -1;
+        for (int z = 0; z < _park.Height && fx < 0; z++)
+            for (int x = 0; x < _park.Width; x++)
+            {
+                if (_paths.KindAt(x, z) != PathTool.Kind.None) continue;
+                if (!_paths.Lay(x, z, PathTool.Kind.Path)) continue;
+                fx = x; fz = z; break;
+            }
+        if (fx < 0) { GD.Print("[delete] GROUND PROBE: nowhere to lay a test path -- probe VACUOUS"); return; }
+
+        bool laidQueue = _paths.Lay(fx, fz, PathTool.Kind.Queue, owner);
+        bool isBoth = _paths.KindAt(fx, fz) == PathTool.Kind.Both;
+        bool unknown = false;
+        void OnUnknown(int ux, int uz) { if (ux == fx && uz == fz) unknown = true; }
+        _paths.GroundUnknown += OnUnknown;
+        _paths.ClearQueue(owner);
+        bool nowPath = _paths.KindAt(fx, fz) == PathTool.Kind.Path;
+        // ⭐ THE LINE THAT REJECTS THE BUG. With the old `_before.Remove(at)` in ClearQueue this is
+        // false, TearUp below raises GroundUnknown, and the paving stays on the ground.
+        bool kept = _paths.GroundKnownAt(fx, fz);
+        bool tore = _paths.TearUp(fx, fz);
+        _paths.GroundUnknown -= OnUnknown;
+
+        GD.Print($"[delete] GROUND PROBE at ({fx},{fz}): queueLaid={laidQueue} both={isBoth} "
+               + $"afterClear=Path:{nowPath} groundKept={kept} tearUp={tore} groundUnknown={unknown}");
+        if (!isBoth)
+            GD.Print("[delete] GROUND PROBE INCONCLUSIVE: could not make a Both cell there");
+        else if (!nowPath)
+            GD.Print("[delete] GROUND PROBE FAILED: ClearQueue did not leave the join cell as plain path");
+        else if (!kept)
+            GD.Print("[delete] GROUND PROBE FAILED: the demoted cell LOST its ground record (astraclaw's bug)");
+        else if (!tore || unknown)
+            GD.Print($"[delete] GROUND PROBE FAILED: tearUp={tore} groundUnknown={unknown} on the survivor");
+        else
+            GD.Print("[delete] GROUND PROBE OK: a demoted Both cell still tears back to its ground");
+    }
+
     void RunDeleteTest(string arg)
     {
+        ProbeGroundRecordInvariant();
         var bits = (arg ?? "").Split(',');
         if (bits.Length != 4 || !int.TryParse(bits[0], out int x0) || !int.TryParse(bits[1], out int z0)
             || !int.TryParse(bits[2], out int x1) || !int.TryParse(bits[3], out int z1))
@@ -142,6 +199,20 @@ public partial class Viewer
         // must hold afterwards is that a queue cell whose ride still stands is still there.
         int pathsBefore = 0;
         var queueOwners = new List<(int X, int Z, int Owner)>();
+        // ⚠⚠ THE `Both` CELLS ARE TRACKED SEPARATELY, for the invariant checked after the commit.
+        // A Both cell is queue drawn onto park path: deleting its ride DEMOTES it to plain path
+        // rather than tearing it, so it is still there afterwards and the player can still delete
+        // it -- which means its original ground must still be on file. astraclaw found it was not
+        // (ClearQueue removed the record), so tearing that survivor later left paving behind.
+        // ⚠⚠ PARK-WIDE, NOT JUST THE BOX. ClearQueue sweeps the WHOLE grid for the deleted ride's
+        // cells, so a Both cell well outside the marquee is demoted too -- and the first version of
+        // this check only looked inside the box, found none, and honestly reported itself vacuous.
+        // A check whose scope is narrower than the thing it checks proves nothing on most runs.
+        var bothCells = new List<(int X, int Z)>();
+        if (_paths != null)
+            for (int z = 0; z < _park.Height; z++)
+                for (int x = 0; x < _park.Width; x++)
+                    if (_paths.KindAt(x, z) == PathTool.Kind.Both) bothCells.Add((x, z));
         for (int z = bz0; z <= bz1; z++)
             for (int x = bx0; x <= bx1; x++)
             {
@@ -150,6 +221,8 @@ public partial class Viewer
                 else if (k is PathTool.Kind.Queue or PathTool.Kind.Both)
                     queueOwners.Add((x, z, _paths.OwnerAt(x, z)));
             }
+        GD.Print($"[delete] {bothCells.Count} Both (queue-over-path) cells in the park before the delete"
+               + (bothCells.Count > 0 ? ": " + string.Join(" ", bothCells.Take(8).Select(c => $"({c.X},{c.Z})")) : ""));
         int queueBefore = queueOwners.Count;
         // ⭐⭐ THE DIRECT TEST OF THE RULE, and it needs no geometry luck: ask TearUp to take each
         // queue cell and require it to REFUSE. That is the half the observed run cannot show --
@@ -179,6 +252,25 @@ public partial class Viewer
             }
         GD.Print($"[delete] AFTER: {_park.Placed.Count} placed in park, {pathsAfter} plain path "
                + $"and {queueAfter} queue cells left in the box");
+
+        // ⭐ THE GROUND-RECORD INVARIANT. Every `Both` cell that survived as plain path must still
+        // know the ground it was laid over, or a later tear-up of it leaves paving on bare terrain.
+        // ⚠ It names its own coverage: with no Both cells in the box the check is VACUOUS, and a
+        // vacuous pass printed as a pass is how a regression gets waved through.
+        int demoted = 0, groundLost = 0;
+        foreach (var (bxc, bzc) in bothCells)
+        {
+            if ((_paths?.KindAt(bxc, bzc) ?? PathTool.Kind.None) != PathTool.Kind.Path) continue;
+            demoted++;
+            if (!_paths.GroundKnownAt(bxc, bzc)) { groundLost++; GD.Print($"[delete]   ({bxc},{bzc}) lost its ground record"); }
+        }
+        GD.Print(bothCells.Count == 0
+            ? "[delete] GROUND RECORD: no Both cells in the park -- check VACUOUS, proves nothing"
+            : demoted == 0
+                ? $"[delete] GROUND RECORD: {bothCells.Count} Both cells and none demoted -- check VACUOUS"
+                : groundLost == 0
+                    ? $"[delete] GROUND RECORD OK: all {demoted} demoted Both cells kept their ground record"
+                    : $"[delete] GROUND RECORD FAILED: {groundLost} of {demoted} demoted cells lost it");
         // ⭐ THE CONTROL: a queue cell whose RIDE STILL STANDS must still be there. One whose
         // ride went is supposed to have gone with it.
         int orphanedWrongly = 0, wentWithRide = 0, checkedOwned = 0;

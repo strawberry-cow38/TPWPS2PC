@@ -112,6 +112,8 @@ void sky() {
 
     /// <summary>Advance the two cloud layers and set the weather grey. ⚠ Wrapped into 0..1 here,
     /// as `0x232328` does, so the offsets never grow until float precision eats the detail.</summary>
+    static readonly StringName DriftFar = "drift_far", DriftNear = "drift_near", Grey = "grey";
+
     public static void Step(ShaderMaterial mat, ref Vector2 drift, double delta, float amount,
                             float headingRadians)
     {
@@ -119,9 +121,11 @@ void sky() {
         var wind = new Vector2(-Mathf.Cos(headingRadians), Mathf.Sin(headingRadians));
         drift += wind * DriftPerSecond * (float)delta;
         drift = new Vector2(Mathf.PosMod(drift.X, 1f), Mathf.PosMod(drift.Y, 1f));
-        mat.SetShaderParameter("drift_far", drift);
-        mat.SetShaderParameter("drift_near", drift * 2f);
-        mat.SetShaderParameter("grey", Eased(amount));
+        // ⚠ PERF: cached StringNames -- a string literal here mints a new StringName per call, and
+        // Step runs every frame. See Ps2Materials.UvTime for the full note.
+        mat.SetShaderParameter(DriftFar, drift);
+        mat.SetShaderParameter(DriftNear, drift * 2f);
+        mat.SetShaderParameter(Grey, Eased(amount));
     }
 
     public static Sky Build(AssetLibrary lib, out string report)

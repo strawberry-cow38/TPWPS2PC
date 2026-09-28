@@ -75,11 +75,26 @@ public static class AnimationNodeVisibility
             if((Flags(model,node)&0x80000000)==0) hidden.Remove(node);
     }
     public static bool Shown(Model model,int node,ISet<int> hidden)
+        => Shown(model,node,model.Ancestry(node),hidden);
+
+    /// <summary>⭐ The same answer from a chain the caller ALREADY HOLDS.
+    ///
+    /// ⚠ PERF, not semantics: <see cref="Model.Ancestry"/> builds a fresh <c>List&lt;int&gt;</c>
+    /// every call, and the per-frame caller asks it once PER PART PER FRAME -- a whole park's
+    /// worth of garbage for a walk up a chain that cannot change while the model is loaded. The
+    /// caller caches the chain at construction, so it passes it in and this allocates nothing.
+    /// Pass exactly <c>model.Ancestry(node)</c>; anything else changes the answer.</summary>
+    public static bool Shown(Model model,int node,IReadOnlyList<int> ancestry,ISet<int> hidden)
     {
         uint own=(Flags(model,node)&~0x10u)|(hidden.Contains(node)?0x10u:0u);
         if((own&0x8050)!=0) return false;
-        foreach(int ancestor in model.Ancestry(node))
+        // ⚠ Indexed, not foreach: List<int>'s enumerator boxes when it is walked through the
+        // IReadOnlyList interface, which would put the allocation straight back.
+        for(int i=0;ancestry!=null && i<ancestry.Count;i++)
+        {
+            int ancestor=ancestry[i];
             if(ancestor!=node && (Flags(model,ancestor)&0x20)!=0) return false;
+        }
         return true;
     }
 }

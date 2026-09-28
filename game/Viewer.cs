@@ -370,6 +370,10 @@ public partial class Viewer : Node3D
     LaptopShopScreen _shopPanel;
     Control _uiRoot;
     string _moneyShown;
+    /// <summary>⚠ PERF: the balance the readout was last built from, so ShowMoney can skip
+    /// `Money.Format` entirely on the frames where it has not moved. `int.MinValue` is a value no
+    /// real balance takes, so the first frame always builds.</summary>
+    int _moneyBalance = int.MinValue;
     Label _toolStatus;
     HSlider _scrub;
 
@@ -424,6 +428,7 @@ public partial class Viewer : Node3D
             else if (a == "--graph-demo") _graphDemo = true;
             else if (a.StartsWith("--delete-test=")) _deleteTest = a["--delete-test=".Length..];
             // ⭐ `--benchmark=<seconds>`: measure frame time and what is accumulating, then quit.
+            else if (a == "--alloc-probe") _allocProbe = true;
             else if (a.StartsWith("--benchmark="))
                 { if (double.TryParse(a["--benchmark=".Length..], out var bs)) _benchSeconds = bs; }
             else if (a == "--graph-line") LaptopGraph.LineStyle = true;
@@ -5594,8 +5599,10 @@ public partial class Viewer : Node3D
         _busElapsedMs += delta * 1000;
         int ticks = _parkClock.Advance(delta);
         _busClockAdvancedForFrame = true;
+        AllocBegin();
         try { for (int i = 0; i < ticks; i++) TickPark(); }
         finally { _busClockAdvancedForFrame = false; }
+        AllocEnd("  TickPark");
         // ⚠⚠ PRESENT BEFORE PLACING, NOT AFTER -- THIS ORDER IS THE RIDERS' ONE-FRAME LAG.
         // PlaceActors -> SeatRiders -> SeatPose reads `model.LastWorld`, and `LastWorld` is only
         // written by `model.SetFrame()` inside PresentScripted. Placing first therefore seats
@@ -5607,13 +5614,13 @@ public partial class Viewer : Node3D
         // paths through the same pair in opposite orders, and only the moving one could show the
         // difference -- which is why this survived every seat-position check we ran. Those checks
         // measured WHERE a rider was, never WHEN.
-        PresentScripted(alpha: _parkClock.Alpha);
-        PresentNativeBus(); // including rendered frames in which the park executes no tick
+        AllocBegin(); PresentScripted(alpha: _parkClock.Alpha); AllocEnd("  PresentScripted");
+        AllocBegin(); PresentNativeBus(); AllocEnd("  PresentNativeBus");
         PresentParkVehicles();
-        PresentTracks(_parkClock.Alpha);
-        PresentCoasters(_parkClock.Alpha);
-        if (_guests != null) PlaceActors(_parkClock.Alpha);
-        PlaceStaff(_parkClock.Alpha);
+        AllocBegin(); PresentTracks(_parkClock.Alpha); AllocEnd("  PresentTracks");
+        AllocBegin(); PresentCoasters(_parkClock.Alpha); AllocEnd("  PresentCoasters");
+        if (_guests != null) { AllocBegin(); PlaceActors(_parkClock.Alpha); AllocEnd("  PlaceActors"); }
+        AllocBegin(); PlaceStaff(_parkClock.Alpha); AllocEnd("  PlaceStaff");
     }
 
     /// <summary>One console tick of everything that moves in the park.
@@ -11309,11 +11316,21 @@ public partial class Viewer : Node3D
         // with commas every three -- and the /10 the finance screen applies to every figure.
         // ⚠ The fallback is the OPENING balance, not zero: a park whose sim has not been built
         // yet has not spent anything, and showing $0 made a full park look bankrupt.
-        string want = Money.Format(bank?.Balance ?? ParkFinances.OpeningBalance);
-        if (want != _moneyShown) { _moneyShown = want; _money.Texture = _moneyShadow.Texture = _hudFont.Render(want); }
+        int balance = bank?.Balance ?? ParkFinances.OpeningBalance;
+        // ⚠ PERF: the gate is on the INTEGER, not on the formatted string. The `want != _moneyShown`
+        // test below already stopped the TEXTURE being re-rendered, but `Money.Format` still built
+        // the string every frame purely to be compared and dropped -- 2 KB/frame of garbage for a
+        // readout that changes a few times a minute. The string test stays: two balances can format
+        // to the same text (the /10), and re-rendering the font for that would be waste too.
+        if (balance != _moneyBalance || _moneyShown == null)
+        {
+            _moneyBalance = balance;
+            string want = Money.Format(balance);
+            if (want != _moneyShown) { _moneyShown = want; _money.Texture = _moneyShadow.Texture = _hudFont.Render(want); }
+        }
         // ⭐ The console's own test is on the DIVIDED figure, and it is `< 1` -- not `< 0`, so a
         // park holding less than one unit is already showing the warning colour.
-        _money.Modulate = (bank?.Balance ?? ParkFinances.OpeningBalance) / 10 < 1 ? MoneyBroke : MoneyNormal;
+        _money.Modulate = balance / 10 < 1 ? MoneyBroke : MoneyNormal;
         // ⭐ As FRACTIONS of the console's frame, multiplied out by this viewport: the same
         // place and the same share of the screen at any window size.
         var view = GetViewport().GetVisibleRect().Size;
@@ -11454,7 +11471,9 @@ public partial class Viewer : Node3D
 
     public override void _Process(double delta)
     {
-        ShowMoney();
+        AllocFrameTop();
+        AllocBegin(); ShowMoney(); AllocEnd("ShowMoney");
+        AllocMark("01 after ShowMoney");
         // ⭐ THE INFO SCREEN'S MODEL ANIMATES. Master, 2026-09-27: "the models on the ride info
         // pages should play their animations on loop". It never did in play: StepLaptopModel had
         // exactly ONE caller and it was inside the --laptop-film harness, so the model was built,
@@ -11463,7 +11482,8 @@ public partial class Viewer : Node3D
         // ⚠ BEFORE the step and before the draw: the pump can swap the previewed model, and
         // doing that here rather than inside `_Draw` keeps scene-tree changes out of a drawing
         // callback and puts the new model in place for the frame that is about to be drawn.
-        if (_shopPanel is { Open: true }) { _shopPanel.PumpMenuFocus(); StepLaptopModel(delta); }
+        if (_shopPanel is { Open: true })
+        { AllocBegin(); _shopPanel.PumpMenuFocus(); StepLaptopModel(delta); AllocEnd("shopPanel"); }
         // ⚠ Once, and only after the park has actually loaded -- `_loadedMap` is the signal, since
         // firing before it would close a park that is not there and land on the wrong record.
         if (_closeParkTest && _loadedMap >= 0 && !_lobbyMode)
@@ -11482,8 +11502,8 @@ public partial class Viewer : Node3D
             int n = _menuGo; _menuGo = 0;
             for (int i = 0; i < n; i++) _mainMenu.Confirm();
         }
-        StepLobby(delta);
-        TickDebugHud(delta);
+        AllocBegin(); StepLobby(delta); AllocEnd("StepLobby");
+        AllocBegin(); TickDebugHud(delta); AllocEnd("TickDebugHud");
         // ⭐⭐ THE CLOUDS SHIFT AND THE SKY GREYS. Master: "clouds ARE meant to shift; sky gets
         // gray when raining." ⚠ The console drives the grey from a weather AMOUNT whose state
         // machine is not ported (it is pinned at 0), so the port drives it from the weather the
@@ -11495,17 +11515,23 @@ public partial class Viewer : Node3D
             GD.Print($"[weather] --weather={ww}: {_weather.Set(_lib, ww, _cam.GlobalPosition)}");
         }
         if (_skyMat != null && _mode == Mode.Park)
+        {
+            AllocBegin();
             SkyDome.Step(_skyMat, ref _skyDrift, delta,
                          _weather.Current == Weather.Kind.None ? 0f : 1f, SkyWindHeading);
+            AllocEnd("SkyDome.Step");
+        }
         // ⚠ The camera is placed FIRST, before any early return. It used to sit below the capture
         // branch, so a --shot run photographed the origin and produced a perfectly black frame with
         // a perfectly correct UI beside it -- the geometry was fine the whole time.
         if (_current != null && _playing && _shotPath == null)
         {
+            AllocBegin();
             _time += (float)delta * Aps.Fps;
             if (_time >= _current.Frames) _time = _current.Frames > 0 ? _time % _current.Frames : 0;
             _current.SetFrame(_time);
             _scrub.SetValueNoSignal(_time / Mathf.Max(_current.Frames, 1));
+            AllocEnd("current.SetFrame");
         }
         // ⭐ THE PARK'S OWN MODELS TICK TOO. Only the model on the Models tab was ever advanced,
         // so anything standing in the park that was not the chosen ride was frozen -- the gate is
@@ -11526,13 +11552,15 @@ public partial class Viewer : Node3D
         if (_gate != null && _playing && _shotPath == null && _mode == Mode.Park
             && _gate.Frames > 0 && _parkTime < _gate.Frames - 1)
         {
+            AllocBegin();
             _parkTime = Mathf.Min(_parkTime + (float)delta * Aps.Fps, _gate.Frames - 1);
             _gate.SetFrame(_parkTime);
+            AllocEnd("gate.SetFrame");
         }
         // ⭐ A RIDE BUILDING ITSELF runs ONCE and then holds on its last frame, which is the built
         // thing. ⚠ Backwards, because a finished one is removed as we go.
         if (_playing && _shotPath == null && _building.Count > 0)
-            StepBuilding((float)delta * Aps.Fps);
+        { AllocBegin(); StepBuilding((float)delta * Aps.Fps); AllocEnd("StepBuilding"); }
         // ⭐ And the ones that run themselves. Paused means paused: the park's clock is the
         // viewer's, so nothing advances while the game is held still.
         //
@@ -11559,8 +11587,10 @@ public partial class Viewer : Node3D
         // ⚠ And under a sound census even with a shot asked for: a wound park fires every cue in
         // one frame and no voice can advance, which is exactly the "resolves but never plays"
         // that the census exists to catch.
-        else if (ParkSimulationRunning) StepPark(delta);
-        _sounds?.Step(delta); _burst?.Step();
+        else if (ParkSimulationRunning) { AllocBegin(); StepPark(delta); AllocEnd("StepPark"); }
+        AllocMark("02 after StepPark/shot");
+        AllocBegin(); _sounds?.Step(delta); AllocEnd("sounds.Step");
+        AllocBegin(); _burst?.Step(); AllocEnd("burst.Step");
         if (_soundCensus > 0 && _mode == Mode.Park && _parkTicks * ParkSim.TickMilliseconds >= _soundCensus * 1000L)
         {
             SoundCensusReport();
@@ -11569,7 +11599,9 @@ public partial class Viewer : Node3D
         }
         // ⭐ The selection breathes on its own clock, and like the console's it stands still
         // while the game is paused.
-        if (_mode == Mode.Park) UpdateHover();
+        AllocMark("03 after sounds+census");
+        if (_mode == Mode.Park) { AllocBegin(); UpdateHover(); AllocEnd("UpdateHover"); }
+        AllocMark("04 after UpdateHover");
         // ⚠⚠ PAUSED MEANS PAUSED, AND THE CALENDAR FORGOT. Master, on the pylon editor: "the game
         // also pauses sim sometimes when im editing pylons." This advance was gated on the MODE
         // alone, so the date kept running through every pause -- and the console does the
@@ -11582,20 +11614,28 @@ public partial class Viewer : Node3D
         // ⭐ At the console's rate: D = 0x4000 per sim pass, 25 passes a second, so 2.4 s a day. It was
         // the camera's 0x1000 at 50 a second, which ran the date at half speed (findings/clock-rate.md).
         if (ParkSimulationRunning)
+        {
+            AllocBegin();
             AdvanceCalendar((int)Math.Round(delta * ConsoleClock.TicksPerSecond * ParkClock.UnitsPerPass));
-        if (_playing) _selectView?.Step(delta);
-        if (_playing && _mode == Mode.Park) _gateBox?.Step(delta);
-        if (_playing && _mode == Mode.Park) _flags.Step(delta);
+            AllocEnd("AdvanceCalendar");
+        }
+        AllocMark("05 after AdvanceCalendar");
+        if (_playing) { AllocBegin(); _selectView?.Step(delta); AllocEnd("selectView.Step"); }
+        if (_playing && _mode == Mode.Park) { AllocBegin(); _gateBox?.Step(delta); AllocEnd("gateBox.Step"); }
+        if (_playing && _mode == Mode.Park) { AllocBegin(); _flags.Step(delta); AllocEnd("flags.Step"); }
         // ⚠⚠ THE LOBBY OWNS THE CAMERA OUTRIGHT. It runs earlier in _Process, so without this
         // the orbit branch below recomputed the transform from _focus/_dist/_pitch/_yaw and threw
         // the authored node away every frame. Last stage wins, as ever.
+        AllocMark("06 after selectView/gate/flags");
         if (_lobbyMode) { }
-        else if (GameCamActive) StepGameCam(delta);
+        else if (GameCamActive) { AllocBegin(); StepGameCam(delta); AllocEnd("StepGameCam"); }
         else
         {
+            AllocBegin();
             var eye = _focus + new Vector3(
                 Mathf.Cos(_pitch) * Mathf.Sin(_yaw), Mathf.Sin(-_pitch), Mathf.Cos(_pitch) * Mathf.Cos(_yaw)) * _dist;
             _cam.Transform = new Transform3D(Basis.LookingAt(_focus - eye, Vector3.Up), eye);
+            AllocEnd("orbitCam");
         }
         // ⚠ AFTER the camera is placed, both of them: the volume follows the eye, and a pending
         // build happens here rather than in the park load for the reason on _weatherWanted.
@@ -11605,12 +11645,15 @@ public partial class Viewer : Node3D
         // ⭐⭐ ADVANCED WHETHER OR NOT THIS PARK HAS WATER. The clock now drives every moving
         // texture, not just the river: a park with no water still has shops whose drink swirls,
         // and gating the tick on `_water != null` would freeze them on exactly those maps.
+        AllocMark("07 after camera");
         if (_mode == Mode.Park)
         {
             _waterTime += (float)delta;
-            Ps2Materials.TextureTime = _waterTime;
+            AllocBegin(); Ps2Materials.TextureTime = _waterTime; AllocEnd("TextureTime");
         }
         // ⭐ The hire tool's carry, every frame (0x128760).
+        AllocMark("08 after TextureTime");
+        AllocBegin();
         if (_hireHeld != null) UpdateHireCarry();
         if (_patrolTool != null) UpdatePatrolTool();                    // mode 17's cursor and draw
         if (DeleteToolOpen) UpdateDeleteTool();                          // the delete marquee
@@ -11619,6 +11662,8 @@ public partial class Viewer : Node3D
         else if (_addonTool != null) UpdateAddonGhost();
         else if (_coasterTool != null) UpdateCoasterGhost(delta);
         else if (_toolOpen) UpdateGhost();
+        AllocEnd("tools+ghosts");
+        AllocMark("09 after tools+ghosts");
         // ⚠ AFTER the camera has been placed for this frame, or the projection is a frame stale
         // and the check is of the wrong camera.
         if (_ghostTest && !_pickChecked && _mode == Mode.Park) CheckMousePicking();
@@ -11632,7 +11677,9 @@ public partial class Viewer : Node3D
         // and would otherwise be the first and slowest quarter of every run.
         if (_benchSeconds > 0 && !_benchRunning && _mode == Mode.Park && _park != null)
         { StartBenchmark(_benchSeconds); _benchSeconds = 0; }
-        TickBenchmark(delta);
+        AllocMark("10 after capture tests");
+        AllocBegin(); TickBenchmark(delta); AllocEnd("TickBenchmark");
+        AllocMark("11 after TickBenchmark");
         if (_footprintAudit && _mode == Mode.Park && _lib != null)
         { _footprintAudit = false; FootprintAudit(); GetTree().Quit(); }
         // ⚠⚠ AFTER the build test has FINISHED, not merely after its call. CheckPlacement runs
@@ -11659,7 +11706,9 @@ public partial class Viewer : Node3D
         // ⚠ PER FRAME, not at park load: the menu needs something PLACED, and placement happens
         // after the park is built. Hooked here with the other capture tests for that reason.
         if (_menuTest && !_menuShown && _mode == Mode.Park) ShowTestMenu();
-        _weather.Follow(_cam.GlobalPosition);
+        AllocMark("12 after select/menu tests");
+        AllocBegin(); _weather.Follow(_cam.GlobalPosition); AllocEnd("weather.Follow");
+        AllocMark("13 after weather");
         if (_weatherWanted is { } wk)
         {
             _weatherWanted = null;
@@ -11758,6 +11807,8 @@ public partial class Viewer : Node3D
                 SaveShot(_shotPath); GetTree().Quit();
             }
         }
+        AllocMark("14 end of _Process");
+        AllocFrameBottom();
     }
 
     public override void _UnhandledInput(InputEvent e)

@@ -585,10 +585,16 @@ public sealed class Animation
         }
 
         /// <summary>Every group's position at a time in APS frames. One per group, not per vertex.</summary>
-        public Vector3[] Sample(float now)
+        public Vector3[] Sample(float now) => Sample(now, null);
+
+        /// <summary>⚠ PERF: the same answer into <paramref name="into"/> when it is exactly
+        /// <see cref="Groups"/> long, so the per-frame caller does not allocate an array per part
+        /// per frame. The RETURN VALUE is what to read -- a wrongly-sized `into` is ignored and a
+        /// fresh array returned rather than silently filling part of it.</summary>
+        public Vector3[] Sample(float now, Vector3[] into)
         {
             int f = FrameIndex(now);
-            var outArr = new Vector3[Groups];
+            var outArr = into != null && into.Length == Groups ? into : new Vector3[Groups];
             for (int g = 0; g < Groups; g++) outArr[g] = Position(f, g);
             return outArr;
         }

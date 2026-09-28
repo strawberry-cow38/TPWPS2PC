@@ -189,7 +189,7 @@ void fragment() {
         material.SetShaderParameter("uv_spin", spin);
         material.SetShaderParameter("uv_spin_center", new Vector2(0.5f, 0.5f));
         material.SetShaderParameter("water_wave", wave);
-        material.SetShaderParameter("uv_time", _textureTime);
+        material.SetShaderParameter(UvTime, _textureTime);
         BindLight(material);
         Moving.Add(new WeakReference<ShaderMaterial>(material));
         return material;
@@ -204,6 +204,18 @@ void fragment() {
     /// no-op: there is nothing global left to register, which is the whole repair.</summary>
     public static void EnsureClock() { }
 
+    /// <summary>⚠⚠ CACHED, BECAUSE A STRING LITERAL HERE IS AN ALLOCATION. `SetShaderParameter`
+    /// takes a `StringName`, and Godot 4's C# binding has an implicit conversion from `string` that
+    /// CONSTRUCTS A NEW StringName every call -- a managed object with a finalizer, plus its native
+    /// side. The setter below runs over EVERY moving material EVERY FRAME, so the literal was
+    /// minting one throwaway StringName per material per frame and posting each to the finalizer
+    /// queue. One static instance is the same call with none of that.
+    ///
+    /// ⭐ The trap is general: any SetShaderParameter, Set or Call with a string literal on a
+    /// per-frame path is doing this. The SETUP paths are left alone -- they run once and the
+    /// clarity is worth more there than the bytes.</summary>
+    static readonly StringName UvTime = "uv_time";
+
     static float _textureTime;
 
     /// <summary>Seconds fed to every moving texture. ⭐ Advanced from the console's clock in
@@ -217,7 +229,7 @@ void fragment() {
             for (int i = Moving.Count - 1; i >= 0; i--)
             {
                 if (Moving[i].TryGetTarget(out var m) && GodotObject.IsInstanceValid(m))
-                    m.SetShaderParameter("uv_time", value);
+                    m.SetShaderParameter(UvTime, value);
                 else Moving.RemoveAt(i);
             }
         }
@@ -229,7 +241,7 @@ void fragment() {
     public static void Register(ShaderMaterial material)
     {
         if (material == null) return;
-        material.SetShaderParameter("uv_time", _textureTime);
+        material.SetShaderParameter(UvTime, _textureTime);
         Moving.Add(new WeakReference<ShaderMaterial>(material));
     }
 
