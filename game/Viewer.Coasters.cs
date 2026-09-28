@@ -683,7 +683,7 @@ public partial class Viewer
         _parkAdvisor?.CoasterFinished(v.Track.Closed, v.Track.Valid);   // 0x11BA00 → 0x11BBD8: 204, then 203 / 204
         var lap = v.Sim.TestLap();
         v.Stats = lap;
-        string rating = lap.RatingRow != 0 && _text?.Text("eng", lap.RatingRow) is { Length: > 0 } r ? r : "-";
+        string rating = lap.RatingRow != 0 && _text?.Text(TextLanguage, lap.RatingRow) is { Length: > 0 } r ? r : "-";
         string stats = lap == CoasterStats.None ? "" :
             $"   {(int)lap.Duration} secs  {(int)lap.Length} meters  {(int)lap.MaxSpeed} kph  {(int)lap.Drops} drops  "
             + $"{(int)lap.SteepestDrop} deg  {lap.MaxVertPos:F1}/{lap.MaxVertNeg:F1}/{lap.MaxLat:F1} g   Coaster Rating: {rating}";
