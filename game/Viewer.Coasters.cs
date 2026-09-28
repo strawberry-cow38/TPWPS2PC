@@ -25,6 +25,9 @@ public partial class Viewer
         public Node3D Frame;
         public readonly Dictionary<CoasterNode, MeshInstance3D> Segments = new();
         public readonly Dictionary<CoasterNode, Node3D> Pylons = new();
+        public readonly Dictionary<CoasterNode, AnimatedModel> PylonModels = new();
+        public readonly Dictionary<AnimatedModel, CoasterAssetOrigin> Origins = new();
+        public Action<CoasterTrain, int> ScreamHandler;
         public readonly Dictionary<CoasterCar, CoasterCarView> Cars = new();
         public readonly HashSet<(int X, int Y)> Cells = new();
         public Material[] Slots, Red;
@@ -213,7 +216,8 @@ public partial class Viewer
         frame.Transform = new Transform3D(new Basis(ax, new Vector3(0, ax.Length(), 0), az), new Vector3(o.X, _park.BaseY, o.Z));
         LoadCoasterMaterials(view);
         RebuildCoaster(view);
-        sim.Scream += (tr, evt) => CoasterScream(view, tr, evt);
+        view.ScreamHandler = (tr, evt) => CoasterScream(view, tr, evt);
+        sim.Scream += view.ScreamHandler;
         // 0x11A858: 201 COASTER_STOCK_OUT when (park 2 ? 14 : 2) − coasters in use (this one included) is 0.
         _parkAdvisor?.CoasterPlaced(_sim.Rides.Count(r => r.Coaster != null), _staffPark);
         GD.Print($"[coaster] {type.Name}: station at ({cx},{cy}) turned {turns}, track exit {exit} step {exitStep}, entry {entry}, "
@@ -262,6 +266,8 @@ public partial class Viewer
         v.Segments.Clear();
         foreach (var p in v.Pylons.Values) if (IsInstanceValid(p)) p.QueueFree();
         v.Pylons.Clear();
+        foreach (var m in v.PylonModels.Values) v.Origins.Remove(m);
+        v.PylonModels.Clear();
         v.Cells.Clear();
         var t = v.Track;
         foreach (var n in t.Nodes().Concat(v == _coasterTool && _coasterGhost != null ? new[] { _coasterGhost } : Array.Empty<CoasterNode>()))
@@ -461,6 +467,8 @@ public partial class Viewer
             // Section 10's key at 25 % is +90° about +Y, taking the model's +Z to +X: heading 0x400.
             var basis = new Basis(Vector3.Up, yaw);
             holder.Transform = new Transform3D(basis, centre - basis * new Vector3(0.5f, 0, 0.5f));
+            v.PylonModels.Add(n, drawn);
+            v.Origins.Add(drawn, new(_lib.WadName, assets.Model.Path, anim == null ? null : assets.Animation.Path));
             return holder;
         }
         catch (Exception e) { GD.PrintErr($"[coaster] pylon {folder}: {e.Message}"); return null; }
@@ -479,6 +487,7 @@ public partial class Viewer
             foreach (var gone in v.Cars.Keys.Where(c => !live.Contains(c)).ToList())
             {
                 if (IsInstanceValid(v.Cars[gone].Node)) v.Cars[gone].Node.QueueFree();
+                if (v.Cars[gone].Model != null) v.Origins.Remove(v.Cars[gone].Model);
                 v.Cars.Remove(gone);
             }
             if (ticked) CoasterRumble(v);
@@ -513,6 +522,7 @@ public partial class Viewer
         built.Root.Scale = Vector3.One;
         var holder = new Node3D { Name = stem };
         holder.AddChild(built.Root);
+        v.Origins.Add(built, new(_lib.WadName, assets.Model.Path, assets.Animation?.Path));
         return new CoasterCarView { Node = holder, Model = built, Mesh = mesh };
     }
 
@@ -542,6 +552,8 @@ public partial class Viewer
         if (!_coasters.Remove(id, out var v)) return;
         foreach (int voice in v.Voices) { _sounds?.Kill(voice, "coaster", RumbleTag, (long)_busElapsedMs); _sounds?.Follow(voice, RumbleTag, null); }
         if (_coasterTool == v) { _coasterTool = null; _afterCoaster = null; _coasterGhost = null; _ghostView?.Clear(); _previewCost = null; _previewStock = null; }
+        v.Sim.Scream -= v.ScreamHandler;
+        v.PylonModels.Clear(); v.Origins.Clear(); v.Cars.Clear();
         v.Sim.RemoveTrains();
         if (IsInstanceValid(v.Frame)) v.Frame.QueueFree();
         RefreshFloor();

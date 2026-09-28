@@ -25,6 +25,9 @@ public partial class Viewer
         public int Price;
         public Node3D Frame;
         public readonly List<Node3D> Pieces = new();
+        public readonly Dictionary<Node3D, AnimatedModel> PieceModels = new();
+        public readonly Dictionary<AnimatedModel, TrackAssetOrigin> Origins = new();
+        public Action<TrackCar, int> SoundHandler;
         /// <summary>The laid pieces playing their Main record (the water pieces' flow).</summary>
         public readonly List<AnimatedModel> Flowing = new();
         public int FlowFrame = -1;
@@ -130,7 +133,8 @@ public partial class Viewer
         AddChild(frame);
         var view = new TrackRideView { Id = id, Ride = ride, Sim = sim, Layout = layout, Dir = dir, Prefix = prefix, Price = price, Frame = frame };
         _tracks[id] = view;
-        sim.SoundCue += (car, evt) => TrackCarSound(view, car, evt);
+        view.SoundHandler = (car, evt) => TrackCarSound(view, car, evt);
+        sim.SoundCue += view.SoundHandler;
         ClaimFloor();
         PlaceFrame(view);
         RebuildTrackView(view);
@@ -165,6 +169,7 @@ public partial class Viewer
             && r.Model.Path.Equals(v.Dir + stem + ".mps", StringComparison.OrdinalIgnoreCase));
         model = LoadPlaceable(assets, out animation, out mesh);
         if (model?.Root == null) return null;
+        v.Origins[model] = new TrackAssetOrigin(_lib.WadName, assets.Model.Path, animation == null ? null : assets.Animation?.Path);
         model.Root.Scale = Vector3.One;
         var holder = new Node3D { Name = stem };
         holder.AddChild(model.Root);
@@ -176,6 +181,8 @@ public partial class Viewer
     void RebuildTrackView(TrackRideView v)
     {
         foreach (var n in v.Pieces) if (IsInstanceValid(n)) n.QueueFree();
+        foreach (var m in v.PieceModels.Values) v.Origins.Remove(m);
+        v.PieceModels.Clear();
         v.Pieces.Clear();
         v.Flowing.Clear();
         v.FlowFrame = -1;
@@ -203,6 +210,7 @@ public partial class Viewer
                 var addon = AddonAsset(info.Shape - 12);
                 if (addon == null) { GD.PrintErr($"[addon] no asset for shape {info.Shape} in this park"); continue; }
                 node = AddonModel(addon, out model, out anim);
+                if (model != null) v.Origins[model] = new TrackAssetOrigin(_lib.WadName, addon.Model.Path, anim == null ? null : addon.Animation?.Path);
             }
             else
             {
@@ -225,6 +233,7 @@ public partial class Viewer
             node.Transform = PieceTransform(p);
             v.Frame.AddChild(node);
             v.Pieces.Add(node);
+            if (model != null) v.PieceModels.Add(node, model);
         }
         RefreshFloor();
     }
@@ -277,6 +286,7 @@ public partial class Viewer
                 if (IsInstanceValid(cv.Node)) cv.Node.QueueFree();
                 _sounds?.Kill(v.Id, "track", cv.Tag, (long)_busElapsedMs);
                 _sounds?.Follow(v.Id, cv.Tag, null);
+                if (cv.Model != null) v.Origins.Remove(cv.Model);
                 v.Cars.Remove(gone);
             }
             if (v.Layout.Length == 0) continue;
@@ -349,6 +359,8 @@ public partial class Viewer
         if (!_tracks.Remove(id, out var v)) return;
         foreach (var cv in v.Cars.Values) { _sounds?.Kill(id, "track", cv.Tag, (long)_busElapsedMs); _sounds?.Follow(id, cv.Tag, null); }
         if (_trackTool == v) { _trackTool = null; _afterTrack = null; _ghostView?.Clear(); }
+        if (v.SoundHandler != null) v.Sim.SoundCue -= v.SoundHandler;
+        v.PieceModels.Clear(); v.Origins.Clear(); v.Flowing.Clear(); v.Pieces.Clear(); v.Cars.Clear();
         if (IsInstanceValid(v.Frame)) v.Frame.QueueFree();
     }
 

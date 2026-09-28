@@ -909,3 +909,13 @@ cold manifests; central physical sound join plus ToolSounds/browser/voice scope;
 camera/editing tool state. Preserve geometry/render/walk grid aliases and actual compiled defs.
 Then one staged normal-world bootstrap WITHOUT _Ready/Create replay, atomic publication and UI.
 Do not redo cold registries or logical controller DTOs. No Save/Load buttons enabled.
+
+## PAUSED for frontend assignment (September 28, 2026)
+Strawberry1554240169442414663 reassigned current priority: intro movies, language select and main-menu
+mouse support. Recurring save task41b2141bbd7f cancelled. Preserve this branch; do not resume save
+work automatically while frontend assignment is active. Native track/coaster workers returned files
+with reported builds/smokes passing but ObjectDB exit warnings; PARENT HAS NOT REVIEWED/INTEGRATED
+OR VERIFIED THESE NEW FILES. They are a WIP checkpoint, not landing evidence. No workers pending.
+Track methods retain all piece renderers/origins; coaster retains pylons + segment CPU state. Their
+new SceneState wrappers and tests are not yet joined with PlacedScene guards/central publication.
+Both refuse unclassified after-tool continuations. Worker details available in code/test comments.
