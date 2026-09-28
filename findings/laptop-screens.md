@@ -74,7 +74,35 @@ shared helper (`FUN_001d9cb8`) looked like the binder for ten different screens.
 reaches data `$gp`-relative, and such a reference is invisible to it. Rows marked `--` mean *not
 attributed*, never *unbound* -- with one exception, which has its own evidence below.
 
-## ⭐⭐ Three screens' element names are ABSENT FROM THE EXECUTABLE -- but see the refinement
+## ⚠⚠ RETRACTED 2026-09-28: "three screens' element names are ABSENT" was a FALSE NEGATIVE
+
+**The names are in the image. All three screens resolve their elements by name from the `.sce`,
+exactly like every other screen.** Found by `hardcoded-re`, reproduced here:
+
+| screen | element names live at | binder |
+|---|---|---|
+| `main_gameoptions` | `0x35e960..0x35e9a0` -- `MusicSlider`, `SfxSlider`, `MusicSliderText`, `SfxSliderText`, `TextOptions` | `FUN_00139968` (from ctor `0x139ba0`) |
+| `main_research` | `0x365dd0..0x365e10` -- `TextOptions`, `OverallBar`, `OverallText`, `ResearchBars`, `ResearchItem` | `FUN_001b5218` (from ctor `0x1b5410`) |
+| `main_fi_balancesheet` | `numericoptions` at `0x35e428` | |
+
+⭐ **The cheap general test**: a screen's element-name strings sit in `.data` IMMEDIATELY BEFORE
+its vtable. Dump ASCII in a window around the vtable and they are simply there. That is a positive
+test, where the old byte-search was a negative one -- and the negative had no control that it must
+hit, which is exactly why it went unchallenged for so long.
+
+⚠ The cost of the error: it put three screens in a "needs a different method" bucket they never
+belonged in, and one of them (Research) was then treated as blocked on an instrument nobody needed.
+
+⭐⭐ **And run the same test the other way to get a REAL member of that bucket.** Same-sized window
+around the **Staff Room** vtable `0x369700`: **no element names at all**, only the shared debug
+strings (`*** TRYING TO HIDE A HIDDEN MODEL ***`) and `No help available for this subgame...YET!!`.
+It also has no `.sce` in MENUS.WAD. So the Staff Room really does not bind by name, and the
+six-check "its layout globals are never written" result below is about THAT SCREEN specifically --
+not about a class of screens, which is what it was wrongly generalised to.
+
+The original section follows, kept because the retraction is the useful part.
+
+## (retracted) Three screens' element names are ABSENT FROM THE EXECUTABLE -- but see the refinement
 
 Not "not attributed" -- **absent**, as byte strings, searched case-folded across the whole image:
 
@@ -500,13 +528,13 @@ should. **27 registered scenes -> 14 ported, 13 not.**
 
 | not ported | id | owner of the research |
 |---|---:|---|
-| `main_gameoptions` | 1 | layout is NOT in the `.sce` -- see below |
+| `main_gameoptions` | 1 | ⭐ SPECIFIED -- coords recovered, binder `FUN_00139968` |
 | `main_financialinfo` (menu) | 4 | menu, same shape as `main_info` |
-| `main_fi_balancesheet` | 5 | layout is NOT in the `.sce` |
+| `main_fi_balancesheet` | 5 | binds by name after all (`numericoptions` @ `0x35e428`) |
 | `main_fi_newloan` | 6 | |
 | `main_buildhire` | 7 | ⭐ **NOT a gap** -- deliberately removed at master's request; `LaptopMainMenu` hoists Build and Hire to the top level, so this middle menu is by design absent |
 | `main_parkstats` (menu) | 8 | menu, same shape as `main_info` |
-| `main_research` | 9 | layout is NOT in the `.sce` |
+| `main_research` | 9 | ⭐ SPECIFIED -- coords recovered, binder `FUN_001b5218` |
 | `main_ps_visitorinfo` | 10 | |
 | `main_ps_parkfinance` | 11 | |
 | `main_fi_financestats` | 21 | needs the GRAPH widget |
