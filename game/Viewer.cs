@@ -11099,10 +11099,16 @@ public partial class Viewer : Node3D
     /// and `(200,130,0)` amber. The `10` in the draw call is a palette slot the RGB path
     /// overrides; it is carried rather than interpreted.
     ///
-    /// ⚠ THE ONE NUMBER STILL NOT READ is the console's UI width that `x=38` is measured in.
-    /// 512 is the usual PS2 text space and the other constants sit inside it (the slide-in runs
-    /// from -80 and latches at 45), but no line has been traced that states it. Everything else
-    /// on this screen is the game's.
+    /// ⭐ THE UI WIDTH THAT `x=38` IS MEASURED IN IS NOW READ: **512**, and it is a UNIT space, not
+    /// a pixel one. This used to say it was the one number still untraced -- "512 is the usual PS2
+    /// text space and the other constants sit inside it, but no line has been traced that states
+    /// it". tinyclaw traced it for the advisor on 2026-09-28: `NDC = x/256 - 1, 1 - y/256`, plus
+    /// `0x1FBCD0` drawing sprite `0x3A` at x 0 and 512 wide (edge to edge) and centred texts at
+    /// x 256. See <see cref="ConsoleUiWidth"/> for the full evidence.
+    ///
+    /// ⚠ A STALE "not verified" MARKER COSTS AS MUCH AS A STALE CLAIM -- it sends the next reader
+    /// to re-derive something already settled, and it would now contradict the constant's own
+    /// comment fifteen lines below. Updated rather than left standing.
     ///
     /// ⚠ There is a second, ANIMATED placement (`DAT_002E9900 != 0`): x starts at `DAT_002B62F0`
     /// = **-80**, y = **69**, advances by `DAT_002B62F8` each frame and latches at `0x2D` = 45.
@@ -11207,11 +11213,45 @@ public partial class Viewer : Node3D
     const int TicketCountX = 0x50, TicketCountY = 0x50;
     const int StarCountX = 0x50, StarCountY = 0x6e;
     const string TicketIcon = "/Gticket/gticket.tga", StarIcon = "/UltimateC/Star.tga";
+    /// <summary>⭐⭐ THE HUD IS AUTHORED IN A 512x512-UNIT SPACE, NOT IN FRAMEBUFFER PIXELS.
+    /// The transform is `NDC = x/256 - 1, 1 - y/256`, so 512 units span the whole frame in BOTH
+    /// axes whatever the display mode. Traced by tinyclaw for the advisor, 2026-09-28:
+    /// `0x1FBCD0` draws sprite `0x3A` at x 0 and 512 wide (i.e. edge to edge), and centred texts
+    /// sit at x 256 (`0x1513E0`, text row 973 at (256,128), justify 1) -- a centre of 256 is only
+    /// the middle of a 512-wide space. Derivation: `findings/advisor-visuals.md` §1.5.
+    ///
+    /// ⚠⚠ DO NOT "FIX" THE WIDTH TO 640. The PAL framebuffer is 640x512 and that 640 is a
+    /// PIXEL count, not a unit count -- so one unit is 1.25 px across and 1 px down. Both numbers
+    /// here being 512 looks exactly like a copy-paste, which is why this comment exists: it is
+    /// square on purpose. I flagged it as a suspected 1.25x error in every HUD element and tinyclaw
+    /// settled it from the draw -- the constant was right and the missing justification was the
+    /// actual defect. The only 640 in HUD code is a console quirk where the advisor's read box
+    /// centres itself using `0x20A120`'s pixel width INSIDE this 512-unit space, which is why that
+    /// box sits right of centre rather than centred.
+    ///
+    /// ⭐ Corroborated independently, by data rather than by the same trace: across all 29 `.sce`
+    /// files in MENUS.WAD the 157 authored `row=`/`col=` values top out at col 393 and row 436 --
+    /// consistent with a 512 space and nowhere near 640. Supporting, not proof; the NDC transform
+    /// above is the proof.</summary>
     const float ConsoleUiWidth = 512f, ConsoleUiHeight = 512f;
     static readonly Color MoneyNormal = new(1f, 1f, 0f), MoneyBroke = new(200 / 255f, 130 / 255f, 0f);
-    /// ⚠ The shadow is drawn in palette slot `colour + 8`, and what that slot holds is not read.
-    /// Black at half alpha is a shadow's usual job; marked rather than claimed.
-    static readonly Color MoneyShadowTint = new(0f, 0f, 0f, 0.55f);
+    /// <summary>⭐ OPAQUE BLACK, with the glyph's own coverage as the alpha. `FUN_002138E0(0,0,0)`.
+    ///
+    /// ⚠⚠ I HAD BOTH HALVES OF THIS WRONG, and marked only one of them as a guess. The old comment
+    /// read "the shadow is drawn in palette slot `colour + 8`, and what that slot holds is not read;
+    /// black at half alpha is a shadow's usual job; marked rather than claimed", with the tint at
+    /// `0.55` alpha. tinyclaw traced it 2026-09-28 (`~/ghidra_tpw/notes/hud-glyph-scale.md`):
+    ///
+    /// - **The `+8` is DEPTH, not a palette slot.** The shadow is the same glyph strip issued at
+    ///   `z + 8`. I had read a z bias as a palette index and written that down as traced fact -- the
+    ///   half I did NOT flag was the half that was wrong, which is the worse way round.
+    /// - **The colour is opaque black**, not 55% alpha. There is no translucency: the softness comes
+    ///   entirely from the glyph bitmap's own coverage, which `Modulate` multiplies through.
+    ///
+    /// ⚠ The `MoneyShadow = 2` spatial offset is still mine and is still a guess -- a shadow at the
+    /// same x/y and a different z would simply be hidden behind the text, so SOME offset must exist,
+    /// but 2 units is chosen to look right rather than read. Flagged properly this time.</summary>
+    static readonly Color MoneyShadowTint = new(0f, 0f, 0f, 1f);
     TextureRect _moneyShadow;
 
     /// <summary>⚠ ONCE, and it remembers a failure so a missing font does not retry every frame

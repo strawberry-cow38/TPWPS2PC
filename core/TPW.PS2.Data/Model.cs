@@ -489,10 +489,70 @@ public sealed partial class Model
     ///
     /// ⚠ PERF, and it is a big one: both of those rebuild a Dictionary and decode a `float[16]` PER
     /// NODE out of the model bytes on every call, and the per-frame draw path called them once per
-    /// model per frame. `D` is assigned in the constructor and never written again, so with no
-    /// overrides they are PURE FUNCTIONS OF THE RESOURCE -- the same answer on frame 1 and frame
-    /// 10,000. A park of static props was recomposing its whole scene graph every frame for a
-    /// result it already had.
+    /// model per frame. A park of static props was recomposing its whole scene graph every frame for
+    /// a result it already had.
+    ///
+    /// ⚠⚠ THE CACHE INVARIANT IS A DISJOINT-RANGE ARGUMENT, NOT "`D` IS IMMUTABLE". This comment
+    /// used to claim `D` is assigned in the constructor and never written again. **That is false** --
+    /// `AnimatedModel.WriteNodeFlags` writes 4 bytes at a node's `+0` (its flag word) for the
+    /// advisor head's costume and mouth. Caught 2026-09-28 when tinyclaw named the one writer while
+    /// scoping a save/load join, which is the only reason anyone looked.
+    ///
+    /// What actually holds is narrower and enough: these caches read **only** `+4` (the parent link)
+    /// and `+0x10..+0x4c` (the node's 4x4). The sole writer to `D` touches **only `+0..+3`**. The
+    /// ranges are disjoint, so the cached values cannot go stale -- node FLAGS are not part of a
+    /// transform, and visibility is answered from the live bytes by
+    /// `AnimationNodeVisibility.Flags`, never from here.
+    ///
+    /// ⚠ SO THE GUARD IS: if anything is ever added that writes a node's PARENT LINK (`+4`) or its
+    /// MATRIX (`+0x10..`), these three caches go stale silently and must be invalidated -- set
+    /// `_bindWorld`/`_bindLocals`/`_bindParents` to null at that write.
+    ///
+    /// ⚠⚠ AND ONE BIT OF `+0` IS NOT DISJOINT (tinyclaw, reviewing the merge). The caches' KEY SET comes
+    /// from <see cref="HelperOffsets"/>, which walks the helper table only while `U32(o) & 0x80000000` is set
+    /// -- bit 31 of each helper's flag word. So clearing bit 31 on a helper would end the walk early and
+    /// change which nodes exist. Safe today: `WriteNodeFlags`' only caller (the advisor head's costume and
+    /// mouth) SETS `0x80000000` and toggles `0x10`/`0x8000`, never clears bit 31, and only writes real
+    /// nodes.
+    ///
+    /// ⚠⚠⚠ AND THE GUARD IS NOT "DON'T CLEAR IT" -- IT IS BOTH DIRECTIONS, ON ONE CELL. The walk
+    /// stops at the FIRST helper whose bit 31 is clear, so:
+    /// <list type="bullet">
+    /// <item>CLEARING bit 31 on a helper inside the walk TRUNCATES it -- fewer keys.</item>
+    /// <item>SETTING bit 31 on the helper that currently TERMINATES the walk EXTENDS it -- more
+    /// keys, and just as stale.</item>
+    /// <item>Setting it on a helper after the terminator changes nothing (the walk already stopped);
+    /// setting it on one before is a no-op (already set). **The terminator is the only sensitive
+    /// cell.**</item>
+    /// </list>
+    ///
+    /// ⚠ Which matters because the operation cited as safe above is in the EXTENDING direction:
+    /// `Show`/`Hide` both pass `set: 0x80000000`. They are safe only on the extra, unstated
+    /// precondition that a costume fitting's node is already inside the walk, so setting the bit is
+    /// a no-op. Census of every caller on `e20fd50`: `Show` = set `0x80000000` / clear `0x10`,
+    /// `Hide` = set `0x80000010` / clear `0`, the mouth = set/clear `0x8000` only. Nothing clears
+    /// bit 31 -- and nothing targets the terminator either, which is the half the one-directional
+    /// guard would have let a future `Show()` break silently.
+    ///
+    /// ⚠⚠ AND THE TERMINATOR IS EXCLUDED BY THE DATA, NOT BY THE API. `WriteNodeFlags` guards with
+    /// `NodeIndex(off) != node`, which looks like it bounds the node to the walk. It does not: for a
+    /// non-legacy model <see cref="NodeIndex"/>'s upper-bound clause is
+    /// `(!IsLegacyMd2 || (offset - HelperTable) / stride &lt; _md2NodeCount - Meshes.Count)`, and
+    /// `!IsLegacyMd2` is TRUE, so the `||` short-circuits and **no bound is evaluated at all**.
+    /// <see cref="NodeOffset"/> is pure arithmetic with no bit-31 check either, so
+    /// `NodeIndex(NodeOffset(n)) == n` round-trips for EVERY n past the walk's end. That guard is an
+    /// alignment check, not a membership check, and there is no node count for a non-legacy model --
+    /// the walk IS the count.
+    ///
+    /// ⭐ So what actually keeps the terminator safe is that the only callers take their node from
+    /// `FindFitting`, and the disc's authored costume fittings sit inside the walk. That is a fact
+    /// about the DATA. It holds, but nothing in the code enforces it, so a caller that computes a
+    /// node index by arithmetic rather than from a fitting can still reach the terminating helper.
+    ///
+    /// A future reader who took the
+    /// old "D is never written" line at face value would have had no way to know that, which is
+    /// precisely the failure a too-strong justification causes: it is not merely wrong, it hides the
+    /// real precondition.
     ///
     /// ⚠⚠ SHARED, NOT COPIED. Read these; never write to them, and never hand one to something
     /// that will. A caller that needs to override a node must copy into its own dictionary first
