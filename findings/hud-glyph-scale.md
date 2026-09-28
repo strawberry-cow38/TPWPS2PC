@@ -1,4 +1,4 @@
-<!-- Research notes (2026-09-28), copied from ~/ghidra_tpw/notes. Paths under ~/ghidra_tpw refer to the research box. -->
+<!-- Research notes (2026-09-28), copied from ~/ghidra_tpw/notes. Paths under ~/ghidra_tpw refer to the research box; the retail captures are not in the repo. -->
 
 # HUD and laptop text: HUD units or framebuffer pixels? (agent advV, 2026-09-28)
 
@@ -189,3 +189,110 @@ if ctx[5]:                                   ; shadow on (0x20B258(ctx, dx, dy) 
 - **GS modulate/alpha for the shadow** (vertex 1.0 × texel alpha 0x7F): the VU/GS packing was not read.
 - **Packet bit 0** (`0x213778`/`0x213798`, driven by ctx[6] and `[0x2EE910]`): → `0x4000` in
   `0x2329C8`. Its meaning (filter or blend) was not read. It does not touch size.
+
+## 8. The in-park LAPTOP: same 512-unit map, and the chrome is a full-frame background (follow-up, 2026-09-28)
+
+**Answer.** The laptop has no projection of its own. Its widgets and text use the same calls as the HUD,
+through the same `0x2F0400` 2D matrix. The chrome `laptop_<world>.ssh` is not a quad. It is IPU-decoded
+into a background buffer, and each frame draws that buffer as a full-frame sprite. So **the 512×512 chrome
+spans the whole frame, edge to edge**, and the laptop's 512 units cover the full width, as the HUD's do. On
+PAL 640×512 that is 1.25 px across per unit and 1 px down. **The port's centred square
+(`Scale = Min(view.X, view.Y)/512` on both axes, `game/LaptopShopScreen.cs:64`) is 1.25× too narrow on
+PAL, and 4/3 too narrow on a 4:3 screen.** The console laptop fills the whole frame. This settles the
+open question in `findings/shop-info-ui.md` ("whether the console itself stretched 512x512 … is NOT
+settled"): it does.
+
+### 8.1 The chrome's draw chain (READ)
+
+| step | where | what |
+|---|---|---|
+| screen draw | every laptop screen inherits root `0x1648A8` (vtable `0x361A60`); the slot at `+0x14` is `0x1649C8`, reached e.g. from `0x1D98C8` | `0x212838(this+0x4C)`, then vt `+0x5C` |
+| container | `this+0x4C` is built by `0x1434F0`: vtable `0x35F688`, `+0x30 = 1` (chrome on), `+0x34 = 1` (children on). `0x212838` calls vt `+0x2C` = **`0x143598`** | if `+0x30`: `0x2156A0(mgr, 0x3B)`, then `0x2135D8(spr)`. If `+0x34`: each child gets `0x212870(child, x+cx, y+cy, z+cz)` |
+| sprite 0x3B | `0x2156A0` (`0x2156A4..0x2156EC`) | id 0x3B is special-cased: returns `[0x2EF758 + 4·0x14E170()]`, the per-world chrome loaded by `0x214C20` (`0x2158D8("Data/Ui/Laptop/", "laptop_<world>.ssh", 1)` → `0x2EF758..0x2EF764`). **The only `jal 0x2156A0` with 0x3B is `0x1435D4`** |
+| `0x2135D8` | `0x2135D8..0x213634` | not a quad. It calls the texture's vt `+0x34` once and sets sprite `+0x24 \|= 4` |
+| SSH vt `+0x34` | class vtable `0x36FEB0` (installed `0x235CFC`) → **`0x236578`** | returns 0 unless **`[0x2EFA24] & 0x100`**. Then it calls `0x223FE0(data+0x10, buf, DBP = [0x2EF9FC]<<5, w = tex+4, h = tex+6, DBW·64 = [0x2EFA30], PSM = [0x2EF9AC], DSAX 0, DSAY 0, flags 3)` |
+| `0x223FE0` | IPU | checks `"GM"` (0x4D47), IPU-decodes, and GIF-IMAGE-transfers into VRAM at DBP, x 0, y 0, in 16-px columns. **The chrome entry is type 0x84, 0x200×0x200, and its data opens with `47 4D` ("GM")** (read off `UI.WAD/laptop/LAPTOP_JUNGLE.ssh` at `+0x70`/`+0x80`) |
+
+### 8.2 The display side: where the UI pass puts the 512×512 (READ, one step INFERRED)
+
+- **UI pass begin, `0x1C55C8`**, outermost level only (`[0x2E9904] == 0`): `0x21CA48(disp 0x2EF970)` at
+  `0x1C5604`, then `0x21EE00` (`0x1C5644`), then the shadow default `0x20B258(ctx,2,2)`.
+- **`0x21CA48`**, only if `disp+0xB4` bit 0 is set and 0x100 is clear:
+  - it saves W/H (`+0xC8/+0xCC`), sets **0x100**, and sets **`+0xC0 = +0xC4 = 0x200`**: the UI renders
+    512×512;
+  - it sends a packet that draws the current frame (TBP = FBP·32, the saved width) as a sprite into buffer
+    `[+0x90]` at 512×512, then draws `[+0x90]` into **`[+0x8C]`**, the background buffer.
+- **`0x21EE00` rebuilds `0x2F0400` via `0x21F0B0`** from `[0x2EFA30]/[0x2EFA34]`, which are now
+  512/512. So NDC ±1 = the 512-px UI buffer, and **1 unit = 1 UI-buffer pixel** in both axes.
+- **Per-frame environment `0x21BDC8`** with 0x100 set: before anything else it emits a textured SPRITE
+  (PRIM 0x16) with TEX0 = `[+0x8C]<<5`, TBW `[+0xC0]>>6`, TW/TH = log2(512). The ST run is (0,0)→(1,1)
+  and XYZ2 runs (0x800 ∓ W/2, 0x800 ∓ H/2)·16, so it covers the whole buffer. **This background is
+  what `0x236578` overwrote with the chrome: 512 texels onto the 512-px buffer, 1:1, full frame.**
+- UI pass end `0x1C5680` → `0x21D028`: restores `+0xC0/+0xC4` from `+0xC8/+0xCC` and clears 0x100.
+- INFERRED: the 512-wide UI result reaches the 640-wide display through the present (`0x21C288`: sprite
+  from the render buffer, TW = log2(`+0xC0`), onto a display of width `disp+0x0` = 640). Its exact
+  ordering with `0x21D028` was not read. The capture (8.4) shows the outcome.
+- INFERRED: retail runs with `+0xB4` bit 0 set. The chrome is uploaded only under 0x100, 0x100 is set
+  only by `0x21CA48` (no other writer found: Ghidra refs to `0x2EFA24` are all reads, and the struct
+  stores are in `0x21CA48` / `0x21D028`), and the retail capture shows the chrome. A side effect: the
+  **HUD is also drawn in this 512×512 UI buffer**. That changes nothing in §1–§6: text and sprites still
+  share one map.
+
+### 8.3 One laptop text row to the primitives (READ)
+
+Shop screen draw `0x1D70C8` (vtable `0x368AE0`, fn word at `0x368BB4`), MIPS `0x1D71F8..0x1D7240`:
+`0x1388E8(ctx, colour)`, `0x1389C0`, then **`0x138798(ctx, text, x = [0x2E9CC4], y = [0x2E9CC8], z, 1)`**.
+The globals are the `.sce`-bound layout (`findings/shop-info-ui.md`: filled by the binder). `0x138798`
+is a short forwarder to `0x20ACF8` (`jal` at `0x1387B8`), and from there it is §2's path
+(`0x2137C0 x/256−1` … `0x213980 → 0x2329C8`, matrix `0x2F0400`). The bars and sliders are sprites on
+`0x2137C0/0x2131B8/0x213980` too. **Nothing gives the laptop its own matrix.** Ghidra's 6 refs to `0x2F0400` are 2 in `0x21EE00` (the builder,
+`0x21F0B0`) and 4 reads that copy it (`0x213980`, `0x2346E8`, `0x161110` at `0x161268`, `0x2282E0`).
+`0x21EE00` runs at every UI pass begin (`0x1C5644`) and end (`0x1C56E4`). The render size `+0xC0/+0xC4`
+is stored by `0x21AA18`, `0x21CA48` and `0x21D028`; a full census of other stores was not done.
+
+### 8.4 Control: retail laptop captures (MEASURED)
+
+These are strawberry's three retail laptop captures from cowbot, 2026-09-25 06:53–06:54 UTC (messages
+`1552936143362854964`, `…184639135754`, `…224468242432`; the ones `shop-info-ui.md` calls "Master
+supplied screenshots"). I downloaded them to `~/ghidra_tpw/agent_advV/out/laptopcaps/`. Only capture 1
+(`1790610361502-…png`, Crazy Ape, 1600×892) shows the surround on all four sides. Captures 2 and 3 are
+cropped by the user and cut into the bevel.
+
+The panel boundary is where pixels differ from the surround (7,24,111) by more than 45, taken as medians
+over the middle 40 % of rows and columns. It is fitted to the chrome art's own boundary: the flat
+(0,0,100) key, READ off `LAPTOP_JUNGLE.tga`, is non-key at columns 12..498 and rows 17..493.
+
+| | art (units) | capture 1 (px) | fit |
+|---|---|---|---|
+| panel x | 12 .. 499 | 38 .. 1565 | **x = 0.4 + 3.136·u → art 0..512 spans 0.4 .. 1605.8 of 1600** |
+| panel y | 17 .. 494 | 22 .. 863 | **y = −8.0 + 1.763·v → art 0..512 spans −8 .. 895 of 892** |
+
+**The chrome touches all four capture edges, within the capture's own crop.** Its x:y stretch is
+**1.778**, the frame stretch the HUD capture showed (1.80). A square 512-px laptop inside a 640 frame
+would cover 80 % of the width and give 1.44.
+
+**Laptop elements on the same fit, using `main_i_ride_data.sce`'s own coordinates:**
+
+| element (`.sce`) | predicted px | measured px |
+|---|---|---|
+| excitement bar, col 215 w 72, row 118 h 22 | x 675..900, y 200..239 | x 675..897, y 200..237 |
+| reliability / repair / life bars, rows 150/182/214 | y 256/313/369 .. +39 | y 257/313/369 .. +37 |
+| title `ItemSelect` row 65 col 45 (+ `C` bearing 1, top 4) | left 145, top 114 | left 145, top 112 |
+
+The sprites (bars), the text (title) and the chrome all sit on one unit→px map spanning the full frame.
+
+### 8.5 Side result, the date (READ)
+
+`0x13DB90` draws the park date with Large.bff, white, shadow (2,2), at **`(0x26, 0x1D6)` = (38, 470)**
+(`0x138630(…, 0x26, 0x1D6, 10, buf)`; `0x138630` (frame 0xC0) ends in `jal 0x138798` at `0x1386A4`). The HUD-capture fit in §6 predicted the date origin at ≈ 471.
+That confirms that calibration, and the port's `DateBottomRows = 14` (a bottom anchor at 498) should
+become y = 470.
+
+### 8.6 Still unknown
+
+- The final 512 → 640 present order (`0x21C288` against `0x21D028`) and the DISPLAY/MAGH settings
+  (`0x21A0B8`) were not decoded. The capture shows full-frame coverage but cannot give the TV's pixel
+  aspect.
+- Who sets `disp+0xB4` bit 0: not found (it is 0 in the image; no store located). The inference that
+  retail runs with it set rests on the chrome being visible.
+- Captures 2 and 3 were not used (cropped).
