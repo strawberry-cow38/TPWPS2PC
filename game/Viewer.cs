@@ -548,21 +548,23 @@ public partial class Viewer : Node3D
             _shotPath = Env("TPW_PS2_SHOT");
             int.TryParse(Env("TPW_PS2_FRAME") ?? "0", out _shotFrame);
         }
-        // ⭐⭐ A BARE LAUNCH OPENS THE PARK, NOT THE ASSET VIEWER. Master, 2026-09-27: "dont
-        // launch the game into the asset viewer, launch straight into jungle1 park".
-        //
-        // ⚠ ONLY when nothing else was asked for. Every selector below picks an asset-viewer
-        // tab, and the matrices, smokes and shot harnesses all pass one of these or an explicit
-        // --mode/--map -- so this changes the bare launch and nothing that is already scripted.
-        // Defaulting unconditionally would have quietly redirected every existing capture.
-        if (_wantMenu || _wantLobby) { _hidePanel = true; }
+        // Normal launch starts at the front end (2026-09-28). Explicit asset/map/mode
+        // selectors retain their jobs, including the rendered smokes and capture tools.
+        if (_wantMenu || _wantLobby) _hidePanel = true;
         else if (_wantMode == null && _wantRide == null && _wantImage == null
             && _wantSound == null && _wantPlay == null && _wantAnim == null)
         {
-            _wantMode = "park";
-            _wantMap ??= "JUNGLE";       // JUNGLE's first park -- the documented bare-world shorthand
-            _hidePanel = true;           // ⚠ the tabs live INSIDE this panel, so one flag hides both
-            GD.Print("[v] no mode asked for -- opening the park on JUNGLE 1");
+            _hidePanel = true;
+            if (_wantMap == null && _wantWad == null)
+            {
+                _wantMenu = true;
+                GD.Print("[v] no content selector -- opening the main menu");
+            }
+            else
+            {
+                _wantMode = "park"; // explicit --map/--wad remains a direct park request
+                _wantMap ??= "JUNGLE";
+            }
         }
         BuildUi();
         GD.Print($"[v] start; args={string.Join(" ", argv)}");
