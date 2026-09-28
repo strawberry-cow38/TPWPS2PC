@@ -415,3 +415,14 @@ GuestTerminal bindings and retired ride objects need the WORLD reference registr
 factories deliberately demand those references rather than substituting reused numeric IDs.
 Save/Load remains unavailable. All3delegates used/timedout with complete files; outputs integrated,
 reviewed and consumer-tested; no pending workers. Fetch main before next ownership slice.
+
+Visitor graph final gates9c5d475 (main12352fb): /tmp/tpw-save-visitors-matrix:
+8parks4PASS+4exactretailreds,exit2,landing_evidence=True. /tmp/tpw-save-visitors-runtime:
+10/11PASS,onlyknownFANTASYanchorbaseline. Re-ran realGodot ground92+placement659PASS after
+mainperf merge. OwnerdiscSaveAudit233925PASS,83PythonPASS; /tmp/tpw-visitors-final-saveaudit.log.
+Next native controller files: NativeEntranceFlow.cs871lines, NativeRideQueue.cs482,
+NativeEntranceAcceptance.cs41, game/Viewer.Entrance.cs181 (actual pending service seam).
+StaffRouteService.cs is another pending-work owner; do not conflate its request pool with
+GuestWalk.NativeRoutes. Their references must adopt the restored ONE output pool where shared.
+For future maps whose enumeration affects play, reuse IntMapLayout instead of losing removed
+slots. Layout metadata tracks public Dictionary mutations, not private CLR internals.

@@ -3328,3 +3328,7 @@ Review found dictionary-removal holes affect future arrival order; IntMapLayout 
 history, stockDictionary oracle350churn operations/repeatedcuts. Five mutants fail/restored.
 233925SaveAudit+83PythonPASS. Main12352fb pathfix/perf merged; demotedBoth control now expects
 retainedground/noGroundUnknown; explicitno-backup fixture coversunknowncallback.
+Visitor final gates9c5d475:233925SaveAudit,83Python,Godotground92+placement659PASS;
+8parkmatrix4PASS+4exactretailreds landing_evidenceTrue;runtime10/11onlyknownFANTASYanchor.
+Evidence /tmp/tpw-save-visitors-matrix,/tmp/tpw-save-visitors-runtime,/tmp/tpw-visitors-final-saveaudit.log.
+Next admission/ridequeue/request resources (+Viewer.Entrance pending seam), thenstaff/managers/advisor.
