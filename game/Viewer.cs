@@ -3722,7 +3722,7 @@ public partial class Viewer : Node3D
                 // plausible wrong number rather than an obvious missing one.
                 var vcells = new List<(string, int)>
                 {
-                    (null, 0), (null, 0), ("--", 0), ("--", 0),
+                    (null, 0), (null, 0), (NoValue, 0), (NoValue, 0),
                 };
                 _shopPanel.ShowScreen(LaptopScreen.VisitorInfo, "", vcells, feelings: feel);
                 ClearLaptopModel();
@@ -3817,7 +3817,7 @@ public partial class Viewer : Node3D
                 // and park rating are not retained anywhere in this port -- there is no year roll
                 // and no valuation -- so they read as a dash rather than a confident zero, which
                 // would look like a park that earned nothing.
-                const string none = "--";
+                string none = NoValue;
                 int pval = ParkValueTenths();
                 var thisYear = new List<(string, int)>
                 {
@@ -8648,6 +8648,17 @@ public partial class Viewer : Node3D
     /// "shop" in its title a shop, and miss the ones without.</summary>
     /// <summary>The placed thing as a RIDE with operating settings, or null. ⚠ Tiers are the test,
     /// not the kind name: a thing with no tier has no speed, capacity or duration to show.</summary>
+    /// <summary>⚠⚠ THE DASH IS U+2013, NOT AN ASCII HYPHEN. Master, 2026-09-28: "why are they
+    /// lil arrows, not dashes?" -- because `Large.bff` maps ASCII `-` (0x2D) to glyph 13, an 8x6
+    /// mark that is not a dash at all, and U+2010 HYPHEN aliases to the same glyph. The font's
+    /// real dashes are U+2013 (an 11x2 bar) and U+2014 (16x3). Decoded straight out of the font
+    /// with 'A' and 'T' as the control that the reader was right.
+    ///
+    /// ⚠ This is for OUR OWN "no value here" marker only. `Money` keeps the ASCII 0x2D for a
+    /// negative, because that is the byte the console writes (`FUN_00142908`) -- so a negative
+    /// figure wears the same odd mark on real hardware, and that is retail, not ours to fix.</summary>
+    const string NoValue = "\u2013";
+
     /// <summary>⭐ THE PARK'S VALUE, in tenths: `FUN_001011c8` is HALF the catalogue price of
     /// everything placed, times ten. Park Finance's "Park Value" row and Overall Statistics'
     /// second series both want it, and both were drawing a dash for want of it.

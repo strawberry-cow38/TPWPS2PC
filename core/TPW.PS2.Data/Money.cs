@@ -38,6 +38,11 @@ public static class Money
     public static string Display(int value)
     {
         var s = new StringBuilder();
+        // ⚠⚠ ASCII 0x2D ON PURPOSE, and it looks wrong on purpose. `Large.bff` maps 0x2D to
+        // glyph 13, an 8x6 mark that is not a dash (U+2010 aliases to it too); the font's real
+        // dashes are U+2013 and U+2014. The console writes 0x2D here, so a negative figure wears
+        // that same odd mark on real hardware. Do NOT "fix" it to an en dash -- that would be a
+        // departure. Our own placeholders use U+2013 precisely because they are ours.
         if (value < 0) { value = -value; s.Append('-'); }
         s.Append('$');
         // ⚠ The console formats the ABSOLUTE value after taking the sign off, so int.MinValue
