@@ -5,7 +5,7 @@ namespace TPWPS2Viewer;
 
 /// <summary>One ride standing on park ground, at its own footprint, with the name a player would
 /// actually see. The first thing in this repo that is a game rather than a reader.</summary>
-public sealed class Park
+public sealed partial class Park
 {
     /// <summary>A grid cell in model units. **ONE.**
     ///

@@ -20,7 +20,7 @@ namespace TPW.PS2.Data;
 /// ⚠ This keeps its own kind and link bytes. The authored grid on the disc has no room for them --
 /// the runtime tile map does, at +0 and +2, and no park ships with a path already laid (measured:
 /// zero path-tiled cells in all four worlds), so a park always starts from bare ground.</summary>
-public sealed class PathTool
+public sealed partial class PathTool
 {
     public enum Kind { None = 0, Path = 2, Queue = 4, Both = 13 }
 
@@ -141,6 +141,7 @@ public sealed class PathTool
     public PathTool(Model terrain, PathPieces pieces)
     {
         _field = terrain?.Field;
+        _materialKeys = terrain?.Materials.ToArray();
         _pieces = pieces;
         if (_field == null) { Report = "this terrain carries no authored grid"; return; }
         _kind = new Kind[_field.Count];

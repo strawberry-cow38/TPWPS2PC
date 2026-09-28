@@ -3,7 +3,9 @@ using System.Text.RegularExpressions;
 
 namespace TPW.PS2.Data;
 
-public readonly record struct ParkCell(int X, int Z)
+[System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
+public readonly record struct ParkCell([property: System.Text.Json.Serialization.JsonRequired] int X,
+    [property: System.Text.Json.Serialization.JsonRequired] int Z)
 {
     public ParkCell Offset(int x, int z) => new(X + x, Z + z);
     public override string ToString() => $"({X},{Z})";
@@ -15,7 +17,7 @@ public enum ParkPathKind { None, Path, Queue }
 /// material bytes. Construction uses the engine's byte0 bit-0 rule, plus ride occupancy and
 /// conservative fixed-scenery exclusion. Walking additionally requires a laid path material;
 /// this is a demo routing policy, not a recovered engine navigation service.</summary>
-public sealed class ParkPaths
+public sealed partial class ParkPaths
 {
     public Model.HeightField Field { get; }
     public IReadOnlyList<string> Materials { get; }

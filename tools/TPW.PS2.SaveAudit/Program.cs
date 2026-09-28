@@ -35,9 +35,20 @@ void RequireEveryJsonMember<T>(T state)
     }
 }
 
+if(args.Length>0 && args[0]=="--ground-only")
+{
+    if(args.Length!=2) throw new ArgumentException("--ground-only needs the owner disc path");
+    using var groundDisc=new Disc(args[1]);
+    ParkPathsSaveChecks.Run(groundDisc,Check);PathToolSaveChecks.Run(groundDisc,Check);
+    Console.WriteLine($"PASS GroundSaveAudit: {checks} checks (walking/path owners; no Viewer claim).");
+    return 0;
+}
+
 if(args.Length>0)
 {
     using var disc=new Disc(args[0]);
+    ParkPathsSaveChecks.Run(disc,Check);
+    PathToolSaveChecks.Run(disc,Check);
     DiscRseSaveChecks.Run(disc,Check);
     DiscParkSimSaveChecks.Run(disc,Check);
 }

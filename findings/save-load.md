@@ -298,3 +298,57 @@ shared with the live ground; preserve that identity, not two independently resto
 Tool UI mode/cursor are transient; committed path/queue topology and deletion restoration
 are not. ParkPaths also owns occupied/scenery/entrance/protected/gatehold sets and entrance
 kinds/entry, beyond Field.Cells. Incomplete tracks are now covered; ground/placement isn't.
+
+## Ground + placement checkpoint — September28 (~11:40)
+
+ParkPaths.State covers mutable tile bytes/height step and occupied/scenery/entrance/protected/
+gatehold sets, entrance kinds/entry. PathTool.State covers kind/turn/owner/run arrays, bridge/
+walkway/doors, ORIGINAL ground under every laid tile, Laid/report and the undo object graph
+(including _leg alias/null/unlisted object, not an assumption that it means the final stack
+entry). Fresh factories copy data, not Lay/Repaint/SetEntrance. Asset keys independently
+resolved; DTO arrays detached. ParkCell coordinates now required JSON members, so a missing
+X cannot silently turn into zero. Capture counts preflight before copying large histories.
+
+Game Park.State owns placement order/IDs/names/ragged rotated footprint+door data, occupancy/
+reservations/playable, plot frame/origin/height, LastX/Y and model-root transform/visibility/
+TopLevel/asset keys. Validates whole logical DTO before invoking a trusted fresh-node factory.
+No TryPlace/Build replay; no Node3D/material/delegate serialization. Failed factory validation
+leaves caller nodes untouched/owned by caller. Staged Root remains outside SceneTree; ground
+meshes regenerate AFTER logical staging and material/claimed/cutfloor callbacks rebind.
+Descendant animation/material timelines and renderer caches are separate presentation owners.
+
+IMPORTANT correction to earlier inventory: production Viewer has TWO HeightField wrappers
+sharing ONE Cells byte array, not one wrapper. PathTool+Park bind terrainModel.Field; WalkGrid
+constructs its own wrapper then assigns Cells=terrainModel.Field.Cells. The original draft
+Park.State assumed a shared wrapper and would reject the real Viewer. Fixed before commit:
+explicit SharedField binding, plus ParkGroundSnapshot preserves wrapper identity AND byte
+aliasing. It keeps each wrapper's height Step (a control uses different .75/1.25 values).
+RestoreIntoTerrainField takes a FRESH STAGED Model so its readonly Field wrapper remains the
+actual render/tool owner; all validation completes before its Cells/Step are committed.
+Generic Restore never mutates the supplied asset. Do not call the mutating variant on the old
+live/cached terrain. Final Viewer coordinator must supply a fresh model, then publish atomically.
+
+Evidence:8terrain ParkPaths audit312 checks; PathTool real edits105; --ground-only runs both
+(417). Actual Godot ParkPlacementSaveSmoke659checks (rotated ragged footprints, file roundtrip,
+publication/removal/replacement/rejections). ParkGroundSaveSmoke92checks across4worlds uses
+real terrain+native path tables, FILE roundtrip, fresh staged model/ground/placement, then
+actual selection, active-leg continuation/Undo, owner queue delete and path-to-grass. Walking,
+rendering and editing all see the same restored bytes; source model unchanged. Rejected nested
+tool state cannot partially mutate even the caller's staged model. These are owner consumers,
+NOT a full Viewer Load Game path or proof that visitors/staff minds have been saved.
+
+Five mutations fail/restored: aliased input grid (no clone), lost active-leg reference, lost
+original-ground table, copied rather than shared render/walk bytes, lost placement occupancy.
+One preliminary mutation invocation had a new runner return-type compile error, then one had
+a30s timeout; neither counted as a test failure. Corrected runner and95s bounded retries all
+fail on their intended controls; final restored source green. SaveAudit231438PASS withdisc;
+Godot659+92PASS. No mutant left. Main ClearQueue defect discovered by continuation audit:
+demoting Both deleted its original-ground backup; reported to cow, who fixed it independently.
+After merge update that audit's old GroundUnknown expectation, do not undo the gameplay fix.
+
+NEXT walking guests / VisitorNeeds / ParkVisitors / native route service+leases+queues+pending
+work, staff/litter/research/management/advisor and final presentation/Viewer transaction. Geometry
+now has owners, but Viewer allocator/asset registry and model/ride/world cross-links still need
+the complete coordinator. Save/Load UI remains unavailable until ALL required owners stage.
+All3delegates used this turn; no pending workers. Main perf changes moving fast; fetch/merge,
+review newly added persistent vs derived fields, explicit paths, gates and normal research push.

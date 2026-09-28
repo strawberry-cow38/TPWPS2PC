@@ -3304,3 +3304,13 @@ Postmerge d4c7a74 native gates: ownerdiscSaveAudit231021PASS,83Python;
 Evidence /tmp/tpw-save-vehicle-matrix, /tmp/tpw-save-vehicle-runtime, /tmp/tpw-vehicle-postmerge.log.
 Nextgeometryinventory in findings/save-load.md: placementowner game/Park.cs, pathstate split
 ParkPaths/PathTool (sharedfield, queueowner/run bits, originaltiles, undo records). No live UI save yet.
+
+### September28 save/load — ground/path/placement owners (research only)
+ParkPaths.State + PathTool.State + game/Park.State + ParkGroundSnapshot now file-roundtrip
+logical geometry/placements/path ownership and ORIGINAL ground/undo alias. RealViewer join
+corrected: separate render/walk HeightField wrappers share Cells, not wrapper identity. Fresh
+staged model binding preserves both independently valued heightStep headers and bytealias.
+OwnerdiscSaveAudit231438PASS; realGodot placement659 + fourworld ground/placement92PASS.
+Five mutations fail/restored (copy ownership, activeleg, originalground, sharedbytes, occupancy).
+No fullViewerload claim: visitors/staff/nativependingwork/advisor/presentation still required.
+ClearQueue Both backup loss found by continuation audit, reported; cow fixed separately.
