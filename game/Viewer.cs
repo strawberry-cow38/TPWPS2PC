@@ -4229,6 +4229,7 @@ public partial class Viewer : Node3D
         {
             case LaptopScreen.OptTutorial:
                 _settings.Tutorial = !_settings.Tutorial;
+                _parkAdvisor?.SetTutorial(_settings.Tutorial);          // 0x13A178: the advisor's flag 0x40
                 Status($"tutorial {(_settings.Tutorial ? "on" : "off")}");
                 ShowLaptopLevel();
                 break;
@@ -5652,6 +5653,7 @@ public partial class Viewer : Node3D
             uint staffBefore = _staff?.Now ?? 0;
             _visitors.Step(ConsoleClock.TickSeconds, Wander);
             TickStaffAnimations(_staff == null ? 0 : unchecked(_staff.Now - staffBefore));
+            TickAdvisor(_staff == null ? 0 : unchecked(_staff.Now - staffBefore));   // the advisor, after guests and staff (Viewer.Advisor.cs)
             Retry();
             TickNativeBus(); // batch admission follows the guest update, not an independent timer
             return;

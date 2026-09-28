@@ -73,7 +73,7 @@ public partial class Viewer
             () => 0x4000,
             g => NativeEntranceAcceptance.TryCharge(_entranceVisitors.Needs, g.Id, _sim.Finances,
                 () => _entranceFee, EntranceValueSum, n => _guestRng.Next(n),
-                () => _entranceAccepted++),
+                () => _entranceAccepted++, cls => _sim?.AdvisorEvent?.Invoke(19, cls)),   // 0x210C78: counter 19
             EntranceExit,
             g => {
                 _entranceRejected++;

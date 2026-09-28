@@ -214,6 +214,8 @@ public partial class Viewer
         LoadCoasterMaterials(view);
         RebuildCoaster(view);
         sim.Scream += (tr, evt) => CoasterScream(view, tr, evt);
+        // 0x11A858: 201 COASTER_STOCK_OUT when (park 2 ? 14 : 2) − coasters in use (this one included) is 0.
+        _parkAdvisor?.CoasterPlaced(_sim.Rides.Count(r => r.Coaster != null), _staffPark);
         GD.Print($"[coaster] {type.Name}: station at ({cx},{cy}) turned {turns}, track exit {exit} step {exitStep}, entry {entry}, "
                + $"heights {type.ExitHeight}/{type.EntryHeight}, style {type.Style}, {type.CarsPerTrain} car(s) of {type.Seats}, {view.Price} a pylon");
         return true;
@@ -678,6 +680,7 @@ public partial class Viewer
         // then the test lap (0x122d48) and its stats screen (0x11bd28).
         string state = !v.Track.Closed ? "the ring is OPEN (advisor 204) -- no trains"
                      : !v.Track.Valid ? "the ring is INVALID (advisor 203) -- no trains" : "closed and valid";
+        _parkAdvisor?.CoasterFinished(v.Track.Closed, v.Track.Valid);   // 0x11BA00 → 0x11BBD8: 204, then 203 / 204
         var lap = v.Sim.TestLap();
         v.Stats = lap;
         string rating = lap.RatingRow != 0 && _text?.Text("eng", lap.RatingRow) is { Length: > 0 } r ? r : "-";
