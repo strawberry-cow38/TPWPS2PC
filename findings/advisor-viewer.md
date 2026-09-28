@@ -5,6 +5,10 @@ Built 2026-09-28 against the PAL `SLES_500.32` and the owner's disc, on top of s
 [advisor-messages.md](advisor-messages.md) and [advisor.md](advisor.md). This note records what this step
 READ, MEASURED and INFERRED on the way. Addresses are ELF virtual addresses.
 
+⭐ **Superseded in part by [advisor-visuals.md](advisor-visuals.md)** (the same day). The read box and the
+head's scale are now READ. The box is a nine-slice of `wboxfill` in the blue frame, with `Small.bff` text in
+(48,48,48) centred on x 320. The head's 4/3 is on depth. The sections below say where they were guesses.
+
 Code: `game/AdvisorHead.cs` (the head), `game/AdvisorStackView.cs` (the stack), `game/GameAudioMix.cs` (the
 ducking), `game/Viewer.Advisor.cs` (the wiring), `core/TPW.PS2.Data/ParkAdvisor.cs` (lips, mouth, costume
 call, `AdvisorHeadChannel`, `ObjectLeftPark`). Checks: `tools/TPW.PS2.ParkSimAudit/AdvisorChecks.cs`
@@ -80,8 +84,10 @@ record stays. Nothing clears a queued message's object. Of the two callers, `0x1
 
 ## MEASURED
 
-**The box's face.** The widget's font is not traced. Over the 95 advisor text rows with authored line breaks
-(`eng`, `eur`), in the 228 px between the box's margins:
+**The box's face** (⚠ SUPERSEDED: the face is READ, `Small.bff`, font id 0; see advisor-visuals.md §1.2). This
+step's measurement took the margins as an inset, leaving the 228 px between them. They widen OUTWARD, so the
+text has the 292-unit fill, and Small's widest line (288) fits. Over the 95 advisor text rows with authored
+line breaks (`eng`, `eur`), in 228 px:
 
 | face | widest authored line | rows too wide | most lines |
 |---|---|---|---|
@@ -89,29 +95,40 @@ record stays. Nothing clears a queued message's object. Of the two callers, `0x1
 | `Small.bff` | 288 px | 54 | 7 × 21 = 147 |
 | `Large.bff` | 387 px | 83 | 7 × 30 = 210 (5 too tall) |
 
-So the port draws the box's text in `Console.bff`. The count beside the envelope is font 1, `Large.bff`
-(READ).
+So the port drew the box's text in `Console.bff` until advisor-visuals. The count beside the envelope is font
+1, `Large.bff` (READ).
 
 **The speech length.** The state machine is fed the decoded stream's length. For 171 (`Adds_14.mp2`) that is
 23,301 ms, against the SDT header's 23,185 ms.
 
 ## INFERRED, and said where it lives
 
-- **The projection** is not traced. The overlay takes (0.6, −0.5) in the frame the HUD glyph blit uses
-  (`0x2137C0`: x/256 − 1, 1 − y/256 over the 512-square space), which puts the head at console (410, 384),
-  lower right. The 0.013 REPLACES the root's bind scale of 0.02. Multiplied instead, the head would be 0.3% of
-  the screen wide. Replaced, the enter animation's 52-unit rise starts the bug exactly below the bottom edge,
-  and a render 80 ms into the rise shows only the hat's crown above it. The 4/3 is on the vertical. Wider
-  than 4:3, both axes take the vertical factor, the HUD's own rule for its glyphs.
+- ⭐ **The projection: now READ** (advisor-visuals.md §2). Render layer 4 is camera-less and orthographic
+  (`0x2282E0` takes `0x2F0400` = diag(W/3600, −H/3600) under flag 0x200000). The origin is NDC (0.6, −0.5),
+  80% across and 75% down, which this step had guessed right. The 0.013 REPLACES the root's 0.02, also
+  right. ~~The 4/3 is on the vertical~~ was wrong. `0x16FD18(s, 4s/3, s)` rescales the root's own rows, and
+  the root's local y is depth, so the 4/3 never reaches the screen. The port had applied 4s/3 to the whole
+  model, which made the disc a circle 4/3 too big on both axes. It now applies the root's rows as read.
+  Measured at 640×512: disc 71.5 × 71.5 px, origin (512, 384). Still INFERRED: NDC ±1 = the full frame (the
+  clip-to-pixel step, 2048 ± 1800, is not read). Still an ADAPTER: the port does not stretch the frame, so
+  the head, like every HUD element, takes one factor from the height.
 - **Hidden when idle.** The console never unregisters the model. After an exit it is below the frame, and
   its bind pose before the first message would stand up wearing every prop.
 - **The speech is not ducked** (which audio group plays it is unknown). The port's sounds go on a new SFX bus
   whose gain is `live / setting`, the console's group-3 drop as a ratio, because the port never applied the
   settings' absolute level.
 - **Pause** pauses the voice with the park; no stream pause was found natively.
-- **The layer order** (a record's frame behind its letter), **no border on the box**, **white text**, the
-  **jump target** (the ride's footprint centre; `vt+0xCC` of a ride is not traced) and **refusing a ride that
-  has gone**.
+- **The layer order** (a record's frame behind its letter), the **jump target** (the ride's footprint centre;
+  `vt+0xCC` of a ride is not traced) and **refusing a ride that has gone**.
+- ⭐ ~~No border on the box, white text~~: **now READ** (advisor-visuals.md §1). The box is `0x142090`'s
+  nine-slice: `wboxfill` in 13 rows of 292×16 at (174, 196), and the blue `messcorner`/`messedge` frame with
+  outer edge (166, 188)–(474, 412). The text is `Small.bff` in (48,48,48), each line centred on x 320, top
+  210, advance 21, no wrap. Still INFERRED: the text's black 2,2 shadow (the render pass's default), and
+  which quarter turn each side edge takes (advisor-visuals.md §4.1). Still an ADAPTER: the port's HUD
+  mapping, with positions as fractions of the window and sizes by the height, and the box hung off its
+  centre line x 320.
+- **The box over the head** where they overlap: the port draws the box over it. The console's order is NOT
+  resolved.
 
 ## Checks
 
@@ -122,13 +139,19 @@ So the port draws the box's text in `Console.bff`. The count beside the envelope
 - `tools/advisor_teeth.py`: step A's 54 mutations plus 14 new ones. All 68 went red on the core as committed.
 - `AdvisorSmoke`: 49 checks per park, each reading the view's output (drawn meshes, the voice player, the bus
   gains, the stack view's drawn count and text, the camera). Viewer matrix scene `advisor`, floor 47.
+  advisor-visuals adds 11 (60 per park, floor 58). They cover the envelope as a square control; the head's
+  origin, disc size and ratio, and root axes, measured off the drawn nodes; the box's face, frame and depth
+  order, read from its recorded blits; its text face, colour and centring; the inferred shadow; and one
+  framebuffer pixel of the face.
 - `tools/advisor_view_teeth.py`: 20 mutations of the view, each required to turn the smoke red on JUNGLE 1. All
   20 went red on the final smoke. The first run had one survivor, `jump-to-gone-ride`: the refused jump was
   checked from the ride's own centre, where the camera already stood after the real jump, so a wrong second
   jump moved nothing. The check now starts from the home camera and asserts that home is not the ride's cell.
+  advisor-visuals adds 19 mutations (39 in all), covering the box, the text, the envelope control and the head's
+  transform. All 39 went red on JUNGLE 1 (advisor-visuals.md §4.3).
 
 ## Still open
 
-The projection and render layer 4; the audio group of the speech; whether the stream pauses; the widget's
-font, colour and border; `vt+0xCC` of a ride; the tutorial (Replay stays inert); the game-over flow after 123;
-the goal notices (no goals record in the port).
+The step from clip to pixel (2048 ± 1800, INFERRED); whether the box draws over the head where they overlap;
+the audio group of the speech; whether the stream pauses; `vt+0xCC` of a ride; the tutorial (Replay stays
+inert); the game-over flow after 123; the goal notices (no goals record in the port).
