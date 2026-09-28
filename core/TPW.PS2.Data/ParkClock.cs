@@ -33,6 +33,54 @@ namespace TPW.PS2.Data;
 /// ⚠⚠ NO LEAP YEARS. February is 28 in the table and nothing anywhere tests the year. Kept.</summary>
 public sealed class ParkClock
 {
+    public const int StateSchemaVersion = 1;
+
+    /// <summary>All six clock words, plus the publicly mutable global calendar table.
+    /// Dates are zero-based and countdown may be negative. The date and elapsed days need not
+    /// agree: Set changes the date without resetting the elapsed/deadline counters.</summary>
+    public sealed record State
+    {
+        public required int SchemaVersion { get; init; }
+        public required int Accumulator { get; init; }
+        public required int Month { get; init; }
+        public required int Year { get; init; }
+        public required int Day { get; init; }
+        public required int TotalDays { get; init; }
+        public required int Countdown { get; init; }
+        public required byte[] DaysInMonth { get; init; }
+    }
+
+    /// <summary>Detached state; capture/restore must run with simulation updates paused.</summary>
+    public State CaptureState() => new()
+    {
+        SchemaVersion = StateSchemaVersion, Accumulator = Accumulator,
+        Month = Month, Year = Year, Day = Day, TotalDays = TotalDays, Countdown = Countdown,
+        DaysInMonth = (byte[])DaysInMonth.Clone()
+    };
+
+    /// <summary>Validates everything before mutation. Restoring the global calendar table
+    /// affects every ParkClock in the process; a whole-park coordinator must account for that.</summary>
+    public void RestoreState(State state)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        if (state.SchemaVersion != StateSchemaVersion
+            || state.Accumulator < 0 || state.Accumulator >= UnitsPerDay
+            || state.Month < 0 || state.Month >= 12
+            || state.Year < 0 || state.Year > int.MaxValue - EpochYear
+            || state.TotalDays < 0 || state.DaysInMonth == null || state.DaysInMonth.Length != 12)
+            throw new ArgumentException("Invalid clock state schema, counters or calendar.", nameof(state));
+        var days = (byte[])state.DaysInMonth.Clone();
+        if (days.Any(n => n < 1 || n > 31) || state.Day < 0 || state.Day >= days[state.Month])
+            throw new ArgumentException("Invalid clock calendar or day of month.", nameof(state));
+        Accumulator = state.Accumulator;
+        Month = state.Month;
+        Year = state.Year;
+        Day = state.Day;
+        TotalDays = state.TotalDays;
+        Countdown = state.Countdown;
+        days.CopyTo(DaysInMonth, 0);
+    }
+
     /// <summary>`0x361d88`, indexed by a 0-based month.</summary>
     public static readonly byte[] DaysInMonth =
         { 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };

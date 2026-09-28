@@ -17,6 +17,85 @@ namespace TPW.PS2.Data;
 /// </remarks>
 public sealed class NativeRoutePool
 {
+    public const int StateSchemaVersion = 1;
+
+    /// <summary>Exact packed storage, including inactive links, coordinates and unused bits.</summary>
+    public sealed record State
+    {
+        public required int SchemaVersion { get; init; }
+        public required uint[] Words { get; init; }
+        public required int Hint { get; init; }
+        public required int Available { get; init; }
+        public required ulong ResetGeneration { get; init; }
+    }
+
+    /// <summary>Detached snapshot. The coordinator must pause mutation during capture/restore.</summary>
+    public State CaptureState() => new()
+    {
+        SchemaVersion = StateSchemaVersion, Words = (uint[])words.Clone(),
+        Hint = Hint, Available = Available, ResetGeneration = ResetGeneration
+    };
+
+    /// <summary>
+    /// Validate and create a fresh, unreferenced pool without replaying allocations.
+    /// Coordinator restore must rebind owners to this pool; it must NOT replace storage under
+    /// live leases/cursors. The saved reset generation is history, not a new invalidation epoch.
+    /// This owner snapshot does not establish chain ownership or save external handles.
+    /// </summary>
+    public static NativeRoutePool FromState(State state)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        if (state.SchemaVersion != StateSchemaVersion || state.Words == null
+            || state.Words.Length != Capacity || state.Hint < 0 || state.Hint > Capacity
+            || state.Available < 0 || state.Available > Capacity)
+            throw new ArgumentException("Invalid route pool schema, size or counters.", nameof(state));
+        var snapshot = (uint[])state.Words.Clone();
+        int free = 0;
+        for (int i = 0; i < Capacity; i++)
+        {
+            if ((snapshot[i] & AllocatedBit) == 0)
+            {
+                free++;
+                if (i < state.Hint)
+                    throw new ArgumentException("Route pool hint skips a free slot.", nameof(state));
+                // FreeOne/Reset deliberately preserve ALL inactive bits, including old links.
+                continue;
+            }
+            int next = DecodeNext(snapshot[i]);
+            if (next != -1 && next >= Capacity)
+                throw new ArgumentException("Live route link is outside the pool.", nameof(state));
+        }
+        if (free != state.Available)
+            throw new ArgumentException("Route pool free count disagrees with allocation bits.", nameof(state));
+
+        // FreeOne does not unlink inbound references: dangling links to inactive slots are
+        // legitimate owner state. Only cycles entirely within live slots are impossible.
+        var visited = new int[Capacity];
+        for (int start = 0; start < Capacity; start++)
+        {
+            int node = start;
+            while (node != -1 && (snapshot[node] & AllocatedBit) != 0)
+            {
+                if (visited[node] == start + 1)
+                    throw new ArgumentException("Live route links contain a cycle.", nameof(state));
+                if (visited[node] != 0)
+                    break; // A prior walk already validated this shared tail.
+                visited[node] = start + 1;
+                node = DecodeNext(snapshot[node]);
+            }
+        }
+        // Every validation above precedes construction/publication; no existing owner mutates.
+        return new NativeRoutePool(snapshot, state.Hint, state.Available, state.ResetGeneration);
+    }
+
+    private NativeRoutePool(uint[] snapshot, int hint, int available, ulong resetGeneration)
+    {
+        words = snapshot;
+        Hint = hint;
+        Available = available;
+        ResetGeneration = resetGeneration;
+    }
+
     // 192770: literal SLTI 0x3E8, independent of the 0x7FF terminal link.
     public const int Capacity = 1000;
     private const uint AllocatedBit = 0x8000u;

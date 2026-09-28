@@ -5,6 +5,53 @@ namespace TPW.PS2.Data;
 /// port lifetimes is useful, but does not establish the native game's complete history.</summary>
 public sealed class NativeActivationSequence
 {
+    public const int StateSchemaVersion = 1;
+
+    /// <summary>Sequence provenance and counters; serials are not reconstructed from totals.</summary>
+    public sealed record State
+    {
+        public required int SchemaVersion { get; init; }
+        public required uint NextSerial { get; init; }
+        public required string Origin { get; init; }
+        public required bool NativeHistoryVerified { get; init; }
+        public required ulong Activations { get; init; }
+        public required Dictionary<string, ulong> ActivationsByKind { get; init; }
+    }
+
+    /// <summary>Detached snapshot; callers must pause activation and DTO mutation while saving/loading.</summary>
+    public State CaptureState() => new()
+    {
+        SchemaVersion = StateSchemaVersion, NextSerial = NextSerial, Origin = Origin,
+        NativeHistoryVerified = NativeHistoryVerified, Activations = Activations,
+        ActivationsByKind = new Dictionary<string, ulong>(byKind, StringComparer.Ordinal)
+    };
+
+    /// <summary>Validate all fields before creating an independent sequence, without Activate replay.</summary>
+    public static NativeActivationSequence FromState(State state)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        if (state.SchemaVersion != StateSchemaVersion || string.IsNullOrWhiteSpace(state.Origin)
+            || state.ActivationsByKind == null)
+            throw new ArgumentException("Invalid activation sequence schema, origin or counts.", nameof(state));
+        var counts = new Dictionary<string, ulong>(state.ActivationsByKind, StringComparer.Ordinal);
+        ulong total = 0;
+        foreach (var pair in counts)
+        {
+            if (string.IsNullOrWhiteSpace(pair.Key))
+                throw new ArgumentException("Activation family must be explicit.", nameof(state));
+            // Totals and per-family counters are ulong words: preserve wrap, including zero.
+            total = unchecked(total + pair.Value);
+        }
+        if (total != state.Activations)
+            throw new ArgumentException("Activation total disagrees with family counts.", nameof(state));
+        var result = new NativeActivationSequence(state.NextSerial, state.Origin, state.NativeHistoryVerified)
+        {
+            Activations = state.Activations
+        };
+        foreach (var pair in counts) result.byKind.Add(pair.Key, pair.Value);
+        return result;
+    }
+
     readonly Dictionary<string, ulong> byKind = new();
     public uint NextSerial { get; private set; }
     public string Origin { get; }

@@ -37,6 +37,66 @@ namespace TPW.PS2.Data;
 /// written natively too, and nothing the port runs reads them yet, so they are not kept.</summary>
 public sealed class ParkFinances
 {
+    public const int StateSchemaVersion = 1;
+
+    /// <summary>Versioned logical state, including the active and historical ring slots.
+    /// Money is signed Int32, just as in the running simulation (including unchecked wraparound).
+    /// No unimplemented native finance rings are synthesized here.</summary>
+    public sealed record State
+    {
+        public required int SchemaVersion { get; init; }
+        public required int Balance { get; init; }
+        public required bool Unlimited { get; init; }
+        public required bool FreeBuild { get; init; }
+        public required int TotalIncome { get; init; }
+        public required int TotalSpending { get; init; }
+        public required int PeriodCount { get; init; }
+        public required int WageAccumulator { get; init; }
+        public required int[] Income { get; init; }
+        public required int[] Wages { get; init; }
+        public required Dictionary<int, int> IncomeByCategory { get; init; }
+    }
+
+    /// <summary>Detached copies; call on the simulation thread, not concurrently with updates.</summary>
+    public State CaptureState() => new()
+    {
+        SchemaVersion = StateSchemaVersion,
+        Balance = Balance, Unlimited = Unlimited, FreeBuild = FreeBuild,
+        TotalIncome = TotalIncome, TotalSpending = TotalSpending,
+        PeriodCount = PeriodCount, WageAccumulator = WageAccumulator,
+        Income = (int[])_income.Clone(), Wages = (int[])_wages.Clone(),
+        IncomeByCategory = new(_byCategory)
+    };
+
+    /// <summary>Validates and stages the entire state before changing this owner. Category keys
+    /// and monetary values deliberately accept the full signed Int32 domain. Not a whole-park
+    /// transaction; the caller must coordinate owners and pause simulation updates.</summary>
+    public void RestoreState(State state)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        if (state.SchemaVersion != StateSchemaVersion || state.PeriodCount < 0
+            || state.Income == null || state.Income.Length != PeriodSlots
+            || state.Wages == null || state.Wages.Length != PeriodSlots
+            || state.IncomeByCategory == null)
+            throw new ArgumentException("Invalid finance state schema, period or collections.", nameof(state));
+        var income = (int[])state.Income.Clone();
+        var wages = (int[])state.Wages.Clone();
+        var categories = new Dictionary<int, int>(state.IncomeByCategory);
+        // Reserve before mutation; retain the existing live read-only ledger view.
+        _byCategory.EnsureCapacity(categories.Count);
+        Balance = state.Balance;
+        Unlimited = state.Unlimited;
+        FreeBuild = state.FreeBuild;
+        TotalIncome = state.TotalIncome;
+        TotalSpending = state.TotalSpending;
+        PeriodCount = state.PeriodCount;
+        WageAccumulator = state.WageAccumulator;
+        income.CopyTo(_income, 0);
+        wages.CopyTo(_wages, 0);
+        _byCategory.Clear();
+        foreach (var entry in categories) _byCategory.Add(entry.Key, entry.Value);
+    }
+
     /// <summary>`park[4]`. ⚠ May go negative: the console credits without a floor and only uses
     /// the sign to raise or clear a warning.</summary>
     public int Balance { get; set; } = OpeningBalance;

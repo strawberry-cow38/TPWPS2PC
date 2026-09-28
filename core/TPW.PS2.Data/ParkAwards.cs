@@ -11,6 +11,54 @@ namespace TPW.PS2.Data;
 /// that promotes a coaster to "Ultimate" is not found. See findings/awards.md.</summary>
 public sealed class ParkAwards
 {
+    public const int StateSchemaVersion = 1;
+
+    /// <summary>All currently modelled award state, including the game-wide hidden bits and
+    /// earned-ticket counter. Medals and hidden bits are independent legacy mutable values;
+    /// restore does not recompute either. Award scheduling lives in ParkManagement, not here.</summary>
+    public sealed record State
+    {
+        public required int SchemaVersion { get; init; }
+        public required int GoldTickets { get; init; }
+        public required int GoldTicketsEarned { get; init; }
+        public required int UltimateCoasters { get; init; }
+        public required bool[] Medals { get; init; }
+        public required int HiddenAwards { get; init; }
+        public required int[] MedalOfHiddenAward { get; init; }
+    }
+
+    /// <summary>Copies both the medals and the publicly mutable global medal mapping.</summary>
+    public State CaptureState() => new()
+    {
+        SchemaVersion = StateSchemaVersion, GoldTickets = GoldTickets,
+        GoldTicketsEarned = GoldTicketsEarned, UltimateCoasters = UltimateCoasters,
+        Medals = (bool[])Medals.Clone(), HiddenAwards = HiddenAwards,
+        MedalOfHiddenAward = (int[])MedalOfHiddenAward.Clone()
+    };
+
+    /// <summary>Validate before mutation, without awarding tickets or emitting notifications.
+    /// Restores the shared medal mapping too. Call with all simulation updates paused.</summary>
+    public void RestoreState(State state)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        if (state.SchemaVersion != StateSchemaVersion || state.GoldTickets < 0
+            || state.GoldTicketsEarned < 0 || state.UltimateCoasters < 0 || state.UltimateCoasters > 14
+            || (state.HiddenAwards & ~0x1F) != 0
+            || state.Medals == null || state.Medals.Length != 5
+            || state.MedalOfHiddenAward == null || state.MedalOfHiddenAward.Length != 5)
+            throw new ArgumentException("Invalid award state schema, counters, bits or collections.", nameof(state));
+        var medals = (bool[])state.Medals.Clone();
+        var mapping = (int[])state.MedalOfHiddenAward.Clone();
+        if (mapping.Any(n => n < 0 || n >= 5))
+            throw new ArgumentException("Invalid hidden award medal index.", nameof(state));
+        GoldTickets = state.GoldTickets;
+        GoldTicketsEarned = state.GoldTicketsEarned;
+        UltimateCoasters = state.UltimateCoasters;
+        HiddenAwards = state.HiddenAwards;
+        medals.CopyTo(Medals, 0);
+        mapping.CopyTo(MedalOfHiddenAward, 0);
+    }
+
     /// <summary>Tickets in hand. ⭐ Spent on opening new parks, not on rides:
     /// `STR_MAP_BODY_USE_TICKETS_TO_ACCESS_ISLAND` and `WorldMapGoldTickets`.</summary>
     public int GoldTickets { get; set; }
