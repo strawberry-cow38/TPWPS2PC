@@ -81,6 +81,21 @@ public sealed record LaptopScreen(
     /// "This Year" at col 250 in YELLOW and "Last Year" at col 393 in the ordinary label colour.
     /// One value element cannot describe a screen that answers each label twice.</summary>
     string ValueElement2 = null,
+    /// <summary>⚠ EXPLICIT label rows, when the screen does not step uniformly. Null (the
+    /// default) means the usual grid.
+    ///
+    /// The Balance Sheet is why: it steps 32 like everything else EXCEPT after row 3, where it
+    /// steps 42 -- the gap that separates the income block from the outgoings. The console reads
+    /// its rows from a table and adds the odd step in the middle of the loop, so a list of rows
+    /// describes it exactly, where a step plus a special case would only describe it nearly.</summary>
+    IReadOnlyList<int> RowYs = null,
+    /// <summary>⚠ Draw the VALUES in the label colour instead of the highlight.
+    ///
+    /// The Balance Sheet is amber end to end -- `FUN_001388E8(ctx, 200, 0x82, 0)` is issued ONCE
+    /// before the row loop and nothing changes colour after it, so labels and figures are the
+    /// same amber and no row is highlighted. Every other data screen picks its values out in
+    /// yellow, so this is the screen's own property rather than a default.</summary>
+    bool MonochromeValues = false,
     /// <summary>⚠ When a row carries its own value element, take only its COLUMN and keep the
     /// label's row. All Staff again: `InfoValues` is authored at row 220 and **that row is never
     /// read** -- `0x10b980` stores only `DAT_002AA8D4`, its column -- and Monthly Wage draws at
@@ -570,6 +585,36 @@ public sealed record LaptopScreen(
         (741, "newloan",       false),   // STR_FINANCE_NEW_LOAN
         (472, "existingloans", true),    // STR_FINANCE_EXISTING_LOANS
     };
+
+    /// <summary>⭐ THE BALANCE SHEET (menu id 5). `findings/finance-screens.md` §2; draw
+    /// `FUN_00134B98`, rows from the u16 table at `0x35E648`.
+    ///
+    /// ⚠ THE WHOLE PAGE IS ONE COLOUR -- amber, labels and values alike (`FUN_001388E8(ctx, 200,
+    /// 0x82, 0)`). No highlight, no per-row colour, and nothing on it is clickable.
+    ///
+    /// ⚠⚠ `NumericOptions` is authored `justify=right` and that justify global has NO READER
+    /// ANYWHERE in the image -- the draw sets the mode once from `TextOptions` and draws BOTH
+    /// columns with it. So the values are LEFT-aligned from col 250, not right-aligned to it.
+    /// Honouring the authored justify would be reading the scene instead of the code.
+    ///
+    /// ⚠ Row 6, Purchases, is not a park figure at all: the draw COMPUTES it as
+    /// Cash Out - Staff Wages.</summary>
+    public static readonly LaptopScreen BalanceSheet = new(
+        "main_fi_balancesheet.sce", 5, "TextOptions", "TextOptions", "NumericOptions", "TextOptions",
+        new LaptopRow[]
+        {
+            new(565, LaptopRowKind.Money),   // Gate
+            new(954, LaptopRowKind.Money),   // Shop
+            new(818, LaptopRowKind.Money),   // Sideshow
+            new(774, LaptopRowKind.Money),   // Cash In
+            new(504, LaptopRowKind.Money),   // Loans -- outstanding debt
+            new(371, LaptopRowKind.Money),   // Staff Wages
+            new(578, LaptopRowKind.Money),   // Purchases = Cash Out - Staff Wages
+            new(607, LaptopRowKind.Money),   // Cash Out
+        },
+        LabelsOnGrid: true, MonochromeValues: true,
+        // ⚠ 32 apart except 175->207->239->271 then the 42 gap to 313, then 32 again.
+        RowYs: new[] { 175, 207, 239, 271, 313, 345, 377, 409 });
 
     public static readonly LaptopScreen[] AllList = { AllRides, AllShops, AllSideshows, AllToilets };
 

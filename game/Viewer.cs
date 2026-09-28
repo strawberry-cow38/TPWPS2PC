@@ -3594,6 +3594,40 @@ public partial class Viewer : Node3D
             }
             case "stafftypes": ShowStaffInfoTypes(); break;
             case "staffitem": ShowStaffInfoMember(arg); break;
+            // ⭐⭐ THE BALANCE SHEET (menu id 5). Nothing on it is clickable; it is a readout.
+            case "balancesheet":
+            {
+                var bf = _sim?.Finances;
+                if (bf == null)
+                { _laptopBack.RemoveAt(_laptopBack.Count - 1); Status("no park is running yet"); ShowLaptopLevel(); return; }
+                // ⭐ Most of this page IS real: Cash In, Staff Wages and Cash Out are the port's
+                // own totals, and Shop/Sideshow are the categorised income the console files as
+                // categories 4 and 5.
+                bf.IncomeByCategory.TryGetValue(4, out int shop);
+                bf.IncomeByCategory.TryGetValue(5, out int side);
+                int cashIn = bf.TotalIncome, cashOut = bf.TotalSpending, wages = bf.WageAccumulator;
+                var bcells = new List<(string, int)>
+                {
+                    // ⚠ Gate takings are filed by a path this port does not separate out yet, so
+                    // this one is a dash rather than a zero that would read as "nobody paid in".
+                    ("--", 0),
+                    (Money.Format(shop), 0),
+                    (Money.Format(side), 0),
+                    (Money.Format(cashIn), 0),
+                    // ⚠ No loan slots in this port, so outstanding debt is genuinely zero here --
+                    // a real figure, not a missing one.
+                    (Money.Format(0), 0),
+                    (Money.Format(wages), 0),
+                    // ⚠ Purchases is COMPUTED by the draw, not stored: Cash Out - Staff Wages.
+                    (Money.Format(cashOut - wages), 0),
+                    (Money.Format(cashOut), 0),
+                };
+                _shopPanel.ShowScreen(LaptopScreen.BalanceSheet, "", bcells);
+                ClearLaptopModel();
+                RefreshLaptopBalance();
+                Status($"balance sheet -- in {Money.Format(cashIn)}, out {Money.Format(cashOut)}");
+                break;
+            }
             // ⭐⭐ THE FINANCIAL INFORMATION MENU (id 4).
             //
             // ⚠ Existing Loans is CONDITIONAL on a loan being taken, and this port has no loan
@@ -4261,7 +4295,7 @@ public partial class Viewer : Node3D
                 var fm = new List<(int TextId, string Opens, bool NeedsLoan)>();
                 foreach (var e in LaptopScreen.FinanceMenu) if (!e.NeedsLoan) fm.Add(e);
                 if (row < 0 || row >= fm.Count) return;
-                if (fm[row].Opens is "balancesheet" or "newloan")
+                if (fm[row].Opens is "newloan")
                 { Status($"{TextRow(fm[row].TextId)} -- no screen in this port yet"); return; }
                 _laptopBack.Add((fm[row].Opens, null));
                 ShowLaptopLevel();

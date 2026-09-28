@@ -1105,9 +1105,13 @@ public sealed partial class LaptopShopScreen : Control
             // ⚠ Everything below this line that reads `labels` now reads the ROW's label, which is
             // what makes the value column and the click rect follow a row that moved.
             var labels = row.LabelElement != null ? layout[row.LabelElement] : screenLabels;
+            // ⚠ An EXPLICIT row wins over the grid: the Balance Sheet steps 42 once, in the
+            // middle, and a uniform step cannot say that.
             float dy = row.LabelElement != null
                      ? 0f
-                     : LaptopScreen.RowStep * (i - _spec.StepBase) * s;
+                     : _spec.RowYs != null && i < _spec.RowYs.Count && labels is { } rg
+                       ? (_spec.RowYs[i] - rg.Y) * s
+                       : LaptopScreen.RowStep * (i - _spec.StepBase) * s;
 
             // ⭐⭐ A ROW THAT OWNS A SIZED WIDGET TAKES ITS LABEL'S HEIGHT FROM THE WIDGET, not
             // from the step. The label grid steps 32, but an authored widget sits exactly where the
@@ -1197,7 +1201,7 @@ public sealed partial class LaptopShopScreen : Control
                 && layout[row.Element] is { } welem)
                 DrawRun(text,
                         new Vector2(At(vw).X, At(welem).Y + _spec.WidgetStep * i * s),
-                        s, Of(ShopScreen.Highlight), vw.Justify);
+                        s, ValueTint, vw.Justify);
             // A row with its own value element uses it; otherwise the shared value column, at the
             // label's height.
             else if (row.Element != null && layout[row.Element] is { } own)
@@ -1206,17 +1210,23 @@ public sealed partial class LaptopShopScreen : Control
                 DrawRun(text,
                         _spec.ValueColumnOnly && labels is { } lb
                           ? new Vector2(At(own).X, At(lb).Y + dy) : At(own),
-                        s, Of(ShopScreen.Highlight), own.Justify);
+                        s, ValueTint, own.Justify);
             else if (values is { } v && labels is { } lab)
                 // ⚠ THE VALUE COLUMN CONTRIBUTES ITS X, AND THE LABEL ITS Y. On the shop the two
                 // elements share a row (both 175) so either reading works; on the ride they do
                 // NOT -- its value elements sit at 338/400/436 against labels from 115 -- and
                 // taking the value element's row as a baseline threw the text off the screen.
-                DrawRun(text, new Vector2(At(v).X, At(lab).Y + dy), s, Of(ShopScreen.Highlight), v.Justify);
+                DrawRun(text, new Vector2(At(v).X, At(lab).Y + dy), s, ValueTint, v.Justify);
         }
     }
 
     static string Money(int v) => v < 0 ? $"-${-v:N0}" : $"${v:N0}";
+
+    /// <summary>⚠ A value's colour. Almost every data screen picks its figures out in the
+    /// highlight, but the Balance Sheet issues ONE colour before its row loop and never changes
+    /// it, so its figures are the same amber as its labels.</summary>
+    Color ValueTint => _spec is { MonochromeValues: true }
+        ? Of(ShopScreen.Label) : Of(ShopScreen.Highlight);
 
     static Color Of((byte R, byte G, byte B) c) => Color.Color8(c.R, c.G, c.B);
 
