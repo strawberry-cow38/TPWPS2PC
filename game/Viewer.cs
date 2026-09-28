@@ -11285,8 +11285,10 @@ public partial class Viewer : Node3D
         // see the pause.
         // ⭐ Through 0x16B060 now (Viewer.Management.cs): a month change runs strikes then wages, and
         // days 1/8/15/22/29 the weekly pass -- the rollovers this line used to discard.
+        // ⭐ At the console's rate: D = 0x4000 per sim pass, 25 passes a second, so 2.4 s a day. It was
+        // the camera's 0x1000 at 50 a second, which ran the date at half speed (findings/clock-rate.md).
         if (ParkSimulationRunning)
-            AdvanceCalendar((int)Math.Round(delta * GameCamera.TicksPerSecond * GameCamera.FrameTick));
+            AdvanceCalendar((int)Math.Round(delta * ConsoleClock.TicksPerSecond * ParkClock.UnitsPerPass));
         if (_playing) _selectView?.Step(delta);
         if (_playing && _mode == Mode.Park) _gateBox?.Step(delta);
         if (_playing && _mode == Mode.Park) _flags.Step(delta);

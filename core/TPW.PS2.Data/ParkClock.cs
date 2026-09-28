@@ -10,7 +10,7 @@ namespace TPW.PS2.Data;
 ///
 /// The advance, `FUN_0016b240`, on a six-word struct:
 /// <code>
-///   clock[0] += FrameTime();              // 0x1c4920, the 0x1000-a-tick getter the camera uses
+///   clock[0] += FrameTime();              // 0x1c4920: D = 0x4000 per sim pass (UnitsPerPass)
 ///   if (clock[0] > 0xEFFFF) {             // one DAY
 ///       dim = daysInMonth[clock[1]];
 ///       clock[5] -= 1;                    // a countdown
@@ -40,14 +40,21 @@ public sealed class ParkClock
     /// <summary>`0x16b268`: the accumulator rolls over a DAY when it passes `0xEFFFF`.</summary>
     public const int UnitsPerDay = 0xF0000;
 
-    /// <summary>`FUN_001c4920` hands out frame time in units of `0x1000` a tick, which is the same
-    /// unit the camera and the selection box's breath already use.</summary>
-    public const int UnitsPerTick = 0x1000;
+    /// <summary>⭐ D, the calendar's step per SIM PASS: `0x1c4aa8` stores `min(0x11e688(), 0x4000)` in
+    /// `[0x397640]` (MIPS `0x1c4acc..0x1c4adc`), and `0x11e688` returns `(counter - prev) << 7` over a
+    /// counter `0x11e758` bumps by 10000 once per pass (1,280,000 per pass), so the 0x4000 cap ALWAYS
+    /// binds: D = 0x4000 every pass (findings/clock-rate.md, findings/advisor-rules.md §3).
+    /// ⚠ This was `UnitsPerTick = 0x1000` at 50 a second, "the getter the camera uses" -- a unit
+    /// borrowed from the camera, never read off the calendar's own producer, and it ran the date at
+    /// HALF the console's speed (4.8 s a day against 2.4 s).</summary>
+    public const int UnitsPerPass = 0x4000;
 
-    /// <summary>240 ticks -- and at the console's 50Hz that is <b>4.8 seconds an in-game day</b>,
-    /// so a month is about 2.4 minutes and a year is 29.2. A number to CHECK against the real
-    /// game rather than a rate to tune by feel.</summary>
-    public const int TicksPerDay = UnitsPerDay / UnitsPerTick;
+    /// <summary>60 passes a day. ⭐ At the console's 25 passes a second (one sim pass per rendered frame,
+    /// frames held >= 2 PAL fields by the vblank handler `0x224c10`: findings/clock-rate.md) that is
+    /// <b>2.4 seconds a day</b>, 72 s a 30-day month, 14.6 minutes a year. ⚠ A CEILING: a frame whose
+    /// work overruns 40 ms takes 3+ fields and the console's calendar slows with it; the port runs at
+    /// the ceiling.</summary>
+    public const int PassesPerDay = UnitsPerDay / UnitsPerPass;
 
     /// <summary>⭐ A park starts on <b>01/01/2000</b>. Master, who can see the real game, settled
     /// it: "its meant to be 1/1/2000 as the start date". So the counters all start at zero and the
