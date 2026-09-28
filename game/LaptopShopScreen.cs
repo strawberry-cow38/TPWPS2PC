@@ -296,6 +296,10 @@ public sealed partial class LaptopShopScreen : Control
     public Texture2D[] StarArt { get; set; }
     public Texture2D BlankMedal { get; set; }
     public Texture2D BlankStar { get; set; }
+
+    /// <summary>⚠ Which medal ART each CELL shows. The draw's cell order is not the registry's --
+    /// see ParkAwards.MedalOfHiddenAward -- so the row is indexed through this.</summary>
+    public IReadOnlyList<int> MedalCellOrder { get; set; }
     IReadOnlyList<bool> _medalsEarned, _starsEarned;
 
     /// <summary>⭐ The nine-slice the graph sits in. `findings/graph-widget.md` §1.3: the series
@@ -1079,7 +1083,7 @@ public sealed partial class LaptopShopScreen : Control
         // ⚠ The SPACING is derived from the authored rect (265x96 for five, 427x180 for fourteen
         // in two rows of seven), not read -- the registry gives the ORDER and the icons are 32px,
         // but the row widget's own step was not found. Named so nobody takes it for measured.
-        if (_medalsEarned != null) DrawAwardRow(layout, "MedalRow", _medalsEarned, MedalArt, BlankMedal, 5, s, o);
+        if (_medalsEarned != null) DrawAwardRow(layout, "MedalRow", _medalsEarned, MedalArt, BlankMedal, 5, s, o, MedalCellOrder);
         if (_starsEarned  != null) DrawAwardRow(layout, "StarRow",  _starsEarned,  StarArt,  BlankStar,  7, s, o);
 
         // ⭐ VISITOR INFORMATION's feelings rows: a blue pill, then the icon and the bar on it.
@@ -1291,7 +1295,8 @@ public sealed partial class LaptopShopScreen : Control
 
     /// <summary>One row of award icons, evenly spread across its authored rect.</summary>
     void DrawAwardRow(SceneLayout layout, string element, IReadOnlyList<bool> earned,
-                      Texture2D[] art, Texture2D blank, int perRow, float s, Vector2 origin)
+                      Texture2D[] art, Texture2D blank, int perRow, float s, Vector2 origin,
+                      IReadOnlyList<int> order = null)
     {
         if (layout[element] is not { } box || earned == null) return;
         // ⚠ `At` is a local function of the draw; this helper takes the same origin instead.
@@ -1300,7 +1305,9 @@ public sealed partial class LaptopShopScreen : Control
         float rowH = box.Height * s / Math.Max(1, (earned.Count + perRow - 1) / perRow);
         for (int i = 0; i < earned.Count; i++)
         {
-            var tex = earned[i] && art != null && i < art.Length && art[i] != null ? art[i] : blank;
+            // ⚠ A cell's ART index is not its cell index where an order is given (the medals).
+            int ai = order != null && i < order.Count ? order[i] : i;
+            var tex = earned[i] && art != null && ai < art.Length && art[ai] != null ? art[ai] : blank;
             if (tex == null) continue;
             var pos = new Vector2(at.X + cell * (i % perRow), at.Y + rowH * (i / perRow));
             DrawTextureRect(tex, new Rect2(pos, new Vector2(32 * s, 32 * s)), false);

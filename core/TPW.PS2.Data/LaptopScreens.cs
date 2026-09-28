@@ -717,13 +717,23 @@ public sealed record LaptopScreen(
     /// row in the laptop's main menu, so it hangs off Park Statistics as that menu's fourth row.
     ///
     /// Two headings and two icon rows: `awardstext` (45, 65), `MedalRow` (45, 102) 265x96,
-    /// `uctext` (45, 227), `StarRow` (45, 265) 427x180.</summary>
+    /// `uctext` (45, 227), `StarRow` (45, 265) 427x180.
+    ///
+    /// ⭐⭐ THE ICON STEPS ARE READ, not derived. Draw `FUN_00186238`: the medals step
+    /// `MedalRow.width / 5` from its column, the stars step `StarRow.width / 7` across
+    /// `StarRow.height >> 1` -- two rows of seven -- and every icon is `0x20` = 32px square.
+    /// Master asked "are they scaled and positioned accurately?"; they are, and this is why.</summary>
     public static readonly LaptopScreen Awards = new(
         "main_goldtickets.sce", 3, "awardstext", "awardstext", "awardstext", "awardstext",
         new LaptopRow[]
         {
             new(GoldTicketScreen.AwardsTextId,   LaptopRowKind.Text),   // "Awards"
-            new(GoldTicketScreen.UltimateTextId, LaptopRowKind.Text),   // "Ultimate Coasters"
+            // ⚠⚠ 1086 `STR_AWARDS_ULTIMATE` "Ultimate Coaster Awards" -- NOT 895
+            // `STR_PARKSTATS_AWARDS_ULTIMATE_COASTER` "Ulimate Coasters", which is the id this
+            // screen's own core class carries and which I used first. The draw asks for 0x43e
+            // (`FUN_00138580(ctx, 0x43e, ...)` at 0x186268), so the misspelled string exists in
+            // the table but is NOT what this screen shows.
+            new(1086, LaptopRowKind.Text),
         },
         LabelsOnGrid: true, RowYs: new[] { 65, 227 });
 

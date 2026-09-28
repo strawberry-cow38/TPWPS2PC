@@ -3600,9 +3600,17 @@ public partial class Viewer : Node3D
             case "awards":
             {
                 var aw = _awards;
+                // ⚠⚠ THE CELL ORDER IS NOT THE REGISTRY'S. The draw walks bit k of stats+0x28 to
+                // sprites 0x26, 0x25, 0x29, 0x28, 0x27 -- security, upgrade, aesthetic, green,
+                // path -- which is ParkAwards.MedalOfHiddenAward exactly. Laying them out in
+                // registry order shows the right five icons in the wrong places.
                 var medals = new List<bool>();
-                for (int i = 0; i < GoldTicketScreen.Medals.Length; i++)
-                    medals.Add(aw != null && i < aw.Medals.Length && aw.Medals[i]);
+                var medalArtOrder = new List<int>();
+                foreach (int slot in ParkAwards.MedalOfHiddenAward)
+                {
+                    medalArtOrder.Add(slot);
+                    medals.Add(aw != null && slot < aw.Medals.Length && aw.Medals[slot]);
+                }
                 // ⚠ The port keeps a COUNT of ultimate coasters, not which ones, so the first N
                 // stars light in the registry's authored order. Flagged rather than presented as
                 // the console's own set -- it is the right number of stars, not certainly the
@@ -3611,6 +3619,7 @@ public partial class Viewer : Node3D
                 var stars = new List<bool>();
                 for (int i = 0; i < GoldTicketScreen.UltimateStars.Length; i++) stars.Add(i < uc);
                 _shopPanel.EnsureAwardArt(_lib);
+                _shopPanel.MedalCellOrder = medalArtOrder;
                 _shopPanel.ShowScreen(LaptopScreen.Awards, "",
                     Blank(LaptopScreen.Awards.Rows.Count), medals: medals, stars: stars);
                 ClearLaptopModel();
@@ -3713,7 +3722,7 @@ public partial class Viewer : Node3D
                 // plausible wrong number rather than an obvious missing one.
                 var vcells = new List<(string, int)>
                 {
-                    (null, 0), (null, 0), ("--", 0), ("--", 0),
+                    (null, 0), (null, 0), (NoValue, 0), (NoValue, 0),
                 };
                 _shopPanel.ShowScreen(LaptopScreen.VisitorInfo, "", vcells, feelings: feel);
                 ClearLaptopModel();
@@ -3808,11 +3817,14 @@ public partial class Viewer : Node3D
                 // and park rating are not retained anywhere in this port -- there is no year roll
                 // and no valuation -- so they read as a dash rather than a confident zero, which
                 // would look like a park that earned nothing.
-                const string none = "--";
+                string none = NoValue;
+                int pval = ParkValueTenths();
                 var thisYear = new List<(string, int)>
                 {
-                    (none, 0), (none, 0), (Money.Format(pf.Balance), 0), (none, 0),
-                    (TextRow(LaptopScreen.RatingWord(0)), 0),
+                    (none, 0), (none, 0), (Money.Format(pf.Balance), 0), (Money.Format(pval), 0),
+                    // ⚠ Still a dash: the rating word needs a park RATING, and nothing computes
+                    // one. Printing "Poor" would be a confident wrong answer, not a missing one.
+                    (none, 0),
                 };
                 var lastYear = new List<string> { none, none, none, none, none };
                 _shopPanel.ShowScreen(LaptopScreen.ParkFinance, "", thisYear,
@@ -3821,7 +3833,8 @@ public partial class Viewer : Node3D
                                      TextRow(LaptopScreen.LastYearTextId) });
                 ClearLaptopModel();
                 RefreshLaptopBalance();
-                Status($"park finance -- balance {Money.Format(pf.Balance)}; year-to-date and rating not retained yet");
+                Status($"park finance -- balance {Money.Format(pf.Balance)}, "
+                     + $"park value {Money.Format(pval)}; year-to-date and rating not retained yet");
                 break;
             }
             // ⭐⭐ THE PARK STATISTICS MENU (id 8). Four pages, all selectable.
@@ -3873,7 +3886,11 @@ public partial class Viewer : Node3D
                 var orgb = LaptopScreen.OverallSeriesRgb[opick];
                 // ⚠ Park Value has NO source in this port -- nothing computes a park valuation --
                 // so it plots flat zero rather than a plausible invention.
-                Func<int, int> oget = opick == 0 ? ofin.BalanceInPeriod : (_ => 0);
+                // ⚠ Park Value has no month ring, so the series is the LIVE value at every
+                // bucket -- a flat line at today's figure, which is honest about being one
+                // reading rather than a history.
+                int liveValue = ParkValueTenths();
+                Func<int, int> oget = opick == 0 ? ofin.BalanceInPeriod : (_ => liveValue);
                 var obuckets = LaptopGraphData.Build(oget, ofin.PeriodCount, _graphYears, out int omax);
                 _shopPanel.GraphPanel ??= UiPanel.Load(_lib);
                 _shopPanel.ShowScreen(LaptopScreen.OverallStats, "",
@@ -8582,6 +8599,19 @@ public partial class Viewer : Node3D
         // a ride that is not broken, which ParkStaff.CallMechanic reproduces.
         if (_staff != null && RideFor(placed) is { ServiceClass: not RideServiceClass.None })
             yield return "Call Mechanic";
+        // ⭐⭐ THE STAFF ROOM'S KICK-OUTS LIVE HERE, NOT ON A LAPTOP PAGE. Master, 2026-09-28:
+        // "i dont think the staff room has a laptop page? its the rmb context menu which gains
+        // 'kick out entertainer' etc" -- and that explains every piece of evidence I had been
+        // treating as a puzzle: the class has NO `.sce` among the 29, its ctor calls no binder,
+        // its layout globals are never written, and its ctor instead hardcodes a listbox rect at
+        // (280, 80) 180x110. It was never a laptop screen; the listbox IS the context menu, and
+        // §12.4's "List box = the kick-outs" says so in as many words.
+        //
+        // ⚠ Self-gating: the options are the kinds with someone actually resting, so a thing that
+        // is not a staff room yields nothing and the menu is unchanged.
+        if (_staff != null && StaffRoomAt(placed) is { } room)
+            foreach (var kind in _staff.KickOutOptions(room.Key))
+                yield return TextRow(StaffTables.KickOutTextRow(kind));
         // ⭐⭐ ONLY THINGS THAT TAKE A QUEUE OFFER ONE. Master: "make sure on the rmb details page
         // that we only show relevant options, ie no build queue for things that arent meant to
         // have queues." A tree, a bin and a lamp were all offering to have a queue built to them.
@@ -8618,6 +8648,52 @@ public partial class Viewer : Node3D
     /// "shop" in its title a shop, and miss the ones without.</summary>
     /// <summary>The placed thing as a RIDE with operating settings, or null. ⚠ Tiers are the test,
     /// not the kind name: a thing with no tier has no speed, capacity or duration to show.</summary>
+    /// <summary>⚠⚠ THE DASH IS U+2013, NOT AN ASCII HYPHEN. Master, 2026-09-28: "why are they
+    /// lil arrows, not dashes?" -- because `Large.bff` maps ASCII `-` (0x2D) to glyph 13, an 8x6
+    /// mark that is not a dash at all, and U+2010 HYPHEN aliases to the same glyph. The font's
+    /// real dashes are U+2013 (an 11x2 bar) and U+2014 (16x3). Decoded straight out of the font
+    /// with 'A' and 'T' as the control that the reader was right.
+    ///
+    /// ⚠ This is for OUR OWN "no value here" marker only. `Money` keeps the ASCII 0x2D for a
+    /// negative, because that is the byte the console writes (`FUN_00142908`) -- so a negative
+    /// figure wears the same odd mark on real hardware, and that is retail, not ours to fix.</summary>
+    const string NoValue = "\u2013";
+
+    /// <summary>⭐ THE PARK'S VALUE, in tenths: `FUN_001011c8` is HALF the catalogue price of
+    /// everything placed, times ten. Park Finance's "Park Value" row and Overall Statistics'
+    /// second series both want it, and both were drawing a dash for want of it.
+    ///
+    /// ⚠ A tiered ride is worth its CURRENT tier's price, not tier 0's -- an upgraded ride is
+    /// worth more, which is the point of the figure.
+    ///
+    /// ⚠ The halving is the console's, not a guess: a park is valued at half what it cost to
+    /// build. Do not "fix" it into a full valuation.</summary>
+    int ParkValueTenths()
+    {
+        if (_sim == null) return 0;
+        long total = 0;
+        foreach (var r in _sim.Rides)
+        {
+            if (r.Definition?.CompiledEntry is not { } e) continue;
+            total += e is { HasRideTiers: true }
+                   ? e.Tier(r.CurrentTier).PurchaseCost
+                   : e.SimpleEconomy?.PurchaseCost ?? 0;
+        }
+        return (int)(total / 2 * 10);
+    }
+
+    /// <summary>⭐ The staff room a placed thing IS, or null. ⚠ Not `RideFor`, which only answers
+    /// for things that have a laptop details screen -- a staff room is a feature and has none.
+    /// </summary>
+    StaffFeature StaffRoomAt(int placed)
+    {
+        if (_sim == null || _park == null || placed < 0 || placed >= _park.Placed.Count) return null;
+        int id = _park.Placed[placed].Id;
+        foreach (var r in _sim.Rides)
+            if (r.Id == id) return StaffFeature.Of(r);
+        return null;
+    }
+
     ParkRide RideFor(int placed)
     {
         if (_sim == null || placed < 0 || placed >= _park.Placed.Count) return null;
@@ -8982,6 +9058,19 @@ public partial class Viewer : Node3D
     /// (`0x124018` / `0x123FB8`) are not ported, so Edit Queue opens OUR queue tool.</summary>
     void OnObjectMenu(string caption)
     {
+        // ⭐ A kick-out caption is a STAFF KIND's text row, so it is matched back the way it was
+        // produced rather than by parsing the words.
+        if (_staff != null && StaffRoomAt(_selected) is { } kroom)
+            foreach (var kind in _staff.KickOutOptions(kroom.Key))
+                if (TextRow(StaffTables.KickOutTextRow(kind)) == caption)
+                {
+                    int before = _staff.RestingIn(kroom.Key, kind);
+                    _staff.KickOut(kroom.Key, kind);
+                    GD.Print($"[staff] kicked {kind} out of the staff room ({before} were resting)");
+                    Status($"{caption} -- {before} sent back to work");
+                    return;
+                }
+
         switch (caption)
         {
             case "Edit Queue":

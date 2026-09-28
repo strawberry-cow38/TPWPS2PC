@@ -88,9 +88,16 @@ public sealed class ParkAwards
     public int HiddenAwards { get; set; }
     public bool HasHiddenAward(int bit) => (HiddenAwards & (1 << bit)) != 0;
 
-    /// <summary>⚠ INFERRED mapping of a hidden-award bit to its <see cref="Medals"/> slot, by the message
-    /// key against the texture name: 0 security → 1 (`m_security`), 1 upgrade → 0, 2 aesthetic → 4,
-    /// 3 green → 3, 4 economy → 2 (`m_path`, "Path Economy").</summary>
+    /// <summary>⭐⭐ CONFIRMED 2026-09-28 -- this was INFERRED from the message key against the
+    /// texture name, and the Awards draw `FUN_00186238` has now been read: its medal cells go by
+    /// bit k of `stats+0x28` to sprites `0x26, 0x25, 0x29, 0x28, 0x27` -- security, upgrade,
+    /// aesthetic, green, path. That is this array exactly.
+    ///
+    /// ⭐ So the cell order is NOT the texture registry's `0x25..0x29`, and a screen that laid the
+    /// medals out in registry order would show the right five icons in the wrong places. It is
+    /// also the map from a hidden-award BIT to its <see cref="Medals"/> slot, which is why one
+    /// array serves both: 0 security → 1, 1 upgrade → 0, 2 aesthetic → 4, 3 green → 3,
+    /// 4 economy → 2 (`m_path`, "Path Economy").</summary>
     public static readonly int[] MedalOfHiddenAward = { 1, 0, 4, 3, 2 };
 
     /// <summary>`0x16B918(cal, bit, 1)`, and the medal it shows.</summary>
