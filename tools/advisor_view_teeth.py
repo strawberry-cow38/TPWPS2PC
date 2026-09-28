@@ -9,13 +9,17 @@ of the audit.)
   python3 tools/advisor_view_teeth.py --disc DISC --godot GODOT [--map 'JUNGLE  terrain_1.mps'] [name ...]
 
 Exit 0 when every selected mutation went red, 1 when one survived, failed to build, or its pattern no longer
-matches (the source moved: update the pattern, do not drop the mutation).
+matches (the source moved: update the pattern, do not drop the mutation). A mutation whose `old` is a list of
+(old, new) pairs makes every one of those edits, each on its first occurrence (a move is two edits).
 """
 import argparse, os, pathlib, subprocess, sys
 
 R = pathlib.Path(__file__).resolve().parent.parent
 H = 'game/AdvisorHead.cs'; A = 'game/Viewer.Advisor.cs'; M = 'game/GameAudioMix.cs'; K = 'game/AdvisorStackView.cs'
 V = 'game/Viewer.cs'; S = 'game/Viewer.Staff.cs'
+FILL = ('        if (_panel != null)\n'
+        '            for (int i = 0; i < h >> 4; i++) Put("fill", _panel.Sheet, R(x, y + FillRow * i, w, FillRow), Colors.White);\n')
+TEXT = '                    Put("text", tex, R(BoxCentre - width / 2, BoxY + _textFont.LineAdvance * i, width, tex.GetHeight()), TextColour);\n                }\n'
 # (name, file, old, new, which occurrence of old)
 MUT = [
  # The head.
@@ -44,6 +48,32 @@ MUT = [
  # Leaving and teardown.
  ('close-park-keeps-talking', V, 'AdvisorLeavingPark("close park (0x1510F8)"); ', '', 0),
  ('teardown-keeps-head', S, '        ResetAdvisor();                                                  // Viewer.Advisor.cs: the head freed, the voice stopped\n', '', 0),
+ # The read box (ghidra_tpw/notes/advisor-V-visuals.md §1): face, geometry, frame, depth, text.
+ ('box-face-messfill', K, 'Put("fill", _panel.Sheet,', 'Put("fill", _panel.Fill,', 0),
+ ('box-margins-inward', K, 'int x = BoxX - MarginX, y = BoxY - MarginY, w = BoxWidth + 2 * MarginX, h = BoxHeight + 2 * MarginY;',
+  'int x = BoxX + MarginX, y = BoxY + MarginY, w = BoxWidth - 2 * MarginX, h = BoxHeight - 2 * MarginY;', 0),
+ ('box-centred-in-window', K, 'float X(int u) => BoxCentre * sx + (u - BoxCentre) * k;', 'float X(int u) => Native / 2 * sx + (u - BoxCentre) * k;', 0),
+ ('box-fill-one-rect', K, 'for (int i = 0; i < h >> 4; i++) Put("fill", _panel.Sheet, R(x, y + FillRow * i, w, FillRow), Colors.White);',
+  'Put("fill", _panel.Sheet, R(x, y, w, h), Colors.White);', 0),
+ ('box-no-frame', K, '        if (_panel != null)\n        {\n            // Corners', '        if (false)\n        {\n            // Corners', 0),
+ ('box-left-edge-unturned', K, 'Put("edge", _panel.EdgeLeft,', 'Put("edge", _panel.EdgeRight,', 0),
+ ('fill-drawn-last', K, [(FILL, ''), (TEXT, TEXT + FILL)], None, 0),
+ ('fill-recorded-not-drawn', K, '            DrawTextureRect(tex, rect, false, colour);', '            if (piece != "fill") DrawTextureRect(tex, rect, false, colour);', 0),
+ ('box-font-console', A, 'ReadGeneric("/Fonts/European/Small.bff")', 'ReadGeneric("/Fonts/European/Console.bff")', 0),
+ ('text-white', K, 'tex.GetHeight()), TextColour);', 'tex.GetHeight()), Colors.White);', 0),
+ ('text-left-aligned', K, 'Put("text", tex, R(BoxCentre - width / 2,', 'Put("text", tex, R(BoxX,', 0),
+ ('text-inset', K, 'Put("text", tex, R(BoxCentre - width / 2, BoxY + _textFont.LineAdvance * i,',
+  'Put("text", tex, R(BoxCentre - width / 2, BoxY + MarginY + _textFont.LineAdvance * i,', 0),
+ ('text-no-shadow', K, 'Put("shadow", tex,', 'if (false) Put("shadow", tex,', 0),
+ # The control: an authored square must draw square by the HUD's mapping.
+ ('envelope-stretched', K, 'new Vector2(Sprite, Sprite) * k);\n        if (_closed != null)', 'new Vector2(Sprite * sx, Sprite * k));\n        if (_closed != null)', 0),
+ # The head's transform (§2.2): 0x16FD18(s, 4s/3, s) on the root, whose local y is depth; the origin at NDC (0.6, −0.5).
+ ('head-4-3-uniform', H, 'new Vector3(Scale / r0.Length(), Scale * 4f / 3f / r1.Length(), Scale / r2.Length())',
+  'new Vector3(Scale * 4f / 3f / r0.Length(), Scale * 4f / 3f / r1.Length(), Scale * 4f / 3f / r2.Length())', 0),
+ ('head-4-3-on-screen-y', H, 'Scale * 4f / 3f / r1.Length(), Scale / r2.Length()', 'Scale / r1.Length(), Scale * 4f / 3f / r2.Length()', 0),
+ ('head-no-depth-4-3', H, 'Scale * 4f / 3f / r1.Length()', 'Scale / r1.Length()', 0),
+ ('head-anchor-no-aspect', H, 'new Vector3(AnchorX * aspect, AnchorY, AnchorZ)', 'new Vector3(AnchorX, AnchorY, AnchorZ)', 0),
+ ('head-anchor-y-on-depth', H, 'new Vector3(AnchorX * aspect, AnchorY, AnchorZ)', 'new Vector3(AnchorX * aspect, AnchorZ, AnchorY)', 0),
 ]
 
 
@@ -81,12 +111,19 @@ def main():
         path = R / f
         orig = path.read_text()
         try:
-            if orig.count(old) <= nth:
-                print(f'{name}: PATTERN GONE ({orig.count(old)} matches) -- update it', flush=True); bad += 1; continue
-            i = -1
-            for _ in range(nth + 1):
-                i = orig.index(old, i + 1)
-            path.write_text(orig[:i] + new + orig[i + len(old):])
+            edits = old if isinstance(old, list) else [(old, new)]
+            text, gone = orig, None
+            for o, n in edits:
+                at = nth if len(edits) == 1 else 0
+                if text.count(o) <= at:
+                    gone = text.count(o); break
+                i = -1
+                for _ in range(at + 1):
+                    i = text.index(o, i + 1)
+                text = text[:i] + n + text[i + len(o):]
+            if gone is not None:
+                print(f'{name}: PATTERN GONE ({gone} matches) -- update it', flush=True); bad += 1; continue
+            path.write_text(text)
             rc, out = build()
             if rc != 0:
                 print(f'{name}: BUILD FAILED\n{out}', flush=True); bad += 1; continue

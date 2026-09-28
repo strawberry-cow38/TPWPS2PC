@@ -76,9 +76,11 @@ SCENES['management'] = ('ManagementSmoke', 'MANAGEMENT SMOKE', 17)
 # (the one hook: event counter 0x15) into the stack and the envelope's count; L2 opens it, the text shows, Delete
 # removes it; a ride's breakdown jumps the camera and its delete takes its records; pause holds the voice; an
 # immediate message interrupts the speech; a modal message locks the pad, flaps and is skipped with T; Tutorial is
-# flag 0x40; Close Park and teardown. Every park runs the same 49; the floor sits just under it. A statement of its
-# own for the same merge reason.
-SCENES['advisor'] = ('AdvisorSmoke', 'ADVISOR SMOKE', 47)
+# flag 0x40; Close Park and teardown; and (advisor-visuals) the envelope's square as a control, the head's origin, disc
+# and root axes measured off the drawn nodes, the read box's wboxfill face, blue frame, depth order, Small.bff text in
+# (48,48,48) centred on x 320, its inferred shadow and one framebuffer pixel. Every park runs the same 60; the floor
+# sits just under it. A statement of its own for the same merge reason.
+SCENES['advisor'] = ('AdvisorSmoke', 'ADVISOR SMOKE', 58)
 
 
 def map_argument(world: str, terrain: int) -> str:

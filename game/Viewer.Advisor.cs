@@ -50,8 +50,8 @@ public partial class Viewer
     readonly GameAudioMix _audioMix = new();
     readonly Dictionary<(int Message, int Variant), AdvisorCatalogue.Binding> _advisorBindings = new();
     readonly Dictionary<ushort, AudioStreamWav> _advisorStreams = new();
-    FontText _consoleFont;
-    bool _consoleFontTried, _advisorSettingsBound;
+    FontText _advisorBoxFont;
+    bool _advisorBoxFontTried, _advisorSettingsBound;
     /// <summary>HUD edges waiting for the next pass (`0x13D940` reads them in the HUD update).</summary>
     bool _advisorL2, _advisorTriangle;
 
@@ -114,7 +114,7 @@ public partial class Viewer
         adv.Attach(_sim, _staff, null);                                    // the calendar's: SubmitAdvisor below
         _parkAdvisor = adv;
         EnsureAdvisorViews();
-        _advisorStackView?.Configure(adv.Stack, AdvisorRecordText, _lib, () => _hudFont, ConsoleFont());
+        _advisorStackView?.Configure(adv.Stack, AdvisorRecordText, _lib, () => _hudFont, AdvisorBoxFont());
         if (!_advisorSettingsBound)
         {
             // ⭐ Tutorial On/Off is the advisor's flag 0x40 and nothing more (0x13A178): Game Options flips both
@@ -174,19 +174,20 @@ public partial class Viewer
         _uiRoot.MoveChild(_advisorStackView, Math.Min(1, _uiRoot.GetChildCount() - 1));
     }
 
-    /// <summary>The box's face (⚠ measured: see <see cref="AdvisorStackView"/>).</summary>
-    FontText ConsoleFont()
+    /// <summary>⭐ The read box's face, `Small.bff` (READ: `0x1DD0E0` selects font id 0, and `0x20BA28` names record 0
+    /// "Small.bff" under `Data\Fonts\EUROPEAN`; see <see cref="AdvisorStackView"/>).</summary>
+    FontText AdvisorBoxFont()
     {
-        if (_consoleFontTried) return _consoleFont;
-        _consoleFontTried = true;
+        if (_advisorBoxFontTried) return _advisorBoxFont;
+        _advisorBoxFontTried = true;
         try
         {
-            var bff = _lib?.ReadGeneric("/Fonts/European/Console.bff");
-            if (bff != null) _consoleFont = new FontText(new BitmapFont(bff));
-            else GD.PrintErr("[advisor] /Fonts/European/Console.bff not found -- the stack's box draws no text");
+            var bff = _lib?.ReadGeneric("/Fonts/European/Small.bff");
+            if (bff != null) _advisorBoxFont = new FontText(new BitmapFont(bff));
+            else GD.PrintErr("[advisor] /Fonts/European/Small.bff not found -- the stack's box draws no text");
         }
-        catch (Exception e) { GD.PrintErr($"[advisor] Console.bff would not load: {e.Message}"); }
-        return _consoleFont;
+        catch (Exception e) { GD.PrintErr($"[advisor] Small.bff would not load: {e.Message}"); }
+        return _advisorBoxFont;
     }
 
     /// <summary>`0x1066B0` on the simulation pass: once per executed staff tick, after the guests and the

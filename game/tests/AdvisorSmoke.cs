@@ -9,14 +9,18 @@ namespace TPWPS2Viewer.Tests;
 /// meshes and channel, the voice player, the buses, the stack view's drawn count and text, the camera -- not
 /// only what the core meant:
 /// <list type="number">
-/// <item>park start: the head hidden while idle; the greeting (171, voice only) rises with its costume, speaks
+/// <item>a CONTROL: the envelope, authored 40×40, draws square by the HUD's mapping;</item>
+/// <item>park start: the head hidden while idle; the head's origin, disc and root axes measured off its drawn
+/// nodes (advisor-visuals.md §2: 80% across, 75% down, 0.013 on both screen axes, the 4/3 on depth); the greeting (171, voice only) rises with its costume, speaks
 /// with the talk record its length picks, its mouth following the lip track, drops (queued behind the talk
 /// pass) and cools down 100 ticks; Music and SFX duck to 25 by 8 a pass and come back; it never reaches the
 /// stack;</item>
 /// <item>a RULE fires through its real variables: the one hook sets event counter 0x15 (the litter counter a
 /// guest's dropped litter raises, `ParkStaff.AdvisorEvent`) and the scheduler's rule 47 posts PRANK_LITTER --
 /// text and voice -- which lands in the stack: the envelope counts it;</item>
-/// <item>the stack: L2 (C) opens it, the text shows in the box, Delete removes it;</item>
+/// <item>the stack: L2 (C) opens it, the text shows in the box, Delete removes it; the READ box (advisor-visuals.md
+/// §1): wboxfill as its face, the blue Mess corners and edges as its frame at the read geometry, the fill behind,
+/// Small.bff text in (48,48,48) centred on x 320 with its ⚠ inferred shadow, one framebuffer pixel of the face;</item>
 /// <item>a ride's breakdown (⚠ its reliability forced, <see cref="ParkRide.ForceReliabilityForTest"/>, the
 /// mechanic smoke's hook) posts its messages WITH the ride: Select jumps the camera there; deleting the ride
 /// (the viewer's DeletePlaced → ParkSim.Remove) takes its records, and a jump to a ride that has gone is
@@ -54,6 +58,77 @@ public partial class AdvisorSmoke : Node3D
         ["HALLOW"] = new[] { "candle", "Demon", "brainb" },
         ["SPACE"] = new[] { "slide", "spawheel", "bumper", "mbuggy" },
     };
+
+    // ---------------------------------------------------------------------------------------------
+    // The research's numbers (ghidra_tpw/notes/advisor-V-visuals.md), the test's own copy -- not the view's code.
+
+    /// <summary>§2.3: the head's origin, NDC (0.6, −0.5) = 80% across, 75% down; (409.6, 384) in HUD units.</summary>
+    const float HeadAcross = 0.8f, HeadDown = 0.75f;
+    /// <summary>§2.3: the `Bug Head` disc in the bind pose, in HUD units: x 373.8–445.4, y 348.2–419.8.</summary>
+    const float DiscWideUnits = 445.4f - 373.8f, DiscTallUnits = 419.8f - 348.2f;
+    /// <summary>§2.2: `0x16FD18(s, 4s/3, s)` -- the root's local y row, which its bind turns into depth, is 4/3 the others.</summary>
+    const float DepthRow = 4f / 3f;
+
+    /// <summary>The head AS DRAWN: the `Bug Head` disc's vertices through its drawn surfaces' global transforms and
+    /// the overlay's camera (window pixels: the overlay's viewport is the window's size), the root node's origin
+    /// the same way, and the root's axes in the overlay's world -- (x, y, z) lengths of its local x, y, z images and
+    /// how far its local y lies along the camera's view axis.</summary>
+    static (Rect2 Disc, Vector2 Origin, Vector3 Axes, float YOnDepth) MeasureHead(AdvisorHead head)
+    {
+        var cam = head.Camera;
+        float x0 = float.MaxValue, y0 = float.MaxValue, x1 = float.MinValue, y1 = float.MinValue;
+        foreach (var (mesh, _, node) in head.Drawn.Surfaces())
+        {
+            if (!mesh.Equals("Bug Head", StringComparison.OrdinalIgnoreCase) || !node.Visible || node.Mesh is not ArrayMesh am) continue;
+            for (int surface = 0; surface < am.GetSurfaceCount(); surface++)
+                foreach (var v in (Vector3[])am.SurfaceGetArrays(surface)[(int)Mesh.ArrayType.Vertex])
+                {
+                    var p = cam.UnprojectPosition(node.GlobalTransform * v);
+                    x0 = Math.Min(x0, p.X); y0 = Math.Min(y0, p.Y); x1 = Math.Max(x1, p.X); y1 = Math.Max(y1, p.Y);
+                }
+        }
+        var w = head.Drawn.LastWorld[head.RootOffset];
+        var root = head.Drawn.Root.GlobalTransform * new Transform3D(
+            new Basis(new Vector3(w.M11, w.M12, w.M13), new Vector3(w.M21, w.M22, w.M23), new Vector3(w.M31, w.M32, w.M33)),
+            new Vector3(w.M41, w.M42, w.M43));
+        var view = -cam.GlobalTransform.Basis.Z.Normalized();
+        return (new Rect2(x0, y0, x1 - x0, y1 - y0), cam.UnprojectPosition(root.Origin),
+                new Vector3(root.Basis.X.Length(), root.Basis.Y.Length(), root.Basis.Z.Length()),
+                Math.Abs(root.Basis.Y.Normalized().Dot(view)));
+    }
+
+    /// <summary>§1.2: `0x20ACF8` breaks lines on `\n`, `\r`, `\r\n` or `\n\r` and never wraps (the test's copy).</summary>
+    static List<string> BreakLines(string text)
+    {
+        var lines = new List<string>();
+        int start = 0;
+        for (int i = 0; i < text.Length; i++)
+        {
+            if (text[i] != '\n' && text[i] != '\r') continue;
+            lines.Add(text[start..i]);
+            if (i + 1 < text.Length && text[i + 1] != text[i] && (text[i + 1] == '\n' || text[i + 1] == '\r')) i++;
+            start = i + 1;
+        }
+        lines.Add(text[start..]);
+        return lines;
+    }
+
+    /// <summary>The mean colour of a texture's pixels at least half opaque, how many that is, and whether every pixel
+    /// is opaque.</summary>
+    static (Color Mean, bool Opaque, int Counted) Art(Texture2D tex)
+    {
+        var img = tex.GetImage();
+        float r = 0, g = 0, b = 0; int n = 0; bool opaque = true;
+        for (int y = 0; y < img.GetHeight(); y++)
+            for (int x = 0; x < img.GetWidth(); x++)
+            {
+                var c = img.GetPixel(x, y);
+                if (c.A < 1f) opaque = false;
+                if (c.A < 0.5f) continue;
+                r += c.R; g += c.G; b += c.B; n++;
+            }
+        return (n == 0 ? new Color(0, 0, 0, 0) : new Color(r / n, g / n, b / n), opaque, n);
+    }
 
     int _checks;
     void Check(bool condition, string label)
@@ -193,7 +268,8 @@ public partial class AdvisorSmoke : Node3D
                                AudioServer.GetBusVolumeDb(sfxBus), voice.Playing, adv.Speaking);
             // One pass as the running viewer makes it (_Process): a park tick and the calendar's share of a pass.
             void Tick() { Call(viewer, "TickPark"); Call(viewer, "AdvanceCalendar", ParkClock.UnitsPerPass); }
-            async Task<List<Pass>> RunCycle(Func<bool> start, int max, string risingShot = null, string talkingShot = null)
+            async Task<List<Pass>> RunCycle(Func<bool> start, int max, string risingShot = null, string talkingShot = null,
+                                             Func<int, Task> speakingPass = null)
             {
                 var list = new List<Pass>();
                 bool began = false; int speaking = -1;
@@ -205,6 +281,7 @@ public partial class AdvisorSmoke : Node3D
                     began |= start();
                     if (risingShot != null && p.State == AdvisorState.Entering && p.ElapsedMs == 80) { await Shot(risingShot); risingShot = null; }
                     if (p.State == AdvisorState.Speaking && speaking < 0) speaking = t;
+                    if (speakingPass != null && p.State == AdvisorState.Speaking && speaking >= 0) await speakingPass(t - speaking);
                     if (talkingShot != null && speaking >= 0 && t == speaking + 30) { await Shot(talkingShot); talkingShot = null; }
                     if (began && p.State == AdvisorState.Idle && list.Count > 2 && list[^2].State == AdvisorState.Cooldown) break;
                 }
@@ -216,11 +293,32 @@ public partial class AdvisorSmoke : Node3D
                   "idle, the head is hidden: nothing on channel 0, the overlay not drawn (the start delay)");
             Check(stackView.EnvelopeShown && stackView.ShownCount == 0,
                   $"the envelope is drawn bottom left with its count {stackView.ShownCount} (0x108D40 at (32, 420), \"%d\" at (80, 430))");
+            // The port's HUD mapping, the test's own copy: a POSITION is a fraction of the window, a SIZE goes by one
+            // factor from the height. A control for the head below: an authored 40×40 must draw square by it.
+            var win = viewer.GetViewport().GetVisibleRect().Size;
+            float kH = win.Y / 512f;
+            var env = stackView.EnvelopeRect;
+            float envRatio = env.Size.Y / env.Size.X;
+            Check(Math.Abs(envRatio - 1f) < 1e-4f && Math.Abs(env.Size.Y - 40 * kH) < 0.01f
+                  && env.Position.DistanceTo(new Vector2(32 / 512f * win.X, 420 / 512f * win.Y)) < 0.01f,
+                  $"CONTROL: the envelope, authored 40×40 at (32, 420), draws {env.Size.X:0.##}×{env.Size.Y:0.##} px at ({env.Position.X:0.#}, {env.Position.Y:0.#}) "
+                  + $"in a {win.X}×{win.Y} window -- height/width {envRatio:0.####}: square, so the HUD mapping carries no pixel-aspect factor");
 
             // ---------------------------------------------------------------------------------
             // 1. The greeting: 171 LOST_KINGDOM_FIRST_GOALS (no gold ticket ever earned), voice only.
             var greetMsg = Field<AdvisorCatalogue>(viewer, "_advisor").Messages[ParkAdvisor.GreetingFirst];
-            var g = await RunCycle(() => played.Any(p => p.Id == ParkAdvisor.GreetingFirst), 1500, "rising", "talking");
+            var heads = new List<(int At, Rect2 Disc, Vector2 Origin, Vector3 Axes, float YOnDepth)>();
+            var g = await RunCycle(() => played.Any(p => p.Id == ParkAdvisor.GreetingFirst), 1500, "rising", "talking",
+                async since =>
+                {
+                    if (since != 0 && since != 30) return;
+                    await Present(1);
+                    var m = MeasureHead(head);
+                    heads.Add((since, m.Disc, m.Origin, m.Axes, m.YOnDepth));
+                    GD.Print($"[advisor smoke] head at speaking+{since}: disc {m.Disc.Size.X:0.##}×{m.Disc.Size.Y:0.##} px at "
+                             + $"({m.Disc.Position.X:0.#}, {m.Disc.Position.Y:0.#}), origin ({m.Origin.X:0.##}, {m.Origin.Y:0.##}), "
+                             + $"root axes {m.Axes.X:0.#####}/{m.Axes.Y:0.#####}/{m.Axes.Z:0.#####}, local y on depth {m.YOnDepth:0.###}");
+                });
             var gp = played.FirstOrDefault(p => p.Id == ParkAdvisor.GreetingFirst);
             Check(gp.Id == ParkAdvisor.GreetingFirst && gp.SoundId != 0 && !gp.TextAdded,
                   $"the greeting 171 is presented after the 50-tick start delay: voice sound {gp.SoundId}, no text row ({greetMsg.TextRow})");
@@ -243,6 +341,23 @@ public partial class AdvisorSmoke : Node3D
                   $"it SPEAKS: the voice plays the {gp.SpeechMs} ms stream (its decoded length is what the state machine was fed) and channel 0 loops talk record {gp.TalkRecord} (§4.3 for {gp.SpeechMs} ms)");
             Check(talk.Count == (gp.SpeechMs + 39) / 40,
                   $"state 3 lasts the speech: {talk.Count} passes of 40 ms for {gp.SpeechMs} ms");
+            // The head's placement and size, measured off the drawn nodes (§2.3, the bind pose = the talk pose).
+            var h0 = heads.FirstOrDefault(x => x.At == 0);
+            Check(heads.Count == 2 && h0.Disc.Size.X > 0,
+                  $"the head was measured as drawn at the start of its speech and 30 passes in ({heads.Count} readings)");
+            var wantOrigin = new Vector2(HeadAcross * win.X, HeadDown * win.Y);
+            Check(heads.All(x => x.Origin.DistanceTo(wantOrigin) < 1f),
+                  $"the head's ORIGIN (its root node, projected) is at {string.Join(", ", heads.Select(x => $"({x.Origin.X:0.##}, {x.Origin.Y:0.##})"))} px: "
+                  + $"80% across and 75% down ({wantOrigin.X:0.##}, {wantOrigin.Y:0.##}) -- NDC (0.6, −0.5), (409.6, 384) in HUD units");
+            float discRatio = h0.Disc.Size.Y / h0.Disc.Size.X, wantRatio = DiscTallUnits / DiscWideUnits;
+            Check(Math.Abs(h0.Disc.Size.Y / (DiscTallUnits * kH) - 1f) < 0.04f && Math.Abs(h0.Disc.Size.X / (DiscWideUnits * kH) - 1f) < 0.04f
+                  && Math.Abs(discRatio - wantRatio) < 0.04f,
+                  $"the head's disc draws {h0.Disc.Size.X:0.#}×{h0.Disc.Size.Y:0.#} px, height/width {discRatio:0.###}: the research's "
+                  + $"{DiscWideUnits:0.#}×{DiscTallUnits:0.#} HUD units ({wantRatio:0.###}) by the envelope's one-factor rule "
+                  + $"({DiscWideUnits * kH:0.#}×{DiscTallUnits * kH:0.#}) -- 0.013 on both screen axes, not 4/3 of it");
+            Check(heads.All(x => Math.Abs(x.Axes.Y / x.Axes.X - DepthRow) < 1e-3f && Math.Abs(x.Axes.Z / x.Axes.X - 1f) < 1e-3f && x.YOnDepth > 0.999f),
+                  $"the 4/3 is the root's own local y row (0x16FD18(s, 4s/3, s)) and it lies along the camera's view axis "
+                  + $"({h0.YOnDepth:0.####}): root axes x {h0.Axes.X:0.#####}, y {h0.Axes.Y:0.#####}, z {h0.Axes.Z:0.#####} -- depth, which the orthographic layer never shows");
             var written = talk.Where(p => p.MouthShown >= 0).ToList();
             var mouthsSeen = written.Select(p => string.Join("+", p.MouthsDrawn)).Distinct().ToList();
             bool meshFollows = written.Count > talk.Count / 2 && written.All(p => p.MouthsDrawn.Length == 1 && p.MouthsDrawn[0] == head.MouthMesh(p.Mouth));
@@ -372,6 +487,62 @@ public partial class AdvisorSmoke : Node3D
             string words = text.Text("eng", litterMsg.TextRow);
             Check(adv.Stack.Selected?.Row == (short)litterMsg.TextRow && stackView.ShownText == words && !string.IsNullOrEmpty(words),
                   $"Up moves to the newer record and its text is drawn in the 260-wide box from the text database: \"{stackView.ShownText?.Replace("\n", " ")}\"");
+            // ---- The READ box (§1.3..§1.5), the test's own copy of the geometry in HUD units, through the port's mapping:
+            // the box's centre line x 320 is a position (a fraction of the window), every other x hangs off it by k.
+            var art = stackView.Panel;
+            float cx = 320 / 512f * win.X;
+            Rect2 Units(float u, float v, float w, float h) => new(cx + (u - 320) * kH, v * kH, w * kH, h * kH);
+            bool Same(Rect2 a, Rect2 b) => a.Position.DistanceTo(b.Position) < 0.01f && a.Size.DistanceTo(b.Size) < 0.01f;
+            var blits = stackView.BoxBlits.ToList();
+            var fills = blits.Where(b => b.Piece == "fill").ToList();
+            // The face as DRAWN (the first row's texture), against the disc's pale opaque wboxfill (§1.4).
+            var face = fills.Count > 0 ? Art(fills[0].Texture) : default;
+            Check(art != null && fills.Count == 13 && fills.All(b => ReferenceEquals(b.Texture, art.Sheet) && b.Modulate == Colors.White)
+                  && fills.Select((b, i) => Same(b.Rect, Units(174, 196 + 16 * i, 292, 16))).All(x => x)
+                  && face.Opaque && face.Counted > 0 && face.Mean.R > 0.6f && face.Mean.G > 0.85f && face.Mean.B > 0.85f,
+                  $"the box's FACE is wboxfill (sprite 0x31): {fills.Count} rows drawn, the face opaque {face.Opaque}, mean ({face.Mean.R8},{face.Mean.G8},{face.Mean.B8}) over {face.Counted} texels at least half opaque; "
+                  + "13 rows of 292×16 stretched across from (174, 196) -- the widget rect widened OUTWARD by its 16×14 margins (0x1DD1E8, 0x142090)");
+            var frame = blits.Where(b => b.Piece is "corner" or "edge").ToList();
+            var wantFrame = art == null ? new List<(string, Texture2D, Rect2)>() : new List<(string, Texture2D, Rect2)>
+            {
+                ("corner", art.CornerTopRight, Units(466, 188, 8, 8)), ("corner", art.CornerBottomRight, Units(466, 404, 8, 8)),
+                ("corner", art.CornerTopLeft, Units(166, 188, 8, 8)), ("corner", art.CornerBottomLeft, Units(166, 404, 8, 8)),
+                ("edge", art.EdgeTop, Units(174, 188, 292, 8)), ("edge", art.EdgeBottom, Units(174, 404, 292, 8)),
+                ("edge", art.EdgeRight, Units(466, 196, 8, 208)), ("edge", art.EdgeLeft, Units(166, 196, 8, 208)),
+            };
+            var frameArt = frame.Select(b => Art(b.Texture)).ToList();
+            var outer = frame.Select(b => b.Rect).DefaultIfEmpty().Aggregate((a, b) => a.Merge(b));
+            Check(frame.Count == 8 && wantFrame.All(f => frame.Count(b => b.Piece == f.Item1 && ReferenceEquals(b.Texture, f.Item2) && Same(b.Rect, f.Item3)) == 1)
+                  && frame.All(b => b.Modulate == Colors.White) && frameArt.All(a => a.Counted > 0 && a.Mean.B > 0.8f && a.Mean.R < 0.2f && a.Mean.G < 0.25f)
+                  && Same(outer, Units(166, 188, 308, 224)),
+                  "its FRAME is the stack's blue messcorner (0x2F) 8×8 at the four corners, flipped, and messedge (0x32) 8 wide on the four sides, "
+                  + $"turned -- outer edge (166, 188)–(474, 412) in HUD units, ({outer.Position.X:0.#}, {outer.Position.Y:0.#})–({outer.End.X:0.#}, {outer.End.Y:0.#}) px");
+            int lastFill = blits.FindLastIndex(b => b.Piece == "fill");
+            Check(lastFill >= 0 && blits.Skip(lastFill + 1).All(b => b.Piece != "fill") && blits.FindIndex(b => b.Piece != "fill") == lastFill + 1
+                  && blits.FindLastIndex(b => b.Piece == "shadow") < blits.FindIndex(b => b.Piece == "text"),
+                  "DEPTH: the opaque fill first, behind everything sorted; the text's shadow (z 18) behind the text (z 10)");
+            var smallBff = lib.ReadGeneric("/Fonts/European/Small.bff");
+            var small = smallBff != null ? new BitmapFont(smallBff) : null;
+            int SmallWidth(string line) { int n = 0; foreach (char c in line) if (small.TryGetGlyph(c, out var gl)) n += gl.Advance; return n; }
+            var lines = BreakLines(words).Select((l, i) => (Line: l, Row: i)).Where(x => x.Line.Length > 0).ToList();
+            var texts = blits.Where(b => b.Piece == "text").ToList();
+            var grey = new Color(48 / 255f, 48 / 255f, 48 / 255f);
+            Check(small != null && small.LineAdvance == 21 && lines.Count > 0 && texts.Count == lines.Count
+                  && lines.Zip(texts).All(z => Math.Abs(z.Second.Rect.Size.X - SmallWidth(z.First.Line) * kH) < 0.01f
+                                            && Math.Abs(z.Second.Rect.Position.Y - (210 + 21 * z.First.Row) * kH) < 0.01f
+                                            && Math.Abs(z.Second.Rect.GetCenter().X - cx) <= 0.5f * kH + 0.01f
+                                            && z.Second.Modulate == grey),
+                  $"its TEXT is Small.bff (font id 0: advance {small?.LineAdvance}, every line as wide as Small's advances make it) in (48,48,48), "
+                  + $"each of its {lines.Count} lines CENTRED on x 320 ({cx:0.#} px), the first line's top at y 210, 21 apart, no wrap");
+            var shadows = blits.Where(b => b.Piece == "shadow").ToList();
+            Check(shadows.Count == texts.Count && shadows.Zip(texts).All(z => z.First.Rect.Position.DistanceTo(z.Second.Rect.Position + new Vector2(2, 2) * kH) < 0.01f
+                                                                          && ReferenceEquals(z.First.Texture, z.Second.Texture) && z.First.Modulate == Colors.Black),
+                  "⚠ INFERRED: each line carries a black 2,2 drop shadow (the render pass's default, 0x1C55C8 → 0x20B258(ctx, 2, 2))");
+            var frameImage = GetViewport().GetTexture().GetImage();
+            var probe = new Vector2I((int)cx, (int)(390 * kH));
+            var onScreen = frameImage.GetPixelv(probe);
+            Check(onScreen.G > 0.8f && onScreen.B > 0.8f && onScreen.R > 0.55f && onScreen.R < 0.9f,
+                  $"on screen, the fill's bottom margin (320, 390) reads ({onScreen.R8},{onScreen.G8},{onScreen.B8}) at {probe}: the pale ruled sheet, not a dark box");
             await Shot("stack");
             int held = adv.Stack.Count;
             Key(Godot.Key.Delete);
