@@ -63,3 +63,8 @@ bar-centering puts the skill hitbox at267 vs wage239 with30-unit line boxes (2-u
 intersection). This is unchanged by the staff fix and was reported to cow, not
 silently changed in their screen. Its control asserts existing267 placement instead.
 AllStaff itself has non-overlapping175+32i rows.
+
+Update after d14b1d8: cow confirmed §12.3 requires Training row271, not generic
+bar-centering267. Its new label-grid flag corrects that screen. ManagementSmoke now
+requires271 AND non-overlap; the prior267 control above is superseded, not native
+evidence. All Staff's layout is unchanged.

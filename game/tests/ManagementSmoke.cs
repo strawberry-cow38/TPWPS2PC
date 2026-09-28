@@ -230,10 +230,10 @@ public partial class ManagementSmoke : Node3D
                 &&trainingCells[2].Text==Money.Format(researcher.WageAfterTraining*10)
                 &&trainingCells[3].Fraction==researcher.TrainingBar,"Training's post-training figures survive the merge");
             var trainRows=Panel<Dictionary<int,Rect2>>(panel,"_specRows");
-            // Preserve the existing per-widget centering on this independent screen:
-            // SkillLevelBar y271/h22 against a30-unit text line ->267, not All Staff's grid.
-            Check(trainRows.Count==4&&Math.Abs((trainRows[3].Position.Y-panel.PanelOrigin.Y)/panel.PanelScale-267)<.01f,
-                "Training retains its ordinary widget-centered skill row; shared staff grid does not leak into it");
+            // Native §12.3 uses InfoText+96 for this label, independently of its bar height.
+            Check(trainRows.Count==4&&Math.Abs((trainRows[3].Position.Y-panel.PanelOrigin.Y)/panel.PanelScale-271)<.01f
+                && !trainRows[2].Intersects(trainRows[3]),
+                "Training skill label stays on native row271 and its hitbox does not overlap the wage");
             if(shots!=null)Call(viewer,"SaveShot",ShotPath("training"));
             Click(new Vector2(panel.PanelOrigin.X+65*panel.PanelScale,trainRows[0].GetCenter().Y));await Frames();
             Check(before - sim.Finances.Balance == cost * 10 && researcher.Level == level + 1
