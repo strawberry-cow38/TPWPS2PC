@@ -3288,7 +3288,11 @@ public partial class Viewer : Node3D
                     // ⭐ Kind 2 fires along the FITTING's direction; kind 1 uses the template's
                     // own velocity. Passing null for kind 1 is the difference, not an omission.
                     var dir = a[0] == 2 ? NodeWorldDir(ride.Id, a[1], 0x100) : null;
-                    var made = at is { } p ? _burst.Emit(a[2], p, dir) : null;
+                    // ⭐ ADDOBJ is a PERSISTENT object, EVENT a one-shot -- the distinction this
+                    // call used to drop. See RideParticles.Emit: it changes exactly one effect,
+                    // `Flies` on the toilets, which fired once instead of buzzing.
+                    var made = at is { } p
+                             ? _burst.Emit(a[2], p, dir, 0, fx.Opcode == RseOpcode.ADDOBJ) : null;
                     // An OBJECT, with a tag its KILLOBJ can name (the breakdown smoke's is 1).
                     if (fx.Opcode == RseOpcode.ADDOBJ && a.Count > 3 && made != null && at is { } objAt)
                     {
@@ -3723,6 +3727,8 @@ public partial class Viewer : Node3D
         // ⭐ State of Repair on a serviced ride is its worn reliability, `ride[0xE4] >> 12` (`FUN_00118228`,
         // the bar `FUN_001D5210` fills) -- mechanics port, 2026-09-27. Anything else keeps what it showed.
         128               => (null, Math.Clamp(r.ServiceClass != RideServiceClass.None ? r.ReliabilityPercent : r.Condition, 0, 100)),
+            // ⭐ Remaining Life on the All Rides list, the same figure as the details page's row.
+            636               => (null, LifePercent(r)),
         _                 => (null, 0),
     };
 
@@ -7777,6 +7783,16 @@ public partial class Viewer : Node3D
                 // have unavailable text next to them if they are unavailable". The word is the
                 // disc's own, `STR_LISTBOX_NOT_AVAILABLE` (335), resolved through the text table
                 // rather than typed in English here.
+                // ⭐⭐ LIFE IS LIVE. tinyclaw landed `+0x94` as `ParkRide.Life`, so the row this
+                // screen has been drawing blank can show the real figure.
+                //
+                // ⚠ AS A PERCENTAGE OF THE RIDE'S OWN STARTING LIFE, because the bar wants 0..100
+                // and `Life` counts down from the tier-ZERO record's `InitialCondition` (`0x116048`
+                // stores it straight in) and is never raised again -- not by a repair, not by an
+                // upgrade. ⚠ The console's own bar SCALE is not decoded; what is decoded is where
+                // the number starts and that it only falls, which makes "share of initial" the
+                // reading rather than a choice. Flagged rather than asserted.
+                1073 => (null, LifePercent(ride)),                                  // Life
                 119  => (UpgradeAbove(ride) ? null : Unavailable(), 0),             // Upgrades
                 454  => (AddonHere(ride)    ? null : Unavailable(), 0),             // Addons
                 // ⚠ Life, Upgrades, Addons and Age are drawn by this screen and are not tracked
@@ -7815,6 +7831,18 @@ public partial class Viewer : Node3D
     /// -- not typed in English here, so a German build says what the German build says.
     ///
     /// ⚠ Zero is `"0d"`, not blank: the console's `if (weeks != 0)` guards only the weeks half.</summary>
+    /// <summary>⭐ A ride's remaining life as a percentage of what it started with. `Life` (`+0x94`)
+    /// begins at the tier-0 record's `InitialCondition` and only ever falls -- one point per 15.0
+    /// of reliability lost -- reaching 0 when the ride is condemned.
+    ///
+    /// ⚠ Zero when the ride has no tiers to take a starting figure from: a bar drawn from a
+    /// division by zero would be a number that looks like a measurement.</summary>
+    int LifePercent(ParkRide r)
+    {
+        int start = r?.Definition?.CompiledEntry is { HasRideTiers: true } e ? e.Tier(0).InitialCondition : 0;
+        return start <= 0 ? 0 : Math.Clamp(r.Life * 100 / start, 0, 100);
+    }
+
     string FormatWeeksDays(int days)
     {
         string w = _text != null && 0xE1 < _text.Keys.Length ? _text.Text("eng", 0xE1) ?? "w" : "w";

@@ -413,7 +413,17 @@ public sealed class RideParticles
     /// curve is the loss; if it does not, the magnitude itself is not what was asked for.
     public static float ProbeDampingScale = 1f;
 
-    public ParticleEffect Emit(int id, Vector3 where, Vector3? fireAlong = null, int probe = 0)
+    /// <summary>⚠ <paramref name="persistent"/> is the script's ADDOBJ: the console's ADDOBJ adds
+    /// an OBJECT the script can later KILLOBJ, where EVENT is a one-shot -- this port's own sound
+    /// code says exactly that and the particle path was ignoring it.
+    ///
+    /// ⭐ It matters for ONE effect, and the census is why I am comfortable changing it: of the 16
+    /// particle effects any script ADDOBJs, 15 are already `Immortal` so nothing moves. The
+    /// sixteenth is **`Flies` (id 9)**, ADDOBJ'd by `Toilet.rse` and `SupBog.rse` with an emitter
+    /// life of 100000 ticks -- about 51 minutes, unmistakably meant to persist -- and under the
+    /// old reading it fired one burst and stopped. Flies over a dirty toilet, once.</summary>
+    public ParticleEffect Emit(int id, Vector3 where, Vector3? fireAlong = null, int probe = 0,
+                               bool persistent = false)
     {
         var e = _library?[id];
         if (e == null || e.Ramp.All(c => c == 0)) return null;
@@ -456,7 +466,7 @@ public sealed class RideParticles
         // ⭐ Godot emits `Amount` particles per `Lifetime` seconds while looping, so for a
         // continuous emitter Amount IS the steady-state population -- rate times how long one
         // particle lasts. Bubbles: one every 5 ticks over a 60-tick life = 12 alive at a time.
-        bool loops = t.Immortal;
+        bool loops = t.Immortal || persistent;
         int count = loops ? t.SteadyPopulation() : Math.Clamp(t.ExpectedTotal(), 1, 200);
         float life = Math.Clamp(t.Life * ParticleTemplate.TickMilliseconds / 1000f, 0.05f, 8f);
         // Drawn width is size/5120 CELLS and one cell is one unit here; start and end differ, so
