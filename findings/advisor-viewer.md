@@ -119,10 +119,13 @@ So the port draws the box's text in `Console.bff`. The count beside the envelope
   lips from `ENGLISH/sp_001.lip` (the gate flips on ticks 56, 71, 102), the mouth's four rules, the no-track
   flap, the costume call, and four removal cases through `ParkSim.Remove`.
   `tools/audit_matrix.py` floors it at 74.
-- `tools/advisor_teeth.py`: step A's 53 mutations plus 14 new ones, all red (see the run below).
+- `tools/advisor_teeth.py`: step A's 54 mutations plus 14 new ones. All 68 went red on the core as committed.
 - `AdvisorSmoke`: 49 checks per park, each reading the view's output (drawn meshes, the voice player, the bus
   gains, the stack view's drawn count and text, the camera). Viewer matrix scene `advisor`, floor 47.
-- `tools/advisor_view_teeth.py`: 20 mutations of the view, each required to turn the smoke red.
+- `tools/advisor_view_teeth.py`: 20 mutations of the view, each required to turn the smoke red on JUNGLE 1. All
+  20 went red on the final smoke. The first run had one survivor, `jump-to-gone-ride`: the refused jump was
+  checked from the ride's own centre, where the camera already stood after the real jump, so a wrong second
+  jump moved nothing. The check now starts from the home camera and asserts that home is not the ride's cell.
 
 ## Still open
 
