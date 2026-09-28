@@ -199,7 +199,8 @@ public readonly record struct AdvisorPlayback(ushort Id, AdvisorRecordType Kind,
 /// 50-tick delay is 2 s and the 100-tick cooldown 4 s. The speech runs on the ms clock `0x147158`, measured here
 /// through <see cref="MillisecondsPerTick"/>, and the head's APS frames are real-time 30 a second on that clock
 /// (`currentFrame = (ms − start)·30/1000`, findings/clock-rate.md §4, §6) -- which settles the research's open
-/// "tick ↔ 30 fps frame" question: the 30-frame enter is 25 passes, the 20-frame exit 16⅔.
+/// "tick ↔ 30 fps frame" question: 30 frames are 1000 ms, 25 passes -- and since a record ends on the first update
+/// STRICTLY past its length (<see cref="AdvisorHeadChannel"/>), the enter holds 26 passes and the 20-frame exit 17.
 ///
 /// ⚠ ADAPTERS, each labelled where it lives: <see cref="SpeechLength"/> (the stream's length, audio is the
 /// view's), <see cref="Head"/> (the model), <see cref="SkipHeld"/> (the pad),

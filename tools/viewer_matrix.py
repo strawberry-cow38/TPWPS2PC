@@ -74,10 +74,11 @@ SCENES['management'] = ('ManagementSmoke', 'MANAGEMENT SMOKE', 17)
 # The advisor, step B: the greeting risen, spoken (the talk record its length picks, the mouth on the lip track)
 # and dropped behind the talk pass with Music/SFX ducked to 25 and back; rule 47 fired through its real variables
 # (the one hook: event counter 0x15) into the stack and the envelope's count; L2 opens it, the text shows, Delete
-# removes it; a ride's breakdown jumps the camera and its delete takes its records; a modal message locks the
-# pad, flaps and is skipped with T; Tutorial is flag 0x40; Close Park and teardown. Every park runs the same 47;
-# the floor sits just under it. A statement of its own for the same merge reason.
-SCENES['advisor'] = ('AdvisorSmoke', 'ADVISOR SMOKE', 45)
+# removes it; a ride's breakdown jumps the camera and its delete takes its records; pause holds the voice; an
+# immediate message interrupts the speech; a modal message locks the pad, flaps and is skipped with T; Tutorial is
+# flag 0x40; Close Park and teardown. Every park runs the same 49; the floor sits just under it. A statement of its
+# own for the same merge reason.
+SCENES['advisor'] = ('AdvisorSmoke', 'ADVISOR SMOKE', 47)
 
 
 def map_argument(world: str, terrain: int) -> str:

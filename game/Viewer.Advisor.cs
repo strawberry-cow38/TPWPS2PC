@@ -22,7 +22,8 @@ namespace TPWPS2Viewer;
 ///
 /// ⭐ THE PAD, ON A KEYBOARD: L2 is <see cref="AdvisorL2Key"/> (C), Triangle is <see cref="AdvisorTriangleKey"/>
 /// (T). With the stack open: Up/Down move the cursor (pad bits 1/2: Up is towards the newer records, which are
-/// drawn higher), Delete is Circle, Enter or Space is Cross (Select). While a modal message plays (123, the
+/// drawn higher), Delete is Circle, Enter or Space is Cross (Select; on a tutorial record it is Replay, which is
+/// ⚠ inert: the tutorial is out of scope). While a modal message plays (123, the
 /// tutorial block) every game key and click is refused -- the pad lock -- and T, read raw every pass, skips it.
 ///
 /// ⚠ ADAPTERS, each said once here: the speech bank and lip directory are ENGLISH and the text language `eng`,
@@ -106,6 +107,10 @@ public partial class Viewer
         };
         adv.Stack.UiSound = ManagementUiSound;
         adv.Stack.FocusObject = AdvisorFocus;
+        // ⚠ Cross on a TUTORIAL record is Replay (0x107C18): inert here -- the tutorial is out of scope, and the core's
+        // entry point is a stub (ParkAdvisor.TutorialMessage). Said in the log when it is pressed.
+        var replay = adv.Stack.Replay;
+        adv.Stack.Replay = row => { GD.Print($"[advisor] Replay of tutorial row {row} (0x107C18): not ported -- the tutorial is out of scope"); replay?.Invoke(row); };
         adv.Attach(_sim, _staff, null);                                    // the calendar's: SubmitAdvisor below
         _parkAdvisor = adv;
         EnsureAdvisorViews();

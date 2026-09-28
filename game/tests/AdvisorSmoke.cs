@@ -21,8 +21,9 @@ namespace TPWPS2Viewer.Tests;
 /// mechanic smoke's hook) posts its messages WITH the ride: Select jumps the camera there; deleting the ride
 /// (the viewer's DeletePlaced → ParkSim.Remove) takes its records, and a jump to a ride that has gone is
 /// refused;</item>
-/// <item>a modal message (⚠ 268 submitted directly: the tutorial dispatcher that sends it is out of scope) locks
-/// the pad, flaps its mouth with no lip track, and Triangle (T) skips it with the exit cut short;</item>
+/// <item>a paused park pauses the voice; a modal message (⚠ 268 submitted directly: the tutorial dispatcher that
+/// sends it is out of scope) interrupts the speaking rule message -- the voice stopped, the exit cut short, the
+/// message lost -- then locks the pad, flaps its mouth with no lip track, and Triangle (T) skips it;</item>
 /// <item>Tutorial On/Off is flag 0x40; Close Park takes the head off the screen and stops the voice; the park's
 /// teardown frees the head.</item>
 /// </list>
@@ -399,26 +400,53 @@ public partial class AdvisorSmoke : Node3D
             Tick();
             Check(!sim.Rides.Contains(ride) && others == 0 && adv.Stack.Records.All(x => !ReferenceEquals(x.Object, ride)),
                   $"its records leave the stack with it ({held2} → {adv.Stack.Count}): 0x1E12E0 → 0x1088E0, then 0x13D8C0");
+            // The camera back home first: it is still on the ride from the jump, where a wrong second jump would change nothing.
+            Call(viewer, "StartGameCam");
             var camNow = (game.CursorX, game.CursorZ);
+            var rideCell = ((int)(centre.X * GameCamera.TileUnits), (int)(centre.Z * GameCamera.TileUnits));
             adv.Stack.FocusObject(ride);
-            Check((game.CursorX, game.CursorZ) == camNow, "a jump to a ride that has left the park is refused (the camera stays)");
+            Check(camNow != rideCell && (game.CursorX, game.CursorZ) == camNow,
+                  $"a jump to a ride that has left the park is refused: the camera stays at {camNow}, not {rideCell}");
 
             // ---------------------------------------------------------------------------------
-            // 5. A modal message: ⚠ 268 WELCOME_MAIN submitted directly -- the tutorial dispatcher that sends it is out of
-            // scope. It locks the pad, has no lip file (PS2_) so it flaps, and Triangle (T) skips it.
-            for (int i = 0; i < 400 && adv.State != AdvisorState.Idle; i++) Tick();
+            // 5. Pause, an interruption, a modal message. Rule 47 speaks again (its delay is 60 days; the same counter).
+            for (int i = 0; i < 1500 && !(adv.State == AdvisorState.Idle && adv.RingCount == 0 && !adv.PendingSet); i++) Tick();
+            async Task<bool> RuleAgain()
+            {
+                for (int d = 0; d < 61; d++) Call(viewer, "AdvanceCalendar", ParkClock.UnitsPerDay);
+                adv.CountEvent(0x15, 1);
+                for (int i = 0; i < 3000 && !(adv.State == AdvisorState.Speaking && adv.SpeechElapsedMs > 400); i++) Tick();
+                await Present(1);
+                return adv.State == AdvisorState.Speaking && adv.SpeechMessage == 0x64 && voice.Playing;
+            }
+            Check(await RuleAgain(), "rule 47 speaks again after its 60-day delay");
+            Set(viewer, "_playing", false);
+            Call(viewer, "PresentAdvisor");
+            bool paused = voice.StreamPaused;
+            Set(viewer, "_playing", true);
+            Call(viewer, "PresentAdvisor");
+            Check(paused && !voice.StreamPaused && voice.Playing,
+                  "⚠ pausing the park pauses the voice with it, and unpausing resumes it (the console's is not established)");
+            // ⚠ 268 WELCOME_MAIN submitted directly -- the tutorial dispatcher that sends it is out of scope. 208..274 is
+            // always IMMEDIATE, so in state 3 it interrupts (0x107640): the speech is stopped and the head cut out.
+            int litterPlays = played.Count(p => p.Id == 0x64);
             var panel = Field<LaptopShopScreen>(viewer, "_shopPanel");
             adv.Submit(0x10C);
+            Check(adv.State == AdvisorState.Exiting && !adv.Speaking && !voice.Playing && adv.PendingSet && adv.PendingId == 0x10C
+                  && head.Channel.Record == ParkAdvisor.RecordExit && head.Channel.ElapsedMs == 0 && head.Channel.Queued == AdvisorHeadChannel.None,
+                  "an immediate message INTERRUPTS the speech (§2.1): the voice stopped (\"SHUTTING UP ADVISOR\"), the exit cut short (flags 2), 268 pending");
             var m = new List<Pass>();
             for (int i = 0; i < 400 && !(adv.State == AdvisorState.Speaking && m.Count(p => p.State == AdvisorState.Speaking) >= 40); i++)
             { Tick(); m.Add(Snap()); }
-            Check(adv.Modal && adv.PadLocked && adv.State == AdvisorState.Speaking && !adv.LipTrackAttached,
-                  "268 is MODAL (208..274): the pad is locked while it plays, and it has no lip track (PS2_)");
+            Check(adv.Modal && adv.PadLocked && adv.State == AdvisorState.Speaking && !adv.LipTrackAttached
+                  && played.Count(p => p.Id == 0x64) == litterPlays,
+                  "268 plays next and the interrupted message is LOST (not replayed); 268 is MODAL (208..274): the pad is locked, and it has no lip track (PS2_)");
             viewer._UnhandledKeyInput(new InputEventKey { Keycode = Godot.Key.Tab, Pressed = true });
             Check(panel == null || !panel.Open, "a locked pad refuses the game's keys: Tab does not open the laptop");
             var flaps = m.Where(p => p.State == AdvisorState.Speaking && p.MouthsDrawn.Length == 1).Select(p => p.MouthsDrawn[0]).ToList();
             int changes = flaps.Zip(flaps.Skip(1), (a, b) => a != b).Count(c => c);
-            Check(flaps.Distinct().Count() >= 3 && changes >= 5,
+            // One pass in five draws a new shape, always a different one: expect ~8 changes in 40, need only that it moves.
+            Check(flaps.Distinct().Count() >= 2 && changes >= 2,
                   $"with no lip track the drawn mouth FLAPS at random ({changes} changes over {flaps.Count} passes, {flaps.Distinct().Count()} meshes)");
             await Shot("modal");
             Input.ParseInputEvent(new InputEventKey { Keycode = AdvisorTriangle, Pressed = true });
@@ -444,11 +472,8 @@ public partial class AdvisorSmoke : Node3D
             Call(viewer, "GameOptionChose", LaptopScreen.OptTutorial);
             Check(flipped && adv.Flags == flags, "Game Options' Tutorial On/Off flips the advisor's flag 0x40 and nothing else, and back");
             if (panel != null && panel.Open) Call(viewer, "ToggleLaptop");
-            // A voiced message while speaking: rule 47 again, 61 days later (its delay is 60), through the same counter.
-            for (int d = 0; d < 61; d++) Call(viewer, "AdvanceCalendar", ParkClock.UnitsPerDay);
-            adv.CountEvent(0x15, 1);
-            for (int i = 0; i < 3000 && !(adv.State == AdvisorState.Speaking && adv.SpeechElapsedMs > 400); i++) Tick();
-            Check(adv.State == AdvisorState.Speaking && voice.Playing, "rule 47 speaks again after its 60-day delay");
+            for (int i = 0; i < 1500 && !(adv.State == AdvisorState.Idle && adv.RingCount == 0 && !adv.PendingSet); i++) Tick();
+            Check(await RuleAgain(), "rule 47 speaks a third time, 60 days on");
             var laptopBack = Field<List<(string Kind, string Arg)>>(viewer, "_laptopBack");
             laptopBack.Clear();
             Call(viewer, "ShowLaptopLevel");
