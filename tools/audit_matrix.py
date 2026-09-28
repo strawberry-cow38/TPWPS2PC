@@ -118,8 +118,10 @@ REQUIRED_WITNESSES += (
 # every park; the floor sits just under it. A statement of its own for the same merge reason. The warm-up's
 # 16th call, the v52/v53 copies, a silent message costing the whole cycle and the flag-gated counters are
 # shipped behaviour that reads like a bug to fix; rules 0 and 48 are the disc's own rules over the port's
-# produced variables.
-REQUIRED_CHECKS.update({'advisor': 64})
+# produced variables. Step B adds 10 (76): the lip step and the mouth from a disc lip track, the cut exit,
+# the costume, and an object leaving the park -- whose 0x13D8C0 overwriting the ride's own pending mark is
+# again shipped behaviour that reads like a bug.
+REQUIRED_CHECKS.update({'advisor': 74})
 REQUIRED_WITNESSES += (
     'ok   advisor: scheduler: the warm-up refreshes 5 a call for 15 calls, the 16th refreshes the last 4 AND considers rule 0',
     'ok   advisor: v52/v53: v52 copies VARIABLE 75',
@@ -127,6 +129,9 @@ REQUIRED_WITNESSES += (
     'ok   advisor: counters: events count with flags bit 3; ride-along (flags 6) DROPS them',
     'ok   advisor: rules: real rule 0 over the producers',
     'ok   advisor: rules: real rule 48',
+    'ok   advisor: lips: the gate starts SET and flips on the tick each of',
+    'ok   advisor: mouth: with no lip track the gate stays set',
+    'ok   advisor: removal: with a later type-2 record about ANOTHER ride',
 )
 
 

@@ -233,6 +233,41 @@ public sealed class AnimatedModel
     bool NativeMeshShown(Part part) =>
         AnimationNodeVisibility.Shown(_model, part.Mesh.Index, _hidden);
 
+    /// <summary>⭐ A RUN-TIME WRITE TO A NODE'S FLAGS WORD, the way the game makes one: the advisor's costume
+    /// sets `0x80000010` to hide a fitting and clears `0x10` / sets `0x80000000` to show one
+    /// (`0x106EF0`/`0x106E30`), and its mouth toggles `0x8000` (`0x105FC8`). The word in the model's own bytes
+    /// is written -- so the protection bit `0x80000000` holds against the next record transition
+    /// (<see cref="AnimationNodeVisibility.Transition"/>) and `0x8000` is read by
+    /// <see cref="AnimationNodeVisibility.Shown"/> -- the self-hidden bit `0x10` goes to the live hidden set,
+    /// and every surface is shown or hidden at once. ⚠ The flags live in the <see cref="Model"/>'s bytes, so
+    /// a model shared with other instances takes the write too -- as the console's shared resource does; the
+    /// caller that wants its own gives this model its own <see cref="Model"/>.</summary>
+    public void WriteNodeFlags(int node, uint set, uint clear)
+    {
+        int off = _model.NodeOffset(node);
+        if (_model.NodeIndex(off) != node || off < 0 || off + 4 > _model.D.Length)
+            throw new ArgumentOutOfRangeException(nameof(node), $"node {node} is not in this model");
+        uint f = (BitConverter.ToUInt32(_model.D, off) & ~clear) | set;
+        BitConverter.TryWriteBytes(_model.D.AsSpan(off, 4), f);
+        if ((set & 0x10) != 0) _hidden.Add(node);
+        else if ((clear & 0x10) != 0) _hidden.Remove(node);
+        foreach (var p in _parts)
+            foreach (var s in p.Surfaces) s.Visible = PartShown(p);
+    }
+
+    /// <summary>Whether a part draws now, by the rule <see cref="SetFrame"/> applies.</summary>
+    bool PartShown(Part p)
+    {
+        // The cached chain, as SetFrame passes it (the overload that does not build a List per call).
+        if (_ordinaryVisibility || _nativeNodeVisibility) return AnimationNodeVisibility.Shown(_model, p.Mesh.Index, p.Ancestry, _hidden);
+        foreach (var node in p.Ancestry ?? new List<int> { p.Mesh.Index })
+            if (_hidden.Contains(node)) return false;
+        return true;
+    }
+
+    /// <summary>Whether mesh <paramref name="meshIndex"/>'s surfaces are drawn now -- the OUTPUT a check reads.</summary>
+    public bool MeshDrawn(int meshIndex) => _parts.Any(p => p.Mesh.Index == meshIndex && p.Surfaces.Any(s => s.Visible));
+
     /// <summary>Bind a different record of the same `.aps` to the geometry already built. A ride's
     /// `.rse` asks for a different slot as it runs -- Create, Idle, Load, Start, Main, End, Unload
     /// -- and the meshes, surfaces and materials are the MODEL's, so they stay; only the channels

@@ -133,6 +133,7 @@ public partial class Viewer
     /// <summary>Drop the old park's staff, their nodes and the hire tool's hold.</summary>
     void ResetStaff()
     {
+        ResetAdvisor();                                                  // Viewer.Advisor.cs: the head freed, the voice stopped
         ResetSecurity();
         EndPatrolTool();
         foreach (var a in _staffActors.Values) if (a.Node != null && IsInstanceValid(a.Node)) a.Node.QueueFree();

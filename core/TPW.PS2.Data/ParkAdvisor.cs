@@ -29,9 +29,9 @@ public enum AdvisorState : byte
 }
 
 /// <summary>⚠ ADAPTER for the advisor's head model (`adv+0x238`, `advisor.mps`/`.aps`, registry id 488): what
-/// the state machine asks of it. Step B supplies the real one; null is the console's own no-model path
-/// (every animation test passes at once). <see cref="AdvisorTimedHead"/> is the stand-in with the records'
-/// lengths.</summary>
+/// the state machine asks of it. The view supplies the real one (game/AdvisorHead.cs); null is the console's
+/// own no-model path (every animation test passes at once). <see cref="AdvisorTimedHead"/> is the stand-in with
+/// the records' lengths.</summary>
 public interface IAdvisorHead
 {
     /// <summary>`vt+0x5C` → `0x17C5D8`: play APS section 5 record <paramref name="record"/> at speed 1.0 --
@@ -44,13 +44,107 @@ public interface IAdvisorHead
     /// <summary>⚠ Port only: one advisor pass of <paramref name="milliseconds"/> has begun (a head that
     /// animates at render rate may ignore it).</summary>
     void Step(int milliseconds);
+    /// <summary>`0x107160` (via `0x107B90`, at the take of a VOICED message): dress the model for costume selector
+    /// <paramref name="selector"/> (`adv+0x1F8`, the variant's `+2` byte) -- every prop hidden, hands and plain
+    /// antennae shown, then the selector's fittings (findings/advisor-messages.md §4.6). A head with no model
+    /// ignores it.</summary>
+    void Dress(int selector) { }
+    /// <summary>`0x105FC8(adv, shape)`: show mouth mesh <paramref name="shape"/> (0 normal, 1 aah, 2 eee, 3 ooh,
+    /// 4 sss) and hide the other four -- bit `0x8000` of each mesh record's flags word (§4.4). A head with no
+    /// model ignores it.</summary>
+    void Mouth(int shape) { }
+}
+
+/// <summary>⭐ CHANNEL 0 of the advisor's model, as `0x17C5D8` (category 13), `0x1ABC80` (the request) and
+/// `0x1AC048` (the update) drive it for the section-5 records the advisor asks for (findings/advisor-messages.md
+/// §4.7; findings/bus-native-animation.md "Command parameters" and "Time, update and loop math"; re-read in
+/// the MIPS `0x1ABD04..0x1ABE88` and `0x1AC180..0x1AC2EC` for this step):
+/// <code>
+///   request(record, flags):
+///     the same record as the channel's current → nothing                        (0x17C5D8, category 13's arm)
+///     the current is valid, frame ≤ length, not start/end-held (flags &amp; 6 == 0)
+///       and the request has no flag 2        → QUEUED in the channel's one slot (+0x24.., 12 = empty)
+///     else: flag 2 empties the slot; the record starts now                    (0x1ABE58..0x1ABE84 → 0x1AB780)
+///   update: frame = elapsed·30/1000 (0x1AB710, speed 1.0); on the first update STRICTLY past the length
+///     (`c.olt.s`, 0x1AC188): a queued record starts (it beats the loop); else a looping one starts again;
+///     else the channel is END-HELD (flags |= 4, the record stays selected)
+/// </code>
+/// So a normal exit (record 14, flags 0) asked for while a talk record loops WAITS for that pass of the loop
+/// to end -- the talk record was picked so that its length covers the speech (§4.3) -- while a cut exit
+/// (flags 2: an interrupt, the skip) starts at once, and an exit asked for while the enter is still rising
+/// waits for the head to finish rising.
+///
+/// ⚠ A restart (the loop, a queued record) begins at 0 on the update that found the end: the native
+/// `0x1AB780` re-reads the clock then, so the overshoot past the length is dropped here too (INFERRED from
+/// the start path; the timing initialiser `0x1A8920` was not re-read for this). "Section 12" (`0x17C8C8`) is
+/// the empty value of the channel's section and of the queue slot (READ `0x1AC1B0..0x1AC1B4`): a channel with
+/// no record here.</summary>
+public sealed class AdvisorHeadChannel
+{
+    /// <summary>A record's authored length (APS record `+4`), frames.</summary>
+    readonly Func<int, int> _frames;
+    public AdvisorHeadChannel(Func<int, int> frames) { _frames = frames ?? throw new ArgumentNullException(nameof(frames)); }
+
+    /// <summary>`0x1AB710`: `(clock − start)·30.0/1000.0`, at speed 1.0.</summary>
+    public const int FramesPerSecond = 30;
+    /// <summary>The empty section (`0x17C8C8` reads `section != 12`): no record on the channel.</summary>
+    public const int None = -1;
+
+    /// <summary>The record on channel 0, <see cref="None"/> before any.</summary>
+    public int Record { get; private set; } = None;
+    /// <summary>Channel `+0x14` bit 1 (from the request's flags &amp; 1).</summary>
+    public bool Looping { get; private set; }
+    /// <summary>Channel `+0x14` bit 4: past the end of a record that does not loop, nothing queued.</summary>
+    public bool EndHeld { get; private set; }
+    /// <summary>Elapsed time in the current record, ms.</summary>
+    public int ElapsedMs { get; private set; }
+    /// <summary>The queued request (`+0x24`/`+0x28`/`+0x2C`), <see cref="None"/> for the empty slot.</summary>
+    public int Queued { get; private set; } = None;
+    public int QueuedFlags { get; private set; }
+    /// <summary>Records started, for the log and the checks.</summary>
+    public int Starts { get; private set; }
+
+    public int Length(int record) => record == None ? 0 : _frames(record);
+    /// <summary>The authored frame now, `elapsed·30/1000`; a held record stays on its last frame.</summary>
+    public float Frame => EndHeld ? Length(Record) : ElapsedMs * (float)FramesPerSecond / 1000f;
+
+    /// <summary>`0x17C5D8` → `0x1ABC80(speed 1.0, section 5, record, flags, channel 0)`.</summary>
+    public void Play(int record, int flags)
+    {
+        if (record == Record) return;                                      // 0x17C5D8: the same → nothing
+        bool unfinished = Record != None && !EndHeld && ElapsedMs * (float)FramesPerSecond / 1000f <= Length(Record);
+        if (unfinished && (flags & 2) == 0) { Queued = record; QueuedFlags = flags; return; }   // 0x1ABD50
+        if ((flags & 2) != 0) Queued = None;                                // 0x1ABE64: +0x24 = 12
+        Start(record, flags);
+    }
+
+    void Start(int record, int flags)
+    {
+        Record = record; Looping = (flags & 1) != 0; EndHeld = false; ElapsedMs = 0; Starts++;
+    }
+
+    /// <summary>`0x1AC048` after <paramref name="milliseconds"/> more on the clock.</summary>
+    public void Step(int milliseconds)
+    {
+        if (Record == None || EndHeld) return;
+        ElapsedMs += milliseconds;
+        if (!(Length(Record) < ElapsedMs * (float)FramesPerSecond / 1000f)) return;   // 0x1AC188 c.olt.s
+        if (Queued != None) { int q = Queued, f = QueuedFlags; Queued = None; Start(q, f); }   // 0x1AC2C4
+        else if (Looping) { ElapsedMs = 0; Starts++; }                     // 0x1AC254: the same record again
+        else EndHeld = true;                                               // 0x1AC298: special 14, flags |= 0x14
+    }
+
+    /// <summary>The state machine's "done" in states 2 and 4: `0x17C880` (end-held) or `0x17C8C8 == 0`
+    /// (section 12, nothing selected).</summary>
+    public bool Done => Record == None || EndHeld;
 }
 
 /// <summary>⚠ STAND-IN HEAD: no model, only the records' lengths in APS frames (findings/advisor-messages.md
-/// §4.3, §4.7: enter 13 = 30, exit 14 = 20, talk 0..6 = 50, 75, 100, 125, 150, 225, 275), advanced at 30 APS
-/// frames a second by the milliseconds the advisor passes it -- the console's own rate: an APS channel's frame
-/// is `(ms − start)·30/1000` on the real-time ms clock (findings/clock-rate.md §6). ⚠ What it lacks is the
-/// model itself, and the channel's "section 12" test (`0x17C8C8`), whose meaning is open.</summary>
+/// §4.3, §4.7: enter 13 = 30, exit 14 = 20, talk 0..6 = 50, 75, 100, 125, 150, 225, 275) on the real channel
+/// (<see cref="AdvisorHeadChannel"/>), advanced at 30 APS frames a second by the milliseconds the advisor passes
+/// it -- the console's own rate: an APS channel's frame is `(ms − start)·30/1000` on the real-time ms clock
+/// (findings/clock-rate.md §6). ⚠ What it lacks is the model itself; the view's head (game/AdvisorHead.cs) has
+/// both.</summary>
 public sealed class AdvisorTimedHead : IAdvisorHead
 {
     /// <summary>`advisor.aps` section 5 record lengths, frames.</summary>
@@ -58,21 +152,18 @@ public sealed class AdvisorTimedHead : IAdvisorHead
     {
         0 => 50, 1 => 75, 2 => 100, 3 => 125, 4 => 150, 5 => 225, 6 => 275, 13 => 30, 14 => 20, _ => 0,
     };
-    public const int FramesPerSecond = 30;
+    public const int FramesPerSecond = AdvisorHeadChannel.FramesPerSecond;
 
+    public AdvisorHeadChannel Channel { get; } = new(Frames);
     /// <summary>The record on channel 0, −1 before any.</summary>
-    public int Record { get; private set; } = -1;
-    public bool Looping { get; private set; }
+    public int Record => Channel.Record;
+    public bool Looping => Channel.Looping;
     /// <summary>Elapsed time in the current record, ms.</summary>
-    public int ElapsedMs { get; private set; }
+    public int ElapsedMs => Channel.ElapsedMs;
 
-    public void Play(int record, int flags)
-    {
-        if (record == Record) return;                                      // 0x17C5D8: the same → nothing
-        Record = record; Looping = (flags & 1) != 0; ElapsedMs = 0;
-    }
-    public bool ChannelDone => Record < 0 || (!Looping && ElapsedMs * FramesPerSecond >= Frames(Record) * 1000);
-    public void Step(int milliseconds) { if (Record >= 0) ElapsedMs += milliseconds; }
+    public void Play(int record, int flags) => Channel.Play(record, flags);
+    public bool ChannelDone => Channel.Done;
+    public void Step(int milliseconds) => Channel.Step(milliseconds);
 }
 
 /// <summary>What <see cref="ParkAdvisor"/> presented (`0x1078E8`): for the log and for step B.</summary>
@@ -108,7 +199,8 @@ public readonly record struct AdvisorPlayback(ushort Id, AdvisorRecordType Kind,
 /// 50-tick delay is 2 s and the 100-tick cooldown 4 s. The speech runs on the ms clock `0x147158`, measured here
 /// through <see cref="MillisecondsPerTick"/>, and the head's APS frames are real-time 30 a second on that clock
 /// (`currentFrame = (ms − start)·30/1000`, findings/clock-rate.md §4, §6) -- which settles the research's open
-/// "tick ↔ 30 fps frame" question: the 30-frame enter is 25 passes, the 20-frame exit 16⅔.
+/// "tick ↔ 30 fps frame" question: 30 frames are 1000 ms, 25 passes -- and since a record ends on the first update
+/// STRICTLY past its length (<see cref="AdvisorHeadChannel"/>), the enter holds 26 passes and the 20-frame exit 17.
 ///
 /// ⚠ ADAPTERS, each labelled where it lives: <see cref="SpeechLength"/> (the stream's length, audio is the
 /// view's), <see cref="Head"/> (the model), <see cref="SkipHeld"/> (the pad),
@@ -116,8 +208,9 @@ public readonly record struct AdvisorPlayback(ushort Id, AdvisorRecordType Kind,
 /// <see cref="GoalNotices"/> (the port has no goals record), the random stream.
 ///
 /// ⚠ OUT OF SCOPE, said: the TUTORIAL -- the dispatcher `0x107390` → `0x206358` and its 22 handlers; its
-/// entry points are the stubs <see cref="TutorialEvent"/> and <see cref="TutorialMessage"/> (`0x107C18`). Lips,
-/// mouth shapes, voice, ducking and drawing are step B's (the data they need is exposed here). The vestigial
+/// entry points are the stubs <see cref="TutorialEvent"/> and <see cref="TutorialMessage"/> (`0x107C18`). The lip
+/// step and the mouth shapes are here (<see cref="MouthShape"/>, the <see cref="Lips"/> and <see cref="Rand"/>
+/// adapters); the voice, the ducking and the drawing are the view's (game/Viewer.Advisor.cs). The vestigial
 /// idle timer (`+0x108`, `+0x225`, `0x107550`/`0x107BD8`) has no visible effect and is not ported -- ⚠ it
 /// draws `rand(5)` from the game's one stream, which the port does not share.
 ///
@@ -202,6 +295,8 @@ public sealed class ParkAdvisor
             _variant[i] = c <= 1 ? (byte)0 : (byte)random(c);
         }
         Stack = new AdvisorMessageStack { TutorialEvent = n => TutorialEvent(n), Replay = r => TutorialMessage(r) };
+        var mouthRand = new NewlibRand(0xAD715);
+        Rand = mouthRand.Next;
     }
 
     public ParkClock Clock { get; }
@@ -265,8 +360,18 @@ public sealed class ParkAdvisor
     public ushort SpeechSoundId { get; private set; }
     public int SpeechLengthMs { get; private set; }
     public int SpeechElapsedMs { get; private set; }
-    /// <summary>`+0x234`: the lip gate (set when a voice starts, cleared by the head going down). Step B steps the track.</summary>
+    /// <summary>`+0x234`: the lip gate -- set when a voice starts, toggled by each lip mark the track passes and
+    /// cleared by its terminator (`0x105F30`), cleared by the head going down (`0x106600`).</summary>
     public bool LipGate { get; private set; }
+    /// <summary>`+0x248`, the mouth shape 0..4 (`0x105FC8`: 0 normal, 1 aah, 2 eee, 3 ooh, 4 sss). The start of a
+    /// voice STORES 0 without touching the meshes (`0x1078E8`); every exit calls `0x105FC8(0)`.</summary>
+    public int MouthShape { get; private set; }
+    /// <summary>`+0x244` != 0: the playing voice has a lip track (message 268's `PS2_` has none, so it flaps at
+    /// random for its whole length -- §4.4).</summary>
+    public bool LipTrackAttached => _lip != null;
+    /// <summary>Mouth changes (`0x105FC8` calls) -- instrumentation.</summary>
+    public long MouthChanges { get; private set; }
+    LipTrack.Playback _lip;
     /// <summary>Updates run -- instrumentation.</summary>
     public long Ticks { get; private set; }
 
@@ -299,6 +404,17 @@ public sealed class ParkAdvisor
     public Action<AdvisorRequest, bool> Submitted { get; set; }
     /// <summary>Log hook: a message was presented (`0x1078E8`).</summary>
     public Action<AdvisorPlayback> Played { get; set; }
+    /// <summary>⚠ ADAPTER for the lip tracks `0x106338` loads at park start into each variant (`record+8+12v+8`,
+    /// from `data\audio\advisor\&lt;LANG&gt;\&lt;stem&gt;.lip`): (message, variant) → its track, or null (no stem, or
+    /// no file -- 268's `PS2_`). The language is the view's; null = no tracks at all.</summary>
+    public Func<int, int, LipTrack> Lips { get; set; }
+    /// <summary>⚠ `0x29CF08` rand(), for the mouth's random shape (§4.4). Natively the game's one newlib stream;
+    /// the port gives the advisor its own (<see cref="NewlibRand"/>, fixed seed) -- the same generator, not the
+    /// console's draw order.</summary>
+    public Func<int> Rand { get; set; }
+    /// <summary>`0x111D78(audio, handle)`: a still-playing speech stream is stopped -- a new message's voice
+    /// (`0x1078E8`), an interrupt (`0x107640`), or off the screen (`0x1072C8`). The view stops its stream.</summary>
+    public Action SpeechStopped { get; set; }
 
     // ================================================================================================
     // Submitting (findings/advisor-messages.md §2).
@@ -410,7 +526,7 @@ public sealed class ParkAdvisor
                 if (Speaking)
                 {
                     SpeechElapsedMs += MillisecondsPerTick;                // 0x111CC8: still playing?
-                    if (SpeechElapsedMs < SpeechLengthMs) break;           // lips and mouth: step B
+                    if (SpeechElapsedMs < SpeechLengthMs) { LipsAndMouth(); break; }   // 0x105F30, 0x106B54..0x106BEC
                     Speaking = false;
                 }
                 if (CurrentId == Bankrupted) GameOver?.Invoke();           // 0x13BDD0
@@ -466,9 +582,51 @@ public sealed class ParkAdvisor
         {
             Head.Play(RecordEnter, 0);
             Costume = _catalogue.Messages[id].Voices[CurrentVariant(id)].AnimationSelector;
+            Head.Dress(Costume);                                           // 0x107B90: +0x1F8, then 0x107160
             EnterPlayed = true;
         }
         SetCurrent(id);
+    }
+
+    /// <summary>⭐ `0x106B54..0x106BEC`, each tick of state 3 while the stream plays (findings/advisor-messages.md
+    /// §4.2, §4.4): the lip step `0x105F30` -- no track: nothing consumed, the gate stays set; a mark passed (its
+    /// µs/1000 strictly below the ms since the voice began, one a tick): the gate flips; the terminator: the gate
+    /// clears -- then the mouth:
+    /// <code>
+    ///   consumed, gate set      → 1 (aah)
+    ///   consumed, gate clear    → 0
+    ///   nothing,  gate set      → one time in five (rand % 5 == 0): (shape + (rand &amp; 3) + 1) % 5, else as it is
+    ///   nothing,  gate clear    → 0
+    /// </code>
+    /// So a voice with no lip track (268) flaps at random for its whole length (READ consequence).</summary>
+    void LipsAndMouth()
+    {
+        bool stepped = false;
+        if (_lip != null)
+        {
+            LipGate = _lip.Advance(unchecked((uint)SpeechElapsedMs));      // 0x147158 − +0x240
+            stepped = _lip.Stepped;
+        }
+        if (!stepped)
+        {
+            if (LipGate)
+            {
+                if (NextRand() % 5 == 0) SetMouth((MouthShape + (NextRand() & 3) + 1) % 5);
+                return;
+            }
+        }
+        else if (LipGate) { SetMouth(1); return; }
+        SetMouth(0);
+    }
+
+    int NextRand() => Rand?.Invoke() ?? 0;
+
+    /// <summary>`0x105FC8(adv, shape)`: `+0x248` = shape, and the model shows that mouth mesh only.</summary>
+    void SetMouth(int shape)
+    {
+        MouthShape = shape;
+        MouthChanges++;
+        Head?.Mouth(shape);
     }
 
     /// <summary>`0x1074C0`: the current id; with the voice flag, a modal id (208..274, or 123) locks the pad,
@@ -502,6 +660,8 @@ public sealed class ParkAdvisor
             {
                 ms = SpeechLength?.Invoke(id, variant, sound) ?? 0;
                 LipGate = true;
+                MouthShape = 0;                                            // a store: the meshes stay as they are
+                _lip = Lips?.Invoke(id, variant) is { } track ? new LipTrack.Playback(track) : null;   // +0x244
                 SpeechMessage = id; SpeechVariant = variant; SpeechSoundId = sound; SpeechElapsedMs = 0;
                 if (ms > 0)
                 {
@@ -534,16 +694,24 @@ public sealed class ParkAdvisor
         return 0x2AF7 < len ? 3 : 6;
     }
 
-    /// <summary>`0x106600(adv, cut)`: with a model and the enter played, the exit record 14 (flags 0, or 2 cut
-    /// short); `+0x230` = 0; the lips off; mouth shape 0 (step B's).</summary>
+    /// <summary>`0x106600(adv, cut)`: with a model and the enter played, the exit record 14 (flags 0 -- queued
+    /// behind a talk loop, see <see cref="AdvisorHeadChannel"/> -- or 2, cut short: at once); `+0x230` = 0; the
+    /// lips off (`+0x234` = 0, `+0x244` = 0); mouth 0 (`0x105FC8(0)`).</summary>
     void HeadDown(bool cut)
     {
         if (Head != null && EnterPlayed) Head.Play(RecordExit, cut ? 2 : 0);
         EnterPlayed = false;
         LipGate = false;
+        _lip = null;
+        SetMouth(0);
     }
 
-    void StopSpeech() { Speaking = false; }
+    /// <summary>`0x111D78`, when the stream is still playing.</summary>
+    void StopSpeech()
+    {
+        if (Speaking) SpeechStopped?.Invoke();
+        Speaking = false;
+    }
 
     /// <summary>⭐ `0x1072C8` GetTheAdvisorOffTheScreen: state 2 → 4 with the normal exit; state 3 → the speech
     /// stopped, the exit cut short, 4. Called by the skip, leaving the park (`0x1510F8`: Save Game, Quit, Close
@@ -578,6 +746,29 @@ public sealed class ParkAdvisor
     {
         if ((Flags & FlagRules) == 0) return;
         Scheduler?.AddCounter(j, d);
+    }
+
+    /// <summary>⭐ `0x14A7B0(object, 1)`, an object leaving the park -- the port's delete, through
+    /// <see cref="ParkSim.Remove"/> (<paramref name="ride"/> null for a placement the sim does not run). What it does
+    /// to the message stack, in the console's order (findings/advisor-messages.md §5.5):
+    /// <list type="number">
+    /// <item>the object's own removal `vt+0x10C` runs FIRST: for a ride that is `0x1E12E0` (READ: word `0x1E12E0` at
+    /// slot `+0x10C` of the ride vtables `0x368080` and `0x369AA0`; `0x1E0E70` stores `0x369AA0` at the object's
+    /// `+0x10`), which calls `0x1088E0` (<see cref="AdvisorMessageStack.RideRemoved"/>): the ride's first record is
+    /// marked, every later one removed at once;</item>
+    /// <item>then `0x13D8C0` (<see cref="AdvisorMessageStack.ObjectRemoved"/>) marks every type-2 record in turn,
+    /// whatever its object -- so the LAST type-2 record is the one pending, and the ride's own mark from step 1
+    /// is OVERWRITTEN (one pending slot). READ quirk, reproduced: with a later type-2 record about another ride,
+    /// that one goes and the deleted ride's first record stays, still attached to it.</item>
+    /// </list>
+    /// ⚠ The port's delete is taken as the `0x14A7B0(obj, 1)` of `0x123FF8` (the second argument is what runs
+    /// step 1); the other caller, `0x126898`, passes 0 (INFERRED which is the player's delete). ⚠ Nothing clears a
+    /// QUEUED message's object (`0x107760`/`0x107870` never compare it): a ride's message still in the ring
+    /// carries the ride when it is played.</summary>
+    public void ObjectLeftPark(ParkRide ride)
+    {
+        if (ride != null) Stack.RideRemoved(ride);                         // vt+0x10C = 0x1E12E0 → 0x1088E0
+        Stack.ObjectRemoved();                                             // 0x13D8C0
     }
 
     /// <summary>`0x13A178` (Game Options' Tutorial On/Off): the 0x40 bit only.</summary>
@@ -640,6 +831,7 @@ public sealed class ParkAdvisor
         {
             sim.Advisor = (id, ride) => Submit(new AdvisorRequest(unchecked((ushort)id), ride));
             sim.AdvisorEvent = CountEvent;
+            sim.ObjectRemoved = ObjectLeftPark;
         }
         if (staff != null) staff.Advisor = id => Submit(new AdvisorRequest(unchecked((ushort)id)));
         if (management != null) management.Advisor = id => Submit(new AdvisorRequest(unchecked((ushort)id)));

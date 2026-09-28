@@ -118,13 +118,16 @@ public sealed class NativeModelRegistry
     }
 
     /// <summary>`0x17B240`'s folder for an entry, backslashed as the executable writes it, e.g.
-    /// `Data\Chars\Handyman` or `Data\Generic\MiscMesh`.</summary>
+    /// `Data\Chars\Handyman`, `Data\Generic\MiscMesh` or `Data\Generic\Advisor`.
+    /// ⭐ World 4 with no flag 0x40 (the advisor, category 13, flags 0x80): `0x17B324..0x17B334` reads
+    /// `[0x2BF2A0 + world·4]` with no bound, and `0x2BF2A0 + 4·4` IS `0x2BF2B0` -- the shared base, "Data".</summary>
     public string Directory(Entry e)
     {
         ArgumentNullException.ThrowIfNull(e);
         var c = Categories[e.Category];
         string root = (c.Flags & 0x40) != 0 ? Shared
             : (uint)e.World < (uint)Worlds.Count ? Worlds[e.World]
+            : e.World == AnyWorld && WorldTable + AnyWorld * 4 == SharedBase ? Shared
             : throw new InvalidOperationException($"{e.Name}: world {e.World} with no flag-0x40 category has no folder");
         return (c.Flags & 1) != 0 ? $@"{root}\{c.Name}\{e.Override ?? e.Name}" : $@"{root}\{e.Override ?? c.Name}";
     }
@@ -139,7 +142,8 @@ public sealed class NativeModelRegistry
             throw new InvalidDataException($"{e.Name}: folder {Directory(e)} is not under Data");
         int skip = 1;
         string archive = "DATA";
-        if ((Categories[e.Category].Flags & 0x40) == 0) { archive = parts[1].ToUpperInvariant(); skip = 2; }
+        // A world folder is `Data\<World>`; the shared base (flag 0x40, or world 4 -- see Directory) is `Data` itself.
+        if ((Categories[e.Category].Flags & 0x40) == 0 && e.World != AnyWorld) { archive = parts[1].ToUpperInvariant(); skip = 2; }
         return (archive, "/" + string.Join("/", parts.Skip(skip)) + "/" + e.Name + ".mps");
     }
 }
