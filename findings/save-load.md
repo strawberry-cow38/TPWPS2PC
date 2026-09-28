@@ -842,3 +842,70 @@ Advisor ring references to retired rides still need registry closure supplied vi
 spawning/linked/native retired owners still refuse. GameSettings/HiddenAwards GAME scope remains
 separate. Then staged startup path (_Ready MUST NOT reinitialize), atomic publication, UI Save/
 Load file flow and full normal-play scenario tests. Do not enable buttons from these fixture passes.
+
+## Cold assets/audio + scripted placed scene checkpoint (September 28, 2026)
+
+Code2f91100. Still NOT a total player load; root auto-census, native vehicle scenes and several
+physical/UI/effect roots are incomplete. This checkpoint moves beyond preloaded source assets:
+SaveAssetRegistry manifests full-disc hash/length plus exact app-approved WAD/member/kind/content
+IDs. Cold Open uses the APPLICATION'S trusted disc path and origin policy, never file paths or
+byte offsets from the save. Original bytes stay private; shared immutable objects and explicit
+private Model copies are distinct. Verified complete sibling directories are opt-in: no silent
+spawn enable/disable. Keep registry alive while loaded-world resolvers use it; not just until stage.
+
+Parent extended worker's SAM-only loader with explicit CompiledDefinition kind: separate asset ID,
+existing CompiledAssets.Attach using fixed DATA/arsdb.dba + EUR identity-key tree, full-disc hash
+covering those inputs. Raw payload/Shop settings must match the actual source compiled definition.
+Other regional/custom compiled joins are not inferred; mismatch fails. First test used language
+"eng" where TextDatabase.Load expects region "eur"; nonvacuous compiled-entry check caught it,
+fixed to the same region the Viewer uses. Uncompiled definitions stay uncompiled.
+
+SaveSoundRegistry: cold verified MAP/SDT file closure, fresh catalogues/events/stream decode using
+RideSounds' existing decoder helper (temporary detached decoder, no gameplay/audio playback).
+Viewer.SoundState captures actual _sounds + explicit moving/base-parameter provider IDs, stages a
+stopped shell, publishes voices only once. New registry survives for later catalogue lookups.
+It is NOT YET joined into central WorldCore/ActorWorld. Explicit refusals remain for ToolSounds,
+browser player, advisor voice handled elsewhere, coaster parameter hooks. Null decoded-stream
+fingerprints validate, but a genuine null-decode fixture was not available; not claimed tested.
+No source CaptureBindings assets are reused by cold Open. Parent fixed smoke's leaked constructor-
+owned Weather/Flags/Thoughts nodes; final cold-sound smoke is warning-free.
+
+Viewer.PlacedSceneState operates actual _scripted/_building/_rideMeshes/_current associations and
+Park.Placed holder trees; distinct placed/runtime IDs, complete renderer subtrees via AnimatedModel
+snapshots, ordered children/transforms/visibility. Parent added bounded represented_activation_serial
+metadata (restored without Activate). Unknown metadata/static mesh inputs still refuse. Native
+tracks/coasters and seaplane/ferry scenes are explicitly refused, NOT silently lost:
+- TrackModel currently discards non-Flowing AnimatedModel owners.
+- CoasterPylon discards its AnimatedModel owner.
+- Vehicle RseModelPresenter retained renderer is not exposed.
+Those lifetime owners must be retained before complete scene capture is possible. Active native
+track/coaster tools, standalone preview _current, and unknown subtrees also refuse.
+
+Tests (parent-run):
+- SaveAssetRegistrySmoke36PASS: real ride/character/terrain/model/APS/SAM/RSE, compiled DBA payload,
+  manifest FILE -> new registry, shared/private identity, missing/mislabelled/hash/policy refusal,
+  unchanged disc length/timestamp. A SELF-CONSISTENT forged ID/hash pair tests actual content
+  verification, not just metadata inconsistency; an existing raw asset outside the exact policy
+  tests allowlist scope. No extraction.
+- ViewerPlacedSceneSaveSmoke: ONE FILE containing cold manifest + ParkSim + Park geometry + actual
+  scripted scene. Load uses ParkSim.FromState, not second Add/Create (worker's original fixture did
+  that; parent replaced it). Real Crazy Ape, placed41/runtime709, activation123, six subsequent
+  sim advances/render samples identical. No source asset resolver supplies the loaded scene.
+  Textures intentionally null, no full terrain rendering/normal Viewer._Ready scenario claimed.
+- ViewerSoundWorldSaveSmoke370PASS: real graph repeats/sustain/fade, fresh audio manifest/file,
+  actual Viewer _sounds join, paused cursors/timers and250futureticks. ShellViewer deliberately
+  suppresses _Ready; not the final player publication path. Integrated bus/audio chain not yet tested.
+- WorldCore176PASS unchanged. Six valid mutants fail: actual-disc content verification, compiled
+  join, private Model isolation, activation metadata, silent track omission, sound loop decoding.
+  All restored; /tmp/tpw-cold-mutations.log. Three delegates finished, no pending worker.
+
+Gates CLEAN2f91100: SaveAudit243950PASS,83PythonPASS; /tmp/tpw-save-cold-matrix-clean4PASS+4exact
+retailreds,exit2,landing_evidenceTrue; /tmp/tpw-save-cold-runtime-clean10/11ONLYoldFANTASYanchor
+00e5cd9. origin/main still e59fd64; cow perf3fd56e2 is on its branch, NOT merged here yet.
+
+NEXT concrete work: retain TrackModel non-flowing and CoasterPylon/vehicle render owners, snapshot
+native scene interpolation/procedural inputs; auto-map actual Viewer assets/origins/providers into
+cold manifests; central physical sound join plus ToolSounds/browser/voice scope; security particles,
+camera/editing tool state. Preserve geometry/render/walk grid aliases and actual compiled defs.
+Then one staged normal-world bootstrap WITHOUT _Ready/Create replay, atomic publication and UI.
+Do not redo cold registries or logical controller DTOs. No Save/Load buttons enabled.

@@ -3403,3 +3403,14 @@ Next admission/ridequeue/request resources (+Viewer.Entrance pending seam), then
   six valid mutants fail. Core243950+83Python. Clean matrices4+4retail/10of11oldanchor.
 - Player Save/Load NOT ready: cold asset/provider manifest, complete scene/audio/effects/camera/tools
   and staged startup/publication still required. No normal player park load claimed.
+
+### Save research — cold disc assets/audio and scripted scene (2f91100)
+- Verified disc/member manifests, shared/private asset identities, explicit compiled DBA definition
+  kind. Cold physical sound streams/timers restore into actual _sounds without playback until commit.
+- Single-file scripted sim + placement + retained scene now loads with cold assets and no Add/Create;
+  distinct placed/runtime IDs, activation metadata and child order preserved.
+- Asset36, sound370, scripted scene+six future samples pass; six mutants fail. Core243950+83Python;
+  clean matrices4+4retail and10/11oldanchor. No asset/executable extraction.
+- NOT player-ready: native scene owners are currently discarded by track/pylon/vehicle builders;
+  retain them next. Automatic live-Viewer manifest mapping, remaining sound/tool/effect/camera roots,
+  _Ready bypass/publication/UI still outstanding. New cold registries should not be reimplemented.

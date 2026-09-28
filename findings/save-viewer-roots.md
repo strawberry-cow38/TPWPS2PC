@@ -193,3 +193,22 @@ lifecycle are still outstanding. Complete all roots before _Ready bypass/publica
 Main e59fd64 supersedes staff render-dictionary hole preservation: RNG iteration is now the saved
 ParkStaff.Members newest-first list. Removed actor map-hole DTOs/wrappers; core queue/room map
 tracking is unchanged. Scene sibling order and actor/reference identity remain significant.
+
+## September 28 — cold loaders and scripted scene now available (2f91100)
+
+SaveAssetRegistry is a verified cold disc loader, including explicit EUR compiled-definition joins;
+SaveSoundRegistry cold-decodes actual streams, Viewer.SoundState joins _sounds but is NOT integrated
+into WorldCore yet. Viewer.PlacedSceneState joins real scripted placement holders and renderer state,
+with native activation serial metadata. A single FILE now reconstructs a scripted sim + placement +
+scene against cold assets, without Add/Create. Tests still use explicit source-origin/provider tables,
+not automatic census of a normal running Viewer. Registry lifetimes extend through future loads.
+
+NEXT blockers found by source inspection: TrackModel discards non-Flowing piece renderers;
+CoasterPylon discards its renderer; vehicle RseModelPresenter renderer needs exposure. Retain these
+owners first, then capture native car/train interpolation and procedural segment/material inputs.
+Unknown static/metadata-bearing subtrees and active tools are currently explicit refusals.
+Actual Viewer._player is the sound-browser player (PlaySelected); it is constructed even when unused.
+Do not label it park music without reading its consumers. ToolSounds has five independent physical
+UI-bank voices; no snapshot yet. Caller must establish GAME-vs-PARK lifetime rather than just dropping
+these fields to bypass SoundInventoryGuard. Cold manifest policy must come from app/disc catalogue,
+not trust the saved allowlist. No UI publication/bootstrap integration yet.

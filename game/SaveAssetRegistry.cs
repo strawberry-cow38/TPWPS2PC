@@ -10,7 +10,8 @@ namespace TPWPS2Viewer;
 /// <summary>
 /// Disc-only asset identity, not a world snapshot. The application supplies BOTH the disc path
 /// and an exact origin allowlist; neither is taken from a save. No extraction, offsets, runtime
-/// callbacks or Create replay. Single-threaded, quiescent use. Dispose after staging finishes.
+/// callbacks or Create replay. Single-threaded, quiescent use. Keep alive for the loaded world
+/// while future asset/sibling resolvers reference it; dispose on world teardown, NOT after staging.
 /// Shared core readers expose mutable collections: borrowers MUST treat them as read-only.
 /// PrivateModel is the explicit writable path. Private source bytes are never lent to readers.
 /// </summary>
