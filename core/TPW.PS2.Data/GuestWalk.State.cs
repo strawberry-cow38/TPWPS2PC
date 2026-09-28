@@ -289,6 +289,7 @@ public sealed partial class GuestWalk
                 && c.Z >= short.MinValue && c.Z <= Math.Max(short.MaxValue, s.Height), "coordinate bounds");
         }
         var ids = new HashSet<int>(); var slots = new HashSet<int>(); int cells = 0;
+        var liveIds = s.OrderedLiveGuests.ToHashSet();
         foreach (var g in s.Guests)
         {
             StateRequire(g != null && g.GraphId > 0 && g.GraphId <= s.Guests.Length && ids.Add(g.GraphId), "guest graph ID");
@@ -304,7 +305,11 @@ public sealed partial class GuestWalk
                 foreach (var c in g.Route) { Cell(c, true); StateRequire(paths.Contains(c.Cell), "legacy route cell"); }
                 StateRequire(g.RouteIndex >= 0 && g.RouteIndex < g.Route.Length, "legacy route index");
             }
-            else StateRequire(g.NativeLease != null || g.RouteIndex == 0, "absent legacy route index");
+            // Remove/Clear dispose a native lease without rewriting the detached body's
+            // coarse slot. Queue boarding history retains these exact inactive objects.
+            else StateRequire(g.NativeLease != null || g.RouteIndex == 0
+                || !liveIds.Contains(g.GraphId) && g.RouteIndex >= -1 && g.RouteIndex < NativeRoutePool.Capacity,
+                "absent legacy route index");
             if (g.NativeLease is not { } l) continue;
             StateRequire(ValidId(l.OwnerId) && ValidId(l.InputsId) && g.Route == null && g.Progress == 0, "lease refs/legacy conflict");
             NativeGuestRoute.ValidateState(l.Cursor, pool);

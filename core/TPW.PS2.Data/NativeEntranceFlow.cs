@@ -10,7 +10,7 @@ namespace TPW.PS2.Data;
 /// experimental bus consumer. The ordinary Walk loop MUST NOT also step these leases.
 /// All calls and services are single-threaded; callbacks must not reenter mutations.
 /// </summary>
-public sealed class NativeEntranceFlow
+public sealed partial class NativeEntranceFlow
 {
     public enum State
     {
@@ -210,17 +210,18 @@ public sealed class NativeEntranceFlow
         ? Motion(e).Position : null;
 
     public IReadOnlyList<Observation> Observations =>
-        Array.AsReadOnly(_allocated.Select(Snapshot).ToArray());
+        Array.AsReadOnly(_allocated.Select(ObserveEntry).ToArray());
 
-    static Observation Snapshot(Entry e) => new(e.Guest, e.State, e.Mode, e.Group,
+    static Observation ObserveEntry(Entry e) => new(e.Guest, e.State, e.Mode, e.Group,
         e.Speed, e.Baseline, e.Token, e.QueueNode != null, e.StageCounted,
         e.AcceptanceAttempted, e.Accepted, e.Stopped, e.Failure, e.Serial,
         e.OutgoingDirection, e.DeferredSticky, e.AlternateRequestFlag);
 
-    void Trace(string message, Entry e) => _services.Trace?.Invoke(new(message, Snapshot(e)));
+    void Trace(string message, Entry e) => _services.Trace?.Invoke(new(message, ObserveEntry(e)));
 
     void Enter()
     {
+        if (!_stateHydrated) throw new InvalidOperationException("Entrance snapshot shell is not hydrated.");
         if (_busy) throw new InvalidOperationException("NativeEntranceFlow callbacks cannot reenter mutations.");
         _busy = true;
     }

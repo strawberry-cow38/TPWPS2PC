@@ -41,7 +41,7 @@ namespace TPW.PS2.Data;
 ///   (`0x18DB70` has no caller), the late result writes a route head into the freed slot and leaks
 ///   those output slots until the next route reset (findings/staff-person.md §2.6). A deliberate
 ///   difference: the pool here is shared with the guests, and a leak would starve them.</summary>
-public sealed class StaffRouteService
+public sealed partial class StaffRouteService
 {
     /// <summary>`0x18C698`'s request-record pool size (shared with guests natively).</summary>
     public const int Records = 10;

@@ -35,6 +35,15 @@ void RequireEveryJsonMember<T>(T state)
     }
 }
 
+if(args.Length>0 && args[0]=="--controllers-only")
+{
+    checks += NativeEntranceFlowSaveChecks.Run();
+    checks += NativeRideQueueSaveChecks.Run();
+    checks += StaffRouteServiceSaveChecks.Run();
+    Console.WriteLine($"PASS ControllerSaveAudit: {checks} checks (native controllers; not a whole world save).");
+    return 0;
+}
+
 if(args.Length>0 && args[0]=="--visitors-only")
 {
     GuestWalkSaveChecks.Run(Check);VisitorNeedsSaveChecks.Run(Check);ParkVisitorsSaveChecks.Run(Check);
@@ -62,6 +71,9 @@ if(args.Length>0)
     DiscParkSimSaveChecks.Run(disc,Check);
     DiscVisitorGraphSaveChecks.Run(disc,Check);
 }
+checks += NativeEntranceFlowSaveChecks.Run();
+checks += NativeRideQueueSaveChecks.Run();
+checks += StaffRouteServiceSaveChecks.Run();
 GuestWalkSaveChecks.Run(Check);
 VisitorNeedsSaveChecks.Run(Check);
 ParkVisitorsSaveChecks.Run(Check);

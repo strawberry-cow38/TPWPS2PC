@@ -173,7 +173,7 @@ public static class NativeQueueWaiting
 ///   the guest list and the ride list was not read.</item>
 /// </list>
 /// </summary>
-public sealed class NativeRideQueues
+public sealed partial class NativeRideQueues
 {
     public enum Step { WalkIn, Waiting, MoveUp, Quit, Release }
 
@@ -214,7 +214,7 @@ public sealed class NativeRideQueues
     readonly ParkVisitors _visitors;
     readonly Services _services;
     readonly object _owner = new();
-    readonly Dictionary<ParkRide, List<Member>> _queues = new(ReferenceEqualityComparer.Instance);
+    readonly SnapshotReferenceMap<ParkRide, List<Member>> _queues = new();
     readonly List<Member> _members = new();
     uint _now;
 
@@ -255,6 +255,7 @@ public sealed class NativeRideQueues
     /// again and plans the walk in. True means this controller now holds the guest's lease.</summary>
     public bool Arrive(Guest guest, ParkRide ride)
     {
+        RequireHydratedState();
         if (guest == null || ride == null || Owns(guest) || _services.Shape(ride) is not { } shape) return false;
         var list = Queue(ride);
         if (!_visitors.Takes(ride) || list.Count >= Capacity(ride)
@@ -263,8 +264,7 @@ public sealed class NativeRideQueues
             Refused++;
             return false;
         }
-        var inputs = new NativeMotionInputs(() => _services.Speed(guest), () => 0x4000,
-            () => _services.AnimationReady(guest)) { SlotAdvanced = () => _services.SlotAdvanced?.Invoke(guest) };
+        var inputs = CreateStateInputs(guest);
         var route = NativeRouteOutput.FromCells(NativeQueueSpots.Walk(shape, guest.Cell, NativeQueueSpots.CellOf(spot)), spot);
         var result = _visitors.AssignQueueRoute(guest, ride, _owner, route, inputs);
         if (result == GuestWalk.NativeAssignment.Refused) { Refused++; return false; }
@@ -287,6 +287,7 @@ public sealed class NativeRideQueues
     /// <summary>One queue update at console time <paramref name="now"/> (1C4930), before the guests step.</summary>
     public void Tick(uint now)
     {
+        RequireHydratedState();
         _now = now;
         foreach (var (ride, list) in _queues.ToArray())
         {
@@ -475,6 +476,7 @@ public sealed class NativeRideQueues
     /// lease owner (a map reset discards them) and forget them.</summary>
     public void Clear(Action<Guest, object> resolve)
     {
+        RequireHydratedState();
         foreach (var m in _members.ToArray()) resolve?.Invoke(m.Guest, _owner);
         _members.Clear();
         _queues.Clear();

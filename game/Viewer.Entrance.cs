@@ -43,7 +43,7 @@ public partial class Viewer
     GuestWalk _entranceWalk;
     ParkVisitors _entranceVisitors;
     Action<uint> _entrancePriorTick, _entranceTickHook;
-    readonly Queue<Flow.RouteResult> _entranceResults = new();
+    NativeEntranceMailbox _entranceResults = new();
     // Research instrumentation: the last requests with the flow tick they were made on, so a smoke can
     // check 210D70's phase gate. Bounded; never consulted by the flow itself.
     readonly Queue<(Guest Guest, int Mode, int Flags, uint Tick)> _entranceRequests = new();
@@ -124,9 +124,7 @@ public partial class Viewer
 
     IEnumerable<Flow.RouteResult> PumpEntranceRoutes()
     {
-        var ready = _entranceResults.ToArray();
-        _entranceResults.Clear();
-        return ready;
+        return _entranceResults.Drain();
     }
 
     int EntranceValueSum()
