@@ -344,6 +344,9 @@ public static class StaffTables
     public const int SecurityAwardBit = 0, SecurityAwardMessage = 0xA0, SecurityAwardCoverageAbove = 0x50;
     /// <summary>`STR_ADVMES_ADD_WAGES_HIGH`, rule 103's message.</summary>
     public const int WagesHighMessage = 0x52;
+    /// <summary>The ride screen's refused upgrade (`0x1D5C00`): 0xCF UPGRADE_NO_MECHANICS (voiced, no text),
+    /// 0x7D (silent) while the mechanics strike.</summary>
+    public const int UpgradeNoMechanicsMessage = 0xCF, UpgradeMechanicsStrikingMessage = 0x7D;
 
     /// <summary>The type mask the advisor producers take (`0x104FB0`, `0x1053A8`, `0x105538`,
     /// `0x105688` switch on it): 1 mechanic (`0x14D650`), 2 handyman (`0x14D640`), 4 guard

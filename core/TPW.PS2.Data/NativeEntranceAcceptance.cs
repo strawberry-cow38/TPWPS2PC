@@ -15,8 +15,11 @@ public static class NativeEntranceAcceptance
         return f < a ? f <= c ? 1 : 0 : f < b ? -1 : -2;
     }
 
+    /// <param name="classified">⭐ `0x210C78`: the class goes to the advisor's event counter 19 (v75, the
+    /// ticket-price counter rules 13..15 read) -- every class, the refusal's −2 included, unless the debug
+    /// switch "ForceKidsToEnter" (`0x230260`, a stub returning 0). Null: not counted.</param>
     public static bool TryCharge(VisitorNeeds needs, int guest, ParkFinances finance,
-        Func<int> fee, Func<int> valueSum, Func<int,int> random, Action accepted)
+        Func<int> fee, Func<int> valueSum, Func<int,int> random, Action accepted, Action<int> classified = null)
     {
         if (!needs.Has(guest)) throw new InvalidOperationException("Entrance acceptance requires the live guest's cash row.");
         int quoted = fee();
@@ -24,7 +27,9 @@ public static class NativeEntranceAcceptance
         int sum = valueSum();
         int roll = random(5001);
         int classFee = fee(); // 210BD4 re-reads after the sum and RNG, not the cash-test quote
-        if (Classify(sum, classFee, roll) <= -2) return false;
+        int cls = Classify(sum, classFee, roll);
+        classified?.Invoke(cls);
+        if (cls <= -2) return false;
         accepted(); // native manager counter increments before finance
         int charged = fee(); // 100D28 re-reads the fee and returns this amount
         finance.CreditAdmission(charged); // 100D28: the credit, then the gate total and ring

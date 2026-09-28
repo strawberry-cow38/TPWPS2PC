@@ -99,16 +99,11 @@ public partial class Viewer
         _staff.AnimationReady = StaffAnimationReady;
         _sounds ??= MakeSounds();
         _staff.Sound = PlayStaffSound;
-        // ⚠ This port has no advisor that posts messages in the park, so the one the staff code
-        // raises (ADD_MAX on the fifth hire of a type) is logged rather than dropped.
-        _staff.Advisor = id => GD.Print($"[staff] advisor message 0x{id:X} raised -- this port has no in-park advisor to post it");
         _staff.Litter.Added = OnLitterAdded;
         _staff.Litter.Removed = OnLitterRemoved;
-        // ⭐ Mechanics (findings/staff-mechanics-guards.md): the ride side's breakdown advisors and
-        // sounds, the staff's HANDLE plays (chatter, repair noise) and the mouth a mechanic leaves by.
-        // ⚠ No in-park advisor here either, so the ride messages (0x36/0x37/0x38/0x39/0x87) are logged.
-        _visitors.Sim.Advisor = (id, ride) =>
-            GD.Print($"[ride] advisor message 0x{id:X} about {(ride == null ? "the park" : DisplayName(ride))} -- this port has no in-park advisor to post it");
+        // ⭐ Mechanics (findings/staff-mechanics-guards.md): the ride side's sounds, the staff's HANDLE plays
+        // (chatter, repair noise) and the mouth a mechanic leaves by. The ride side's advisor messages
+        // (0x36/0x37/0x38/0x39/0x87, the ride attached) and the staff's go to the park's advisor (AttachAdvisor).
         _visitors.Sim.RideSound = PlayRideServiceSound;
         _staff.HandleSound = PlayStaffHandleSound;
         _staff.HandlePlaying = StaffHandlePlaying;
@@ -132,6 +127,7 @@ public partial class Viewer
                + $"{_modelRegistry?.Entries.Count ?? 0} registry entries; the toilet stand-in is off, handymen clean");
         AttachSecurity();                                                // Viewer.Security.cs: guards, entertainers
         AttachManagement();                                              // Viewer.Management.cs: strikes, training, rooms
+        AttachAdvisor();                                                 // Viewer.Advisor.cs: every message, the rules
     }
 
     /// <summary>Drop the old park's staff, their nodes and the hire tool's hold.</summary>

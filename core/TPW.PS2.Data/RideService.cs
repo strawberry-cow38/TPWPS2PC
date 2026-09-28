@@ -169,8 +169,8 @@ public sealed partial class ParkSim
     /// <summary>`0x1542A0`: n = 0.</summary>
     internal void ClearUpgrades() => _upgrades.Clear();
 
-    /// <summary>⭐ The advisor sink: (message id, the ride attached by `0x107CB0`). ⚠ The port has no
-    /// in-park advisor, so the viewer logs these (and the staff's own, <see cref="ParkStaff.Advisor"/>).</summary>
+    /// <summary>⭐ The advisor sink: (message id, the ride attached by `0x107CB0`) -- <see cref="ParkAdvisor.Submit"/>
+    /// (<see cref="ParkAdvisor.Attach"/> wires it, and the staff's own, <see cref="ParkStaff.Advisor"/>).</summary>
     public Action<int, ParkRide> Advisor { get; set; }
 
     /// <summary>`0x103658`, which of 0x37/0x38/0x39 the enter-5 handler posts. Set when a
@@ -183,8 +183,18 @@ public sealed partial class ParkSim
     /// to +-30000 (findings §1.5). Slot 0 counts enters of 4, slot 1 enters of 5. ⚠ The consumer is
     /// not traced; kept so it is there when it is.</summary>
     public IReadOnlyList<short> AdvisorCounters => _advisorCounters;
-    void Count(int slot, int delta) =>
+    void Count(int slot, int delta)
+    {
         _advisorCounters[slot] = (short)Math.Clamp(_advisorCounters[slot] + delta, -30000, 30000);
+        RaiseAdvisorEvent(slot, delta);
+    }
+
+    /// <summary>⭐ The advisor's event-counter sink, `0x1073C0(adv, j, d)`: every writer site the port has
+    /// raises through here (the rides' 0/1 above, the staff's 2/20/21, a queue quit's 3, the shops' 5..7,
+    /// 9..12, 14..17, the entrance's 19) -- <see cref="ParkAdvisor.CountEvent"/>, which drops them unless the
+    /// advisor's flags bit 3 is set. Null: nobody counts (the per-class arrays above still do).</summary>
+    public Action<int, int> AdvisorEvent { get; set; }
+    internal void RaiseAdvisorEvent(int j, int d) => AdvisorEvent?.Invoke(j, d);
 
     /// <summary>⭐ A ride-side sound: (ride, native audio category, event, positional). Category 2 is
     /// `AUDIO/GLOBAL/ride` (findings/sound.md's registry): 0x70 at enter 5, 0x18 on condemnation

@@ -15,8 +15,8 @@ namespace TPWPS2Viewer;
 /// <see cref="ParkStaff"/>'s own calls (they need nothing of the view).
 ///
 /// ⚠ ADAPTERS, each said once here and again where it lives:
-/// - the port has no in-park advisor: a message with text is "posted" to the status line and the log
-///   (<see cref="PostAdvisor"/>); a silent one (row 310) is logged; voices are not played;
+/// - the calendar's messages (the award, the in-the-red chain) go to the park's advisor
+///   (<see cref="SubmitAdvisor"/>, Viewer.Advisor.cs), which logs what it presents -- never the status line;
 /// - the UI sounds (0xAF, 0x12F, 0x1F, 0xDB, 0xC5) are cued in the UI group, at the camera;
 /// - the staff room's 0xBC ambience is started by polling the room's status (core, <see cref="ParkStaff.StaffRoomAmbience"/>).
 /// </summary>
@@ -34,7 +34,7 @@ public partial class Viewer
     {
         _management ??= new ParkManagement(_calendar, _awards)
         {
-            Advisor = id => PostAdvisor(id, "award"),
+            Advisor = id => SubmitAdvisor(id, "calendar"),
             UiSound = id => ManagementUiSound(id),
         };
         _management.Finances = _sim?.Finances;
@@ -52,30 +52,11 @@ public partial class Viewer
     void AttachManagement()
     {
         if (_staff == null) return;
-        _staff.Advisor = id => PostAdvisor(id, "staff");
         _staff.UiSound = ManagementUiSound;
         // ⚠ 0x14BC28 moves the CURSOR to the member it focuses; this port's game camera follows its own
         // pan cursor, so it is pointed at him instead.
         _staff.Focus = m => { if (m.Active) LookAtCell(m.Cell.X, m.Cell.Z); };
         _staff.StaffRoomAmbience = StaffRoomAmbience;
-    }
-
-    /// <summary>⚠ The port has no in-park advisor, so a message the game would post is SHOWN on the status
-    /// line when it has text (the catalogue's row is not 310) and logged either way. ⭐ Of the strike
-    /// ladder only UNHAPPY (0x16..0x1A) and HAPPIER (0x25..0x29) have text; VERY_UNHAPPY, STRIKING and
-    /// STRIKE_END_BAD are silent on PS2, so a strike starts and ends without a word.</summary>
-    void PostAdvisor(int id, string from)
-    {
-        try { _advisor ??= _lib?.Disc == null ? null : AdvisorCatalogue.Load(_lib.Disc); }
-        catch (Exception e) { GD.PrintErr($"[advisor] catalogue unreadable: {e.Message}"); }
-        var msg = _advisor != null && id >= 0 && id < _advisor.Messages.Count ? _advisor.Messages[id] : null;
-        if (msg != null && msg.HasText)
-        {
-            string text = _text?.Text("eng", msg.TextRow)?.Replace("\n", " ") ?? $"#{msg.TextRow}";
-            Status(text);
-            GD.Print($"[advisor] posted 0x{id:X} {msg.SymbolicKey} ({from}): {text}");
-        }
-        else GD.Print($"[advisor] 0x{id:X} {msg?.SymbolicKey ?? "?"} ({from}) is silent (text row 310) -- logged, not posted");
     }
 
     /// <summary>A management UI sound, in the UI group, at the camera (⚠ the category-0 `0x111150` calls

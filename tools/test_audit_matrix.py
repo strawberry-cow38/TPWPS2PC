@@ -76,6 +76,14 @@ COVERAGE += '\n' + '\n'.join(['  ok   management: check'] * 56 +
                                '  ok   management: patrol tool: first corner the SMALLER -- highlighted (1, 2, 3, 4), walked (2, 1, 4, 3)',
                                '  ok   management: strike walk: the strike starts at a month change and that month is paid in full ($100)',
                                '  ok   management: award: the hidden-award bit lives in [0x3975E8], not the park -- a second park wins nothing'])
+# The advisor, step A: its own statement, for the same merge reason.
+COVERAGE += '\n' + '\n'.join(['  ok   advisor: check'] * 58 +
+                              ['  ok   advisor: scheduler: the warm-up refreshes 5 a call for 15 calls, the 16th refreshes the last 4 AND considers rule 0, then 1 a call',
+                               '  ok   advisor: v52/v53: v52 copies VARIABLE 75 (the ticket counter\'s last snapshot, not the counter)',
+                               '  ok   advisor: states: a SILENT message (0x3) still costs the cycle -- the next is played 103 ticks later',
+                               '  ok   advisor: counters: events count with flags bit 3; ride-along (flags 6) DROPS them; its end restores the flags',
+                               '  ok   advisor: rules: real rule 0 over the producers -- a placed ride, park closed posts OPEN_PARK',
+                               '  ok   advisor: rules: real rule 48 -- a handyman at tiredness 40 posts NEED_STAFF_ROOM 0x80'])
 
 
 class ClassificationTests(unittest.TestCase):

@@ -478,18 +478,20 @@ public sealed partial class ParkStaff
         Queued,
         /// <summary>⚠ The list held 15: `0x153950` returned 0 WITHOUT adding, and `+0x128` was still set to 1.</summary>
         ListFull,
-        /// <summary>No mechanic hired: `0x1073F0(adv, 0x7C)`, message 0xCF, error sound 0xAF -- the two
-        /// texts are blank rows, so the player hears only the sound (§4).</summary>
+        /// <summary>No mechanic hired: `0x1073F0(adv, 0x7C)` (opcode 8's retract -- row 310, a no-op), message
+        /// 0xCF submitted, error sound 0xAF. ⚠ CORRECTED (findings/advisor-messages.md §10.1): 0xCF
+        /// UPGRADE_NO_MECHANICS has no text row but HAS A VOICE (sound 37, `PS2_18`) -- the player hears it.</summary>
         NoMechanics,
-        /// <summary>Mechanics on strike (`0x16C988(cal, 2)`): advisor/message 0x7D (blank), sound 0xAF.</summary>
+        /// <summary>Mechanics on strike (`0x16C988(cal, 2)`): `0x1073F0(adv, 0x7D)` (a no-op) and message 0x7D
+        /// submitted -- silent (row 310, no voice) -- and sound 0xAF.</summary>
         MechanicsOnStrike,
     }
 
     /// <summary>⭐⭐ THE RIDE SCREEN'S "Apply upgrade" (`0x1D5C00`, a slot of the ride info screen's
     /// vtable), for its item 0, READ (MIPS `0x1D5C00..0x1D5DC0`):
     /// <code>
-    ///   if (mechanic count == 0)   { advisor 0x7C; message 0xCF; sound 0xAF; return; }
-    ///   if (0x16C988(cal, 2))      { advisor 0x7D; message 0x7D; sound 0xAF; return; }   // on strike
+    ///   if (mechanic count == 0)   { 0x1073F0(0x7C); submit 0xCF (voiced); sound 0xAF; return; }
+    ///   if (0x16C988(cal, 2))      { 0x1073F0(0x7D); submit 0x7D (silent); sound 0xAF; return; }   // on strike
     ///   0x124270() = 0x153D10(ride): onto the list (15 max);   ride+0x128 = 1;
     /// </code>
     /// ⭐ NO MONEY, TIER OR LIFE TEST: the new tier's cost is debited when a mechanic FINISHES
@@ -500,8 +502,8 @@ public sealed partial class ParkStaff
     public UpgradeRequest RequestUpgrade(ParkRide ride)
     {
         ArgumentNullException.ThrowIfNull(ride);
-        if (Count(StaffKind.Mechanic) == 0) return UpgradeRequest.NoMechanics;
-        if (IsStriking(StaffKind.Mechanic)) return UpgradeRequest.MechanicsOnStrike;
+        if (Count(StaffKind.Mechanic) == 0) { Advisor?.Invoke(StaffTables.UpgradeNoMechanicsMessage); return UpgradeRequest.NoMechanics; }
+        if (IsStriking(StaffKind.Mechanic)) { Advisor?.Invoke(StaffTables.UpgradeMechanicsStrikingMessage); return UpgradeRequest.MechanicsOnStrike; }
         bool added = Sim.AddUpgrade(ride);
         ride.UpgradePending = true;
         return added ? UpgradeRequest.Queued : UpgradeRequest.ListFull;

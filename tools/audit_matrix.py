@@ -114,6 +114,21 @@ REQUIRED_WITNESSES += (
     'ok   management: award: the hidden-award bit lives in [0x3975E8], not the park',
 )
 
+# The advisor at runtime, step A (AdvisorChecks.cs, findings/advisor-rules.md, advisor-messages.md): 66 on
+# every park; the floor sits just under it. A statement of its own for the same merge reason. The warm-up's
+# 16th call, the v52/v53 copies, a silent message costing the whole cycle and the flag-gated counters are
+# shipped behaviour that reads like a bug to fix; rules 0 and 48 are the disc's own rules over the port's
+# produced variables.
+REQUIRED_CHECKS.update({'advisor': 64})
+REQUIRED_WITNESSES += (
+    'ok   advisor: scheduler: the warm-up refreshes 5 a call for 15 calls, the 16th refreshes the last 4 AND considers rule 0',
+    'ok   advisor: v52/v53: v52 copies VARIABLE 75',
+    'ok   advisor: states: a SILENT message',
+    'ok   advisor: counters: events count with flags bit 3; ride-along (flags 6) DROPS them',
+    'ok   advisor: rules: real rule 0 over the producers',
+    'ok   advisor: rules: real rule 48',
+)
+
 
 def classify(world: str, raw_exit: int | None, text: str, *, timed_out: bool = False,
              truncated: bool = False, launch_error: str | None = None, terrain: int | None = None) -> dict:
