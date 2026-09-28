@@ -639,7 +639,7 @@ public sealed class ParkVisitors
         int margin = price - cost;
         shop.Book(price, margin);
         if (margin < 1) Sim.Finances.Debit(-margin * 10);
-        else Sim.Finances.Credit(margin * 10);
+        else Sim.Finances.CreditByKind((int)(def.CompiledEntry?.Kind ?? 0), margin * 10);  // 0x1007D8, filed by kind
     }
 
     void Maintain(double deltaSeconds)

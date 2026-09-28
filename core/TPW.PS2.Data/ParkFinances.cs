@@ -119,6 +119,18 @@ public sealed class ParkFinances
     public const int PeriodSlots = 0x90;
     readonly int[] _income = new int[PeriodSlots];
     readonly int[] _wages = new int[PeriodSlots];
+    // ⭐ The takings rings the finance graphs read (getters `0x101010`, `0x101068`, `0x1010C0`, the same
+    // shape as the income getter `0x100FB8`): gate `park+0x53C`, shop `+0x77C`, sideshow `+0x9BC`.
+    readonly int[] _gate = new int[PeriodSlots];
+    readonly int[] _shop = new int[PeriodSlots];
+    readonly int[] _sideshow = new int[PeriodSlots];
+
+    /// <summary>`park+0x12C8`: every admission ever taken (`0x100D28`).</summary>
+    public int GateTotal { get; private set; }
+    /// <summary>`park+0x12CC`: every shop credit ever filed (`0x1007D8`, kind 4).</summary>
+    public int ShopTotal { get; private set; }
+    /// <summary>`park+0x12C4`: every sideshow credit ever filed (`0x1007D8`, kind 5).</summary>
+    public int SideshowTotal { get; private set; }
     /// <summary>⭐ The bank balance AT EACH MONTH END -- the console's `park+0xbc`, which Overall
     /// Statistics plots as its Bank Balance series. Filed by <see cref="MonthEnd"/> alongside the
     /// wages, in the same slot.</summary>
@@ -166,6 +178,9 @@ public sealed class ParkFinances
         PeriodCount += 1;
         _income[Slot(PeriodCount)] = 0;
         _wages[Slot(PeriodCount)] = 0;
+        _gate[Slot(PeriodCount)] = 0;
+        _shop[Slot(PeriodCount)] = 0;
+        _sideshow[Slot(PeriodCount)] = 0;
     }
 
     /// <summary>`0x100F68(park, k)`: the ring slot of the k-th completed month back, or -1 when
@@ -183,6 +198,34 @@ public sealed class ParkFinances
     public int IncomeInPeriod(int k) => PeriodIndex(k) is var i && i < 0 ? 0 : _income[i];
     /// <summary>`0x101170(park, k)`: wages of the k-th completed month back (0 before there was one).</summary>
     public int WagesInPeriod(int k) => PeriodIndex(k) is var i && i < 0 ? 0 : _wages[i];
+    /// <summary>`0x101010(park, k)`: gate takings of the k-th completed month back.</summary>
+    public int GateInPeriod(int k) => PeriodIndex(k) is var i && i < 0 ? 0 : _gate[i];
+    /// <summary>`0x101068(park, k)`: shop takings of the k-th completed month back.</summary>
+    public int ShopInPeriod(int k) => PeriodIndex(k) is var i && i < 0 ? 0 : _shop[i];
+    /// <summary>`0x1010C0(park, k)`: sideshow takings of the k-th completed month back.</summary>
+    public int SideshowInPeriod(int k) => PeriodIndex(k) is var i && i < 0 ? 0 : _sideshow[i];
+
+    /// <summary>⭐ `0x100D28`, an admission, READ (MIPS `0x100D28..0x100DA0`): `0x100750` credits the fee,
+    /// then `park+0x12C8 += fee` and the gate ring `park+0x53C[period % 144] += fee`. The console reads the
+    /// fee itself (`0x100D20`, `park+0`); the port's caller passes the amount it charged.</summary>
+    public void CreditAdmission(int fee)
+    {
+        Credit(fee);
+        GateTotal += fee;
+        _gate[Slot(PeriodCount)] += fee;
+    }
+
+    /// <summary>⭐ `0x1007D8(park, kind, amount)`, READ (MIPS `0x1007D8..0x1008B4`, jump table `0x353AE0`):
+    /// `0x100750` credits the amount, then kind 4 (Shop) files it in `park+0x77C[period]` and `+0x12CC`, kind
+    /// 5 (Sideshow) in `park+0x9BC[period]` and `+0x12C4`; the other twelve kinds file nothing. The kind is
+    /// the object's `vt+0xA0` at both call sites (`0x1D194C`, `0x1D25DC`). ⚠ INFERRED that `vt+0xA0` is the
+    /// DBA kind (4 Shop, 5 Sideshow = the port's AssetKind); cow tools' graph research names the same rings.</summary>
+    public void CreditByKind(int kind, int amount)
+    {
+        Credit(amount);
+        if (kind == 4) { _shop[Slot(PeriodCount)] += amount; ShopTotal += amount; }
+        else if (kind == 5) { _sideshow[Slot(PeriodCount)] += amount; SideshowTotal += amount; }
+    }
 
     /// <summary>`0x100DA8(park, k)`: the bank balance of the k-th completed month back.
     ///

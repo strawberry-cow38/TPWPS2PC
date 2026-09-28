@@ -150,6 +150,7 @@ static class ManagementChecks
 
         Calendar(NewPark, HireAt, Check);
         Wages(NewPark, HireAt, Check);
+        Takings(Check);
         Firing(NewPark, HireAt, Check);
         StrikeTest(NewPark, HireAt, Check);
         Ladder(NewPark, HireAt, Check);
@@ -328,6 +329,31 @@ static class ManagementChecks
         for (int i = 0; i < 3; i++) { e.ToNextMonth(); seen.Add(e.Sim.Finances.WagesHigh); }
         Check(seen.SequenceEqual(new[] { false, false, true }) && e.Sim.Finances.IncomeInPeriod(5) == 0 && e.Sim.Finances.WagesInPeriod(1) == 500,
               $"wages high: with no income at all it cannot fire before the THIRD month end ({string.Join(",", seen)}) -- 0x100F68 reads k only while k < completed months, so the first month is never read");
+    }
+
+    /// <summary>The takings rings the finance graphs read: gate `+0x53C` (`0x100D28`), shop `+0x77C` and
+    /// sideshow `+0x9BC` (`0x1007D8` by kind), their totals, and the month end clearing the next slot.</summary>
+    static void Takings(Action<bool, string> Check)
+    {
+        var f = new ParkFinances();
+        f.MonthEnd(0);                                                   // close month 0: slot 0 is never read
+        f.CreditAdmission(300);
+        f.CreditByKind((int)AssetResourceDatabase.AssetKind.Shop, 70);
+        f.CreditByKind((int)AssetResourceDatabase.AssetKind.Sideshow, 40);
+        f.CreditByKind((int)AssetResourceDatabase.AssetKind.Ride, 999);  // files nothing (jump table: 12 kinds fall through)
+        f.MonthEnd(0);
+        Check(f.GateInPeriod(1) == 300 && f.ShopInPeriod(1) == 70 && f.SideshowInPeriod(1) == 40
+              && f.IncomeInPeriod(1) == 300 + 70 + 40 + 999,
+              $"takings: an admission files the gate ring ({f.GateInPeriod(1)}), kind 4 the shop ring ({f.ShopInPeriod(1)}), kind 5 the sideshow ring ({f.SideshowInPeriod(1)}), a ride nothing; all four still credit income ({f.IncomeInPeriod(1)})");
+        Check(f.GateTotal == 300 && f.ShopTotal == 70 && f.SideshowTotal == 40,
+              $"takings: the running totals +0x12C8/+0x12CC/+0x12C4 read {f.GateTotal}/{f.ShopTotal}/{f.SideshowTotal}");
+        f.MonthEnd(0);                                                   // an empty month
+        bool before = f.GateInPeriod(1) == 0 && f.GateInPeriod(2) == 300;
+        // The clear is only visible on a REUSED slot: month 1's takings sit in slot 1, and slot 1 comes round
+        // again as month 145. A fresh slot is 0 whether or not the month end clears it.
+        while (f.PeriodCount < 146) f.MonthEnd(0);
+        Check(before && f.GateInPeriod(1) == 0 && f.ShopInPeriod(1) == 0 && f.SideshowInPeriod(1) == 0,
+              $"takings: the month end clears the next slot of each ring -- month 145 reuses month 1's slot and reads {f.GateInPeriod(1)}/{f.ShopInPeriod(1)}/{f.SideshowInPeriod(1)} (month 1 took 300/70/40)");
     }
 
     static void Firing(Func<int, ParkAwards, Park> newPark, Func<Park, StaffKind, ParkCell, int?, StaffMember> hireAt, Action<bool, string> Check)

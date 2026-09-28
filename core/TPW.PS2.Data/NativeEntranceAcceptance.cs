@@ -27,7 +27,7 @@ public static class NativeEntranceAcceptance
         if (Classify(sum, classFee, roll) <= -2) return false;
         accepted(); // native manager counter increments before finance
         int charged = fee(); // 100D28 re-reads the fee and returns this amount
-        finance.Credit(charged);
+        finance.CreditAdmission(charged); // 100D28: the credit, then the gate total and ring
         var wants = needs.Of(guest); // 210D38 reads current cash AFTER the finance call
         wants.Cash = unchecked(wants.Cash - charged);
         needs.Set(guest, wants);
