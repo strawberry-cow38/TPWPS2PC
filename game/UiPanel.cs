@@ -38,6 +38,16 @@ public sealed class UiPanel
     /// <summary>The ruled inner sheet (`wboxfill`), for callers that want it.</summary>
     public ImageTexture Sheet => _sheet;
 
+    /// <summary>The pieces one at a time, already turned, for a caller that draws its own shape of frame --
+    /// the advisor's message records (`0x108AB0`) blit `messfill` (0x30), `messcorner` (0x2F) raw and flipped in
+    /// y, and `messedge` (0x32) raw, flipped in y and turned, which are exactly these.</summary>
+    public ImageTexture Fill => _fill;
+    public ImageTexture CornerTopRight => _cTR;
+    public ImageTexture CornerBottomRight => _cBR;
+    public ImageTexture EdgeTop => _eTop;
+    public ImageTexture EdgeBottom => _eBottom;
+    public ImageTexture EdgeRight => _eRight;
+
     /// <summary>Load the set out of `UI.WAD`. ⚠ Through <see cref="AssetLibrary.ReadUi"/>, so the
     /// park's own open archive is left alone.</summary>
     public static UiPanel Load(AssetLibrary lib)

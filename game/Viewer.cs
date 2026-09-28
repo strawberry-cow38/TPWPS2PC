@@ -989,6 +989,9 @@ public partial class Viewer : Node3D
         // not a held key", but nothing enforced it: a held key repeats at the OS rate and every
         // repeat counted as another press. That is the other half of master's backwards rotation.
         if (e is not InputEventKey { Pressed: true, Echo: false } k) return;
+        // ⭐ The advisor's keys first: L2 and the open stack's buttons, and the pad lock of a modal message
+        // (Viewer.Advisor.cs).
+        if (AdvisorKeyInput(k)) { GetViewport()?.SetInputAsHandled(); return; }
         // ⭐⭐ AN OPEN MENU EATS ITS KEYS. The console drives this with the d-pad and ✕, so up /
         // down / confirm / cancel, and nothing else sees them while it is up -- otherwise the
         // arrows would still be driving the camera behind the menu.
@@ -1357,41 +1360,10 @@ public partial class Viewer : Node3D
         _player.Stop();
         try
         {
-            if (s.IsAdpcm)
-            {
-                var pcm = Vag.Decode(_bank.Data, s.Start, s.End);
-                // ⭐ 22050 Hz, and it is MEASURED rather than assumed: decoding all 356 PS-ADPCM
-                // sounds and dividing each one's sample count by the duration its own header
-                // declares puts every single one between 22,050 and 22,700 Hz -- the spread is the
-                // millisecond field's rounding, not a spread of rates. Same rate as the MPEG side.
-                const int rate = 22050;
-                var bytes = new byte[pcm.Length * 2];
-                Buffer.BlockCopy(pcm, 0, bytes, 0, bytes.Length);
-                _player.Stream = new AudioStreamWav
-                {
-                    Format = AudioStreamWav.FormatEnum.Format16Bits,
-                    MixRate = rate, Stereo = false, Data = bytes,
-                };
-                _info.Text += "\nplaying: " + pcm.Length + " samples at " + rate + " Hz";
-            }
-            else
-            {
-                var raw = new byte[s.End - s.Start];
-                Array.Copy(_bank.Data, s.Start, raw, 0, raw.Length);
-                // ⚠⚠ NOT AudioStreamMP3. The engine's decoder is built for Layer III and returns a
-                // zero-length stream for the Layer II the disc uses -- 1,849 of its 2,220 sounds.
-                // Decoded here to PCM instead, which also means one code path for every sound.
-                var dec = Mpeg.DecodeToPcm16(raw);
-                if (dec == null) { _info.Text += "\nthe Layer II decoder returned nothing"; return; }
-                var (pcm2, rate2, ch2) = dec.Value;
-                _player.Stream = new AudioStreamWav
-                {
-                    Format = AudioStreamWav.FormatEnum.Format16Bits,
-                    MixRate = rate2, Stereo = ch2 == 2, Data = pcm2,
-                };
-                _info.Text += "\nplaying: " + (pcm2.Length / 2 / ch2) + " samples at "
-                            + rate2 + " Hz, " + (ch2 == 2 ? "stereo" : "mono");
-            }
+            var wav = DecodeSound(_bank, s, out string note);
+            _info.Text += "\n" + note;
+            if (wav == null) return;
+            _player.Stream = wav;
             _player.Play();
             GD.Print("[snd] " + s.Name + " -> " + _info.Text.Replace("\n", " | "));
         }
@@ -1400,6 +1372,44 @@ public partial class Viewer : Node3D
             _info.Text += "\ncould not play: " + ex.Message;
             GD.PrintErr("[snd] " + s.Name + " FAILED: " + ex);
         }
+    }
+
+    /// <summary>⭐ One bank sound decoded to 16-bit PCM for Godot, and what was decoded -- the sound browser's
+    /// decode, shared with the park advisor's voice (Viewer.Advisor.cs) so the port has ONE playback path.
+    /// Null when the Layer II decoder returns nothing.</summary>
+    static AudioStreamWav DecodeSound(SoundBank bank, SoundBank.Sound s, out string note)
+    {
+        if (s.IsAdpcm)
+        {
+            var pcm = Vag.Decode(bank.Data, s.Start, s.End);
+            // ⭐ 22050 Hz, and it is MEASURED rather than assumed: decoding all 356 PS-ADPCM
+            // sounds and dividing each one's sample count by the duration its own header
+            // declares puts every single one between 22,050 and 22,700 Hz -- the spread is the
+            // millisecond field's rounding, not a spread of rates. Same rate as the MPEG side.
+            const int rate = 22050;
+            var bytes = new byte[pcm.Length * 2];
+            Buffer.BlockCopy(pcm, 0, bytes, 0, bytes.Length);
+            note = "playing: " + pcm.Length + " samples at " + rate + " Hz";
+            return new AudioStreamWav
+            {
+                Format = AudioStreamWav.FormatEnum.Format16Bits,
+                MixRate = rate, Stereo = false, Data = bytes,
+            };
+        }
+        var raw = new byte[s.End - s.Start];
+        Array.Copy(bank.Data, s.Start, raw, 0, raw.Length);
+        // ⚠⚠ NOT AudioStreamMP3. The engine's decoder is built for Layer III and returns a
+        // zero-length stream for the Layer II the disc uses -- 1,849 of its 2,220 sounds.
+        // Decoded here to PCM instead, which also means one code path for every sound.
+        var dec = Mpeg.DecodeToPcm16(raw);
+        if (dec == null) { note = "the Layer II decoder returned nothing"; return null; }
+        var (pcm2, rate2, ch2) = dec.Value;
+        note = "playing: " + (pcm2.Length / 2 / ch2) + " samples at " + rate2 + " Hz, " + (ch2 == 2 ? "stereo" : "mono");
+        return new AudioStreamWav
+        {
+            Format = AudioStreamWav.FormatEnum.Format16Bits,
+            MixRate = rate2, Stereo = ch2 == 2, Data = pcm2,
+        };
     }
 
     void FillList()
@@ -4262,12 +4272,14 @@ public partial class Viewer : Node3D
                 ShowLaptopLevel();
                 break;
             case LaptopScreen.OptSaveGame:
+                AdvisorLeavingPark("save game (0x1510F8)");
                 if (SaveGameRequested is { } save) { save(); Status("saving..."); }
                 else Status("save game -- not available yet; the park cannot be fully restored");
                 break;
             case LaptopScreen.OptQuit:
                 // ⚠ The console posts 0xe0008 and unwinds to a cold front end. The nearest thing
                 // this port has is the main menu, which is where that chain ends up.
+                AdvisorLeavingPark("quit (0x1510F8)");
                 OnLaptopDismiss(close: true);
                 EnterMainMenu();
                 break;
@@ -4483,7 +4495,7 @@ public partial class Viewer : Node3D
                 // is "leave for the map screen", which is why the console appends it
                 // unconditionally. Master: "route close park to the lobby, on the park u pressed
                 // close park in".
-                if (picked.Index == LaptopMainMenu.CloseParkIndex) { CloseParkToLobby(); return; }
+                if (picked.Index == LaptopMainMenu.CloseParkIndex) { AdvisorLeavingPark("close park (0x1510F8)"); CloseParkToLobby(); return; }
                 switch (picked.Opens)
                 {
                     case "main_info":      _laptopBack.Add(("info", null)); ShowLaptopLevel(); return;
@@ -10490,8 +10502,9 @@ public partial class Viewer : Node3D
             // Pan along the way the camera faces, which is what the cursor does on the console.
             float s = Mathf.Sin(a * Mathf.Tau / GameCamera.TurnUnits);
             float c = Mathf.Cos(a * Mathf.Tau / GameCamera.TurnUnits);
-            int fwd = (Input.IsKeyPressed(Key.W) ? 1 : 0) - (Input.IsKeyPressed(Key.S) ? 1 : 0);
-            int side = (Input.IsKeyPressed(Key.D) ? 1 : 0) - (Input.IsKeyPressed(Key.A) ? 1 : 0);
+            bool padFree = !AdvisorPadLocked;                  // 0x1817C0(1): a modal advisor message holds the pad
+            int fwd = padFree ? (Input.IsKeyPressed(Key.W) ? 1 : 0) - (Input.IsKeyPressed(Key.S) ? 1 : 0) : 0;
+            int side = padFree ? (Input.IsKeyPressed(Key.D) ? 1 : 0) - (Input.IsKeyPressed(Key.A) ? 1 : 0) : 0;
             // ⚠ The side term is NEGATED against the forward one. Taking right as (cos, -sin) of
             // the same angle reads correct and drives A and D the wrong way round -- master hit it
             // in the first minute. The camera looks along +(sin, cos), so its right is -(cos, -sin).
@@ -10514,10 +10527,10 @@ public partial class Viewer : Node3D
             _game.ClampCursor();
             // ⚠ R is the turn while something is held; the camera only gets it back when the
             // cursor is empty.
-            if (Input.IsKeyPressed(Key.R) && !_place.Active) _game.Zoom(-1);
-            if (Input.IsKeyPressed(Key.F)) _game.Zoom(1);
-            if (Input.IsKeyPressed(Key.Z)) _game.Push(-1);
-            if (Input.IsKeyPressed(Key.X)) _game.Push(1);
+            if (padFree && Input.IsKeyPressed(Key.R) && !_place.Active) _game.Zoom(-1);
+            if (padFree && Input.IsKeyPressed(Key.F)) _game.Zoom(1);
+            if (padFree && Input.IsKeyPressed(Key.Z)) _game.Push(-1);
+            if (padFree && Input.IsKeyPressed(Key.X)) _game.Push(1);
             // ⭐ A WHOLE console frame, every time. No fractions reach the console's own maths.
             _game.Step(GameCamera.FrameTick, GroundAt);
         }
@@ -11591,6 +11604,7 @@ public partial class Viewer : Node3D
         AllocMark("02 after StepPark/shot");
         AllocBegin(); _sounds?.Step(delta); AllocEnd("sounds.Step");
         AllocBegin(); _burst?.Step(); AllocEnd("burst.Step");
+        AllocBegin(); PresentAdvisor(); AllocEnd("PresentAdvisor");   // the head, the stack, the voice (Viewer.Advisor.cs)
         if (_soundCensus > 0 && _mode == Mode.Park && _parkTicks * ParkSim.TickMilliseconds >= _soundCensus * 1000L)
         {
             SoundCensusReport();
@@ -11813,6 +11827,8 @@ public partial class Viewer : Node3D
 
     public override void _UnhandledInput(InputEvent e)
     {
+        // 0x1817C0(1): a modal advisor message holds the pad -- the buttons that drive the tools included.
+        if (AdvisorPadLocked && e is InputEventMouseButton) { GetViewport()?.SetInputAsHandled(); return; }
         if (e is InputEventMouseMotion mm)
         {
             // ⭐ The highlight follows the POINTER while the menu is up -- master: "the blue text

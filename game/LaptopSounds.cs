@@ -64,7 +64,7 @@ public sealed class LaptopSounds
                 { got.Add($"{cue}=MISSING({s.Name})"); continue; }
                 var stream = Decode(bank, s);
                 if (stream == null) { got.Add($"{cue}=undecodable"); continue; }
-                var player = new AudioStreamPlayer { Stream = stream, Bus = "Master" };
+                var player = new AudioStreamPlayer { Stream = stream, Bus = GameAudioMix.EnsureSfxBus() };
                 owner.AddChild(player);
                 _voices[cue] = player;
                 got.Add($"{cue}={s.Name}{(named ? "" : "?")}");

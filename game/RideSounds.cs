@@ -130,7 +130,7 @@ public sealed class RideSounds
         // ⭐ A followed owner is positional whatever its group says -- see Follow.
         if (Positional(kind) || FollowsAPoint(ride, tag))
         {
-            var p3 = new AudioStreamPlayer3D { Stream = wav, MaxDistance = MaxDistance, Bus = "Master", Name = $"snd{_serial}" };
+            var p3 = new AudioStreamPlayer3D { Stream = wav, MaxDistance = MaxDistance, Bus = GameAudioMix.EnsureSfxBus(), Name = $"snd{_serial}" };
             // ⚠ POSITION BEFORE AddChild, like the particles: the voice is placed at the transform
             // it enters the tree with.
             p3.Position = FollowedPosition(ride, tag) ?? at;
@@ -139,7 +139,7 @@ public sealed class RideSounds
         }
         else
         {
-            var p2 = new AudioStreamPlayer { Stream = wav, Bus = "Master", Name = $"snd{_serial}" };
+            var p2 = new AudioStreamPlayer { Stream = wav, Bus = GameAudioMix.EnsureSfxBus(), Name = $"snd{_serial}" };
             _root.AddChild(p2);
             player = p2;
         }
