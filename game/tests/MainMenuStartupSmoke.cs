@@ -15,6 +15,11 @@ public partial class MainMenuStartupSmoke : Node
     int checks;
     async System.Threading.Tasks.Task Frame()
     { await ToSignal(GetTree(),SceneTree.SignalName.ProcessFrame); }
+    async System.Threading.Tasks.Task WaitUntil(Func<bool> ready, double seconds)
+    {
+        ulong until=Time.GetTicksMsec()+(ulong)(seconds*1000);
+        while(!ready() && Time.GetTicksMsec()<until) await Frame();
+    }
     async System.Threading.Tasks.Task KeyPress(Key key)
     {
         Input.ParseInputEvent(new InputEventKey {Keycode=key,PhysicalKeycode=key,Pressed=true});
@@ -69,7 +74,7 @@ public partial class MainMenuStartupSmoke : Node
                     Check(frontend.LanguageIndex==2,"French is third and upper bound clamps");
                     await KeyPress(Key.Enter);
                     Check(Field<int>(viewer,"_language")==2,"real confirm propagates language into Viewer");
-                    for(int i=0;i<300 && frontend.CurrentStage==FrontendScreen.Stage.Movie;i++) await Frame();
+                    await WaitUntil(()=>frontend.CurrentStage!=FrontendScreen.Stage.Movie,30);
                     Check(frontend.CurrentStage==FrontendScreen.Stage.Legal,"BFLOGO ends into legal screen");
                     typeof(FrontendScreen).GetField("_phaseTime",Hidden).SetValue(frontend,0.0);
                     frontend._Process(159/25.0);
@@ -140,16 +145,21 @@ public partial class MainMenuStartupSmoke : Node
                 Check(Field<bool>(viewer,"_lobbyPrompt"),"lobby confirm asks before entering");
                 await KeyPress(Key.Enter);
                 var activeIntro=Field<FrontendScreen>(viewer,"_frontend");
-                bool fixtureMovie=FrontendScreen.ResolveMovie("/tmp/tpw-frontend-movies","DINO")!=null
-                    && OS.GetCmdlineUserArgs().Contains("--movies-dir=/tmp/tpw-frontend-movies");
-                if(fixtureMovie)
+                string directory=(string)typeof(Viewer).GetMethod("MovieDirectory",Hidden).Invoke(viewer,null);
+                bool worldMovie=FrontendScreen.ResolveMovie(directory,"DINO")!=null;
+                if(worldMovie)
                 {
                     Check(activeIntro is {CurrentStage:FrontendScreen.Stage.Movie,MovieStem:"DINO"},"selected park gates DINO, not boot/attract clip");
                     Check(Field<bool>(viewer,"_lobbyMode"),"park not entered before movie completes");
                     int n=Field<int>(viewer,"_parkTicks"), day=calendar.Accumulator;
                     viewer._Process(.25);
                     Check(n==Field<int>(viewer,"_parkTicks")&&day==calendar.Accumulator,"movie blocks actual sim tick");
-                    await KeyPress(Key.Escape);
+                    if(OS.GetCmdlineUserArgs().Contains("--frontend-full-movies"))
+                    {
+                        await WaitUntil(()=>!activeIntro.Active,90);
+                        Check(activeIntro.LastMovieResult=="finished","world movie naturally reaches Finished");
+                    }
+                    else await KeyPress(Key.Escape);
                 }
                 Check(!Field<bool>(viewer,"_lobbyMode") && Field<int>(viewer,"_loadedMap")>=0,"movie continuation actually enters selected park");
                 Check(activeIntro is {Active:false},"movie releases input when entering park");
