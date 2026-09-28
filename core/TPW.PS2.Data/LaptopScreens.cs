@@ -684,6 +684,34 @@ public sealed record LaptopScreen(
     public static readonly string[] FeelingsIconPaths =
         { "/laptop/thoughts/TIHAPPY.ssh", "/laptop/thoughts/TINORMAL.ssh", "/laptop/thoughts/TISAD.ssh" };
 
+    /// <summary>⭐⭐ THE RIDE'S UPGRADES PAGE -- state 2 of the ride screen, NOT a screen of its
+    /// own. `findings/laptop-tabs.md` §3; layout `main_i_ride_data_upgrd.sce` bound by
+    /// `FUN_001d3f98`, drawn by `FUN_001d6058`.
+    ///
+    /// ⚠⚠ THE "TABS" ARE NOT TABS. The Single-item base has a state field (0 Details, 1 Options,
+    /// 2 Upgrade, 3 Addons) but nothing SELECTS one: the only writes move 0 -> 2 or 0 -> 3 when
+    /// the Details cursor is on the Upgrades / Addons ROW and Confirm is pressed, and 2 -> 0 on
+    /// Back. State 1 is set only by a method no code calls, and shop, sideshow and toilet never
+    /// leave state 0 at all -- their Details/Options strings go into a widget that is constructed
+    /// and never drawn. So this is a page reached from a row, which is what our Upgrades row
+    /// already was; it just had no page behind it.
+    ///
+    /// ⚠ EXACTLY ONE UPGRADE IS EVER OFFERED: the next tier, and only while it is researched, the
+    /// ride is not condemned, and it is below tier 2. There is no paging here.
+    ///
+    /// ⚠ The title is the RIDE's name, not the tier's -- the "Upgrade 1"/"Upgrade 2" caption is
+    /// built and never drawn. The model shows the ride's CURRENT model, not the upgrade's.
+    ///
+    /// ⚠ Stock is for TRACK RIDES only, and is `3 - addons placed`.</summary>
+    public static readonly LaptopScreen RideUpgrade = new(
+        "main_i_ride_data_upgrd.sce", 25, "UpgradeName", "stocktext", "stockvalue", "UpgradeModel",
+        new LaptopRow[]
+        {
+            new(918, LaptopRowKind.Value),   // STR_PURCHASE_STOCK       -- track rides only
+            new(297, LaptopRowKind.Money),   // STR_SINGLER_UPGRADE_COST
+        },
+        LabelsOnGrid: true, RowYs: new[] { 200, 388 });
+
     public static readonly LaptopScreen[] AllList = { AllRides, AllShops, AllSideshows, AllToilets };
 
     /// <summary>The four "Single ..." item screens the console builds on one base class. ⚠ Build

@@ -3594,6 +3594,40 @@ public partial class Viewer : Node3D
             }
             case "stafftypes": ShowStaffInfoTypes(); break;
             case "staffitem": ShowStaffInfoMember(arg); break;
+            // ⭐⭐ THE RIDE'S UPGRADES PAGE (state 2 of the ride screen). Reached from the
+            // Upgrades ROW on Details, which is what the console does -- see LaptopScreen.RideUpgrade.
+            case "rideupgrade":
+            {
+                // ⚠ The page belongs to a ride, and in play that ride is whichever Details screen
+                // opened it. `arg` is a HARNESS route only -- a placed-ride index, so the page can
+                // be filmed without driving the whole Information -> ride -> row chain.
+                if (_detailsRide == null && arg != null && int.TryParse(arg, out var ridx)
+                    && _sim?.Rides is { Count: > 0 } placed)
+                    _detailsRide = placed[Math.Clamp(ridx, 0, placed.Count - 1)];
+                if (_detailsRide is not { } ur)
+                { _laptopBack.RemoveAt(_laptopBack.Count - 1); Status("no ride selected"); ShowLaptopLevel(); return; }
+                bool canUp = UpgradeAbove(ur);
+                int nextTier = ur.CurrentTier + 1;
+                // ⭐ The cost is the NEXT TIER's PurchaseCost -- the same figure `UpgradeAbove`
+                // tests, so what the page shows and what it will let you buy cannot disagree.
+                int cost = canUp && ur.Definition?.CompiledEntry is { HasRideTiers: true } ue
+                         ? ue.Tier(nextTier).PurchaseCost : 0;
+                // ⚠ Stock is TRACK RIDES only and is `3 - addons placed`; this port tracks no
+                // per-ride addon count, so the row is left blank rather than given a made-up 3.
+                // A null cell draws nothing, which is how the console hides it on everything else.
+                var ucells = new List<(string, int)>
+                {
+                    (null, 0),
+                    (canUp ? Money.Display(cost) : null, 0),
+                };
+                _shopPanel.ShowScreen(LaptopScreen.RideUpgrade, DisplayName(ur), ucells);
+                BuildLaptopModelFor(ur);
+                RefreshLaptopBalance();
+                Status(canUp
+                    ? $"{DisplayName(ur)} -- upgrade to tier {nextTier} for {Money.Display(cost)}"
+                    : $"{DisplayName(ur)} -- no upgrade available");
+                break;
+            }
             // ⭐⭐ VISITOR INFORMATION (menu id 10). Two headings, the feelings block, and two
             // labelled values.
             case "visitorinfo":
@@ -4505,9 +4539,24 @@ public partial class Viewer : Node3D
         if (_trainingMember is { } trainee) { if (row == 0) BuyTraining(trainee); return; }
         if (_singleStaff is { } person) { SingleStaffChose(person, row); return; }
         if (_optionsOpen) { GameOptionChose(row); return; }
+        // ⭐ On the upgrade PAGE, any row buys -- the page has one offer and the console's Confirm
+        // takes it; there is nothing else to click.
+        if (_laptopBack.Count > 0 && _laptopBack[^1].Kind == "rideupgrade"
+            && _detailsRide is { } upgrading) { BuyRideUpgrade(upgrading); return; }
         if (_detailsSpec != LaptopScreen.Ride || _detailsRide is not { } ride) return;
         var rows = LaptopScreen.Ride.Rows;
         if (row < 0 || row >= rows.Count || rows[row].TextId != 119) return;   // Upgrades
+        // ⭐⭐ THE ROW OPENS THE PAGE, it does not buy. The console moves the screen's state
+        // 0 -> 2 here and draws the upgrade page; buying happens there. What shipped before was a
+        // shortcut past a whole page (`findings/laptop-tabs.md` §3).
+        _laptopBack.Add(("rideupgrade", null));
+        ShowLaptopLevel();
+    }
+
+    /// <summary>⭐ Buying, ON the upgrade page (`findings/laptop-tabs.md` §3.3) rather than from
+    /// the row that opens it.</summary>
+    void BuyRideUpgrade(ParkRide ride)
+    {
         if (!UpgradeAbove(ride)) { Status($"{DisplayName(ride)} -- no upgrade available"); return; }
         if (_staff == null) { Status("no staff system"); return; }
 
@@ -4817,6 +4866,12 @@ public partial class Viewer : Node3D
                 if (_laptopScreen.Split(':') is { Length: > 2 } parts3
                     && int.TryParse(parts3[2], out var steps))
                     for (int i = 0; i < steps; i++) OnLaptopPage(+1);
+                // ⭐ `info:<row>:<steps>:row=<n>` then presses that row through the REAL activation
+                // hook -- the same shape `push:` uses, so a sub-page reached from a Details row can
+                // be filmed by the route the game itself takes.
+                foreach (var piece in _laptopScreen.Split(':'))
+                    if (piece.StartsWith("row=") && int.TryParse(piece[4..], out var irow))
+                        OnLaptopRowActivated(irow);
                 GD.Print($"[laptop] info row {pick} -> stack {(_laptopBack.Count == 0 ? "empty" : _laptopBack[^1].Kind + " " + (_laptopBack[^1].Arg ?? ""))}");
             }
             if (_laptopClick != null && _laptopFrame == 0) LaptopClickProbe();
