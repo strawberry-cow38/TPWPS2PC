@@ -668,3 +668,33 @@ Tabs and candidate list: §2.1. No hire fee is shown or charged.
 - Whether the save/load of the park object restores `park+8` (the spend-anything flag): loader not read.
 - Tick rate of the "every 4th tick" quanta: area A (`0x1c4930`).
 - `0x397440` (hire tab → selector) is filled at runtime by `0x197c40`; nothing else writes it (not searched).
+
+---------------------------------------------------------------------------------------------------
+
+## 16. Found while porting (2026-09-28, step 5; READ unless marked)
+
+- **The wage/income rings never read the first month.** `0x100F68(park, k)` returns −1 (so the getters
+  answer 0) unless `k < park+0x12BC` (`slt a1, a0` at `0x100F6C`), then reads slot `p%144 − max(k,1)`.
+  Slot 0 is therefore unreachable until the ring wraps, and WAGES_HIGH (v49, rule 103) cannot be set
+  before the THIRD month end even with no income at all. Ported as is (`ParkFinances.PeriodIndex`).
+- **The hidden awards are once a GAME, not once a park (corrects §11.4).** `cal+0x28` is loaded from the
+  global `[0x3975E8]` by the calendar constructor (`0x16AF70` → `0x1C3718`) and written back at teardown
+  (`0x16B010` → `0x1C3708`); `0x1C3728` counts its five bits. Bit i ↔ message 0xA0+i (Security, Upgrade,
+  Aesthetic, Green, Economy).
+- **`0x1C38C0(n)` is the gold ticket, READ (was INFERRED):** `[0x3975BC] += n` (tickets in hand; `0x1C3920`
+  spends from it), `[0x3975C0] += n` (earned), then UI sound 0xC5.
+- **The patrol tool holds with the flag only.** `0x128C68` ORs 0x40 into `C+0x2C` every frame and
+  `0x128E10`/`0x128E8C` clear it; unlike the hire tool's `0x1DC780` it keeps state and route.
+- **After a completion, `0x1B6A38` asks `0x104358(0xFFFF)`** (anything left to research, per category via
+  `0x1042D0`); nothing → `0x151998`: UI sound 0xBA (while `[0x2B72C0]` is free) and `[0x2ABE30] = 0x19`
+  when `[0x2ABE20] >= 0x1A` (untraced).
+- **The research database is `0x389650`**: records `{u8 cat, u8 item, u8 percent, u8 level}` found by
+  `0x12BEE8`/made by `0x12BF38`; `0x12BA08` returns the level after a promotion loop over
+  `0x12B758`/`0x12BAD8`; `0x12BAF8` files the percent. Not traced further (the research area's).
+- **The researcher's find-work draws `rand(10)` BEFORE the tired/strike check** (MIPS `0x1B60C4`) and has
+  no 1-in-16 idle sound; patrol costs sound 0xA8 on handle `P+0x58`, a quantum 0x8A on `P+0x5C`.
+- **The staff room's ambience handle is zeroed, not stopped**, before each start (`0x130510`: `sw $zero,
+  0xB8` then `0x111428`), so a second change to status 2 would orphan the first voice (INFERRED).
+- **Zoom To** reads `vt+0xCC` = `0x192F20` = `{C+0x1C, _, C+0x1E, _}`, the fine position.
+- **Kick-out/Staff Room counting** tests `state 0x32 ? target : 0` against the room (`0x14AA90`), so a null
+  room would count every non-resting member (unreachable: the screen always has a room).

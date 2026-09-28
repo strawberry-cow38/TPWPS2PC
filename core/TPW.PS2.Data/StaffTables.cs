@@ -255,6 +255,107 @@ public static class StaffTables
     /// (findings/staff-person.md §4.1, coaster-trains.md §2.2).</summary>
     public const int NativeDelta = 0x4000;
 
+    // ------------------------------------------------------------------------------------------
+    // Management (findings/staff-management.md §7-§12).
+
+    /// <summary>The five TYPE CODES in the order the strike check `0x16C120`, the All Staff type list
+    /// (`0x10BB68`) and the Staff Room screen (`0x1DCC18`) walk them: entertainer 1, mechanic 2, guard
+    /// 3, researcher 4, handyman 5 (lists `0x14D670`, `0x14D650`, `0x14D228`, `0x14D660`, `0x14D640`).</summary>
+    public static readonly StaffKind[] TypeCodeOrder =
+        { StaffKind.Entertainer, StaffKind.Mechanic, StaffKind.Guard, StaffKind.Researcher, StaffKind.Handyman };
+
+    /// <summary>The kind whose <see cref="TypeCode"/> is <paramref name="code"/> (1..5).</summary>
+    public static StaffKind KindOfTypeCode(int code) => (uint)(code - 1) < 5 ? TypeCodeOrder[code - 1]
+        : throw new ArgumentOutOfRangeException(nameof(code));
+
+    /// <summary>⭐ `0x361D98` (read as `0x361D97[t]` by the ladder), by type code − 1: the per-type
+    /// offset of every staff advisor message -- ent 3, mech 0, guard 2, res 4, handy 1. So UNHAPPY is
+    /// 0x16 mech, 0x17 handy, 0x18 guard, 0x19 ent, 0x1A res (findings/staff-management.md §9.2).</summary>
+    public const uint StrikeMessageBaseTable = 0x361D98;
+    public static readonly int[] StrikeMessageBase = { 3, 0, 2, 4, 1 };
+    public static int StrikeMessage(StaffKind kind, int offset) => StrikeMessageBase[TypeCode(kind) - 1] + offset;
+    /// <summary>The ladder's message offsets (`0x16C2A0`, `0x16C120`): only UNHAPPY and HAPPIER have
+    /// text (and voices); VERY_UNHAPPY, STRIKING and STRIKE_END_BAD are row 310 and silent.</summary>
+    public const int MessageUnhappy = 0x16, MessageVeryUnhappy = 0x1B, MessageStriking = 0x20,
+                     MessageHappier = 0x25, MessageStrikeEndBad = 0x2A;
+    /// <summary>`0x16C500`: unhappy when there are at least 2 of the type and the average energy
+    /// `Σ(100 − tiredness)/n` is &lt; 15 (signed `div`), or the average morale `Σmorale/n` is &lt;= 14
+    /// (`0xE &lt; (uint)avg` is the happy test).</summary>
+    public const int StrikeMinimumStaff = 2, StrikeEnergyBelow = 15, StrikeMoraleAtMost = 14;
+
+    /// <summary>The Staff Room list box's Kick Out entries (`0x15D850`, action table `0x360FA0..0x360FC0`),
+    /// in the order it adds them: Mechanics 455 (`0x124478`), Researchers 523 (`0x1244F8`), Cleaners 446
+    /// (`0x124578`), Entertainers 520 (`0x1245F8`), Guards 830 (`0x124678`).</summary>
+    public static readonly StaffKind[] KickOutOrder =
+        { StaffKind.Mechanic, StaffKind.Researcher, StaffKind.Handyman, StaffKind.Entertainer, StaffKind.Guard };
+    public static int KickOutTextRow(StaffKind kind) => kind switch
+    {
+        StaffKind.Mechanic => 455, StaffKind.Researcher => 523, StaffKind.Handyman => 446,
+        StaffKind.Entertainer => 520, StaffKind.Guard => 830,
+        _ => throw new ArgumentOutOfRangeException(nameof(kind)),
+    };
+
+    /// <summary>⭐ The labels the All Staff type list (`0x10BB68`: 0x44, 0x360, 0x1A5, 0x377, 0x45) and the
+    /// Staff Room screen (`0x369790`) put against each type, by type code − 1: Entertainers 68, Mechanics
+    /// 864, Guards 421, Researchers 887, Cleaners 69.</summary>
+    public const uint StaffRoomLabelTable = 0x369790;
+    public static readonly int[] TypeLabelRows = { 68, 864, 421, 887, 69 };
+    public static int TypeLabelRow(StaffKind kind) => TypeLabelRows[TypeCode(kind) - 1];
+
+    /// <summary>⭐ All Staff's "Time Employed", `0x142CE0(buf, days)`, READ (MIPS `0x142CE0..0x142DC0`):
+    /// `days/28` "." `(days%28)*10/28` (signed `div` by 0x1C, 28-DAY months whatever the calendar says),
+    /// then text row 10 ("mnth") when days == 28 exactly, else row 0x15D = 349 ("mnths"). No separator.</summary>
+    public static (int Months, int Tenths, int UnitTextRow) TimeEmployed(int days)
+        => (days / 28, days % 28 * 10 / 28, days == 28 ? 10 : 349);
+
+    /// <summary>All Staff's Skill Level bar value: `L * 25`, from the bar object's `+0x18` = `L * 0x190000`
+    /// (16.16, `0x10C138`); the Training screen's bar is `min(L+1, 5) * 25` (`0x1FF830`).</summary>
+    public static int SkillBar(int level) => level * 25;
+
+    /// <summary>Training: the target level the screen offers is `0x3988A8[0] = L + 1` (`0x1FF578`), and
+    /// the list-box entry "Training" (row 930) is added only while `L &lt; 4` (`0x15DA8C..0x15DAC4`).</summary>
+    public const int TrainingTextRow = 930, FireTextRow = 906, SetPatrolAreaTextRow = 79, ZoomToTextRow = 391;
+    /// <summary>The Training screen's list entry `0x36BA88[L+1]`: rows 110, 111, 112, 114, 116 = "Level 1..5"
+    /// (index 5 = row 0, unreachable).</summary>
+    public static readonly int[] TrainingLevelTextRows = { 110, 111, 112, 114, 116 };
+
+    /// <summary>UI sounds (the laptop/tool bank the viewer's build tool cues 0xAF and 0x1F in):
+    /// 0xAF refused, 0x12F training bought / hire drop, 0x1F the debit's cash, 0xDB a patrol-tool
+    /// press, 0xC5 a gold ticket (`0x1C38C0`), 0xBA "nothing left to research" (`0x151998`).</summary>
+    public const int UiSoundRefused = 0xAF, UiSoundTrained = 0x12F, UiSoundCash = 0x1F, UiSoundPatrolPress = 0xDB,
+                     UiSoundGoldTicket = 0xC5, UiSoundAllResearched = 0xBA;
+
+    /// <summary>`0x1B6640`: the research budget at init, 80 (`param_1[1] = 0x50`); `0x1B5410` sets it to
+    /// 100 whenever the Research screen is constructed (`0x1B6848(mgr, 100)` at `0x1B54CC..0x1B54D4`).</summary>
+    public const int ResearchBudgetInitial = 80, ResearchBudgetScreen = 100;
+    /// <summary>`0x1B60A8`: a researcher's find-work draws `rand(10)` FIRST and researches on `&lt; 3`.</summary>
+    public const int ResearchChanceOutOf = 10, ResearchChanceBelow = 3;
+    /// <summary>Bank-8 events of the researcher: 0xA8 on choosing to patrol (handle `P+0x58`), 0x8A per
+    /// research quantum (handle `P+0x5C`).</summary>
+    public const int SoundResearcherPatrol = 0xA8, SoundResearcherWork = 0x8A;
+    public const int HandleResearcherPatrol = 0x58, HandleResearcherWork = 0x5C;
+
+    /// <summary>`0x130510`: a staff room whose status turns 2 starts looping bank 8 event 0xBC at the room
+    /// (handle `+0xB8`); `0x130498` (`vt+0x10C`, its removal) stops it.</summary>
+    public const int SoundStaffRoomAmbience = 0xBC;
+
+    /// <summary>The Security Award, `0x16BC70`: hidden award bit 0, message 0xA0 GOLD_TICKET_BROTHER, when
+    /// `0x104CE0(0x40) &gt; 0x50`.</summary>
+    public const int SecurityAwardBit = 0, SecurityAwardMessage = 0xA0, SecurityAwardCoverageAbove = 0x50;
+    /// <summary>`STR_ADVMES_ADD_WAGES_HIGH`, rule 103's message.</summary>
+    public const int WagesHighMessage = 0x52;
+
+    /// <summary>The type mask the advisor producers take (`0x104FB0`, `0x1053A8`, `0x105538`,
+    /// `0x105688` switch on it): 1 mechanic (`0x14D650`), 2 handyman (`0x14D640`), 4 guard
+    /// (`0x14D228`), 8 entertainer (`0x14D670`), 0x10 researcher (`0x14D660`; only `0x105538` and
+    /// `0x105688` accept it).</summary>
+    public static int AdvisorMask(StaffKind kind) => kind switch
+    {
+        StaffKind.Mechanic => 1, StaffKind.Handyman => 2, StaffKind.Guard => 4, StaffKind.Entertainer => 8,
+        StaffKind.Researcher => 0x10,
+        _ => throw new ArgumentOutOfRangeException(nameof(kind)),
+    };
+
     /// <summary>`0x364A18`: the four directions as 8-byte `{s16 dx, pad, s16 dz, pad}` entries --
     /// dir0 (+1,0), dir1 (0,+1), dir2 (-1,0), dir3 (0,-1). Shared by the local wander.</summary>
     public const uint DirectionTable = 0x364A18;

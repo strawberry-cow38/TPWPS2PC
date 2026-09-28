@@ -52,6 +52,11 @@ public sealed class Mechanic : StaffMember
     /// <summary>The ride he is working on or walking to or from (his `C+0x20`), or null.</summary>
     public ParkRide Job => Target as ParkRide;
 
+    /// <summary>`vt+0x1E4` = `0x179430` (MIPS): the list box offers Fire unless he is repairing (0xE),
+    /// closing (0x10) or opening (0x11) a ride, or at an install (0x34, 0x36).</summary>
+    public override bool CanBeFired => State is not (StateRepairing or StateClosingRide or StateOpeningRide
+                                                     or StateInstallArrival or StateInstalling);
+
     /// <summary>Instrumentation, not native fields: dispatches taken (repair, install).</summary>
     public int RepairDispatches { get; private set; }
     public int InstallDispatches { get; private set; }

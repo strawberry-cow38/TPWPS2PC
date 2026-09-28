@@ -137,6 +137,24 @@ public class StaffMember
                                                         Park.Clock.DaysInPreviousMonth);
     /// <summary>`0x1DC2A8`: the next level's training cost (0 at level 4 is the list box's business).</summary>
     public int TrainingCost(bool freeBuild = false) => Level >= StaffTables.MaxLevel ? 0 : StaffTables.TrainingCost(Kind, Level, freeBuild);
+    /// <summary>All Staff's Skill Level bar, `L * 25` (`0x10C138`: bar `+0x18 = L * 0x190000`).</summary>
+    public int SkillBar => StaffTables.SkillBar(Level);
+    /// <summary>The Training screen's "Monthly Wage": `0x12B630(cand, min(L+1, 5))` -- the wage AFTER
+    /// training (`0x1FF830`). ⚠ At L = 4 it would read the table's terminating 0; the screen is never
+    /// offered there.</summary>
+    public int WageAfterTraining => StaffTables.WageBase[Math.Min(Level + 1, 5)] * StaffTables.WageMultiplier[(int)Kind];
+    /// <summary>The Training screen's Skill bar: `min(L+1, 5) * 25` (`0x1FF830`: `uVar9 * 0x190000`).</summary>
+    public int TrainingBar => Math.Min(Level + 1, 5) * 25;
+    /// <summary>The Training screen's single list entry, "Level L+2": text row `0x36BA88[L+1]`.</summary>
+    public int TrainingLevelTextRow => Level + 1 < StaffTables.TrainingLevelTextRows.Length ? StaffTables.TrainingLevelTextRows[Level + 1] : 0;
+    /// <summary>⭐ Zoom To (`0x124360`): the camera goes to `vt+0xCC` = `0x192F20`, which is `{C+0x1C, _,
+    /// C+0x1E, _}` -- the member's fine position, 1/256 cell. The view moves its camera there.</summary>
+    public Point ZoomTarget => Position;
+    /// <summary>`vt+0x1E4`: whether the list box offers Fire. Base `0x1DCA60` = 1; the mechanic overrides.</summary>
+    public virtual bool CanBeFired => true;
+    /// <summary>All Staff's "Time Employed": <see cref="StaffTables.TimeEmployed"/> (`0x142CE0`) of
+    /// <see cref="DaysEmployed"/> (`0x1DC458`).</summary>
+    public (int Months, int Tenths, int UnitTextRow) TimeEmployed => StaffTables.TimeEmployed(DaysEmployed);
     /// <summary>`(now &amp; 3) == (C+0xC &amp; 3)`: the four-tick quantum every tiredness/morale change uses.</summary>
     public bool OnPhase => (Park.Now & 3) == (Serial & 3);
 
@@ -592,8 +610,9 @@ public class StaffMember
     void ResetPatrolArea() { PatrolX0 = 0; PatrolZ0 = 0; PatrolX1 = -1; PatrolZ1 = -1; }
 
     /// <summary>⭐ `0x1DC490(C, a, b)`: the patrol rectangle as the min/max of two cell corners,
-    /// stored as s8 (area D's patrol tool calls it with the first corner already +1, which is its own
-    /// off-by-one, findings/staff-management.md §4.3 -- not reproduced here, the tool is not ported).</summary>
+    /// stored as s8. This is the setter exactly; the patrol-area tool (<see cref="StaffPatrolTool"/>)
+    /// calls it with its first corner already +1, which is the TOOL's off-by-one (findings/
+    /// staff-management.md §4.3) and lives there, not here.</summary>
     public void SetPatrolArea(ParkCell a, ParkCell b)
     {
         PatrolX0 = unchecked((sbyte)Math.Min(a.X, b.X)); PatrolZ0 = unchecked((sbyte)Math.Min(a.Z, b.Z));
@@ -601,9 +620,21 @@ public class StaffMember
     }
     /// <summary>`0x1DC698`: "set?" = `word(C+0x44) != 0xFFFF0000`.</summary>
     public bool HasPatrolArea => !(PatrolX0 == 0 && PatrolZ0 == 0 && PatrolX1 == -1 && PatrolZ1 == -1);
+    /// <summary>"Clear" is not a native action: no list-box entry or tool resets a set area (only
+    /// activation's `0x1DC540` does). ⚠ Exposed for a caller that needs the unset state back, labelled.</summary>
+    public void ClearPatrolArea() => ResetPatrolArea();
+
+    /// <summary>The patrol-area tool's hold: its cursor `0x128C68` ORs `0x40` into `C+0x2C` every frame and
+    /// its press/cancel (`0x128E10`, `0x128E8C`) clear it -- ONLY the flag, so the member keeps his state
+    /// and route and resumes where he stood (unlike the hire tool's `0x1DC780` freeze).</summary>
+    internal void SetHeld(bool on)
+    {
+        if (on) Flags |= FlagHeld; else Flags &= unchecked((ushort)~FlagHeld);
+    }
 
     /// <summary>`0x1DC968` (the effect of training `0x1FF610`): a HIGHER level resets morale to 100
-    /// and tiredness to 0; then level = `new &amp; 7`. ⚠ The purchase (cost, debit, focus) is area D.</summary>
+    /// and tiredness to 0; then level = `new &amp; 7`. The purchase (cost, affordability, focus, debit,
+    /// sound) is <see cref="ParkStaff.Train"/>, which ends in this.</summary>
     public void Train(int level)
     {
         if (Level < level) { Morale = 100; Tiredness = 0; }

@@ -86,11 +86,14 @@ public sealed record StaffFeature(ParkCell Origin, ParkCell Entry, byte Flags, b
 /// (<see cref="AnimationReady"/>); the removal notice, detected at the next update rather than sent
 /// at removal; the placeholder find-work of the types not built yet (<see cref="StaffMember"/>).
 ///
+/// ⭐ Management (step 5) is ParkStaff.Management.cs: strikes, wages due, training, the Staff Room,
+/// the research manager and researchers, the advisor producers and the patrol-area tool; the
+/// calendar that drives the monthly and weekly work is <see cref="ParkManagement"/>.
+///
 /// ⚠ OUT OF SCOPE, said so: save/load (the 16-byte records `0x1DC0E8/0x1DC178`, the double
-/// activation on load, the litter counts -- findings/staff-person.md §9); wages at the month change,
-/// strikes' monthly ladder, training purchases, patrol and grab tools (area D; the strike FLAG per
-/// type is here for it to drive, default off); the jobs of mechanics, guards, entertainers and
-/// researchers (areas B/C/D); the prank and the load scatter of litter.</summary>
+/// activation on load, the litter counts, the strike calendar `0x16CB40/0x16D030` -- findings/
+/// staff-person.md §9); the grab tool (dead on PS2, findings/staff-management.md §5); the load scatter
+/// of litter.</summary>
 public sealed partial class ParkStaff
 {
     readonly Dictionary<StaffKind, StaffMember[]> _slots = new();
@@ -133,6 +136,7 @@ public sealed partial class ParkStaff
                 {
                     StaffKind.Handyman => new Handyman(this, i),
                     StaffKind.Mechanic => new Mechanic(this, i),
+                    StaffKind.Researcher => new Researcher(this, i),         // step 5 (ParkStaff.Management.cs)
                     _ => new StaffMember(this, kind, i),
                 };
             _slots[kind] = slots;
@@ -240,6 +244,7 @@ public sealed partial class ParkStaff
         member.Activate(candidateSlot);
         if (!_mapList.Contains(member)) _mapList.Insert(0, member);      // 0x14DA60 (scans first: idempotent)
         member.Freeze();
+        _hireHeld = member;                                               // 0x14D6E0's "held by tool 1"
         return member;
     }
 
@@ -268,6 +273,7 @@ public sealed partial class ParkStaff
         if (!member.Held) throw new InvalidOperationException("only a held (carried) member can be dropped");
         if (!CanDrop(new ParkCell(position.X >> 8, position.Z >> 8))) return false;
         member.Place(position);
+        if (ReferenceEquals(_hireHeld, member)) _hireHeld = null;
         if (Count(member.Kind) == StaffTables.PoolSize) Advisor?.Invoke(StaffTables.AddMaxAdvisorMessage(member.Kind));
         return true;
     }
@@ -282,14 +288,17 @@ public sealed partial class ParkStaff
     public void CancelHire(StaffMember member)
     {
         RequireActive(member);
+        if (ReferenceEquals(_hireHeld, member)) _hireHeld = null;
         FreeMember(member);
         member.Candidate.Available = true;
     }
 
     /// <summary>⭐ List-box Fire `0x124300`: `vt+0x1F4` = `0x1DC6F0` (candidate back UNCHANGED, route
-    /// freed, the PRO-RATA WAGE `0x1DC338` debited as `wage * 10`), then `0x14B608` (release: a
-    /// handyman unclaims his litter; unlink; count-1; active → FREE-LIST HEAD). No confirmation.
-    /// ⚠ The wage accumulator `park+0x12D0` is not modelled (area D); the debit is.
+    /// freed, the PRO-RATA WAGE `0x1DC338` paid through `0x100C78(park, wage * 10)` -- the wage
+    /// accumulator `park+0x12D0` += it, then the debit), then `0x14B608` (release: a handyman unclaims
+    /// his litter; unlink; count-1; active → FREE-LIST HEAD). No confirmation. ⭐ So a long-serving
+    /// member fired on day 1 of a month costs a full extra month (findings/staff-management.md §3).
+    /// ⚠ The list box offers Fire only when <see cref="StaffMember.CanBeFired"/>; this call does not test it.
     /// ⚠ A pending route request is CANCELLED -- a deliberate difference, see <see cref="StaffRouteService"/>.
     /// ⭐ Then, whoever was fired, `0x124300` asks the MECHANIC list (`0x14D650`) and an empty one clears
     /// the ride upgrade list (`0x1542A0`) -- so firing the last mechanic drops every pending upgrade.</summary>
@@ -298,7 +307,8 @@ public sealed partial class ParkStaff
         RequireActive(member);
         int wage = member.ProRatedWage;
         member.Dismiss();
-        if (wage > 0) Sim.Finances.Debit(wage * 10);                      // 0x100C78: += 0x12D0, then debit
+        Sim.Finances.PayWage(wage * 10);                                  // 0x100C78: += 0x12D0, then debit
+        if (ReferenceEquals(_hireHeld, member)) _hireHeld = null;
         FreeMember(member);
         if (Count(StaffKind.Mechanic) == 0) Sim.ClearUpgrades();           // 0x124300 → 0x14D650 → 0x1542A0
     }
@@ -354,6 +364,7 @@ public sealed partial class ParkStaff
         if (Routes.ResetGeneration != _poolEpoch) RouteSystemReset();
         NoticeRemovals();
         SecurityBeforeMembers();                                         // guests' removal notices; the gate
+        PollStaffRooms();                                                // ⚠ 0x130510's status change, polled
         RouteRequests.Pump();                                            // 0x18D7F8, before 0x14BE60
         foreach (var member in _mapList.ToArray())                       // ⚠ a snapshot: the native
             if (member.Active) member.Update();                          // next-pointer hazard is not copied
