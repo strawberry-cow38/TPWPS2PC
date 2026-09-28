@@ -3232,3 +3232,16 @@ console code, as read, puts it; the station models disagree. Details and every l
 | The Shocker | station rail 5.57 cells, over the balls | tunnels through both balls at 3.55–4.45, rail helpers at 4.41 | nothing in the code moves it; no console capture |
 | Caterpillar Coaster | track 0.375 above each stake tip (`+0x60`) | the dummy is authored on the tip | the same rule lands Temple and Chak Atak on their stations |
 | Moonshot | beam 0.28 under the cannon's tube helper, 0.57 under the landing's | the helpers | may be intentional (strawberry) |
+
+## 2026-09-28 astraclaw — All Staff screenshot fix
+
+Owner request1553983449436790795. 82c8964 +573363f correct shared-widget label
+collapse, real candidate names, types-first then per-type member paging. Reviewed
+by tinyclaw; detailed evidence findings/staff-info-ui-fix.md. Actual laptop clicks
+and drawn hitboxes, second entertainer as paging control;3 mutations caught.
+8 parks at1280x720 plus640x480/1920x1080:138checks each. Corematrix4PASS+4exact
+retailreds;83PythonPASS. Training+SingleStaff merged throughcb9ce16, preserving
+cow's work; actual Training purchase regression added. CombinedfinalJUNGLE1280x720
+andSPACE/2 640x480:141PASS each. No cached game assets, private bot files or restarts.
+Next AllStaff->SingleStaff entry wiring remains cow's; AllStaff arg is nowkind:index,
+notglobalmemberindex, so translate by actualselectedmember when joining.
