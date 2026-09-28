@@ -556,6 +556,21 @@ public sealed record LaptopScreen(
     public static int RatingWord(int rating) =>
         RatingWordTextIds[System.Math.Clamp(rating / 20, 0, 3)];
 
+    /// <summary>⭐ The FINANCIAL INFORMATION menu (id 4), at (45, 115 + 32i).
+    /// `findings/finance-screens.md` §1; rows from the u16 table at `0x35E630`.
+    ///
+    /// ⚠ The fifth row is CONDITIONAL: Existing Loans is appended only while some loan slot is
+    /// taken. The menu is rebuilt on every return from a page, so the row appears the moment a
+    /// loan is accepted -- and appending resets the highlight to row 0.</summary>
+    public static readonly (int TextId, string Opens, bool NeedsLoan)[] FinanceMenu =
+    {
+        (34,  "balancesheet",  false),   // STR_FINANCE_INFORMATION
+        (859, "overallstats",  false),   // STR_FINANCE_GRAPH_1
+        (861, "financestats",  false),   // STR_FINANCE_GRAPH_2
+        (741, "newloan",       false),   // STR_FINANCE_NEW_LOAN
+        (472, "existingloans", true),    // STR_FINANCE_EXISTING_LOANS
+    };
+
     public static readonly LaptopScreen[] AllList = { AllRides, AllShops, AllSideshows, AllToilets };
 
     /// <summary>The four "Single ..." item screens the console builds on one base class. ⚠ Build

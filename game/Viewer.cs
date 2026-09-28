@@ -3594,6 +3594,22 @@ public partial class Viewer : Node3D
             }
             case "stafftypes": ShowStaffInfoTypes(); break;
             case "staffitem": ShowStaffInfoMember(arg); break;
+            // ⭐⭐ THE FINANCIAL INFORMATION MENU (id 4).
+            //
+            // ⚠ Existing Loans is CONDITIONAL on a loan being taken, and this port has no loan
+            // slots at all -- so the row is absent, which is what the console does with no loans
+            // rather than a difference of ours.
+            case "financialinfo":
+            {
+                var fnames = new List<string>();
+                foreach (var e in LaptopScreen.FinanceMenu)
+                    if (!e.NeedsLoan) fnames.Add(TextRow(e.TextId));
+                _shopPanel.ShowMenu(fnames, 0, "main_financialinfo.sce");
+                ClearLaptopModel();
+                RefreshLaptopBalance();
+                Status("financial information -- pick a page, or Back");
+                break;
+            }
             // ⭐⭐ PARK FINANCE (menu id 11). Every label answered twice: This Year and Last Year.
             case "parkfinance":
             {
@@ -4228,6 +4244,7 @@ public partial class Viewer : Node3D
                     case "main_gameoptions": _laptopBack.Add(("gameoptions", null)); ShowLaptopLevel(); return;
                     case "main_research":    _laptopBack.Add(("research", null)); ShowLaptopLevel(); return;
                     case "main_parkstats":   _laptopBack.Add(("parkstats", null)); ShowLaptopLevel(); return;
+                    case "main_financialinfo": _laptopBack.Add(("financialinfo", null)); ShowLaptopLevel(); return;
                     case "main_bh_staff":
                         // ⭐ The Hire panel (Viewer.Staff.cs): its tabs, then a tab's candidates.
                         if (_staff == null) { Status("hire -- no park is running yet, so there is nobody to hire into"); return; }
@@ -4236,6 +4253,19 @@ public partial class Viewer : Node3D
                         Status($"{_text?.Text("eng", picked.TextId) ?? "that"} has no screen in this port yet");
                         return;
                 }
+            }
+            // ⭐ The FINANCIAL INFORMATION menu's rows. Only the loan-free ones are listed, so
+            // the index maps straight onto the filtered list.
+            case "financialinfo":
+            {
+                var fm = new List<(int TextId, string Opens, bool NeedsLoan)>();
+                foreach (var e in LaptopScreen.FinanceMenu) if (!e.NeedsLoan) fm.Add(e);
+                if (row < 0 || row >= fm.Count) return;
+                if (fm[row].Opens is "balancesheet" or "newloan")
+                { Status($"{TextRow(fm[row].TextId)} -- no screen in this port yet"); return; }
+                _laptopBack.Add((fm[row].Opens, null));
+                ShowLaptopLevel();
+                return;
             }
             // ⭐ The PARK STATISTICS menu's rows, in the order the console lists them.
             // ⚠ Awards has no screen here yet, so it says so rather than opening something else.
