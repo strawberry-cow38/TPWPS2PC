@@ -4200,6 +4200,15 @@ public partial class Viewer : Node3D
     /// they are GAME settings that outlive a park -- see <see cref="GameSettings"/>.</summary>
     readonly GameSettings _settings = new();
 
+    /// <summary>⭐ The GAME settings, for the save coordinator. Public because they are the one
+    /// thing the laptop owns that belongs in a snapshot -- everything else it holds is transient
+    /// (which screen is open, which row is selected) and must NOT be restored.
+    ///
+    /// ⚠ GAME settings, not park settings: the console keeps them in globals that outlive any one
+    /// park, so a save that filed them per-park would restore the wrong ones after loading a
+    /// different park. Use <see cref="GameSettings.CaptureState"/> / `RestoreState`.</summary>
+    public GameSettings Settings => _settings;
+
     /// <summary>⚠ Whether Game Options is the screen showing. Cleared by
     /// <see cref="ShowLaptopLevel"/> on every navigation with the other per-screen subjects.</summary>
     bool _optionsOpen;
