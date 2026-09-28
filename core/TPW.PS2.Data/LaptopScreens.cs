@@ -35,7 +35,22 @@ public sealed record LaptopScreen(
     /// through. Null on a screen about one fixed thing. ⚠ The scene's name for it differs per
     /// screen -- `ItemSelectArrows` on rides and shops, `ItemSelectArrow` on sideshows and
     /// toilets, `itemarrows` on staff -- so it is carried here rather than guessed at.</summary>
-    string TitleArrowElement = null)
+    string TitleArrowElement = null,
+    /// <summary>⭐⭐ How far a ROW'S WIDGET steps per row, when several rows share ONE element.
+    /// Zero (the default) means every widget sits at its own element's row, which is what every
+    /// other screen does -- the ride's seven widgets are authored at 118/150/182/214/246/280/310,
+    /// 32 apart then 34 then 30, so stepping them would drift by the third slider.
+    ///
+    /// ⚠ All Staff is the exception and the reason this exists: it authors ONE `infobars` frame
+    /// at (215, 175) and draws THREE bars from it, stepping the same 32 the labels step
+    /// (`findings/staff-management.md` §12.1). Without this the three would stack on one row.</summary>
+    int WidgetStep = 0,
+    /// <summary>⚠ When a row carries its own value element, take only its COLUMN and keep the
+    /// label's row. All Staff again: `InfoValues` is authored at row 220 and **that row is never
+    /// read** -- `0x10b980` stores only `DAT_002AA8D4`, its column -- and Monthly Wage draws at
+    /// the `infobars` COLUMN (215) on the label's own row. Everywhere else the element's full
+    /// position is right, so this is off by default.</summary>
+    bool ValueColumnOnly = false)
 {
     /// <summary>The console's row step, `DAT_002E9CA8` = 32. The sideshow's draw shows it in the
     /// clear: its labels go out at `iVar9`, `+0x20`, `+0x40`, `+0x60`, i.e. 32 apart.</summary>
@@ -290,6 +305,33 @@ public sealed record LaptopScreen(
     /// other list screen authors the two on the same row (All Rides 108/108, All Shops and All
     /// Sideshows 175/175). So the stepping that serves the other four cannot be assumed to serve
     /// this one either.</summary>
+    /// <summary>⭐⭐ ALL STAFF, `main_i_staff` -- the screen this port held back until the shape of
+    /// it was settled. Drawn by `0x10C138`; layout from `findings/staff-management.md` §12.1.
+    ///
+    /// ⚠⚠ IT BREAKS THE ONE-LABEL-ONE-WIDGET RULE every other screen keeps, which is exactly why
+    /// it waited: the scene authors a SINGLE `infobars` frame at (215, 175) and the draw puts
+    /// THREE bars through it, stepping the same 32 the labels step. Hence
+    /// <see cref="LaptopScreen.WidgetStep"/>.
+    ///
+    /// ⚠ And `InfoValues` is authored at row 220 which the console NEVER READS -- `0x10B980`
+    /// keeps only its column -- while Monthly Wage draws at the `infobars` COLUMN instead. Hence
+    /// <see cref="LaptopScreen.ValueColumnOnly"/>. Both are this screen's, not general.
+    ///
+    /// ⚠ Rows 555 and 676 (Status) are NOT drawn, and "Overall Motivation" (`0x10C0B0`) is
+    /// computed every draw and thrown away (MIPS `0x10C240..0x10C248`). Neither is here, because
+    /// the console does not show them.</summary>
+    public static readonly LaptopScreen AllStaff = new(
+        "main_i_staff.sce", 15, "item", "textoptions", "InfoValues", "Model",
+        new LaptopRow[]
+        {
+            new(683, LaptopRowKind.Bar,   "infobars"),   // Skill Level -- level x 25
+            new(827, LaptopRowKind.Bar,   "infobars"),   // Motivation  -- ((100 - tired) + morale) / 2
+            new(363, LaptopRowKind.Bar,   "infobars"),   // Tiredness
+            new(669, LaptopRowKind.Value),               // Time Employed -- InfoValues column
+            new(886, LaptopRowKind.Money, "infobars"),   // Monthly Wage  -- infobars COLUMN
+        },
+        "itemarrows", WidgetStep: RowStep, ValueColumnOnly: true);
+
     public static readonly LaptopScreen[] AllList = { AllRides, AllShops, AllSideshows, AllToilets };
 
     /// <summary>The four "Single ..." item screens the console builds on one base class. ⚠ Build

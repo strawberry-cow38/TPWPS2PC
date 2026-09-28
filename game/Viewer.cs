@@ -265,6 +265,7 @@ public partial class Viewer : Node3D
     bool _hidePanel, _wantLobby, _lobbyOverview, _wantMenu;
     MainMenu _mainMenu;
     int _menuGo;
+    bool _staffTest;
     int _lobbyEnter;   // 1-based: 0 means "not asked for"
     bool _lobbyPromptTest;
     int _loadedMap = -1, _lobbyWantRecord = -1;
@@ -417,6 +418,9 @@ public partial class Viewer : Node3D
             // fallback, not the other way round.
             // ⭐ `--menu` opens the FRONT END, which is where the console starts. Choosing
             // New Game -> Main Game hands off to the lobby, the same route the state thread takes.
+            // ⭐ `--staff-test` hires one of each kind through the REAL `ParkStaff.Hire`, so a
+            // render of All Staff has somebody on it. ⚠ A harness, not a gameplay path.
+            else if (a == "--staff-test") _staffTest = true;
             else if (a == "--menu") _wantMenu = true;
             // ⭐ `--menu-go=N` presses Confirm N times through the REAL handler, so a render can
             // show where the front end actually hands off to rather than a flag jumping there.
@@ -3572,6 +3576,27 @@ public partial class Viewer : Node3D
                 ShowHireCandidate(hireKind, hireIndex);
                 break;
             }
+            // ⭐⭐ ALL STAFF. ⚠ Its own level and NOT an `infoitem`, because staff are not assets:
+            // the info screens page a list of ParkRides picked by AssetKind, and this pages
+            // `ParkStaff.Members`. Bolting it onto the asset path would have meant pretending a
+            // staff member is a placed thing.
+            case "staffitem":
+            {
+                var crew = _staff?.Members;
+                if (crew == null || crew.Count == 0)
+                { _laptopBack.RemoveAt(_laptopBack.Count - 1); Status("no staff hired"); ShowLaptopLevel(); return; }
+                int at = int.TryParse(arg, out var si) ? si : 0;
+                at = Math.Clamp(at, 0, crew.Count - 1);
+                var who = crew[at];
+                var scells = new List<(string, int)>();
+                foreach (var row in LaptopScreen.AllStaff.Rows) scells.Add(StaffCell(row, who));
+                _shopPanel.ShowScreen(LaptopScreen.AllStaff, StaffName(who), scells);
+                BuildLaptopModelFor((ParkRide)null);      // ⚠ no model for a person yet; leave it blank
+                RefreshLaptopBalance();
+                Status($"{StaffName(who)} -- {at + 1} of {crew.Count}"
+                     + (crew.Count > 1 ? "; Up/Down to page" : ""));
+                break;
+            }
             case "infoitem":
             {
                 var bits = (arg ?? "0:0").Split(':');
@@ -3657,6 +3682,46 @@ public partial class Viewer : Node3D
     /// The kind sets are <see cref="LaptopListScreen"/>'s, read off the console's own populate call.
     /// ⚠ Row 4 (All Staff) answers null on purpose: that screen is decoded but held back because
     /// its three bars share one authored element -- see findings/laptop-screens.md.</summary>
+    /// <summary>A staff member's name for the screen's title. ⚠ The console draws `vt+0x7c` at the
+    /// `item` element; this port has no per-person name table yet, so it shows the kind and the
+    /// slot rather than inventing one.</summary>
+    /// <summary>⚠ The Information menu's staff row -- `LaptopMainMenu.Information`'s fifth entry
+    /// (text 995), index 4. Named rather than spelled 4 at the use site.</summary>
+    const int StaffInfoRow = 4;
+
+    static string StaffName(StaffMember m) => $"{m.Kind} {m.PoolSlot + 1}";
+
+    /// <summary>⭐⭐ ONE ALL STAFF ROW, by its text id -- every figure is the console's own.
+    /// `findings/staff-management.md` §12.1.</summary>
+    (string, int) StaffCell(LaptopRow row, StaffMember m) => row.TextId switch
+    {
+        // ⭐ Skill is drawn as a bar of `level x 25`, so level 4 fills it.
+        683 => (null, Math.Clamp(m.Level * 25, 0, 100)),
+        // ⭐ `((100 - tiredness) + morale) / 2` -- and StaffMember already exposes exactly that
+        // as DisplayedMotivation, from `0x1DC428`, so the formula lives in one place.
+        827 => (null, Math.Clamp(m.DisplayedMotivation, 0, 100)),
+        // ⚠ `(int)` because Tiredness is an sbyte and Math.Clamp is ambiguous across the integer
+        // overloads without it -- the same CS0121 the ride screen hit on a ushort.
+        363 => (null, Math.Clamp((int)m.Tiredness, 0, 100)),
+        669 => (MonthsEmployed(m.DaysEmployed), 0),
+        // ⚠ The FULL monthly wage, not the pro-rata one the month end actually pays.
+        886 => (Money.Format(m.MonthlyWage * 10), 0),
+        _   => (null, 0),
+    };
+
+    /// <summary>⭐ "1.5 mnths" -- the console's own arithmetic: `days/28`, a dot, then
+    /// `(days%28) * 10 / 28`, and the unit is "mnth" (text 10) only when days is EXACTLY 28,
+    /// "mnths" (349) otherwise. ⚠ 28-day months, and no separator is added between the number and
+    /// the unit beyond what the strings carry.</summary>
+    string MonthsEmployed(int days)
+    {
+        if (days < 0) days = 0;
+        int whole = days / 28, tenths = (days % 28) * 10 / 28;
+        string unit = _text == null ? (days == 28 ? "mnth" : "mnths")
+                    : (days == 28 ? _text.Text("eng", 10) : _text.Text("eng", 349)) ?? "mnths";
+        return $"{whole}.{tenths}{unit}";
+    }
+
     (LaptopScreen Spec, AssetResourceDatabase.AssetKind[] Kinds)? InfoScreenFor(int row) => row switch
     {
         0 => (LaptopScreen.AllRides,     LaptopListScreen.Rides.Kinds),
@@ -3771,10 +3836,24 @@ public partial class Viewer : Node3D
                 // behind `--laptop-screen=`, with harness numbers, while this handler printed a
                 // line saying so. The route was already named on the disc side: each
                 // LaptopMainMenu.Information row carries the scene it Opens.
+                // ⭐⭐ ALL STAFF IS NO LONGER HELD BACK. It was, for exactly one reason: the screen
+                // puts THREE bars through a single `infobars` element and nothing in the spec
+                // could say so. tinyclaw's `findings/staff-management.md` §12.1 settled it -- the
+                // bars step the same 32 the labels do and `InfoValues` contributes only its
+                // column -- so the screen is built and this row opens it.
+                //
+                // ⚠ Its own level, because staff are not assets: `LaptopInfoItems` pages ParkRides
+                // chosen by AssetKind, and this pages `ParkStaff.Members`.
+                if (row == StaffInfoRow)
+                {
+                    if ((_staff?.Members?.Count ?? 0) == 0) { Status("no staff hired"); return; }
+                    _laptopBack.Add(("staffitem", "0"));
+                    ShowLaptopLevel();
+                    return;
+                }
                 if (InfoScreenFor(row) is not { } target)
                 {
-                    Status($"{_text?.Text("eng", info[row].TextId) ?? "that"} has no screen in this "
-                         + "port yet -- All Staff is decoded but held back, see findings");
+                    Status($"{_text?.Text("eng", info[row].TextId) ?? "that"} has no screen in this port yet");
                     return;
                 }
                 if (LaptopInfoItems(target.Kinds).Count == 0)
@@ -3822,6 +3901,18 @@ public partial class Viewer : Node3D
     void OnLaptopPage(int by)
     {
         if (PageHire(by)) return;
+        // ⭐ All Staff pages its own list, the same way the info screens page theirs.
+        if (_laptopBack.Count > 0 && _laptopBack[^1].Kind == "staffitem")
+        {
+            int n = _staff?.Members?.Count ?? 0;
+            if (n == 0) return;
+            int cur = int.TryParse(_laptopBack[^1].Arg, out var v) ? v : 0;
+            int want = Math.Clamp(cur + by, 0, n - 1);
+            if (want == cur) return;                 // ⚠ clamped, not wrapped, like the others
+            _laptopBack[^1] = ("staffitem", want.ToString());
+            ShowLaptopLevel();
+            return;
+        }
         if (_laptopBack.Count == 0 || _laptopBack[^1].Kind != "infoitem") return;
         var bits = (_laptopBack[^1].Arg ?? "0:0").Split(':');
         int which = int.TryParse(bits[0], out var w) ? w : 0;
@@ -4054,6 +4145,16 @@ public partial class Viewer : Node3D
         {
             if (_laptopFrame == 0)
             {
+                // ⚠ Before the level is shown: the staff row refuses to open with nobody hired,
+                // which is correct behaviour and would otherwise make the render look like a bug.
+                if (_staffTest && _staff != null)
+                {
+                    int hired = 0;
+                    foreach (StaffKind k in Enum.GetValues<StaffKind>())
+                        for (int slot = 0; slot < 4; slot++)
+                            if (_staff.CanHire(k) && _staff.Hire(k, slot) != null) { hired++; break; }
+                    GD.Print($"[staff] test hire: {hired} taken on, {_staff.Members.Count} on the books");
+                }
                 int colon = _laptopScreen.IndexOf(':');
                 var pieces = _laptopScreen.Split(':');
                 int pick = pieces.Length > 1 && int.TryParse(pieces[1], out var pv) ? pv : 0;

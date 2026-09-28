@@ -1073,7 +1073,9 @@ public sealed partial class LaptopShopScreen : Control
             if (row.Kind is LaptopRowKind.Bar or LaptopRowKind.Slider)
             {
                 if (row.Element == null || layout[row.Element] is not { } w) continue;
-                var rect = new Rect2(At(w), new Vector2(w.Width, w.Height) * s);
+                // ⭐ Rows that SHARE one widget element step it; see LaptopScreen.WidgetStep.
+                var wat = At(w) + new Vector2(0, _spec.WidgetStep * i * s);
+                var rect = new Rect2(wat, new Vector2(w.Width, w.Height) * s);
                 if (row.Kind == LaptopRowKind.Bar) DrawBar(rect, fraction, s);
                 else { _sliderRects[i] = rect; DrawSlider(rect, fraction, s, selected: _dragSlider == i); }
                 continue;
@@ -1102,7 +1104,12 @@ public sealed partial class LaptopShopScreen : Control
             // A row with its own value element uses it; otherwise the shared value column, at the
             // label's height.
             if (row.Element != null && layout[row.Element] is { } own)
-                DrawRun(text, At(own), s, Of(ShopScreen.Highlight), own.Justify);
+                // ⚠ Column only where the screen says so -- All Staff's value elements carry a
+                // row that the console never reads.
+                DrawRun(text,
+                        _spec.ValueColumnOnly && labels is { } lb
+                          ? new Vector2(At(own).X, At(lb).Y + dy) : At(own),
+                        s, Of(ShopScreen.Highlight), own.Justify);
             else if (values is { } v && labels is { } lab)
                 // ⚠ THE VALUE COLUMN CONTRIBUTES ITS X, AND THE LABEL ITS Y. On the shop the two
                 // elements share a row (both 175) so either reading works; on the ride they do
