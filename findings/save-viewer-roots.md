@@ -93,3 +93,15 @@ ConsoleClock, GameCamera, RenderedRide/Track/Coaster/guest presentation, ScriptE
 and sound schedulers, native ferry/seaplane game adapters, active editing tools and all partials.
 GPU meshes/material instances are rebuilt, not serialized; their retained CPU inputs ARE state.
 The final coordinator must establish an omission policy only for truly diagnostic/derived data.
+
+## Critical render-buffer ownership reminder (cow tools, Sept28 16:21UTC)
+
+Perf7f76494/main reuses AnimatedModel.LastWorld=_worldScratch on animated paths and Part.LivePos=
+PosScratch on geometry rebuild. Checkpoints must COPY dictionary values/vertex arrays, never keep
+these references. Worse, the no-track path returns Model.BindWorld directly; multiple placed
+instances can share this dictionary. Model.BindWorld/BindLocals/BindParents are READ-ONLY shared
+asset caches. Never restore by writing through them; use own dictionaries/WorldTransformsInto.
+Current NativeBus snapshot already stores copied arrays/scalars and rebuilds a fresh model, not
+LastWorld. Required controls for general actor snapshot: source Advance/SetFrame cannot mutate
+saved checkpoint; restoring instance A cannot mutate B sharing a Model; source asset caches remain
+unchanged. These are FUTURE checklist controls, not claimed implemented by the current bus smoke.
