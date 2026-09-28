@@ -170,7 +170,7 @@ public sealed class AdvisorMessageStack
     }
 
     /// <summary>`0x16B9F8`: a record with its own text (row −1), type 4, no object -- the goal notices.
-    /// ⚠ The port has no goals record, so nothing calls this yet (listed in the step's report).</summary>
+    /// Called by the viewer's <see cref="ParkAdvisor.GoalNotices"/> with <see cref="ParkGoals.Notices"/>.</summary>
     public void AddGoalNotice(string text) => Add(AdvisorRecordType.Goal, -1, null, text);
 
     /// <summary>`0x1087C8`: mark one index for removal (one pending slot; a second mark overwrites the first).</summary>
@@ -245,13 +245,20 @@ public sealed class AdvisorMessageStack
     // ------------------------------------------------------------------------------------------------
     // Open, close, input.
 
-    /// <summary>`0x107FB8` (L2 while closed): only with records -- smoothed scroll, cursor and top to 0
-    /// (the OLDEST record), not deleting, open, the pending removal DROPPED (−1), tutorial event 0xE, every
-    /// record's slide reset, UI sound 0x1F. Returns whether it opened.</summary>
+    /// <summary>`0x107FB8` (L2 while closed): only with records -- the cursor and top placed, not deleting, open,
+    /// the pending removal DROPPED (−1), tutorial event 0xE, every record's slide reset, UI sound 0x1F. Returns
+    /// whether it opened.
+    ///
+    /// ⚠⚠ DEVIATION, asked for by strawberry (2026-09-28): it opens on the NEWEST record. The console writes 0 to
+    /// the cursor, the top and the smoothed scroll (MIPS `0x107FEC..0x107FF8`), and a record is appended at
+    /// the end (`0x108598`), so there it opens on the OLDEST -- in a new park, the first goal notice. The top is
+    /// placed where a run of Next presses would leave it, with the newest as the last of the four rows the
+    /// scroll keeps in view; the view snaps its smoothed scroll there (AdvisorStackView).</summary>
     public bool Open()
     {
         if (Count == 0) return false;
-        Cursor = 0; ScrollTop = 0; Deleting = false; IsOpen = true; PendingRemoval = -1;
+        Cursor = Count - 1; ScrollTop = Math.Max(0, Count - VisibleRows);
+        Deleting = false; IsOpen = true; PendingRemoval = -1;
         TutorialEvent?.Invoke(TutorialEventOpened);
         for (int i = 0; i < Count; i++) _slots[i].ResetSlide();
         UiSound?.Invoke(SoundOpenClose);

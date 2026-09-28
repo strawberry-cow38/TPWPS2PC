@@ -99,6 +99,7 @@ public partial class Viewer
             SpeechStopped = () => { if (_advisorVoice != null && _advisorVoice.Playing) { _advisorVoice.Stop(); GD.Print("[advisor] 0x111D78: the voice is stopped"); } },
             Lips = AdvisorLip,
             GoldTicketsEarned = () => _awards.GoldTicketsEarned,
+            GoalNotices = AdvisorGoalNotices,
             UiSound = ManagementUiSound,
             GameOver = () => GD.Print("[advisor] 0x13BDD0 game over (123 BANKRUPTED ended) -- not ported, the park goes on"),
             Submitted = (r, immediate) => GD.Print($"[advisor] submitted 0x{r.Id:X} {AdvisorKey(r.Id)} "
@@ -312,6 +313,20 @@ public partial class Viewer
     string AdvisorKey(int id) => _advisor != null && id >= 0 && id < _advisor.Messages.Count ? _advisor.Messages[id].SymbolicKey : "?";
 
     /// <summary>A stack record's words: `translate(row)` (`0x1DFA58`) from the text database now, or its own.</summary>
+    /// <summary>⭐ `0x16BA58(cal)`, at the end of the advisor's start delay: the park's goals not yet met, one type-4
+    /// record each, printed from the text database at run time (<see cref="ParkGoals"/>). World and park are the
+    /// staff's selection (`0x14E170`, `0x14E160`); the goal bits are the profile's for this park.</summary>
+    void AdvisorGoalNotices()
+    {
+        var adv = _parkAdvisor;
+        if (adv == null) return;
+        var texts = ParkGoals.Notices(_staffWorld, _staffPark, _awards.ParkGoalBits(_staffWorld, _staffPark), adv.TestPark,
+                                      row => _text?.Text(AdvisorTextLanguage, row));
+        foreach (var t in texts) adv.Stack.AddGoalNotice(t);
+        GD.Print($"[advisor] 0x16BA58: {texts.Count} goal notice(s) for world {_staffWorld} park {_staffPark} "
+               + $"(goals {ParkGoals.For(_staffWorld, _staffPark)?.ToString() ?? "none"})");
+    }
+
     string AdvisorRecordText(AdvisorStackRecord r) =>
         r.Row == -1 ? r.Text ?? "" : _text?.Text(AdvisorTextLanguage, r.Row) ?? $"#{r.Row}";
 

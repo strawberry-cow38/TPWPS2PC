@@ -364,6 +364,19 @@ public partial class CoasterSmoke : Node3D
                 await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
             }
             Check(Field<bool>(viewer, "_playing"), "Left, Right and Space in the pylon edit leave the park running");
+            // The pause moved to H (strawberry, 2026-09-28): the same pipeline, so a binding that never reaches
+            // the switch fails here rather than reading as "still running".
+            async System.Threading.Tasks.Task Tap(Key key)
+            {
+                Input.ParseInputEvent(new InputEventKey { Keycode = key, PhysicalKeycode = key, Pressed = true });
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                Input.ParseInputEvent(new InputEventKey { Keycode = key, PhysicalKeycode = key, Pressed = false });
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            }
+            await Tap(Key.H);
+            bool pausedByH = !Field<bool>(viewer, "_playing");
+            await Tap(Key.H);
+            Check(pausedByH && Field<bool>(viewer, "_playing"), "H pauses the park and H again resumes it");
             // The D-pad in the edit: raise a hill, as a player would, one pylon at a time.
             for (int i = 0; i < track.Pylons.Count; i++) track.Pylons[i].Height = Hills[i];
             track.Recompute();

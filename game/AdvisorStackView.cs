@@ -109,6 +109,7 @@ public partial class AdvisorStackView : Control
 
     /// <summary>`+0x18`, the smoothed scroll in pixels of the 512 space.</summary>
     public int SmoothedScroll { get; private set; }
+    bool _wasOpen;
     /// <summary>Drawn at all: the park HUD is up and no laptop screen is (`*HUD == 0`).</summary>
     public bool Allowed { get; set; }
     /// <summary>What the last draw put on screen -- the OUTPUT a check reads.</summary>
@@ -171,6 +172,10 @@ public partial class AdvisorStackView : Control
     public void Pass()
     {
         if (_stack == null) return;
+        // `0x107FB8` resets the smoothed scroll with the top (`+0x18`), so the column opens where it stands
+        // rather than sweeping to it: here it snaps to the top the stack opened at.
+        if (_stack.IsOpen && !_wasOpen) SmoothedScroll = _stack.ScrollTop * RecordPitch;
+        _wasOpen = _stack.IsOpen;
         SmoothedScroll += (_stack.ScrollTop * RecordPitch - SmoothedScroll) >> 2;
     }
 

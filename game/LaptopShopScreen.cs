@@ -924,17 +924,26 @@ public sealed partial class LaptopShopScreen : Control
             }
             if (_buildRow && _buildRowRect.HasPoint(b.Position))
             { Cue(LaptopSounds.Cue.Choose); BuildRequested?.Invoke(); AcceptEvent(); return; }
-            // ⭐ A plain click on a spec row. ⚠ AFTER the sliders, the nudge arrows and the pager,
-            // all of which sit inside a row's band and must win -- a row-wide rect registered
-            // first would swallow every one of them.
-            if (b.ButtonIndex == MouseButton.Left)
-                foreach (var (idx, rect) in _specRows)
-                    if (rect.HasPoint(b.Position))
-                    { Cue(LaptopSounds.Cue.Choose); RowActivated?.Invoke(idx); AcceptEvent(); return; }
-
-            // ⚠⚠ HIT-TEST THE CLICK HERE TOO. `_btnHover` is set by MOTION, exactly like
-            // `_menuHover` -- and the comment above already says why trusting that is wrong. A
-            // click away from the buttons must not fire whichever one the pointer last crossed.
+            // ⚠⚠ BACK AND CLOSE ARE TESTED BEFORE THE SPEC ROWS, AND THAT ORDER IS THE BUG FIX.
+            // Master, 2026-09-28: "some pages of the laptop wont let me go back."
+            //
+            // A spec row's clickable rect is `Native * s` wide -- a band across the WHOLE laptop
+            // (see where _specRows is filled). BackBox is at y 60..94 and CloseBox at 104..138, and
+            // authored rows start as high as y=65, so on any screen with a row in those bands the
+            // row's full-width rect sits UNDER the buttons -- and the rows used to be hit-tested
+            // first and `return`. The button drew, highlighted on hover (that path is motion-based
+            // and separate, so it kept working), and did nothing when clicked. Only "some pages"
+            // because only some have a row up there.
+            //
+            // ⭐ The comment below already had the rule and I applied it to the wrong set: chrome
+            // that sits inside a row's band must win. I reasoned about sliders, nudge arrows and the
+            // pager and forgot the two buttons, which are drawn LAST (see DrawButtons) and so must
+            // be hit FIRST. Hit order is reverse paint order; a row visually covered by a button
+            // should not be clickable through it.
+            //
+            // ⚠ `_btnHover` is set by MOTION, so it is not trustworthy as a click target on its
+            // own: a click away from the buttons must not fire whichever one the pointer last
+            // crossed. Hence the rects are re-tested here rather than read off the hover state.
             int btn = Screen(BackBox, s, o).HasPoint(b.Position) ? 0
                     : Screen(CloseBox, s, o).HasPoint(b.Position) ? 1 : -1;
             if (btn >= 0)
@@ -942,6 +951,14 @@ public sealed partial class LaptopShopScreen : Control
                 Cue(btn == 1 ? LaptopSounds.Cue.Close : LaptopSounds.Cue.Back);
                 Dismissed?.Invoke(btn == 1); AcceptEvent(); return;
             }
+
+            // ⭐ A plain click on a spec row. ⚠ AFTER the sliders, the nudge arrows, the pager AND
+            // the two buttons above, all of which sit inside a row's band and must win -- a row-wide
+            // rect tested first would swallow every one of them.
+            if (b.ButtonIndex == MouseButton.Left)
+                foreach (var (idx, rect) in _specRows)
+                    if (rect.HasPoint(b.Position))
+                    { Cue(LaptopSounds.Cue.Choose); RowActivated?.Invoke(idx); AcceptEvent(); return; }
             if (row >= 0)
             {
                 _menuSelected = row;

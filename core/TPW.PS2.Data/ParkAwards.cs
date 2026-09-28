@@ -116,4 +116,19 @@ public sealed class ParkAwards
     }
     /// <summary>`[0x3975C0]`, tickets ever earned.</summary>
     public int GoldTicketsEarned { get; set; }
+
+    readonly int[] _parkGoals = new int[8];
+
+    /// <summary>⭐ `[0x3975C8 + world·8 + park·4]` (read `0x1C3790`, written `0x1C3768`): the goals a park has
+    /// met, bit n for goal n (1..3). The calendar copies it into `cal+0x24` at construction (`0x16AF70`), and the
+    /// goal notices skip a set bit (<see cref="ParkGoals.Notices"/>). ⚠ Nothing in the port sets one yet -- the
+    /// weekly goal tests of `0x16BC70` are not ported -- so every park opens with its three goals.</summary>
+    public int ParkGoalBits(int world, int park) =>
+        (uint)world < 4 && (uint)park < 2 ? _parkGoals[world * 2 + park] : 0;
+
+    /// <summary>`0x1C3768(world, park, bits)`.</summary>
+    public void SetParkGoalBits(int world, int park, int bits)
+    {
+        if ((uint)world < 4 && (uint)park < 2) _parkGoals[world * 2 + park] = bits;
+    }
 }

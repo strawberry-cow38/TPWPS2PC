@@ -154,4 +154,6 @@ So the port drew the box's text in `Console.bff` until advisor-visuals. The coun
 
 The step from clip to pixel (2048 ± 1800, INFERRED); whether the box draws over the head where they overlap;
 the audio group of the speech; whether the stream pauses; `vt+0xCC` of a ride; the tutorial (Replay stays
-inert); the game-over flow after 123; the goal notices (no goals record in the port).
+inert); the game-over flow after 123.
+
+⭐ The goal notices are wired (2026-09-28): see §5.5 of advisor-messages.md and `ParkGoals`.

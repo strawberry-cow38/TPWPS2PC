@@ -467,6 +467,8 @@ Copy to index `count++`; UI sound **0x1e**. New = highest index.
 | button | closed | open |
 |---|---|---|
 | **L2** (logical 5, game bit `0x800` ← libpad `0x0001`; name INFERRED) | open (if count > 0; cursor and scroll reset to 0 = the OLDEST record; tutorial event 14; sound 0x1f) | close |
+
+⚠ **The port opens on the NEWEST record** (strawberry, 2026-09-28): a deliberate deviation. `0x107fb8` writes 0 to the cursor, top and smoothed scroll (MIPS `0x107fec..0x107ff8`) and `0x108598` appends, so the console opens on the oldest -- in a new park, goal 1.
 | Triangle (logical 1) | — | close (sound 0x1f) |
 | Up / Down | — | cursor ±1 (sound 0xd6), scroll keeps it within 4 |
 | Circle (logical 10) | — | **Delete**: slide out, then remove (sound 0x1f) |
@@ -482,6 +484,14 @@ Removing the last record closes the stack.
 - Goal notices `0x16ba58` (advisor state 0 end, not test park): for each goal bit 1..3 not yet
   done, row 376 / 894 / 515 (game text not reproduced) formatted with the goal
   value, type **4** (`0x16b9f8`). Type 4 is not saved.
+  ⭐ **The goals record, READ (2026-09-28):** `0x16c008(world, park)` returns one of eight static 0x38-byte
+  records at `0x3621e8..0x3623a7` (0 for anything past world 3 or park 1); the notices print its `+0xc`
+  (visitors), `+0x10` (profit above the starting balance, printed as stored) and `+0x14` (years in
+  business) with `sprintf` `0x29d628`. `0x16ba58` does not test the record for 0. Goal bit n is `cal+0x24`,
+  which the calendar ctor `0x16af70` loads from the profile table `[0x3975c8 + world·8 + park·4]`
+  (`0x1c3790`; written by `0x1c3768`). Jungle 1/2: 100/2000/1, 200/3000/2; Hallow 150/2500/1, 250/3000/2;
+  Fantasy 150/2500/1, 500/5000/5; Space 250/3000/2, 500/5000/5. In the port: `core/TPW.PS2.Data/ParkGoals.cs`,
+  checked against the executable by the advisor audit.
 - Minigame `0x1deac0` shows a record built on the fly in the same box (not added).
 - Ride removed (`0x1e12e0 → 0x1088e0`): removes the records whose object is that ride.
 - Any object removed (`0x14a7b0 → 0x13d8c0`): marks the **last** type-2 record for removal,
@@ -613,7 +623,7 @@ Mismatches and gaps:
 3. `game/Viewer.Management.cs:18,67`: messages go to the status line; the console never displays
    the text while speaking — it goes to the message stack (§5), and a voice-only message is still
    *spoken* (the viewer logs it as silent).
-4. Not in the port: startup 202/171/188 and goal notices; finance 206/121/122/123
+4. Not in the port (as of this research; the greeting and the goal notices are wired since): startup 202/171/188 and goal notices; finance 206/121/122/123
    (`ParkManagement.cs:17` says so); goals/awards 0x9d, 0x9e, 0x9f, 0xaa, 0xa1..0xa4 (only 0xa0);
    stock messages 0xbd..0xc4, 199, 200, 201; coaster 203/204 (the viewer prints them,
    `Viewer.Coasters.cs:677`); 207/0x7d are returned as enum values, not posted; 0x66; minigame

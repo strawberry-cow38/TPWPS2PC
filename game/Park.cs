@@ -1248,7 +1248,15 @@ public sealed partial class Park
                     max = new Vector3(Math.Max(max.X, corner.X), Math.Max(max.Y, corner.Y), Math.Max(max.Z, corner.Z));
                 }
             }
-            foreach (var c in n.GetChildren()) Walk(c, t);
+            // ⚠ PERF: indexed, not `foreach (GetChildren())`. Godot 4's C# `GetChildren()` returns a
+            // marshalled `Array<Node>` -- a heap allocation PER NODE PER CALL -- and this walk runs
+            // once per placed object per frame via PointedAt/UpdateHover, so a park of rides minted
+            // one collection per node of every ride every frame to read AABBs it then discarded.
+            // GetChildCount/GetChild yields the same children in the same order and allocates
+            // nothing. ⚠ Left alone in SurfaceHeights above: that is a one-off terrain bake, and the
+            // foreach reads better where it costs nothing.
+            int kids = n.GetChildCount();
+            for (int k = 0; k < kids; k++) Walk(n.GetChild(k), t);
         }
         Walk(root, inParent ? root.Transform : Transform3D.Identity);
         return any ? (min, max) : (Vector3.Zero, Vector3.Zero);
