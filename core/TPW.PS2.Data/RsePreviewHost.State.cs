@@ -5,6 +5,8 @@ namespace TPW.PS2.Data;
 public sealed partial class RsePreviewHost
 {
     public const int StateVersion = 1;
+    internal long SnapshotValueCount => (long)_channels.Count + _seats.Count + _walkers.Count
+        + _visible.Count + Math.Max(0, HeadSlots) + (LastEffect?.Arguments.Count ?? 0);
 
     /// <summary>Logical preview state only. AssetKey is caller-owned identity (prefer a content
     /// hash/versioned key); no APS bytes, records, renderer, delegates or event subscriptions.

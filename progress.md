@@ -3272,3 +3272,16 @@ caught,226760SaveAuditpass,83Pythonpass. Core8parks4PASS/4knownretailreds. Runti
 visitorFANTASYposition andStanding[89] MATCH unmodifiedmain50a7bdd, no newregressions.
 NextParkSim/ParkRidegraph/assetregistry+noinitreplay, then allremainingworldowners;
 SaveGameRequested staysunavailableuntilcomplete. Mainstartupalreadyc83a091 DONE.
+
+### September28 save/load — scripted ParkSim graph (research branch, not player saves)
+ParkRide scalar/null/lazy settings+queues+service DTO and ParkSim staged graph factory now
+run actual disc scripts after a FILE roundtrip into fresh objects. FANTASY/HALLOW/SPACE
+save with a guest aboard, then48s of real ParkSim.Advance exactly matches PC/time/frame
+and private state. Shared child/sound hosts, future Spawn bindings, directory handles and
+RNG, partialtick, finance and orderedupgrades retained; no Create replay. Native vehicle
+and externalVMRNG saves failclosed until their owner joins. Paths/visitors/staff/Viewer
+not yet captured: total save/load remains explicitly UNAVAILABLE.
+Independent review fixed strong child-metadata retention (weakkeys), lazyhead allocation
+budget perVM, and preflightbeforecapturecopies. Queue-reversal mutant exposed palindromic
+testdata; now asymmetric withduplicateIDs, mutantfails. Five mutationsallfail/restored.
+SaveAudit230633PASS (ownerdisc),83PythonPASS. No UI changes; next full nativevehicle+worldowners.

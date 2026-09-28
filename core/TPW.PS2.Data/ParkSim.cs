@@ -675,7 +675,7 @@ public sealed partial class ParkSim : IRseDirectory
             && string.Equals(m.Name, name, StringComparison.OrdinalIgnoreCase)).ToArray();
         return all.Length == 0 ? null : all[_random.Next(all.Length)];
     }
-    readonly Random _random = new(11);
+    readonly SnapshotRandom _random = new(11);
 
     /// <summary>A machine and everything it has spawned, parents before children. ⚠ The walk is
     /// depth-limited because nothing stops a script spawning a script that spawns it back.</summary>

@@ -165,3 +165,56 @@ advisor globals, Viewer transaction/filepicker/SaveGameRequested. All3delegatesu
 thisturn; worker2 timedout but leftcompletefiles; parentcompiled/testedreviewedthem.
 No pending worker writes. Fresh turn may splitnonoverlapping DTO owners. Keep
 pushingboundedcommits; do NOT enable Save UI whileworldcoverageisincomplete.
+
+## Scripted ParkSim graph checkpoint — September 28 (~09:35)
+
+ParkRide.State now captures ride-owned placement metadata, all nullable operating
+settings/lazy value cache, financial/condition/service/upgrade fields and ordered
+queue/left/ejected collections. Staff/definition/VM/host/vehicle references use explicit
+IDs, separate from display names. Hydration constructs a new ride, not a gameplay action.
+
+ParkSim.CaptureScriptedState / FromScriptedState adds the ACTUAL scripted park consumer:
+time plus fractional tick carry, ordered rides, complete VM parent/child/sound closure
+(not depth-limited Chain), shared hosts, allocator/live handles/tombstones, directory RNG,
+finance, upgrade order, advisor counters and instrumentation. Pure trusted asset bindings
+identify exact program/animation/definition revisions; the restored spawn factory resolves
+future children in the saved source scope, retains shared hosts, and binds the same park
+directory. Never uses Add, Create, RunSlice, Book or service to hydrate. Callback rebinding
+is explicit, after a staged graph validates. Source park is not mutated on a bad restore.
+
+The name SCRIPTED is intentional: tracks/coasters and external VM RNG callbacks are
+currently rejected, not dropped. Paths, staff and all visitor/Viewer owners remain separate
+required snapshots. This is NOT a full park save, NOT player-ready, and no Save/Load button
+has been enabled. Staged static factories do not yet constitute a Viewer world transaction.
+
+Actual owner-disc fixtures: BugTV/FANTASY cut3080ms, Candle/HALLOW5280ms, Orbiter/SPACE1760ms,
+each with a boarded guest, queue, nonzero carry, money and handle. Write/read a real savefile,
+restore fresh ParkSim/ride/host/VM objects without Create/effects, run the ACTUAL ParkSim.Advance
+for48000ms on both: exact time/PC/frame every pass; complete private-state snapshots every25.
+Three worldsPASS. Paths are fresh external inputs, not evidence of saved terrain/visitors.
+Synthetic graph adds future child and sound spawns, shared hosts/programs, cyclic parent
+closure, dead handle nonreuse, ordered upgrades, corrupt references and staged failure.
+
+Independent review found three real draft issues, fixed before commit:
+- restored spawn metadata strongly retained replaced children; now weak-key metadata,
+  tested by collecting detached, unhandled children while the park remains live;
+- a shared host's lazy head count must be budgeted PER VM, not just once per host;
+- capture needed live count preflight BEFORE copying tables/queues or resolving assets.
+Tests cover prospective allocation rejection and preflight with an oversized live queue.
+
+Five deliberate mutations now fail: discarded carry, reset directory RNG, reversed queue,
+strong child metadata retention, and omitted lazy-head allocation budget. The queue mutant
+initially SURVIVED because the draft queue fixture was a palindrome (9,2,9), and the graph
+fixture had only one guest left. Fixed the TEST DATA: keep repeated identities but make
+all ordered queues/left/ejected lists asymmetric; then reversal fails. No production bug
+was hidden by simply declaring that mutant irrelevant. All mutations restored.
+Final SaveAudit230633PASS with disc;83PythonPASS. Full core/runtime gates recorded below
+when rerun against merged main. Tinyclaw fixed standing tests on mainb0ccdfe; visitor
+FANTASY anchor failure remains independently bisected to00e5cd9, outside this save slice.
+
+NEXT: native track/coaster owner snapshots (topology/train/car timing/riders/RNG), geometry
+and paths, then visitor/needs/native flow/queues/lease/pending route results and staff/litter/
+research/advisor/presentation; all required before transactional Viewer load. Three delegates
+used this turn (ride DTO, graph DTO timedout with complete tested draft, independent review).
+No pending workers. Main/fellow agents moving: fetch/merge; preserve new live fields. Push
+research branch only, and do not claim a scripted graph is a total snapshot.

@@ -39,7 +39,10 @@ if(args.Length>0)
 {
     using var disc=new Disc(args[0]);
     DiscRseSaveChecks.Run(disc,Check);
+    DiscParkSimSaveChecks.Run(disc,Check);
 }
+ParkRideSaveChecks.Run(Check);
+ParkSimSaveChecks.Run(Check);
 SnapshotRandomChecks.Run(Check);
 RseMachineSaveChecks.Run(Check);
 RseHostSaveChecks.Run(Check);

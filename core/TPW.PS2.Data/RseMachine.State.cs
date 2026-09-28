@@ -4,6 +4,11 @@ namespace TPW.PS2.Data;
 
 public sealed partial class RseMachine
 {
+    internal IRseHost SnapshotHost => _host;
+    // Count both copied state and declaration-backed allocations on staging; keep heads lazy.
+    internal long SnapshotValueCount => 2L * (_variables.Length + (long)_stack.Length + _walks.Length
+        + _bounce.Length + _limbo.Length) + (_heads?.Length ?? Math.Max(0, _host?.HeadSlots ?? 0));
+
     public const int StateVersion = 1;
 
     /// <summary>ExternalCallerManaged contains NO stream state. Save and restore that shared
