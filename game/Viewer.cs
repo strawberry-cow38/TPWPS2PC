@@ -6203,6 +6203,9 @@ public partial class Viewer : Node3D
     /// <summary>Where each guest the scripts are WALKING was last drawn: between two of the
     /// ride's nodes, the script's per-mille of the way along.</summary>
     readonly Dictionary<int, (Transform3D At, string Where)> _walking = new();
+    /// <summary>Everyone on a trampoline this frame: where the bounce ticker puts them, and whether they are
+    /// bouncing (logical 6) or standing on the pad (logical 11).</summary>
+    readonly Dictionary<int, (Transform3D At, string Where, bool Bouncing)> _bouncers = new();
     /// <summary>Legs that could not be placed, said once each rather than sixty times a second.</summary>
     readonly HashSet<(int Ride, int From, int To)> _unplacedLegs = new();
 
@@ -6246,6 +6249,72 @@ public partial class Viewer : Node3D
         }
     }
 
+    /// <summary>⭐⭐ THE TRAMPOLINE'S RIDERS (strawberry, 2026-09-29: "guests invisible riding belly bounce").
+    /// Belly Bounce boards with `BOUNCE v0 v3`, not ADDHEAD and not WALKON: the guest goes into the script's
+    /// bounce table, and neither SeatRiders nor WalkRiders ever looked there -- so PlaceActors, finding the
+    /// guest in no pose at all, freed its body. The model has no 0x80 seat to find because it never needed one.
+    ///
+    /// Drawn as the ticker `0x1BB888` draws them (<see cref="RseMachine.BounceHeight"/>): the WHOLE guest on the
+    /// pad fitting (space 0x800, id = slot + BOUNCESETNODE's base, 1 from the loader), bouncing on the game's
+    /// sine and never below the pad, turned to a per-guest angle; or, on a script that also declares walkers,
+    /// standing on the pad. A slot whose pad does not resolve is not drawn, which is what the ticker does too.
+    ///
+    /// ⚠ DEVIATIONS, named: the console keys the amplitude's `% 7` and the facing (in DEGREES) off the guest's
+    /// heap address, which a port does not have -- <see cref="BounceKey"/> stands in with a hash of the id. And
+    /// the height's base term is the ride's own world height (INFERRED from the `+0x44` chain, see
+    /// BounceHeight), which is 0 on a flat park either way.</summary>
+    void BounceRiders()
+    {
+        _bouncers.Clear();
+        foreach (var (ride, model, _, _, _) in _scripted)
+        {
+            var m = ride.Machine;
+            if (m == null || m.Bouncing == 0 || model?.Root == null || !IsInstanceValid(model.Root) || model.LastWorld == null) continue;
+            bool stand = m.Program.WalkCapacity != 0;
+            float rideTenths = model.Root.GlobalTransform.Origin.Y * 10f;
+            foreach (var (guest, node, start) in m.Bouncers)
+            {
+                if (_seated.ContainsKey(guest) || _walking.ContainsKey(guest)) continue;
+                if (NodeWorld(ride.Id, node, 0x800) is not { } pad)
+                {
+                    if (_unplacedLegs.Add((ride.Id, node, -1)))
+                        GD.Print($"[guest] bouncer #{guest} on {ride.Name}: pad {node} does not resolve on the model, not drawn");
+                    continue;
+                }
+                int key = BounceKey(guest);
+                float y = stand ? pad.Y : RseMachine.BounceHeight(m.Time, start, key, ride.Setting0xC0, m.BounceBase, rideTenths, pad.Y);
+                float a = Mathf.DegToRad(key % 360);
+                _bouncers[guest] = (new Transform3D(WalkBasis(new Vector3(Mathf.Sin(a), 0, Mathf.Cos(a))), new Vector3(pad.X, y, pad.Z)),
+                                    $"{ride.Name} pad {node}{(stand ? " standing" : $" +{y - pad.Y:F2} above it")}", !stand);
+            }
+        }
+    }
+
+    /// <summary>The stand-in for a guest's heap address in the bounce ticker's `% 7` and facing: a fixed
+    /// scramble of the id, so neighbours differ and a guest keeps its own from frame to frame.</summary>
+    static int BounceKey(int guest) => (int)((uint)guest * 2654435761u >> 1);
+
+    /// <summary>A bouncer's animation: logical 6 is APS slot 12 variant 0 (`0x2AAD48`, read in
+    /// NativeLogicalAnimationTable), looped; a stander takes the idle as any standing guest does.</summary>
+    void BounceGait(int id, bool bouncing, float alpha)
+    {
+        if (!bouncing || !_drawn.TryGetValue(id, out var d) || d.Drawn?.Root == null || !IsInstanceValid(d.Drawn.Root)
+            || !_walkRec.TryGetValue(id, out var w) || w.Anim == null)
+        {
+            Gait(id, walking: false, alpha);
+            return;
+        }
+        var bounce = w.Anim.Records().FirstOrDefault(r => r.Slot == 12 && r.Skeletal && !r.Shared);
+        if (bounce == null) { Gait(id, walking: false, alpha); return; }
+        if (!_gaitRec.TryGetValue(id, out var playing) || playing == null || playing.Offset != bounce.Offset)
+        {
+            try { d.Drawn.UseRecord(bounce); }
+            catch (Exception e) { GD.PrintErr($"[guest] #{id} would not take its bounce record: {e.Message}"); Gait(id, walking: false, alpha); return; }
+            _gaitRec[id] = bounce; _gaitFrom[id] = _parkTicks;
+        }
+        d.Drawn.SetFrame(GaitFrame(id, alpha));
+    }
+
     readonly Dictionary<ParkRide, (Node3D Root, StandingServicePose Pose)> _standingPlaces = new();
     readonly Dictionary<int, Transform3D> _standing = new();
 
@@ -6276,7 +6345,8 @@ public partial class Viewer : Node3D
             if (_visitors.ServiceHidden(id)) continue;
             var owner = _visitors.QueuedOwner(id);
             if (owner == null || !_standingPlaces.TryGetValue(owner, out var place)
-                || !place.Root.IsInsideTree() || onWalk.Contains(id) || _seated.ContainsKey(id) || _walking.ContainsKey(id)) continue;
+                || !place.Root.IsInsideTree() || onWalk.Contains(id) || _seated.ContainsKey(id) || _walking.ContainsKey(id)
+                || _bouncers.ContainsKey(id)) continue;
             if (owner.Host.Visibility.TryGetValue(id, out var visibility) && !visibility.Visible) continue;
             // Never substitute a standing pose for an unresolved scripted leg or seat.
             // Small outside-service fixtures have neither; larger service modes remain separate.
@@ -6297,6 +6367,7 @@ public partial class Viewer : Node3D
     {
         SeatRiders();
         WalkRiders();
+        BounceRiders();
         StandingRiders();
         // ⭐ Whoever has left the walk -- handed to a ride -- loses their body this frame unless a
         // seat has them. The script has them now; a kid standing in the queue AND riding would be
@@ -6306,6 +6377,7 @@ public partial class Viewer : Node3D
         var alive = new HashSet<int>(_guests.Guests.Select(g => g.Id));
         alive.UnionWith(_seated.Keys);
         alive.UnionWith(_walking.Keys);
+        alive.UnionWith(_bouncers.Keys);
         alive.UnionWith(_standing.Keys);
         foreach (int id in _actors.Keys.Where(id => !alive.Contains(id)).ToArray())
         {
@@ -6328,6 +6400,15 @@ public partial class Viewer : Node3D
             Show(id, headOnly: false);
             Pose(id, sitting: false);
             Gait(id, walking: true, alpha);
+        }
+        foreach (var (id, b) in _bouncers)
+        {
+            if (!_actors.TryGetValue(id, out var bouncer)) bouncer = MakeActor(id);
+            if (bouncer == null) continue;
+            bouncer.Transform = b.At;
+            Show(id, headOnly: false);
+            Pose(id, sitting: false);
+            BounceGait(id, b.Bouncing, alpha);
         }
         foreach (var (id, at) in _standing)
         {
@@ -7261,6 +7342,17 @@ public partial class Viewer : Node3D
                 GD.Print($"[guest] {label} {r.Name}: {r.Host?.Walkers.Count ?? 0} walker poses on record, {r.Machine?.GuestIds.Count ?? 0} guests held by the script, "
                        + $"{_walking.Count(kv => kv.Value.Where.StartsWith(r.Name))} drawn walking node to node, "
                        + $"walks {(r.Machine?.WalksAreTimed == true ? "TIMED from the model's fittings" : "at the floor (no node resolved yet)")}");
+            // ⭐ THE TRAMPOLINE, counted from both ends: the script's bounce table against what is drawn. A
+            // bouncer the table holds and nobody draws is the invisible-rider bug, and it says so.
+            foreach (var r in _sim.Rides.Where(r => r.Machine is { Bouncing: > 0 }))
+            {
+                var table = r.Machine.Bouncers;
+                int drawn = table.Count(b => _bouncers.ContainsKey(b.Guest) && _actors.TryGetValue(b.Guest, out var ba) && ba != null && IsInstanceValid(ba));
+                GD.Print($"[guest] {label} {r.Name}: {table.Count} in the bounce table, {drawn} drawn whole on their pads"
+                       + (drawn < table.Count ? " -- A BOUNCER IS INVISIBLE" : "")
+                       + ": " + string.Join("; ", table.Select(b => _bouncers.TryGetValue(b.Guest, out var bb)
+                           ? $"#{b.Guest} {bb.Where} at y {bb.At.Origin.Y:F2}" : $"#{b.Guest} pad {b.Node} NOT DRAWN")));
+            }
             // ⭐ THE CLOSEST PAIR is the number that says whether seats stack: at the node origins
             // it was 0.00 for three riders on the crate.
             if (_seated.Count > 1)

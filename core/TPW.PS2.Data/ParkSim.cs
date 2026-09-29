@@ -132,13 +132,13 @@ public sealed partial class ParkRide
 
     /// <summary>`inst + 0xC0`, a u16 the scream arithmetic averages with the script's own operand
     /// -- `FUN_001B96D8` computes `clamp((operand + this) / 2, 0, 100)` and `FUN_001B98B0` bands
-    /// on `(operand + this) / 50`. See <see cref="RideScreams"/>.
+    /// on `(operand + this) / 50`. See <see cref="RideScreams"/>. The bounce ticker reads it too, as a
+    /// speed: `this / 200 + 0.8` (<see cref="RseMachine.BounceHeight"/>).
     ///
-    /// ⚠⚠ WHAT IT IS HAS NOT BEEN READ, and it is named after its offset for the same reason
-    /// <see cref="Setting0xAC"/> is: a plausible name would be a guess wearing a label. It
-    /// defaults to 0, which makes the level exactly half the script's operand -- the arithmetic
-    /// is faithful and the unknown is one line to replace when somebody reads the writer.</summary>
-    public int Setting0xC0 { get; set; }
+    /// ⭐ STARTS AT 50, READ: the script loader `0x1BFDF8` writes `0x32` there. It used to start at 0 here,
+    /// which halved every scream level's floor. What CHANGES it later is still unread, and it is named
+    /// after its offset for the same reason <see cref="Setting0xAC"/> is.</summary>
+    public int Setting0xC0 { get; set; } = 50;
 
     /// <summary>`inst + 0xD0`: the handle of the scream currently looping on this ride, or 0.
     /// `STARTSCREAM` only starts one when this is 0 (`FUN_001B94B8` guards on it), `STOPSCREAM`

@@ -154,6 +154,14 @@ REQUIRED_WITNESSES += (
     'ok   surface seat: the facing bit: one bit of noise',
 )
 
+# The trampoline (BounceChecks.cs, RseMachine.BounceHeight): 8, disc-wide. The loader's two defaults are read back
+# out of the executable, so a port constant that drifts from 0x32 / 1 goes red here, not in a picture.
+REQUIRED_CHECKS.update({'bounce': 8})
+REQUIRED_WITNESSES += (
+    'ok   bounce: the loader writes 1 to inst+0x70',
+    'ok   bounce: 4 BOUNCE rides',
+)
+
 
 def classify(world: str, raw_exit: int | None, text: str, *, timed_out: bool = False,
              truncated: bool = False, launch_error: str | None = None, terrain: int | None = None) -> dict:
