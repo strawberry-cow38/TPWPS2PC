@@ -255,11 +255,89 @@ public partial class PlayerPathSession : Node
         Log("session-timeout","45 minute real-time guard reached");
     }
 
+    CpuParticles3D[] ContinuousNodes()
+    {
+        var owner=Read<RideParticles>(viewer,"_burst");
+        if(owner==null)return Array.Empty<CpuParticles3D>();
+        var map=Read<System.Collections.IDictionary>(owner,"_continuous");
+        return map.Values.Cast<CpuParticles3D>().ToArray();
+    }
+    void ObserveParticles(string phase)
+    {
+        var owner=Read<RideParticles>(viewer,"_burst");
+        var root=owner==null?null:Read<Node3D>(owner,"_root");
+        var nodes=ContinuousNodes();
+        Log("particle-observation",new {phase,count=nodes.Length,rootChildren=root?.GetChildCount(),
+            nodes=nodes.Select(n=>IsInstanceValid(n)?(object)new {valid=true,id=n.GetInstanceId(),
+                emitting=n.Emitting,inTree=n.IsInsideTree(),visible=n.IsVisibleInTree(),
+                position=n.IsInsideTree()?new[]{n.GlobalPosition.X,n.GlobalPosition.Y,n.GlobalPosition.Z}:null}
+                :new {valid=false})});
+    }
+    async Task WorldResetTour(bool configuredOpen)
+    {
+        Check(language=="eng","focused reset tour names English catalogue rows");
+        int sourceMap=Read<int>(viewer,"_loadedMap");
+        await LaptopRow(801);await MenuContains("Shops (");await MenuContains("Drinks Shop");
+        await ClickCell(38,32);
+        Check(Read<Park>(viewer,"_park").Placed.Count==1,"Drinks Shop purchased through ordinary placement");
+        await Wait(()=>ContinuousNodes().Any(n=>IsInstanceValid(n)&&n.Emitting&&n.IsVisibleInTree()),60,
+            "normal Create produced a visible, emitting continuous source (nonvacuous)");
+        var originals=ContinuousNodes();
+        var originalIds=originals.Select(n=>n.GetInstanceId()).ToArray();
+        var effectAt=originals[0].GlobalPosition; // COPY, not a later lookup into a freed object
+        ObserveParticles("source-active");await Shot("continuous-source-active");
+        await Wait(()=>Read<ParkAdvisor>(viewer,"_parkAdvisor")?.PadLocked!=true,60,"input available for Close Park");
+        await KeyPress(Key.Tab);await LaptopRow(844);
+        await Wait(()=>Read<bool>(viewer,"_lobbyMode"),15,"Close Park returns to lobby");
+        await KeyPress(Key.Left);await KeyPress(Key.Up);
+        Check(Read<int>(viewer,"_lobbyRecord")==1,"real lobby navigation selected JUNGLE second park");
+        await Shot("reset-destination-selected");await KeyPress(Key.Enter);await KeyPress(Key.Enter);
+        var frontend=Read<FrontendScreen>(viewer,"_frontend");
+        if(frontend.CurrentStage==FrontendScreen.Stage.Movie)await KeyPress(Key.Enter);
+        await Wait(()=>!Read<bool>(viewer,"_lobbyMode")&&Read<int>(viewer,"_loadedMap")!=sourceMap,30,
+            "ordinary lobby confirmation loaded a different park");
+        await Frame(3);
+        Check(Read<Park>(viewer,"_park").Placed.Count==0,"destination has no placed source shop");
+        ObserveParticles("destination-after-deferred-free");
+        Finding("continuous entries after map switch","0",ContinuousNodes().Length.ToString(),"cow tools particle cleanup");
+        int retained=originals.Count(n=>IsInstanceValid(n));
+        Finding("old emitter instances still valid","0",retained.ToString(),"cow tools particle cleanup");
+        Log("source-identities-after-switch",new {originalIds,retained});
+        Finding("fresh destination open state",configuredOpen.ToString(),Read<bool>(viewer,"_laptopParkOpen").ToString(),"cow tools park state");
+        Check(Read<AnimatedModel>(viewer,"_terrain").Root.IsVisibleInTree(),"destination terrain effectively visible");
+        await AimCell(38,32);
+        var camera=Read<Camera3D>(viewer,"_cam");var projected=camera.UnprojectPosition(effectAt);
+        var basis=camera.GlobalBasis;var origin=camera.GlobalPosition;
+        Log("old-effect-projection",new {effectAt=new[]{effectAt.X,effectAt.Y,effectAt.Z},x=projected.X,y=projected.Y,
+            camera=new[]{basis.X.X,basis.X.Y,basis.X.Z,basis.Y.X,basis.Y.Y,basis.Y.Z,basis.Z.X,basis.Z.Y,basis.Z.Z,origin.X,origin.Y,origin.Z},
+            fov=camera.Fov,viewport=new[]{GetViewport().GetVisibleRect().Size.X,GetViewport().GetVisibleRect().Size.Y}});
+        await ToSignal(GetTree().CreateTimer(3),SceneTreeTimer.SignalName.Timeout);
+        ObserveParticles("destination-after-three-simulation-seconds");await Shot("empty-destination-at-old-emitter");
+        await KeyPress(Key.Tab);
+        await Wait(()=>Panel.Open,10,"destination laptop opens");
+        bool hasOpen=Read<List<string>>(Panel,"_menu").Contains(Text(617));
+        Finding("fresh destination offers Open Park",(!configuredOpen).ToString(),hasOpen.ToString(),"cow tools park state");
+        await Shot("destination-open-park-row");
+        if(hasOpen)
+        {
+            await LaptopRow(617);
+            Check(Read<bool>(viewer,"_laptopParkOpen"),"new park can be opened independently through its own row");
+        }
+    }
+    async Task EndSession(bool strict,string scope)
+    {
+        Log("complete",new {observations,automaticMismatches=defects,scope});
+        GD.Print($"PLAYER PATH COMPLETE observations={observations} automaticMismatches={defects} language={language}");
+        viewer.QueueFree();await Frame(2);GetTree().Quit(strict&&defects>0?2:0);
+    }
+
     public override async void _Ready()
     {
         try
         {
             var args=OS.GetCmdlineUserArgs();
+            bool worldReset=args.Contains("--play-tour=world-reset");
+            bool configuredOpen=args.Contains("--laptop-park-open");
             output=args.FirstOrDefault(a=>a.StartsWith("--play-out="))?[11..]
                 ??throw new ArgumentException("--play-out=required");
             language=args.FirstOrDefault(a=>a.StartsWith("--play-language="))?[16..]??"fre";
@@ -285,6 +363,11 @@ public partial class PlayerPathSession : Node
             var menu=Read<MainMenu>(viewer,"_mainMenu");await Shot("menu");
             await Click(menu.RowRect(0).GetCenter());await Click(menu.RowRect(0).GetCenter());
             await Wait(()=>Read<bool>(viewer,"_lobbyMode"),20,"main game enters lobby");
+            if(worldReset)
+            {
+                await KeyPress(Key.Right);
+                Check(Read<int>(viewer,"_lobbyRecord")==4,"real lobby navigation selected FANTASY first park");
+            }
             await Shot("lobby");await KeyPress(Key.Enter);await Shot("lobby-confirm");await KeyPress(Key.Enter);
             if(frontend.CurrentStage==FrontendScreen.Stage.Movie)await KeyPress(Key.Enter);
             await Wait(()=>!Read<bool>(viewer,"_lobbyMode")&&Read<int>(viewer,"_loadedMap")>=0,30,"entered park via lobby prompt");
@@ -296,11 +379,17 @@ public partial class PlayerPathSession : Node
             await Wait(()=>Read<ParkAdvisor>(viewer,"_parkAdvisor")?.PadLocked!=true,60,"advisor releases normal input");
             await KeyPress(Key.Tab);await Wait(()=>Panel is {Open:true},10,"Tab opens laptop");
             await Shot("laptop-main-closed");
-            Check(!Read<bool>(viewer,"_laptopParkOpen"),"fresh park starts closed");
-            await LaptopRow(617); // Open Park, actual displayed translated row
+            Check(Read<bool>(viewer,"_laptopParkOpen")==configuredOpen,"fresh park open state matches explicit launch policy");
+            if(!configuredOpen)await LaptopRow(617); // Open Park, actual displayed translated row
             Check(Read<bool>(viewer,"_laptopParkOpen"),"Open Park click changed actual state");
             if(!Panel.Open)await KeyPress(Key.Tab);
             await Shot("laptop-main-open");
+            if(worldReset)
+            {
+                await WorldResetTour(configuredOpen);
+                await EndSession(args.Contains("--play-expect-clean"),"real input world reset: particles, open state, terrain visibility");
+                return;
+            }
             await LaptopRow(1042); // Research
             await Wait(()=>Read<LaptopScreen>(Panel,"_spec")==LaptopScreen.Research,10,"Research page opened");
             await Shot("research");
@@ -322,9 +411,7 @@ public partial class PlayerPathSession : Node
             bool build=args.Contains("--play-tour=build");
             if(build)await BuildFirstRide();
             if(interactive)await InteractiveLoop();
-            Log("complete",new {observations,defects,scope=build?"first ride/spine/queue and natural observation; inspect evidence, not automatic service-use claim":"cold boot / open park / research / cleaner candidate; no building or service-use claims"});
-            GD.Print($"PLAYER PATH COMPLETE observations={observations} defects={defects} language={language}");
-            viewer.QueueFree();await Frame(2);GetTree().Quit(0);
+            await EndSession(args.Contains("--play-expect-clean"),build?"first ride/spine/queue and natural observation; inspect evidence, not automatic service-use claim":"cold boot / open park / research / cleaner candidate; no building or service-use claims");
         }
         catch(Exception e)
         {
