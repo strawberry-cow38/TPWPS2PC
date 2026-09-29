@@ -6014,6 +6014,22 @@ public partial class Viewer : Node3D
         var ax = new Vector3(w.M11, w.M12, w.M13);
         var ay = new Vector3(w.M21, w.M22, w.M23);
         var az = new Vector3(w.M31, w.M32, w.M33);
+        // ⭐⭐ UNLESS THE SEAT IS ON A SURFACE (strawberry, 2026-09-29: "with mumbo the heads only follow the
+        // rotation on one axis"). Every seat of 14 ride models is a surface fitting whose parent mesh moves in
+        // its VERTICES -- Mumbo's tentacles bend, the ape's arms flex -- and the helper node's matrix carries
+        // only the node-level turn. Running, Mumbo's faces left their helpers by 20-70 degrees and 0.6 units,
+        // and the heads sank through the tentacles. The game puts the seat ON THE FACE (`0x1F1248`,
+        // Model.SurfaceFrame): the point always, the orientation when the fitting has `0x40000`.
+        if (LiveSurface(model, mesh, fit) is { } face)
+        {
+            seatLocal = new Vector3(face.Point.X, face.Point.Y, face.Point.Z);
+            if (face.Turned)
+            {
+                ax = new Vector3(face.X.X, face.X.Y, face.X.Z);
+                ay = new Vector3(face.Y.X, face.Y.Y, face.Y.Z);
+                az = new Vector3(face.Z.X, face.Z.Y, face.Z.Z);
+            }
+        }
         var seatForward = root.Basis * az; var seatUp = root.Basis * ay;
         forward = seatForward.LengthSquared() > 1e-10f ? seatForward.Normalized() : Vector3.Zero;
         up = seatUp.LengthSquared() > 1e-10f ? seatUp.Normalized() : Vector3.Zero;
@@ -6102,35 +6118,28 @@ public partial class Viewer : Node3D
     /// would pick three real vertices from the wrong part of the face and look almost right.
     ///
     /// ⚠ The normal's winding is the M3D2 FACING bit: the LOW BIT of vertex 2's y, read off the
-    /// float's bits, not its value. Set means the right-hand normal of (v0, v1, v2).</summary>
-    Vector3? SurfacePoint(AnimatedModel model, Model mesh, Model.Fitting fit, bool bindPose = false)
+    /// float's bits, not its value -- off the BIND positions (see <see cref="LiveSurface"/>).</summary>
+    Vector3? SurfacePoint(AnimatedModel model, Model mesh, Model.Fitting fit, bool bindPose = false) =>
+        LiveSurface(model, mesh, fit, bindPose) is { } face
+            ? model.Root.GlobalTransform * new Vector3(face.Point.X, face.Point.Y, face.Point.Z) : null;
+
+    /// <summary>A surface fitting on its parent's face as drawn this frame (<see cref="Model.SurfaceFrame"/>), in
+    /// the model's space before the ride root -- or null when it is not a surface fitting, its parent is not a
+    /// mesh, or the parent never moves its vertices: `0x1F1248` requires the parent's runtime `0x200000`
+    /// (<see cref="AnimatedModel.VertexAnimated"/>) and otherwise leaves the fitting on its helper node.
+    ///
+    /// ⚠ The positions are the drawn ones (the BIND ones before the first rebuild, which is what is drawn
+    /// then), but the facing bit always comes from the bind list: a morph that replaces positions leaves
+    /// noise in the low bit, and read from the drawn list it flipped seven of the ape's sixteen seats.</summary>
+    Model.SurfacePose? LiveSurface(AnimatedModel model, Model mesh, Model.Fitting fit, bool bindPose = false)
     {
-        if (fit.OnSurface is not { } sf) return null;
+        if (fit.OnSurface == null || model?.LastWorld == null) return null;
         int parent = mesh.NodeParent(fit.Node);
-        if (parent < 0 || parent >= mesh.Meshes.Count) return null;           // parent must be a MESH
+        if (parent < 0 || parent >= mesh.Meshes.Count || !model.VertexAnimated(parent)) return null;
         var pm = mesh.Meshes[parent];
-        int bse = mesh.BatchVertexBase(pm, sf.Batch);
-        if (bse < 0) return null;
-        // ⭐ The drawn positions, so the point follows the morph; the bind pose when nothing has
-        // deformed this mesh yet.
-        var pos = bindPose ? model.BindPositions(pm.Offset) : model.LivePositions(pm.Offset);
-        if (pos == null || bse + sf.FirstVertex + 2 >= pos.Count) return null;
         if (!model.LastWorld.TryGetValue(pm.Offset, out var pw)) return null;
-
-        var v = new System.Numerics.Vector3[3];
-        for (int k = 0; k < 3; k++)
-            v[k] = System.Numerics.Vector3.Transform(pos[bse + sf.FirstVertex + k], pw);
-
-        var a = v[0] - v[1];
-        var b = v[2] - v[1];
-        bool facing = (BitConverter.SingleToInt32Bits(pos[bse + sf.FirstVertex + 2].Y) & 1) != 0;
-        var n = facing ? System.Numerics.Vector3.Cross(b, a) : System.Numerics.Vector3.Cross(a, b);
-        if (n.LengthSquared() > 0f) n = System.Numerics.Vector3.Normalize(n);
-
-        int C(int i) => Math.Clamp(i, 0, 2);
-        var edge = v[C(sf.Corner0)] * (1f - sf.U) + v[C(sf.Corner1)] * sf.U;
-        var pt = edge * (1f - sf.V) + v[C(sf.Corner2)] * sf.V + n * sf.H;
-        return model.Root.GlobalTransform * new Vector3(pt.X, pt.Y, pt.Z);
+        var bind = model.BindPositions(pm.Offset);
+        return mesh.SurfaceFrame(fit, bindPose ? bind : model.LivePositions(pm.Offset) ?? bind, bind, pw);
     }
 
     /// <summary>⚠ FOR THE CHECK ONLY: P from the BIND pose, which is what an offline reading of

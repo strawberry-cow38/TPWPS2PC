@@ -1266,11 +1266,22 @@ public sealed class AnimatedModel
         return null;
     }
 
-    /// <summary>⚠ FOR A CHECK: the bind pose, which is what an offline read of the disc sees.</summary>
+    /// <summary>The bind pose, which is what an offline read of the disc sees -- and where a surface fitting's
+    /// facing bit is read from (<see cref="Model.SurfaceFrame"/>).</summary>
     public List<System.Numerics.Vector3> BindPositions(int nodeOffset)
     {
         foreach (var p in _parts) if (p.NodeOffset == nodeOffset) return p.BindPos;
         return null;
+    }
+
+    readonly Dictionary<int, bool> _vertexAnimated = new();
+    /// <summary>The runtime `0x200000` a node gets when any record of this model moves its vertices
+    /// (<see cref="Aps.AnimatesVertices"/>). Fixed for the model's life, so cached.</summary>
+    public bool VertexAnimated(int node)
+    {
+        if (_anim == null) return false;
+        if (!_vertexAnimated.TryGetValue(node, out bool v)) _vertexAnimated[node] = v = _anim.AnimatesVertices(node);
+        return v;
     }
     /// <summary>Node indices that had a track overriding their local matrix.</summary>
     public HashSet<int> OverriddenNodes = new();

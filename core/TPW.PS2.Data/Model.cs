@@ -673,12 +673,83 @@ public sealed partial class Model
         /// ⚠ `X`/`Y`/`Z` above are NOT this. They are the older reading of the same pointer and
         /// are only meaningful through <see cref="FittingLocal"/>, which cannot fire.</summary>
         public Surface? OnSurface { get; init; }
+
+        /// <summary>⭐ The three angles (radians, x/y/z) behind the pointer at the record's `+0x10`, READ from
+        /// `0x1F0D70`: when <see cref="Flags"/> has `0x40000` the game turns a surface fitting's triangle
+        /// frame by `Rz(z) Ry(y) Rx(x)` in its own space. Zero when the pointer is null (Mumbo's first seat,
+        /// flags `0x100000F1`, has none -- and no `0x40000` either).</summary>
+        public System.Numerics.Vector3 Angles { get; init; }
     }
 
     /// <summary>Where a `0x40` fitting sits on its parent's skin. `Corner0/1/2` select which of
     /// the three loaded vertices each term uses -- they are NOT always 0,1,2.</summary>
     public readonly record struct Surface(int Batch, int FirstVertex, float U, float V, float H,
                                           int Corner0, int Corner1, int Corner2);
+
+    /// <summary>Where a surface fitting sits and which way it is turned, in the space of the parent world matrix
+    /// it was computed through. <see cref="X"/>/<see cref="Y"/>/<see cref="Z"/> are the axes (the rows of the
+    /// game's row-vector matrix), unit length. <see cref="Turned"/> is false when the fitting has no `0x40000`:
+    /// then the game keeps the helper node's own orientation and only the point is the surface's.</summary>
+    public readonly record struct SurfacePose(Vector3 Point, Vector3 X, Vector3 Y, Vector3 Z, bool Turned);
+
+    /// <summary>⭐⭐ A SURFACE FITTING ON ITS FACE, READ from `0x1F1248` and `0x1F0D70`. The three vertices of
+    /// its triangle go through the parent's world matrix; `N` is their normal (`0x1F1128`, winding by the
+    /// facing bit); the point is `bary(u, v) + h*N`. With `0x40000` the orientation is the face's too:
+    ///
+    /// <code>rows  x = N x d,  y = N,  z = d = normalise(bary - v[Corner0])      (bary BEFORE the h lift)
+    /// then  M = E * M,  E = Rz(a.z) Ry(a.y) Rx(a.x)   (0x1A3D40, 0x1A3C88, 0x1A3B28 into 0x1A5FC8)
+    /// then  x 0.1                                      (0x1700D8; dropped -- these axes are unit)</code>
+    ///
+    /// where the angles are <see cref="Fitting.Angles"/>. The rotation helpers post-multiply a row-vector
+    /// matrix, so `E` here is `CreateRotationZ * CreateRotationY * CreateRotationX` exactly, and the game's
+    /// sine table (a lookup, not `sin`) is the only difference.
+    ///
+    /// ⚠⚠ `facing` IS WHERE THE WINDING BIT IS READ, AND IT MUST BE THE AUTHORED VERTICES. The bit is the low
+    /// bit of vertex 2's y read as an int -- a flag smuggled into a float -- and a morph that REPLACES the
+    /// positions (the port interpolates them) leaves arithmetic noise there. Read from the drawn positions it
+    /// flipped the normal at random: 7 of Crazy Ape's 16 seats turned 180 degrees and lifted the wrong way, a
+    /// different 7 at each stage. A face does not change winding as it moves, so the bind copy's bit is the
+    /// same bit. Pass the drawn positions as <paramref name="positions"/> and the bind ones as
+    /// <paramref name="facing"/> (the same list when nothing deforms).
+    ///
+    /// Null when the fitting is not a surface one, its parent is not a mesh, or the face is degenerate.</summary>
+    public SurfacePose? SurfaceFrame(Fitting f, IReadOnlyList<Vector3> positions, IReadOnlyList<Vector3> facing,
+                                     Matrix4x4 parentWorld)
+    {
+        if (f.OnSurface is not { } sf || positions == null) return null;
+        int parent = NodeParent(f.Node);
+        if (parent < 0 || parent >= Meshes.Count) return null;
+        int at = BatchVertexBase(Meshes[parent], sf.Batch);
+        if (at < 0) return null;
+        at += sf.FirstVertex;
+        if (at + 2 >= positions.Count) return null;
+        var v0 = Vector3.Transform(positions[at], parentWorld);
+        var v1 = Vector3.Transform(positions[at + 1], parentWorld);
+        var v2 = Vector3.Transform(positions[at + 2], parentWorld);
+        var bits = facing != null && at + 2 < facing.Count ? facing : positions;
+        bool bit = (BitConverter.SingleToInt32Bits(bits[at + 2].Y) & 1) != 0;
+        Vector3 a = v0 - v1, b = v2 - v1;
+        var n = bit ? Vector3.Cross(b, a) : Vector3.Cross(a, b);
+        if (n.LengthSquared() < 1e-12f) return null;
+        n = Vector3.Normalize(n);
+        Vector3 V(int i) => i <= 0 ? v0 : i == 1 ? v1 : v2;
+        var bary = (V(sf.Corner0) * (1f - sf.U) + V(sf.Corner1) * sf.U) * (1f - sf.V) + V(sf.Corner2) * sf.V;
+        var point = bary + n * sf.H;
+        var d = bary - V(sf.Corner0);
+        if ((f.Flags & 0x40000) == 0 || d.LengthSquared() < 1e-12f)
+            return new SurfacePose(point, default, n, default, false);
+        d = Vector3.Normalize(d);
+        var face = new Matrix4x4(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1);
+        var x = Vector3.Cross(n, d);
+        face.M11 = x.X; face.M12 = x.Y; face.M13 = x.Z;
+        face.M21 = n.X; face.M22 = n.Y; face.M23 = n.Z;
+        face.M31 = d.X; face.M32 = d.Y; face.M33 = d.Z;
+        var e = f.Angles;
+        var m = Matrix4x4.CreateRotationZ(e.Z) * Matrix4x4.CreateRotationY(e.Y) * Matrix4x4.CreateRotationX(e.X) * face;
+        return new SurfacePose(point, Vector3.Normalize(new Vector3(m.M11, m.M12, m.M13)),
+                               Vector3.Normalize(new Vector3(m.M21, m.M22, m.M23)),
+                               Vector3.Normalize(new Vector3(m.M31, m.M32, m.M33)), true);
+    }
 
     List<Fitting> _fittings;
 
@@ -744,7 +815,10 @@ public sealed partial class Model
                 // confirmed on a case that cannot tell the two rules apart. The lobby is where they
                 // disagree: the game's arithmetic seats all 8 parks on `base`, `Meshes.Count + i`
                 // seats 3 and misses 5 -- and the 3 it gets are right by coincidence.
-                _fittings.Add(new Fitting(flags, id, U16(0x34) + i, x, y, z) { OnSurface = surf });
+                int ap = (int)U32(o + 16);
+                var angles = ap > 0 && ap + 12 <= D.Length
+                    ? new System.Numerics.Vector3(F32(ap), F32(ap + 4), F32(ap + 8)) : default;
+                _fittings.Add(new Fitting(flags, id, U16(0x34) + i, x, y, z) { OnSurface = surf, Angles = angles });
             }
             return _fittings;
         }

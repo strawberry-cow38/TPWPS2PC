@@ -294,6 +294,28 @@ public sealed class Animation
 
     public uint TrackFlags(int track) => U32(track + 4);
     public int TrackNode(int track) => U16(track);
+
+    /// <summary>⭐ Whether ANY record here moves a node's VERTICES: a track on it with flag `0x1000` (morph) or
+    /// `0x40000` (baked). READ, `0x1AABB0`: for each track of a record, the node's runtime flags get
+    /// `0x240000` when the track's flags have `0x41000` -- and `0x1AAD10` runs that over every record the
+    /// instance registers, with nothing clearing it. So a node is marked for LIFE by any one record, which
+    /// is the `0x200000` that `0x1F1248` requires on a surface fitting's parent before it puts the fitting on
+    /// the face at all; without it the fitting keeps its helper node's own matrix. (Skeletal and shared
+    /// records have no 48-byte tracks to read and are skipped.)</summary>
+    public bool AnimatesVertices(int node)
+    {
+        foreach (var rec in Records())
+        {
+            if (rec.Skeletal || rec.Tracks <= 0) continue;
+            for (int i = 0; i < rec.TrackCount; i++)
+            {
+                int t = TrackAt(rec, i);
+                if (t + 8 > D.Length) break;
+                if (TrackNode(t) == node && (TrackFlags(t) & 0x41000) != 0) return true;
+            }
+        }
+        return false;
+    }
     public int TrackAt(Record rec, int i) => rec.Tracks + i * 0x30;
 
     /// <summary>Rotation keys: 12 bytes, <c>u16 time, u16 ?, int16 x,y,z,w</c> at 1/32768, SLERPed.
