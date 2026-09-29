@@ -146,6 +146,14 @@ REQUIRED_WITNESSES += (
     'ok   hoarding: re-raise: caught at p',
 )
 
+# Surface fittings (SurfaceSeatChecks.cs, Model.SurfaceFrame): 8 on every park -- disc-wide, so the same 8. Every
+# surface fitting on the disc against its exporter-written helper, with a control per claim that must fail.
+REQUIRED_CHECKS.update({'surface_seat': 8})
+REQUIRED_WITNESSES += (
+    'ok   surface seat: the point: 302 of 302 sit on their helper',
+    'ok   surface seat: the facing bit: one bit of noise',
+)
+
 
 def classify(world: str, raw_exit: int | None, text: str, *, timed_out: bool = False,
              truncated: bool = False, launch_error: str | None = None, terrain: int | None = None) -> dict:
