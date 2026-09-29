@@ -50,7 +50,29 @@ public partial class Viewer
     /// children, which is a free consistency test on the profiler itself.</summary>
     readonly Stack<long> _allocMarks = new();
 
-    void AllocBegin() { if (_allocProbe) _allocMarks.Push(GC.GetAllocatedBytesForCurrentThread()); }
+    /// <summary>⭐⭐ THE SLOW-FRAME REPORTER, for a PERIODIC stutter. Master, 2026-09-28: "there
+    /// seems to be a stutter every second or so" -- measured as spikes 1.76 s apart, worst frame
+    /// 35.12 ms against a 2.38 ms median.
+    ///
+    /// ⚠ Averages cannot find this. A job that costs 33 ms once every 1.76 s adds under 0.02 ms to
+    /// a per-section mean and vanishes into the noise; the alloc table would not show it at all,
+    /// because it measures BYTES and this is TIME. What identifies it is the one frame it happens
+    /// on, so this times the same bracketed sections and, when a frame exceeds the threshold, prints
+    /// that FRAME'S section times rather than any aggregate.
+    ///
+    /// ⚠ Timestamps only, no Stopwatch objects: `GetTimestamp` is a counter read, so bracketing
+    /// costs about the same as the allocation counter already does and does not change what it
+    /// measures.</summary>
+    readonly Stack<long> _timeMarks = new();
+    readonly List<(string Name, double Ms)> _frameTimes = new();
+    double _slowFrameMs = 0;            // 0 = off; set by --slow-frames=<ms>
+    int _slowFramesSeen;
+
+    void AllocBegin()
+    {
+        if (_allocProbe) _allocMarks.Push(GC.GetAllocatedBytesForCurrentThread());
+        if (_slowFrameMs > 0) _timeMarks.Push(System.Diagnostics.Stopwatch.GetTimestamp());
+    }
 
     /// <summary>⚠⚠ THE SHALLOWEST DEPTH each name was ever closed at. Without it the
     /// "everything else" line LIED: `attributed` summed StepPark AND PresentNativeBus AND TickPark,
@@ -65,6 +87,12 @@ public partial class Viewer
 
     void AllocEnd(string name)
     {
+        if (_slowFrameMs > 0 && _timeMarks.Count > 0)
+        {
+            double ms = (System.Diagnostics.Stopwatch.GetTimestamp() - _timeMarks.Pop())
+                      * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+            _frameTimes.Add((name, ms));
+        }
         if (!_allocProbe || _allocMarks.Count == 0) return;
         long d = GC.GetAllocatedBytesForCurrentThread() - _allocMarks.Pop();
         int depth = _allocMarks.Count;              // 0 = not inside another bracket
@@ -108,6 +136,74 @@ public partial class Viewer
         _allocAt.TryGetValue(label, out long had); _allocAt[label] = had + d;
         _allocAtN.TryGetValue(label, out long n); _allocAtN[label] = n + 1;
         if (!_allocMarkOrder.Contains(label)) _allocMarkOrder.Add(label);
+    }
+
+    /// <summary>Called at the END of `_Process` with the frame's own delta: if the frame was slow,
+    /// print what was slow IN IT. ⚠ Prints at most 12 frames so a genuinely slow machine does not
+    /// turn the log into the bottleneck.</summary>
+    void SlowFrameReport(double deltaMs)
+    {
+        if (_slowFrameMs <= 0) { _frameTimes.Clear(); _timeMarks.Clear(); return; }
+        // ⚠⚠ ONLY ONCE THE BENCHMARK IS PAST ITS WARM-UP -- WITHOUT THIS THE REPORTER MEASURES THE
+        // PARK LOAD AND NOTHING ELSE. It fired from the first frame and capped at 12 reports, so all
+        // twelve were spent on loading before the run ever reached steady state, and the stutter it
+        // exists to find was never sampled at all.
+        //
+        // ⭐ The tell was a CONTROL I nearly did not run: the slow frames reported 117-170 draw
+        // calls, and I read that as a spike. The benchmark's own regular sampler reads a flat 245
+        // for the entire run -- so those frames had FEWER draws than normal, not more, because the
+        // scene was still being built. An instrument that only samples the frames it selects has no
+        // baseline to compare them against, and I published "draw calls spike 156 -> 249" off
+        // exactly that gap. The regular sampler was the baseline and it was already there.
+        if (!_benchRunning || _benchElapsed < BenchWarmup) { _frameTimes.Clear(); _timeMarks.Clear(); return; }
+        if (deltaMs >= _slowFrameMs && _slowFramesSeen < 12)
+        {
+            _slowFramesSeen++;
+            var worst = _frameTimes.Where(t => t.Ms >= 0.5).OrderByDescending(t => t.Ms).Take(6);
+            // ⚠ THE BRACKETED TOTAL IS PRINTED BESIDE THE FRAME so the two can be compared. On the
+            // first run the load frames showed `frame 133.3 ms -- StepPark 213.2ms`, a section
+            // longer than the frame it sits in, which is impossible: Godot CLAMPS `delta`, so on a
+            // very long frame the reported delta is not the wall time. The section times are real
+            // and the frame figure is the clamped one -- naming both stops the next reader
+            // reconciling two numbers that do not describe the same thing.
+            // ⚠⚠ TOP-LEVEL ONLY -- I WROTE THIS BUG TWICE IN ONE DAY. The first version summed every
+            // entry, so `StepPark 6.3ms` and the `PresentScripted 6.2ms` inside it both counted and
+            // the total came out 18.9 ms for a 12.6 ms frame. That is the identical double-count the
+            // allocation table had this morning, in a new instrument, caught only because a total
+            // larger than its own frame is obviously impossible. `_allocDepth` already records the
+            // shallowest depth each name closed at, so reuse it rather than repeat the fix.
+            double bracketed = _frameTimes.Where(t => _allocDepth.GetValueOrDefault(t.Name) == 0)
+                                          .Sum(t => t.Ms);
+            // ⭐⭐ THE ENGINE'S OWN CLOCKS, so "outside my brackets" stops being a guess about WHERE.
+            // astraclaw, correctly: time outside the measured C# sections does not by itself prove
+            // GPU work -- it is equally consistent with unbracketed C#, engine CPU (scene tree,
+            // culling, physics) or a driver/vsync wait. TIME_PROCESS and TIME_PHYSICS_PROCESS are
+            // the engine's measurement of its own halves, so printing them beside the frame says
+            // which half grew instead of leaving it to inference.
+            //
+            // ⚠ TIME_PROCESS has never reconciled with frame time in this rig (the benchmark's own
+            // summary says so and refuses to read it as per-frame ms). It is quoted here as a
+            // RELATIVE signal -- did it spike on this frame -- and must not be subtracted from the
+            // frame time as though the two shared units.
+            double tProc = Performance.GetMonitor(Performance.Monitor.TimeProcess) * 1000.0;
+            double tPhys = Performance.GetMonitor(Performance.Monitor.TimePhysicsProcess) * 1000.0;
+            long draws = (long)Performance.GetMonitor(Performance.Monitor.RenderTotalDrawCallsInFrame);
+            GD.Print($"[slow] frame {deltaMs:F1} ms (bracketed {bracketed:F1} ms, "
+                   + $"{deltaMs - bracketed:F1} ms outside every bracket) "
+                   // ⭐ ADVISOR STATE ON THE LINE, so the head is RULED OUT by correlation rather
+                   // than by argument. tinyclaw: it is 32 meshes / 56 materials and its SubViewport
+                   // only renders while a message is up (update mode Disabled otherwise,
+                   // AdvisorHead.cs:257), so it should read as a PLATEAU lasting the whole message
+                   // -- seconds -- not a one-frame spike every 1.76 s. If `head=1` never coincides
+                   // with a draw spike, that is the elimination; if it always does, the argument
+                   // was wrong. Either way the data settles it instead of two of us reasoning.
+                   + $"[engine: process {tProc:F1} physics {tPhys:F1} draws {draws} "
+                   + $"head={(_advisorHead?.Overlay?.Visible == true ? 1 : 0)}] -- "
+                   + (worst.Any() ? string.Join(", ", worst.Select(t => $"{t.Name} {t.Ms:F1}ms"))
+                                  : "NOTHING BRACKETED WAS SLOW (the cost is outside every bracket)"));
+        }
+        _frameTimes.Clear();
+        _timeMarks.Clear();
     }
 
     void AllocFrameTop()

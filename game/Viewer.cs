@@ -442,6 +442,7 @@ public partial class Viewer : Node3D
             else if (a.StartsWith("--delete-test=")) _deleteTest = a["--delete-test=".Length..];
             // ⭐ `--benchmark=<seconds>`: measure frame time and what is accumulating, then quit.
             else if (a == "--alloc-probe") _allocProbe = true;
+            else if (a.StartsWith("--slow-frames=")) _slowFrameMs = double.Parse(a["--slow-frames=".Length..]);
             else if (a.StartsWith("--benchmark="))
                 { if (double.TryParse(a["--benchmark=".Length..], out var bs)) _benchSeconds = bs; }
             else if (a == "--graph-line") LaptopGraph.LineStyle = true;
@@ -11922,6 +11923,7 @@ public partial class Viewer : Node3D
         }
         AllocMark("14 end of _Process");
         AllocFrameBottom();
+        SlowFrameReport(delta * 1000.0);
     }
 
     public override void _UnhandledInput(InputEvent e)
