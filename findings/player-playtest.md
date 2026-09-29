@@ -361,3 +361,48 @@ _hidden membership by actual model mesh index. Primitive snapshots, no calls to
 TickPark/Present/PlaceActors/Show/SetFrame. Snapshot point tests explicitly do not
 claim occlusion or whole-AABB frustum inclusion. Built successfully after fixing
 a missing file-local Aps alias; behavioral capture run follows separately.
+
+## Passive head capture and subsequent construction (2026-09-29)
+
+Build01b731e ran normally as `/tmp/tpw-player-live-04` (log beside directory).
+An initial detached launch live03 was terminated by the shell-tool timeout while
+loading; it produced no park result. Relaunched with a correctly detached process
+729781. No gameplay finding is attributed to that infrastructure interruption.
+
+At138964ms/tick935, `14-natural-seated-guests-observed.png` and guest-render JSON:
+- Guest1 girl1head/Head03: both surfaces local+effectively visible, camera-layer
+  intersection true, meshIndex0 not in _hidden. Transformed AABB corner projection
+  x621.92..636.87/y227.82..240.28, positive camera depths12.06..12.41.
+- Guest2 boy1head/Head1: all three head surfaces likewise enabled, _hidden empty.
+  Projection x623.16..632.60/y217.04..229.67, depths12.29..12.64.
+Cow1554326112505438332 checked those exact boxes in the supplied image: guest2's
+head is visibly present, while guest1's projected region is covered by the car.
+Posted annotated crop is also visible to this assistant. Separately tiny's
+side-view fixture1554325241591894167 clearly shows a head under its overturned
+car. Thus the original "heads may not draw" concern is not reproduced: visibility
+plumbing works and one head survives occlusion in the actual player-path capture.
+No visibility/anchor fix made. Do not generalize this to a retail-fidelity claim
+for every arm animation or seat. Tiny owns the separate seat-up diagnostic.
+
+Continued normal-input live04:
+- Selected Arcade from Sideshows, pressed R, observed Turns0->1, purchased at
+  corner(31,26); build log says turned90. Added ordinary path29,27->30,27.
+- Built TinyRock at(32,23), placedID3, then Escape/Delete/click/Escape. Runtime
+  removes ID3 without removing CrazyApe1 or Arcade2. Before/after PNGs16/17 have
+  the same camera; projected cell centre(423.99,249.31). Cow1554326886048337923
+  visually confirms rock and selection marker gone, grass restored. No claim
+  that this one click covers drag-box/mixed-object deletion.
+- DinoKarts station purchased normally at corner(38,30), turns0, station
+  exit(42,31)/return(36,31), price35 per track piece. Track draw mode opened.
+  Circuit construction is underway; station existence is not a completed loop.
+
+Live04 track follow-up is NOT a passing circuit. Attempted endpoints48,31;
+48,39;34,39;34,31;36,31 and then a short44,31 retry. No `[track] leg` commit
+appeared, no exception, station remains. Camera key framing overshot (x63.67 at
+one capture) and the current driver does not report track-preview rejection
+reasons. Do not call this a game defect or a completed circuit. Screenshot22
+`track-blocked-status.png` temporarily exposes the ordinary F3 debug panel for
+review; F3 was toggled back afterwards. Asked tiny for visual status/marker
+reading (1554328278435631107). Next split is actual geometry rejection versus
+input aiming, not forced waypoints. Source readonly control permits only vacant
+playable2x2 end blocks, so an invalid site/path is also possible.
