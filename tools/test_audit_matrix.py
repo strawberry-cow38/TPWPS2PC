@@ -89,7 +89,7 @@ COVERAGE += '\n' + '\n'.join(['  ok   advisor: check'] * 65 +
                                '  ok   advisor: removal: with a later type-2 record about ANOTHER ride, deleting the first ride removes the other\'s'])
 
 # The ride hoarding: its own statement, for the same merge reason.
-COVERAGE += '\n' + '\n'.join(['  ok   hoarding: check'] * 25 +
+COVERAGE += '\n' + '\n'.join(['  ok   hoarding: check'] * 27 +
                               ['  ok   hoarding: 1x1 offsets: 0x1f39b8\'s eight stores are (0.3, -0.3), (-0.3, -0.3), (0.3, 0.3), (0.3, 0.3)',
                                '  ok   hoarding: order (0x1f3c70): Big Dripper\'s first panel is the -x edge of the top-left cell and its LAST the +z edge',
                                '  ok   hoarding: textures (0x1f5948): broken Hoarding; condemned Condemn; broken again keeps Condemn; upgrade Upgrade replaces Condemn',

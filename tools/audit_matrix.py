@@ -134,11 +134,11 @@ REQUIRED_WITNESSES += (
     'ok   advisor: removal: with a later type-2 record about ANOTHER ride',
 )
 
-# The ride hoarding (HoardingChecks.cs and MechanicChecks' HoardingService, findings/ride-hoarding.md): 29 on
-# every park. A statement of its own for the same merge reason. The 1x1 table's outward o2, the diagonal panel
+# The ride hoarding (HoardingChecks.cs and MechanicChecks' HoardingService/HoardingStations, findings/ride-hoarding.md):
+# 31 on every park. A statement of its own for the same merge reason. The 1x1 table's outward o2, the diagonal panel
 # sorted LAST by the EE's truncating FPU, a condemned ride keeping Condemn under the breakdown's raises, and a
 # re-raise resuming from wherever the drop had got to are shipped behaviour that reads like a bug to fix.
-REQUIRED_CHECKS.update({'hoarding': 29})
+REQUIRED_CHECKS.update({'hoarding': 31})
 REQUIRED_WITNESSES += (
     'ok   hoarding: 1x1 offsets: 0x1f39b8',
     'ok   hoarding: order (0x1f3c70): Big Dripper',

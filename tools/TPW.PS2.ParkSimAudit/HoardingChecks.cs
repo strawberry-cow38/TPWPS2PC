@@ -418,4 +418,54 @@ static partial class MechanicChecks
                   + $"(&0x600), and 400 ticks later it is still up and never lowered");
         }
     }
+
+    /// <summary>The coaster and track-ride classes: their own breakdown checks (`0x1228d0`, `0x200358`) reach
+    /// the same `0x118568(ride, 1)`, so their stations' fences rise too. Built as TrackClass/CoasterClass
+    /// build theirs, with the sinks attached.</summary>
+    static void HoardingStations(ParkPaths paths, WadArchive world, string worldName, CompiledAssets compiled, Action<bool, string> check)
+    {
+        void Check(bool ok, string label) => check(ok, "hoarding: " + label);
+        static string Dir(string p) => p[..(p.LastIndexOf('/') + 1)];
+        foreach (var kind in new[] { AssetResourceDatabase.AssetKind.TrackRide, AssetResourceDatabase.AssetKind.Coaster })
+        {
+            bool track = kind == AssetResourceDatabase.AssetKind.TrackRide;
+            var asset = Assets(world, worldName, compiled, r => r.Kind == kind).FirstOrDefault(a => world.Entries.Any(m =>
+                Dir(m.Path).Equals(Dir(a.Path), StringComparison.OrdinalIgnoreCase)
+                && (track ? m.Name.EndsWith("_trcks.mps", StringComparison.OrdinalIgnoreCase) : m.Name.Equals("stdpylon.mps", StringComparison.OrdinalIgnoreCase))));
+            string folder = asset == null ? null : Dir(asset.Path).TrimEnd('/');
+            var type = asset == null || track ? null : CoasterType.ForFolder(folder[(folder.LastIndexOf('/') + 1)..]);
+            if (asset == null || (!track && type == null)) { Check(false, $"{worldName}: no {kind} fixture"); continue; }
+            var sim = new ParkSim(paths);
+            var fences = new Fences(); fences.Attach(sim);
+            ParkRide ride;
+            if (track)
+            {
+                var station = TrackRideChecks.Station;
+                ride = sim.Add(1, asset.Stem, station, 4, 3, asset.Script, null, 4, station.Offset(-1, 2), station.Offset(4, 2), out _,
+                               sibling: asset.Sibling, definition: asset.Definition());
+                sim.SetOpen(1, true);
+                sim.AttachTrack(1, TrackRideChecks.Loop(0, 1, new TrackGround { World = 0, Park = 0 }), seed: 5, karts: true);
+            }
+            else
+            {
+                var at = new ParkCell(36, 40);
+                ride = sim.Add(1, asset.Stem, at, 4, 3, asset.Script, null, 4, at.Offset(1, -1), at.Offset(2, -1), out _,
+                               sibling: asset.Sibling, definition: asset.Definition());
+                sim.SetOpen(1, true);
+                var t = CoasterChecks.Build(type, null, out _);
+                sim.AttachCoaster(1, t);
+                t.AddPylon(CoasterChecks.EntryCell, 0, 0, false, CoasterNodeKind.Normal);
+            }
+            for (int i = 0; i < 20; i++) { sim.Advance(ParkSim.TickMilliseconds / 1000.0); fences.Tick(); }
+            bool quiet = fences.Events.Count == 0;
+            ride.ForceReliabilityForTest(0x9000);
+            for (int i = 0; i < 130; i++) { sim.Advance(ParkSim.TickMilliseconds / 1000.0); fences.Tick(); }
+            var h = fences.Of(ride);
+            string name = asset.Stem[(asset.Stem.LastIndexOf('/') + 1)..];
+            Check(quiet && ride.Broken && fences.Events.Count > 0 && fences.Events.All(e => e.Ride == ride && e.Bits == 2)
+                  && h is { Shown: true, Texture: HoardingTexture.Hoarding, Progress: 1f } && h.Geometry.Panels.Count > 0,
+                  $"{name}: a {(track ? "track ride's (0x200358)" : "coaster's (0x1228D0)")} breakdown raises its station's hoarding with bits 2 through the "
+                  + $"same 0x118568 -- {h?.Geometry.Panels.Count} panels from its {h?.Geometry.Grid.Width}x{h?.Geometry.Grid.Height} block, fully up");
+        }
+    }
 }

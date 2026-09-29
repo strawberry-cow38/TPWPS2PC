@@ -180,6 +180,7 @@ static partial class MechanicChecks
         WorkCells(ordinary, Check);
         TrackClass(paths, world, worldName, compiled, Check);
         CoasterClass(paths, world, worldName, compiled, Check);
+        HoardingStations(paths, world, worldName, compiled, check);    // HoardingChecks.cs: the stations' fences
     }
 
     // =============================================================================================
