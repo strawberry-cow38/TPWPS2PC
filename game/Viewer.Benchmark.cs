@@ -156,7 +156,13 @@ public partial class Viewer
         // baseline to compare them against, and I published "draw calls spike 156 -> 249" off
         // exactly that gap. The regular sampler was the baseline and it was already there.
         if (!_benchRunning || _benchElapsed < BenchWarmup) { _frameTimes.Clear(); _timeMarks.Clear(); return; }
-        if (deltaMs >= _slowFrameMs && _slowFramesSeen < 12)
+        // ⚠⚠ THE CAP IS A SAMPLING BIAS, NOT JUST A LOG LIMIT. At 12 the reporter records the
+        // EARLIEST twelve slow frames and then stops, so "12 of 12 had the advisor head up" can
+        // simply mean the head happened to be up early -- not that slow frames prefer it. Against a
+        // 33% baseline that reads as a damning correlation and is an artifact of where the cap fell.
+        // 400 spans a 75 s run; the timestamp below makes the distribution visible instead of
+        // implied.
+        if (deltaMs >= _slowFrameMs && _slowFramesSeen < 400)
         {
             _slowFramesSeen++;
             var worst = _frameTimes.Where(t => t.Ms >= 0.5).OrderByDescending(t => t.Ms).Take(6);
@@ -188,8 +194,9 @@ public partial class Viewer
             double tProc = Performance.GetMonitor(Performance.Monitor.TimeProcess) * 1000.0;
             double tPhys = Performance.GetMonitor(Performance.Monitor.TimePhysicsProcess) * 1000.0;
             long draws = (long)Performance.GetMonitor(Performance.Monitor.RenderTotalDrawCallsInFrame);
-            GD.Print($"[slow] frame {deltaMs:F1} ms (bracketed {bracketed:F1} ms, "
-                   + $"{deltaMs - bracketed:F1} ms outside every bracket) "
+            GD.Print($"[slow] t={_benchElapsed - BenchWarmup:F1}s frame {deltaMs:F1} ms "
+                   + $"(_Process body {_procMs:F1}, bracketed {bracketed:F1}, "
+                   + $"{_procMs - bracketed:F1} unbracketed INSIDE, {deltaMs - _procMs:F1} OUTSIDE) "
                    // ⭐ ADVISOR STATE ON THE LINE, so the head is RULED OUT by correlation rather
                    // than by argument. tinyclaw: it is 32 meshes / 56 materials and its SubViewport
                    // only renders while a message is up (update mode Disabled otherwise,
@@ -206,8 +213,16 @@ public partial class Viewer
         _timeMarks.Clear();
     }
 
+    /// <summary>⭐⭐ WALL TIME FOR THE WHOLE `_Process` BODY, which is the one split the slow-frame
+    /// reporter could not make. It says the bracketed sections cost ~1 ms on a stutter frame and
+    /// that 11-53 ms is "outside every bracket" -- but that phrase covers two very different places:
+    /// unbracketed C# still INSIDE `_Process`, or the engine's own work after it returns. Timing the
+    /// body end to end tells them apart, and only one of them is mine to fix.</summary>
+    long _procTop; double _procMs;
+
     void AllocFrameTop()
     {
+        if (_slowFrameMs > 0) _procTop = System.Diagnostics.Stopwatch.GetTimestamp();
         if (!_allocProbe) return;
         // ⚠ Hygiene: an early return from inside a bracketed section leaves marks on the stack,
         // and a stale mark would make the NEXT frame's section read as the span between frames.
@@ -220,6 +235,9 @@ public partial class Viewer
 
     void AllocFrameBottom()
     {
+        if (_slowFrameMs > 0 && _procTop != 0)
+            _procMs = (System.Diagnostics.Stopwatch.GetTimestamp() - _procTop)
+                    * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
         if (!_allocProbe || _allocTop == 0) return;
         long now = GC.GetAllocatedBytesForCurrentThread();
         _allocInside += now - _allocTop; _allocInFrames++;
@@ -330,6 +348,9 @@ public partial class Viewer
         /// <summary>The .NET managed heap in use right now (`GC.GetTotalMemory(false)`) -- what
         /// rises and falls as a sawtooth, and whose FLOOR is the actual leak test.</summary>
         public long ManagedHeapKb;
+        /// <summary>Whether the advisor head was up on this sample -- the baseline for the
+        /// slow-frame reporter's `head=` field.</summary>
+        public bool HeadUp;
         /// <summary>Total bytes EVER allocated by .NET on every thread (`GC.GetTotalAllocatedBytes`),
         /// monotonic. Differenced between samples this is the real managed churn.</summary>
         public long ManagedAllocKb;
@@ -387,6 +408,13 @@ public partial class Viewer
             DrawCalls = (long)M(Performance.Monitor.RenderTotalDrawCallsInFrame),
             Primitives = (long)M(Performance.Monitor.RenderTotalPrimitivesInFrame),
             StaticMemKb = (long)(M(Performance.Monitor.MemoryStatic) / 1024.0),
+            // ⭐ THE ADVISOR'S STATE ON EVERY SAMPLE, NOT ONLY ON SLOW ONES. The slow-frame reporter
+            // showed `head=1` on every spike, which looks damning and proves nothing: it only ever
+            // samples slow frames, so it cannot say what fraction of ALL frames have the head up.
+            // An advisor message runs ~23 s against a 20 s window, so "up on every slow frame" is
+            // equally consistent with "up on every frame". This is the baseline that tells them
+            // apart -- exactly the control the draw-call claim lacked.
+            HeadUp = _advisorHead?.Overlay?.Visible == true,
             ManagedHeapKb = GC.GetTotalMemory(false) / 1024,
             ManagedAllocKb = GC.GetTotalAllocatedBytes(true) / 1024,
         });
@@ -450,6 +478,10 @@ public partial class Viewer
         // never turned into a percentage of the frame.
         GD.Print($"[bench]   TIME_PROCESS monitor {Median(_bench.Select(s => s.ProcessMs)):F2} "
                + $"(⚠ unreconciled with frame time -- do not read as per-frame ms)");
+        int headUp = _bench.Count(s => s.HeadUp);
+        GD.Print($"[bench]   advisor head up on {headUp} of {_bench.Count} samples "
+               + $"({(_bench.Count > 0 ? 100.0 * headUp / _bench.Count : 0):F0}%) "
+               + "-- the baseline for [slow]'s head= field");
         GD.Print($"[bench]   draw calls {Median(_bench.Select(s => (double)s.DrawCalls)):F0}"
                + $"   primitives {Median(_bench.Select(s => (double)s.Primitives)):F0}");
 
