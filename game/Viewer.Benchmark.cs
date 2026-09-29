@@ -68,6 +68,34 @@ public partial class Viewer
     double _slowFrameMs = 0;            // 0 = off; set by --slow-frames=<ms>
     int _slowFramesSeen;
 
+    /// <summary>⭐⭐ DID A GARBAGE COLLECTION HAPPEN ON THIS FRAME. `GC.CollectionCount(gen)` is a
+    /// monotonic counter, so the per-frame DELTA is "a gen-N collection ran during this frame" --
+    /// which `ManagedHeapKb` cannot say. `GetTotalMemory` sawtooths, and reading its falls as
+    /// collections confuses a collection with a heap that merely shrank.
+    ///
+    /// ⭐ WHY THIS IS THE NEXT THING TO MEASURE. Master reports the stutter as "every second or
+    /// so". Four leads are already closed BY MEASUREMENT (allocation volume, draw calls, the
+    /// advisor head, and every bracketed C# section inside `_Process`), and the cost sits OUTSIDE
+    /// the brackets. There is no `_PhysicsProcess` anywhere in the game and no repeating `Timer`,
+    /// and of the five `_Process` overrides only this one and LaptopShopScreen's (which early-outs
+    /// while closed) run in a park -- so "outside" is not some other C# callback. A gen0 pause is
+    /// exactly the shape left: it is not inside any bracket, it is periodic, and its period is set
+    /// by the allocation RATE. At the measured 23.8 KB/frame a ~2 MB gen0 budget is a collection
+    /// roughly every 84 frames, ~1.4 s at 60 fps.
+    ///
+    /// ⚠⚠ AND IT COMES WITH THE CONTROL THIS RIG HAS TWICE NEEDED. Counting collections only on
+    /// slow frames would repeat the `head=1` mistake exactly: 12 of 12 looked damning against a
+    /// 33% baseline that turned out to be 33%. So every frame past the warm-up is counted, slow or
+    /// not, and the verdict prints BOTH rates. If gen0 runs on the same fraction of slow frames as
+    /// of all frames, the GC is eliminated and this instrument was worth building anyway.</summary>
+    int _gcPrev0, _gcPrev1, _gcPrev2;
+    bool _gcSeeded;
+    /// <summary>Frames since the last collection of ANY generation; 0 means one ran on this frame.
+    /// The hitch's lag behind its own collection is the whole question, so it is measured.</summary>
+    int _framesSinceGc = -1;
+    int _gcFramesAll, _gcFrames0, _gcFrames1, _gcFrames2;
+    int _gcSlowAll, _gcSlow0, _gcSlow1, _gcSlow2;
+
     void AllocBegin()
     {
         if (_allocProbe) _allocMarks.Push(GC.GetAllocatedBytesForCurrentThread());
@@ -156,13 +184,45 @@ public partial class Viewer
         // baseline to compare them against, and I published "draw calls spike 156 -> 249" off
         // exactly that gap. The regular sampler was the baseline and it was already there.
         if (!_benchRunning || _benchElapsed < BenchWarmup) { _frameTimes.Clear(); _timeMarks.Clear(); return; }
+        // ⭐⭐ EVERY frame past the warm-up, slow or not -- this is the BASELINE, and it has to be
+        // taken over the same population the slow frames are drawn from or it says nothing. See
+        // the field's own note: `head=1 on 12 of 12` was this mistake with a different field.
+        int g0 = GC.CollectionCount(0), g1 = GC.CollectionCount(1), g2 = GC.CollectionCount(2);
+        int gcd0 = 0, gcd1 = 0, gcd2 = 0;
+        // ⚠ The first counted frame SEEDS and is not scored: differencing against zero would report
+        // every collection since process start as though it had all happened in that one frame.
+        if (_gcSeeded)
+        {
+            gcd0 = g0 - _gcPrev0; gcd1 = g1 - _gcPrev1; gcd2 = g2 - _gcPrev2;
+            _gcFramesAll++;
+            if (gcd0 > 0) _gcFrames0++;
+            if (gcd1 > 0) _gcFrames1++;
+            if (gcd2 > 0) _gcFrames2++;
+        }
+        else _gcSeeded = true;
+        _gcPrev0 = g0; _gcPrev1 = g1; _gcPrev2 = g2;
+        if (gcd0 > 0 || gcd1 > 0 || gcd2 > 0) _framesSinceGc = 0;
+        else if (_framesSinceGc >= 0) _framesSinceGc++;
         // ⚠⚠ THE CAP IS A SAMPLING BIAS, NOT JUST A LOG LIMIT. At 12 the reporter records the
         // EARLIEST twelve slow frames and then stops, so "12 of 12 had the advisor head up" can
         // simply mean the head happened to be up early -- not that slow frames prefer it. Against a
         // 33% baseline that reads as a damning correlation and is an artifact of where the cap fell.
         // 400 spans a 75 s run; the timestamp below makes the distribution visible instead of
         // implied.
-        if (deltaMs >= _slowFrameMs && _slowFramesSeen < 400)
+        // ⚠⚠ COUNTED OUTSIDE THE CAP, AND THIS NEARLY SHIPPED WRONG. The cap stops PRINTING after
+        // 400, so if the tally lived inside it the slow set would cover only the run's first
+        // stretch while the baseline above covers all of it -- two populations over different
+        // spans, which is the same defect as the cap itself, one level down. The print is capped;
+        // the counting never is.
+        bool slowFrame = deltaMs >= _slowFrameMs;
+        if (slowFrame)
+        {
+            _gcSlowAll++;
+            if (gcd0 > 0) _gcSlow0++;
+            if (gcd1 > 0) _gcSlow1++;
+            if (gcd2 > 0) _gcSlow2++;
+        }
+        if (slowFrame && _slowFramesSeen < 400)
         {
             _slowFramesSeen++;
             var worst = _frameTimes.Where(t => t.Ms >= 0.5).OrderByDescending(t => t.Ms).Take(6);
@@ -205,7 +265,30 @@ public partial class Viewer
                    // with a draw spike, that is the elimination; if it always does, the argument
                    // was wrong. Either way the data settles it instead of two of us reasoning.
                    + $"[engine: process {tProc:F1} physics {tPhys:F1} draws {draws} "
-                   + $"head={(_advisorHead?.Overlay?.Visible == true ? 1 : 0)}] -- "
+                   + $"head={(_advisorHead?.Overlay?.Visible == true ? 1 : 0)} "
+                   // ⭐ Per-frame GC deltas, not heap size: "a gen-N collection ran during this
+                   // frame". The rates that judge them are in the verdict, never read off here.
+                   + $"gc={gcd0}/{gcd1}/{gcd2} "
+                   // ⭐⭐ THE PARK'S OWN CLOCK ON EVERY SLOW LINE. The hitch's WALL period drifts
+                   // 3.2 s -> 3.8 s over a run, identically at two resolutions, so "every 3.2 s"
+                   // is not a period at all until it is expressed in the units of whatever drives
+                   // it. Ticks tell the two apart in one run: constant in ticks means the sim
+                   // schedules it and the wall drift is the sim falling behind; drifting in ticks
+                   // too means the cause is neither the clock nor the frame count.
+                   + $"ticks={_parkTicks} "
+                   // ⭐⭐ THE HEAP AND THE OBJECT COUNT ON THE FRAME ITSELF, AND HOW LONG SINCE THE
+                   // LAST COLLECTION. `gc=0/0/0` on every hitch said "not the GC" -- but the 4 Hz
+                   // sampler shows the managed heap collapsing 120 MB -> 66 MB and Godot's object
+                   // count 38k -> 6k at exactly the hitch timestamps, and 24 gen0 collections over
+                   // 87 s is one per 3.6 s against a hitch every 3.2-3.8 s. Those cannot both be
+                   // true of the same frame, so the delta was being read one frame too early: the
+                   // collection increments the counter, and the wave of ~30k native frees it
+                   // releases lands after it. `sinceGc` measures that lag instead of assuming it
+                   // is zero -- an instrument that only asks about THIS frame cannot see a cause
+                   // that arrives on the next one.
+                   + $"heapKb={GC.GetTotalMemory(false) / 1024} "
+                   + $"objects={(long)Performance.GetMonitor(Performance.Monitor.ObjectCount)} "
+                   + $"sinceGc={_framesSinceGc}] -- "
                    + (worst.Any() ? string.Join(", ", worst.Select(t => $"{t.Name} {t.Ms:F1}ms"))
                                   : "NOTHING BRACKETED WAS SLOW (the cost is outside every bracket)"));
         }
@@ -569,6 +652,51 @@ public partial class Viewer
               + "garbage. Invisible in frame time on a fast machine; it is what costs on a slow one, "
               + "and it is what grows as per-frame allocations are added feature by feature."
             : $"[bench] managed allocation is modest ({managedMbS:F0} MB/s)");
+        // ⭐⭐ THE GC VERDICT, AND IT IS A COMPARISON OF TWO RATES -- never a count on its own.
+        // "gen0 ran on N slow frames" is worthless without "gen0 ran on M% of ALL frames", which is
+        // the lesson the advisor-head field cost: 12 of 12 against a 33% baseline was 33%.
+        if (_gcFramesAll > 0 && _gcSlowAll > 0)
+        {
+            // ⚠⚠ COUNTS FIRST, AND RATES TO THREE PLACES. The first run of this instrument printed
+            // both sides as whole-number percentages, and a collection lands on well under 1% of
+            // frames at 700 fps -- so BOTH sides read "0%", the ratio test compared 0 > 0, and it
+            // announced GC ELIMINATED off a number that could not have said anything else. A rate
+            // rounded past its own signal is not a measurement.
+            GD.Print($"[bench] GC frames: gen0 {_gcFrames0}/{_gcFramesAll} ({100.0 * _gcFrames0 / _gcFramesAll:F3}%), "
+                   + $"gen1 {_gcFrames1} ({100.0 * _gcFrames1 / _gcFramesAll:F3}%), "
+                   + $"gen2 {_gcFrames2} ({100.0 * _gcFrames2 / _gcFramesAll:F3}%) "
+                   + $"| of {_gcSlowAll} SLOW frames: gen0 {_gcSlow0}, gen1 {_gcSlow1}, gen2 {_gcSlow2}");
+            // ⭐⭐ AND THE TEST'S POWER, STATED BEFORE ITS VERDICT. With a base rate this low, the
+            // number of coincidences a slow set of this size would show BY CHANCE is often under
+            // one -- and then "0 of 200 slow frames had a collection" is the expected result
+            // whether the GC is guilty or innocent. An instrument has to say when it cannot decide,
+            // or it will keep answering "eliminated" to questions it never tested.
+            double expect0 = _gcSlowAll * (double)_gcFrames0 / _gcFramesAll;
+            double expectAny = _gcSlowAll * (double)(_gcFrames0 + _gcFrames1 + _gcFrames2) / _gcFramesAll;
+            GD.Print($"[bench] GC test power: a slow set of {_gcSlowAll} would show ~{expect0:F1} gen0 "
+                   + $"coincidences by chance ({expectAny:F1} of any generation)");
+            double all0 = 100.0 * _gcFrames0 / _gcFramesAll, slow0 = 100.0 * _gcSlow0 / _gcSlowAll;
+            double all1 = 100.0 * _gcFrames1 / _gcFramesAll, slow1 = 100.0 * _gcSlow1 / _gcSlowAll;
+            double all2 = 100.0 * _gcFrames2 / _gcFramesAll, slow2 = 100.0 * _gcSlow2 / _gcSlowAll;
+            // ⚠ The threshold is deliberately blunt: a cause should be MUCH commoner on slow frames,
+            // not marginally. A ratio near 1 is an elimination and is stated as one, out loud --
+            // an instrument that can only confirm is not an instrument. But it may only say either
+            // word once the expectation above is big enough for the count to carry information.
+            bool implicated = slow0 > all0 * 2 || slow1 > all1 * 2 || slow2 > all2 * 2;
+            GD.Print(expectAny < 3.0
+                ? $"[bench] ⚠ GC NOT TESTED: {expectAny:F1} expected coincidences is too few to tell "
+                  + "guilt from innocence. Lower --slow-frames to widen the slow set, or run longer; "
+                  + "do NOT read the counts above as an elimination."
+                : implicated
+                ? "[bench] ⚠ GC IMPLICATED: a collection is at least twice as likely on a slow frame "
+                  + "as on an average one. The period follows the allocation RATE, so the test that "
+                  + "confirms it is to change that rate and watch the stutter's period move with it."
+                : "[bench] ⭐ GC ELIMINATED: collections are no commoner on slow frames than on any "
+                  + "other. Whatever the stutter is, it is not a managed pause -- and the OUTSIDE "
+                  + "figure on the [slow] lines still needs a native profiler to attribute.");
+        }
+        else if (_slowFrameMs > 0)
+            GD.Print("[bench] no slow frames past warm-up -- the GC comparison has nothing to judge");
         GD.Print($"[bench] native memory swings {nativeHi - nativeLo} KB and its floor ends at "
                + $"{floorEnd} KB -- swing is the resource cache breathing, not a per-frame rate. "
                + "The only honest per-frame C++ signals here are draw calls and frame time.");
