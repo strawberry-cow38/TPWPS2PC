@@ -1229,11 +1229,18 @@ public sealed class Park
     /// covers it WITHOUT touching which tiles get deleted -- retail deletes them, so that part is
     /// not ours to change.
     ///
-    /// ⚠ 0.02 cells is the measured coincidence, not a tuned figure: it is the margin at which
-    /// a ride stops landing exactly on the edge. The right value is whatever stops showing sky at
-    /// the resolutions we actually render at, and that is master's eye, not arithmetic -- one
-    /// named constant so it can be moved in one place.</summary>
-    public const float RideSeamOverlap = 0.02f;
+    /// ⚠⚠ 0.02 WAS THE WRONG QUANTITY AND WOULD NOT HAVE WORKED. That figure is the measured
+    /// COINCIDENCE -- the margin within which a ride's edge lands on the hole's edge -- and I
+    /// shipped it as if it were a COVER, which is a different number. Checked afterwards, from a
+    /// capture: a one-cell path measures 32 px across (cross-checked against Crazy Ape's footprint
+    /// at ~160 px), so 0.02 cells is **0.64 px** of overlap against a crack master measured at
+    /// 1-2 px. Sub-pixel, and it stays sub-pixel at every zoom because the seam and the overlap
+    /// scale together -- so the ratio, not the resolution, is what decides it.
+    ///
+    /// ⭐ 0.05 cells is ~1.6 px at that same scale, which is the first value that can actually
+    /// close a 1-2 px gap. Still master's eye that settles it -- but from a number that is at
+    /// least the right order of magnitude rather than one guaranteed to look like no change.</summary>
+    public const float RideSeamOverlap = 0.05f;
 
     /// <summary>Draw a ride fractionally over its own hole, so the two edges overlap instead of
     /// meeting exactly.
