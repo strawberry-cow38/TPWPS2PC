@@ -1768,13 +1768,13 @@ public partial class Viewer : Node3D
         // tinyclaw runs the guest scenes with.
         _laptopParkOpen = _parkOpenAtStart;
         _parkOpenedMonth = 0;
-        // ⚠⚠ THE GATE'S CLOCK RESETS WITH THE PARK, and it never used to. `_parkTime` was set once
-        // and carried across map loads, so a second park inherited the first one's finished gate:
-        // under the old one-shot rule `_parkTime < Frames - 1` was already false, the arch held
-        // OPEN and never animated at all. Latent while the gate only ever opened; visible the
-        // moment it also closes, because the new park would slide its doors shut on arrival
-        // instead of simply starting shut. Each park's gate is its own animation from frame 0.
-        _parkTime = 0f;
+        // ⚠⚠ THE GATE'S CLOCK RESETS WITH THE PARK, and it never used to: `_parkTime` was set
+        // once and carried across map loads, so a second park inherited the first one's finished
+        // gate clock and its arch never animated at all.
+        // ⚠ Reset to -1, NOT to 0: frame 0 is the OPEN arch, and the gate does not exist yet at
+        // this point in the load. LoadGate seeds the real value from the park's open state once it
+        // knows the frame count; this only clears the previous park's.
+        _parkTime = -1f;
         ShowParkOnly();
         // ⭐ Park mode has its own camera and its own keys, and the help text left over from the
         // orbit view describes none of them. Master was being told the controls over chat.
@@ -9891,7 +9891,12 @@ public partial class Viewer : Node3D
                 try { anim = new Aps(_lib.Read(ride.Animation)); rec = anim.Records().FirstOrDefault(); }
                 catch (Exception ex) { GD.PrintErr($"[gate] animation: {ex.Message}"); }
             _gate = new AnimatedModel(gm, anim, rec, m => TextureNear(ride.Model.Path, m));
-            _gate.SetFrame(0);
+            // ⭐⭐ START AT THE STATE'S OWN FRAME, NOT AT 0. Frame 0 is the OPEN arch, so seeding
+            // the clock at 0 on a park that loads CLOSED would show the gate open for an instant
+            // and then slide it shut on every single load. `_parkTime` is seeded to match, or the
+            // driver below would animate away from whatever was drawn here.
+            _parkTime = _laptopParkOpen ? 0f : Mathf.Max(0, _gate.Frames - 1);
+            _gate.SetFrame(_parkTime);
             AddChild(_gate.Root);
             // ⚠ Measured, not trusted -- the bounds below are what the log prints against the
             // zone, and that comparison is the whole check.
@@ -11733,15 +11738,18 @@ public partial class Viewer : Node3D
         // same rate. Holding at either end keeps the "a thing that has finished happening should
         // look like it has happened" shape the one-shot version established.
         //
-        // ⚠ A park loads CLOSED (`_parkOpenAtStart` is false), so the gate now starts shut and
-        // stays shut until the park is opened -- which is a visible change from "open on load",
-        // and is the point.
-        // ⚠ Frame 0 is the shut arch and the last frame the open one; the record is an OPENING, so
-        // closing is that same record walked backwards rather than a second clip. If the disc turns
-        // out to carry a separate closing animation, this is where it goes.
+        // ⚠⚠ FRAME 0 IS THE **OPEN** ARCH AND THE LAST FRAME THE SHUT ONE -- the record is a
+        // CLOSING animation, not an opening one. I had it the other way round and shipped it:
+        // master, in one load, "the gate state is backwards. the gate starts open and closes when
+        // i open the park". The old note above this block called the last frame "the open gate",
+        // I carried that over instead of checking it, and I could not render-verify at the time.
+        // An inherited comment is not a measurement.
+        //
+        // ⚠ A park loads CLOSED (`_parkOpenAtStart` is false), so the gate holds its LAST frame
+        // until the park is opened, and opening walks it back to 0.
         if (_gate != null && _playing && _shotPath == null && _mode == Mode.Park && _gate.Frames > 0)
         {
-            float target = _laptopParkOpen ? _gate.Frames - 1 : 0f;
+            float target = _laptopParkOpen ? 0f : _gate.Frames - 1;
             if (Mathf.Abs(_parkTime - target) > 0.001f)
             {
                 AllocBegin();
