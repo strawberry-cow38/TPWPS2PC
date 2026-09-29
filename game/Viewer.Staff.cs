@@ -605,7 +605,7 @@ public partial class Viewer
     void ShowHireTabs()
     {
         var tabs = HireTabs();
-        var names = tabs.Select(k => _text?.Text("eng", StaffTables.PurchaseTextRow(k)) ?? k.ToString()).ToList();
+        var names = tabs.Select(k => _text?.Text(TextLanguage, StaffTables.PurchaseTextRow(k)) ?? k.ToString()).ToList();
         _shopPanel.ShowMenu(names, 0, LaptopMainMenu.MainScene);
         ClearLaptopModel();
         RefreshLaptopBalance();

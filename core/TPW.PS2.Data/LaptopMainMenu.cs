@@ -83,6 +83,15 @@ public static class LaptopMainMenu
     /// so it means "leave for the map screen" -- the lobby -- and not "shut the gates".</summary>
     public const int CloseParkIndex = 12;
 
+    /// <summary>⭐ `Open Park`'s menu index, text 617, shown only while the park is CLOSED
+    /// (`FUN_0014e538 == 0`). The native handler `0x14E4C0` sets the open flag `[0x2B72A4]` and
+    /// ALSO stores the current month index at `[0x2B7298]` -- the console records WHEN you opened,
+    /// not just that you did. Cleared by `0x14E528`.
+    ///
+    /// ⚠ There is no laptop row that closes a park: index 12 is `STR_MAINMENU_EXIT_TO_MAP_SCREEN`
+    /// (see above). Opening is one-way from the laptop.</summary>
+    public const int OpenParkIndex = 11;
+
     public static readonly Option AltModeBuild = new(13, BuildTextId, "FUN_001c7650", "FUN_00153410 != 0");
 
     /// <summary>⭐⭐ The INFORMATION submenu, `FUN_0016e710`. Every row is conditional: an entry
