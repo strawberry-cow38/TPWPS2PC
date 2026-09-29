@@ -163,7 +163,9 @@ public partial class Viewer
             string world = _lib == null ? "?" : Path.GetFileNameWithoutExtension(_lib.WadName);
             var a = _lib?.Rides.FirstOrDefault(r =>
                 r.Name.Equals($"features/{stem}/{stem}.mps", StringComparison.OrdinalIgnoreCase));
-            CheatSay(!VehiclesOn ? $"{stem}: switched off by --no-seaplane-ferry"
+            // ⚠ Off is now the DEFAULT, so this must not blame a flag nobody passed -- the PS2
+            // never runs these (see Viewer.Vehicles.cs) and `--seaplane-ferry` opts back in.
+            CheatSay(!VehiclesOn ? $"{stem}: off by default (the PS2 never runs it) -- pass --seaplane-ferry to draw it"
                 : _terrainPath == null ? $"{stem}: no park loaded yet"
                 : a?.Model == null ? $"{world} ships no {stem} model -- features/{stem}/{stem}.mps is not on the disc, only its script"
                 : a.Animation == null ? $"{world} ships a {stem} model but no animation"

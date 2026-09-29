@@ -15,8 +15,9 @@ public partial class Viewer
     /// ⚠⚠ THE PS2 NEVER RUNS THEM. The executable's one fixed-item stem list is Gates, Bus1, Bus2
     /// (then the buildables, into `%s\%s.mps`), and neither name appears anywhere else in it; their
     /// EVT_PLANE / EVT_BOAT cues are in no shipped sound map either. The PC version does show them.
-    /// strawberry, 2026-09-25: "i dont see a reason not too ... give it a go!" `--no-seaplane-ferry`
-    /// switches them off.
+    /// strawberry, 2026-09-25: "i dont see a reason not too ... give it a go!" -- and 2026-09-29,
+    /// "disable seaplane and ferry on all maps by default", so they are now OFF unless
+    /// `--seaplane-ferry` asks for them. See the flag below.
     ///
     /// ⭐ THE SCRIPT DRIVES THEM, not a copy of it: each runs its own .RSE on the port's VM, which
     /// plays the animation variants and reports progress in VAR_STATUS (1..6). What the PS2 cut is the
@@ -39,8 +40,22 @@ public partial class Viewer
 
     readonly List<ParkVehicle> _vehicles = new();
     string _vehiclesKey;
-    bool _noSeaplaneFerry;
-    bool VehiclesOn => !_noSeaplaneFerry && !ResearchFlags.Value.Contains("--no-seaplane-ferry");
+    /// <summary>⭐⭐ OFF BY DEFAULT ON EVERY MAP, which is also the FAITHFUL state. Master,
+    /// 2026-09-29: "disable seaplane and ferry on all maps by default".
+    ///
+    /// ⭐ That is not merely a preference -- the note above this class says the PS2 NEVER RUNS
+    /// THEM: the executable's one fixed-item stem list is Gates, Bus1, Bus2, neither name appears
+    /// anywhere else in it, and their EVT_PLANE / EVT_BOAT cues are in no shipped sound map. They
+    /// were switched on because master said "i dont see a reason not too ... give it a go!", and
+    /// turning them off again puts the port back on what the disc actually does.
+    ///
+    /// ⚠ So the polarity is INVERTED rather than the feature deleted: `--seaplane-ferry` opts
+    /// back in to the PC-style extra. The old `--no-seaplane-ferry` is still honoured, and now
+    /// simply cannot be overridden -- an existing harness or script that passes it keeps meaning
+    /// exactly what it meant.</summary>
+    bool _seaplaneFerry, _noSeaplaneFerry;
+    bool VehiclesOn => (_seaplaneFerry || ResearchFlags.Value.Contains("--seaplane-ferry"))
+                       && !_noSeaplaneFerry && !ResearchFlags.Value.Contains("--no-seaplane-ferry");
 
     /// <summary>Port-chosen waits, in milliseconds: at the first stop, at the second, and off screen
     /// before the next visit. ⚠ Not decoded -- see the class note.</summary>
