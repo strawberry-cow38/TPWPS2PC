@@ -713,4 +713,37 @@ public partial class Viewer
                    + $"{s.Objects},{s.DrawCalls},{s.StaticMemKb},{s.ManagedHeapKb},{s.ManagedAllocKb}");
         GetTree().Quit();
     }
+
+    /// <summary>⭐⭐ WHAT IS STILL PENDING WHEN WE SHUT DOWN -- printed on EVERY run, not only the
+    /// ones that crash. The exit FATAL ("script_bindings" + leaked refs) fires when a Quit lands
+    /// while thousands of finalizable Godot wrappers are unclaimed, and tinyclaw counted its rate
+    /// at 2 in 1,793 cases -- about 1 in 900.
+    ///
+    /// ⚠⚠ AT THAT RATE THE CRASH CANNOT BE THE MEASUREMENT. Zero crashes in 28 runs expects 0.03
+    /// events, and by the rule of three it takes ~2,700 clean cases -- roughly 24 full matrices --
+    /// before "none seen" even bounds the rate below the one already observed. Waiting for a
+    /// stochastic symptom to stop is not a test; it is a very slow coin.
+    ///
+    /// ⭐ So measure the CAUSE, which is deterministic and present on every single run: how many
+    /// objects are alive at teardown. `_ExitTree` runs during shutdown, before ObjectDB's own leak
+    /// sweep, so this is exactly the population that decides whether the FATAL has anything to
+    /// trip over. A before/after comparison over a handful of runs replaces 24 matrices, because
+    /// it reads a continuous quantity instead of counting a rare event.
+    ///
+    /// ⚠ It reports, it does not judge: a raw count with no threshold, because what counts as
+    /// "low enough" is exactly what nobody knows yet.</summary>
+    public override void _ExitTree()
+    {
+        // ⚠ Guarded: teardown order is not ours, and an instrument that throws while the tree is
+        // being dismantled would turn a clean exit into the very crash it exists to measure.
+        try
+        {
+            GD.Print($"[exit] objects alive at teardown: "
+                   + $"{(long)Performance.GetMonitor(Performance.Monitor.ObjectCount)} "
+                   + $"(nodes {(long)Performance.GetMonitor(Performance.Monitor.ObjectNodeCount)}, "
+                   + $"orphans {(long)Performance.GetMonitor(Performance.Monitor.ObjectOrphanNodeCount)}, "
+                   + $"managed heap {GC.GetTotalMemory(false) / 1024} KB)");
+        }
+        catch (Exception e) { GD.PrintErr($"[exit] count unavailable: {e.Message}"); }
+    }
 }
