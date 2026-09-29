@@ -443,6 +443,19 @@ public partial class Viewer : Node3D
             // ⭐ `--benchmark=<seconds>`: measure frame time and what is accumulating, then quit.
             else if (a == "--alloc-probe") _allocProbe = true;
             else if (a.StartsWith("--slow-frames=")) _slowFrameMs = double.Parse(a["--slow-frames=".Length..]);
+            // ⭐⭐ `--exit-churn=N` MAKES THE EXIT RACE HAPPEN ON DEMAND, and `--exit-drain=0|1`
+            // switches the candidate fix. The crash is 1 in 900 in the wild, which is untestable;
+            // raising N until it fires most runs turns it into a coin, and the two flags then test
+            // the mechanism and the fix together. tinyclaw's design, and the right one -- without
+            // it the drain would rest on a structural argument nobody could falsify.
+            else if (a.StartsWith("--exit-churn=")) int.TryParse(a["--exit-churn=".Length..], out _exitChurn);
+            else if (a.StartsWith("--exit-drain=")) _exitDrain = a["--exit-drain=".Length..] != "0";
+            // ⚠ `--exit-now=<seconds>` quits after N seconds in ANY mode, park or not. The exit
+            // race lives entirely in teardown, and `--benchmark` can only start once a park is
+            // built -- which costs ~10 MINUTES a run and makes "20 runs per arm" three hours of
+            // box time per arm. This boots the frontend and quits, so the same teardown is
+            // exercised in ~15 s with the churn supplying the objects a park would have.
+            else if (a.StartsWith("--exit-now=")) double.TryParse(a["--exit-now=".Length..], out _exitNow);
             else if (a.StartsWith("--benchmark="))
                 { if (double.TryParse(a["--benchmark=".Length..], out var bs)) _benchSeconds = bs; }
             else if (a == "--graph-line") LaptopGraph.LineStyle = true;
@@ -4215,6 +4228,10 @@ public partial class Viewer : Node3D
 
     /// <summary>`--benchmark=<seconds>`, or 0 for off.</summary>
     double _benchSeconds;
+
+    /// <summary>`--exit-now=<seconds>`: quit this many seconds after boot in any mode.
+    /// ⚠ Test harness only -- it exists so the teardown race can be sampled without a park build.</summary>
+    double _exitNow, _exitNowElapsed;
 
     /// <summary>All-null cells, for a screen whose rows are labels only.</summary>
     static List<(string, int)> Blank(int n)
@@ -11804,6 +11821,25 @@ public partial class Viewer : Node3D
         // marquee runs. A delete test that fired first would truthfully report an empty box.
         if (_deleteTest != null && _mode == Mode.Park && _park != null && _paths != null)
         { var t = _deleteTest; _deleteTest = null; RunDeleteTest(t); }
+        // ⭐ `--exit-now`: quit on a wall clock in ANY mode, so the teardown race can be sampled
+        // without paying for a park build. Counts from boot, unlike the benchmark below.
+        if (_exitNow > 0)
+        {
+            _exitNowElapsed += delta;
+            if (_exitNowElapsed >= _exitNow)
+            {
+                // ⭐⭐ THE CHURN HAPPENS HERE, NOT IN _ExitTree, AND THE DIFFERENCE IS THE WHOLE
+                // POINT. The real crash has wrappers that became garbage DURING the run and are
+                // still unclaimed when Quit lands. Making them inside _ExitTree instead produces
+                // the same object COUNT at teardown while skipping the state being reproduced --
+                // a fixture that matches the number and not the situation.
+                ExitChurn();
+                GD.Print($"[exit] --exit-now={_exitNow:F1}s reached, quitting");
+                _exitNow = 0;
+                GetTree().Quit();
+                return;
+            }
+        }
         // ⚠ Started only once the PARK is up, not at boot: the load is not what is being measured
         // and would otherwise be the first and slowest quarter of every run.
         if (_benchSeconds > 0 && !_benchRunning && _mode == Mode.Park && _park != null)

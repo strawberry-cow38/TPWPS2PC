@@ -732,18 +732,78 @@ public partial class Viewer
     ///
     /// ⚠ It reports, it does not judge: a raw count with no threshold, because what counts as
     /// "low enough" is exactly what nobody knows yet.</summary>
+    /// <summary>`--exit-churn=N`: drop N unreferenced SurfaceTools right before teardown, so the
+    /// finalizer queue is deliberately deep when godot tears down its script bindings. Off at 0.
+    /// ⚠ NOT a feature -- it exists so a 1-in-900 race can be provoked on demand and the drain
+    /// below can be shown to stop it, rather than argued to.</summary>
+    int _exitChurn;
+
+    /// <summary>`--exit-drain=0|1` -- empty the finalizer queue before teardown. **DEFAULT OFF, and
+    /// it stays off until something justifies it.**
+    ///
+    /// ⚠⚠ THE ARGUMENT FOR IT DID NOT SURVIVE ITS OWN TEST. The reasoning was: the exit FATAL needs
+    /// unclaimed finalizable wrappers at teardown, so emptying the queue removes the precondition.
+    /// The fixture below says that precondition is NOT SUFFICIENT -- `--exit-churn=100000` leaves
+    /// **101,832 objects alive at teardown** with this off and the process still exits **clean**,
+    /// RC=0, no `script_bindings`, no leak line. A hundred thousand pending wrappers do not crash
+    /// it, so draining them is not a demonstrated fix and shipping it on would be a structural
+    /// argument wearing a green build.
+    ///
+    /// ⚠ It also carries the failure mode that matters: a blocking finalizer makes this HANG rather
+    /// than crash, and a hung matrix run is worse than a rare FATAL.
+    ///
+    /// ⭐ Kept, off, because it is the cheap arm to try in a scene that ACTUALLY crashes (tinyclaw's
+    /// FANTASY-2 coaster / HALLOW-2 staff). ⚠ What this fixture cannot rule out is that the trigger
+    /// needs a real scene: this harness runs with TWO nodes, so "not sufficient here" is honest and
+    /// "not necessary" is not established.</summary>
+    bool _exitDrain;
+
+    /// <summary>Drop `--exit-churn` SurfaceTools, unreferenced, WHILE THE GAME IS STILL RUNNING --
+    /// called just before Quit, so they are garbage awaiting finalisation when teardown begins,
+    /// which is the state the real crash happens in.</summary>
+    void ExitChurn()
+    {
+        if (_exitChurn <= 0) return;
+        for (int i = 0; i < _exitChurn; i++)
+        {
+            var st = new SurfaceTool();
+            st.Begin(Mesh.PrimitiveType.Triangles);
+        }
+        GD.Print($"[exit] churn: dropped {_exitChurn} SurfaceTools unreferenced before Quit");
+    }
+
     public override void _ExitTree()
     {
         // ⚠ Guarded: teardown order is not ours, and an instrument that throws while the tree is
         // being dismantled would turn a clean exit into the very crash it exists to measure.
         try
         {
+            long before = (long)Performance.GetMonitor(Performance.Monitor.ObjectCount);
+            double drainMs = 0;
+            if (_exitDrain)
+            {
+                // ⭐⭐ THE CANDIDATE FIX. The FATAL needs a NON-EMPTY finalizer queue at the moment
+                // the bindings go; this empties it by construction, so the precondition is gone
+                // rather than merely smaller. Collect-wait-collect: the first pass queues the
+                // unreachable wrappers, the wait runs them, the second reclaims what they freed.
+                // ⚠⚠ THE LATENCY IS ON RECORD because a hang is the failure mode: if a finalizer
+                // blocks, this does not crash, it STOPS -- and a hung matrix run is worse than a
+                // rare FATAL. Any run whose drain ms is large, or which never prints the line
+                // below, is that case and must be read as a failure of this approach.
+                long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                GC.Collect();
+                drainMs = (System.Diagnostics.Stopwatch.GetTimestamp() - t0)
+                          * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+            }
             GD.Print($"[exit] objects alive at teardown: "
                    + $"{(long)Performance.GetMonitor(Performance.Monitor.ObjectCount)} "
-                   + $"(nodes {(long)Performance.GetMonitor(Performance.Monitor.ObjectNodeCount)}, "
+                   + (_exitDrain ? $"(was {before} before a {drainMs:F1} ms drain) " : "(drain OFF) ")
+                   + $"nodes {(long)Performance.GetMonitor(Performance.Monitor.ObjectNodeCount)}, "
                    + $"orphans {(long)Performance.GetMonitor(Performance.Monitor.ObjectOrphanNodeCount)}, "
-                   + $"managed heap {GC.GetTotalMemory(false) / 1024} KB)");
+                   + $"managed heap {GC.GetTotalMemory(false) / 1024} KB");
         }
-        catch (Exception e) { GD.PrintErr($"[exit] count unavailable: {e.Message}"); }
+        catch (Exception e) { GD.PrintErr($"[exit] probe failed: {e.Message}"); }
     }
 }
