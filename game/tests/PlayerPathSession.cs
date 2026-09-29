@@ -63,6 +63,7 @@ public partial class PlayerPathSession : Node
         var image=GetViewport().GetTexture().GetImage();
         Check(image.SavePng(path)==Error.Ok,"screenshot saved "+name);
         Log("screenshot",new {path,width=image.GetWidth(),height=image.GetHeight(),visualReview="pending"});
+        ObserveGuestRender(path);
     }
     LaptopShopScreen Panel=>Read<LaptopShopScreen>(viewer,"_shopPanel");
     string Text(int row)=>Read<TextDatabase>(viewer,"_text").Text(language,row);

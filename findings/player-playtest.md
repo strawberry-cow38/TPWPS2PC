@@ -331,3 +331,33 @@ mode2/state12 observed subsequently; these alone are not completed repair or
 entertainment outcome evidence. Research unlocks not claimed (known missing
 research database). Session remains live for further player-path work; no build
 or reload was done during it.
+
+Correction after the preceding checkpoint: cow1554322397811965982 challenged the
+head identification using the same-arm seat layout; tiny1554322445354279037
+withdrew "closes it". Visual riders are OPEN again. The pale/blue-grey candidate
+is not identified and the chin speck may be litter. Neither colour counts nor
+seat coordinates prove rendered head identity. Next run adds passive postdraw
+head-surface bounds, effective visibility, hidden-node membership and projection;
+no runtime tick/presentation/pose call is permitted merely to observe the scene.
+`GuestTestStage` cannot be invoked passively: it advances ticks and presents.
+Its DrawnBounds helper also filters local Visible, not ancestor-effective visibility.
+There are no `has no body` or `NO HEAD MESH FOUND` lines in live02 at this check.
+
+Live02 ended through broker Quit at1834276ms, 207 observations/0 automatic
+mismatches. Process710797 exited before the next build. Extra navigation exercised
+actual mouse Back after Visitor Information, Statistics, Park Finance, Awards,
+Balance Sheet, Overall Statistics, Finance Statistics, New Loan (first lender),
+Game Options, Ride Information(CrazyApe), Shop Information(BurgerShop), and
+Toilet Information(SmallToilet). Each returned to its parent; the next requested
+row was found through the GUI. This is navigation coverage, not validation of
+all displayed finance/statistics values, every lender/pager, or every laptop
+page. PNGs21..33 retained, visual review still pending. No loans were taken,
+settings changed, or prices adjusted in this sweep.
+
+Added test-only ObserveGuestRender after each screenshot, no game implementation
+changes. Mesh AABB corners transformed with each surface's GlobalTransform,
+active capture viewport camera projection, effective visibility and ancestors,
+_hidden membership by actual model mesh index. Primitive snapshots, no calls to
+TickPark/Present/PlaceActors/Show/SetFrame. Snapshot point tests explicitly do not
+claim occlusion or whole-AABB frustum inclusion. Built successfully after fixing
+a missing file-local Aps alias; behavioral capture run follows separately.
