@@ -487,12 +487,12 @@ public partial class Viewer
         if (_toolOpen) CloseTool();
         var cand = _staff.Candidates.For(kind, slot);
         var m = _staff.Hire(kind, slot);
-        if (m == null) { Status($"{cand.Name(_text) ?? kind.ToString()} cannot be hired"); return; }
+        if (m == null) { Status($"{cand.Name(_text, TextLanguage) ?? kind.ToString()} cannot be hired"); return; }
         _hireHeld = m; _hireCarried = false;
         _shopPanel?.Hide(); _laptopBack.Clear(); _shopPanel?.ShowBalance(null);
         SyncStaffActors();
-        Status($"carrying {cand.Name(_text)} -- left-click path or ground to put them down, right-click to cancel");
-        GD.Print($"[staff] hire: {kind} candidate {slot} ({cand.Name(_text)}) -> {m} held, logical {m.LogicalRequest}");
+        Status($"carrying {cand.Name(_text, TextLanguage)} -- left-click path or ground to put them down, right-click to cancel");
+        GD.Print($"[staff] hire: {kind} candidate {slot} ({cand.Name(_text, TextLanguage)}) -> {m} held, logical {m.LogicalRequest}");
     }
 
     /// <summary>The carry `0x128760`, every frame: the member stands at the cursor's world position
@@ -526,7 +526,7 @@ public partial class Viewer
         }
         HireToolSound(0x12F, at);
         GD.Print($"[staff] hire: {_hireHeld} dropped at ({p.X},{p.Z}), logical {_hireHeld.LogicalRequest}");
-        Status($"{_hireHeld.Candidate.Name(_text)} is at work");
+        Status($"{_hireHeld.Candidate.Name(_text, TextLanguage)} is at work");
         _hireHeld = null; _hireCarried = false;
     }
 
@@ -631,9 +631,9 @@ public partial class Viewer
             (null, Math.Clamp(cand.Motivation, 0, 100)),
         };
         ClearLaptopModel();
-        _shopPanel.ShowScreen(LaptopScreen.Hire, cand.Name(_text) ?? $"#{cand.NameRow}", cells, buildRow: true, buildTextId: HireTextId);
+        _shopPanel.ShowScreen(LaptopScreen.Hire, cand.Name(_text, TextLanguage) ?? $"#{cand.NameRow}", cells, buildRow: true, buildTextId: HireTextId);
         RefreshLaptopBalance();
-        Status($"{cand.Name(_text)} -- {index + 1} of {list.Count}; the arrows page, Hire takes them on");
+        Status($"{cand.Name(_text, TextLanguage)} -- {index + 1} of {list.Count}; the arrows page, Hire takes them on");
     }
 
     /// <summary>`STR_GIZMO_CPP_HIRE`, the label the main menu's Hire row already borrows.</summary>

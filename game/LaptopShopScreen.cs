@@ -41,6 +41,16 @@ public sealed partial class LaptopShopScreen : Control
     readonly FontText _font;
     readonly SceneLayout _layout;
     readonly TextDatabase _text;
+    /// <summary>⚠⚠ ASKED AGAIN EACH TIME, NOT FROZEN AT CONSTRUCTION -- the same shape as
+    /// <c>_world</c> below and for the same reason. The panel is built once and NEVER freed
+    /// (`Viewer.cs` assigns `_shopPanel` and nothing nulls it), so it outlives a return to the
+    /// language screen. A language captured at construction would keep rendering the language the
+    /// player first chose, which is exactly the staleness the `worldNow` lambda already exists to
+    /// prevent for the chrome.
+    ///
+    /// ⚠ Falls back to the constructor's value when no lambda is supplied, so the audits and the
+    /// shop-screen tests keep passing a plain string.</summary>
+    Func<string> _languageNow;
     readonly string _language;
 
     readonly List<(string Label, string Value, bool Highlight)> _rows = new();
@@ -100,7 +110,7 @@ public sealed partial class LaptopShopScreen : Control
     /// is actually in rather than whichever world happened to be open when the UI was built.</param>
     public static LaptopShopScreen Create(AssetLibrary lib, FontText font, TextDatabase text,
                                           string world, string language = "eng",
-                                          Func<string> worldNow = null)
+                                          Func<string> worldNow = null, Func<string> languageNow = null)
     {
         if (lib == null || font == null) return null;
         ImageTexture Load(string name)
@@ -143,6 +153,7 @@ public sealed partial class LaptopShopScreen : Control
         screen._lib = lib;                 // for the other screens' scene files, read on demand
         screen._chromeName = chromeName;   // ⭐ so RefreshChrome knows what is already loaded
         screen._world = worldNow;
+        screen._languageNow = languageNow;
         screen._arrows = Load(LaptopArrows.Sprite);
         screen._layouts[ShopScreen.SceneFile] = layout;
         return screen;
@@ -216,7 +227,7 @@ public sealed partial class LaptopShopScreen : Control
         QueueRedraw();
     }
 
-    string Row(int id) => id <= 0 ? null : _text?.Text(_language, id);
+    string Row(int id) => id <= 0 ? null : _text?.Text(_languageNow?.Invoke() ?? _language, id);
 
     /// <summary>⚠ Only for a disc whose text tree would not load. The real answer is the text
     /// table, in the player's own language; this exists so a missing table shows the screen with
