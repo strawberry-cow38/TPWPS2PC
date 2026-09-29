@@ -53,8 +53,11 @@ public partial class PlayerPathSession : Node
     {
         Log("click",new {x=at.X,y=at.Y,button=button.ToString()});
         Input.ParseInputEvent(new InputEventMouseMotion{Position=at,GlobalPosition=at});await Frame(2);
+        ObserveToolInput("before-press");
         Input.ParseInputEvent(new InputEventMouseButton{Position=at,GlobalPosition=at,ButtonIndex=button,Pressed=true});await Frame(2);
+        ObserveToolInput("before-release");
         Input.ParseInputEvent(new InputEventMouseButton{Position=at,GlobalPosition=at,ButtonIndex=button,Pressed=false});await Frame(2);
+        ObserveToolInput("after-release");
     }
     async Task Shot(string name)
     {
@@ -64,6 +67,7 @@ public partial class PlayerPathSession : Node
         Check(image.SavePng(path)==Error.Ok,"screenshot saved "+name);
         Log("screenshot",new {path,width=image.GetWidth(),height=image.GetHeight(),visualReview="pending"});
         ObserveGuestRender(path);
+        ObserveToolInput("postdraw");
     }
     LaptopShopScreen Panel=>Read<LaptopShopScreen>(viewer,"_shopPanel");
     string Text(int row)=>Read<TextDatabase>(viewer,"_text").Text(language,row);

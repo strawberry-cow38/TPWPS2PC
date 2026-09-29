@@ -406,3 +406,26 @@ review; F3 was toggled back afterwards. Asked tiny for visual status/marker
 reading (1554328278435631107). Next split is actual geometry rejection versus
 input aiming, not forced waypoints. Source readonly control permits only vacant
 playable2x2 end blocks, so an invalid site/path is also possible.
+
+Track correction: the short (44,31) retry DID commit after the earlier log poll:
+`[track] leg to (44,31): 1 pieces for $35; 4 pieces, closed False`.
+The prior no-line statement about that retry was premature while queued camera
+commands were still running. Stock32 is consistent with 4 actual piece records,
+not an empty layout. Paid step count and baked piece count differ. Subsequent
+retries were polled through their final command-done (95 and98 respectively):
+the48/31->48/39->34/39->34/31->36/31 sequence and44/35 produced no additional
+leg-commit lines. The loop remains unverified, not diagnosed broken.
+Live04 quit normally at1204106ms,164observations/0automaticmismatches; process
+729781 exited. No game process on this tree was rebuilt underneath a session.
+
+Added test-only tool-input snapshots before mouse press, before release, after
+release, and postdraw. Includes actual pointer, CursorCell result, full status,
+_trackLegOk/_previewCost/_previewStock, track Price/Waypoints/Pieces/Closed, and
+candidate2x2 blocks' playable/vacant/path/ownpiece readings. The exact picker is
+invoked ONLY as passive telemetry: CursorCell/CellAtScreen source was audited as
+read-only (plane intersection + nearest-cell search, no writes). No tool handler,
+forced cursor result, geometry mutation, or manual simulation/presentation call.
+This distinguishes failed picking from rejected geometry and stale/clipped text.
+Build succeeds; runtime verification follows in a fresh session. The F3 diagnostic
+was shown only for a screenshot and hidden before the next click; don't infer
+that its left-side input guard caused the prior attempts without cursor evidence.
