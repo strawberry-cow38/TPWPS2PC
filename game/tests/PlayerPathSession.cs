@@ -201,6 +201,10 @@ public partial class PlayerPathSession : Node
     {
         var park=Read<Park>(viewer,"_park");var sim=Read<ParkSim>(viewer,"_sim");
         var guests=Read<GuestWalk>(viewer,"_guests");var placement=Read<Placement>(viewer,"_place");
+        var visitors=Read<ParkVisitors>(viewer,"_visitors");
+        var staff=Read<ParkStaff>(viewer,"_staff");
+        var queues=Read<NativeRideQueues>(viewer,"_rideQueues");
+        var seated=Read<Dictionary<int,(Transform3D At,string Where,Vector3 Forward,string Part,float PartTop)>>(viewer,"_seated");
         Log("state",new {
             ticks=Read<int>(viewer,"_parkTicks"),laptop=Panel.Open,menu=Read<List<string>>(Panel,"_menu").ToArray(),
             panelTitle=Read<string>(Panel,"_title"),selected=Panel.Selected,scroll=Panel.ScrollRow,
@@ -208,7 +212,19 @@ public partial class PlayerPathSession : Node
             pathTool=Read<bool>(viewer,"_toolOpen"),kind=Read<PathTool.Kind>(viewer,"_toolKind").ToString(),
             runX=Read<int>(viewer,"_runX"),runY=Read<int>(viewer,"_runY"),money=sim?.Finances.Balance,
             placed=park.Placed.Select(p=>new {p.Id,p.Name,p.X,p.Y}),
-            rides=sim?.Rides.Select(r=>new {r.Id,r.Name,r.Customers,r.Takings}),
+            rides=sim?.Rides.Select(r=>new {r.Id,r.Name,r.Customers,r.Takings,
+                scriptOnRide=r.Has("VAR_ONRIDE")?(int?)r.OnRide:null,scriptQueue=r.Queue.Count,
+                toiletCondition=r.ProvidesRelief?(int?)r.Condition:null}),
+            seated=seated.Select(p=>new {guest=p.Key,where=p.Value.Where,
+                position=new[]{p.Value.At.Origin.X,p.Value.At.Origin.Y,p.Value.At.Origin.Z}}),
+            nativeQueues=queues==null?null:new {queues.Joined,queues.Boarded,queues.Released,queues.Quits,queues.Impatient},
+            visitorCounters=visitors==null?null:new {visitors.Boardings,visitors.Rides,visitors.Purchases,
+                visitors.Relieved,visitors.LitterDropped,visitors.LitterBinned,visitors.Vomited},
+            plans=visitors?.Plans.Values.Select(p=>new {p.Guest,p.RideId,intent=p.Intent.ToString()}),
+            needs=visitors?.Needs.All.Select(p=>new {guest=p.Key,p.Value.Cash,p.Value.Hunger,
+                p.Value.Thirst,p.Value.Toilet,p.Value.Litter}),
+            litter=staff==null?null:new {staff.Litter.Count,staff.Litter.Made,staff.Litter.Swept},
+            staff=staff?.Members.Select(m=>new {kind=m.Kind.ToString(),m.Active,m.Held,m.Mode,m.State,m.LogicalRequest}),
             guests=guests?.Guests.Select(g=>new {g.Id,state=g.State.ToString()}),
             padLocked=Read<ParkAdvisor>(viewer,"_parkAdvisor")?.PadLocked
         });
@@ -217,11 +233,28 @@ public partial class PlayerPathSession : Node
     {
         string commands=Path.Combine(output,"commands.jsonl");File.WriteAllText(commands,"");
         int consumed=0;Log("interactive-ready",new {commands});Observe();
+        ulong nextObservation=Time.GetTicksMsec()+5000;
+        bool ridingShot=false,litterShot=false;
         ulong deadline=Time.GetTicksMsec()+45*60*1000UL; // bounded session, not an orphaned renderer
         while(Time.GetTicksMsec()<deadline)
         {
             await Frame();
-            var lines=File.ReadAllLines(commands);
+            if(Time.GetTicksMsec()>=nextObservation)
+            {
+                Observe();nextObservation=Time.GetTicksMsec()+5000;
+                var seats=Read<System.Collections.IDictionary>(viewer,"_seated");
+                if(!ridingShot&&!Panel.Open&&seats.Count>0)
+                { ridingShot=true;await Shot("natural-seated-guests-observed"); }
+                var visitors=Read<ParkVisitors>(viewer,"_visitors");
+                if(!litterShot&&!Panel.Open&&visitors?.LitterDropped>0)
+                { litterShot=true;await Shot("natural-guest-litter-counter-positive"); }
+            }
+            var text=File.ReadAllText(commands);
+            // The producer may be appending as a frame reads. Ignore an incomplete last line;
+            // never turn a partially written input command into a game-failure report.
+            int complete=text.LastIndexOf('\n');
+            if(complete<0)continue;
+            var lines=text[..complete].Split('\n');
             while(consumed<lines.Length)
             {
                 string line=lines[consumed++];if(string.IsNullOrWhiteSpace(line))continue;
@@ -390,6 +423,14 @@ public partial class PlayerPathSession : Node
                 await EndSession(args.Contains("--play-expect-clean"),"real input world reset: particles, open state, terrain visibility");
                 return;
             }
+            if(args.Contains("--play-tour=build"))
+            {
+                await CloseLaptop();
+                await BuildFirstRide();
+                if(interactive)await InteractiveLoop();
+                await EndSession(args.Contains("--play-expect-clean"),"normal first-park build/service journey; inspect per-event evidence");
+                return;
+            }
             await LaptopRow(1042); // Research
             await Wait(()=>Read<LaptopScreen>(Panel,"_spec")==LaptopScreen.Research,10,"Research page opened");
             await Shot("research");
@@ -408,10 +449,8 @@ public partial class PlayerPathSession : Node
                 Finding("candidate label "+row.TextId,Text(row.TextId),(string)rowLookup.Invoke(Panel,new object[]{row.TextId}),"cow tools");
             await CloseLaptop();Check(!Panel.Open,"Close button exits candidate page");
             await Shot("park-open-after-pages");
-            bool build=args.Contains("--play-tour=build");
-            if(build)await BuildFirstRide();
             if(interactive)await InteractiveLoop();
-            await EndSession(args.Contains("--play-expect-clean"),build?"first ride/spine/queue and natural observation; inspect evidence, not automatic service-use claim":"cold boot / open park / research / cleaner candidate; no building or service-use claims");
+            await EndSession(args.Contains("--play-expect-clean"),"cold boot / open park / research / cleaner candidate; no building or service-use claims");
         }
         catch(Exception e)
         {

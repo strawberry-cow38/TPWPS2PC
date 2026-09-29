@@ -257,3 +257,23 @@ also visible to parent inchannel. AfterfixPNGs posted for separatevisualreview.
 Price correction: the read-only script worker cited the rawSAM cost750. The actual
 compiled purchase path charged$250 in this replay. SAMcost is NOT the liveprice;
 no expectedprice assertion was built from that worker value.
+
+Afterfixvisualreview closed bycow1554309957980127303: landmarks matched despite
+slightlyshiftedframing; oldbubbletrailabsentafterb6a2283 andOpenParkrowpresent.
+Parent also received the cropped comparison as animage. Tiny reportsbothfixeson
+main19e61f8 (1554310769577820161). Mainnow5b7f113includinginertbenches; merged here.
+
+Nextjourney telemetry correction: ParkRide.Customers is sale bookkeeping, NOT
+an amusementride boardingcounter. Added passive scriptOnRide/Queue, rendered
+_seated guestIDs/positions, optionalnativequeuecounters, visitorPurchases/Relieved/
+LitterDropped/etc, existingNeeds.All valuecopies, staffjobs andLitter.Made/Swept.
+CountersBoardings/Rides include facilities too, so pair with ride/guestownership;
+no globalcounterdelta alone claims CrazyApecompletion. Never initialize staff
+Candidates in telemetry (lazy/RNG-consuming); actualHireGUI can do so normally.
+Interactiveidle samples every5wallseconds, with one-time milestone screenshots;
+these are instrumented functional runs, NOT performance benchmarks. Screenshots
+named for a positivecounter do not assert the event is in the camera's view.
+Buildtour now goes straight fromopeningthepark tobuilding, not viaResearch/Hire
+first. This is an ordinary alternative player route; note itchanges the timing of
+lazycandidateRNG draws. Language tour remains available separately. Commands are
+consumed onlythrough their terminatingnewline toavoid partialappend parsefailures.
