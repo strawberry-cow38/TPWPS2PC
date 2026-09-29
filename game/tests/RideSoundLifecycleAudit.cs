@@ -175,6 +175,16 @@ public partial class RideSoundLifecycleAudit : Node3D
                         .GetField("_live", hidden).GetValue(particles);
                     var particle = new CpuParticles3D { Emitting = false };
                     particleRoot.AddChild(particle); liveParticles.Add((particle, Time.GetTicksMsec() + 60000));
+                    // ⭐⭐ A CONTINUOUS emitter as well as a live one. Master: "particle emitters not
+                    // deleting when switching maps". `Clear()` dropped `_live` and left `_continuous`
+                    // standing -- and a looping emitter is never culled on a deadline, so nothing
+                    // else would ever have taken it down. This fixture is the half the audit was
+                    // missing: it already proved the live list empties, which is why the bug
+                    // survived a test that looked like it covered particles.
+                    var continuous = (Dictionary<(int, int, int, int), CpuParticles3D>)typeof(RideParticles)
+                        .GetField("_continuous", hidden).GetValue(particles);
+                    var looping = new CpuParticles3D { Emitting = true };
+                    particleRoot.AddChild(looping); continuous[(7, 0, 0, 0)] = looping;
                     typeof(Viewer).GetField("_burst", hidden).SetValue(viewer, particles);
                     typeof(Viewer).GetMethod("MakePathTool", hidden).Invoke(viewer, null);
                     Check(worldSounds.Live == 0 && typeof(Viewer).GetField("_sounds", hidden).GetValue(viewer) == null,
@@ -183,6 +193,12 @@ public partial class RideSoundLifecycleAudit : Node3D
                           "world reset retains the reusable global particle-library holder");
                     Check(liveParticles.Count == 0 && particle.IsQueuedForDeletion(),
                           "world reset clears old live particles independently of retaining their global library");
+                    // ⚠ The stale KEY matters as much as the node: `Emit` returns early when
+                    // `_continuous` still holds a valid emitter for an (effect, cell) pair, so a
+                    // survivor of the old park would also SUPPRESS that effect on the new one. Both
+                    // halves are asserted -- the dictionary empty AND the node actually going.
+                    Check(continuous.Count == 0 && looping.IsQueuedForDeletion(),
+                          "world reset clears CONTINUOUS emitters too -- they are never culled on a deadline");
                     worldSounds.Clear(); // fixture cleanup even while reproducing a reset omission
                     particles.Clear();
                 }
