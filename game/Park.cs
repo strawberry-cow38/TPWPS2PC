@@ -1201,6 +1201,7 @@ public sealed class Park
         // the floor is wrong with it and they are wrong TOGETHER, which is strictly better than a
         // ride hanging in the air over its own raised floor.
         model.Position = new Vector3(anchor.X, CellY(x, y), anchor.Y);
+        OversizeForSeam(model, fp, x, y);
         return true;
     }
 
@@ -1218,6 +1219,52 @@ public sealed class Park
     /// locally and then placing the park in world coordinates put the plot at +Z where the hole is
     /// at -Z -- and a Z mirror leaves the bounding box, the extents and the X axis all correct, so
     /// every number agreed while the picture did not.</param>
+    /// <summary>⭐⭐ HOW MUCH BIGGER A RIDE IS DRAWN THAN ITS FOOTPRINT, in CELLS per side.
+    /// Master, after rejecting the conditional cut: "legit i think the solution is scaling rides up
+    /// that one tiny 1-2px".
+    ///
+    /// ⭐ The seam is two coincident edges with no shared vertices: the floor is cut to the
+    /// footprint, the ride spans the same footprint to within 0.02 cells on 51 of 68 models, and
+    /// the crack between them rasterises 1-2 px wide. Overlapping the ride past the hole's edge
+    /// covers it WITHOUT touching which tiles get deleted -- retail deletes them, so that part is
+    /// not ours to change.
+    ///
+    /// ⚠ 0.02 cells is the measured coincidence, not a tuned figure: it is the margin at which
+    /// a ride stops landing exactly on the edge. The right value is whatever stops showing sky at
+    /// the resolutions we actually render at, and that is master's eye, not arithmetic -- one
+    /// named constant so it can be moved in one place.</summary>
+    public const float RideSeamOverlap = 0.02f;
+
+    /// <summary>Draw a ride fractionally over its own hole, so the two edges overlap instead of
+    /// meeting exactly.
+    ///
+    /// ⚠⚠ HORIZONTAL ONLY. Scaling Y as well would lift every ride off the ground by a
+    /// fraction of its own height and re-float the buried bases that "the origin is the ground
+    /// plane" exists to keep buried.
+    ///
+    /// ⚠⚠ AND IT PRESERVES THE FOOTPRINT'S CENTRE, NOT THE NODE'S ORIGIN. A ride is anchored
+    /// by its origin, which lands on a CORNER of the footprint -- so scaling about the node would
+    /// grow it away from that corner only, overhanging two sides and leaving the seam on the other
+    /// two. The centre is held fixed and the growth is split evenly.
+    ///
+    /// ⚠ The scale is applied in the PARENT frame (pre-multiplied), so it is world X and Z that
+    /// grow whatever the model's own axes are -- `fp` arrives already turned, so its Width and
+    /// Height are the world box's. Safe against shear because the turn is a multiple of 90 degrees
+    /// and maps axes onto axes.</summary>
+    void OversizeForSeam(Node3D model, Footprint fp, int x, int y)
+    {
+        if (RideSeamOverlap <= 0f || model == null || fp.Width <= 0 || fp.Height <= 0) return;
+        float w = fp.Width * CellSize, h = fp.Height * CellSize;
+        float sx = (w + 2f * RideSeamOverlap) / w, sz = (h + 2f * RideSeamOverlap) / h;
+        var b = model.Basis;
+        model.Basis = new Basis(new Vector3(sx, 0, 0), new Vector3(0, 1, 0), new Vector3(0, 0, sz)) * b;
+        // The footprint's centre in parent space is the point that must not move.
+        float cx = Origin.X + (x + fp.Width * 0.5f) * CellSize;
+        float cz = Origin.Y + (Height - y - fp.Height * 0.5f) * CellSize;
+        var pos = model.Position;
+        model.Position = new Vector3(cx + (pos.X - cx) * sx, pos.Y, cz + (pos.Z - cz) * sz);
+    }
+
     public static (Vector3 Min, Vector3 Max) DrawnBounds(Node3D root, bool inParent = false,
                                                         string onlyNamed = null)
     {
