@@ -4175,7 +4175,7 @@ public partial class Viewer : Node3D
     /// void, which is indistinguishable from a click that never landed.</summary>
     // Information's fifth row is the staff-type selector, not an asset list.
     const int StaffInfoRow = 4;
-    string StaffName(StaffMember m) => m.Candidate.Name(_text) ?? $"#{m.Candidate.NameRow}";
+    string StaffName(StaffMember m) => m.Candidate.Name(_text, TextLanguage) ?? $"#{m.Candidate.NameRow}";
 
     /// <summary>Which series a graph screen is showing, and the span the year selector holds.
     /// ⚠ The span is one of {1, 2, 6, 12} years (wrapping, initial 1); the selector itself is not
@@ -11323,8 +11323,11 @@ public partial class Viewer : Node3D
                 // fire BEFORE any world WAD is open -- `WadName` is set only by OpenWad -- so the
                 // eager argument may be null and freezing it left every park showing LAPTOP_512,
                 // whose art is the halloween picture. The lambda is re-asked each frame.
+                // ⚠ `languageNow` for the same reason as `worldNow`: the panel is created once and
+                // never freed, so a language frozen here would survive the player changing it.
                 _shopPanel = LaptopShopScreen.Create(_lib, _hudFont, _text, _lib?.WadName,
-                                                     worldNow: () => _lib?.WadName);
+                                                     worldNow: () => _lib?.WadName,
+                                                     languageNow: () => TextLanguage);
                 if (_shopPanel != null)
                 {
                     _uiRoot.AddChild(_shopPanel);
