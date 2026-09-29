@@ -5915,6 +5915,10 @@ public partial class Viewer : Node3D
 
     /// <summary>Where each seated rider was last drawn, by guest id, with the seat it sits in.</summary>
     readonly Dictionary<int, (Transform3D At, string Where, Vector3 Forward, string Part, float PartTop)> _seated = new();
+    /// <summary>Each seated rider's SEAT up in the world (SeatPose's third output), beside <see cref="_seated"/> so the
+    /// tuple readers stay as they are. The rider census tests the kid's up against THIS -- it used to pass the kid's
+    /// own Y, which made its up half unfailable (cow tools, 2026-09-29).</summary>
+    readonly Dictionary<int, Vector3> _seatUp = new();
 
     /// <summary>⭐ THE WALK PATH'S BASIS FOR A WORLD HEADING -- the one known-good facing in the
     /// viewer (nobody has ever said a walker moonwalks), so it is the reference the seat path is
@@ -5999,7 +6003,7 @@ public partial class Viewer : Node3D
 
     void SeatRiders()
     {
-        _seated.Clear();
+        _seated.Clear(); _seatUp.Clear();
         SeatTrackRiders();
         SeatCoasterRiders();
         foreach (var (ride, model, _, _, _) in _scripted)
@@ -6011,7 +6015,8 @@ public partial class Viewer : Node3D
             foreach (var (slot, guest) in ride.Host.Seats)
             {
                 if (mesh.FindFitting(slot + 1, 0x80) is not { Node: >= 0 } fit) continue;
-                if (!SeatPose(mesh, model, root, fit, out var pose, out var seatForward, out _)) continue;
+                if (!SeatPose(mesh, model, root, fit, out var pose, out var seatForward, out var seatUp)) continue;
+                _seatUp[guest] = seatUp;
                 // ⭐ NAMED, so the log says Head09 and not "node 19" -- and says out loud when a
                 // rider lands on anything that is not a Head, which would be the fitting reading
                 // failing. On Crazy Ape every 0x80 fitting is a Head helper under an arm.
@@ -7112,7 +7117,8 @@ public partial class Viewer : Node3D
             static string Facing(Basis kid, Vector3 s, Vector3 up)
             {
                 if (s.LengthSquared() < 1e-6f) return "seat forward undefined";
-                float f = kid.Z.Normalized().Dot(s), u = up.LengthSquared() > 1e-6f ? kid.Y.Normalized().Dot(up) : 1f;
+                if (up.LengthSquared() < 1e-6f) return "seat up undefined";
+                float f = kid.Z.Normalized().Dot(s), u = kid.Y.Normalized().Dot(up.Normalized());
                 return f > 0.98f && u > 0.98f ? "FACES ITS SEAT" : f < -0.98f && u > 0.98f ? "BACKWARD (half-turn about the seat's up)" : $"other (forward dot {f:F2}, up dot {u:F2})";
             }
             int yaw180 = 0, agree = 0, other = 0;
@@ -7120,7 +7126,13 @@ public partial class Viewer : Node3D
             {
                 var sf = seat.Forward; sf.Y = 0;
                 string rstr = sf.LengthSquared() > 1e-6f ? Describe(RotationOf(WalkBasis(sf.Normalized()).Inverse() * seat.At.Basis)) : "undefined";
-                string verdict = Facing(seat.At.Basis, seat.Forward, seat.At.Basis.Y);
+                // ⚠ Against the SEAT's up (SeatPose), never the kid's own Y -- that made "up" pass by definition.
+                // Zero (no seat up recorded) reads as "up undefined" in the verdict rather than as a pass.
+                string verdict = Facing(seat.At.Basis, seat.Forward, _seatUp.GetValueOrDefault(id));
+                // ⭐ And the kid's up in the WORLD, which is a different question: on Crazy Ape the arm holds its car
+                // overhead rolled right over, so a rider can be upright in its seat and upside down on screen.
+                float worldUp = seat.At.Basis.Y.Normalized().Dot(Vector3.Up);
+                verdict += worldUp < -0.5f ? $"; INVERTED in the world (up dot {worldUp:F2})" : worldUp < 0.5f ? $"; on its side in the world (up dot {worldUp:F2})" : "";
                 if (verdict.StartsWith("BACKWARD")) yaw180++; else if (verdict.StartsWith("FACES")) agree++; else other++;
                 GD.Print($"[guest] {label} yaw: rider #{id} seat forward ({seat.Forward.X:F2}, {seat.Forward.Y:F2}, {seat.Forward.Z:F2}); R = {rstr}; {verdict}");
             }

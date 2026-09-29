@@ -531,8 +531,9 @@ public partial class Viewer
                 for (int s = 0; s < car.Riders.Count; s++)
                 {
                     if (cv.Mesh.FindFitting(s + 1, 0x80) is not { Node: >= 0 } fit) continue;
-                    if (!SeatPose(cv.Mesh, cv.Model, cv.Model.Root.GlobalTransform, fit, out var pose, out var forward, out _)) continue;
+                    if (!SeatPose(cv.Mesh, cv.Model, cv.Model.Root.GlobalTransform, fit, out var pose, out var forward, out var seatUp)) continue;
                     _seated[car.Riders[s]] = (pose, $"{v.Track.Type.Name} seat {s + 1} on {cv.Mesh.NodeName(fit.Node)}", forward, "car", float.NaN);
+                    _seatUp[car.Riders[s]] = seatUp;
                 }
             }
     }

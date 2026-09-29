@@ -339,8 +339,9 @@ public partial class Viewer
                 if (car.Guest is not int guest || !v.Cars.TryGetValue(car, out var cv)) continue;
                 if (cv.Mesh == null || cv.Model?.Root == null || !IsInstanceValid(cv.Model.Root) || cv.Model.LastWorld == null) continue;
                 if (cv.Mesh.FindFitting(1, 0x80) is not { Node: >= 0 } fit) continue;
-                if (!SeatPose(cv.Mesh, cv.Model, cv.Model.Root.GlobalTransform, fit, out var pose, out var forward, out _)) continue;
+                if (!SeatPose(cv.Mesh, cv.Model, cv.Model.Root.GlobalTransform, fit, out var pose, out var forward, out var seatUp)) continue;
                 _seated[guest] = (pose, $"{v.Ride.Name} car {car.Index} on {cv.Mesh.NodeName(fit.Node)}", forward, "car", float.NaN);
+                _seatUp[guest] = seatUp;
             }
     }
 
