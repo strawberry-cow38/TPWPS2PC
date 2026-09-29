@@ -114,3 +114,39 @@ must remain separately attributed/pending. No building/service-use/soak claim.
 Next: actual building/connectivity/guestuse. Before that, repeat-entry/hide ownership
 regression should be checked without conflating pure-input testing with synthetic
 intentional-hidden-node controls (the latter needs a separately labelled fixture).
+
+## Building transport correction and first connected ride
+
+The initial driver extension failed on its own setup, NOT a gameplay regression:
+ParseInputEvent(mouse-motion) left GetMousePosition at(576,324) despite event
+position(599.37,80.16). Actual window cursor movement with Viewport.WarpMouse
+then made the observed position(599,80). World picker reads this position whereas
+GUI click handling reads event.Position. Driver now logs both and moves only the
+isolated test window's real pointer; never cursorOverride/game-field mutation.
+The initial entrance-mouth cell(29,18) is legitimately no-build. A player can
+start at the existing playable path at(29,19); the next run uses that observed
+cell. These are driver corrections, not reported game bugs.
+
+Run `/tmp/tpw-player-build-03.log`, artifacts same stem directory:
+ordinary input coldboot/park/Open Park; extend spine atx29 toz29; mouse catalogue
+Build/Rides/Crazy Ape; valid placement cursor(27,24), actualcorner(25,22),turn0;
+owned entrance queue(26,21)->(29,21), exitpath(27,26)->(29,26). Actual charges:
+7newpath tiles$70, Crazy Ape$2000,3queue tiles$75,1exitpath tile$10; balance$27845.
+No placement/tick/needs/cursor fixture injection.70observations; zero measured
+mismatches in preceding language/visibility checks. This does NOT mean all guest
+behaviors passed: firstpostbuildbus requested/admitted1 visitor; that visitor was
+rejected by entrance and advisor submitted ticket-too-expensive message0x49.
+No customers/takings yet. One refusal is not evidence allguests cannotenter or
+that pricing is buggy. Continue the ordinary player journey with more services.
+Simulation time advanced slower than wall time on llvmpipe; record both.
+
+The `--play-interactive` test-scene-only option now retains the live world after
+setup and accepts bounded JSONL key/click/menu/aim/shot/wait/read-only-state
+commands in its artifact directory. No gameplay handler calls or state writes.
+45min real-time stop guard prevents an orphaned renderer. This is NOT a shipping
+Viewer command surface. Do not rebuild while that session is running.
+
+Peer visual review: tiny1554292777158840354 and cow1554292972261220473 examined
+all3afterfixcaptures: park terrain/path/road/pool visible; French Research and
+German candidate fullylocalized includingBack/Close. French longlabel overlap
+is a separate fidelity/layout question for cow, not adjudicated by these tests.

@@ -10,8 +10,8 @@ using TPW.PS2.Data;
 
 namespace TPWPS2Viewer.Tests;
 
-/// <summary>Player-path driver. Every gameplay action enters through ParseInputEvent.
-/// Live fields and hit-box methods are READ ONLY. No paused processing, manual tick calls,
+/// <summary>Player-path driver. Keys/clicks enter through ParseInputEvent; world aiming
+/// moves the actual window cursor with Viewport.WarpMouse. Live fields and hit boxes are READ ONLY. No paused processing, manual tick calls,
 /// fixture spawns, cursor overrides, OpenGate, forced needs or menu handler invocations.</summary>
 public partial class PlayerPathSession : Node
 {
@@ -20,6 +20,7 @@ public partial class PlayerPathSession : Node
     StreamWriter trace;
     string output, language;
     int sequence, observations, defects;
+    bool interactive;
     static T Read<T>(object owner,string name)=>(T)(owner.GetType().GetField(name,Hidden)
         ??throw new MissingMemberException(owner.GetType().Name+"."+name)).GetValue(owner);
     void Log(string kind,object value)
@@ -81,6 +82,179 @@ public partial class PlayerPathSession : Node
     async Task CloseLaptop()
     { await Click(Panel.PanelOrigin+new Vector2(411,121)*Panel.PanelScale); }
 
+    async Task MenuContains(string fragment)
+    {
+        await Frame(2);var rows=Read<List<string>>(Panel,"_menu");
+        int index=rows.FindIndex(x=>x.Contains(fragment,StringComparison.OrdinalIgnoreCase));
+        Log("menu-search",new {fragment,index,rows=rows.ToArray()});
+        Check(index>=0,"menu contains "+fragment);
+        // Real wheel events page long lists; no writes to panel selection/scroll state.
+        for(int n=0;n<30 && Panel.MenuRowScreenBox(index).Size.Y<=0;n++)
+            await Click(Panel.PanelOrigin+new Vector2(250,300)*Panel.PanelScale,MouseButton.WheelDown);
+        var box=Panel.MenuRowScreenBox(index);Check(box.Size.Y>0,"requested row is on screen");
+        await Click(box.GetCenter());
+    }
+    async Task AimCell(int x,int y)
+    {
+        var park=Read<Park>(viewer,"_park");var camera=Read<Camera3D>(viewer,"_cam");
+        var world=park.CellCentre(x,y);var screen=camera.UnprojectPosition(world);
+        var area=new Rect2(new Vector2(20,20),GetViewport().GetVisibleRect().Size-new Vector2(40,40));
+        for(int attempt=0;attempt<6 && (!area.HasPoint(screen)||camera.IsPositionBehind(world));attempt++)
+        {
+            // Pan by actual held keys if the chosen cell is beyond the current view.
+            Key direction=screen.Y<area.Position.Y?Key.W:Key.S;
+            Log("camera-key-hold",new {key=direction.ToString(),frames=6});
+            Input.ParseInputEvent(new InputEventKey{Pressed=true,Keycode=direction,PhysicalKeycode=direction});await Frame(6);
+            Input.ParseInputEvent(new InputEventKey{Pressed=false,Keycode=direction,PhysicalKeycode=direction});await Frame(6);
+            screen=camera.UnprojectPosition(world);
+        }
+        Log("aim",new {x,y,screenX=screen.X,screenY=screen.Y,behind=camera.IsPositionBehind(world)});
+        Check(!camera.IsPositionBehind(world)&&area.HasPoint(screen),"target cell is visible, not clicking offscreen");
+        Input.ParseInputEvent(new InputEventMouseMotion{Position=screen,GlobalPosition=screen});await Frame(4);
+        var observed=GetViewport().GetMousePosition();
+        Log("pointer-after-parsed-motion",new {wantedX=screen.X,wantedY=screen.Y,observedX=observed.X,observedY=observed.Y});
+        // ParseInputEvent does not move the OS cursor (Godot4.6 Input docs). World picking
+        // reads the viewport pointer, unlike GUI clicks reading event.Position. Move the
+        // actual window pointer; never substitute the game's cursor or call its picker.
+        GetViewport().WarpMouse(screen);await Frame(4);
+        observed=GetViewport().GetMousePosition();
+        Log("pointer-after-os-move",new {wantedX=screen.X,wantedY=screen.Y,observedX=observed.X,observedY=observed.Y});
+        Check(observed.DistanceTo(screen)<2,"actual window pointer reached target");
+        Check(Read<(int X,int Y)?>(viewer,"_cursorOverride")==null,"no cursor override");
+    }
+    async Task ClickCell(int x,int y)
+    {
+        await AimCell(x,y);
+        var camera=Read<Camera3D>(viewer,"_cam");var park=Read<Park>(viewer,"_park");
+        await Click(camera.UnprojectPosition(park.CellCentre(x,y)));
+    }
+    async Task BuildFirstRide()
+    {
+        Check(language=="eng","build tour currently names visible English catalogue entries");
+        var park=Read<Park>(viewer,"_park");var paths=Read<PathTool>(viewer,"_paths");
+        var mouth=Read<List<ParkCell>>(viewer,"_mouth");
+        Check(mouth is {Count:>0},"normal park owns an entrance mouth");
+        var start=mouth.OrderByDescending(c=>c.Z).ThenBy(c=>c.X).First();
+        int spineX=start.X;
+        Log("entrance-cells",Enumerable.Range(start.Z,8).Select(z=>new {x=spineX,z,playable=park.IsPlayable(spineX,z),description=paths.Describe(spineX,z)}));
+        int firstZ=Enumerable.Range(start.Z,8).First(z=>park.IsPlayable(spineX,z)&&park.Vacant(spineX,z));
+        int endZ=firstZ+10;
+        Log("entrance",new {mouth=mouth.Select(c=>new {c.X,c.Z}),spineX,firstZ,endZ});
+        await AimCell(spineX,firstZ);await KeyPress(Key.P);await KeyPress(Key.P);
+        Check(Read<int>(viewer,"_runX")==spineX,"path run starts from actual pointer");
+        int before=paths.Laid;
+        await AimCell(spineX,endZ);await KeyPress(Key.P);
+        Check(paths.Laid>before,"real path input lays a connected spine");
+        await KeyPress(Key.Escape);await Shot("path-spine");
+        await KeyPress(Key.Tab);await LaptopRow(801);await MenuContains("Rides (");await MenuContains("Crazy Ape");
+        var placement=Read<Placement>(viewer,"_place");
+        Check(placement.Active,"catalogue click arms ride placement");
+        // Observe valid footprint/stub geometry; rotate by actual key events only. Pick a site
+        // with both doors facing the path spine so the connecting legs stay short and visible.
+        (int X,int Y)? chosen=null;
+        for(int turn=0;turn<4 && chosen==null;turn++)
+        {
+            var candidates=new List<(int X,int Y,int Score)>();
+            for(int y=start.Z+2;y<=endZ-1;y++)
+                for(int x=spineX-7;x<=spineX+7;x++)
+                {
+                    if(!placement.Fits(park,x,y))continue;
+                    var stubs=placement.Stubs(park,x,y).ToArray();
+                    if(stubs.Length<2 || stubs.Any(c=>c.Y<=start.Z||c.Y>endZ||Math.Abs(c.X-spineX)>3))continue;
+                    var body=placement.Cells(park,x,y).ToArray();
+                    bool clear=stubs.All(stub=>Enumerable.Range(Math.Min(stub.X,spineX),Math.Abs(stub.X-spineX)+1)
+                        .All(cx=>!body.Any(b=>b.X==cx&&b.Y==stub.Y)&&park.Vacant(cx,stub.Y)));
+                    if(clear)candidates.Add((x,y,stubs.Sum(c=>Math.Abs(c.X-spineX))));
+                }
+            if(candidates.Count>0){var c=candidates.OrderBy(c=>c.Score).First();chosen=(c.X,c.Y);}
+            else await KeyPress(Key.R);
+        }
+        Check(chosen!=null,"a visible plausible ride site beside spine exists");
+        var site=chosen.Value;
+        Log("placement-observation",new {name=placement.Display,site.X,site.Y,turn=placement.Turns});
+        int count=park.Placed.Count;
+        await ClickCell(site.X,site.Y);
+        Check(park.Placed.Count==count+1,"ordinary left click purchases and places ride");
+        await Frame(8);await Shot("ride-placed");
+        // Placement itself opens its owned queue. Follow its actual run, not a detached queue.
+        for(int leg=0;leg<3 && Read<bool>(viewer,"_toolOpen");leg++)
+        {
+            await Frame(8);int fromX=Read<int>(viewer,"_runX"),fromY=Read<int>(viewer,"_runY");
+            Log("automatic-door-tool",new {kind=Read<PathTool.Kind>(viewer,"_toolKind").ToString(),fromX,fromY});
+            Check(fromX>=0&&fromY>=0,"placement starts queue/exit run at actual door");
+            await ClickCell(spineX,fromY);
+        }
+        if(Read<bool>(viewer,"_toolOpen"))await KeyPress(Key.Escape);
+        await Shot("ride-connected");
+        ulong finish=Time.GetTicksMsec()+(interactive?10000UL:90000UL);
+        while(Time.GetTicksMsec()<finish)
+        {
+            await ToSignal(GetTree().CreateTimer(10),SceneTreeTimer.SignalName.Timeout);
+            var sim=Read<ParkSim>(viewer,"_sim");var guests=Read<GuestWalk>(viewer,"_guests");
+            Log("normal-observation",new {ticks=Read<int>(viewer,"_parkTicks"),guests=guests?.Guests.Count,
+                money=sim.Finances.Balance,rides=sim.Rides.Select(r=>new {r.Id,r.Name,r.Customers,r.Takings})});
+        }
+        await Shot("ride-after-90s");
+    }
+
+    void Observe()
+    {
+        var park=Read<Park>(viewer,"_park");var sim=Read<ParkSim>(viewer,"_sim");
+        var guests=Read<GuestWalk>(viewer,"_guests");var placement=Read<Placement>(viewer,"_place");
+        Log("state",new {
+            ticks=Read<int>(viewer,"_parkTicks"),laptop=Panel.Open,menu=Read<List<string>>(Panel,"_menu").ToArray(),
+            panelTitle=Read<string>(Panel,"_title"),selected=Panel.Selected,scroll=Panel.ScrollRow,
+            held=placement.Display,heldActive=placement.Active,turns=placement.Turns,
+            pathTool=Read<bool>(viewer,"_toolOpen"),kind=Read<PathTool.Kind>(viewer,"_toolKind").ToString(),
+            runX=Read<int>(viewer,"_runX"),runY=Read<int>(viewer,"_runY"),money=sim?.Finances.Balance,
+            placed=park.Placed.Select(p=>new {p.Id,p.Name,p.X,p.Y}),
+            rides=sim?.Rides.Select(r=>new {r.Id,r.Name,r.Customers,r.Takings}),
+            guests=guests?.Guests.Select(g=>new {g.Id,state=g.State.ToString()}),
+            padLocked=Read<ParkAdvisor>(viewer,"_parkAdvisor")?.PadLocked
+        });
+    }
+    async Task InteractiveLoop()
+    {
+        string commands=Path.Combine(output,"commands.jsonl");File.WriteAllText(commands,"");
+        int consumed=0;Log("interactive-ready",new {commands});Observe();
+        ulong deadline=Time.GetTicksMsec()+45*60*1000UL; // bounded session, not an orphaned renderer
+        while(Time.GetTicksMsec()<deadline)
+        {
+            await Frame();
+            var lines=File.ReadAllLines(commands);
+            while(consumed<lines.Length)
+            {
+                string line=lines[consumed++];if(string.IsNullOrWhiteSpace(line))continue;
+                Log("command",line);
+                using var doc=JsonDocument.Parse(line);var c=doc.RootElement;
+                string op=c.GetProperty("op").GetString();
+                switch(op)
+                {
+                    case "key": await KeyPress(Enum.Parse<Key>(c.GetProperty("key").GetString(),true)); break;
+                    case "menu": await MenuContains(c.GetProperty("text").GetString()); break;
+                    case "click": await Click(new Vector2(c.GetProperty("x").GetSingle(),c.GetProperty("y").GetSingle()),
+                        c.TryGetProperty("button",out var button)?Enum.Parse<MouseButton>(button.GetString(),true):MouseButton.Left); break;
+                    case "aim-cell": await AimCell(c.GetProperty("x").GetInt32(),c.GetProperty("y").GetInt32()); break;
+                    case "click-cell": await ClickCell(c.GetProperty("x").GetInt32(),c.GetProperty("y").GetInt32()); break;
+                    case "back": await Back(); break;
+                    case "close": await CloseLaptop(); break;
+                    case "shot":
+                        string name=c.GetProperty("name").GetString();
+                        Check(name.All(ch=>char.IsLetterOrDigit(ch)||ch=='-'),"safe screenshot filename");
+                        await Shot(name);break;
+                    case "wait":
+                        double seconds=c.GetProperty("seconds").GetDouble();Check(seconds>=0&&seconds<=120,"bounded real-time wait");
+                        await ToSignal(GetTree().CreateTimer(seconds),SceneTreeTimer.SignalName.Timeout);break;
+                    case "state": break;
+                    case "quit": return;
+                    default: throw new InvalidDataException("unknown input command "+op);
+                }
+                Observe();Log("command-done",new {consumed,op});
+            }
+        }
+        Log("session-timeout","45 minute real-time guard reached");
+    }
+
     public override async void _Ready()
     {
         try
@@ -92,7 +266,8 @@ public partial class PlayerPathSession : Node
             Check(language is "fre" or "ger" or "eng","known language");
             if(Directory.Exists(output))throw new IOException("use a fresh artifact directory");
             Directory.CreateDirectory(output);trace=new StreamWriter(Path.Combine(output,"input-observations.jsonl"));
-            Log("scope",new {language,build=args.FirstOrDefault(a=>a.StartsWith("--play-build="))?[13..]??"UNSPECIFIED",processing="normal",actions="Input.ParseInputEvent only",visualReview="pending"});
+            interactive=args.Contains("--play-interactive");
+            Log("scope",new {language,build=args.FirstOrDefault(a=>a.StartsWith("--play-build="))?[13..]??"UNSPECIFIED",processing="normal",actions="ParseInputEvent keys/clicks + actual window pointer movement; no game-state writes",visualReview="pending"});
             Check(DisplayServer.GetName()!="headless","rendered session required");
             Check(!args.Any(a=>a.StartsWith("--map=")||a.StartsWith("--mode=")||a=="--menu"||a.Contains("guest-test")),"no direct launch/setup flags");
             viewer=new Viewer{Name="Viewer"};AddChild(viewer);
@@ -144,7 +319,10 @@ public partial class PlayerPathSession : Node
                 Finding("candidate label "+row.TextId,Text(row.TextId),(string)rowLookup.Invoke(Panel,new object[]{row.TextId}),"cow tools");
             await CloseLaptop();Check(!Panel.Open,"Close button exits candidate page");
             await Shot("park-open-after-pages");
-            Log("complete",new {observations,defects,scope="cold boot / open park / research / cleaner candidate; no building or service-use claims"});
+            bool build=args.Contains("--play-tour=build");
+            if(build)await BuildFirstRide();
+            if(interactive)await InteractiveLoop();
+            Log("complete",new {observations,defects,scope=build?"first ride/spine/queue and natural observation; inspect evidence, not automatic service-use claim":"cold boot / open park / research / cleaner candidate; no building or service-use claims"});
             GD.Print($"PLAYER PATH COMPLETE observations={observations} defects={defects} language={language}");
             viewer.QueueFree();await Frame(2);GetTree().Quit(0);
         }
