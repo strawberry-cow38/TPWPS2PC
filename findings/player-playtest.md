@@ -429,3 +429,106 @@ This distinguishes failed picking from rejected geometry and stale/clipped text.
 Build succeeds; runtime verification follows in a fresh session. The F3 diagnostic
 was shown only for a screenshot and hidden before the next click; don't infer
 that its left-side input guard caused the prior attempts without cursor evidence.
+
+## Live05: completed track and coaster player paths (2026-09-29)
+
+Run `/tmp/tpw-player-live-05.log`, artifact/JSONL directory of the same name,
+built efa320d on5b7f113. Tool observer successfully records actual input boundaries.
+The prior track ambiguity is resolved WITHOUT a game patch:
+- Station38,30, exit42,31, return36,31. Price35 observed.
+- Actual picker48,31, panel hidden: rejected because end block contains
+  non-playable49,32. Actual picker44,35 rejected for45,33;44/45,34..36.
+- Actual picker44,23 valid: $140 paid, four steps. The earlier bad route was
+  invalid terrain, not a picker/renderer failure. No general claim about every
+  earlier overshot-camera event is inferred from this clean controlled replay.
+
+Actual committed waypoints:42,31 ->44,31 ->44,23 ->34,23 ->34,31 ->36,31.
+Five paid legs1/4/5/4/1 steps, $35/$140/$175/$140/$35 = $525. At closure,
+`closed True` and `loop closed`, six waypoints and18piece records. Counts alone
+are NOT the closure proof. Queue39,29->29,29; exit40,29->40,28->29,28. The path
+crossings caused the expected track bridge/rebuild reports at34/35,28/29.
+Tiny1554332807235633194 visually confirms closed circuit, station and bridge.
+Its "no karts" remark was corrected bycow1554333251101786123: one parked car
+already appears in the construction image. Do not infer spawning from boarding.
+
+Dino guests16/3 first observed seated at461799ms,17/9 at466933ms. Synchronized
+525462ms capture21 has actual head bounds around(783,504),(500,531),(708,252),
+(321,490). Tiny1554333122928189484 andcow1554333251101786123 confirm all four
+coloured karts with rider heads; parent's received crop shows them too.
+Same IDs return to walking individually:9 at611583ms,3 at616776,16 at632275,
+17 at637431. Track completion is guest-specific, not a global Rides delta.
+
+Chac Atak bought through RollerCoasters menu, R twice, stationcorner29,42,
+trackexit31,43 step3 / entry28,43. Accepted pylons:
+37,43;42,47;42,53;37,57;31,55;25,53;20,49;22,43.
+The original31,57 proposal was correctly refused as not empty land; ensuing
+farther clicks were too distant from the still-last37,57. Adjusted route above
+accepted. Entry click28,43 closed the ring; GD.Print says8pylons/validTrue.
+Enter finished editing: closed and valid, test lap59secs/54metres/peak7kph,
+0drops, ratingTooSlow. That's a flat poor design, not failed construction.
+Queue30,45->30,46->27,46->27,29->29,29. Separate exit29,45->28,45->28,30->
+29,30->29,29. Earlier attempts across the exit stub or queue were refused;
+route was adjusted, no path-owner rules bypassed.
+
+Connected image29 shows station/trough/pylons, queue guests, and cars; peer
+reviews1554336354916368405/1554336383899009072. The whole loop is NOT in frame;
+closure rests on runtime flags, not a count of visible pylons. Potential overlap
+with purple scenery remains UNESTABLISHED: projection/elevation can account for
+it, per cow1554336823822651452. Intermediate cell-mask inspection is still open.
+Do not record a scenery collision from that image alone.
+
+Chac riders41,44,45,52 first observed1184227..1189560ms;54 at1215917;51,48,50,
+53,47,55 at1237574..1248163. All eleven later return to walking withRideId0,
+intentWandering, at1453809..1501580ms. Loaded-train image33 was HUD-occluded:
+no visual six-head claim. Image34 reframes guest54's actual head box to
+x559..572/y267..282, clear of HUD; visual review pending at this checkpoint.
+
+Mechanic Bob hired and dropped normally at29,25. CrazyApe context offered
+Details/CallMechanic/EditQueue/Delete. Opening selects NOTHING: first Down
+lands on Details, not CallMechanic (ObjectMenu.Move). First attempted call
+therefore opened Details. Retried with two Down presses, actual dispatch log:
+`Call Mechanic on Crazy Ape (status 5): nobody sent (0x124158)`.
+No dispatch/repair success claimed. Assigned mechanic, availability, and Life
+are not in the current snapshot, so the refusal's cause is unestablished; core
+CallMechanic can refuse an already assigned ride or unavailable/condemned case.
+Needs explicit owner-state observation before diagnosing a bug.
+
+## Wrap/hold checkpoint (2026-09-29, owner1554339188017729599)
+
+Owner requested wrapping, pushing and HOLD. No further tests/features started.
+Live05 ended via broker Quit at2162686ms,280observations/0automaticmismatches.
+This is the driver's outcome, NOT a blanket pass for every gameplay feature.
+The eight already-queued synchronized burst captures completed before Quit:
+35..42-coaster-open-trough-burst-1..8.png (2009621..2105017ms), with per-surface
+projection records in input-observations.jsonl. They are retained but UNREVIEWED.
+Image34 did not settle rider visibility: tiny1554338442220011542 and
+cow1554338605193760852 identify station occlusion at guest54's projected box.
+Thus coaster boarding/completion is established from guest-specific runtime
+observations; coaster rider pixels on open trough remain an outstanding visual
+check. Do not promote the burst's existence to a visual success claim.
+
+A read-only worker completed a source review before HOLD. Unverified lead, no
+patch: findings/coaster-building.md:609-641 describes ten spline samples and a
+2.0 clearance floor from runtime tile bit0, with object-height clearance, not a
+universal ban on all airborne track over non-buildable cells. It flags
+Viewer.Coasters.cs:118-128 as potentially omitting that tile-floor contribution,
+plus documented object-height/overlap approximations in CoasterTrack.cs:601-637.
+This does NOT establish that this course intersects scenery or hits that gap.
+Safe future observation route: existing ParkRide.Coaster.Track, SegmentNode,
+pure CoasterTrack.Spline, Park.Field.Raw0/IsPlayable/PlacedAt and path-kind reads;
+no rebuilding, test lap, or cache-writing clearance adapter for a passive dump.
+Review the lead against source and a control before proposing a fix.
+
+Outstanding work when/if resumed:
+- Review the coaster burst; inspect intermediate course cells/scenery clearance.
+- Mechanic call refusal: capture ride Life/AssignedMechanic and mechanic target/
+  availability/dispatch counters before judging; completed repair not proven here.
+- Latest main fences12a3954 and seat-up diagnostic5d6c914 were announced during
+  this session; this run remained on5b7f113 plus tests, not those newer changes.
+- Remaining worlds/build classes, upgrades, prices/wages/month-end/red-money,
+  advisor interaction coverage and multi-year soak are not exhausted.
+- Save/load remains PAUSED, full player Save/Load not delivered. No save work
+  was resumed as part of these playtests.
+
+All current gameplay actions remained ordinary input. Branch changes in this
+checkpoint are test instrumentation and evidence only, not new game fixes.
