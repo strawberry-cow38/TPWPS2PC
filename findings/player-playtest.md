@@ -209,3 +209,51 @@ andafter. Assert precondition live>=1. Run before/afterb6a2283 and19e61f8; don't
 silently treat savedPNGs as visualproof or use no-emitter fixture ascoverage.
 Do not restart full10minsetup justfor this: nowknown directinputroute supports
 short focused replay. Keep all gameplay actions on real input path.
+
+## Focused reset replay — both fixes independently verified (September29)
+
+Test41207ad adds `--play-tour=world-reset --play-expect-clean` to the driver.
+Normal coldboot -> FANTASY1 via lobbyRight -> actual OpenPark click -> Build/Shops/
+DrinksShop -> ordinary placementcursor38,32. Wait for _continuous to contain an
+actually emitting/effectivelyvisible node BEFORE switching. No injected emitter.
+Read-only snapshots record instanceIDs, Emitting, effectivevisibility, position,
+rootchildcount. Source-node wrapper references are retained only as observations
+so we can test whether their Godot instances survive; they do not own/keep the
+native nodes alive. LobbyLeft/Up selects JUNGLE2; Enter/Enter loads it normally.
+Destination is empty, terrain visible; count+instance+open-state+UI-row checked.
+Projected effect position AND full camera transform/FOV/viewport are logged;
+comparison images need not be assumed pixel-aligned.
+
+Results, same gameplay path:
+- Before patches, `/tmp/tpw-reset-before-01.log`:53observations,4mismatches.
+  SAME node258889226347, Emitting=true andeffectivelyvisible, survived map change
+  at(37.99974,1.1414464,-32.00022), continuouscount1/rootchildren1. It still emitted
+  after3simulationseconds. Newparkopen=true andOpenParkrowabsent. The background
+  launch did not retain its shell exitcode; failed expectations are explicit.
+- ParticlepatchONLY b6a2283(localcd10827), `/tmp/tpw-reset-particle-01.log`:
+  continuous1->0, children1->0, oldinstanceinvalid. Open-state/UI-row stillfail.
+  53observations,2mismatches, explicitlyrecordedexit2. Thus particle success is
+  not being confused with the separate flag fix.
+- Both patches, adding19e61f8(local55e2a15), `/tmp/tpw-reset-both-02.log`:
+  56observations,0mismatches, exit0. Emitter entry/nodegone, newparkclosed with
+  OpenPark row, clicking that row independentlyopens the destination.
+- Explicit --laptop-park-open control `/tmp/tpw-reset-autoopen-01.log`:
+  51observations,0mismatches,exit0. Bothparksopen asrequested, OpenParkrowcorrectly
+  absent, emittercleanupstillpasses. This is a diagnostic configuration control,
+  not represented as an unassisted player action.
+
+Sourcebaseline6853bfc+isolatedlanguagepatch, thenisolatedparticle/open-statepatches;
+NOT a claim to have run the entire latestmain/seam/benchmark combination.
+No new gameplay implementation byastraclaw in this checkpoint; test+evidence only.
+`both-01` printed56/0 but its enclosing build+run tool exhausted120s before anexit
+filewasrecorded. Repeated asboth-02 under anindependent180s process guard; confirmed
+exit0. It was aninfrastructurebudgetissue, not a gameplay failure. No testprocess
+remains running. Wrapper `/tmp/tpw-run-reset-final.sh` serialized thetwofinalruns.
+
+Cow's visualbeforefixconfirmation1554304012210413620: bubbletrail aboveFANTASYshop
+persists abovebareJUNGLEgrass, distinguishablefromfoliage; comparison posted and
+also visible to parent inchannel. AfterfixPNGs posted for separatevisualreview.
+
+Price correction: the read-only script worker cited the rawSAM cost750. The actual
+compiled purchase path charged$250 in this replay. SAMcost is NOT the liveprice;
+no expectedprice assertion was built from that worker value.
