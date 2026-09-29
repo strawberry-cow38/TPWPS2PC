@@ -695,9 +695,27 @@ public sealed class RideParticles
         }
     }
 
+    /// <summary>⭐⭐ DROP EVERY LIVE EMITTER -- BOTH KINDS. Called when the park is torn down for
+    /// another map (Viewer's reset, beside `_sounds?.Clear()`).
+    ///
+    /// ⚠⚠ THIS USED TO CLEAR ONLY `_live` AND LEAVE `_continuous` STANDING, which is master's
+    /// "particle emitters not deleting when switching maps". A looping emitter is never culled on a
+    /// deadline -- that is the whole point of the `_continuous` map -- so nothing else would ever
+    /// have taken it down.
+    ///
+    /// ⚠ And it had a SECOND face that is easy to miss: the stale KEYS matter as much as the nodes.
+    /// `Emit` returns early when `_continuous` already holds a valid node for an (effect, cell)
+    /// pair, so a survivor from the old park could ALSO suppress the same effect on the new one --
+    /// old particles that will not die, and new particles that never start, from one missing line.
+    ///
+    /// ⚠ Freed outright rather than handed to `_live` the way <see cref="Stop"/> does: Stop fades a
+    /// ride's effect gracefully while the park keeps running, but here the park itself is going
+    /// away and there is nothing left for them to fade in front of.</summary>
     public void Clear()
     {
         foreach (var (node, _) in _live) if (GodotObject.IsInstanceValid(node)) node.QueueFree();
         _live.Clear();
+        foreach (var node in _continuous.Values) if (GodotObject.IsInstanceValid(node)) node.QueueFree();
+        _continuous.Clear();
     }
 }
