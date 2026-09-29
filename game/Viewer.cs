@@ -4240,6 +4240,10 @@ public partial class Viewer : Node3D
     /// ⚠ Test harness only -- it exists so the teardown race can be sampled without a park build.</summary>
     double _exitNow, _exitNowElapsed;
 
+    /// <summary>Seat nodes already reported as degenerate, so the warning fires once per seat
+    /// rather than every frame. ⚠ Keyed on name AND index: two rides can both have a `Head1`.</summary>
+    readonly HashSet<(string, int)> _degenerateSeats = new();
+
     /// <summary>All-null cells, for a screen whose rows are labels only.</summary>
     static List<(string, int)> Blank(int n)
     {
@@ -6021,6 +6025,15 @@ public partial class Viewer : Node3D
             var f = seatForward; f.Y = 0;
             float yaw = f.LengthSquared() > 1e-6f ? Mathf.Atan2(f.X, f.Z) : 0f;
             pose = new Transform3D(Basis.Identity.Rotated(Vector3.Up, yaw), root * seatLocal);
+            // ⚠⚠ AND IT SAYS SO, ONCE PER SEAT. This branch drops PITCH AND ROLL -- a rider on it
+            // follows its seat's position and heading and stays bolt upright while the seat tilts.
+            // It used to take that decision in silence, so the one path that can produce exactly
+            // that complaint was the one path that left no evidence.
+            if (_degenerateSeats.Add((mesh.NodeName(fit.Node), fit.Node)))
+                GD.PrintErr($"[seat] ⚠ DEGENERATE seat basis on node {fit.Node} "
+                          + $"'{mesh.NodeName(fit.Node)}': axes |x|={ax.Length():F4} |y|={ay.Length():F4} "
+                          + $"|z|={az.Length():F4} -- falling back to POSITION + YAW ONLY, so a rider "
+                          + "here will not pitch or roll with its seat.");
         }
         return true;
     }
