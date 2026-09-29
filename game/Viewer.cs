@@ -1768,6 +1768,13 @@ public partial class Viewer : Node3D
         // tinyclaw runs the guest scenes with.
         _laptopParkOpen = _parkOpenAtStart;
         _parkOpenedMonth = 0;
+        // ⚠⚠ THE GATE'S CLOCK RESETS WITH THE PARK, and it never used to. `_parkTime` was set once
+        // and carried across map loads, so a second park inherited the first one's finished gate:
+        // under the old one-shot rule `_parkTime < Frames - 1` was already false, the arch held
+        // OPEN and never animated at all. Latent while the gate only ever opened; visible the
+        // moment it also closes, because the new park would slide its doors shut on arrival
+        // instead of simply starting shut. Each park's gate is its own animation from frame 0.
+        _parkTime = 0f;
         ShowParkOnly();
         // ⭐ Park mode has its own camera and its own keys, and the help text left over from the
         // orbit view describes none of them. Master was being told the controls over chat.
@@ -11694,13 +11701,34 @@ public partial class Viewer : Node3D
         // ⚠ WHAT STARTS IT IS STILL UNREAD. The park has no "opening time" wired to this, so it
         // opens on load. Whatever the console triggers it from is not decoded, and this is only
         // the loop half of master's report.
-        if (_gate != null && _playing && _shotPath == null && _mode == Mode.Park
-            && _gate.Frames > 0 && _parkTime < _gate.Frames - 1)
+        // ⭐⭐ AND WHAT STARTS IT IS THE PARK'S OWN OPEN FLAG, which is what the note above was
+        // missing. Master: "can we get the gate's animation to reflect the open/closed state".
+        // `_laptopParkOpen` IS `[0x2B72A4]` -- the same byte the bus queue and the advisor read --
+        // so the arch now animates to match the thing that decides whether anybody may come in,
+        // rather than opening on load because the clock happened to start.
+        //
+        // ⭐ It runs BOTH WAYS: shut the park from the laptop and the doors close again, at the
+        // same rate. Holding at either end keeps the "a thing that has finished happening should
+        // look like it has happened" shape the one-shot version established.
+        //
+        // ⚠ A park loads CLOSED (`_parkOpenAtStart` is false), so the gate now starts shut and
+        // stays shut until the park is opened -- which is a visible change from "open on load",
+        // and is the point.
+        // ⚠ Frame 0 is the shut arch and the last frame the open one; the record is an OPENING, so
+        // closing is that same record walked backwards rather than a second clip. If the disc turns
+        // out to carry a separate closing animation, this is where it goes.
+        if (_gate != null && _playing && _shotPath == null && _mode == Mode.Park && _gate.Frames > 0)
         {
-            AllocBegin();
-            _parkTime = Mathf.Min(_parkTime + (float)delta * Aps.Fps, _gate.Frames - 1);
-            _gate.SetFrame(_parkTime);
-            AllocEnd("gate.SetFrame");
+            float target = _laptopParkOpen ? _gate.Frames - 1 : 0f;
+            if (Mathf.Abs(_parkTime - target) > 0.001f)
+            {
+                AllocBegin();
+                float step = (float)delta * Aps.Fps;
+                _parkTime = _parkTime < target ? Mathf.Min(_parkTime + step, target)
+                                               : Mathf.Max(_parkTime - step, target);
+                _gate.SetFrame(_parkTime);
+                AllocEnd("gate.SetFrame");
+            }
         }
         // ⭐ A RIDE BUILDING ITSELF runs ONCE and then holds on its last frame, which is the built
         // thing. ⚠ Backwards, because a finished one is removed as we go.
