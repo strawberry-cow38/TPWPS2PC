@@ -286,6 +286,12 @@ public partial class Viewer : Node3D
     /// <summary>⭐ `[0x2B7298]`, the month index the park was opened in -- stored by `0x14E4C0`
     /// alongside the flag. Kept because the console keeps it; nothing reads it here yet.</summary>
     int _parkOpenedMonth;
+    /// <summary>⚠ What `_laptopParkOpen` goes back to when a park is loaded. FALSE normally -- a
+    /// park is built closed and the player opens it -- but `--laptop-park-open` raises it so the
+    /// harnesses that need guests keep working across a map load. Without this, resetting the flag
+    /// on LoadMap would silently disarm that flag and starve the six native guest scenes that
+    /// tinyclaw now runs with it.</summary>
+    bool _parkOpenAtStart;
     int _laptopHoverRow = -1, _laptopHoverBtn = -1, _laptopHoverStep;
     /// <summary>⚠ DIAGNOSTIC: "X,Y" -- push a real click through the viewport at that point and
     /// report what the laptop received. Two reasoned fixes failed; this measures instead.</summary>
@@ -472,7 +478,7 @@ public partial class Viewer : Node3D
             else if (a.StartsWith("--laptop-film=")) { int.TryParse(a["--laptop-film=".Length..], out _laptopFilm); }
             else if (a.StartsWith("--laptop-screen=")) _laptopScreen = a["--laptop-screen=".Length..];
             else if (a.StartsWith("--laptop-menu-row=")) int.TryParse(a["--laptop-menu-row=".Length..], out _laptopMenuSelected);
-            else if (a == "--laptop-park-open") _laptopParkOpen = true;
+            else if (a == "--laptop-park-open") _laptopParkOpen = _parkOpenAtStart = true;
             // ⭐ So a render can SHOW the debug panel. Master sees the pictures and I do not, so a
             // panel that only opens on a keypress is a panel neither of us has checked.
             else if (a == "--cheats") _cheatsAtStart = true;
@@ -1738,6 +1744,17 @@ public partial class Viewer : Node3D
         _terrain?.Root.QueueFree();
         _terrain = null;
         _park.Field = null;
+        // ⚠⚠ THE OPEN FLAG IS PER PARK, AND DID NOT USED TO BE. astraclaw, playtesting: after
+        // opening JUNGLE and entering a fresh FANTASY park, "its laptop already omits Open Park...
+        // the open state appears to carry over". `_laptopParkOpen` is `[0x2B72A4]` and I added it
+        // as real state without ever resetting it, so one opened park opened every later one --
+        // and the laptop then hid the row that is the only way to open one.
+        //
+        // ⭐ Back to `_parkOpenAtStart`, not to false: `--laptop-park-open` has to survive a map
+        // load or it would disarm itself the moment a park loaded, which is exactly the harness
+        // tinyclaw runs the guest scenes with.
+        _laptopParkOpen = _parkOpenAtStart;
+        _parkOpenedMonth = 0;
         ShowParkOnly();
         // ⭐ Park mode has its own camera and its own keys, and the help text left over from the
         // orbit view describes none of them. Master was being told the controls over chat.
