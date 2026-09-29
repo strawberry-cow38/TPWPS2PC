@@ -150,3 +150,62 @@ Peer visual review: tiny1554292777158840354 and cow1554292972261220473 examined
 all3afterfixcaptures: park terrain/path/road/pool visible; French Research and
 German candidate fullylocalized includingBack/Close. French longlabel overlap
 is a separate fidelity/layout question for cow, not adjudicated by these tests.
+
+## Interactive continuation / newly prioritized map-switch cleanup
+
+Owner1554298445483745381 explicitly deprioritized seams and requested particle
+emitters surviving map changes. Do NOT treat the dark edge in the Crazy Ape crop
+as that seam: owner clarified the actual seam is a light-blue1–2pixel hole tosky.
+No seam reproduction/verification claim survives that clarification.
+
+Live session `/tmp/tpw-player-live-01.log` ran about27min wall time on isolated
+Xvfb114, then exited through the broker's quit command (no live engine remains).
+All79commands and observations in its input-observations.jsonl/commands.jsonl.
+Source3c61a4f, gameplaybase6853bfc+isolatedlanguagefix; no particle/open-reset fix.
+No synthetic guests, forced needs, manual ticks or state assignments.
+
+Additional actual UI actions/outcomes:
+- Build/Shops/Burger Shop placed atcorner(31,26),cursor(32,27),door(32,25).
+  Paid$300; connected actual path from(29,25) to(32,25),observed$5charge.
+- Build/Features/Small Toilet (real wheel scrolling to row26) placed at(32,23),
+  door(32,22); connectedfrom(29,22) to(32,22). Paid$100.
+- Burger Shop reached5payingcustomers/Takings150(port tenths) naturally before
+  leaving JUNGLE. Severalguests admitted/walking. No inspected eating/litter/
+  toiletcompletion/rideboarding claim; ride Customers may not be the right
+  boarding counter, so add read-only seated/queue observations before concluding.
+
+New repeated-park-state bug reproduced through UI:
+Open JUNGLE -> Close Park -> lobby Right -> FANTASY1. Freshmap has$30000, no
+placements, but no Open Park row: open state carried over. Report1554300832328065077;
+cow confirmedmissingreset and supplied19e61f8, resetting to _parkOpenAtStart so
+explicit --laptop-park-open remains valid. NOT yet verified by this branch.
+
+Particle case must have a real continuous source, not Crazy Ape timedEVENTs:
+read-only source/disc worker confirmed FANTASYDrinks Shop row993, cost750,
+normal Create script WAITANIM0;ADDOBJ1,1,58,1;LOOPANIM5 -> Bubbles. Whileopen this
+stayscontinuous; manualcloseexecutesKILLOBJ1, so do NOT close/delete beforeexit.
+AlternativeJUNGLEHugeHollowRock row765 emitsSteam17 twice afterCreate but research
+availability notproved. Nothingextracted; workerfinished,nonepending.
+
+Actualparticle setup in same live session:
+- FANTASYBuild/Shops/DrinksShop. Cursor(42,24) refused (no placement); tried
+  knownplayable(38,32), placedcorner(37,31) normally.
+- Runtimeconfirmed '[fx] Bubbles: CONTINUOUS 12 alive' and
+  '143.2s Drinks Shop ADDOBJ kind1 node1 id58 -> Bubbles at(38.0,1.1,-32.0)'.
+- Shot34-fantasy-bubbles-active-before-exit.png AFTER the ADDOBJ (shot33 was
+  beforeCreatefinished; do not use it as active-emitter evidence).
+- ClosePark -> lobby Left(FANTASY4->HALLOW2),Left(no neighbour),Up(JUNGLE2record1),
+  Enter/Enter -> JUNGLEterrain2. Newemptypark; aimcell38,32; shots38/39 atoldlocation,
+  secondafter10simulationseconds (longerthan1.86s particle life).
+- Shot39 projectedgroundpoint~(772,54) in1152x648. Filesposted to cow for visual
+  review; visualpersistence NOT yet confirmed. Read-only liveemitter counts were
+  not in this version ofbroker; add them to focused replay.
+
+Source mechanism matches cowb6a2283: RideParticles.Clear freesonly_live;
+_continuous values/keys persist. Unitfix+mutationtestedbycow, separatefromour
+naturalCreate/UIroute. Next run focused normalbootFANTASY/Drinks/map-switch,
+logging _continuous count+instanceIDs/emitting/effectivevisibility/position before
+andafter. Assert precondition live>=1. Run before/afterb6a2283 and19e61f8; don't
+silently treat savedPNGs as visualproof or use no-emitter fixture ascoverage.
+Do not restart full10minsetup justfor this: nowknown directinputroute supports
+short focused replay. Keep all gameplay actions on real input path.
