@@ -77,14 +77,7 @@ public partial class Viewer
             offsets.Add(disagree);
             GD.Print($"[fp] {Leaf(r.Name),-28} | {shape,-7} | {wCells,5:F2}x{hCells,-5:F2} | "
                    + $"({ox,6:F2},{oz,6:F2}) | ({cx,6:F2},{cz,6:F2}) | {disagree,6:F2} | "
-                   + (hasFloor ? "floor" : "-")
-                   // ⭐ minY: does the model DIP BELOW GROUND? tinyclaw, 2026-09-28, on the seam fix:
-                   // the floor cut is LOAD-BEARING for sunken rides -- 30d4ee3 cut it under add-ons so
-                   // the lava jump sits in its own pit rather than on grass, and anything reaching
-                   // below y 0 needs the hole. "Has a mesh named floor" is a DIFFERENT set from "dips
-                   // below ground", so the audit has to report the second one before the cut can be
-                   // made conditional on it.
-                   + $" | minY {lo.Y,6:F2}");
+                   + (hasFloor ? "floor" : "-"));
         }
         offsets.Sort();
         if (offsets.Count > 0)

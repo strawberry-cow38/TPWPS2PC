@@ -190,10 +190,6 @@ public sealed class Park
     /// catches real overlaps cry wolf.</summary>
     bool[,] _reserved;
 
-    /// <summary>Ride ids whose model reaches below ground and therefore need the floor cut away
-    /// under them. ⚠ Everything NOT in here keeps its ground, which is what closes master's seam.</summary>
-    readonly HashSet<int> _sunken = new();
-
     readonly List<(int Id, string Name, Footprint Fp, int X, int Y, Node3D Node)> _placed = new();
     public IReadOnlyList<(int Id, string Name, Footprint Fp, int X, int Y, Node3D Node)> Placed => _placed;
 
@@ -724,23 +720,7 @@ public sealed class Park
                 // ⭐ A ride standing on a tile and a rule saying you may not build on a tile are
                 // different facts. The first removes the ground; the second must not, or every
                 // no-build zone becomes a pit.
-                // ⚠⚠ THE CUT IS CONDITIONAL NOW, AND BOTH HALVES ARE LOAD-BEARING.
-                //
-                // Master: "there are seams on the ground tiles around every object... 1 or 2
-                // pixels." Cause: the floor was cut for EVERY occupied cell, and `--footprint-audit`
-                // measures 51 of 68 models spanning their footprint to within 0.02 cells -- so the
-                // ride's edge lands EXACTLY on the hole's edge. Ground-to-ground is welded (see the
-                // shared-corner note above), but ground-to-RIDE is two separate meshes with
-                // coincident edges and no shared vertices, which rasterises as a 1-2 px crack. It is
-                // sub-pixel at the console's resolution, which is why retail never showed it.
-                //
-                // ⚠ But tinyclaw caught that removing the cut outright would BURY the sunken ones:
-                // `30d4ee3` cut the floor under add-ons so the lava jump sits in its own pit rather
-                // than on grass. Measured before changing anything -- 18 of 67 models reach below
-                // y 0, some deeply (`totem` -4.66, `lookout` -4.15, `spider` -2.50). Those keep
-                // their hole; the other 49 keep their ground and lose the seam.
-                if ((_occupied[x, y] != 0 && _sunken.Contains(_occupied[x, y]))
-                    || (CutFloor?.Invoke(x, y) ?? false)) continue;
+                if (_occupied[x, y] != 0 || (CutFloor?.Invoke(x, y) ?? false)) continue;
                 int mat = Field != null && x < Field.Width && y < Field.Height ? Field.Material(x, y) : 0;
                 if (!surfaces.TryGetValue(mat, out var st))
                 {
@@ -1087,14 +1067,6 @@ public sealed class Park
         for (int fy = 0; fy < fp.Height; fy++)
             for (int fx = 0; fx < fp.Width; fx++)
                 if (fp.Cells[fx, fy]) _occupied[x + fx, y + fy] = id;
-        // ⭐ Does this model need a PIT? Only a model that reaches below ground does; everything
-        // else keeps its ground and so loses the seam (see the floor build). Measured in the
-        // model's own frame, and minY is unchanged by the Y-rotation applied below.
-        // ⚠ -0.05 cells, not 0: `gokarts` -0.02, `king` -0.03 and `junspray` -0.03 sit a couple of
-        // hundredths under, which is model noise rather than an authored pit -- cutting a hole for
-        // those would reintroduce the seam for a dip too small to see. A judgement, and named here
-        // rather than buried as a bare literal.
-        if (model != null && DrawnBounds(model, inParent: false).Min.Y < -0.05f) _sunken.Add(id);
         _placed.Add((id, name, fp, x, y, model));
 
         // The claimed tiles, drawn over the grass so the plot reads at a glance.
