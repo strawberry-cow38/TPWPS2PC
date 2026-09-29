@@ -761,9 +761,14 @@ public partial class Viewer
     /// <summary>Drop `--exit-churn` SurfaceTools, unreferenced, WHILE THE GAME IS STILL RUNNING --
     /// called just before Quit, so they are garbage awaiting finalisation when teardown begins,
     /// which is the state the real crash happens in.</summary>
+    /// <summary>Set once <see cref="ExitChurn"/> has actually run, so an exit path that never
+    /// reached it can say so instead of leaving the flag looking obeyed.</summary>
+    bool _exitChurnFired;
+
     void ExitChurn()
     {
         if (_exitChurn <= 0) return;
+        _exitChurnFired = true;
         for (int i = 0; i < _exitChurn; i++)
         {
             var st = new SurfaceTool();
@@ -778,6 +783,17 @@ public partial class Viewer
         // being dismantled would turn a clean exit into the very crash it exists to measure.
         try
         {
+            // ⚠⚠ SAYS SO WHEN THE FLAG DID NOTHING. `ExitChurn` is called only on the `--exit-now`
+            // path; the smokes quit through their own `GetTree().Quit()`, so `--exit-churn=100000`
+            // on FANTASY-2 coaster would drop nothing and the run would look like a clean result
+            // for a fixture that never fired (tinyclaw spotted this). Wiring the churn into every
+            // quit path, or giving the smoke a short `--exit-now`, is the real fix and is parked --
+            // until then this refuses to be silent about it, because a fixture that quietly does
+            // nothing reads exactly like a hypothesis that survived a test.
+            if (_exitChurn > 0 && !_exitChurnFired)
+                GD.PrintErr($"[exit] ⚠ --exit-churn={_exitChurn} NEVER RAN: this exit path does not "
+                          + "call ExitChurn (only --exit-now does). Nothing was dropped -- do NOT "
+                          + "read this run as a churn test.");
             long before = (long)Performance.GetMonitor(Performance.Monitor.ObjectCount);
             double drainMs = 0;
             if (_exitDrain)
