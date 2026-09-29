@@ -347,10 +347,10 @@ public partial class Viewer
         public long StaticMemKb;
         /// <summary>The .NET managed heap in use right now (`GC.GetTotalMemory(false)`) -- what
         /// rises and falls as a sawtooth, and whose FLOOR is the actual leak test.</summary>
+        public long ManagedHeapKb;
         /// <summary>Whether the advisor head was up on this sample -- the baseline for the
         /// slow-frame reporter's `head=` field.</summary>
         public bool HeadUp;
-        public long ManagedHeapKb;
         /// <summary>Total bytes EVER allocated by .NET on every thread (`GC.GetTotalAllocatedBytes`),
         /// monotonic. Differenced between samples this is the real managed churn.</summary>
         public long ManagedAllocKb;
