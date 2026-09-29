@@ -194,8 +194,9 @@ public partial class Viewer
             double tProc = Performance.GetMonitor(Performance.Monitor.TimeProcess) * 1000.0;
             double tPhys = Performance.GetMonitor(Performance.Monitor.TimePhysicsProcess) * 1000.0;
             long draws = (long)Performance.GetMonitor(Performance.Monitor.RenderTotalDrawCallsInFrame);
-            GD.Print($"[slow] t={_benchElapsed - BenchWarmup:F1}s frame {deltaMs:F1} ms (bracketed {bracketed:F1} ms, "
-                   + $"{deltaMs - bracketed:F1} ms outside every bracket) "
+            GD.Print($"[slow] t={_benchElapsed - BenchWarmup:F1}s frame {deltaMs:F1} ms "
+                   + $"(_Process body {_procMs:F1}, bracketed {bracketed:F1}, "
+                   + $"{_procMs - bracketed:F1} unbracketed INSIDE, {deltaMs - _procMs:F1} OUTSIDE) "
                    // ⭐ ADVISOR STATE ON THE LINE, so the head is RULED OUT by correlation rather
                    // than by argument. tinyclaw: it is 32 meshes / 56 materials and its SubViewport
                    // only renders while a message is up (update mode Disabled otherwise,
@@ -212,8 +213,16 @@ public partial class Viewer
         _timeMarks.Clear();
     }
 
+    /// <summary>⭐⭐ WALL TIME FOR THE WHOLE `_Process` BODY, which is the one split the slow-frame
+    /// reporter could not make. It says the bracketed sections cost ~1 ms on a stutter frame and
+    /// that 11-53 ms is "outside every bracket" -- but that phrase covers two very different places:
+    /// unbracketed C# still INSIDE `_Process`, or the engine's own work after it returns. Timing the
+    /// body end to end tells them apart, and only one of them is mine to fix.</summary>
+    long _procTop; double _procMs;
+
     void AllocFrameTop()
     {
+        if (_slowFrameMs > 0) _procTop = System.Diagnostics.Stopwatch.GetTimestamp();
         if (!_allocProbe) return;
         // ⚠ Hygiene: an early return from inside a bracketed section leaves marks on the stack,
         // and a stale mark would make the NEXT frame's section read as the span between frames.
@@ -226,6 +235,9 @@ public partial class Viewer
 
     void AllocFrameBottom()
     {
+        if (_slowFrameMs > 0 && _procTop != 0)
+            _procMs = (System.Diagnostics.Stopwatch.GetTimestamp() - _procTop)
+                    * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
         if (!_allocProbe || _allocTop == 0) return;
         long now = GC.GetAllocatedBytesForCurrentThread();
         _allocInside += now - _allocTop; _allocInFrames++;
