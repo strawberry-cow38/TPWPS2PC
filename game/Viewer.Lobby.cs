@@ -441,15 +441,21 @@ public partial class Viewer
     ///
     /// ⚠ The sky and the weather stay -- the lobby is an island in the sea and wants both -- as
     /// do the camera and the lobby's own root.</summary>
+    ///
+    /// ⚠⚠ IT ACCUMULATES, IT DOES NOT START OVER. Cold boot hides the scene (BeginFrontendBoot) and the main
+    /// menu hides it again (EnterMainMenu). The second call used to CLEAR the list first -- and, since every
+    /// node was already hidden, the guard below then skipped them all, so the list came out empty and the
+    /// first call's record was gone: entering a park put nothing back and the whole map stayed invisible
+    /// (strawberry, 2026-09-29). Only <see cref="ShowParkScene"/> clears it now. A repeat call adds nothing,
+    /// because what it would add is already hidden and skipped.
     void HideParkScene()
     {
-        _hiddenForLobby.Clear();
         foreach (var child in GetChildren())
         {
             if (child is not Node3D n || !IsInstanceValid(n)) continue;
             if (ReferenceEquals(n, _lobbyRoot) || ReferenceEquals(n, _cam)
                 || ReferenceEquals(n, _sky) || ReferenceEquals(n, _weather?.Root)) continue;
-            if (!n.Visible) continue;                 // already hidden: not ours to restore
+            if (!n.Visible) continue;                 // already hidden: by us earlier (listed), or not ours to restore
             n.Visible = false;
             _hiddenForLobby.Add(n);
         }

@@ -162,6 +162,12 @@ public partial class MainMenuStartupSmoke : Node
                     else await KeyPress(Key.Escape);
                 }
                 Check(!Field<bool>(viewer,"_lobbyMode") && Field<int>(viewer,"_loadedMap")>=0,"movie continuation actually enters selected park");
+                // ⚠ A loaded map is not a VISIBLE one: cold boot and the menu both hide the park scene, and a second
+                // hide once wiped the first one's record, so the park loaded with its root still hidden (2026-09-29).
+                var parkRoot=Field<Park>(viewer,"_park")?.Root;
+                var stillHidden=((System.Collections.IList)typeof(Viewer).GetField("_hiddenForLobby",Hidden).GetValue(viewer)).Count;
+                Check(parkRoot!=null&&parkRoot.IsVisibleInTree()&&stillHidden==0,
+                    $"entering the park puts back everything cold boot and the menu hid: the park root is {(parkRoot?.IsVisibleInTree()==true?"visible":"HIDDEN")}, {stillHidden} still listed");
                 Check(activeIntro is {Active:false},"movie releases input when entering park");
                 typeof(Viewer).GetMethod("EnterMainMenu",Hidden).Invoke(viewer,null);
                 Check(menu.Open && !activeIntro.Active,"returning to menu does not replay cold boot");
