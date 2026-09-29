@@ -879,7 +879,24 @@ public sealed class AnimatedModel
         int si = 0;
         foreach (var grp in p.Tris.GroupBy(t => t.Material))
         {
-            var st = new SurfaceTool();
+            // ⭐⭐ ONE SurfaceTool, REUSED -- this line used to mint one per material group per part
+            // PER FRAME, and that is the stutter. The cost is not the allocation: it is that every
+            // one is a Godot Object needing a NATIVE free, so ~30k of them pile up, a collection
+            // releases the lot, and the frame AFTER it spends 20-40 ms destroying them. Measured
+            // every 80 park ticks (3.2 s); the object count drains 38,944 -> 31,596 over the frames
+            // following each collection, and `sinceGc=1` on every hitch. See the bench commit.
+            //
+            // ⚠ The same objects are tinyclaw's exit-crash flake: a Quit landing while thousands of
+            // these wrappers await finalisation hits godot's `script_bindings` FATAL. Their crash
+            // logs name them -- FANTASY-2 coaster 1497 ArrayMesh + 1488 SurfaceTool, HALLOW-2 staff
+            // 4649 + 4320. One cause, two symptoms.
+            //
+            // ⚠ `Begin` clears the tool, so reuse needs nothing else; `Commit` reads the buffers and
+            // keeps no reference to it. This is NOT the cached-GroupBy idea above -- that one was
+            // measured and REJECTED for costing 10% median frame time. This removes objects without
+            // touching the per-frame traversal, so it has to be measured the same way before it
+            // stands: allocation is a proxy for speed, not speed.
+            var st = _tool ??= new SurfaceTool();
             st.Begin(Mesh.PrimitiveType.Triangles);
             st.SetCustomFormat(0, SurfaceTool.CustomFormat.RgbFloat);
             bool two = TwoSided;
@@ -962,9 +979,26 @@ public sealed class AnimatedModel
                     st.AddVertex(new Godot.Vector3(_v.X, _v.Y, _v.Z));
                 }
             }
-            p.Surfaces[si++].Mesh = st.Commit();
+            // ⭐⭐ AND THE MESH IS REUSED TOO. `Commit()` with no argument mints a fresh ArrayMesh
+            // every call -- tinyclaw's leak census counts them almost 1:1 with the SurfaceTools, so
+            // fixing only the tool would leave half the churn. Committing INTO the existing mesh
+            // keeps one ArrayMesh per surface for the model's life.
+            //
+            // ⚠ Safe to clear because the material is on the MeshInstance3D (`mi.MaterialOverride`,
+            // built in BuildSurfaces), NOT on the mesh surface -- so ClearSurfaces drops geometry
+            // only. Had the material lived on the surface this would have silently unpainted every
+            // animated part, which is the kind of thing that looks like a texture bug three days later.
+            var mi = p.Surfaces[si++];
+            if (mi.Mesh is ArrayMesh reuse) reuse.ClearSurfaces();
+            else mi.Mesh = reuse = new ArrayMesh();
+            st.Commit(reuse);
         }
     }
+
+    /// <summary>The one SurfaceTool this model rebuilds every surface with. ⚠ Per model rather than
+    /// static: nothing here is threaded today, but a shared mutable Godot Object is a trap to leave
+    /// lying for whoever parallelises the rebuild.</summary>
+    SurfaceTool _tool;
 
     /// <summary>One vertex into the surface. ⚠ <paramref name="back"/> negates the normal, as the
     /// back copy always did -- or it lights inside-out. Extracted only so the caller can emit three
