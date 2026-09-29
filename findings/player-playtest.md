@@ -62,3 +62,55 @@ from ride placement or its context menu. Build queues/exits to the entrance path
 Object menu initially Index=-1; Down selects first. It is MouseFilter.Ignore and
 Viewer routes its clicks on release, so send motion then press/release.
 C advisor stack, T triangle; modal advisor may legitimately hold input.
+
+## First real-input runs — September29 00:35–00:44 UTC
+
+Batch1 `72cbea4` merged into this worktree; driver `e84b737` is test-only.
+`PlayerPathSession` drives normal Viewer with ParseInputEvent only; no processing
+pause/manual tick/field mutation. Read-only observations inspect rendered label
+lookups, hitboxes and effective visibility. Artifacts capture each milestone,
+input sequence and time. Normal CLI: disc, --play-language=fre/ger, --play-out=freshdir.
+The EC2 machine lacks retail OGVs, so these runs explicitly exercise missing-file
+continuations, not retail movie playback (separate4080 verification exists).
+
+Repro route: cold boot -> choose French/German -> legal -> mouse New Game/Main
+Game -> lobby Enter/confirm -> park -> wait out any modal greeting -> Tab ->
+localized Open Park -> Research -> Back -> Hire -> cleaner candidate -> Close.
+Normal park/calendar processing remains enabled throughout.
+
+Confirmed on72cbea4:
+- Research label531 was Rides, expected Attractions(fre)/Attraktionen(ger).
+  All5 research category labels were English; missing localized label propagation.
+- Candidate title Leon, expected Pierrick(fre)/Freddy(ger). Pay Grade/Monthly Wage
+  also English. These are multiple manifestations of two language wiring paths,
+  not eight independent bugs. Owner cow tools.
+- Terrain.Root.Visible=true but IsVisibleInTree=false, Park.Root.Visible=false.
+  Matches strawberry's screenshot report. Our coldboot double hide lost visibility
+  ownership; tinyclaw already fixed onmain6853bfc. Effective visibility is required:
+  checking only terrain's own flag or _loadedMap misses this bug.
+- Open Park clicked through the actual translated row changes _laptopParkOpen;
+  Research, Back, Hire candidate and Close routes all operated through actual GUI.
+
+Before artifacts/logs: /tmp/tpw-player-fre-01(.log), /tmp/tpw-player-ger-01(.log).
+Each directory has12PNG andinput-observations.jsonl. Source72cbea4, test-driver-only
+changes. French logged8string mismatches; German additionallyloggedterrainfalse.
+
+Verification candidate: main6853bfc + cherry-picked language6128175 (local4cb2519).
+Cow rebased that commit while our run was in progress: newID5af3e2a. Verified BOTH
+have stablepatchid dad3acc82afb412b712e78d1e567548ad6413591. Tested the isolated
+language patch, not cow's entire seam/benchmark branch.
+
+Same real-input route after fixes, separate French and German runs:
+- Research: Attractions / Attraktionen (andallother4labels) correct.
+- Candidate: Pierrick / Freddy correct; salarylabels correct ineachlanguage.
+- Terrain effectivevisibility andPark.Root.Visible nowtrue inbothruns.
+-36observations,zero measured mismatches ineach run.
+Logs /tmp/tpw-player-fre-fixed-01.log and /tmp/tpw-player-ger-fixed-01.log,
+12screenshots+inputtrace inmatchingdirectories. Label lookup is the actual pure
+lookup used by the draw; this is not a screenshot OCR claim. Screenshots saved
+and posted for visualreview; localimage-viewing tool unavailable, so visual review
+must remain separately attributed/pending. No building/service-use/soak claim.
+
+Next: actual building/connectivity/guestuse. Before that, repeat-entry/hide ownership
+regression should be checked without conflating pure-input testing with synthetic
+intentional-hidden-node controls (the latter needs a separately labelled fixture).

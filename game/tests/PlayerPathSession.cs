@@ -92,7 +92,7 @@ public partial class PlayerPathSession : Node
             Check(language is "fre" or "ger" or "eng","known language");
             if(Directory.Exists(output))throw new IOException("use a fresh artifact directory");
             Directory.CreateDirectory(output);trace=new StreamWriter(Path.Combine(output,"input-observations.jsonl"));
-            Log("scope",new {language,main="72cbea4",processing="normal",actions="Input.ParseInputEvent only",visualReview="pending"});
+            Log("scope",new {language,build=args.FirstOrDefault(a=>a.StartsWith("--play-build="))?[13..]??"UNSPECIFIED",processing="normal",actions="Input.ParseInputEvent only",visualReview="pending"});
             Check(DisplayServer.GetName()!="headless","rendered session required");
             Check(!args.Any(a=>a.StartsWith("--map=")||a.StartsWith("--mode=")||a=="--menu"||a.Contains("guest-test")),"no direct launch/setup flags");
             viewer=new Viewer{Name="Viewer"};AddChild(viewer);
