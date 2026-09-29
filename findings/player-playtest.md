@@ -277,3 +277,57 @@ Buildtour now goes straight fromopeningthepark tobuilding, not viaResearch/Hire
 first. This is an ordinary alternative player route; note itchanges the timing of
 lazycandidateRNG draws. Language tour remains available separately. Commands are
 consumed onlythrough their terminatingnewline toavoid partialappend parsefailures.
+
+## Live player journey 02: services, riders and cleaner (2026-09-29)
+
+Run `/tmp/tpw-player-live-02.log`, artifacts/commands/observations under
+`/tmp/tpw-player-live-02/`, main5b7f113 + driver231fb16. Normal processing,
+English coldboot, laptopOpenPark, CrazyApe purchase and owned queue/exit,
+BurgerShop and SmallToilet with connecting paths. No fixture guests/needs/litter,
+no forced jobs. Instrumented software-rendered run, not a performance benchmark.
+
+Logical ride evidence is guest-specific: guests1/2 enter CrazyApe seats and later
+return to walking; guest3 does likewise in a later cycle. Moving _seated
+transforms and VAR_ONRIDE agree. Global Boardings/Rides also include facilities,
+and CrazyApe.Customers stays zero, so neither is used alone as boarding proof.
+Burger successful Purchases advance naturally; SmallToilet Relieved advances
+and its condition wears down. These are runtime functional observations, not
+claims that every animation/event was photographed.
+
+Rider visual investigation:
+- `14-natural-seated-guests-observed.png`: reviewers saw empty-looking frames.
+  A timestamped positive seat count does not mean the heads are visible from
+  that camera. No rendering defect was declared.
+- `17-riders-active-check.png`, state logged immediately after FramePostDraw
+  capture at855156ms/tick7073: VAR_ONRIDE3, guests3/7/15, seats15/6/9 on
+  Head13/Head03/Head15. Their origins were respectively(28.017,1.601,-24.143),
+  (25.970,1.884,-23.609),(28.017,2.382,-23.038). Still rear-view ambiguity.
+- Ordinary E twice and R zoom presses, `19-riders-opposite-closer.png` at
+  1133312ms: VAR_ONRIDE2, guest24 seat1/Head09 at(28.018,1.477,-23.912),
+  guest26 seat13/Head16 at(28.017,1.540,-23.215).
+- Tiny's visual review1554321386380591159 identifies a definite pale/red head
+  at the lower-right crate and a probable second mostly occluded under the
+  ape's chin. Thus head-only rider rendering is visually present; the earlier
+  rear-view images do not establish a defect. Not a proof that every seat
+  fitting/offset is perfect. Source-only retained-pose/visibility hypotheses
+  were not established as bugs and no implementation change was made.
+
+Cleaner hired through Hire -> Cleaners -> Leon -> Enter, then ordinary click
+on path(29,25), active/not-held. Natural litter already existed before hiring.
+- 941669ms/tick7763: toiletCondition0, cleaner mode18/state51/request13.
+- 962357ms/tick7949: toiletCondition100, cleaner returns to sweep-mode routing.
+- 994166ms: sweep mode7/state27/request16.
+- Swept increments1 at1004639ms,2 at1020098ms,3 at1051198ms,4 at1086974ms,
+  5 at1127104ms; Made5, Count0 thereafter. No direct cleanup calls.
+This distinguishes actual completed service/work from merely hiring an actor.
+Other staff hires are being exercised in this same live session; their hiring
+must not be counted as proof of repair/security/research/entertainment outcomes.
+
+At1262106ms/tick10730 all five staff kinds had been hired through the ordinary
+candidate screens and dropped onto the path: Handyman, Mechanic, Guard,
+Entertainer, Researcher. All Active=true/Held=false. `20-all-staff-hired.png`
+is captured but not yet visually reviewed. Mechanic mode6/state14 and entertainer
+mode2/state12 observed subsequently; these alone are not completed repair or
+entertainment outcome evidence. Research unlocks not claimed (known missing
+research database). Session remains live for further player-path work; no build
+or reload was done during it.
