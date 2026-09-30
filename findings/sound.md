@@ -636,3 +636,24 @@ both ends has a median of 1152. The port plays `[1152, 1152 + length)` so stems 
   odds are small (Space 10/65536 a clip, Jungle none). Guest-steered, 47 of 800 simulated two-hour sessions lost
   their music. `MusicSequencer.ClampDraws` (on with the authored levels, off under `--music-ps2`) takes the last clip
   instead. `MusicChecks` pins both, each with the unguarded control failing.
+
+## ⭐ The gate's opening sound: on the disc, never played (2026-09-30)
+
+`Gates.rss` opens with `EVENT OBJ_SOUND_LOC_AMB 1 EVT_UI_GATEOPEN` (and `EVT_SPEAKER1`), closes with
+`EVT_UI_GATECLOSENORMAL`, and slams shut when broke with `EVT_UI_GATECLOSESLAM`. Compiled: JUNGLE 190/191/192,
+HALLOW 157/158 (with 156), FANTASY 127/128 (with 126), SPACE 155/154/156. None of those is an event of the park's
+`AMBSFX.MAP` in either park of any world. What each map carries instead, as its last three events, is two empty sets
+and one clip named for the gate:
+
+| world | events | the clip |
+|---|---|---|
+| JUNGLE | 241, 242, **243** | `jungleGteOp.vag` |
+| HALLOW | 213, 214, **215** | `hallowGteOp.vag` |
+| FANTASY | **183** | `FantGteOp.vag` |
+| SPACE | 212, 213, **214** | `spacegate1.vag` |
+
+The order is the three cue names SORTED -- CLOSENORMAL, CLOSESLAM, OPEN -- where the script header declares OPEN,
+CLOSENORMAL, CLOSESLAM: the sound build renumbered its events and the scripts were not rebuilt against it, so the
+retail gate opens in silence. The port plays the table above when the park opens from closed
+(`Viewer.GateMenu.cs`, strawberry: "wire up the gate opening sound"); the close events carry no clip in any world.
+`PointerTilesSmoke` checks the cue resolves to the world's own clip, once.

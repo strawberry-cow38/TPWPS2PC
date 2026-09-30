@@ -244,9 +244,20 @@ public sealed partial class LaptopShopScreen : Control
 
     // ---- the general path: any of the three info screens --------------------------------------
 
-    /// <summary>The info screen's model, rendered by the viewer into its own viewport. Null
-    /// until one is built; the screen simply leaves the window empty then.</summary>
-    public Texture2D ModelTexture { get; set; }
+    /// <summary>The info screen's model, rendered by the viewer into its own viewport. Null until one is built;
+    /// the screen simply leaves the window empty then. Drawn in <c>_Draw</c>. ⚠⚠ SETTING IT REDRAWS. It was a bare auto-property,
+    /// and the only thing that asked for a redraw was the hover that moved -- which can be drawn BEFORE `_Process`
+    /// pumps the focus change that builds the model (strawberry, 2026-09-30: "if you hover over nothing, and then
+    /// hover over something in the build list, it doesnt show the model. if you hover over another thing first,
+    /// and then the thing you want, the model shows"). Leaving nothing clears this to null; the next hover's draw
+    /// ran with it still null and nothing drew again until the NEXT hover, which by then found the viewport's
+    /// texture -- one object for every model -- set. The setter makes the order not matter.</summary>
+    public Texture2D ModelTexture
+    {
+        get => _modelTexture;
+        set { if (ReferenceEquals(_modelTexture, value)) return; _modelTexture = value; QueueRedraw(); }
+    }
+    Texture2D _modelTexture;
 
     LaptopScreen _spec;
     readonly Dictionary<string, SceneLayout> _layouts = new(StringComparer.OrdinalIgnoreCase);

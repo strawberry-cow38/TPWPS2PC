@@ -4594,12 +4594,7 @@ public partial class Viewer : Node3D
                 // either, and why there is no laptop row that closes a park again.
                 if (picked.Index == LaptopMainMenu.OpenParkIndex)
                 {
-                    _laptopParkOpen = true;
-                    // ⚠ The ABSOLUTE month index, the same figure AdvisorProducers.Months uses
-                    // (`Clock.Month + 12 * Clock.Year`), not the month-of-year.
-                    _parkOpenedMonth = _calendar == null ? 0 : _calendar.Month + 12 * _calendar.Year;
-                    GD.Print($"[park] OPEN (0x14E4C0): [0x2B72A4]=1, opened in month {_parkOpenedMonth} ([0x2B7298])");
-                    Status("the park is open -- the bus starts bringing guests in");
+                    OpenPark("the laptop");                // one routine for the laptop and the gate's menu
                     ShowLaptopMain();
                     return;
                 }
@@ -8808,34 +8803,28 @@ public partial class Viewer : Node3D
         if (PointerOverCheats(mouse)) return -1;
         var from = _cam.ProjectRayOrigin(mouse);
         var dir = _cam.ProjectRayNormal(mouse);
-        int best = -1; float near = float.MaxValue;
-        for (int i = 0; i < _park.Placed.Count; i++)
-        {
-            var node = _park.Placed[i].Node;
-            if (node == null || !IsInstanceValid(node)) continue;
-            var (lo, hi) = Park.DrawnBounds(node, inParent: true);
-            if (RayHitsBox(from, dir, lo, hi, out float t) && t < near) { near = t; best = i; }
-        }
-        // ⭐⭐ THE GATE COMPETES HERE LIKE EVERYTHING ELSE. Master: "the gate hover hitbox still
-        // lets me hover behind it. why did we invent a new type of selection box instead of using
-        // the one that every other object uses?" -- and the answer was that it had its own test
-        // outside this loop, against the WRONG BOX.
-        //
-        // ⚠⚠ IT WAS HIT-TESTING THE NO-BUILD ZONE. `_gateBounds` is the zone the gate forbids
-        // building in -- several cells wide and `tall` high -- so a ray aimed anywhere on that
-        // side of the park passed through it, including from well behind the gate itself. The
-        // box you SELECT is the zone; the thing you POINT AT is the gate, and those are not the
-        // same volume.
-        //
-        // ⭐ Now it uses the gate model's own drawn bounds, through the same `DrawnBounds` and
-        // the same nearest-hit comparison as every placed object, so it can be occluded by them
-        // and they by it.
-        if (_gate?.Root is { } gateRoot && IsInstanceValid(gateRoot) && gateRoot.Visible)
-        {
-            var (glo, ghi) = Park.DrawnBounds(gateRoot, inParent: true);
-            if (RayHitsBox(from, dir, glo, ghi, out float gt) && gt < near) { near = gt; best = GateIndex; }
-        }
-        return best;
+        // ⭐⭐ THE TILES, NOT THE MODEL'S BOX. strawberry, 2026-09-30: "tidy up mouse-over hitboxes to be the
+        // tiles which the thing occupies, instead of the whole object." A drawn-bounds box made a tall ride catch
+        // the pointer from well behind it and a wide canopy from beside it. The pointer now picks the cell under
+        // it -- the same floor cast the build cursor uses -- and the thing whose FOOTPRINT holds that cell,
+        // irregular footprints included (`PlacedIndexAt` reads `Fp.Cells`). That is also exactly what the
+        // capture harness's `_cursorOverride` above has always done, so the live path and the tested one agree.
+        if (CellAtScreen(mouse, out int cx, out int cy) && PlacedIndexAt(cx, cy) is var onTile and >= 0) return onTile;
+        return PointerOnGateTiles(from, dir) ? GateIndex : -1;
+    }
+
+    /// <summary>The gate's tiles: its `.sam` footprint, the rectangle its selection box is drawn from. ⚠ They lie
+    /// OFF the plot, on the walkway (rows 16..18 against a plot starting at 19), so <see cref="CellAtScreen"/>,
+    /// which only answers plot cells, cannot see them; the floor under the pointer is tested against the
+    /// rectangle directly, at the box's own floor height.</summary>
+    bool PointerOnGateTiles(Vector3 from, Vector3 dir)
+    {
+        if (_gateBounds is not { } g || _gate?.Root is not { } root || !IsInstanceValid(root) || !root.Visible) return false;
+        if (Mathf.Abs(dir.Y) < 1e-5f) return false;
+        float t = (g.Lo.Y - from.Y) / dir.Y;
+        if (t <= 0f) return false;
+        var hit = from + dir * t;
+        return hit.X >= g.Lo.X && hit.X <= g.Hi.X && hit.Z >= g.Lo.Z && hit.Z <= g.Hi.Z;
     }
 
     /// <summary>What <see cref="PointedAt"/> returns for the gate. ⚠ Below zero so every
@@ -8919,9 +8908,19 @@ public partial class Viewer : Node3D
     {
         if (_objMenu == null || _mode != Mode.Park) return false;
         UpdateHover();
-        // ⚠ The gate is selectable but owns none of these actions: it is not in `Park.Placed`,
-        // so there is nothing to delete and no queue to edit.
-        if (_hovered < 0 || _hovered == GateIndex) return false;
+        // ⭐ THE GATE HAS ITS OWN MENU: Open Park, while closed (strawberry, 2026-09-30). It is not in
+        // `Park.Placed`, so none of the placed-object actions apply; it is selected and focused by the same
+        // path a left click takes, then offered what the laptop would offer.
+        if (_hovered == GateIndex)
+        {
+            var gateEntries = new List<string>(GateMenuEntries());
+            if (gateEntries.Count == 0 || !SelectUnderCursor()) return false;
+            _objMenu.Show(gateEntries, at);
+            GD.Print($"[menu] gate: {string.Join(" / ", gateEntries)}");
+            Status($"gate -- {string.Join(", ", gateEntries)}");
+            return true;
+        }
+        if (_hovered < 0) return false;
         if (!SelectUnderCursor()) return false;
         var entries = MenuEntriesFor(_selected).ToList();
         _objMenu.Show(entries, at);
@@ -9428,6 +9427,7 @@ public partial class Viewer : Node3D
     /// (`0x124018` / `0x123FB8`) are not ported, so Edit Queue opens OUR queue tool.</summary>
     void OnObjectMenu(string caption)
     {
+        if (_gateSelected && caption == OpenParkCaption) { OpenPark("the gate's menu"); return; }
         // ⭐ A kick-out caption is a STAFF KIND's text row, so it is matched back the way it was
         // produced rather than by parsing the words.
         if (_staff != null && StaffRoomAt(_selected) is { } kroom)
@@ -11962,6 +11962,7 @@ public partial class Viewer : Node3D
         // until the park is opened, and opening walks it back to 0.
         if (_gate != null && _playing && _shotPath == null && _mode == Mode.Park && _gate.Frames > 0)
         {
+            StepGateSound();                                  // before the arch moves: it cues at the first frame of opening
             float target = _laptopParkOpen ? 0f : _gate.Frames - 1;
             if (Mathf.Abs(_parkTime - target) > 0.001f)
             {
