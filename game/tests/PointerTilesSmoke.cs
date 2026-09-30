@@ -212,7 +212,17 @@ public partial class PointerTilesSmoke : Node3D
             Check(gateLines.Count == 1 && gateLines[0].Contains(clip, StringComparison.OrdinalIgnoreCase),
                   $"opening sounds the gate once, the world's own clip {clip}: {string.Join(" | ", gateLines)}");
 
-            GD.Print($"POINTER TILES SMOKE PASS world={world} checks={_checks}");
+            // Retire the park's voices and the music before closing, as the vehicles smoke does: scene frames alone can
+            // outrun Dummy audio's pending stopped playbacks, and they report as leaked instances (HALLOW and SPACE-2
+            // did, on the first matrix run).
+            Call(viewer, "ResetNativeBus");
+            Call(viewer, "StopMusic");
+            Field<RideSounds>(viewer, "_sounds")?.Clear();
+            viewer.QueueFree();
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            await ToSignal(GetTree().CreateTimer(.1), SceneTreeTimer.SignalName.Timeout);
+            GD.Print($"POINTER TILES SMOKE PASS checks={_checks}; world={world}");
             GetTree().Quit(0);
         }
         catch (Exception e)
