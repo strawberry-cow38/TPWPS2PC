@@ -11,7 +11,10 @@ namespace TPWPS2Viewer.Tests;
 /// HALLOW, FANTASY and SPACE must load both, draw them, and run each one's own script through a
 /// whole visit -- VAR_STATUS 1 (arriving) to 6 (away) and back to 1 -- moving between its stops.
 /// JUNGLE loads the seaplane only: its ferry has no model or animation on the disc (fcf890e).
-/// `--no-seaplane-ferry` (the field behind it) must leave none in any world.</summary>
+/// `--no-seaplane-ferry` (the field behind it) must leave none in any world.
+///
+/// ⚠ Off by default since 3f4c44d (the PS2 never runs them), so this runs with `--seaplane-ferry`, the opt-in --
+/// and says so first when it is missing, rather than failing on an empty vehicle list.</summary>
 public partial class ParkVehiclesSmoke : Node3D
 {
     const BindingFlags Hidden = BindingFlags.Instance | BindingFlags.NonPublic;
@@ -38,6 +41,7 @@ public partial class ParkVehiclesSmoke : Node3D
         {
             Check(DisplayServer.GetName() != "headless", "rendering display required");
             var args = OS.GetCmdlineArgs().Concat(OS.GetCmdlineUserArgs()).ToArray();
+            Check(args.Contains("--seaplane-ferry"), "run with --seaplane-ferry: the vehicles are off by default (3f4c44d)");
             string map = args.LastOrDefault(a => a.StartsWith("--map="))?["--map=".Length..]
                 ?? throw new ArgumentException("Pass --map=WORLD");
             world = new[] { "JUNGLE", "FANTASY", "HALLOW", "SPACE" }.Single(w =>

@@ -221,6 +221,8 @@ public partial class Viewer
             _parkAdvisor.Update();
             _advisorStackView?.Pass();
         }
+        // ⭐ 0x151C00's first act, before the volume ramps: the park music's parameter, guests * 90 / 100.
+        _music?.ParkGuests(_visitors?.Plans.Count ?? 0);
         _audioMix.Step(_settings, _parkAdvisor.Ducking);
     }
 

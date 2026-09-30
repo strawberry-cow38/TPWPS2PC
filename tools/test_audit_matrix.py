@@ -108,6 +108,33 @@ COVERAGE += '\n' + '\n'.join(['  ok   surface seat: 302 surface fittings on 37 m
                               '  ok   surface seat: the facing bit: one bit of noise in the drawn vertex 2\'s y leaves the face alone'])
 
 
+# The trampoline (BounceChecks.cs): its own statement, for the same merge reason. Real lines from a --bounce-only
+# run, trimmed; the witnesses are the loader's pad base and the disc-wide pad census.
+COVERAGE += '\n' + '\n'.join(['  ok   bounce: the loader writes 0x32 to inst+0xC0 (0x1C002C/0x1C0060), and a new ride starts there: 50',
+                              '  ok   bounce: the loader writes 1 to inst+0x70 (0x1C0034/0x1C0064), so the first bouncer stands on pad 1: #7 pad 1',
+                              '  ok   bounce: the ticker\'s speed is inst+0xC0 / 200 + 0.8, the 0.8 read at 0x366CC0',
+                              '  ok   bounce: 4 BOUNCE rides (Jelly 5 from pad 3, Brainb 9 from pad 1, Bouncy 9 from pad 1, Bouncy 10 from pad 1): 33 of 33',
+                              '  ok   bounce: the control: counted from pad 0 instead of the loader\'s 1, only 29 of 33 would -- the base is visible',
+                              '  ok   bounce: the hump: 0.80 at the bottom (BOUNCESETBASE 8 tenths), 2.30 at the top',
+                              '  ok   bounce: never below the pad: with the pad at 1.2 the bottom is the pad and the top clears it',
+                              '  ok   bounce: the get-off window (first 200 ms) peaks at 1.67, well under the 2.30 mid-air'])
+
+
+# The music (MusicChecks.cs): its own statement, for the same merge reason. Real lines from a --music-only run,
+# trimmed; the witnesses are the selector-2 finding and its selector-4 control.
+COVERAGE += '\n' + '\n'.join(['  ok   music: the park writes the guest value as selector 2: 0x151C58 calls 0x111E08',
+                              '  ok   music: the chooser steers on the event\'s own Word12: 0x244E08 writes event+0x12 to rec[0]',
+                              '  ok   music: a parameter lands only where the selector matches: 0x2462A0 compares rec[i]',
+                              '  ok   music: flags 4 | 2 | 0x400 make the graph class: 0x2474A8 calls 0x24C5E0 (vtable 0x371450)',
+                              '  ok   music: park music, event 2 in all four worlds: JUNGLE 6 sets, flags 0x606, Word12 4, top band 90',
+                              '  ok   music: lobby music, event 6 in all four worlds: JUNGLE 3 clips flags 0x206',
+                              '  ok   music: a full park written as selector 2: no slot takes it, the chooser reads 0',
+                              '  ok   music: the control, the same 90 on the event\'s own selector 4 plays the top level and 45 a middle one',
+                              '  ok   music: lobby clips: 0 of 300 follow themselves (0) and all 3 play',
+                              '  ok   music: the first clip of each map decodes as 22050 Hz stereo',
+                              '  ok   music: the lead, re-measured on the 4 of them loud at both ends: median 1153 samples against 1152'])
+
+
 class ClassificationTests(unittest.TestCase):
     def test_staff_family_count_and_witnesses_required(self):
         for text in ('\n'.join(x for x in COVERAGE.splitlines() if 'staff:' not in x),
@@ -137,6 +164,22 @@ class ClassificationTests(unittest.TestCase):
                      COVERAGE.replace('  ok   surface seat: the gate:', '  ok   unrelated: the gate:', 1),
                      COVERAGE.replace('302 of 302 sit on their helper', '301 of 302 sit on their helper'),
                      COVERAGE.replace('the facing bit: one bit of noise', 'the facing bit: something else')):
+            self.assertEqual(classify('JUNGLE', 0, text + '\nPASS')['status'], 'missing_coverage')
+        self.assertEqual(classify('JUNGLE', 0, COVERAGE + '\nPASS')['status'], 'pass')
+
+    def test_bounce_family_count_and_witnesses_required(self):
+        for text in ('\n'.join(x for x in COVERAGE.splitlines() if 'bounce:' not in x),
+                     COVERAGE.replace('  ok   bounce: the hump:', '  ok   unrelated: the hump:', 1),
+                     COVERAGE.replace('the loader writes 1 to inst+0x70', 'the loader writes 0 to inst+0x70'),
+                     COVERAGE.replace('4 BOUNCE rides', '3 BOUNCE rides')):
+            self.assertEqual(classify('JUNGLE', 0, text + '\nPASS')['status'], 'missing_coverage')
+        self.assertEqual(classify('JUNGLE', 0, COVERAGE + '\nPASS')['status'], 'pass')
+
+    def test_music_family_count_and_witnesses_required(self):
+        for text in ('\n'.join(x for x in COVERAGE.splitlines() if 'music:' not in x),
+                     COVERAGE.replace('  ok   music: lobby clips:', '  ok   unrelated: lobby clips:', 1),
+                     COVERAGE.replace('written as selector 2: no slot takes it', 'written as selector 2: level 6'),
+                     COVERAGE.replace('the control, the same 90 on the event\'s own selector 4 plays the top level', 'the control: skipped')):
             self.assertEqual(classify('JUNGLE', 0, text + '\nPASS')['status'], 'missing_coverage')
         self.assertEqual(classify('JUNGLE', 0, COVERAGE + '\nPASS')['status'], 'pass')
 

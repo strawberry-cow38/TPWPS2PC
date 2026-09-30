@@ -26,6 +26,13 @@ public enum SoundGroup
     /// <summary>Native category 4, `AUDIO/RIDES/grc` (bank `sound\Coast`): the coaster trains'
     /// rumble, event 0x11, whose parameter 7 picks the clip band (findings/coaster-trains.md §10).</summary>
     NativeRidesGrc = 0x104,
+    /// <summary>⚠ NOT A CATEGORY. The park music: `0x111E30` loads `%sMUSIC/` `MUS` itself and plays event 2
+    /// straight through the audio object (vt+0x24), so it has no registry number. 0x200 keeps it clear of
+    /// both namespaces. See <see cref="MusicSequencer"/>.</summary>
+    NativeMusic = 0x200,
+    /// <summary>Native category 0xE, the lobby's music: `0x2195C0` plays `0x111428(audio, 0xE, 6, ..., 1)`
+    /// after `0x111BF8` points the category at the selected park's world.</summary>
+    NativeLobbyMusic = 0x10E,
 }
 
 /// <summary>A `*SFX.MAP` -- the event-to-clip index beside a `.SDT` bank. Record sizes and the
@@ -230,6 +237,8 @@ public sealed class SoundCatalogue
         SoundGroup.GlobalBumper => "/AUDIO/RIDES/BUMPSFX.MAP",
         SoundGroup.NativeRidesTrack => "/AUDIO/RIDES/TRCKSFX.MAP",
         SoundGroup.NativeRidesGrc => "/AUDIO/RIDES/GRCSFX.MAP",
+        SoundGroup.NativeMusic => $"/AUDIO/{world}/MUSIC/MUSSFX.MAP",
+        SoundGroup.NativeLobbyMusic => $"/AUDIO/{world}/LOBBY/LOBMSFX.MAP",
         _ => null,
     };
 

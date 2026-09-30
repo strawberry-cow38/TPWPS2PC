@@ -66,6 +66,10 @@ SCENES = {
 # Proof the gate reaches admission: without the flag all six fail on every park ("normal bus batch
 # automatically acquired research entrance owners") and nothing else does.
 PARK_OPEN_SCENES = {'entrance', 'rejected', 'readiness', 'departure', 'disruption', 'soak'}
+# The seaplane and ferry are OFF by default since 3f4c44d (the PS2 never runs them); the vehicles smoke is the one
+# scene about them, so it opts back in with the viewer's own `--seaplane-ferry`. Without it all 8 parks fail
+# "loads seaplane ()" -- which is what this matrix read from 3f4c44d until the flag was added.
+VEHICLE_SCENES = {'vehicles'}
 MAP_LINE = re.compile(r'^\[map\] loaded world=([A-Z]+) terrain=(terrain_[12])\.mps$', re.M)
 # Guards and entertainers: an entertainer and a guard hired through the laptop's tabs and the real press,
 # guests stopping to watch a show and drawn facing him, a forced prank (the one test hook) with its
@@ -191,7 +195,8 @@ def main(argv=None) -> int:
                                              '--audio-driver', 'Dummy', '--resolution', '640x360', '--path', 'game',
                                              f'res://tests/{SCENES[scene][0]}.tscn', '--',
                                              map_argument(world, terrain), '--mode=park']
-                                            + (['--laptop-park-open'] if scene in PARK_OPEN_SCENES else []))
+                                            + (['--laptop-park-open'] if scene in PARK_OPEN_SCENES else [])
+                                            + (['--seaplane-ferry'] if scene in VEHICLE_SCENES else []))
                 record.update(classify(scene, world, terrain, run), scene=scene)
                 manifest['results'].append(record); save()
                 print(f'{name}: {record["status"]} checks={record.get("checks")} loaded={record.get("loaded")}', flush=True)

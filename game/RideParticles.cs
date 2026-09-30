@@ -627,37 +627,16 @@ public sealed class RideParticles
         // how many frames the strip holds. ⚠ Falls back to the generated dot, which is now only
         // what the eleven UNTEXTURED effects get -- and what they should always have got.
         var sheet = SheetFor(e);
-        var mat = new StandardMaterial3D
-        {
-            ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
-            Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
-            // ⭐⭐ NOTHING IS ADDITIVE. Master, who can see the real game, settled it outright:
-            // "yeah they arent additive."
-            //
-            // ⚠⚠ THE BIT WAS NEVER EVIDENCE FOR IT. `+0x70` bit 2 became draw flag `0x20` and
-            // there the trail stopped -- what `0x20` meant at the GS was never read, and the port
-            // twice picked a POLARITY for it off the effect NAMES, in both directions. The full
-            // 105-effect census then showed the names do not support either: three spark effects
-            // sit on the clear side and Button, Repair and BuyLand sit on the set side. So this
-            // was a coin landing on its edge, and master's answer is the first actual evidence
-            // anyone has had about it.
-            //
-            // ⭐ The bit still means SOMETHING -- see ParticleTemplate.AdditiveBit, where the
-            // surviving candidate is unlit/full-bright. It just does not mean this, and until it
-            // is read it drives nothing.
-            BlendMode = BaseMaterial3D.BlendModeEnum.Mix,
-            BillboardMode = BaseMaterial3D.BillboardModeEnum.Particles,
-            // ⭐ The frames of THIS effect's own sprite, walked once over each particle's life --
-            // the console steps them by remaining life at 0x189e78, so no loop.
-            ParticlesAnimHFrames = Mathf.Max(1, sheet.Frames),
-            ParticlesAnimVFrames = 1,
-            ParticlesAnimLoop = false,
-            // ⚠ BillboardMode.Particles drops ScaleAmount unless this is set.
-            BillboardKeepScale = true,
-            VertexColorUseAsAlbedo = true,
-            AlbedoTexture = sheet.Sheet ?? Dot(),
-            DisableReceiveShadows = true,
-        };
+        // ⭐⭐ THE GS'S MODULATE, NOT STANDARDMATERIAL3D'S: see Ps2Materials.ParticleShader. Unshaded, mixed,
+        // billboarded per particle with its scale kept, and the strip walked once -- as before; only the
+        // colour arithmetic changed.
+        // ⭐⭐ NOTHING IS ADDITIVE. Master, who can see the real game, settled it outright: "yeah they
+        // arent additive." `+0x70` bit 2 became draw flag `0x20` and there the trail stopped; see
+        // ParticleTemplate.AdditiveBit, where the surviving candidate is unlit/full-bright.
+        var mat = new ShaderMaterial { Shader = Ps2Materials.ParticleShader };
+        mat.SetShaderParameter("albedo_tex", sheet.Sheet ?? Dot());
+        mat.SetShaderParameter("frames_h", Mathf.Max(1, sheet.Frames));
+        mat.SetShaderParameter("textured", sheet.Sheet != null);
         ((QuadMesh)p.Mesh).Material = mat;
         // ⭐ ONE PASS THROUGH THE STRIP PER PARTICLE. Speed 1 with AnimLoop off walks the frames
         // exactly once over a particle's life, which is what `0x189e78` does by indexing on

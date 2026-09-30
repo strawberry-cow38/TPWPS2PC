@@ -154,6 +154,23 @@ REQUIRED_WITNESSES += (
     'ok   surface seat: the facing bit: one bit of noise',
 )
 
+# The trampoline (BounceChecks.cs, RseMachine.BounceHeight): 8, disc-wide. The loader's two defaults are read back
+# out of the executable, so a port constant that drifts from 0x32 / 1 goes red here, not in a picture.
+REQUIRED_CHECKS.update({'bounce': 8})
+REQUIRED_WITNESSES += (
+    'ok   bounce: the loader writes 1 to inst+0x70',
+    'ok   bounce: 4 BOUNCE rides',
+)
+
+# The music (MusicChecks.cs, MusicSequencer): 11 on every park -- disc-wide, so the same 11. The witnesses are the
+# finding and its control: the park's guest value, written as the console writes it, never leaves level 1, and
+# the same value on the event's own selector does -- so a sequencer that simply cannot move fails the pair.
+REQUIRED_CHECKS.update({'music': 11})
+REQUIRED_WITNESSES += (
+    'ok   music: a full park written as selector 2: no slot takes it',
+    'ok   music: the control, the same 90 on the event\'s own selector 4 plays the top level',
+)
+
 
 def classify(world: str, raw_exit: int | None, text: str, *, timed_out: bool = False,
              truncated: bool = False, launch_error: str | None = None, terrain: int | None = None) -> dict:

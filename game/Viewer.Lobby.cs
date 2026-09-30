@@ -84,6 +84,7 @@ public partial class Viewer
         _mainMenu.Chosen -= OnMenuChosen;
         _mainMenu.Chosen += OnMenuChosen;
         HideParkScene();
+        StopMusic();                    // the front end has no music map; the park's must not follow us here
         _mainMenu.Open_();
         GD.Print("[menu] front end open");
         Status("main menu -- arrows, Enter to choose");
@@ -336,6 +337,9 @@ public partial class Viewer
         // ("Lost Kingdom:\nPrehistoric World"), which is exactly why the box has a second line and
         // sizes itself differently when one is present.
         ShowLobbyBox(_lobbyRecord);
+        // ⭐ Every record write reaches here, as every one reaches 0x2195C0 on the console (Enter 0x21784C, a
+        // move 0x218704, 0x219420): the lobby music stops and plays again for this record's world.
+        StartLobbyMusic();
     }
 
     /// <summary>⭐⭐ THE PARK UNDER THE POINTER, as a MODEL index, or -1.
@@ -657,6 +661,7 @@ public partial class Viewer
         }
         string name = LobbyName(_lobbyRecord).Replace("\n", " / ");
         GD.Print($"[lobby] entering {name} -> {_maps[idx].Label}");
+        StopMusic();                    // the lobby's handles go with it; the intro movie carries its own sound
         // Capture this choice before playback; do not read mutable selection in Finished.
         PlayParkIntro(rec.World, () =>
         {
@@ -672,6 +677,7 @@ public partial class Viewer
     /// freed nodes.</summary>
     void LeaveLobby()
     {
+        if (_lobbyMode) StopMusic();
         _lobbyMode = false;
         _lobbyPrompt = false;
         if (_lobbyBox != null && IsInstanceValid(_lobbyBox)) _lobbyBox.Hide();

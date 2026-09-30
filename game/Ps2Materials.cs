@@ -92,23 +92,7 @@ void vertex() {
 """ : "")}}
 }
 
-vec3 output_colour(vec3 encoded) {
-    // Compatibility 4.6.2 converts ALBEDO with a cubic, then outputs with a pure power
-    // (drivers/gles3/shaders/tonemap_inc.glsl). Invert that cubic, not a fitted gain.
-    // Passing encoded straight through turns byte 20 into 16. The render audit catches it.
-    if (OUTPUT_IS_SRGB) {
-        vec3 target = pow((encoded + vec3(0.055)) / 1.055, vec3(2.4));
-        vec3 x = max(encoded, vec3(0.05));
-        for (int i = 0; i < 6; i++) {
-            vec3 value = x * (x * (x * 0.305306011 + 0.682171111) + 0.012522878);
-            vec3 derivative = x * (x * 0.915918033 + 1.364342222) + 0.012522878;
-            x -= (value - target) / derivative;
-        }
-        return x;
-    }
-    return mix(pow((encoded + vec3(0.055)) / 1.055, vec3(2.4)),
-               encoded / 12.92, lessThanEqual(encoded, vec3(0.04045)));
-}
+{{OutputColour}}
 
 void fragment() {
     vec2 uv = UV;
@@ -132,6 +116,85 @@ void fragment() {
 }
 """ };
     }
+
+    /// <summary>The GS's framebuffer bytes through Godot's output: shared by every shader here, so a model and a
+    /// particle that the console draws with the same bytes come out with the same pixels.</summary>
+    const string OutputColour = """
+vec3 output_colour(vec3 encoded) {
+    // Compatibility 4.6.2 converts ALBEDO with a cubic, then outputs with a pure power
+    // (drivers/gles3/shaders/tonemap_inc.glsl). Invert that cubic, not a fitted gain.
+    // Passing encoded straight through turns byte 20 into 16. The render audit catches it.
+    if (OUTPUT_IS_SRGB) {
+        vec3 target = pow((encoded + vec3(0.055)) / 1.055, vec3(2.4));
+        vec3 x = max(encoded, vec3(0.05));
+        for (int i = 0; i < 6; i++) {
+            vec3 value = x * (x * (x * 0.305306011 + 0.682171111) + 0.012522878);
+            vec3 derivative = x * (x * 0.915918033 + 1.364342222) + 0.012522878;
+            x -= (value - target) / derivative;
+        }
+        return x;
+    }
+    return mix(pow((encoded + vec3(0.055)) / 1.055, vec3(2.4)),
+               encoded / 12.92, lessThanEqual(encoded, vec3(0.04045)));
+}
+""";
+
+    static Shader _particle;
+    /// <summary>⭐⭐ A PARTICLE, MODULATED THE WAY THE GS DOES IT (strawberry, 2026-09-29: the prank stink is
+    /// "gray in ours"). Particles reach the same renderer as models -- `0x220878` hands each one to `0x233458`,
+    /// which submits it through `0x22a068` with its ramp colour as the prim colour -- so they get the same
+    /// modulate the model shader above already does: texel byte x colour byte / 128, where 0x80 is 1.0.
+    ///
+    /// ⚠ StandardMaterial3D did neither half of that. It linearised the texture (source_color) and multiplied
+    /// by the raw vertex colour, so a ramp step of 0xD7 scaled a dark texel by 0.84 in LINEAR light, and the
+    /// colour curve all but vanished into the sprite's grey: YellowStink's centre came out (79, 85, 0) where the
+    /// console writes (144, 168, 0). Every ramp in the library was drawn at roughly half its strength.
+    ///
+    /// ⭐ Alpha needs no x2: the SSH decoder already doubled the texture's 0..0x80 alpha to 0..255, so
+    /// `tex.a * ramp.a` is the GS's `At * Af / 128` already.
+    ///
+    /// The vertex half is StandardMaterial3D's own BILLBOARD_PARTICLES + keep-scale + particle animation code
+    /// (Godot 4.6 scene/resources/material.cpp), so nothing about where or how big a particle is changes.</summary>
+    public static Shader ParticleShader => _particle ??= new Shader { Code = $$"""
+shader_type spatial;
+render_mode unshaded, blend_mix, depth_draw_opaque;
+
+// Deliberately no source_color: the GS modulates texture bytes.
+uniform sampler2D albedo_tex : filter_linear_mipmap, repeat_enable;
+uniform int frames_h = 1;
+// ⚠ An UNTEXTURED effect (Sparks and ten others) draws with TME off, where the GS writes the colour as it is --
+// a texel of 128 under this modulate, as in the model shader. The dot it is given is only its shape.
+uniform bool textured = true;
+
+void vertex() {
+    mat4 mat_world = mat4(normalize(INV_VIEW_MATRIX[0]), normalize(INV_VIEW_MATRIX[1]),
+                          normalize(INV_VIEW_MATRIX[2]), MODEL_MATRIX[3]);
+    mat_world = mat_world * mat4(vec4(cos(INSTANCE_CUSTOM.x), -sin(INSTANCE_CUSTOM.x), 0.0, 0.0),
+                                 vec4(sin(INSTANCE_CUSTOM.x), cos(INSTANCE_CUSTOM.x), 0.0, 0.0),
+                                 vec4(0.0, 0.0, 1.0, 0.0), vec4(0.0, 0.0, 0.0, 1.0));
+    MODELVIEW_MATRIX = VIEW_MATRIX * mat_world;
+    MODELVIEW_MATRIX = MODELVIEW_MATRIX * mat4(vec4(length(MODEL_MATRIX[0].xyz), 0.0, 0.0, 0.0),
+                                               vec4(0.0, length(MODEL_MATRIX[1].xyz), 0.0, 0.0),
+                                               vec4(0.0, 0.0, length(MODEL_MATRIX[2].xyz), 0.0),
+                                               vec4(0.0, 0.0, 0.0, 1.0));
+    MODELVIEW_NORMAL_MATRIX = mat3(MODELVIEW_MATRIX);
+    // One pass through the strip over the particle's life, no loop (RideParticles sets AnimSpeed 1).
+    float total = float(max(frames_h, 1));
+    float frame = clamp(floor(INSTANCE_CUSTOM.z * total), 0.0, total - 1.0);
+    UV /= vec2(total, 1.0);
+    UV += vec2(frame / total, 0.0);
+}
+
+{{OutputColour}}
+
+void fragment() {
+    vec4 t = texture(albedo_tex, UV);
+    vec3 texel = textured ? t.rgb * 255.0 : vec3(128.0);
+    vec3 encoded = floor(clamp(texel * (COLOR.rgb * 255.0) / 128.0, vec3(0.0), vec3(255.0))) / 255.0;
+    ALBEDO = output_colour(encoded);
+    ALPHA = t.a * COLOR.a;
+}
+""" };
 
     public static void BindLight(ShaderMaterial material)
     {

@@ -111,7 +111,10 @@ public sealed class RseMachine
     short _bounceBase, _bouncing, _bumpRate, _sparkFrom, _sparkTo, _floatA, _floatB;
     int _floatFor; long _floatFrom;
     byte _turbo;
-    int _bounceNode;
+    /// <summary>`+0x70`, BOUNCESETNODE's base. ⚠ STARTS AT 1 -- the loader (`0x1BFDF8`) writes 1 there -- and it
+    /// used to start at 0 here, which put the first bouncer on fitting id 0: Belly Bounce's pads are ids 1..10,
+    /// so slot 0 matched nothing and the ticker would have skipped them.</summary>
+    int _bounceNode = 1;
     readonly Bouncer[] _bounce;
     readonly LimboSlot[] _limbo;
     int _limboUsed;
@@ -192,6 +195,55 @@ public sealed class RseMachine
     /// that belongs to a host with a model to put them on.</summary>
     public int BounceBase => _bounceBase;
     public int Bouncing => _bouncing;
+
+    /// <summary>Everyone on the trampoline, as (guest, node, time they got on), in table order -- for a host
+    /// to draw with <see cref="BounceHeight"/>. An empty slot is left out.</summary>
+    public IReadOnlyList<(int Guest, int Node, long Start)> Bouncers
+    {
+        get
+        {
+            var rows = new List<(int, int, long)>();
+            foreach (var b in _bounce) if (b.Guest != 0) rows.Add((b.Guest, b.Node, b.Start));
+            return rows;
+        }
+    }
+
+    /// <summary>⭐⭐ WHERE A BOUNCER IS, READ from the ticker `0x1BB888`, per occupied slot:
+    /// <code>
+    ///   node  = 0x1F1F78(model, 0x800, slot.node)          -- none: the slot is not drawn
+    ///   pos   = 0x1F2978(node)                             -- world, cells
+    ///   if (program's walk capacity != 0)                  -- (inst+0x1c)+0x1c: header +0x1C
+    ///       place(pos, facing, logical 11)                 -- stands on the pad, idle
+    ///   t     = (int)((now - start) * (inst+0xC0 / 200.0 + 0.8))       -- soft-double, 0.8 at 0x366CC0
+    ///   y10   = rootY + inst+0x6E + (key % 7 + 12) * sin(((t % 1000) / 320) rad)   -- tenths of a cell
+    ///   y10   = max(y10, pos.y * 10)
+    ///   place((pos.x, y10 / 10, pos.z), facing, logical 6)
+    /// </code>
+    /// One hump a phase-second: the angle runs 0 .. 3.12 rad, so sin rises and falls back to (nearly) zero,
+    /// and UNBOUNCE's "only in the first fifth of the second" is the bottom of that hump. The sine is the
+    /// game's 4096-entry table (`0x1A6630`), indexed as it is.
+    ///
+    /// ⚠ `key` is the guest's HEAP ADDRESS on the console -- both the amplitude's `% 7` and the facing, which is
+    /// `(float)key` DEGREES (`0x1FAFD8` times pi/180). A port has no such number; pass a stable per-guest key.
+    /// ⚠ `rootY` is `((inst[model]+8)+4)+0x70 -> +0x44`, INFERRED to be the model root's local translation Y (a
+    /// node's local matrix sits at +0x10, so +0x44 is M42); 0 on Belly Bounce's floor.</summary>
+    public static float BounceHeight(long now, long start, int key, int setting0xC0, int baseTenths,
+                                     float rootYTenths, float nodeY)
+    {
+        double speed = setting0xC0 / 200.0 + 0.8;
+        int t = (int)((now - start) * speed);
+        float angle = (t % 1000) / 320f;
+        float y10 = rootYTenths + baseTenths + ((key & 0x7fffffff) % 7 + 12f) * SinTable(angle);
+        return Math.Max(y10, nodeY * 10f) / 10f;
+    }
+
+    /// <summary>`0x1A6630(0x1000)`'s table, read the way its users read it: `table[(int)(a * 4096 / 2pi) & 4095]`.</summary>
+    public static float SinTable(float radians)
+    {
+        const int n = 0x1000;
+        int i = (int)(radians * (n / 6.2831855f)) & (n - 1);
+        return MathF.Sin(i / (float)n * 6.2831855f);
+    }
 
     public RseMachine(RseProgram program, IRseHost host = null, Func<int> random = null,
                       Func<string, RseMachine> spawn = null, IRseDirectory directory = null)
