@@ -96,6 +96,18 @@ COVERAGE += '\n' + '\n'.join(['  ok   hoarding: check'] * 27 +
                                '  ok   hoarding: re-raise: caught at p 0.520 on the way down, a raise rises again FROM THERE (0.528)'])
 
 
+# Surface fittings (SurfaceSeatChecks.cs): its own statement, for the same merge reason. Real lines from a
+# --surface-seat-only run, trimmed; the two witnesses are the point and the facing-bit claims.
+COVERAGE += '\n' + '\n'.join(['  ok   surface seat: 302 surface fittings on 37 models across the disc',
+                              '  ok   surface seat: the point: 302 of 302 sit on their helper\'s bind origin to 1e-3',
+                              '  ok   surface seat: the point control: with the normal flipped, 301 seats leave their helper',
+                              '  ok   surface seat: the gate: 270 of 302 parents move their vertices in some record',
+                              '  ok   surface seat: the turn: 140 turned seats, median 0.28 deg and at most 22.9 from their helper\'s axes',
+                              '  ok   surface seat: the turn control: WITHOUT the fitting\'s angles the face frame is a median 133.6 deg off',
+                              '  ok   surface seat: the order control: Rx Ry Rz instead of Rz Ry Rx puts a seat 176 deg off',
+                              '  ok   surface seat: the facing bit: one bit of noise in the drawn vertex 2\'s y leaves the face alone'])
+
+
 class ClassificationTests(unittest.TestCase):
     def test_staff_family_count_and_witnesses_required(self):
         for text in ('\n'.join(x for x in COVERAGE.splitlines() if 'staff:' not in x),
@@ -117,6 +129,14 @@ class ClassificationTests(unittest.TestCase):
                      COVERAGE.replace('  ok   hoarding: check\n', '', 1),
                      COVERAGE.replace('broken again keeps Condemn', 'broken again shows Hoarding'),
                      COVERAGE.replace('order (0x1f3c70): Big Dripper', 'order (0x1f3c70): some ride')):
+            self.assertEqual(classify('JUNGLE', 0, text + '\nPASS')['status'], 'missing_coverage')
+        self.assertEqual(classify('JUNGLE', 0, COVERAGE + '\nPASS')['status'], 'pass')
+
+    def test_surface_seat_family_count_and_witnesses_required(self):
+        for text in ('\n'.join(x for x in COVERAGE.splitlines() if 'surface seat:' not in x),
+                     COVERAGE.replace('  ok   surface seat: the gate:', '  ok   unrelated: the gate:', 1),
+                     COVERAGE.replace('302 of 302 sit on their helper', '301 of 302 sit on their helper'),
+                     COVERAGE.replace('the facing bit: one bit of noise', 'the facing bit: something else')):
             self.assertEqual(classify('JUNGLE', 0, text + '\nPASS')['status'], 'missing_coverage')
         self.assertEqual(classify('JUNGLE', 0, COVERAGE + '\nPASS')['status'], 'pass')
 
