@@ -43,6 +43,27 @@ public sealed class RideDefinition
 
     public string? Name => Fields.TryGetValue("Info.Name", out var v) ? v : null;
 
+    /// <summary>⭐⭐ THE PARTICLE THIS OBJECT THROWS WHEN IT IS BUILT, AND WHEN IT IS DEMOLISHED --
+    /// named by the object itself, in its own `.sam`. Master said the rule was "in there somewhere"
+    /// and it is: `Info.CreateParticleEffect` / `Info.DestroyParticleEffect`, on all 18 placeable
+    /// Features per world.
+    ///
+    /// ⭐ It is DATA, not a hardcoded pick, which is why `Create1..4` exist as four ids:
+    ///   81 Create3 / 77 Destroy3 -- the common case, most scenery
+    ///   79 Create1 / 75 Destroy1 -- the big rocks (4x4rock, 5x5rck, 5x5rck2)
+    ///   82 Create4 / 77-78       -- BigPalm, MamFount, Staff
+    ///   0                        -- no effect: the gate, bus, ferry, seaplane, lights, end
+    ///
+    /// ⚠ 0 means NONE and must stay a no-op -- the fixed features that carry 0 are exactly the ones
+    /// a player never builds, so emitting a default there would sparkle the park entrance on load.
+    /// ⚠ Read from the AUTHORED `.sam`. This port has been bitten before by the authored layer
+    /// disagreeing with the compiled DBA that actually ships, so if a building's sparkle ever looks
+    /// wrong, that disagreement is the first thing to check -- per field, not per file.</summary>
+    public int CreateParticleEffect => Field("Info.CreateParticleEffect");
+    public int DestroyParticleEffect => Field("Info.DestroyParticleEffect");
+    int Field(string key) => Fields.TryGetValue(key, out var raw)
+        && int.TryParse(raw.Trim(), out var n) ? n : 0;
+
     /// <summary>The `Engine*Override` fields of a fixed feature's `.sam`. `Gates.sam` ships once
     /// per world and the numbers differ per park:
     ///   JUNGLE 45,16 6x3 · SPACE 45,15 6x4 · HALLOW 45,16 6x3 · FANTASY 45,16 6x5

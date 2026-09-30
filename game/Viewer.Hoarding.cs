@@ -98,6 +98,10 @@ public partial class Viewer
         v.State.Lower();
         if (v.State.Shown) GD.Print($"[hoarding] {v.Name}: lowering from p {v.State.Progress:F2}");
         PresentHoarding(v);
+        // ⭐ The repair sparkle, on the same event that drops the fence -- RideService:
+        // "the fence and the repair sparkle go together". The fence was wired; this never was.
+        if (v.Node != null && IsInstanceValid(v.Node))
+            EngineFx(RepairEffectId, v.Node.GlobalPosition, $"repair {v.Name}");
     }
 
     /// <summary>A rendered frame's worth: the park's pausable clock, so a held park holds its fences.</summary>
