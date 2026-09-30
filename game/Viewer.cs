@@ -7418,6 +7418,9 @@ public partial class Viewer : Node3D
     /// says it belongs -- "the fence and the repair sparkle go together" -- so it lands on the same
     /// event that drops the hoarding, not on a second timer that could drift from it.</summary>
     public const int RepairEffectId = 51;
+    /// <summary>`89 Upgrade`: an upgrade finishing drops the SAME fence a repair does, and the
+    /// console has its own effect for it. ⚠ Without this split an upgrade throws the repair spiral.</summary>
+    public const int UpgradeEffectId = 89;
     /// <summary>⭐⭐ WHICH create effect a building throws is DATA, not a constant -- each object's
     /// own `.sam` names it in `Info.CreateParticleEffect`. Master: "keep looking bc its in there
     /// somewhere". It was: 81 for most scenery, 79 for the big rocks, 82 for BigPalm/MamFount/Staff,

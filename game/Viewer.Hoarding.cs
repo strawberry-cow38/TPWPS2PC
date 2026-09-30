@@ -95,13 +95,29 @@ public partial class Viewer
     void OnHoardingLower(ParkRide ride)
     {
         if (ride == null || !_hoardings.TryGetValue(ride.Id, out var v)) return;
+        // ⚠⚠ READ THE KIND BEFORE LOWERING IT. `Lower()` sets the texture back to Closed, so asking
+        // afterwards always answers "Closed" and the reason the fence went up is gone.
+        var was = v.State.Texture;
         v.State.Lower();
         if (v.State.Shown) GD.Print($"[hoarding] {v.Name}: lowering from p {v.State.Progress:F2}");
         PresentHoarding(v);
-        // ⭐ The repair sparkle, on the same event that drops the fence -- RideService:
-        // "the fence and the repair sparkle go together". The fence was wired; this never was.
-        if (v.Node != null && IsInstanceValid(v.Node))
-            EngineFx(RepairEffectId, v.Node.GlobalPosition, $"repair {v.Name}");
+        // ⭐⭐ THE FENCE COMES DOWN FOR MORE THAN ONE REASON, and the effects differ. RideService
+        // says "the fence and the repair sparkle go together" -- true, but an UPGRADE finishing
+        // drops the same fence, and the console has its own `89 Upgrade` for that. The first
+        // version of this threw the repair spiral at both: the mechanic scene fired it TWICE,
+        // once for the repair and once for the upgrade, which is how it was caught.
+        //
+        // ⚠ Condemn and Closed emit NOTHING rather than a guess. A condemned ride keeps its skull
+        // and what the console throws when that fence drops is not read -- and inventing a sparkle
+        // for it would be a made-up effect on a state nobody has looked at.
+        int fx = was switch
+        {
+            HoardingTexture.Hoarding => RepairEffectId,     // 51 Repair -- a mechanic finished
+            HoardingTexture.Upgrade  => UpgradeEffectId,    // 89 Upgrade -- an upgrade installed
+            _ => 0,
+        };
+        if (fx > 0 && v.Node != null && IsInstanceValid(v.Node))
+            EngineFx(fx, v.Node.GlobalPosition, $"{was.ToString().ToLowerInvariant()} {v.Name}");
     }
 
     /// <summary>A rendered frame's worth: the park's pausable clock, so a held park holds its fences.</summary>
