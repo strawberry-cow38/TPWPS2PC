@@ -120,6 +120,21 @@ COVERAGE += '\n' + '\n'.join(['  ok   bounce: the loader writes 0x32 to inst+0xC
                               '  ok   bounce: the get-off window (first 200 ms) peaks at 1.67, well under the 2.30 mid-air'])
 
 
+# The music (MusicChecks.cs): its own statement, for the same merge reason. Real lines from a --music-only run,
+# trimmed; the witnesses are the selector-2 finding and its selector-4 control.
+COVERAGE += '\n' + '\n'.join(['  ok   music: the park writes the guest value as selector 2: 0x151C58 calls 0x111E08',
+                              '  ok   music: the chooser steers on the event\'s own Word12: 0x244E08 writes event+0x12 to rec[0]',
+                              '  ok   music: a parameter lands only where the selector matches: 0x2462A0 compares rec[i]',
+                              '  ok   music: flags 4 | 2 | 0x400 make the graph class: 0x2474A8 calls 0x24C5E0 (vtable 0x371450)',
+                              '  ok   music: park music, event 2 in all four worlds: JUNGLE 6 sets, flags 0x606, Word12 4, top band 90',
+                              '  ok   music: lobby music, event 6 in all four worlds: JUNGLE 3 clips flags 0x206',
+                              '  ok   music: a full park written as selector 2: no slot takes it, the chooser reads 0',
+                              '  ok   music: the control, the same 90 on the event\'s own selector 4 plays the top level and 45 a middle one',
+                              '  ok   music: lobby clips: 0 of 300 follow themselves (0) and all 3 play',
+                              '  ok   music: the first clip of each map decodes as 22050 Hz stereo',
+                              '  ok   music: the lead, re-measured on the 4 of them loud at both ends: median 1153 samples against 1152'])
+
+
 class ClassificationTests(unittest.TestCase):
     def test_staff_family_count_and_witnesses_required(self):
         for text in ('\n'.join(x for x in COVERAGE.splitlines() if 'staff:' not in x),
@@ -157,6 +172,14 @@ class ClassificationTests(unittest.TestCase):
                      COVERAGE.replace('  ok   bounce: the hump:', '  ok   unrelated: the hump:', 1),
                      COVERAGE.replace('the loader writes 1 to inst+0x70', 'the loader writes 0 to inst+0x70'),
                      COVERAGE.replace('4 BOUNCE rides', '3 BOUNCE rides')):
+            self.assertEqual(classify('JUNGLE', 0, text + '\nPASS')['status'], 'missing_coverage')
+        self.assertEqual(classify('JUNGLE', 0, COVERAGE + '\nPASS')['status'], 'pass')
+
+    def test_music_family_count_and_witnesses_required(self):
+        for text in ('\n'.join(x for x in COVERAGE.splitlines() if 'music:' not in x),
+                     COVERAGE.replace('  ok   music: lobby clips:', '  ok   unrelated: lobby clips:', 1),
+                     COVERAGE.replace('written as selector 2: no slot takes it', 'written as selector 2: level 6'),
+                     COVERAGE.replace('the control, the same 90 on the event\'s own selector 4 plays the top level', 'the control: skipped')):
             self.assertEqual(classify('JUNGLE', 0, text + '\nPASS')['status'], 'missing_coverage')
         self.assertEqual(classify('JUNGLE', 0, COVERAGE + '\nPASS')['status'], 'pass')
 

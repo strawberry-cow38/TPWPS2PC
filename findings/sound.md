@@ -560,3 +560,65 @@ implementation not followed here. So the end-of-clip signal comes from the voice
 alongside a sounding one -- but that is an argument from the gate, not a reading of the mixer. If
 the flag is raised early, at a lead-out rather than at silence, clips WOULD overlap and this chain
 would look identical. **Do not call it either way until `0x24F694` or the voice layer is read.**
+
+## ⭐⭐ Music: the park's and the lobby's, and why the park never leaves level 1
+
+Traced 2026-09-30 for strawberry's "music. everywhere". Port: `core/TPW.PS2.Data/MusicSequencer.cs`,
+`game/GameMusic.cs`, `game/Viewer.Music.cs`; checks: `tools/TPW.PS2.ParkSimAudit/MusicChecks.cs` (`--music-only`).
+
+### What plays, and when (READ)
+
+| where | start | map, event | stop |
+|---|---|---|---|
+| park | `0x147D10` -> `0x111AD8` -> `0x111E30(audio, world)`: loads `%sMUSIC/` `MUS`, plays via vt+0x24 | `/AUDIO/{W}/MUSIC/MUSSFX.MAP` event 2 | `0x111F38` stops everything |
+| lobby | `0x2195C0` on Enter (`0x21784C`) and on every record write (`0x218704`, `0x219420`) | `/AUDIO/{W}/LOBBY/LOBMSFX.MAP` event 6, category 0xE, loop arg 1 | `0x219528` (called first by `0x2195C0`) stops all eight lobby handles |
+| front end | nothing | no front-end music map exists on the disc | -- |
+
+The lobby's world comes from the record's world byte: 0 JUNGLE, 1 HALLOWEEN, 2 FANTASY (audio dir 3), 3 SPACE (audio dir
+2); 4 and up play nothing. A move inside one world still stops and restarts the music, with a fresh clip.
+
+### The event instance (READ)
+
+- **Class** (`0x2474A8`): flags `4 | 2 | 0x400` without `0x10` -> `0x24C5E0`, vtable `0x371450` (the park music,
+  `0x606`); `4 | 2` without `0x400`/`0x100` -> `0x24D668`, vtable `0x3718E0` (the lobby, `0x206`).
+- **Init** (`0x244E08`): if the event's Word12 (+0x12) is non-zero, a 16-byte record: bytes 0..3 selectors, 4..7
+  values, `rec[0] = Word12`. Flag `0x200` (or the caller's loop argument) sets instance bit 8.
+- **Clip end** (`0x24D538`, slot +0x0C in both classes): set step (+0x74, arg 1), clip pick (+0x7C, arg 1), start.
+- **Set step**: graph class `0x24C590` -> `0x24C1F0(rec[4])` (`SfxEventMachine`); no record -> stop. Other class
+  `0x245D10`: one set -> set 0.
+- **Clip pick** `0x245A88`: `r = rotl(rng, 19) >> 16`, the first clip whose cumulative threshold holds `r`; with the
+  flag and 3+ clips, a repeat of the last clip becomes the next index. If no threshold holds `r` it returns 0 and the
+  music stops (possible where a set's last threshold is under 0xFFFF).
+- **Parameter write** `0x2462A0`: `for i in 0..3: if rec[i] == selector: rec[4+i] = value`.
+
+### ⭐⭐⭐ The guest knob misses
+
+`0x151C00` writes `guests * 90 / 100` through `0x111E08`, which is `0x111D40(audio, DAT_002AC178, **2**, v)`
+(`addiu a2, zero, 2` at `0x111E20`). Every world's music event has **Word12 = 4**, and every music set's +0x16/+0x1A
+bytes are zero, so the record is `{4, 0, 0, 0}` and selector 2 matches nothing. `rec[4]` stays at the allocation's
+zero; the only other writes to it are the chooser's own "no band -> 0x7F" (`0x24C3AC`, `0x24F68C`); the three
+selector-4 call sites (`0x20376C`, `0x203BB4`, `0x204618`) pass a track-ride car's handle. The music handle is a
+plain voice, not a composite: the composite path needs a `MUS.eng`, and the only `.ENG` files on the disc are
+`RIDES/GRC.ENG` and `RIDES/WTR.ENG`.
+
+So the chooser reads 0, the first band (0..14 jungle, 0..12 fantasy, 0..18 hallow/space) is taken from every set, and
+**the park plays level 1 for as long as it runs**. The levels were authored for the knob -- the top band ends at
+exactly 90 in all four worlds, the `* 90 / 100` -- and the knob was wired to the wrong id. The port does what the
+PS2 does; `--music-by-guests` (or `TPW_MUSIC_BY_GUESTS=1`) hands the value to selector 4 and plays the authored
+levels. `MusicChecks` carries both halves: selector 2 leaves 60 clips on level 1 in every world, and the same 90 on
+selector 4 reaches the top level (45 a middle one).
+
+### The clips
+
+All music is MPEG-2 Layer II, 22050 Hz stereo. Every clip decodes 85..130 ms longer than its map's milliseconds:
+one Layer II frame (1152 samples) of codec lead, then frame padding. The lead is measured from the data: a loud edge
+rings symmetrically through the synthesis filter, so `(first + last - length) / 2` over the 316 music clips loud at
+both ends has a median of 1152. The port plays `[1152, 1152 + length)` so stems butt at their authored length.
+⚠ Whether the PS2 plays the padding is not known: the voice-end path that fires slot +0x0C is not traced, and
+`0x244E08` also sets a clip-length + 250 ms deadline that reads like a watchdog.
+
+### Still unknown
+
+- The scheduler between clips (see above), so the gapless seam is the port's choice.
+- `DIPMUSIC` (RSE opcode 0x68) is still recorded as an effect and does nothing.
+- What instance bit 8 does in the voice layer; both music events continue clip to clip through slot +0x0C either way.

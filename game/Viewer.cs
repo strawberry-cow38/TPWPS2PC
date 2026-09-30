@@ -438,6 +438,7 @@ public partial class Viewer : Node3D
             // ⭐ `--staff-test` hires one of each kind through the REAL `ParkStaff.Hire`, so a
             // render of All Staff has somebody on it. ⚠ A harness, not a gameplay path.
             else if (a == "--staff-test") _staffTest = true;
+            else if (a == "--music-by-guests") _musicByGuests = true;
             else if (a == "--graph-demo") _graphDemo = true;
             else if (a.StartsWith("--delete-test=")) _deleteTest = a["--delete-test=".Length..];
             // ⭐ `--benchmark=<seconds>`: measure frame time and what is accumulating, then quit.
@@ -576,6 +577,7 @@ public partial class Viewer : Node3D
         _wantMode ??= Env("TPW_PS2_MODE");
         _wantMap ??= Env("TPW_PS2_MAP");
         _wantSound = Env("TPW_PS2_SOUND");
+        if (Env("TPW_MUSIC_BY_GUESTS") == "1") _musicByGuests = true;
         _wantPlay = Env("TPW_PS2_PLAY");
         _wantImage = Env("TPW_PS2_IMAGE");
         _wantRide ??= Env("TPW_PS2_RIDE");
@@ -2187,6 +2189,8 @@ public partial class Viewer : Node3D
         _burst?.Clear(); _particleObjects.Clear();
         _standingPlaces.Clear(); _standing.Clear();
         if (_terrainModel?.Field == null) return;
+        // ⭐ The park's music, on the same load that rebuilds its sounds (0x147D10 -> 0x111AD8 -> 0x111E30).
+        StartParkMusic();
         if (_pieces == null)
         {
             try
@@ -11887,6 +11891,7 @@ public partial class Viewer : Node3D
         AllocBegin(); StepHoardings(delta); AllocEnd("StepHoardings");
         AllocMark("02 after StepPark/shot");
         AllocBegin(); _sounds?.Step(delta); AllocEnd("sounds.Step");
+        AllocBegin(); _music?.Step(); AllocEnd("music.Step");
         AllocBegin(); _burst?.Step(); AllocEnd("burst.Step");
         AllocBegin(); PresentAdvisor(); AllocEnd("PresentAdvisor");   // the head, the stack, the voice (Viewer.Advisor.cs)
         if (_soundCensus > 0 && _mode == Mode.Park && _parkTicks * ParkSim.TickMilliseconds >= _soundCensus * 1000L)

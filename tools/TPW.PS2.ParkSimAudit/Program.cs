@@ -123,6 +123,12 @@ if (args.Contains("--bounce-only"))
     Console.WriteLine(bad==0 ? "PASS bounce: the loader's defaults, every BOUNCE script's pads on its model, and the ticker's hump" : $"FAIL: {bad}");
     return bad==0?0:1;
 }
+if (args.Contains("--music-only"))
+{
+    MusicChecks.Run(disc, Check);
+    Console.WriteLine(bad==0 ? "PASS music: the park's selector-2 knob against the event's selector 4, every world's two maps, the sequencer and its control, and a decode per map" : $"FAIL: {bad}");
+    return bad==0?0:1;
+}
 if (args.Contains("--hoarding-only"))
 {
     HoardingChecks.Run(disc, Check);
@@ -728,6 +734,7 @@ MechanicChecks.Run(disc, terrain, Wad("DATA"), wad, world, Check);
 HoardingChecks.Run(disc, Check);
 SurfaceSeatChecks.Run(disc, Check);
 BounceChecks.Run(disc, Check);
+MusicChecks.Run(disc, Check);
 ManagementChecks.Run(disc, terrain, Wad("DATA"), wad, world, Check);
 AdvisorChecks.Run(disc, terrain, Wad("DATA"), wad, world, Check);
 Check(looEntry.Entry != null, $"the world ships a lavatory to exercise ({looEntry.Entry?.Path ?? "none found"})");

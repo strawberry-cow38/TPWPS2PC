@@ -162,6 +162,15 @@ REQUIRED_WITNESSES += (
     'ok   bounce: 4 BOUNCE rides',
 )
 
+# The music (MusicChecks.cs, MusicSequencer): 11 on every park -- disc-wide, so the same 11. The witnesses are the
+# finding and its control: the park's guest value, written as the console writes it, never leaves level 1, and
+# the same value on the event's own selector does -- so a sequencer that simply cannot move fails the pair.
+REQUIRED_CHECKS.update({'music': 11})
+REQUIRED_WITNESSES += (
+    'ok   music: a full park written as selector 2: no slot takes it',
+    'ok   music: the control, the same 90 on the event\'s own selector 4 plays the top level',
+)
+
 
 def classify(world: str, raw_exit: int | None, text: str, *, timed_out: bool = False,
              truncated: bool = False, launch_error: str | None = None, terrain: int | None = None) -> dict:
