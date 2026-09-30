@@ -24,6 +24,8 @@ public partial class FrontendScreen : Control
     public static string WorldMovie(int world) => world >= 0 && world < 4 ? WorldMovies[world] : null;
     public event Action<int> LanguageChosen;
     readonly Dictionary<string,ImageTexture> _art = new(StringComparer.OrdinalIgnoreCase);
+    readonly Dictionary<string,Image> _artPixels = new(StringComparer.OrdinalIgnoreCase);
+    Rect2[] _langBands;   // option rows in ART space (0..512), derived from the art itself
     AssetLibrary _lib;
     FontText _font;
     TextDatabase _text;
@@ -106,22 +108,146 @@ public partial class FrontendScreen : Control
                 var done=_bootDone; _bootDone=null; ShowStage(Stage.Idle); done?.Invoke(); break;
         }
     }
+    /// <summary>⭐⭐ THE THREE OPTION ROWS, DERIVED FROM THE ART RATHER THAN GUESSED. The old note
+    /// on _GuiInput was right to refuse invented hotspots -- the words are baked into the .ssh and
+    /// there is no per-item geometry anywhere in the data. But the three language arts are the SAME
+    /// PICTURE with a DIFFERENT ROW HIGHLIGHTED, so the pixels that differ between them ARE the
+    /// rows. LangUK vs LangGER changes English and Deutsch; LangUK vs LangFRE changes English and
+    /// Francais; the union is all three, top to bottom, which is `LanguageIndex` order.
+    ///
+    /// ⚠ So this is measured off the shipped art every run, not a rect I read off a screenshot and
+    /// typed in. If the art is ever replaced the hotspots follow it, and if the art is missing this
+    /// returns empty and the mouse simply does nothing rather than selecting a guessed band.</summary>
+    Rect2[] LanguageBands()
+    {
+        if(_langBands!=null) return _langBands;
+        var a=ArtImage($"/Lang/{LanguageArt[0]}.ssh");
+        var b=ArtImage($"/Lang/{LanguageArt[1]}.ssh");
+        var c=ArtImage($"/Lang/{LanguageArt[2]}.ssh");
+        if(a==null||b==null||c==null) return _langBands=Array.Empty<Rect2>();
+        int w=Math.Min(a.GetWidth(),Math.Min(b.GetWidth(),c.GetWidth()));
+        int h=Math.Min(a.GetHeight(),Math.Min(b.GetHeight(),c.GetHeight()));
+        // Per row: does anything differ, and over which x span.
+        var lo=new int[h]; var hi=new int[h]; var any=new bool[h];
+        for(int y=0;y<h;y++){ lo[y]=int.MaxValue; hi[y]=int.MinValue; }
+        for(int y=0;y<h;y++)
+            for(int x=0;x<w;x++)
+            {
+                var pa=a.GetPixel(x,y); var pb=b.GetPixel(x,y); var pc=c.GetPixel(x,y);
+                if(Same(pa,pb) && Same(pa,pc)) continue;
+                // ⚠⚠ THE MAP CHANGES TOO, AND IT IS THE BIGGER DIFFERENCE. Each art carries its own
+                // country silhouette -- UK, Germany, France -- so a plain "what differs" diff
+                // returns one band covering x 0..246, y 48..488: the map, with the three word rows
+                // buried inside it. Measured, not guessed: that is exactly what the first run
+                // reported. So only a change in TEXT counts -- the words are bright white (chosen)
+                // or bright yellow (not chosen), and the map is dark navy.
+                if(!Bright(pa) && !Bright(pb) && !Bright(pc)) continue;
+                any[y]=true; if(x<lo[y])lo[y]=x; if(x>hi[y])hi[y]=x;
+            }
+        // Group consecutive changed rows into bands, ignoring stray single-row noise.
+        var bands=new List<Rect2>(); int start=-1;
+        for(int y=0;y<=h;y++)
+        {
+            bool on=y<h&&any[y];
+            if(on&&start<0) start=y;
+            else if(!on&&start>=0)
+            {
+                int x0=int.MaxValue,x1=int.MinValue;
+                for(int k=start;k<y;k++){ if(lo[k]<x0)x0=lo[k]; if(hi[k]>x1)x1=hi[k]; }
+                if(y-start>=4 && x1>x0) bands.Add(new Rect2(x0,start,x1-x0+1,y-start));
+                start=-1;
+            }
+        }
+        // ⚠ Exactly three or nothing: two bands would mean a pairing assumption I have not earned,
+        // and silently mapping the mouse onto the wrong option is worse than an inert mouse.
+        if(bands.Count!=3)
+        {
+            // ⚠ Say WHAT was found, not just that it was wrong: one band spanning the whole
+            // block means the rows merged and need splitting; a band covering the image means the
+            // arts differ in more than the highlight. The count alone cannot tell those apart.
+            GD.Print($"[frontend] language hotspots: {bands.Count} changed bands, not 3 -- mouse selection off. "
+                   + "bands: " + (bands.Count==0 ? "(none)" :
+                     string.Join(", ", bands.ConvertAll(r=>$"y {r.Position.Y:F0}..{r.Position.Y+r.Size.Y:F0} x {r.Position.X:F0}..{r.Position.X+r.Size.X:F0}"))));
+            return _langBands=Array.Empty<Rect2>();
+        }
+        bands.Sort((p,q)=>p.Position.Y.CompareTo(q.Position.Y));
+        GD.Print("[frontend] language hotspots from art: "
+               + string.Join(", ", bands.ConvertAll(r=>$"[{r.Position.X:F0},{r.Position.Y:F0} {r.Size.X:F0}x{r.Size.Y:F0}]")));
+        return _langBands=bands.ToArray();
+    }
+    /// <summary>A language word: bright, and not the dark navy of the country map. White is the
+    /// chosen row and yellow the others, so both must pass and blue must not.</summary>
+    static bool Bright(Color p)=>(p.R+p.G)*0.5f>0.55f && p.B<0.8f*Mathf.Max(p.R,p.G);
+    static bool Same(Color p,Color q)=>Mathf.Abs(p.R-q.R)<0.02f&&Mathf.Abs(p.G-q.G)<0.02f&&Mathf.Abs(p.B-q.B)<0.02f;
+    Image ArtImage(string name){ Art(name); return _artPixels.TryGetValue(name,out var i)?i:null; }
+
+    /// <summary>Which option the pointer is over, or -1. ⚠ The art is drawn into a 512-square that
+    /// is letterboxed inside the window, so the pointer has to be taken back through the same
+    /// origin/scale _Draw uses -- testing window pixels against art rects would drift with the
+    /// window size and be wrong on every aspect but one.</summary>
+    int LanguageAt(Vector2 mouse)
+    {
+        var bands=LanguageBands();
+        if(bands.Length==0) return -1;
+        var view=GetViewportRect().Size;
+        float scale=Mathf.Min(view.X,view.Y)/512f;
+        if(scale<=0f) return -1;
+        var art=(mouse-(view-Vector2.One*(512*scale))/2)/scale;
+        for(int i=0;i<bands.Length;i++)
+        {
+            var r=bands[i];
+            // ⭐ Full-width rows: the pointer only has to be at the right HEIGHT, which is how a
+            // menu row behaves. Requiring the exact glyph box would make the words feel like
+            // hairlines to hit.
+            if(art.Y>=r.Position.Y-2 && art.Y<=r.Position.Y+r.Size.Y+2) return i;
+        }
+        return -1;
+    }
+
     public void KeyInput(InputEventKey key)
     {
+        // ⭐⭐ ANY KEY SKIPS A CUTSCENE. Master: "any key / mouse button to skip cutscenes".
+        // ⚠ Taken BEFORE the switch, so a movie is not quietly waiting for the two keycodes that
+        // happened to be wired -- a player mashing anything to get past a logo is the case this is
+        // for, and Escape alone did not serve it.
+        if(CurrentStage==Stage.Movie){ Confirm(); return; }
         switch(key.Keycode)
         {
             case Key.Up: case Key.Left: MoveLanguage(-1); break;
             case Key.Down: case Key.Right: MoveLanguage(1); break;
             case Key.Enter: case Key.KpEnter: case Key.Space: Confirm(); break;
-            case Key.Escape: if(CurrentStage==Stage.Movie) Confirm(); break;
         }
     }
     public override void _GuiInput(InputEvent input)
     {
-        // No guessed hotspots over the baked language art. Keyboard selects that screen.
-        // A PC click may advance legal/skip a movie; main-menu rows have their own hit tests.
-        if(input is InputEventMouseButton {Pressed:true,ButtonIndex:MouseButton.Left}
-            && CurrentStage is Stage.Movie or Stage.Legal) Confirm();
+        // ⭐⭐ MOUSE ON THE LANGUAGE SCREEN. The old note here refused invented hotspots over the
+        // baked art, and it was right to -- so the rows are DERIVED from the art instead (see
+        // LanguageBands). Hover highlights, click picks. Master: "add mouse hover n click
+        // functionality to the language select screen".
+        //
+        // ⭐ Hover needs no new drawing: the highlight IS the art, so moving LanguageIndex under
+        // the pointer repaints the selected row for free and hover and keyboard cannot disagree.
+        if(CurrentStage==Stage.Language)
+        {
+            if(input is InputEventMouseMotion motion)
+            {
+                int over=LanguageAt(motion.Position);
+                if(over>=0 && over!=LanguageIndex){ LanguageIndex=over; QueueRedraw(); }
+            }
+            else if(input is InputEventMouseButton {Pressed:true,ButtonIndex:MouseButton.Left} click)
+            {
+                int on=LanguageAt(click.Position);
+                // ⚠ A click OFF the rows does nothing. Confirming whatever happened to be
+                // selected would turn a misclick on the map into a language choice.
+                if(on>=0){ LanguageIndex=on; QueueRedraw(); Confirm(); }
+            }
+            AcceptEvent(); return;
+        }
+        // ⭐⭐ ANY MOUSE BUTTON SKIPS A CUTSCENE, not just the left one. Master: "any key /
+        // mouse button to skip cutscenes". Legal keeps its click-to-advance as before.
+        if(input is InputEventMouseButton {Pressed:true} button
+            && (CurrentStage==Stage.Movie || (CurrentStage==Stage.Legal && button.ButtonIndex==MouseButton.Left)))
+            Confirm();
         AcceptEvent();
     }
     public void PlayMovie(string stem, Action continuation)
@@ -187,7 +313,9 @@ public partial class FrontendScreen : Control
             if(bytes!=null)
             {
                 var ssh=new Ssh(bytes);
-                image=ImageTexture.CreateFromImage(Image.CreateFromData(ssh.Width,ssh.Height,false,Image.Format.Rgba8,ssh.Pixels));
+                var img=Image.CreateFromData(ssh.Width,ssh.Height,false,Image.Format.Rgba8,ssh.Pixels);
+                _artPixels[name]=img;
+                image=ImageTexture.CreateFromImage(img);
             }
             else GD.PrintErr($"[frontend] missing FRONTEND.WAD{name}");
         }
@@ -215,7 +343,12 @@ public partial class FrontendScreen : Control
         if(CurrentStage==Stage.Language)
         {
             // Explicit PC navigation hint, not an invented console widget/hotspot.
-            var hint=_font.Render("Up/Down: language   Enter: continue");
+            // ⚠ It only offers the mouse when the hotspots actually derived from the art. If the
+            // art is missing the mouse does nothing, and a hint promising it would be a lie on
+            // screen -- the one place a wrong instruction is unmissable.
+            var hint=_font.Render(LanguageBands().Length==3
+                ? "Up/Down or mouse: language   Enter or click: continue"
+                : "Up/Down: language   Enter: continue");
             float s=Mathf.Min(scale*.55f,view.X/Mathf.Max(1,hint.GetWidth()));
             var size=hint.GetSize()*s;
             DrawTextureRect(hint,new Rect2(new Vector2((view.X-size.X)/2,view.Y-size.Y-8),size),false);
