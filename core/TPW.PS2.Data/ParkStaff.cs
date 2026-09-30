@@ -317,6 +317,9 @@ public sealed partial class ParkStaff
     /// object, count-1, active → free-list head.</summary>
     void FreeMember(StaffMember member)
     {
+        // ⚠⚠ Hand back the gate staging count first. A guard fired while staged used to keep it
+        // for ever, and one stuck count deadlocks the bus against the crossing -- see GateForget.
+        GateForget(member);
         member.Release();
         RouteRequests.Cancel(member);
         _mapList.Remove(member);                                          // 0x14DAC0

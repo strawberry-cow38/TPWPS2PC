@@ -96,7 +96,12 @@ public partial class Viewer : Node3D
     /// <summary>⚠ The console turns the cloud heading over time and the rate is NOT read
     /// (findings/sky.md), so the port holds it at the initial pair's own direction:
     /// atan2(0.0037, 0.0067) from `0x231848`.</summary>
-    const float SkyWindHeading = 0.5045f;
+    /// <summary>⭐⭐ ONE WIND for the whole park, and it MOVES. Was `const float SkyWindHeading =
+    /// 0.5045f` -- a compile-time constant feeding the clouds, while the flags had a
+    /// `WindDegrees` nothing ever wrote. Master: "does the wind direction for the flags actually
+    /// ever change?" It never did, and the two did not even agree with each other. See
+    /// <see cref="Wind"/> for the console's own arithmetic.</summary>
+    readonly Wind _wind = new();
     /// <summary>Kept so the sky can be taken away outside park mode and put back without a rebuild.
     /// ⚠ WorldEnvironment is a plain Node, so it has no Visible to toggle.</summary>
     Godot.Environment _skyEnv;
@@ -11906,11 +11911,20 @@ public partial class Viewer : Node3D
             _wantWeather = null;
             GD.Print($"[weather] --weather={ww}: {_weather.Set(_lib, ww, _cam.GlobalPosition)}");
         }
+        // ⭐⭐ THE WIND IS ITS OWN THING, stepped before either consumer and OUTSIDE the sky's
+        // guard. ⚠ It was briefly inside it, which would have frozen the flags in any park whose
+        // archive has no `/Sky/` folder -- the sky is allowed to be absent (SkyDome returns null
+        // and says that is not an error), and the flags are not the sky's dependent.
+        if (_mode == Mode.Park)
+        {
+            _wind.Step(delta);
+            _flags.WindDegrees = Mathf.RadToDeg(_wind.Heading);
+        }
         if (_skyMat != null && _mode == Mode.Park)
         {
             AllocBegin();
             SkyDome.Step(_skyMat, ref _skyDrift, delta,
-                         _weather.Current == Weather.Kind.None ? 0f : 1f, SkyWindHeading);
+                         _weather.Current == Weather.Kind.None ? 0f : 1f, _wind.Heading);
             AllocEnd("SkyDome.Step");
         }
         // ⚠ The camera is placed FIRST, before any early return. It used to sit below the capture
@@ -12258,6 +12272,7 @@ public partial class Viewer : Node3D
         { if (e is InputEventMouse) GetViewport()?.SetInputAsHandled(); return; }
         // 0x1817C0(1): a modal advisor message holds the pad -- the buttons that drive the tools included.
         if (AdvisorPadLocked && e is InputEventMouseButton) { GetViewport()?.SetInputAsHandled(); return; }
+        if (_lobbyMode && e is InputEventMouseMotion lmm) { LobbyMouseMoved(lmm.Position); return; }
         if (e is InputEventMouseMotion mm)
         {
             // ⭐ The highlight follows the POINTER while the menu is up -- master: "the blue text
@@ -12307,6 +12322,17 @@ public partial class Viewer : Node3D
                 float k = _dist * 0.0016f;
                 _focus += b.X * -mm.Relative.X * k + b.Y * mm.Relative.Y * k;
             }
+        }
+        // ⭐⭐ THE LOBBY OWNS THE MOUSE WHOLE, and answers before any of the park paths.
+        // Master: "the lobby doesnt have mouse support for selecting a park/switching between
+        // them". Nothing below this applies there -- the wheel is already refused, orbit and pan
+        // are already refused, and there are no tools -- so a left release in the lobby cannot be
+        // the end of a camera drag and is always a click. Returning here keeps that true instead
+        // of threading `!_lobbyMode` through another five branches.
+        if (_lobbyMode && e is InputEventMouseButton lmb)
+        {
+            if (lmb.ButtonIndex == MouseButton.Left && !lmb.Pressed) LobbyClicked(lmb.Position);
+            return;
         }
         if (e is InputEventMouseButton mb)
         {

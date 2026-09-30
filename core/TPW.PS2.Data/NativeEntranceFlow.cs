@@ -185,6 +185,12 @@ public sealed class NativeEntranceFlow
     public void StageMember() => StagingPending++;
     /// <summary>`0x1532B0` from a guard's crossing leg: P--, R++.</summary>
     public void CrossMember() { StagingPending--; EpisodeProcessed++; }
+    /// <summary>⭐ Give back a staging count WITHOUT counting a crossing -- the member left the gate
+    /// rather than crossing it. The same shape as <c>Forget</c>'s release for this class's own
+    /// entries (`if (e.StageCounted) StagingPending--`), which exists for exactly this reason: a
+    /// count that is taken and never given back holds the crossing shut for good, because E clears
+    /// only on `P == 0`. ⚠ EpisodeProcessed is deliberately NOT touched: nobody crossed.</summary>
+    public void UnstageMember() { StagingPending--; }
     /// <summary>The coordinator's event 9 to the guard list (`0x14BCC0` over `0x14D228`), raised in the
     /// same pass as the guests' and only when it sends theirs. The receiver must not mutate this flow.</summary>
     public Action? MemberEvent9 { get; set; }
