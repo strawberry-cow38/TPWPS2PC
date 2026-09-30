@@ -550,6 +550,11 @@ public partial class Viewer : Node3D
                 if (f.Length > 1) int.TryParse(f[1], out _fxBurstEvery);
                 if (f.Length > 2) int.TryParse(f[2], out _fxBurstNode);
             }
+            // `--fx-up`: fire the burst the way the ENGINE effects do -- no direction, so the
+            // record's own velocity runs. See RideFilmFrame.
+            else if (a == "--fx-up") _fxUp = true;
+            else if (a.StartsWith("--fx-slow=")) float.TryParse(a["--fx-slow=".Length..],
+                System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out _fxSlow);
             else if (a.StartsWith("--guest-ride=")) _guestRide = a["--guest-ride=".Length..];
             else if (a == "--type-audit") _typeAudit = true;
             else if (a == "--ghost-press") { _ghostTest = true; _ghostPress = true; }
@@ -5342,6 +5347,21 @@ public partial class Viewer : Node3D
     void RideFilmStart()
     {
         _filmFrame = 0; _filmStartMs = _parkTicks * ParkSim.TickMilliseconds;
+        // ⚠⚠ `--fx-slow=F` IS AN INSTRUMENT SETTING, NOT A LOOK. The film renders at whatever the
+        // scene manages -- 8 to 16 fps for a full park -- while a particle emitter advances on the
+        // ENGINE's delta, so at 8 fps Repair's birth point jumps 71 degrees between frames and its
+        // 5.9 revolutions are sampled about thirty times. The helix is there and the film cannot
+        // resolve it. Slowing the engine clock samples the same motion finely enough to SEE, at
+        // the cost of a clip that plays in slow motion; it changes nothing about the effect. ⚠ The
+        // park itself is stepped by a fixed `1/_filmFps` per frame and is NOT affected, so the
+        // ride keeps its own pace while the sparkles are drawn out -- do not read ride timing off
+        // a slowed film.
+        if (_fxSlow > 0f && _fxSlow != 1f)
+        {
+            Engine.TimeScale = _fxSlow;
+            GD.Print($"[film] --fx-slow={_fxSlow}: engine clock at {_fxSlow:P0}, so a particle "
+                   + $"second takes {1f / _fxSlow:F1} film seconds. PARTICLE TIMING ONLY.");
+        }
         // ⚠ The help panel covered a third of every frame of the first film; a video is not a
         // debugging view.
         if (_panel != null) _panel.Visible = false;
@@ -5372,7 +5392,16 @@ public partial class Viewer : Node3D
             && _scripted.FirstOrDefault().Ride is { } fr)
         {
             var at = NodeWorld(fr.Id, _fxBurstNode, 0x100);
-            var made = at is { } q ? _burst.Emit(_fxBurst, q, NodeWorldDir(fr.Id, _fxBurstNode, 0x100)) : null;
+            // ⚠⚠ `--fx-up` MAKES THE INSTRUMENT MATCH THE THING BEING MEASURED. A direction turns
+            // the record's own velocity off entirely (`Motion`: EVENT 2 fires along the fitting at
+            // DirectionSpeed instead), so filming Repair through the default path showed sparkles
+            // flying SIDEWAYS along node 1's normal -- and the engine effects this harness exists
+            // to check (repair, upgrade, creation) fire through `EngineFx`, which passes NO
+            // direction at all. Filming one and shipping the other is how a fix gets judged
+            // against the wrong picture.
+            var made = at is { } q
+                ? _burst.Emit(_fxBurst, q, _fxUp ? null : NodeWorldDir(fr.Id, _fxBurstNode, 0x100))
+                : null;
             // ⚠ WHERE THE FITTINGS ACTUALLY ARE. Master: "particles emit from behind the head then
             // forward to the nose." That is the symptom `FittingLocal` returning Zero predicts --
             // the spawn lands on the NODE'S ORIGIN rather than the fitting's offset within it --
@@ -5607,6 +5636,8 @@ public partial class Viewer : Node3D
     /// <summary>`--walk-film=N`: instead of one frame, FOLLOW the W walker for N frames at sixty
     /// a second of park time, saving each as `<shot>-fNNNN.png` for ffmpeg -- the clip a gait
     /// needs, since no still can show one. Master: "cant see walking with a pic lol".</summary>
+    bool _fxUp;
+    float _fxSlow;
     int _walkFilm, _filmGuest = -1, _filmFrame, _filmCensusTick;
     Vector3 _filmCensusAt; float _filmYaw;
     /// <summary>Each actor's two ways of standing on its node: the whole kid with its feet at the
@@ -11978,7 +12009,7 @@ public partial class Viewer : Node3D
         AllocMark("02 after StepPark/shot");
         AllocBegin(); _sounds?.Step(delta); AllocEnd("sounds.Step");
         AllocBegin(); _music?.Step(); AllocEnd("music.Step");
-        AllocBegin(); _burst?.Step(); AllocEnd("burst.Step");
+        AllocBegin(); _burst?.Step(delta); AllocEnd("burst.Step");
         AllocBegin(); PresentAdvisor(); AllocEnd("PresentAdvisor");   // the head, the stack, the voice (Viewer.Advisor.cs)
         if (_soundCensus > 0 && _mode == Mode.Park && _parkTicks * ParkSim.TickMilliseconds >= _soundCensus * 1000L)
         {

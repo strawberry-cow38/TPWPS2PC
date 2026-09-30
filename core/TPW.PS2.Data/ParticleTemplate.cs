@@ -168,8 +168,23 @@ public sealed class ParticleTemplate
 
     /// <summary>READ `0x1888a8`: after the volume, the particle is pushed <see cref="RadialOffset"/>
     /// units along <see cref="OffsetAngle"/> in XZ, and `0x1893f8` advances that angle by
-    /// <see cref="OffsetAngularVelocity"/> per tick (mod 4096) -- a spiral. Key and Repair use it;
-    /// the angular velocity is zero on every shipped record.</summary>
+    /// <see cref="OffsetAngularVelocity"/> per tick (mod 4096) -- a spiral. The birth reads the
+    /// angle and the emitter tick moves it on, so successive particles are born at successive
+    /// angles: ONE MARCHING BIRTH POINT, not a ring.
+    ///
+    /// ⚠⚠ THIS SUMMARY USED TO END "the angular velocity is zero on every shipped record", WHICH
+    /// IS FALSE, and it is why nothing ever read these three fields: a field documented as always
+    /// zero looks like dead data. The census says the opposite -- every record that carries a
+    /// <see cref="RadialOffset"/> at all also carries a non-zero velocity, all three of them:
+    ///
+    ///   51 `Repair`      radius 625 (0.98 cells), 200/tick -- a turn every 0.64s
+    ///   54 `RepairData`  radius 625 (0.98 cells), 150/tick -- a turn every 0.85s
+    ///   87 `Key`         radius 311 (0.49 cells), 150/tick -- a turn every 0.85s
+    ///
+    /// The sentence even contradicted itself, naming Key and Repair as the users in the clause
+    /// before. Master saw the consequence from the other end: the repair effect "just makes a long
+    /// straight line of sparkles" -- 121 sparkles, one per tick, all born at one point because the
+    /// offset was never applied. <see cref="RideParticles"/> orbits the emitter now.</summary>
     public int RadialOffset => I16(0xc4);
     public int OffsetAngle => I32(0x54);
     public int OffsetAngularVelocity => I32(0xc8);

@@ -117,7 +117,37 @@ public partial class Viewer
             _ => 0,
         };
         if (fx > 0 && v.Node != null && IsInstanceValid(v.Node))
-            EngineFx(fx, v.Node.GlobalPosition, $"{was.ToString().ToLowerInvariant()} {v.Name}");
+            EngineFx(fx, RideEffectPoint(ride, v.Node), $"{was.ToString().ToLowerInvariant()} {v.Name}");
+    }
+
+    /// <summary>⭐⭐ WHERE A RIDE'S OWN EFFECT GOES: the middle of its FOOTPRINT, not its node's
+    /// origin. `Park`'s placement note says it outright -- a ride is ANCHORED and the origin is not
+    /// the middle -- so firing at <c>Node.GlobalPosition</c> hung Repair's spiral off a CORNER.
+    /// Repair's radius is a fixed 0.98 cells, so on anything bigger than about 2x2 the column comes
+    /// up beside the ride instead of through it, and the bigger the ride the further out it sits.
+    ///
+    /// ⭐ Creation and demolition were already doing this; repair and upgrade were the odd ones out.
+    /// The X and Z expression here is THEIRS, copied unchanged rather than re-derived, because the
+    /// park's cell-to-world mapping is not something to have two opinions about.
+    ///
+    /// ⚠ Y comes from the NODE, not from the footprint. The other two pass a park-space centre whose
+    /// Y is 0, which is right on a flat plot and sea level on a raised one; the placed node is
+    /// already standing at the correct ground height, so taking it from there costs nothing and is
+    /// right either way.
+    ///
+    /// ⚠ Falls back to the node's own position when the placed record cannot be found -- worse
+    /// placement beats no sparkle, and that is the pre-existing behaviour rather than a new guess.</summary>
+    Vector3 RideEffectPoint(ParkRide ride, Node3D node)
+    {
+        var at = node.GlobalPosition;
+        if (_park == null || ride == null) return at;
+        foreach (var q in _park.Placed)
+        {
+            if (q.Id != ride.Id) continue;
+            var c = Cell(ParkPaths.Centre(new ParkCell(q.X + q.Fp.Width / 2, q.Y + q.Fp.Height / 2)));
+            return new Vector3(c.X, at.Y, c.Z);
+        }
+        return at;
     }
 
     /// <summary>A rendered frame's worth: the park's pausable clock, so a held park holds its fences.</summary>

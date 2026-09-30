@@ -33,6 +33,38 @@ public sealed class RideParticles
     readonly AssetLibrary _wad;
     readonly Dictionary<int, (Texture2D Sheet, int Frames)> _sheets = new();
     readonly List<(CpuParticles3D Node, ulong Until)> _live = new();
+    /// <summary>⭐⭐ THE BIRTH POINT ORBITS -- master's "long straight line of sparkles".
+    ///
+    /// `0x1888a8` pushes each newborn <see cref="ParticleTemplate.RadialOffset"/> units along
+    /// <see cref="ParticleTemplate.OffsetAngle"/> in XZ, and the emitter tick `0x1893f8` advances
+    /// that angle by <see cref="ParticleTemplate.OffsetAngularVelocity"/> every 31 ms. So the place
+    /// particles are born from SWEEPS ROUND A CIRCLE while they rise: a helix. `Repair` emits one
+    /// sparkle per tick for 120 ticks at 200/4096 of a turn per tick -- 121 sparkles over 5.9
+    /// revolutions of a 0.98-cell circle, which is the spiral master could see was missing.
+    ///
+    /// ⚠⚠ NOTHING IN THE TREE READ THE THREE FIELDS, so all 121 were born at ONE POINT with 0
+    /// degrees of spread and no speed jitter -- identical motion from an identical place is a
+    /// LINE, which is exactly what he got. They were skipped because the decoder's own summary
+    /// claimed the angular velocity was zero on every shipped record; it is non-zero on all three
+    /// records that use a radial offset. See `ParticleTemplate.RadialOffset`.
+    ///
+    /// ⭐ DONE BY MOVING THE EMITTER, NOT BY SHAPING THE EMISSION. A Godot emission shape hands out
+    /// RANDOM points, which would give a cylinder of sparkles; the console's birth point is a
+    /// single marching one. Moving the node reproduces it exactly -- each frame's newborns appear
+    /// wherever the node is now -- and it needs <see cref="CpuParticles3D.LocalCoords"/> OFF so the
+    /// ones already born stay where they were born instead of being dragged round with it.
+    ///
+    /// ⚠ THE RADIUS AND THE RATE ARE THE RECORD'S; THE SENSE IS NOT. Which of X and Z takes the
+    /// sine is not in the disassembly notes -- `findings/particles.md` records the sine table and
+    /// the 12-bit turn, not the axis pair -- so whether the helix twists with the clock or against
+    /// it is this file's choice, made to match the port's usual handedness flip (console +Z is our
+    /// -Z). Said plainly because every other number here is measured.</summary>
+    readonly List<(CpuParticles3D Node, Vector3 Centre, float Radius, float RadPerSec, float Angle)> _orbit = new();
+
+    /// <summary>The record's radial offset as a displacement, for an angle in RADIANS.</summary>
+    static Vector3 Orbit(float radius, float radians) =>
+        radius == 0f ? Vector3.Zero
+        : new Vector3(radius * Mathf.Cos(radians), 0f, -radius * Mathf.Sin(radians));
     static Texture2D _dot;
 
     public RideParticles(Node3D parent, ParticleLibrary library, AssetLibrary wad = null)
@@ -618,9 +650,30 @@ public sealed class RideParticles
         p.AnimOffsetMin = p.AnimOffsetMax = 0f;
         // ⚠⚠ POSITION BEFORE AddChild. A one-shot emits at the transform it had when it entered
         // the tree, so setting it afterwards puts the whole burst at the origin.
-        p.Position = where;
+        // ⭐⭐ THE RADIAL OFFSET, AND THE ANGLE IT SWEEPS (see _orbit). A record with no offset is
+        // unaffected: `Orbit` returns zero and nothing is registered, which is 102 of the 105.
+        float orbitRadius = t.RadialOffset / (float)ParticleTemplate.PositionUnitsPerCell;
+        float orbitAngle = t.OffsetAngle / (float)ParticleTemplate.AngleUnitsPerTurn * Mathf.Tau;
+        float orbitRate = t.OffsetAngularVelocity / (float)ParticleTemplate.AngleUnitsPerTurn
+                        * Mathf.Tau / (ParticleTemplate.TickMilliseconds / 1000f);
+        if (orbitRadius != 0f)
+            GD.Print($"[fx] {e.Name}: radial offset {t.RadialOffset} ({orbitRadius:F3} cells) at "
+                   + $"angle {t.OffsetAngle}/4096, sweeping {t.OffsetAngularVelocity}/tick = "
+                   + $"{Mathf.RadToDeg(orbitRate):F0} deg/s"
+                   + (orbitRate != 0f
+                        ? $" -- a turn every {Mathf.Tau / Mathf.Abs(orbitRate):F2}s, "
+                          + $"{Mathf.Abs(orbitRate) * emitterSeconds / Mathf.Tau:F1} over the emission"
+                        : " -- STATIC (no sweep)"));
+        // ⚠⚠ POSITION BEFORE AddChild, as below -- and the offset has to be IN that position, not
+        // applied on the first Step, or the burst's first particles come out of the centre.
+        p.Position = where + Orbit(orbitRadius, orbitAngle);
+        // ⚠ The already-born must NOT follow the emitter round; see _orbit. Godot's default is
+        // already false, stated because the whole effect depends on it.
+        p.LocalCoords = false;
         _root.AddChild(p);
         p.Emitting = true;
+        if (orbitRadius != 0f && orbitRate != 0f)
+            _orbit.Add((p, where, orbitRadius, orbitRate, orbitAngle));
         // ⚠ The cull deadline is WALL time while the particle ages on SCALED time, so slow motion
         // would free the probe mid-flight -- the one thing that would make the fix invisible.
         // ⚠⚠ AND THE CULL MUST NOT KILL IT. The deadline is one particle-lifetime, which is right
@@ -661,8 +714,23 @@ public sealed class RideParticles
     static (int, int, int, int) ContinuousKey(int id, Vector3 at) =>
         (id, Mathf.RoundToInt(at.X * 4), Mathf.RoundToInt(at.Y * 4), Mathf.RoundToInt(at.Z * 4));
 
-    public void Step()
+    /// <param name="delta">⚠ The SCALED frame time, the clock the particles themselves age on --
+    /// the orbit has to slow down with them under slow motion or the helix shears. Required rather
+    /// than defaulted so a new caller cannot silently freeze the sweep.</param>
+    public void Step(double delta)
     {
+        // ⭐ Sweep the orbiting emitters before the cull, so a node freed this frame is dropped
+        // from both lists in the same pass. See _orbit for what this is and why it moves the node.
+        for (int i = _orbit.Count - 1; i >= 0; i--)
+        {
+            var o = _orbit[i];
+            if (o.Node == null || !GodotObject.IsInstanceValid(o.Node) || !o.Node.IsInsideTree())
+            { _orbit.RemoveAt(i); continue; }
+            float angle = o.Angle + o.RadPerSec * (float)delta;
+            o.Node.Position = o.Centre + Orbit(o.Radius, angle);
+            _orbit[i] = (o.Node, o.Centre, o.Radius, o.RadPerSec, angle);
+        }
+
         ulong now = Time.GetTicksMsec();
         for (int i = _live.Count - 1; i >= 0; i--)
         {
@@ -696,5 +764,6 @@ public sealed class RideParticles
         _live.Clear();
         foreach (var node in _continuous.Values) if (GodotObject.IsInstanceValid(node)) node.QueueFree();
         _continuous.Clear();
+        _orbit.Clear();
     }
 }
