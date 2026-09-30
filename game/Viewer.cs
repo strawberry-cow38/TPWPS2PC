@@ -3364,6 +3364,10 @@ public partial class Viewer : Node3D
         catch (Exception e) { GD.PrintErr($"[fx] no particle library: {e.Message}"); return null; }
     }
 
+    /// <summary>(ride, opcode, kind) already reported as unhandled, so the census names each
+    /// one once instead of once per timeline hit.</summary>
+    readonly HashSet<(string, RseOpcode, int)> _unhandledFx = new();
+
     void OnRideEffect(ParkRide ride, AnimatedModel model, RsePreviewHost.Effect fx)
     {
         var a = fx.Arguments;
@@ -3391,10 +3395,32 @@ public partial class Viewer : Node3D
                         if (!_particleObjects.TryGetValue((ride.Id, a[3]), out var objs)) _particleObjects[(ride.Id, a[3])] = objs = new();
                         objs.Add((a[2], objAt));
                     }
-                    GD.Print($"[fx] {fx.Time / 1000.0,7:F1}s {ride.Name,-22} {fx.Opcode,-7} kind {a[0]} node {a[1],3} id {a[2],3} -> {made?.Name ?? "(no fitting or no such effect)"}"
+                    // ⚠⚠ THE TWO FAILURES ARE NOT THE SAME BUG AND MUST NOT SHARE A MESSAGE.
+                    // "no fitting" means the MODEL has no node at that id in space 0x100 -- a
+                    // placement/data question. "no such effect" means the node resolved and the
+                    // particle LIBRARY had no template with that id -- a content question. Master:
+                    // "we are missing a lot"; a census that cannot tell those apart cannot say
+                    // which kind of missing, and they have different fixes.
+                    string why = made != null ? made.Name
+                               : at == null ? "MISS: no fitting (node " + a[1] + " not in space 0x100)"
+                               : "MISS: no such effect id " + a[2] + " in the library";
+                    GD.Print($"[fx] {fx.Time / 1000.0,7:F1}s {ride.Name,-22} {fx.Opcode,-7} kind {a[0]} node {a[1],3} id {a[2],3} -> {why}"
                            + (at is { } q ? $" at ({q.X:F1},{q.Y:F1},{q.Z:F1})" : ""));
                     break;
                 }
+                // ⭐⭐ AN EVENT KIND WE DO NOT HANDLE LEAVES NO TRACE, and that is exactly the
+                // shape of "we are missing a lot": the switch takes kinds 1 and 2 as particles and
+                // the sound groups as sounds, and anything else falls out of it in silence. This
+                // does not invent behaviour for those kinds -- it only refuses to drop them
+                // quietly, so a census can count what the scripts actually ask for.
+                // ⚠ Once per (ride, opcode, kind): these fire on a timeline and would otherwise
+                // fill the log with the same line.
+                case RseOpcode.EVENT or RseOpcode.ADDOBJ when a.Count >= 1
+                     && !(a.Count >= 3 && (a[0] is 1 or 2 || SoundCatalogue.IsSoundGroup(a[0]))):
+                    if (_unhandledFx.Add((ride.Name, fx.Opcode, a[0])))
+                        GD.Print($"[fx] {ride.Name,-22} {fx.Opcode,-7} kind {a[0]} UNHANDLED "
+                               + $"({a.Count} args: {string.Join(",", a)}) -- not a particle kind and not a sound group");
+                    break;
                 case RseOpcode.EVENT or RseOpcode.ADDOBJ when a.Count >= 3 && SoundCatalogue.IsSoundGroup(a[0]):
                 {
                     if (_sounds == null || model?.Root == null || !IsInstanceValid(model.Root)) return;
@@ -7465,6 +7491,45 @@ public partial class Viewer : Node3D
         return System.IO.Path.Combine(dir, stem + suffix + ext);
     }
 
+
+    /// <summary>⭐⭐ ENGINE-TRIGGERED PARTICLES, which this port had none of. Every particle we drew
+    /// came from a script's `EVENT` opcode -- and a census of all four worlds says `51 Repair`,
+    /// `79..82 Create1..4`, `83 Twinkle`, `89 Upgrade`, `97 KeySparkle` and `99 CongratSparkle` are
+    /// requested by NO ride script anywhere. They are the game's own, fired by events the engine
+    /// knows about, so nothing has ever emitted them once. Master: "ride repair is missing a spiral
+    /// of sparkle particles. building creation is missing sparkles."
+    ///
+    /// ⚠ `_burst` is built lazily when a SCRIPTED ride is placed, so it can still be null here --
+    /// a park of unscripted rides would otherwise silently drop these too, which is the same shape
+    /// of bug being fixed.</summary>
+    void EngineFx(int effectId, Vector3 at, string why)
+    {
+        _burst ??= MakeParticles();
+        var made = _burst?.Emit(effectId, at);
+        GD.Print($"[fx] engine {why}: effect {effectId} -> {made?.Name ?? "(no particle library)"} "
+               + $"at ({at.X:F1},{at.Y:F1},{at.Z:F1})");
+    }
+
+    /// <summary>`51 Repair`: the spiral a finished repair throws. ⚠ Fired where RideService already
+    /// says it belongs -- "the fence and the repair sparkle go together" -- so it lands on the same
+    /// event that drops the hoarding, not on a second timer that could drift from it.</summary>
+    public const int RepairEffectId = 51;
+    /// <summary>`89 Upgrade`: an upgrade finishing drops the SAME fence a repair does, and the
+    /// console has its own effect for it. ⚠ Without this split an upgrade throws the repair spiral.</summary>
+    public const int UpgradeEffectId = 89;
+
+    /// <summary>Placement id -> the effect that object throws when it is demolished, from its own
+    /// `.sam` (`Info.DestroyParticleEffect`: 77 Destroy3 for most scenery, 75 Destroy1 for the big
+    /// rocks, 78 for LavSpurt/MamFount). ⚠ Recorded at placement because the definition is only in
+    /// hand there; a delete knows a name and a footprint, not a .sam.</summary>
+    readonly Dictionary<int, int> _destroyFx = new();
+    /// <summary>⭐⭐ WHICH create effect a building throws is DATA, not a constant -- each object's
+    /// own `.sam` names it in `Info.CreateParticleEffect`. Master: "keep looking bc its in there
+    /// somewhere". It was: 81 for most scenery, 79 for the big rocks, 82 for BigPalm/MamFount/Staff,
+    /// and 0 for the fixed features nobody builds. See RideCatalogue.CreateParticleEffect.
+    /// ⚠ So there is no constant here any more. A hardcoded 79 would have been right for three
+    /// rocks and wrong for every other object in the game.</summary>
+
     void StepBuilding(float frames)
     {
         for (int i = _building.Count - 1; i >= 0; i--)
@@ -8317,6 +8382,19 @@ public partial class Viewer : Node3D
         int w = _place.Turned.Width, h = _place.Turned.Height;
         if (!StartScript(ride, _armedRide, built, builtAnim, cx, cy, w, h, queueStub, pathStub, builtMesh)
             && built.Frames > 1) { built.SetFrame(0); _building.Add((built, 0f)); }
+        // ⭐ The creation sparkle, for BOTH paths: a scripted ride builds itself from its own
+        // Create animation and an unscripted one is wound by StepBuilding, but both are "a building
+        // being created" and the console sparkles either way. Placed here, after the placement has
+        // actually succeeded, so a refused build throws nothing.
+        // ⭐ Its DESTROY effect is remembered now, while the definition is in hand. At deletion
+        // all that survives is a name and a footprint, and looking the definition back up by name
+        // would be a second, weaker match for something already known here.
+        int destroyFx = _place.Def?.DestroyParticleEffect ?? 0;
+        if (destroyFx > 0) _destroyFx[ride] = destroyFx;
+        // ⭐ The object names its own create effect; 0 means none and stays none.
+        if ((_place.Def?.CreateParticleEffect ?? 0) is int createFx and > 0)
+            EngineFx(createFx, Cell(ParkPaths.Centre(new ParkCell(cx + w / 2, cy + h / 2))),
+                     $"create {_place.Display ?? "ride"}");
         // ⭐ Its construction fence, hidden until the ride service raises it (Viewer.Hoarding.cs).
         BuildHoarding(ride, _place.Def, built, builtMesh, _place.Display);
         // ⭐ The ground under it goes now that the cells are claimed.
@@ -9532,6 +9610,14 @@ public partial class Viewer : Node3D
         // ⭐⭐ THE QUEUE GOES WITH IT. Master: "deletes the ride including the queue. (but not
         // exit paths + combo entry/exits)" -- ClearQueue takes Kind.Queue cells owned by this
         // ride and leaves Path and Both alone, so the park's walkable network survives.
+        // ⭐⭐ THE DEMOLITION PUFF, the other half of the object's own particle pair. Fired BEFORE
+        // the thing is removed, so its footprint is still there to place the effect on -- after
+        // Remove() the cells are free and the centre is a guess.
+        if (_destroyFx.TryGetValue(p.Id, out int dfx) && dfx > 0)
+            EngineFx(dfx, Cell(ParkPaths.Centre(new ParkCell(p.X + p.Fp.Width / 2,
+                                                             p.Y + p.Fp.Height / 2))),
+                     $"destroy {name}");
+        _destroyFx.Remove(p.Id);
         int queueCells = _paths?.ClearQueue(p.Id) ?? 0;
         // ⭐⭐ AND ITS DOORS. Master: "update the path tiles around, to fix dead connected
         // sprites." AddDoor told the path tool where this ride's entrance and exit were so the
