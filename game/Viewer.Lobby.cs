@@ -43,6 +43,16 @@ public partial class Viewer
     readonly List<Transform3D> _lobbyCams = new();
     Node3D _lobbyBaseRoot;
     LobbyMessageBox _lobbyBox;
+    /// <summary>Each seated park's drawn bounds in `base`'s own space, for mouse picking.
+    /// ⚠ Parallel to <c>_lobbyParks</c> and <c>_lobbyCams</c> and appended in the same place, so
+    /// a model that fails to load drops out of all three together and the model index still lines
+    /// up -- the same assumption <c>LobbyAimCamera</c> already makes when it indexes
+    /// <c>_lobbyCams</c> by <c>ModelIndex</c>.</summary>
+    readonly List<(Vector3 Lo, Vector3 Hi)> _lobbyBounds = new();
+    /// <summary>The model the pointer is over, or -1. Drives nothing but the cursor.</summary>
+    int _lobbyHover = -1;
+    /// <summary>Frames left before the one-shot picker self-check; -1 once it has run.</summary>
+    int _lobbyPickCheck = -1;
     bool _lobbyBoxHasFont;
     UiPanel _lobbyPanel;
     bool _lobbyPrompt;
@@ -160,6 +170,11 @@ public partial class Viewer
         // number, which is why nothing here is indexed by record.
         _lobbyBaseRoot = room.Root;
         _lobbyCams.Clear();
+        // ⚠ All three lists are indexed by MODEL and must empty together: re-entering the lobby
+        // without this appended a second set of bounds to the first set's list and every pick
+        // past the first park would have tested a stale box.
+        _lobbyBounds.Clear();
+        _lobbyHover = -1;
         var fits = _lobbyBaseMesh.Fittings;
         var world = _lobbyBaseMesh.WorldTransforms();
         int seated = 0;
@@ -226,6 +241,10 @@ public partial class Viewer
             else GD.PrintErr($"[lobby] {LobbySlots.ModelNames[model]}: no {LobbySlots.CameraMask:x} camera node");
             _lobbyCams.Add(camAt);
             var (plo, phi) = Park.DrawnBounds(drawn.Root, inParent: true);
+            // ⭐ Kept for the mouse: these are in `base`'s OWN space, which is where the ray gets
+            // taken to rather than inflating eight boxes into world space. Parallel to
+            // `_lobbyParks` and `_lobbyCams`, all three appended together in this one place.
+            _lobbyBounds.Add((plo, phi));
             GD.Print($"[lobby]   {LobbySlots.ModelNames[model],-9} drawn x {plo.X:F0}..{phi.X:F0} "
                    + $"z {plo.Z:F0}..{phi.Z:F0}");
         }
@@ -317,6 +336,121 @@ public partial class Viewer
         // ("Lost Kingdom:\nPrehistoric World"), which is exactly why the box has a second line and
         // sizes itself differently when one is present.
         ShowLobbyBox(_lobbyRecord);
+    }
+
+    /// <summary>⭐⭐ THE PARK UNDER THE POINTER, as a MODEL index, or -1.
+    ///
+    /// Master: "the lobby doesnt have mouse support for selecting a park/switching between them".
+    ///
+    /// ⭐ A RAY AGAINST THE PARKS, not "nearest island to the cursor". The eight are seated round
+    /// an island at wildly different depths, so a screen-distance test picks the one whose CENTRE
+    /// projects nearest and that is regularly not the one being pointed at. The ray answers the
+    /// question actually being asked, and the nearest hit along it wins when two overlap.
+    ///
+    /// ⭐ The ray is taken INTO `base`'s space rather than the bounds being pushed out into the
+    /// world: `Park.DrawnBounds(.., inParent: true)` already gave them in that frame, and
+    /// transforming one ray is exact where transforming eight boxes inflates every one of them
+    /// (an axis-aligned box through a rotation is no longer axis-aligned, and `base`'s frame is
+    /// both rotated and MIRRORED -- see LobbyAimCamera).
+    ///
+    /// ⚠ Returns a MODEL index, which is not a record index. Everything the selection touches is
+    /// keyed by RECORD; <see cref="LobbyRecordOfModel"/> is the way back and the two orderings are
+    /// genuinely different (findings/lobby-menu.md).</summary>
+    int LobbyPick(Vector2 mouse)
+    {
+        if (_cam == null || !IsInstanceValid(_cam)) return -1;
+        if (_lobbyBaseRoot == null || !IsInstanceValid(_lobbyBaseRoot)) return -1;
+        var inv = _lobbyBaseRoot.GlobalTransform.AffineInverse();
+        var from = inv * _cam.ProjectRayOrigin(mouse);
+        var dir = inv.Basis * _cam.ProjectRayNormal(mouse);
+        int best = -1; float bestT = float.MaxValue;
+        for (int i = 0; i < _lobbyBounds.Count && i < _lobbyParks.Count; i++)
+        {
+            var m = _lobbyParks[i];
+            if (m?.Root == null || !IsInstanceValid(m.Root)) continue;
+            var (lo, hi) = _lobbyBounds[i];
+            if (!RayHitsBox(from, dir, lo, hi, out float t) || t >= bestT) continue;
+            bestT = t; best = i;
+        }
+        return best;
+    }
+
+    // ⚠ The slab test is `Viewer.RayHitsBox` (Viewer.cs) -- the one the PARK picker already uses.
+    // I wrote a second copy here and the compiler caught it; a private duplicate of a pick test is
+    // exactly the thing that drifts from the one it was cloned from.
+
+    /// <summary>Model index -> record index. ⚠⚠ The two orderings are NOT the same thing (model
+    /// load order vs the by-world record order), so this inverts <c>ModelIndex</c> rather than
+    /// assuming they agree -- they agree for no park at all past the first.</summary>
+    int LobbyRecordOfModel(int model)
+    {
+        if (_lobbySlots == null || model < 0) return -1;
+        for (int r = 0; r < _lobbySlots.All.Count; r++)
+            if (_lobbySlots.All[r].IsPark && _lobbySlots.ModelIndex(r) == model) return r;
+        return -1;
+    }
+
+    /// <summary>⭐ Select a record the way a d-pad move would: same camera glide, same name box.
+    /// Going nowhere is not a selection -- re-showing the box would restart its grow tween and
+    /// make a stationary pointer flicker.</summary>
+    void LobbySelectRecord(int record)
+    {
+        if (_lobbySlots == null || record < 0 || record >= _lobbySlots.All.Count) return;
+        if (!_lobbySlots.All[record].IsPark || record == _lobbyRecord) return;
+        _lobbyRecord = record;
+        LobbyReport();
+        LobbyAimCamera();
+        ShowLobbyBox(_lobbyRecord);
+    }
+
+    /// <summary>⭐⭐ THE POINTER MOVED. In the prompt it tracks the buttons; on the island it only
+    /// remembers what is under the cursor so the click knows, and sets the hand cursor so the
+    /// parks read as clickable at all.
+    ///
+    /// ⚠ It does NOT select on hover. Selecting flies the camera, and a camera that chases the
+    /// mouse across the island makes the lobby unusable -- master had me take free mouse control
+    /// OUT of here for the same reason.</summary>
+    void LobbyMouseMoved(Vector2 mouse)
+    {
+        if (!_lobbyMode) return;
+        if (_lobbyPrompt)
+        {
+            int b = _lobbyBox?.ButtonAt(mouse) ?? -1;
+            _lobbyBox?.SetButton(b);
+            Input.SetDefaultCursorShape(b >= 0 ? Input.CursorShape.PointingHand : Input.CursorShape.Arrow);
+            return;
+        }
+        _lobbyHover = LobbyPick(mouse);
+        Input.SetDefaultCursorShape(_lobbyHover >= 0 && LobbyRecordOfModel(_lobbyHover) >= 0
+            ? Input.CursorShape.PointingHand : Input.CursorShape.Arrow);
+    }
+
+    /// <summary>⭐⭐ A LEFT CLICK. Three gestures, and they mirror what the pad already does:
+    ///
+    ///   a park that is not selected  -> select it      (the d-pad's move)
+    ///   the park already selected    -> ask to enter   (the pad's confirm)
+    ///   a prompt button              -> answer it      (the pad's confirm on that button)
+    ///
+    /// ⚠ Clicking the sea does nothing, deliberately. There is no "deselect" in this screen --
+    /// one park is always current, because the camera is authored per park and there is nowhere
+    /// neutral for it to go.</summary>
+    void LobbyClicked(Vector2 mouse)
+    {
+        if (!_lobbyMode) return;
+        if (_lobbyPrompt)
+        {
+            int b = _lobbyBox?.ButtonAt(mouse) ?? -1;
+            if (b < 0) return;                       // off the buttons: not a cancel, just a miss
+            _lobbyBox.SetButton(b);
+            GD.Print($"[lobby] mouse: prompt button {b}");
+            LobbyPromptAnswer();
+            return;
+        }
+        int rec = LobbyRecordOfModel(LobbyPick(mouse));
+        if (rec < 0) return;
+        if (rec == _lobbyRecord) { GD.Print($"[lobby] mouse: confirm {LobbyName(rec).Replace("\n", " ")}"); ShowLobbyPrompt(); return; }
+        GD.Print($"[lobby] mouse: select record {rec} ({LobbyName(rec).Replace("\n", " ")})");
+        LobbySelectRecord(rec);
     }
 
     /// <summary>⭐ Move the way the console moves: the record's own neighbour byte for that
@@ -543,6 +677,8 @@ public partial class Viewer
         if (_lobbyBox != null && IsInstanceValid(_lobbyBox)) _lobbyBox.Hide();
         _lobbyParks.Clear();
         _lobbyCams.Clear();
+        _lobbyBounds.Clear();
+        _lobbyHover = -1;
         _lobbyBaseRoot = null;
         _lobbyBaseMesh = null;
         if (_lobbyRoot != null && IsInstanceValid(_lobbyRoot)) _lobbyRoot.QueueFree();
@@ -562,16 +698,28 @@ public partial class Viewer
                       + $"uiRoot={(_uiRoot == null ? "null" : "live")} slots={(_lobbySlots == null ? "null" : "ok")}");
             return;
         }
-        string raw = LobbyName(record);
-        var parts = raw.Split('\n');
+        // ⭐⭐ ONE LINE, BECAUSE THE CONSOLE USES ONE. `FUN_00218f78` case 0 -- the park-name mode
+        // -- fills the first buffer from the slot's text id and then does `auStack_3c0[0] = 0`:
+        // it sets the SECOND line to the empty string outright. So the measure takes the ONE-LINE
+        // branch, `h = height(line1) + 0x32`, and never the `h1 + 100 + h2` one.
+        //
+        // ⚠⚠ This port split the disc's name on its newline and handed back two lines, which took
+        // the two-line branch and made the caption ~150 tall where the console's is ~75 -- master:
+        // "the text box that says the name of the park should be smaller". It was twice the right
+        // height, and the extra was the room the PROMPT needs for its buttons.
+        //
+        // ⚠ The newline becomes a space, which is what `ShowLobbyPrompt` already does to its own
+        // two strings -- a box line is one line here, and the 0x1C2 width cap lives inside the
+        // two-line branch, so a wide single line is deliberately NOT clamped (FUN_0012CCE0).
+        string raw = LobbyName(record).Replace("\n", " ");
         // ⚠⚠ NO BUTTONS ON THE NAME BOX. The prompt table at `0x36DF18` is 6 bytes a mode
         // -- {title id, body id, button bits} -- and the buttons belong to the PROMPTS (modes 2,
         // 4, 5 and 6 carry OK+Cancel; 1, 3 and 7 carry OK alone). The park's name is not one of
         // them, so hanging OK/Cancel on it, as I first did, put a prompt's furniture on a caption.
-        _lobbyBox.Show(parts[0], parts.Length > 1 ? parts[1] : "");
+        _lobbyBox.Show(raw, "");
         GD.Print($"[lobby] message box: font={(_hudFont == null ? "NULL" : "ok")} "
-               + $"\"{parts[0]}\" / \"{(parts.Length > 1 ? parts[1] : "")}\" "
-               + $"no buttons, target {_lobbyBox.TargetWidth}x{_lobbyBox.TargetHeight}");
+               + $"\"{raw}\" one line, no buttons, "
+               + $"target {_lobbyBox.TargetWidth}x{_lobbyBox.TargetHeight}");
     }
 
     /// <summary>⭐⭐ PROMPT MODE 6 -- "do you want to enter this park?".
@@ -652,9 +800,29 @@ public partial class Viewer
         // on the plot centre, and it runs after the mode dispatch that builds this scene -- so an
         // aim inside EnterLobby is simply overwritten. The lobby has no plot, so the reset left
         // the camera wherever the default is, looking at open water.
+        // ⭐⭐ A KNOWN-ANSWER CHECK FOR THE PICKER, once, a couple of frames after the camera lands.
+        // The lobby camera is AUTHORED to look at the selected park, so a ray through the middle
+        // of the screen must hit that park and nothing else. That makes the right answer known in
+        // advance, which is the only reason this is worth printing.
+        //
+        // ⚠ It exists because a wrong pick is INVISIBLE in a render: the picture is identical
+        // whether the ray maths is right or nonsense, and the first symptom would be master
+        // clicking an island and getting a different one. The frame here is the risky part --
+        // `base`'s basis is mirrored and the bounds are in its space, not the world's.
+        if (_lobbyPickCheck > 0 && --_lobbyPickCheck == 0)
+        {
+            _lobbyPickCheck = -1;
+            string N(int m) => m >= 0 && m < LobbySlots.ModelNames.Length ? LobbySlots.ModelNames[m] : "none";
+            var mid = GetViewport().GetVisibleRect().Size / 2f;
+            int hit = LobbyPick(mid), want = _lobbySlots?.ModelIndex(_lobbyRecord) ?? -1;
+            GD.Print($"[lobby] pick check: screen centre -> model {hit} ({N(hit)}); "
+                   + $"selection is model {want} ({N(want)}) -- "
+                   + (hit == want ? "AGREE" : "⚠ DISAGREE: the picker's frame or bounds are wrong"));
+        }
         if (!_lobbyAimed)
         {
             _lobbyAimed = true;
+            _lobbyPickCheck = 3;
             LobbyAimCamera(snap: true);     // the opening view does not glide in from nowhere
             if (_lobbyOverview) LobbyOverviewCamera();
             // ⚠ After the aim, and once: entering tears the scene down, and doing that from

@@ -80,7 +80,12 @@ public partial class LobbyMessageBox : Control
         _buttons = buttons ?? Array.Empty<string>();
         Measure();
         Button = _buttons.Length > 0 ? 0 : -1;    // ⚠ OK is index 0, as `FUN_00219338` reads it
-        _w = 0; _h = 0;
+        // ⚠⚠ GROW FROM NOTHING ONLY WHEN OPENING. This reset ran on EVERY Show, so stepping from
+        // the park's name to the enter prompt collapsed the box to zero and grew it again --
+        // master: "transition to a bigger one for the Ok/cancel dialogue". It never transitioned,
+        // it popped. Keeping the current size lets the same halve-the-gap ease carry the caption
+        // out to the dialogue, and back down when the prompt is cancelled.
+        if (!Open) { _w = 0; _h = 0; }
         Open = true; Visible = true;
         QueueRedraw();
     }
@@ -101,15 +106,59 @@ public partial class LobbyMessageBox : Control
 
     public new void Hide() { Open = false; Visible = false; QueueRedraw(); }
 
+    /// <summary>⭐⭐ WHICH BUTTON IS UNDER THE POINTER -- through the SAME arithmetic `_Draw` uses,
+    /// not a second copy of it. The box lives in the console's 512-square and is letterboxed into
+    /// the window, so a hit test in window pixels has to walk back through that same scale and
+    /// origin; deriving it any other way is how a button ends up clickable a centimetre off.
+    ///
+    /// ⚠ Only once <see cref="Settled"/>. The box GROWS into its size, and the draw itself refuses
+    /// to paint content until it has landed -- so a button that is not on screen yet must not be
+    /// clickable either, or a fast click lands on a button nobody can see.
+    ///
+    /// ⚠ The row is the drawn row, not "the bottom third": the two text lines sit at y 16 and 48
+    /// and a generous band would swallow the second one on a short box.</summary>
+    public int ButtonAt(Vector2 mouse)
+    {
+        if (!Open || _font == null || _buttons.Length == 0 || !Settled) return -1;
+        var view = GetViewportRect().Size;
+        float s = Mathf.Max(0.05f, Mathf.Min(view.X, view.Y) / Native);
+        var origin = (view - new Vector2(Native, Native) * s) / 2f;
+        var rect = new Rect2(origin + new Vector2((0x1FF - _w) * 0.5f, (0x1FF - _h) * 0.5f) * s,
+                             new Vector2(_w, _h) * s);
+        if (!rect.HasPoint(mouse)) return -1;
+        float lh = (_font.LineAdvance) * s;
+        if (mouse.Y < rect.End.Y - lh - 12f * s) return -1;      // above the button row
+        float slot = rect.Size.X / _buttons.Length;
+        int i = (int)((mouse.X - rect.Position.X) / slot);
+        return i >= 0 && i < _buttons.Length && i < 3 ? i : -1;
+    }
+
+    /// <summary>Put the highlight on a button the pointer found. ⚠ Same field the d-pad moves, so
+    /// hovering and then pressing Enter does what the hover showed.</summary>
+    public void SetButton(int i)
+    {
+        if (i < 0 || i >= _buttons.Length || i == Button) return;
+        Button = i; QueueRedraw();
+    }
+
     /// <summary>`FUN_0012CCE0`: the target size, recomputed whenever a line is added.</summary>
+    /// ⭐⭐ THE HEIGHTS ARE THE LINES' OWN, MEASURED SEPARATELY -- read out of `FUN_0012CCE0`:
+    ///     h = height(line1) + 0x32                      one line
+    ///     h = height(line1) + 100 + height(line2)       two lines
+    /// ⚠⚠ This used `LineAdvance` for BOTH, which is a different quantity: the advance is the
+    /// font's line pitch (30 here) and the console measures the RUN (`FUN_0020aae8` returns
+    /// `hi.Y - lo.Y` of the rendered string). The park's name box came out 160 tall against the
+    /// console's arithmetic on the same strings, which is master's "the text box that says the
+    /// name of the park should be smaller". The +100 is NOT button-dependent -- the decompile
+    /// adds it whenever there is a second line, buttons or none -- so that part stays.
     void Measure()
     {
-        int lh = _font?.LineAdvance ?? 16;
+        int h1 = _font?.MeasureHeight(_line1) ?? 16;
         int w = (_font?.Measure(_line1) ?? _line1.Length * 8) + Margin;
-        int h = lh + OneLinePad;
+        int h = h1 + OneLinePad;
         if (_line2.Length > 0)
         {
-            h = lh + TwoLinePad + lh;
+            h = h1 + TwoLinePad + (_font?.MeasureHeight(_line2) ?? 16);
             int w2 = (_font?.Measure(_line2) ?? _line2.Length * 8) + Margin;
             if (w < w2) w = w2;
             if (w > MaxWidth) w = MaxWidth;     // ⚠ two-line branch only, as the original has it

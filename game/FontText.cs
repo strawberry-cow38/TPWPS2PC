@@ -35,6 +35,23 @@ public sealed class FontText
         return w;
     }
 
+    /// <summary>⭐⭐ THE INK HEIGHT OF THIS RUN -- the console's own text height, not a line
+    /// advance. `FUN_0020aae8` (reached via `FUN_00138ac0`) measures the STRING into a bounds
+    /// struct and returns `hi.Y - lo.Y`, so it is the extent of the glyphs actually in the run:
+    /// a line of capitals is shorter than one with a descender in it, and the same string is the
+    /// same height whatever the font's leading is.
+    ///
+    /// ⚠ Computed exactly the way <see cref="Render"/> sizes its texture, so the number this
+    /// returns is the height of the bitmap that will be drawn. Two ways of measuring the same run
+    /// is how a box ends up sized for text it does not contain.</summary>
+    public int MeasureHeight(string text)
+    {
+        int height = 0;
+        foreach (char c in text)
+            if (_font.TryGetGlyph(c, out var g)) height = Math.Max(height, g.Height + g.Top);
+        return Math.Max(1, height);
+    }
+
     /// <summary>⭐ One texture for the whole run. ⚠ White with the coverage as ALPHA: the console
     /// passes a colour constant to its text call and this port does not yet read those, so the
     /// tint is applied by the caller (`Modulate`) rather than baked in here -- which keeps the

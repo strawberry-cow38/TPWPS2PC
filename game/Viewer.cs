@@ -12160,6 +12160,7 @@ public partial class Viewer : Node3D
         { if (e is InputEventMouse) GetViewport()?.SetInputAsHandled(); return; }
         // 0x1817C0(1): a modal advisor message holds the pad -- the buttons that drive the tools included.
         if (AdvisorPadLocked && e is InputEventMouseButton) { GetViewport()?.SetInputAsHandled(); return; }
+        if (_lobbyMode && e is InputEventMouseMotion lmm) { LobbyMouseMoved(lmm.Position); return; }
         if (e is InputEventMouseMotion mm)
         {
             // ⭐ The highlight follows the POINTER while the menu is up -- master: "the blue text
@@ -12209,6 +12210,17 @@ public partial class Viewer : Node3D
                 float k = _dist * 0.0016f;
                 _focus += b.X * -mm.Relative.X * k + b.Y * mm.Relative.Y * k;
             }
+        }
+        // ⭐⭐ THE LOBBY OWNS THE MOUSE WHOLE, and answers before any of the park paths.
+        // Master: "the lobby doesnt have mouse support for selecting a park/switching between
+        // them". Nothing below this applies there -- the wheel is already refused, orbit and pan
+        // are already refused, and there are no tools -- so a left release in the lobby cannot be
+        // the end of a camera drag and is always a click. Returning here keeps that true instead
+        // of threading `!_lobbyMode` through another five branches.
+        if (_lobbyMode && e is InputEventMouseButton lmb)
+        {
+            if (lmb.ButtonIndex == MouseButton.Left && !lmb.Pressed) LobbyClicked(lmb.Position);
+            return;
         }
         if (e is InputEventMouseButton mb)
         {
