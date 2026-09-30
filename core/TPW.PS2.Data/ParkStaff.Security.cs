@@ -285,8 +285,41 @@ public sealed partial class ParkStaff
 
     static Point CentreOf(int x, int z) => new(unchecked((short)(x * 256 + 0x80)), unchecked((short)(z * 256 + 0x80)));
 
-    internal void GateStage(Guard g) { Gate?.StageMember(); GateStaged++; }
-    internal void GateCross(Guard g) { Gate?.CrossMember(); GateCrossed++; }
+    /// <summary>⚠⚠ THE SOFTLOCK. Master: "guests waiting to cross the road, and the bus waiting for
+    /// them to cross, but neither goes."
+    ///
+    /// `StagingPending` (P) and the bus share one variable. `14BCC0`: `P != 0 && E == 0` claims the
+    /// crossing with `E = 1`, and E is cleared only when `P == 0` (or `R >= 11 && S == 2`). The bus's
+    /// state-1 guard refuses to advance while `E == 1`, so it can never reach state 2 -- which means
+    /// **once P is stuck above zero, both sides wait forever**.
+    ///
+    /// ⚠⚠ AND P COULD ONLY GO UP. `Guard`'s mode switch calls <see cref="GateStage"/> from TWO modes
+    /// -- `ModeToStaging` and `ModeBackToStaging`, the second being a guard returning to the gate --
+    /// against ONE <see cref="GateCross"/> on `ModeCrossing`. Every guard that went back to staging
+    /// without crossing leaked P by one, permanently, and one leaked unit is enough to hold the
+    /// crossing shut for the rest of the game.
+    ///
+    /// ⭐ The flow's own entries never had this: they carry `e.StageCounted` and `Forget` releases
+    /// the count only if it was taken. Guards went straight to the counter with no such flag. This
+    /// gives them the same discipline -- a guard is counted at most once, and releases only what it
+    /// actually took -- rather than changing the console's coordinator, which is decoded and correct.
+    ///
+    /// ⚠ STILL OPEN, said rather than quietly patched: a guard REMOVED while staged is not released
+    /// here, because the guard-despawn path does not pass through these two calls. That is a second,
+    /// rarer leak with the same ending, and it wants the despawn hook rather than a watchdog.</summary>
+    readonly HashSet<Guard> _gateStaged = new();
+
+    internal void GateStage(Guard g)
+    {
+        if (g == null || !_gateStaged.Add(g)) return;   // already counted: a re-stage is not a second guard
+        Gate?.StageMember(); GateStaged++;
+    }
+
+    internal void GateCross(Guard g)
+    {
+        if (g == null || !_gateStaged.Remove(g)) return; // never counted: nothing of ours to release
+        Gate?.CrossMember(); GateCrossed++;
+    }
 
     /// <summary>The coordinator's event 9 to the guard list (`0x14D228`, newest first): every guard in
     /// state 0x2E goes to 0x2F.</summary>
