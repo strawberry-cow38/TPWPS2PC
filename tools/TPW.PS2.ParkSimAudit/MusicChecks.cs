@@ -17,6 +17,7 @@ static class MusicChecks
         Executable(disc.Read(exe.Extent, exe.Size), Check);
         Maps(disc, Check);
         Sequencer(disc, Check);
+        Stops(disc, Check);
         Decodes(disc, Check);
     }
 
@@ -103,6 +104,43 @@ static class MusicChecks
         int startRepeats = starts.Zip(starts.Skip(1)).Count(p => p.First == p.Second);
         Check(repeats == 0 && clips.Distinct().Count() == 3 && startRepeats > 30,
               $"lobby clips: 0 of 300 follow themselves ({repeats}) and all 3 play; the control -- the same draw WITHOUT the flag -- repeats {startRepeats} times");
+    }
+
+    // strawberry, 2026-09-30: "music just... stops?". Two ways the port's music could die that the console's
+    // could not (or barely): a guest count past the pool, and a clip draw past a set's last threshold. Each is
+    // shown dying without its guard, which is what makes the guarded run's zero mean something.
+    static void Stops(Disc disc, Action<bool, string> Check)
+    {
+        bool capped = true, control = true; var rows = new List<string>();
+        int clampedStops = 0, rawStops = 0, runs = 0;
+        foreach (var w in Worlds)
+        {
+            var ev = new SoundCatalogue(disc, w).Resolve(SoundGroup.NativeMusic, 2)?.Source;
+            if (ev == null) { capped = control = false; continue; }
+            // 150 guests, what three presses of the debug panel's +50 reach.
+            var seq = new MusicSequencer(ev);
+            seq.SetParameter(seq.SteeringSelector, MusicSequencer.GuestValue(150));
+            var sets = Run(seq, 20);
+            capped &= sets.Count == 20 && sets.Last() == ev.Sets.Count - 1;
+            var raw = new MusicSequencer(ev);
+            raw.Start();
+            raw.SetParameter(raw.SteeringSelector, (int)(150 * 90f / 100f));
+            control &= raw.Next() == null && (raw.Stopped ?? "").StartsWith("no band");
+            rows.Add($"{w} {sets.Count}");
+            // Two hours of a filling park, 200 times: the value climbs 0..90 over the first 270 clips.
+            for (uint seed = 1; seed <= 200; seed++)
+                foreach (bool clamp in new[] { true, false })
+                {
+                    var q = new MusicSequencer(ev, seed) { ClampDraws = clamp };
+                    var st = q.Start();
+                    for (int i = 0; i < 400 && st != null; i++) { q.SetParameter(q.SteeringSelector, MusicSequencer.GuestValue(i / 3)); st = q.Next(); }
+                    if (clamp) { runs++; if (st == null) clampedStops++; } else if (st == null) rawStops++;
+                }
+        }
+        Check(capped && control && MusicSequencer.GuestValue(150) == 90,
+              $"past the pool: 150 guests make value {MusicSequencer.GuestValue(150)}, and 20 clips play on the top level in every world ({string.Join(", ", rows)}); the control, the uncapped 135, is in no band and the chooser stops");
+        Check(clampedStops == 0 && rawStops > 0,
+              $"a missed clip draw: {clampedStops} of {runs} steered two-hour runs stop with ClampDraws; the control, the console's picker, stops {rawStops}");
     }
 
     static List<int> Run(MusicSequencer seq, int n)

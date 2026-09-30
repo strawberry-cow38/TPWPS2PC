@@ -132,7 +132,9 @@ COVERAGE += '\n' + '\n'.join(['  ok   music: the park writes the guest value as 
                               '  ok   music: the control, the same 90 on the event\'s own selector 4 plays the top level and 45 a middle one',
                               '  ok   music: lobby clips: 0 of 300 follow themselves (0) and all 3 play',
                               '  ok   music: the first clip of each map decodes as 22050 Hz stereo',
-                              '  ok   music: the lead, re-measured on the 4 of them loud at both ends: median 1153 samples against 1152'])
+                              '  ok   music: the lead, re-measured on the 4 of them loud at both ends: median 1153 samples against 1152',
+                              '  ok   music: past the pool: 150 guests make value 90, and 20 clips play on the top level in every world',
+                              '  ok   music: a missed clip draw: 0 of 800 steered two-hour runs stop with ClampDraws'])
 
 
 class ClassificationTests(unittest.TestCase):

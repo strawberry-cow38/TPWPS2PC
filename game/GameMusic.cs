@@ -76,7 +76,8 @@ public sealed class GameMusic
         }
         catch (Exception e) { Log($"[music] {label}: no map ({e.Message})"); return; }
         if (_resolved?.Source == null) { Log($"[music] {label}: {SoundCatalogue.MapFor(group, world.ToUpperInvariant(), 1)} has no event {evId}"); return; }
-        _seq = new MusicSequencer(_resolved.Source);
+        // ⚠ The clamp rides with the authored levels: `--music-ps2` keeps the console's picker, misses and all.
+        _seq = new MusicSequencer(_resolved.Source) { ClampDraws = ByGuests };
         _label = label;
         var ev = _resolved.Source;
         Log($"[music] {label}: event {evId} of {_resolved.Map}, flags 0x{ev.Flags:x4}, {ev.Sets.Count} set(s), "
@@ -101,11 +102,12 @@ public sealed class GameMusic
     /// <summary>`0x111E08` and friends: a parameter write on the playing event, matched the console's way.</summary>
     public bool SetParameter(int selector, int value) => _seq?.SetParameter(selector, value) ?? false;
 
-    /// <summary>`0x151C00`'s write: `guests * 90 / 100`, truncated (`0x297B68`), to selector 2.</summary>
+    /// <summary>`0x151C00`'s write: `guests * 90 / 100`, truncated (`0x297B68`), capped at the console's pool
+    /// (<see cref="MusicSequencer.GuestValue"/>), to selector 2 -- or to the event's own selector by default.</summary>
     public void ParkGuests(int guests)
     {
         if (_seq == null || !_label.StartsWith("park")) return;
-        int v = (int)(guests * 90f / 100f);
+        int v = MusicSequencer.GuestValue(guests);
         SetParameter(ByGuests ? _seq.SteeringSelector : MusicSequencer.ParkGuestSelector, v);
     }
 
@@ -150,6 +152,14 @@ public sealed class GameMusic
         {
             Underruns++;
             if (Underruns <= 3) Log($"[music] {_label}: the next clip was not decoded in time -- a gap (underrun {Underruns})");
+            return false;
+        }
+        // ⚠ A decode that THREW must not be read: `.Result` rethrows it from every frame's Step, which is a music
+        // player that stops and an error log that never ends. Say so once and choose again.
+        if (_next.IsFaulted)
+        {
+            Log($"[music] {_label}: the next clip failed to decode ({_next.Exception?.GetBaseException().Message}) -- choosing another");
+            _next = null;
             return false;
         }
         var c = _next.Result;
