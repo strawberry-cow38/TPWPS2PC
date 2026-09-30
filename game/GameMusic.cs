@@ -53,10 +53,11 @@ public sealed class GameMusic
     /// <summary>What is playing, "park JUNGLE" / "lobby HALLOW", or null.</summary>
     public string Playing => _seq == null ? null : _label;
     public MusicSequencer Sequencer => _seq;
-    /// <summary>The selector the park's guest value goes to. <see cref="MusicSequencer.ParkGuestSelector"/> is
-    /// the console's; `--music-by-guests` sets the event's own steering selector, which plays the levels the
-    /// bands were authored for and the PS2 never reaches.</summary>
-    public bool ByGuests { get; set; }
+    /// <summary>Where the park's guest value goes. ⭐ ON BY DEFAULT (strawberry, 2026-09-30, on hearing the PS2
+    /// wires it to the wrong id: "wire it then"): the event's own steering selector, so the levels play as their
+    /// bands were authored. Off (`--music-ps2`) is the console's <see cref="MusicSequencer.ParkGuestSelector"/>,
+    /// which no slot takes -- level 1 forever.</summary>
+    public bool ByGuests { get; set; } = true;
 
     public GameMusic(Node host, Disc disc) { _host = host; _disc = disc; }
 

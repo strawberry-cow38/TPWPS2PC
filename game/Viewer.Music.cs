@@ -8,15 +8,15 @@ namespace TPWPS2Viewer;
 public partial class Viewer
 {
     GameMusic _music;
-    /// <summary>`--music-by-guests` (or `TPW_MUSIC_BY_GUESTS=1`): hand the park's guest value to the music
-    /// event's own steering selector instead of the console's 2, so the authored levels play. OFF by default:
-    /// the PS2 stays on level 1 (see <see cref="TPW.PS2.Data.MusicSequencer"/>).</summary>
-    bool _musicByGuests;
+    /// <summary>`--music-ps2` (or `TPW_MUSIC_PS2=1`): write the park's guest value as the console does, to
+    /// selector 2, which the music never reads -- level 1 forever (see <see cref="TPW.PS2.Data.MusicSequencer"/>).
+    /// Off by default: the guest count drives the authored levels (strawberry, 2026-09-30: "wire it then").</summary>
+    bool _musicPs2;
 
     GameMusic Music()
     {
         if (_music == null && _lib?.Disc != null) _music = new GameMusic(this, _lib.Disc);
-        if (_music != null) _music.ByGuests = _musicByGuests;
+        if (_music != null) _music.ByGuests = !_musicPs2;
         return _music;
     }
 

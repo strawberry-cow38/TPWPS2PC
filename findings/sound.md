@@ -604,8 +604,8 @@ plain voice, not a composite: the composite path needs a `MUS.eng`, and the only
 So the chooser reads 0, the first band (0..14 jungle, 0..12 fantasy, 0..18 hallow/space) is taken from every set, and
 **the park plays level 1 for as long as it runs**. The levels were authored for the knob -- the top band ends at
 exactly 90 in all four worlds, the `* 90 / 100` -- and the knob was wired to the wrong id. The port does what the
-PS2 does; `--music-by-guests` (or `TPW_MUSIC_BY_GUESTS=1`) hands the value to selector 4 and plays the authored
-levels. `MusicChecks` carries both halves: selector 2 leaves 60 clips on level 1 in every world, and the same 90 on
+PS2 is stuck; ⭐ the port wires the knob to selector 4 by default (strawberry, 2026-09-30: "wire it then"), and
+`--music-ps2` (or `TPW_MUSIC_PS2=1`) writes selector 2 like the console, for level 1 forever. `MusicChecks` carries both halves: selector 2 leaves 60 clips on level 1 in every world, and the same 90 on
 selector 4 reaches the top level (45 a middle one).
 
 ### The clips

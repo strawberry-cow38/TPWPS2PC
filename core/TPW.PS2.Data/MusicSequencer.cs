@@ -27,8 +27,9 @@ namespace TPW.PS2.Data;
 /// -> 0x7F" (`0x24C3AC`, `0x24F68C`), and the three selector-4 call sites of `0x111D40` (`0x20376C`, `0x203BB4`,
 /// `0x204618`) all pass a track-ride car's handle. The link bands end at exactly 90 in all four worlds, which
 /// is the `* 90 / 100` -- the levels were authored for the knob and the knob was wired to the wrong id.
-/// <see cref="SetParameter"/> keeps the console's matching, so the port plays what the PS2 plays; whoever
-/// wants the authored levels hands the value to <see cref="SteeringSelector"/> instead of 2.
+/// <see cref="SetParameter"/> keeps the console's matching, so a write to selector 2 does exactly what the PS2's
+/// does. ⭐ The viewer hands the value to <see cref="SteeringSelector"/> instead by default (strawberry,
+/// 2026-09-30: "wire it then"), and `--music-ps2` writes 2 like the console.
 ///
 /// ⚠ ADAPTERS, each said once here:
 /// - The console draws every sound from ONE generator (`0x342F08`); this one has its own, so the ORDER of

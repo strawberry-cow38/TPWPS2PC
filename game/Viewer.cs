@@ -438,7 +438,7 @@ public partial class Viewer : Node3D
             // ⭐ `--staff-test` hires one of each kind through the REAL `ParkStaff.Hire`, so a
             // render of All Staff has somebody on it. ⚠ A harness, not a gameplay path.
             else if (a == "--staff-test") _staffTest = true;
-            else if (a == "--music-by-guests") _musicByGuests = true;
+            else if (a == "--music-ps2") _musicPs2 = true;
             else if (a == "--graph-demo") _graphDemo = true;
             else if (a.StartsWith("--delete-test=")) _deleteTest = a["--delete-test=".Length..];
             // ⭐ `--benchmark=<seconds>`: measure frame time and what is accumulating, then quit.
@@ -577,7 +577,7 @@ public partial class Viewer : Node3D
         _wantMode ??= Env("TPW_PS2_MODE");
         _wantMap ??= Env("TPW_PS2_MAP");
         _wantSound = Env("TPW_PS2_SOUND");
-        if (Env("TPW_MUSIC_BY_GUESTS") == "1") _musicByGuests = true;
+        if (Env("TPW_MUSIC_PS2") == "1") _musicPs2 = true;
         _wantPlay = Env("TPW_PS2_PLAY");
         _wantImage = Env("TPW_PS2_IMAGE");
         _wantRide ??= Env("TPW_PS2_RIDE");
