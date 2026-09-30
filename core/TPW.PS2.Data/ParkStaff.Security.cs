@@ -321,6 +321,20 @@ public sealed partial class ParkStaff
         Gate?.CrossMember(); GateCrossed++;
     }
 
+    /// <summary>⭐⭐ THE SECOND WAY INTO THE SAME SOFTLOCK, now closed. A guard FIRED while standing
+    /// at the gate took a staging count and never gave it back -- despawn does not pass through
+    /// <see cref="GateCross"/> -- so P stayed above zero, E stayed claimed, and the bus waited on a
+    /// guard that no longer exists. Rarer than the double-count but the identical ending.
+    ///
+    /// ⚠ Releases only what this guard actually took (the set decides), so it cannot drive P
+    /// NEGATIVE -- which would be worse than the leak: `P != 0` is the claim test, so a negative P
+    /// holds the crossing shut and no number of crossings can ever bring it back to zero.
+    /// ⚠ Not a crossing, so `EpisodeProcessed` is untouched.</summary>
+    internal void GateForget(StaffMember m)
+    {
+        if (m is Guard g && _gateStaged.Remove(g)) Gate?.UnstageMember();
+    }
+
     /// <summary>The coordinator's event 9 to the guard list (`0x14D228`, newest first): every guard in
     /// state 0x2E goes to 0x2F.</summary>
     public void GateEvent9()
