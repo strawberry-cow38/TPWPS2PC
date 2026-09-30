@@ -277,7 +277,7 @@ public partial class RideScriptDemo : Node3D
                 while (_accumulator >= 100) { _time += 100; _preview.Tick(_time); _accumulator -= 100; }
                 _presenter.Update(_preview.Host); ShowStatus();
             }
-            _burst?.Step();
+            _burst?.Step(delta);
             _sounds?.Step(delta);
             if (_camera != null && _distance > 0)
             {
