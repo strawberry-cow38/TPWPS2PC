@@ -7421,6 +7421,12 @@ public partial class Viewer : Node3D
     /// <summary>`89 Upgrade`: an upgrade finishing drops the SAME fence a repair does, and the
     /// console has its own effect for it. ⚠ Without this split an upgrade throws the repair spiral.</summary>
     public const int UpgradeEffectId = 89;
+
+    /// <summary>Placement id -> the effect that object throws when it is demolished, from its own
+    /// `.sam` (`Info.DestroyParticleEffect`: 77 Destroy3 for most scenery, 75 Destroy1 for the big
+    /// rocks, 78 for LavSpurt/MamFount). ⚠ Recorded at placement because the definition is only in
+    /// hand there; a delete knows a name and a footprint, not a .sam.</summary>
+    readonly Dictionary<int, int> _destroyFx = new();
     /// <summary>⭐⭐ WHICH create effect a building throws is DATA, not a constant -- each object's
     /// own `.sam` names it in `Info.CreateParticleEffect`. Master: "keep looking bc its in there
     /// somewhere". It was: 81 for most scenery, 79 for the big rocks, 82 for BigPalm/MamFount/Staff,
@@ -8284,6 +8290,11 @@ public partial class Viewer : Node3D
         // Create animation and an unscripted one is wound by StepBuilding, but both are "a building
         // being created" and the console sparkles either way. Placed here, after the placement has
         // actually succeeded, so a refused build throws nothing.
+        // ⭐ Its DESTROY effect is remembered now, while the definition is in hand. At deletion
+        // all that survives is a name and a footprint, and looking the definition back up by name
+        // would be a second, weaker match for something already known here.
+        int destroyFx = _place.Def?.DestroyParticleEffect ?? 0;
+        if (destroyFx > 0) _destroyFx[ride] = destroyFx;
         // ⭐ The object names its own create effect; 0 means none and stays none.
         if ((_place.Def?.CreateParticleEffect ?? 0) is int createFx and > 0)
             EngineFx(createFx, Cell(ParkPaths.Centre(new ParkCell(cx + w / 2, cy + h / 2))),
@@ -9503,6 +9514,14 @@ public partial class Viewer : Node3D
         // ⭐⭐ THE QUEUE GOES WITH IT. Master: "deletes the ride including the queue. (but not
         // exit paths + combo entry/exits)" -- ClearQueue takes Kind.Queue cells owned by this
         // ride and leaves Path and Both alone, so the park's walkable network survives.
+        // ⭐⭐ THE DEMOLITION PUFF, the other half of the object's own particle pair. Fired BEFORE
+        // the thing is removed, so its footprint is still there to place the effect on -- after
+        // Remove() the cells are free and the centre is a guess.
+        if (_destroyFx.TryGetValue(p.Id, out int dfx) && dfx > 0)
+            EngineFx(dfx, Cell(ParkPaths.Centre(new ParkCell(p.X + p.Fp.Width / 2,
+                                                             p.Y + p.Fp.Height / 2))),
+                     $"destroy {name}");
+        _destroyFx.Remove(p.Id);
         int queueCells = _paths?.ClearQueue(p.Id) ?? 0;
         // ⭐⭐ AND ITS DOORS. Master: "update the path tiles around, to fix dead connected
         // sprites." AddDoor told the path tool where this ride's entrance and exit were so the
