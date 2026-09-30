@@ -61,7 +61,14 @@ public partial class FrontendScreen : Control
         ShowStage(Stage.EaLogo);
     }
     void ShowStage(Stage stage)
-    { CurrentStage=stage; _phaseTime=0; Visible=stage!=Stage.Idle; QueueRedraw(); }
+    {
+        CurrentStage=stage; _phaseTime=0; Visible=stage!=Stage.Idle; QueueRedraw();
+        // ⚠ Prime the hotspots when the screen opens. They used to be derived as a side effect of
+        // drawing the (now removed) hint, so without this the first mouse MOVE would pay for a
+        // 512x512x3 scan and the diagnostic line would appear at a surprising moment instead of
+        // when the screen comes up.
+        if(stage==Stage.Language) LanguageBands();
+    }
     void LayoutMovie()
     {
         if(_video==null) return;
@@ -340,19 +347,6 @@ public partial class FrontendScreen : Control
         var art=path==null?null:Art(path);
         if(art!=null) DrawTextureRect(art,new Rect2(origin,Vector2.One*(512*scale)),false);
         if(_font==null) return;
-        if(CurrentStage==Stage.Language)
-        {
-            // Explicit PC navigation hint, not an invented console widget/hotspot.
-            // ⚠ It only offers the mouse when the hotspots actually derived from the art. If the
-            // art is missing the mouse does nothing, and a hint promising it would be a lie on
-            // screen -- the one place a wrong instruction is unmissable.
-            var hint=_font.Render(LanguageBands().Length==3
-                ? "Up/Down or mouse: language   Enter or click: continue"
-                : "Up/Down: language   Enter: continue");
-            float s=Mathf.Min(scale*.55f,view.X/Mathf.Max(1,hint.GetWidth()));
-            var size=hint.GetSize()*s;
-            DrawTextureRect(hint,new Rect2(new Vector2((view.X-size.X)/2,view.Y-size.Y-8),size),false);
-        }
         if(LegalPromptVisible)
         {
             var prompt=_font.Render(_text?.Text(TextLanguages[LanguageIndex],877)??"Press START button to Continue");
