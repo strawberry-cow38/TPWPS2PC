@@ -454,8 +454,23 @@ public sealed class RideParticles
     /// sixteenth is **`Flies` (id 9)**, ADDOBJ'd by `Toilet.rse` and `SupBog.rse` with an emitter
     /// life of 100000 ticks -- about 51 minutes, unmistakably meant to persist -- and under the
     /// old reading it fired one burst and stopped. Flies over a dirty toilet, once.</summary>
+    // The executable rejects a direct self-link; shipped links are acyclic. Also guard longer
+    // malformed cycles defensively, rather than letting recursive child requests exhaust the stack.
+    readonly HashSet<int> _spawning = new();
+
     public ParticleEffect Emit(int id, Vector3 where, Vector3? fireAlong = null, int probe = 0,
                                bool persistent = false)
+    {
+        if (!_spawning.Add(id))
+        {
+            GD.Print($"[fx] child chain cycle refused: effect {id}");
+            return null;
+        }
+        try { return EmitOne(id, where, fireAlong, probe, persistent); }
+        finally { _spawning.Remove(id); }
+    }
+
+    ParticleEffect EmitOne(int id, Vector3 where, Vector3? fireAlong, int probe, bool persistent)
     {
         var e = _library?[id];
         if (e == null || e.Ramp.All(c => c == 0)) return null;
@@ -560,6 +575,7 @@ public sealed class RideParticles
                    + $"{(probe == 3 ? "1.0000 (RULER: undamped, constant speed)" : probe == 2 ? "FALLING (not constant)" : Mathf.Exp(-motion.Lambda / 60f).ToString("F4"))}");
         var p = new CpuParticles3D
         {
+            Name = $"Fx_{e.Id}_{e.Name}",
             Amount = probe > 0 ? 1 : count,
             // ⚠ A looping emitter must NOT be one-shot, and its Explosiveness must be 0 or Godot
             // dumps the whole population at the start of every cycle instead of trickling it.
@@ -681,10 +697,22 @@ public sealed class RideParticles
         // bubbles back to a few seconds and then silence. So a continuous emitter is kept until its
         // holder goes or the script stops its object (<see cref="Stop"/>, `KILLOBJ tag`), and
         // `Emit` refuses to start a second one in the same place rather than stacking them.
-        if (loops) { _continuous[ContinuousKey(id, where)] = p; Spawned++; return e; }
-        _live.Add((p, Time.GetTicksMsec()
+        if (loops) _continuous[ContinuousKey(id, where)] = p;
+        else _live.Add((p, Time.GetTicksMsec()
                     + (ulong)(life * 1000 / Math.Max(0.01, Engine.TimeScale)) + 500));
         Spawned++;
+        // Native spawn calls the non-directional spawn API for a particle child, even when the
+        // parent was directional. Use the child's OWN offset words, not the parent's velocity.
+        // Probe modes intentionally isolate one effect for motion measurement; gameplay uses 0.
+        // This closes the immediate request only: attractors, death/expiry chains, ongoing
+        // attachment following and lifetime coupling remain separate unimplemented consumers.
+        if (probe == 0 && ParticleSpawnLinks.TryParticleChild(_library, id, out var child))
+        {
+            var offset = new Vector3(child.X, child.Y, -child.Z) / ParticleTemplate.PositionUnitsPerCell;
+            var made = Emit(child.EffectId, where + offset);
+            GD.Print($"[fx] child {e.Id}/{e.Name} -> {child.EffectId}/{made?.Name ?? "(not drawn)"} "
+                   + $"initial offset ({offset.X:F4},{offset.Y:F4},{offset.Z:F4}); immediate spawn only");
+        }
         return e;
     }
 
