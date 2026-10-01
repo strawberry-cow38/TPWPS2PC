@@ -46,8 +46,9 @@ public partial class Viewer
     /// missing from the park's own list (TrackUpgrades): the menu is per park on the console, and the
     /// port's library is per world.</summary>
     bool SoldHere(AssetLibrary.RideAssets r)
-        => BuildKind(r) != AssetResourceDatabase.AssetKind.TrackUpgrade
-           || DbaKey(r) is uint k && TrackUpgrades.KindOf(TrackWorld, TrackPark, k) >= 0;
+        => (BuildKind(r) != AssetResourceDatabase.AssetKind.TrackUpgrade
+            || DbaKey(r) is uint k && TrackUpgrades.KindOf(TrackWorld, TrackPark, k) >= 0)
+           && ResearchedHere(r);                                    // Viewer.Research.cs: this park's catalogue, researched
 
     /// <summary>The library asset of the park's add-on <paramref name="kind"/>: its model is the piece's
     /// mesh (shapes 12 and 13, whose ids in `0x2ecad0` are these same keys).</summary>

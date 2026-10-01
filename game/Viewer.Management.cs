@@ -63,6 +63,7 @@ public partial class Viewer
         // pan cursor, so it is pointed at him instead.
         _staff.Focus = m => { if (m.Active) LookAtCell(m.Cell.X, m.Cell.Z); };
         _staff.StaffRoomAmbience = StaffRoomAmbience;
+        AttachResearch();                                                  // Viewer.Research.cs
     }
 
     /// <summary>A management UI sound, in the UI group, at the camera (⚠ the category-0 `0x111150` calls

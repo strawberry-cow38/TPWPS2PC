@@ -361,6 +361,8 @@ public sealed partial class LaptopShopScreen : Control
                            int? yearSpan = null)
     {
         _loansPage = null;
+        WheelPages = false;
+        HighlightRow = -1;
         _yearSpan = yearSpan;
         _feelings = feelings;
         _thoughts = thoughts;
@@ -904,6 +906,14 @@ public sealed partial class LaptopShopScreen : Control
     /// and an item's label is yellow only under it -- and the pointer moves it, as Up/Down do on the pad.</summary>
     public int GraphCursor { get; set; }
 
+    /// <summary>The wheel pages this spec screen (raises <see cref="Paged"/>) instead of falling through to the camera.
+    /// Cleared by every <see cref="ShowScreen"/>; the caller sets it after.</summary>
+    public bool WheelPages { get; set; }
+
+    /// <summary>A row drawn in the cursor's yellow, label and value (Research's row being picked: `0x1B5920` turns both
+    /// to 0x35F560 for the cursor row in mode 2). -1 for none; cleared by every <see cref="ShowScreen"/>.</summary>
+    public int HighlightRow { get; set; } = -1;
+
     /// <summary>⭐ A nudge arrow was clicked: the ROW INDEX and -1 or +1. ⚠ A direction, not a
     /// value -- the step and the clamp are the caller's, where the field is.</summary>
     public event Action<int, int> RowNudged;
@@ -967,6 +977,15 @@ public sealed partial class LaptopShopScreen : Control
             // mouse movement across one row would tick.
             if (_menuHover >= 0 && _menuHover != wasMenu) Cue(LaptopSounds.Cue.Move);
             if (_menuHover != wasMenu || _btnHover != wasBtn) QueueRedraw();
+            return;
+        }
+        // ⭐ A spec screen that pages on the wheel (Research while picking) takes it as Up/Down.
+        if (WheelPages && _spec != null && @event is InputEventMouseButton { Pressed: true } pw
+            && (pw.ButtonIndex == MouseButton.WheelUp || pw.ButtonIndex == MouseButton.WheelDown))
+        {
+            Cue(LaptopSounds.Cue.Move);
+            Paged?.Invoke(pw.ButtonIndex == MouseButton.WheelUp ? -1 : +1);
+            AcceptEvent();
             return;
         }
         // ⭐ The wheel walks the list a row at a time. Only swallow it when it moved something --
@@ -1426,7 +1445,7 @@ public sealed partial class LaptopShopScreen : Control
             string label = Row(row.TextId);
             if (labels is { } l && label != null)
                 DrawRun(label, At(l) + new Vector2(0, dy), s,
-                        _yearSpan != null && GraphCursor == i + 1 ? Of(ShopScreen.Highlight) : Of(ShopScreen.Label), l.Justify);
+                        _yearSpan != null && GraphCursor == i + 1 || i == HighlightRow ? Of(ShopScreen.Highlight) : Of(ShopScreen.Label), l.Justify);
 
             // ⭐ A ROW IS CLICKABLE. Only some do anything -- the Upgrades row asks for an upgrade
             // -- but the rect is registered for every row and the CALLER decides, because which
@@ -1492,7 +1511,7 @@ public sealed partial class LaptopShopScreen : Control
                 && layout[row.Element] is { } welem)
                 DrawRun(text,
                         new Vector2(At(vw).X, At(welem).Y + _spec.WidgetStep * i * s),
-                        s, ValueTint, vw.Justify);
+                        s, ValueTintFor(i), vw.Justify);
             // A row with its own value element uses it; otherwise the shared value column, at the
             // label's height.
             else if (row.Element != null && layout[row.Element] is { } own)
@@ -1607,7 +1626,7 @@ public sealed partial class LaptopShopScreen : Control
         ? Of(ShopScreen.Label) : Of(ShopScreen.Highlight);
 
     /// <summary>A row's value colour: the screen's, except an enabled spinner, which is always yellow.</summary>
-    Color ValueTintFor(int row) => row == _spec?.SpinnerRow ? Of(ShopScreen.Highlight) : ValueTint;
+    Color ValueTintFor(int row) => row == _spec?.SpinnerRow || row == HighlightRow ? Of(ShopScreen.Highlight) : ValueTint;
 
     static Color Of((byte R, byte G, byte B) c) => Color.Color8(c.R, c.G, c.B);
 

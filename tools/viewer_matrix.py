@@ -169,6 +169,10 @@ def main(argv=None) -> int:
 
     env = clean_environment(disc)
     env.setdefault('LP_NUM_THREADS', '2')
+    # The console's "AllResearched" debug key (Viewer.Research.cs): these smokes were written against a build menu
+    # that offered the whole world library, and research now locks most of it on a fresh park. A smoke that tests
+    # research itself turns it back off through the viewer's own field.
+    env['TPW_ALL_RESEARCHED'] = '1'
 
     def execute(name, command, timeout=None):
         result = run_process(command, repo=repo, log=out / f'{name}.log', timeout=timeout or args.timeout, environment=env)

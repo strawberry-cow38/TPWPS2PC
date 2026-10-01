@@ -446,6 +446,7 @@ public partial class Viewer : Node3D
             else if (a == "--music-ps2") _musicPs2 = true;
             else if (a == "--graph-demo") _graphDemo = true;
             else if (a == "--stats-demo") _statsDemo = true;
+            else if (a == "--all-researched") _allResearched = true;
             else if (a.StartsWith("--take-loan=")) _takeLoans.AddRange(a["--take-loan=".Length..].Split(',').Select(int.Parse));
             else if (a.StartsWith("--delete-test=")) _deleteTest = a["--delete-test=".Length..];
             // ⭐ `--benchmark=<seconds>`: measure frame time and what is accumulating, then quit.
@@ -1953,7 +1954,8 @@ public partial class Viewer : Node3D
                     data = new WadArchive(_lib.ReadDisc(f));
             var dba = data?.Entries.FirstOrDefault(e => e.Path.Equals("/arsdb.dba", StringComparison.OrdinalIgnoreCase));
             if (dba == null) { GD.Print("[park] compiled records: /arsdb.dba MISSING -- authored .sam values stand"); return; }
-            var compiled = new CompiledAssets(new AssetResourceDatabase(data.Read(dba)), _text);
+            _arsDb = new AssetResourceDatabase(data.Read(dba));
+            var compiled = new CompiledAssets(_arsDb, _text);
             compiled.Attach(_cat.All, out string report);
             GD.Print("[park] compiled records: " + report);
         }
@@ -2185,7 +2187,7 @@ public partial class Viewer : Node3D
         ResetGuests();
         _walkGrid = null;
         // ⭐ AND THE SIM WITH IT: it was made on that grid, and its rides stood on that park.
-        _sim = null; _parkStats = null; _scripted.Clear(); _rideMeshes.Clear(); _shotWound = false; ClearTrackViews(); ClearCoasterViews(); _placedHeight.Clear(); ClearHoardings();
+        _sim = null; _parkStats = null; _researchDb = null; _researchPickRow = -1; _scripted.Clear(); _rideMeshes.Clear(); _shotWound = false; ClearTrackViews(); ClearCoasterViews(); _placedHeight.Clear(); ClearHoardings();
         // ⭐⭐ AND THE SOUND, FOR THE SAME REASON THE GRID IS RESET TWO LINES UP. `_sounds` is
         // built `??=` from `SoundCatalogue(disc, world, 1)` and `(.., 2)` -- the CURRENT world's
         // event maps -- so keeping it across a world change resolves the new park's cues against
@@ -4110,16 +4112,17 @@ public partial class Viewer : Node3D
                 if (mgr == null)
                 { _laptopBack.RemoveAt(_laptopBack.Count - 1); Status("no park is running yet"); ShowLaptopLevel(); return; }
                 mgr.OpenResearchScreen();
+                AttachResearch();
                 var rcells = new List<(string, int)>();
                 var rtints = new List<Color?>();
                 foreach (var slot in mgr.Slots)
                 {
-                    // ⚠ An idle slot reads "Nothing" and sits at zero -- and with the research
-                    // DATABASE not ported yet every slot is idle, so this screen is honestly
-                    // empty rather than faked full. It comes alive when the database lands.
+                    // ⭐ An idle slot reads "Nothing" at zero in red, an active one its item's name and percent in
+                    // green (0x1B5920). ⭐ The row being PICKED shows the highlighted candidate instead (mode 2).
                     bool on = slot.Active;
-                    rcells.Add((on ? ResearchItemName(slot) : TextRow(LaptopScreen.ResearchNothingTextId),
-                                on ? (int)slot.Percent : 0));
+                    string text = slot.Slot == _researchPickRow ? ResearchPickText()
+                                : on ? ResearchItemName(slot) : TextRow(LaptopScreen.ResearchNothingTextId);
+                    rcells.Add((text, on ? (int)slot.Percent : 0));
                     rtints.Add(on ? ResearchActive : ResearchIdle);
                 }
                 // ⚠ NO TITLE DRAWN. The class registers one (1013 "Research") but the scene authors no
@@ -4128,9 +4131,16 @@ public partial class Viewer : Node3D
                 // Where the console's base class puts a title with no authored frame is not read
                 // yet; an empty string is honest until it is.
                 _shopPanel.ShowScreen(LaptopScreen.Research, "", rcells, barTints: rtints);
+                _shopPanel.WheelPages = _researchPickRow >= 0;
+                _shopPanel.HighlightRow = _researchPickRow;
                 ClearLaptopModel();
                 RefreshLaptopBalance();
-                Status($"research -- {mgr.ActiveCount} of {ResearchManager.SlotCount} slots running");
+                Status(_researchPickRow >= 0
+                    ? $"research {TextRow(LaptopScreen.Research.Rows[_researchPickRow].TextId)}: {ResearchPickText()} "
+                      + $"({Math.Min(_researchPickSel + 1, _researchPick.Count + 1)} of {_researchPick.Count + 1}) -- "
+                      + "wheel or Up/Down to change, click the row to choose, Back to cancel"
+                    : $"research -- {mgr.ActiveCount} of {ResearchManager.SlotCount} slots running; click a row to pick its project"
+                      + (ResearchDb == null ? " (no research database for this park)" : ""));
                 break;
             }
             // ⭐⭐ GAME OPTIONS (menu id 1). Six rows, NO title, and not a Single-item screen --
@@ -4436,7 +4446,7 @@ public partial class Viewer : Node3D
     /// can only say WHICH category is running. Deliberately not faked with a plausible name.
     /// </summary>
     string ResearchItemName(ResearchProject slot) =>
-        slot.Category >= 0 ? $"#{slot.Category}:{slot.Item}" : TextRow(LaptopScreen.ResearchNothingTextId);
+        slot.Category >= 0 && slot.Item >= 0 ? ResearchName(slot.Category, slot.Item) : TextRow(LaptopScreen.ResearchNothingTextId);
 
     /// <summary>A text row as the laptop's own language renders it. ⚠ Named `TextRow` because
     /// `Row(int)` is already taken by the grid, and it returns an int.</summary>
@@ -4734,7 +4744,7 @@ public partial class Viewer : Node3D
                     case "main_info":      _laptopBack.Add(("info", null)); ShowLaptopLevel(); return;
                     case "main_bh_items":  _laptopBack.Add(("buildcats", null)); ShowLaptopLevel(); return;
                     case "main_gameoptions": _laptopBack.Add(("gameoptions", null)); ShowLaptopLevel(); return;
-                    case "main_research":    _laptopBack.Add(("research", null)); ShowLaptopLevel(); return;
+                    case "main_research":    _researchPickRow = -1; _laptopBack.Add(("research", null)); ShowLaptopLevel(); return;
                     case "main_parkstats":
                         _parkGraphYears = 1; _graphPick.Remove("statistics");
                         _laptopBack.Add(("parkstats", null)); ShowLaptopLevel(); return;
@@ -4854,6 +4864,7 @@ public partial class Viewer : Node3D
     /// so paging goes down the shipped path rather than round it.</summary>
     void OnLaptopPage(int by)
     {
+        if (ResearchPage(by)) return;
         if (_laptopBack.Count > 0 && _laptopBack[^1].Kind == "newloan")
         {
             // The lender spinner: 1..4 with wrap (`+0x60` bit 0).
@@ -4916,6 +4927,7 @@ public partial class Viewer : Node3D
         if (_singleStaff is { } person) { SingleStaffChose(person, row); return; }
         if (_optionsOpen) { GameOptionChose(row); return; }
         if (_laptopBack.Count > 0 && IsGraphPage(_laptopBack[^1].Kind)) { GraphItemChosen(_laptopBack[^1].Kind, row); return; }
+        if (_laptopBack.Count > 0 && _laptopBack[^1].Kind == "research") { ResearchRowClicked(row); return; }
         // ⭐ Cross on New Loan takes the offer -- any row, as on the upgrade page: the page has one offer.
         if (_laptopBack.Count > 0 && _laptopBack[^1].Kind == "newloan") { TakeLoanOnPage(); return; }
         // ⭐ On the upgrade PAGE, any row buys -- the page has one offer and the console's Confirm
@@ -5045,6 +5057,7 @@ public partial class Viewer : Node3D
     /// <summary>Back steps out one level; Close puts the laptop away.</summary>
     void OnLaptopDismiss(bool close)
     {
+        if (!close && ResearchBack()) return;
         if (close || _laptopBack.Count == 0)
         {
             _shopPanel.Hide(); _laptopBack.Clear();
@@ -9488,7 +9501,8 @@ public partial class Viewer : Node3D
     {
         if (r?.Definition?.CompiledEntry is not { HasRideTiers: true } e) return false;
         int next = r.CurrentTier + 1;
-        return next <= 2 && e.Tier(next).PurchaseCost > 0;
+        // ⭐ And researched: tier T only while T < the item's research level (0x1D4A38) -- the Upgrades row's work.
+        return next <= 2 && e.Tier(next).PurchaseCost > 0 && UpgradeResearched(r, next);
     }
 
     /// <summary>⭐ Does THIS PARK sell an add-on for this ride? The per-park lists are the boot

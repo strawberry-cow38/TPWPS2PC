@@ -473,7 +473,8 @@ public sealed record LaptopScreen(
             new(155, LaptopRowKind.Bar, "ResearchBars"),   // Features
             new(834, LaptopRowKind.Bar, "ResearchBars"),   // Upgrades
         },
-        WidgetStep: RowStep, ValueOnWidgetRow: true);
+        // ⚠ Item names AMBER (`0x1B5920` sets 0x35F550 for the column); only the row being picked is yellow.
+        WidgetStep: RowStep, ValueOnWidgetRow: true, MonochromeValues: true);
 
     /// <summary>`STR_RESEARCH_NOTHING` -- an idle slot's item column.</summary>
     public const int ResearchNothingTextId = 605;

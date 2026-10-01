@@ -48,7 +48,9 @@ public sealed class ResearchProject
 /// `R[L]` (`0x366150` = 20, 30, 35, 40, 43). ⭐ There is no money cost anywhere near it: the budget is a
 /// fixed 80 → 100 switch, and at 100 each quantum also costs the researcher 6 tiredness.
 ///
-/// ⚠⚠ WHAT IS NOT PORTED, said plainly: the research-state DATABASE (`0x389650`, **60 records of
+/// ⭐ PORTED 2026-10-01 (findings/research.md): <see cref="ResearchDatabase"/>, <see cref="ResearchCatalogue"/>, the thresholds
+/// (<see cref="Refresh"/>), eligibility (<see cref="Eligible"/>) and the Research screen's picking. What follows was the
+/// state before, kept for its addresses -- ⚠ WHAT WAS NOT PORTED: the research-state DATABASE (`0x389650`, **60 records of
 /// 4 bytes** `{cat, item, percent, level}`, lazily created and hard-capped at 60 -- find
 /// `0x12BEE8`, alloc `0x12BF38`, level `0x12BA08`, percent `0x12B928`, availability `0x12B6D0`,
 /// write `0x12BAF8`), the per-world catalogues (`PTR_DAT_00360850[world]`, item index = ordinal in
@@ -78,13 +80,111 @@ public sealed class ResearchManager
         for (int i = 0; i < SlotCount; i++) _slots[i] = new ResearchProject(i);
         Budget = StaffTables.ResearchBudgetInitial;
         CompletedFlag = true;
+        ItemLevel = (cat, item) => Database?.Level(cat, item) ?? 0;
+        AnythingLeftToResearch = () => Database?.AnythingLeft() ?? true;
     }
 
     public IReadOnlyList<ResearchProject> Slots => _slots;
     /// <summary>`+4`, the budget percentage. Saved and loaded as a byte (`0x1B66C0`/`0x1B6720`).</summary>
     public int Budget { get; private set; }
-    /// <summary>`+0`: 1 at init and after every completion. ⚠ No reader traced.</summary>
+    /// <summary>`+0`: 1 at init and after every completion -- the THRESHOLDS' DIRTY FLAG: `0x1B7130` recomputes them
+    /// only while it is set, then clears it (findings/research.md §2.1).</summary>
     public bool CompletedFlag { get; private set; }
+
+    /// <summary>⭐ The park's research state (<see cref="ResearchDatabase"/>). Null = the old caller-supplied mode, where
+    /// <see cref="Start"/> is told the work and nothing is filed.</summary>
+    public ResearchDatabase Database { get; set; }
+    /// <summary>`0x12AC78(cat, item)`: how many of that catalogue item are built -- the Upgrades row offers a ride only
+    /// once one stands. Null answers 0.</summary>
+    public Func<int, int, int> BuiltCount { get; set; }
+
+    /// <summary>`mgr + 0x98 + 4·slot`: each row's group threshold -- a locked item is a candidate only while its tier-0
+    /// group is at or under it. Row 4's is computed and never read.</summary>
+    public IReadOnlyList<int> Thresholds => _thresholds;
+    readonly int[] _thresholds = new int[SlotCount];
+
+    /// <summary>The kinds each row researches, in the candidate list's order (`0x15CA78` callers, §3.3).</summary>
+    public static IReadOnlyList<int> RowKinds(int row) => row switch
+    {
+        0 => new[] { 3, 6, 7, 1 },
+        1 => new[] { 4 },
+        2 => new[] { 5 },
+        3 => new[] { 2 },
+        4 => new[] { 3, 6, 7, 1, 8 },
+        _ => Array.Empty<int>(),
+    };
+
+    /// <summary>⭐ `0x1B7130`, READ (MIPS for the three loops): while dirty, for rows 0..3 count every item of the row's
+    /// pool by its tier-0 group, and how many of them are available; the threshold is the FIRST GROUP UNDER TWO-THIRDS
+    /// RESEARCHED (`done·3 &lt; total·2`, an empty group passing). Pools: row 0 kinds 6, 7, 1, 3; then 4; 5; 2.
+    /// ⚠ The console's loop walks off its 8-word stack arrays when groups 1..4 are all two-thirds done; any threshold
+    /// past the largest retail tier-0 group (3) admits everything, so it stops at 8 here.</summary>
+    public void Refresh()
+    {
+        if (!CompletedFlag || Database is not { } db) return;
+        for (int slot = 0; slot < 4; slot++)
+        {
+            var total = new int[9]; var done = new int[9];
+            foreach (int cat in slot == 0 ? new[] { 6, 7, 1, 3 } : RowKinds(slot))
+                for (int i = 0; i < db.Count(cat); i++)
+                {
+                    int g = Math.Clamp(db.Group(cat, i, 0), 0, 8);
+                    total[g]++;
+                    if (db.Available(cat, i, 0)) done[g]++;
+                }
+            if ((uint)(done[0] * 3) < (uint)(total[0] * 2)) continue;     // threshold left as it was
+            int t = 1;
+            while (t < 8 && (uint)(done[t] * 3) >= (uint)(total[t] * 2)) t++;
+            _thresholds[slot] = t;
+        }
+        CompletedFlag = false;
+    }
+
+    /// <summary>⭐ `0x1B7208(mgr, slot, cat, item)`, READ (MIPS `0x1B7208..0x1B732C`): rows 0..3 offer a LOCKED item whose
+    /// tier-0 group is within the row's threshold; row 4 offers an AVAILABLE ride kind with one built and a level under 3
+    /// (its next upgrade), or an add-on not yet available once the park's track ride 0 is.</summary>
+    public bool Eligible(int slot, int cat, int item)
+    {
+        if (Database is not { } db) return false;
+        Refresh();
+        bool a = db.Available(cat, item, 0);
+        if (cat == 8) return db.Count(6) > 0 && db.Available(6, 0, 0) && !a;
+        if (slot == 4) return a && (BuiltCount?.Invoke(cat, item) ?? 0) > 0 && db.Level(cat, item) < 3;
+        return db.Group(cat, item, 0) <= _thresholds[slot] && !a;
+    }
+
+    /// <summary>The row's candidates (`0x15CA78` per kind, catalogue order), WITHOUT the "Nothing" the screen always
+    /// appends after them.</summary>
+    public List<(int Cat, int Item)> Candidates(int row)
+    {
+        var list = new List<(int, int)>();
+        if (Database is not { } db) return list;
+        foreach (int cat in RowKinds(row))
+            for (int i = 0; i < db.Count(cat); i++)
+                if (Eligible(row, cat, i)) list.Add((cat, i));
+        return list;
+    }
+
+    /// <summary>⭐ `0x1B6880` with the database (§2.3): the tier researched is the item's current LEVEL, resumed from the
+    /// percent filed for it; refused if the slot is busy or (rows 0..3) the tier's group is over the threshold.</summary>
+    public bool StartResearch(int slot, int cat, int item)
+    {
+        if (Database is not { } db || (uint)slot >= SlotCount) return false;
+        int level = db.Level(cat, item);
+        int pct = db.Percent(cat, item, level);
+        int g = db.Group(cat, item, level);
+        int work = db.Work(cat, item, level);
+        if (_slots[slot].Active) return false;
+        Refresh();
+        if (slot != 4 && _thresholds[slot] < g) return false;
+        return Start(slot, cat, item, work, pct);
+    }
+
+    /// <summary>`0x1B71D8`: the row's project stops -- inactive, its item and category kept; the percent stays filed.</summary>
+    public void Stop(int slot)
+    {
+        if ((uint)slot < SlotCount) _slots[slot].Active = false;
+    }
     public int ActiveCount => _slots.Count(s => s.Active);
 
     /// <summary>`0x1B6848(mgr, v)`: `+4 = v`. The getter `0x1B5910` has no caller.</summary>
@@ -155,14 +255,19 @@ public sealed class ResearchManager
         {
             if (!s.Active) continue;
             s.Progress = unchecked(s.Progress + share);                   // 0x1B7388
+            // ⭐ EVERY quantum files the percent of the tier being researched (`0x12BAF8`), and at 100 that IS the
+            // unlock -- the level++ that makes the build menu offer it.
+            if (Database is { } db)
+                db.File(s.Category, s.Item, db.Level(s.Category, s.Item), (int)s.Percent);
             if (!(s.Progress < s.Required)) Complete(s);                  // sltu
             if (!s.Complete) continue;
             if (AnythingLeftToResearch is { } left && !left()) AllResearched?.Invoke();   // 0x104358 / 0x151998
         }
     }
 
-    /// <summary>`0x1B74A0(slot, 1)`: complete, inactive, manager flag set, `0x12AED8` (unlock), the
-    /// category's message, item = -1.</summary>
+    /// <summary>`0x1B74A0(slot, 1)`: complete, inactive, the thresholds' dirty flag set, the category's message,
+    /// item = -1. ⚠ NOT the unlock (`0x12AED8` there is a release): the unlock is the level++ the same quantum's
+    /// <see cref="ResearchDatabase.File"/> made. And nothing starts the next item (findings/research.md §2.5).</summary>
     void Complete(ResearchProject s)
     {
         s.Complete = true;

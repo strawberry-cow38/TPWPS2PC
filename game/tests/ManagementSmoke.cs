@@ -415,6 +415,58 @@ public partial class ManagementSmoke : Node3D
                   && sim.Finances.LoansOutstanding == dabb.Outstanding,
                   $"the next month end repays {Money.Display(dabb.Repayment)}: {Money.Display(owed)} -> {Money.Display(dabb.Outstanding)} over {dabb.MonthsRemaining} months");
 
+            // Research, with the matrix's AllResearched debug key turned OFF through the viewer's own field: a fresh park's
+            // build menu is its catalogue's researched items; a row click opens its candidates, the wheel/Up-Down steps
+            // them, a second click starts the project, finishing it makes the item buildable, and "Nothing" stops a row.
+            int BuildTotal() => ((List<(string Key, int Count)>)Call(viewer, "BuildCategories")).Sum(c => c.Count);
+            int buildAll = BuildTotal();
+            Set(viewer, "_allResearched", false); Set(viewer, "_researchDb", null);
+            var research = staff.Research;
+            research.Database = null;
+            Call(viewer, "AttachResearch");
+            var rdb = research.Database;
+            int buildLocked = BuildTotal();
+            Check(rdb != null && !rdb.AllResearched && buildLocked > 0 && buildLocked < buildAll,
+                  $"research on: the build menu offers {buildLocked} things where all-researched offered {buildAll}");
+            laptopBack.Clear(); laptopBack.Add(("research", null));
+            Call(viewer, "ShowLaptopLevel");
+            await Frames();
+            Click(Panel<Dictionary<int, Rect2>>(panel, "_specRows")[0].GetCenter());
+            await Frames();
+            var picks = Field<List<(int Cat, int Item)>>(viewer, "_researchPick");
+            var rcellsNow = Panel<List<(string Text, int Fraction)>>(panel, "_cells");
+            Check(Field<int>(viewer, "_researchPickRow") == 0 && picks.Count > 0
+                  && rcellsNow[0].Text == (string)Call(viewer, "ResearchName", picks[0].Cat, picks[0].Item) && panel.WheelPages,
+                  $"clicking Rides lists its {picks.Count} candidates, the row showing the first ({rcellsNow[0].Text})");
+            Call(viewer, "OnLaptopPage", -1);
+            await Frames();
+            Check(Panel<List<(string Text, int Fraction)>>(panel, "_cells")[0].Text == text.Text("eng", LaptopScreen.ResearchNothingTextId),
+                  "stepping back from the first wraps to Nothing, the entry every list ends with");
+            Call(viewer, "OnLaptopPage", 1);
+            await Frames();
+            var chosen = picks[0];
+            Click(Panel<Dictionary<int, Rect2>>(panel, "_specRows")[0].GetCenter());
+            await Frames();
+            Check(research.Slots[0].Active && research.Slots[0].Category == chosen.Cat && research.Slots[0].Item == chosen.Item
+                  && Field<int>(viewer, "_researchPickRow") == -1 && !rdb.Available(chosen.Cat, chosen.Item, 0),
+                  $"clicking it again starts {Call(viewer, "ResearchName", chosen.Cat, chosen.Item)} on row 0, still locked");
+            for (int q = 0; q < 100_000 && research.Slots[0].Active; q++) research.Contribute(43);
+            Check(rdb.Available(chosen.Cat, chosen.Item, 0) && BuildTotal() == buildLocked + 1 && !research.Slots[0].Active,
+                  $"finished, it is available and the build menu offers one more ({BuildTotal()}); the row is idle again");
+            Click(Panel<Dictionary<int, Rect2>>(panel, "_specRows")[1].GetCenter());
+            await Frames();
+            Click(Panel<Dictionary<int, Rect2>>(panel, "_specRows")[1].GetCenter());
+            await Frames();
+            bool shopsRunning = research.Slots[1].Active;
+            Click(Panel<Dictionary<int, Rect2>>(panel, "_specRows")[1].GetCenter());
+            await Frames();
+            Call(viewer, "OnLaptopPage", -1);
+            await Frames();
+            Click(Panel<Dictionary<int, Rect2>>(panel, "_specRows")[1].GetCenter());
+            await Frames();
+            Check(shopsRunning && !research.Slots[1].Active,
+                  "a Shops project started, then choosing Nothing on that row stops it");
+
             if (shots != null)
             {
                 for (int t = 0; t < 20; t++) Call(viewer, "TickPark");

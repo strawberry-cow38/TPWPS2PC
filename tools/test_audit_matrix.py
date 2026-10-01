@@ -171,6 +171,21 @@ COVERAGE += '\n' + '\n'.join([
                               "  ok   loans: two loans owe $186,024 (the Balance Sheet's Loans row), and the gold tickets' money figure drops by exactly their interest x 10 (760240) the moment they are taken",
 ])
 
+# Research (ResearchChecks.cs): its own statement. Real lines from a --research-only run; the witnesses are the two
+# executable claims (only the screen and the loader start a project; 100 % is the unlock) and the fresh park's 13.
+COVERAGE += '\n' + '\n'.join([
+                              '  ok   research: 0x1B6880 (start a project) has exactly two callers, the Research screen and the save loader (0x1B5644, 0x1B6764): nothing starts research on its own',
+                              '  ok   research: 0x12BAF8 tests the filed percent against 100 (slti s1, 0x64 at 0x12BB3C): reaching it IS the unlock',
+                              "  ok   research: all 347 catalogue keys resolve in arsdb.dba with their list's kind (0 do not)",
+                              "  ok   research: JUNGLE park 1 starts with exactly the 13 items whose tier-0 group is 0 (the live savestate's 13): 222 226 228 225 193 198 204 208 240 241 243 247 249",
+                              "  ok   research: SPACE park 2 starts with its 16 -- a different list, so the rule is not one park's constant",
+                              "  ok   research: the AllResearched debug key opens all 41 of JUNGLE park 1's items (the control)",
+                              '  ok   research: a fresh JUNGLE park: thresholds [1,1,1,1], Rides offers 221 223 224 230 220, Shops 242 245 246, Sideshows 251 253, and Upgrades nothing (no ride built)',
+                              '  ok   research: ride 221 researched by a level-0 researcher in 38 quanta: available, level 1, message 0x4B, and the slot idle',
+                              '  ok   research: nothing starts the next item: the row stays idle, and 221 is no longer a candidate',
+                              "  ok   research: Crazy Ape's first upgrade: offered on Upgrades only once one is built, researched in 10 quanta to level 2, and with no mechanic hired the message is 0x7E (hire one) rather than 0x4C",
+])
+
 class ClassificationTests(unittest.TestCase):
     def test_staff_family_count_and_witnesses_required(self):
         for text in ('\n'.join(x for x in COVERAGE.splitlines() if 'staff:' not in x),
@@ -216,6 +231,14 @@ class ClassificationTests(unittest.TestCase):
                      COVERAGE.replace('  ok   music: lobby clips:', '  ok   unrelated: lobby clips:', 1),
                      COVERAGE.replace('written as selector 2: no slot takes it', 'written as selector 2: level 6'),
                      COVERAGE.replace('the control, the same 90 on the event\'s own selector 4 plays the top level', 'the control: skipped')):
+            self.assertEqual(classify('JUNGLE', 0, text + '\nPASS')['status'], 'missing_coverage')
+        self.assertEqual(classify('JUNGLE', 0, COVERAGE + '\nPASS')['status'], 'pass')
+
+    def test_research_family_count_and_witnesses_required(self):
+        for text in ('\n'.join(x for x in COVERAGE.splitlines() if 'research:' not in x),
+                     COVERAGE.replace('  ok   research: all 347 catalogue keys', '  ok   unrelated: all 347 catalogue keys', 1),
+                     COVERAGE.replace('has exactly two callers', 'has three callers'),
+                     COVERAGE.replace('starts with exactly the 13 items', 'starts with exactly the 41 items')):
             self.assertEqual(classify('JUNGLE', 0, text + '\nPASS')['status'], 'missing_coverage')
         self.assertEqual(classify('JUNGLE', 0, COVERAGE + '\nPASS')['status'], 'pass')
 

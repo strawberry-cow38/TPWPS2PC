@@ -190,6 +190,14 @@ REQUIRED_WITNESSES += (
     'ok   loans: a paid-off loan is still TAKEN: nothing sets +0x28 back, so each lender lends once per park',
 )
 
+# Research (ResearchChecks.cs): 10 on every park, disc-wide. The witnesses are the two executable claims and the fresh
+# JUNGLE park's 13 items -- the figure a live savestate corroborates by another route.
+REQUIRED_CHECKS.update({'research': 10})
+REQUIRED_WITNESSES += (
+    'ok   research: 0x1B6880 (start a project) has exactly two callers, the Research screen and the save loader',
+    'ok   research: JUNGLE park 1 starts with exactly the 13 items whose tier-0 group is 0',
+)
+
 
 def classify(world: str, raw_exit: int | None, text: str, *, timed_out: bool = False,
              truncated: bool = False, launch_error: str | None = None, terrain: int | None = None) -> dict:
