@@ -244,9 +244,20 @@ public sealed partial class LaptopShopScreen : Control
 
     // ---- the general path: any of the three info screens --------------------------------------
 
-    /// <summary>The info screen's model, rendered by the viewer into its own viewport. Null
-    /// until one is built; the screen simply leaves the window empty then.</summary>
-    public Texture2D ModelTexture { get; set; }
+    /// <summary>The info screen's model, rendered by the viewer into its own viewport. Null until one is built;
+    /// the screen simply leaves the window empty then. Drawn in <c>_Draw</c>. ⚠⚠ SETTING IT REDRAWS. It was a bare auto-property,
+    /// and the only thing that asked for a redraw was the hover that moved -- which can be drawn BEFORE `_Process`
+    /// pumps the focus change that builds the model (strawberry, 2026-09-30: "if you hover over nothing, and then
+    /// hover over something in the build list, it doesnt show the model. if you hover over another thing first,
+    /// and then the thing you want, the model shows"). Leaving nothing clears this to null; the next hover's draw
+    /// ran with it still null and nothing drew again until the NEXT hover, which by then found the viewport's
+    /// texture -- one object for every model -- set. The setter makes the order not matter.</summary>
+    public Texture2D ModelTexture
+    {
+        get => _modelTexture;
+        set { if (ReferenceEquals(_modelTexture, value)) return; _modelTexture = value; QueueRedraw(); }
+    }
+    Texture2D _modelTexture;
 
     LaptopScreen _spec;
     readonly Dictionary<string, SceneLayout> _layouts = new(StringComparer.OrdinalIgnoreCase);
@@ -295,6 +306,13 @@ public sealed partial class LaptopShopScreen : Control
     /// icon and a bar inside a blue pill, three rows stepping 40 down the `FeelingsClouds` region.
     /// </summary>
     IReadOnlyList<int> _feelings;
+    /// <summary>⭐ Visitor Information's dominant thoughts, most dominant first, as thought CLASSES (1..8), or null
+    /// when no guest holds one -- then no row is drawn at all (`if (DAT_002C4568 != -1)`).</summary>
+    IReadOnlyList<int> _thoughts;
+    /// <summary>⭐ Park Statistics' `GraphText` / `GraphValue`: the shown series' label and its value for the last
+    /// recorded month, at (45, 115) and (250, 115) (graph-widget.md §4).</summary>
+    (string Label, string Value)? _graphReadout;
+    public Texture2D[] ThoughtIcons { get; set; }
 
     /// <summary>The three thought faces and the pill's end cap. ⚠ Loaded by PATH because this
     /// port has no sprite registry; the console reaches the same files by id 5/6/7 and 0x33.</summary>
@@ -327,9 +345,12 @@ public sealed partial class LaptopShopScreen : Control
                            IReadOnlyList<Color?> barTints = null, GraphSeries? graph = null,
                            IReadOnlyList<string> column2 = null, IReadOnlyList<string> headers = null,
                            IReadOnlyList<int> feelings = null,
-                           IReadOnlyList<bool> medals = null, IReadOnlyList<bool> stars = null)
+                           IReadOnlyList<bool> medals = null, IReadOnlyList<bool> stars = null,
+                           IReadOnlyList<int> thoughts = null, (string Label, string Value)? graphReadout = null)
     {
         _feelings = feelings;
+        _thoughts = thoughts;
+        _graphReadout = graphReadout;
         _medalsEarned = medals;
         _starsEarned = stars;
         _barTints = barTints;
@@ -1151,6 +1172,25 @@ public sealed partial class LaptopShopScreen : Control
             }
         }
 
+        // ⭐ VISITOR INFORMATION's dominant thoughts: up to three icons in ONE blue pill (`0x185458`).
+        if (_thoughts is { Count: > 0 } && layout["ThoughtsClouds"] is { } tclouds)
+        {
+            var pillBlue = Color.Color8(0, 0, 255);
+            float top = At(tclouds).Y;
+            var body = new Rect2(new Vector2(Origin.X + LaptopScreen.ThoughtsPillLeft * s, top + LaptopScreen.ThoughtsPillTopDy * s),
+                                 new Vector2((LaptopScreen.ThoughtsPillRight - LaptopScreen.ThoughtsPillLeft) * s, LaptopScreen.ThoughtsPillHeight * s));
+            DrawRect(body, pillBlue);
+            if (PillCap != null)
+            {
+                DrawTextureRect(PillCap, new Rect2(new Vector2(body.Position.X - 9 * s, body.Position.Y), new Vector2(9 * s, body.Size.Y)), false, pillBlue);
+                DrawTextureRect(PillCap, new Rect2(new Vector2(body.End.X - 3 * s, body.Position.Y), new Vector2(9 * s, body.Size.Y)), false, pillBlue);
+            }
+            for (int i = 0; i < _thoughts.Count && i < 3; i++)
+                if (ThoughtIcons != null && _thoughts[i] >= 0 && _thoughts[i] < ThoughtIcons.Length && ThoughtIcons[_thoughts[i]] is { } icon)
+                    DrawTextureRect(icon, new Rect2(new Vector2(Origin.X + (LaptopScreen.ThoughtsPillLeft + LaptopScreen.ThoughtsIconStep * i) * s, top),
+                                                    new Vector2(32 * s, 32 * s)), false);
+        }
+
         // ⭐ The GRAPH, drawn before the rows for the same reason the model window is. ⚠ Its
         // element is the model window's own frame (315, 208, 147x200), which is why no graph
         // screen also has a model.
@@ -1179,6 +1219,11 @@ public sealed partial class LaptopShopScreen : Control
                 new Rect2(At(window), new Vector2(window.Width, window.Height) * s), false);
 
         // ⭐ Column headers, drawn on the row the label grid skips (Park Finance's row 200).
+        if (_graphReadout is { } gro && layout["GraphText"] is { } gt && layout["GraphValue"] is { } gv)
+        {
+            DrawRun(gro.Label, At(gt), s, Of(ShopScreen.Label), gt.Justify);
+            DrawRun(gro.Value, At(gv), s, Of(ShopScreen.Highlight), gv.Justify);
+        }
         if (_headers != null && _spec.ValueElement2 != null
             && layout[_spec.ValueElement] is { } h1 && layout[_spec.ValueElement2] is { } h2)
         {
@@ -1373,6 +1418,11 @@ public sealed partial class LaptopShopScreen : Control
         }
         FeelingsIcons = icons;
         PillCap ??= LoadSsh(lib, "/laptop/PROG_WBIT.ssh");
+        var thoughts = new Texture2D[LaptopScreen.ThoughtIconPaths.Length];
+        for (int i = 0; i < thoughts.Length; i++)
+            if ((thoughts[i] = LoadSsh(lib, LaptopScreen.ThoughtIconPaths[i])) == null)
+                GD.PrintErr($"[laptop] thought icon missing: {LaptopScreen.ThoughtIconPaths[i]}");
+        ThoughtIcons = thoughts;
     }
 
     /// <summary>⚠ Measure text in NATIVE units, for checking a column against the font rather

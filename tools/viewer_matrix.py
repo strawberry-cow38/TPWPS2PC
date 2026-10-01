@@ -59,6 +59,11 @@ SCENES = {
     # and paid for at completion; and the ride's hoarding raised, risen, measured in the world (turned
     # too), dropped and raised again for the upgrade. Every park runs the same 48; the floor sits just under it.
     'mechanic': ('MechanicSmoke', 'MECHANIC SMOKE', 46),
+    # The pointer (strawberry, 2026-09-30): real pointer warps, not the capture override. A placed ride's
+    # footprint tiles hover it and its box top off those tiles does not (the control the old box test fails);
+    # the gate's tiles hover the gate; right-click offers Open Park, choosing it opens the park, and the gate
+    # sounds its world's own clip once. Every park runs the same 13.
+    'pointer': ('PointerTilesSmoke', 'POINTER TILES SMOKE', 13),
 }
 # ⭐ Parks START CLOSED, as on the console ([0x2B72A4], set only by Open Park 0x14E4C0; 2c274fe): no bus
 # admits a guest until the laptop opens the gate. These scenes are ABOUT guests arriving, so they open it with

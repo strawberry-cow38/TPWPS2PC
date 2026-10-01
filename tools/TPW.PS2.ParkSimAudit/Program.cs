@@ -123,6 +123,12 @@ if (args.Contains("--bounce-only"))
     Console.WriteLine(bad==0 ? "PASS bounce: the loader's defaults, every BOUNCE script's pads on its model, and the ticker's hump" : $"FAIL: {bad}");
     return bad==0?0:1;
 }
+if (args.Contains("--parkstats-only"))
+{
+    ParkStatsChecks.Run(disc, Check);
+    Console.WriteLine(bad==0 ? "PASS park statistics: the year roll, the stats recorder, the park rating, the bucket walk and the calendar" : $"FAIL: {bad}");
+    return bad==0?0:1;
+}
 if (args.Contains("--music-only"))
 {
     MusicChecks.Run(disc, Check);
@@ -735,6 +741,7 @@ HoardingChecks.Run(disc, Check);
 SurfaceSeatChecks.Run(disc, Check);
 BounceChecks.Run(disc, Check);
 MusicChecks.Run(disc, Check);
+ParkStatsChecks.Run(disc, Check);
 ManagementChecks.Run(disc, terrain, Wad("DATA"), wad, world, Check);
 AdvisorChecks.Run(disc, terrain, Wad("DATA"), wad, world, Check);
 Check(looEntry.Entry != null, $"the world ships a lavatory to exercise ({looEntry.Entry?.Path ?? "none found"})");

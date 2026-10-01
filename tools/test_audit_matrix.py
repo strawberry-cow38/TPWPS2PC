@@ -132,7 +132,27 @@ COVERAGE += '\n' + '\n'.join(['  ok   music: the park writes the guest value as 
                               '  ok   music: the control, the same 90 on the event\'s own selector 4 plays the top level and 45 a middle one',
                               '  ok   music: lobby clips: 0 of 300 follow themselves (0) and all 3 play',
                               '  ok   music: the first clip of each map decodes as 22050 Hz stereo',
-                              '  ok   music: the lead, re-measured on the 4 of them loud at both ends: median 1153 samples against 1152'])
+                              '  ok   music: the lead, re-measured on the 4 of them loud at both ends: median 1153 samples against 1152',
+                              '  ok   music: past the pool: 150 guests make value 90, and 20 clips play on the top level in every world',
+                              '  ok   music: a missed clip draw: 0 of 800 steered two-hour runs stop with ClampDraws'])
+
+
+# The laptop's statistics (ParkStatsChecks.cs): its own statement, for the same merge reason. Real lines from a
+# --parkstats-only run; the witnesses are the year roll's words and the rating.
+COVERAGE += '\n' + '\n'.join([
+                              '  ok   parkstats: the year roll 0x100EF8 copies 0x12dc -> 0x12e0 and 0x12e4 -> 0x12e8, then zeroes both',
+                              '  ok   parkstats: Park Statistics\' walk 0x186D38 stores each getter\'s result into the bucket (0x186EAC sw v0,0(t0) in the delay slot of jal 0x16B378) and only counts (s1++): it assigns, it does not sum',
+                              '  ok   parkstats: money in/out: this year 70/0 after the roll, last year 500/200; the lifetime Cash In/Out (570/200) do not roll -- the control that they are different fields',
+                              '  ok   parkstats: the last-year park value snapshot lands at month end 13 (count % 12 == 0 && != 0, before the increment), and the value ring holds it (1300) -- one month after a calendar year',
+                              '  ok   parkstats: before the first month end every series reads 0 (the getter\'s k >= count)',
+                              '  ok   parkstats: three month ends: people 10, 14, 4; arrivals 14 (the 2nd month\'s whole headcount -- the getter\'s k < count) then 0 (the park shrank: clamped), happiness 75% (300/4), time 10d, December rating 50',
+                              '  ok   parkstats: k = 0 reads as k = 1: Park Statistics\' \'now\' is LAST month-end\'s recording, not the live park',
+                              '  ok   parkstats: People Visited counts admissions (2); days in park is today minus the arrival stamp (10)',
+                              '  ok   parkstats: the rating of 3 rides (one at tier 2), 6 shops, 1 sideshow, 12 features and nobody: 27 = 4 + 1 + 10 + 2 + 10',
+                              '  ok   parkstats: the caps: 30 rides all at tier 3 rate 30 = 20 + 10, not 45 + 30 -- the control that the terms are capped',
+                              '  ok   parkstats: Park Statistics\' walk assigns rather than sums: the first two-month bucket is 5 where the finance builder makes 11; People\'s max is the fixed 110',
+                              '  ok   parkstats: a year of the calendar: 12 month ends recorded (people 5, happiness 50%, rating 63), the December sample 63, and the year roll moved 900 to last year',
+])
 
 
 class ClassificationTests(unittest.TestCase):
@@ -180,6 +200,16 @@ class ClassificationTests(unittest.TestCase):
                      COVERAGE.replace('  ok   music: lobby clips:', '  ok   unrelated: lobby clips:', 1),
                      COVERAGE.replace('written as selector 2: no slot takes it', 'written as selector 2: level 6'),
                      COVERAGE.replace('the control, the same 90 on the event\'s own selector 4 plays the top level', 'the control: skipped')):
+            self.assertEqual(classify('JUNGLE', 0, text + '\nPASS')['status'], 'missing_coverage')
+        self.assertEqual(classify('JUNGLE', 0, COVERAGE + '\nPASS')['status'], 'pass')
+
+    def test_parkstats_family_count_and_witnesses_required(self):
+        for text in ('\n'.join(x for x in COVERAGE.splitlines() if 'parkstats:' not in x),
+                     COVERAGE.replace('  ok   parkstats: k = 0 reads', '  ok   unrelated: k = 0 reads', 1),
+                     COVERAGE.replace('then zeroes both', 'then keeps both'),
+                     '\n'.join(x for x in COVERAGE.splitlines() if 'it assigns, it does not sum' not in x),
+                     COVERAGE.replace('result into the bucket (0x186EAC', 'running sum (0x186EAC'),
+                     COVERAGE.replace('12 features and nobody: 27', '12 features and nobody: 26')):
             self.assertEqual(classify('JUNGLE', 0, text + '\nPASS')['status'], 'missing_coverage')
         self.assertEqual(classify('JUNGLE', 0, COVERAGE + '\nPASS')['status'], 'pass')
 

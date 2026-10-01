@@ -72,15 +72,32 @@ public sealed class ParkFinances
     /// does not model. This is the figure the Balance Sheet's "Cash In" reads.</summary>
     public int TotalIncome { get; private set; }
 
-    /// <summary>⚠⚠ MISLABELLED UNTIL 2026-09-28: this is `park[0x12e4]`, which is the spend SINCE
-    /// THE YEAR ROLL, not a lifetime total. The lifetime spend is `park[0x12d4]`, and the Balance
-    /// Sheet's "Cash Out" reads THAT one. `FUN_00100698` bumps both on every debit, so they are
-    /// numerically identical in this port -- which has no year roll to separate them -- and the
-    /// error is invisible today and would appear the moment one is added.
-    ///
-    /// ⚠ Park Finance wants `0x12e4`'s real meaning (this year) alongside `0x12e8` (last year),
-    /// so when the year roll lands these need to become two different numbers rather than one.</summary>
+    /// <summary>`park[0x12d4]` -- the LIFETIME spend, the Balance Sheet's "Cash Out". `FUN_00100698` bumps it
+    /// and <see cref="YearSpending"/> (`0x12e4`) on every debit; the year roll `0x100EF8` zeroes only the
+    /// latter, which is what separates them. (Until 2026-09-30 this property WAS the one field, labelled
+    /// `0x12e4`, because the port had no year roll.)</summary>
     public int TotalSpending { get; private set; }
+
+    /// <summary>`park[0x12dc]` -- money in SINCE THE YEAR ROLL (Park Finance, "Money In" this year).
+    /// `park[0x12e0]` is last year's, copied by <see cref="YearRoll"/>.</summary>
+    public int YearIncome { get; private set; }
+    public int LastYearIncome { get; private set; }
+    /// <summary>`park[0x12e4]` -- money out since the year roll; `park[0x12e8]` last year's.</summary>
+    public int YearSpending { get; private set; }
+    public int LastYearSpending { get; private set; }
+    /// <summary>`park[0x12ec]` / `park[0x12f0]`: the park value and the balance snapshotted by the month end
+    /// every twelfth month (see <see cref="MonthEnd"/>). Park Finance's "Last Year" column.</summary>
+    public int LastYearParkValue { get; private set; }
+    public int LastYearBalance { get; private set; }
+
+    /// <summary>⭐ `0x100EF8`, the year roll, READ (a frameless leaf): `0x12e0 = 0x12dc; 0x12e8 = 0x12e4`,
+    /// then both this-year figures zeroed. Its only caller is the calendar `0x16B060` at `0x16B1BC`, when
+    /// the YEAR changes at a month end (<see cref="ParkManagement.MonthChanged"/>).</summary>
+    public void YearRoll()
+    {
+        LastYearIncome = YearIncome; LastYearSpending = YearSpending;
+        YearIncome = 0; YearSpending = 0;
+    }
 
     /// <summary>⭐ Income filed by category, as `FUN_001007D8` does. The console switches on two
     /// (4 and 5) and files everything else under the plain credit only; the dictionary keeps
@@ -98,6 +115,7 @@ public sealed class ParkFinances
         if (amount < 0) throw new ArgumentOutOfRangeException(nameof(amount), "a credit is not a negative debit -- call Debit");
         Balance += amount;
         TotalIncome += amount;
+        YearIncome += amount;                                              // park[0x12dc]
         _income[Slot(PeriodCount)] += amount;                              // park[0x2FC + (period % 0x90)*4]
         if (category is { } c) _byCategory[c] = _byCategory.GetValueOrDefault(c) + amount;
     }
@@ -112,7 +130,8 @@ public sealed class ParkFinances
         if (FreeBuild) return true;
         if (!Unlimited && Balance < amount) return false;
         Balance -= amount;
-        TotalSpending += amount;
+        TotalSpending += amount;                                           // park[0x12d4]
+        YearSpending += amount;                                            // park[0x12e4]
         return true;
     }
 
@@ -144,6 +163,9 @@ public sealed class ParkFinances
     /// Statistics plots as its Bank Balance series. Filed by <see cref="MonthEnd"/> alongside the
     /// wages, in the same slot.</summary>
     readonly int[] _balance = new int[PeriodSlots];
+    /// <summary>⭐ `park+0x107c`: the park value at each month end (`0x1011C8`), which Overall Statistics plots
+    /// as its Park Value series.</summary>
+    readonly int[] _value = new int[PeriodSlots];
     static int Slot(int period) => ((period % PeriodSlots) + PeriodSlots) % PeriodSlots;
 
     /// <summary>`park[0x12BC]`: completed months. The month end `0x100A18` bumps it after filing
@@ -174,7 +196,7 @@ public sealed class ParkFinances
     ///   period += 1; the next slot of every ring cleared
     /// </code>
     /// `i = period % 144`. <paramref name="wagesTenths"/> is `0x1008B8`'s sum, already x 10.</summary>
-    public void MonthEnd(int wagesTenths)
+    public void MonthEnd(int wagesTenths, int parkValueTenths = 0)
     {
         int loans = 0;                                                     // ⚠ no loan slots in the port
         WageAccumulator += wagesTenths;
@@ -184,6 +206,12 @@ public sealed class ParkFinances
         // ⭐ The balance is filed for the month that just CLOSED, so it is recorded before the
         // counter moves on -- the same slot the wages above went into.
         _balance[Slot(PeriodCount)] = Balance;
+        // ⭐ The park value `0x1011C8` into `park+0x107c` (findings/graph-widget.md §1.5), and every twelfth
+        // month the last-year snapshots `0x12ec`/`0x12f0` (`0x100B80`/`0x100B8C`, when `count % 12 == 0 &&
+        // count != 0`, BEFORE the increment -- so they land at month ends 13, 25, 37..., one month after the
+        // money roll when the calendar starts in month 0. ⚠ A real quirk, kept; parkstats-screens.md §4.3).
+        _value[Slot(PeriodCount)] = parkValueTenths;
+        if (PeriodCount % 12 == 0 && PeriodCount != 0) { LastYearParkValue = parkValueTenths; LastYearBalance = Balance; }
         PeriodCount += 1;
         _income[Slot(PeriodCount)] = 0;
         _wages[Slot(PeriodCount)] = 0;
@@ -244,6 +272,9 @@ public sealed class ParkFinances
     /// zero for Money In and Wages) does NOT apply to this series.</summary>
     public int BalanceInPeriod(int k) =>
         k == 0 ? Balance : PeriodIndex(k) is var i && i < 0 ? 0 : _balance[i];
+
+    /// <summary>The park value at the k-th completed month back (`park+0x107c`, the accumulator getters' shape).</summary>
+    public int ValueInPeriod(int k) => PeriodIndex(k) is var i && i < 0 ? 0 : _value[i];
 
     /// <summary>⭐ Advisor variable 49, the WAGES_HIGH producer (MIPS `0x10E32C..0x10E3D8`):
     /// `income(1)/10 &lt; wages(1)/10 &amp;&amp; income(2)/10 &lt; wages(2)/10` -- wages above ALL income in

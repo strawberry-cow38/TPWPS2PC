@@ -279,7 +279,7 @@ public partial class Viewer : Node3D
     bool _walkAudit;
     bool _typeAudit;
     bool _guestTest;
-    int _laptopFilm; string _laptopScreen = "ride"; int _laptopFrame;
+    int _laptopFilm; string _laptopScreen = "ride"; int _laptopFrame, _windMonths;
     Vector2I? _uiSize; SubViewport _uiShotView; Camera3D _uiShotCam;
     /// <summary>Which main-menu row the cursor is on, and whether the park is open -- the latter
     /// decides Open Park against Close Park. Both are harness knobs until the laptop takes input.</summary>
@@ -445,6 +445,7 @@ public partial class Viewer : Node3D
             else if (a == "--staff-test") _staffTest = true;
             else if (a == "--music-ps2") _musicPs2 = true;
             else if (a == "--graph-demo") _graphDemo = true;
+            else if (a == "--stats-demo") _statsDemo = true;
             else if (a.StartsWith("--delete-test=")) _deleteTest = a["--delete-test=".Length..];
             // ⭐ `--benchmark=<seconds>`: measure frame time and what is accumulating, then quit.
             else if (a == "--alloc-probe") _allocProbe = true;
@@ -496,6 +497,10 @@ public partial class Viewer : Node3D
             else if (a == "--guest-test") _guestTest = true;
             else if (a.StartsWith("--laptop-film=")) { int.TryParse(a["--laptop-film=".Length..], out _laptopFilm); }
             else if (a.StartsWith("--laptop-screen=")) _laptopScreen = a["--laptop-screen=".Length..];
+            // ⭐ `--wind-months=N`: before a laptop shot, run the REAL calendar driver a day at a time until N month
+            // ends have passed, so the statistics pages have history (each month end runs 0x100A18, 0x16B478 and,
+            // across a year, 0x100EF8). A harness, not a gameplay path.
+            else if (a.StartsWith("--wind-months=")) int.TryParse(a["--wind-months=".Length..], out _windMonths);
             else if (a.StartsWith("--laptop-menu-row=")) int.TryParse(a["--laptop-menu-row=".Length..], out _laptopMenuSelected);
             else if (a == "--laptop-park-open") _laptopParkOpen = _parkOpenAtStart = true;
             // ⭐ So a render can SHOW the debug panel. Master sees the pictures and I do not, so a
@@ -2179,7 +2184,7 @@ public partial class Viewer : Node3D
         ResetGuests();
         _walkGrid = null;
         // ⭐ AND THE SIM WITH IT: it was made on that grid, and its rides stood on that park.
-        _sim = null; _scripted.Clear(); _rideMeshes.Clear(); _shotWound = false; ClearTrackViews(); ClearCoasterViews(); _placedHeight.Clear(); ClearHoardings(); ClearTourVehicles();
+        _sim = null; _parkStats = null; _scripted.Clear(); _rideMeshes.Clear(); _shotWound = false; ClearTrackViews(); ClearCoasterViews(); _placedHeight.Clear(); ClearHoardings(); ClearTourVehicles();
         // ⭐⭐ AND THE SOUND, FOR THE SAME REASON THE GRID IS RESET TWO LINES UP. `_sounds` is
         // built `??=` from `SoundCatalogue(disc, world, 1)` and `(.., 2)` -- the CURRENT world's
         // event maps -- so keeping it across a world change resolves the new park's cues against
@@ -3844,16 +3849,17 @@ public partial class Viewer : Node3D
                     ? new List<int> { happy * 100 / n, mid * 100 / n, sad * 100 / n }
                     : new List<int> { 0, 0, 0 };
                 _shopPanel.EnsureVisitorArt(_lib);
-                // ⚠ People Visited is a CUMULATIVE admissions counter (incremented once per guest
-                // let through the gate), not the number in the park now -- and this port keeps no
-                // such counter. Ticket Price needs a gate price, which it also does not have.
-                // Both are dashes; showing the live headcount for "people visited" would be a
-                // plausible wrong number rather than an obvious missing one.
+                // ⭐ People Visited is the CUMULATIVE admissions counter `stats+0x20` (once per guest let through
+                // the gate, 0x210C98), not the headcount -- ParkStatistics.PeopleVisited, bumped where the native
+                // entrance accepts a guest. Ticket Price is the gate fee, `$` + commas in whole dollars
+                // (`0x142908`). ⚠ The spinner that changes it (`this+0x754`) is not ported: the price shows, it
+                // does not yet move.
+                var thoughts = _statsDemo ? DemoThoughts : DominantThoughts();
                 var vcells = new List<(string, int)>
                 {
-                    (null, 0), (null, 0), (NoValue, 0), (NoValue, 0),
+                    (null, 0), (null, 0), (Thousands(_parkStats?.PeopleVisited ?? 0), 0), (Money.Format(_entranceFee), 0),
                 };
-                _shopPanel.ShowScreen(LaptopScreen.VisitorInfo, "", vcells, feelings: feel);
+                _shopPanel.ShowScreen(LaptopScreen.VisitorInfo, "", vcells, feelings: feel, thoughts: thoughts);
                 ClearLaptopModel();
                 RefreshLaptopBalance();
                 Status($"visitor information -- {n} guests: {happy} happy, {mid} middling, {sad} unhappy");
@@ -3942,28 +3948,34 @@ public partial class Viewer : Node3D
                 var pf = _sim?.Finances;
                 if (pf == null)
                 { _laptopBack.RemoveAt(_laptopBack.Count - 1); Status("no park is running yet"); ShowLaptopLevel(); return; }
-                // ⚠ Only the BALANCE has a source. Money in/out since the year roll, park value
-                // and park rating are not retained anywhere in this port -- there is no year roll
-                // and no valuation -- so they read as a dash rather than a confident zero, which
-                // would look like a park that earned nothing.
-                string none = NoValue;
+                // ⭐ Every row has a source now (parkstats-screens.md §4.2-4.3): money in/out since the year roll
+                // `0x12dc`/`0x12e4` and last year's `0x12e0`/`0x12e8` (the roll `0x100EF8`, ParkFinances.YearRoll);
+                // the live balance and park value against last year's month-end snapshots `0x12f0`/`0x12ec`; and
+                // the rating WORD -- this year the LAST COMPLETED month's sample (`stats+0x26c` at k = 0, which
+                // reads k = 1), last year the December sample `stats+0x2fc`. Before the first month end the
+                // console's ring answers 0, which is "Poor", and so does this.
                 int pval = ParkValueTenths();
+                var stats = _parkStats;
                 var thisYear = new List<(string, int)>
                 {
-                    (none, 0), (none, 0), (Money.Format(pf.Balance), 0), (Money.Format(pval), 0),
-                    // ⚠ Still a dash: the rating word needs a park RATING, and nothing computes
-                    // one. Printing "Poor" would be a confident wrong answer, not a missing one.
-                    (none, 0),
+                    (Money.Format(pf.YearIncome), 0), (Money.Format(pf.YearSpending), 0),
+                    (Money.Format(pf.Balance), 0), (Money.Format(pval), 0),
+                    (TextRow(ParkStatistics.RatingTextId(stats?.Rating(0) ?? 0)), 0),
                 };
-                var lastYear = new List<string> { none, none, none, none, none };
+                var lastYear = new List<string>
+                {
+                    Money.Format(pf.LastYearIncome), Money.Format(pf.LastYearSpending),
+                    Money.Format(pf.LastYearBalance), Money.Format(pf.LastYearParkValue),
+                    TextRow(ParkStatistics.RatingTextId(stats?.LastYearRating ?? 0)),
+                };
                 _shopPanel.ShowScreen(LaptopScreen.ParkFinance, "", thisYear,
                     column2: lastYear,
                     headers: new[] { TextRow(LaptopScreen.ThisYearTextId),
                                      TextRow(LaptopScreen.LastYearTextId) });
                 ClearLaptopModel();
                 RefreshLaptopBalance();
-                Status($"park finance -- balance {Money.Format(pf.Balance)}, "
-                     + $"park value {Money.Format(pval)}; year-to-date and rating not retained yet");
+                Status($"park finance -- in {Money.Format(pf.YearIncome)}, out {Money.Format(pf.YearSpending)}, "
+                     + $"balance {Money.Format(pf.Balance)}, park value {Money.Format(pval)}, rating {stats?.Rating(0) ?? 0}");
                 break;
             }
             // ⭐⭐ THE PARK STATISTICS MENU (id 8). Four pages, all selectable.
@@ -3985,18 +3997,30 @@ public partial class Viewer : Node3D
                                        LaptopScreen.ParkStatistics.Rows.Count - 1);
                 _graphRow = spick;
                 var srgb = LaptopScreen.ParkStatsSeriesRgb[spick];
-                // ⚠ NONE of the five park statistics are retained per month in this port -- there
-                // is no ring for people, arrivals, happiness, time in park or rating. They plot
-                // flat zero rather than a plausible invention, and the empty graph is the report.
-                var sbuckets = LaptopGraphData.Build(_ => 0, 0, _graphYears, out int smax);
+                // ⭐ The five series are the stats rings `0x16B478` records at every month end (ParkStatistics):
+                // People In Park, Arrival Rate, Happiness, Time In Park, Overall Rating, through 0x186D38's own walk.
+                var st = _parkStats ?? new ParkStatistics();
+                Func<int, int> sget = spick switch
+                {
+                    0 => st.People, 1 => st.Arrival, 2 => st.Happiness, 3 => st.TimeInPark, _ => st.Rating,
+                };
+                var sbuckets = LaptopGraphData.BuildParkStats(sget, st.Months, _graphYears, spick, out int smax);
+                // `GraphValue`: the series at k = 0, which reads LAST month-end's recording, formatted per row --
+                // int, int, int + "%", int + text 221 "d", int + "%" (graph-widget.md §4).
+                int now = sget(0);
+                string sval = spick switch
+                {
+                    2 or 4 => $"{now}%", 3 => $"{now}{TextRow(221)}", _ => Thousands(now),
+                };
                 _shopPanel.GraphPanel ??= UiPanel.Load(_lib);
                 _shopPanel.ShowScreen(LaptopScreen.ParkStatistics, "",
                     Blank(LaptopScreen.ParkStatistics.Rows.Count),
                     graph: new LaptopShopScreen.GraphSeries(
-                        sbuckets, 0, smax, Color.Color8(srgb.R, srgb.G, srgb.B), _graphYears));
+                        sbuckets, 0, smax, Color.Color8(srgb.R, srgb.G, srgb.B), _graphYears),
+                    graphReadout: (TextRow(LaptopScreen.ParkStatistics.Rows[spick].TextId), sval));
                 ClearLaptopModel();
                 RefreshLaptopBalance();
-                Status($"{TextRow(LaptopScreen.ParkStatistics.Rows[spick].TextId)} -- no monthly ring in this port yet");
+                Status($"{TextRow(LaptopScreen.ParkStatistics.Rows[spick].TextId)}: {sval} ({st.Months} months recorded)");
                 break;
             }
             // ⭐⭐ OVERALL STATISTICS (menu id 22) -- the same widget, two series.
@@ -4013,13 +4037,10 @@ public partial class Viewer : Node3D
                                        LaptopScreen.OverallStats.Rows.Count - 1);
                 _graphRow = opick;
                 var orgb = LaptopScreen.OverallSeriesRgb[opick];
-                // ⚠ Park Value has NO source in this port -- nothing computes a park valuation --
-                // so it plots flat zero rather than a plausible invention.
-                // ⚠ Park Value has no month ring, so the series is the LIVE value at every
-                // bucket -- a flat line at today's figure, which is honest about being one
-                // reading rather than a history.
+                // ⭐ Park Value is `0x101288`: the month-end ring `park+0x107c` (ParkFinances.ValueInPeriod, filed
+                // by the month end from 0x1011C8), and like the balance's getter it answers the LIVE value at k = 0.
                 int liveValue = ParkValueTenths();
-                Func<int, int> oget = opick == 0 ? ofin.BalanceInPeriod : (_ => liveValue);
+                Func<int, int> oget = opick == 0 ? ofin.BalanceInPeriod : (k => k == 0 ? liveValue : ofin.ValueInPeriod(k));
                 var obuckets = LaptopGraphData.Build(oget, ofin.PeriodCount, _graphYears, out int omax);
                 _shopPanel.GraphPanel ??= UiPanel.Load(_lib);
                 _shopPanel.ShowScreen(LaptopScreen.OverallStats, "",
@@ -4568,14 +4589,14 @@ public partial class Viewer : Node3D
     /// figure, rather than a number that looks like one.
     ///
     /// The ids are the screens' own, read out of their draws: Users 771, Customers 691 and 488,
-    /// Takings 106, Profit 986, Total Profit 365, State of Repair 128.
+    /// Takings 106, Profit 986, Total Profit 365, State of Repair 128, Remaining Life 636, Excitement 857/907,
+    /// Cleanliness 269.
     ///
-    /// ⚠⚠ EVERYTHING NOT LISTED RETURNS NOTHING ON PURPOSE. Excitement, Remaining Life,
-    /// Satisfaction and Cleanliness are drawn by these screens and are NOT tracked by this port's
-    /// sim yet -- the shop screen's own code says the same of satisfaction ("decoded but not yet
-    /// tracked"). A text row answers null so nothing is drawn, and a bar answers 0 so it reads
-    /// empty. An invented sweep would make an unfinished screen look finished, which is exactly
-    /// what these screens looked like an hour ago.</summary>
+    /// ⚠⚠ EVERYTHING NOT LISTED RETURNS NOTHING ON PURPOSE. Satisfaction (451, 537) is drawn by these screens
+    /// and NOT tracked by this port's sim -- the shop screen's own code says so ("decoded but not yet tracked").
+    /// ⚠ And Users on rides and toilets reads `Customers`, which only a SALE moves (`Book`), so it stays 0 there:
+    /// which counter the console's ride list reads is not traced, and counting boardings into the shop's field
+    /// would be an invention. A text row answers null so nothing is drawn, and a bar answers 0 so it reads empty.</summary>
     (string, int) LaptopInfoCell(LaptopRow row, ParkRide r) => row.TextId switch
     {
         771 or 691 or 488 => (r.Customers.ToString(), 0),
@@ -4586,6 +4607,11 @@ public partial class Viewer : Node3D
         128               => (null, Math.Clamp(r.ServiceClass != RideServiceClass.None ? r.ReliabilityPercent : r.Condition, 0, 100)),
             // ⭐ Remaining Life on the All Rides list, the same figure as the details page's row.
             636               => (null, LifePercent(r)),
+        // ⭐ Excitement on All Rides (857) and All Sideshows (907): the same `ParkRide.Value` the ride's and the
+        // sideshow's details pages draw (61, 899), so the list and the page cannot disagree.
+        857 or 907        => (null, Math.Clamp(r.Value ?? 0, 0, 100)),
+        // ⭐ Cleanliness on All Toilets: the toilet's CONDITION, the same figure its details page draws (132).
+        269               => (null, Math.Clamp(r.Condition, 0, 100)),
         _                 => (null, 0),
     };
 
@@ -4614,12 +4640,7 @@ public partial class Viewer : Node3D
                 // either, and why there is no laptop row that closes a park again.
                 if (picked.Index == LaptopMainMenu.OpenParkIndex)
                 {
-                    _laptopParkOpen = true;
-                    // ⚠ The ABSOLUTE month index, the same figure AdvisorProducers.Months uses
-                    // (`Clock.Month + 12 * Clock.Year`), not the month-of-year.
-                    _parkOpenedMonth = _calendar == null ? 0 : _calendar.Month + 12 * _calendar.Year;
-                    GD.Print($"[park] OPEN (0x14E4C0): [0x2B72A4]=1, opened in month {_parkOpenedMonth} ([0x2B7298])");
-                    Status("the park is open -- the bus starts bringing guests in");
+                    OpenPark("the laptop");                // one routine for the laptop and the gate's menu
                     ShowLaptopMain();
                     return;
                 }
@@ -5049,6 +5070,19 @@ public partial class Viewer : Node3D
             if (_laptopFrame == 0)
             {
                 TestHireOneOfEach();
+                if (_windMonths > 0)
+                {
+                    AdvanceCalendar(0);
+                    if (_statsDemo) StartStatsDemo();
+                    int start = _management.MonthChanges, days = 0;
+                    while (_management.MonthChanges - start < _windMonths && days++ < 400 * _windMonths)
+                    {
+                        if (_statsDemo) StatsDemoDay(days);
+                        AdvanceCalendar(ParkClock.UnitsPerDay);
+                    }
+                    GD.Print($"[calendar] wound {_management.MonthChanges - start} month ends ({days} days): "
+                           + $"{_parkStats?.Months ?? 0} months recorded, {_calendar.Format()}");
+                }
                 var pp = _laptopScreen.Split(':');
                 string kind = pp.Length > 1 ? pp[1] : "main";
                 string parg = pp.Length > 2 && !pp[2].StartsWith("row=") ? pp[2] : null;
@@ -8845,34 +8879,28 @@ public partial class Viewer : Node3D
         if (PointerOverCheats(mouse)) return -1;
         var from = _cam.ProjectRayOrigin(mouse);
         var dir = _cam.ProjectRayNormal(mouse);
-        int best = -1; float near = float.MaxValue;
-        for (int i = 0; i < _park.Placed.Count; i++)
-        {
-            var node = _park.Placed[i].Node;
-            if (node == null || !IsInstanceValid(node)) continue;
-            var (lo, hi) = Park.DrawnBounds(node, inParent: true);
-            if (RayHitsBox(from, dir, lo, hi, out float t) && t < near) { near = t; best = i; }
-        }
-        // ⭐⭐ THE GATE COMPETES HERE LIKE EVERYTHING ELSE. Master: "the gate hover hitbox still
-        // lets me hover behind it. why did we invent a new type of selection box instead of using
-        // the one that every other object uses?" -- and the answer was that it had its own test
-        // outside this loop, against the WRONG BOX.
-        //
-        // ⚠⚠ IT WAS HIT-TESTING THE NO-BUILD ZONE. `_gateBounds` is the zone the gate forbids
-        // building in -- several cells wide and `tall` high -- so a ray aimed anywhere on that
-        // side of the park passed through it, including from well behind the gate itself. The
-        // box you SELECT is the zone; the thing you POINT AT is the gate, and those are not the
-        // same volume.
-        //
-        // ⭐ Now it uses the gate model's own drawn bounds, through the same `DrawnBounds` and
-        // the same nearest-hit comparison as every placed object, so it can be occluded by them
-        // and they by it.
-        if (_gate?.Root is { } gateRoot && IsInstanceValid(gateRoot) && gateRoot.Visible)
-        {
-            var (glo, ghi) = Park.DrawnBounds(gateRoot, inParent: true);
-            if (RayHitsBox(from, dir, glo, ghi, out float gt) && gt < near) { near = gt; best = GateIndex; }
-        }
-        return best;
+        // ⭐⭐ THE TILES, NOT THE MODEL'S BOX. strawberry, 2026-09-30: "tidy up mouse-over hitboxes to be the
+        // tiles which the thing occupies, instead of the whole object." A drawn-bounds box made a tall ride catch
+        // the pointer from well behind it and a wide canopy from beside it. The pointer now picks the cell under
+        // it -- the same floor cast the build cursor uses -- and the thing whose FOOTPRINT holds that cell,
+        // irregular footprints included (`PlacedIndexAt` reads `Fp.Cells`). That is also exactly what the
+        // capture harness's `_cursorOverride` above has always done, so the live path and the tested one agree.
+        if (CellAtScreen(mouse, out int cx, out int cy) && PlacedIndexAt(cx, cy) is var onTile and >= 0) return onTile;
+        return PointerOnGateTiles(from, dir) ? GateIndex : -1;
+    }
+
+    /// <summary>The gate's tiles: its `.sam` footprint, the rectangle its selection box is drawn from. ⚠ They lie
+    /// OFF the plot, on the walkway (rows 16..18 against a plot starting at 19), so <see cref="CellAtScreen"/>,
+    /// which only answers plot cells, cannot see them; the floor under the pointer is tested against the
+    /// rectangle directly, at the box's own floor height.</summary>
+    bool PointerOnGateTiles(Vector3 from, Vector3 dir)
+    {
+        if (_gateBounds is not { } g || _gate?.Root is not { } root || !IsInstanceValid(root) || !root.Visible) return false;
+        if (Mathf.Abs(dir.Y) < 1e-5f) return false;
+        float t = (g.Lo.Y - from.Y) / dir.Y;
+        if (t <= 0f) return false;
+        var hit = from + dir * t;
+        return hit.X >= g.Lo.X && hit.X <= g.Hi.X && hit.Z >= g.Lo.Z && hit.Z <= g.Hi.Z;
     }
 
     /// <summary>What <see cref="PointedAt"/> returns for the gate. ⚠ Below zero so every
@@ -8956,9 +8984,19 @@ public partial class Viewer : Node3D
     {
         if (_objMenu == null || _mode != Mode.Park) return false;
         UpdateHover();
-        // ⚠ The gate is selectable but owns none of these actions: it is not in `Park.Placed`,
-        // so there is nothing to delete and no queue to edit.
-        if (_hovered < 0 || _hovered == GateIndex) return false;
+        // ⭐ THE GATE HAS ITS OWN MENU: Open Park, while closed (strawberry, 2026-09-30). It is not in
+        // `Park.Placed`, so none of the placed-object actions apply; it is selected and focused by the same
+        // path a left click takes, then offered what the laptop would offer.
+        if (_hovered == GateIndex)
+        {
+            var gateEntries = new List<string>(GateMenuEntries());
+            if (gateEntries.Count == 0 || !SelectUnderCursor()) return false;
+            _objMenu.Show(gateEntries, at);
+            GD.Print($"[menu] gate: {string.Join(" / ", gateEntries)}");
+            Status($"gate -- {string.Join(", ", gateEntries)}");
+            return true;
+        }
+        if (_hovered < 0) return false;
         if (!SelectUnderCursor()) return false;
         var entries = MenuEntriesFor(_selected).ToList();
         _objMenu.Show(entries, at);
@@ -9079,12 +9117,27 @@ public partial class Viewer : Node3D
     {
         if (_sim == null) return 0;
         long total = 0;
+        var inSim = new HashSet<int>();
         foreach (var r in _sim.Rides)
         {
+            inSim.Add(r.Id);
             if (r.Definition?.CompiledEntry is not { } e) continue;
             total += e is { HasRideTiers: true }
                    ? e.Tier(r.CurrentTier).PurchaseCost
                    : e.SimpleEconomy?.PurchaseCost ?? 0;
+        }
+        // ⭐ AND EVERYTHING ELSE PLACED. `0x1011C8` sums over the whole world list -- scenery, bins and toilets
+        // included -- and the sim only holds what runs a script, so the scriptless placements are taken from
+        // the same live list the advisor's census walks (AdvisorPlacements).
+        if (_park != null)
+        {
+            var live = _park.Placed.Select(p => p.Node).ToHashSet();
+            foreach (var p in _busPlacements)
+            {
+                if (inSim.Contains(p.RuntimeId) || !IsInstanceValid(p.Node) || !live.Contains(p.Node)) continue;
+                if (p.Definition?.CompiledEntry is not { } e) continue;
+                total += e is { HasRideTiers: true } ? e.Tier(0).PurchaseCost : e.SimpleEconomy?.PurchaseCost ?? 0;
+            }
         }
         return (int)(total / 2 * 10);
     }
@@ -9465,6 +9518,7 @@ public partial class Viewer : Node3D
     /// (`0x124018` / `0x123FB8`) are not ported, so Edit Queue opens OUR queue tool.</summary>
     void OnObjectMenu(string caption)
     {
+        if (_gateSelected && caption == OpenParkCaption) { OpenPark("the gate's menu"); return; }
         // ⭐ A kick-out caption is a STAFF KIND's text row, so it is matched back the way it was
         // produced rather than by parsing the words.
         if (_staff != null && StaffRoomAt(_selected) is { } kroom)
@@ -12008,6 +12062,7 @@ public partial class Viewer : Node3D
         // until the park is opened, and opening walks it back to 0.
         if (_gate != null && _playing && _shotPath == null && _mode == Mode.Park && _gate.Frames > 0)
         {
+            StepGateSound();                                  // before the arch moves: it cues at the first frame of opening
             float target = _laptopParkOpen ? 0f : _gate.Frames - 1;
             if (Mathf.Abs(_parkTime - target) > 0.001f)
             {

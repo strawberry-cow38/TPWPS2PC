@@ -57,6 +57,40 @@ public static class LaptopGraphData
         return bucket;
     }
 
+    /// <summary>⭐ PARK STATISTICS' builder, `0x186D38` (graph-widget.md §1.5): the same walk as <see cref="Build"/>
+    /// with two differences, both read. The inner loop ASSIGNS (`0x186EAC sw v0,0(t0)` straight after the getter),
+    /// so a bucket keeps the LAST month it visited and is then divided by the count -- with one year selected
+    /// every second point is a single month halved. And the values are the stats rings' bytes, not tenths: no /10.
+    /// The max is the series' own (`arr[0]`): People 110 and Happiness/Rating 120 fixed (image values, no writer),
+    /// Arrival `max(5, peak) * 0x1262 >> 12`, Time In Park `max|peak| * 0x119A >> 12`.</summary>
+    public static int[] BuildParkStats(Func<int, int> getter, int months, int years, int series, out int max)
+    {
+        var bucket = new int[Buckets];
+        max = 0;
+        if (getter == null || years <= 0) return bucket;
+        int span = Math.Min(months, years * 12);
+        int m = span, peak = 0;
+        for (int b = 0; b < Buckets; b++)
+        {
+            int lower = span - b * years / 2;
+            int v = 0, count = 0;
+            while (m >= lower && m >= 0) { v = getter(m); count++; m--; }
+            m = lower;
+            if (count != 0) v /= count;
+            bucket[b] = v;
+            peak = Math.Max(peak, series == 3 ? Math.Abs(v) : v);
+            if (lower <= 0) break;
+        }
+        max = series switch
+        {
+            0 => 110,
+            1 => (int)((long)Math.Max(5, peak) * 0x1262 >> HeadroomShift),
+            3 => (int)((long)peak * HeadroomNumerator >> HeadroomShift),
+            _ => 120,
+        };
+        return bucket;
+    }
+
     /// <summary>How many buckets a park this young actually fills: `min(24, 24 * months / span)`.
     /// ⚠ The plotter needs at least TWO points or it draws nothing at all, which on a brand new
     /// park is the correct and slightly surprising answer.</summary>

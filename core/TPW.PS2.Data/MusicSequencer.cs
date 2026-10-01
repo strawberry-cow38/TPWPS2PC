@@ -42,6 +42,22 @@ public sealed class MusicSequencer
     public const int GraphMask = 0x0416, GraphFlags = 0x0406;
     /// <summary>`0x111E08`'s selector: the park's guest value goes to parameter 2.</summary>
     public const int ParkGuestSelector = 2;
+    /// <summary>The console's guest pool: `PoolOfPeople 0x3952CC`, 100 slots of 0xA8 (findings/staff.md).</summary>
+    public const int GuestPool = 100;
+
+    /// <summary>`0x151C00`'s value: `guests * 90 / 100` as a float, truncated by `0x297B68`. ⭐ The guest count is
+    /// capped at the pool first. On the console it cannot pass 100, so the value cannot pass 90, which is exactly
+    /// where every world's top band ends. The port has no pool (the debug panel's +10/+50 guests add without a
+    /// limit), and past 90 no band holds the value, so the chooser STOPS the music. strawberry heard exactly that
+    /// ("music just... stops?", 2026-09-30).</summary>
+    public static int GuestValue(int guests) => (int)(Math.Clamp(guests, 0, GuestPool) * 90f / 100f);
+
+    /// <summary>⚠ An adapter, off by default so the class stays the console's. With it on, a clip draw past the
+    /// set's last threshold takes the last clip instead of stopping. `0x245A88` returns 0 there, and the clip-end
+    /// path then starts nothing, so on the PS2 the music dies for good. Fifteen draws in 65536 on most upper-level
+    /// sets means a guest-steered park loses its music in 3 to 8% of two-hour sessions (200 simulated per world).
+    /// The console's own level 1 carries the same risk, only smaller (Space 10/65536, Jungle none).</summary>
+    public bool ClampDraws { get; set; }
 
     readonly byte[] _record;                 // null when Word12 == 0 -- the console allocates none
     readonly SfxEventMachine.Rng _rng;
@@ -140,6 +156,7 @@ public sealed class MusicSequencer
         }
         // ⚠ 0x245A88 returns 0 here and the clip-end path starts nothing: the music stops. It can happen
         // wherever a set's last threshold is under 0xFFFF (Level314 ends at 65520, so 15 draws in 65536).
+        if (ClampDraws) { _lastClip = clips.Count - 1; return _lastClip; }
         Stopped = $"draw {r} is past set {_set}'s last threshold {clips[^1].Threshold}";
         return null;
     }
