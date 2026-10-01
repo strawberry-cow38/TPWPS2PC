@@ -18,7 +18,7 @@ public sealed class ResearchDatabase
     /// null pointer on the console; here it throws.</summary>
     public const int Capacity = 60;
 
-    sealed class Record { public int Cat, Item, Percent, Level; }
+    sealed class Record { public int Cat, Item; public byte Percent, Level; }
     readonly List<Record> _records = new();
     readonly AssetResourceDatabase _dba;
 
@@ -76,12 +76,14 @@ public sealed class ResearchDatabase
     }
 
     /// <summary>⭐ `0x12BAF8(c, i, level, pct)`: a percent of 100 or more IS THE UNLOCK -- level + 1, percent 0
-    /// (`slti 0x64`); then the record takes them only if that does not lower its level (`slt`).</summary>
+    /// (`slti 0x64`); then compare the word-sized new level against the stored unsigned byte (`slt`).
+    /// Both fields narrow ONLY at the final `sb` stores (0x12BB78/7C), so level255 + completion
+    /// can wrap to0 despite passing the prior comparison. See research persistence findings.</summary>
     public void File(int cat, int item, int level, int percent)
     {
         var r = Get(cat, item);
-        if (percent >= 100) { level += 1; percent = 0; }
-        if (level >= r.Level) { r.Percent = percent; r.Level = level; }
+        if (percent >= 100) { level = unchecked(level + 1); percent = 0; }
+        if (level >= r.Level) { r.Percent = unchecked((byte)percent); r.Level = unchecked((byte)level); }
     }
 
     /// <summary>`0x12B928`: 100 for a researched tier; the filed percent while a tier with a group is in progress; and

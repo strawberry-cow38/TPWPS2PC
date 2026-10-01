@@ -242,6 +242,35 @@ class SideshowCoverageTests(unittest.TestCase):
             self.assertEqual(row['status'],'missing_coverage')
 
 
+PERSISTENCE_LABELS = (
+    '  ok   research persistence: explicit core fixture: park 0: exact P-first/L-second bytes',
+    '  ok   research persistence: explicit core fixture: all DB pairs filed BEFORE restarts/Refresh',
+    '  ok   research persistence: explicit core fixture: File increments/comparisons BEFORE byte stores: 255+1 wraps0',
+)
+COVERAGE += '\n' + '\n'.join(['  ok   research persistence: classifier fixture'] * (169-len(PERSISTENCE_LABELS))
+                             + list(PERSISTENCE_LABELS))
+
+
+class ResearchPersistenceCoverageTests(unittest.TestCase):
+    def test_exact_floor_and_complete_fixture(self):
+        self.assertEqual(REQUIRED_CHECKS.get('research_persistence'),169)
+        row=classify('JUNGLE',0,COVERAGE+'\nPASS')
+        self.assertEqual(row['status'],'pass')
+        self.assertEqual(row['research_persistence_checks'],169)
+
+    def test_missing_family_and_single_assertion_cannot_pass(self):
+        missing='\n'.join(x for x in COVERAGE.splitlines() if not x.strip().startswith('ok   research persistence:'))
+        short=COVERAGE.replace('  ok   research persistence: classifier fixture\n','',1)
+        for text in (missing,short):
+            self.assertEqual(classify('JUNGLE',0,text+'\nPASS')['status'],'missing_coverage')
+
+    def test_extra_filler_cannot_replace_semantic_witnesses(self):
+        for line in PERSISTENCE_LABELS:
+            row=classify('JUNGLE',0,COVERAGE.replace(line,'  ok   research persistence: classifier fixture',1)+'\nPASS')
+            self.assertEqual(row['research_persistence_checks'],169)
+            self.assertEqual(row['status'],'missing_coverage')
+
+
 class AdvisorResearchCoverageTests(unittest.TestCase):
     def test_requirement_is_registered_at_the_actual_floor(self):
         self.assertEqual(REQUIRED_CHECKS.get('advisor_research'), 291)

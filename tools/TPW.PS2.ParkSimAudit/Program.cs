@@ -123,6 +123,12 @@ if (args.Contains("--bounce-only"))
     Console.WriteLine(bad==0 ? "PASS bounce: the loader's defaults, every BOUNCE script's pads on its model, and the ticker's hump" : $"FAIL: {bad}");
     return bad==0?0:1;
 }
+if (args.Contains("--research-persistence-only"))
+{
+    ResearchPersistenceChecks.Run(disc,Check);
+    Console.WriteLine(bad==0 ? "PASS research persistence: explicit core section fixtures (whole-save coordinator/viewer not exercised)" : $"FAIL: {bad}");
+    return bad==0?0:1;
+}
 if (args.Contains("--research-only"))
 {
     ResearchChecks.Run(disc, Check);
@@ -762,6 +768,7 @@ MusicChecks.Run(disc, Check);
 ParkStatsChecks.Run(disc, Check);
 LoanChecks.Run(disc, Check);
 ResearchChecks.Run(disc, Check);
+ResearchPersistenceChecks.Run(disc, Check);
 SideshowPresentationChecks.Run(disc, Check);
 ManagementChecks.Run(disc, terrain, Wad("DATA"), wad, world, Check);
 AdvisorChecks.Run(disc, terrain, Wad("DATA"), wad, world, Check);

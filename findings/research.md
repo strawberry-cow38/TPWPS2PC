@@ -422,14 +422,19 @@ Both are skipped entirely in the test park (`0x153410() != 0`).
 for cat in 3, 7, 6, 1, 2, 4, 5, 8:  for i in 0 .. count(cat)-1:
     L = Level(cat, i); P = Percent(cat, i, L)
     write u8 P; write u8 L                        // percent FIRST (0x1C29D8 / 0x1C29DC)
-manager, 16 bytes: u8 budget; 5 x { u8 active, u8 category, u8 item }    // 0x1B66C0 / 0x1B7678
+manager, 16 bytes: u8 budget; 5 x { u8 active, u8 category, byte item }    // 0x1B66C0 / 0x1B7678
 
 load: for the same order: read P, read L; File(cat, i, L, P)          // 0x160B0C/0x160B10
       read 16 bytes: budget = b[0]; for slot: if active: 0x1B6880(mgr, slot, cat, item)
 ```
 - Progress is **not** saved: a loaded project restarts at its filed whole percent.
 - A stopped (inactive) project is not restored to its slot; its percent survives in the database.
-- Group-0 simple items save as `{100, 3}` and load to level 4 (harmless, §1.4).
+- Correction 2026-10-01: group-0 simple items mutate during save. ONE research-save invocation
+  can capture `{100,3}` and leave/load level4; the next captures `{100,4}` and leaves/loads5.
+  The full save traverses twice (sizing and writing), so `{100,3}` is not its invariant.
+  Manager ITEM loads signed (`lb`), unlike category/budget's `lbu`. File compares levels before
+  final byte stores: L255/P100 wraps the stored level to0. See `research-persistence.md` for
+  selected MIPS evidence, meaningful-section/alignment boundaries and component scope.
 - Thresholds at load: the manager is created dirty (`0x1B6640`, also called for by a startup
   sequence at `0x151618`), and `Refresh` has only two callers, `0x1B6880` and `0x1B7208`, the latter
   reached only from the research-mode list fills of the screen (the build menu passes research = 0).

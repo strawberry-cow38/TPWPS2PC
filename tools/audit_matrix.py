@@ -222,6 +222,14 @@ REQUIRED_WITNESSES += (
     'ok   sideshow presentation: explicit core fixture: spinner bounds: raw1001 active decrement expected999',
 )
 
+# Exact research section and restart semantics; full-save publication is still separate.
+REQUIRED_CHECKS.update({'research_persistence': 169})
+REQUIRED_WITNESSES += (
+    'ok   research persistence: explicit core fixture: park 0: exact P-first/L-second bytes',
+    'ok   research persistence: explicit core fixture: all DB pairs filed BEFORE restarts/Refresh',
+    'ok   research persistence: explicit core fixture: File increments/comparisons BEFORE byte stores: 255+1 wraps0',
+)
+
 
 def classify(world: str, raw_exit: int | None, text: str, *, timed_out: bool = False,
              truncated: bool = False, launch_error: str | None = None, terrain: int | None = None) -> dict:
