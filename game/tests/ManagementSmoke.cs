@@ -286,6 +286,7 @@ public partial class ManagementSmoke : Node3D
             // ---------------------------------------------------------------------------------
             // A month end through the viewer's own calendar advance: strikes, then the wage bill.
             var mgmt = Field<ParkManagement>(viewer, "_management");
+            int statsBefore = Field<ParkStatistics>(viewer, "_parkStats")?.Months ?? 0;
             int months = mgmt.MonthChanges, days = 0;
             while (mgmt.MonthChanges == months && days++ < 40)
             {
@@ -299,6 +300,47 @@ public partial class ManagementSmoke : Node3D
             Check(mgmt.MonthChanges == months + 1 && clock.Day == 0 && four.Count == 4 && four.All(m => m.HireDay == 0)
                   && before - sim.Finances.Balance == due && mgmt.LastWages == due,
                   $"the month ends ({clock.Format()}): the four's full wages ({string.Join("+", four.Select(m => Money.Format(m.MonthlyWage * 10)))} = {Money.Format(due)}) are debited ({Money.Format(before)} -> {Money.Format(sim.Finances.Balance)})");
+            // ---------------------------------------------------------------------------------
+            // The laptop's statistics. That month end recorded one month of the visitor statistics (0x16B478) and
+            // filed the year's spending; Visitor Information's gate price spinner (0x207B10, mode 2) steps the fee
+            // the gate charges, once per console frame while an arrow is HELD, clamped at $0.
+            var pstats = Field<ParkStatistics>(viewer, "_parkStats");
+            Check(pstats != null && pstats.Months == statsBefore + 1 && sim.Finances.YearSpending > 0
+                  && sim.Finances.LastYearSpending == 0,
+                  $"the month end recorded one month of visitor statistics ({statsBefore} -> {pstats?.Months}) and this "
+                  + $"year's spending ({Money.Format(sim.Finances.YearSpending)}) with nothing yet in last year's column");
+            laptopBack.Clear(); laptopBack.Add(("visitorinfo", null));
+            Call(viewer, "ShowLaptopLevel");
+            await Frames();
+            int spin = LaptopScreen.VisitorInfo.SpinnerRow;
+            var arrows = Panel<Dictionary<int, Rect2>>(panel, "_rowArrows");
+            Check(panel.Open && arrows.TryGetValue(spin, out var gateArrows) && gateArrows.Size.X > 0,
+                  "Visitor Information draws the gate price arrows on its Ticket Price row");
+            var gate = arrows[spin];
+            // ⚠ Through Input.ParseInputEvent, not PushInput: the spinner asks Input whether the button is
+            // still down, and only a parsed event moves that state -- a pushed one would step exactly once.
+            async Task Hold(Vector2 at, double seconds)
+            {
+                Input.WarpMouse(at);
+                Input.ParseInputEvent(new InputEventMouseButton { Position = at, GlobalPosition = at, ButtonIndex = MouseButton.Left, Pressed = true });
+                await ToSignal(GetTree().CreateTimer(seconds), SceneTreeTimer.SignalName.Timeout);
+                Input.ParseInputEvent(new InputEventMouseButton { Position = at, GlobalPosition = at, ButtonIndex = MouseButton.Left, Pressed = false });
+                await Frames();
+            }
+            var cellsNow = () => Panel<List<(string Text, int Fraction)>>(panel, "_cells");
+            int fee0 = Field<int>(viewer, "_entranceFee");
+            await Hold(new Vector2(gate.End.X - gate.Size.X / 4f, gate.GetCenter().Y), 0.4);
+            int fee1 = Field<int>(viewer, "_entranceFee"), steps = (fee1 - fee0) / 10;
+            // 0.4 s at the console's 25 frames a second is 10 steps; the bounds take the timer's granularity.
+            Check(fee1 % 10 == 0 && steps >= 5 && steps <= 20 && cellsNow()[spin].Text == Money.Format(fee1),
+                  $"holding the right arrow 0.4s steps the gate price {Money.Format(fee0)} -> {Money.Format(fee1)}, "
+                  + $"{steps} whole-dollar steps, and the row reads the new price");
+            await Frames(6);
+            Check(Field<int>(viewer, "_entranceFee") == fee1, "letting go stops the spinner");
+            await Hold(new Vector2(gate.Position.X + gate.Size.X / 4f, gate.GetCenter().Y), 2.5);
+            Check(Field<int>(viewer, "_entranceFee") == 0 && cellsNow()[spin].Text == Money.Format(0),
+                  $"holding the left arrow runs the price down to $0 and it stops there (clamped, no wrap): {cellsNow()[spin].Text}");
+
             if (shots != null)
             {
                 for (int t = 0; t < 20; t++) Call(viewer, "TickPark");

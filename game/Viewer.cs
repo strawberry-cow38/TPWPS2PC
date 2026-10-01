@@ -3837,8 +3837,7 @@ public partial class Viewer : Node3D
                 // ⭐ People Visited is the CUMULATIVE admissions counter `stats+0x20` (once per guest let through
                 // the gate, 0x210C98), not the headcount -- ParkStatistics.PeopleVisited, bumped where the native
                 // entrance accepts a guest. Ticket Price is the gate fee, `$` + commas in whole dollars
-                // (`0x142908`). ⚠ The spinner that changes it (`this+0x754`) is not ported: the price shows, it
-                // does not yet move.
+                // (`0x142908`), stepped by its spinner (`this+0x754`, OnRowNudge).
                 var thoughts = _statsDemo ? DemoThoughts : DominantThoughts();
                 var vcells = new List<(string, int)>
                 {
@@ -9449,6 +9448,7 @@ public partial class Viewer : Node3D
     /// so none is imposed rather than one being invented.</summary>
     void OnRowNudge(int row, int by)
     {
+        if (_laptopBack.Count > 0 && _laptopBack[^1].Kind == "visitorinfo") { StepGatePrice(row, by); return; }
         if (_detailsRide == null || _detailsSpec != LaptopScreen.Sideshow) return;
         if (row < 0 || row >= LaptopScreen.Sideshow.Rows.Count) return;
         switch (LaptopScreen.Sideshow.Rows[row].TextId)
@@ -9458,6 +9458,22 @@ public partial class Viewer : Node3D
             default: return;
         }
         ShowSideshowDetails(_detailsRide);
+    }
+
+    /// <summary>⭐ The gate price spinner (`0x207B10`, parkstats-screens.md §3.4): whole dollars 0..1000 in steps of
+    /// 1, read as `min(1000, price / 10)` and written back as `value * 10` tenths (`0x1853A8` -> `0x100D18`). Clamped,
+    /// no wrap; a step that moves sounds 0xD6 and one held against a limit 0xAF -- here the laptop's Move and
+    /// Refused, the port's two nearest cues (the 0xD6/0xAF ids are not mapped onto UIHD). The fee is the one the
+    /// native entrance charges (`_entranceFee`), so the next guest at the gate pays the new price.</summary>
+    void StepGatePrice(int row, int by)
+    {
+        if (row != LaptopScreen.VisitorInfo.SpinnerRow) return;
+        int was = Math.Min(LaptopScreen.GatePriceMax, _entranceFee / 10);
+        int now = Math.Clamp(was + by, 0, LaptopScreen.GatePriceMax);
+        _shopPanel.Sounds?.Play(now == was ? LaptopSounds.Cue.Refused : LaptopSounds.Cue.Move);
+        if (now == was) return;
+        _entranceFee = now * 10;
+        _shopPanel.SetCell(row, Money.Format(_entranceFee));
     }
 
     ParkRide ShopFor(int placed)

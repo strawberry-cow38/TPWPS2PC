@@ -355,5 +355,11 @@ the 13th month end; Good at m = 12 against Excellent at m = 13). The thoughts ro
 so it is a drawing check only. ⚠ Use `--laptop-film=3` or more: the shot reads the PREVIOUS frame's texture, so a
 one-frame film photographs the park from before the screen opened.
 
-Not ported: the gate-price spinner (§3.4), the year selector and series toggles on the graph page, Existing Loans,
-Research, ride/toilet Users, Satisfaction.
+- **The gate price spinner (§3.4)**, on Visitor Information's Ticket Price row: `LaptopScreen.SpinnerRow`, arrows at
+  `GatePriceArrows`, $0..$1000 in $1 steps written back to the fee the native entrance charges. Held, it steps at
+  the console's 25 frames a second (the console steps once per frame; the port's `ConsoleClock` rate keeps the speed
+  off the monitor's). Its value draws yellow on an otherwise amber page. ManagementSmoke holds each arrow through
+  `Input.ParseInputEvent` and checks the step count, the release and the $0 clamp.
+
+Not ported: the year selector and series toggles on the graph page, Existing Loans, Research, ride/toilet Users,
+Satisfaction.

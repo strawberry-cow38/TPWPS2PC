@@ -262,6 +262,16 @@ public sealed partial class LaptopShopScreen : Control
     LaptopScreen _spec;
     readonly Dictionary<string, SceneLayout> _layouts = new(StringComparer.OrdinalIgnoreCase);
     readonly List<(string Text, int Fraction)> _cells = new();
+
+    /// <summary>Replace ONE row's cell and redraw, leaving everything else the screen was given as it was. The gate
+    /// price spinner needs it: Visitor Information computes its feelings and thoughts ONCE when it opens (§3.5), so
+    /// a price step must not rebuild the page.</summary>
+    public void SetCell(int row, string text, int fraction = 0)
+    {
+        if (row < 0 || row >= _cells.Count) return;
+        _cells[row] = (text, fraction);
+        QueueRedraw();
+    }
     AssetLibrary _lib;
 
     /// <summary>⭐⭐ THE WORLD IS ASKED FOR, NOT REMEMBERED. Master: "its also showing the
@@ -685,6 +695,17 @@ public sealed partial class LaptopShopScreen : Control
 
     public override void _Process(double delta)
     {
+        if (_heldNudge is { } held)
+        {
+            // ⚠ A release the panel never saw (the window lost focus, the screen changed under it) must not
+            // leave the spinner running, so the button is asked rather than trusted.
+            if (!Open || _spec?.SpinnerRow != held.Row || !Input.IsMouseButtonPressed(MouseButton.Left)) _heldNudge = null;
+            else
+            {
+                _heldCarry += delta * ConsoleClock.TicksPerSecond;
+                for (; _heldCarry >= 1 && _heldNudge != null; _heldCarry -= 1) RowNudged?.Invoke(held.Row, held.By);
+            }
+        }
         if (!Open || _balance == null || _swoop >= 1f) return;
         _swoop = Mathf.Min(1f, _swoop + (float)delta * 4f);   // ~0.25s
         QueueRedraw();
@@ -802,6 +823,12 @@ public sealed partial class LaptopShopScreen : Control
     /// <summary>The shop's own price arrows, which live outside the row list.</summary>
     Rect2 _shopPriceArrows;
 
+    /// <summary>⭐ The spinner arrow being HELD (<see cref="LaptopScreen.SpinnerRow"/>): row and direction, and the
+    /// part-step carried between frames. ⚠ The console steps once per FRAME while held; this steps at the port's
+    /// console frame rate (<see cref="ConsoleClock.TicksPerSecond"/>) so the speed does not follow the monitor.</summary>
+    (int Row, int By)? _heldNudge;
+    double _heldCarry;
+
     /// <summary>⭐ A nudge arrow was clicked: the ROW INDEX and -1 or +1. ⚠ A direction, not a
     /// value -- the step and the clamp are the caller's, where the field is.</summary>
     public event Action<int, int> RowNudged;
@@ -840,6 +867,8 @@ public sealed partial class LaptopShopScreen : Control
         }
         if ((_dragSlider >= 0 || _dragShop != null) && @event is InputEventMouseButton { Pressed: false })
         { _dragSlider = -1; _dragShop = null; QueueRedraw(); AcceptEvent(); return; }
+        if (_heldNudge != null && @event is InputEventMouseButton { Pressed: false, ButtonIndex: MouseButton.Left })
+        { _heldNudge = null; AcceptEvent(); return; }
 
         if (@event is InputEventMouseMotion motion)
         {
@@ -910,8 +939,13 @@ public sealed partial class LaptopShopScreen : Control
                 foreach (var (idx, rect) in _rowArrows)
                     if (rect.HasPoint(b.Position))
                     {
-                        Cue(LaptopSounds.Cue.Move);
-                        RowNudged?.Invoke(idx, b.Position.X < rect.Position.X + rect.Size.X / 2f ? -1 : +1);
+                        int dir = b.Position.X < rect.Position.X + rect.Size.X / 2f ? -1 : +1;
+                        // ⭐ A held-input spinner steps now and keeps stepping until the release, and its
+                        // handler cues each step itself (a change and a limit sound different), so no
+                        // press sound here.
+                        if (idx == _spec?.SpinnerRow) { _heldNudge = (idx, dir); _heldCarry = 0; }
+                        else Cue(LaptopSounds.Cue.Move);
+                        RowNudged?.Invoke(idx, dir);
                         AcceptEvent(); return;
                     }
             }
@@ -1360,7 +1394,7 @@ public sealed partial class LaptopShopScreen : Control
                 // elements share a row (both 175) so either reading works; on the ride they do
                 // NOT -- its value elements sit at 338/400/436 against labels from 115 -- and
                 // taking the value element's row as a baseline threw the text off the screen.
-                DrawRun(text, new Vector2(At(v).X, At(lab).Y + dy), s, ValueTint, v.Justify);
+                DrawRun(text, new Vector2(At(v).X, At(lab).Y + dy), s, ValueTintFor(i), v.Justify);
         }
     }
 
@@ -1458,6 +1492,9 @@ public sealed partial class LaptopShopScreen : Control
     /// it, so its figures are the same amber as its labels.</summary>
     Color ValueTint => _spec is { MonochromeValues: true }
         ? Of(ShopScreen.Label) : Of(ShopScreen.Highlight);
+
+    /// <summary>A row's value colour: the screen's, except an enabled spinner, which is always yellow.</summary>
+    Color ValueTintFor(int row) => row == _spec?.SpinnerRow ? Of(ShopScreen.Highlight) : ValueTint;
 
     static Color Of((byte R, byte G, byte B) c) => Color.Color8(c.R, c.G, c.B);
 

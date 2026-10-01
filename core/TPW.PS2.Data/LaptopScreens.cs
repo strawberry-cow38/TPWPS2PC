@@ -101,7 +101,12 @@ public sealed record LaptopScreen(
     /// read** -- `0x10b980` stores only `DAT_002AA8D4`, its column -- and Monthly Wage draws at
     /// the `infobars` COLUMN (215) on the label's own row. Everywhere else the element's full
     /// position is right, so this is off by default.</summary>
-    bool ValueColumnOnly = false)
+    bool ValueColumnOnly = false,
+    /// <summary>⭐ The row whose value is a HELD-INPUT SPINNER, or -1. Visitor Information's gate price is the one:
+    /// `0x207B10` in mode 2 (`+0x7b4`) reads the buttons HELD (`0x181860`), so the value moves one step per frame
+    /// while an arrow is held, and the enabled spinner draws its text in yellow (`*0x35f560` = 255,255,0) even on
+    /// a screen whose other values are amber (parkstats-screens.md §3.4).</summary>
+    int SpinnerRow = -1)
 {
     /// <summary>The console's row step, `DAT_002E9CA8` = 32. The sideshow's draw shows it in the
     /// clear: its labels go out at `iVar9`, `+0x20`, `+0x40`, `+0x60`, i.e. 32 apart.</summary>
@@ -663,10 +668,19 @@ public sealed record LaptopScreen(
             new(853, LaptopRowKind.Text),    // People's Feelings   -- heading
             new(308, LaptopRowKind.Text),    // Dominant Thoughts   -- heading
             new(139, LaptopRowKind.Value),   // People Visited
-            new(50,  LaptopRowKind.Money),   // Ticket Price
+            // ⭐ The gate price spinner (`this+0x754`): arrows at `GatePriceArrows` (200, 414 -- the sprite's middle,
+            // 14 under the label like every other arrow pair). ⚠ The value stays on the shared column rather than
+            // `GatePriceVal`: the scene says `center` there but the binder never stores a justify for it, so the
+            // console draws "$N" LEFT at col 260 (§3.4) -- which is exactly where the shared column puts it.
+            new(50,  LaptopRowKind.Money, null, "GatePriceArrows"),   // Ticket Price
         },
         LabelsOnGrid: true, MonochromeValues: true,
-        RowYs: new[] { 65, 243, 350, 400 });
+        RowYs: new[] { 65, 243, 350, 400 }, SpinnerRow: 3);
+
+    /// <summary>The gate price spinner's range and step, in WHOLE DOLLARS (`+0x7c4` 0, `+0x7c8` 1000, `+0x7c0` 1):
+    /// it reads `min(1000, price / 10)` from the park's tenths and writes `value * 10` back every frame
+    /// (`0x1853A8` -> `0x100D18`).</summary>
+    public const int GatePriceMax = 1000;
 
     /// <summary>⭐ The three feelings rows: icon left, bar right, in a blue pill.
     /// `FeelingsClouds` (45, 105) is a REGION and the rows step 40 down it -- 105, 145, 185 --
