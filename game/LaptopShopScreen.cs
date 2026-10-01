@@ -163,6 +163,12 @@ public sealed partial class LaptopShopScreen : Control
     /// ⭐ The row order is the draw function's, by text id; nothing here is arranged by taste.</summary>
     public void ShowFor(ParkRide shop, string displayName)
     {
+        // Quality/additive drags refresh this page too. Preserve the same shop's active drag,
+        // but never carry it into a different shop or a different screen.
+        if (_spec != null || _loansPage != null || !ReferenceEquals(_subject, shop)) ResetScreenInput();
+        _rowPresentation = null; _subject = shop;
+        _spec = null; _menu.Clear();
+        _buildRow = false; _yearSpan = null; WheelPages = false;
         _loansPage = null;
         _rows.Clear();
         _title = displayName ?? shop?.Name ?? "";
@@ -241,7 +247,14 @@ public sealed partial class LaptopShopScreen : Control
         _ => "Sale Price",
     };
 
-    public new void Hide() { Open = false; Visible = false; _rows.Clear(); _spec = null; _menu.Clear(); QueueRedraw(); }
+    public new void Hide()
+    {
+        ResetScreenInput();
+        Open = false; Visible = false;
+        _rows.Clear(); _cells.Clear(); _spec = null; _menu.Clear(); _loansPage = null;
+        _buildRow = false; _yearSpan = null; WheelPages = false;
+        QueueRedraw();
+    }
 
     // ---- the general path: any of the three info screens --------------------------------------
 
@@ -261,6 +274,55 @@ public sealed partial class LaptopShopScreen : Control
     Texture2D _modelTexture;
 
     LaptopScreen _spec;
+    LaptopRowPresentation[] _rowPresentation;
+    object _subject;
+
+    LaptopRowPresentation PresentationFor(int row) =>
+        _rowPresentation != null && row >= 0 && row < _rowPresentation.Length
+            ? _rowPresentation[row] : new LaptopRowPresentation(row);
+
+    // Snapshot the effective plan, not the caller's mutable list. Missing entries keep their
+    // canonical slots and all components visible; neither cells nor event indices are compacted.
+    static LaptopRowPresentation[] CopyPresentation(LaptopScreen spec,
+                                                    IReadOnlyList<LaptopRowPresentation> plan)
+    {
+        var copy = new LaptopRowPresentation[spec.Rows.Count];
+        for (int i = 0; i < copy.Length; i++)
+            copy[i] = plan != null && i < plan.Count ? plan[i] : new LaptopRowPresentation(i);
+        return copy;
+    }
+
+    bool PresentationChanged(LaptopRowPresentation[] next)
+    {
+        if (_spec == null || _spec.Rows.Count != next.Length) return true;
+        for (int i = 0; i < next.Length; i++)
+            if (PresentationFor(i) != next[i]) return true;
+        return false;
+    }
+
+    void CancelScreenInput()
+    {
+        _dragSlider = -1; _dragShop = null;
+        _heldNudge = null; _heldCarry = 0;
+    }
+
+    // Rendering owns these caches. Screen transitions invalidate them immediately, before the
+    // queued draw; ordinary same-subject slider refreshes leave unchanged geometry usable.
+    void ClearHitboxes()
+    {
+        _sliderRects.Clear(); _shopSliders.Clear(); _rowArrows.Clear(); _specRows.Clear();
+        _pageArrows = new Rect2(); _shopPriceArrows = new Rect2();
+        _yearArrows = new Rect2(); _yearBand = new Rect2();
+        _buildRowRect = new Rect2(); _scrollTrack = new Rect2();
+    }
+
+    void ResetScreenInput()
+    {
+        _rowPresentation = null; _subject = null;
+        CancelScreenInput();
+        ClearHitboxes();
+        _btnHover = -1; _buildHover = false; _menuHover = -1;
+    }
     readonly Dictionary<string, SceneLayout> _layouts = new(StringComparer.OrdinalIgnoreCase);
     readonly List<(string Text, int Fraction)> _cells = new();
 
@@ -351,6 +413,13 @@ public sealed partial class LaptopShopScreen : Control
     /// It was -- I had skipped step 3 of the series draw entirely.</summary>
     public UiPanel GraphPanel { get; set; }
 
+    /// <summary>Show canonical rows with an optional copied presentation. Label slots affect only
+    /// the label/shared-column grid; values, widgets and arrows have independent visibility and
+    /// hidden labels have no row hit band. This is rendering/input policy, not native mouse behavior.
+    /// Pass the same subject object on refresh (reference identity, not value equality), and a
+    /// different object when paging to another item using the same spec. Changing spec/subject
+    /// cancels input; changing a plan invalidates hitboxes but preserves any still-visible drag.
+    /// Null subject preserves the legacy spec-only identity for callers without a subject.</summary>
     public void ShowScreen(LaptopScreen spec, string title, IReadOnlyList<(string Text, int Fraction)> cells,
                            bool buildRow = false, int buildTextId = LaptopMainMenu.BuildTextId,
                            IReadOnlyList<Color?> barTints = null, GraphSeries? graph = null,
@@ -358,8 +427,30 @@ public sealed partial class LaptopShopScreen : Control
                            IReadOnlyList<int> feelings = null,
                            IReadOnlyList<bool> medals = null, IReadOnlyList<bool> stars = null,
                            IReadOnlyList<int> thoughts = null, (string Label, string Value)? graphReadout = null,
-                           int? yearSpan = null)
+                           int? yearSpan = null,
+                           IReadOnlyList<LaptopRowPresentation> rowPresentation = null, object subject = null)
     {
+        if (spec == null) throw new ArgumentNullException(nameof(spec));
+        var presentation = CopyPresentation(spec, rowPresentation);
+        bool contextChanged = !ReferenceEquals(_spec, spec) || !ReferenceEquals(_subject, subject);
+        bool presentationChanged = PresentationChanged(presentation);
+        if (contextChanged) CancelScreenInput();
+        else
+        {
+            // A hidden label/value does not disable an independently visible control.
+            if (_dragSlider >= 0 && (_dragSlider >= spec.Rows.Count
+                || spec.Rows[_dragSlider].Kind != LaptopRowKind.Slider
+                || !presentation[_dragSlider].WidgetVisible)) _dragSlider = -1;
+            if (_heldNudge is { } held && (held.Row < 0 || held.Row >= spec.Rows.Count
+                || spec.SpinnerRow != held.Row || !presentation[held.Row].ArrowsVisible))
+            { _heldNudge = null; _heldCarry = 0; }
+        }
+        if (contextChanged || presentationChanged) ClearHitboxes();
+        // These optional controls can disappear without changing the row plan.
+        if (_buildRow != buildRow) _buildRowRect = new Rect2();
+        if (_yearSpan != yearSpan) { _yearArrows = new Rect2(); _yearBand = new Rect2(); }
+        _rowPresentation = presentation;
+        _subject = subject;
         _loansPage = null;
         WheelPages = false;
         HighlightRow = -1;
@@ -373,7 +464,7 @@ public sealed partial class LaptopShopScreen : Control
         _graph = graph;
         _column2 = column2;
         _headers = headers;
-        _spec = spec ?? throw new ArgumentNullException(nameof(spec));
+        _spec = spec;
         _title = title ?? "";
         _rows.Clear();
         // ⚠⚠ A DATA SCREEN IS NOT A MENU, AND LEAVING THE MENU BEHIND MADE IT ACT LIKE ONE.
@@ -412,6 +503,8 @@ public sealed partial class LaptopShopScreen : Control
 
     public void ShowLoans(LoansPage page)
     {
+        ResetScreenInput();
+        WheelPages = false;
         _loansPage = page;
         _spec = null; _menu.Clear(); _rows.Clear();
         _pageArrows = new Rect2();
@@ -457,6 +550,8 @@ public sealed partial class LaptopShopScreen : Control
 
     public void ShowMenu(IReadOnlyList<string> options, int selected, string sceneFile = null)
     {
+        ResetScreenInput();
+        WheelPages = false;
         _loansPage = null;
         _menuScene = sceneFile;
         _spec = null;
@@ -761,7 +856,9 @@ public sealed partial class LaptopShopScreen : Control
         {
             // ⚠ A release the panel never saw (the window lost focus, the screen changed under it) must not
             // leave the spinner running, so the button is asked rather than trusted.
-            if (!Open || _spec?.SpinnerRow != held.Row || !Input.IsMouseButtonPressed(MouseButton.Left)) _heldNudge = null;
+            if (!Open || _spec?.SpinnerRow != held.Row || !PresentationFor(held.Row).ArrowsVisible
+                || !Input.IsMouseButtonPressed(MouseButton.Left))
+            { _heldNudge = null; _heldCarry = 0; }
             else
             {
                 _heldCarry += delta * ConsoleClock.TicksPerSecond;
@@ -880,7 +977,8 @@ public sealed partial class LaptopShopScreen : Control
     /// <summary>⭐ A NUDGE ARROW's drawn rect, by row index -- the pairs a row gets when its value
     /// can be stepped. Same rule as the others: hit-test the rect that was drawn.</summary>
     readonly Dictionary<int, Rect2> _rowArrows = new();
-    /// <summary>Every spec row's drawn band, by row index -- what a plain click hits.</summary>
+    /// <summary>Each visible label's drawn band, by canonical row index -- what a plain click hits.
+    /// A null presentation label slot registers no band, even if its other components draw.</summary>
     readonly Dictionary<int, Rect2> _specRows = new();
     /// <summary>The shop's own price arrows, which live outside the row list.</summary>
     Rect2 _shopPriceArrows;
@@ -1403,6 +1501,10 @@ public sealed partial class LaptopShopScreen : Control
         for (int i = 0; i < _spec.Rows.Count; i++)
         {
             var row = _spec.Rows[i];
+            var presentation = PresentationFor(i);
+            // Null hides only the label and its band. Visible shared-column values retain the
+            // canonical grid position when there is no label slot; authored elements never move.
+            int labelSlot = presentation.LabelSlot ?? i;
             var (text, fraction) = i < _cells.Count ? _cells[i] : (null, 0);
 
             // ⭐ A ROW CAN OWN ITS LABEL'S ELEMENT, and then it sits AT that element and does not
@@ -1418,9 +1520,9 @@ public sealed partial class LaptopShopScreen : Control
             // middle, and a uniform step cannot say that.
             float dy = row.LabelElement != null
                      ? 0f
-                     : _spec.RowYs != null && i < _spec.RowYs.Count && labels is { } rg
-                       ? (_spec.RowYs[i] - rg.Y) * s
-                       : LaptopScreen.RowStep * (i - _spec.StepBase) * s;
+                     : _spec.RowYs != null && labelSlot >= 0 && labelSlot < _spec.RowYs.Count && labels is { } rg
+                       ? (_spec.RowYs[labelSlot] - rg.Y) * s
+                       : LaptopScreen.RowStep * (labelSlot - _spec.StepBase) * s;
 
             // ⭐⭐ A ROW THAT OWNS A SIZED WIDGET TAKES ITS LABEL'S HEIGHT FROM THE WIDGET, not
             // from the step. The label grid steps 32, but an authored widget sits exactly where the
@@ -1443,16 +1545,16 @@ public sealed partial class LaptopShopScreen : Control
                 dy = (sized.Y + sized.Height / 2f - LineAdvance / 2f - lrow.Y) * s;
 
             string label = Row(row.TextId);
-            if (labels is { } l && label != null)
+            if (presentation.LabelSlot != null && labels is { } l && label != null)
                 DrawRun(label, At(l) + new Vector2(0, dy), s,
                         _yearSpan != null && GraphCursor == i + 1 || i == HighlightRow ? Of(ShopScreen.Highlight) : Of(ShopScreen.Label), l.Justify);
 
-            // ⭐ A ROW IS CLICKABLE. Only some do anything -- the Upgrades row asks for an upgrade
-            // -- but the rect is registered for every row and the CALLER decides, because which
-            // rows act is a property of the screen's data and not of the drawing.
+            // ⭐ A VISIBLE LABEL HAS A CLICKABLE BAND. Only some do anything -- the Upgrades row
+            // asks for an upgrade -- and the CALLER decides which canonical rows act. Hiding a
+            // label removes only this band; independently visible controls keep their own targets.
             // ⚠ Registered from the DRAWN position (label row plus the same `dy` the text got), so
             // a row re-anchored onto a sized widget is clickable where it actually appears.
-            if (labels is { } lr)
+            if (presentation.LabelSlot != null && labels is { } lr)
                 _specRows[i] = new Rect2(
                     new Vector2(Origin.X, At(lr).Y + dy),
                     new Vector2(Native * s, LineAdvance * s));
@@ -1460,24 +1562,23 @@ public sealed partial class LaptopShopScreen : Control
             // ⭐ A widget sits at ITS OWN element's row, not on the label grid. The ride screen
             // places its seven widgets at 118/150/182/214/246/280/310 -- 32 apart for the bars and
             // then 34 and 30 -- so stepping them with the labels would drift by the third slider.
-            if (row.Kind is LaptopRowKind.Bar or LaptopRowKind.Slider)
+            if (presentation.WidgetVisible && (row.Kind is LaptopRowKind.Bar or LaptopRowKind.Slider)
+                && row.Element != null && layout[row.Element] is { } w)
             {
-                if (row.Element == null || layout[row.Element] is not { } w) continue;
-                // ⭐ Rows that SHARE one widget element step it; see LaptopScreen.WidgetStep.
+                // ⭐ Rows that SHARE one widget element step it by CANONICAL index, never label slot.
                 var wat = At(w) + new Vector2(0, _spec.WidgetStep * i * s);
                 var rect = new Rect2(wat, new Vector2(w.Width, w.Height) * s);
                 if (row.Kind == LaptopRowKind.Bar)
                     DrawBar(rect, fraction, s, _barTints != null && i < _barTints.Count ? _barTints[i] : null);
                 else { _sliderRects[i] = rect; DrawSlider(rect, fraction, s, selected: _dragSlider == i); }
-                // ⭐ A WIDGET ROW CAN ALSO CARRY TEXT -- Research draws the project's name beside
-                // its bar. A row whose cell has no text stops here, which is every widget row
-                // written before Research, so nothing already drawn changes.
-                if (text == null) continue;
             }
+            // Widget, arrow and value visibility are independent. Research, for example, carries
+            // text beside a bar; hiding that bar must not implicitly suppress its text or arrows.
 
             // ⭐ The nudge arrows, for a row whose value the player can change. They are drawn
             // whether or not the row has text this frame, because they belong to the row.
-            if (row.ArrowElement != null && _arrows != null && layout[row.ArrowElement] is { } arrow)
+            if (presentation.ArrowsVisible && row.ArrowElement != null
+                && _arrows != null && layout[row.ArrowElement] is { } arrow)
             {
                 // ⚠ Modulate so the YELLOW art lands on the orange the real screen shows; see
                 // LaptopArrows. Godot multiplies, so the factor is rendered/art per channel.
@@ -1495,13 +1596,13 @@ public sealed partial class LaptopShopScreen : Control
             }
 
             // ⭐ The SECOND value column, at its own element's column and this row's height.
-            if (_spec.ValueElement2 != null && _column2 != null && i < _column2.Count
+            if (presentation.ValueVisible && _spec.ValueElement2 != null && _column2 != null && i < _column2.Count
                 && _column2[i] != null && layout[_spec.ValueElement2] is { } v2
                 && labels is { } l2)
                 DrawRun(_column2[i], new Vector2(At(v2).X, At(l2).Y + dy), s,
                         Of(ShopScreen.Label), v2.Justify);
 
-            if (text == null) continue;
+            if (!presentation.ValueVisible || text == null) continue;
             // ⭐⭐ CHECKED FIRST, and the order is the point: a Research row HAS its own element
             // (its bar), so the own-element branch below would win and stack all five item names
             // on that one element's position. Research puts its names at `ResearchItem`'s COLUMN
@@ -1722,12 +1823,7 @@ public sealed partial class LaptopShopScreen : Control
         // that can hold unconditionally is before the branch. Clearing them in each path is what
         // let one path forget. This is the same fault as the build cache that survived a park
         // switch: a cache is only as good as its owner, and per-branch owners are not one owner.
-        _sliderRects.Clear();
-        _shopSliders.Clear();
-        _rowArrows.Clear();
-        _specRows.Clear();
-        _pageArrows = new Rect2();
-        _shopPriceArrows = new Rect2();
+        ClearHitboxes();
         FitToViewport();
         RefreshChrome();
         float s = Scale;

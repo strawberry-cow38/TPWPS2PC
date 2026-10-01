@@ -9469,13 +9469,15 @@ public partial class Viewer : Node3D
             cells.Add(row.TextId switch
             {
                 707 => (show.Customers.ToString(), 0),                       // Customers
-                // ⭐ Winners `+0xd0` (0x1D2B38). ⚠ The console draws this row only while the prize is non-zero
-                // (0x1D8488 skips the label AND its row step, so the rows below move up); the port keeps the row.
+                // Winners `+0xd0` (0x1D2B38); presentation independently hides label/value/step at prize0.
                 637 => (Thousands(show.Winners), 0),
                 949 => (Money.Display(show.Takings), 0),                     // Takings, whole dollars (0x142908)
                 238 => (Money.Display(show.Profit), 0),                      // Profit = takings - prizes (0x1D2A58)
-                899 => (null, show.Value ?? 0),                              // Excitement
-                743 => (null, show.Satisfaction),                            // Satisfaction, 0x1D2B48 -- at most 50
+                // ⭐ Native DATA destinations are crossed: vt+0x1D4 excitement feeds the lower
+                // SatisfactionBar (277), while 0x1D2B48 satisfaction feeds upper ExcitementBar (246).
+                // Labels flow on their own grid. Preserve that bug, don't infer data from bar names.
+                899 => (null, show.Satisfaction),
+                743 => (null, show.Value ?? 0),
                 295 => (null, Math.Clamp((int)show.SideshowWinPercentage, 0, 100)),
                 // ⚠ Prize and price are DIGITS, no `$` -- `0x142B68` at 0x1D87BC / 0x1D8854 -- where this used the
                 // money formatter (and divided them by ten).
@@ -9483,7 +9485,8 @@ public partial class Viewer : Node3D
                 190 => (Thousands(show.SideshowPrice), 0),                   // Price per Game
                 _   => (null, 0),
             });
-        _shopPanel.ShowScreen(LaptopScreen.Sideshow, DisplayName(show), cells);
+        _shopPanel.ShowScreen(LaptopScreen.Sideshow, DisplayName(show), cells,
+            rowPresentation: LaptopRowPresentation.Sideshow(show.SideshowPrizeValue), subject: show);
         BuildLaptopModelFor(show);
         GD.Print($"[laptop] details {DisplayName(show)}: prize {show.SideshowPrizeValue}, "
                + $"price {show.SideshowPrice}, win {show.SideshowWinPercentage}%; "
@@ -9539,6 +9542,9 @@ public partial class Viewer : Node3D
         if (_detailsRide == null || spec == null || row < 0 || row >= spec.Rows.Count) return;
         if (spec == LaptopScreen.Sideshow)
         {
+            // 0x1D8118 does not write chance/prize back for a zero-prize game, even if a stale
+            // control event arrives while the queued redraw is changing its visibility.
+            if (_detailsRide.SideshowPrizeValue == 0) return;
             if (spec.Rows[row].TextId == 295)
             {
                 _detailsRide.SideshowWinPercentage = (ushort)Math.Clamp(pct, 0, 100);
@@ -9598,8 +9604,10 @@ public partial class Viewer : Node3D
     {
         if (_laptopBack.Count > 0 && _laptopBack[^1].Kind == "visitorinfo") { StepGatePrice(row, by); return; }
         if (_detailsRide == null || _detailsSpec != LaptopScreen.Sideshow) return;
-        if (row < 0 || row >= LaptopScreen.Sideshow.Rows.Count) return;
-        switch (LaptopScreen.Sideshow.Rows[row].TextId)
+        if (row < 0 || row >= _detailsSpec.Rows.Count) return;
+        int textId = _detailsSpec.Rows[row].TextId;
+        if (textId == 832 && _detailsRide.SideshowPrizeValue == 0) return;
+        switch (textId)
         {
             case 832: _detailsRide.SideshowPrizeValue = Math.Max(0, _detailsRide.SideshowPrizeValue + by); break;
             case 190: _detailsRide.SideshowPrice = (ushort)Math.Max(0, _detailsRide.SideshowPrice + by); break;
