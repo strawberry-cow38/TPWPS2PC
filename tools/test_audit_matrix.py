@@ -186,6 +186,69 @@ COVERAGE += '\n' + '\n'.join([
                               "  ok   research: Crazy Ape's first upgrade: offered on Upgrades only once one is built, researched in 10 quanta to level 2, and with no mechanic hired the message is 0x7E (hire one) rather than 0x4C",
 ])
 
+# Executable checks added with the advisor/research producer read: these belong to
+# research, not the separately counted advisor-research fixture family.
+COVERAGE += '\n' + '\n'.join([
+    '  ok   research: advisor research mask bug is in the ELF: the same bit4 gates track and coaster (count call0x12B0A0, availability kind1)',
+    '  ok   research: advisor variety feature flags read in order1/8/2: toilet, camera, staff room',
+    '  ok   research: advisor variety reads nonzero object status and counts a50-entry distinct-type set',
+    '  ok   research: upgrade-use helper stores the largest tier+1 and loops over placements using tier+0x126',
+])
+
+# These are classifier fixtures, NOT simulated game or disc evidence. Pin the count
+# to291 independently of REQUIRED_CHECKS so deleting/lowering that requirement fails
+# the tests. The five non-filler lines are actual labels from the core fixture output.
+ADVISOR_RESEARCH_LABELS = (
+    '  ok   advisor research: bit4 research selects track AND coaster: 1/2: expected 50, got 50',
+    '  ok   advisor research: File99 is NOT unlock: expected 40, got 40',
+    '  ok   advisor research: File100 updates existing producer research 5/10: expected 50, got 50',
+    '  ok   advisor research: same-key duplicates MAX tier1, not sum2: expected 50, got 50',
+    '  ok   advisor research: max tier2 even on status0 duplicate: expected 100, got 100',
+)
+COVERAGE += '\n' + '\n'.join(['  ok   advisor research: classifier fixture'] * (291 - len(ADVISOR_RESEARCH_LABELS))
+                             + list(ADVISOR_RESEARCH_LABELS))
+
+
+class AdvisorResearchCoverageTests(unittest.TestCase):
+    def test_requirement_is_registered_at_the_actual_floor(self):
+        self.assertEqual(REQUIRED_CHECKS.get('advisor_research'), 291)
+        self.assertEqual(REQUIRED_CHECKS['research'], 14)
+
+    def test_full_family_and_manifest_count(self):
+        row = classify('JUNGLE', 0, COVERAGE + '\nPASS')
+        self.assertEqual(row['status'], 'pass')
+        self.assertEqual(row['advisor_research_checks'], 291)
+        self.assertEqual(row['research_checks'], 14)
+
+    def test_entire_family_cannot_disappear(self):
+        text = '\n'.join(line for line in COVERAGE.splitlines()
+                         if not line.strip().startswith('ok   advisor research:'))
+        row = classify('JUNGLE', 0, text + '\nPASS')
+        self.assertEqual(row['status'], 'missing_coverage')
+        self.assertEqual(row['advisor_research_checks'], 0)
+
+    def test_one_missing_assertion_is_not_full_coverage(self):
+        text = COVERAGE.replace('  ok   advisor research: classifier fixture\n', '', 1)
+        row = classify('JUNGLE', 0, text + '\nPASS')
+        self.assertEqual(row['advisor_research_checks'], 290)
+        self.assertEqual(row['status'], 'missing_coverage')
+
+    def test_count_cannot_replace_a_semantic_witness(self):
+        for label in ADVISOR_RESEARCH_LABELS:
+            with self.subTest(label=label):
+                text = COVERAGE.replace(label, '  ok   advisor research: classifier fixture', 1)
+                row = classify('JUNGLE', 0, text + '\nPASS')
+                self.assertEqual(row['advisor_research_checks'], 291)
+                self.assertEqual(row['status'], 'missing_coverage')
+
+    def test_known_retail_failure_still_requires_this_family(self):
+        for world in ('HALLOW', 'SPACE'):
+            with self.subTest(world=world):
+                text = '\n'.join(line for line in known(world).splitlines()
+                                 if not line.strip().startswith('ok   advisor research:'))
+                self.assertEqual(classify(world, 1, text)['status'], 'missing_coverage')
+
+
 class ClassificationTests(unittest.TestCase):
     def test_staff_family_count_and_witnesses_required(self):
         for text in ('\n'.join(x for x in COVERAGE.splitlines() if 'staff:' not in x),

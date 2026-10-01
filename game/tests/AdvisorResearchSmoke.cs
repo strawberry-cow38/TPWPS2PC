@@ -66,12 +66,21 @@ public partial class AdvisorResearchSmoke : Node
         var camera = Read<Camera3D>(viewer, "_cam");
         var world = park.CellCentre(x, y);
         var screen = camera.UnprojectPosition(world);
-        var visible = new Rect2(new Vector2(20, 20), GetViewport().GetVisibleRect().Size - new Vector2(40, 40));
-        Check(!camera.IsPositionBehind(world) && visible.HasPoint(screen), $"cell {x},{y} is in view at {screen}");
+        Check(InputPointInView(screen, camera.IsPositionBehind(world), GetViewport().GetVisibleRect()),
+            $"cell {x},{y} is in view at {screen}");
         GetViewport().WarpMouse(screen); await Frames(4);
         Check(GetViewport().GetMousePosition().DistanceTo(screen) < 2, "actual window pointer reached the cell");
         Check(Read<(int X, int Y)?>(viewer, "_cursorOverride") == null, "no cursor override");
         await Click(screen);
+    }
+
+    // Only keep a two-pixel pointer-rounding margin, not an arbitrary twenty-pixel frame.
+    // At the matrix's640x360, the real bin cell projects to(364,16): on screen, not off it.
+    static bool InputPointInView(Vector2 screen, bool behind, Rect2 viewport)
+    {
+        var inset = new Vector2(2,2);
+        var inputArea = new Rect2(viewport.Position + inset, viewport.Size - 2 * inset);
+        return !behind && float.IsFinite(screen.X) && float.IsFinite(screen.Y) && inputArea.HasPoint(screen);
     }
 
     (ParkAdvisor Advisor, ResearchDatabase Database, AdvisorProducers Producers) Current()
@@ -111,6 +120,15 @@ public partial class AdvisorResearchSmoke : Node
         {
             var args = OS.GetCmdlineUserArgs();
             Check(DisplayServer.GetName() != "headless", "rendered real-input run");
+            var viewport = GetViewport().GetVisibleRect();
+            Check(InputPointInView(viewport.Position + new Vector2(viewport.Size.X/2,16), false, viewport),
+                "geometry control: a16-pixel top inset is a valid input point");
+            Check(!InputPointInView(viewport.Position + new Vector2(viewport.Size.X/2,-16), false, viewport),
+                "geometry control: a point above the actual viewport is rejected");
+            Check(!InputPointInView(viewport.Position + new Vector2(viewport.Size.X+1,viewport.Size.Y/2), false, viewport),
+                "geometry control: a point beyond the right edge is rejected");
+            Check(!InputPointInView(viewport.GetCenter(), true, viewport),
+                "geometry control: an on-screen projection behind the camera is rejected");
             Check(!args.Any(a => a == "--all-researched" || a.StartsWith("--map=") || a.StartsWith("--mode=")
                 || a.Contains("guest-test") || a == "--menu"), "no research override or direct/setup launch flags");
             Check(System.Environment.GetEnvironmentVariable("TPW_ALL_RESEARCHED") != "1", "no environment research override");
@@ -142,6 +160,7 @@ public partial class AdvisorResearchSmoke : Node
             await Cell(32,23);
             await Wait(() => park.Placed.Count == 1, 5, "one bin purchased through real placement input");
             var placed = park.Placed[0];
+            Check(placed.X == 32 && placed.Y == 23, "the actual placement landed on the requested cell32,23");
             // Census is supplied by the shipping callback, not a test-made replacement.
             var bin = first.Producers.Placements().Single(p => p.Key == 198);
             Check(bin.Kind == AssetResourceDatabase.AssetKind.Feature && bin.Ride != null,

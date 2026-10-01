@@ -190,12 +190,25 @@ REQUIRED_WITNESSES += (
     'ok   loans: a paid-off loan is still TAKEN: nothing sets +0x28 back, so each lender lends once per park',
 )
 
-# Research (ResearchChecks.cs): 10 on every park, disc-wide. The witnesses are the two executable claims and the fresh
+# Research (ResearchChecks.cs): 14 on every park, disc-wide. The witnesses are the executable claims and the fresh
 # JUNGLE park's 13 items -- the figure a live savestate corroborates by another route.
-REQUIRED_CHECKS.update({'research': 10})
+REQUIRED_CHECKS.update({'research': 14})
 REQUIRED_WITNESSES += (
     'ok   research: 0x1B6880 (start a project) has exactly two callers, the Research screen and the save loader',
     'ok   research: JUNGLE park 1 starts with exactly the 13 items whose tier-0 group is 0',
+    'ok   research: advisor research mask bug is in the ELF',
+)
+
+# Advisor research (AdvisorResearchChecks.cs): 291 disc-wide checks. Count this as its OWN family:
+# "advisor:" does not prove "advisor research:" ran. The witnesses preserve the mask bug, distinguish
+# filed partial/complete progress, and require max-per-type upgrades including status0 placements.
+REQUIRED_CHECKS.update({'advisor_research': 291})
+REQUIRED_WITNESSES += (
+    'ok   advisor research: bit4 research selects track AND coaster: 1/2',
+    'ok   advisor research: File99 is NOT unlock',
+    'ok   advisor research: File100 updates existing producer research 5/10',
+    'ok   advisor research: same-key duplicates MAX tier1, not sum2',
+    'ok   advisor research: max tier2 even on status0 duplicate',
 )
 
 

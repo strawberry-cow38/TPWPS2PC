@@ -104,3 +104,33 @@ images on the unfixed lobby base. After integrating `6cffec3`, add `--assert-no-
 The audio driver in the reproduced EC2 run is Dummy: numerical/stream assertions are
 not a claim that a person heard the advisor. Full viewer/audit/runtime merge matrices
 remain the integration gate; these focused runs do not claim to replace all three.
+
+## Integration guard follow-up — 2026-10-01
+
+Tinyclaw fast-forwarded the original slice into `Staging-Tinyclaw` and found two
+coverage gaps. This follow-up changes tests/the audit gate, not game behavior:
+
+* At 640×360, cell32,23 projects to about(364.8,16.6). It is genuinely on screen,
+  but the smoke's arbitrary20-pixel inset rejected it. The input guard now uses
+  the actual viewport with a two-pixel pointer-rounding margin, still rejecting
+  nonfinite, off-screen and behind-camera projections. Pure geometry controls
+  guard those exclusions; the real purchase must also land at exactly32,23.
+  Full real-input tours pass **73 checks at both640×360 and1152×648** (no shots).
+* `audit_matrix.py` now requires a separate **291-check advisor_research family**,
+  with five semantic witnesses. Ordinary `advisor:` lines cannot substitute.
+  The research-family floor is14, including the four executable-word assertions.
+  The classifier records both family counts. Its added tests reject an entire
+  dropped family, a single missing assertion, witness loss with the count intact,
+  and missing research coverage hidden behind an expected retail failure.
+
+Controls were run, not just reasoned about: the original smoke at640×360 fails
+check34; bypassing all geometry checks fails the new off-screen control. Removing
+the actual `AdvisorResearchChecks.Run` call leaves the full JUNGLE1 audit at raw
+exit0/`PASS`, but the matrix rejects it as `missing_coverage` with family count0.
+Restoring the call gives `pass`, research14 and advisor_research291. All source
+mutations were restored and rebuilt. The CI's disc-free tool suite passes96 tests.
+
+The new smoke remains a **cold-start standalone scene**, not a per-world direct-map
+scene: use its stated no-setup-flags launch even at the viewer matrix's resolution.
+`--assert-no-lobby-leak` is preserved; the independent lobby patch is still not
+bundled into this follow-up.
