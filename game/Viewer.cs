@@ -3977,8 +3977,7 @@ public partial class Viewer : Node3D
             // ⭐⭐ PARK STATISTICS / Statistics (id 24) -- the third screen on the graph widget.
             case "statistics":
             {
-                int spick = Math.Clamp(int.TryParse(arg, out var sp) ? sp : 0, 0,
-                                       LaptopScreen.ParkStatistics.Rows.Count - 1);
+                int spick = GraphPick("statistics", arg, LaptopScreen.ParkStatistics.Rows.Count);
                 _graphRow = spick;
                 var srgb = LaptopScreen.ParkStatsSeriesRgb[spick];
                 // ⭐ The five series are the stats rings `0x16B478` records at every month end (ParkStatistics):
@@ -3988,7 +3987,7 @@ public partial class Viewer : Node3D
                 {
                     0 => st.People, 1 => st.Arrival, 2 => st.Happiness, 3 => st.TimeInPark, _ => st.Rating,
                 };
-                var sbuckets = LaptopGraphData.BuildParkStats(sget, st.Months, _graphYears, spick, out int smax);
+                var sbuckets = LaptopGraphData.BuildParkStats(sget, st.Months, _parkGraphYears, spick, out int smax);
                 // `GraphValue`: the series at k = 0, which reads LAST month-end's recording, formatted per row --
                 // int, int, int + "%", int + text 221 "d", int + "%" (graph-widget.md §4).
                 int now = sget(0);
@@ -4000,8 +3999,9 @@ public partial class Viewer : Node3D
                 _shopPanel.ShowScreen(LaptopScreen.ParkStatistics, "",
                     Blank(LaptopScreen.ParkStatistics.Rows.Count),
                     graph: new LaptopShopScreen.GraphSeries(
-                        sbuckets, 0, smax, Color.Color8(srgb.R, srgb.G, srgb.B), _graphYears),
-                    graphReadout: (TextRow(LaptopScreen.ParkStatistics.Rows[spick].TextId), sval));
+                        sbuckets, 0, smax, Color.Color8(srgb.R, srgb.G, srgb.B), _parkGraphYears),
+                    graphReadout: (TextRow(LaptopScreen.ParkStatistics.Rows[spick].TextId), sval),
+                    yearSpan: _parkGraphYears);
                 ClearLaptopModel();
                 RefreshLaptopBalance();
                 Status($"{TextRow(LaptopScreen.ParkStatistics.Rows[spick].TextId)}: {sval} ({st.Months} months recorded)");
@@ -4017,24 +4017,24 @@ public partial class Viewer : Node3D
                 var ofin = _sim?.Finances;
                 if (ofin == null)
                 { _laptopBack.RemoveAt(_laptopBack.Count - 1); Status("no park is running yet"); ShowLaptopLevel(); return; }
-                int opick = Math.Clamp(int.TryParse(arg, out var op) ? op : 0, 0,
-                                       LaptopScreen.OverallStats.Rows.Count - 1);
+                int opick = GraphPick("overallstats", arg, LaptopScreen.OverallStats.Rows.Count);
                 _graphRow = opick;
                 var orgb = LaptopScreen.OverallSeriesRgb[opick];
                 // ⭐ Park Value is `0x101288`: the month-end ring `park+0x107c` (ParkFinances.ValueInPeriod, filed
                 // by the month end from 0x1011C8), and like the balance's getter it answers the LIVE value at k = 0.
                 int liveValue = ParkValueTenths();
                 Func<int, int> oget = opick == 0 ? ofin.BalanceInPeriod : (k => k == 0 ? liveValue : ofin.ValueInPeriod(k));
-                var obuckets = LaptopGraphData.Build(oget, ofin.PeriodCount, _graphYears, out int omax);
+                var obuckets = LaptopGraphData.Build(oget, ofin.PeriodCount, _financeGraphYears, out int omax);
                 _shopPanel.GraphPanel ??= UiPanel.Load(_lib);
                 _shopPanel.ShowScreen(LaptopScreen.OverallStats, "",
                     Blank(LaptopScreen.OverallStats.Rows.Count),
                     graph: new LaptopShopScreen.GraphSeries(
-                        obuckets, 0, omax, Color.Color8(orgb.R, orgb.G, orgb.B), _graphYears));
+                        obuckets, 0, omax, Color.Color8(orgb.R, orgb.G, orgb.B), _financeGraphYears),
+                    yearSpan: _financeGraphYears);
                 ClearLaptopModel();
                 RefreshLaptopBalance();
                 Status($"{TextRow(LaptopScreen.OverallStats.Rows[opick].TextId)} -- "
-                     + $"{_graphYears}y, peak {omax}");
+                     + $"{_financeGraphYears}y, peak {omax}");
                 break;
             }
             // ⭐⭐ FINANCE STATISTICS (menu id 21) -- the first graph screen.
@@ -4046,8 +4046,7 @@ public partial class Viewer : Node3D
                 var fin = _sim?.Finances;
                 if (fin == null)
                 { _laptopBack.RemoveAt(_laptopBack.Count - 1); Status("no park is running yet"); ShowLaptopLevel(); return; }
-                int pick = Math.Clamp(int.TryParse(arg, out var gp) ? gp : 0, 0,
-                                      LaptopScreen.FinanceStats.Rows.Count - 1);
+                int pick = GraphPick("financestats", arg, LaptopScreen.FinanceStats.Rows.Count);
                 _graphRow = pick;
                 var rgb = LaptopScreen.FinanceSeriesRgb[pick];
                 int[] buckets; int gmax;
@@ -4063,16 +4062,17 @@ public partial class Viewer : Node3D
                     gmax = (int)(100 * 1.1001f);
                 }
                 else buckets = LaptopGraphData.Build(FinanceSeries(fin, pick),
-                                                     fin.PeriodCount, _graphYears, out gmax);
+                                                     fin.PeriodCount, _financeGraphYears, out gmax);
                 _shopPanel.GraphPanel ??= UiPanel.Load(_lib);
                 _shopPanel.ShowScreen(LaptopScreen.FinanceStats, "",
                     Blank(LaptopScreen.FinanceStats.Rows.Count),
                     graph: new LaptopShopScreen.GraphSeries(
-                        buckets, 0, gmax, Color.Color8(rgb.R, rgb.G, rgb.B), _graphYears));
+                        buckets, 0, gmax, Color.Color8(rgb.R, rgb.G, rgb.B), _financeGraphYears),
+                    yearSpan: _financeGraphYears);
                 ClearLaptopModel();
                 RefreshLaptopBalance();
                 Status($"{TextRow(LaptopScreen.FinanceStats.Rows[pick].TextId)} -- "
-                     + $"{_graphYears}y, {fin.PeriodCount} months on the books, peak {gmax}");
+                     + $"{_financeGraphYears}y, {fin.PeriodCount} months on the books, peak {gmax}");
                 break;
             }
             // ⭐⭐ RESEARCH (menu id 9). The five rows ARE the manager's five slots.
@@ -4278,7 +4278,49 @@ public partial class Viewer : Node3D
     /// <summary>Which series a graph screen is showing, and the span the year selector holds.
     /// ⚠ The span is one of {1, 2, 6, 12} years (wrapping, initial 1); the selector itself is not
     /// wired yet, so this stays at the console's initial value.</summary>
-    int _graphRow, _graphYears = 1;
+    int _graphRow;
+
+    /// <summary>⭐ The graph pages' state lives on their ROOT, as the console's does: one year selector for the two
+    /// finance graphs (`+0x8d8`, value `+0x940`) and one for Park Statistics (`+0x630`, `+0x698`), each starting at
+    /// 1 (index 0 of 1, 2, 6, 12), and each page's series toggles (`+0x990[2]`, `+0x998[5]`, `+0x9e0[5]`, the
+    /// first on at the ctor). Entering the Finance or Park Statistics menu from the laptop's main menu builds the
+    /// root again, so that is where they reset; moving between its pages keeps them.</summary>
+    int _financeGraphYears = 1, _parkGraphYears = 1;
+    readonly Dictionary<string, int> _graphPick = new();
+    static readonly int[] GraphYearOptions = { 1, 2, 6, 12 };
+
+    /// <summary>The series a graph page shows: a harness's explicit `arg` sets it, otherwise the root keeps it.</summary>
+    int GraphPick(string kind, string arg, int count)
+    {
+        if (int.TryParse(arg, out int a)) _graphPick[kind] = a;
+        return Math.Clamp(_graphPick.GetValueOrDefault(kind), 0, count - 1);
+    }
+
+    static bool IsGraphPage(string kind) => kind is "statistics" or "financestats" or "overallstats";
+
+    /// <summary>⭐ An item row on a graph page (`0x185998` / `0x134EC0`): clear every toggle, then flip the
+    /// cursor's. ⚠⚠ So the chosen series is ALWAYS shown -- the flip lands on a toggle just zeroed (MIPS
+    /// `0x185AF8..0x185B28`: five `sw zero`, then `lw`/`xori 1`/`sw`). Choosing the series already on shows it
+    /// again; nothing hides the graph. graph-widget.md said otherwise and was corrected against this.</summary>
+    void GraphItemChosen(string kind, int row)
+    {
+        _graphPick[kind] = row;
+        _shopPanel.GraphCursor = row + 1;
+        _laptopBack[^1] = (kind, null);
+        ShowLaptopLevel();
+    }
+
+    /// <summary>The year selector's arrows (`0x207F50`): step 1, 2, 6, 12 with wrap, then rebuild that root's graph.</summary>
+    void OnGraphYearNudge(int by)
+    {
+        if (_laptopBack.Count == 0 || !IsGraphPage(_laptopBack[^1].Kind)) return;
+        bool park = _laptopBack[^1].Kind == "statistics";
+        int now = park ? _parkGraphYears : _financeGraphYears;
+        int i = Math.Max(0, Array.IndexOf(GraphYearOptions, now));
+        int next = GraphYearOptions[(i + by % GraphYearOptions.Length + GraphYearOptions.Length) % GraphYearOptions.Length];
+        if (park) _parkGraphYears = next; else _financeGraphYears = next;
+        ShowLaptopLevel();
+    }
 
     /// <summary>Which lender New Loan is showing (0..3), stepped by its spinner.</summary>
     int _loanLender;
@@ -4634,8 +4676,12 @@ public partial class Viewer : Node3D
                     case "main_bh_items":  _laptopBack.Add(("buildcats", null)); ShowLaptopLevel(); return;
                     case "main_gameoptions": _laptopBack.Add(("gameoptions", null)); ShowLaptopLevel(); return;
                     case "main_research":    _laptopBack.Add(("research", null)); ShowLaptopLevel(); return;
-                    case "main_parkstats":   _laptopBack.Add(("parkstats", null)); ShowLaptopLevel(); return;
-                    case "main_financialinfo": _laptopBack.Add(("financialinfo", null)); ShowLaptopLevel(); return;
+                    case "main_parkstats":
+                        _parkGraphYears = 1; _graphPick.Remove("statistics");
+                        _laptopBack.Add(("parkstats", null)); ShowLaptopLevel(); return;
+                    case "main_financialinfo":
+                        _financeGraphYears = 1; _graphPick.Remove("financestats"); _graphPick.Remove("overallstats");
+                        _laptopBack.Add(("financialinfo", null)); ShowLaptopLevel(); return;
                     case "main_bh_staff":
                         // ⭐ The Hire panel (Viewer.Staff.cs): its tabs, then a tab's candidates.
                         if (_staff == null) { Status("hire -- no park is running yet, so there is nobody to hire into"); return; }
@@ -4653,6 +4699,7 @@ public partial class Viewer : Node3D
                 foreach (var e in LaptopScreen.FinanceMenu) if (!e.NeedsLoan) fm.Add(e);
                 if (row < 0 || row >= fm.Count) return;
                 _laptopBack.Add((fm[row].Opens, null));
+                _shopPanel.GraphCursor = 0;
                 ShowLaptopLevel();
                 return;
             }
@@ -4663,6 +4710,7 @@ public partial class Viewer : Node3D
                 var pm = LaptopScreen.ParkStatsMenu;
                 if (row < 0 || row >= pm.Length) return;
                 _laptopBack.Add((pm[row].Opens, null));
+                _shopPanel.GraphCursor = 0;
                 ShowLaptopLevel();
                 return;
             }
@@ -4792,6 +4840,7 @@ public partial class Viewer : Node3D
         if (_trainingMember is { } trainee) { if (row == 0) BuyTraining(trainee); return; }
         if (_singleStaff is { } person) { SingleStaffChose(person, row); return; }
         if (_optionsOpen) { GameOptionChose(row); return; }
+        if (_laptopBack.Count > 0 && IsGraphPage(_laptopBack[^1].Kind)) { GraphItemChosen(_laptopBack[^1].Kind, row); return; }
         // ⭐ On the upgrade PAGE, any row buys -- the page has one offer and the console's Confirm
         // takes it; there is nothing else to click.
         if (_laptopBack.Count > 0 && _laptopBack[^1].Kind == "rideupgrade"
@@ -11714,6 +11763,7 @@ public partial class Viewer : Node3D
                     _shopPanel.ShopSettingChanged += OnShopSetting;
                     _shopPanel.PriceNudged += OnShopPriceNudge;
                     _shopPanel.RowNudged += OnRowNudge;
+                    _shopPanel.YearNudged += OnGraphYearNudge;
                     _shopPanel.RowActivated += OnLaptopRowActivated;
                     _shopPanel.MenuFocusChanged += OnLaptopMenuFocus;
                     // ⭐ The laptop's voice. ⚠ A bank that will not read leaves it null and the

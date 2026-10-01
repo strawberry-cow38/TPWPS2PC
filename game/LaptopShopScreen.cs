@@ -356,8 +356,10 @@ public sealed partial class LaptopShopScreen : Control
                            IReadOnlyList<string> column2 = null, IReadOnlyList<string> headers = null,
                            IReadOnlyList<int> feelings = null,
                            IReadOnlyList<bool> medals = null, IReadOnlyList<bool> stars = null,
-                           IReadOnlyList<int> thoughts = null, (string Label, string Value)? graphReadout = null)
+                           IReadOnlyList<int> thoughts = null, (string Label, string Value)? graphReadout = null,
+                           int? yearSpan = null)
     {
+        _yearSpan = yearSpan;
         _feelings = feelings;
         _thoughts = thoughts;
         _graphReadout = graphReadout;
@@ -829,6 +831,21 @@ public sealed partial class LaptopShopScreen : Control
     (int Row, int By)? _heldNudge;
     double _heldCarry;
 
+    /// <summary>⭐ A graph page's YEAR SELECTOR (graph-widget.md §1.6): the span it shows, or null on every other
+    /// screen. The page draws it itself -- "Years" (965) at `YearSelect`, the span at `YearSelectValue`, the arrows
+    /// at `YearSelectArrow` -- and the arrows step it through 1, 2, 6, 12.</summary>
+    int? _yearSpan;
+    Rect2 _yearArrows, _yearBand;
+    public event Action<int> YearNudged;
+    /// <summary>`STR_FINANCE_YEARS`.</summary>
+    const int YearsTextId = 965;
+
+    /// <summary>⭐ A graph page's CURSOR (finance `+0x588`, park stats `+0x344`): 0 the Years row, 1..N the items.
+    /// Zeroed when a page is built (`0x1343F0`, `0x184E50`), so a page opens on the Years row. It colours the page
+    /// -- the Years label, span and arrows are (255,255,0) while it is on the Years row and (200,130,0) otherwise,
+    /// and an item's label is yellow only under it -- and the pointer moves it, as Up/Down do on the pad.</summary>
+    public int GraphCursor { get; set; }
+
     /// <summary>⭐ A nudge arrow was clicked: the ROW INDEX and -1 or +1. ⚠ A direction, not a
     /// value -- the step and the clamp are the caller's, where the field is.</summary>
     public event Action<int, int> RowNudged;
@@ -881,6 +898,13 @@ public sealed partial class LaptopShopScreen : Control
             if (_buildHover != wasBuild) QueueRedraw();
             _menuHover = RowAt(motion.Position, s, o);
             _keyboardCursor = false;
+            if (_yearSpan != null)
+            {
+                int was = GraphCursor;
+                if (_yearBand.HasPoint(motion.Position)) GraphCursor = 0;
+                else foreach (var (idx, rect) in _specRows) if (rect.HasPoint(motion.Position)) GraphCursor = idx + 1;
+                if (GraphCursor != was) { Cue(LaptopSounds.Cue.Move); QueueRedraw(); }
+            }
             // ⚠ Only when it lands ON a row, and only when it CHANGES -- otherwise every pixel of
             // mouse movement across one row would tick.
             if (_menuHover >= 0 && _menuHover != wasMenu) Cue(LaptopSounds.Cue.Move);
@@ -1016,6 +1040,14 @@ public sealed partial class LaptopShopScreen : Control
             {
                 Cue(btn == 1 ? LaptopSounds.Cue.Close : LaptopSounds.Cue.Back);
                 Dismissed?.Invoke(btn == 1); AcceptEvent(); return;
+            }
+
+            if (b.ButtonIndex == MouseButton.Left && _yearArrows.Size.X > 0 && _yearArrows.HasPoint(b.Position))
+            {
+                GraphCursor = 0;
+                Cue(LaptopSounds.Cue.Move);
+                YearNudged?.Invoke(b.Position.X < _yearArrows.Position.X + _yearArrows.Size.X / 2f ? -1 : +1);
+                AcceptEvent(); return;
             }
 
             // ⭐ A plain click on a spec row. ⚠ AFTER the sliders, the nudge arrows, the pager AND
@@ -1253,10 +1285,32 @@ public sealed partial class LaptopShopScreen : Control
                 new Rect2(At(window), new Vector2(window.Width, window.Height) * s), false);
 
         // ⭐ Column headers, drawn on the row the label grid skips (Park Finance's row 200).
+        // ⭐ The year selector, drawn by the page (§1.6), coloured by the cursor.
+        _yearArrows = new Rect2(); _yearBand = new Rect2();
+        if (_yearSpan is { } span && layout["YearSelect"] is { } ysel)
+        {
+            bool onYears = GraphCursor == 0;
+            var ytint = onYears ? Of(ShopScreen.Highlight) : Of(ShopScreen.Label);
+            if (Row(YearsTextId) is { } years) DrawRun(years, At(ysel), s, ytint, ysel.Justify);
+            if (layout["YearSelectValue"] is { } yval)
+                DrawRun(span.ToString("#,0", System.Globalization.CultureInfo.InvariantCulture), At(yval), s, ytint, yval.Justify);
+            if (layout["YearSelectArrow"] is { } yarr && _arrows != null)
+            {
+                // The element's row is the sprite's middle, as on every other arrow pair; the art is yellow, so the
+                // cursor's colour is the art untinted and the other is the usual orange modulate.
+                var asize = new Vector2(LaptopArrows.NativeWidth, LaptopArrows.NativeHeight) * s;
+                _yearArrows = new Rect2(At(yarr) - new Vector2(0, asize.Y / 2f), asize);
+                DrawTextureRect(_arrows, _yearArrows, false, onYears ? Colors.White : ArrowTint);
+            }
+            _yearBand = new Rect2(new Vector2(Origin.X, At(ysel).Y), new Vector2(Native * s, LineAdvance * s));
+        }
+
         if (_graphReadout is { } gro && layout["GraphText"] is { } gt && layout["GraphValue"] is { } gv)
         {
             DrawRun(gro.Label, At(gt), s, Of(ShopScreen.Label), gt.Justify);
-            DrawRun(gro.Value, At(gv), s, Of(ShopScreen.Highlight), gv.Justify);
+            // ⚠ AMBER, the label's colour: `0x185FA4` sets (200,130,0) before the label and nothing changes it
+            // before the value (`0x186038` / `0x186070`).
+            DrawRun(gro.Value, At(gv), s, Of(ShopScreen.Label), gv.Justify);
         }
         if (_headers != null && _spec.ValueElement2 != null
             && layout[_spec.ValueElement] is { } h1 && layout[_spec.ValueElement2] is { } h2)
@@ -1313,7 +1367,8 @@ public sealed partial class LaptopShopScreen : Control
 
             string label = Row(row.TextId);
             if (labels is { } l && label != null)
-                DrawRun(label, At(l) + new Vector2(0, dy), s, Of(ShopScreen.Label), l.Justify);
+                DrawRun(label, At(l) + new Vector2(0, dy), s,
+                        _yearSpan != null && GraphCursor == i + 1 ? Of(ShopScreen.Highlight) : Of(ShopScreen.Label), l.Justify);
 
             // ⭐ A ROW IS CLICKABLE. Only some do anything -- the Upgrades row asks for an upgrade
             // -- but the rect is registered for every row and the CALLER decides, because which

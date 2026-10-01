@@ -361,5 +361,9 @@ one-frame film photographs the park from before the screen opened.
   off the monitor's). Its value draws yellow on an otherwise amber page. ManagementSmoke holds each arrow through
   `Input.ParseInputEvent` and checks the step count, the release and the $0 clamp.
 
-Not ported: the year selector and series toggles on the graph page, Existing Loans, Research, ride/toilet Users,
-Satisfaction.
+- **The year selector and series toggles** on all three graph pages (graph-widget.md §1.6-1.7): "Years" + span +
+  arrows stepping 1, 2, 6, 12 with wrap, one selector per root (finance's two pages share one), reset when the
+  root is entered from the main menu; an item click shows its series (always ON: clear-then-flip); the cursor
+  follows the pointer and colours the Years row and the item under it.
+
+Not ported: Existing Loans, Research, ride/toilet Users, Satisfaction.

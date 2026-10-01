@@ -341,6 +341,38 @@ public partial class ManagementSmoke : Node3D
             Check(Field<int>(viewer, "_entranceFee") == 0 && cellsNow()[spin].Text == Money.Format(0),
                   $"holding the left arrow runs the price down to $0 and it stops there (clamped, no wrap): {cellsNow()[spin].Text}");
 
+            // The graph pages' year selector and series toggles (graph-widget.md §1.6-1.7), through clicks: the
+            // arrows step 1 -> 2 -> 6 -> 12 and wrap, an item shows its series, and choosing it AGAIN keeps it shown
+            // (clear-then-flip at 0x185AF8 lands on a zeroed toggle).
+            laptopBack.Clear(); laptopBack.Add(("statistics", null));
+            panel.GraphCursor = 0;
+            Call(viewer, "ShowLaptopLevel");
+            await Frames();
+            var yearArrows = Panel<Rect2>(panel, "_yearArrows");
+            Check(yearArrows.Size.X > 0 && Field<int>(viewer, "_parkGraphYears") == 1 && panel.GraphCursor == 0,
+                  "Park Statistics draws its year selector, at 1 year, with the cursor on the Years row");
+            var spans = new List<int>();
+            for (int step = 0; step < 4; step++)
+            {
+                Click(new Vector2(yearArrows.End.X - yearArrows.Size.X / 4f, yearArrows.GetCenter().Y));
+                await Frames();
+                spans.Add(Field<int>(viewer, "_parkGraphYears"));
+                yearArrows = Panel<Rect2>(panel, "_yearArrows");
+            }
+            Check(spans.SequenceEqual(new[] { 2, 6, 12, 1 }), $"the right arrow steps the span {string.Join(" -> ", spans)} (1, 2, 6, 12, wrapping)");
+            var itemRows = Panel<Dictionary<int, Rect2>>(panel, "_specRows");
+            Click(itemRows[2].GetCenter());
+            await Frames();
+            var pickedReadout = Panel<(string Label, string Value)?>(panel, "_graphReadout");
+            Check(Field<Dictionary<string, int>>(viewer, "_graphPick")["statistics"] == 2 && panel.GraphCursor == 3
+                  && pickedReadout?.Label == text.Text("eng", LaptopScreen.ParkStatistics.Rows[2].TextId),
+                  $"choosing Happiness shows its series and readout ({pickedReadout?.Label}: {pickedReadout?.Value})");
+            Click(Panel<Dictionary<int, Rect2>>(panel, "_specRows")[2].GetCenter());
+            await Frames();
+            Check(Field<Dictionary<string, int>>(viewer, "_graphPick")["statistics"] == 2
+                  && Panel<LaptopShopScreen.GraphSeries?>(panel, "_graph") is { Values.Count: > 0 },
+                  "choosing it again keeps it shown: the toggles are cleared, then the chosen one flipped ON");
+
             if (shots != null)
             {
                 for (int t = 0; t < 20; t++) Call(viewer, "TickPark");
