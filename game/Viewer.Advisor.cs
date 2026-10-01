@@ -92,6 +92,7 @@ public partial class Viewer
             // condition and is still required for anyone to actually walk in (see Viewer.Bus).
             ParkOpen = () => _laptopParkOpen,                             // [0x2B72A4] via 0x14E538
             Placements = AdvisorPlacements,
+            Database = ResearchDb,                                      // the SAME live database as the research screen
         };
         // ⚠ Its own random stream for the initial variants: drawing ~275 from the guests' stream here would
         // shift every guest after it (natively it IS the one stream; the port's are not the console's anyway).
@@ -426,7 +427,8 @@ public partial class Viewer
     /// `LIPS.WAD/English/&lt;stem&gt;.LIP`, or null (268's `PS2_` has none).</summary>
     LipTrack AdvisorLip(int message, int variant) => AdvisorBinding(message, variant)?.Lip;
 
-    /// <summary>⚠ ADAPTER, the placed-object census the pool producers read (v14..v17, v31, v50): every sim
+    /// <summary>⚠ ADAPTER, the placed-object census the pool/research producers read (v14..v17, variety,
+    /// upgrades in use, v31, v50): every sim
     /// placement (<see cref="AdvisorProducers.DefaultPlacements"/>), then every scriptless placement the build
     /// tool registered whose compiled record is known, taken as standing (status 1), as the staff's
     /// <see cref="StaffPlacedFeatures"/> does.</summary>
@@ -446,7 +448,7 @@ public partial class Viewer
             if (inSim.Contains(p.RuntimeId) || !IsInstanceValid(p.Node) || !live.Contains(p.Node)) continue;
             if (p.Definition?.CompiledEntry is not { } e) continue;
             byte flags = e.Kind == AssetResourceDatabase.AssetKind.Feature ? e.RawFeatureFlags.GetValueOrDefault() : (byte)0;
-            yield return new AdvisorPlacement(e.Kind, 1, flags, null);
+            yield return new AdvisorPlacement(e.Kind, 1, flags, null) { CatalogueKey = e.Key };
         }
     }
 }

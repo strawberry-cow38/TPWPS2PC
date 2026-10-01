@@ -26,7 +26,7 @@ ASSEMBLY = PROJECT + '/bin/Release/net8.0/TPW.PS2.ParkSimAudit.dll'
 MAX_LOG_BYTES = 8 * 1024 * 1024
 # Minimum assertions in the current integrated ParkSimAudit. A stale binary or
 # accidentally omitted helper must not turn missing lifecycle coverage into PASS.
-REQUIRED_CHECKS = {'availability': 30, 'queue_walk': 7, 'track_ride': 43, 'coaster': 44, 'removal': 57, 'conservation': 20, 'needs_lifecycle': 50, 'disruption': 21, 'service_routing': 5, 'departure_recovery': 6, 'ride_effect_consumer': 33, 'compiled_purchase': 67, 'decision_scheduling': 28, 'terminal_walking': 90, 'post_service_movement': 18, 'native_destination_score': 43, 'native_destination_consumer': 29, 'native_relief': 78, 'native_ride_value': 70, 'native_bus_admission_inputs': 278, 'native_guest_motion_arithmetic': 55, 'native_guest_route_cursor': 76, 'native_walk_consumer': 87, 'native_entrance_flow': 113, 'native_entrance_acceptance': 23, 'native_route_pool': 1082, 'native_rejected_departure': 71, 'native_logical_animation': 62, 'native_ride_queue': 17, 'native_ride_queue_walked': 18, 'staff': 80, 'mechanic': 66}
+REQUIRED_CHECKS = {'availability': 30, 'queue_walk': 7, 'track_ride': 43, 'coaster': 44, 'removal': 57, 'conservation': 20, 'needs_lifecycle': 50, 'disruption': 21, 'service_routing': 5, 'departure_recovery': 6, 'ride_effect_consumer': 33, 'compiled_purchase': 77, 'decision_scheduling': 28, 'terminal_walking': 90, 'post_service_movement': 18, 'native_destination_score': 43, 'native_destination_consumer': 29, 'native_relief': 78, 'native_ride_value': 70, 'native_bus_admission_inputs': 278, 'native_guest_motion_arithmetic': 55, 'native_guest_route_cursor': 76, 'native_walk_consumer': 87, 'native_entrance_flow': 113, 'native_entrance_acceptance': 23, 'native_route_pool': 1082, 'native_rejected_departure': 71, 'native_logical_animation': 62, 'native_ride_queue': 17, 'native_ride_queue_walked': 18, 'staff': 80, 'mechanic': 66}
 REQUIRED_WITNESSES = (
     'ok   native destination consumer: actual idle selector need0/sick0 rejects relief',
     'ok   native destination consumer: actual idle selector need90/sick0 chooses relief',
@@ -64,6 +64,8 @@ REQUIRED_WITNESSES = (
     'ok   compiled purchase: eur product7 falls through to all food effects at initial q2 zero',
     'ok   compiled purchase: jap costume handback changes preference to14 without reseeding or food effects',
     'ok   compiled purchase: eur 299 cash refuses the 300-unit sale with no debit or effects at real handback',
+    'ok   compiled purchase: eur a refused visit is no customer but still one satisfaction visit',
+    'ok   compiled purchase: sideshow: five losing games score exactly 50',
     'ok   compiled purchase: eur exactly300 cash buys once rather than being rejected at the boundary',
     'ok   ride effect consumer: value 55, sickness 20 becomes 20',
     'ok   ride effect consumer: preference 30, value 81 awards band 5',
@@ -178,6 +180,54 @@ REQUIRED_WITNESSES += (
     'ok   parkstats: the year roll 0x100EF8 copies 0x12dc -> 0x12e0 and 0x12e4 -> 0x12e8, then zeroes both',
     'ok   parkstats: Park Statistics\' walk 0x186D38 stores each getter\'s result into the bucket',
     'ok   parkstats: the rating of 3 rides (one at tier 2), 6 shops, 1 sideshow, 12 features and nobody: 27',
+)
+
+# The park's loans (LoanChecks.cs): 9 on every park, disc-wide. The witnesses are the month end's words (the balance
+# ring before the walk and the one debit) and the payoff that leaves the lender lent.
+REQUIRED_CHECKS.update({'loans': 9})
+REQUIRED_WITNESSES += (
+    'ok   loans: the month end 0x100A18 files the balance ring (0x100A70) BEFORE the loan walk (+0x28, +0x14, +0x18; decrements at 0x100AA8/0x100AB0) and the single debit (0x100B18)',
+    'ok   loans: a paid-off loan is still TAKEN: nothing sets +0x28 back, so each lender lends once per park',
+)
+
+# Research (ResearchChecks.cs): 14 on every park, disc-wide. The witnesses are the executable claims and the fresh
+# JUNGLE park's 13 items -- the figure a live savestate corroborates by another route.
+REQUIRED_CHECKS.update({'research': 14})
+REQUIRED_WITNESSES += (
+    'ok   research: 0x1B6880 (start a project) has exactly two callers, the Research screen and the save loader',
+    'ok   research: JUNGLE park 1 starts with exactly the 13 items whose tier-0 group is 0',
+    'ok   research: advisor research mask bug is in the ELF',
+)
+
+# Advisor research (AdvisorResearchChecks.cs): 291 disc-wide checks. Count this as its OWN family:
+# "advisor:" does not prove "advisor research:" ran. The witnesses preserve the mask bug, distinguish
+# filed partial/complete progress, and require max-per-type upgrades including status0 placements.
+REQUIRED_CHECKS.update({'advisor_research': 291})
+REQUIRED_WITNESSES += (
+    'ok   advisor research: bit4 research selects track AND coaster: 1/2',
+    'ok   advisor research: File99 is NOT unlock',
+    'ok   advisor research: File100 updates existing producer research 5/10',
+    'ok   advisor research: same-key duplicates MAX tier1, not sum2',
+    'ok   advisor research: max tier2 even on status0 duplicate',
+)
+
+# Sideshow presentation: disc-backed canonical/visibility fixtures are their own family;
+# renderer/callback/lifecycle evidence is provided separately by SideshowPresentationSmoke.
+REQUIRED_CHECKS.update({'sideshow_presentation': 136})
+REQUIRED_WITNESSES += (
+    'ok   sideshow presentation: explicit core fixture: raw prize 0: explicit label-grid fixture matches literal native Y slots',
+    'ok   sideshow presentation: explicit core fixture: native 0x1D8490: beq v0,zero to0x1D84B0',
+    'ok   sideshow presentation: explicit core fixture: native 0x1D84AC: addiu row,row,32',
+    'ok   sideshow presentation: explicit core fixture: spinner bounds: literal min1/max1000',
+    'ok   sideshow presentation: explicit core fixture: spinner bounds: raw1001 active decrement expected999',
+)
+
+# Exact research section and restart semantics; full-save publication is still separate.
+REQUIRED_CHECKS.update({'research_persistence': 169})
+REQUIRED_WITNESSES += (
+    'ok   research persistence: explicit core fixture: park 0: exact P-first/L-second bytes',
+    'ok   research persistence: explicit core fixture: all DB pairs filed BEFORE restarts/Refresh',
+    'ok   research persistence: explicit core fixture: File increments/comparisons BEFORE byte stores: 255+1 wraps0',
 )
 
 

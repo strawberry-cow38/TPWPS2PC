@@ -18,7 +18,7 @@ COVERAGE = '\n'.join([f'  ok   {category.replace("_", " ")}: filler'
                      ['  ok   decision scheduling: native arm1 remains available before facility deadline and consumes both draws'] +
                      ['  ok   decision scheduling: cash299 park deadline survives eightfold appetite rate change'] +
                      ['  ok   decision scheduling: strict boundary rejects stored300 plus extra60 equality', '  ok   decision scheduling: cash1234 zero-time calls cannot reboard the same shop', '  ok   decision scheduling: cash299 zero-time calls cannot reboard the same shop', '  ok   decision scheduling: cash299 eligible later decision can revisit instead of a permanent blacklist'] +
-                     ['  ok   compiled purchase: check'] * 59 +
+                     ['  ok   compiled purchase: check'] * 67 +
                      ['  ok   compiled purchase: bare-world source path attaches the named shop independently of region loop',
                       '  ok   compiled purchase: archive-qualified source path attaches the named shop independently of region loop',
                       '  ok   compiled purchase: product alone reverses the transfer and selects its own bladder amount',
@@ -26,7 +26,9 @@ COVERAGE = '\n'.join([f'  ok   {category.replace("_", " ")}: filler'
                       '  ok   compiled purchase: eur product7 falls through to all food effects at initial q2 zero',
                       '  ok   compiled purchase: jap costume handback changes preference to14 without reseeding or food effects',
                       '  ok   compiled purchase: eur 299 cash refuses the 300-unit sale with no debit or effects at real handback',
-                      '  ok   compiled purchase: eur exactly300 cash buys once rather than being rejected at the boundary'] +
+                      '  ok   compiled purchase: eur exactly300 cash buys once rather than being rejected at the boundary',
+                      '  ok   compiled purchase: eur a refused visit is no customer but still one satisfaction visit (0x1D1E68 runs at the common exit)',
+                      '  ok   compiled purchase: sideshow: five losing games score exactly 50 -- the most a game can make (5 x 10), so a sideshow\'s satisfaction bar never fills past half'] +
                      ['  ok   ride effect consumer: check'] * 31 +
                      ['  ok   ride effect consumer: value 55, sickness 20 becomes 20',
                       '  ok   ride effect consumer: preference 30, value 81 awards band 5'] +
@@ -160,6 +162,158 @@ _PARTICLE_WITNESSES = [w for w in REQUIRED_WITNESSES if w.startswith('ok   parti
 COVERAGE += '\n' + '\n'.join(
     ['  ok   particle fitting: filler'] * (109 - len(_PARTICLE_WITNESSES))
     + ['  ' + w for w in _PARTICLE_WITNESSES])
+# The park's loans (LoanChecks.cs): its own statement. Real lines from a --loans-only run; the witnesses are the
+# month end's instruction words and the payoff that never re-opens the lender.
+COVERAGE += '\n' + '\n'.join([
+                              '  ok   loans: the month end 0x100A18 files the balance ring (0x100A70) BEFORE the loan walk (+0x28, +0x14, +0x18; decrements at 0x100AA8/0x100AB0) and the single debit (0x100B18)',
+                              "  ok   loans: taking Mr Byrne's loan credits $100,000 as income and books $172,800 over 36 months at $4,800",
+                              '  ok   loans: taking it a second time is refused, silently, and moves no money -- the only refusal there is',
+                              '  ok   loans: Ms West: 10,000 x 1.15^2 = 13,225 compounded, but the page and the debt are the RE-DERIVED $551 x 24 = $13,224',
+                              '  ok   loans: one month end with $500 of wages: the repayment and the wages leave in one debit ($5,300), both in Cash Out, but only the wages reach the wage total and ring ($500)',
+                              "  ok   loans: the Bank Balance ring holds $130,000, the balance BEFORE the month's bills, not the $124,700 after them",
+                              '  ok   loans: after 36 month ends it is paid off ($0, 0 months), the 37th takes only its wages, and the record still shows its $4,800 repayment',
+                              '  ok   loans: a paid-off loan is still TAKEN: nothing sets +0x28 back, so each lender lends once per park',
+                              "  ok   loans: two loans owe $186,024 (the Balance Sheet's Loans row), and the gold tickets' money figure drops by exactly their interest x 10 (760240) the moment they are taken",
+])
+
+# Research (ResearchChecks.cs): its own statement. Real lines from a --research-only run; the witnesses are the two
+# executable claims (only the screen and the loader start a project; 100 % is the unlock) and the fresh park's 13.
+COVERAGE += '\n' + '\n'.join([
+                              '  ok   research: 0x1B6880 (start a project) has exactly two callers, the Research screen and the save loader (0x1B5644, 0x1B6764): nothing starts research on its own',
+                              '  ok   research: 0x12BAF8 tests the filed percent against 100 (slti s1, 0x64 at 0x12BB3C): reaching it IS the unlock',
+                              "  ok   research: all 347 catalogue keys resolve in arsdb.dba with their list's kind (0 do not)",
+                              "  ok   research: JUNGLE park 1 starts with exactly the 13 items whose tier-0 group is 0 (the live savestate's 13): 222 226 228 225 193 198 204 208 240 241 243 247 249",
+                              "  ok   research: SPACE park 2 starts with its 16 -- a different list, so the rule is not one park's constant",
+                              "  ok   research: the AllResearched debug key opens all 41 of JUNGLE park 1's items (the control)",
+                              '  ok   research: a fresh JUNGLE park: thresholds [1,1,1,1], Rides offers 221 223 224 230 220, Shops 242 245 246, Sideshows 251 253, and Upgrades nothing (no ride built)',
+                              '  ok   research: ride 221 researched by a level-0 researcher in 38 quanta: available, level 1, message 0x4B, and the slot idle',
+                              '  ok   research: nothing starts the next item: the row stays idle, and 221 is no longer a candidate',
+                              "  ok   research: Crazy Ape's first upgrade: offered on Upgrades only once one is built, researched in 10 quanta to level 2, and with no mechanic hired the message is 0x7E (hire one) rather than 0x4C",
+])
+
+# Executable checks added with the advisor/research producer read: these belong to
+# research, not the separately counted advisor-research fixture family.
+COVERAGE += '\n' + '\n'.join([
+    '  ok   research: advisor research mask bug is in the ELF: the same bit4 gates track and coaster (count call0x12B0A0, availability kind1)',
+    '  ok   research: advisor variety feature flags read in order1/8/2: toilet, camera, staff room',
+    '  ok   research: advisor variety reads nonzero object status and counts a50-entry distinct-type set',
+    '  ok   research: upgrade-use helper stores the largest tier+1 and loops over placements using tier+0x126',
+])
+
+# These are classifier fixtures, NOT simulated game or disc evidence. Pin the count
+# to291 independently of REQUIRED_CHECKS so deleting/lowering that requirement fails
+# the tests. The five non-filler lines are actual labels from the core fixture output.
+ADVISOR_RESEARCH_LABELS = (
+    '  ok   advisor research: bit4 research selects track AND coaster: 1/2: expected 50, got 50',
+    '  ok   advisor research: File99 is NOT unlock: expected 40, got 40',
+    '  ok   advisor research: File100 updates existing producer research 5/10: expected 50, got 50',
+    '  ok   advisor research: same-key duplicates MAX tier1, not sum2: expected 50, got 50',
+    '  ok   advisor research: max tier2 even on status0 duplicate: expected 100, got 100',
+)
+COVERAGE += '\n' + '\n'.join(['  ok   advisor research: classifier fixture'] * (291 - len(ADVISOR_RESEARCH_LABELS))
+                             + list(ADVISOR_RESEARCH_LABELS))
+
+
+SIDESHOW_LABELS = (
+    '  ok   sideshow presentation: explicit core fixture: raw prize 0: explicit label-grid fixture matches literal native Y slots; authored widgets stay separate',
+    '  ok   sideshow presentation: explicit core fixture: native 0x1D8490: beq v0,zero to0x1D84B0; raw prize ==0, not a signed-positive test',
+    '  ok   sideshow presentation: explicit core fixture: native 0x1D84AC: addiu row,row,32; conditional Winner row advances the label grid',
+    '  ok   sideshow presentation: explicit core fixture: spinner bounds: literal min1/max1000',
+    '  ok   sideshow presentation: explicit core fixture: spinner bounds: raw1001 active decrement expected999',
+)
+COVERAGE += '\n' + '\n'.join(['  ok   sideshow presentation: classifier fixture'] * (136-len(SIDESHOW_LABELS))
+                             + list(SIDESHOW_LABELS))
+
+
+class SideshowCoverageTests(unittest.TestCase):
+    def test_family_floor_registered(self):
+        self.assertEqual(REQUIRED_CHECKS.get('sideshow_presentation'),136)
+
+    def test_complete_and_count(self):
+        row=classify('JUNGLE',0,COVERAGE+'\nPASS')
+        self.assertEqual(row['status'],'pass')
+        self.assertEqual(row['sideshow_presentation_checks'],136)
+
+    def test_missing_whole_or_one_assertion(self):
+        missing='\n'.join(x for x in COVERAGE.splitlines() if not x.strip().startswith('ok   sideshow presentation:'))
+        short=COVERAGE.replace('  ok   sideshow presentation: classifier fixture\n','',1)
+        for text in (missing,short):
+            self.assertEqual(classify('JUNGLE',0,text+'\nPASS')['status'],'missing_coverage')
+
+    def test_count_cannot_replace_native_witness(self):
+        for line in SIDESHOW_LABELS:
+            row=classify('JUNGLE',0,COVERAGE.replace(line,'  ok   sideshow presentation: classifier fixture',1)+'\nPASS')
+            self.assertEqual(row['sideshow_presentation_checks'],136)
+            self.assertEqual(row['status'],'missing_coverage')
+
+
+PERSISTENCE_LABELS = (
+    '  ok   research persistence: explicit core fixture: park 0: exact P-first/L-second bytes',
+    '  ok   research persistence: explicit core fixture: all DB pairs filed BEFORE restarts/Refresh',
+    '  ok   research persistence: explicit core fixture: File increments/comparisons BEFORE byte stores: 255+1 wraps0',
+)
+COVERAGE += '\n' + '\n'.join(['  ok   research persistence: classifier fixture'] * (169-len(PERSISTENCE_LABELS))
+                             + list(PERSISTENCE_LABELS))
+
+
+class ResearchPersistenceCoverageTests(unittest.TestCase):
+    def test_exact_floor_and_complete_fixture(self):
+        self.assertEqual(REQUIRED_CHECKS.get('research_persistence'),169)
+        row=classify('JUNGLE',0,COVERAGE+'\nPASS')
+        self.assertEqual(row['status'],'pass')
+        self.assertEqual(row['research_persistence_checks'],169)
+
+    def test_missing_family_and_single_assertion_cannot_pass(self):
+        missing='\n'.join(x for x in COVERAGE.splitlines() if not x.strip().startswith('ok   research persistence:'))
+        short=COVERAGE.replace('  ok   research persistence: classifier fixture\n','',1)
+        for text in (missing,short):
+            self.assertEqual(classify('JUNGLE',0,text+'\nPASS')['status'],'missing_coverage')
+
+    def test_extra_filler_cannot_replace_semantic_witnesses(self):
+        for line in PERSISTENCE_LABELS:
+            row=classify('JUNGLE',0,COVERAGE.replace(line,'  ok   research persistence: classifier fixture',1)+'\nPASS')
+            self.assertEqual(row['research_persistence_checks'],169)
+            self.assertEqual(row['status'],'missing_coverage')
+
+
+class AdvisorResearchCoverageTests(unittest.TestCase):
+    def test_requirement_is_registered_at_the_actual_floor(self):
+        self.assertEqual(REQUIRED_CHECKS.get('advisor_research'), 291)
+        self.assertEqual(REQUIRED_CHECKS['research'], 14)
+
+    def test_full_family_and_manifest_count(self):
+        row = classify('JUNGLE', 0, COVERAGE + '\nPASS')
+        self.assertEqual(row['status'], 'pass')
+        self.assertEqual(row['advisor_research_checks'], 291)
+        self.assertEqual(row['research_checks'], 14)
+
+    def test_entire_family_cannot_disappear(self):
+        text = '\n'.join(line for line in COVERAGE.splitlines()
+                         if not line.strip().startswith('ok   advisor research:'))
+        row = classify('JUNGLE', 0, text + '\nPASS')
+        self.assertEqual(row['status'], 'missing_coverage')
+        self.assertEqual(row['advisor_research_checks'], 0)
+
+    def test_one_missing_assertion_is_not_full_coverage(self):
+        text = COVERAGE.replace('  ok   advisor research: classifier fixture\n', '', 1)
+        row = classify('JUNGLE', 0, text + '\nPASS')
+        self.assertEqual(row['advisor_research_checks'], 290)
+        self.assertEqual(row['status'], 'missing_coverage')
+
+    def test_count_cannot_replace_a_semantic_witness(self):
+        for label in ADVISOR_RESEARCH_LABELS:
+            with self.subTest(label=label):
+                text = COVERAGE.replace(label, '  ok   advisor research: classifier fixture', 1)
+                row = classify('JUNGLE', 0, text + '\nPASS')
+                self.assertEqual(row['advisor_research_checks'], 291)
+                self.assertEqual(row['status'], 'missing_coverage')
+
+    def test_known_retail_failure_still_requires_this_family(self):
+        for world in ('HALLOW', 'SPACE'):
+            with self.subTest(world=world):
+                text = '\n'.join(line for line in known(world).splitlines()
+                                 if not line.strip().startswith('ok   advisor research:'))
+                self.assertEqual(classify(world, 1, text)['status'], 'missing_coverage')
 
 
 class ClassificationTests(unittest.TestCase):
@@ -207,6 +361,22 @@ class ClassificationTests(unittest.TestCase):
                      COVERAGE.replace('  ok   music: lobby clips:', '  ok   unrelated: lobby clips:', 1),
                      COVERAGE.replace('written as selector 2: no slot takes it', 'written as selector 2: level 6'),
                      COVERAGE.replace('the control, the same 90 on the event\'s own selector 4 plays the top level', 'the control: skipped')):
+            self.assertEqual(classify('JUNGLE', 0, text + '\nPASS')['status'], 'missing_coverage')
+        self.assertEqual(classify('JUNGLE', 0, COVERAGE + '\nPASS')['status'], 'pass')
+
+    def test_research_family_count_and_witnesses_required(self):
+        for text in ('\n'.join(x for x in COVERAGE.splitlines() if 'research:' not in x),
+                     COVERAGE.replace('  ok   research: all 347 catalogue keys', '  ok   unrelated: all 347 catalogue keys', 1),
+                     COVERAGE.replace('has exactly two callers', 'has three callers'),
+                     COVERAGE.replace('starts with exactly the 13 items', 'starts with exactly the 41 items')):
+            self.assertEqual(classify('JUNGLE', 0, text + '\nPASS')['status'], 'missing_coverage')
+        self.assertEqual(classify('JUNGLE', 0, COVERAGE + '\nPASS')['status'], 'pass')
+
+    def test_loans_family_count_and_witnesses_required(self):
+        for text in ('\n'.join(x for x in COVERAGE.splitlines() if 'loans:' not in x),
+                     COVERAGE.replace('  ok   loans: taking it a second time', '  ok   unrelated: taking it a second time', 1),
+                     COVERAGE.replace('and the single debit (0x100B18)', 'and two debits'),
+                     COVERAGE.replace('nothing sets +0x28 back', 'payoff sets +0x28 back')):
             self.assertEqual(classify('JUNGLE', 0, text + '\nPASS')['status'], 'missing_coverage')
         self.assertEqual(classify('JUNGLE', 0, COVERAGE + '\nPASS')['status'], 'pass')
 
@@ -354,7 +524,7 @@ class ClassificationTests(unittest.TestCase):
 
     def test_lifecycle_counts_recorded_in_manifest_row(self):
         row = classify('JUNGLE', 0, COVERAGE + '\nPASS')
-        self.assertEqual(row['compiled_purchase_checks'], 67)
+        self.assertEqual(row['compiled_purchase_checks'], 77)
         self.assertEqual(row['availability_checks'], 30)
         self.assertEqual(row['removal_checks'], 57)
         self.assertEqual(row['conservation_checks'], 20)

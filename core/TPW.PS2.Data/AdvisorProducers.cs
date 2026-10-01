@@ -12,10 +12,18 @@ namespace TPW.PS2.Data;
 /// <param name="Ride">The live facility, when it has one (a toilet's cleanliness lives there).</param>
 public readonly record struct AdvisorPlacement(AssetResourceDatabase.AssetKind Kind, byte Status, byte FeatureFlags, ParkRide Ride)
 {
+    /// <summary>The compiled key of a scriptless placement. Scripted placements read their live ride's key.
+    /// The research catalogue maps it to the native item index (`+0x97`); an out-of-catalogue debug placement
+    /// has no native counterpart and is excluded from research ratios.</summary>
+    public uint? CatalogueKey { get; init; }
+    public uint? Key => CatalogueKey ?? Ride?.Definition?.CompiledEntry?.Key;
+
     /// <summary>`0x103970`'s feature classing, ONCE per feature in this order: toilet (`vt+0x134`), camera
     /// (`0x130858`), staff room (`0x1308C8`), else "other" (0x10). ⚠ Tested on the DBA bits, as
     /// <see cref="ParkStaff.FeatureCount"/> does (<see cref="StaffFeature"/>).</summary>
-    public int FeatureClass => (FeatureFlags & 1) != 0 ? 0x20 : (FeatureFlags & 8) != 0 ? 0x40 : (FeatureFlags & 2) != 0 ? 0x80 : 0x10;
+    public int FeatureClass => FeatureClassOf(FeatureFlags);
+    /// <summary>`0x103B20` also classes the catalogue's feature flags in this same priority.</summary>
+    public static int FeatureClassOf(byte flags) => (flags & 1) != 0 ? 0x20 : (flags & 8) != 0 ? 0x40 : (flags & 2) != 0 ? 0x80 : 0x10;
     public bool IsToilet => Kind == AssetResourceDatabase.AssetKind.Feature && (FeatureFlags & 1) != 0;
 }
 
@@ -32,8 +40,8 @@ public readonly record struct AdvisorPlacement(AssetResourceDatabase.AssetKind K
 ///   v13     REAL  litter (0x14D208)                               ParkStaff.Litter.Count
 ///   v14..v17 REAL rides / shops / sideshows (held-adjusted) and standing features (0x103970)   Placements
 ///   v18..v20 REAL toilets / staff rooms / cameras standing        ParkStaff.FeatureCount
-///   v21..v30 HOOK variety and research % (0x103B20, 0x1044B0, 0x104A40, 0x104BD0): the research
-///                 DATABASE they read (0x389650, 0x12B6D0 availability, 0x12BA08 level) is not ported
+///   v21..v30 REAL variety and research % (0x103B20, 0x1044B0, 0x104A40, 0x104BD0): the per-park
+///                 ResearchDatabase, plus the keyed placement census (quiet defaults only WITHOUT a database)
 ///   v31     REAL  toilets' average dirtiness (0x104760)           ParkRide.Condition (+0xB4)
 ///   v32     REAL  toilet coverage (0x104CE0(0x20))               ParkStaff.FeatureCoverage
 ///   v33..v45 REAL no-area %, patrol coverage, training %          ParkStaff
@@ -67,6 +75,11 @@ public sealed class AdvisorProducers : IAdvisorProducers
     public ParkStaff Staff { get; }
     public ParkVisitors Visitors { get; }
 
+    /// <summary>The live per-park research database. Null uses the staff's research manager's database;
+    /// only a consumer with neither keeps the old quiet research defaults.</summary>
+    public ResearchDatabase Database { get; set; }
+    ResearchDatabase ResearchState => Database ?? Staff?.Research.Database;
+
     /// <summary>⚠ HOOK for v0, `0x14E538` = `[0x2B72A4]`, the open-park flag (set by Open Park `0x14E4C0`).
     /// The port has no park-level flag. Null answers OPEN: the port admits guests to every park it runs
     /// (the bus adapter's `open` is the same assumption) -- and open keeps rule 0 (OPEN_PARK) quiet.</summary>
@@ -80,16 +93,17 @@ public sealed class AdvisorProducers : IAdvisorProducers
 
     /// <summary>⚠ HOOK for v21/v25/v27/v29, `0x103B20(mask)`: variety % of rides (0xF) / shops (0x100) /
     /// sideshows (0x200) / features (0xF0) -- distinct types built over types AVAILABLE (`0x12B6D0`), which is
-    /// the unported research database. Null answers the quiet value <see cref="QuietVariety"/>.</summary>
+    /// the per-park research database. An explicit hook overrides the real formula; null computes it,
+    /// or answers <see cref="QuietVariety"/> only without a database.</summary>
     public Func<int, int> Variety { get; set; }
     /// <summary>⚠ HOOK for v22/v26/v28/v30, `0x1044B0(mask)`: researched % of the same kinds (the research
-    /// database). Null answers 100 (research complete), which keeps rules 81, 84, 89, 93, 96 quiet.</summary>
+    /// database). Null computes it, or answers 100 only without a database.</summary>
     public Func<int, int> ResearchPercent { get; set; }
     /// <summary>⚠ HOOK for v23, `0x104A40`: upgrades in use % (placed tiers over researched levels,
-    /// `0x12BA08`). Null answers 100, which keeps rule 87 (`v23 == 0`) quiet.</summary>
+    /// `0x12BA08`). Null computes it, or answers 100 only without a database.</summary>
     public Func<int> UpgradesInUse { get; set; }
-    /// <summary>⚠ HOOK for v24 and producer 53's latch, `0x104BD0`: upgrade research %. Null answers 100,
-    /// which keeps rules 81 (`&lt; 100`) and 86 (`== 0`) quiet (87 also needs v23 == 0).</summary>
+    /// <summary>⚠ HOOK for v24 and producer 53's latch, `0x104BD0`: upgrade research %. Null computes it,
+    /// or answers 100 only without a database.</summary>
     public Func<int> UpgradeResearchPercentHook { get; set; }
 
     /// <summary>The quiet variety: rule 80/84 need ride variety &gt; 99 / == 100, 88/92 need shop/sideshow
@@ -98,7 +112,7 @@ public sealed class AdvisorProducers : IAdvisorProducers
 
     /// <summary>`0x10DFD0`: `min(month + 12·year, 30000)` (unsigned compare).</summary>
     public int Months => Min30000(Clock.Month + 12 * Clock.Year);
-    public int UpgradeResearchPercent => UpgradeResearchPercentHook?.Invoke() ?? 100;
+    public int UpgradeResearchPercent => UpgradeResearchPercentHook?.Invoke() ?? ResearchState?.UpgradePercent() ?? 100;
 
     static int Min30000(int v) => (uint)v < 30001u ? v : 30000;
     static short S(int v) => unchecked((short)v);
@@ -131,16 +145,16 @@ public sealed class AdvisorProducers : IAdvisorProducers
             case 18: return S(Staff?.FeatureCount(0x20) ?? 0);           // 0x103970(0x20)
             case 19: return S(Staff?.FeatureCount(0x80) ?? 0);           // 0x103970(0x80)
             case 20: return S(Staff?.FeatureCount(0x40) ?? 0);           // 0x103970(0x40)
-            case 21: return S(Variety?.Invoke(0xF) ?? QuietVariety);
-            case 22: return S(ResearchPercent?.Invoke(0xF) ?? 100);
-            case 23: return S(UpgradesInUse?.Invoke() ?? 100);
+            case 21: return S(Variety?.Invoke(0xF) ?? VarietyPercent(0xF));
+            case 22: return S(ResearchPercent?.Invoke(0xF) ?? ResearchedPercent(0xF));
+            case 23: return S(UpgradesInUse?.Invoke() ?? InstalledUpgradePercent());
             case 24: return S(UpgradeResearchPercent);
-            case 25: return S(Variety?.Invoke(0x100) ?? QuietVariety);
-            case 26: return S(ResearchPercent?.Invoke(0x100) ?? 100);
-            case 27: return S(Variety?.Invoke(0x200) ?? QuietVariety);
-            case 28: return S(ResearchPercent?.Invoke(0x200) ?? 100);
-            case 29: return S(Variety?.Invoke(0xF0) ?? QuietVariety);
-            case 30: return S(ResearchPercent?.Invoke(0xF0) ?? 100);
+            case 25: return S(Variety?.Invoke(0x100) ?? VarietyPercent(0x100));
+            case 26: return S(ResearchPercent?.Invoke(0x100) ?? ResearchedPercent(0x100));
+            case 27: return S(Variety?.Invoke(0x200) ?? VarietyPercent(0x200));
+            case 28: return S(ResearchPercent?.Invoke(0x200) ?? ResearchedPercent(0x200));
+            case 29: return S(Variety?.Invoke(0xF0) ?? VarietyPercent(0xF0));
+            case 30: return S(ResearchPercent?.Invoke(0xF0) ?? ResearchedPercent(0xF0));
             case 31: return S(ToiletDirtiness());
             case 32: return S(Staff?.FeatureCoverage(0x20) ?? 0);        // 0x104CE0(0x20)
             case 33: return S(Staff?.NoPatrolAreaPercent(1) ?? 0);       // 0x1053A8(1, 2, 4, 8)
@@ -169,6 +183,89 @@ public sealed class AdvisorProducers : IAdvisorProducers
     }
 
     int StaffCount(StaffKind kind) => Staff?.AdvisorCount(kind) ?? 0;
+
+    // ------------------------------------------------------------------------------------------------
+    // Research. READ: findings/advisor-rules.md §5, findings/research.md §4.3; native helpers re-read
+    // 2026-10-01, including 0x104830 (the maximum installed tier, with NO placement-status test).
+
+    static readonly int[] CatalogueKinds = { 3, 7, 6, 1, 2, 4, 5 };
+    static readonly int[] UpgradeKinds = { 3, 6, 7, 1 };
+
+    static int CatalogueBit(int cat, bool research)
+        => cat == 2 ? 0xF0 : cat == 1 && research ? 4 : PoolBit((AssetResourceDatabase.AssetKind)cat);
+
+    static int Ratio(int done, int total) => done >= total ? 100 : done * 100 / total;
+
+    /// <summary>⭐ `0x1044B0(mask)`: available BASE types / all catalogue types, summed across kinds.
+    /// The shipped bug is preserved: bit 4 selects BOTH track rides and coasters, and bit 8 selects neither.
+    /// Any feature bit selects ALL feature types here, unlike variety's subtype filtering. No types => 100.</summary>
+    public int ResearchedPercent(int mask)
+    {
+        if (ResearchState is not { } db) return 100;
+        int total = 0, done = 0;
+        foreach (int cat in CatalogueKinds)
+        {
+            if ((mask & CatalogueBit(cat, research: true)) == 0) continue;
+            total += db.Count(cat);
+            for (int i = 0; i < db.Count(cat); i++) if (db.Available(cat, i, 0)) done++;
+        }
+        return Ratio(done, total);
+    }
+
+    /// <summary>⭐ `0x103B20(mask)`: distinct STANDING types / available base types. Each kind with zero
+    /// availability skips its placement scan. Built types are NOT individually checked for availability:
+    /// the native 50-byte set marks any nonzero-status placement's catalogue index. Features are filtered
+    /// by their catalogue DBA flags, toilet then camera then staff room then other. Empty availability => 100.</summary>
+    public int VarietyPercent(int mask)
+    {
+        if (ResearchState is not { } db) return QuietVariety;
+        int available = 0, built = 0;
+        foreach (int cat in CatalogueKinds)
+        {
+            if ((mask & CatalogueBit(cat, research: false)) == 0) continue;
+            int n = 0;
+            for (int i = 0; i < db.Count(cat); i++)
+                if (db.Available(cat, i, 0) && (cat != 2 || db.FeatureFlags(i) is byte flags
+                    && (mask & AdvisorPlacement.FeatureClassOf(flags)) != 0)) n++;
+            if (n == 0) continue;
+            available += n;
+            var types = new HashSet<int>();
+            foreach (var p in Census())
+            {
+                if ((int)p.Kind != cat || p.Status == 0 || p.Key is not uint key) continue;
+                int i = ResearchCatalogue.IndexOf(db.World, db.Park, p.Kind, key);
+                if (i < 0) continue;
+                if (cat == 2 && (db.FeatureFlags(i) is not byte flags
+                    || (mask & AdvisorPlacement.FeatureClassOf(flags)) == 0)) continue;
+                types.Add(i);
+            }
+            built += types.Count;
+        }
+        return Ratio(built, available);
+    }
+
+    /// <summary>⭐ `0x104A40` / `0x104830`: per BUILT ride type, sum its maximum installed tier over
+    /// sum(Level - 1). Duplicates do not sum; unbuilt researched types do not contribute; status 0 still
+    /// contributes (there is no status read in this helper). Empty or fully used potential => 100.</summary>
+    public int InstalledUpgradePercent()
+    {
+        if (ResearchState is not { } db) return 100;
+        var tiers = new Dictionary<(int Cat, uint Key), int>();
+        foreach (var p in Census())
+        {
+            int cat = (int)p.Kind;
+            if (cat is not (3 or 6 or 7 or 1) || p.Key is not uint key) continue;
+            var type = (cat, key);
+            int tier = p.Ride?.CurrentTier ?? 0;
+            if (!tiers.TryGetValue(type, out int prev) || tier > prev) tiers[type] = tier;
+        }
+        int used = 0, possible = 0;
+        foreach (int cat in UpgradeKinds)
+            for (int i = 0; i < db.Count(cat); i++)
+                if (tiers.TryGetValue((cat, db.Keys(cat)[i]), out int tier))
+                { used += tier; possible += db.Level(cat, i) - 1; }
+        return Ratio(used, possible);
+    }
 
     // ------------------------------------------------------------------------------------------------
     // Guests.

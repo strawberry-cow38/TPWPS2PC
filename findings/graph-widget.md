@@ -319,7 +319,16 @@ and uses the widget only as the value model and for input.
 - Cursor row: finance `+0x588`, park stats `+0x344`. Row 0 = the Years row, rows 1..N = items.
   Up (pad bit 1) / down (bit 2) with wrap (`< 0 → N`, `> N → 0`), sound `FUN_00111150(_, 0, 0xd6, 0)`.
 - On an item row the select mask (`FUN_00181250(0)`) clears ALL toggles then `^= 1` the row's:
-  exclusive, and selecting the shown item again hides it (zero series drawn).
+  exclusive. ⚠⚠ **CORRECTED 2026-10-01: selecting the shown item again does NOT hide it.** The flip lands on
+  a toggle the loop has just zeroed -- park stats `0x185AF8..0x185B28` is five `sw zero` (`+0x9f0` down to
+  `+0x9e0`), then `lw` / `xori 1` / `sw` on the cursor's -- so the chosen series always ends ON and exactly one
+  is always shown. Finance (`0x134EC0`) is the same clear-then-flip, plus sound 0xD6 on the choice; park
+  stats plays none. The earlier line here read the `^=` and not the loop before it.
+- Both cursors start on the Years row: zeroed at `0x1343F0` (`sw zero,0x588`) and `0x184E50` (`sw zero,0x344`).
+- Colours, all three draws (`0x185C48`, `0x135620`, `0x135190`): "Years", the span and the arrows are
+  `0x35f560` (255,255,0) while the cursor is on row 0, else `0x35f540` (200,130,0); item labels `0x35f560` under
+  the cursor, `0x35f550` (200,130,0) otherwise. Park Statistics' `GraphText` label AND `GraphValue` are both
+  `0x35f540` amber (set at `0x185FA4`, unchanged before the value at `0x186038`/`0x186070`).
   Toggles: overall `+0x990[2]`, finance `+0x998[5]`, park `+0x9e0[5]`; the first is 1 at ctor.
 - Item text colour: `(200,130,0)` normally (`0x35f550`), `(255,255,0)` for the row under the
   cursor (`0x35f560`). Row step **32** (`DAT_002b5d28` / `DAT_002b5d80` / `DAT_002c4508`, image

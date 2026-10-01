@@ -129,6 +129,30 @@ if (args.Contains("--bounce-only"))
     Console.WriteLine(bad==0 ? "PASS bounce: the loader's defaults, every BOUNCE script's pads on its model, and the ticker's hump" : $"FAIL: {bad}");
     return bad==0?0:1;
 }
+if (args.Contains("--research-persistence-only"))
+{
+    ResearchPersistenceChecks.Run(disc,Check);
+    Console.WriteLine(bad==0 ? "PASS research persistence: explicit core section fixtures (whole-save coordinator/viewer not exercised)" : $"FAIL: {bad}");
+    return bad==0?0:1;
+}
+if (args.Contains("--research-only"))
+{
+    ResearchChecks.Run(disc, Check);
+    Console.WriteLine(bad==0 ? "PASS research: the catalogue, a fresh park, the rows, a project to completion and an upgrade" : $"FAIL: {bad}");
+    return bad==0?0:1;
+}
+if (args.Contains("--sideshow-presentation-only"))
+{
+    SideshowPresentationChecks.Run(disc, Check);
+    Console.WriteLine(bad == 0 ? "PASS sideshow presentation: canonical rows, raw prize visibility, authored geometry and native branch (explicit core fixtures)" : $"FAIL: {bad}");
+    return bad == 0 ? 0 : 1;
+}
+if (args.Contains("--loans-only"))
+{
+    LoanChecks.Run(disc, Check);
+    Console.WriteLine(bad==0 ? "PASS loans: the take, the month end's walk and its one debit, payoff, and the two readers" : $"FAIL: {bad}");
+    return bad==0?0:1;
+}
 if (args.Contains("--parkstats-only"))
 {
     ParkStatsChecks.Run(disc, Check);
@@ -749,6 +773,10 @@ BounceChecks.Run(disc, Check);
 MusicChecks.Run(disc, Check);
 ParticleFittingChecks.Run(disc, Check);
 ParkStatsChecks.Run(disc, Check);
+LoanChecks.Run(disc, Check);
+ResearchChecks.Run(disc, Check);
+ResearchPersistenceChecks.Run(disc, Check);
+SideshowPresentationChecks.Run(disc, Check);
 ManagementChecks.Run(disc, terrain, Wad("DATA"), wad, world, Check);
 AdvisorChecks.Run(disc, terrain, Wad("DATA"), wad, world, Check);
 Check(looEntry.Entry != null, $"the world ships a lavatory to exercise ({looEntry.Entry?.Path ?? "none found"})");

@@ -10,6 +10,10 @@ Why this exists: on 2026-09-25 an uncommitted runner passed `--map=WORLD 2`, whi
 label. The viewer silently loaded FANTASY terrain_1, and four published "eight park" claims were
 false. Exit 0 requires every selected case to pass. Exit 1 preserves the failure evidence. The
 output directory must be new and outside Git. It is not a framebuffer or visual-inspection gate.
+
+--standalone-case research-persistence is a SEPARATE two-Viewer component fixture, run at
+640x360 and 1152x648. It requires exactly TWO JUNGLE/1 map witnesses and no all-researched
+override. It does not relax the ordinary one-map cases or prove a full-world save/load.
 """
 from __future__ import annotations
 
@@ -97,6 +101,92 @@ SCENES['management'] = ('ManagementSmoke', 'MANAGEMENT SMOKE', 17)
 # (48,48,48) centred on x 320, its inferred shadow and one framebuffer pixel. Every park runs the same 60; the floor
 # sits just under it. A statement of its own for the same merge reason.
 SCENES['advisor'] = ('AdvisorSmoke', 'ADVISOR SMOKE', 58)
+# Sideshow native presentation: explicit UNPLACED real-DBA fixtures, not a player build tour.
+# Positive/zero layouts, fixed authored controls despite flowing labels, canonical callbacks,
+# hidden-field guards, native 1..1000 control edges and screen/subject/drag lifecycle.
+# Receipts are draw arguments, not pixel review.
+SCENES['sideshow-presentation'] = ('SideshowPresentationSmoke', 'SIDESHOW PRESENTATION SMOKE', 876)
+
+
+
+# Kept OUT of the ordinary eight-park scene cross-product: two initialized owners and
+# explicit component data/quantum setup. A map-count exception is scoped to this named case.
+STANDALONE_CASES = {
+    'research-persistence': {
+        'scene': 'ResearchPersistenceSmoke', 'label': 'RESEARCH PERSISTENCE SMOKE',
+        'minimum': 24, 'maps': (('JUNGLE', 'terrain_1'), ('JUNGLE', 'terrain_1')),
+        'resolutions': ('640x360', '1152x648'),
+        'scope': 'explicit two-Viewer research-section component fixture; not full-world save/load or pixel proof',
+    },
+}
+
+
+def case_environment(disc: Path, *, standalone: bool = False) -> dict:
+    env = clean_environment(disc)  # removes inherited TPW_* overrides
+    env.setdefault('LP_NUM_THREADS', '2')
+    if not standalone:
+        env['TPW_ALL_RESEARCHED'] = '1'  # ordinary build-menu smokes retain their opt-in
+    return env
+
+
+def standalone_runs(case: str) -> tuple[str, ...]:
+    return STANDALONE_CASES[case]['resolutions']
+
+
+def standalone_command(case: str, resolution: str, engine: Path, xvfb: str, disc: Path) -> list[str]:
+    if resolution not in standalone_runs(case):
+        raise ValueError(f'not a resolution for {case}: {resolution}')
+    return [xvfb, '-a', str(engine), '--rendering-method', 'gl_compatibility',
+            '--audio-driver', 'Dummy', '--resolution', resolution, '--path', 'game',
+            f'res://tests/{STANDALONE_CASES[case]["scene"]}.tscn', '--',
+            f'--disc={disc}', '--map=JUNGLE', '--mode=park']
+
+
+def validate_standalone_launch(case: str, command: list[str], env: dict, disc: Path, *, resolution: str) -> None:
+    # Validate the actual launch command, not a disconnected test-only recipe.
+    if case != 'research-persistence':
+        raise ValueError(f'no launch contract for {case}')
+    if resolution not in standalone_runs(case):
+        raise ValueError(f'not a registered standalone resolution: {resolution}')
+    for flag, value in (('--resolution', resolution), ('--rendering-method', 'gl_compatibility'),
+                        ('--audio-driver', 'Dummy'), ('--path', 'game')):
+        if command.count(flag) != 1 or command.index(flag) + 1 >= len(command) or command[command.index(flag) + 1] != value:
+            raise ValueError(f'standalone launch contract mismatch: {flag}')
+    scene = f'res://tests/{STANDALONE_CASES[case]["scene"]}.tscn'
+    if command.count(scene) != 1:
+        raise ValueError('standalone launch has the wrong scene')
+    if command.count('--') != 1:
+        raise ValueError('standalone launch needs exactly one user-argument separator')
+    user = command[command.index('--') + 1:]
+    required = [f'--disc={disc}', '--map=JUNGLE', '--mode=park']
+    if sorted(user) != sorted(required):
+        raise ValueError('research-persistence requires exactly explicit disc, JUNGLE and park arguments')
+    if 'TPW_ALL_RESEARCHED' in env or '--all-researched' in command or '--headless' in command:
+        raise ValueError('research-persistence must render without the all-researched override')
+
+
+def classify_standalone(case: str, run: dict) -> dict:
+    spec = STANDALONE_CASES[case]
+    text = run['text']
+    failures = [line.strip() for line in text.splitlines() if ERROR.search(line.strip())]
+    result = {'status': 'pass', 'failures': failures, 'case': case, 'scope': spec['scope']}
+    for key, status in (('launch_error', 'launch_error'), ('timed_out', 'timeout'), ('truncated', 'truncated_log')):
+        if run.get(key): return {**result, 'status': status}
+    if run.get('raw_exit') != 0: return {**result, 'status': 'nonzero_exit'}
+    if failures: return {**result, 'status': 'error_output'}
+    loaded = MAP_LINE.findall(text)
+    result['loaded'] = [list(pair) for pair in loaded]
+    # Also count malformed/unexpected map lines, so an extra terrain_3 witness cannot disappear.
+    map_lines = [line for line in text.splitlines() if line.startswith('[map] loaded ')]
+    if not map_lines: return {**result, 'status': 'no_map_witness'}
+    if len(map_lines) != len(spec['maps']): return {**result, 'status': 'map_witness_count'}
+    if tuple(loaded) != spec['maps']: return {**result, 'status': 'wrong_map'}
+    pass_lines = [line for line in text.splitlines() if line.startswith(spec['label'] + ' PASS')]
+    passes = re.findall(r'^' + re.escape(spec['label']) + r' PASS checks=(\d+);', text, re.M)
+    if len(pass_lines) != 1 or len(passes) != 1: return {**result, 'status': 'missing_pass_witness'}
+    result['checks'] = int(passes[0])
+    if result['checks'] < spec['minimum']: return {**result, 'status': 'missing_coverage'}
+    return result
 
 
 def map_argument(world: str, terrain: int) -> str:
@@ -138,23 +228,32 @@ def main(argv=None) -> int:
     parser.add_argument('--dotnet', default='dotnet')
     parser.add_argument('--xvfb', default='xvfb-run')
     parser.add_argument('--timeout', type=float, default=900)
-    parser.add_argument('--scenes', nargs='+', choices=SCENES, default=list(SCENES))
-    parser.add_argument('--parks', nargs='+', default=[f'{w}/{t}' for w, t in PARKS],
+    parser.add_argument('--standalone-case', choices=STANDALONE_CASES,
+                        help='separate named fixture; cannot be mixed with --scenes/--parks')
+    parser.add_argument('--scenes', nargs='+', choices=SCENES)
+    parser.add_argument('--parks', nargs='+',
                         help='WORLD/1 or WORLD/2 (default: all eight)')
     args = parser.parse_args(argv)
+    if args.standalone_case and (args.scenes is not None or args.parks is not None):
+        parser.error('--standalone-case cannot be combined with --scenes or --parks')
     if not args.disc.is_file() or not args.godot.is_file(): parser.error('disc and Godot must be existing files')
     if not 0 < args.timeout <= 3600: parser.error('timeout must be positive and at most 3600 seconds')
     parks = []
-    for text in dict.fromkeys(args.parks):
+    for text in dict.fromkeys(args.parks or ([] if args.standalone_case else [f'{w}/{t}' for w, t in PARKS])):
         match = re.fullmatch(r'([A-Z]+)/([12])', text)
         if not match or match.group(1) not in WORLDS: parser.error(f'not a park: {text}')
         parks.append((match.group(1), int(match.group(2))))
     repo, disc, engine = args.repo.resolve(), args.disc.resolve(), args.godot.resolve()
     try: out = fresh_output(args.out)
     except (OSError, ValueError) as ex: parser.error(str(ex))
-    selected = list(dict.fromkeys(args.scenes))
+    selected = [args.standalone_case] if args.standalone_case else list(dict.fromkeys(args.scenes or SCENES))
     manifest = {'schema_version': 1, 'scope': 'rendered normal-startup smokes; per-case loaded-map proof; not visual inspection',
                 'selected': selected, 'parks': [f'{w}/{t}' for w, t in parks], 'status': 'running', 'results': []}
+    if args.standalone_case:
+        manifest.update(scope=STANDALONE_CASES[args.standalone_case]['scope'],
+                        standalone_case=args.standalone_case,
+                        expected_maps=[list(pair) for pair in STANDALONE_CASES[args.standalone_case]['maps']],
+                        resolutions=list(standalone_runs(args.standalone_case)), all_researched=False)
     path = out / 'manifest.json'
 
     def save():
@@ -167,8 +266,7 @@ def main(argv=None) -> int:
         print(f'{status}; runner_exit={code}; {path}', flush=True)
         return code
 
-    env = clean_environment(disc)
-    env.setdefault('LP_NUM_THREADS', '2')
+    env = case_environment(disc, standalone=args.standalone_case is not None)
 
     def execute(name, command, timeout=None):
         result = run_process(command, repo=repo, log=out / f'{name}.log', timeout=timeout or args.timeout, environment=env)
@@ -192,6 +290,17 @@ def main(argv=None) -> int:
         manifest['assemblies'] = output_snapshot(repo)
         if source_snapshot(repo) != manifest['source_before']: return finish('source_changed_during_build')
         save()
+        if args.standalone_case:
+            case = args.standalone_case
+            for resolution in standalone_runs(case):
+                if output_snapshot(repo) != manifest['assemblies']: return finish('assemblies_changed_during_run')
+                command = standalone_command(case, resolution, engine, args.xvfb, disc)
+                validate_standalone_launch(case, command, env, disc, resolution=resolution)
+                name = f'{case}-{resolution}'
+                run, record = execute(name, command)
+                record.update(classify_standalone(case, run), resolution=resolution)
+                manifest['results'].append(record); save()
+                print(f'{name}: {record["status"]} checks={record.get("checks")} loaded={record.get("loaded")}', flush=True)
         for world, terrain in parks:
             for scene in selected:
                 if output_snapshot(repo) != manifest['assemblies']: return finish('assemblies_changed_during_run')
@@ -205,9 +314,10 @@ def main(argv=None) -> int:
                 record.update(classify(scene, world, terrain, run), scene=scene)
                 manifest['results'].append(record); save()
                 print(f'{name}: {record["status"]} checks={record.get("checks")} loaded={record.get("loaded")}', flush=True)
+        if output_snapshot(repo) != manifest['assemblies']: return finish('assemblies_changed_during_run')
         if source_snapshot(repo) != manifest['source_before']: return finish('source_changed_during_run')
         if any(r['status'] != 'pass' for r in manifest['results']): return finish('failed_cases')
-        full = set(selected) == set(SCENES) and set(parks) == set(PARKS)
+        full = not args.standalone_case and set(selected) == set(SCENES) and set(parks) == set(PARKS)
         return finish('all_cases_passed' if full else 'selected_cases_passed', 0)
     except (OSError, ValueError, subprocess.SubprocessError) as ex:
         manifest['runner_error'] = f'{type(ex).__name__}: {ex}'

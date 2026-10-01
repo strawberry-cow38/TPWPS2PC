@@ -286,6 +286,7 @@ public partial class ManagementSmoke : Node3D
             // ---------------------------------------------------------------------------------
             // A month end through the viewer's own calendar advance: strikes, then the wage bill.
             var mgmt = Field<ParkManagement>(viewer, "_management");
+            int statsBefore = Field<ParkStatistics>(viewer, "_parkStats")?.Months ?? 0;
             int months = mgmt.MonthChanges, days = 0;
             while (mgmt.MonthChanges == months && days++ < 40)
             {
@@ -299,6 +300,173 @@ public partial class ManagementSmoke : Node3D
             Check(mgmt.MonthChanges == months + 1 && clock.Day == 0 && four.Count == 4 && four.All(m => m.HireDay == 0)
                   && before - sim.Finances.Balance == due && mgmt.LastWages == due,
                   $"the month ends ({clock.Format()}): the four's full wages ({string.Join("+", four.Select(m => Money.Format(m.MonthlyWage * 10)))} = {Money.Format(due)}) are debited ({Money.Format(before)} -> {Money.Format(sim.Finances.Balance)})");
+            // ---------------------------------------------------------------------------------
+            // The laptop's statistics. That month end recorded one month of the visitor statistics (0x16B478) and
+            // filed the year's spending; Visitor Information's gate price spinner (0x207B10, mode 2) steps the fee
+            // the gate charges, once per console frame while an arrow is HELD, clamped at $0.
+            var pstats = Field<ParkStatistics>(viewer, "_parkStats");
+            Check(pstats != null && pstats.Months == statsBefore + 1 && sim.Finances.YearSpending > 0
+                  && sim.Finances.LastYearSpending == 0,
+                  $"the month end recorded one month of visitor statistics ({statsBefore} -> {pstats?.Months}) and this "
+                  + $"year's spending ({Money.Format(sim.Finances.YearSpending)}) with nothing yet in last year's column");
+            laptopBack.Clear(); laptopBack.Add(("visitorinfo", null));
+            Call(viewer, "ShowLaptopLevel");
+            await Frames();
+            int spin = LaptopScreen.VisitorInfo.SpinnerRow;
+            var arrows = Panel<Dictionary<int, Rect2>>(panel, "_rowArrows");
+            Check(panel.Open && arrows.TryGetValue(spin, out var gateArrows) && gateArrows.Size.X > 0,
+                  "Visitor Information draws the gate price arrows on its Ticket Price row");
+            var gate = arrows[spin];
+            // ⚠ Through Input.ParseInputEvent, not PushInput: the spinner asks Input whether the button is
+            // still down, and only a parsed event moves that state -- a pushed one would step exactly once.
+            async Task Hold(Vector2 at, double seconds)
+            {
+                Input.WarpMouse(at);
+                Input.ParseInputEvent(new InputEventMouseButton { Position = at, GlobalPosition = at, ButtonIndex = MouseButton.Left, Pressed = true });
+                await ToSignal(GetTree().CreateTimer(seconds), SceneTreeTimer.SignalName.Timeout);
+                Input.ParseInputEvent(new InputEventMouseButton { Position = at, GlobalPosition = at, ButtonIndex = MouseButton.Left, Pressed = false });
+                await Frames();
+            }
+            var cellsNow = () => Panel<List<(string Text, int Fraction)>>(panel, "_cells");
+            int fee0 = Field<int>(viewer, "_entranceFee");
+            await Hold(new Vector2(gate.End.X - gate.Size.X / 4f, gate.GetCenter().Y), 0.4);
+            int fee1 = Field<int>(viewer, "_entranceFee"), steps = (fee1 - fee0) / 10;
+            // 0.4 s at the console's 25 frames a second is 10 steps; the bounds take the timer's granularity.
+            Check(fee1 % 10 == 0 && steps >= 5 && steps <= 20 && cellsNow()[spin].Text == Money.Format(fee1),
+                  $"holding the right arrow 0.4s steps the gate price {Money.Format(fee0)} -> {Money.Format(fee1)}, "
+                  + $"{steps} whole-dollar steps, and the row reads the new price");
+            await Frames(6);
+            Check(Field<int>(viewer, "_entranceFee") == fee1, "letting go stops the spinner");
+            await Hold(new Vector2(gate.Position.X + gate.Size.X / 4f, gate.GetCenter().Y), 2.5);
+            Check(Field<int>(viewer, "_entranceFee") == 0 && cellsNow()[spin].Text == Money.Format(0),
+                  $"holding the left arrow runs the price down to $0 and it stops there (clamped, no wrap): {cellsNow()[spin].Text}");
+
+            // The graph pages' year selector and series toggles (graph-widget.md §1.6-1.7), through clicks: the
+            // arrows step 1 -> 2 -> 6 -> 12 and wrap, an item shows its series, and choosing it AGAIN keeps it shown
+            // (clear-then-flip at 0x185AF8 lands on a zeroed toggle).
+            laptopBack.Clear(); laptopBack.Add(("statistics", null));
+            panel.GraphCursor = 0;
+            Call(viewer, "ShowLaptopLevel");
+            await Frames();
+            var yearArrows = Panel<Rect2>(panel, "_yearArrows");
+            Check(yearArrows.Size.X > 0 && Field<int>(viewer, "_parkGraphYears") == 1 && panel.GraphCursor == 0,
+                  "Park Statistics draws its year selector, at 1 year, with the cursor on the Years row");
+            var spans = new List<int>();
+            for (int step = 0; step < 4; step++)
+            {
+                Click(new Vector2(yearArrows.End.X - yearArrows.Size.X / 4f, yearArrows.GetCenter().Y));
+                await Frames();
+                spans.Add(Field<int>(viewer, "_parkGraphYears"));
+                yearArrows = Panel<Rect2>(panel, "_yearArrows");
+            }
+            Check(spans.SequenceEqual(new[] { 2, 6, 12, 1 }), $"the right arrow steps the span {string.Join(" -> ", spans)} (1, 2, 6, 12, wrapping)");
+            var itemRows = Panel<Dictionary<int, Rect2>>(panel, "_specRows");
+            Click(itemRows[2].GetCenter());
+            await Frames();
+            var pickedReadout = Panel<(string Label, string Value)?>(panel, "_graphReadout");
+            Check(Field<Dictionary<string, int>>(viewer, "_graphPick")["statistics"] == 2 && panel.GraphCursor == 3
+                  && pickedReadout?.Label == text.Text("eng", LaptopScreen.ParkStatistics.Rows[2].TextId),
+                  $"choosing Happiness shows its series and readout ({pickedReadout?.Label}: {pickedReadout?.Value})");
+            Click(Panel<Dictionary<int, Rect2>>(panel, "_specRows")[2].GetCenter());
+            await Frames();
+            Check(Field<Dictionary<string, int>>(viewer, "_graphPick")["statistics"] == 2
+                  && Panel<LaptopShopScreen.GraphSeries?>(panel, "_graph") is { Values.Count: > 0 },
+                  "choosing it again keeps it shown: the toggles are cleared, then the chosen one flipped ON");
+
+            // The park's loans, through the pages (LoanChecks has the arithmetic): no Existing Loans row until a loan is
+            // taken; New Loan's arrows step the lender; a click takes the offer and the page flips to Loan Taken; the
+            // menu grows its fifth row; Existing Loans shows the record (Interest WITHOUT its %); a month end repays it.
+            void Back() => Click(panel.PanelOrigin + new Vector2(365, 75) * panel.PanelScale);
+            laptopBack.Clear(); laptopBack.Add(("financialinfo", null));
+            Call(viewer, "ShowLaptopLevel");
+            await Frames();
+            string existingLoans = text.Text("eng", 472);
+            var finMenu = Panel<List<string>>(panel, "_menu");
+            Check(finMenu.Count == 4 && !finMenu.Contains(existingLoans), "Financial Information lists four rows, and no Existing Loans before a loan");
+            Click(panel.MenuRowScreenBox(3).GetCenter());
+            await Frames();
+            var pager = Panel<Rect2>(panel, "_pageArrows");
+            Check(laptopBack[^1].Kind == "newloan" && pager.Size.X > 0, "New Loan opens from its row, with the lender arrows drawn");
+            Click(new Vector2(pager.End.X - pager.Size.X / 4f, pager.GetCenter().Y));
+            await Frames();
+            Check(Field<int>(viewer, "_loanLender") == 1 && Panel<string>(panel, "_title") == Lender.All[1].Name,
+                  $"the right arrow steps the lender to {Panel<string>(panel, "_title")}");
+            int balBefore = sim.Finances.Balance;
+            Click(Panel<Dictionary<int, Rect2>>(panel, "_specRows")[0].GetCenter());
+            await Frames();
+            var dabb = sim.Finances.Loans[1];
+            Check(dabb.Taken && sim.Finances.Balance - balBefore == dabb.Amount * 10
+                  && ReferenceEquals(Panel<LaptopScreen>(panel, "_spec"), LaptopScreen.NewLoanTaken),
+                  $"clicking the offer takes it (+{Money.Format(sim.Finances.Balance - balBefore)}) and the page shows only Loan Taken");
+            Back();
+            await Frames();
+            finMenu = Panel<List<string>>(panel, "_menu");
+            Check(laptopBack[^1].Kind == "financialinfo" && finMenu.Count == 5 && finMenu[4] == existingLoans,
+                  "back on the menu, Existing Loans is its fifth row");
+            Click(panel.MenuRowScreenBox(4).GetCenter());
+            await Frames();
+            var loansPage = Panel<LaptopShopScreen.LoansPage?>(panel, "_loansPage");
+            Check(loansPage is { Lender: "Ms Dabb" } lp && lp.Values[0] == Money.Display(dabb.Amount) && lp.Values[2] == "20"
+                  && lp.Values[3] == Money.Display(dabb.Repayment) && lp.Values[5] == Money.Display(dabb.Outstanding),
+                  $"Existing Loans shows Ms Dabb's record, Interest without its %: {string.Join(" | ", loansPage?.Values ?? Array.Empty<string>())}");
+            int owed = dabb.Outstanding, left = dabb.MonthsRemaining, monthsNow = mgmt.MonthChanges, loanDays = 0;
+            while (mgmt.MonthChanges == monthsNow && loanDays++ < 40) Call(viewer, "AdvanceCalendar", ParkClock.UnitsPerDay);
+            Check(dabb.Outstanding == owed - dabb.Repayment && dabb.MonthsRemaining == left - 1
+                  && sim.Finances.LoansOutstanding == dabb.Outstanding,
+                  $"the next month end repays {Money.Display(dabb.Repayment)}: {Money.Display(owed)} -> {Money.Display(dabb.Outstanding)} over {dabb.MonthsRemaining} months");
+
+            // Research, with the matrix's AllResearched debug key turned OFF through the viewer's own field: a fresh park's
+            // build menu is its catalogue's researched items; a row click opens its candidates, the wheel/Up-Down steps
+            // them, a second click starts the project, finishing it makes the item buildable, and "Nothing" stops a row.
+            int BuildTotal() => ((List<(string Key, int Count)>)Call(viewer, "BuildCategories")).Sum(c => c.Count);
+            int buildAll = BuildTotal();
+            Set(viewer, "_allResearched", false); Set(viewer, "_researchDb", null);
+            var research = staff.Research;
+            research.Database = null;
+            Call(viewer, "AttachResearch");
+            var rdb = research.Database;
+            int buildLocked = BuildTotal();
+            Check(rdb != null && !rdb.AllResearched && buildLocked > 0 && buildLocked < buildAll,
+                  $"research on: the build menu offers {buildLocked} things where all-researched offered {buildAll}");
+            laptopBack.Clear(); laptopBack.Add(("research", null));
+            Call(viewer, "ShowLaptopLevel");
+            await Frames();
+            Click(Panel<Dictionary<int, Rect2>>(panel, "_specRows")[0].GetCenter());
+            await Frames();
+            var picks = Field<List<(int Cat, int Item)>>(viewer, "_researchPick");
+            var rcellsNow = Panel<List<(string Text, int Fraction)>>(panel, "_cells");
+            Check(Field<int>(viewer, "_researchPickRow") == 0 && picks.Count > 0
+                  && rcellsNow[0].Text == (string)Call(viewer, "ResearchName", picks[0].Cat, picks[0].Item) && panel.WheelPages,
+                  $"clicking Rides lists its {picks.Count} candidates, the row showing the first ({rcellsNow[0].Text})");
+            Call(viewer, "OnLaptopPage", -1);
+            await Frames();
+            Check(Panel<List<(string Text, int Fraction)>>(panel, "_cells")[0].Text == text.Text("eng", LaptopScreen.ResearchNothingTextId),
+                  "stepping back from the first wraps to Nothing, the entry every list ends with");
+            Call(viewer, "OnLaptopPage", 1);
+            await Frames();
+            var chosen = picks[0];
+            Click(Panel<Dictionary<int, Rect2>>(panel, "_specRows")[0].GetCenter());
+            await Frames();
+            Check(research.Slots[0].Active && research.Slots[0].Category == chosen.Cat && research.Slots[0].Item == chosen.Item
+                  && Field<int>(viewer, "_researchPickRow") == -1 && !rdb.Available(chosen.Cat, chosen.Item, 0),
+                  $"clicking it again starts {Call(viewer, "ResearchName", chosen.Cat, chosen.Item)} on row 0, still locked");
+            for (int q = 0; q < 100_000 && research.Slots[0].Active; q++) research.Contribute(43);
+            Check(rdb.Available(chosen.Cat, chosen.Item, 0) && BuildTotal() == buildLocked + 1 && !research.Slots[0].Active,
+                  $"finished, it is available and the build menu offers one more ({BuildTotal()}); the row is idle again");
+            Click(Panel<Dictionary<int, Rect2>>(panel, "_specRows")[1].GetCenter());
+            await Frames();
+            Click(Panel<Dictionary<int, Rect2>>(panel, "_specRows")[1].GetCenter());
+            await Frames();
+            bool shopsRunning = research.Slots[1].Active;
+            Click(Panel<Dictionary<int, Rect2>>(panel, "_specRows")[1].GetCenter());
+            await Frames();
+            Call(viewer, "OnLaptopPage", -1);
+            await Frames();
+            Click(Panel<Dictionary<int, Rect2>>(panel, "_specRows")[1].GetCenter());
+            await Frames();
+            Check(shopsRunning && !research.Slots[1].Active,
+                  "a Shops project started, then choosing Nothing on that row stops it");
+
             if (shots != null)
             {
                 for (int t = 0; t < 20; t++) Call(viewer, "TickPark");

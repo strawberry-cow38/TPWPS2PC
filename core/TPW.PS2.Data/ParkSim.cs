@@ -254,12 +254,48 @@ public sealed partial class ParkRide
     /// park for it rather than clamping.</summary>
     public void Book(int price, int margin) { Takings += price; Profit += margin; Customers++; }
 
-    /// <summary>`+0xb4` on a SHOP: how many customers it has served, unbounded. The sale recorder
-    /// `FUN_001D1E68` does `+0xb4 += 1`, so it counts with the booking above.
-    /// ⚠ On a LAVATORY the same offset is that class's CONDITION -- see <see cref="Condition"/>.
-    /// The offset does not carry its meaning across classes, which this file has been caught by
-    /// once already.</summary>
+    /// <summary>⭐ `obj+0x18`, the USE COUNTER every attraction shares -- "Users" on a ride or toilet, "Customers" on a
+    /// shop or sideshow, read by one virtual getter (`0x1E1CE8`) on every screen that shows it (findings/ride-users.md
+    /// §2). `0x1E1CD8` bumps it from the guest's finished-here handler: a rider STEPPING OFF (not boarding; an
+    /// evacuee is not counted), every toilet use, a shop SALE, a sideshow game played and paid. Zeroed at build,
+    /// never monthly. ⚠ CORRECTED 2026-10-01: this said `+0xb4`, which on a shop is the satisfaction divisor -- the
+    /// count of VISITS, bought or not -- and on a lavatory its condition.</summary>
     public int Customers { get; private set; }
+
+    /// <summary>`0x1E1CD8`: one use (<see cref="Customers"/>).</summary>
+    public void Used() => Customers++;
+
+    /// <summary>⭐ The satisfaction running mean: shop `+0xb0`/`+0xb4`, sideshow `+0xb0`/`+0xac` (findings/ride-users.md
+    /// §3-§4). EVERY visit adds `max(0, 5 x the guest's happiness change)` to the sum and one to the divisor --
+    /// `0x1D1E68` for a shop at the purchase test's common exit, `0x1D2BB0` for a sideshow at its release -- so a
+    /// guest who looked and left drags the mean down.</summary>
+    public int SatisfactionSum { get; private set; }
+    public int SatisfactionVisits { get; private set; }
+    public void RecordSatisfaction(int x)
+    {
+        SatisfactionSum += Math.Max(0, x);
+        SatisfactionVisits++;
+    }
+    /// <summary>`0x1D1E00` / `0x1D2B48`: 0 until the first use, then `min(100, sum / visits)`. (The console would
+    /// trap on a zero divisor; it cannot have one once something has been sold, and the guard stands in.)</summary>
+    public int Satisfaction => Customers == 0 || SatisfactionVisits == 0 ? 0 : Math.Min(100, SatisfactionSum / SatisfactionVisits);
+
+    /// <summary>Sideshow `+0xd0`: games WON -- a guest who rolled under the win chance (`0x20D628`) and played.</summary>
+    public int Winners { get; private set; }
+    /// <summary>Sideshow `+0xd4`: the prize value paid out, summed.</summary>
+    public int PrizesPaid { get; private set; }
+
+    /// <summary>⭐ `0x1D2560`, one sideshow game booked: a win adds to <see cref="Winners"/> and the prizes paid, the
+    /// price goes into the takings, and the profit is takings less prizes (`+0xd8 - +0xd4`, `0x1D2A58`). Returns
+    /// what the guest is out of pocket, `price - prize` on a win (negative when the prize is worth more).</summary>
+    public int BookSideshowGame(int price, int prize, bool won)
+    {
+        int paidOut = won ? prize : 0;
+        if (won) { Winners++; PrizesPaid += prize; }
+        Takings += price;
+        Profit += price - paidOut;
+        return price - paidOut;
+    }
 
     /// <summary>Use wears it down, floored at zero -- `FUN_00130948`, whose ONLY caller is the
     /// relief path at `0x20ef48`.</summary>

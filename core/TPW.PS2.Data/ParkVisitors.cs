@@ -1207,6 +1207,12 @@ public sealed class ParkVisitors
             // the place can be the one who walks out disgusted. See VisitorNeeds.DirtyLavatory.
             if (used.Condition < VisitorNeeds.FilthyBelow) Needs.DirtyLavatory(guest);
             Relieved++;
+            used.Used();                                   // 0x20EF84: every use, whatever the bladder
+            return;
+        }
+        if (used?.Definition?.CompiledEntry?.Kind == AssetResourceDatabase.AssetKind.Sideshow)
+        {
+            PlaySideshow(guest, used);
             return;
         }
         if (used?.Definition is { Sells: true } def)
@@ -1237,6 +1243,9 @@ public sealed class ParkVisitors
                 Take(used, def);
             }
             AdvisorShopEvents(guest, used, def, before, bought);
+            // ⭐ Satisfaction (`0x1D1E68`) for EVERY visit, bought or not -- outside AdvisorShopEvents, which returns
+            // early for a shop with no compiled record; the console records unconditionally.
+            used.RecordSatisfaction((Needs.Of(guest).Happiness - before.Happiness) * 5);
             // ⚠ OUTSIDE the `if`, deliberately: the console's call is at the common exit, so a
             // guest who looked and left still makes the shop ring. See ShopSoundEvent.
             // ⚠ The guest's own cell where they still have one -- the console positions the
@@ -1253,6 +1262,48 @@ public sealed class ParkVisitors
         // audits build bare rides from a script alone -- and is still an invention, now confined
         // to the case where there is genuinely nothing to read.
         Needs.Ride(guest, used?.Value ?? RideIntensity, RideHappiness, RideSickScale, RideBoredomScale);
+        used?.Used();                                      // 0x20F2B0: one rider stepped off
+    }
+
+    /// <summary>`DAT_002EEB40`: the happiness a sideshow game moves, in the image 10 (its only writer is a debug
+    /// screen). It caps sideshow satisfaction at 50: a game scores 5 x 10 at best.</summary>
+    public const int SideshowHappiness = 10;
+
+    /// <summary>`0x20EB20`, how much a guest wants a game: `((win == 0 ? 100 : win x prize / 100) x (100 + 100) / 100)
+    /// x (happiness + 100) / 100` -- the 100 added is `DAT_002EEB74`, an image constant.</summary>
+    public static int SideshowWant(int winPercent, int prize, int happiness)
+    {
+        int b = winPercent == 0 ? 100 : winPercent * prize / 100;
+        b = b * (100 + 100) / 100;
+        return b * (happiness + 100) / 100;
+    }
+
+    /// <summary>⭐⭐ A SIDESHOW GAME, which this port played as a ride (findings/ride-users.md §4; `0x20EC00`, `0x1D2560`).
+    /// At the release: if the guest still wants it (want &gt;= price) and can pay (cash &gt;= price x 10), the park is
+    /// credited the price, a win pays the prize out of it, the guest is out `price - prize` and their happiness moves
+    /// by the SIGN of that times 10 (a win worth more than the price disappoints), and it is one more customer.
+    /// Played or not, the visit is recorded for satisfaction (`0x1D2BB0`).
+    /// ⚠ The win roll: the console rolls `rand(100) &lt; win%` when the guest JOINS (`0x20D628`, guest flag `+0x34`
+    /// bit 0x400) and books it here; the port has no join hook for a sideshow, so it rolls here at the same odds --
+    /// only a slider moved while the guest stood in it would differ. ⚠ The join-time want/cash gate is the
+    /// destination choice's, not this.</summary>
+    public void PlaySideshow(int guest, ParkRide show)
+    {
+        var w = Needs.Of(guest);
+        int before = w.Happiness;
+        int price = show.SideshowPrice, prize = show.SideshowPrizeValue, win = show.SideshowWinPercentage;
+        if (SideshowWant(win, prize, w.Happiness) >= price && w.Cash >= price * 10)
+        {
+            bool won = (int)((uint)_random() % 100u) < win;
+            Sim.Finances.CreditByKind((int)AssetResourceDatabase.AssetKind.Sideshow, price * 10);
+            if (won) Sim.Finances.Debit(prize * 10);
+            int net = show.BookSideshowGame(price, prize, won);
+            w.Cash -= net * 10;
+            w.Happiness = (byte)Math.Clamp(w.Happiness + Math.Sign(net) * SideshowHappiness, 0, 100);
+            Needs.Set(guest, w);
+            show.Used();                                   // 0x20ECDC
+        }
+        show.RecordSatisfaction((Needs.Of(guest).Happiness - before) * 5);
     }
 
     /// <summary>⭐ The advisor's event counters a shop visit raises (findings/advisor-rules.md §6; READ
