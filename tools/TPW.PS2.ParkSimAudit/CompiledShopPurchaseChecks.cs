@@ -92,6 +92,37 @@ static class CompiledShopPurchaseChecks
                   && shaped.HappinessEffect == 10 && shaped.PricePerUse == named.Price,
                   $"{(bare ? "bare-world" : "archive-qualified")} source path attaches the named shop independently of region loop ({shapeReport})");
         }
+        // ⭐ A SIDESHOW GAME (ParkVisitors.PlaySideshow; findings/ride-users.md §4), with the win roll scripted:
+        // 30 % 100 = 30 wins against 50%, 70 loses. Price 5, prize 20: the want is (50 x 20 / 100) x 2 x 1.5 = 30.
+        {
+            var rolls = new Queue<int>(new[] { 30, 70, 70, 70, 70, 70, 70, 70 });
+            var sp = new ParkPaths(terrain); sourcePaths.Field.Cells.CopyTo(sp.Field.Cells, 0);
+            var ssim = new ParkSim(sp);
+            var sv = new ParkVisitors(ssim, new GuestWalk(sp), () => rolls.Dequeue()) { Needs = new VisitorNeeds(5) };
+            var show = new ParkRide { SideshowPrice = 5, SideshowPrizeValue = 20, SideshowWinPercentage = 50 };
+            sv.Needs.Set(1, Initial() with { Happiness = 50 });
+            int bal = ssim.Finances.Balance;
+            sv.PlaySideshow(1, show);
+            var won = sv.Needs.Of(1);
+            Check(show.Winners == 1 && show.PrizesPaid == 20 && show.Takings == 5 && show.Profit == -15 && show.Customers == 1
+                  && won.Cash == 1234 + 150 && won.Happiness == 40 && ssim.Finances.Balance - bal == 50 - 200
+                  && ssim.Finances.SideshowTotal == 50 && show.Satisfaction == 0,
+                  "sideshow: a win books the game (+$5 in, $20 prize out), leaves the guest $15 up and 10 LESS happy "
+                  + "(the prize outweighs the price), and scores 0 satisfaction");
+            sv.PlaySideshow(1, show);
+            var lost = sv.Needs.Of(1);
+            sv.Needs.Set(1, lost with { Cash = 40 });
+            sv.PlaySideshow(1, show);
+            Check(show.Customers == 2 && show.Winners == 1 && lost.Happiness == 50 && lost.Cash == 1384 - 50
+                  && show.SatisfactionVisits == 3 && show.Satisfaction == 50 / 3,
+                  $"sideshow: a loss is a customer +10 happier; a guest who cannot pay plays nothing but is still a "
+                  + $"satisfaction visit -- (0 + 50 + 0) / 3 = {show.Satisfaction}");
+            var fair = new ParkRide { SideshowPrice = 5, SideshowPrizeValue = 20, SideshowWinPercentage = 50 };
+            for (int g = 2; g <= 6; g++) { sv.Needs.Set(g, Initial() with { Happiness = 20 }); sv.PlaySideshow(g, fair); }
+            Check(fair.Customers == 5 && fair.Winners == 0 && fair.Satisfaction == 50,
+                  $"sideshow: five losing games score exactly {fair.Satisfaction} -- the most a game can make (5 x 10), "
+                  + "so a sideshow's satisfaction bar never fills past half");
+        }
         var arms = new VisitorNeeds(419);
         arms.Set(1, Initial()); arms.Set(2, Initial());
         Check(arms.Buy(1, 30, 11, 17, 5, 3, 0) && arms.Buy(2, 30, 11, 17, 5, 3, 1),
@@ -127,6 +158,11 @@ static class CompiledShopPurchaseChecks
             var bought = Purchase(named.Stem, a);
             Check(bought.Visitors.Purchases == 1 && bought.Visitors.Rides == 1 && bought.Visitors.Boardings == 1,
                   $"{region} named shop genuinely completes one scripted purchase");
+            // ⭐ The shop's use counter and satisfaction (findings/ride-users.md §2-§3): the sale is one customer
+            // (`obj+0x18`), and the visit files 5 x the happiness it made (20 -> 30) into the running mean.
+            var boughtShop = bought.Visitors.Sim.Rides.Single();
+            Check(boughtShop.Customers == 1 && boughtShop.SatisfactionVisits == 1 && boughtShop.Satisfaction == 50,
+                  $"{region} a sale is one customer and a satisfaction of {boughtShop.Satisfaction} (5 x the +10 happiness)");
             Check(bought.After.Happiness == 30 && bought.After.Cash == 1234 - 10 * named.Price,
                   $"{region} purchase spends ten times compiled price and awards initial-quality base10, not authored happiness");
             Check(bought.After.Hunger == 80 && bought.After.Thirst == 70 && bought.After.Toilet == 10
@@ -196,6 +232,10 @@ static class CompiledShopPurchaseChecks
             var refused = Purchase(iceStem, ice, 299);
             Check(refused.Visitors.Rides == 1 && refused.Visitors.Purchases == 0 && refused.After.Equals(Initial(299)),
                   $"{region} 299 cash refuses the 300-unit sale with no debit or effects at real handback");
+            var refusedShop = refused.Visitors.Sim.Rides.Single();
+            Check(refusedShop.Customers == 0 && refusedShop.SatisfactionVisits == 1 && refusedShop.SatisfactionSum == 0
+                  && refusedShop.Satisfaction == 0,
+                  $"{region} a refused visit is no customer but still one satisfaction visit (0x1D1E68 runs at the common exit)");
             var exact = Purchase(iceStem, ice, 300);
             Check(exact.Visitors.Rides == 1 && exact.Visitors.Purchases == 1 && exact.After.Cash == 0
                   && exact.After.Hunger == 80 - hunger && exact.After.Thirst == 75,

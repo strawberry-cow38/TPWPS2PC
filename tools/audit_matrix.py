@@ -26,7 +26,7 @@ ASSEMBLY = PROJECT + '/bin/Release/net8.0/TPW.PS2.ParkSimAudit.dll'
 MAX_LOG_BYTES = 8 * 1024 * 1024
 # Minimum assertions in the current integrated ParkSimAudit. A stale binary or
 # accidentally omitted helper must not turn missing lifecycle coverage into PASS.
-REQUIRED_CHECKS = {'availability': 30, 'queue_walk': 7, 'track_ride': 43, 'coaster': 44, 'removal': 57, 'conservation': 20, 'needs_lifecycle': 50, 'disruption': 21, 'service_routing': 5, 'departure_recovery': 6, 'ride_effect_consumer': 33, 'compiled_purchase': 67, 'decision_scheduling': 28, 'terminal_walking': 90, 'post_service_movement': 18, 'native_destination_score': 43, 'native_destination_consumer': 29, 'native_relief': 78, 'native_ride_value': 70, 'native_bus_admission_inputs': 278, 'native_guest_motion_arithmetic': 55, 'native_guest_route_cursor': 76, 'native_walk_consumer': 87, 'native_entrance_flow': 113, 'native_entrance_acceptance': 23, 'native_route_pool': 1082, 'native_rejected_departure': 71, 'native_logical_animation': 62, 'native_ride_queue': 17, 'native_ride_queue_walked': 18, 'staff': 80, 'mechanic': 66}
+REQUIRED_CHECKS = {'availability': 30, 'queue_walk': 7, 'track_ride': 43, 'coaster': 44, 'removal': 57, 'conservation': 20, 'needs_lifecycle': 50, 'disruption': 21, 'service_routing': 5, 'departure_recovery': 6, 'ride_effect_consumer': 33, 'compiled_purchase': 77, 'decision_scheduling': 28, 'terminal_walking': 90, 'post_service_movement': 18, 'native_destination_score': 43, 'native_destination_consumer': 29, 'native_relief': 78, 'native_ride_value': 70, 'native_bus_admission_inputs': 278, 'native_guest_motion_arithmetic': 55, 'native_guest_route_cursor': 76, 'native_walk_consumer': 87, 'native_entrance_flow': 113, 'native_entrance_acceptance': 23, 'native_route_pool': 1082, 'native_rejected_departure': 71, 'native_logical_animation': 62, 'native_ride_queue': 17, 'native_ride_queue_walked': 18, 'staff': 80, 'mechanic': 66}
 REQUIRED_WITNESSES = (
     'ok   native destination consumer: actual idle selector need0/sick0 rejects relief',
     'ok   native destination consumer: actual idle selector need90/sick0 chooses relief',
@@ -64,6 +64,8 @@ REQUIRED_WITNESSES = (
     'ok   compiled purchase: eur product7 falls through to all food effects at initial q2 zero',
     'ok   compiled purchase: jap costume handback changes preference to14 without reseeding or food effects',
     'ok   compiled purchase: eur 299 cash refuses the 300-unit sale with no debit or effects at real handback',
+    'ok   compiled purchase: eur a refused visit is no customer but still one satisfaction visit',
+    'ok   compiled purchase: sideshow: five losing games score exactly 50',
     'ok   compiled purchase: eur exactly300 cash buys once rather than being rejected at the boundary',
     'ok   ride effect consumer: value 55, sickness 20 becomes 20',
     'ok   ride effect consumer: preference 30, value 81 awards band 5',

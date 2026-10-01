@@ -175,7 +175,7 @@ public sealed partial class LaptopShopScreen : Control
         int baseCost = settings?.BaseCostOfGoods ?? 0;
         _quality = shop.Quality;
         _additive = shop.Setting0xAC;
-        _satisfaction = 0; // ⚠ shop[0xb0]/[0xb4] is decoded but not yet tracked; see below.
+        _satisfaction = shop.Satisfaction;   // 0x1D1E00: shop[0xb0] / shop[0xb4], the running mean of every visit
 
         // ⭐ The console's own arithmetic, from the purchase path: the cost moves with Quality and
         // with the additive, both quartered.

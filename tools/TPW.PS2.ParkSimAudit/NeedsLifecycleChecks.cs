@@ -118,7 +118,8 @@ static class NeedsLifecycleChecks
         var seated = Fresh(); original = seated.Visitors.Needs.Of(seated.Guest.Id);
         Queue(seated.Visitors, seated.Ride, seated.Guest);
         for (int i = 0; i < 6000 && !seated.Ride.Host.Seats.Values.Contains(seated.Guest.Id); i++) seated.Visitors.Step(.04, null);
-        Check(seated.Ride.Host.Seats.Values.Contains(seated.Guest.Id), "real script actually seats the needs-bearing guest");
+        Check(seated.Ride.Host.Seats.Values.Contains(seated.Guest.Id) && seated.Ride.Customers == 0,
+              "real script actually seats the needs-bearing guest (boarding is not a use: obj+0x18 counts riders stepping off)");
         Check(Same(original, seated.Visitors.Needs.Of(seated.Guest.Id)), "seated guest retains its entire side-table state");
         seated.Sim.Remove(1); seated.Visitors.Step(0, null);
         CheckReDecided(original, seated.Visitors.Needs.Of(seated.Guest.Id), "seated removal");
@@ -130,13 +131,14 @@ static class NeedsLifecycleChecks
         returning.Sim.SetOpen(1, false); returning.Visitors.Step(0, null);
         var afterRide = returning.Visitors.Needs.Of(returning.Guest.Id);
         Check(returning.Visitors.Rides == 1 && Readmitted(returning.Visitors, returning.Guest.Id)
-              && HasOneRideEffect(original, afterRide, returning.Visitors),
-              "normal completion applies the configured effect once without reseeding unaffected fields");
+              && HasOneRideEffect(original, afterRide, returning.Visitors) && returning.Ride.Customers == 1,
+              "normal completion applies the configured effect once without reseeding unaffected fields, and is one use (0x20F2B0)");
         Check(afterRide.Cash == 1234 && afterRide.Happiness == 90 && afterRide.Sick == 76 && afterRide.Unknown78 == 32,
               "non-clamping completion sentinels distinguish one effect from a double or fresh spawn");
         returning.Visitors.Step(0, null);
-        Check(returning.Visitors.Rides == 1 && Same(afterRide, returning.Visitors.Needs.Of(returning.Guest.Id)),
-              "subsequent steps neither repeat completion effects nor reroll their random reduction");
+        Check(returning.Visitors.Rides == 1 && Same(afterRide, returning.Visitors.Needs.Of(returning.Guest.Id))
+              && returning.Ride.Customers == 1,
+              "subsequent steps neither repeat completion effects nor reroll their random reduction, nor count the use again");
 
         // A real completed/readmitted guest with an explicit nonzero preference exercises
         // the banded consumer rather than the intentionally unspecified fallback fixture.

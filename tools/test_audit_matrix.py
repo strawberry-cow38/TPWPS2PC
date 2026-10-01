@@ -18,7 +18,7 @@ COVERAGE = '\n'.join([f'  ok   {category.replace("_", " ")}: filler'
                      ['  ok   decision scheduling: native arm1 remains available before facility deadline and consumes both draws'] +
                      ['  ok   decision scheduling: cash299 park deadline survives eightfold appetite rate change'] +
                      ['  ok   decision scheduling: strict boundary rejects stored300 plus extra60 equality', '  ok   decision scheduling: cash1234 zero-time calls cannot reboard the same shop', '  ok   decision scheduling: cash299 zero-time calls cannot reboard the same shop', '  ok   decision scheduling: cash299 eligible later decision can revisit instead of a permanent blacklist'] +
-                     ['  ok   compiled purchase: check'] * 59 +
+                     ['  ok   compiled purchase: check'] * 67 +
                      ['  ok   compiled purchase: bare-world source path attaches the named shop independently of region loop',
                       '  ok   compiled purchase: archive-qualified source path attaches the named shop independently of region loop',
                       '  ok   compiled purchase: product alone reverses the transfer and selects its own bladder amount',
@@ -26,7 +26,9 @@ COVERAGE = '\n'.join([f'  ok   {category.replace("_", " ")}: filler'
                       '  ok   compiled purchase: eur product7 falls through to all food effects at initial q2 zero',
                       '  ok   compiled purchase: jap costume handback changes preference to14 without reseeding or food effects',
                       '  ok   compiled purchase: eur 299 cash refuses the 300-unit sale with no debit or effects at real handback',
-                      '  ok   compiled purchase: eur exactly300 cash buys once rather than being rejected at the boundary'] +
+                      '  ok   compiled purchase: eur exactly300 cash buys once rather than being rejected at the boundary',
+                      '  ok   compiled purchase: eur a refused visit is no customer but still one satisfaction visit (0x1D1E68 runs at the common exit)',
+                      '  ok   compiled purchase: sideshow: five losing games score exactly 50 -- the most a game can make (5 x 10), so a sideshow\'s satisfaction bar never fills past half'] +
                      ['  ok   ride effect consumer: check'] * 31 +
                      ['  ok   ride effect consumer: value 55, sickness 20 becomes 20',
                       '  ok   ride effect consumer: preference 30, value 81 awards band 5'] +
@@ -357,7 +359,7 @@ class ClassificationTests(unittest.TestCase):
 
     def test_lifecycle_counts_recorded_in_manifest_row(self):
         row = classify('JUNGLE', 0, COVERAGE + '\nPASS')
-        self.assertEqual(row['compiled_purchase_checks'], 67)
+        self.assertEqual(row['compiled_purchase_checks'], 77)
         self.assertEqual(row['availability_checks'], 30)
         self.assertEqual(row['removal_checks'], 57)
         self.assertEqual(row['conservation_checks'], 20)

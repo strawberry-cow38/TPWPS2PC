@@ -4674,16 +4674,19 @@ public partial class Viewer : Node3D
     /// Takings 106, Profit 986, Total Profit 365, State of Repair 128, Remaining Life 636, Excitement 857/907,
     /// Cleanliness 269.
     ///
-    /// ⚠⚠ EVERYTHING NOT LISTED RETURNS NOTHING ON PURPOSE. Satisfaction (451, 537) is drawn by these screens
-    /// and NOT tracked by this port's sim -- the shop screen's own code says so ("decoded but not yet tracked").
-    /// ⚠ And Users on rides and toilets reads `Customers`, which only a SALE moves (`Book`), so it stays 0 there:
-    /// which counter the console's ride list reads is not traced, and counting boardings into the shop's field
-    /// would be an invention. A text row answers null so nothing is drawn, and a bar answers 0 so it reads empty.</summary>
+    /// ⭐ Users / Customers is the shared use counter `obj+0x18` (ParkRide.Customers), which every kind now moves at
+    /// its console trigger (findings/ride-users.md §2), and Satisfaction (451, 537) the running mean.
+    /// ⚠ Anything not listed returns nothing on purpose: a text row answers null so nothing is drawn, and a bar
+    /// answers 0 so it reads empty.</summary>
     (string, int) LaptopInfoCell(LaptopRow row, ParkRide r) => row.TextId switch
     {
         771 or 691 or 488 => (r.Customers.ToString(), 0),
-        106               => (Money.Format(r.Takings), 0),
-        986 or 365        => (Money.Format(r.Profit), 0),
+        // ⚠ WHOLE DOLLARS: `0x142908` formats its argument as dollars (a loan's $100,000 goes in as 100000), and the
+        // takings are summed prices. `Money.Format` divided them by ten -- the list read a tenth of the shop's own page.
+        106               => (Money.Display(r.Takings), 0),
+        986 or 365        => (Money.Display(r.Profit), 0),
+        // ⭐ Satisfaction on All Shops (451) and All Sideshows (537): the running mean `0x1D1E00` / `0x1D2B48`.
+        451 or 537        => (null, r.Satisfaction),
         // ⭐ State of Repair on a serviced ride is its worn reliability, `ride[0xE4] >> 12` (`FUN_00118228`,
         // the bar `FUN_001D5210` fills) -- mechanics port, 2026-09-27. Anything else keeps what it showed.
         128               => (null, Math.Clamp(r.ServiceClass != RideServiceClass.None ? r.ReliabilityPercent : r.Condition, 0, 100)),
@@ -9444,8 +9447,7 @@ public partial class Viewer : Node3D
     /// `(prize - price)` squared over sixteen when positive, plus a third of the win percentage,
     /// plus fifty, floored at the compiled base. So all three move the excitement bar.
     ///
-    /// ⚠ Winners and Satisfaction are drawn by this screen and are not tracked by this port's
-    /// sim, so they are blank and empty rather than a plausible number.</summary>
+    /// ⭐ Winners and Satisfaction are the sideshow's own (ParkVisitors.PlaySideshow, findings/ride-users.md §4).</summary>
     void ShowSideshowDetails(ParkRide show)
     {
         _detailsRide = show; _detailsSpec = LaptopScreen.Sideshow;
@@ -9454,13 +9456,19 @@ public partial class Viewer : Node3D
             cells.Add(row.TextId switch
             {
                 707 => (show.Customers.ToString(), 0),                       // Customers
-                949 => (Money.Format(show.Takings), 0),                      // Takings
-                238 => (Money.Format(show.Profit), 0),                       // Profit
+                // ⭐ Winners `+0xd0` (0x1D2B38). ⚠ The console draws this row only while the prize is non-zero
+                // (0x1D8488 skips the label AND its row step, so the rows below move up); the port keeps the row.
+                637 => (Thousands(show.Winners), 0),
+                949 => (Money.Display(show.Takings), 0),                     // Takings, whole dollars (0x142908)
+                238 => (Money.Display(show.Profit), 0),                      // Profit = takings - prizes (0x1D2A58)
                 899 => (null, show.Value ?? 0),                              // Excitement
+                743 => (null, show.Satisfaction),                            // Satisfaction, 0x1D2B48 -- at most 50
                 295 => (null, Math.Clamp((int)show.SideshowWinPercentage, 0, 100)),
-                832 => (Money.Format(show.SideshowPrizeValue), 0),           // Cost of Prize
-                190 => (Money.Format(show.SideshowPrice), 0),                // Price per Game
-                _   => (null, 0),                                            // Winners, Satisfaction
+                // ⚠ Prize and price are DIGITS, no `$` -- `0x142B68` at 0x1D87BC / 0x1D8854 -- where this used the
+                // money formatter (and divided them by ten).
+                832 => (Thousands(show.SideshowPrizeValue), 0),              // Cost of Prize
+                190 => (Thousands(show.SideshowPrice), 0),                   // Price per Game
+                _   => (null, 0),
             });
         _shopPanel.ShowScreen(LaptopScreen.Sideshow, DisplayName(show), cells);
         BuildLaptopModelFor(show);
