@@ -149,8 +149,8 @@ dotnet run --project tools/TPW.PS2.ParkSimAudit -- "$DISC" --particle-emission-o
 ```
 
 The managed comparison is printed as the **function under test**, not frozen into a regression
-requiring the port to remain wrong. No renderer correction is shipped here. A final clean full
-core matrix is required for handoff; targeted compiled controls below have completed.
+requiring the port to remain wrong. No renderer correction is shipped here. The final clean
+full core matrix and targeted compiled controls below have completed.
 No capture/savestate or actual native instruction execution was performed; code-derived ranges
 must not be reported as a measured hardware emission count.
 
@@ -172,3 +172,25 @@ production behavior change, and the initially surviving mutant is not hidden fro
 Removing the actual default-family call, compiling, and running JUNGLE/1 leaves raw exit0/PASS;
 the matrix rejects it as missing_coverage with particle_emission count0. The call was restored
 exactly and Release rebuilt (`/tmp/tpw-emission-omitted-matrix`).
+
+## Final clean gate (2026-10-01)
+
+After all mutations and the omitted-family control were restored, the clean source revision
+`e4f0c9f7825d1b7757661b955b142e54c8296168` was gated without further source edits:
+
+- Full eight-park core matrix: all eight record **particle_emission90**, with the existing
+  particle_child236 and particle_fitting109 families also intact. JUNGLE/1–2 and FANTASY/1–2
+  pass; HALLOW/1–2 retain only the known Thrill Grill failure, and SPACE/1–2 retain only the
+  known Moon Buggies failure. Runner exit2 is the explicit known-retail baseline, not eight
+  green cases and not a waived new failure.
+- Game project build: exit0, zero errors (28 existing warnings).
+- Python tool suite: **127 tests, OK**, exit0.
+
+Evidence: `/tmp/tpw-emission-final-core/manifest.json`,
+`/tmp/tpw-emission-final-game-build-run.log`, `/tmp/tpw-emission-final-python-run.log`, and
+`/tmp/tpw-emission-final-gates.json`. The final queue completed with exit0 after checking each
+expected runner exit. This section is a documentation-only addition after that gate.
+
+This is ready as an **audit/read handoff**, not a rendered scheduling fix. The immediate
+LaserRing child rollout remains disabled; a production change still needs an explicit
+implementation and runtime verification of admission, allocation, RNG and attractor effects.
