@@ -497,3 +497,48 @@ accepted duplicate-ID control. Both EVENT and ADDOBJ particle routes use native 
 The raw-table predicate agrees with the unchanged production resolver; widening it to `0x500`
 breaks 17 assertions. This does not establish retail pixels or runtime reachability. The
 109-check family is integrated into the default audit and its coverage gate, not a renderer fix.
+
+## ⭐⭐ THE DECODE OUTRAN THE CONSUMER: 27 behavioural fields read and dropped
+
+Censused 2026-10-01 after astraclaw found that `Destroy1/2/3` (75/76/77) name
+**83 Twinkle** as their attached child and `RideParticles.Emit` never reads
+`ChildEffect`. That is not a one-off. Every `ParticleTemplate` accessor with no
+consumer anywhere outside its own file:
+
+```
+AttachChild · ChildEffect · ChildIsAttractor · ChildDiesWithParent
+DeathEffect · OnExpiryEffect · OnExpiryIsAttractor
+SpinMin · SpinMax · RandomStartRotation
+ColourMode · EmissionMode · ShapeRotation
+EmitterDrag · EmitterGravity · EmitterVelocityJitter · InheritEmitterVelocity
+BounceOffGround · DrawTowardEmitterPerMille · DieWithEmitter
+ScreenSpace · ScreenDepth · Hidden · Optional · NoDensityScaling
+AttractorClass · AttractorImmune
+Unread90 · UnreadA4 · UnreadC3      <- honestly named; not leads
+```
+
+So the record is decoded roughly 27 fields further than it is implemented:
+emitters that bounce, spin, inherit the emitter's velocity, spawn an attached
+child, spawn something on death, change colour mode or draw toward the emitter
+are all read off the disc and then ignored.
+
+⚠⚠ **THIS IS THE SECOND INSTANCE, AND THE FIRST ONE SHOULD HAVE PROMPTED THE
+CENSUS.** The repair spiral was the same shape -- `RadialOffset`, `OffsetAngle`
+and `OffsetAngularVelocity` decoded, never applied, with a comment claiming the
+angular velocity was zero on every record keeping them looking dead. That one
+field was fixed and the question "how many others?" was not asked. It took
+someone else stumbling onto `ChildEffect` to surface the other 26.
+
+⭐ This is very likely the real content of master's "fix particles everywhere.
+we are missing a lot" -- not a list of broken effects but a consumer that
+stopped well short of the decode.
+
+⚠ METHOD AND ITS LIMIT: a grep for each accessor's use outside
+`ParticleTemplate.cs`. An indirect or reflective consumer would read as unused,
+so this is a LEAD LIST, not proof that 27 behaviours are missing. Each row wants
+checking against the raw record and the native instructions before it is called
+a bug -- which is how astraclaw is handling the child-spawn row.
+
+⚠ And a child is not a lifecycle: **83 Twinkle itself requests 84 on particle
+death**, so spawning the child closes the missing child request and not the
+whole chain (astraclaw, same session).
