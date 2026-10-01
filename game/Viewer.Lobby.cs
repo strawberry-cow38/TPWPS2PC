@@ -54,6 +54,17 @@ public partial class Viewer
     /// <summary>A left press that began INSIDE the lobby. ⚠ Without it a release whose press
     /// landed on another screen (the laptop's Close Park) counts as a lobby click.</summary>
     bool _lobbyPressed;
+    /// <summary>⭐ The lobby's time on screen (InputSettle), restarted on entry and when the prompt opens.
+    /// Built synchronously, the lobby used to take the clicks queued while it loaded as clicks on it.</summary>
+    InputSettle _lobbySettle;
+    InputSettle LobbySettle()
+    {
+        if (_lobbySettle != null && IsInstanceValid(_lobbySettle)) return _lobbySettle;
+        _lobbySettle = new InputSettle { Name = "LobbySettle", While = () => _lobbyMode };
+        AddChild(_lobbySettle);
+        return _lobbySettle;
+    }
+    internal bool LobbyInputReady => _lobbySettle != null && IsInstanceValid(_lobbySettle) && _lobbySettle.Ready;
     /// <summary>Frames left before the one-shot picker self-check; -1 once it has run.</summary>
     int _lobbyPickCheck = -1;
     bool _lobbyBoxHasFont;
@@ -295,6 +306,7 @@ public partial class Viewer
         _lobbyBoxHasFont = _hudFont != null;
 
         _lobbyMode = true;
+        LobbySettle().Reset();
         _lobbyRecord = 0;
         // ⭐ Stand on the park we just closed, if that is how we got here.
         if (_lobbyWantRecord >= 0)
@@ -748,6 +760,7 @@ public partial class Viewer
         string T(int id) => id >= 0 && id < _text.Keys.Length ? _text.Text(TextLanguage, id) ?? $"#{id}" : $"#{id}";
         string ok = T(0x1E9), cancel = T(0x130);
         _lobbyPrompt = true;
+        LobbySettle().Reset();      // a second click of the one that raised it must not answer it
         _lobbyBox.Show(T(1062).Replace("\n", " "), T(810).Replace("\n", " "), ok, cancel);
     }
 
