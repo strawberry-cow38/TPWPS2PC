@@ -6,7 +6,7 @@ using TPW.PS2.Data;
 
 namespace TPWPS2Viewer;
 
-/// <summary>The terrain's water: the sea rolls on a sine, the river and the falls scroll.
+/// <summary>The terrain's water: every surface SCROLLS its texture. Nothing morphs.
 ///
 /// ⭐⭐ THE TERRAIN NAMES ITS OWN WATER. `A_SEA_01..06` are meshes in every world's terrain file
 /// and they all wear one material (`jri_lak2` in both jungle and space); the river and pond
@@ -20,18 +20,20 @@ namespace TPWPS2Viewer;
 ///
 /// ⚠⚠ WHAT IS CHOSEN, NOT READ: the PS2's own flag for "this surface is water" has not been found
 /// -- the material descriptor's spare bytes do not single it out, since `wr_water3` shares its
-/// group with a roof and a flower, making that group alpha rather than water. The sea's wave
-/// amplitude, wavelength and speed are not stated anywhere I have found either. Every one of those
-/// numbers is on an environment switch so it can be corrected in seconds by someone who can see
-/// the game, rather than guessed at twice.</summary>
+/// group with a roof and a flower, making that group alpha rather than water. The two scroll
+/// ANGLES are chosen too, and stay on environment switches so they can be corrected by someone
+/// who can see the game rather than guessed at twice.
+///
+/// ⭐⭐ THE SEA'S SINE IS GONE, 2026-10-01. It was invented -- amplitude, wavelength and speed all
+/// picked by me -- and it contradicted the only measurement anyone has: the PSX rolls the TEXTURE
+/// and a VRAM diff ruled mesh morphing OUT. The "only the top plane waves" guard that was supposed
+/// to contain it never fired either, because the six `A_SEA` meshes TILE at one height rather than
+/// stacking. See the note at the surface loop for the measurements.</summary>
 public sealed class Water
 {
     /// <summary>One texel of a 64-high texture per console frame.</summary>
     public const float ScrollTexelsPerTick = 1f;
     public const float AssumedTextureHeight = 64f;
-
-    /// <summary>⚠ CHOSEN. Amplitude in world units, wavelength in world units, radians a second.</summary>
-    static readonly Vector3 SeaWave = new(0.06f, 9f, 1.1f);
 
     /// <summary>Which way each scroll runs, in degrees, where 0 is straight down the V axis --
     /// the direction a rolled sprite moves on the PSX.
@@ -64,11 +66,8 @@ public sealed class Water
         _soft = soft;
         if (terrain == null || model == null) return;
         int sea = 0, flow = 0;
-        // The highest sea surface, so "lower" is measured rather than assumed from a name.
-        float _seaTop = float.MinValue;
-        foreach (var mi in terrain.GetChildren().OfType<MeshInstance3D>())
-            if (mi.Name.ToString().Split('#')[0].StartsWith("A_SEA", StringComparison.OrdinalIgnoreCase))
-                _seaTop = Mathf.Max(_seaTop, mi.GetAabb().GetCenter().Y + mi.Position.Y);
+        // ⚠ The first pass over the surfaces is gone with the wave it served: it existed only to
+        // find the highest sea plane, and the planes turned out to tile at one height.
         foreach (var mi in terrain.GetChildren().OfType<MeshInstance3D>())
         {
             // The surfaces are named "<mesh>#<material>" by AnimatedModel.
@@ -91,16 +90,43 @@ public sealed class Water
                 ? Env("TPW_SEA_ANGLE", SeaScrollDegrees)
                 : Env("TPW_WATER_ANGLE", RiverScrollDegrees));
             var scroll = new Vector2(Mathf.Sin(radians) * perSecond, Mathf.Cos(radians) * perSecond);
-            // ⭐⭐ ONLY THE TOP SEA ROLLS. Master: "remove the sine on the lower sea layer."
-            // The terrain stacks more than one A_SEA plane and waving the one underneath makes
-            // the two shear through each other at the shoreline.
-            // ⚠ MEASURED, not named: which plane is lower is a fact about its height, and
-            // guessing from "A_SEA_01 must be the bottom" is the kind of assumption this port
-            // keeps having to undo. `_seaTop` is the highest sea surface on this terrain.
-            bool lowerSea = isSea && mi.GetAabb().GetCenter().Y + mi.Position.Y < _seaTop - 0.01f;
-            var wave = isSea && !lowerSea
-                ? new Vector3(Env("TPW_SEA_AMP", SeaWave.X), Env("TPW_SEA_LEN", SeaWave.Y), Env("TPW_SEA_SPEED", SeaWave.Z))
-                : Vector3.Zero;
+            // ⭐⭐⭐ THE SEA DOES NOT WAVE, AND THE ONE PIECE OF EVIDENCE WE HAVE SAYS SO.
+            //
+            // Master, 2026-10-01: "kill all the sea stuff we have rn and reimplement it properly,
+            // assume everything previous was wrong." It was wrong, in three separate ways:
+            //
+            // ⚠ (1) THERE IS NO LOWER SEA LAYER. Measured, this session: all six `A_SEA` meshes in
+            // every world sit at the SAME height (jungle: y = -2.640, 1.0 span, one material).
+            // They are not stacked -- they TILE, edge to edge, around the island: `A_SEA_02` ends
+            // at x = 67.7 and `_05` begins there; `_03` ends there and `_06` begins. So the
+            // "only the top plane rolls" rule I shipped on 2026-09-24 could never fire, because
+            // the test was `centre.Y < the highest sea Y` and they are all the highest. The fix
+            // master asked for was reported as done and did nothing for a week.
+            //
+            // ⚠ (2) WHAT IS ACTUALLY BELOW THE SEA IS NOT SEA. The 13 other water surfaces sit at
+            // -0.496 (ponds and river, ABOVE the sea), -1.5/-2.0, -2.782 (`RIVERBED_*B`, which are
+            // degenerate -- zero X extent, so vertical strips), -6.65 (`falls02`) and -13.5. Ponds
+            // overlap the sea tiles in XZ, so a still pond over a waving sea is what shears.
+            //
+            // ⚠⚠ (3) AND THE WAVE ITSELF WAS NEVER THE CONSOLE'S. The only measured motion is the
+            // PSX's, and it is a TEXTURE SCROLL: a flagged sprite rolled one row per frame and
+            // re-uploaded -- with **mesh morphing explicitly ruled out by a VRAM diff of a running
+            // park** (see the class note). A vertex sine is the one thing that evidence excludes,
+            // and this port shipped it anyway with amplitude, wavelength and speed all invented.
+            //
+            // So the sea scrolls and does not morph. If the PS2 turns out to morph where the PSX
+            // did not, that is a finding to bring back with a capture -- not a number to re-guess.
+            // ⚠ PROBE: what ARE the stacked sea planes? Master asked what the layers are and why,
+            // and the port only ever knew "the top one waves". Printed once per surface.
+            {
+                var ab = mi.GetAabb();
+                var c = ab.GetCenter() + mi.Position;
+                GD.Print($"[sea] {(isSea ? "SEA " : "flow")} {mi.Name,-16} centre ({c.X,8:F1},{c.Y,7:F3},{c.Z,8:F1})  "
+                       + $"size {ab.Size.X,7:F1} x {ab.Size.Z,7:F1}  "
+                       + $"x [{c.X - ab.Size.X / 2,7:F1}..{c.X + ab.Size.X / 2,7:F1}]  "
+                       + $"z [{c.Z - ab.Size.Z / 2,7:F1}..{c.Z + ab.Size.Z / 2,7:F1}]  {material}");
+            }
+            var wave = Vector3.Zero;      // no vertex motion: see the note above
             // ⚠ The material's OWN translucency, from the same resolver the model used. A river
             // drawn opaque is not a river.
             var made = Ps2Materials.Water(tex, _soft?.Invoke(material) ?? false, scroll, wave);
@@ -110,7 +136,7 @@ public sealed class Water
         }
         Report = _moving.Count == 0
             ? "no water surfaces in this terrain"
-            : $"{sea} sea surfaces on a sine scrolling at {SeaScrollDegrees:F0} degrees,"
+            : $"{sea} sea surfaces scrolling at {SeaScrollDegrees:F0} degrees (no vertex motion),"
               + $" {flow} flowing at {RiverScrollDegrees:F0}";
     }
 
