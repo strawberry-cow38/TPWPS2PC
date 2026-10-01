@@ -1,4 +1,4 @@
-# Research persistence component — 2026-10-01 (integration pending)
+# Research persistence component — 2026-10-01
 
 Independent slice from Staging-Tinyclaw `cd0a9ec`. The component is
 `ResearchPersistence.Length/Save/Load`, acting on a ResearchManager with an attached
@@ -76,14 +76,47 @@ research work ZERO. Its restored project correctly has required/progress0 and st
 active until a quantum; the test now checks that literal zero-work case, while the
 other slots prove fractional-progress loss. This was not a game-code fix.
 
-These are explicit CORE fixtures, with read-only raw-record reflection to avoid
-observer queries changing the database. They are not player save/load, a rendered
-client roundtrip, or complete-world integration evidence. Those distinctions remain
-part of the handoff. Further integration checks are pending before a ready claim.
+The169 assertions are explicit CORE fixtures, with read-only raw-record reflection
+to avoid observer queries changing the database. They are not player save/load or
+complete-world integration evidence.
+
+## Shipping-client component fixture and controls
+
+`ResearchPersistenceSmoke` passes24 checks at BOTH640x360 and1152x648. Two Viewers
+initialize through normal direct-map startup, with no debug research override.
+The test DECLARES its public File/StartResearch/Contribute setup on the first live
+manager, captures its98-byte component, retires that Viewer normally, then applies
+only the section to a distinct fresh shipping manager/database. It verifies saved
+budget77 before normal Research-screen opening resets it to100, slot identity,
+DBA-derived work, loss of a real sub-percent remainder, shared advisor/database
+ownership, and the restored project's name/percent at actual draw sites. Navigation
+to the Research page uses real keyboard/mouse input.
+
+This is an explicitly seeded COMPONENT fixture: it does not claim a player-created
+project, naturally hired researcher, Save-menu operation, or full-world restoration.
+Its private access is read-only apart from existing audio cleanup calls. There are
+no private field writes, manual park ticks, disabled processing or snapshot callbacks.
+Draw receipts do not claim pixel review. It is intentionally standalone: there are
+TWO map witnesses, unlike viewer_matrix's one-map per-case contract.
+
+A compiled no-op Load control fails the live-target restoration assertion; restoring
+Load passes24 again. Existing pure-input AdvisorResearchSmoke also passes73 at640x360.
+The actual default core-family call was removed as a control: raw exit0/PASS remained,
+but the audit gate correctly returned missing_coverage, research_persistence count0.
+Restoring the call passes with169. Sources were restored and rebuilt after controls.
+
+Final clean full-audit manifests (known retail failures remain classified, never
+turned green) are the integration record, not these prose counts. This component
+still does not enable the game's whole-save UI or implement world publication.
 
 ```sh
 DISC=/home/ec2-user/tpw-ps2/tpw_ps2.bin
+GODOT=/home/ec2-user/godot46/Godot_v4.6-stable_mono_linux_arm64/Godot_v4.6-stable_mono_linux.arm64
 dotnet build tools/TPW.PS2.ParkSimAudit/TPW.PS2.ParkSimAudit.csproj
 dotnet run --no-build --project tools/TPW.PS2.ParkSimAudit -- "$DISC" JUNGLE --research-persistence-only
 PYTHONPATH=tools:launcher python3 -m unittest discover -s tools -p 'test_*.py'
+# Own rendering display; no TPW_ALL_RESEARCHED=1 override. Also run at1152x648.
+DISPLAY=:114 "$GODOT" --path game --resolution 640x360 --rendering-method gl_compatibility --audio-driver Dummy res://tests/ResearchPersistenceSmoke.tscn -- --disc="$DISC" --map=JUNGLE --mode=park
+# All8 core parks; known HALLOW/SPACE retail failures stay red/classified.
+python3 tools/audit_matrix.py --disc "$DISC" --out /tmp/research-persistence-core-NEW
 ```
