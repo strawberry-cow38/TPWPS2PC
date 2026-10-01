@@ -1,8 +1,9 @@
-# Sideshow conditional layout — WIP, 2026-10-01
+# Sideshow conditional layout — validated slice, 2026-10-01
 
 Base `Staging-Tinyclaw` / `9b3a2bb`. This is a view/input presentation slice;
-native prize/price bounds are not changed here. **Not ready for landing until the
-new rendered/transition tests and regression controls below have run.**
+native prize/price bounds are not changed here. Production snapshot `200df01` is
+followed by the rendered/core regression and gate changes described below. This is
+ready for integration review, not a claim that main or all three full matrices landed.
 
 ## Native reading
 
@@ -45,7 +46,7 @@ Input `0x1D8118` does not write chance/prize back at prize0, but always writes g
 price. Native mouse hitboxes were not read: the port's input must follow its own
 drawn presentation without claiming console mouse behavior.
 
-## Implementation in progress
+## Implementation
 
 Nine canonical rows/cells/handler indices stay stable. `LaptopRowPresentation`
 separately controls label slot, value, widget and arrow visibility. Only label and
@@ -56,13 +57,118 @@ writeback gates. The panel copies the plan, invalidates stale hitboxes immediate
 and cancels interaction on subject/screen changes or control hiding. Same-subject
 slider refreshes must preserve drag; ShowFor(shop) also needs that continuity.
 
-## Pending evidence / do not claim green yet
+## Preserved awkward zero-prize screen
 
-Build and native reading alone are not the requested proof. Add nonvacuous controls
-for zero versus one prize with nonzero Winners; exact label/value/widget/arrow geometry;
-zero->nonzero->zero; subject switch; other screen; Hide/reopen; stale input before
-queued redraw; chance/prize controls cannot change hidden fields; game-price arrows
-still target canonical8. Check same-ride and shop drag continuity. Run existing
-laptop/management regressions and resolution640x360. Mutation-test omitted Winner
-collapse, whole-widget collapse, stale hitboxes and crossed arrow callbacks. Record
-actual rendered evidence separately from explicit core/panel fixtures.
+Cow tools inspected both actual fixture PNGs. The positive case has all nine rows;
+the zero case hides Winners/chance/prize labels, retains the unlabelled prize `0`,
+and leaves the price controls at their old location. The result LOOKS incoherent:
+Game Price now sits beside a fixed bar, while its actual arrows/digits are lower.
+This prompted a fresh MIPS check, not a cosmetic adjustment:
+
+- `0x1D8490` skips the Winners row step at `0x1D84AC`.
+- Labels 899/743 use flowing `$s0` at `0x1D84E8..0x1D851C`.
+- `0x1D8538` skips the chance/prize label draws AND their steps at prize0.
+- Bar frame loads/stores `0x1D8898..0x1D8944` use their separate authored globals,
+  not that flowing row register. Price digits/arrows similarly use fixed globals.
+
+Both layouts are now literal-coordinate regression fixtures. Do not realign them
+just because the zero screen looks broken. **No retail zero-prize screenshot has
+been compared.** Evidence supports matching the native code; a differing retail
+capture should trigger investigation, not an appeal to these tests as authority.
+
+## Evidence and registration
+
+Actual observed results (counts come from the listed commands/logs):
+
+| run | result | scope |
+|---|---:|---|
+| explicit core/presentation audit | 92 assertions PASS | canonical IDs, raw0/1/30/-1 plans, immutable/caller-isolated state, authored disc coordinates, ELF branch witnesses |
+| registered rendered case, all eight parks at640x360 | 8/8 PASS, 779 checks EACH | shipping Viewer, normal map startup, explicit UNPLACED real-DBA Sideshow fixtures and actual GUI input |
+| same JUNGLE/1 fixture with two PNG saves | 781 PASS | positive/zero viewport captures; reviewed by cow tools for gross presence/order, not pixel-perfect alignment |
+| existing LaptopShopScreenAudit at640x360 | 119 PASS | existing panel regression fixture |
+| existing ManagementSmoke JUNGLE/1 at640x360 | 163 PASS | legacy management smoke, including its explicitly injected setup; NOT an ordinary-player proof |
+| CI tool Python suite | 103 tests PASS | audit/viewer classifier controls, including registration/floors |
+| full JUNGLE/1 ParkSimAudit classifier | PASS, sideshow_presentation=92 | integrated core families, research14/advisor_research291 retained |
+
+`SideshowPresentationSmoke` creates unplaced public-state fixture rides900001/2/3
+(prizes30/0/1, price10, chance60, Winners17, Customers19, Satisfaction23). It invokes
+only `ShowSideshowDetails` to bind them during observations, then uses
+`Input.ParseInputEvent` for ordinary panel controls. It does NOT claim placement,
+preview-model, guest-gameplay, or a console framebuffer comparison. A separately
+labelled stale-HANDLER fixture injects canonical events to exercise zero-prize
+writeback guards even though hidden controls cannot emit them. A separately
+labelled standalone shop-PANEL callback fixture tests same-subject drag continuity;
+it is not the shipping selected-shop routing path.
+
+Draw receipts are default-off. When enabled they record actual submitted scalar
+arguments/rectangles and text/label anchors. Anchors precede glyph justification
+and possible empty-text exits: they are NOT final glyph bounds, surviving pixels,
+or human visual review. Tests pin label slots, X/Y, authored widget rectangles,
+arrow aliases, actual bar data, all nine canonical row IDs and callbacks6/7/8. They cover
+zero/nonzero transitions, nonzero->nonzero subject changes, hidden stale input
+before/after redraw, page changes, Hide/reopen, valid drag refreshes and capture-off.
+
+The initial matrix had all fixture assertions pass but the strict gate rejected
+three audio shutdown leak warnings. Verbose HALLOW/2 evidence named
+AudioStreamGeneratorPlayback/AudioStreamWAV/AudioStreamPlaybackWAV. Disposing the
+fixture's own input events did NOT close that blocker. The final fixture reuses
+PointerTilesSmoke's established teardown protocol: ResetNativeBus, StopMusic,
+RideSounds.Clear, QueueFree, two ProcessFrames, then a0.1s real-time timer. Only
+teardown does this, AFTER observations; there are no Viewer field writes, manual
+sim ticks or scheduler disabling in this fixture. All eight strict cases then
+passed. No relaxed leak regex or global finalizer-drain workaround is included,
+and this does not claim to fix every game's audio/memory lifetime issue.
+
+## Nonvacuous controls
+
+All six implementation mutants COMPILED and were rejected by assertions, not by
+build failure. Sources were restored, rebuilt and rerun after them:
+
+| deliberate mutant | rejecting evidence |
+|---|---|
+| Winner visible at prize0 | literal slots/hidden Winner core assertions, raw exit1 |
+| renderer submits `fraction+1` to bars | rendered crossed-DATA argument assertion, raw exit2 |
+| removed zero-prize chance writeback guard | separate stale-handler fixture, raw exit2 |
+| removed zero-prize prize writeback guard | separate stale-handler fixture, raw exit2 |
+| retained old hitboxes across presentation/subject changes | immediate canonical-key assertion before redraw, raw exit2 |
+| reset input on EVERY same-shop ShowFor refresh | standalone shop press/refresh continuity assertion, raw exit2 |
+
+The audit gate requires `sideshow_presentation >=92` plus native/zero-layout
+semantic witnesses. Removing the ACTUAL default integrated
+`SideshowPresentationChecks.Run` call leaves raw exit0/`PASS`, but classification
+is `missing_coverage`, count0. Restoring it passes with count92. The viewer matrix
+registers `sideshow-presentation` with minimum779 and keeps its normal closed-park
+default. Python controls independently pin the floor, reject778 checks, reject a
+FAIL even with exit0, and reject another scene's PASS witness.
+
+## Reproduction commands
+
+```sh
+DISC=/home/ec2-user/tpw-ps2/tpw_ps2.bin
+GODOT=/home/ec2-user/godot46/Godot_v4.6-stable_mono_linux_arm64/Godot_v4.6-stable_mono_linux.arm64
+
+dotnet build game/TPWPS2Viewer.csproj
+dotnet build tools/TPW.PS2.ParkSimAudit/TPW.PS2.ParkSimAudit.csproj
+dotnet run --no-build --project tools/TPW.PS2.ParkSimAudit -- "$DISC" JUNGLE --sideshow-presentation-only
+PYTHONPATH=tools:launcher python3 -m unittest discover -s tools -p 'test_*.py'
+
+# New output directories must be outside Git. All eight parks, exact map witnesses.
+python3 tools/viewer_matrix.py --disc "$DISC" --godot "$GODOT"   --out /tmp/sideshow-viewer-NEW --scenes sideshow-presentation --timeout 105
+python3 tools/audit_matrix.py --disc "$DISC"   --out /tmp/sideshow-core-NEW --worlds JUNGLE --terrains 1
+
+# Direct optional capture on an owned rendering display. No --shot= alternate startup.
+DISPLAY=:114 "$GODOT" --path game --resolution 640x360   --rendering-method gl_compatibility --audio-driver Dummy   res://tests/SideshowPresentationSmoke.tscn -- --disc="$DISC" --map=JUNGLE   --mode=park --shotdir=/tmp/sideshow-shots-NEW
+```
+
+No assets are extracted. Local evidence logs/manifests are under
+`/tmp/tpw-sideshow-winners-*`, including the six mutant JSON summaries, actual
+missing-family control, and the final audio-cleanup viewer matrix.
+
+## Remaining scope limits
+
+Native spinner limits1..1000 were read but NOT changed by this presentation slice;
+the existing port's0 floor/uncapped upper bound remains a separate discrepancy.
+The1->0 GUI transition tests that existing port behavior, not native bound parity.
+No loan/research UI, save/load, guest performance, model skinning or tour work is
+included. The eight registered cases are ONE selected scene across eight parks,
+not the entire viewer matrix, and not the full runtime/audit matrices.

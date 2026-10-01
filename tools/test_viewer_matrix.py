@@ -79,5 +79,25 @@ class Classify(unittest.TestCase):
         self.assertEqual(vm.classify('entrance', 'JUNGLE', 2, output(text))['status'], 'error_output')
 
 
+class SideshowPresentationRegression(unittest.TestCase):
+    def test_registered_fixture_and_independent_full_coverage_floor(self):
+        self.assertEqual(vm.SCENES['sideshow-presentation'],
+                         ('SideshowPresentationSmoke', 'SIDESHOW PRESENTATION SMOKE', 779))
+        self.assertNotIn('sideshow-presentation', vm.PARK_OPEN_SCENES)
+
+    def test_literal_complete_fixture_passes_and_missing_checks_do_not(self):
+        text = ('[map] loaded world=JUNGLE terrain=terrain_1.mps\n'
+                'SIDESHOW PRESENTATION SMOKE PASS checks=779; explicit unplaced integration fixtures')
+        self.assertEqual(vm.classify('sideshow-presentation','JUNGLE',1,output(text))['status'],'pass')
+        self.assertEqual(vm.classify('sideshow-presentation','JUNGLE',1,output(text.replace('checks=779','checks=778')))['status'],'missing_coverage')
+
+    def test_fixture_failure_is_not_hidden_by_exit_zero_or_another_scenes_pass(self):
+        text=good('sideshow-presentation','JUNGLE',1,checks=779)
+        self.assertEqual(vm.classify('sideshow-presentation','JUNGLE',1,
+            output(text+'\nSIDESHOW PRESENTATION SMOKE FAIL: fixed price arrows moved'))['status'],'error_output')
+        self.assertEqual(vm.classify('sideshow-presentation','JUNGLE',1,
+            output(good('management','JUNGLE',1,checks=779)))['status'],'missing_pass_witness')
+
+
 if __name__ == '__main__':
     unittest.main()

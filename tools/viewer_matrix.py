@@ -97,6 +97,11 @@ SCENES['management'] = ('ManagementSmoke', 'MANAGEMENT SMOKE', 17)
 # (48,48,48) centred on x 320, its inferred shadow and one framebuffer pixel. Every park runs the same 60; the floor
 # sits just under it. A statement of its own for the same merge reason.
 SCENES['advisor'] = ('AdvisorSmoke', 'ADVISOR SMOKE', 58)
+# Sideshow native presentation: explicit UNPLACED real-DBA fixtures, not a player build tour.
+# Positive/zero layouts, fixed authored controls despite flowing labels, canonical callbacks,
+# hidden-field guards and screen/subject/drag lifecycle. Receipts are draw arguments, not pixel review.
+SCENES['sideshow-presentation'] = ('SideshowPresentationSmoke', 'SIDESHOW PRESENTATION SMOKE', 779)
+
 
 
 def map_argument(world: str, terrain: int) -> str:

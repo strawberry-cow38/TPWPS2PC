@@ -129,6 +129,12 @@ if (args.Contains("--research-only"))
     Console.WriteLine(bad==0 ? "PASS research: the catalogue, a fresh park, the rows, a project to completion and an upgrade" : $"FAIL: {bad}");
     return bad==0?0:1;
 }
+if (args.Contains("--sideshow-presentation-only"))
+{
+    SideshowPresentationChecks.Run(disc, Check);
+    Console.WriteLine(bad == 0 ? "PASS sideshow presentation: canonical rows, raw prize visibility, authored geometry and native branch (explicit core fixtures)" : $"FAIL: {bad}");
+    return bad == 0 ? 0 : 1;
+}
 if (args.Contains("--loans-only"))
 {
     LoanChecks.Run(disc, Check);
@@ -756,6 +762,7 @@ MusicChecks.Run(disc, Check);
 ParkStatsChecks.Run(disc, Check);
 LoanChecks.Run(disc, Check);
 ResearchChecks.Run(disc, Check);
+SideshowPresentationChecks.Run(disc, Check);
 ManagementChecks.Run(disc, terrain, Wad("DATA"), wad, world, Check);
 AdvisorChecks.Run(disc, terrain, Wad("DATA"), wad, world, Check);
 Check(looEntry.Entry != null, $"the world ships a lavatory to exercise ({looEntry.Entry?.Path ?? "none found"})");

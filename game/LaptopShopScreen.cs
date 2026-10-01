@@ -310,6 +310,7 @@ public sealed partial class LaptopShopScreen : Control
     // queued draw; ordinary same-subject slider refreshes leave unchanged geometry usable.
     void ClearHitboxes()
     {
+        _rowDraws.Clear();
         _sliderRects.Clear(); _shopSliders.Clear(); _rowArrows.Clear(); _specRows.Clear();
         _pageArrows = new Rect2(); _shopPriceArrows = new Rect2();
         _yearArrows = new Rect2(); _yearBand = new Rect2();
@@ -1506,6 +1507,7 @@ public sealed partial class LaptopShopScreen : Control
             // canonical grid position when there is no label slot; authored elements never move.
             int labelSlot = presentation.LabelSlot ?? i;
             var (text, fraction) = i < _cells.Count ? _cells[i] : (null, 0);
+            TraceRow(i, row.TextId, text, fraction);
 
             // ⭐ A ROW CAN OWN ITS LABEL'S ELEMENT, and then it sits AT that element and does not
             // step at all. Game Options is why: its two sliders are labelled at `MusicSliderText`
@@ -1546,8 +1548,12 @@ public sealed partial class LaptopShopScreen : Control
 
             string label = Row(row.TextId);
             if (presentation.LabelSlot != null && labels is { } l && label != null)
-                DrawRun(label, At(l) + new Vector2(0, dy), s,
+            {
+                var labelAt = At(l) + new Vector2(0, dy);
+                TraceLabel(i, labelAt);
+                DrawRun(label, labelAt, s,
                         _yearSpan != null && GraphCursor == i + 1 || i == HighlightRow ? Of(ShopScreen.Highlight) : Of(ShopScreen.Label), l.Justify);
+            }
 
             // ⭐ A VISIBLE LABEL HAS A CLICKABLE BAND. Only some do anything -- the Upgrades row
             // asks for an upgrade -- and the CALLER decides which canonical rows act. Hiding a
@@ -1569,8 +1575,8 @@ public sealed partial class LaptopShopScreen : Control
                 var wat = At(w) + new Vector2(0, _spec.WidgetStep * i * s);
                 var rect = new Rect2(wat, new Vector2(w.Width, w.Height) * s);
                 if (row.Kind == LaptopRowKind.Bar)
-                    DrawBar(rect, fraction, s, _barTints != null && i < _barTints.Count ? _barTints[i] : null);
-                else { _sliderRects[i] = rect; DrawSlider(rect, fraction, s, selected: _dragSlider == i); }
+                    DrawRowBar(i, rect, fraction, s, _barTints != null && i < _barTints.Count ? _barTints[i] : null);
+                else { _sliderRects[i] = rect; DrawRowSlider(i, rect, fraction, s, selected: _dragSlider == i); }
             }
             // Widget, arrow and value visibility are independent. Research, for example, carries
             // text beside a bar; hiding that bar must not implicitly suppress its text or arrows.
@@ -1592,6 +1598,7 @@ public sealed partial class LaptopShopScreen : Control
                 var size = new Vector2(LaptopArrows.NativeWidth, LaptopArrows.NativeHeight) * s;
                 var arect = new Rect2(At(arrow) - new Vector2(0, size.Y / 2f), size);
                 _rowArrows[i] = arect;
+                TraceArrows(i, arect);
                 DrawTextureRect(_arrows, arect, false, want);
             }
 
@@ -1610,7 +1617,7 @@ public sealed partial class LaptopShopScreen : Control
             // column -- five pixels below their own labels.
             if (_spec.ValueOnWidgetRow && values is { } vw && row.Element != null
                 && layout[row.Element] is { } welem)
-                DrawRun(text,
+                DrawRowValue(i, text,
                         new Vector2(At(vw).X, At(welem).Y + _spec.WidgetStep * i * s),
                         s, ValueTintFor(i), vw.Justify);
             // A row with its own value element uses it; otherwise the shared value column, at the
@@ -1618,7 +1625,7 @@ public sealed partial class LaptopShopScreen : Control
             else if (row.Element != null && layout[row.Element] is { } own)
                 // ⚠ Column only where the screen says so -- All Staff's value elements carry a
                 // row that the console never reads.
-                DrawRun(text,
+                DrawRowValue(i, text,
                         _spec.ValueColumnOnly && labels is { } lb
                           ? new Vector2(At(own).X, At(lb).Y + dy) : At(own),
                         s, ValueTint, own.Justify);
@@ -1627,7 +1634,7 @@ public sealed partial class LaptopShopScreen : Control
                 // elements share a row (both 175) so either reading works; on the ride they do
                 // NOT -- its value elements sit at 338/400/436 against labels from 115 -- and
                 // taking the value element's row as a baseline threw the text off the screen.
-                DrawRun(text, new Vector2(At(v).X, At(lab).Y + dy), s, ValueTintFor(i), v.Justify);
+                DrawRowValue(i, text, new Vector2(At(v).X, At(lab).Y + dy), s, ValueTintFor(i), v.Justify);
         }
     }
 
@@ -1810,6 +1817,7 @@ public sealed partial class LaptopShopScreen : Control
 
     public override void _Draw()
     {
+        _rowDraws.Clear();
         if (!Open) return;
         // ⚠⚠ EVERY HIT-TEST RECT IS CLEARED HERE, ONCE, BEFORE ANY OF THEM IS DRAWN.
         //

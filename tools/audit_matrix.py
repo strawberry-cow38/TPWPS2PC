@@ -211,6 +211,15 @@ REQUIRED_WITNESSES += (
     'ok   advisor research: max tier2 even on status0 duplicate',
 )
 
+# Sideshow presentation: disc-backed canonical/visibility fixtures are their own family;
+# renderer/callback/lifecycle evidence is provided separately by SideshowPresentationSmoke.
+REQUIRED_CHECKS.update({'sideshow_presentation': 92})
+REQUIRED_WITNESSES += (
+    'ok   sideshow presentation: explicit core fixture: raw prize 0: explicit label-grid fixture matches literal native Y slots',
+    'ok   sideshow presentation: explicit core fixture: native 0x1D8490: beq v0,zero to0x1D84B0',
+    'ok   sideshow presentation: explicit core fixture: native 0x1D84AC: addiu row,row,32',
+)
+
 
 def classify(world: str, raw_exit: int | None, text: str, *, timed_out: bool = False,
              truncated: bool = False, launch_error: str | None = None, terrain: int | None = None) -> dict:
