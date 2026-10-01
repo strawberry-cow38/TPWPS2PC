@@ -3314,7 +3314,19 @@ public partial class Viewer : Node3D
         RegisterStandingService(ride, model.Root, _place.Turns);
         // ⭐ A tour ride flies a vehicle round itself; the .sam's SupplementalMeshes[0] says which,
         // and a ride without that field is not a tour ride and gets nothing. See Viewer.TourRides.cs.
-        SpawnTourVehicle(ride, _place.Def, Cell(ParkPaths.Centre(new ParkCell(cx, cy))));
+        // ⚠⚠ THE CENTRE COMES FROM THE STATION ITSELF, IN WORLD SPACE. Park space is NOT world
+        // space: `ParkPaths.Centre` answered (21.5, 0, +27.5) for a station standing at
+        // (20.9, 0, -26.9) -- park +Y is world **-Z** (the Z-negation this port has been bitten by
+        // before), and Y is sea level rather than the ground. So the bird flew a flawless circle
+        // around a point fifty-four cells away and off camera, which looks exactly like "it does
+        // not render".
+        //
+        // ⭐ Using the station's own DRAWN centre sidesteps both: it is already in world space, and
+        // it is the middle of the building rather than its anchor corner, which is what a ride
+        // circles. Nothing here has to know the park's frame at all.
+        var (slo, shi) = Park.DrawnBounds(model.Root, inParent: true);
+        SpawnTourVehicle(ride, _place.Def,
+            new Vector3((slo.X + shi.X) * 0.5f, model.Root.Position.Y, (slo.Z + shi.Z) * 0.5f), model.Root);
         _scripted.Add((ride, model, anim, -1, -1));
         if (mesh != null) _rideMeshes[id] = mesh;
         // ⭐⭐ AND ITS SOUNDS. The same EffectRequested the particles would use; the voice stands
@@ -7079,7 +7091,13 @@ public partial class Viewer : Node3D
         // fine and the category was wrong. Searching them all makes the flag mean what it says.
         int row = -1;
         string found = null;
-        foreach (var category in new[] { "Rides", "Tour Rides", "Track Rides", "Roller Coasters" })
+        // ⚠⚠ KIND NAMES, NOT THE DISPLAY NAMES. "Tour Rides" / "Track Rides" / "Roller Coasters"
+        // are what the menu SHOWS; `KindFromWord` resolves the folder spellings and the enum's own
+        // names, so those three parse as nothing and then fail the string compare too (the group
+        // key is `TourRide`, not `Tour Rides`). Passing the display names selected NOTHING out of
+        // 67 buildable things and read exactly like "the ride is missing" -- it was not, I was
+        // asking with the wrong word.
+        foreach (var category in new[] { "Rides", "TourRide", "TrackRide", "Coaster" })
         {
             ShowBuildCategory(category);
             for (int i = 0; i < _buildRows.Count && row < 0; i++)

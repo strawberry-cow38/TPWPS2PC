@@ -79,7 +79,7 @@ public partial class Viewer
     /// <summary>⭐ Called where a placed ride is registered. A ride with no
     /// `SupplementalMeshes[0]` is not a tour ride and silently gets nothing -- the field is the
     /// test, so no list of ride names is kept anywhere.</summary>
-    void SpawnTourVehicle(ParkRide ride, RideDefinition def, Vector3 centre)
+    void SpawnTourVehicle(ParkRide ride, RideDefinition def, Vector3 centre, Node3D station = null)
     {
         if (def == null || ride == null) return;
         if (!def.Fields.TryGetValue("SupplementalMeshes[0].FileName", out var raw)) return;
@@ -109,6 +109,16 @@ public partial class Viewer
         var v = new TourVehicle { Model = model, Centre = centre, Name = $"{ride.Name} {stem}" };
         PlaceTourVehicle(v);
         _tourVehicles.Add(v);
+        // ⚠ INSTRUMENT, after the first fix did not make it appear. "It spawned" and "it is on
+        // screen" are different claims and the log only supported the first one.
+        var (blo, bhi) = Park.DrawnBounds(model.Root, inParent: true);
+        GD.Print($"[tour] {ride.Name}: STATION at "
+               + $"{(station == null ? "(none)" : station.Position.Snapped(Vector3.One * 0.01f).ToString())}, "
+               + $"circle centre {centre.Snapped(Vector3.One * 0.01f)}");
+        GD.Print($"[tour] {ride.Name}: {stem} root at {model.Root.Position.Snapped(Vector3.One * 0.01f)} "
+               + $"scale {model.Root.Basis.Scale.Snapped(Vector3.One * 0.001f)} visible={model.Root.Visible} "
+               + $"parent={model.Root.GetParent()?.Name} frames={model.Frames} "
+               + $"drawn x {blo.X:F2}..{bhi.X:F2} y {blo.Y:F2}..{bhi.Y:F2} z {blo.Z:F2}..{bhi.Z:F2}");
         GD.Print($"[tour] {ride.Name}: flying {stem}.mps on a generated circle -- "
                + $"radius {TourRadiusUnits} units = {TourRadiusUnits * TourCellsPerRadiusUnit:F2} cells, "
                + $"lift {TourLiftCells:F3} cells, {TourTurnPerTick} angle units/tick "
