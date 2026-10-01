@@ -85,7 +85,7 @@ public static class IsolatedParticleSchedule
         }
 
         for (int i = 0; i < burst; i++) Birth(0);
-        Record(0, Phase.Spawn, 0, countdown, burst, 0);
+        Record(0, Phase.Spawn, 0, countdown, birthTicks.Count, 0);
         if (preParticleUpdates == 1)
         {
             int before = particles.Count;

@@ -149,7 +149,26 @@ dotnet run --project tools/TPW.PS2.ParkSimAudit -- "$DISC" --particle-emission-o
 ```
 
 The managed comparison is printed as the **function under test**, not frozen into a regression
-requiring the port to remain wrong. Full core matrices, compiled negative controls and an omitted-
-family control are still pending at this checkpoint. No renderer correction is shipped here.
+requiring the port to remain wrong. No renderer correction is shipped here. A final clean full
+core matrix is required for handoff; targeted compiled controls below have completed.
 No capture/savestate or actual native instruction execution was performed; code-derived ranges
 must not be reported as a measured hardware emission count.
+
+## Compiled controls, restored afterward
+
+Ten compiled audit-reference mutations were rejected: negative rates left unscaled(3 failing
+assertions), one-sided life RNG(2), zero-particle premature death(13), zero-emitter ineligibility(6),
+reversed quarters(2), ignored creation pre-age(5), countdown advancing while capped(19), per-birth
+cap clamp(1), burst clamp(1), and saturated rather than wrapping countdown(1).
+Sources were restored byte-for-byte and the audit rebuilt. Logs/JSON:
+`/tmp/tpw-emission-mutations-final-run.log`, `/tmp/tpw-emission-mutations.json`.
+
+The first burst-clamp mutation exposed a TEST defect: the spawn receipt reported the requested
+burst rather than the actual birth history, and its first oracle only checked that receipt.
+The receipt now records actual births; the oracle also checks actual birth ticks and live count.
+Rerunning all ten controls rejects the clamp. This was a reference/fixture correction, not a
+production behavior change, and the initially surviving mutant is not hidden from the record.
+
+Removing the actual default-family call, compiling, and running JUNGLE/1 leaves raw exit0/PASS;
+the matrix rejects it as missing_coverage with particle_emission count0. The call was restored
+exactly and Release rebuilt (`/tmp/tpw-emission-omitted-matrix`).

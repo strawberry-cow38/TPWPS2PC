@@ -88,7 +88,9 @@ static class ParticleEmissionChecks
         Check(overshoot.Receipts.Single(r => r.Tick == 1).LiveAfterParticles == 3,
             "declared positive-rate counterexample: native checks cap ONCE, not per birth");
         var burst = IsolatedParticleSchedule.Run(1,false,3,1,0,0,0,0,0,false,_ => 10,1);
-        Check(burst.Receipts[0].Births == 3,"declared burst counterexample: MaxLive does not clamp initial burst");
+        Check(burst.Receipts[0].Births == 3 && burst.Receipts[0].LiveAfterParticles == 3
+            && burst.BirthTicks.SequenceEqual(new[] {0,0,0}),
+            "declared burst counterexample: MaxLive does not clamp initial burst");
         var wrapped = IsolatedParticleSchedule.Run(1,false,0,1,short.MinValue,-2,-2,-2,-2,false,_ => 10,3);
         Check(wrapped.BirthTicks.Count == 0 && wrapped.Countdown == short.MaxValue,
             "declared countdown wraps as signed16 before positivity check");
