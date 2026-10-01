@@ -447,6 +447,8 @@ public partial class Viewer : Node3D
             else if (a == "--music-ps2") _musicPs2 = true;
             else if (a == "--graph-demo") _graphDemo = true;
             else if (a == "--stats-demo") _statsDemo = true;
+            else if (a == "--all-researched") _allResearched = true;
+            else if (a.StartsWith("--take-loan=")) _takeLoans.AddRange(a["--take-loan=".Length..].Split(',').Select(int.Parse));
             else if (a.StartsWith("--delete-test=")) _deleteTest = a["--delete-test=".Length..];
             // ⭐ `--benchmark=<seconds>`: measure frame time and what is accumulating, then quit.
             else if (a == "--alloc-probe") _allocProbe = true;
@@ -1962,7 +1964,8 @@ public partial class Viewer : Node3D
                     data = new WadArchive(_lib.ReadDisc(f));
             var dba = data?.Entries.FirstOrDefault(e => e.Path.Equals("/arsdb.dba", StringComparison.OrdinalIgnoreCase));
             if (dba == null) { GD.Print("[park] compiled records: /arsdb.dba MISSING -- authored .sam values stand"); return; }
-            var compiled = new CompiledAssets(new AssetResourceDatabase(data.Read(dba)), _text);
+            _arsDb = new AssetResourceDatabase(data.Read(dba));
+            var compiled = new CompiledAssets(_arsDb, _text);
             compiled.Attach(_cat.All, out string report);
             GD.Print("[park] compiled records: " + report);
         }
@@ -2194,7 +2197,7 @@ public partial class Viewer : Node3D
         ResetGuests();
         _walkGrid = null;
         // ⭐ AND THE SIM WITH IT: it was made on that grid, and its rides stood on that park.
-        _sim = null; _parkStats = null; _scripted.Clear(); _rideMeshes.Clear(); _shotWound = false; ClearTrackViews(); ClearCoasterViews(); _placedHeight.Clear(); ClearHoardings(); ClearTourVehicles();
+        _sim = null; _parkStats = null; _researchDb = null; _researchPickRow = -1; _scripted.Clear(); _rideMeshes.Clear(); _shotWound = false; ClearTrackViews(); ClearCoasterViews(); _placedHeight.Clear(); ClearHoardings(); ClearTourVehicles();
         // ⭐⭐ AND THE SOUND, FOR THE SAME REASON THE GRID IS RESET TWO LINES UP. `_sounds` is
         // built `??=` from `SoundCatalogue(disc, world, 1)` and `(.., 2)` -- the CURRENT world's
         // event maps -- so keeping it across a world change resolves the new park's cues against
@@ -3862,8 +3865,7 @@ public partial class Viewer : Node3D
                 // ⭐ People Visited is the CUMULATIVE admissions counter `stats+0x20` (once per guest let through
                 // the gate, 0x210C98), not the headcount -- ParkStatistics.PeopleVisited, bumped where the native
                 // entrance accepts a guest. Ticket Price is the gate fee, `$` + commas in whole dollars
-                // (`0x142908`). ⚠ The spinner that changes it (`this+0x754`) is not ported: the price shows, it
-                // does not yet move.
+                // (`0x142908`), stepped by its spinner (`this+0x754`, OnRowNudge).
                 var thoughts = _statsDemo ? DemoThoughts : DominantThoughts();
                 var vcells = new List<(string, int)>
                 {
@@ -3882,24 +3884,49 @@ public partial class Viewer : Node3D
                 li = ((li % Lender.All.Length) + Lender.All.Length) % Lender.All.Length;  // wraps
                 _loanLender = li;
                 var lend = Lender.All[li];
+                var loan = _sim?.Finances.Loans[li];
                 var (ltotal, lrepay) = lend.DefaultQuote();
                 var lcells = new List<(string, int)>
                 {
                     (lend.Name, 0),
                     (Money.Display(lend.MaxLoan), 0),
                     ($"{lend.Rate}%", 0),
-                    ($"{lend.MaxTermYears}yrs", 0),
+                    (Years(lend.MaxTermYears), 0),
                     (Money.Display(lrepay), 0),
                     (Money.Display(ltotal), 0),
                 };
                 // ⚠ The lender's name is ALSO the title here: the page draws it at (45, 115) in
-                // yellow, which is this screen's TitleElement.
-                _shopPanel.ShowScreen(LaptopScreen.NewLoan, lend.Name, lcells);
+                // yellow, which is this screen's TitleElement. ⭐ A lender already lent shows only
+                // "Loan Taken" under it (step 5 of `0x136018`).
+                if (loan is { Taken: true }) _shopPanel.ShowScreen(LaptopScreen.NewLoanTaken, lend.Name, Blank(1));
+                else _shopPanel.ShowScreen(LaptopScreen.NewLoan, lend.Name, lcells);
                 ClearLaptopModel();
                 RefreshLaptopBalance();
                 Status($"{lend.Name} -- up to {Money.Display(lend.MaxLoan)} at {lend.Rate}% over "
                      + $"{lend.MaxTermYears}yrs; {Money.Display(lrepay)}/month, "
                      + $"{Money.Display(ltotal)} total. Left/Right for another lender");
+                break;
+            }
+            // ⭐⭐ EXISTING LOANS (finance page 4) -- the taken records, one at a time (ParkLoan, `0x1359F0`).
+            case "existingloans":
+            {
+                var taken = _sim?.Finances.Loans.Where(l => l.Taken).ToList() ?? new List<ParkLoan>();
+                if (taken.Count > 0) _existingLoan = Math.Clamp(_existingLoan, 0, taken.Count - 1);
+                var el = taken.Count == 0 ? null : taken[_existingLoan];
+                // Term in YEARS (`+8 / 12`, `0x142A50`), Remaining in MONTHS (`0x142AC0`). ⚠⚠ Interest WITHOUT its
+                // `%`: this page's value column hands the formatted "20%" to vsprintf AS THE FORMAT, and a `%`
+                // followed by the terminator prints nothing (`0x13866C` -> `0x2A035C`). New Loan, drawn by another
+                // routine, keeps it.
+                _shopPanel.ShowLoans(new LaptopShopScreen.LoansPage(el?.Lender.Name, el == null ? Array.Empty<string>() : new[]
+                {
+                    Money.Display(el.Amount), Years(el.TermMonths / 12), el.Lender.Rate.ToString(),
+                    Money.Display(el.Repayment), Months(el.MonthsRemaining), Money.Display(el.Outstanding),
+                }));
+                ClearLaptopModel();
+                RefreshLaptopBalance();
+                Status(el == null ? "existing loans -- none taken"
+                    : $"{el.Lender.Name}: {Money.Display(el.Outstanding)} outstanding over {el.MonthsRemaining} months"
+                    + (taken.Count > 1 ? " -- Up/Down for the next loan" : ""));
                 break;
             }
             // ⭐⭐ THE BALANCE SHEET (menu id 5). Nothing on it is clickable; it is a readout.
@@ -3922,9 +3949,9 @@ public partial class Viewer : Node3D
                     (Money.Format(shop), 0),
                     (Money.Format(side), 0),
                     (Money.Format(cashIn), 0),
-                    // ⚠ No loan slots in this port, so outstanding debt is genuinely zero here --
-                    // a real figure, not a missing one.
-                    (Money.Format(0), 0),
+                    // ⭐ Loans: the debt still owed, interest included (`0x100E88`, Σ outstanding). Repayments are
+                    // in Cash Out, and so in Purchases below.
+                    (Money.Display(bf.LoansOutstanding), 0),
                     (Money.Format(wages), 0),
                     // ⚠ Purchases is COMPUTED by the draw, not stored: Cash Out - Staff Wages.
                     (Money.Format(cashOut - wages), 0),
@@ -3938,14 +3965,11 @@ public partial class Viewer : Node3D
             }
             // ⭐⭐ THE FINANCIAL INFORMATION MENU (id 4).
             //
-            // ⚠ Existing Loans is CONDITIONAL on a loan being taken, and this port has no loan
-            // slots at all -- so the row is absent, which is what the console does with no loans
-            // rather than a difference of ours.
+            // ⭐ Existing Loans is CONDITIONAL on a loan being taken (`0x1340C0`), and once there it stays.
             case "financialinfo":
             {
                 var fnames = new List<string>();
-                foreach (var e in LaptopScreen.FinanceMenu)
-                    if (!e.NeedsLoan) fnames.Add(TextRow(e.TextId));
+                foreach (var e in FinanceMenuRows()) fnames.Add(TextRow(e.TextId));
                 _shopPanel.ShowMenu(fnames, 0, "main_financialinfo.sce");
                 ClearLaptopModel();
                 RefreshLaptopBalance();
@@ -4003,8 +4027,7 @@ public partial class Viewer : Node3D
             // ⭐⭐ PARK STATISTICS / Statistics (id 24) -- the third screen on the graph widget.
             case "statistics":
             {
-                int spick = Math.Clamp(int.TryParse(arg, out var sp) ? sp : 0, 0,
-                                       LaptopScreen.ParkStatistics.Rows.Count - 1);
+                int spick = GraphPick("statistics", arg, LaptopScreen.ParkStatistics.Rows.Count);
                 _graphRow = spick;
                 var srgb = LaptopScreen.ParkStatsSeriesRgb[spick];
                 // ⭐ The five series are the stats rings `0x16B478` records at every month end (ParkStatistics):
@@ -4014,7 +4037,7 @@ public partial class Viewer : Node3D
                 {
                     0 => st.People, 1 => st.Arrival, 2 => st.Happiness, 3 => st.TimeInPark, _ => st.Rating,
                 };
-                var sbuckets = LaptopGraphData.BuildParkStats(sget, st.Months, _graphYears, spick, out int smax);
+                var sbuckets = LaptopGraphData.BuildParkStats(sget, st.Months, _parkGraphYears, spick, out int smax);
                 // `GraphValue`: the series at k = 0, which reads LAST month-end's recording, formatted per row --
                 // int, int, int + "%", int + text 221 "d", int + "%" (graph-widget.md §4).
                 int now = sget(0);
@@ -4026,8 +4049,9 @@ public partial class Viewer : Node3D
                 _shopPanel.ShowScreen(LaptopScreen.ParkStatistics, "",
                     Blank(LaptopScreen.ParkStatistics.Rows.Count),
                     graph: new LaptopShopScreen.GraphSeries(
-                        sbuckets, 0, smax, Color.Color8(srgb.R, srgb.G, srgb.B), _graphYears),
-                    graphReadout: (TextRow(LaptopScreen.ParkStatistics.Rows[spick].TextId), sval));
+                        sbuckets, 0, smax, Color.Color8(srgb.R, srgb.G, srgb.B), _parkGraphYears),
+                    graphReadout: (TextRow(LaptopScreen.ParkStatistics.Rows[spick].TextId), sval),
+                    yearSpan: _parkGraphYears);
                 ClearLaptopModel();
                 RefreshLaptopBalance();
                 Status($"{TextRow(LaptopScreen.ParkStatistics.Rows[spick].TextId)}: {sval} ({st.Months} months recorded)");
@@ -4043,24 +4067,24 @@ public partial class Viewer : Node3D
                 var ofin = _sim?.Finances;
                 if (ofin == null)
                 { _laptopBack.RemoveAt(_laptopBack.Count - 1); Status("no park is running yet"); ShowLaptopLevel(); return; }
-                int opick = Math.Clamp(int.TryParse(arg, out var op) ? op : 0, 0,
-                                       LaptopScreen.OverallStats.Rows.Count - 1);
+                int opick = GraphPick("overallstats", arg, LaptopScreen.OverallStats.Rows.Count);
                 _graphRow = opick;
                 var orgb = LaptopScreen.OverallSeriesRgb[opick];
                 // ⭐ Park Value is `0x101288`: the month-end ring `park+0x107c` (ParkFinances.ValueInPeriod, filed
                 // by the month end from 0x1011C8), and like the balance's getter it answers the LIVE value at k = 0.
                 int liveValue = ParkValueTenths();
                 Func<int, int> oget = opick == 0 ? ofin.BalanceInPeriod : (k => k == 0 ? liveValue : ofin.ValueInPeriod(k));
-                var obuckets = LaptopGraphData.Build(oget, ofin.PeriodCount, _graphYears, out int omax);
+                var obuckets = LaptopGraphData.Build(oget, ofin.PeriodCount, _financeGraphYears, out int omax);
                 _shopPanel.GraphPanel ??= UiPanel.Load(_lib);
                 _shopPanel.ShowScreen(LaptopScreen.OverallStats, "",
                     Blank(LaptopScreen.OverallStats.Rows.Count),
                     graph: new LaptopShopScreen.GraphSeries(
-                        obuckets, 0, omax, Color.Color8(orgb.R, orgb.G, orgb.B), _graphYears));
+                        obuckets, 0, omax, Color.Color8(orgb.R, orgb.G, orgb.B), _financeGraphYears),
+                    yearSpan: _financeGraphYears);
                 ClearLaptopModel();
                 RefreshLaptopBalance();
                 Status($"{TextRow(LaptopScreen.OverallStats.Rows[opick].TextId)} -- "
-                     + $"{_graphYears}y, peak {omax}");
+                     + $"{_financeGraphYears}y, peak {omax}");
                 break;
             }
             // ⭐⭐ FINANCE STATISTICS (menu id 21) -- the first graph screen.
@@ -4072,8 +4096,7 @@ public partial class Viewer : Node3D
                 var fin = _sim?.Finances;
                 if (fin == null)
                 { _laptopBack.RemoveAt(_laptopBack.Count - 1); Status("no park is running yet"); ShowLaptopLevel(); return; }
-                int pick = Math.Clamp(int.TryParse(arg, out var gp) ? gp : 0, 0,
-                                      LaptopScreen.FinanceStats.Rows.Count - 1);
+                int pick = GraphPick("financestats", arg, LaptopScreen.FinanceStats.Rows.Count);
                 _graphRow = pick;
                 var rgb = LaptopScreen.FinanceSeriesRgb[pick];
                 int[] buckets; int gmax;
@@ -4089,16 +4112,17 @@ public partial class Viewer : Node3D
                     gmax = (int)(100 * 1.1001f);
                 }
                 else buckets = LaptopGraphData.Build(FinanceSeries(fin, pick),
-                                                     fin.PeriodCount, _graphYears, out gmax);
+                                                     fin.PeriodCount, _financeGraphYears, out gmax);
                 _shopPanel.GraphPanel ??= UiPanel.Load(_lib);
                 _shopPanel.ShowScreen(LaptopScreen.FinanceStats, "",
                     Blank(LaptopScreen.FinanceStats.Rows.Count),
                     graph: new LaptopShopScreen.GraphSeries(
-                        buckets, 0, gmax, Color.Color8(rgb.R, rgb.G, rgb.B), _graphYears));
+                        buckets, 0, gmax, Color.Color8(rgb.R, rgb.G, rgb.B), _financeGraphYears),
+                    yearSpan: _financeGraphYears);
                 ClearLaptopModel();
                 RefreshLaptopBalance();
                 Status($"{TextRow(LaptopScreen.FinanceStats.Rows[pick].TextId)} -- "
-                     + $"{_graphYears}y, {fin.PeriodCount} months on the books, peak {gmax}");
+                     + $"{_financeGraphYears}y, {fin.PeriodCount} months on the books, peak {gmax}");
                 break;
             }
             // ⭐⭐ RESEARCH (menu id 9). The five rows ARE the manager's five slots.
@@ -4113,16 +4137,17 @@ public partial class Viewer : Node3D
                 if (mgr == null)
                 { _laptopBack.RemoveAt(_laptopBack.Count - 1); Status("no park is running yet"); ShowLaptopLevel(); return; }
                 mgr.OpenResearchScreen();
+                AttachResearch();
                 var rcells = new List<(string, int)>();
                 var rtints = new List<Color?>();
                 foreach (var slot in mgr.Slots)
                 {
-                    // ⚠ An idle slot reads "Nothing" and sits at zero -- and with the research
-                    // DATABASE not ported yet every slot is idle, so this screen is honestly
-                    // empty rather than faked full. It comes alive when the database lands.
+                    // ⭐ An idle slot reads "Nothing" at zero in red, an active one its item's name and percent in
+                    // green (0x1B5920). ⭐ The row being PICKED shows the highlighted candidate instead (mode 2).
                     bool on = slot.Active;
-                    rcells.Add((on ? ResearchItemName(slot) : TextRow(LaptopScreen.ResearchNothingTextId),
-                                on ? (int)slot.Percent : 0));
+                    string text = slot.Slot == _researchPickRow ? ResearchPickText()
+                                : on ? ResearchItemName(slot) : TextRow(LaptopScreen.ResearchNothingTextId);
+                    rcells.Add((text, on ? (int)slot.Percent : 0));
                     rtints.Add(on ? ResearchActive : ResearchIdle);
                 }
                 // ⚠ NO TITLE DRAWN. The class registers one (1013 "Research") but the scene authors no
@@ -4131,9 +4156,16 @@ public partial class Viewer : Node3D
                 // Where the console's base class puts a title with no authored frame is not read
                 // yet; an empty string is honest until it is.
                 _shopPanel.ShowScreen(LaptopScreen.Research, "", rcells, barTints: rtints);
+                _shopPanel.WheelPages = _researchPickRow >= 0;
+                _shopPanel.HighlightRow = _researchPickRow;
                 ClearLaptopModel();
                 RefreshLaptopBalance();
-                Status($"research -- {mgr.ActiveCount} of {ResearchManager.SlotCount} slots running");
+                Status(_researchPickRow >= 0
+                    ? $"research {TextRow(LaptopScreen.Research.Rows[_researchPickRow].TextId)}: {ResearchPickText()} "
+                      + $"({Math.Min(_researchPickSel + 1, _researchPick.Count + 1)} of {_researchPick.Count + 1}) -- "
+                      + "wheel or Up/Down to change, click the row to choose, Back to cancel"
+                    : $"research -- {mgr.ActiveCount} of {ResearchManager.SlotCount} slots running; click a row to pick its project"
+                      + (ResearchDb == null ? " (no research database for this park)" : ""));
                 break;
             }
             // ⭐⭐ GAME OPTIONS (menu id 1). Six rows, NO title, and not a Single-item screen --
@@ -4304,10 +4336,85 @@ public partial class Viewer : Node3D
     /// <summary>Which series a graph screen is showing, and the span the year selector holds.
     /// ⚠ The span is one of {1, 2, 6, 12} years (wrapping, initial 1); the selector itself is not
     /// wired yet, so this stays at the console's initial value.</summary>
-    int _graphRow, _graphYears = 1;
+    int _graphRow;
+
+    /// <summary>⭐ The graph pages' state lives on their ROOT, as the console's does: one year selector for the two
+    /// finance graphs (`+0x8d8`, value `+0x940`) and one for Park Statistics (`+0x630`, `+0x698`), each starting at
+    /// 1 (index 0 of 1, 2, 6, 12), and each page's series toggles (`+0x990[2]`, `+0x998[5]`, `+0x9e0[5]`, the
+    /// first on at the ctor). Entering the Finance or Park Statistics menu from the laptop's main menu builds the
+    /// root again, so that is where they reset; moving between its pages keeps them.</summary>
+    int _financeGraphYears = 1, _parkGraphYears = 1;
+    readonly Dictionary<string, int> _graphPick = new();
+    static readonly int[] GraphYearOptions = { 1, 2, 6, 12 };
+
+    /// <summary>The series a graph page shows: a harness's explicit `arg` sets it, otherwise the root keeps it.</summary>
+    int GraphPick(string kind, string arg, int count)
+    {
+        if (int.TryParse(arg, out int a)) _graphPick[kind] = a;
+        return Math.Clamp(_graphPick.GetValueOrDefault(kind), 0, count - 1);
+    }
+
+    static bool IsGraphPage(string kind) => kind is "statistics" or "financestats" or "overallstats";
+
+    /// <summary>⭐ An item row on a graph page (`0x185998` / `0x134EC0`): clear every toggle, then flip the
+    /// cursor's. ⚠⚠ So the chosen series is ALWAYS shown -- the flip lands on a toggle just zeroed (MIPS
+    /// `0x185AF8..0x185B28`: five `sw zero`, then `lw`/`xori 1`/`sw`). Choosing the series already on shows it
+    /// again; nothing hides the graph. graph-widget.md said otherwise and was corrected against this.</summary>
+    void GraphItemChosen(string kind, int row)
+    {
+        _graphPick[kind] = row;
+        _shopPanel.GraphCursor = row + 1;
+        _laptopBack[^1] = (kind, null);
+        ShowLaptopLevel();
+    }
+
+    /// <summary>The year selector's arrows (`0x207F50`): step 1, 2, 6, 12 with wrap, then rebuild that root's graph.</summary>
+    void OnGraphYearNudge(int by)
+    {
+        if (_laptopBack.Count == 0 || !IsGraphPage(_laptopBack[^1].Kind)) return;
+        bool park = _laptopBack[^1].Kind == "statistics";
+        int now = park ? _parkGraphYears : _financeGraphYears;
+        int i = Math.Max(0, Array.IndexOf(GraphYearOptions, now));
+        int next = GraphYearOptions[(i + by % GraphYearOptions.Length + GraphYearOptions.Length) % GraphYearOptions.Length];
+        if (park) _parkGraphYears = next; else _financeGraphYears = next;
+        ShowLaptopLevel();
+    }
 
     /// <summary>Which lender New Loan is showing (0..3), stepped by its spinner.</summary>
     int _loanLender;
+    /// <summary>`--take-loan=N[,M]`: harness only -- the loan slots the push harness takes before it shows a page.</summary>
+    readonly List<int> _takeLoans = new();
+    /// <summary>The selected record on Existing Loans, an index into the TAKEN ones. ⚠ Reset to 0 whenever the
+    /// page is entered from the menu -- the list refills when the highlight reaches the row and every add sets the
+    /// index to 0 (`0x134760`, `0x15C550`).</summary>
+    int _existingLoan;
+
+    /// <summary>The Financial Information menu as it stands: the four fixed rows, plus Existing Loans once any loan
+    /// has been taken (`0x1340C0`).</summary>
+    List<(int TextId, string Opens, bool NeedsLoan)> FinanceMenuRows()
+    {
+        bool loans = _sim?.Finances.AnyLoanTaken == true;
+        return LaptopScreen.FinanceMenu.Where(e => !e.NeedsLoan || loans).ToList();
+    }
+
+    /// <summary>`0x142A50`: digits then 624 "yr" for one, 794 "yrs" otherwise, no space.</summary>
+    string Years(int n) => $"{n}{TextRow(n == 1 ? 624 : 794)}";
+    /// <summary>`0x142AC0`: digits then 10 "mnth" for one, 349 "mnths" otherwise.</summary>
+    string Months(int n) => $"{n}{TextRow(n == 1 ? 10 : 349)}";
+
+    /// <summary>⭐ Taking the loan on New Loan (`0x135D98` -> `0x100CA8`): the whole offer, credited at once. The
+    /// only refusal is a lender already lent, and it is silent; "APPLIED FOR LOAN" is an empty function.</summary>
+    void TakeLoanOnPage()
+    {
+        if (_sim?.Finances is not { } fin) return;
+        var lend = Lender.All[_loanLender];
+        if (!fin.TakeLoan(_loanLender)) { Status($"{lend.Name} has already lent to this park"); return; }
+        GD.Print($"[loan] taken from {lend.Name}: {Money.Display(fin.Loans[_loanLender].Amount)}, "
+               + $"{Money.Display(fin.Loans[_loanLender].Repayment)}/month over {fin.Loans[_loanLender].TermMonths} months "
+               + $"(balance now {Money.Format(fin.Balance)})");
+        ShowLaptopLevel();
+        Status($"loan taken: {Money.Display(fin.Loans[_loanLender].Amount)} from {lend.Name}");
+    }
 
     /// <summary>Which add-on the Addons page is showing, paged by list B.</summary>
     int _addonRow;
@@ -4364,7 +4471,7 @@ public partial class Viewer : Node3D
     /// can only say WHICH category is running. Deliberately not faked with a plausible name.
     /// </summary>
     string ResearchItemName(ResearchProject slot) =>
-        slot.Category >= 0 ? $"#{slot.Category}:{slot.Item}" : TextRow(LaptopScreen.ResearchNothingTextId);
+        slot.Category >= 0 && slot.Item >= 0 ? ResearchName(slot.Category, slot.Item) : TextRow(LaptopScreen.ResearchNothingTextId);
 
     /// <summary>A text row as the laptop's own language renders it. ⚠ Named `TextRow` because
     /// `Row(int)` is already taken by the grid, and it returns an int.</summary>
@@ -4602,16 +4709,19 @@ public partial class Viewer : Node3D
     /// Takings 106, Profit 986, Total Profit 365, State of Repair 128, Remaining Life 636, Excitement 857/907,
     /// Cleanliness 269.
     ///
-    /// ⚠⚠ EVERYTHING NOT LISTED RETURNS NOTHING ON PURPOSE. Satisfaction (451, 537) is drawn by these screens
-    /// and NOT tracked by this port's sim -- the shop screen's own code says so ("decoded but not yet tracked").
-    /// ⚠ And Users on rides and toilets reads `Customers`, which only a SALE moves (`Book`), so it stays 0 there:
-    /// which counter the console's ride list reads is not traced, and counting boardings into the shop's field
-    /// would be an invention. A text row answers null so nothing is drawn, and a bar answers 0 so it reads empty.</summary>
+    /// ⭐ Users / Customers is the shared use counter `obj+0x18` (ParkRide.Customers), which every kind now moves at
+    /// its console trigger (findings/ride-users.md §2), and Satisfaction (451, 537) the running mean.
+    /// ⚠ Anything not listed returns nothing on purpose: a text row answers null so nothing is drawn, and a bar
+    /// answers 0 so it reads empty.</summary>
     (string, int) LaptopInfoCell(LaptopRow row, ParkRide r) => row.TextId switch
     {
         771 or 691 or 488 => (r.Customers.ToString(), 0),
-        106               => (Money.Format(r.Takings), 0),
-        986 or 365        => (Money.Format(r.Profit), 0),
+        // ⚠ WHOLE DOLLARS: `0x142908` formats its argument as dollars (a loan's $100,000 goes in as 100000), and the
+        // takings are summed prices. `Money.Format` divided them by ten -- the list read a tenth of the shop's own page.
+        106               => (Money.Display(r.Takings), 0),
+        986 or 365        => (Money.Display(r.Profit), 0),
+        // ⭐ Satisfaction on All Shops (451) and All Sideshows (537): the running mean `0x1D1E00` / `0x1D2B48`.
+        451 or 537        => (null, r.Satisfaction),
         // ⭐ State of Repair on a serviced ride is its worn reliability, `ride[0xE4] >> 12` (`FUN_00118228`,
         // the bar `FUN_001D5210` fills) -- mechanics port, 2026-09-27. Anything else keeps what it showed.
         128               => (null, Math.Clamp(r.ServiceClass != RideServiceClass.None ? r.ReliabilityPercent : r.Condition, 0, 100)),
@@ -4659,9 +4769,13 @@ public partial class Viewer : Node3D
                     case "main_info":      _laptopBack.Add(("info", null)); ShowLaptopLevel(); return;
                     case "main_bh_items":  _laptopBack.Add(("buildcats", null)); ShowLaptopLevel(); return;
                     case "main_gameoptions": _laptopBack.Add(("gameoptions", null)); ShowLaptopLevel(); return;
-                    case "main_research":    _laptopBack.Add(("research", null)); ShowLaptopLevel(); return;
-                    case "main_parkstats":   _laptopBack.Add(("parkstats", null)); ShowLaptopLevel(); return;
-                    case "main_financialinfo": _laptopBack.Add(("financialinfo", null)); ShowLaptopLevel(); return;
+                    case "main_research":    _researchPickRow = -1; _laptopBack.Add(("research", null)); ShowLaptopLevel(); return;
+                    case "main_parkstats":
+                        _parkGraphYears = 1; _graphPick.Remove("statistics");
+                        _laptopBack.Add(("parkstats", null)); ShowLaptopLevel(); return;
+                    case "main_financialinfo":
+                        _financeGraphYears = 1; _graphPick.Remove("financestats"); _graphPick.Remove("overallstats");
+                        _laptopBack.Add(("financialinfo", null)); ShowLaptopLevel(); return;
                     case "main_bh_staff":
                         // ⭐ The Hire panel (Viewer.Staff.cs): its tabs, then a tab's candidates.
                         if (_staff == null) { Status("hire -- no park is running yet, so there is nobody to hire into"); return; }
@@ -4675,10 +4789,11 @@ public partial class Viewer : Node3D
             // the index maps straight onto the filtered list.
             case "financialinfo":
             {
-                var fm = new List<(int TextId, string Opens, bool NeedsLoan)>();
-                foreach (var e in LaptopScreen.FinanceMenu) if (!e.NeedsLoan) fm.Add(e);
+                var fm = FinanceMenuRows();
                 if (row < 0 || row >= fm.Count) return;
                 _laptopBack.Add((fm[row].Opens, null));
+                _shopPanel.GraphCursor = 0;
+                _existingLoan = 0;
                 ShowLaptopLevel();
                 return;
             }
@@ -4689,6 +4804,7 @@ public partial class Viewer : Node3D
                 var pm = LaptopScreen.ParkStatsMenu;
                 if (row < 0 || row >= pm.Length) return;
                 _laptopBack.Add((pm[row].Opens, null));
+                _shopPanel.GraphCursor = 0;
                 ShowLaptopLevel();
                 return;
             }
@@ -4773,6 +4889,23 @@ public partial class Viewer : Node3D
     /// so paging goes down the shipped path rather than round it.</summary>
     void OnLaptopPage(int by)
     {
+        if (ResearchPage(by)) return;
+        if (_laptopBack.Count > 0 && _laptopBack[^1].Kind == "newloan")
+        {
+            // The lender spinner: 1..4 with wrap (`+0x60` bit 0).
+            _laptopBack[^1] = ("newloan", ((_loanLender + by) % Lender.All.Length + Lender.All.Length) % Lender.All.Length + "");
+            ShowLaptopLevel();
+            return;
+        }
+        if (_laptopBack.Count > 0 && _laptopBack[^1].Kind == "existingloans")
+        {
+            // `0x15C368`: steps only with two or more, wrapping.
+            int lent = _sim?.Finances.Loans.Count(l => l.Taken) ?? 0;
+            if (lent < 2) return;
+            _existingLoan = ((_existingLoan + by) % lent + lent) % lent;
+            ShowLaptopLevel();
+            return;
+        }
         if (PageHire(by)) return;
         if (PageStaffInfo(by)) return;
         if (_laptopBack.Count == 0 || _laptopBack[^1].Kind != "infoitem") return;
@@ -4818,6 +4951,10 @@ public partial class Viewer : Node3D
         if (_trainingMember is { } trainee) { if (row == 0) BuyTraining(trainee); return; }
         if (_singleStaff is { } person) { SingleStaffChose(person, row); return; }
         if (_optionsOpen) { GameOptionChose(row); return; }
+        if (_laptopBack.Count > 0 && IsGraphPage(_laptopBack[^1].Kind)) { GraphItemChosen(_laptopBack[^1].Kind, row); return; }
+        if (_laptopBack.Count > 0 && _laptopBack[^1].Kind == "research") { ResearchRowClicked(row); return; }
+        // ⭐ Cross on New Loan takes the offer -- any row, as on the upgrade page: the page has one offer.
+        if (_laptopBack.Count > 0 && _laptopBack[^1].Kind == "newloan") { TakeLoanOnPage(); return; }
         // ⭐ On the upgrade PAGE, any row buys -- the page has one offer and the console's Confirm
         // takes it; there is nothing else to click.
         if (_laptopBack.Count > 0 && _laptopBack[^1].Kind == "rideupgrade"
@@ -4945,6 +5082,7 @@ public partial class Viewer : Node3D
     /// <summary>Back steps out one level; Close puts the laptop away.</summary>
     void OnLaptopDismiss(bool close)
     {
+        if (!close && ResearchBack()) return;
         if (close || _laptopBack.Count == 0)
         {
             _shopPanel.Hide(); _laptopBack.Clear();
@@ -5089,10 +5227,13 @@ public partial class Viewer : Node3D
                     {
                         if (_statsDemo) StatsDemoDay(days);
                         AdvanceCalendar(ParkClock.UnitsPerDay);
+                        // `--take-loan=N[,M]` takes those slots at the START of the wind, so the months repay them.
+                        if (days == 1) foreach (int slot in _takeLoans) _sim?.Finances.TakeLoan(slot);
                     }
                     GD.Print($"[calendar] wound {_management.MonthChanges - start} month ends ({days} days): "
                            + $"{_parkStats?.Months ?? 0} months recorded, {_calendar.Format()}");
                 }
+                if (_windMonths == 0) foreach (int slot in _takeLoans) _sim?.Finances.TakeLoan(slot);
                 var pp = _laptopScreen.Split(':');
                 string kind = pp.Length > 1 ? pp[1] : "main";
                 string parg = pp.Length > 2 && !pp[2].StartsWith("row=") ? pp[2] : null;
@@ -9374,8 +9515,7 @@ public partial class Viewer : Node3D
     /// `(prize - price)` squared over sixteen when positive, plus a third of the win percentage,
     /// plus fifty, floored at the compiled base. So all three move the excitement bar.
     ///
-    /// ⚠ Winners and Satisfaction are drawn by this screen and are not tracked by this port's
-    /// sim, so they are blank and empty rather than a plausible number.</summary>
+    /// ⭐ Winners and Satisfaction are the sideshow's own (ParkVisitors.PlaySideshow, findings/ride-users.md §4).</summary>
     void ShowSideshowDetails(ParkRide show)
     {
         _detailsRide = show; _detailsSpec = LaptopScreen.Sideshow;
@@ -9384,15 +9524,24 @@ public partial class Viewer : Node3D
             cells.Add(row.TextId switch
             {
                 707 => (show.Customers.ToString(), 0),                       // Customers
-                949 => (Money.Format(show.Takings), 0),                      // Takings
-                238 => (Money.Format(show.Profit), 0),                       // Profit
-                899 => (null, show.Value ?? 0),                              // Excitement
+                // Winners `+0xd0` (0x1D2B38); presentation independently hides label/value/step at prize0.
+                637 => (Thousands(show.Winners), 0),
+                949 => (Money.Display(show.Takings), 0),                     // Takings, whole dollars (0x142908)
+                238 => (Money.Display(show.Profit), 0),                      // Profit = takings - prizes (0x1D2A58)
+                // ⭐ Native DATA destinations are crossed: vt+0x1D4 excitement feeds the lower
+                // SatisfactionBar (277), while 0x1D2B48 satisfaction feeds upper ExcitementBar (246).
+                // Labels flow on their own grid. Preserve that bug, don't infer data from bar names.
+                899 => (null, show.Satisfaction),
+                743 => (null, show.Value ?? 0),
                 295 => (null, Math.Clamp((int)show.SideshowWinPercentage, 0, 100)),
-                832 => (Money.Format(show.SideshowPrizeValue), 0),           // Cost of Prize
-                190 => (Money.Format(show.SideshowPrice), 0),                // Price per Game
-                _   => (null, 0),                                            // Winners, Satisfaction
+                // ⚠ Prize and price are DIGITS, no `$` -- `0x142B68` at 0x1D87BC / 0x1D8854 -- where this used the
+                // money formatter (and divided them by ten).
+                832 => (Thousands(show.SideshowPrizeValue), 0),              // Cost of Prize
+                190 => (Thousands(show.SideshowPrice), 0),                   // Price per Game
+                _   => (null, 0),
             });
-        _shopPanel.ShowScreen(LaptopScreen.Sideshow, DisplayName(show), cells);
+        _shopPanel.ShowScreen(LaptopScreen.Sideshow, DisplayName(show), cells,
+            rowPresentation: LaptopRowPresentation.Sideshow(show.SideshowPrizeValue), subject: show);
         BuildLaptopModelFor(show);
         GD.Print($"[laptop] details {DisplayName(show)}: prize {show.SideshowPrizeValue}, "
                + $"price {show.SideshowPrice}, win {show.SideshowWinPercentage}%; "
@@ -9410,7 +9559,8 @@ public partial class Viewer : Node3D
     {
         if (r?.Definition?.CompiledEntry is not { HasRideTiers: true } e) return false;
         int next = r.CurrentTier + 1;
-        return next <= 2 && e.Tier(next).PurchaseCost > 0;
+        // ⭐ And researched: tier T only while T < the item's research level (0x1D4A38) -- the Upgrades row's work.
+        return next <= 2 && e.Tier(next).PurchaseCost > 0 && UpgradeResearched(r, next);
     }
 
     /// <summary>⭐ Does THIS PARK sell an add-on for this ride? The per-park lists are the boot
@@ -9447,6 +9597,9 @@ public partial class Viewer : Node3D
         if (_detailsRide == null || spec == null || row < 0 || row >= spec.Rows.Count) return;
         if (spec == LaptopScreen.Sideshow)
         {
+            // 0x1D8118 does not write chance/prize back for a zero-prize game, even if a stale
+            // control event arrives while the queued redraw is changing its visibility.
+            if (_detailsRide.SideshowPrizeValue == 0) return;
             if (spec.Rows[row].TextId == 295)
             {
                 _detailsRide.SideshowWinPercentage = (ushort)Math.Clamp(pct, 0, 100);
@@ -9500,19 +9653,39 @@ public partial class Viewer : Node3D
 
     /// <summary>⭐ A row's nudge arrows. Only the sideshow's two money rows carry them on a screen
     /// this port opens: the cost of a prize and the price per game, both feeding its excitement.
-    /// ⚠ Stepped by one and floored at zero. The console's UPPER clamp for these two is not read,
-    /// so none is imposed rather than one being invented.</summary>
+    /// Setup 0x1D7F48 loads the spinner with min(raw,1000); its active, non-wrapping step at
+    /// 0x207B10 clamps to 1..1000. Prize0 has no writeback (0x1D8118), so do NOT normalize the
+    /// stored prize globally: zero-prize sideshows keep their conditional presentation.</summary>
     void OnRowNudge(int row, int by)
     {
+        if (_laptopBack.Count > 0 && _laptopBack[^1].Kind == "visitorinfo") { StepGatePrice(row, by); return; }
         if (_detailsRide == null || _detailsSpec != LaptopScreen.Sideshow) return;
-        if (row < 0 || row >= LaptopScreen.Sideshow.Rows.Count) return;
-        switch (LaptopScreen.Sideshow.Rows[row].TextId)
+        if (row < 0 || row >= _detailsSpec.Rows.Count) return;
+        int textId = _detailsSpec.Rows[row].TextId;
+        if (textId == 832 && _detailsRide.SideshowPrizeValue == 0) return;
+        switch (textId)
         {
-            case 832: _detailsRide.SideshowPrizeValue = Math.Max(0, _detailsRide.SideshowPrizeValue + by); break;
-            case 190: _detailsRide.SideshowPrice = (ushort)Math.Max(0, _detailsRide.SideshowPrice + by); break;
+            case 832: _detailsRide.SideshowPrizeValue = SideshowSpinner.Step(_detailsRide.SideshowPrizeValue, by); break;
+            case 190: _detailsRide.SideshowPrice = (ushort)SideshowSpinner.Step(_detailsRide.SideshowPrice, by); break;
             default: return;
         }
         ShowSideshowDetails(_detailsRide);
+    }
+
+    /// <summary>⭐ The gate price spinner (`0x207B10`, parkstats-screens.md §3.4): whole dollars 0..1000 in steps of
+    /// 1, read as `min(1000, price / 10)` and written back as `value * 10` tenths (`0x1853A8` -> `0x100D18`). Clamped,
+    /// no wrap; a step that moves sounds 0xD6 and one held against a limit 0xAF -- here the laptop's Move and
+    /// Refused, the port's two nearest cues (the 0xD6/0xAF ids are not mapped onto UIHD). The fee is the one the
+    /// native entrance charges (`_entranceFee`), so the next guest at the gate pays the new price.</summary>
+    void StepGatePrice(int row, int by)
+    {
+        if (row != LaptopScreen.VisitorInfo.SpinnerRow) return;
+        int was = Math.Min(LaptopScreen.GatePriceMax, _entranceFee / 10);
+        int now = Math.Clamp(was + by, 0, LaptopScreen.GatePriceMax);
+        _shopPanel.Sounds?.Play(now == was ? LaptopSounds.Cue.Refused : LaptopSounds.Cue.Move);
+        if (now == was) return;
+        _entranceFee = now * 10;
+        _shopPanel.SetCell(row, Money.Format(_entranceFee));
     }
 
     ParkRide ShopFor(int placed)
@@ -11753,6 +11926,7 @@ public partial class Viewer : Node3D
                     _shopPanel.ShopSettingChanged += OnShopSetting;
                     _shopPanel.PriceNudged += OnShopPriceNudge;
                     _shopPanel.RowNudged += OnRowNudge;
+                    _shopPanel.YearNudged += OnGraphYearNudge;
                     _shopPanel.RowActivated += OnLaptopRowActivated;
                     _shopPanel.MenuFocusChanged += OnLaptopMenuFocus;
                     // ⭐ The laptop's voice. ⚠ A bank that will not read leaves it null and the

@@ -354,10 +354,14 @@ reading `park+0xC+i*0x2C` (`tools/p2s.py`).
 - **Triangle**: `+0x88` → `FUN_001340C0` rebuilds the menu, `vt[14](this, 0)` clears the flag,
   `this+0x560 = 0`. Tutorial event `0x1A`.
 
-Repayment over time (what decrements `+0x10`, debits `+0x18`, reduces `+0x14`) lives in the month
-end, not in these screens, and is not read here.
+Repayment over time lives in the month end: READ in `findings/loans.md` §1 (`0x100A18`: `min(+0x14, +0x18)`,
+both counters decremented, one debit with the wages, `+0x28` never set back).
 
 ## Existing Loans (page 4) for contrast -- the one page that IS hardcoded
+
+> ⚠ **Superseded by `findings/loans.md` (2026-10-01)**: the month end's repayment walk, the page's real draw (every
+> string CENTRED, Interest drawn WITHOUT its `%`, an arrows glyph), the list that fills on the highlight, and the
+> corrections to this section. Ported: `ParkLoan`, `ParkFinances.TakeLoan`/`MonthEnd`, `LaptopShopScreen.ShowLoans`.
 
 There is no `main_fi_existingloans.sce` and the registry has no id for it. `FUN_001359F0` draws
 "Lender" (102) at (101, 124), the name at (221, 124), then rows at `y = 124 + 32i` with labels from

@@ -101,7 +101,12 @@ public sealed record LaptopScreen(
     /// read** -- `0x10b980` stores only `DAT_002AA8D4`, its column -- and Monthly Wage draws at
     /// the `infobars` COLUMN (215) on the label's own row. Everywhere else the element's full
     /// position is right, so this is off by default.</summary>
-    bool ValueColumnOnly = false)
+    bool ValueColumnOnly = false,
+    /// <summary>⭐ The row whose value is a HELD-INPUT SPINNER, or -1. Visitor Information's gate price is the one:
+    /// `0x207B10` in mode 2 (`+0x7b4`) reads the buttons HELD (`0x181860`), so the value moves one step per frame
+    /// while an arrow is held, and the enabled spinner draws its text in yellow (`*0x35f560` = 255,255,0) even on
+    /// a screen whose other values are amber (parkstats-screens.md §3.4).</summary>
+    int SpinnerRow = -1)
 {
     /// <summary>The console's row step, `DAT_002E9CA8` = 32. The sideshow's draw shows it in the
     /// clear: its labels go out at `iVar9`, `+0x20`, `+0x40`, `+0x60`, i.e. 32 apart.</summary>
@@ -214,26 +219,14 @@ public sealed record LaptopScreen(
             new(899, LaptopRowKind.Bar,    "ExcitementBar"),
             new(743, LaptopRowKind.Bar,    "SatisfactionBar"),
             new(295, LaptopRowKind.Slider, "ChanceofWinningSlider"),
-            // ⚠⚠ THE ARROW NAMES ARE CROSSED RELATIVE TO THE VALUES, and only the arrows are.
-            // Pair them by name and the offsets are nonsense -- CostOfPrizeArrow (353) reads 19
-            // ABOVE CostOfPrizeValue (372) while PricePerGameArrow (384) reads 44 BELOW
-            // PricePerGameValue (340). Pair each arrow with its NEAREST value and they agree:
-            // 353 is 13 below 340, and 384 is 12 below 372. One consistent offset beats two
-            // contradictory ones, so each row takes the arrow that actually belongs to it.
-            // ⚠⚠ AND THE VALUE NAMES ARE CROSSED TOO, not just the arrows. Rendered and read:
-            // with the names paired the obvious way, a prize of 30 printed "$3" against **Game
-            // Price** and a price of 10 printed "$1" against **Prize Cost** -- each number under
-            // the other's label. The cause is the authored rows: `PricePerGameValue` sits at 340
-            // and `CostOfPrizeValue` at 372, so the one NAMED for the price is the HIGHER of the
-            // two, and Cost of Prize is the higher LABEL. Pairing by position rather than by name
-            // puts each number under its own label, which is the same correction this file already
-            // makes for the arrows one line below -- the scene's names for this pair of rows do
-            // not describe their contents.
-            // ⭐ The magnitudes are right and were checked: the console formats both through
-            // `FUN_00142908`, which is what <see cref="Money.Format"/> reproduces, tenths and all.
-            new(832, LaptopRowKind.Money,  "PricePerGameValue", "PricePerGameArrow"),
-            new(190, LaptopRowKind.Money,  "CostOfPrizeValue",  "CostOfPrizeArrow"),
-        });
+            // ⭐ READ binder0x1D7A30 and draw0x1D8288: the VALUE names are crossed, but the
+            // logical arrows are not. Prize digits340 pair with CostOfPrizeArrow353; game-price
+            // digits372 pair with PricePerGameArrow384. Re-pairing values without these aliases
+            // put the arrows beside the opposite field again.
+            // Both numbers use DIGITS (0x142B68 at0x1D87BC/0x1D8854), not the money formatter.
+            new(832, LaptopRowKind.Money,  "PricePerGameValue", "CostOfPrizeArrow"),
+            new(190, LaptopRowKind.Money,  "CostOfPrizeValue",  "PricePerGameArrow"),
+        }, LabelsOnGrid: true); // labels flow115+32*slot; native bars remain at fixed authored rows
 
     /// <summary>⭐ The TOILET screen, `main_i_bathroom_data`, menu 23, drawn by `FUN_001DA008`.
     /// Labels are the `STR_SINGLEBOG_*` family. This completes the four "Single ..." screens, which
@@ -468,7 +461,8 @@ public sealed record LaptopScreen(
             new(155, LaptopRowKind.Bar, "ResearchBars"),   // Features
             new(834, LaptopRowKind.Bar, "ResearchBars"),   // Upgrades
         },
-        WidgetStep: RowStep, ValueOnWidgetRow: true);
+        // ⚠ Item names AMBER (`0x1B5920` sets 0x35F550 for the column); only the row being picked is yellow.
+        WidgetStep: RowStep, ValueOnWidgetRow: true, MonochromeValues: true);
 
     /// <summary>`STR_RESEARCH_NOTHING` -- an idle slot's item column.</summary>
     public const int ResearchNothingTextId = 605;
@@ -637,12 +631,24 @@ public sealed record LaptopScreen(
             new(60,  LaptopRowKind.Money),   // Repayment -- per month
             new(951, LaptopRowKind.Money),   // Total
         },
+        // ⭐ The lender spinner's arrows (`LenderNameArrows`, 250, 131). On the pad left/right step the lender and
+        // the glyph is decoration; here it is also the pointer's way to step, as on every other pager.
+        TitleArrowElement: "LenderNameArrows",
         LabelsOnGrid: true);
 
     /// <summary>`STR_FINANCE_LOAN_ALREADY_TAKEN`. ⚠ When a loan IS taken the page draws this one
     /// label at (215, 207) and NOTHING else -- not the rows with a note, the rows are simply not
     /// drawn.</summary>
     public const int LoanAlreadyTakenTextId = 910;
+
+    /// <summary>New Loan for a lender already lent: its name and arrows, then ONE amber label, "Loan Taken", at
+    /// `LoanInformation`'s column and the second row (215, 207) -- step 5 of `0x136018`.</summary>
+    public static readonly LaptopScreen NewLoanTaken = NewLoan with
+    {
+        LabelElement = "LoanInformation",
+        Rows = new LaptopRow[] { new(LoanAlreadyTakenTextId, LaptopRowKind.Text) },
+        RowYs = new[] { 207 },
+    };
 
     /// <summary>⭐ VISITOR INFORMATION (menu id 10). `findings/parkstats-screens.md` §3; draw
     /// `FUN_00185458`, z 100, amber throughout.
@@ -663,10 +669,19 @@ public sealed record LaptopScreen(
             new(853, LaptopRowKind.Text),    // People's Feelings   -- heading
             new(308, LaptopRowKind.Text),    // Dominant Thoughts   -- heading
             new(139, LaptopRowKind.Value),   // People Visited
-            new(50,  LaptopRowKind.Money),   // Ticket Price
+            // ⭐ The gate price spinner (`this+0x754`): arrows at `GatePriceArrows` (200, 414 -- the sprite's middle,
+            // 14 under the label like every other arrow pair). ⚠ The value stays on the shared column rather than
+            // `GatePriceVal`: the scene says `center` there but the binder never stores a justify for it, so the
+            // console draws "$N" LEFT at col 260 (§3.4) -- which is exactly where the shared column puts it.
+            new(50,  LaptopRowKind.Money, null, "GatePriceArrows"),   // Ticket Price
         },
         LabelsOnGrid: true, MonochromeValues: true,
-        RowYs: new[] { 65, 243, 350, 400 });
+        RowYs: new[] { 65, 243, 350, 400 }, SpinnerRow: 3);
+
+    /// <summary>The gate price spinner's range and step, in WHOLE DOLLARS (`+0x7c4` 0, `+0x7c8` 1000, `+0x7c0` 1):
+    /// it reads `min(1000, price / 10)` from the park's tenths and writes `value * 10` back every frame
+    /// (`0x1853A8` -> `0x100D18`).</summary>
+    public const int GatePriceMax = 1000;
 
     /// <summary>⭐ The three feelings rows: icon left, bar right, in a blue pill.
     /// `FeelingsClouds` (45, 105) is a REGION and the rows step 40 down it -- 105, 145, 185 --

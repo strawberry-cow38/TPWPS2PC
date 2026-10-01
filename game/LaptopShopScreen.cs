@@ -163,6 +163,13 @@ public sealed partial class LaptopShopScreen : Control
     /// ⭐ The row order is the draw function's, by text id; nothing here is arranged by taste.</summary>
     public void ShowFor(ParkRide shop, string displayName)
     {
+        // Quality/additive drags refresh this page too. Preserve the same shop's active drag,
+        // but never carry it into a different shop or a different screen.
+        if (_spec != null || _loansPage != null || !ReferenceEquals(_subject, shop)) ResetScreenInput();
+        _rowPresentation = null; _subject = shop;
+        _spec = null; _menu.Clear();
+        _buildRow = false; _yearSpan = null; WheelPages = false;
+        _loansPage = null;
         _rows.Clear();
         _title = displayName ?? shop?.Name ?? "";
         if (shop == null) { Hide(); return; }
@@ -174,7 +181,7 @@ public sealed partial class LaptopShopScreen : Control
         int baseCost = settings?.BaseCostOfGoods ?? 0;
         _quality = shop.Quality;
         _additive = shop.Setting0xAC;
-        _satisfaction = 0; // ⚠ shop[0xb0]/[0xb4] is decoded but not yet tracked; see below.
+        _satisfaction = shop.Satisfaction;   // 0x1D1E00: shop[0xb0] / shop[0xb4], the running mean of every visit
 
         // ⭐ The console's own arithmetic, from the purchase path: the cost moves with Quality and
         // with the additive, both quartered.
@@ -240,7 +247,14 @@ public sealed partial class LaptopShopScreen : Control
         _ => "Sale Price",
     };
 
-    public new void Hide() { Open = false; Visible = false; _rows.Clear(); _spec = null; _menu.Clear(); QueueRedraw(); }
+    public new void Hide()
+    {
+        ResetScreenInput();
+        Open = false; Visible = false;
+        _rows.Clear(); _cells.Clear(); _spec = null; _menu.Clear(); _loansPage = null;
+        _buildRow = false; _yearSpan = null; WheelPages = false;
+        QueueRedraw();
+    }
 
     // ---- the general path: any of the three info screens --------------------------------------
 
@@ -260,8 +274,68 @@ public sealed partial class LaptopShopScreen : Control
     Texture2D _modelTexture;
 
     LaptopScreen _spec;
+    LaptopRowPresentation[] _rowPresentation;
+    object _subject;
+
+    LaptopRowPresentation PresentationFor(int row) =>
+        _rowPresentation != null && row >= 0 && row < _rowPresentation.Length
+            ? _rowPresentation[row] : new LaptopRowPresentation(row);
+
+    // Snapshot the effective plan, not the caller's mutable list. Missing entries keep their
+    // canonical slots and all components visible; neither cells nor event indices are compacted.
+    static LaptopRowPresentation[] CopyPresentation(LaptopScreen spec,
+                                                    IReadOnlyList<LaptopRowPresentation> plan)
+    {
+        var copy = new LaptopRowPresentation[spec.Rows.Count];
+        for (int i = 0; i < copy.Length; i++)
+            copy[i] = plan != null && i < plan.Count ? plan[i] : new LaptopRowPresentation(i);
+        return copy;
+    }
+
+    bool PresentationChanged(LaptopRowPresentation[] next)
+    {
+        if (_spec == null || _spec.Rows.Count != next.Length) return true;
+        for (int i = 0; i < next.Length; i++)
+            if (PresentationFor(i) != next[i]) return true;
+        return false;
+    }
+
+    void CancelScreenInput()
+    {
+        _dragSlider = -1; _dragShop = null;
+        _heldNudge = null; _heldCarry = 0;
+    }
+
+    // Rendering owns these caches. Screen transitions invalidate them immediately, before the
+    // queued draw; ordinary same-subject slider refreshes leave unchanged geometry usable.
+    void ClearHitboxes()
+    {
+        _rowDraws.Clear();
+        _sliderRects.Clear(); _shopSliders.Clear(); _rowArrows.Clear(); _specRows.Clear();
+        _pageArrows = new Rect2(); _shopPriceArrows = new Rect2();
+        _yearArrows = new Rect2(); _yearBand = new Rect2();
+        _buildRowRect = new Rect2(); _scrollTrack = new Rect2();
+    }
+
+    void ResetScreenInput()
+    {
+        _rowPresentation = null; _subject = null;
+        CancelScreenInput();
+        ClearHitboxes();
+        _btnHover = -1; _buildHover = false; _menuHover = -1;
+    }
     readonly Dictionary<string, SceneLayout> _layouts = new(StringComparer.OrdinalIgnoreCase);
     readonly List<(string Text, int Fraction)> _cells = new();
+
+    /// <summary>Replace ONE row's cell and redraw, leaving everything else the screen was given as it was. The gate
+    /// price spinner needs it: Visitor Information computes its feelings and thoughts ONCE when it opens (§3.5), so
+    /// a price step must not rebuild the page.</summary>
+    public void SetCell(int row, string text, int fraction = 0)
+    {
+        if (row < 0 || row >= _cells.Count) return;
+        _cells[row] = (text, fraction);
+        QueueRedraw();
+    }
     AssetLibrary _lib;
 
     /// <summary>⭐⭐ THE WORLD IS ASKED FOR, NOT REMEMBERED. Master: "its also showing the
@@ -340,14 +414,48 @@ public sealed partial class LaptopShopScreen : Control
     /// It was -- I had skipped step 3 of the series draw entirely.</summary>
     public UiPanel GraphPanel { get; set; }
 
+    /// <summary>Show canonical rows with an optional copied presentation. Label slots affect only
+    /// the label/shared-column grid; values, widgets and arrows have independent visibility and
+    /// hidden labels have no row hit band. This is rendering/input policy, not native mouse behavior.
+    /// Pass the same subject object on refresh (reference identity, not value equality), and a
+    /// different object when paging to another item using the same spec. Changing spec/subject
+    /// cancels input; changing a plan invalidates hitboxes but preserves any still-visible drag.
+    /// Null subject preserves the legacy spec-only identity for callers without a subject.</summary>
     public void ShowScreen(LaptopScreen spec, string title, IReadOnlyList<(string Text, int Fraction)> cells,
                            bool buildRow = false, int buildTextId = LaptopMainMenu.BuildTextId,
                            IReadOnlyList<Color?> barTints = null, GraphSeries? graph = null,
                            IReadOnlyList<string> column2 = null, IReadOnlyList<string> headers = null,
                            IReadOnlyList<int> feelings = null,
                            IReadOnlyList<bool> medals = null, IReadOnlyList<bool> stars = null,
-                           IReadOnlyList<int> thoughts = null, (string Label, string Value)? graphReadout = null)
+                           IReadOnlyList<int> thoughts = null, (string Label, string Value)? graphReadout = null,
+                           int? yearSpan = null,
+                           IReadOnlyList<LaptopRowPresentation> rowPresentation = null, object subject = null)
     {
+        if (spec == null) throw new ArgumentNullException(nameof(spec));
+        var presentation = CopyPresentation(spec, rowPresentation);
+        bool contextChanged = !ReferenceEquals(_spec, spec) || !ReferenceEquals(_subject, subject);
+        bool presentationChanged = PresentationChanged(presentation);
+        if (contextChanged) CancelScreenInput();
+        else
+        {
+            // A hidden label/value does not disable an independently visible control.
+            if (_dragSlider >= 0 && (_dragSlider >= spec.Rows.Count
+                || spec.Rows[_dragSlider].Kind != LaptopRowKind.Slider
+                || !presentation[_dragSlider].WidgetVisible)) _dragSlider = -1;
+            if (_heldNudge is { } held && (held.Row < 0 || held.Row >= spec.Rows.Count
+                || spec.SpinnerRow != held.Row || !presentation[held.Row].ArrowsVisible))
+            { _heldNudge = null; _heldCarry = 0; }
+        }
+        if (contextChanged || presentationChanged) ClearHitboxes();
+        // These optional controls can disappear without changing the row plan.
+        if (_buildRow != buildRow) _buildRowRect = new Rect2();
+        if (_yearSpan != yearSpan) { _yearArrows = new Rect2(); _yearBand = new Rect2(); }
+        _rowPresentation = presentation;
+        _subject = subject;
+        _loansPage = null;
+        WheelPages = false;
+        HighlightRow = -1;
+        _yearSpan = yearSpan;
         _feelings = feelings;
         _thoughts = thoughts;
         _graphReadout = graphReadout;
@@ -357,7 +465,7 @@ public sealed partial class LaptopShopScreen : Control
         _graph = graph;
         _column2 = column2;
         _headers = headers;
-        _spec = spec ?? throw new ArgumentNullException(nameof(spec));
+        _spec = spec;
         _title = title ?? "";
         _rows.Clear();
         // ⚠⚠ A DATA SCREEN IS NOT A MENU, AND LEAVING THE MENU BEHIND MADE IT ACT LIKE ONE.
@@ -384,8 +492,68 @@ public sealed partial class LaptopShopScreen : Control
     ///
     /// The option order and text ids come from the console's own table at `0x2b97c0`; see
     /// <see cref="LaptopMainMenu"/>, which holds the reading.</summary>
+    /// <summary>⭐⭐ EXISTING LOANS (finance page 4), the one finance page with NO `.sce`: `0x1359F0` draws it from
+    /// constants (origin X 16, Y 64 at `0x35F574/8`) -- the selected loan's lender and six rows, or "No Loan Taken".
+    /// <see cref="Lender"/> null means no taken loan is selected.</summary>
+    public readonly record struct LoansPage(string Lender, IReadOnlyList<string> Values);
+    LoansPage? _loansPage;
+    /// <summary>The page's labels, `u16[0x35E670]`: Lender, then Borrowed, Term, Interest, Repayment, Remaining,
+    /// Outstanding.</summary>
+    static readonly int[] LoansPageTextIds = { 102, 77, 1022, 387, 60, 994, 434 };
+    const int NoLoanTakenTextId = 154;
+
+    public void ShowLoans(LoansPage page)
+    {
+        ResetScreenInput();
+        WheelPages = false;
+        _loansPage = page;
+        _spec = null; _menu.Clear(); _rows.Clear();
+        _pageArrows = new Rect2();
+        _menuHover = -1; _menuScroll = 0; _focusSent = -2;
+        _buildRow = false; _buildHover = false;
+        _graph = null; _yearSpan = null; _graphReadout = null;
+        RightClickInspects = false;
+        bool wasShut = !Open;
+        Open = true; Visible = true;
+        if (wasShut) Cue(LaptopSounds.Cue.Open);
+        FitToViewport();
+        QueueRedraw();
+    }
+
+    /// <summary>⭐ `0x1359F0`. ⚠⚠ EVERY STRING IS CENTRED on its x: the dispatcher sets centre mode before every page
+    /// draw (`0x138998`) and this page, alone, never sets a justify of its own. Header pair yellow at (101, 124) /
+    /// (221, 124); six amber rows at 156..316 step 32, labels at 101 and values at 221; "No Loan Taken" at (146, 148);
+    /// the arrows glyph amber, 30x30, top-left (272, 124). ⚠ What `0x2136D0(tex, 0)`'s flag bits do to that glyph
+    /// (a mirror is the obvious guess) is NOT read, so it draws as the art is.</summary>
+    void DrawLoansPage(float s, Vector2 o, LoansPage page)
+    {
+        Vector2 P(int x, int y) => o + new Vector2(x, y) * s;
+        const string centre = "center";
+        if (page.Lender == null)
+        {
+            DrawRun(Row(NoLoanTakenTextId), P(146, 148), s, Of(ShopScreen.Label), centre);
+            return;
+        }
+        DrawRun(Row(LoansPageTextIds[0]), P(101, 124), s, Of(ShopScreen.Highlight), centre);
+        DrawRun(page.Lender, P(221, 124), s, Of(ShopScreen.Highlight), centre);
+        if (_arrows != null)
+        {
+            _pageArrows = new Rect2(P(272, 124), new Vector2(30, 30) * s);
+            DrawTextureRect(_arrows, _pageArrows, false, ArrowTint);
+        }
+        for (int i = 1; i < LoansPageTextIds.Length; i++)
+        {
+            int y = 124 + 32 * i;
+            DrawRun(Row(LoansPageTextIds[i]), P(101, y), s, Of(ShopScreen.Label), centre);
+            if (i - 1 < page.Values.Count) DrawRun(page.Values[i - 1], P(221, y), s, Of(ShopScreen.Label), centre);
+        }
+    }
+
     public void ShowMenu(IReadOnlyList<string> options, int selected, string sceneFile = null)
     {
+        ResetScreenInput();
+        WheelPages = false;
+        _loansPage = null;
         _menuScene = sceneFile;
         _spec = null;
         _pageArrows = new Rect2();   // ⚠ a menu has none; a stale rect would eat clicks
@@ -685,6 +853,19 @@ public sealed partial class LaptopShopScreen : Control
 
     public override void _Process(double delta)
     {
+        if (_heldNudge is { } held)
+        {
+            // ⚠ A release the panel never saw (the window lost focus, the screen changed under it) must not
+            // leave the spinner running, so the button is asked rather than trusted.
+            if (!Open || _spec?.SpinnerRow != held.Row || !PresentationFor(held.Row).ArrowsVisible
+                || !Input.IsMouseButtonPressed(MouseButton.Left))
+            { _heldNudge = null; _heldCarry = 0; }
+            else
+            {
+                _heldCarry += delta * ConsoleClock.TicksPerSecond;
+                for (; _heldCarry >= 1 && _heldNudge != null; _heldCarry -= 1) RowNudged?.Invoke(held.Row, held.By);
+            }
+        }
         if (!Open || _balance == null || _swoop >= 1f) return;
         _swoop = Mathf.Min(1f, _swoop + (float)delta * 4f);   // ~0.25s
         QueueRedraw();
@@ -739,7 +920,7 @@ public sealed partial class LaptopShopScreen : Control
     /// there is none of. Answers whether it took the key.</summary>
     bool PageInstead(int by)
     {
-        if (_spec == null || _menu.Count > 0) return false;
+        if ((_spec == null && _loansPage == null) || _menu.Count > 0) return false;
         Cue(LaptopSounds.Cue.Move);
         Paged?.Invoke(by);
         return true;
@@ -797,10 +978,40 @@ public sealed partial class LaptopShopScreen : Control
     /// <summary>⭐ A NUDGE ARROW's drawn rect, by row index -- the pairs a row gets when its value
     /// can be stepped. Same rule as the others: hit-test the rect that was drawn.</summary>
     readonly Dictionary<int, Rect2> _rowArrows = new();
-    /// <summary>Every spec row's drawn band, by row index -- what a plain click hits.</summary>
+    /// <summary>Each visible label's drawn band, by canonical row index -- what a plain click hits.
+    /// A null presentation label slot registers no band, even if its other components draw.</summary>
     readonly Dictionary<int, Rect2> _specRows = new();
     /// <summary>The shop's own price arrows, which live outside the row list.</summary>
     Rect2 _shopPriceArrows;
+
+    /// <summary>⭐ The spinner arrow being HELD (<see cref="LaptopScreen.SpinnerRow"/>): row and direction, and the
+    /// part-step carried between frames. ⚠ The console steps once per FRAME while held; this steps at the port's
+    /// console frame rate (<see cref="ConsoleClock.TicksPerSecond"/>) so the speed does not follow the monitor.</summary>
+    (int Row, int By)? _heldNudge;
+    double _heldCarry;
+
+    /// <summary>⭐ A graph page's YEAR SELECTOR (graph-widget.md §1.6): the span it shows, or null on every other
+    /// screen. The page draws it itself -- "Years" (965) at `YearSelect`, the span at `YearSelectValue`, the arrows
+    /// at `YearSelectArrow` -- and the arrows step it through 1, 2, 6, 12.</summary>
+    int? _yearSpan;
+    Rect2 _yearArrows, _yearBand;
+    public event Action<int> YearNudged;
+    /// <summary>`STR_FINANCE_YEARS`.</summary>
+    const int YearsTextId = 965;
+
+    /// <summary>⭐ A graph page's CURSOR (finance `+0x588`, park stats `+0x344`): 0 the Years row, 1..N the items.
+    /// Zeroed when a page is built (`0x1343F0`, `0x184E50`), so a page opens on the Years row. It colours the page
+    /// -- the Years label, span and arrows are (255,255,0) while it is on the Years row and (200,130,0) otherwise,
+    /// and an item's label is yellow only under it -- and the pointer moves it, as Up/Down do on the pad.</summary>
+    public int GraphCursor { get; set; }
+
+    /// <summary>The wheel pages this spec screen (raises <see cref="Paged"/>) instead of falling through to the camera.
+    /// Cleared by every <see cref="ShowScreen"/>; the caller sets it after.</summary>
+    public bool WheelPages { get; set; }
+
+    /// <summary>A row drawn in the cursor's yellow, label and value (Research's row being picked: `0x1B5920` turns both
+    /// to 0x35F560 for the cursor row in mode 2). -1 for none; cleared by every <see cref="ShowScreen"/>.</summary>
+    public int HighlightRow { get; set; } = -1;
 
     /// <summary>⭐ A nudge arrow was clicked: the ROW INDEX and -1 or +1. ⚠ A direction, not a
     /// value -- the step and the clamp are the caller's, where the field is.</summary>
@@ -840,6 +1051,8 @@ public sealed partial class LaptopShopScreen : Control
         }
         if ((_dragSlider >= 0 || _dragShop != null) && @event is InputEventMouseButton { Pressed: false })
         { _dragSlider = -1; _dragShop = null; QueueRedraw(); AcceptEvent(); return; }
+        if (_heldNudge != null && @event is InputEventMouseButton { Pressed: false, ButtonIndex: MouseButton.Left })
+        { _heldNudge = null; AcceptEvent(); return; }
 
         if (@event is InputEventMouseMotion motion)
         {
@@ -852,10 +1065,26 @@ public sealed partial class LaptopShopScreen : Control
             if (_buildHover != wasBuild) QueueRedraw();
             _menuHover = RowAt(motion.Position, s, o);
             _keyboardCursor = false;
+            if (_yearSpan != null)
+            {
+                int was = GraphCursor;
+                if (_yearBand.HasPoint(motion.Position)) GraphCursor = 0;
+                else foreach (var (idx, rect) in _specRows) if (rect.HasPoint(motion.Position)) GraphCursor = idx + 1;
+                if (GraphCursor != was) { Cue(LaptopSounds.Cue.Move); QueueRedraw(); }
+            }
             // ⚠ Only when it lands ON a row, and only when it CHANGES -- otherwise every pixel of
             // mouse movement across one row would tick.
             if (_menuHover >= 0 && _menuHover != wasMenu) Cue(LaptopSounds.Cue.Move);
             if (_menuHover != wasMenu || _btnHover != wasBtn) QueueRedraw();
+            return;
+        }
+        // ⭐ A spec screen that pages on the wheel (Research while picking) takes it as Up/Down.
+        if (WheelPages && _spec != null && @event is InputEventMouseButton { Pressed: true } pw
+            && (pw.ButtonIndex == MouseButton.WheelUp || pw.ButtonIndex == MouseButton.WheelDown))
+        {
+            Cue(LaptopSounds.Cue.Move);
+            Paged?.Invoke(pw.ButtonIndex == MouseButton.WheelUp ? -1 : +1);
+            AcceptEvent();
             return;
         }
         // ⭐ The wheel walks the list a row at a time. Only swallow it when it moved something --
@@ -910,8 +1139,13 @@ public sealed partial class LaptopShopScreen : Control
                 foreach (var (idx, rect) in _rowArrows)
                     if (rect.HasPoint(b.Position))
                     {
-                        Cue(LaptopSounds.Cue.Move);
-                        RowNudged?.Invoke(idx, b.Position.X < rect.Position.X + rect.Size.X / 2f ? -1 : +1);
+                        int dir = b.Position.X < rect.Position.X + rect.Size.X / 2f ? -1 : +1;
+                        // ⭐ A held-input spinner steps now and keeps stepping until the release, and its
+                        // handler cues each step itself (a change and a limit sound different), so no
+                        // press sound here.
+                        if (idx == _spec?.SpinnerRow) { _heldNudge = (idx, dir); _heldCarry = 0; }
+                        else Cue(LaptopSounds.Cue.Move);
+                        RowNudged?.Invoke(idx, dir);
                         AcceptEvent(); return;
                     }
             }
@@ -982,6 +1216,14 @@ public sealed partial class LaptopShopScreen : Control
             {
                 Cue(btn == 1 ? LaptopSounds.Cue.Close : LaptopSounds.Cue.Back);
                 Dismissed?.Invoke(btn == 1); AcceptEvent(); return;
+            }
+
+            if (b.ButtonIndex == MouseButton.Left && _yearArrows.Size.X > 0 && _yearArrows.HasPoint(b.Position))
+            {
+                GraphCursor = 0;
+                Cue(LaptopSounds.Cue.Move);
+                YearNudged?.Invoke(b.Position.X < _yearArrows.Position.X + _yearArrows.Size.X / 2f ? -1 : +1);
+                AcceptEvent(); return;
             }
 
             // ⭐ A plain click on a spec row. ⚠ AFTER the sliders, the nudge arrows, the pager AND
@@ -1219,10 +1461,32 @@ public sealed partial class LaptopShopScreen : Control
                 new Rect2(At(window), new Vector2(window.Width, window.Height) * s), false);
 
         // ⭐ Column headers, drawn on the row the label grid skips (Park Finance's row 200).
+        // ⭐ The year selector, drawn by the page (§1.6), coloured by the cursor.
+        _yearArrows = new Rect2(); _yearBand = new Rect2();
+        if (_yearSpan is { } span && layout["YearSelect"] is { } ysel)
+        {
+            bool onYears = GraphCursor == 0;
+            var ytint = onYears ? Of(ShopScreen.Highlight) : Of(ShopScreen.Label);
+            if (Row(YearsTextId) is { } years) DrawRun(years, At(ysel), s, ytint, ysel.Justify);
+            if (layout["YearSelectValue"] is { } yval)
+                DrawRun(span.ToString("#,0", System.Globalization.CultureInfo.InvariantCulture), At(yval), s, ytint, yval.Justify);
+            if (layout["YearSelectArrow"] is { } yarr && _arrows != null)
+            {
+                // The element's row is the sprite's middle, as on every other arrow pair; the art is yellow, so the
+                // cursor's colour is the art untinted and the other is the usual orange modulate.
+                var asize = new Vector2(LaptopArrows.NativeWidth, LaptopArrows.NativeHeight) * s;
+                _yearArrows = new Rect2(At(yarr) - new Vector2(0, asize.Y / 2f), asize);
+                DrawTextureRect(_arrows, _yearArrows, false, onYears ? Colors.White : ArrowTint);
+            }
+            _yearBand = new Rect2(new Vector2(Origin.X, At(ysel).Y), new Vector2(Native * s, LineAdvance * s));
+        }
+
         if (_graphReadout is { } gro && layout["GraphText"] is { } gt && layout["GraphValue"] is { } gv)
         {
             DrawRun(gro.Label, At(gt), s, Of(ShopScreen.Label), gt.Justify);
-            DrawRun(gro.Value, At(gv), s, Of(ShopScreen.Highlight), gv.Justify);
+            // ⚠ AMBER, the label's colour: `0x185FA4` sets (200,130,0) before the label and nothing changes it
+            // before the value (`0x186038` / `0x186070`).
+            DrawRun(gro.Value, At(gv), s, Of(ShopScreen.Label), gv.Justify);
         }
         if (_headers != null && _spec.ValueElement2 != null
             && layout[_spec.ValueElement] is { } h1 && layout[_spec.ValueElement2] is { } h2)
@@ -1238,7 +1502,12 @@ public sealed partial class LaptopShopScreen : Control
         for (int i = 0; i < _spec.Rows.Count; i++)
         {
             var row = _spec.Rows[i];
+            var presentation = PresentationFor(i);
+            // Null hides only the label and its band. Visible shared-column values retain the
+            // canonical grid position when there is no label slot; authored elements never move.
+            int labelSlot = presentation.LabelSlot ?? i;
             var (text, fraction) = i < _cells.Count ? _cells[i] : (null, 0);
+            TraceRow(i, row.TextId, text, fraction);
 
             // ⭐ A ROW CAN OWN ITS LABEL'S ELEMENT, and then it sits AT that element and does not
             // step at all. Game Options is why: its two sliders are labelled at `MusicSliderText`
@@ -1253,9 +1522,9 @@ public sealed partial class LaptopShopScreen : Control
             // middle, and a uniform step cannot say that.
             float dy = row.LabelElement != null
                      ? 0f
-                     : _spec.RowYs != null && i < _spec.RowYs.Count && labels is { } rg
-                       ? (_spec.RowYs[i] - rg.Y) * s
-                       : LaptopScreen.RowStep * (i - _spec.StepBase) * s;
+                     : _spec.RowYs != null && labelSlot >= 0 && labelSlot < _spec.RowYs.Count && labels is { } rg
+                       ? (_spec.RowYs[labelSlot] - rg.Y) * s
+                       : LaptopScreen.RowStep * (labelSlot - _spec.StepBase) * s;
 
             // ⭐⭐ A ROW THAT OWNS A SIZED WIDGET TAKES ITS LABEL'S HEIGHT FROM THE WIDGET, not
             // from the step. The label grid steps 32, but an authored widget sits exactly where the
@@ -1278,15 +1547,20 @@ public sealed partial class LaptopShopScreen : Control
                 dy = (sized.Y + sized.Height / 2f - LineAdvance / 2f - lrow.Y) * s;
 
             string label = Row(row.TextId);
-            if (labels is { } l && label != null)
-                DrawRun(label, At(l) + new Vector2(0, dy), s, Of(ShopScreen.Label), l.Justify);
+            if (presentation.LabelSlot != null && labels is { } l && label != null)
+            {
+                var labelAt = At(l) + new Vector2(0, dy);
+                TraceLabel(i, labelAt);
+                DrawRun(label, labelAt, s,
+                        _yearSpan != null && GraphCursor == i + 1 || i == HighlightRow ? Of(ShopScreen.Highlight) : Of(ShopScreen.Label), l.Justify);
+            }
 
-            // ⭐ A ROW IS CLICKABLE. Only some do anything -- the Upgrades row asks for an upgrade
-            // -- but the rect is registered for every row and the CALLER decides, because which
-            // rows act is a property of the screen's data and not of the drawing.
+            // ⭐ A VISIBLE LABEL HAS A CLICKABLE BAND. Only some do anything -- the Upgrades row
+            // asks for an upgrade -- and the CALLER decides which canonical rows act. Hiding a
+            // label removes only this band; independently visible controls keep their own targets.
             // ⚠ Registered from the DRAWN position (label row plus the same `dy` the text got), so
             // a row re-anchored onto a sized widget is clickable where it actually appears.
-            if (labels is { } lr)
+            if (presentation.LabelSlot != null && labels is { } lr)
                 _specRows[i] = new Rect2(
                     new Vector2(Origin.X, At(lr).Y + dy),
                     new Vector2(Native * s, LineAdvance * s));
@@ -1294,24 +1568,23 @@ public sealed partial class LaptopShopScreen : Control
             // ⭐ A widget sits at ITS OWN element's row, not on the label grid. The ride screen
             // places its seven widgets at 118/150/182/214/246/280/310 -- 32 apart for the bars and
             // then 34 and 30 -- so stepping them with the labels would drift by the third slider.
-            if (row.Kind is LaptopRowKind.Bar or LaptopRowKind.Slider)
+            if (presentation.WidgetVisible && (row.Kind is LaptopRowKind.Bar or LaptopRowKind.Slider)
+                && row.Element != null && layout[row.Element] is { } w)
             {
-                if (row.Element == null || layout[row.Element] is not { } w) continue;
-                // ⭐ Rows that SHARE one widget element step it; see LaptopScreen.WidgetStep.
+                // ⭐ Rows that SHARE one widget element step it by CANONICAL index, never label slot.
                 var wat = At(w) + new Vector2(0, _spec.WidgetStep * i * s);
                 var rect = new Rect2(wat, new Vector2(w.Width, w.Height) * s);
                 if (row.Kind == LaptopRowKind.Bar)
-                    DrawBar(rect, fraction, s, _barTints != null && i < _barTints.Count ? _barTints[i] : null);
-                else { _sliderRects[i] = rect; DrawSlider(rect, fraction, s, selected: _dragSlider == i); }
-                // ⭐ A WIDGET ROW CAN ALSO CARRY TEXT -- Research draws the project's name beside
-                // its bar. A row whose cell has no text stops here, which is every widget row
-                // written before Research, so nothing already drawn changes.
-                if (text == null) continue;
+                    DrawRowBar(i, rect, fraction, s, _barTints != null && i < _barTints.Count ? _barTints[i] : null);
+                else { _sliderRects[i] = rect; DrawRowSlider(i, rect, fraction, s, selected: _dragSlider == i); }
             }
+            // Widget, arrow and value visibility are independent. Research, for example, carries
+            // text beside a bar; hiding that bar must not implicitly suppress its text or arrows.
 
             // ⭐ The nudge arrows, for a row whose value the player can change. They are drawn
             // whether or not the row has text this frame, because they belong to the row.
-            if (row.ArrowElement != null && _arrows != null && layout[row.ArrowElement] is { } arrow)
+            if (presentation.ArrowsVisible && row.ArrowElement != null
+                && _arrows != null && layout[row.ArrowElement] is { } arrow)
             {
                 // ⚠ Modulate so the YELLOW art lands on the orange the real screen shows; see
                 // LaptopArrows. Godot multiplies, so the factor is rendered/art per channel.
@@ -1325,17 +1598,18 @@ public sealed partial class LaptopShopScreen : Control
                 var size = new Vector2(LaptopArrows.NativeWidth, LaptopArrows.NativeHeight) * s;
                 var arect = new Rect2(At(arrow) - new Vector2(0, size.Y / 2f), size);
                 _rowArrows[i] = arect;
+                TraceArrows(i, arect);
                 DrawTextureRect(_arrows, arect, false, want);
             }
 
             // ⭐ The SECOND value column, at its own element's column and this row's height.
-            if (_spec.ValueElement2 != null && _column2 != null && i < _column2.Count
+            if (presentation.ValueVisible && _spec.ValueElement2 != null && _column2 != null && i < _column2.Count
                 && _column2[i] != null && layout[_spec.ValueElement2] is { } v2
                 && labels is { } l2)
                 DrawRun(_column2[i], new Vector2(At(v2).X, At(l2).Y + dy), s,
                         Of(ShopScreen.Label), v2.Justify);
 
-            if (text == null) continue;
+            if (!presentation.ValueVisible || text == null) continue;
             // ⭐⭐ CHECKED FIRST, and the order is the point: a Research row HAS its own element
             // (its bar), so the own-element branch below would win and stack all five item names
             // on that one element's position. Research puts its names at `ResearchItem`'s COLUMN
@@ -1343,15 +1617,15 @@ public sealed partial class LaptopShopScreen : Control
             // column -- five pixels below their own labels.
             if (_spec.ValueOnWidgetRow && values is { } vw && row.Element != null
                 && layout[row.Element] is { } welem)
-                DrawRun(text,
+                DrawRowValue(i, text,
                         new Vector2(At(vw).X, At(welem).Y + _spec.WidgetStep * i * s),
-                        s, ValueTint, vw.Justify);
+                        s, ValueTintFor(i), vw.Justify);
             // A row with its own value element uses it; otherwise the shared value column, at the
             // label's height.
             else if (row.Element != null && layout[row.Element] is { } own)
                 // ⚠ Column only where the screen says so -- All Staff's value elements carry a
                 // row that the console never reads.
-                DrawRun(text,
+                DrawRowValue(i, text,
                         _spec.ValueColumnOnly && labels is { } lb
                           ? new Vector2(At(own).X, At(lb).Y + dy) : At(own),
                         s, ValueTint, own.Justify);
@@ -1360,7 +1634,7 @@ public sealed partial class LaptopShopScreen : Control
                 // elements share a row (both 175) so either reading works; on the ride they do
                 // NOT -- its value elements sit at 338/400/436 against labels from 115 -- and
                 // taking the value element's row as a baseline threw the text off the screen.
-                DrawRun(text, new Vector2(At(v).X, At(lab).Y + dy), s, ValueTint, v.Justify);
+                DrawRowValue(i, text, new Vector2(At(v).X, At(lab).Y + dy), s, ValueTintFor(i), v.Justify);
         }
     }
 
@@ -1459,6 +1733,9 @@ public sealed partial class LaptopShopScreen : Control
     Color ValueTint => _spec is { MonochromeValues: true }
         ? Of(ShopScreen.Label) : Of(ShopScreen.Highlight);
 
+    /// <summary>A row's value colour: the screen's, except an enabled spinner, which is always yellow.</summary>
+    Color ValueTintFor(int row) => row == _spec?.SpinnerRow || row == HighlightRow ? Of(ShopScreen.Highlight) : ValueTint;
+
     static Color Of((byte R, byte G, byte B) c) => Color.Color8(c.R, c.G, c.B);
 
     /// <summary>The shadow's colour, from <see cref="ShopScreen.TextShadowRgba"/>.</summary>
@@ -1540,6 +1817,7 @@ public sealed partial class LaptopShopScreen : Control
 
     public override void _Draw()
     {
+        _rowDraws.Clear();
         if (!Open) return;
         // ⚠⚠ EVERY HIT-TEST RECT IS CLEARED HERE, ONCE, BEFORE ANY OF THEM IS DRAWN.
         //
@@ -1553,17 +1831,19 @@ public sealed partial class LaptopShopScreen : Control
         // that can hold unconditionally is before the branch. Clearing them in each path is what
         // let one path forget. This is the same fault as the build cache that survived a park
         // switch: a cache is only as good as its owner, and per-branch owners are not one owner.
-        _sliderRects.Clear();
-        _shopSliders.Clear();
-        _rowArrows.Clear();
-        _specRows.Clear();
-        _pageArrows = new Rect2();
-        _shopPriceArrows = new Rect2();
+        ClearHitboxes();
         FitToViewport();
         RefreshChrome();
         float s = Scale;
         var o = Origin;
         DrawTextureRect(_chrome, new Rect2(o, new Vector2(Native, Native) * s), false);
+        if (_loansPage is { } loans)
+        {
+            DrawLoansPage(s, o, loans);
+            DrawBalance(s, o);
+            DrawButtons(s, o);
+            return;
+        }
         if (_spec != null)
         {
             DrawSpecScreen(s, o);

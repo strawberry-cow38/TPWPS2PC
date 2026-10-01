@@ -270,13 +270,13 @@ the build/hire tool `[0x3951d0]` carries one (modes 5 ordinary, 6 tour, 7 track,
 | 16 | `0x103970(0x200)` | sideshow pool | sideshows, held minus 1 | R | partial |
 | 17 | `0x103970(0xf0)` | feature list | features with status `+0xa2 != 0`, every class | R | LACKS (`FeatureCount` refuses 0x10) |
 | 18/19/20 | `0x103970(0x20/0x80/0x40)` | feature list | toilets (`vt+0x134`) / staff rooms (`0x1308c8`, DBA `+0x2e` bit 1) / cameras (`0x130858`, bit 3), status != 0, classed once in that order | R | `ParkStaff.FeatureCount` |
-| 21 | `0x103b20(0xf)` | research DB, 4 ride pools | ride **variety**: `avail` = types i of kinds 3,7,6,1 with `0x12b6d0(db,k,i,0)`; `built` = distinct item indices (`+0x97`) placed with status != 0 (50-slot array per kind; a kind with `avail==0` is skipped); `built >= avail ? 100 : built*100/avail` | R | LACKS |
-| 22 | `0x1044b0(0xf)` | research DB | ride **research %**: researched types / all types over kinds 3,7,6,1 (bit 4 also counts kind 1; bit 8 is never tested); `>=` -> 100 | R | LACKS (`ResearchManager` has the DB) |
-| 23 | `0x104a40` | ride pools, `0x12ba08` | **upgrades in use**: over kinds 3,6,7,1, for each item type with a placed instance: `a += maxTierPlaced` (`obj+0x126`), `b += level-1` (`0x12ba08`); `a >= b ? 100 : a*100/b` | R | LACKS (`ResearchManager.ItemLevel` = `0x12ba08`) |
-| 24 | `0x104bd0` | `0x12ba08` | **upgrade research %**: types with `L=level != 0`: `a += 2`, `b += L-1`; `b >= a ? 100 : b*100/a` | R | LACKS |
-| 25/26 | `0x103b20/0x1044b0(0x100)` | kind 4 | shop variety / shop research % | R | LACKS |
-| 27/28 | `(0x200)` | kind 5 | sideshow variety / research % | R | LACKS |
-| 29/30 | `(0xf0)` | kind 2 | feature variety (types classed by DBA `+0x2e`) / research % | R | LACKS |
+| 21 | `0x103b20(0xf)` | research DB, 4 ride pools | ride **variety**: `avail` = types i of kinds 3,7,6,1 with `0x12b6d0(db,k,i,0)`; `built` = distinct item indices (`+0x97`) placed with status != 0 (50-slot array per kind; a kind with `avail==0` is skipped); `built >= avail ? 100 : built*100/avail` | R | `AdvisorProducers.VarietyPercent(0xF)` + live catalogue/keyed census |
+| 22 | `0x1044b0(0xf)` | research DB | ride **research %**: researched types / all types over kinds 3,7,6,1 (bit 4 also counts kind 1; bit 8 is never tested); `>=` -> 100 | R | `AdvisorProducers.ResearchedPercent(0xF)` (native mask quirk preserved) |
+| 23 | `0x104a40` | ride pools, `0x12ba08` | **upgrades in use**: over kinds 3,6,7,1, for each item type with a placed instance: `a += maxTierPlaced` (`obj+0x126`), `b += level-1` (`0x12ba08`); `a >= b ? 100 : a*100/b` | R | `AdvisorProducers.InstalledUpgradePercent()` (MAX per type, any status) |
+| 24 | `0x104bd0` | `0x12ba08` | **upgrade research %**: types with `L=level != 0`: `a += 2`, `b += L-1`; `b >= a ? 100 : b*100/a` | R | `ResearchDatabase.UpgradePercent()` via the advisor producer |
+| 25/26 | `0x103b20/0x1044b0(0x100)` | kind 4 | shop variety / shop research % | R | `AdvisorProducers.VarietyPercent/ResearchedPercent(0x100)` |
+| 27/28 | `(0x200)` | kind 5 | sideshow variety / research % | R | `AdvisorProducers.VarietyPercent/ResearchedPercent(0x200)` |
+| 29/30 | `(0xf0)` | kind 2 | feature variety (types classed by DBA `+0x2e`) / research % | R | `AdvisorProducers.VarietyPercent/ResearchedPercent(0xF0)` |
 | 31 | `0x104760` | feature list, `+0xb4` | toilets (any status): `n==0 ? 0 : 100 - Σcleanliness/n` (16-bit sum) = average dirtiness % | R; "cleanliness" I (`0x130978` sets 100 on service, `0x130948` subtracts use) | partial: toilet service in `Handyman.cs` |
 | 32 | `0x104ce0(0x20)` | features, grid `0x37e218` | toilet coverage, 8x the covered fraction of 16x16 blocks (staff-management §11.4) | R | `ParkStaff.FeatureCoverage(0x20)` |
 | 33..36 | `0x1053a8(1,2,4,8)` | mech, handy, guard, ent | % WITHOUT a patrol area: `set < n ? 100 - set*100/n : 0` (`C+0x44 != 0xFFFF0000`) | R | `ParkStaff.NoPatrolAreaPercent` |
