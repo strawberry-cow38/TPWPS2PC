@@ -72,10 +72,23 @@ public partial class Viewer
     ///      64             -> 30 cells out,  0.78 up
     ///      16             -> 120 cells out, 3.1 up     -- a lap of the whole park and beyond
     ///
-    /// It is ONE named number rather than two tuned ones precisely so the open question stays
-    /// visible and a future calibration (a savestate read of a placed ride's `+0x14/+0x18/+0x1c`
-    /// against its known cell) settles it in one place.</summary>
-    public const float TourPositionUnitsPerCell = 64f;
+    /// ⭐⭐ MEASURED, 256 -- and it did not need a savestate after all. The console's own
+    /// cell-to-position maths is already decoded in six independent places in this tree, every one
+    /// of them `cell * 256 + 0x80` into a SIGNED SHORT: the staff staging point (`0x1532D8`), the
+    /// local wander centre, the ride-queue centre, the track layout's anchor, the staff drop and
+    /// the entrance row. `0x80` is exactly half of 256, so the half-cell offset agrees with the
+    /// cell size -- the constant is self-consistent, not just repeated.
+    ///
+    /// ⭐ And it is the same TYPE: the ride's `+0x14/+0x18/+0x1c` are three signed shorts
+    /// (`FUN_001eba70`), exactly what those six sites build. A 76-cell park is 19,456 units, well
+    /// inside ±32,767 -- where 640 would need 48,640 and could only fit from a centred origin.
+    ///
+    /// ⚠ This DISAGREES with "it laps the park": 256 gives a 7.5-cell radius, a circle 15 cells
+    /// across. The evidence wins over my earlier 64, which was reverse-engineered from master's
+    /// description rather than from the disc. If the real ride really does circle the whole park
+    /// then the radius byte is set somewhere I have not read -- which is a finding to go get, not
+    /// a reason to bend this number.</summary>
+    public const float TourPositionUnitsPerCell = 256f;
 
     /// <summary>`(sin * 4096 * radius) >> 5`, in cells.</summary>
     public const float TourCellsPerRadiusUnit = 4096f / 32f / TourPositionUnitsPerCell;
