@@ -39,6 +39,12 @@ public partial class Viewer
         };
         _management.Finances = _sim?.Finances;
         _management.Staff = _staff;
+        // ⭐ The visitor statistics `0x16B478` and the month end's park value, per park like the finances.
+        _parkStats ??= new ParkStatistics();
+        _management.Stats = _parkStats;
+        _management.VisitorSample ??= VisitorSample;
+        _management.Rating ??= ParkRatingNow;
+        _management.ParkValue ??= ParkValueTenths;
         int months = _management.MonthChanges;
         int before = _sim?.Finances.Balance ?? 0;
         _management.Advance(frameUnits);

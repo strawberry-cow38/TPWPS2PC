@@ -288,6 +288,38 @@ public sealed class AdvisorProducers : IAdvisorProducers
         return n;
     }
 
+    /// <summary>⭐⭐ `0x153650`, THE PARK RATING, READ (decompiled 2026-09-30): eleven capped terms summing to at most 100.
+    /// <code>
+    ///   min(guests, 100) / 5                       20      guests        0x3952CC
+    ///   min(rides * 3 / 2, 20)                     20      every placed ride (0x1E5B20(it, 1): ordinary, track,
+    ///   min(#rides at tier &gt; 1, 10)               10        coaster, tour); tier = ride+0x126
+    ///   min(2 * shops, 10)                         10      0x39529C
+    ///   min(2 * sideshows, 10)                     10      0x3952A4
+    ///   min(features, 10)                          10      0x3952A0, the placed-feature pool (bins, toilets...)
+    ///   min(researchers|entertainers|mechanics|guards|handymen, 4) each   5 x 4
+    /// </code>
+    /// The ride term is `(2n + n) / 2` exactly as written (`iVar4 = n*2; (iVar4 + n) / 2`). Park Statistics plots it
+    /// as Overall Rating and Park Finance turns it into a word.</summary>
+    public int ParkRating()
+    {
+        int rides = 0, upgraded = 0, shops = 0, sideshows = 0, features = 0;
+        foreach (var p in Census())
+        {
+            switch (PoolBit(p.Kind))
+            {
+                case 1: case 2: case 4: case 8: rides++; if (p.Ride?.CurrentTier > 1) upgraded++; break;
+                case 0x100: shops++; break;
+                case 0x200: sideshows++; break;
+                default: if (p.Kind == AssetResourceDatabase.AssetKind.Feature) features++; break;
+            }
+        }
+        int Four(StaffKind k) => Math.Min(StaffCount(k), 4);
+        return Math.Min(GuestCount, 100) / 5 + Math.Min(rides * 3 / 2, 20) + Math.Min(upgraded, 10)
+             + Math.Min(2 * shops, 10) + Math.Min(2 * sideshows, 10) + Math.Min(features, 10)
+             + Four(StaffKind.Researcher) + Four(StaffKind.Entertainer) + Four(StaffKind.Mechanic)
+             + Four(StaffKind.Guard) + Four(StaffKind.Handyman);
+    }
+
     /// <summary>⭐ `0x103718(0x3FF)`, the park size, capped at 30000 (unsigned compare of the s16 result):
     /// `6·(ordinary + tour + track + coaster) + 4·shops + 4·sideshows + 5·every feature` -- the features
     /// with NO status test, the pools' raw counts.</summary>

@@ -171,6 +171,15 @@ REQUIRED_WITNESSES += (
     'ok   music: the control, the same 90 on the event\'s own selector 4 plays the top level',
 )
 
+# The laptop's statistics (ParkStatsChecks.cs): 12 on every park -- disc-wide, so the same 12. The witnesses are the
+# year roll's instruction words, the bucket loop's assigning store and the rating against a constructed census.
+REQUIRED_CHECKS.update({'parkstats': 12})
+REQUIRED_WITNESSES += (
+    'ok   parkstats: the year roll 0x100EF8 copies 0x12dc -> 0x12e0 and 0x12e4 -> 0x12e8, then zeroes both',
+    'ok   parkstats: Park Statistics\' walk 0x186D38 stores each getter\'s result into the bucket',
+    'ok   parkstats: the rating of 3 rides (one at tier 2), 6 shops, 1 sideshow, 12 features and nobody: 27',
+)
+
 
 def classify(world: str, raw_exit: int | None, text: str, *, timed_out: bool = False,
              truncated: bool = False, launch_error: str | None = None, terrain: int | None = None) -> dict:

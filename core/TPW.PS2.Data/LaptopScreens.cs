@@ -684,6 +684,20 @@ public sealed record LaptopScreen(
     public static readonly string[] FeelingsIconPaths =
         { "/laptop/thoughts/TIHAPPY.ssh", "/laptop/thoughts/TINORMAL.ssh", "/laptop/thoughts/TISAD.ssh" };
 
+    /// <summary>⭐ The Dominant Thoughts icons by thought CLASS (`0x211C80`, <see cref="AdvisorProducers.NeedClass"/>),
+    /// through `DAT_003643B8[class]` = 0x07, 0x0d, 0x0c, 0x10, 0x09, 0x05, 0x0b, 0x0e, 0x07 -- sad, thirsty,
+    /// hungry, toilet, sick, happy, bored, hungry-and-thirsty, sad (parkstats-screens.md §3.5). Class 0 is never
+    /// shown. By path, like the feelings faces; every one is in `UI.WAD/laptop/Thoughts/`.</summary>
+    public static readonly string[] ThoughtIconPaths =
+    {
+        "/laptop/thoughts/TISAD.ssh", "/laptop/thoughts/TITHIRSTY.ssh", "/laptop/thoughts/TIHUNGRY.ssh",
+        "/laptop/thoughts/TITOILET.ssh", "/laptop/thoughts/TISICK.ssh", "/laptop/thoughts/TIHAPPY.ssh",
+        "/laptop/thoughts/TIBORED.ssh", "/laptop/thoughts/TIHUNGTHIR.ssh", "/laptop/thoughts/TISAD.ssh",
+    };
+    /// <summary>The thoughts row (`0x185458`): icons 32x32 at x = 45, 85, 125, y = `ThoughtsClouds` (284), in a blue
+    /// pill whose body runs 45..157 with 9-wide caps at 36 and 154, y 276..324.</summary>
+    public const int ThoughtsIconStep = 40, ThoughtsPillLeft = 45, ThoughtsPillRight = 157, ThoughtsPillTopDy = -8, ThoughtsPillHeight = 48;
+
     /// <summary>⭐⭐ THE RIDE'S UPGRADES PAGE -- state 2 of the ride screen, NOT a screen of its
     /// own. `findings/laptop-tabs.md` §3; layout `main_i_ride_data_upgrd.sce` bound by
     /// `FUN_001d3f98`, drawn by `FUN_001d6058`.

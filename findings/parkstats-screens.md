@@ -326,3 +326,34 @@ Binder globals for its eight elements: `Items 2c45fc/f8/2c4600`, `GraphLegend 2c
 - Whether the (200,130,0)/(255,255,0) text colours carry the shop screen's drop shadow: not in
   these draws; the port's laptop text path decides.
 - `FUN_00100d28`, what the gate actually charges, is unrelated to what is displayed.
+
+## 8. In the port (2026-09-30, strawberry: "flesh out a bunch of statistics, etc in the laptop uis")
+
+Wired, each against the routine named above; the core half is `ParkStatsChecks.cs` (`--parkstats-only`, 12 checks):
+
+- **Recording.** `ParkStatistics` is the stats singleton's five rings + People Visited + the December rating sample;
+  `ParkManagement.MonthChanged` records it after the finances' month end, before the month counter moves
+  (`0x16B478`). The guest walk is `Viewer.VisitorSample`; the rating is `AdvisorProducers.ParkRating` (`0x153650`).
+  The arrival stamp `g+0x70` is set where the native entrance accepts a guest, the same place People Visited bumps.
+- **Park Finance.** This year / last year Money In, Money Out (`0x12dc/e0`, `0x12e4/e8`, rolled by `0x100EF8` at the
+  year change), balance and park value (the month-13 snapshots `0x12ec/f0`), and the rating word for `Rating(0)` and
+  `+0x2FC`. The lifetime Cash In/Out (`0x12d8/d4`) are separate fields and do not roll.
+- **Park Statistics.** All five series through `0x186D38`'s own walk, the per-series maxima, and the
+  `GraphText`/`GraphValue` readout. ⚠ **The graph is drawn at roughly HALF the series' height, and that is retail.**
+  The walk assigns (`0x186EAC sw v0,0(t0)`, pinned by the audit), so with the one-year span every second bucket is a
+  single month divided by two, and the plotter's rising step takes the LOWER point -- so the steps read the halved
+  values, and only the first step (buckets 0 and 1 are both one whole month) stands at full height. A tall first
+  bar over a half-height staircase is the expected picture, not a bug.
+- **Visitor Information.** People Visited, Ticket Price, and the dominant-thoughts row (§3.5's top three + fill-in).
+- **Overall Statistics.** Park Value from the month-end ring `+0x107c`, the live value at k = 0.
+
+**The control.** `--stats-demo --wind-months=N` with `--laptop-screen=push:<screen>` swaps the month end's inputs for
+a feed predictable from the month index (people 10+5m, happiness 40+3m, time 2+m, rating 10+4m, value
+$5,000+$1,000m, $200 in / $120 out a day, an admission every third day). At N = 14 every figure on Park Finance
+matched the arithmetic (last year $73,000 / $43,800 = 365 days; this year $11,800 / $7,080 = 59; last-year balance at
+the 13th month end; Good at m = 12 against Excellent at m = 13). The thoughts row has no guest to read under the demo,
+so it is a drawing check only. ⚠ Use `--laptop-film=3` or more: the shot reads the PREVIOUS frame's texture, so a
+one-frame film photographs the park from before the screen opened.
+
+Not ported: the gate-price spinner (§3.4), the year selector and series toggles on the graph page, Existing Loans,
+Research, ride/toilet Users, Satisfaction.
