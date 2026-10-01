@@ -120,3 +120,37 @@ DISPLAY=:114 "$GODOT" --path game --resolution 640x360 --rendering-method gl_com
 # All8 core parks; known HALLOW/SPACE retail failures stay red/classified.
 python3 tools/audit_matrix.py --disc "$DISC" --out /tmp/research-persistence-core-NEW
 ```
+
+
+## Named rendered-matrix registration (2026-10-01)
+
+The component fixture is registered separately, NOT in the ordinary eight-park `SCENES`
+list. It runs both 640x360 and 1152x648 and requires exactly **two JUNGLE/terrain_1** map
+witnesses, one exact `RESEARCH PERSISTENCE SMOKE PASS checks=N;` with N >=24, no FAIL/error
+or teardown leak, and successful process completion. Missing, extra, wrong or malformed map
+witnesses fail. Ordinary scene cases still require exactly one requested map.
+
+```sh
+python3 tools/viewer_matrix.py --disc "$DISC" --godot "$GODOT" \
+  --standalone-case research-persistence --out /tmp/research-persistence-viewer-NEW
+```
+
+The runner passes the **resolved authorized disc path**, literal `--map=JUNGLE` and
+`--mode=park`, and strips inherited TPW overrides without adding `TPW_ALL_RESEARCHED`.
+It validates the actual scene, resolution, renderer and user arguments before launch.
+`--standalone-case` cannot be mixed with `--scenes` or `--parks`. Both resolution results
+and the component-proof scope are recorded; success is `selected_cases_passed`, never an
+all-eight-parks claim. Fresh-build/source/assembly stability checks remain active. The final
+assembly check also closes a pre-existing gap: changing output during the last case now fails.
+
+Disc-free controls exercise the actual main scheduler/launch contract, the exact two-map
+classifier, count/semantic/FAIL controls, inherited-env isolation, both final snapshot gates,
+and the unchanged ordinary all-scenes x eight-parks default. Python suite: **118 PASS**.
+Mock process receipts are explicitly synthetic, not rendered evidence.
+
+**CI boundary:** `.github/workflows/ci.yml` intentionally has no disc or Godot. Its existing
+unittest discovery runs the new registration/parser/orchestration controls, but it does NOT
+execute this rendered fixture. The named rendered gate is runnable locally on the authorized
+host; no external runner, disc upload or new CI credentials were provisioned. This registration
+must not be reported as automatic rendered CI coverage. Actual local matrix evidence follows
+only after running the command above.

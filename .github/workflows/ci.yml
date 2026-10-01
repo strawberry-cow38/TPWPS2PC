@@ -1,6 +1,7 @@
 # Queue item 13: build every project and run the disc-free tool tests on each push and pull request.
 # No disc, extracted asset or engine binary is available here, so the rendered and disc-reading gates
 # (audit_matrix, runtime_audit, viewer_matrix) stay local; see plan.md section 8.
+# Named standalone viewer-case launch/parser controls run below; this is NOT rendered smoke coverage.
 name: ci
 on:
   push:
