@@ -6,7 +6,7 @@ Assigned: identify the native request sources for `83 Twinkle`, `97 KeySparkle`,
 `99 CongratSparkle`, without inventing an award/research trigger from their names.
 The renderer rollout is now explicitly limited to **metadata-requested child83**. On the
 shipped table its parents are 75/76/77. Other immediate children remain OFF; this is not generic
-ChildEffect support. Clean final matrices are required before handoff.
+ChildEffect support. The clean final gates below passed; the bounded patch is ready for staged review.
 
 ## Actual inventories
 
@@ -147,3 +147,26 @@ The hosted CI has no disc/Godot; its disc-free controls do not constitute automa
 coverage. Full-world save/load remains outside this work. No retail capture or pure-input player
 withdrawal/demolition replay has been compared for this patch. Twinkle's death chain and the
 other decoded-field leads remain open, not silently marked finished.
+
+
+## Final clean gate record
+
+All gates ran at clean implementation commit **7fc717f** after restoring the compiled controls.
+The following update is documentation-only; no production/test/parser source changed afterward.
+
+- `/tmp/tpw-child-final-core`: full eight-park core audit **baseline retained**, four JUNGLE/
+  FANTASY passes and four exact known HALLOW/SPACE retail failures (raw1, matrix2). Every case
+  records **236 particle_child checks**; no new failure is accepted as a retail exception.
+- `/tmp/tpw-child-final-component`: named rendered fixture **62 PASS at 640x360 and1152x648**,
+  zero map witnesses as declared, no errors/leaks, fresh build/source/assembly guards active.
+- `/tmp/tpw-child-final-regression`: ordinary pointer **13** and mechanic **48** pass on both
+  JUNGLE/1 and HALLOW/2, with exactly one correct map each. This is four selected cases, NOT
+  a new full128-case viewer run on this branch.
+- `/tmp/tpw-child-final-research`: existing research component **24 PASS at both resolutions**,
+  exactly two JUNGLE/1 witnesses each. The standalone-map extension did not weaken that contract.
+- `/tmp/tpw-child-final-audio`: existing audio lifecycle **38 PASS**, no error/leak output.
+- `/tmp/tpw-child-final-python-run.log`: **126 tests PASS**. The sequential queue exits0 after
+  requiring the core's documented baseline exit2 and exit0 from every other gate.
+
+These establish the scoped request integration and regressions described above—not retail
+birth counts, full Twinkle behavior, or an observed player-visible demolition sequence.
