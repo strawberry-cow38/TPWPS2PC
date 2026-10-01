@@ -55,12 +55,33 @@ public partial class Viewer
     /// <summary>`FUN_001e8f28` init: the radius byte is `0xF`.</summary>
     public const int TourRadiusUnits = 0xF;
 
-    /// <summary>`(sin * 4096 * radius) >> 5`, divided by the 640 units in a cell: one radius unit
-    /// is 0.2 cells, so the authored 15 is a 3-cell circle.</summary>
-    public const float TourCellsPerRadiusUnit = 4096f / 32f / 640f;
+    /// <summary>⚠⚠ THE ONE NUMBER THAT IS NOT DECODED: how many position units are in a cell for a
+    /// RIDE OBJECT. Master: "its flying on the ground".
+    ///
+    /// The arithmetic is the disc's and is not in doubt -- `(sin * 4096 * radius) >> 5` out, and
+    /// `+ 0x32` up. What I got wrong was the SCALE: 640 units per cell is the PARTICLE system's
+    /// constant (`ParticleTemplate.PositionUnitsPerCell`) and I carried it into ride-object space,
+    /// which is a different subsystem that never promised the same unit. Guests, for one, use 256.
+    ///
+    /// ⭐ THE SHAPE IS UNIT-FREE AND IS RIGHT WHATEVER THIS IS. Radius is `128 * r` units and the
+    /// lift is 50, so the circle is always **38x wider than it is high** -- a flat lap, never a
+    /// steep climb. Only how big it is depends on this number:
+    ///
+    ///     640 (particles) -> 3.0 cells out, 0.08 up    -- what master saw: on the ground
+    ///     256 (guests)    -> 7.5 cells out, 0.20 up
+    ///      64             -> 30 cells out,  0.78 up
+    ///      16             -> 120 cells out, 3.1 up     -- a lap of the whole park and beyond
+    ///
+    /// It is ONE named number rather than two tuned ones precisely so the open question stays
+    /// visible and a future calibration (a savestate read of a placed ride's `+0x14/+0x18/+0x1c`
+    /// against its known cell) settles it in one place.</summary>
+    public const float TourPositionUnitsPerCell = 64f;
+
+    /// <summary>`(sin * 4096 * radius) >> 5`, in cells.</summary>
+    public const float TourCellsPerRadiusUnit = 4096f / 32f / TourPositionUnitsPerCell;
 
     /// <summary>`base.y + 0x32`, in cells.</summary>
-    public const float TourLiftCells = 0x32 / 640f;
+    public const float TourLiftCells = 0x32 / TourPositionUnitsPerCell;
 
     /// <summary>⚠ OURS, not the disc's -- see the class note. 12-bit units per console tick.</summary>
     public const int TourTurnPerTick = 12;
@@ -132,10 +153,17 @@ public partial class Viewer
         float a = v.Angle / TourAngleUnitsPerTurn * Mathf.Tau;
         float r = TourRadiusUnits * TourCellsPerRadiusUnit;
         v.Model.Root.Position = v.Centre + new Vector3(Mathf.Sin(a) * r, TourLiftCells, Mathf.Cos(a) * r);
-        // ⚠ FACING IS NOT READ. The console writes a full transform through `FUN_00115ae8` and what
-        // it builds the basis from was not decompiled, so the vehicle is turned to face along its
-        // own travel -- which is what a bird flying a circle must do and is this port's choice.
-        v.Model.Root.Basis = Basis.LookingAt(new Vector3(Mathf.Cos(a), 0f, -Mathf.Sin(a)), Vector3.Up);
+        // ⚠ FACING IS NOT READ -- the console builds its basis in `FUN_00115ae8`, which was not
+        // decompiled -- so the vehicle is turned along its own travel, which is what anything
+        // flying a circle must do. The TANGENT is exact: differentiating the position above gives
+        // (cos a, 0, -sin a).
+        //
+        // ⚠⚠ NEGATED, because the two conventions disagree. Godot's `LookingAt` aims the basis's
+        // **-Z** at the direction given, and these models face **+Z** (censused 8 of 8 on the
+        // lobby's park nodes). Without the sign the bird flew its circle perfectly and backwards,
+        // which is exactly what master saw.
+        var travel = new Vector3(Mathf.Cos(a), 0f, -Mathf.Sin(a));
+        v.Model.Root.Basis = Basis.LookingAt(-travel, Vector3.Up);
     }
 
     /// <summary>One frame. ⚠ On the PARK's clock, not the frame's: the angle is per console tick.</summary>
