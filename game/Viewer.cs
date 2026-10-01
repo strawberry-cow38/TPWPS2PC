@@ -2179,7 +2179,7 @@ public partial class Viewer : Node3D
         ResetGuests();
         _walkGrid = null;
         // ⭐ AND THE SIM WITH IT: it was made on that grid, and its rides stood on that park.
-        _sim = null; _scripted.Clear(); _rideMeshes.Clear(); _shotWound = false; ClearTrackViews(); ClearCoasterViews(); _placedHeight.Clear(); ClearHoardings();
+        _sim = null; _scripted.Clear(); _rideMeshes.Clear(); _shotWound = false; ClearTrackViews(); ClearCoasterViews(); _placedHeight.Clear(); ClearHoardings(); ClearTourVehicles();
         // ⭐⭐ AND THE SOUND, FOR THE SAME REASON THE GRID IS RESET TWO LINES UP. `_sounds` is
         // built `??=` from `SoundCatalogue(disc, world, 1)` and `(.., 2)` -- the CURRENT world's
         // event maps -- so keeping it across a world change resolves the new park's cues against
@@ -3312,6 +3312,9 @@ public partial class Viewer : Node3D
         if (ride.RequiresNativeServiceEntry && ride.ServiceEntry == null)
             GD.PrintErr($"[guest] {ride.Name}: compiled entrance does not match placed footprint/stub; native approach unavailable");
         RegisterStandingService(ride, model.Root, _place.Turns);
+        // ⭐ A tour ride flies a vehicle round itself; the .sam's SupplementalMeshes[0] says which,
+        // and a ride without that field is not a tour ride and gets nothing. See Viewer.TourRides.cs.
+        SpawnTourVehicle(ride, _place.Def, Cell(ParkPaths.Centre(new ParkCell(cx, cy))));
         _scripted.Add((ride, model, anim, -1, -1));
         if (mesh != null) _rideMeshes[id] = mesh;
         // ⭐⭐ AND ITS SOUNDS. The same EffectRequested the particles would use; the voice stands
@@ -7070,14 +7073,25 @@ public partial class Viewer : Node3D
     void GuestTestRide(int xl, int z0)
     {
         // ⚠ No menu to open any more -- ShowBuildCategory IS the selection now.
-        ShowBuildCategory("Rides");
+        // ⚠⚠ EVERY RIDE CATEGORY, not just "Rides". The console files tour rides in their OWN
+        // build category (its tool mode 6 against ordinary's 5), so `--guest-ride=Jurassic Tours`
+        // reported "nothing to board" for a ride that is right there in the archive -- the name was
+        // fine and the category was wrong. Searching them all makes the flag mean what it says.
         int row = -1;
-        for (int i = 0; i < _buildRows.Count && row < 0; i++)
+        string found = null;
+        foreach (var category in new[] { "Rides", "Tour Rides", "Track Rides", "Roller Coasters" })
         {
-            var d = DefinitionFor(_lib.Rides[_buildRows[i]].Model);
-            if (d?.Name != null && d.Name.Contains(_guestRide, StringComparison.OrdinalIgnoreCase)) row = i;
+            ShowBuildCategory(category);
+            for (int i = 0; i < _buildRows.Count && row < 0; i++)
+            {
+                var d = DefinitionFor(_lib.Rides[_buildRows[i]].Model);
+                if (d?.Name != null && d.Name.Contains(_guestRide, StringComparison.OrdinalIgnoreCase))
+                { row = i; found = category; }
+            }
+            if (row >= 0) break;
         }
-        if (row < 0) { GD.Print($"[guest] no '{_guestRide}' among this archive's Rides -- nothing to board"); return; }
+        if (row < 0) { GD.Print($"[guest] no '{_guestRide}' in any ride category -- nothing to board"); return; }
+        GD.Print($"[guest] '{_guestRide}' found under \"{found}\" (row {row})");
         var grid = _guests.Paths;
         // A LAID path, not the park's phantom walkway: the queue has to be drawn onto it below.
         ParkCell? Join(int x, int y) => ParkPaths.Neighbours(new ParkCell(x, y))
@@ -12022,6 +12036,7 @@ public partial class Viewer : Node3D
         AllocBegin(); StepHoardings(delta); AllocEnd("StepHoardings");
         AllocMark("02 after StepPark/shot");
         AllocBegin(); _sounds?.Step(delta); AllocEnd("sounds.Step");
+        AllocBegin(); StepTourRides(delta); AllocEnd("tour.Step");
         AllocBegin(); _music?.Step(); AllocEnd("music.Step");
         AllocBegin(); _burst?.Step(delta); AllocEnd("burst.Step");
         AllocBegin(); PresentAdvisor(); AllocEnd("PresentAdvisor");   // the head, the stack, the voice (Viewer.Advisor.cs)
