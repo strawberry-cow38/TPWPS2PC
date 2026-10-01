@@ -454,23 +454,8 @@ public sealed class RideParticles
     /// sixteenth is **`Flies` (id 9)**, ADDOBJ'd by `Toilet.rse` and `SupBog.rse` with an emitter
     /// life of 100000 ticks -- about 51 minutes, unmistakably meant to persist -- and under the
     /// old reading it fired one burst and stopped. Flies over a dirty toilet, once.</summary>
-    // The executable rejects a direct self-link; shipped links are acyclic. Also guard longer
-    // malformed cycles defensively, rather than letting recursive child requests exhaust the stack.
-    readonly HashSet<int> _spawning = new();
-
     public ParticleEffect Emit(int id, Vector3 where, Vector3? fireAlong = null, int probe = 0,
                                bool persistent = false)
-    {
-        if (!_spawning.Add(id))
-        {
-            GD.Print($"[fx] child chain cycle refused: effect {id}");
-            return null;
-        }
-        try { return EmitOne(id, where, fireAlong, probe, persistent); }
-        finally { _spawning.Remove(id); }
-    }
-
-    ParticleEffect EmitOne(int id, Vector3 where, Vector3? fireAlong, int probe, bool persistent)
     {
         var e = _library?[id];
         if (e == null || e.Ramp.All(c => c == 0)) return null;
@@ -704,9 +689,10 @@ public sealed class RideParticles
         // Native spawn calls the non-directional spawn API for a particle child, even when the
         // parent was directional. Use the child's OWN offset words, not the parent's velocity.
         // Probe modes intentionally isolate one effect for motion measurement; gameplay uses 0.
-        // This closes the immediate request only: attractors, death/expiry chains, ongoing
-        // attachment following and lifetime coupling remain separate unimplemented consumers.
-        if (probe == 0 && ParticleSpawnLinks.TryParticleChild(_library, id, out var child))
+        // Roll out ONLY the audited Twinkle83 request. Other native links remain deliberately
+        // deferred: enabling LaserRing63 also exposes an unvalidated total/live-cap scheduler.
+        // This is not full ChildEffect support or the Twinkle83->84 particle-death chain.
+        if (probe == 0 && ParticleSpawnLinks.TryTwinkleChild(_library, id, out var child))
         {
             var offset = new Vector3(child.X, child.Y, -child.Z) / ParticleTemplate.PositionUnitsPerCell;
             var made = Emit(child.EffectId, where + offset);

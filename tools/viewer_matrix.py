@@ -114,9 +114,29 @@ SCENES['sideshow-presentation'] = ('SideshowPresentationSmoke', 'SIDESHOW PRESEN
 STANDALONE_CASES = {
     'research-persistence': {
         'scene': 'ResearchPersistenceSmoke', 'label': 'RESEARCH PERSISTENCE SMOKE',
+        'user_args': ('--map=JUNGLE', '--mode=park'),
         'minimum': 24, 'maps': (('JUNGLE', 'terrain_1'), ('JUNGLE', 'terrain_1')),
         'resolutions': ('640x360', '1152x648'),
         'scope': 'explicit two-Viewer research-section component fixture; not full-world save/load or pixel proof',
+    },
+    'particle-child': {
+        'scene': 'ParticleChildSpawnAudit', 'label': 'PARTICLE CHILD SPAWN',
+        'minimum': 62, 'maps': (), 'user_args': (),
+        'resolutions': ('640x360', '1152x648'),
+        'scope': 'explicit rendered particle-child component fixtures; no Viewer/map/player or retail pixel proof',
+        'numbered_checks': True,
+        'witnesses': (
+            'Destroy75 API returns parent and creates exactly parent plus 83',
+            'Destroy76 API returns parent and creates exactly parent plus 83',
+            'Destroy77 API returns parent and creates exactly parent plus 83',
+            'Emit 60 introduces no child (including no LaserRing63 for 60/62)',
+            'Emit 62 introduces no child (including no LaserRing63 for 60/62)',
+            'CLONED DATA finite83 inherits neither parent persistent flag nor directional input',
+            'CLONED DATA supported child83 self-link cannot recurse',
+            'CLONED DATA finite parent and child retire through normal process/time',
+            'Clear plus two real frames retires every finite/continuous node and lifecycle map',
+            'holders queued and retired normally',
+        ),
     },
 }
 
@@ -139,12 +159,12 @@ def standalone_command(case: str, resolution: str, engine: Path, xvfb: str, disc
     return [xvfb, '-a', str(engine), '--rendering-method', 'gl_compatibility',
             '--audio-driver', 'Dummy', '--resolution', resolution, '--path', 'game',
             f'res://tests/{STANDALONE_CASES[case]["scene"]}.tscn', '--',
-            f'--disc={disc}', '--map=JUNGLE', '--mode=park']
+            f'--disc={disc}', *STANDALONE_CASES[case]['user_args']]
 
 
 def validate_standalone_launch(case: str, command: list[str], env: dict, disc: Path, *, resolution: str) -> None:
     # Validate the actual launch command, not a disconnected test-only recipe.
-    if case != 'research-persistence':
+    if case not in STANDALONE_CASES:
         raise ValueError(f'no launch contract for {case}')
     if resolution not in standalone_runs(case):
         raise ValueError(f'not a registered standalone resolution: {resolution}')
@@ -158,11 +178,11 @@ def validate_standalone_launch(case: str, command: list[str], env: dict, disc: P
     if command.count('--') != 1:
         raise ValueError('standalone launch needs exactly one user-argument separator')
     user = command[command.index('--') + 1:]
-    required = [f'--disc={disc}', '--map=JUNGLE', '--mode=park']
+    required = [f'--disc={disc}', *STANDALONE_CASES[case]['user_args']]
     if sorted(user) != sorted(required):
-        raise ValueError('research-persistence requires exactly explicit disc, JUNGLE and park arguments')
+        raise ValueError(f'{case} requires exactly its registered user arguments')
     if 'TPW_ALL_RESEARCHED' in env or '--all-researched' in command or '--headless' in command:
-        raise ValueError('research-persistence must render without the all-researched override')
+        raise ValueError(f'{case} must render without the all-researched override')
 
 
 def classify_standalone(case: str, run: dict) -> dict:
@@ -178,7 +198,7 @@ def classify_standalone(case: str, run: dict) -> dict:
     result['loaded'] = [list(pair) for pair in loaded]
     # Also count malformed/unexpected map lines, so an extra terrain_3 witness cannot disappear.
     map_lines = [line for line in text.splitlines() if line.startswith('[map] loaded ')]
-    if not map_lines: return {**result, 'status': 'no_map_witness'}
+    if not map_lines and spec['maps']: return {**result, 'status': 'no_map_witness'}
     if len(map_lines) != len(spec['maps']): return {**result, 'status': 'map_witness_count'}
     if tuple(loaded) != spec['maps']: return {**result, 'status': 'wrong_map'}
     pass_lines = [line for line in text.splitlines() if line.startswith(spec['label'] + ' PASS')]
@@ -186,6 +206,16 @@ def classify_standalone(case: str, run: dict) -> dict:
     if len(pass_lines) != 1 or len(passes) != 1: return {**result, 'status': 'missing_pass_witness'}
     result['checks'] = int(passes[0])
     if result['checks'] < spec['minimum']: return {**result, 'status': 'missing_coverage'}
+    if spec.get('numbered_checks'):
+        prefix = spec['label'] + ' ok:'
+        rows = [line for line in text.splitlines() if line.startswith(prefix)]
+        matches = [re.fullmatch(re.escape(prefix) + r' \[(\d+)\] (.+)', line) for line in rows]
+        ids = [int(m[1]) for m in matches if m]
+        if len(ids) != len(rows) or ids != list(range(1, result['checks'] + 1)):
+            return {**result, 'status': 'missing_coverage'}
+        receipts = [m[2] for m in matches]
+        if any(w not in receipts for w in spec.get('witnesses', ())):
+            return {**result, 'status': 'missing_coverage'}
     return result
 
 
@@ -209,9 +239,10 @@ def classify(scene: str, world: str, terrain: int, run: dict) -> dict:
     if failures: return {**result, 'status': 'error_output'}
     loaded = MAP_LINE.findall(text)
     result['loaded'] = [list(pair) for pair in loaded]
-    if not loaded: return {**result, 'status': 'no_map_witness'}
-    if len(loaded) != 1: return {**result, 'status': 'ambiguous_map_witness'}
-    if loaded[0] != (world, f'terrain_{terrain}'): return {**result, 'status': 'wrong_map'}
+    map_lines = [line for line in text.splitlines() if line.startswith('[map] loaded ')]
+    if not map_lines: return {**result, 'status': 'no_map_witness'}
+    if len(map_lines) != 1: return {**result, 'status': 'ambiguous_map_witness'}
+    if loaded != [(world, f'terrain_{terrain}')]: return {**result, 'status': 'wrong_map'}
     passes = re.findall(r'^' + re.escape(label) + r' PASS checks=(\d+);', text, re.M)
     if len(passes) != 1: return {**result, 'status': 'missing_pass_witness'}
     result['checks'] = int(passes[0])

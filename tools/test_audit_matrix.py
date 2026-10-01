@@ -225,6 +225,12 @@ COVERAGE += '\n' + '\n'.join(['  ok   sideshow presentation: classifier fixture'
                              + list(SIDESHOW_LABELS))
 
 
+# Synthetic classifier receipts, not native/rendered execution evidence.
+_CHILD_WITNESSES = [w for w in REQUIRED_WITNESSES if w.startswith('ok   particle child:')]
+COVERAGE += '\n' + '\n'.join(['  ok   particle child: filler'] * (236 - len(_CHILD_WITNESSES))
+                              + ['  ' + w for w in _CHILD_WITNESSES])
+
+
 class SideshowCoverageTests(unittest.TestCase):
     def test_family_floor_registered(self):
         self.assertEqual(REQUIRED_CHECKS.get('sideshow_presentation'),136)
@@ -459,6 +465,13 @@ class ClassificationTests(unittest.TestCase):
         for text in controls:
             self.assertEqual(classify('JUNGLE', 0, text + '\nPASS')['status'], 'missing_coverage')
         self.assertEqual(classify('JUNGLE', 0, COVERAGE + '\nPASS')['status'], 'pass')
+
+    def test_particle_child_count_and_semantics_required(self):
+        controls = ['\n'.join(x for x in COVERAGE.splitlines() if 'particle child:' not in x),
+                    COVERAGE.replace('  ok   particle child: filler\n', '', 1)]
+        controls += [COVERAGE.replace(w, 'ok   particle child: filler', 1) for w in _CHILD_WITNESSES]
+        for text in controls:
+            self.assertEqual(classify('JUNGLE', 0, text + '\nPASS')['status'], 'missing_coverage')
 
     def test_clean_worlds_pass(self):
         for world in ('JUNGLE', 'FANTASY'):

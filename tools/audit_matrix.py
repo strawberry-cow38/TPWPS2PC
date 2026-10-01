@@ -243,6 +243,19 @@ REQUIRED_WITNESSES += (
 )
 
 
+# Immediate child request: raw/native recipe versus explicit Twinkle-only rollout.
+# Other links (including LaserRing) remain deferred; this does not test a full particle simulator.
+REQUIRED_CHECKS.update({'particle_child': 236})
+REQUIRED_WITNESSES += (
+    'ok   particle child: literal native link 75->83, attachment1/coupling0; coupling not simulated',
+    'ok   particle child: 83->84 is PARTICLE DEATH, never an immediate child request',
+    'ok   particle child: LaserRing63 rollout is deferred; no total/live-cap scheduling change',
+    "ok   particle child: declared offset fixture uses child words, not parent's distinct velocity",
+    'ok   particle child: supported-ID self link cannot recurse',
+    'ok   particle child: native directional parent still requests nondirectional particle child, not inherited direction',
+)
+
+
 def classify(world: str, raw_exit: int | None, text: str, *, timed_out: bool = False,
              truncated: bool = False, launch_error: str | None = None, terrain: int | None = None) -> dict:
     lines = [line.strip() for line in text.splitlines() if line.strip()]

@@ -62,6 +62,12 @@ class Classify(unittest.TestCase):
         text = good() + '\n[map] loaded world=JUNGLE terrain=terrain_2.mps'
         self.assertEqual(vm.classify('entrance', 'JUNGLE', 2, output(text))['status'], 'ambiguous_map_witness')
 
+    def test_malformed_extra_map_cannot_evade_ordinary_one_map_contract(self):
+        text = good() + '\n[map] loaded world=JUNGLE terrain=terrain_3.mps'
+        self.assertEqual(vm.classify('entrance', 'JUNGLE', 2, output(text))['status'], 'ambiguous_map_witness')
+        text = good().replace('terrain_2.mps', 'terrain_3.mps')
+        self.assertEqual(vm.classify('entrance', 'JUNGLE', 2, output(text))['status'], 'wrong_map')
+
     def test_regression_bypass_is_not_a_pass(self):
         # The old runner used `'PASS' in line`, which accepted "... BYPASS ..." witnesses.
         text = '\n'.join(line for line in good().splitlines() if ' SMOKE PASS ' not in line)
@@ -206,7 +212,7 @@ class ResearchPersistenceStandalone(unittest.TestCase):
                 vm.main(required + flags)
             self.assertEqual(raised.exception.code, 2)
 
-    def run_mock_main(self, *, standalone=True, text=None, command_mutation=None, default_selection=False, snapshot_control=None):
+    def run_mock_main(self, *, standalone=True, text=None, command_mutation=None, default_selection=False, snapshot_control=None, case=None):
         # Exercise main's REAL scheduling and launch builder without any disc/engine/process.
         with tempfile.TemporaryDirectory(dir='/tmp') as temp:
             root = Path(temp); disc = root / 'disc'; engine = root / 'godot'; out = root / 'output'
@@ -225,7 +231,7 @@ class ResearchPersistenceStandalone(unittest.TestCase):
                     body = good(scene, world, int(leaf[len('terrain_')]))
                 return {**output(body), 'log': str(log)}
             args = ['--disc', str(disc), '--godot', str(engine), '--out', str(out), '--repo', str(root)]
-            args += ['--standalone-case', self.CASE] if standalone else [] if default_selection else ['--scenes', 'pointer', '--parks', 'JUNGLE/1']
+            args += ['--standalone-case', case or self.CASE] if standalone else [] if default_selection else ['--scenes', 'pointer', '--parks', 'JUNGLE/1']
             original = vm.standalone_command
             def changed(*a, **kw):
                 command = original(*a, **kw)
@@ -296,6 +302,82 @@ class ResearchPersistenceStandalone(unittest.TestCase):
         self.assertEqual(manifest['results'][0]['loaded'], [['JUNGLE', 'terrain_1']])
         self.assertNotIn('standalone_case', manifest)
         for command, env in calls: self.assertEqual(env['TPW_ALL_RESEARCHED'], '1')
+
+
+class ParticleChildStandalone(unittest.TestCase):
+    CASE = 'particle-child'
+
+    def good(self, checks=62):
+        spec = vm.STANDALONE_CASES[self.CASE]
+        receipts = list(spec['witnesses']) + ['synthetic fixture receipt'] * (checks - len(spec['witnesses']))
+        return '\n'.join([f'PARTICLE CHILD SPAWN ok: [{i}] {body}' for i, body in enumerate(receipts, 1)]
+                         + [f'PARTICLE CHILD SPAWN PASS checks={checks}; explicit component fixture'])
+
+    def classify(self, text=None, **extra):
+        return vm.classify_standalone(self.CASE, output(self.good() if text is None else text, **extra))
+
+    def test_exact_no_viewer_contract_is_scoped_to_this_named_case(self):
+        spec = vm.STANDALONE_CASES[self.CASE]
+        self.assertNotIn(self.CASE, vm.SCENES)
+        self.assertEqual(spec['scene'], 'ParticleChildSpawnAudit')
+        self.assertEqual(spec['minimum'], 62)
+        self.assertEqual(spec['maps'], ())
+        self.assertEqual(spec['user_args'], ())
+        self.assertEqual(self.classify()['status'], 'pass')
+        self.assertEqual(self.classify()['loaded'], [])
+        self.assertIn('no Viewer/map/player', self.classify()['scope'])
+        for map_line in ['[map] loaded world=JUNGLE terrain=terrain_1.mps',
+                         '[map] loaded world=OTHER terrain=terrain_3.mps']:
+            self.assertEqual(self.classify(self.good() + '\n' + map_line)['status'], 'map_witness_count')
+        # The research fixture still requires its two maps; no global map-count waiver.
+        text = 'RESEARCH PERSISTENCE SMOKE PASS checks=24;'
+        self.assertEqual(vm.classify_standalone('research-persistence', output(text))['status'], 'no_map_witness')
+
+    def test_numbered_receipts_floor_and_semantics_cannot_be_replaced_by_summary(self):
+        text = self.good()
+        controls = [self.good(61), text.replace('ok: [62]', 'ok: [61]'),
+                    text.replace('ok: [62]', 'ok: [bad]'),
+                    '\n'.join(x for x in text.splitlines() if 'ok: [62]' not in x),
+                    'PARTICLE CHILD SPAWN PASS checks=62;', text + '\nPARTICLE CHILD SPAWN PASS checks=62;']
+        controls += [text.replace(w, 'synthetic fixture receipt', 1)
+                     for w in vm.STANDALONE_CASES[self.CASE]['witnesses']]
+        for changed in controls:
+            self.assertNotEqual(self.classify(changed)['status'], 'pass')
+        self.assertEqual(self.classify(text.replace('PARTICLE CHILD SPAWN PASS', 'PARTICLE CHILD SPAWN BYPASS'))['status'], 'missing_pass_witness')
+        self.assertEqual(self.classify(text.replace('PARTICLE CHILD SPAWN PASS', 'ANOTHER CASE PASS'))['status'], 'missing_pass_witness')
+
+    def test_failed_fixture_and_cleanup_are_not_hidden_by_exit_zero(self):
+        for line in ['PARTICLE CHILD SPAWN FAIL: [4] missing child',
+                     'PARTICLE CHILD SPAWN cleanup FAIL: leaked node', 'ERROR: leaked resource']:
+            self.assertEqual(self.classify(self.good() + '\n' + line)['status'], 'error_output')
+        for extra, expected in [({'raw_exit': 1}, 'nonzero_exit'), ({'timed_out': True}, 'timeout'),
+                                ({'truncated': True}, 'truncated_log'), ({'launch_error': 'no display'}, 'launch_error')]:
+            self.assertEqual(self.classify(**extra)['status'], expected)
+
+    def test_launch_has_disc_only_and_cannot_acquire_game_map_or_override(self):
+        disc = Path('/authorized/disc')
+        with patch.dict(os.environ, {'TPW_ALL_RESEARCHED': '1'}, clear=True):
+            env = vm.case_environment(disc, standalone=True)
+        for resolution in vm.standalone_runs(self.CASE):
+            command = vm.standalone_command(self.CASE, resolution, Path('/godot'), 'xvfb-run', disc)
+            vm.validate_standalone_launch(self.CASE, command, env, disc, resolution=resolution)
+            self.assertEqual(command[command.index('--') + 1:], [f'--disc={disc}'])
+            for bad in [command + ['--map=JUNGLE'], command + ['--mode=park'],
+                        command + ['--all-researched'], [x for x in command if x != f'--disc={disc}']]:
+                with self.assertRaises(ValueError):
+                    vm.validate_standalone_launch(self.CASE, bad, env, disc, resolution=resolution)
+
+    def test_real_main_schedules_only_two_component_cases(self):
+        helper = ResearchPersistenceStandalone()
+        code, manifest, calls = helper.run_mock_main(case=self.CASE, text=self.good())
+        self.assertEqual(code, 0)
+        self.assertEqual(manifest['status'], 'selected_cases_passed')
+        self.assertEqual(manifest['expected_maps'], [])
+        self.assertEqual(manifest['parks'], [])
+        self.assertEqual([r['checks'] for r in manifest['results']], [62, 62])
+        self.assertEqual([r['resolution'] for r in manifest['results']], ['640x360', '1152x648'])
+        self.assertTrue(all(r['case'] == self.CASE and not r['loaded'] for r in manifest['results']))
+        self.assertEqual(len([c for c, env in calls if 'res://tests/ParticleChildSpawnAudit.tscn' in c]), 2)
 
 
 if __name__ == '__main__':

@@ -4,8 +4,9 @@
 
 Assigned: identify the native request sources for `83 Twinkle`, `97 KeySparkle`, and
 `99 CongratSparkle`, without inventing an award/research trigger from their names.
-The first renderer implementation is **WIP, not ready to merge**. It builds, but rendered
-regressions, negative controls and containment of the broader-child hazard below are pending.
+The renderer rollout is now explicitly limited to **metadata-requested child83**. On the
+shipped table its parents are 75/76/77. Other immediate children remain OFF; this is not generic
+ChildEffect support. Clean final matrices are required before handoff.
 
 ## Actual inventories
 
@@ -57,11 +58,13 @@ Selected MIPS confirms the kind-1 offset and call:
 - Raw Destroy75/76/77 child83 velocity words are `(0,625,0)`. Against position inputs in
   10240ths this means initial displacement **(0,625/640,0)** cells: +0.9765625 Y.
 
-The backend previously never read `ChildEffect`. The WIP `ParticleSpawnLinks` resolves the
-particle-pool request/initial offset, and `RideParticles.Emit` dispatches it after parent creation.
-It does not inherit directional or persistent-parent arguments. Probe modes deliberately remain
-single-effect motion instruments. An extra recursion guard protects malformed indirect cycles;
-that is host safety, not a claim that the native routine guards more than direct self-links.
+The backend previously never read `ChildEffect`. `ParticleSpawnLinks.TryParticleChild` resolves
+the native particle-pool recipe; `TryTwinkleChild` deliberately selects only requested ID83 for
+this rollout. `RideParticles.Emit` dispatches that request after parent creation, with neither
+parent direction nor parent persistence inherited. Probes remain single-effect instruments.
+The native direct-self guard plus this single-target policy prevent recursion cycles; the earlier
+generic prototype's extra recursion guard was removed. The parent API still returns the parent;
+`Spawned` counts the actually created parent and child nodes.
 
 **Not implemented by this patch:** attractors; particle death/emitter expiry; ongoing attachment
 following; parent/child lifetime coupling; the other emitter fields. In particular, creating
@@ -74,11 +77,12 @@ uses `ExpectedTotal()` without a simultaneous-live cap. Raw child63 has burst1, 
 emitter life20, particle life20, max-live1: the renderer plans **five** particles, although the
 native live cap is one. Several overlapping large ring sprites are a concrete regression risk.
 
-This is not a child-ID resolution error. Before merge, either contain this first rollout to the
-audited Twinkle request or prove a narrowly correct finite-emission/cap correction. Do not
-blindly clamp every total to MaxLive: an effect with turnover can emit more over its lifetime.
-Rendered parent/child placement, finite/continuous behavior, guard cleanup and map-clear tests,
-plus compiled missing-child/wrong-offset controls, are still required.
+This is not a child-ID resolution error. **Containment was chosen:** only child83 is enabled;
+4->5, 51->54, 60/62->63 and 78->85 remain OFF and are tested through actual renderer calls.
+No count/cap/density/scheduling correction is included. ExpectedTotal is the port's unvalidated
+rate accumulator, NOT an observed console emission count. The console's actual births for63
+require a separate boundary/scheduling trace. Do not blanket-clamp a lifetime total to MaxLive:
+a turnover effect can emit more over its lifetime than its simultaneous-live cap.
 
 ## 97 / 99: no identified trigger, not declared retail dead code
 
@@ -105,11 +109,41 @@ Repair51 and upgrade89 callers were encountered separately; the port's hoarding-
 remains prior inference, not an oracle. No timing, density, condemnation, tour, or guest-skinning
 change is included in this slice.
 
-## WIP implementation receipts (not a merge gate)
+## Registered regression and executed controls
 
-- Shipping game builds with this first immediate-child prototype (existing warnings, zero errors).
-- Explicit temporary raw-record planner fixtures: **25 PASS**, including all three Destroy->83
-  offsets, attractor/none rejection, child-vs-parent offset discrimination, unattached zero offset,
-  and negative/self/missing child controls. These are not yet registered shipping regressions.
-- No rendered test or visual/pure-input demolition replay has been run on the prototype yet.
-- The LaserRing/live-cap review issue above remains open; **do not merge this prototype**.
+- `ParticleChildChecks`: **236** raw-template/native-ELF assertions, including all105 generic
+  recipes, the explicit Twinkle-only policy, child-vs-parent offset controls, unsupported/pool/
+  self cases and both native spawn APIs. Integrated into the default core audit with a236
+  coverage floor and semantic witnesses. The earlier temporary25 checks are historical only.
+- `ParticleChildSpawnAudit`: **62** declared component assertions. It uses real library art,
+  attached holders, actual CpuParticles3D nodes, read-only observers, labelled raw clones,
+  normal `_Process`/timers and queued teardown. It does not use a Viewer or load a park.
+  Geometry/material/sprite/visibility receipts plus completed frames are NOT pixel review.
+- `viewer_matrix --standalone-case particle-child` runs640x360 and1152x648, expects ZERO map
+  lines only for this named no-Viewer fixture, exact PASS, sequential62 IDs and semantic
+  witnesses. Research still requires two maps; ordinary cases still require one. A pre-existing
+  malformed-extra-map hole in ordinary classification was also closed, with a negative control.
+- Development registered run: **62 PASS at both resolutions**, no error/leak lines. Python
+  tools: **126 PASS** after parser/launch/scheduler/family controls. This was a dirty development
+  tree; final clean manifests, not that run, are the landing record.
+- **Nine compiled mutations rejected:** parent-owned offset(8 core failures), self allowed(2),
+  wrong pool(5), generic policy(7); missing child, wrong unit, wrong Z, inherited direction/
+  persistence and LaserRing enabled all fail the rendered fixture. LaserRing control was rerun
+  after putting the actual Emit/node-count check before its policy assertion: it fails at
+  `Emit60 introduces no child`, not merely at a metadata query. Sources restored exactly and
+  both projects rebuilt. Logs/JSON: `/tmp/tpw-child-mutant-*`, `/tmp/tpw-child-mutations.json`.
+- Actual default family-call omission: compiled JUNGLE/1 exits0/PASS, but the gate rejects it as
+  missing_coverage with particle_child count0. Program was restored byte-for-byte and rebuilt.
+
+```sh
+dotnet run --project tools/TPW.PS2.ParkSimAudit -- "$DISC" --particle-child-only
+python3 tools/audit_matrix.py --disc "$DISC" --out /tmp/child-core-NEW
+python3 tools/viewer_matrix.py --disc "$DISC" --godot "$GODOT" \
+  --standalone-case particle-child --out /tmp/child-rendered-NEW
+python3 -m unittest discover -s tools -p 'test_*.py'
+```
+
+The hosted CI has no disc/Godot; its disc-free controls do not constitute automatic rendered
+coverage. Full-world save/load remains outside this work. No retail capture or pure-input player
+withdrawal/demolition replay has been compared for this patch. Twinkle's death chain and the
+other decoded-field leads remain open, not silently marked finished.

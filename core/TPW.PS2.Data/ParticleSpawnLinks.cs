@@ -24,4 +24,16 @@ public static class ParticleSpawnLinks
         request = new ChildRequest(id, offset.X, offset.Y, offset.Z);
         return true;
     }
+
+    /// <summary>Bounded rollout for the audited 75/76/77 -> 83 requests. The requested ID still
+    /// comes from the parent record; this is not an invented award/UI trigger. Other particle
+    /// children remain deferred until their scheduling/lifetime semantics have been gated.</summary>
+    public static bool TryTwinkleChild(ParticleLibrary library, int parentId, out ChildRequest request)
+    {
+        if (TryParticleChild(library, parentId, out request) && request.EffectId == 83)
+            return true;
+        request = default;
+        return false;
+    }
+
 }

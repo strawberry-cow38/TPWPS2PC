@@ -89,6 +89,12 @@ if (args.Contains("--particle-fitting-only"))
     Console.WriteLine(bad==0 ? "PASS particle fitting: explicit raw-disc/native predicate audit (retail pixels/reachability unverified)" : $"FAIL: {bad}");
     return bad==0?0:1;
 }
+if (args.Contains("--particle-child-only"))
+{
+    ParticleChildChecks.Run(disc,Check);
+    Console.WriteLine(bad==0 ? "PASS particle child: raw/native immediate request and bounded Twinkle policy (not complete particle simulation)" : $"FAIL: {bad}");
+    return bad==0?0:1;
+}
 var wad = Wad(world);
 var terrain = new Model(wad.Read(wad.Find(AuditPark.Mps)));
 if (args.Contains("--native-consumer-only"))
@@ -772,6 +778,7 @@ SurfaceSeatChecks.Run(disc, Check);
 BounceChecks.Run(disc, Check);
 MusicChecks.Run(disc, Check);
 ParticleFittingChecks.Run(disc, Check);
+ParticleChildChecks.Run(disc, Check);
 ParkStatsChecks.Run(disc, Check);
 LoanChecks.Run(disc, Check);
 ResearchChecks.Run(disc, Check);
