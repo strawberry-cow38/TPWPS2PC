@@ -18,6 +18,7 @@ static class ResearchChecks
         FreshPark(dba, Check);
         Project(dba, Check);
         Upgrade(dba, Check);
+        AdvisorResearchChecks.Run(dba, check);
     }
 
     static void Executable(byte[] elf, Action<bool, string> Check)
@@ -43,6 +44,27 @@ static class ResearchChecks
               $"0x1B6880 (start a project) has exactly two callers, the Research screen and the save loader "
               + $"({string.Join(", ", calls.Select(c => $"0x{c:X}"))}): nothing starts research on its own");
         Check(at == 0x2a220064, "0x12BAF8 tests the filed percent against 100 (slti s1, 0x64 at 0x12BB3C): reaching it IS the unlock");
+        uint Word(uint address)
+        {
+            for (int i = 0; i < U16(44); i++)
+            {
+                int p = ph + i * U16(42);
+                if (U32(p) != 1) continue;
+                uint va = U32(p + 8), size = U32(p + 16);
+                if (address >= va && address + 4 <= va + size)
+                    return U32(checked((int)(U32(p + 4) + address - va)));
+            }
+            throw new InvalidDataException($"no executable word at 0x{address:X}");
+        }
+        Check(Word(0x104544) == 0x32960004 && Word(0x1045e0) == 0x12c00012
+              && Word(0x1045ec) == 0x0c04ac28 && Word(0x104608) == 0x24050001,
+              "advisor research mask bug is in the ELF: the same bit4 gates track and coaster (count call0x12B0A0, availability kind1)");
+        Check(Word(0x103f58) == 0x30620001 && Word(0x103f70) == 0x30620008 && Word(0x103f84) == 0x30620002,
+              "advisor variety feature flags read in order1/8/2: toilet, camera, staff room");
+        Check(Word(0x103be8) == 0x9082009a && Word(0x103c28) == 0x2a020032,
+              "advisor variety reads nonzero object status and counts a50-entry distinct-type set");
+        Check(Word(0x104950) == 0xac710000 && Word(0x10499c) == 0x5640ffe2 && Word(0x1049a0) == 0x92420126,
+              "upgrade-use helper stores the largest tier+1 and loops over placements using tier+0x126");
     }
 
     static void Catalogue(AssetResourceDatabase dba, Action<bool, string> Check)

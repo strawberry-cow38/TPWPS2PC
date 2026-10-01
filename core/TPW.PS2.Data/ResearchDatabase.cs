@@ -41,6 +41,10 @@ public sealed class ResearchDatabase
     AssetResourceDatabase.Entry Entry(int cat, int item)
         => item >= 0 && Keys(cat) is var keys && item < keys.Count ? _dba?.Find(keys[item]) : null;
 
+    /// <summary>The catalogue feature's DBA `+0x2E`, read by advisor variety (`0x103B20`); null when its
+    /// compiled record is absent. Research percentage does not filter feature subtypes.</summary>
+    public byte? FeatureFlags(int item) => Entry(2, item)?.RawFeatureFlags;
+
     static bool IsRideKind(int cat) => cat is 1 or 3 or 6 or 7;
 
     /// <summary>`0x12B758`: the research GROUP of a tier -- `Tier(t)` (`+0x48 + 0x34t`) on a ride kind, the simple
