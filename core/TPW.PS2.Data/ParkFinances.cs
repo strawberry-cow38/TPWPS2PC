@@ -32,9 +32,9 @@ namespace TPW.PS2.Data;
 ///
 /// ⭐ THE PERIOD COUNTER `park[0x12bc]` IS READ NOW: the month end `0x100A18` advances it (below,
 /// <see cref="MonthEnd"/>), so the two rings the advisor's WAGES_HIGH reads are kept -- income
-/// `+0x2FC` and wages `+0xE3C` (findings/staff-management.md §6.3-§6.4). ⚠ ONLY THOSE TWO: the
-/// balance `+0xBC`, spending `+0xBFC`, value `+0x107C` and the `+0x53C/+0x77C/+0x9BC` rings are
-/// written natively too, and nothing the port runs reads them yet, so they are not kept.</summary>
+/// `+0x2FC` and wages `+0xE3C` (findings/staff-management.md §6.3-§6.4), and since 2026-09-30 the balance
+/// `+0xBC`, value `+0x107C` and takings `+0x53C/+0x77C/+0x9BC` rings the laptop's graphs read. ⚠ The spending ring
+/// `+0xBFC` is still not kept: nothing reads it. The loan records are <see cref="Loans"/> (findings/loans.md).</summary>
 public sealed class ParkFinances
 {
     /// <summary>`park[4]`. ⚠ May go negative: the console credits without a floor and only uses
@@ -185,11 +185,38 @@ public sealed class ParkFinances
         return Debit(amount);
     }
 
+    /// <summary>⭐ The four loan records `park+0xC+i*0x2C`, built by the park ctor (`0x100470`, each available).</summary>
+    public IReadOnlyList<ParkLoan> Loans => _loans;
+    readonly ParkLoan[] _loans = Enumerable.Range(0, Lender.All.Length).Select(i => new ParkLoan(i)).ToArray();
+
+    /// <summary>Some record is taken -- the Financial Information menu's condition for its Existing Loans row
+    /// (`0x1340C0`, MIPS `0x134150`). Once true it stays true.</summary>
+    public bool AnyLoanTaken => _loans.Any(l => l.Taken);
+
+    /// <summary>`0x100E88`: the debt still owed over the taken records, in DOLLARS -- the Balance Sheet's Loans
+    /// row (the console sums `+0x14 x 10` and the page shows it `/ 10`).</summary>
+    public int LoansOutstanding => _loans.Where(l => l.Taken).Sum(l => l.Outstanding);
+
+    /// <summary>`0x100E40`, the gold tickets' money goal figure (weekly `0x16BC70`, not ported yet): Cash In - the
+    /// debt x 10 - Cash Out, in tenths. A loan costs its whole interest here the moment it is taken.</summary>
+    public int GoalMoney => TotalIncome - 10 * LoansOutstanding - TotalSpending;
+
+    /// <summary>⭐ `0x100CA8(park, slot)`, the accept: refused (false) when the slot is already taken -- the ONLY
+    /// refusal, silent, with no balance or count test anywhere -- otherwise the record is taken and its amount is
+    /// CREDITED as ordinary income (`amount x 10` through `0x100750`, so it lands in Cash In, the year's Money In and
+    /// the income ring). Its "APPLIED FOR LOAN" call `0x107E48` is an empty function: no message, no sound.</summary>
+    public bool TakeLoan(int slot)
+    {
+        if (slot < 0 || slot >= _loans.Length || !_loans[slot].Take()) return false;
+        Credit(_loans[slot].Amount * 10);
+        return true;
+    }
+
     /// <summary>⭐ `0x100A18`, the park's month end, READ (MIPS `0x100A18..0x100B30`), called by the
     /// calendar `0x16B060` AFTER the strike check:
     /// <code>
-    ///   balanceHistory[i] = balance                                  (⚠ not kept)
-    ///   4 loan slots: repayment min(+0x14, +0x18) x 10 into `loans`  (⚠ the port has no loans: 0)
+    ///   balanceHistory[i] = balance                                  (0x100A70 -- BEFORE any bill)
+    ///   4 loan slots: pay min(+0x14, +0x18); if pay, +0x14 -= pay, +0x10 -= 1; loans += pay x 10
     ///   park[0x12D0] += W;  wageRing[i] = W                          (W = 0x1008B8, the staff's wages x 10)
     ///   debit(loans + W)      -- ONE call; it refuses only as Debit does, and the ring keeps W anyway
     ///   credit(0)             -- 0x100750(park, 0): files nothing, clears the in-the-red count if >= 0
@@ -198,14 +225,16 @@ public sealed class ParkFinances
     /// `i = period % 144`. <paramref name="wagesTenths"/> is `0x1008B8`'s sum, already x 10.</summary>
     public void MonthEnd(int wagesTenths, int parkValueTenths = 0)
     {
-        int loans = 0;                                                     // ⚠ no loan slots in the port
-        WageAccumulator += wagesTenths;
-        _wages[Slot(PeriodCount)] = wagesTenths;
-        Debit(loans + wagesTenths);
-        Credit(0);
-        // ⭐ The balance is filed for the month that just CLOSED, so it is recorded before the
-        // counter moves on -- the same slot the wages above went into.
+        // ⭐ The balance is filed FIRST (`0x100A70`, before the loan walk and the wages): Overall Statistics' Bank
+        // Balance is the balance the month closed on BEFORE its bills. ⚠ Until 2026-10-01 this sat after the debit,
+        // which put every point a month's wages lower than the console's.
         _balance[Slot(PeriodCount)] = Balance;
+        int loans = 0;
+        foreach (var loan in _loans) loans += loan.MonthEnd() * 10;
+        WageAccumulator += wagesTenths;                                    // 0x12D0 -- wages only, never repayments
+        _wages[Slot(PeriodCount)] = wagesTenths;                           // 0xE3C ring -- likewise
+        Debit(loans + wagesTenths);                                        // ONE debit, its result ignored (0x100B18)
+        Credit(0);
         // ⭐ The park value `0x1011C8` into `park+0x107c` (findings/graph-widget.md §1.5), and every twelfth
         // month the last-year snapshots `0x12ec`/`0x12f0` (`0x100B80`/`0x100B8C`, when `count % 12 == 0 &&
         // count != 0`, BEFORE the increment -- so they land at month ends 13, 25, 37..., one month after the

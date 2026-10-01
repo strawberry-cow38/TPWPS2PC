@@ -642,12 +642,24 @@ public sealed record LaptopScreen(
             new(60,  LaptopRowKind.Money),   // Repayment -- per month
             new(951, LaptopRowKind.Money),   // Total
         },
+        // ⭐ The lender spinner's arrows (`LenderNameArrows`, 250, 131). On the pad left/right step the lender and
+        // the glyph is decoration; here it is also the pointer's way to step, as on every other pager.
+        TitleArrowElement: "LenderNameArrows",
         LabelsOnGrid: true);
 
     /// <summary>`STR_FINANCE_LOAN_ALREADY_TAKEN`. ⚠ When a loan IS taken the page draws this one
     /// label at (215, 207) and NOTHING else -- not the rows with a note, the rows are simply not
     /// drawn.</summary>
     public const int LoanAlreadyTakenTextId = 910;
+
+    /// <summary>New Loan for a lender already lent: its name and arrows, then ONE amber label, "Loan Taken", at
+    /// `LoanInformation`'s column and the second row (215, 207) -- step 5 of `0x136018`.</summary>
+    public static readonly LaptopScreen NewLoanTaken = NewLoan with
+    {
+        LabelElement = "LoanInformation",
+        Rows = new LaptopRow[] { new(LoanAlreadyTakenTextId, LaptopRowKind.Text) },
+        RowYs = new[] { 207 },
+    };
 
     /// <summary>⭐ VISITOR INFORMATION (menu id 10). `findings/parkstats-screens.md` §3; draw
     /// `FUN_00185458`, z 100, amber throughout.

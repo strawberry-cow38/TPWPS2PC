@@ -446,6 +446,7 @@ public partial class Viewer : Node3D
             else if (a == "--music-ps2") _musicPs2 = true;
             else if (a == "--graph-demo") _graphDemo = true;
             else if (a == "--stats-demo") _statsDemo = true;
+            else if (a.StartsWith("--take-loan=")) _takeLoans.AddRange(a["--take-loan=".Length..].Split(',').Select(int.Parse));
             else if (a.StartsWith("--delete-test=")) _deleteTest = a["--delete-test=".Length..];
             // ⭐ `--benchmark=<seconds>`: measure frame time and what is accumulating, then quit.
             else if (a == "--alloc-probe") _allocProbe = true;
@@ -3856,24 +3857,49 @@ public partial class Viewer : Node3D
                 li = ((li % Lender.All.Length) + Lender.All.Length) % Lender.All.Length;  // wraps
                 _loanLender = li;
                 var lend = Lender.All[li];
+                var loan = _sim?.Finances.Loans[li];
                 var (ltotal, lrepay) = lend.DefaultQuote();
                 var lcells = new List<(string, int)>
                 {
                     (lend.Name, 0),
                     (Money.Display(lend.MaxLoan), 0),
                     ($"{lend.Rate}%", 0),
-                    ($"{lend.MaxTermYears}yrs", 0),
+                    (Years(lend.MaxTermYears), 0),
                     (Money.Display(lrepay), 0),
                     (Money.Display(ltotal), 0),
                 };
                 // ⚠ The lender's name is ALSO the title here: the page draws it at (45, 115) in
-                // yellow, which is this screen's TitleElement.
-                _shopPanel.ShowScreen(LaptopScreen.NewLoan, lend.Name, lcells);
+                // yellow, which is this screen's TitleElement. ⭐ A lender already lent shows only
+                // "Loan Taken" under it (step 5 of `0x136018`).
+                if (loan is { Taken: true }) _shopPanel.ShowScreen(LaptopScreen.NewLoanTaken, lend.Name, Blank(1));
+                else _shopPanel.ShowScreen(LaptopScreen.NewLoan, lend.Name, lcells);
                 ClearLaptopModel();
                 RefreshLaptopBalance();
                 Status($"{lend.Name} -- up to {Money.Display(lend.MaxLoan)} at {lend.Rate}% over "
                      + $"{lend.MaxTermYears}yrs; {Money.Display(lrepay)}/month, "
                      + $"{Money.Display(ltotal)} total. Left/Right for another lender");
+                break;
+            }
+            // ⭐⭐ EXISTING LOANS (finance page 4) -- the taken records, one at a time (ParkLoan, `0x1359F0`).
+            case "existingloans":
+            {
+                var taken = _sim?.Finances.Loans.Where(l => l.Taken).ToList() ?? new List<ParkLoan>();
+                if (taken.Count > 0) _existingLoan = Math.Clamp(_existingLoan, 0, taken.Count - 1);
+                var el = taken.Count == 0 ? null : taken[_existingLoan];
+                // Term in YEARS (`+8 / 12`, `0x142A50`), Remaining in MONTHS (`0x142AC0`). ⚠⚠ Interest WITHOUT its
+                // `%`: this page's value column hands the formatted "20%" to vsprintf AS THE FORMAT, and a `%`
+                // followed by the terminator prints nothing (`0x13866C` -> `0x2A035C`). New Loan, drawn by another
+                // routine, keeps it.
+                _shopPanel.ShowLoans(new LaptopShopScreen.LoansPage(el?.Lender.Name, el == null ? Array.Empty<string>() : new[]
+                {
+                    Money.Display(el.Amount), Years(el.TermMonths / 12), el.Lender.Rate.ToString(),
+                    Money.Display(el.Repayment), Months(el.MonthsRemaining), Money.Display(el.Outstanding),
+                }));
+                ClearLaptopModel();
+                RefreshLaptopBalance();
+                Status(el == null ? "existing loans -- none taken"
+                    : $"{el.Lender.Name}: {Money.Display(el.Outstanding)} outstanding over {el.MonthsRemaining} months"
+                    + (taken.Count > 1 ? " -- Up/Down for the next loan" : ""));
                 break;
             }
             // ⭐⭐ THE BALANCE SHEET (menu id 5). Nothing on it is clickable; it is a readout.
@@ -3896,9 +3922,9 @@ public partial class Viewer : Node3D
                     (Money.Format(shop), 0),
                     (Money.Format(side), 0),
                     (Money.Format(cashIn), 0),
-                    // ⚠ No loan slots in this port, so outstanding debt is genuinely zero here --
-                    // a real figure, not a missing one.
-                    (Money.Format(0), 0),
+                    // ⭐ Loans: the debt still owed, interest included (`0x100E88`, Σ outstanding). Repayments are
+                    // in Cash Out, and so in Purchases below.
+                    (Money.Display(bf.LoansOutstanding), 0),
                     (Money.Format(wages), 0),
                     // ⚠ Purchases is COMPUTED by the draw, not stored: Cash Out - Staff Wages.
                     (Money.Format(cashOut - wages), 0),
@@ -3912,14 +3938,11 @@ public partial class Viewer : Node3D
             }
             // ⭐⭐ THE FINANCIAL INFORMATION MENU (id 4).
             //
-            // ⚠ Existing Loans is CONDITIONAL on a loan being taken, and this port has no loan
-            // slots at all -- so the row is absent, which is what the console does with no loans
-            // rather than a difference of ours.
+            // ⭐ Existing Loans is CONDITIONAL on a loan being taken (`0x1340C0`), and once there it stays.
             case "financialinfo":
             {
                 var fnames = new List<string>();
-                foreach (var e in LaptopScreen.FinanceMenu)
-                    if (!e.NeedsLoan) fnames.Add(TextRow(e.TextId));
+                foreach (var e in FinanceMenuRows()) fnames.Add(TextRow(e.TextId));
                 _shopPanel.ShowMenu(fnames, 0, "main_financialinfo.sce");
                 ClearLaptopModel();
                 RefreshLaptopBalance();
@@ -4324,6 +4347,39 @@ public partial class Viewer : Node3D
 
     /// <summary>Which lender New Loan is showing (0..3), stepped by its spinner.</summary>
     int _loanLender;
+    /// <summary>`--take-loan=N[,M]`: harness only -- the loan slots the push harness takes before it shows a page.</summary>
+    readonly List<int> _takeLoans = new();
+    /// <summary>The selected record on Existing Loans, an index into the TAKEN ones. ⚠ Reset to 0 whenever the
+    /// page is entered from the menu -- the list refills when the highlight reaches the row and every add sets the
+    /// index to 0 (`0x134760`, `0x15C550`).</summary>
+    int _existingLoan;
+
+    /// <summary>The Financial Information menu as it stands: the four fixed rows, plus Existing Loans once any loan
+    /// has been taken (`0x1340C0`).</summary>
+    List<(int TextId, string Opens, bool NeedsLoan)> FinanceMenuRows()
+    {
+        bool loans = _sim?.Finances.AnyLoanTaken == true;
+        return LaptopScreen.FinanceMenu.Where(e => !e.NeedsLoan || loans).ToList();
+    }
+
+    /// <summary>`0x142A50`: digits then 624 "yr" for one, 794 "yrs" otherwise, no space.</summary>
+    string Years(int n) => $"{n}{TextRow(n == 1 ? 624 : 794)}";
+    /// <summary>`0x142AC0`: digits then 10 "mnth" for one, 349 "mnths" otherwise.</summary>
+    string Months(int n) => $"{n}{TextRow(n == 1 ? 10 : 349)}";
+
+    /// <summary>⭐ Taking the loan on New Loan (`0x135D98` -> `0x100CA8`): the whole offer, credited at once. The
+    /// only refusal is a lender already lent, and it is silent; "APPLIED FOR LOAN" is an empty function.</summary>
+    void TakeLoanOnPage()
+    {
+        if (_sim?.Finances is not { } fin) return;
+        var lend = Lender.All[_loanLender];
+        if (!fin.TakeLoan(_loanLender)) { Status($"{lend.Name} has already lent to this park"); return; }
+        GD.Print($"[loan] taken from {lend.Name}: {Money.Display(fin.Loans[_loanLender].Amount)}, "
+               + $"{Money.Display(fin.Loans[_loanLender].Repayment)}/month over {fin.Loans[_loanLender].TermMonths} months "
+               + $"(balance now {Money.Format(fin.Balance)})");
+        ShowLaptopLevel();
+        Status($"loan taken: {Money.Display(fin.Loans[_loanLender].Amount)} from {lend.Name}");
+    }
 
     /// <summary>Which add-on the Addons page is showing, paged by list B.</summary>
     int _addonRow;
@@ -4695,11 +4751,11 @@ public partial class Viewer : Node3D
             // the index maps straight onto the filtered list.
             case "financialinfo":
             {
-                var fm = new List<(int TextId, string Opens, bool NeedsLoan)>();
-                foreach (var e in LaptopScreen.FinanceMenu) if (!e.NeedsLoan) fm.Add(e);
+                var fm = FinanceMenuRows();
                 if (row < 0 || row >= fm.Count) return;
                 _laptopBack.Add((fm[row].Opens, null));
                 _shopPanel.GraphCursor = 0;
+                _existingLoan = 0;
                 ShowLaptopLevel();
                 return;
             }
@@ -4795,6 +4851,22 @@ public partial class Viewer : Node3D
     /// so paging goes down the shipped path rather than round it.</summary>
     void OnLaptopPage(int by)
     {
+        if (_laptopBack.Count > 0 && _laptopBack[^1].Kind == "newloan")
+        {
+            // The lender spinner: 1..4 with wrap (`+0x60` bit 0).
+            _laptopBack[^1] = ("newloan", ((_loanLender + by) % Lender.All.Length + Lender.All.Length) % Lender.All.Length + "");
+            ShowLaptopLevel();
+            return;
+        }
+        if (_laptopBack.Count > 0 && _laptopBack[^1].Kind == "existingloans")
+        {
+            // `0x15C368`: steps only with two or more, wrapping.
+            int lent = _sim?.Finances.Loans.Count(l => l.Taken) ?? 0;
+            if (lent < 2) return;
+            _existingLoan = ((_existingLoan + by) % lent + lent) % lent;
+            ShowLaptopLevel();
+            return;
+        }
         if (PageHire(by)) return;
         if (PageStaffInfo(by)) return;
         if (_laptopBack.Count == 0 || _laptopBack[^1].Kind != "infoitem") return;
@@ -4841,6 +4913,8 @@ public partial class Viewer : Node3D
         if (_singleStaff is { } person) { SingleStaffChose(person, row); return; }
         if (_optionsOpen) { GameOptionChose(row); return; }
         if (_laptopBack.Count > 0 && IsGraphPage(_laptopBack[^1].Kind)) { GraphItemChosen(_laptopBack[^1].Kind, row); return; }
+        // ⭐ Cross on New Loan takes the offer -- any row, as on the upgrade page: the page has one offer.
+        if (_laptopBack.Count > 0 && _laptopBack[^1].Kind == "newloan") { TakeLoanOnPage(); return; }
         // ⭐ On the upgrade PAGE, any row buys -- the page has one offer and the console's Confirm
         // takes it; there is nothing else to click.
         if (_laptopBack.Count > 0 && _laptopBack[^1].Kind == "rideupgrade"
@@ -5112,10 +5186,13 @@ public partial class Viewer : Node3D
                     {
                         if (_statsDemo) StatsDemoDay(days);
                         AdvanceCalendar(ParkClock.UnitsPerDay);
+                        // `--take-loan=N[,M]` takes those slots at the START of the wind, so the months repay them.
+                        if (days == 1) foreach (int slot in _takeLoans) _sim?.Finances.TakeLoan(slot);
                     }
                     GD.Print($"[calendar] wound {_management.MonthChanges - start} month ends ({days} days): "
                            + $"{_parkStats?.Months ?? 0} months recorded, {_calendar.Format()}");
                 }
+                if (_windMonths == 0) foreach (int slot in _takeLoans) _sim?.Finances.TakeLoan(slot);
                 var pp = _laptopScreen.Split(':');
                 string kind = pp.Length > 1 ? pp[1] : "main";
                 string parg = pp.Length > 2 && !pp[2].StartsWith("row=") ? pp[2] : null;

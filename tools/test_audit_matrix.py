@@ -155,6 +155,20 @@ COVERAGE += '\n' + '\n'.join([
 ])
 
 
+# The park's loans (LoanChecks.cs): its own statement. Real lines from a --loans-only run; the witnesses are the
+# month end's instruction words and the payoff that never re-opens the lender.
+COVERAGE += '\n' + '\n'.join([
+                              '  ok   loans: the month end 0x100A18 files the balance ring (0x100A70) BEFORE the loan walk (+0x28, +0x14, +0x18; decrements at 0x100AA8/0x100AB0) and the single debit (0x100B18)',
+                              "  ok   loans: taking Mr Byrne's loan credits $100,000 as income and books $172,800 over 36 months at $4,800",
+                              '  ok   loans: taking it a second time is refused, silently, and moves no money -- the only refusal there is',
+                              '  ok   loans: Ms West: 10,000 x 1.15^2 = 13,225 compounded, but the page and the debt are the RE-DERIVED $551 x 24 = $13,224',
+                              '  ok   loans: one month end with $500 of wages: the repayment and the wages leave in one debit ($5,300), both in Cash Out, but only the wages reach the wage total and ring ($500)',
+                              "  ok   loans: the Bank Balance ring holds $130,000, the balance BEFORE the month's bills, not the $124,700 after them",
+                              '  ok   loans: after 36 month ends it is paid off ($0, 0 months), the 37th takes only its wages, and the record still shows its $4,800 repayment',
+                              '  ok   loans: a paid-off loan is still TAKEN: nothing sets +0x28 back, so each lender lends once per park',
+                              "  ok   loans: two loans owe $186,024 (the Balance Sheet's Loans row), and the gold tickets' money figure drops by exactly their interest x 10 (760240) the moment they are taken",
+])
+
 class ClassificationTests(unittest.TestCase):
     def test_staff_family_count_and_witnesses_required(self):
         for text in ('\n'.join(x for x in COVERAGE.splitlines() if 'staff:' not in x),
@@ -200,6 +214,14 @@ class ClassificationTests(unittest.TestCase):
                      COVERAGE.replace('  ok   music: lobby clips:', '  ok   unrelated: lobby clips:', 1),
                      COVERAGE.replace('written as selector 2: no slot takes it', 'written as selector 2: level 6'),
                      COVERAGE.replace('the control, the same 90 on the event\'s own selector 4 plays the top level', 'the control: skipped')):
+            self.assertEqual(classify('JUNGLE', 0, text + '\nPASS')['status'], 'missing_coverage')
+        self.assertEqual(classify('JUNGLE', 0, COVERAGE + '\nPASS')['status'], 'pass')
+
+    def test_loans_family_count_and_witnesses_required(self):
+        for text in ('\n'.join(x for x in COVERAGE.splitlines() if 'loans:' not in x),
+                     COVERAGE.replace('  ok   loans: taking it a second time', '  ok   unrelated: taking it a second time', 1),
+                     COVERAGE.replace('and the single debit (0x100B18)', 'and two debits'),
+                     COVERAGE.replace('nothing sets +0x28 back', 'payoff sets +0x28 back')):
             self.assertEqual(classify('JUNGLE', 0, text + '\nPASS')['status'], 'missing_coverage')
         self.assertEqual(classify('JUNGLE', 0, COVERAGE + '\nPASS')['status'], 'pass')
 

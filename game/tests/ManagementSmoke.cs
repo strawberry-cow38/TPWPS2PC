@@ -373,6 +373,48 @@ public partial class ManagementSmoke : Node3D
                   && Panel<LaptopShopScreen.GraphSeries?>(panel, "_graph") is { Values.Count: > 0 },
                   "choosing it again keeps it shown: the toggles are cleared, then the chosen one flipped ON");
 
+            // The park's loans, through the pages (LoanChecks has the arithmetic): no Existing Loans row until a loan is
+            // taken; New Loan's arrows step the lender; a click takes the offer and the page flips to Loan Taken; the
+            // menu grows its fifth row; Existing Loans shows the record (Interest WITHOUT its %); a month end repays it.
+            void Back() => Click(panel.PanelOrigin + new Vector2(365, 75) * panel.PanelScale);
+            laptopBack.Clear(); laptopBack.Add(("financialinfo", null));
+            Call(viewer, "ShowLaptopLevel");
+            await Frames();
+            string existingLoans = text.Text("eng", 472);
+            var finMenu = Panel<List<string>>(panel, "_menu");
+            Check(finMenu.Count == 4 && !finMenu.Contains(existingLoans), "Financial Information lists four rows, and no Existing Loans before a loan");
+            Click(panel.MenuRowScreenBox(3).GetCenter());
+            await Frames();
+            var pager = Panel<Rect2>(panel, "_pageArrows");
+            Check(laptopBack[^1].Kind == "newloan" && pager.Size.X > 0, "New Loan opens from its row, with the lender arrows drawn");
+            Click(new Vector2(pager.End.X - pager.Size.X / 4f, pager.GetCenter().Y));
+            await Frames();
+            Check(Field<int>(viewer, "_loanLender") == 1 && Panel<string>(panel, "_title") == Lender.All[1].Name,
+                  $"the right arrow steps the lender to {Panel<string>(panel, "_title")}");
+            int balBefore = sim.Finances.Balance;
+            Click(Panel<Dictionary<int, Rect2>>(panel, "_specRows")[0].GetCenter());
+            await Frames();
+            var dabb = sim.Finances.Loans[1];
+            Check(dabb.Taken && sim.Finances.Balance - balBefore == dabb.Amount * 10
+                  && ReferenceEquals(Panel<LaptopScreen>(panel, "_spec"), LaptopScreen.NewLoanTaken),
+                  $"clicking the offer takes it (+{Money.Format(sim.Finances.Balance - balBefore)}) and the page shows only Loan Taken");
+            Back();
+            await Frames();
+            finMenu = Panel<List<string>>(panel, "_menu");
+            Check(laptopBack[^1].Kind == "financialinfo" && finMenu.Count == 5 && finMenu[4] == existingLoans,
+                  "back on the menu, Existing Loans is its fifth row");
+            Click(panel.MenuRowScreenBox(4).GetCenter());
+            await Frames();
+            var loansPage = Panel<LaptopShopScreen.LoansPage?>(panel, "_loansPage");
+            Check(loansPage is { Lender: "Ms Dabb" } lp && lp.Values[0] == Money.Display(dabb.Amount) && lp.Values[2] == "20"
+                  && lp.Values[3] == Money.Display(dabb.Repayment) && lp.Values[5] == Money.Display(dabb.Outstanding),
+                  $"Existing Loans shows Ms Dabb's record, Interest without its %: {string.Join(" | ", loansPage?.Values ?? Array.Empty<string>())}");
+            int owed = dabb.Outstanding, left = dabb.MonthsRemaining, monthsNow = mgmt.MonthChanges, loanDays = 0;
+            while (mgmt.MonthChanges == monthsNow && loanDays++ < 40) Call(viewer, "AdvanceCalendar", ParkClock.UnitsPerDay);
+            Check(dabb.Outstanding == owed - dabb.Repayment && dabb.MonthsRemaining == left - 1
+                  && sim.Finances.LoansOutstanding == dabb.Outstanding,
+                  $"the next month end repays {Money.Display(dabb.Repayment)}: {Money.Display(owed)} -> {Money.Display(dabb.Outstanding)} over {dabb.MonthsRemaining} months");
+
             if (shots != null)
             {
                 for (int t = 0; t < 20; t++) Call(viewer, "TickPark");

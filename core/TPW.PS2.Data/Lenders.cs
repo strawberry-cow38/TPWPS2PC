@@ -62,3 +62,72 @@ public readonly record struct Lender(string Name, int MaxLoan, int Rate, int Max
     /// improvement and a departure.</summary>
     public (int Total, int Repayment) DefaultQuote() => Quote(MaxLoan, MaxTermYears);
 }
+
+/// <summary>⭐ One of the park's four LOAN RECORDS, `park + 0xC + i*0x2C` (findings/finance-screens.md §3, the loans
+/// section of the 2026-10-01 read). Money in WHOLE DOLLARS, as the record keeps it; the park's own accumulators are
+/// tenths, so every movement into them is `x 10`.
+///
+/// <code>
+///   +0x04 Amount          +0x08 TermMonths      +0x0C Rate %         +0x10 MonthsRemaining
+///   +0x14 Outstanding     +0x18 Repayment       +0x1C Lender.MaxLoan +0x20 Lender.MaxTermYears
+///   +0x24 Total           +0x28 Available (1) / taken (0)
+/// </code>
+///
+/// ⚠ `Available` is written by the park ctor (1) and the accept (0) and NOTHING ELSE -- not the month end when the
+/// loan is paid off. So each lender lends once per park, and a paid-off loan stays on the books at 0 months and $0
+/// with its old repayment still showing.</summary>
+public sealed class ParkLoan
+{
+    public ParkLoan(int index)
+    {
+        Index = index;
+        Lender = Lender.All[index];
+        Quote();
+    }
+
+    /// <summary>`+0x00`: the slot, 0..3 -- Mr Byrne, Ms Dabb, Mr Howell, Ms West.</summary>
+    public int Index { get; }
+    public Lender Lender { get; }
+    /// <summary>`+0x28`: 1 until taken. ⚠ Never set back (see the class note).</summary>
+    public bool Available { get; private set; } = true;
+    public bool Taken => !Available;
+    public int Amount { get; private set; }
+    public int TermMonths { get; private set; }
+    public int MonthsRemaining { get; private set; }
+    public int Outstanding { get; private set; }
+    public int Repayment { get; private set; }
+    public int Total { get; private set; }
+
+    /// <summary>What New Loan writes every frame while the slot is available (`0x135F2C..0x135F54`): the whole
+    /// offer, since the amount and term spinners never take input -- amount = max loan, term = max years x 12,
+    /// remaining = term, then the quote `0x17E5D0` (outstanding = total = repayment x months).</summary>
+    void Quote()
+    {
+        Amount = Lender.MaxLoan;
+        TermMonths = Lender.MaxTermYears * 12;
+        MonthsRemaining = TermMonths;
+        (Total, Repayment) = Lender.Quote(Amount, Lender.MaxTermYears);
+        Outstanding = Total;
+    }
+
+    /// <summary>`0x100CA8`'s record half: refused (false) unless available, then taken.</summary>
+    internal bool Take()
+    {
+        if (!Available) return false;
+        Quote();
+        Available = false;
+        return true;
+    }
+
+    /// <summary>⭐ One month of the walk in `0x100A18` (MIPS `0x100A78..0x100AC4`), READ: a taken record pays
+    /// `min(outstanding, repayment)` (signed, `slt`/`movn`), and only a non-zero payment decrements the two
+    /// counters -- so once it is paid off nothing moves again. Returns the payment in DOLLARS.</summary>
+    internal int MonthEnd()
+    {
+        if (Available) return 0;
+        int pay = Math.Min(Outstanding, Repayment);
+        if (pay != 0) { Outstanding -= pay; MonthsRemaining -= 1; }
+        return pay;
+    }
+}
+

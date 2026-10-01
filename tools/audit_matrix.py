@@ -180,6 +180,14 @@ REQUIRED_WITNESSES += (
     'ok   parkstats: the rating of 3 rides (one at tier 2), 6 shops, 1 sideshow, 12 features and nobody: 27',
 )
 
+# The park's loans (LoanChecks.cs): 9 on every park, disc-wide. The witnesses are the month end's words (the balance
+# ring before the walk and the one debit) and the payoff that leaves the lender lent.
+REQUIRED_CHECKS.update({'loans': 9})
+REQUIRED_WITNESSES += (
+    'ok   loans: the month end 0x100A18 files the balance ring (0x100A70) BEFORE the loan walk (+0x28, +0x14, +0x18; decrements at 0x100AA8/0x100AB0) and the single debit (0x100B18)',
+    'ok   loans: a paid-off loan is still TAKEN: nothing sets +0x28 back, so each lender lends once per park',
+)
+
 
 def classify(world: str, raw_exit: int | None, text: str, *, timed_out: bool = False,
              truncated: bool = False, launch_error: str | None = None, terrain: int | None = None) -> dict:

@@ -163,6 +163,7 @@ public sealed partial class LaptopShopScreen : Control
     /// ⭐ The row order is the draw function's, by text id; nothing here is arranged by taste.</summary>
     public void ShowFor(ParkRide shop, string displayName)
     {
+        _loansPage = null;
         _rows.Clear();
         _title = displayName ?? shop?.Name ?? "";
         if (shop == null) { Hide(); return; }
@@ -359,6 +360,7 @@ public sealed partial class LaptopShopScreen : Control
                            IReadOnlyList<int> thoughts = null, (string Label, string Value)? graphReadout = null,
                            int? yearSpan = null)
     {
+        _loansPage = null;
         _yearSpan = yearSpan;
         _feelings = feelings;
         _thoughts = thoughts;
@@ -396,8 +398,64 @@ public sealed partial class LaptopShopScreen : Control
     ///
     /// The option order and text ids come from the console's own table at `0x2b97c0`; see
     /// <see cref="LaptopMainMenu"/>, which holds the reading.</summary>
+    /// <summary>⭐⭐ EXISTING LOANS (finance page 4), the one finance page with NO `.sce`: `0x1359F0` draws it from
+    /// constants (origin X 16, Y 64 at `0x35F574/8`) -- the selected loan's lender and six rows, or "No Loan Taken".
+    /// <see cref="Lender"/> null means no taken loan is selected.</summary>
+    public readonly record struct LoansPage(string Lender, IReadOnlyList<string> Values);
+    LoansPage? _loansPage;
+    /// <summary>The page's labels, `u16[0x35E670]`: Lender, then Borrowed, Term, Interest, Repayment, Remaining,
+    /// Outstanding.</summary>
+    static readonly int[] LoansPageTextIds = { 102, 77, 1022, 387, 60, 994, 434 };
+    const int NoLoanTakenTextId = 154;
+
+    public void ShowLoans(LoansPage page)
+    {
+        _loansPage = page;
+        _spec = null; _menu.Clear(); _rows.Clear();
+        _pageArrows = new Rect2();
+        _menuHover = -1; _menuScroll = 0; _focusSent = -2;
+        _buildRow = false; _buildHover = false;
+        _graph = null; _yearSpan = null; _graphReadout = null;
+        RightClickInspects = false;
+        bool wasShut = !Open;
+        Open = true; Visible = true;
+        if (wasShut) Cue(LaptopSounds.Cue.Open);
+        FitToViewport();
+        QueueRedraw();
+    }
+
+    /// <summary>⭐ `0x1359F0`. ⚠⚠ EVERY STRING IS CENTRED on its x: the dispatcher sets centre mode before every page
+    /// draw (`0x138998`) and this page, alone, never sets a justify of its own. Header pair yellow at (101, 124) /
+    /// (221, 124); six amber rows at 156..316 step 32, labels at 101 and values at 221; "No Loan Taken" at (146, 148);
+    /// the arrows glyph amber, 30x30, top-left (272, 124). ⚠ What `0x2136D0(tex, 0)`'s flag bits do to that glyph
+    /// (a mirror is the obvious guess) is NOT read, so it draws as the art is.</summary>
+    void DrawLoansPage(float s, Vector2 o, LoansPage page)
+    {
+        Vector2 P(int x, int y) => o + new Vector2(x, y) * s;
+        const string centre = "center";
+        if (page.Lender == null)
+        {
+            DrawRun(Row(NoLoanTakenTextId), P(146, 148), s, Of(ShopScreen.Label), centre);
+            return;
+        }
+        DrawRun(Row(LoansPageTextIds[0]), P(101, 124), s, Of(ShopScreen.Highlight), centre);
+        DrawRun(page.Lender, P(221, 124), s, Of(ShopScreen.Highlight), centre);
+        if (_arrows != null)
+        {
+            _pageArrows = new Rect2(P(272, 124), new Vector2(30, 30) * s);
+            DrawTextureRect(_arrows, _pageArrows, false, ArrowTint);
+        }
+        for (int i = 1; i < LoansPageTextIds.Length; i++)
+        {
+            int y = 124 + 32 * i;
+            DrawRun(Row(LoansPageTextIds[i]), P(101, y), s, Of(ShopScreen.Label), centre);
+            if (i - 1 < page.Values.Count) DrawRun(page.Values[i - 1], P(221, y), s, Of(ShopScreen.Label), centre);
+        }
+    }
+
     public void ShowMenu(IReadOnlyList<string> options, int selected, string sceneFile = null)
     {
+        _loansPage = null;
         _menuScene = sceneFile;
         _spec = null;
         _pageArrows = new Rect2();   // ⚠ a menu has none; a stale rect would eat clicks
@@ -762,7 +820,7 @@ public sealed partial class LaptopShopScreen : Control
     /// there is none of. Answers whether it took the key.</summary>
     bool PageInstead(int by)
     {
-        if (_spec == null || _menu.Count > 0) return false;
+        if ((_spec == null && _loansPage == null) || _menu.Count > 0) return false;
         Cue(LaptopSounds.Cue.Move);
         Paged?.Invoke(by);
         return true;
@@ -1656,6 +1714,13 @@ public sealed partial class LaptopShopScreen : Control
         float s = Scale;
         var o = Origin;
         DrawTextureRect(_chrome, new Rect2(o, new Vector2(Native, Native) * s), false);
+        if (_loansPage is { } loans)
+        {
+            DrawLoansPage(s, o, loans);
+            DrawBalance(s, o);
+            DrawButtons(s, o);
+            return;
+        }
         if (_spec != null)
         {
             DrawSpecScreen(s, o);
