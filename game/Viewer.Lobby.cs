@@ -51,6 +51,9 @@ public partial class Viewer
     readonly List<(Vector3 Lo, Vector3 Hi)> _lobbyBounds = new();
     /// <summary>The model the pointer is over, or -1. Drives nothing but the cursor.</summary>
     int _lobbyHover = -1;
+    /// <summary>A left press that began INSIDE the lobby. ⚠ Without it a release whose press
+    /// landed on another screen (the laptop's Close Park) counts as a lobby click.</summary>
+    bool _lobbyPressed;
     /// <summary>Frames left before the one-shot picker self-check; -1 once it has run.</summary>
     int _lobbyPickCheck = -1;
     bool _lobbyBoxHasFont;
@@ -176,6 +179,7 @@ public partial class Viewer
         // past the first park would have tested a stale box.
         _lobbyBounds.Clear();
         _lobbyHover = -1;
+        _lobbyPressed = false;      // a press from the screen we just left is not ours
         var fits = _lobbyBaseMesh.Fittings;
         var world = _lobbyBaseMesh.WorldTransforms();
         int seated = 0;
@@ -685,6 +689,7 @@ public partial class Viewer
         _lobbyCams.Clear();
         _lobbyBounds.Clear();
         _lobbyHover = -1;
+        _lobbyPressed = false;
         _lobbyBaseRoot = null;
         _lobbyBaseMesh = null;
         if (_lobbyRoot != null && IsInstanceValid(_lobbyRoot)) _lobbyRoot.QueueFree();

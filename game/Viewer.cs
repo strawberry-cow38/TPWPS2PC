@@ -12437,11 +12437,26 @@ public partial class Viewer : Node3D
         // Master: "the lobby doesnt have mouse support for selecting a park/switching between
         // them". Nothing below this applies there -- the wheel is already refused, orbit and pan
         // are already refused, and there are no tools -- so a left release in the lobby cannot be
-        // the end of a camera drag and is always a click. Returning here keeps that true instead
-        // of threading `!_lobbyMode` through another five branches.
+        // the end of a camera drag. Returning here keeps that true instead of threading
+        // `!_lobbyMode` through another five branches.
+        //
+        // ⚠⚠ A CLICK IS A PRESS **AND** A RELEASE IN THE SAME PLACE. Taking the release alone made
+        // the laptop's Close Park button fire twice: its PRESS closes the park and opens the
+        // lobby, and the RELEASE then arrived with `_lobbyMode` already true, so this read it as a
+        // lobby click, picked the park under the cursor and threw up the enter prompt. One press,
+        // two screens. astraclaw found it on 9d2b95c -- "clicking Close Park ... also produces
+        // `[lobby] mouse: confirm Lost Kingdom`, leaving the confirmation prompt up".
+        //
+        // ⭐ The same shape as the park's own click discipline, which has always judged a button on
+        // RELEASE while remembering the press (`_left.Down`). The lobby needed its own flag because
+        // it returns before any of that runs.
         if (_lobbyMode && e is InputEventMouseButton lmb)
         {
-            if (lmb.ButtonIndex == MouseButton.Left && !lmb.Pressed) LobbyClicked(lmb.Position);
+            if (lmb.ButtonIndex == MouseButton.Left)
+            {
+                if (lmb.Pressed) _lobbyPressed = true;
+                else { if (_lobbyPressed) LobbyClicked(lmb.Position); _lobbyPressed = false; }
+            }
             return;
         }
         if (e is InputEventMouseButton mb)
