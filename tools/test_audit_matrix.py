@@ -155,6 +155,13 @@ COVERAGE += '\n' + '\n'.join([
 ])
 
 
+# Explicit synthetic coverage for the new family's classifier, NOT disc evidence.
+_PARTICLE_WITNESSES = [w for w in REQUIRED_WITNESSES if w.startswith('ok   particle fitting:')]
+COVERAGE += '\n' + '\n'.join(
+    ['  ok   particle fitting: filler'] * (109 - len(_PARTICLE_WITNESSES))
+    + ['  ' + w for w in _PARTICLE_WITNESSES])
+
+
 class ClassificationTests(unittest.TestCase):
     def test_staff_family_count_and_witnesses_required(self):
         for text in ('\n'.join(x for x in COVERAGE.splitlines() if 'staff:' not in x),
@@ -270,6 +277,18 @@ class ClassificationTests(unittest.TestCase):
     def test_disruption_count_without_late_control_cannot_pass(self):
         text = COVERAGE.replace('late-run negative control catches changed cash through ordinary per-step sampling', 'other check') + '\nPASS'
         self.assertEqual(classify('JUNGLE', 0, text)['status'], 'missing_coverage')
+
+    def test_particle_fitting_count_and_semantic_witnesses_required(self):
+        controls = [
+            '\n'.join(line for line in COVERAGE.splitlines() if 'particle fitting:' not in line),
+            COVERAGE.replace('  ok   particle fitting: filler\n', '', 1),
+        ]
+        # Retain the count but replace each meaningful witness with a vacuous green line.
+        controls += [COVERAGE.replace(w, 'ok   particle fitting: filler', 1)
+                     for w in _PARTICLE_WITNESSES]
+        for text in controls:
+            self.assertEqual(classify('JUNGLE', 0, text + '\nPASS')['status'], 'missing_coverage')
+        self.assertEqual(classify('JUNGLE', 0, COVERAGE + '\nPASS')['status'], 'pass')
 
     def test_clean_worlds_pass(self):
         for world in ('JUNGLE', 'FANTASY'):

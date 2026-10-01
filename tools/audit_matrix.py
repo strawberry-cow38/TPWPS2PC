@@ -181,6 +181,18 @@ REQUIRED_WITNESSES += (
 )
 
 
+# Particle fittings: the exact 19 rejected script/model pairs and one accepted SPACE control.
+# This is a disc-wide native/raw-table audit, not proof of retail pixels or script reachability.
+REQUIRED_CHECKS.update({'particle_fitting': 109})
+REQUIRED_WITNESSES += (
+    'ok   particle fitting: exact population:15 SideShowWin masks +2 Smoke2 masks +2 missing IDs; SPACE strength positive control1',
+    'ok   particle fitting: SPACE:/Sideshow/sgstrtst/sgstrtst.RSE first accepted ordinal, not first same-ID record',
+    'ok   particle fitting: native fallback3DA1F82 only when space shares no bit with3DA1F83;100 is NOT widened',
+    'ok   particle fitting: native searches raw file20-byte table: count36/table74/ID+4/flags+0 AND mask',
+    'ok   particle fitting: native ADDOBJ object wrapper also dispatches and attaches particle kinds in100',
+)
+
+
 def classify(world: str, raw_exit: int | None, text: str, *, timed_out: bool = False,
              truncated: bool = False, launch_error: str | None = None, terrain: int | None = None) -> dict:
     lines = [line.strip() for line in text.splitlines() if line.strip()]

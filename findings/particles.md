@@ -486,3 +486,14 @@ and the difference between a stream and a scatter.
 console's signed `rand % X` is ±X); disc → `Ring` about Y with `inner = radius` when `RingEdge`,
 and a height of `Y` one-sided or `2Y` otherwise. A zero extent stays a `Point` — most of the other
 31 effects are meant to come from one spot and must not be spread.
+
+
+## Rejected fitting calls: native route audit (2026-10-01)
+
+See [particle-fitting-route.md](particle-fitting-route.md). The exact 19 rejected calls split
+into **15 SideShowWin mask rejections, two Smoke2 mask rejections, and two absent IDs**; they
+are not 19 equivalent existing `0x411` nodes. SPACE's strength-test fitting `0x111` is an
+accepted duplicate-ID control. Both EVENT and ADDOBJ particle routes use native space `0x100`.
+The raw-table predicate agrees with the unchanged production resolver; widening it to `0x500`
+breaks 17 assertions. This does not establish retail pixels or runtime reachability. The
+109-check family is integrated into the default audit and its coverage gate, not a renderer fix.

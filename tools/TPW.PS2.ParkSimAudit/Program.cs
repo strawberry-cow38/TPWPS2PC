@@ -83,6 +83,12 @@ WadArchive Wad(string name)
     var e = disc.Files().Single(f => f.Path.Equals($"/DATA/{name}.WAD", StringComparison.OrdinalIgnoreCase));
     return new WadArchive(disc.Read(e.Extent, e.Size));
 }
+if (args.Contains("--particle-fitting-only"))
+{
+    ParticleFittingChecks.Run(disc,Check);
+    Console.WriteLine(bad==0 ? "PASS particle fitting: explicit raw-disc/native predicate audit (retail pixels/reachability unverified)" : $"FAIL: {bad}");
+    return bad==0?0:1;
+}
 var wad = Wad(world);
 var terrain = new Model(wad.Read(wad.Find(AuditPark.Mps)));
 if (args.Contains("--native-consumer-only"))
@@ -741,6 +747,7 @@ HoardingChecks.Run(disc, Check);
 SurfaceSeatChecks.Run(disc, Check);
 BounceChecks.Run(disc, Check);
 MusicChecks.Run(disc, Check);
+ParticleFittingChecks.Run(disc, Check);
 ParkStatsChecks.Run(disc, Check);
 ManagementChecks.Run(disc, terrain, Wad("DATA"), wad, world, Check);
 AdvisorChecks.Run(disc, terrain, Wad("DATA"), wad, world, Check);
