@@ -99,8 +99,9 @@ SCENES['management'] = ('ManagementSmoke', 'MANAGEMENT SMOKE', 17)
 SCENES['advisor'] = ('AdvisorSmoke', 'ADVISOR SMOKE', 58)
 # Sideshow native presentation: explicit UNPLACED real-DBA fixtures, not a player build tour.
 # Positive/zero layouts, fixed authored controls despite flowing labels, canonical callbacks,
-# hidden-field guards and screen/subject/drag lifecycle. Receipts are draw arguments, not pixel review.
-SCENES['sideshow-presentation'] = ('SideshowPresentationSmoke', 'SIDESHOW PRESENTATION SMOKE', 779)
+# hidden-field guards, native 1..1000 control edges and screen/subject/drag lifecycle.
+# Receipts are draw arguments, not pixel review.
+SCENES['sideshow-presentation'] = ('SideshowPresentationSmoke', 'SIDESHOW PRESENTATION SMOKE', 876)
 
 
 

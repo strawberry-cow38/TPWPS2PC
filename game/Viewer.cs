@@ -9598,8 +9598,9 @@ public partial class Viewer : Node3D
 
     /// <summary>⭐ A row's nudge arrows. Only the sideshow's two money rows carry them on a screen
     /// this port opens: the cost of a prize and the price per game, both feeding its excitement.
-    /// ⚠ Stepped by one and floored at zero. The console's UPPER clamp for these two is not read,
-    /// so none is imposed rather than one being invented.</summary>
+    /// Setup 0x1D7F48 loads the spinner with min(raw,1000); its active, non-wrapping step at
+    /// 0x207B10 clamps to 1..1000. Prize0 has no writeback (0x1D8118), so do NOT normalize the
+    /// stored prize globally: zero-prize sideshows keep their conditional presentation.</summary>
     void OnRowNudge(int row, int by)
     {
         if (_laptopBack.Count > 0 && _laptopBack[^1].Kind == "visitorinfo") { StepGatePrice(row, by); return; }
@@ -9609,8 +9610,8 @@ public partial class Viewer : Node3D
         if (textId == 832 && _detailsRide.SideshowPrizeValue == 0) return;
         switch (textId)
         {
-            case 832: _detailsRide.SideshowPrizeValue = Math.Max(0, _detailsRide.SideshowPrizeValue + by); break;
-            case 190: _detailsRide.SideshowPrice = (ushort)Math.Max(0, _detailsRide.SideshowPrice + by); break;
+            case 832: _detailsRide.SideshowPrizeValue = SideshowSpinner.Step(_detailsRide.SideshowPrizeValue, by); break;
+            case 190: _detailsRide.SideshowPrice = (ushort)SideshowSpinner.Step(_detailsRide.SideshowPrice, by); break;
             default: return;
         }
         ShowSideshowDetails(_detailsRide);

@@ -213,19 +213,21 @@ SIDESHOW_LABELS = (
     '  ok   sideshow presentation: explicit core fixture: raw prize 0: explicit label-grid fixture matches literal native Y slots; authored widgets stay separate',
     '  ok   sideshow presentation: explicit core fixture: native 0x1D8490: beq v0,zero to0x1D84B0; raw prize ==0, not a signed-positive test',
     '  ok   sideshow presentation: explicit core fixture: native 0x1D84AC: addiu row,row,32; conditional Winner row advances the label grid',
+    '  ok   sideshow presentation: explicit core fixture: spinner bounds: literal min1/max1000',
+    '  ok   sideshow presentation: explicit core fixture: spinner bounds: raw1001 active decrement expected999',
 )
-COVERAGE += '\n' + '\n'.join(['  ok   sideshow presentation: classifier fixture'] * (92-len(SIDESHOW_LABELS))
+COVERAGE += '\n' + '\n'.join(['  ok   sideshow presentation: classifier fixture'] * (136-len(SIDESHOW_LABELS))
                              + list(SIDESHOW_LABELS))
 
 
 class SideshowCoverageTests(unittest.TestCase):
     def test_family_floor_registered(self):
-        self.assertEqual(REQUIRED_CHECKS.get('sideshow_presentation'),92)
+        self.assertEqual(REQUIRED_CHECKS.get('sideshow_presentation'),136)
 
     def test_complete_and_count(self):
         row=classify('JUNGLE',0,COVERAGE+'\nPASS')
         self.assertEqual(row['status'],'pass')
-        self.assertEqual(row['sideshow_presentation_checks'],92)
+        self.assertEqual(row['sideshow_presentation_checks'],136)
 
     def test_missing_whole_or_one_assertion(self):
         missing='\n'.join(x for x in COVERAGE.splitlines() if not x.strip().startswith('ok   sideshow presentation:'))
@@ -236,7 +238,7 @@ class SideshowCoverageTests(unittest.TestCase):
     def test_count_cannot_replace_native_witness(self):
         for line in SIDESHOW_LABELS:
             row=classify('JUNGLE',0,COVERAGE.replace(line,'  ok   sideshow presentation: classifier fixture',1)+'\nPASS')
-            self.assertEqual(row['sideshow_presentation_checks'],92)
+            self.assertEqual(row['sideshow_presentation_checks'],136)
             self.assertEqual(row['status'],'missing_coverage')
 
 

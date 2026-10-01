@@ -133,7 +133,7 @@ build failure. Sources were restored, rebuilt and rerun after them:
 | retained old hitboxes across presentation/subject changes | immediate canonical-key assertion before redraw, raw exit2 |
 | reset input on EVERY same-shop ShowFor refresh | standalone shop press/refresh continuity assertion, raw exit2 |
 
-The audit gate requires `sideshow_presentation >=92` plus native/zero-layout
+At `11af220`, the audit gate requires `sideshow_presentation >=92` plus native/zero-layout
 semantic witnesses. Removing the ACTUAL default integrated
 `SideshowPresentationChecks.Run` call leaves raw exit0/`PASS`, but classification
 is `missing_coverage`, count0. Restoring it passes with count92. The viewer matrix
@@ -166,9 +166,13 @@ missing-family control, and the final audio-cleanup viewer matrix.
 
 ## Remaining scope limits
 
-Native spinner limits1..1000 were read but NOT changed by this presentation slice;
-the existing port's0 floor/uncapped upper bound remains a separate discrepancy.
-The1->0 GUI transition tests that existing port behavior, not native bound parity.
+At layout commit `11af220`, native spinner limits1..1000 were read but not changed;
+the old regression's1->0 GUI transition tested the existing port's0 floor, not
+native bound parity. The separate follow-up in `sideshow-spinner-bounds.md` now
+fixes control-event bounds and explicitly replaces that assumption while retaining
+same-subject zero-prize transition coverage through a declared fixture state change.
+The92/779 counts above describe the original layout slice; that follow-up raises
+the registered core/rendered coverage floors to136/876.
 No loan/research UI, save/load, guest performance, model skinning or tour work is
 included. The eight registered cases are ONE selected scene across eight parks,
 not the entire viewer matrix, and not the full runtime/audit matrices.

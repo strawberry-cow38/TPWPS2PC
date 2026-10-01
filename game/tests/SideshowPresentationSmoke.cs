@@ -342,11 +342,16 @@ public partial class SideshowPresentationSmoke : Node3D
             var prizeBox = Hits("_rowArrows")[7];
             var priceBox = Hits("_rowArrows")[8];
             int chanceBefore = one.SideshowWinPercentage;
-            // Same subject, production arrow changes 1->0, cancelling its live drag and clearing
-            // stale geometry SYNCHRONOUSLY, with no frame/redraw between these assertions/events.
+            // Native minimum is ONE: a real decrement cannot create a zero-prize sideshow.
             Button(Along(prizeBox, 25), true);
-            Check(one.SideshowPrizeValue == 0 && _nudges[^1] == (7,-1), "production one->zero prize transition");
-            EmptyBeforeDraw("same subject control hiding");
+            Check(one.SideshowPrizeValue == 1 && _nudges[^1] == (7,-1)
+                && one.SideshowPrice == 10 && one.SideshowWinPercentage == chanceBefore,
+                "production decrement at minimum keeps prize1 and other fields");
+            Check(Read<int>(_panel,"_dragSlider")==6,"minimum refusal keeps still-visible same-subject drag");
+            // Explicit fixture-owned raw transition (NOT a player action or a Viewer field write).
+            // Keep the SAME subject/control-hiding regression independently of the numeric floor.
+            one.SideshowPrizeValue=0; Bind(one);
+            EmptyBeforeDraw("same subject fixture control hiding");
             Motion(Along(chanceBox, 91), true);
             Button(_pointer, false);
             int n = _nudges.Count, s = _slides.Count;
@@ -379,6 +384,7 @@ public partial class SideshowPresentationSmoke : Node3D
             Motion(Along(Hits("_sliderRects")[6], 88), true); Button(_pointer, false); await Frames();
             Check(one.SideshowWinPercentage == 35, "Hide/reopen never resurrects drag");
             Receipt(one, true);
+            await SpinnerBoundsFixture(entry);
             await ShopContinuityFixture(db);
             _panel.CaptureRowDraws=false;
             Check(_panel.RowsDrawn.Count==0,"capture-off immediately removes stale receipts");

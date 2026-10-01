@@ -101,6 +101,7 @@ static class SideshowPresentationChecks
         Check(screen.Rows.SequenceEqual(canonical) && LaptopScreen.Sideshow.Rows.SequenceEqual(canonical),
             "presentation calls and attempted caller mutations leave all canonical row indices/kinds/aliases unchanged");
 
+        SpinnerBounds(Check);
         AuthoredScene(disc, Check);
         Executable(disc, Check);
     }
@@ -181,6 +182,24 @@ static class SideshowPresentationChecks
         }
     }
 
+    static void SpinnerBounds(Action<bool,string> Check)
+    {
+        Check(SideshowSpinner.Min==1 && SideshowSpinner.Max==1000,"spinner bounds: literal min1/max1000");
+        (int Raw,int Loaded)[] loads={(-1,-1),(0,0),(1,1),(999,999),(1000,1000),(1001,1000),(65535,1000),(int.MaxValue,1000)};
+        foreach(var (raw,expected) in loads)
+            Check(SideshowSpinner.Load(raw)==expected,$"spinner bounds: raw{raw} setup expected{expected}; upper clip only");
+        (int Raw,int Down,int Idle,int Up)[] cases={
+            (-1,1,1,1),(0,1,1,1),(1,1,1,2),(999,998,999,1000),(1000,999,1000,1000),
+            (1001,999,1000,1000),(65535,999,1000,1000),(int.MaxValue,999,1000,1000),(int.MinValue,1000,1,1),
+        };
+        foreach(var (raw,down,idle,up) in cases)
+        {
+            Check(SideshowSpinner.Step(raw,-1)==down,$"spinner bounds: raw{raw} active decrement expected{down}");
+            Check(SideshowSpinner.Step(raw,0)==idle,$"spinner bounds: raw{raw} active no-input expected{idle}; arithmetic fixture, not focus proof");
+            Check(SideshowSpinner.Step(raw,1)==up,$"spinner bounds: raw{raw} active increment expected{up}");
+        }
+    }
+
     static void Executable(Disc disc, Action<bool, string> Check)
     {
         var entry = disc.Files().Single(f => f.Path.Equals("/SLES_500.32", StringComparison.OrdinalIgnoreCase));
@@ -213,5 +232,24 @@ static class SideshowPresentationChecks
             "native 0x1D84AC: addiu row,row,32; conditional Winner row advances the label grid");
         Check(new[] { Word(0x1D2A48), Word(0x1D2A4C), Word(0x1D2A50) }.Contains(0x8C8200A8),
             "native raw-prize getter0x1D2A48 reads lw v0,0xA8(a0), a full word, not formatted money/Winners/chance");
+        Check(Word(0x1D7FD4)==0x24100001 && Word(0x1D7FD8)==0x241303E8,
+            "native spinner setup: literal min1/max1000 loaded at0x1D7FD4/0x1D7FD8");
+        Check(Word(0x1D800C)==0xACD00070 && Word(0x1D8018)==0xACD30074
+            && Word(0x1D8058)==0xACB30074 && Word(0x1D8064)==0xACB00070,
+            "native spinner setup: both prize/price receive the SAME min1/max1000 fields");
+        Check(Word(0x1D8040)==0x0045182A && Word(0x1D8044)==0x00A3100A
+            && Word(0x1D808C)==0x0062202A && Word(0x1D8094)==0x0044180A,
+            "native spinner setup: raw values use signed upper clip, no incoming lower clip");
+        Check(Word(0x1D2A34)==0x948200CC && Word(0x1D2A2C)==0xA48500CC,
+            "native price getter/setter: lhu/sh unsigned16, not signed minus1");
+        Check(Word(0x1D2A4C)==0x8C8200A8 && Word(0x1D2A54)==0xAC8500A8,
+            "native prize getter/setter: lw/sw signed32 word");
+        Check(Word(0x207AA4)==0xAE040060 && Word(0x207A98)==0x24040006,
+            "native spinner mode6: wrapping bit0 absent");
+        Check(Word(0x207B70)==0x00A21023 && Word(0x207B8C)==0x00431021,
+            "native spinner arithmetic: subu/addu 32-bit non-trapping steps");
+        Check(Word(0x207BE0)==0x0043102A && Word(0x207BEC)==0xAE030068
+            && Word(0x207BFC)==0x0062102A && Word(0x207C08)==0xAE030068,
+            "native active spinner: signed lower AND upper clamps, not wrapping");
     }
 }
