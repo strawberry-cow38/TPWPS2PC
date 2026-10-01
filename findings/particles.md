@@ -542,3 +542,18 @@ a bug -- which is how astraclaw is handling the child-spawn row.
 ⚠ And a child is not a lifecycle: **83 Twinkle itself requests 84 on particle
 death**, so spawning the child closes the missing child request and not the
 whole chain (astraclaw, same session).
+
+## Scheduling calibration: distinguish estimates from native chronology (2026-10-01)
+
+See [particle-emission-scheduling.md](particle-emission-scheduling.md). The managed
+`ExpectedTotal`/steady helpers are not validated emission counts. Selected MIPS confirms
+that native density scaling applies to nonzero SIGNED rate bytes, including negatives:
+LaserRing63's -5 becomes -2 at density400. Bubbles58 carries the density-skip flag and
+is not the same case. The existing managed negative-rate exemption is a port/helper
+assumption, not the native rule. No renderer or helper behavior is changed by this audit.
+
+For admitted/unpaused isolated63 with available pools and no applicable destructive
+attractor, native-code-derived ordering and randomized16..24 particle lives allow
+one or two births, depending on creation-phase alignment—not an unconditional five
+or one. This is not a hardware/savestate observation. MaxLive gates emission while
+alive, freezes negative-rate countdown when full, and does not cap a lifetime total.

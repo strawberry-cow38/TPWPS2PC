@@ -95,6 +95,12 @@ if (args.Contains("--particle-child-only"))
     Console.WriteLine(bad==0 ? "PASS particle child: raw/native immediate request and bounded Twinkle policy (not complete particle simulation)" : $"FAIL: {bad}");
     return bad==0?0:1;
 }
+if (args.Contains("--particle-emission-only"))
+{
+    ParticleEmissionChecks.Run(disc,Check);
+    Console.WriteLine(bad==0 ? "PASS particle emission: native-code-derived isolated schedule, not hardware observation or renderer change" : $"FAIL: {bad}");
+    return bad==0?0:1;
+}
 var wad = Wad(world);
 var terrain = new Model(wad.Read(wad.Find(AuditPark.Mps)));
 if (args.Contains("--native-consumer-only"))
@@ -779,6 +785,7 @@ BounceChecks.Run(disc, Check);
 MusicChecks.Run(disc, Check);
 ParticleFittingChecks.Run(disc, Check);
 ParticleChildChecks.Run(disc, Check);
+ParticleEmissionChecks.Run(disc, Check);
 ParkStatsChecks.Run(disc, Check);
 LoanChecks.Run(disc, Check);
 ResearchChecks.Run(disc, Check);

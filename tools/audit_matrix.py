@@ -256,6 +256,18 @@ REQUIRED_WITNESSES += (
 )
 
 
+# Audit-only native-code-derived isolated emitter chronology, NOT renderer or hardware proof.
+REQUIRED_CHECKS.update({'particle_emission': 90})
+REQUIRED_WITNESSES += (
+    'ok   particle emission: raw63: emitter20 / particle-base20 / burst1 / cap1 / countdown0',
+    'ok   particle emission: signed RNG-high domain gives particle-life16..24, not fixed20 or one-sided20..24',
+    'ok   particle emission: life20 unaligned: emitter expires BEFORE particle dies at21; free at22',
+    'ok   particle emission: declared life1 counterexample: seven lifetime births with a one-live gate, never blanket-clamp total',
+    'ok   particle emission: native rate scaler skips ZERO only, uses signed-byte load and arithmetic shift, including negative rates',
+    "ok   particle emission: Bubbles58 explicitly skips native density pass; do not apply63's -2 interval to it",
+)
+
+
 def classify(world: str, raw_exit: int | None, text: str, *, timed_out: bool = False,
              truncated: bool = False, launch_error: str | None = None, terrain: int | None = None) -> dict:
     lines = [line.strip() for line in text.splitlines() if line.strip()]

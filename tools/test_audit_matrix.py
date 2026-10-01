@@ -231,6 +231,12 @@ COVERAGE += '\n' + '\n'.join(['  ok   particle child: filler'] * (236 - len(_CHI
                               + ['  ' + w for w in _CHILD_WITNESSES])
 
 
+# Synthetic classifier controls, NOT native counts or renderer receipts.
+_EMISSION_WITNESSES = [w for w in REQUIRED_WITNESSES if w.startswith('ok   particle emission:')]
+COVERAGE += '\n' + '\n'.join(['  ok   particle emission: filler'] * (90 - len(_EMISSION_WITNESSES))
+                              + ['  ' + w for w in _EMISSION_WITNESSES])
+
+
 class SideshowCoverageTests(unittest.TestCase):
     def test_family_floor_registered(self):
         self.assertEqual(REQUIRED_CHECKS.get('sideshow_presentation'),136)
@@ -470,6 +476,13 @@ class ClassificationTests(unittest.TestCase):
         controls = ['\n'.join(x for x in COVERAGE.splitlines() if 'particle child:' not in x),
                     COVERAGE.replace('  ok   particle child: filler\n', '', 1)]
         controls += [COVERAGE.replace(w, 'ok   particle child: filler', 1) for w in _CHILD_WITNESSES]
+        for text in controls:
+            self.assertEqual(classify('JUNGLE', 0, text + '\nPASS')['status'], 'missing_coverage')
+
+    def test_particle_emission_count_and_scope_witnesses_required(self):
+        controls = ['\n'.join(x for x in COVERAGE.splitlines() if 'particle emission:' not in x),
+                    COVERAGE.replace('  ok   particle emission: filler\n', '', 1)]
+        controls += [COVERAGE.replace(w, 'ok   particle emission: filler', 1) for w in _EMISSION_WITNESSES]
         for text in controls:
             self.assertEqual(classify('JUNGLE', 0, text + '\nPASS')['status'], 'missing_coverage')
 
