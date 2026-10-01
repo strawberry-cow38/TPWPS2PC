@@ -154,3 +154,15 @@ execute this rendered fixture. The named rendered gate is runnable locally on th
 host; no external runner, disc upload or new CI credentials were provisioned. This registration
 must not be reported as automatic rendered CI coverage. Actual local matrix evidence follows
 only after running the command above.
+
+
+Actual clean local runs at implementation commit `d751013`:
+
+- `/tmp/tpw-research-persistence-registered/manifest.json`: `selected_cases_passed`,
+  runner exit0, both 640x360 and 1152x648 **24 PASS**, two exact JUNGLE/1 map witnesses
+  each, no error/leak lines. The runner freshly rebuilt the shipping game.
+- `/tmp/tpw-research-persistence-ordinary-control/manifest.json`: ordinary pointer
+  smoke JUNGLE/1 **13 PASS**, exactly ONE map witness, runner exit0. This is one
+  ordinary rendered regression, not a newly executed full eight-park viewer matrix.
+- The standalone and ordinary runs completed before this documentation-only update.
+  No fixture, production code, snapshot gate or error regex was changed after the runs.
