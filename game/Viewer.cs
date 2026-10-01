@@ -279,6 +279,7 @@ public partial class Viewer : Node3D
     bool _walkAudit;
     bool _typeAudit;
     bool _guestTest;
+    int _wantGuests;
     int _laptopFilm; string _laptopScreen = "ride"; int _laptopFrame, _windMonths;
     Vector2I? _uiSize; SubViewport _uiShotView; Camera3D _uiShotCam;
     /// <summary>Which main-menu row the cursor is on, and whether the park is open -- the latter
@@ -450,6 +451,10 @@ public partial class Viewer : Node3D
             // ⭐ `--benchmark=<seconds>`: measure frame time and what is accumulating, then quit.
             else if (a == "--alloc-probe") _allocProbe = true;
             else if (a.StartsWith("--slow-frames=")) _slowFrameMs = double.Parse(a["--slow-frames=".Length..]);
+            // ⚠ `_allocProbe` gates the whole per-section [alloc] table and had NO flag to set it,
+            // so the most precise instrument in this file was unreachable from a run. It costs a
+            // `GC.GetAllocatedBytesForCurrentThread()` per bracket, which is why it is opt-in.
+            else if (a == "--alloc-probe") _allocProbe = true;
             // ⭐⭐ `--exit-churn=N` MAKES THE EXIT RACE HAPPEN ON DEMAND, and `--exit-drain=0|1`
             // switches the candidate fix. The crash is 1 in 900 in the wild, which is untestable;
             // raising N until it fires most runs turns it into a coin, and the two flags then test
@@ -495,6 +500,11 @@ public partial class Viewer : Node3D
             else if (a == "--place-test") { _buildTest = true; _placeTest = true; }
             else if (a == "--walk-audit") _walkAudit = true;
             else if (a == "--guest-test") _guestTest = true;
+            // ⭐ `--guests=N`: fill the park once it can take arrivals, so a crowd can be MEASURED
+            // instead of waited for. It calls the same `CheatGuests` the debug panel's +10/+50 do,
+            // which runs the bus's own two admission lines -- so these are real guests with real
+            // entrance-flow records, not a lighter stand-in that would flatter a benchmark.
+            else if (a.StartsWith("--guests=")) int.TryParse(a["--guests=".Length..], out _wantGuests);
             else if (a.StartsWith("--laptop-film=")) { int.TryParse(a["--laptop-film=".Length..], out _laptopFilm); }
             else if (a.StartsWith("--laptop-screen=")) _laptopScreen = a["--laptop-screen=".Length..];
             // ⭐ `--wind-months=N`: before a laptop shot, run the REAL calendar driver a day at a time until N month
@@ -5818,6 +5828,14 @@ public partial class Viewer : Node3D
         PresentParkVehicles();
         AllocBegin(); PresentTracks(_parkClock.Alpha); AllocEnd("  PresentTracks");
         AllocBegin(); PresentCoasters(_parkClock.Alpha); AllocEnd("  PresentCoasters");
+        // ⭐ Once, as soon as the park can actually take them -- the test lays its path over several
+        // stages and an arrival point does not exist until it has.
+        if (_wantGuests > 0 && _visitors != null && _guests != null && ArrivalPoint() != null)
+        {
+            int want = _wantGuests; _wantGuests = 0;
+            CheatGuests(want);
+            GD.Print($"[bench] --guests={want}: park now holds {_guests.Guests.Count} guests");
+        }
         if (_guests != null) { AllocBegin(); PlaceActors(_parkClock.Alpha); AllocEnd("  PlaceActors"); }
         AllocBegin(); PlaceStaff(_parkClock.Alpha); AllocEnd("  PlaceStaff");
     }
@@ -6480,15 +6498,19 @@ public partial class Viewer : Node3D
 
     void PlaceActors(float alpha)
     {
-        SeatRiders();
-        WalkRiders();
-        BounceRiders();
-        StandingRiders();
+        // ⚠ Bracketed because PlaceActors came back as 96.5% of the frame's managed allocation and
+        // 14.5 ms of a 20 ms frame at 100 guests -- "it is in here" is not an answer, and reading
+        // the code for it had already sent me to `Pose`, which early-outs and is innocent.
+        AllocBegin(); SeatRiders();     AllocEnd("    SeatRiders");
+        AllocBegin(); WalkRiders();     AllocEnd("    WalkRiders");
+        AllocBegin(); BounceRiders();   AllocEnd("    BounceRiders");
+        AllocBegin(); StandingRiders(); AllocEnd("    StandingRiders");
         // ⭐ Whoever has left the walk -- handed to a ride -- loses their body this frame unless a
         // seat has them. The script has them now; a kid standing in the queue AND riding would be
         // two bodies for one guest, which is exactly what the total handover exists to prevent.
         // Standing outside-service guests have an explicit full-body pose below; other
         // unseated queues still require their own presentation contract.
+        AllocBegin();
         var alive = new HashSet<int>(_guests.Guests.Select(g => g.Id));
         alive.UnionWith(_seated.Keys);
         alive.UnionWith(_walking.Keys);
@@ -6499,6 +6521,7 @@ public partial class Viewer : Node3D
             if (_actors[id] is { } gone && IsInstanceValid(gone)) gone.QueueFree();
             _actors.Remove(id); _guestDwell.Remove(id);
         }
+        AllocEnd("    sweep(alive)");
         foreach (var (id, seat) in _seated)
         {
             if (!_actors.TryGetValue(id, out var rider)) rider = MakeActor(id);
