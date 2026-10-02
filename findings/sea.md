@@ -207,9 +207,35 @@ only reads correctly drawn *over* something -- against `jri_lak2`, which is dark
 24bpp with no alpha. That is an overlay, unbound in the data, therefore bound by code: which is
 astraclaw's procedural water draw path at `0x22CB90`.
 
-⭐ **FALSIFIABLE PREDICTION:** if the second layer is driven by these textures then **FANTASY has no
-second water layer**, because it is the one world shipping no surface texture. Jungle, Hallow and
-Space should have one. If Fantasy visibly has waves, this is not the mechanism.
+⚠⚠ **RETRACTED THE SAME DAY -- and the retraction is the useful part.** This section predicted
+"FANTASY has no second water layer", because Fantasy is the one world shipping no surface texture.
+**Wrong premise.** astraclaw measured the actual loader: `0x22CB90` loads
+**`DATA.WAD/Generic/extra/justwater.ssh`** -- a GLOBAL texture, constructed for all four worlds,
+Fantasy included -- and its generated surface overlaps `A_SEA` and sits above it in composed world
+coordinates. Verified here independently: `justwater.ssh` and `justwater2.ssh` are both in DATA.WAD
+and `justwater` is an ELF string at `0x36e8b0`, in a global name table beside `raindrop.ssh`,
+`snowflake.ssh` and `logo.ssh`.
+
+⭐⭐ **AND THE TEXTURE SETTLES "TRANSLUCENT" AS A MEASUREMENT.** `justwater.tga` / `justwater2.tga`
+are 64x64 **32bpp**, and their alpha runs **min 94, max 154, mean 120** -- it never reaches opaque
+anywhere on the sheet, so the whole thing is see-through by construction. That is master's
+"translucent layer", read off the disc rather than inferred. The two are a matched pair: blue
+horizontal ripples, and a greyscale copy of the identical pattern.
+
+⚠ **What went wrong in my reasoning, since the measurements above are all still true:** four
+unbound translucent files is a real observation, but "therefore they are the overlay" was an
+INFERENCE, and I stated it with more force than an inference earns. astraclaw had a texture and a
+placement join. See [[feedback_read_the_data_dont_infer_it]] and
+[[feedback_our_predicate_answers_a_different_question]].
+
+⭐ `/Generic/extra/jri_lak1.ssh` is also in DATA.WAD, so one of the four is global too. The other
+three (`jri_sur1`, `jri_sur4`, `gby_sur1`) remain genuinely unbound per-world files and remain
+unexplained -- a separate loose end, not this layer.
+
+⭐⭐ **AN OLD FALSE NEGATIVE, NOW CLOSED:** this project's notes recorded an xref sweep that found
+**0 refs to `justwater.ssh`** and concluded it was unreachable -- which is part of why the scroll
+question was shelved. astraclaw found its loader at `0x22CB90`. The sweep was wrong, and leaning on
+"nothing references this" is the same mistake twice in one file.
 
 ⚠⚠ **A NEGATIVE THAT PROVES NOTHING, recorded so nobody quotes it:** grepping `SLES_500.32` for
 these texture names returns **zero refs** -- but it returns zero for `jri_lak2` too, which has 48
