@@ -17,10 +17,16 @@ def output(text='', **extra):
 
 def good(scene='entrance', world='JUNGLE', terrain=2, checks=None):
     _, label, minimum = vm.SCENES[scene]
+    count = checks if checks is not None else minimum
+    rows = []
+    if scene in vm.SCENE_WITNESSES:
+        receipts = list(vm.SCENE_WITNESSES[scene])
+        receipts += ['classifier fixture'] * max(0, count - len(receipts))
+        rows = [f'{label} ok: [{i}] {receipt}' for i, receipt in enumerate(receipts[:count], 1)]
     return '\n'.join([
         f'[map] loaded world={world} terrain=terrain_{terrain}.mps',
         '[bus] boundary: UNPORTED entrance-group queues ... Zero inputs BYPASS the backlog reduction',
-        f'{label} PASS checks={checks if checks is not None else minimum}; actual bus/placement/queues'])
+        *rows, f'{label} PASS checks={count}; actual bus/placement/queues'])
 
 
 class MapArgument(unittest.TestCase):
@@ -419,6 +425,107 @@ class ParticleScheduleStandalone(unittest.TestCase):
             self.assertEqual(command[command.index('--') + 1:], [f'--disc={disc}'])
             with self.assertRaises(ValueError):
                 vm.validate_standalone_launch(self.CASE, command + ['--all-researched'], env, disc, resolution=resolution)
+
+
+class ParkWaterCoverage(unittest.TestCase):
+    def test_independent_clock_control_contract_and_semantics(self):
+        spec = vm.STANDALONE_CASES['park-water-clock']
+        self.assertEqual((spec['scene'], spec['minimum'], spec['maps'], spec['user_args']),
+            ('ParkWaterClockAudit', 18, (('JUNGLE', 'terrain_1'),), ('--map=JUNGLE  terrain_1.mps', '--mode=park')))
+        text = self.standalone('park-water-clock')
+        self.assertEqual(vm.classify_standalone('park-water-clock', output(text))['status'], 'pass')
+        for changed in [text.replace('checks=18;', 'checks=17;'),
+                        text.replace('native wall clock advances despite zero engine delta', 'filler')]:
+            self.assertEqual(vm.classify_standalone('park-water-clock', output(changed))['status'], 'missing_coverage')
+
+    def test_independent_literal_contracts(self):
+        self.assertEqual(vm.SCENES['park-water'], ('ParkWaterSmoke', 'PARK WATER SMOKE', 40))
+        component = vm.STANDALONE_CASES['procedural-water-component']
+        reset = vm.STANDALONE_CASES['park-water-reset']
+        self.assertEqual((component['scene'], component['minimum'], component['maps'], component['user_args']),
+                         ('ProceduralParkWaterAudit', 31, (), ()))
+        self.assertEqual((reset['scene'], reset['minimum'], reset['maps'], reset['user_args']),
+                         ('ParkWaterSmoke', 63, (('JUNGLE', 'terrain_1'), ('FANTASY', 'terrain_2')),
+                          ('--map=JUNGLE  terrain_1.mps', '--mode=park', '--water-reset-fixture')))
+
+    def test_literal_one_below_floors_cannot_pass(self):
+        text = good('park-water', checks=39)
+        self.assertEqual(vm.classify('park-water', 'JUNGLE', 2, output(text))['status'], 'missing_coverage')
+        for case, floor in [('procedural-water-component', 31), ('park-water-reset', 63)]:
+            text = self.standalone(case).replace(f'checks={floor};', f'checks={floor-1};')
+            self.assertEqual(vm.classify_standalone(case, output(text))['status'], 'missing_coverage')
+
+    def test_reset_requires_motion_input_and_retirement_receipts(self):
+        case = 'park-water-reset'
+        text = self.standalone(case)
+        for witness in [
+            'natural shipping wait changes actual uploaded heights',
+            'natural shipping wait changes actual uploaded signed V',
+            'shipping water stays still while paused',
+            'real filter toggle reaches procedural material',
+            'map load creates independent state with fresh native initial phase',
+            'normal Viewer teardown frees actual water instance',
+        ]:
+            with self.subTest(witness=witness):
+                self.assertEqual(vm.classify_standalone(case, output(text.replace(witness, 'filler')))['status'], 'missing_coverage')
+
+    def test_reset_requires_both_per_map_motion_receipts(self):
+        case = 'park-water-reset'
+        text = self.standalone(case)
+        witness = 'natural shipping wait changes actual uploaded heights'
+        self.assertEqual(vm.classify_standalone(case, output(text.replace(witness, 'filler', 1)))['status'], 'missing_coverage')
+
+    def test_ordinary_water_requires_numbered_and_semantic_receipts(self):
+        text = good('park-water')
+        self.assertEqual(vm.classify('park-water', 'JUNGLE', 2, output(text))['status'], 'pass')
+        self.assertEqual(vm.classify('park-water', 'JUNGLE', 2,
+            output(text.replace('shipping terrain load creates procedural water', 'filler')))['status'], 'missing_coverage')
+
+    def test_high_final_count_does_not_replace_missing_actual_load(self):
+        text = good('park-water').replace('PARK WATER SMOKE ok: [1]', 'missing-row: [1]')
+        self.assertEqual(vm.classify('park-water', 'JUNGLE', 2, output(text))['status'], 'missing_coverage')
+
+    def test_numbered_ids_must_be_contiguous(self):
+        text = good('park-water').replace('ok: [2]', 'ok: [1]')
+        self.assertEqual(vm.classify('park-water', 'JUNGLE', 2, output(text))['status'], 'missing_coverage')
+
+    @staticmethod
+    def standalone(case):
+        spec = vm.STANDALONE_CASES[case]
+        receipts = list(dict.fromkeys(spec['witnesses']))
+        for witness, count in spec.get('witness_counts', {}).items():
+            receipts += [witness] * (count - receipts.count(witness))
+        receipts += ['classifier fixture'] * (spec['minimum'] - len(receipts))
+        lines = [f'[map] loaded world={world} terrain={terrain}.mps' for world, terrain in spec['maps']]
+        lines += [f"{spec['label']} ok: [{i}] {receipt}" for i, receipt in enumerate(receipts, 1)]
+        lines += [f"{spec['label']} PASS checks={spec['minimum']}; declared fixture"]
+        return '\n'.join(lines)
+
+    def test_component_is_strictly_zero_map_and_two_resolutions(self):
+        case = 'procedural-water-component'
+        text = self.standalone(case)
+        self.assertEqual(vm.standalone_runs(case), ('640x360', '1152x648'))
+        self.assertEqual(vm.classify_standalone(case, output(text))['status'], 'pass')
+        self.assertEqual(vm.classify_standalone(case, output('[map] loaded world=JUNGLE terrain=terrain_1.mps\n'+text))['status'], 'map_witness_count')
+
+    def test_component_needs_raster_alpha_witness_not_only_count(self):
+        case = 'procedural-water-component'
+        text = self.standalone(case).replace('underlay survives through the actual alpha raster', 'filler')
+        self.assertEqual(vm.classify_standalone(case, output(text))['status'], 'missing_coverage')
+
+    def test_reset_requires_both_actual_distinct_maps(self):
+        case = 'park-water-reset'
+        text = self.standalone(case)
+        self.assertEqual(vm.classify_standalone(case, output(text))['status'], 'pass')
+        self.assertNotEqual(vm.classify_standalone(case,
+            output(text.replace('[map] loaded world=FANTASY terrain=terrain_2.mps\n', '')))['status'], 'pass')
+        self.assertEqual(vm.classify_standalone(case,
+            output(text.replace('FANTASY terrain=terrain_2', 'FANTASY terrain=terrain_1')))['status'], 'wrong_map')
+
+    def test_reset_high_count_cannot_replace_old_instance_freed_witness(self):
+        case = 'park-water-reset'
+        text = self.standalone(case).replace('old water instance freed on map switch', 'filler')
+        self.assertEqual(vm.classify_standalone(case, output(text))['status'], 'missing_coverage')
 
 
 if __name__ == '__main__':

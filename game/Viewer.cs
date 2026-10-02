@@ -1798,6 +1798,7 @@ public partial class Viewer : Node3D
         // would otherwise keep the old one.
         _wantTerrain = m.Path;
         _terrainPath = null;
+        ClearNativeParkWater();
         _terrain?.Root.QueueFree();
         _terrain = null;
         _park.Field = null;
@@ -2071,6 +2072,7 @@ public partial class Viewer : Node3D
                 if (TextureNear(pick.Path, mat).Tex != null) got++; else missed++;
             }
             _water = new Water(_terrain.Root, tm, mat => TextureNear(pick.Path, mat).Soft);
+            LoadNativeParkWater(pick.Path);
             GD.Print($"[water] {_water.Report}");
             GD.Print($"[terrain] {pick.Path}  {tm.Meshes.Count} meshes  "
                    + $"extent {hi.X - lo.X:F1} x {hi.Z - lo.Z:F1}  height {hi.Y - lo.Y:F1}  "
@@ -12517,6 +12519,7 @@ public partial class Viewer : Node3D
             _waterTime += (float)delta;
             AllocBegin(); Ps2Materials.TextureTime = _waterTime; AllocEnd("TextureTime");
         }
+        StepNativeParkWater(delta);
         // ⭐ The hire tool's carry, every frame (0x128760).
         AllocMark("08 after TextureTime");
         AllocBegin();

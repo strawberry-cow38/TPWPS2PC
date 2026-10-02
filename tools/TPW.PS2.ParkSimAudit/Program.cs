@@ -101,6 +101,12 @@ if (args.Contains("--particle-emission-only"))
     Console.WriteLine(bad==0 ? "PASS particle emission: native-code-derived isolated schedule, not hardware observation; the renderer plans one-shots with it" : $"FAIL: {bad}");
     return bad==0?0:1;
 }
+if (args.Contains("--procedural-water-only"))
+{
+    ProceduralParkWaterChecks.Run(disc,Check);
+    Console.WriteLine(bad==0 ? "PASS procedural water: native profile, cubic geometry, phase and signed UV" : $"FAIL: {bad}");
+    return bad==0?0:1;
+}
 var wad = Wad(world);
 var terrain = new Model(wad.Read(wad.Find(AuditPark.Mps)));
 if (args.Contains("--native-consumer-only"))
@@ -792,6 +798,7 @@ MusicChecks.Run(disc, Check);
 ParticleFittingChecks.Run(disc, Check);
 ParticleChildChecks.Run(disc, Check);
 ParticleEmissionChecks.Run(disc, Check);
+ProceduralParkWaterChecks.Run(disc, Check);
 ParkStatsChecks.Run(disc, Check);
 LoanChecks.Run(disc, Check);
 ResearchChecks.Run(disc, Check);

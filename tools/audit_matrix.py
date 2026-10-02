@@ -278,6 +278,19 @@ REQUIRED_WITNESSES += (
     'ok   particle emission: managed DensityScaled agrees with the native signed-byte scaler on all 256 rate bytes at density400 (0 differ)',
 )
 
+# Native park-water profile/cubic/phase/UV/topology. Count alone cannot license an omitted helper.
+REQUIRED_CHECKS.update({'procedural_water': 80})
+REQUIRED_WITNESSES += (
+    'ok   procedural water: guarded constructor/draw constants',
+    'ok   procedural water: authored sea join 0/1: supplied-X minus A_SEA_02 left is 9.125',
+    'ok   procedural water: authored sea join 3/2: supplied-X minus A_SEA_02 left is 9.125',
+    'ok   procedural water: ref-seed full native128-point XYZ fingerprint',
+    'ok   procedural water: guarded renderer boot lens .75/500/60',
+    'ok   procedural water: literal cubic half sample',
+    'ok   procedural water: native row-strip diagonals',
+    'ok   procedural water: changed conversion code fails interpretation guard',
+)
+
 
 def classify(world: str, raw_exit: int | None, text: str, *, timed_out: bool = False,
              truncated: bool = False, launch_error: str | None = None, terrain: int | None = None) -> dict:

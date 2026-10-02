@@ -107,12 +107,107 @@ SCENES['advisor'] = ('AdvisorSmoke', 'ADVISOR SMOKE', 58)
 # hidden-field guards, native 1..1000 control edges and screen/subject/drag lifecycle.
 # Receipts are draw arguments, not pixel review.
 SCENES['sideshow-presentation'] = ('SideshowPresentationSmoke', 'SIDESHOW PRESENTATION SMOKE', 876)
+SCENES['park-water'] = ('ParkWaterSmoke', 'PARK WATER SMOKE', 40)
+SCENE_WITNESSES = {
+    'park-water': (
+        'shipping terrain load creates procedural water',
+        'independent rendered sea join fixes selected world and terrain placement',
+        'natural shipping process advances native water clock',
+        'natural shipping wait changes actual uploaded heights',
+        'natural shipping wait changes actual uploaded signed V',
+        'shipping GPU-backed positions agree with native geometry and Z reflection',
+        'shipping GPU-backed UVs agree with signed native narrowing',
+        'shipping water stays still while paused',
+        'real laptop panel stops native wall clock',
+        'closing laptop resumes native water without replaying laptop time',
+        'actual culling bounds contain the uploaded native skirts, not only the main grid',
+        'real Close Park input opens lobby',
+        'park water hidden in lobby',
+        'normal Viewer teardown frees water owner',
+        'normal Viewer teardown frees actual water instance',
+        'real Pause key resumes shipping process',
+        'shipping water resumes after input pause',
+        'real filter toggle reaches procedural material',
+        'real filter toggle restores procedural material',
+        'hidden park drawable does not run behind lobby',
+    ),
+}
 
 
 
 # Kept OUT of the ordinary eight-park scene cross-product: two initialized owners and
 # explicit component data/quantum setup. A map-count exception is scoped to this named case.
 STANDALONE_CASES = {
+    'park-water-clock': {
+        'scene': 'ParkWaterClockAudit', 'label': 'PARK WATER CLOCK',
+        'minimum': 18, 'maps': (('JUNGLE', 'terrain_1'),),
+        'user_args': ('--map=JUNGLE  terrain_1.mps', '--mode=park'),
+        'resolutions': ('640x360', '1152x648'),
+        'scope': 'declared public-engine TimeScale=0 control with normal Viewer and real Pause; not ordinary player/emulator proof',
+        'numbered_checks': True,
+        'witnesses': (
+            'engine process delta actually becomes zero',
+            'native wall clock advances despite zero engine delta',
+            'native phase advances despite zero engine delta',
+            'actual uploaded height moves despite zero engine delta',
+            'actual uploaded V moves despite zero engine delta',
+            'real Pause key still gates native clock',
+            'wall time is discarded while input-paused',
+            'clock-control Viewer retired normally',
+            'clock-control actual water retired normally',
+        ),
+    },
+    'procedural-water-component': {
+        'scene': 'ProceduralParkWaterAudit', 'label': 'PROCEDURAL PARK WATER',
+        'minimum': 31, 'maps': (), 'user_args': (),
+        'resolutions': ('640x360', '1152x648'),
+        'scope': 'declared native-water component with actual dynamic-mesh/raster-alpha controls; no player/emulator parity',
+        'numbered_checks': True,
+        'witnesses': (
+            'actual uploaded heights move',
+            'no horizontal geometry drift',
+            'actual uploaded V advances signed interval',
+            'pause does not advance/reupload',
+            'paused zero-delta draw recovers oversized UV and updates actual mesh',
+            'visible water over red underlay',
+            'visible water over green underlay',
+            'underlay survives through the actual alpha raster',
+            'component water and fixture nodes retired',
+            'native boot lens produces scaled pre-divide clip Z',
+            'view depth is not native clip depth for LOD',
+            'actual LOD uses decoded native lens, not Godot projection or reverse Z',
+        ),
+    },
+    'park-water-reset': {
+        'scene': 'ParkWaterSmoke', 'label': 'PARK WATER RESET SMOKE',
+        'user_args': ('--map=JUNGLE  terrain_1.mps', '--mode=park', '--water-reset-fixture'),
+        'minimum': 63, 'maps': (('JUNGLE', 'terrain_1'), ('FANTASY', 'terrain_2')),
+        'resolutions': ('640x360', '1152x648'),
+        'scope': 'normal shipping Viewer plus declared direct ordinary-loader reset, real Pause/filter/Close Park input; no emulator parity',
+        'numbered_checks': True,
+        'witnesses': (
+            'shipping terrain load creates procedural water',
+            'map load creates fresh owner and initial UV/clock state',
+            'old water hidden immediately before queued deletion',
+            'old water instance freed on map switch',
+            'exactly one live water drawable',
+            'real Close Park input opens lobby',
+            'park water hidden in lobby',
+            'map load creates independent state with fresh native initial phase',
+            *SCENE_WITNESSES['park-water'],
+        ),
+        'witness_counts': {
+            'shipping terrain load creates procedural water': 2,
+            'exactly one live water drawable': 2,
+            'independent rendered sea join fixes selected world and terrain placement': 2,
+            'natural shipping process advances native water clock': 2,
+            'natural shipping wait changes actual uploaded heights': 2,
+            'natural shipping wait changes actual uploaded signed V': 2,
+            'shipping GPU-backed positions agree with native geometry and Z reflection': 2,
+            'shipping GPU-backed UVs agree with signed native narrowing': 2,
+            'actual culling bounds contain the uploaded native skirts, not only the main grid': 2,
+        },
+    },
     'research-persistence': {
         'scene': 'ResearchPersistenceSmoke', 'label': 'RESEARCH PERSISTENCE SMOKE',
         'user_args': ('--map=JUNGLE', '--mode=park'),
@@ -230,7 +325,8 @@ def classify_standalone(case: str, run: dict) -> dict:
         if len(ids) != len(rows) or ids != list(range(1, result['checks'] + 1)):
             return {**result, 'status': 'missing_coverage'}
         receipts = [m[2] for m in matches]
-        if any(w not in receipts for w in spec.get('witnesses', ())):
+        if (any(w not in receipts for w in spec.get('witnesses', ()))
+                or any(receipts.count(w) != n for w, n in spec.get('witness_counts', {}).items())):
             return {**result, 'status': 'missing_coverage'}
     return result
 
@@ -263,6 +359,16 @@ def classify(scene: str, world: str, terrain: int, run: dict) -> dict:
     if len(passes) != 1: return {**result, 'status': 'missing_pass_witness'}
     result['checks'] = int(passes[0])
     if result['checks'] < minimum: return {**result, 'status': 'missing_coverage'}
+    if scene in SCENE_WITNESSES:
+        prefix = label + ' ok:'
+        rows = [line for line in text.splitlines() if line.startswith(prefix)]
+        matches = [re.fullmatch(re.escape(prefix) + r' \[(\d+)\] (.+)', line) for line in rows]
+        ids = [int(match[1]) for match in matches if match]
+        receipts = [match[2] for match in matches if match]
+        if len(ids) != len(rows) or ids != list(range(1, result['checks'] + 1)):
+            return {**result, 'status': 'missing_coverage'}
+        if any(witness not in receipts for witness in SCENE_WITNESSES[scene]):
+            return {**result, 'status': 'missing_coverage'}
     return result
 
 

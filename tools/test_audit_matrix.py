@@ -253,6 +253,37 @@ class GoldTicketCoverageTests(unittest.TestCase):
             self.assertEqual(result['status'], 'missing_coverage')
 
 
+_WATER_WITNESSES = tuple(w for w in REQUIRED_WITNESSES if w.startswith('ok   procedural water:'))
+COVERAGE += '\n' + '\n'.join(['  ok   procedural water: filler'] * (80 - len(_WATER_WITNESSES))
+                             + ['  ' + witness for witness in _WATER_WITNESSES])
+
+
+class ProceduralWaterCoverageTests(unittest.TestCase):
+    def test_independent_floor_80_and_one_below(self):
+        self.assertEqual(REQUIRED_CHECKS['procedural_water'], 80)
+        lines = COVERAGE.splitlines()
+        at = next(i for i, line in enumerate(lines) if 'procedural water: filler' in line)
+        del lines[at]
+        result = classify('JUNGLE', 0, '\n'.join(lines) + '\nPASS')
+        self.assertEqual(result['procedural_water_checks'], 79)
+        self.assertEqual(result['status'], 'missing_coverage')
+
+    def test_actual_missing_helper_count_is_zero_not_a_pass(self):
+        text = '\n'.join(line for line in COVERAGE.splitlines() if 'procedural water:' not in line) + '\nPASS'
+        result = classify('JUNGLE', 0, text)
+        self.assertEqual(result['status'], 'missing_coverage')
+        self.assertEqual(result['procedural_water_checks'], 0)
+
+    def test_filler_count_cannot_replace_cubic_semantic_witness(self):
+        text = COVERAGE.replace('literal cubic half sample', 'filler') + '\nPASS'
+        self.assertEqual(classify('JUNGLE', 0, text)['status'], 'missing_coverage')
+
+    def test_complete_water_family_still_retains_ordinary_pass(self):
+        result = classify('JUNGLE', 0, COVERAGE + '\nPASS')
+        self.assertEqual(result['status'], 'pass')
+        self.assertEqual(result['procedural_water_checks'], 80)
+
+
 class SideshowCoverageTests(unittest.TestCase):
     def test_family_floor_registered(self):
         self.assertEqual(REQUIRED_CHECKS.get('sideshow_presentation'),136)
