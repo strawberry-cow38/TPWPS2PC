@@ -33,6 +33,19 @@ public partial class Viewer
     Node3D _lobbyRoot;
     Model _lobbyBaseMesh;
     readonly List<AnimatedModel> _lobbyParks = new();
+
+    /// <summary>⭐⭐ THE LOBBY'S OCEAN, AND IT HAS TO BE TICKED. `base.mps` mesh 0 is `Box01`: a flat
+    /// 3970x3970 grid of 426 vertices wearing `jri_lak3x`, and `base.aps` carries exactly ONE track
+    /// for it -- node 0, flag `0x10000`, the per-vertex UV channel. 267 entries, every one two keys
+    /// at times 0 and 300, and every one sliding its UV by **(-1.0003, +1.0003)**: a diagonal scroll
+    /// of exactly one texture tile over 300 frames, which is why it loops seamlessly.
+    ///
+    /// ⚠⚠ It was held at `SetFrame(0)` for ever. The per-frame loop advances `_lobbyParks` -- the
+    /// four island models -- and the room was added to the scene separately and never joined it, so
+    /// the disc's one authored animation in the whole lobby never played. Master, watching the PS2:
+    /// "theres a stationary opaque layer and a sine translucent layer above it". This is the moving
+    /// one, and we were drawing it frozen.</summary>
+    AnimatedModel _lobbyBase;
     /// <summary>⭐⭐ THE CONSOLE'S OWN LOBBY CAMERA, one authored node per park. Each park has TWO
     /// fittings on `base` under the same id: `0x400` is where the park STANDS and **`0x1000` is
     /// where the camera sits** -- and `FUN_00217b48` looks the second one up with exactly that
@@ -156,6 +169,7 @@ public partial class Viewer
         _lobbyRoot.Scale = Vector3.One * AuthoredScale;
         AddChild(_lobbyRoot);
         _lobbyParks.Clear();
+        _lobbyBase = null;
 
         AssetLibrary.RideAssets Find(string stem) => _lib.Rides.FirstOrDefault(
             r => string.Equals(Leaf(r.Name), stem + ".mps", StringComparison.OrdinalIgnoreCase)
@@ -171,6 +185,12 @@ public partial class Viewer
         var room = LoadPlaceable(baseAssets, out _, out _lobbyBaseMesh);
         if (room?.Root == null) { GD.PrintErr("[lobby] base.mps would not load"); return; }
         room.SetFrame(0);
+        // ⭐ Kept so the tick can advance it: this is the ocean, see `_lobbyBase`.
+        _lobbyBase = room;
+        // ⚠ PRINTED, because "I ticked it" and "it has something to tick" are different claims and
+        // a frame count of 0 would make the tick above a silent no-op that looks exactly like a fix.
+        GD.Print($"[lobby] ocean: base.mps frames={room.Frames}"
+               + (room.Frames > 0 ? "" : "  ⚠ NO ANIMATION BOUND -- the UV scroll will not play"));
         _lobbyRoot.AddChild(room.Root);
         // ⚠ MEASURE WHAT IS ACTUALLY DRAWN, not what the matrices say. The bridges look
         // clustered on the overview while `base`'s own node origins span x 0..85, z 0..113 -- so
@@ -867,7 +887,9 @@ public partial class Viewer
             }
         }
         _lobbyModelTime += (float)delta * Aps.Fps;
-        foreach (var m in _lobbyParks)
+        // ⭐ The ocean first, on the SAME clock as the islands -- a second clock here is how the
+        // water and the parks would drift apart in a later edit.
+        foreach (var m in _lobbyParks.Prepend(_lobbyBase))
         {
             if (m?.Root == null || !IsInstanceValid(m.Root) || m.Frames <= 0) continue;
             m.SetFrame(_lobbyModelTime % m.Frames);
