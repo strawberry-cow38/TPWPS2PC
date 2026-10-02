@@ -727,6 +727,13 @@ The only visible sign of the award at the time is the rating text (READ absence;
   `TPW_COASTER_HILLS="260,460,520,20,700,420,240,300,660,480,836"` on CoasterSmoke rates **Ultimate**
   in the rendered park: 37 secs, 74 m, 63 kph, 2 drops, 18°, 3.1/−0.2/0.2 g. (CoasterSmoke's later pylon
   checks are not stack-aware and fail on it; the stats and the award come first.)
+- Bank does not punish an outward lean (strawberry asked). Lateral is `|side · Δ|`, so a bank only moves the
+  turn's pull between the side and up projections, and the rating never reads vertical. Measured on the
+  audit's hill oval (MineCart, every pylon the same bank): flat lat 0.087 / +vert 0.165; bank −0x200 (45°)
+  lat 0.084 / +vert 0.308; bank +0x200 lat 0.062 / −vert −0.103. INFERRED which sign is "inward": Δ points
+  at the turn's centre, so the sign that grows +vert is the one leaning into the turn (−bank here).
+- Going past the box is not a worse verdict, just no star: FAST + 2..6 drops + lateral < 0.5 is "Excellent"
+  (0x290); the Ultimate window is a sub-box of "Average".
 
 ---------------------------------------------------------------------------------------------------
 
