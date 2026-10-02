@@ -203,6 +203,34 @@ No error/leak warnings occurred in these final rendered runs. The earlier produc
 warning remains retained as separate failed evidence; neither its regex nor its teardown was
 silently waived or patched by this work.
 
+### Independent hardware gate — Cow's4080
+
+Cow tools independently reported the following on branch3397778 in Discord message
+1555563905839792261 (2026-10-02). This is the hardware performance/integration gate;
+it is attributed peer evidence, **not a benchmark run on this agent's software-rendered host**.
+
+| guests | water | median frame ms | draw calls | managed churn KB/frame |
+|---:|---|---:|---:|---:|
+|0|off|1.26|124|17|
+|0|on|1.25|126|17|
+|150|off|5.56|607|292|
+|150|on|5.56|609|296|
+
+On that4080 setup, the water adds **two draw calls with no measurable median frame-time
+increase at the reported precision**. The .01ms empty-park reversal is not credited as a
+speedup. Water-off reproduces the guest-performance baseline; the existing gait/atlas work
+remains intact in this integration. This is not a guarantee for every GPU, camera, resolution
+or scene. Cow's pass covers performance, build/integration and repository hygiene, **not**
+the native decode review; Tinyclaw is separately gating that and the broader merged suite.
+
+The hardware result supersedes any reading of the local68–80ms numbers as a player-GPU
+regression. Those numbers remain below as valid software-renderer diagnostics, with their
+original camera/host scope. Draw-call differences between the two setups are retained as
+observations rather than forced into a single universal count. No zero-allocation claim is
+inferred from value-type Vector3 temporaries; the measured whole-frame churn is recorded above.
+
+### Retained local software-renderer diagnostic
+
 Final same-build A/B on the **local Mesa llvmpipe** host:
 
 | water | median real frame ms | p95 ms | draw calls | samples |
