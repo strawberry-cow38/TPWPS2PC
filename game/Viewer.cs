@@ -560,6 +560,8 @@ public partial class Viewer : Node3D
             else if (a.StartsWith("--idle-scene=")) { _idleScene = true; int.TryParse(a["--idle-scene=".Length..], out _idleCount); }
             else if (a.StartsWith("--walk-film=")) int.TryParse(a["--walk-film=".Length..], out _walkFilm);
             else if (a == "--gait-census") _gaitCensus = true;
+            else if (a == "--guests-nodraw") _guestsNoDraw = true;
+            else if (a.StartsWith("--atlas-dump=")) _atlasDump = a["--atlas-dump=".Length..];
             // ⭐ The census borrows --guest-test's park (corridor, Crazy Ape, guests) and replaces
             // its wind-and-shoot with real frames: a voice needs frames to advance in.
             else if (a.StartsWith("--sound-census=")) { int.TryParse(a["--sound-census=".Length..], out _soundCensus); _guestTest = true; }
@@ -650,6 +652,10 @@ public partial class Viewer : Node3D
         }
         _discPath = disc;
         GD.Print("[v] opening disc"); _lib = new AssetLibrary(disc);
+        // ⭐ As early as the disc allows and no earlier: the dump needs only DATA.WAD, not a park,
+        // and `_discPath` is not set until here -- the first attempt hooked before this and failed
+        // with "Value cannot be null (Parameter 'path')".
+        if (_atlasDump != null) { DumpAtlas(); return; }
         using (var lightingDisc = new Disc(disc)) Ps2Materials.Lighting = Lighting.Read(lightingDisc);
         GD.Print($"[light] ELF clear weather: ambient={Ps2Materials.Lighting.Ambient}, directional={Ps2Materials.Lighting.Directional}, ray={Ps2Materials.Lighting.RayDirection}");
         _park = new Park();
@@ -6729,6 +6735,11 @@ public partial class Viewer : Node3D
                 actor.Basis = Basis.Identity;
         }
         PlaceThoughts(); // use this frame's actual standing/walking transforms
+        // ⭐ LAST, so everything above has run exactly as it normally would: this removes only the
+        // drawing. See `_guestsNoDraw`.
+        if (_guestsNoDraw)
+            foreach (var a in _actors.Values)
+                if (a != null && IsInstanceValid(a) && a.Visible) a.Visible = false;
     }
 
     /// <summary>A body for a guest: one of the disc's eight kids, by id, stood on its feet at the
@@ -6760,7 +6771,7 @@ public partial class Viewer : Node3D
             // another. Clear it where the lifetime actually starts.
             _gaitFrom.Remove(id); _gaitRec.Remove(id); _idleSince.Remove(id); _posed.Remove(id); _headOnly.Remove(id);
             var (aps, sit, where) = SittingRecord(path);
-            var drawn = new AnimatedModel(model, aps, null, m => CharTexture(path, m));
+            var drawn = new AnimatedModel(model, aps, null, m => CharTexture(path, m), atlas: GuestAtlas());
             drawn.SetFrame(0);
             _drawn[id] = (drawn, sit, where);
             // ⭐ THE WALK is slot 1 of the SAME file the model was built against: measured on every
@@ -7088,6 +7099,90 @@ public partial class Viewer : Node3D
     }
 
     bool _gaitCensus;
+
+    /// <summary>⭐⭐ SPLITS A GUEST'S COST INTO "DRAWN" AND "COMPUTED". `--guests-nodraw` keeps every
+    /// guest simulated, posed and skinned exactly as normal and only stops them being DRAWN, so the
+    /// difference against an ordinary run is the draw-call and GPU half and the remainder is ours.
+    ///
+    /// ⚠ Built because the next optimisation on the list -- a texture atlas to collapse each kid's
+    /// 5-6 materials into one surface -- is only worth doing if draw calls are actually what is
+    /// left, and 5.7 draw calls per guest is a COUNT, not a cost. Measure before building.</summary>
+    bool _guestsNoDraw;
+
+    string _atlasDump;
+    ModelAtlas _guestAtlas;
+    bool _guestAtlasTried;
+
+    /// <summary>⭐⭐ The guests' shared texture sheet, built once on the first body and reused by
+    /// every kid after it. Each guest wears 5-6 distinct materials and godot draws one call per
+    /// material, so the crowd cost 5.7 draw calls a head -- 697 at 100 guests, 983 at 150, and a
+    /// measured 54% of the frame at 150. One sheet means one material means one surface.
+    ///
+    /// ⚠ Built from the 8 models' OWN material lists rather than a hand-written file list, so a
+    /// texture nobody wears is never packed and a model that gains one is picked up for free.
+    /// ⚠ Returns null if nothing could be packed, and <see cref="ModelAtlas"/> refuses any
+    /// individual part it cannot map -- an un-atlased guest costs a few draw calls, a wrongly
+    /// atlased one wears somebody else's shirt.</summary>
+    /// <summary>⭐⭐ `--atlas-dump=<png>` writes the packed sheet AND a `.txt` of every name -> rect,
+    /// then quits. Verifying the atlas through a park render kept failing for reasons that had
+    /// nothing to do with the atlas (guests had not spawned yet; `--shot` trips a pre-existing
+    /// baked-table exception that wrote a 381 MB log). This checks the thing that actually changed,
+    /// in one second, and the RECTS are the half the UV remap depends on.</summary>
+    void DumpAtlas()
+    {
+        try
+        {
+            if (_charLib == null) { _charLib = new AssetLibrary(_discPath); _charLib.OpenWad("/DATA/DATA.WAD"); }
+            var a = GuestAtlas();
+            if (a?.Sheet == null) { GD.PrintErr("[atlas] nothing to dump"); GetTree().Quit(); return; }
+            a.Sheet.SavePng(_atlasDump);
+            using var f = Godot.FileAccess.Open(_atlasDump + ".txt", Godot.FileAccess.ModeFlags.Write);
+            f.StoreLine($"sheet {a.Size.X} {a.Size.Y}");
+            foreach (var (name, r) in a.Entries)
+                f.StoreLine($"{name} {r.Position.X:R} {r.Position.Y:R} {r.Size.X:R} {r.Size.Y:R}");
+            GD.Print($"[atlas] dumped {a.Count} rects + sheet to {_atlasDump}");
+        }
+        catch (Exception e) { GD.PrintErr($"[atlas] dump failed: {e.Message}"); }
+        GetTree().Quit();
+    }
+
+    ModelAtlas GuestAtlas()
+    {
+        if (_guestAtlasTried) return _guestAtlas;
+        _guestAtlasTried = true;
+        // ⚠ A safety valve and the A/B switch in one: an atlas fault is PURELY VISUAL -- a kid
+        // wearing somebody else's shirt renders happily and benchmarks beautifully -- so the way
+        // to check it is two pictures, which needs a way to turn it off without a rebuild.
+        if (System.Environment.GetEnvironmentVariable("TPW_GUEST_ATLAS") == "0")
+        { GD.Print("[atlas] guests NOT atlased (TPW_GUEST_ATLAS=0)"); return null; }
+        try
+        {
+            var want = new List<(string Name, Image Img)>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string path in GuestModels)
+            {
+                var entry = _charLib?.Wad.Find(path);
+                if (entry == null) continue;
+                var m = _charModels.TryGetValue(path, out var had) ? had : new Model(_charLib.Read(entry));
+                _charModels[path] = m;
+                foreach (var names in m.MaterialTextures)
+                    foreach (string name in names)
+                    {
+                        if (name == null || !seen.Add(name)) continue;
+                        var (tex, soft) = CharTexture(path, name);
+                        // ⚠ A translucent member would need the blend shader, so it cannot share
+                        // this sheet. All 27 guest textures measured opaque; this is the guard.
+                        if (tex == null || soft) continue;
+                        var img = tex.GetImage();
+                        if (img != null) want.Add((name, img));
+                    }
+            }
+            _guestAtlas = ModelAtlas.Build(want, Ps2Materials.Shader(false, AnimatedModel.CullRenderMode,
+                                                                     linearFilter: Ps2Materials.Bilinear));
+        }
+        catch (Exception e) { GD.PrintErr($"[atlas] guests not atlased: {e.Message}"); _guestAtlas = null; }
+        return _guestAtlas;
+    }
 
     float GaitFrame(int id, float alpha)
     {
