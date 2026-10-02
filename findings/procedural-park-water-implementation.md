@@ -1,4 +1,4 @@
-# Procedural park water implementation — WIP, not ready to merge
+# Procedural park water implementation — READY for live-play review
 
 2026-10-02, requested by strawberry at Discord message1555509148982968411.
 Based on `tinyclaw/particle-schedule`8363918 plus research trace0051c42; Cow guest atlas2acd035 was merged explicitly before the full gates.
@@ -45,7 +45,7 @@ The global curve is reused between map loads; each drawable gets fresh phase/UV 
 current A/B switch `TPW_NATIVE_PARK_WATER=0` omits only this new drawable; it does not replace
 terrain art or enable a guessed shader wave.
 
-## Checks and controls completed at the current WIP checkpoint
+## Implementation checks and controls (including earlier checkpoints)
 
 - Targeted data audit: **76 assertions PASS**, integrated in the default audit and required
   by `audit_matrix.py` with literal numerical and semantic witnesses. All eight native placements,
@@ -66,7 +66,7 @@ terrain art or enable a guessed shader wave.
   immediate hide, actual old-node retirement, and both maps' uploaded motion are required.
 - Shipping Viewer on production checkpoint d87a016: **35 PASS on all eight parks at both sizes**,
   plus all current component/reset and selected regressions. The newly corrected monotonic-clock
-  build has35 PASS on JUNGLE/1; its final all-eight rerun is pending. Natural-frame GPU height/V changes, actual water retirement, real input and
+  build was subsequently rerun on all eight parks at both sizes; see the final clean gate below. Natural-frame GPU height/V changes, actual water retirement, real input and
   exact one-map/numbered/semantic receipts are enforced. A counters-moving-but-frozen-mesh mutant
   fails the new shipping-motion check.
 - **12 compiled mutations rejected**, byte-for-byte restoration and rebuild verified: missing
@@ -134,7 +134,7 @@ across all four runs. Exactly one successful aim, metric row, complete14-numbere
 one JUNGLE/1 witness, and clean teardown are required. Malformed extra metric rows, wrong aims,
 missing retirement, short/unbounded windows, and old exit warnings are explicitly rejected.
 
-Current local experiment (new clock; clean final replay still pending):
+Earlier local experiment on the new clock (final clean replay is recorded below):
 
 | water | median real frame ms | p95 ms | draw calls | samples |
 |---|---:|---:|---:|---:|
@@ -172,11 +172,57 @@ Evidence additions outside Git:
 - `/tmp/tpw-water-wall-perf` (monotonic14-case A/B), `/tmp/tpw-water-clock-python.log`.
 - `/tmp/tpw-water-final-perf` (baseline immediate-Quit warning, retained as failed evidence).
 
-## Must finish before READY handoff
+## Final clean gate — completed2026-10-02
 
-1. Run the clean final core8 and shipping-water8/both-size sweep on the corrected monotonic
-   build, including component28, reset57 and clock18 both sizes.
-2. Rerun the selected existing Viewer, research and particle regressions and the strict same-
-   build14-case balanced performance experiment.
-3. Append actual final results DOC-only, commit/push and coordinate handoff. Do not self-merge
-   to main or quietly incorporate unrelated gold-ticket/coaster work. No assets committed.
+**READY for review/merge of live park water.** Every final run used clean/pushed production
+revision `c24c5316c35820fa92628928a5bcde132ab7b214`; the final READY update changes this Markdown
+only. Source snapshot SHA256 was
+`908e11a089ff4b02a81363580d738492567950a8caa080830601b0e28ff5868c`.
+All rendered groups had identical source and assembly snapshots, also checked against the
+actual worktree/binaries at completion. Stored log hashes were rechecked. The final queue
+`/tmp/tpw-water-ready-gates.exit` is0; the core's documented exit2 is preserved rather than
+misreported as all-pass. No compiled mutations remain in the shipping source.
+
+| gate | final outcome |
+|---|---|
+| Python tool suite |162 PASS |
+| Core8 |4 PASS /4 exact known retail failures;76 water assertions per park; no new failure |
+| Normal shipping water |16/16 PASS: all8 parks at640x360 and1152x648;35 each |
+| Declared clock control |18 PASS at both sizes; zero engine delta, real wall motion, real Pause |
+| Dynamic-mesh/alpha component |28 PASS at both sizes; zero maps, actual raster underlay control |
+| Declared ordinary-loader reset |57 PASS at both sizes; exact JUNGLE/1 → FANTASY/2 |
+| Existing Viewer regressions |12/12 PASS: pointer, mechanic, management, advisor, coaster, vehicles on JUNGLE/1 and HALLOW/2 |
+| Existing research persistence |24 PASS at both sizes |
+| Existing particle child |62 PASS at both sizes |
+| Existing particle schedule |18 PASS at both sizes |
+| Balanced performance experiment |4/4 PASS;14 receipts each; clean retirement, same verified camera/build |
+
+Thus40 rendered functional cases plus4 performance runs completed, separately scoped from the
+core8 audit. This is not a claim of running every preexisting viewer-matrix scene on every park.
+No error/leak warnings occurred in these final rendered runs. The earlier production benchmark
+warning remains retained as separate failed evidence; neither its regex nor its teardown was
+silently waived or patched by this work.
+
+Final same-build A/B on the **local Mesa llvmpipe** host:
+
+| water | median real frame ms | p95 ms | draw calls | samples |
+|---|---:|---:|---:|---:|
+| off |68.320|95.170|164|131|
+| on |76.701|102.458|165|117|
+| on |79.676|105.977|165|113|
+| off |69.719|93.828|164|128|
+
+The bounded windows were9.0076..9.0606 seconds, all four camera fingerprints matched, and
+all four error/leak classifications passed. The water adds one draw call and roughly9ms here;
+this is software-rendering overhead on this host, **not** a forecast for the player's GPU.
+Actual samples/counts are in the manifest; the table is not a synthetic performance model.
+
+Final evidence:
+- `/tmp/tpw-water-ready-{core,clock,component,reset,viewer,highres,regression,research-persistence,particle-child,particle-schedule,perf}/manifest.json`.
+- `/tmp/tpw-water-ready-python.log`, `/tmp/tpw-water-ready-gates-run.log`.
+- `/tmp/tpw-water-ready-verification.json`: rechecked source/assembly/log/count provenance.
+
+The branch includes the already-tested particle-schedule8363918 base and Cow's atlas2acd035,
+**not** the later gold-ticket/coaster-stats branch. No merge to main is performed by this handoff.
+Offline film/still clock mapping, actual native global RNG history and exact VU/GS pixel parity
+remain the explicit limitations above. No new implementation slice is started after this handoff.
