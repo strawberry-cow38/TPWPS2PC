@@ -6,41 +6,11 @@ using TPW.PS2.Data;
 
 namespace TPWPS2Viewer;
 
-/// <summary>The terrain's water: the RIVER moves, the SEA does not.
-///
-/// ⭐⭐ THE TERRAIN NAMES ITS OWN WATER. `A_SEA_01..06` are meshes in every world's terrain file and
-/// they all wear one material, `jri_lak2`; the river and pond surfaces wear `wr_water3`,
-/// `dk_water3`, `jri_sur1`, `jri_sur4`, `jri_lak1`. So which surfaces are water is READ off the
-/// model, not decided by me.
-///
-/// ⭐⭐⭐ THE SEA IS STATIC ON THE PS2, MEASURED 2026-10-01 -- see `findings/sea.md` for the whole
-/// workings. Master: "kill all the sea stuff we have rn and reimplement it properly, assume
-/// everything previous was wrong", then "research the sea from the ps2 version". It was wrong, and
-/// the console's answer is that there is nothing there to be right about:
-///
-///   * NO per-vertex UV track. The APS flag `0x10000` and the `mesh+0x9c` fan-out list are both
-///     absent on all 48 sea instances -- while ELEVEN meshes in the SAME file carry both
-///     (`surface13/15/22/23/25/27`, `Surface15b`, `falls02`, `Object12`, `RIVERBED_03B/04B`: the
-///     river and the falls). That control is what makes the absence mean anything.
-///   * NO morph track: `mesh+0x98` is zero.
-///   * NO terrain `.aps` AT ALL in HALLOW, FANTASY or SPACE -- only JUNGLE ships one, so in three
-///     worlds of four the sea could not animate even in principle.
-///   * NO scroll rate. `fScrollRate` is a field of `asTextureData`, which shares its schema table
-///     with `asCrossSectionPoints1..12` -- the COASTER class. All 13 scroll rates on the disc sit
-///     in a `coaster.sam` (lift chains, flume water, slime, rails); `jri_lak2` is in none of them.
-///
-/// ⭐ What the sea does contribute is SOUND: `EVT_WAVES` and `EVT_SEAGULL` are the only wave-shaped
-/// symbols in the executable, and we do not play them yet.
-///
-/// ⭐⭐ AND IT IS ONE SURFACE AT TWO HEIGHTS, NOT TWO PLANES. Master asked what both planes of the
-/// ocean were. The vertices sit at -2.2666 and -1.2666, exactly 1.0 apart, in equal numbers -- but
-/// over ground that does not overlap AT ALL (95 upper XZ sites, 90 lower, ZERO shared). 44% of its
-/// triangles are exactly level and none tilts past 4.2 degrees. The port's old "they tile at one
-/// height" came from the AABB CENTRES, which agree because each mesh carries a mix of both.
-///
-/// ⚠ The PSX is a different build and DOES roll its sea texture one row per frame (VRAM diff of a
-/// running park). If the PS2 sea ever turns out to move, that is a capture to bring back -- not a
-/// number to guess a third time. `TPW_SEA_SCROLL` turns it back on without a rebuild.</summary>
+/// <summary>Materials on the terrain's authored water meshes. The opaque A_SEA meshes
+/// have no supplied morph/UV track and remain static here. This says nothing about the
+/// separate, EE-generated moving park-water layer: see ProceduralParkWaterView and
+/// findings/ocean-waves.md. River UV scrolling below remains the pre-existing approximation.
+/// Native procedural water owns neither these materials nor their shared texture clock.</summary>
 public sealed class Water
 {
     /// <summary>One texel of a 64-high texture per console frame.</summary>
@@ -54,8 +24,8 @@ public sealed class Water
     /// stands in for them until they are replayed, which is the next real improvement here.</summary>
     const float RiverScrollDegrees = 90f;
 
-    /// <summary>The sea's scroll, texels per console frame. ZERO: the PS2 sea does not move, and
-    /// `findings/sea.md` is why. Left as a switch rather than deleted so the PSX's one-row-per-frame
+    /// <summary>The opaque terrain sea base's scroll, texels per console frame. ZERO: this layer
+    /// has no supplied animation; the separate native drawable is handled by ProceduralParkWaterView. Left as a switch rather than deleted so the PSX's one-row-per-frame
     /// roll can be put back by someone who can see a console, without another guess in the source.</summary>
     const float SeaScrollTexelsPerTick = 0f;
 
@@ -116,8 +86,8 @@ public sealed class Water
                 float radians = Mathf.DegToRad(Env("TPW_WATER_ANGLE", RiverScrollDegrees));
                 scroll = new Vector2(Mathf.Sin(radians), Mathf.Cos(radians)) * riverPerSecond;
             }
-            // ⭐ No vertex motion on anything. The sine this port shipped was invented, and the
-            // console has no morph channel on the terrain to have carried one.
+            // No vertex motion on these authored terrain meshes. Native procedural water is a
+            // separate drawable above them, not an invented displacement of this base layer.
             var wave = Vector3.Zero;
             var made = Ps2Materials.Water(tex, _soft?.Invoke(material) ?? false, scroll, wave);
             mi.MaterialOverride = made;
@@ -126,7 +96,7 @@ public sealed class Water
         }
         Report = _moving.Count == 0
             ? "no water surfaces in this terrain"
-            : $"{sea} sea surfaces STATIC (no scroll, no vertex motion),"
+            : $"{sea} opaque sea-base surfaces STATIC (no scroll, no vertex motion),"
               + $" {flow} flowing at {RiverScrollDegrees:F0} degrees";
     }
 
