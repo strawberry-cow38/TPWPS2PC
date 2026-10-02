@@ -337,16 +337,19 @@ to find, and the search was looking at the wrong object.
   `0x36e8b0`. At the correct address `justwater.ssh` has a reference: `0x2210b8` materialises it
   into `a1`. An address four bytes off turned a live reference into "absent", the control fired
   anyway because it was a different address, and the false negative was written up as a finding.
-  (`justwater.ssh` is the front-end's water, loaded from `data/generic/weather/` beside
-  `raindrop.ssh`; `water2.ssh` is a Coaster1 track texture under `Data\Jungle\Rides\Coaster1\GTexture\`.)
+  **2026-10-02 correction:** the actual directory at `0x36e7e8` is `data/generic/extra/`,
+  and this loader is reached from park initialization `0x151498 -> 0x149958 -> 0x220fa0`.
+  It feeds procedural-water drawable `0x22cb90`, not a front-end-only effect. See
+  `ocean-waves.md` for the texture, vtable, deformation and placement join.
 
 ### Not established
 
 `asTextureData`'s neighbours are `asCrossSectionPoints1..12`, `asCarTypes`, `asPylonControls` and
-`sCoasterType`, so the record belongs to the **coaster/track** definition. No `.sam` ships on this
-disc — the only authored files are three `.dba` — and the per-texture rates were not recovered
-from any of them. **Which** textures move is read off the disc; **how fast** is still the PSX's
-measured one-row-a-frame. `TurnOffScrollingTextures` is not yet consulted per attraction.
+`sCoasterType`, so the record belongs to the **coaster/track** definition. The historical claim
+that no `.sam` ships was wrong: `sea.md` records the later authored-file census and the thirteen
+coaster scroll rates. Those rates and the park's procedural-water update in `ocean-waves.md`
+must not be replaced by the PSX's measured one-row-a-frame. `TurnOffScrollingTextures` is not
+yet consulted per attraction.
 
 ### What the port does with this
 

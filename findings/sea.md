@@ -1,5 +1,14 @@
 # The PS2 sea
 
+> **2026-10-02 correction: a native moving park-water layer has now been found.**
+> See `ocean-waves.md`: the park initializer registers procedural drawable `0x22CB90`,
+> which generates changing heights/UVs and loads global alpha texture `justwater.ssh`.
+> It overlaps the opaque `A_SEA` meshes. The absence of animation on those meshes did
+> not exclude this separate draw path. The historical negative conclusions below
+> (including "the only waves are a sound" and "could not animate in principle") are
+> superseded, not implementation instructions. Composed sea world Y is approximately
+> −1.1..−1.0; the local coordinates below are not its final rendered heights.
+
 Master, 2026-10-01: *"kill all the sea stuff we have rn and reimplement it properly, assume
 everything previous was wrong"*, then *"okay then research the sea from the ps2 version"*.
 
