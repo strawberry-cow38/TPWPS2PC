@@ -710,8 +710,7 @@ public partial class Viewer
         }
         if (_coasterStatsView != null) { _coasterStatsView.Stats = lap; _coasterStatsView.Visible = true; }
         var (row, ultimate) = CoasterStatsScreen.Rating(lap);
-        if (ultimate && _management?.CurrentPark?.Invoke() is { } at)
-            _awards.RecordUltimate(at.World, at.Park, v.Track.Type.Ordinal);
+        if (ultimate) RecordUltimateCoaster(v);
         string Label(int id) => _text?.Text(TextLanguage, id) ?? $"row 0x{id:x}";
         string rating = Label(row);
         Status($"{v.Track.Type.Name}: {Label(CoasterStatsScreen.RatingLabelRow)} {rating}   "
@@ -719,6 +718,20 @@ public partial class Viewer
         GD.Print($"[coaster] stats for ride {v.Id}: {(int)lap.Duration} secs  {(int)lap.Length} meters  {(int)lap.MaxSpeed} kph  "
                + $"{(int)lap.Drops} drops  {(int)lap.SteepestDrop} deg  {lap.MaxVertPos:F1}/{lap.MaxVertNeg:F1}/{lap.MaxLat:F1} g  "
                + $"rating 0x{row:x} {rating}{(ultimate ? $" -- ULTIMATE, {_awards.UltimateCoasters} awarded" : "")}");
+    }
+
+    /// <summary>`0x1542B0(0x14E170(), 0x14E160(), +0x97)`: the park on the map, raw, and the coaster's ordinal in
+    /// its park's list. ⚠ Read off the loaded park, not the calendar's <see cref="ParkManagement.CurrentPark"/>:
+    /// that object is made when the park clock first runs, and a coaster finished before then recorded nothing.
+    /// ⚠ The port can build another park's coaster (`TPW_COASTER`); the console cannot, and the formula is
+    /// applied as written -- the ordinal lands in THIS park's slot.</summary>
+    bool RecordUltimateCoaster(CoasterView v)
+    {
+        NativeParkSelection at;
+        try { at = NativeParkSelection.Ordinary(_lib?.WadName ?? "", _terrainPath ?? ""); }
+        catch (Exception) { GD.Print("[coaster] Ultimate, but the park is not an ordinary one -- no award"); return false; }
+        _awards.RecordUltimate(at.World, at.Variant, v.Track.Type.Ordinal);
+        return _awards.HasUltimate(at.World, at.Variant, v.Track.Type.Ordinal);
     }
 
     void HideCoasterStats()

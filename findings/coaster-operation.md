@@ -707,6 +707,26 @@ The only visible sign of the award at the time is the rating text (READ absence;
   SPACE {1: 0x22}{2: 0x23, 0x24}. ⚠ **JUNGLE 2 is crossed**: ordinal 0 is Chak Atak (the car table
   `0x2e7220` and the loop table `0x2acad0` agree) but its star is `s_apehead`; Gorilla Thrilla's is `s_croc`.
   The port keeps the console's crossing.
+- ⚠ The award once went through `ParkManagement.CurrentPark`, which exists only after the park clock first
+  runs, so a coaster finished before then recorded nothing. It now reads the loaded park
+  (`NativeParkSelection.Ordinary`), and CoasterSmoke checks the bit on a park whose clock has not run.
+
+### 5.9 Building an Ultimate (2026-10-02, strawberry: "can u build a maxxed out one")
+
+- Speed is LINEAR in the drop: `speed += Δy·0.04` a step, friction 0.1 %, the chain at 0.04 below 0.02. So
+  the lap's top speed is about `0.04 × (cells fallen from the crest) × 175` kph, and 55..70 kph needs a crest
+  roughly 7..9 cells above the low point.
+- One pylon cannot give that: `Attach(h)` stops at the 0x500 clamp, half the loft, about 4.5 cells. A
+  height-search over the 9-pylon oval topped out at **~46 kph on all 14 coasters**.
+- A STACK can: the upper pylon stands on `StackY(lower)` (about 3 + 9·h/2560 cells for MineCart), so a
+  two-high stack at the 0x600 limit puts the rail near 9 cells. The ring has to cross itself to stack.
+- Found by search against the port's own rules, every press validated as the tool does (the ghost at the
+  start height, full rules, then the entry turn -- the LAST pylon's heading must be within 90° of the
+  station's), then the heights. Temple of Gloom, JUNGLE 1, 11 pylons crossing at pylon 5 / 11:
+  `TPW_COASTER=MineCart TPW_COASTER_RING="5,-3;3,-9;0,-11;-6,-7;-9,0;-15,2;-20,-1;-20,-7;-17,-9;-11,-5;-9,0"`
+  `TPW_COASTER_HILLS="260,460,520,20,700,420,240,300,660,480,836"` on CoasterSmoke rates **Ultimate**
+  in the rendered park: 37 secs, 74 m, 63 kph, 2 drops, 18°, 3.1/−0.2/0.2 g. (CoasterSmoke's later pylon
+  checks are not stack-aware and fail on it; the stats and the award come first.)
 
 ---------------------------------------------------------------------------------------------------
 

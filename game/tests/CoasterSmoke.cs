@@ -31,9 +31,17 @@ public partial class CoasterSmoke : Node3D
         GD.Print("COASTER ok: " + label);
     }
 
-    /// <summary>The audit's oval, in the exit's own frame: (along the station's travel, to one side).</summary>
-    static readonly (int F, int S)[] Oval = { (6, 0), (11, 4), (11, 10), (6, 14), (0, 14), (-6, 14), (-11, 10), (-11, 5), (-9, 0) };
-    static readonly int[] Hills = { 375, 800, 1200, 1200, 400, 100, 300, 375, 375 };
+    /// <summary>The audit's oval, in the exit's own frame: (along the station's travel, to one side).
+    /// By hand only, never in the matrix: `TPW_COASTER_RING="F,S;F,S;..."` and `TPW_COASTER_HILLS="h,h,..."` lay
+    /// another ring and raise it to other heights -- e.g. a self-crossing ring whose stacked crest rates Ultimate.</summary>
+    static readonly (int F, int S)[] Oval =
+        System.Environment.GetEnvironmentVariable("TPW_COASTER_RING") is { Length: > 0 } ringEnv
+            ? ringEnv.Split(';').Select(p => p.Split(',')).Select(p => (int.Parse(p[0]), int.Parse(p[1]))).ToArray()
+            : new[] { (6, 0), (11, 4), (11, 10), (6, 14), (0, 14), (-6, 14), (-11, 10), (-11, 5), (-9, 0) };
+    static readonly int[] Hills =
+        System.Environment.GetEnvironmentVariable("TPW_COASTER_HILLS") is { Length: > 0 } hillsEnv
+            ? hillsEnv.Split(',').Select(int.Parse).ToArray()
+            : new[] { 375, 800, 1200, 1200, 400, 100, 300, 375, 375 };
 
     public override async void _Ready()
     {
@@ -427,6 +435,34 @@ public partial class CoasterSmoke : Node3D
             Check(Member("_coasterTool").GetValue(viewer) == null && Field<bool>(viewer, "_toolOpen") && !statsView.Visible
                   && lapSim.Trains.Count == 0,
                   "OK (Enter) closes the screen, removes the trains and hands over to the queue tool");
+            // ⭐ The award's wiring, on THIS park before its clock has run (it once went through the calendar's
+            // object and recorded nothing): bit world·8 + park·4 + ordinal, and the HUD's count with it.
+            {
+                var awards = Field<ParkAwards>(viewer, "_awards");
+                int maskBefore = awards.UltimateMask;
+                awards.UltimateMask = 0;
+                var sel = NativeParkSelection.Ordinary(Field<AssetLibrary>(viewer, "_lib").WadName, (string)Member("_terrainPath").GetValue(viewer));
+                bool recorded = (bool)Call(viewer, "RecordUltimateCoaster", view);
+                Check(recorded && awards.HasUltimate(sel.World, sel.Variant, type.Ordinal) && awards.UltimateCoasters == 1
+                      && awards.UltimateMask == 1 << (sel.World * 8 + sel.Variant * 4 + type.Ordinal),
+                      $"an Ultimate verdict here records {world} park {sel.Variant} ordinal {type.Ordinal} (mask 0x{awards.UltimateMask:x})");
+                awards.UltimateMask = maskBefore;
+            }
+            // By hand: the whole ring from above and to one side, the trains out on it.
+            if (shots != null)
+            {
+                for (int i = 0; i < 240; i++) await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                foreach (var layer in viewer.FindChildren("*", "CanvasLayer", true, false).OfType<CanvasLayer>()) layer.Visible = false;
+                Set(viewer, "_freeCam", true);
+                var cam = Field<Camera3D>(viewer, "_cam");
+                var mid = track.Pylons.Aggregate(Vector3.Zero, (a, n) => a + park.CellCentre(n.CellX, n.CellZ)) / track.Pylons.Count;
+                float span = track.Pylons.Max(n => park.CellCentre(n.CellX, n.CellZ).DistanceTo(mid));
+                cam.GlobalPosition = mid + new Vector3(0.9f, 0.75f, 1.1f) * span * 1.15f;
+                cam.LookAt(mid + Vector3.Up * 2f, Vector3.Up);
+                for (int i = 0; i < 3; i++) await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                Call(viewer, "SaveShot", System.IO.Path.Combine(shots, $"{world.ToLowerInvariant()}_{folder.ToLowerInvariant()}_ring.png"));
+                foreach (var layer in viewer.FindChildren("*", "CanvasLayer", true, false).OfType<CanvasLayer>()) layer.Visible = true;
+            }
             Call(viewer, "CloseTool");
 
             var segments = (IDictionary)F(view, "Segments");
