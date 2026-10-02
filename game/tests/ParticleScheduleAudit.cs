@@ -132,8 +132,15 @@ public partial class ParticleScheduleAudit : Node3D
                 flamesOk &= runs.All(n => n.Amount == 1 && n.Lifetime >= (flames.Life - jitter + 1) * Tick - 1e-4f
                                           && n.Lifetime <= (flames.Life + jitter - 1) * Tick + 1e-4f);
             }
-            Check(flamesOk && low >= 14 && high <= 18,
-                  $"Flames55 x10: cap-gated, single-particle runs with their own lives, {low}..{high} births (old estimate {flames.ExpectedTotal()})");
+            // ⚠ The bound is DERIVED, not sampled: this once said 14..18, the range 50 census plans happened to
+            // show, and the first rerun drew 19. Cap c slots fill on ticks 1..c; a slot born at tick k is
+            // reborn at k + life + 2. Every slot is reborn at least once even at the longest life, and none
+            // a third time even at the shortest, so births lie in [2c, 3c].
+            int cap = ParticleTemplate.DensityScaled(flames.MaxLive, flames.EffectiveDensity());
+            int lmin = flames.Life - jitter + 1, lmax = flames.Life + jitter - 1, span = flames.EmitterLife;
+            bool derived = cap + lmax + 2 <= span && 1 + 3 * (lmin + 2) > span;
+            Check(flamesOk && derived && low >= 2 * cap && high <= 3 * cap,
+                  $"Flames55 x10: cap-gated, single-particle runs with their own lives, {low}..{high} births within the derived {2 * cap}..{3 * cap} (old estimate {flames.ExpectedTotal()})");
 
             // ⭐ The continuous path is untouched apart from honouring NoDensityScaling: Bubbles keeps its -5.
             var bubbles = ParticleTemplate.Of(library[58]);

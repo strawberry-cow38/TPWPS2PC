@@ -225,7 +225,7 @@ schedule rather than from `ExpectedTotal`.
   draws a no-burst effect's tick-1 births 31 ms earlier than the console. Within a run, one
   tick's births are spread over that tick's gap.
 - **What changed visibly** (census of all 67 non-continuous records, 50 plans each): LaserRing 1 or 2
-  (was 5), Flames 14..18 (was 80), FirePuff 22 (28), ExhaustPuff 19 (26), MumboPuff 22 (28),
+  (was 5), Flames 14..21 (was 80), FirePuff 22 (28), ExhaustPuff 19 (26), MumboPuff 22 (28),
   PinkPop 22 (40), Explode3 7 (8). Uncapped records with positive rates mostly match the old total.
 
 **Checks.** Core audit: `particle_emission` is now **97** (90 + 7). The managed scaler matches the
@@ -236,7 +236,10 @@ per tick. Rendered: `ParticleScheduleAudit`, a standalone matrix case `particle-
 checks at 640x360 and 1152x648:
 - LaserRing x40: 1 or 2 single-particle runs each, both seen. Each life is 16..24 ticks. The
   replacement is parked inside the first particle's life and starts after it.
-- FirePuff draws its plan's 22, Flames draws single-particle cap-gated runs, Bubbles is unchanged.
+- FirePuff draws its plan's 22, Flames draws single-particle cap-gated runs within a DERIVED 14..21
+  (cap 7: every slot is reborn once at the longest life, none twice at the shortest), and Bubbles is
+  unchanged. ⚠ The first version asserted 14..18, the range 50 census plans had shown; the merged
+  rerun drew 19. A sampled range is not a bound.
 - Clear frees parked runs before their timers fire, and a finished effect retires with its children.
 - A plan with NO births (cloned one-tick Destroy75, whose last-quarter rate is 0) draws no parent but
   still spawns its Twinkle83 child, since `0x18b5a8` makes the child request after the burst whatever
