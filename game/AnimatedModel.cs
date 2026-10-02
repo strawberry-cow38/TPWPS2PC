@@ -275,6 +275,9 @@ public sealed class AnimatedModel
     /// state a freshly built one would be in.</summary>
     public void UseRecord(Aps.Record rec)
     {
+        // ⚠ The same frame number on a different record is a different pose, so the cheap
+        // identical-frame guard in SetFrame must not carry across a record change.
+        _appliedNow = float.NaN;
         // ⚠⚠ NOT ON A SKELETAL RECORD. A skeletal record's tracks are 20 bytes, not 48, so asking
         // for texture tracks points a 48-byte reader at a 20-byte table and it walks off the end
         // -- "Index was out of range ... (Parameter 'startIndex')" from inside the APS reader.
@@ -770,6 +773,19 @@ public sealed class AnimatedModel
 
     float _now;
 
+    /// <summary>⭐⭐ THE FRAME ALREADY APPLIED, so an identical one costs nothing.
+    ///
+    /// <see cref="SetFrame"/> does the whole job every call -- texture tracks, two visibility
+    /// passes, the skeletal pose, and <c>RebuildGeometry</c> for every part -- and nothing stopped
+    /// it being handed the same value twice. At 100 guests `PlaceActors` was **97.6% of the frame's
+    /// managed allocation** and 14.5 ms of a 20 ms frame, and every guest reaches it through
+    /// `Gait` -> `SetFrame`.
+    ///
+    /// ⚠ NaN until the first real pass, so the first call always runs (NaN compares false against
+    /// everything, including itself). Invalidated by <see cref="UseRecord"/>, because the same
+    /// frame number on a DIFFERENT record is a different pose.</summary>
+    float _appliedNow = float.NaN;
+
     /// <summary>Build the named parts again at the last <see cref="SetFrame"/> time: for a hook such as
     /// <see cref="UvRewrite"/> set after construction, on parts no channel ever rebuilds.</summary>
     public void Rebuild(Func<Model.Mesh, bool> which)
@@ -1050,6 +1066,9 @@ public sealed class AnimatedModel
 
     public void SetFrame(float now)
     {
+        // ⭐ Identical frame, same record: everything below is deterministic in `now`, so redoing
+        // it writes the same bytes it wrote last time. See `_appliedNow`.
+        if (now == _appliedNow) return;
         _now = now;
         // The APS clock drives texture choices too. Shared materials update every surface using
         // the slot; image lookup still goes through the viewer's owner-scoped texture cache.
@@ -1120,6 +1139,8 @@ public sealed class AnimatedModel
                 new Godot.Vector3(w.M41, w.M42, w.M43));
             foreach (var s in p.Surfaces) s.Transform = t;
         }
+        // ⭐ Recorded LAST: if anything above throws, the next call redoes the work.
+        _appliedNow = now;
     }
 
     /// <summary>World transforms with the animated rotation POST-MULTIPLIED onto the bind rotation

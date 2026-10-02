@@ -559,6 +559,7 @@ public partial class Viewer : Node3D
             else if (a == "--idle-scene") _idleScene = true;
             else if (a.StartsWith("--idle-scene=")) { _idleScene = true; int.TryParse(a["--idle-scene=".Length..], out _idleCount); }
             else if (a.StartsWith("--walk-film=")) int.TryParse(a["--walk-film=".Length..], out _walkFilm);
+            else if (a == "--gait-census") _gaitCensus = true;
             // ⭐ The census borrows --guest-test's park (corridor, Crazy Ape, guests) and replaces
             // its wind-and-shoot with real frames: a voice needs frames to advance in.
             else if (a.StartsWith("--sound-census=")) { int.TryParse(a["--sound-census=".Length..], out _soundCensus); _guestTest = true; }
@@ -7045,10 +7046,54 @@ public partial class Viewer : Node3D
         _walkRec[id] = w;
     }
 
+    /// <summary>⭐⭐ THE GRID THE GAIT IS SAMPLED ON, in authored animation frames.
+    ///
+    /// The walk is authored at <see cref="Aps.Fps"/> = 30, and the renderer was asking it for a
+    /// DIFFERENT fractional frame every time it drew -- 797 fps with no guests, 54 with a hundred.
+    /// Each distinct value is a full <c>SetFrame</c>: skeletal pose, skin deform per vertex, and a
+    /// rebuilt mesh surface. Sampling an animation finer than the rate it was drawn at buys no
+    /// motion that was ever authored, and costs a rebuild every time.
+    ///
+    /// ⚠ This is a RATE decision, not a console reading. I have not read the console's animation
+    /// clock, so this does not claim to be what the PS2 does -- it claims that resampling 30 fps
+    /// data at 54-800 fps is work with nothing on the other side of it. `TPW_GAIT_QUANTUM` changes
+    /// it without a rebuild (0 restores the old continuous sampling) so it stays measurable.</summary>
+    static float GaitQuantum
+        => float.TryParse(System.Environment.GetEnvironmentVariable("TPW_GAIT_QUANTUM"), out var q) ? q : 1f;
+
+    /// <summary>⭐⭐ PROOF THAT THE GAIT IS STILL MOVING, because a perf win and a frozen animation
+    /// look identical in a frame-time graph. `--gait-census` prints the record and frame of the
+    /// first few guests once a second: if those numbers advance, the walk is alive.
+    ///
+    /// ⚠ Added when <see cref="GaitQuantum"/> cut 100-guest frame time 18.55 -> 4.03 ms. A 4.6x
+    /// speedup is exactly the shape of accidentally freezing every guest, and the allocation
+    /// argument against that (160 KB/frame against a 17 KB/frame empty-park floor) is an argument,
+    /// not an observation.</summary>
+    double _gaitCensusDue;
+
+    void TickGaitCensus(double delta)
+    {
+        if (!_gaitCensus) return;
+        _gaitCensusDue -= delta;
+        if (_gaitCensusDue > 0) return;
+        _gaitCensusDue = 1.0;
+        int shown = 0;
+        foreach (var g in _guests.Guests)
+        {
+            if (shown++ >= 3) break;
+            GD.Print($"[gait] t={_parkTicks * ParkSim.TickMilliseconds / 1000.0:F2}s #{g.Id} {g.State}; {GaitCensus(g.Id)}");
+        }
+    }
+
+    bool _gaitCensus;
+
     float GaitFrame(int id, float alpha)
     {
         if (!_gaitFrom.TryGetValue(id, out int from) || !_gaitRec.TryGetValue(id, out var rec) || rec == null) return 0f;
         float frame = (_parkTicks - from + alpha) * Aps.Fps / (1000f / ParkSim.TickMilliseconds);
+        // ⭐ Snapped BEFORE the modulo, so the snapped value is what repeats -- snapping after it
+        // would put a short final step at the loop point on records whose length is not a multiple.
+        if (GaitQuantum > 0f) frame = MathF.Floor(frame / GaitQuantum) * GaitQuantum;
         // ⚠ The PLAYING record's length, not the walk's: an idle of a different duration looped
         // at the walk's length would either cut short or hold its last pose.
         return frame % Math.Max(1, rec.DurationFrames);
@@ -12422,6 +12467,7 @@ public partial class Viewer : Node3D
         { StartBenchmark(_benchSeconds); _benchSeconds = 0; }
         AllocMark("10 after capture tests");
         AllocBegin(); TickBenchmark(delta); AllocEnd("TickBenchmark");
+        TickGaitCensus(delta);
         AllocMark("11 after TickBenchmark");
         if (_footprintAudit && _mode == Mode.Park && _lib != null)
         { _footprintAudit = false; FootprintAudit(); GetTree().Quit(); }
