@@ -64,7 +64,8 @@ attract nor endings are newly implemented by this request.
 
 EA duration is tied to work on console, with no fixed timer traced. Current
 Viewer initialization is synchronous; the EA image is displayed afterwards for
-two process passes to permit a drawn frame, not a claimed measured retail delay.
+3 s on screen (was two process passes until 2026-10-01; see "Input waits for the
+screen" below), not a claimed measured retail delay.
 No PS2 memory-card check is emulated. Legal prompt starts after160 frontend25Hz
 updates; wall time conversion is an adapter assumption. Input is not artificially
 locked until the prompt. Legal font sizing is still the existing font adapter,
@@ -147,3 +148,49 @@ not establish pixel-perfect UI aspect, all four world movies, or translated
 speech audibility; those are separate claims. This is peer-run evidence, not
 an EC2 test represented as remote execution. Tinyclaw's combined-main gate and
 merge remain pending at this checkpoint.
+
+## Input waits for the screen (2026-10-01)
+
+strawberry, 2026-10-01: "the EA logo appears for a split second on launch. when clicking
+through to skip, wait for the thing you are skipping to actually start playing for a moment
+before skipping. when on the lobby screen, sometimes our clicks from the previous screen carry
+through onto the lobby", then "from the main menu -> lobby", on `6f5d979`, which already had
+the press/release guard (`6cffec3`).
+
+**What.** `game/InputSettle.cs`. A screen ignores clicks and keys until it has been showing
+for **0.5 s**. That covers every frontend stage (EA, language, movie, legal), each main-menu
+page (top and New Game), the lobby on entry and the lobby's OK/Cancel prompt. A movie's half
+second counts only while it is PLAYING with its clock past zero (`StreamPosition > 0`), not
+from the frame `PlayMovie` was called. Hover still follows the pointer at once. EA is held
+**3 s** on screen and can be skipped by a key or click once settled.
+
+**Why the press/release guard did not cover it.** That guard drops a release whose press
+began on another screen. The lobby is built synchronously, so a click made while it loads
+waits in the OS queue and arrives as a complete press+release once it is up. A double click
+on New Game is the same shape: its second half lands on the next page's row 0, Main Game.
+
+**Clamped time.** Time on screen is counted in frame steps clamped to 1/30 s, so the load
+stall itself counts as one short frame. Real time would read the stall as time on screen and
+accept exactly the queued clicks this exists to swallow. The smoke stalls the main thread
+1.2 s after the lobby opens, then clicks; a raw-delta mutation fails it.
+
+**Chosen numbers.** 0.5 s and 3 s are both chosen. The PS2's screens poll the pad per update
+with no such window, and its EA screen lasts as long as IOP module loading, which is untraced.
+`InputSettle.Seconds` and `FrontendScreen.EaSeconds` are the knobs.
+
+**Validation.** `MainMenuStartupSmoke`: 75 checks with no movies (640x360), 84 with synthetic
+BFLOGO/DINO (640x360 and 1152x648), 4 on the direct `--map/--mode` control. New checks: EA
+still up after five frames and held at least 3 s. In the first moment of EA, language, legal,
+a playing movie, the main menu, the New Game page, the lobby (a whole click on the current
+island, after a 1.2 s stall) and the lobby prompt, an input does nothing. Once settled, the
+same input works; the lobby click raising the prompt is the control. Each of five
+mutations, all compiling, fails its own check: lobby mouse gate off, EA hold off, menu click
+gate off, prompt reset off, and raw delta instead of clamped. `AdvisorResearchSmoke` (which
+walks the same screens with real input) waits for each screen and passes, 80 checks and 81 with
+`--assert-no-lobby-leak`. The viewer matrix on JUNGLE/1 and SPACE/2 passes all 32 cases, and
+the research-persistence standalone case passes at both sizes.
+`FrontendMovieSmoke` calls `Confirm()` directly and is unaffected (13 with a 2 s fixture; its
+300-frame wait for Finished is too short for a 6 s fixture on unchanged code as well).
+
+**Limits.** Not run on the playtest machine; a real Windows lobby load was not timed.
+

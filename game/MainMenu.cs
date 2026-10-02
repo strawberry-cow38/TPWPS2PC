@@ -75,8 +75,21 @@ public partial class MainMenu : Control
     public string Language { get; set; } = "eng";
     public int SelectedRow => _sel;
     public int RowCount => _rows.Length;
+    /// <summary>On the top page (New Game / Load Game / Options) rather than the New Game page.</summary>
+    public bool TopPage => _rows == Page0;
 
-    public MainMenu() { MouseFilter = MouseFilterEnum.Stop; Visible = false; }
+    public MainMenu()
+    {
+        MouseFilter = MouseFilterEnum.Stop; Visible = false;
+        _settle.While = () => Open;
+        AddChild(_settle);
+    }
+
+    /// <summary>⭐ Each page takes no input until it has been up for a moment (InputSettle). Without it a
+    /// double click on New Game lands its second half on the next page's row 0, Main Game, and a click
+    /// carried out of the legal screen picks whatever row is under the pointer.</summary>
+    readonly InputSettle _settle = new() { Name = "Settle" };
+    public bool InputReady => _settle.Ready;
 
     /// <summary>⚠ `Mainback2` is the front end's; `Mainback1` is the legal screen's.</summary>
     public static MainMenu Create(AssetLibrary lib, FontText font, TextDatabase text)
@@ -98,7 +111,7 @@ public partial class MainMenu : Control
         return m;
     }
 
-    public void Open_() { Open = true; Visible = true; _rows = Page0; _sel = 0; _note = ""; QueueRedraw(); }
+    public void Open_() { Open = true; Visible = true; _rows = Page0; _sel = 0; _note = ""; _settle.Reset(); QueueRedraw(); }
     public new void Hide() { Open = false; Visible = false; QueueRedraw(); }
 
     string Label(int id) => _text != null && id >= 0 && id < _text.Keys.Length
@@ -123,11 +136,11 @@ public partial class MainMenu : Control
                 // ⚠ Which group depends on FUN_00154378() -- what unlocks the test park is not
                 // decoded, so the port shows the UNLOCKED group and says so rather than hiding a
                 // row on a rule it does not have.
-                _rows = Page3Unlocked; _sel = 0; _note = ""; QueueRedraw();
+                _rows = Page3Unlocked; _sel = 0; _note = ""; _settle.Reset(); QueueRedraw();
                 return;
             case Action.Exit: // New Game Exit returns to page 0 (0x16DEA8), not an empty scene.
             case Action.Back:
-                _rows = Page0; _sel = 0; _note = ""; QueueRedraw();
+                _rows = Page0; _sel = 0; _note = ""; _settle.Reset(); QueueRedraw();
                 return;
             // These services are still unavailable. Do not pretend the save pipeline is complete.
             case Action.LoadGame: _note = "Load Game -- no save/load in this port yet"; QueueRedraw(); return;
@@ -142,7 +155,7 @@ public partial class MainMenu : Control
     public void Cancel()
     {
         if (!Open) return;
-        if (_rows != Page0) { _rows = Page0; _sel = 0; _note = ""; QueueRedraw(); }
+        if (_rows != Page0) { _rows = Page0; _sel = 0; _note = ""; _settle.Reset(); QueueRedraw(); }
     }
 
     public Rect2 RowRect(int row)
@@ -163,7 +176,8 @@ public partial class MainMenu : Control
     {
         if (!Open) return;
         if (e is InputEventMouseMotion motion) Pick(motion.Position, false);
-        if (e is InputEventMouseButton {Pressed:true} click)
+        // ⭐ Hover follows the pointer at once; a click waits for the page to settle (InputReady).
+        if (e is InputEventMouseButton {Pressed:true} click && InputReady)
         {
             if (click.ButtonIndex == MouseButton.Left) Pick(click.Position, true);
             else if (click.ButtonIndex == MouseButton.Right) Cancel();

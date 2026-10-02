@@ -1045,7 +1045,8 @@ public partial class Viewer : Node3D
         // Frontend input outranks even a retained park's modal advisor and debug shortcuts.
         if (_mainMenu is { Open:true })
         {
-            if(e is InputEventKey {Pressed:true,Echo:false} menuKey)
+            // ⭐ Keys wait for the page to settle, like clicks (MainMenu.InputReady).
+            if(e is InputEventKey {Pressed:true,Echo:false} menuKey && _mainMenu.InputReady)
                 switch(menuKey.Keycode)
                 {
                     case Key.Up: _mainMenu.Move(-1); break;
@@ -1070,6 +1071,10 @@ public partial class Viewer : Node3D
         // directions are the console's four d-pad directions.
         if (_lobbyMode)
         {
+            // ⭐ Nothing until the lobby, or its prompt, has been up for a moment (LobbyInputReady):
+            // a key pressed while the lobby was loading is not a choice made in it.
+            if (!LobbyInputReady && k.Keycode is Key.Up or Key.Down or Key.Left or Key.Right
+                                               or Key.Enter or Key.KpEnter or Key.Space) return;
             switch (k.Keycode)
             {
                 case Key.Up:    if (!_lobbyPrompt) LobbyMove(0); return;
@@ -12628,7 +12633,10 @@ public partial class Viewer : Node3D
         {
             if (lmb.ButtonIndex == MouseButton.Left)
             {
-                if (lmb.Pressed) _lobbyPressed = true;
+                // ⭐ A press counts only once the lobby has settled. The guard below catches a release whose
+                // press was elsewhere; this catches the WHOLE click that sat in the queue while the lobby
+                // loaded (master, 2026-10-01, main menu -> lobby on 6f5d979).
+                if (lmb.Pressed) _lobbyPressed = LobbyInputReady;
                 else { if (_lobbyPressed) LobbyClicked(lmb.Position); _lobbyPressed = false; }
             }
             return;
