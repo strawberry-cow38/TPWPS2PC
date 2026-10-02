@@ -46,7 +46,9 @@ public partial class Viewer
         public Basis WasB, NowB;
     }
 
-    enum CoasterMode { Build, Edit }
+    /// <summary>Build (mode 12, the ghost selected), Edit (the pylon sub-mode), Stats (`[0x2AC430]`, the stats screen
+    /// up and the cursor frozen).</summary>
+    enum CoasterMode { Build, Edit, Stats }
 
     readonly Dictionary<int, CoasterView> _coasters = new();
     CoasterView _coasterTool;
@@ -98,6 +100,9 @@ public partial class Viewer
     int _coasterStartHeight, _coasterStartBank, _coasterPick;
     double _coasterHold;
     System.Action _afterCoaster;
+    /// <summary>Where the stats screen's Back returns: the mode the finish was pressed in.</summary>
+    CoasterMode _coasterStatsBack;
+    CoasterStatsView _coasterStatsView;
     readonly Dictionary<int, float> _placedHeight = new();
 
     bool IsCoaster(AssetLibrary.RideAssets r) => r != null && BuildKind(r) == AssetResourceDatabase.AssetKind.Coaster;
@@ -542,7 +547,7 @@ public partial class Viewer
     {
         if (!_coasters.Remove(id, out var v)) return;
         foreach (int voice in v.Voices) { _sounds?.Kill(voice, "coaster", RumbleTag, (long)_busElapsedMs); _sounds?.Follow(voice, RumbleTag, null); }
-        if (_coasterTool == v) { _coasterTool = null; _afterCoaster = null; _coasterGhost = null; _ghostView?.Clear(); _previewCost = null; _previewStock = null; }
+        if (_coasterTool == v) { HideCoasterStats(); _coasterTool = null; _afterCoaster = null; _coasterGhost = null; _ghostView?.Clear(); _previewCost = null; _previewStock = null; }
         v.Sim.RemoveTrains();
         if (IsInstanceValid(v.Frame)) v.Frame.QueueFree();
         RefreshFloor();
@@ -668,28 +673,108 @@ public partial class Viewer
         ShowPylonPick();
     }
 
+    /// <summary>⭐ Triangle (`0x11BA00`). On the stats screen it is Back. Otherwise the finish: the ghost is unlinked
+    /// (an open ring's last node keeps no next, `0x11BA00`), the advisor speaks for an open (204) or invalid (203)
+    /// ring (`0x11BBD8`), the test lap runs (`0x122D48`) and the stats screen goes up -- whatever the ring's state:
+    /// an open ring's lap records nothing and the screen shows the zeros.</summary>
     void FinishCoasterTool()
     {
         var v = _coasterTool;
         if (v == null) return;
+        if (_coasterMode == CoasterMode.Stats) { CoasterStatsBack(); return; }
         if (_coasterGhost != null) { v.Track.UnlinkGhost(_coasterGhost); _coasterGhost = null; }
-        _coasterTool = null;
         _ghostView?.Clear();
-        _previewCost = null; _previewStock = null;
         RebuildCoaster(v);
-        // Triangle (0x11ba00 / 0x11bbd8): the advisor's voice for an open (204) or invalid (203) ring,
-        // then the test lap (0x122d48) and its stats screen (0x11bd28).
         string state = !v.Track.Closed ? "the ring is OPEN (advisor 204) -- no trains"
                      : !v.Track.Valid ? "the ring is INVALID (advisor 203) -- no trains" : "closed and valid";
         _parkAdvisor?.CoasterFinished(v.Track.Closed, v.Track.Valid);   // 0x11BA00 → 0x11BBD8: 204, then 203 / 204
         var lap = v.Sim.TestLap();
         v.Stats = lap;
-        string rating = lap.RatingRow != 0 && _text?.Text(TextLanguage, lap.RatingRow) is { Length: > 0 } r ? r : "-";
-        string stats = lap == CoasterStats.None ? "" :
-            $"   {(int)lap.Duration} secs  {(int)lap.Length} meters  {(int)lap.MaxSpeed} kph  {(int)lap.Drops} drops  "
-            + $"{(int)lap.SteepestDrop} deg  {lap.MaxVertPos:F1}/{lap.MaxVertNeg:F1}/{lap.MaxLat:F1} g   Coaster Rating: {rating}";
-        Status($"{v.Track.Type.Name}: {state}{stats}");
-        GD.Print($"[coaster] tool closed for ride {v.Id}: {v.Track.Pylons.Count} pylons, {state}{stats}");
+        GD.Print($"[coaster] finished ride {v.Id}: {v.Track.Pylons.Count} pylons, {state}");
+        ShowCoasterStats(v, lap);
+    }
+
+    /// <summary>`0x11BBD8`'s tail: `[0x2AC430] = 1`, the bar Back / OK, the cursor frozen (manager `+0x50`). The
+    /// screen then rates the record every frame (`0x11BD28` → `0x122ED0`), and an Ultimate verdict records the
+    /// award (`0x1542B0(world 0x14E170(), park 0x14E160(), ordinal +0x97)`) -- once here, since the call is
+    /// idempotent and the record does not change while the screen is up.</summary>
+    void ShowCoasterStats(CoasterView v, CoasterStats lap)
+    {
+        if (_coasterMode != CoasterMode.Stats) _coasterStatsBack = _coasterMode;
+        _coasterMode = CoasterMode.Stats;
+        if (_uiRoot != null && (_coasterStatsView == null || !IsInstanceValid(_coasterStatsView)))
+        {
+            _coasterStatsView = new CoasterStatsView { Name = "CoasterStats" };
+            _coasterStatsView.Configure(_lib, AdvisorBoxFont, row => _text?.Text(TextLanguage, row) ?? "");
+            _uiRoot.AddChild(_coasterStatsView);
+        }
+        if (_coasterStatsView != null) { _coasterStatsView.Stats = lap; _coasterStatsView.Visible = true; }
+        var (row, ultimate) = CoasterStatsScreen.Rating(lap);
+        if (ultimate && _management?.CurrentPark?.Invoke() is { } at)
+            _awards.RecordUltimate(at.World, at.Park, v.Track.Type.Ordinal);
+        string Label(int id) => _text?.Text(TextLanguage, id) ?? $"row 0x{id:x}";
+        string rating = Label(row);
+        Status($"{v.Track.Type.Name}: {Label(CoasterStatsScreen.RatingLabelRow)} {rating}   "
+             + $"Esc {Label(CoasterStatsScreen.BackRow)}   Enter / click {Label(CoasterStatsScreen.OkRow)}");
+        GD.Print($"[coaster] stats for ride {v.Id}: {(int)lap.Duration} secs  {(int)lap.Length} meters  {(int)lap.MaxSpeed} kph  "
+               + $"{(int)lap.Drops} drops  {(int)lap.SteepestDrop} deg  {lap.MaxVertPos:F1}/{lap.MaxVertNeg:F1}/{lap.MaxLat:F1} g  "
+               + $"rating 0x{row:x} {rating}{(ultimate ? $" -- ULTIMATE, {_awards.UltimateCoasters} awarded" : "")}");
+    }
+
+    void HideCoasterStats()
+    {
+        if (_coasterStatsView != null && IsInstanceValid(_coasterStatsView)) { _coasterStatsView.Stats = null; _coasterStatsView.Visible = false; }
+    }
+
+    /// <summary>⭐ OK, Cross on the stats screen (`0x11BCA8`): a build begun at the station (`[0x2AC434]`, the
+    /// manager's previous mode was 11 at the finish) removes the trains and goes on to the queue path tool (mode
+    /// 3); anything else leaves to mode 0. The trains come back on their own -- a closed ring with none spawns
+    /// them in its state-10 update (`0x122AF8`).</summary>
+    void CoasterStatsOk()
+    {
+        var v = _coasterTool;
+        if (v == null || _coasterMode != CoasterMode.Stats) return;
+        HideCoasterStats();
+        if (_coasterFromStation) v.Sim.RemoveTrains();
+        CloseCoasterTool();
+    }
+
+    /// <summary>⭐ Back, Triangle on the stats screen (`0x11BA00`'s second branch): the screen off, then the pylon
+    /// sub-mode again (`0x11C118`) when a pylon was selected, or the build (`0x11C180`) when the ghost was.
+    ///
+    /// ⚠ ADAPTER: the console leaves the lap's freshly spawned service trains running through the edit -- neither
+    /// `0x11C118` nor `0x11C180` removes them. The port's edit and build both assume an empty track (the tool's
+    /// own entries remove the trains), so they are removed again here.</summary>
+    void CoasterStatsBack()
+    {
+        var v = _coasterTool;
+        if (v == null || _coasterMode != CoasterMode.Stats) return;
+        HideCoasterStats();
+        v.Sim.RemoveTrains();
+        _coasterMode = _coasterStatsBack;
+        if (_coasterMode == CoasterMode.Edit) { RebuildCoaster(v); ShowPylonPick(); }
+        else
+        {
+            // The ghost is linked again by the next frame's cursor update; the field rescans from the last pylon.
+            _coasterGhostAt = (int.MinValue, 0);
+            RestartCoasterField();
+            RebuildCoaster(v);
+        }
+        GD.Print($"[coaster] stats screen Back: ride {v.Id} returns to {_coasterMode}");
+    }
+
+    /// <summary>The tool leaves (mode 0, or the queue tool after a station build).</summary>
+    void CloseCoasterTool()
+    {
+        var v = _coasterTool;
+        if (v == null) return;
+        HideCoasterStats();
+        if (_coasterGhost != null) { v.Track.UnlinkGhost(_coasterGhost); _coasterGhost = null; }
+        _coasterTool = null;
+        _ghostView?.Clear();
+        _previewCost = null; _previewStock = null;
+        RebuildCoaster(v);
+        GD.Print($"[coaster] tool closed for ride {v.Id}: {v.Track.Pylons.Count} pylons");
         var after = _afterCoaster; _afterCoaster = null;
         after?.Invoke();
     }
@@ -706,7 +791,11 @@ public partial class Viewer
         // laying -- the console hides it in the pylon edit (coaster-building.md §2.6).
         _previewStockTextId = PylonStockTextId;
         _previewStock = CoasterTrack.MaxPylons - v.Track.Pylons.Count;
-        _previewCost = _coasterMode == CoasterMode.Build ? v.Price * 10 : null;
+        // ⚠ On the stats screen `0x11AEF0` returns before it writes the price, so the cost line keeps what the
+        // finish left it: the price after a build, nothing after a pylon edit.
+        var priceMode = _coasterMode == CoasterMode.Stats ? _coasterStatsBack : _coasterMode;
+        _previewCost = priceMode == CoasterMode.Build ? v.Price * 10 : null;
+        if (_coasterMode == CoasterMode.Stats) return;
         if (_coasterMode == CoasterMode.Edit) { StepPylonEdit(v, delta); return; }
         if (!CursorCell(out int x, out int y)) return;
         bool fieldDone = StepCoasterField(v);
@@ -759,6 +848,7 @@ public partial class Viewer
     /// <summary>Cross (`0x11b550`): add a pylon at the ghost, or close the ring on the entry cell.</summary>
     void PressCoasterTool()
     {
+        if (_coasterMode == CoasterMode.Stats) { CoasterStatsOk(); return; }   // stats → 0x11bca8
         var v = _coasterTool;
         if (v == null || _coasterMode != CoasterMode.Build || !CursorCell(out int x, out int y)) return;
         _coasterGhostAt = (int.MinValue, 0);
@@ -774,8 +864,9 @@ public partial class Viewer
             GD.Print($"[coaster] ring closed with {t.Pylons.Count} pylons, valid {t.Valid}");
             // From a station session the tool goes on to the pylons, no charge (0x11b6a4).
             if (_coasterFromStation) { EnterPylonEdit(v); return; }
+            // Otherwise mode 0 at once (0x11b550: vt+0x4c(.., 0)) -- no advisor, no test lap, no stats screen.
             _sim?.Finances.Debit(v.Price * 10);                        // the leave-the-tool charge (0x11b740)
-            FinishCoasterTool();
+            CloseCoasterTool();
             return;
         }
         if (_sim != null && !_sim.Finances.Debit(v.Price * 10)) { _toolSfx?.Play(ToolSounds.Cue.Refused); return; }
@@ -906,8 +997,16 @@ public partial class Viewer
         if (_coasterTool == null) return false;
         switch (key)
         {
+            // Enter is Cross on the stats screen (OK), Triangle everywhere else; Escape is always Triangle -- so on
+            // the stats screen it is Back.
+            case Key.Enter or Key.KpEnter when _coasterMode == CoasterMode.Stats:
+                CoasterStatsOk(); return true;
             case Key.Escape: case Key.Enter: case Key.KpEnter:
                 FinishCoasterTool(); return true;
+            // The stats screen ignores Square and Circle, and the cursor is frozen (manager +0x50).
+            case Key.Space or Key.Period or Key.Comma or Key.Up or Key.Down or Key.Left or Key.Right
+                when _coasterMode == CoasterMode.Stats:
+                return true;
             case Key.Space when _coasterMode == CoasterMode.Build:
                 CoasterLoop(); return true;
             // Space is Square, and in the pylon edit Square is Prev (bar Exit / Next / Move / Prev).

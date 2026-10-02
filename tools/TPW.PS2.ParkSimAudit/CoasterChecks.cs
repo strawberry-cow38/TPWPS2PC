@@ -347,6 +347,50 @@ static class CoasterChecks
                   + $"steepest {lap.SteepestDrop} deg, {lap.Duration:F1} s, {lap.MaxSpeed:F1} kph, +{lap.MaxVertPos:F2}/{lap.MaxVertNeg:F2} vert, {lap.MaxLat:F2} lat");
             Check(sim.Trains.Count == 2 && sim.Trains.All(tr => tr.State == CoasterTrainState.Run && tr.Chain),
                   "after the lap the service trains are spawned afresh");
+
+            // ---- the stats screen 0x11bd28: its rows as drawn
+            var lines = CoasterStatsScreen.Lines(lap);
+            Check(lines.Select(l => l.Y).SequenceEqual(Enumerable.Range(0, 8).Select(i => 0xD0 + 0x14 * i))
+                  && lines.Select(l => l.LabelRow).SequenceEqual(new[] { 0xF4, 0x244, 0x335, 0x382, 0xDB, 0xB4, 0x53, 0xC9 })
+                  && lines.Select(l => l.UnitRow).SequenceEqual(new[] { 0x2D, 0x227, 0x17D, 0, 0x143, 0x2D6, 0x2D6, 0x2D6 })
+                  && lines[0].Value == CoasterStatsScreen.Int4(lap.Duration) && lines[7].Value == CoasterStatsScreen.Float41(lap.MaxLat),
+                  $"the stats screen's eight rows: y 0xd0 step 0x14, Duration .. Max Lat Gs, no unit on Number of Drops "
+                  + $"[{string.Join(" | ", lines.Select(l => l.Value))}]");
+            Check(CoasterStatsScreen.Int4(12.9f) == "  12" && CoasterStatsScreen.Int4(-0.5f) == "   0" && CoasterStatsScreen.Int4(12345f) == "12345"
+                  && CoasterStatsScreen.Float41(0.25f) == " 0.2" && CoasterStatsScreen.Float41(0.75f) == " 0.8"
+                  && CoasterStatsScreen.Float41(1.25f) == " 1.2" && CoasterStatsScreen.Float41(-0.02f) == "-0.0"
+                  && CoasterStatsScreen.Float41(0f) == " 0.0" && CoasterStatsScreen.Float41(12.36f) == "12.4",
+                  "\"%4i\" truncates and pads to four; \"%4.1f\" rounds half to even on the exact value (0.25 → 0.2, 0.75 → 0.8) "
+                  + "and keeps the sign of a negative that rounds to zero");
+            Check(CoasterStatsScreen.Rating(CoasterStats.None) == (0x156, false),
+                  "an open ring's zeroed record still reads a verdict: Too Slow (0x156), rated every frame by 0x122ed0");
+        }
+
+        // ---- the Ultimate award, 0x1542b0 / 0x154328 / 0x154378, and the star row's table 0x2c4040
+        {
+            var aw = new ParkAwards();
+            aw.RecordUltimate(0, 1, 0);
+            aw.RecordUltimate(0, 1, 0);
+            Check(aw.UltimateMask == 1 << 4 && aw.HasUltimate(0, 1, 0) && aw.UltimateCoasters == 1,
+                  $"an Ultimate verdict sets bit w·8 + p·4 + o once (JUNGLE 2, ordinal 0 → bit 4): mask 0x{aw.UltimateMask:x}, count {aw.UltimateCoasters}");
+            aw.RecordUltimate(3, 2, 0);
+            Check(aw.UltimateMask == 1 << 4 && !aw.HasUltimate(3, 2, 0) && !aw.HasUltimate(1, 2, 0),
+                  "the test park (park 2) records nothing and never reads as awarded");
+            var ids = ParkAwards.UltimateStarTable.SelectMany(w => w.SelectMany(p => p)).ToList();
+            Check(ids.Count == 14 && ids.OrderBy(i => i).SequenceEqual(Enumerable.Range(0x17, 14))
+                  && ParkAwards.UltimateStarTable.Select(w => w.Sum(p => p.Length)).SequenceEqual(new[] { 3, 5, 3, 3 }),
+                  "the star table holds the 14 star sprites 0x17..0x24 once each, 3/5/3/3 by world");
+            Check(aw.UltimateStarLit(0x18) && !aw.UltimateStarLit(0x19) && ParkAwards.UltimateStarAward(0x19) == (0, 1, 1)
+                  && CoasterType.All.Single(c => c.World == 0 && c.Park == 1 && c.Ordinal == 0).Name == "Chak Atak",
+                  "JUNGLE 2 is crossed on the console: Chak Atak (ordinal 0) lights s_apehead (0x18), Gorilla Thrilla s_croc");
+            Check(CoasterType.All.All(c => ParkAwards.UltimateStarTable[c.World][c.Park].Length > c.Ordinal)
+                  && CoasterType.All.Count() == ids.Count,
+                  "every coaster's (world, park, ordinal) has a star slot, and there are as many slots as coasters");
+            var cheat = new ParkAwards();
+            cheat.SetUltimateCount(3);
+            Check(cheat.UltimateCoasters == 3 && cheat.UltimateStarLit(0x17) && cheat.UltimateStarLit(0x18) && cheat.UltimateStarLit(0x19)
+                  && !cheat.UltimateStarLit(0x1A),
+                  "the cheat and --awards= light the first n stars in the row's own order");
         }
         {
             var t = Build(Temple, hills, out _); t.AddPylon(EntryCell, 0, 0, false, CoasterNodeKind.Normal);

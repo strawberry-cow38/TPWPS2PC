@@ -172,7 +172,13 @@ ParkSimAudit checks (`coaster:`) and the `CoasterSmoke` viewer scene:
 - **The trains**: the physics step as written, blocking, the station state machine, spawning, and
   the lift marking.
 - **The test lap** on finishing the tool: car 0's statistics, the per-segment length, drops and
-  steepest drop, and the rating text (shown on the status line; the stats screen itself is not drawn).
+  steepest drop, and the rating.
+- **The stats screen** (`0x11bd28`, 2026-10-02; strawberry: "coaster scoring is done after u finish
+  editing pylons"): the finish puts it up over the frozen tool -- the `messfill` panel, the eight rows
+  and "Coaster Rating:" in `Small.bff` -- with Back (Triangle, Escape) to the edit or build and OK
+  (Cross, Enter or click) to the queue tool or mode 0. An Ultimate verdict records the award
+  (`ParkAwards.RecordUltimate`), which the HUD star counter and the laptop's star row read.
+  See coaster-operation.md §5.8.
 
 **The pylons (fixed after strawberry saw them floating).**
 - The loft keys are DELTAS. `stdpylon`'s section 3 moves 16 of the post's 20 animated vertices
@@ -257,5 +263,6 @@ lacks event 0x11, so those trains are silent on the console and here. Screams (k
 climb 0xf5, speed 0x105, crest 0x115+) need a rider aboard. Not done: the far loop and pass-by
 (ride-cam camera modes only), the rider ambience, the chain-anticipation scream (mode 3).
 
-Not built yet: the stats screen as a screen; the Ultimate award record; the Test
-Park; moving a pylon (mode 13's Move); breakdowns.
+Not built yet: the Test Park (and the front end's unlock on `0x154378` ≥ 1); moving a pylon (mode
+13's Move); breakdowns; the button bar's drawn labels (the stats screen's Back / OK are on the status
+line).

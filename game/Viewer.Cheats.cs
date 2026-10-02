@@ -186,15 +186,13 @@ public partial class Viewer
         CheatSay($"weather {k}: {_weather.Set(_lib, k, _cam.GlobalPosition)}");
     }
 
-    /// <summary>⚠ There is nothing in this port that EARNS a ticket or an award -- no threshold
-    /// for any of the five medals has been read, nor the rule that makes a coaster "Ultimate". So
-    /// these buttons are the only way to see the counters move, and that is the honest state.</summary>
+    /// <summary>A shortcut past earning them: the weekly pass earns tickets and the coaster stats screen's
+    /// rating earns stars. Stars are added in the star row's own order (<see cref="ParkAwards.SetUltimateCount"/>).</summary>
     void CheatAward(int tickets, int stars)
     {
-        if (tickets == -999) { _awards.GoldTickets = 0; _awards.UltimateCoasters = 0; }
-        else { _awards.GoldTickets += tickets; _awards.UltimateCoasters += stars; }
-        CheatSay($"tickets {_awards.GoldTickets}, ultimate coasters {_awards.UltimateCoasters} "
-               + "(nothing earns these yet)");
+        if (tickets == -999) { _awards.GoldTickets = 0; _awards.UltimateMask = 0; }
+        else { _awards.GoldTickets += tickets; _awards.SetUltimateCount(_awards.UltimateCoasters + stars); }
+        CheatSay($"tickets {_awards.GoldTickets}, ultimate coasters {_awards.UltimateCoasters}");
     }
 
     void CheatMoney(int pounds)

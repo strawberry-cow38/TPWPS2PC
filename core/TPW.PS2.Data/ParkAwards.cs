@@ -2,22 +2,20 @@ namespace TPW.PS2.Data;
 
 /// <summary>What the park has WON: the gold tickets it holds and the awards behind them.
 ///
-/// ⭐ One award IS earned now: the Security Award, by <see cref="ParkManagement.WeeklyPass"/>
-/// (`0x16BC70`, findings/staff-management.md §11.4). ⚠⚠ The rest is still counters the game can be
-/// TOLD about. The five medals' PURPOSES are known -- the advisor says them outright (Aesthetic for a
-/// park full of features, Green for litter bins, Path Economy for short walks, Security for coverage,
-/// Upgrade for upgraded rides) -- and the same weekly pass `0x16BC70` tests the other four and the
-/// visitor/profit/business tickets too, but only the Security test has been read to the end; the rule
-/// that promotes a coaster to "Ultimate" is not found. See findings/awards.md.</summary>
+/// ⭐ Every award is earned now: the park goals and the five hidden awards by the weekly pass
+/// <see cref="ParkManagement.WeeklyPass"/> (`0x16BC70`, findings/awards.md "The weekly pass, whole"), and the
+/// Ultimate Coaster award by the coaster stats screen's rating (<see cref="RecordUltimate"/>,
+/// findings/coaster-operation.md §5.7).</summary>
 public sealed class ParkAwards
 {
     /// <summary>Tickets in hand. ⭐ Spent on opening new parks, not on rides:
     /// `STR_MAP_BODY_USE_TICKETS_TO_ACCESS_ISLAND` and `WorldMapGoldTickets`.</summary>
     public int GoldTickets { get; set; }
 
-    /// <summary>Coasters rated "Ultimate" -- the star row. There are 14 coasters on the disc, one
-    /// star icon each.</summary>
-    public int UltimateCoasters { get; set; }
+    /// <summary>⭐ `0x154378`: coasters rated "Ultimate", counted off <see cref="UltimateMask"/> over world 0..3,
+    /// park 0..1, ordinal 0..3 -- every one of the mask's 32 bits, so it is the mask's population count. The HUD
+    /// counter (`0x13DCB8`) and the front end's Test Park unlock (≥ 1) read it.</summary>
+    public int UltimateCoasters => System.Numerics.BitOperations.PopCount((uint)UltimateMask);
 
     /// <summary>The five hidden awards, in the order the UI registry gives them (texture ids
     /// 0x25..0x29): upgrade, security, path, green, aesthetic.</summary>
@@ -82,6 +80,69 @@ public sealed class ParkAwards
     public void SetParkGoalBits(int world, int park, int bits)
     {
         if ((uint)world < 4 && (uint)park < 2) _parkGoals[world * 2 + park] = bits;
+    }
+
+    // --------------------------------------------------------------------------------------------
+    // ⭐⭐ THE ULTIMATE COASTER AWARD (findings/coaster-operation.md §5.7, READ `0x1542B0..0x154374`).
+
+    /// <summary>`[0x2B72AC]`: the Ultimate award mask, bit `world·8 + park·4 + ordinal` -- raw world and park
+    /// indices (`0x14E170`, `0x14E160`) and the coaster's `+0x97` ordinal in its park's list.</summary>
+    public int UltimateMask { get; set; }
+
+    static int UltimateBit(int world, int park, int ordinal) => (world * 8 + park * 4 + ordinal) & 31;
+
+    /// <summary>⭐ `0x1542B0(w, p, o)`, which the rating `0x122ED0` calls on an Ultimate verdict: sets the bit when
+    /// <paramref name="park"/> &lt; 2 and it is not already set -- idempotent, as it must be, since the rating
+    /// runs every frame the stats screen is up. ⚠ In the test park (park 2) NOTHING is recorded.</summary>
+    public void RecordUltimate(int world, int park, int ordinal)
+    {
+        if (park < 2 && !HasUltimate(world, park, ordinal)) UltimateMask |= 1 << UltimateBit(world, park, ordinal);
+    }
+
+    /// <summary>`0x154328(w, p, o)`: false for park 2 and up, else the bit. ⚠ Its debug branch (`[0x2B3070]`, the
+    /// flag that also makes everything available in `0x12B6D0`) answers true for all 32 and is not ported.</summary>
+    public bool HasUltimate(int world, int park, int ordinal) =>
+        park <= 1 && (UltimateMask & (1 << UltimateBit(world, park, ordinal))) != 0;
+
+    /// <summary>⭐ `0x2C4040`, READ from the ELF: the awards screen's star row (`0x186238`), per world a 0x20-byte
+    /// record {count park 0, count park 1, three sprite ids for park 0, three for park 1}; the screen walks
+    /// ordinal 0..count−1 and asks `0x154328(w, p, o)` for each star it draws.
+    ///
+    /// ⚠⚠ JUNGLE park 2 is CROSSED: ordinal 0 is Chak Atak (`croccar`, the car table `0x2E7220` and the loop
+    /// table `0x2ACAD0` both agree) but its star is `0x18 s_apehead`, and Gorilla Thrilla's is `0x19 s_croc`. The
+    /// other twelve match their coasters. Ported as the console has it: Chak Atak's award lights the ape.</summary>
+    public static readonly int[][][] UltimateStarTable =
+    {
+        new[] { new[] { 0x17 }, new[] { 0x18, 0x19 } },                // JUNGLE
+        new[] { new[] { 0x1A, 0x1B }, new[] { 0x1C, 0x1D, 0x1E } },    // HALLOW
+        new[] { new[] { 0x1F, 0x20 }, new[] { 0x21 } },                // FANTASY
+        new[] { new[] { 0x22 }, new[] { 0x23, 0x24 } },                // SPACE
+    };
+
+    /// <summary>The award the star with texture id <paramref name="textureId"/> stands for, by
+    /// <see cref="UltimateStarTable"/>; null for an id the table does not hold.</summary>
+    public static (int World, int Park, int Ordinal)? UltimateStarAward(int textureId)
+    {
+        for (int w = 0; w < UltimateStarTable.Length; w++)
+            for (int p = 0; p < UltimateStarTable[w].Length; p++)
+                for (int o = 0; o < UltimateStarTable[w][p].Length; o++)
+                    if (UltimateStarTable[w][p][o] == textureId) return (w, p, o);
+        return null;
+    }
+
+    /// <summary>Whether the awards screen lights the star with this texture id.</summary>
+    public bool UltimateStarLit(int textureId) =>
+        UltimateStarAward(textureId) is { } a && HasUltimate(a.World, a.Park, a.Ordinal);
+
+    /// <summary>The cheat and `--awards=`: <paramref name="n"/> awards, set in the star row's own order (the
+    /// table above walked world, park, ordinal), so a render with n stars shows the first n. Not a console path.</summary>
+    public void SetUltimateCount(int n)
+    {
+        UltimateMask = 0;
+        for (int w = 0; w < UltimateStarTable.Length; w++)
+            for (int p = 0; p < UltimateStarTable[w].Length; p++)
+                for (int o = 0; o < UltimateStarTable[w][p].Length; o++)
+                    if (UltimateCoasters < n) RecordUltimate(w, p, o);
     }
 
     // --------------------------------------------------------------------------------------------

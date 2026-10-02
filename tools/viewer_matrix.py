@@ -51,8 +51,9 @@ SCENES = {
     # Roller coasters: build menu -> station with its queue -> pylons pressed round a ring -> trains -> riders.
     # Terrain 2 builds the park's last listed coaster, so eight coasters; the floor is HALLOW's Hades
     # (65 with the valid-cell field's, the pylon edit's keys', the station chevrons', the refusal
-    # reason's and the entry cell's checks).
-    'coaster': ('CoasterSmoke', 'COASTER SMOKE', 65),
+    # reason's and the entry cell's checks; 70 with the stats screen's -- up, its rows, its panel, Back,
+    # up again, OK -- which put Hades at 72 on 2026-10-02).
+    'coaster': ('CoasterSmoke', 'COASTER SMOKE', 70),
     # Staff: the laptop's Hire panel clicked through to a handyman, the real drop press, his walk
     # (section 0), a sweep of litter and vomit, a toilet cleaned and stamped. Every park runs the same
     # 53; the floor sits just under it.

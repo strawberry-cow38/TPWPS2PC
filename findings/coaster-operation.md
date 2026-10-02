@@ -686,6 +686,28 @@ Readers:
 key string is **absent from the ELF**, and no advisor record (275 records at `0x2a6ac8`) uses row 0xb1.
 The only visible sign of the award at the time is the rating text (READ absence; INFERRED "unused").
 
+### 5.8 In the port (2026-10-02)
+
+- `CoasterStatsScreen` (core) is `0x11bd28` as data: the panel rect (0x22, 0xC0, 0x1B0 × 0xD8), the rows,
+  `"%4i"` (truncate, pad 4) and `"%4.1f"` (half to even on the exact value, the sign kept on "-0.0"; the
+  EE libc's sprintf was not read), and the rating recomputed from the record as the screen does.
+- `CoasterStatsView` (game) draws it: shadow (z 8), the panel (z 4: fill selector `+0x48` = 1, so **sprite
+  0x30 `messfill`**, the translucent blue, not the advisor box's `wboxfill`; 13 rows + an 8-unit remainder
+  row, `0x142090` READ), then the text (z 0), all white `Small.bff` drawn from the pen.
+- The tool's states follow coaster-building.md §2.1: Triangle → stats; on stats, Cross (Enter, click) is
+  OK (`0x11bca8`) and Triangle (Escape) is Back (`0x11ba00`'s second branch) to E or B; Circle and Square
+  are ignored. ⚠ ADAPTER: Back removes the lap's respawned service trains; the console leaves them
+  running through the edit.
+- A ring closed in a session that did NOT start at the station leaves to mode 0 at once (`0x11b550`): no
+  advisor, no lap, no stats screen. The port used to run the finish there.
+- The award: `ParkAwards.UltimateMask` is `0x2b72ac`; `RecordUltimate`/`HasUltimate` are `0x1542b0`/`0x154328`
+  (the debug-flag branch is not ported); `UltimateCoasters` is `0x154378`. The awards screen's star row
+  reads table **`0x2c4040`** (READ from the ELF): per world {count p0, count p1, three sprites p0, three p1}
+  = JUNGLE {1: 0x17}{2: 0x18, 0x19}, HALLOW {2: 0x1a, 0x1b}{3: 0x1c..0x1e}, FANTASY {2: 0x1f, 0x20}{1: 0x21},
+  SPACE {1: 0x22}{2: 0x23, 0x24}. ⚠ **JUNGLE 2 is crossed**: ordinal 0 is Chak Atak (the car table
+  `0x2e7220` and the loop table `0x2acad0` agree) but its star is `s_apehead`; Gorilla Thrilla's is `s_croc`.
+  The port keeps the console's crossing.
+
 ---------------------------------------------------------------------------------------------------
 
 ## 6. Ride value and what guests experience

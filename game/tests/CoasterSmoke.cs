@@ -382,9 +382,51 @@ public partial class CoasterSmoke : Node3D
             track.Recompute();
             foreach (var n in track.Pylons) n.Valid = track.IsValid(n, (CoasterTrack.IGround)Call(viewer, "get_Ground"), true);
             Check(track.Valid, "the raised ring is still valid");
+            // ⭐ THE STATS SCREEN (0x11bd28; strawberry: "coaster scoring is done after u finish editing pylons").
+            // Triangle runs the test lap and puts the screen up; the tool stays open behind it until OK.
             Call(viewer, "FinishCoasterTool");
-            Check(Member("_coasterTool").GetValue(viewer) == null && Field<bool>(viewer, "_toolOpen"),
-                  "finishing hands over to the queue tool");
+            var statsView = (CoasterStatsView)Member("_coasterStatsView").GetValue(viewer);
+            var lapSim = (CoasterSim)F(view, "Sim");
+            var lap = (CoasterStats)F(view, "Stats");
+            for (int i = 0; i < 2; i++) await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            Check(Member("_coasterMode").GetValue(viewer).ToString() == "Stats" && Member("_coasterTool").GetValue(viewer) == view
+                  && !Field<bool>(viewer, "_toolOpen") && statsView is { Visible: true } && ReferenceEquals(statsView.Stats, lap)
+                  && lap != CoasterStats.None,
+                  $"finishing the pylon edit runs the lap and puts up the stats screen, the tool still open behind it ({lap})");
+            // What was DRAWN, read back off the view: every label, value and unit at the console's own x/y, in
+            // the EUR English text rows, then "Coaster Rating:" and the verdict 0x122ed0 gives this record.
+            var expectLabels = new[] { "Duration", "Length", "Maximum Speed", "Number of Drops", "Steepest Drop",
+                                       "Max Vert +Gs", "Max Vert -Gs", "Max Lat Gs" };
+            var expectUnits = new[] { "secs", "meters", "kph", null, "deg", "g", "g", "g" };
+            var lines = CoasterStatsScreen.Lines(lap);
+            var shown = statsView.ShownText;
+            bool ShownAt(string text, int x, int y) => shown.Any(t => t.Text == text && t.X == x && t.Y == y);
+            bool statsRows = true;
+            for (int i = 0; i < 8; i++)
+                statsRows &= ShownAt(expectLabels[i], 0x32, lines[i].Y) && ShownAt(lines[i].Value, 300, lines[i].Y)
+                        && (expectUnits[i] == null ? !shown.Any(t => t.X == 0x168 && t.Y == lines[i].Y) : ShownAt(expectUnits[i], 0x168, lines[i].Y));
+            var (ratingRow, _) = CoasterStatsScreen.Rating(lap);
+            string verdict = shown.FirstOrDefault(t => t.X == 300 && t.Y == 0x184).Text;
+            Check(statsRows && ShownAt("Coaster Rating:", 0x32, 0x184) && !string.IsNullOrEmpty(verdict) && shown.Count == 25,
+                  $"the screen draws the eight rows and the rating at the console's x/y: [{string.Join(" | ", shown.Select(t => t.Text))}]");
+            Check(statsView.PanelBlits == 22,
+                  $"the panel is 0x142090's: 13 fill rows + the 8-unit remainder + 4 corners + 4 edges ({statsView.PanelBlits} blits)");
+            if (shots != null)
+                Call(viewer, "SaveShot", System.IO.Path.Combine(shots, $"{world.ToLowerInvariant()}_{folder.ToLowerInvariant()}_stats.png"));
+            // Back is Triangle (Escape): the screen goes, the pylon edit comes back, and the lap's trains go with it.
+            await Tap(Key.Escape);
+            Check(Member("_coasterMode").GetValue(viewer).ToString() == "Edit" && !statsView.Visible && statsView.Stats == null
+                  && lapSim.Trains.Count == 0 && Member("_coasterTool").GetValue(viewer) == view,
+                  $"Back (Escape) returns to the pylon edit with the screen down and no trains ({lapSim.Trains.Count})");
+            // Circle is ignored on the screen; OK is Cross (Enter) -- from a station build it removes the trains and
+            // hands over to the queue tool (0x11bca8).
+            Call(viewer, "FinishCoasterTool");
+            Check(Member("_coasterMode").GetValue(viewer).ToString() == "Stats" && lapSim.Trains.Count > 0,
+                  $"finishing again puts the screen back up, the lap's service trains respawned ({lapSim.Trains.Count})");
+            await Tap(Key.Enter);
+            Check(Member("_coasterTool").GetValue(viewer) == null && Field<bool>(viewer, "_toolOpen") && !statsView.Visible
+                  && lapSim.Trains.Count == 0,
+                  "OK (Enter) closes the screen, removes the trains and hands over to the queue tool");
             Call(viewer, "CloseTool");
 
             var segments = (IDictionary)F(view, "Segments");

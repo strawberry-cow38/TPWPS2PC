@@ -529,7 +529,7 @@ public partial class Viewer : Node3D
             {
                 var bits = a["--awards=".Length..].Split(',');
                 if (bits.Length > 0 && int.TryParse(bits[0], out int gt)) _awards.GoldTickets = gt;
-                if (bits.Length > 1 && int.TryParse(bits[1], out int uc)) _awards.UltimateCoasters = uc;
+                if (bits.Length > 1 && int.TryParse(bits[1], out int uc)) _awards.SetUltimateCount(uc);
             }
             else if (a.StartsWith("--place-name=")) _placeName = a["--place-name=".Length..];
             // ⭐ Select a placed thing from the command line, so a render can show the selection
@@ -3773,13 +3773,12 @@ public partial class Viewer : Node3D
                     medalArtOrder.Add(slot);
                     medals.Add(aw != null && slot < aw.Medals.Length && aw.Medals[slot]);
                 }
-                // ⚠ The port keeps a COUNT of ultimate coasters, not which ones, so the first N
-                // stars light in the registry's authored order. Flagged rather than presented as
-                // the console's own set -- it is the right number of stars, not certainly the
-                // right stars.
+                // ⭐ `0x186238`'s star row: each star asks `0x154328` for the award its slot of `0x2C4040`
+                // stands for -- which coaster, not how many (JUNGLE 2's two are crossed there; see
+                // ParkAwards.UltimateStarTable).
                 int uc = aw?.UltimateCoasters ?? 0;
                 var stars = new List<bool>();
-                for (int i = 0; i < GoldTicketScreen.UltimateStars.Length; i++) stars.Add(i < uc);
+                foreach (var (id, _) in GoldTicketScreen.UltimateStars) stars.Add(aw?.UltimateStarLit(id) ?? false);
                 _shopPanel.EnsureAwardArt(_lib);
                 _shopPanel.MedalCellOrder = medalArtOrder;
                 _shopPanel.ShowScreen(LaptopScreen.Awards, "",
@@ -12863,7 +12862,9 @@ public partial class Viewer : Node3D
                         {
                             // The coaster tool's Circle: undo while laying (nothing left to take back
                             // finishes), Next while editing pylons.
-                            if (_coasterMode == CoasterMode.Edit) CoasterPick(1);
+                            // On the stats screen Circle is ignored.
+                            if (_coasterMode == CoasterMode.Stats) { }
+                            else if (_coasterMode == CoasterMode.Edit) CoasterPick(1);
                             else if (!UndoCoasterPylon()) FinishCoasterTool();
                         }
                         else if (mb.ButtonIndex == MouseButton.Right && _addonTool != null) CancelAddonTool();

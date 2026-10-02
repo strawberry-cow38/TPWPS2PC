@@ -39,6 +39,10 @@ shape as `Info.Name` not being the displayed name.
 
 ## WHAT — Ultimate Coasters is one star per coaster, and there are fourteen
 
+⭐ **Earned by the coaster stats screen** (2026-10-02): an "Ultimate Rollercoaster" verdict sets bit
+`w·8 + p·4 + o` of `0x2b72ac` (`0x1542b0`, not in the test park), and the star row reads its own
+table `0x2c4040` -- JUNGLE 2's two stars are crossed there. coaster-operation.md §5.7-5.8.
+
 `UI.WAD/UltimateC/` ships a generic `Star` plus 14 named ones. ⭐ **Fourteen is also exactly the
 number of `.sam` shapes carrying the `<`/`>` station markers** — two censuses run for different
 reasons landing on the same set, with the per-world split agreeing: JUNGLE 3, HALLOW 5, FANTASY 3,
