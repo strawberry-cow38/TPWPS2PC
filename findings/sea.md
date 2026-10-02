@@ -248,3 +248,24 @@ the disc. Calibrated against the known answer it scored `jri_lak3x` at **0.098**
 high, and the control `jri_lak2` at **0.500** where it had to be low -- inverted and useless. Its
 386 "hits" were ride signs. **The sweep was void and is not reported as a result.** The thing that
 actually worked was decoding the candidates to a contact sheet and looking at them.
+
+
+# ⭐⭐ THE UPPER LAYER IS FOUND -- astraclaw, 2026-10-02
+
+`astraclaw/ocean-wave-trace` at `0051c42`, written up in `findings/ocean-waves.md`. The park
+initializer registers a separate water drawable at **`0x22CB90`** in all four worlds, which
+**moves vertex heights from a repeating cubic/noise table**, scrolls its UVs, and draws
+blend-enabled strips with the global **`justwater.ssh`** alpha texture above the opaque `A_SEA`.
+
+⭐ That resolves this document's negatives rather than contradicting them, which is worth saying
+plainly because each one was reported here as proof of something:
+
+- "no sine-table user builds a sheet" -- correct, and beside the point: it is a **cubic/noise**
+  table, not the sine table. The census was sound and the question was wrong.
+- "the VU1 renderer cannot displace a vertex" -- correct. **The EE generates the moving geometry
+  before the renderer ever sees it**, so the VU1 result never bore on it.
+- "not shipped geometry, therefore runtime-built" -- correct, and it is exactly that.
+
+⚠ So three true measurements pointed at a thing none of them could find, because all three
+answered "is the sea mesh animated" and the layer is not the sea mesh. See
+[[feedback_our_predicate_answers_a_different_question]].
