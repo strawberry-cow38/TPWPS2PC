@@ -21,7 +21,7 @@ def good(enabled=True):
     return '\n'.join(['[map] loaded world=JUNGLE terrain=terrain_1.mps',
         "[aim] 'A_SEA_02': 1 surfaces, centre (22, -1.05, 7.5), size (16, 0.1, 25)"]
         + [f'PARK WATER PERF ok: [{n}] {s}' for n, s in enumerate(RECEIPTS, 1)]
-        + [f'PARK WATER PERF RESULT enabled={int(enabled)} samples=100 median_ms=73.4 p95_ms=90.1 draw_calls=165.0 allocated_bytes_per_frame=15000.0 wall_seconds=9.1 camera={"A"*64}',
+        + [f'PARK WATER PERF RESULT enabled={int(enabled)} samples=100 median_ms=73.4 p95_ms=90.1 draw_calls=165.0 allocated_bytes_per_frame=15000.0 wall_seconds=9.1 camera={"A"*64} grid_min={12 if enabled else 0} grid_max={12 if enabled else 0} clip_min={9.278918 if enabled else 0} clip_max={9.278918 if enabled else 0}',
            'PARK WATER PERF PASS checks=14; bounded same-build A/B'])
 
 
@@ -79,6 +79,27 @@ class PerformanceControls(unittest.TestCase):
                         good().replace('p95_ms=90.1', 'p95_ms=50.0'),
                         good().replace('wall_seconds=9.1', 'wall_seconds=15.0')]:
             self.assertEqual(perf.classify(True, run(changed))['status'], 'invalid_measurement')
+
+
+    def test_measured_far_view_is_not_the_initial_grid_log(self):
+        for enabled in (False, True):
+            text = good(enabled) + '\n[water-lod-view] declared diagnostic eye depth=20; camera only, not native player view'
+            self.assertEqual(perf.classify(enabled, run(text), lod_depth=20)['status'], 'pass')
+        far = good() + '\n[water-lod-view] declared diagnostic eye depth=20; camera only, not native player view'
+        for changed in [far.replace('grid_min=12', 'grid_min=11'),
+                        far.replace('grid_max=12', 'grid_max=13'),
+                        far.replace('9.278918', '19.0'),
+                        far.replace('eye depth=20', 'eye depth=21'), good()]:
+            self.assertEqual(perf.classify(True, run(changed), lod_depth=20)['status'], 'wrong_lod_view')
+        self.assertEqual(perf.classify(True, run(far))['status'], 'unexpected_lod_view')
+
+    def test_missing_or_impossible_lod_measurement_is_rejected(self):
+        for changed in [good().replace('grid_min=12', 'grid_min=0'),
+                        good().replace('grid_max=12', 'grid_max=17'),
+                        good().replace('clip_max=9.278918', 'clip_max=8.0')]:
+            self.assertEqual(perf.classify(True, run(changed))['status'], 'invalid_lod_measurement')
+        self.assertEqual(perf.classify(False, run(good(False).replace('grid_min=0', 'grid_min=12')))['status'], 'invalid_lod_measurement')
+        self.assertEqual(perf.classify(True, run(good().replace(' grid_min=12 grid_max=12 clip_min=9.278918 clip_max=9.278918', '')))['status'], 'wrong_experiment')
 
 
 if __name__ == '__main__':

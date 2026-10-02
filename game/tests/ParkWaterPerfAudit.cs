@@ -28,6 +28,9 @@ public partial class ParkWaterPerfAudit : Node
     Transform3D _cameraTransform;
     Projection _cameraProjection;
     Viewer _viewer;
+    ProceduralParkWaterView _water;
+    int _gridMin = int.MaxValue, _gridMax;
+    float _clipMin = float.PositiveInfinity, _clipMax = float.NegativeInfinity;
     bool _record;
     int _checks;
     ulong _deadline;
@@ -47,6 +50,11 @@ public partial class ParkWaterPerfAudit : Node
         _frames[_samples] = (now - _lastUsec) / 1000.0;
         _draws[_samples++] = Performance.GetMonitor(Performance.Monitor.RenderTotalDrawCallsInFrame);
         _lastUsec = now;
+        if (_water != null && IsInstanceValid(_water))
+        {
+            _gridMin = Math.Min(_gridMin, _water.Dimension); _gridMax = Math.Max(_gridMax, _water.Dimension);
+            _clipMin = Math.Min(_clipMin, _water.ClosestClipZ); _clipMax = Math.Max(_clipMax, _water.ClosestClipZ);
+        }
         _cameraChanged |= _camera.GlobalTransform != _cameraTransform || _camera.GetCameraProjection() != _cameraProjection;
         if (now >= _stopUsec) { _endUsec = now; _record = false; }
     }
@@ -108,6 +116,7 @@ public partial class ParkWaterPerfAudit : Node
             Check(enabled ? water != null && IsInstanceValid(water) : water == null, "load-time water switch matches experiment");
             Check(enabled ? water.IsVisibleInTree() : !_viewer.GetChildren().OfType<ProceduralParkWaterView>().Any(),
                 "experiment draws water or omits only its drawable");
+            _water = water;
             await Wait(3); // Same warm-up as the existing benchmark; excluded from samples.
             _camera = Read<Camera3D>(_viewer, "_cam");
             Check(_camera != null && _camera.Current, "current performance camera is bound");
@@ -127,7 +136,7 @@ public partial class ParkWaterPerfAudit : Node
             Check(enabled ? IsInstanceValid(water) && water.AdvancedMilliseconds > advanced + 1000
                 : Read<ProceduralParkWaterView>(_viewer, "_nativeParkWater") == null,
                 "water advances normally or remains absent throughout measurement");
-            GD.Print(FormattableString.Invariant($"PARK WATER PERF RESULT enabled={(enabled ? 1 : 0)} samples={_samples} median_ms={Percentile(_frames, .5):F4} p95_ms={Percentile(_frames, .95):F4} draw_calls={Percentile(_draws, .5):F1} allocated_bytes_per_frame={(double)allocated / _samples:F1} wall_seconds={wall:F6} camera={cameraKey}"));
+            GD.Print(FormattableString.Invariant($"PARK WATER PERF RESULT enabled={(enabled ? 1 : 0)} samples={_samples} median_ms={Percentile(_frames, .5):F4} p95_ms={Percentile(_frames, .95):F4} draw_calls={Percentile(_draws, .5):F1} allocated_bytes_per_frame={(double)allocated / _samples:F1} wall_seconds={wall:F6} camera={cameraKey} grid_min={(enabled ? _gridMin : 0)} grid_max={(enabled ? _gridMax : 0)} clip_min={(enabled ? _clipMin : 0):F6} clip_max={(enabled ? _clipMax : 0):F6}"));
             exit = 0;
         }
         catch (Exception ex) { GD.PrintErr($"PARK WATER PERF FAIL checks={_checks}: {ex}"); }

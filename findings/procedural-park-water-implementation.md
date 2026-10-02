@@ -15,7 +15,7 @@ Confirmed against actual caller1515d8 and MIPS149958: corrected external minX se
 17,17,35,31,27,25,35,23. New core tests do NOT use that sequence as their oracle. They decode
 A_SEA_02 vertices through the full authored parent chain and require suppliedX−seaLeft=9.125.
 The old code fails six of those independent joins; the corrected code passes all eight.
-Actual rendered joins are being added to the shipping smoke, not another copied table.
+Actual rendered joins are in the shipping smoke and decode the rendered sea bounds, not another copied table.
 
 The laptop enter/exit pair1c55c8/1c5680 calls220c68(0/1); the view now discards native elapsed
 water time while its laptop panel is open. The seeded Generate(ref uint) overload used by
@@ -31,13 +31,34 @@ untraced and are an explicit limitation; this is decoded boot-lens LOD, not full
 parity.22cc44 clamps depth with max.s; only22cc98 truncates after the half-depth/clamp expression.
 SelectDimension(10.9) is11. The prior truncate-before-half comment/test was wrong.
 
-Tests are being strengthened to check actual uploaded skirt extents in the CustomAabb, not
+Tests now check actual uploaded skirt extents in the CustomAabb, not
 merely >20 dimensions which the main grid alone satisfies. Current new floors: core80,
-shipping40, reset63, component31; clock18 and performance14 unchanged. Python162 passes and
-both projects build; new rendered/mutation/full gate results are still pending. No new READY
+shipping40, reset63, component31; clock18 and performance14 unchanged. Python164 passes and
+both projects build. Corrected component31/reset63 pass at both sizes; shipping40 passes on
+SPACE/1 and SPACE/2. Seven new compiled controls all fail: reversed variants, seeded Y/Z
+order, shifted RNG draws, missing laptop gate, early LOD truncation, Godot-projection LOD,
+and main-grid-only AABB. Each source was restored byte-for-byte and both projects rebuilt.
+The corrected full clean matrix rerun is still pending. No new READY
 claim or merge is authorized. Both earlier software/hardware performance tables below apply
 only to the older LOD and do not license the corrected detail level; Cow explicitly requests
 a fresh hardware A/B (1555570841952194651).
+
+## Measured sub-max LOD diagnostic — still WIP, 2026-10-02
+
+`TPW_WATER_LOD_DEPTH=20` is an explicit CAMERA-ONLY diagnostic, not a player view or a forced
+water dimension. It frames the bounds top-down at a forward depth of20, AFTER ordinary camera
+setup; it applies identically with water enabled and omitted. `tools/park_water_perf.py
+--lod-depth 20` collects actual Dimension/ClosestClipZ during the natural-frame measurement,
+not the startup `grid=16` print. The classifier requires the independent boot-lens arithmetic,
+steady sub-max dimension and matching camera hashes across all four OFF/ON/ON/OFF runs.
+
+Measured development run `/tmp/tpw-water-lod-far-perf`: all four14-check fixtures pass; both
+ON runs hold grid_min=grid_max=12 and clip_min=clip_max=9.278918. All four camera hashes agree
+(`3FC0DD38EBE8A863764870041E9E1C0963E18217D14F8101909ED96043903281`). ON medians77.944/75.752ms,
+OFF67.622/66.282ms are LOCAL SOFTWARE-RENDERER diagnostics, NOT hardware costs. This was a
+dirty development run, not clean landing evidence; a clean repeat is required in final gates.
+The runner rejects missing/invalid/unstable/wrong-depth LOD receipts; Python controls catch
+substituting the load-time grid or applying a different diagnostic view.
 
 ## What exists
 

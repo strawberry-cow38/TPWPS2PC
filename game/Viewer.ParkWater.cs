@@ -11,6 +11,8 @@ public partial class Viewer
     NativeWater.Profile _nativeWaterProfile;
     NativeWater.NativeNoise _nativeWaterNoise;
     ulong _nativeWaterLastUsec;
+    float _nativeWaterLodDepth;
+    NativeWater.SurfaceBounds? _nativeWaterLodBounds;
     // Explicit reproducible port RNG stream. Native RNG arithmetic is used, but the game's
     // realized global seed/other consumers are not restored: no frame-exact phase claim.
     uint _nativeWaterSeed = 1;
@@ -24,13 +26,22 @@ public partial class Viewer
         }
         _nativeParkWater = null;
         _nativeWaterLastUsec = 0;
+        _nativeWaterLodBounds = null;
+        _nativeWaterLodDepth = 0;
     }
 
     void LoadNativeParkWater(string terrainPath)
     {
         ClearNativeParkWater();
         // Controlled A/B switch, not a replacement shader or guessed motion mode.
-        if (System.Environment.GetEnvironmentVariable("TPW_NATIVE_PARK_WATER") == "0") return;
+        bool omitted = System.Environment.GetEnvironmentVariable("TPW_NATIVE_PARK_WATER") == "0";
+        string diagnosticDepth = System.Environment.GetEnvironmentVariable("TPW_WATER_LOD_DEPTH");
+        if (omitted && string.IsNullOrEmpty(diagnosticDepth)) return;
+        if (!string.IsNullOrEmpty(diagnosticDepth)
+            && (!float.TryParse(diagnosticDepth, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out _nativeWaterLodDepth)
+                || !float.IsFinite(_nativeWaterLodDepth) || _nativeWaterLodDepth <= 0 || _nativeWaterLodDepth > 1000))
+            throw new InvalidOperationException("TPW_WATER_LOD_DEPTH must be finite in (0,1000]");
         if (_nativeWaterProfile == null)
         {
             _nativeWaterProfile = NativeWater.Profile.Read(_lib.Disc);
@@ -49,6 +60,12 @@ public partial class Viewer
         string terrain = Leaf(terrainPath).ToLowerInvariant();
         int variant = terrain == "terrain_1.mps" ? 1 : terrain == "terrain_2.mps" ? 2
             : throw new InvalidOperationException("Native park water requires terrain_1/2.mps");
+        if (_nativeWaterLodDepth > 0)
+        {
+            _nativeWaterLodBounds = _nativeWaterProfile.Bounds(world, variant);
+            GD.Print($"[water-lod-view] declared diagnostic eye depth={_nativeWaterLodDepth:R}; camera only, not native player view");
+        }
+        if (omitted) return;
         var source = ProceduralParkWaterView.ReadTexture(_lib);
         if (!source.SourcePath.Equals("/Generic/extra/justwater.ssh", StringComparison.OrdinalIgnoreCase)
             && !source.SourcePath.Equals("/Generic/extra/justwater.tga", StringComparison.OrdinalIgnoreCase))
@@ -70,6 +87,15 @@ public partial class Viewer
 
     void StepNativeParkWater(double processDelta)
     {
+        // Explicit camera-only diagnostic. Apply after the ordinary camera stage on BOTH A/B
+        // sides, including omitted-water runs. No simulation/state/geometry fields are forced.
+        if (_nativeWaterLodDepth > 0 && _nativeWaterLodBounds is { } diagnostic && !_lobbyMode && _cam != null)
+        {
+            var centre = new Vector3((diagnostic.MinX + diagnostic.MaxX) * .5f,
+                diagnostic.BaseY, -(diagnostic.MinZ + diagnostic.MaxZ) * .5f);
+            _cam.GlobalPosition = GlobalTransform * (centre + Vector3.Up * _nativeWaterLodDepth);
+            _cam.LookAt(GlobalTransform * centre, GlobalTransform.Basis * Vector3.Back);
+        }
         if (_nativeParkWater == null || !GodotObject.IsInstanceValid(_nativeParkWater)) return;
         // The decoded consumer uses gated elapsed real milliseconds, not Godot's scaled/capped
         // process delta. Sample a monotonic clock even when engine TimeScale is zero.

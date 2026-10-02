@@ -3,6 +3,7 @@
 
 This is not a 4080 comparison or emulator benchmark. It preserves error/leak gating and
 records every sample run separately. Only the documented load-time omission switch changes.
+An optional camera-only LOD diagnostic applies the same view to both A/B sides.
 """
 from __future__ import annotations
 
@@ -36,10 +37,11 @@ RECEIPTS = (
 )
 RESULT = re.compile(r'^PARK WATER PERF RESULT enabled=([01]) samples=(\d+) median_ms=([\d.]+) '
                     r'p95_ms=([\d.]+) draw_calls=([\d.]+) allocated_bytes_per_frame=([\d.]+) '
-                    r'wall_seconds=([\d.]+) camera=([A-F0-9]{64})$', re.M)
+                    r'wall_seconds=([\d.]+) camera=([A-F0-9]{64}) '
+                    r'grid_min=(\d+) grid_max=(\d+) clip_min=(-?[\d.]+) clip_max=(-?[\d.]+)$', re.M)
 
 
-def classify(enabled: bool, run: dict) -> dict:
+def classify(enabled: bool, run: dict, *, lod_depth: float | None = None) -> dict:
     text = run['text']
     errors = [line.strip() for line in text.splitlines() if ERROR.search(line.strip())]
     result = {'status': 'pass', 'enabled': enabled, 'errors': errors}
@@ -68,15 +70,35 @@ def classify(enabled: bool, run: dict) -> dict:
         return {**result, 'status': 'wrong_camera'}
     if len(raw_metrics) != 1 or len(metrics) != 1 or int(metrics[0][0]) != int(enabled):
         return {**result, 'status': 'wrong_experiment'}
-    on, samples, median, p95, draws, allocated, wall, camera = metrics[0]
+    on, samples, median, p95, draws, allocated, wall, camera, grid_min, grid_max, clip_min, clip_max = metrics[0]
     values = list(map(float, (median, p95, draws, allocated, wall)))
     if (int(samples) < 20 or not all(math.isfinite(x) for x in values)
             or values[0] <= 0 or values[1] < values[0] or values[2] <= 0 or values[3] < 0
             or not 8.5 <= values[4] <= 12):
         return {**result, 'status': 'invalid_measurement'}
+    grid_min, grid_max = int(grid_min), int(grid_max)
+    clip_min, clip_max = float(clip_min), float(clip_max)
+    if (not math.isfinite(clip_min) or not math.isfinite(clip_max) or clip_max < clip_min
+            or (enabled and not 4 <= grid_min <= grid_max <= 16)
+            or (not enabled and (grid_min, grid_max, clip_min, clip_max) != (0, 0, 0, 0))):
+        return {**result, 'status': 'invalid_lod_measurement'}
+    diagnostic = [line for line in text.splitlines() if line.startswith('[water-lod-view]')]
+    if lod_depth is not None:
+        # Independent native boot-lens arithmetic, not Godot's projection or the load-time grid.
+        expected_clip = .5 * ((500.75 / 499.25) * lod_depth - 750 / 499.25)
+        expected_grid = int(min(16, max(4, 17 - max(0, expected_clip) * .5)))
+        match = re.fullmatch(r'\[water-lod-view\] declared diagnostic eye depth=([\d.]+); camera only, not native player view',
+                             diagnostic[0]) if len(diagnostic) == 1 else None
+        if (match is None or abs(float(match[1]) - lod_depth) > 1e-5
+                or (enabled and (expected_grid == 16 or grid_min != expected_grid or grid_max != expected_grid
+                                  or abs(clip_min - expected_clip) > 1e-4 or abs(clip_max - expected_clip) > 1e-4))):
+            return {**result, 'status': 'wrong_lod_view'}
+    elif diagnostic:
+        return {**result, 'status': 'unexpected_lod_view'}
     return {**result, 'checks': count, 'samples': int(samples), 'median_ms': values[0],
             'p95_ms': values[1], 'draw_calls': values[2], 'allocated_bytes_per_frame': values[3],
-            'wall_seconds': values[4], 'camera': camera}
+            'wall_seconds': values[4], 'camera': camera, 'grid_min': grid_min, 'grid_max': grid_max,
+            'clip_min': clip_min, 'clip_max': clip_max}
 
 
 def main(argv=None) -> int:
@@ -85,13 +107,16 @@ def main(argv=None) -> int:
     parser.add_argument('--godot', type=Path, required=True)
     parser.add_argument('--out', type=Path, required=True)
     parser.add_argument('--repo', type=Path, default=Path(__file__).resolve().parents[1])
+    parser.add_argument('--lod-depth', type=float, help='camera-only top-down forward depth; requires measured sub-max native LOD')
     args = parser.parse_args(argv)
+    if args.lod_depth is not None and not (math.isfinite(args.lod_depth) and 0 < args.lod_depth <= 1000):
+        parser.error('--lod-depth must be finite in (0,1000]')
     repo = args.repo.resolve()
     disc, engine = args.disc.resolve(strict=True), args.godot.resolve(strict=True)
     out = fresh_output(args.out)
     source = source_snapshot(repo)
     manifest = {'scope': 'same-host rendered JUNGLE/1 A/B; camera-only A_SEA_02; no emulator/hardware parity',
-                'source': source, 'results': []}
+                'source': source, 'lod_depth': args.lod_depth, 'results': []}
 
     def save(): (out / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
 
@@ -108,6 +133,7 @@ def main(argv=None) -> int:
             manifest['status'] = 'source_or_assembly_changed'; save(); return 1
         env = case_environment(disc, standalone=True)
         env['TPW_PARK_MESH'] = 'A_SEA_02'  # same ordinary camera-only debug framing on both sides
+        if args.lod_depth is not None: env['TPW_WATER_LOD_DEPTH'] = str(args.lod_depth)
         if not enabled: env['TPW_NATIVE_PARK_WATER'] = '0'
         command = ['xvfb-run', '-a', str(engine), '--rendering-method', 'gl_compatibility',
                    '--audio-driver', 'Dummy', '--resolution', '640x360', '--path', 'game',
@@ -115,7 +141,7 @@ def main(argv=None) -> int:
         run = run_process(command, repo=repo, log=out / f'{index}-water-{int(enabled)}.log',
                           timeout=90, environment=env)
         row = {k: v for k, v in run.items() if k != 'text'}
-        row.update(classify(enabled, run))
+        row.update(classify(enabled, run, lod_depth=args.lod_depth))
         if manifest['results'] and row.get('camera') != manifest['results'][0].get('camera'):
             row['status'] = 'camera_changed_between_runs'
         manifest['results'].append(row); save()
