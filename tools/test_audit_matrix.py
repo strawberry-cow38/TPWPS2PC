@@ -238,18 +238,18 @@ COVERAGE += '\n' + '\n'.join(['  ok   particle emission: filler'] * (97 - len(_E
 
 
 _WATER_WITNESSES = tuple(w for w in REQUIRED_WITNESSES if w.startswith('ok   procedural water:'))
-COVERAGE += '\n' + '\n'.join(['  ok   procedural water: filler'] * (76 - len(_WATER_WITNESSES))
+COVERAGE += '\n' + '\n'.join(['  ok   procedural water: filler'] * (80 - len(_WATER_WITNESSES))
                              + ['  ' + witness for witness in _WATER_WITNESSES])
 
 
 class ProceduralWaterCoverageTests(unittest.TestCase):
-    def test_independent_floor_76_and_one_below(self):
-        self.assertEqual(REQUIRED_CHECKS['procedural_water'], 76)
+    def test_independent_floor_80_and_one_below(self):
+        self.assertEqual(REQUIRED_CHECKS['procedural_water'], 80)
         lines = COVERAGE.splitlines()
         at = next(i for i, line in enumerate(lines) if 'procedural water: filler' in line)
         del lines[at]
         result = classify('JUNGLE', 0, '\n'.join(lines) + '\nPASS')
-        self.assertEqual(result['procedural_water_checks'], 75)
+        self.assertEqual(result['procedural_water_checks'], 79)
         self.assertEqual(result['status'], 'missing_coverage')
 
     def test_actual_missing_helper_count_is_zero_not_a_pass(self):
@@ -265,7 +265,7 @@ class ProceduralWaterCoverageTests(unittest.TestCase):
     def test_complete_water_family_still_retains_ordinary_pass(self):
         result = classify('JUNGLE', 0, COVERAGE + '\nPASS')
         self.assertEqual(result['status'], 'pass')
-        self.assertEqual(result['procedural_water_checks'], 76)
+        self.assertEqual(result['procedural_water_checks'], 80)
 
 
 class SideshowCoverageTests(unittest.TestCase):

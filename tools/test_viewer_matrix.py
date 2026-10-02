@@ -439,19 +439,19 @@ class ParkWaterCoverage(unittest.TestCase):
             self.assertEqual(vm.classify_standalone('park-water-clock', output(changed))['status'], 'missing_coverage')
 
     def test_independent_literal_contracts(self):
-        self.assertEqual(vm.SCENES['park-water'], ('ParkWaterSmoke', 'PARK WATER SMOKE', 35))
+        self.assertEqual(vm.SCENES['park-water'], ('ParkWaterSmoke', 'PARK WATER SMOKE', 40))
         component = vm.STANDALONE_CASES['procedural-water-component']
         reset = vm.STANDALONE_CASES['park-water-reset']
         self.assertEqual((component['scene'], component['minimum'], component['maps'], component['user_args']),
-                         ('ProceduralParkWaterAudit', 28, (), ()))
+                         ('ProceduralParkWaterAudit', 31, (), ()))
         self.assertEqual((reset['scene'], reset['minimum'], reset['maps'], reset['user_args']),
-                         ('ParkWaterSmoke', 57, (('JUNGLE', 'terrain_1'), ('FANTASY', 'terrain_2')),
+                         ('ParkWaterSmoke', 63, (('JUNGLE', 'terrain_1'), ('FANTASY', 'terrain_2')),
                           ('--map=JUNGLE  terrain_1.mps', '--mode=park', '--water-reset-fixture')))
 
     def test_literal_one_below_floors_cannot_pass(self):
-        text = good('park-water', checks=34)
+        text = good('park-water', checks=39)
         self.assertEqual(vm.classify('park-water', 'JUNGLE', 2, output(text))['status'], 'missing_coverage')
-        for case, floor in [('procedural-water-component', 28), ('park-water-reset', 57)]:
+        for case, floor in [('procedural-water-component', 31), ('park-water-reset', 63)]:
             text = self.standalone(case).replace(f'checks={floor};', f'checks={floor-1};')
             self.assertEqual(vm.classify_standalone(case, output(text))['status'], 'missing_coverage')
 

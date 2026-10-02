@@ -79,6 +79,9 @@ public partial class Viewer
         bool shown = _mode == Mode.Park && !_lobbyMode && _terrain != null && _terrain.Root.Visible;
         _nativeParkWater.Visible = shown;
         // No time from a lobby/load freeze is replayed into a parked drawable on reentry.
-        if (shown) _nativeParkWater.Step(elapsed, _playing, _cam);
+        // Native laptop enter/exit 1c55c8/1c5680 clears/restores the same clock gate.
+        // Keep drawing behind its panel but discard its elapsed time; do not catch up on close.
+        bool running = _playing && !(_shopPanel?.Open ?? false);
+        if (shown) _nativeParkWater.Step(elapsed, running, _cam);
     }
 }

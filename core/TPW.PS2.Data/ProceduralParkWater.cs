@@ -38,6 +38,9 @@ public static class ProceduralParkWater
         public float SampleScale { get; private init; }
         public float SurfaceOffset { get; private init; }
         public float BaseY { get; private init; }
+        public float DefaultNear { get; private init; }
+        public float DefaultFar { get; private init; }
+        public float DefaultFovDegrees { get; private init; }
         private float minXOffset, maxXOffset, minZ, maxZ;
         private readonly float[] suppliedX = new float[8];
         private Profile() { }
@@ -84,6 +87,8 @@ public static class ProceduralParkWater
                 if (!actual.Equals(hash, StringComparison.OrdinalIgnoreCase))
                     throw new InvalidDataException($"Unsupported park-water code at EE 0x{address:x}");
             }
+            Guard(0x21b090, 0x20, "62e2fc03bf10f1db3e9de804b0225ae74774d41e2c6560d582ca37557c98c849");
+            Guard(0x21ef60, 0x150, "38b60f30ceefc2678f92703d633081657d9c4a3fc0f4e1b04d7e63eeddb75b6a");
             Guard(0x149958, 0x274, "a78ac681963137588defb9a0cbf1cf6bb856371401b3b9f1db27315eb934cc89");
             Guard(0x220fa0, 0x23c, "68392a128a051dd6f8bafe8cebaebc6dbaa46ec399af443a5a315add3191278a");
             Guard(0x22c858, 0x2d8, "b553c3445638f20a7915e0d0e2ab9f25dc599415add254caa0ec4c7bec03c57a");
@@ -103,6 +108,9 @@ public static class ProceduralParkWater
             }
             var result = new Profile
             {
+                DefaultNear = Immediate(0x21b090), // renderer boot .75
+                DefaultFar = Immediate(0x21b098), // renderer boot 500
+                DefaultFovDegrees = Immediate(0x21b0a0), // renderer boot 60
                 InitialPhaseDivisor = Immediate(0x22c940), // 100
                 InitialUvAccumulator = U32(Offset(0x22cad4)) & 0xffff, // addiu v1,zero,0x1000
                 PhaseDivisor = Immediate(0x22cac8), // 317
@@ -117,19 +125,20 @@ public static class ProceduralParkWater
                 minZ = Immediate(0x149b84) - Immediate(0x221140), // 5.875 - 20.875
                 maxZ = Immediate(0x149b84) + Immediate(0x221178) // 5.875 + .525
             };
-            // Verify the native 149958 branches, not guessed centers or art bounds.
-            result.suppliedX[0] = result.suppliedX[1] = Immediate(0x149aa4); // Jungle 23.125
-            result.suppliedX[2] = Immediate(0x149b1c); // Hallow 37.125
-            result.suppliedX[3] = Immediate(0x149b30); // Hallow 41.125
-            result.suppliedX[4] = Immediate(0x149b70); // Fantasy 31.125
-            result.suppliedX[5] = Immediate(0x149b9c); // Fantasy 33.125
-            result.suppliedX[6] = Immediate(0x149ad4); // Space 29.125
-            result.suppliedX[7] = Immediate(0x149ae4); // Space 41.125
+            // Caller 1515d8 passes a ZERO-BASED park index. External variant1 is index0;
+            // comparison with s1=1 selects terrain_2, not terrain_1.
+            result.suppliedX[0] = result.suppliedX[1] = Immediate(0x149aa4); // Jungle both23.125
+            result.suppliedX[2] = Immediate(0x149b30); // Hallow index0:41.125
+            result.suppliedX[3] = Immediate(0x149b1c); // Hallow index1:37.125
+            result.suppliedX[4] = Immediate(0x149b9c); // Fantasy index0:33.125
+            result.suppliedX[5] = Immediate(0x149b70); // Fantasy index1:31.125
+            result.suppliedX[6] = Immediate(0x149ae4); // Space index0:41.125
+            result.suppliedX[7] = Immediate(0x149ad4); // Space index1:29.125
             return result;
         }
 
-        /// <summary>World IDs 0..3 and terrain variants 1/2 only. Native's "other" branch
-        /// maps to variant 2; invalid inputs are rejected rather than fabricated.</summary>
+        /// <summary>World IDs0..3 and external terrain variants1/2, converted to native
+        /// zero-based indices0/1. Reject invalid inputs rather than fabricate placement.</summary>
         public SurfaceBounds Bounds(World world, int variant)
         {
             if ((uint)world > 3) throw new ArgumentOutOfRangeException(nameof(world));

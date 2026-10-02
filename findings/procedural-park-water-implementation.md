@@ -1,7 +1,43 @@
-# Procedural park water implementation — READY for live-play review
+# Procedural park water implementation — READY WITHDRAWN, correcting peer gate
 
 2026-10-02, requested by strawberry at Discord message1555509148982968411.
 Based on `tinyclaw/particle-schedule`8363918 plus research trace0051c42; Cow guest atlas2acd035 was merged explicitly before the full gates.
+
+
+## 2026-10-02 peer gate correction — NOT READY
+
+Tinyclaw's gate1555567532986077305 found that native park index0 is terrain_1 and1 is
+terrain_2. I had treated the comparison against1 as external terrain_1, reversing HALLOW,
+FANTASY and SPACE. Both old literal-test tables repeated that misinterpretation; their green
+runs did not validate the mapping. **The earlier READY declaration is withdrawn.**
+
+Confirmed against actual caller1515d8 and MIPS149958: corrected external minX sequence is
+17,17,35,31,27,25,35,23. New core tests do NOT use that sequence as their oracle. They decode
+A_SEA_02 vertices through the full authored parent chain and require suppliedX−seaLeft=9.125.
+The old code fails six of those independent joins; the corrected code passes all eight.
+Actual rendered joins are being added to the shipping smoke, not another copied table.
+
+The laptop enter/exit pair1c55c8/1c5680 calls220c68(0/1); the view now discards native elapsed
+water time while its laptop panel is open. The seeded Generate(ref uint) overload used by
+Viewer now has an independent full128-point XYZ fingerprint plus seed/point checks, rather
+than relying only on the Func overload. Targeted core currently passes80, up from76.
+
+The initial reviewer note claiming plain view depth for LOD was retracted in1555570754614198295.
+Native21ea20 composes projection into2f0380;21f3c0/21f5b0 yields pre-divide clip Z.21ef60 uses
+sin(fov/2) scaling;2f0680 rescales onlyXY. Renderer boot21b090..a8 supplies near=.75, far=500,
+fov=60, now guarded/read from ELF. The view uses that explicit native scalar projection instead
+of Godot's unrelated near/far/reverse-Z. Native runtime mode-specific lens switches remain
+untraced and are an explicit limitation; this is decoded boot-lens LOD, not full native camera
+parity.22cc44 clamps depth with max.s; only22cc98 truncates after the half-depth/clamp expression.
+SelectDimension(10.9) is11. The prior truncate-before-half comment/test was wrong.
+
+Tests are being strengthened to check actual uploaded skirt extents in the CustomAabb, not
+merely >20 dimensions which the main grid alone satisfies. Current new floors: core80,
+shipping40, reset63, component31; clock18 and performance14 unchanged. Python162 passes and
+both projects build; new rendered/mutation/full gate results are still pending. No new READY
+claim or merge is authorized. Both earlier software/hardware performance tables below apply
+only to the older LOD and do not license the corrected detail level; Cow explicitly requests
+a fresh hardware A/B (1555570841952194651).
 
 ## What exists
 
@@ -172,9 +208,9 @@ Evidence additions outside Git:
 - `/tmp/tpw-water-wall-perf` (monotonic14-case A/B), `/tmp/tpw-water-clock-python.log`.
 - `/tmp/tpw-water-final-perf` (baseline immediate-Quit warning, retained as failed evidence).
 
-## Final clean gate — completed2026-10-02
+## Earlier clean gate — superseded by the peer mapping/LOD correction
 
-**READY for review/merge of live park water.** Every final run used clean/pushed production
+**Superseded evidence; not current readiness.** Every earlier final run used clean/pushed production
 revision `c24c5316c35820fa92628928a5bcde132ab7b214`; the final READY update changes this Markdown
 only. Source snapshot SHA256 was
 `908e11a089ff4b02a81363580d738492567950a8caa080830601b0e28ff5868c`.

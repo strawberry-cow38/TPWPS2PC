@@ -118,9 +118,13 @@ baseY = approximately -0.55
 main grid = baseY + 0.03 + procedural displacement
 ```
 
-World branch supplied X values (variant argument1 / other) are Jungle23.125/23.125, Hallow37.125/41.125,
-Fantasy31.125/33.125, Space29.125/41.125. The source values are read from the caller's float
-immediates; they are not centers fitted from the art.
+**Corrected2026-10-02 after peer gate:** the caller1515d8 passes a ZERO-BASED park index:
+0=terrain_1,1=terrain_2. External terrain_1/terrain_2 supplied X values are therefore
+Jungle23.125/23.125, Hallow41.125/37.125, Fantasy33.125/31.125, Space41.125/29.125.
+The prior wording treated the argument1 branch as terrain_1 and reversed three worlds.
+Actual authored A_SEA_02 joins give suppliedX−leftEdge=9.125 in all eight terrains; this
+independent data join fails six times under the old mapping. Immediates alone did not prove
+which terrain their branch selected.
 
 Appending geometry also uses X margins−30/+31 and front Z margin−20, at **baseY−0.35 ≈−0.9**,
 with the same scrolling UVs. This extends the drawable beyond the central animated grid; it

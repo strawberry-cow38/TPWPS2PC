@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.Numerics;
+using System.Security.Cryptography;
 using TPW.PS2.Data;
 using Water = TPW.PS2.Data.ProceduralParkWater;
 
@@ -25,17 +26,31 @@ static class ProceduralParkWaterChecks
               profile.XYHeightScale == .2f && profile.ZHeightScale == .6f &&
               profile.SampleScale == .5f && profile.SurfaceOffset == .03f,
               "guarded constructor/draw constants");
+        Check(profile.DefaultNear == .75f && profile.DefaultFar == 500f && profile.DefaultFovDegrees == 60f,
+              "guarded renderer boot lens .75/500/60");
         Check(BitConverter.SingleToUInt32Bits(profile.BaseY) == 0xbf0cccccU, "base Y packet flag cleared");
-        float[] minX = { 17, 17, 31, 35, 25, 27, 23, 35 };
-        float[] maxX = { 42, 42, 56, 60, 50, 52, 48, 60 };
-        for (int w = 0; w < 4; w++)
+        // Independent data join: the authored A_SEA_02 left edge, after its full parent
+        // chain, determines the placement. No duplicated per-world branch table is an oracle.
+        string[] worlds = { "JUNGLE", "HALLOW", "FANTASY", "SPACE" };
+        for (int w = 0; w < worlds.Length; w++)
+        {
+            var file = disc.Files().Single(e => e.Path.Equals($"/DATA/{worlds[w]}.WAD", StringComparison.OrdinalIgnoreCase));
+            var wad = new WadArchive(disc.Read(file.Extent, file.Size));
             for (int v = 1; v <= 2; v++)
             {
-                var b = profile.Bounds((Water.World)w, v);
-                int k = w * 2 + v - 1;
-                Check(b.MinX == minX[k] && b.MaxX == maxX[k] && b.MinZ == -15 && b.MaxZ == 6.4f &&
-                      BitConverter.SingleToUInt32Bits(b.BaseY) == 0xbf0cccccU, $"149958 placement {w}/{v}");
+                var terrainEntry = wad.Entries.Single(e => e.Name.Equals($"terrain_{v}.mps", StringComparison.OrdinalIgnoreCase));
+                var terrain = new Model(wad.Read(terrainEntry));
+                var mesh = terrain.Meshes.Single(m => m.Name.Equals("A_SEA_02", StringComparison.OrdinalIgnoreCase));
+                var matrix = terrain.WorldTransforms()[mesh.Offset];
+                float seaLeft = terrain.Vertices(mesh).Pos.Min(p => Vector3.Transform(p, matrix).X);
+                var nativeBounds = profile.Bounds((Water.World)w, v);
+                float supplied = nativeBounds.MinX + 6.125f; // separately decoded loader subtraction
+                Check(Near(supplied - seaLeft, 9.125f) && Near(nativeBounds.MaxX - nativeBounds.MinX, 25)
+                    && nativeBounds.MinZ == -15 && nativeBounds.MaxZ == 6.4f,
+                    $"authored sea join {w}/{v}: supplied-X minus A_SEA_02 left is 9.125");
+                Console.WriteLine($"  [water-oracle] {worlds[w]}/{v} sea-left={seaLeft:R} supplied={supplied:R}");
             }
+        }
         Check(Throws(() => profile.Bounds((Water.World)4, 1)) &&
               Throws(() => profile.Bounds(Water.World.Jungle, 0)), "invalid placement rejected");
 
@@ -51,6 +66,23 @@ static class ProceduralParkWaterChecks
               "384 ordered RNG calls and sample integer selects p1");
         Check(generated.Sample(127) == new Vector3(-1, -8191f / 8192, -8190f / 8192),
               "last segment wraps p1 to point zero");
+
+        uint refSeed = 1;
+        var seeded = Water.NativeNoise.Generate(ref refSeed); // the actual overload used by Viewer
+        Check(refSeed == 0xbe14c281U, "ref-seed generator consumes exactly384 native LCG steps");
+        Check(seeded.Sample(0) == new Vector3(-1219f / 8192, -206f / 8192, 5251f / 8192),
+              "ref-seed native point1 uses unshifted XYZ draw order");
+        byte[] goldenPoints = new byte[128 * 3 * 4];
+        for (int k = 0; k < 128; k++)
+        {
+            var point = seeded.Sample(k);
+            BinaryPrimitives.WriteSingleLittleEndian(goldenPoints.AsSpan(k * 12, 4), point.X);
+            BinaryPrimitives.WriteSingleLittleEndian(goldenPoints.AsSpan(k * 12 + 4, 4), point.Y);
+            BinaryPrimitives.WriteSingleLittleEndian(goldenPoints.AsSpan(k * 12 + 8, 4), point.Z);
+        }
+        Check(Convert.ToHexString(SHA256.HashData(goldenPoints)).Equals(
+            "eb5109e34bb70f7fcea7002f2b237ca149c57992329488f4e5e946353bce9470", StringComparison.OrdinalIgnoreCase),
+            "ref-seed full native128-point XYZ fingerprint");
 
         var points = new Vector3[128];
         points[0] = new(1, 2, 3); points[1] = new(-2, 4, 1);

@@ -97,8 +97,8 @@ public partial class ProceduralParkWaterAudit : Node3D
             Check(view.AdvancedMilliseconds == 50 && state.UvAccumulator == uv + 15, "10ms clock consumes remainder once");
             Check(ProceduralParkWaterView.SelectDimension(-1) == 16 && ProceduralParkWaterView.SelectDimension(0) == 16,
                   "negative/near clip-Z clamps to max detail");
-            Check(ProceduralParkWaterView.SelectDimension(10) == 12 && ProceduralParkWaterView.SelectDimension(10.9f) == 12,
-                  "LOD truncates clip-Z before half-step");
+            Check(ProceduralParkWaterView.SelectDimension(10) == 12 && ProceduralParkWaterView.SelectDimension(10.9f) == 11,
+                  "LOD truncates only after half-depth and clamps");
             Check(ProceduralParkWaterView.SelectDimension(26) == 4 && ProceduralParkWaterView.SelectDimension(100) == 4,
                   "far detail clamps to four");
             long preHitch = state.UvAccumulator;
@@ -111,12 +111,22 @@ public partial class ProceduralParkWaterAudit : Node3D
             Check(state.UvAccumulator == afterHitch - 4096 && state.Phase == phase && view.Uploads == uploads + 1,
                   "paused zero-delta draw recovers oversized UV and updates actual mesh");
 
+            Check(Math.Abs(ProceduralParkWaterView.NativeClipZ(20, .75f, 500, 60) - 9.278918f) < .00002,
+                  "native boot lens produces scaled pre-divide clip Z");
+            Check(ProceduralParkWaterView.SelectDimension(ProceduralParkWaterView.NativeClipZ(20, .75f, 500, 60)) == 12
+                && ProceduralParkWaterView.SelectDimension(20) == 7, "view depth is not native clip depth for LOD");
             var bounds = view.Bounds;
             var centre = new Vector3((bounds.MinX + bounds.MaxX) * .5f, 0, -(bounds.MinZ + bounds.MaxZ) * .5f);
             camera = new Camera3D { Projection = Camera3D.ProjectionType.Orthogonal, Size = 16, Current = true,
                                         Position = centre + new Vector3(0, 12, 0), Near = .1f, Far = 200 };
             AddChild(camera);
             camera.LookAt(centre, Vector3.Back);
+            view.Step(0, false, camera);
+            float nativeClip = view.ClosestClipZ;
+            camera.Near = .001f; camera.Far = 2000; camera.Fov = 120;
+            view.Step(0, false, camera);
+            Check(Math.Abs(nativeClip - 5.542728f) < .00002 && view.ClosestClipZ == nativeClip && view.Dimension == 14,
+                  "actual LOD uses decoded native lens, not Godot projection or reverse Z");
             var underlayMaterial = new StandardMaterial3D { ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
                                                            AlbedoColor = new Color(1, 0, 0) };
             underlay = new MeshInstance3D { Mesh = new PlaneMesh { Size = new Vector2(100, 100) },

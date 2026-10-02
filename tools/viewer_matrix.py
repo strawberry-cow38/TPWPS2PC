@@ -106,17 +106,20 @@ SCENES['advisor'] = ('AdvisorSmoke', 'ADVISOR SMOKE', 58)
 # hidden-field guards, native 1..1000 control edges and screen/subject/drag lifecycle.
 # Receipts are draw arguments, not pixel review.
 SCENES['sideshow-presentation'] = ('SideshowPresentationSmoke', 'SIDESHOW PRESENTATION SMOKE', 876)
-SCENES['park-water'] = ('ParkWaterSmoke', 'PARK WATER SMOKE', 35)
+SCENES['park-water'] = ('ParkWaterSmoke', 'PARK WATER SMOKE', 40)
 SCENE_WITNESSES = {
     'park-water': (
         'shipping terrain load creates procedural water',
-        'literal native placement for selected world and variant',
+        'independent rendered sea join fixes selected world and terrain placement',
         'natural shipping process advances native water clock',
         'natural shipping wait changes actual uploaded heights',
         'natural shipping wait changes actual uploaded signed V',
         'shipping GPU-backed positions agree with native geometry and Z reflection',
         'shipping GPU-backed UVs agree with signed native narrowing',
         'shipping water stays still while paused',
+        'real laptop panel stops native wall clock',
+        'closing laptop resumes native water without replaying laptop time',
+        'actual culling bounds contain the uploaded native skirts, not only the main grid',
         'real Close Park input opens lobby',
         'park water hidden in lobby',
         'normal Viewer teardown frees water owner',
@@ -155,7 +158,7 @@ STANDALONE_CASES = {
     },
     'procedural-water-component': {
         'scene': 'ProceduralParkWaterAudit', 'label': 'PROCEDURAL PARK WATER',
-        'minimum': 28, 'maps': (), 'user_args': (),
+        'minimum': 31, 'maps': (), 'user_args': (),
         'resolutions': ('640x360', '1152x648'),
         'scope': 'declared native-water component with actual dynamic-mesh/raster-alpha controls; no player/emulator parity',
         'numbered_checks': True,
@@ -169,12 +172,15 @@ STANDALONE_CASES = {
             'visible water over green underlay',
             'underlay survives through the actual alpha raster',
             'component water and fixture nodes retired',
+            'native boot lens produces scaled pre-divide clip Z',
+            'view depth is not native clip depth for LOD',
+            'actual LOD uses decoded native lens, not Godot projection or reverse Z',
         ),
     },
     'park-water-reset': {
         'scene': 'ParkWaterSmoke', 'label': 'PARK WATER RESET SMOKE',
         'user_args': ('--map=JUNGLE  terrain_1.mps', '--mode=park', '--water-reset-fixture'),
-        'minimum': 57, 'maps': (('JUNGLE', 'terrain_1'), ('FANTASY', 'terrain_2')),
+        'minimum': 63, 'maps': (('JUNGLE', 'terrain_1'), ('FANTASY', 'terrain_2')),
         'resolutions': ('640x360', '1152x648'),
         'scope': 'normal shipping Viewer plus declared direct ordinary-loader reset, real Pause/filter/Close Park input; no emulator parity',
         'numbered_checks': True,
@@ -192,12 +198,13 @@ STANDALONE_CASES = {
         'witness_counts': {
             'shipping terrain load creates procedural water': 2,
             'exactly one live water drawable': 2,
-            'literal native placement for selected world and variant': 2,
+            'independent rendered sea join fixes selected world and terrain placement': 2,
             'natural shipping process advances native water clock': 2,
             'natural shipping wait changes actual uploaded heights': 2,
             'natural shipping wait changes actual uploaded signed V': 2,
             'shipping GPU-backed positions agree with native geometry and Z reflection': 2,
             'shipping GPU-backed UVs agree with signed native narrowing': 2,
+            'actual culling bounds contain the uploaded native skirts, not only the main grid': 2,
         },
     },
     'research-persistence': {

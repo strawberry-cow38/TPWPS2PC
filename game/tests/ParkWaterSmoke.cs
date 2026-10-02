@@ -80,13 +80,6 @@ public partial class ParkWaterSmoke : Node
         Check(_viewer.GetChildren().OfType<ProceduralParkWaterView>().Count() == 1, "exactly one live water drawable");
         string world = maps[expectedMap].Wad.Split('/').Last().Replace(".WAD", "").ToUpperInvariant();
         int variant = maps[expectedMap].Path.EndsWith("terrain_2.mps", StringComparison.OrdinalIgnoreCase) ? 2 : 1;
-        int worldIndex = Array.IndexOf(new[] { "JUNGLE", "HALLOW", "FANTASY", "SPACE" }, world);
-        float[] low = { 17, 17, 31, 35, 25, 27, 23, 35 };
-        float[] high = { 42, 42, 56, 60, 50, 52, 48, 60 };
-        int index = worldIndex * 2 + variant - 1;
-        Check(index >= 0 && water.Bounds.MinX == low[index] && water.Bounds.MaxX == high[index]
-            && water.Bounds.MinZ == -15 && Math.Abs(water.Bounds.MaxZ - 6.4f) < .00001,
-            "literal native placement for selected world and variant");
         Check(water.Dimension >= 4 && water.Dimension <= 16, "shipping projected detail stays within native bounds");
         Check(water.Surface.Mesh.GetSurfaceCount() == 1 && water.Material.GetShaderParameter("has_tex").AsBool(),
             "shipping mesh has bound art");
@@ -101,6 +94,13 @@ public partial class ParkWaterSmoke : Node
             var transformedBounds = seaMesh.GlobalTransform * localBounds;
             GD.Print($"[water-footprint] {seaMesh.Name} godot-world={transformedBounds} native-grid={water.Bounds}");
         }
+        var basin = sea.Where(m => m.Name.ToString().StartsWith("A_SEA_02", StringComparison.OrdinalIgnoreCase)).ToArray();
+        Check(basin.Length > 0, "actual rendered sea basin is available for independent placement join");
+        float renderedLeft = basin.Min(m => (water.GlobalTransform.AffineInverse() * m.GlobalTransform * m.Mesh.GetAabb()).Position.X);
+        Check(Math.Abs((water.Bounds.MinX + 6.125f) - renderedLeft - 9.125f) < .0001
+            && Math.Abs(water.Bounds.MaxX - water.Bounds.MinX - 25f) < .0001
+            && water.Bounds.MinZ == -15 && Math.Abs(water.Bounds.MaxZ - 6.4f) < .00001,
+            "independent rendered sea join fixes selected world and terrain placement");
         Check(sea.Length >= 6, "opaque authored sea remains beside procedural layer");
         Check(sea.All(n => n.MaterialOverride is ShaderMaterial m
             && m.GetShaderParameter("uv_scroll").AsVector2() == Vector2.Zero
@@ -139,8 +139,17 @@ public partial class ParkWaterSmoke : Node
               "shipping GPU-backed positions agree with native geometry and Z reflection");
         Check(uv.Select((p, i) => Math.Abs(p.X - water.Uvs[i].X) < .00001 && Math.Abs(p.Y - water.Uvs[i].Y) < .00001).All(v => v),
               "shipping GPU-backed UVs agree with signed native narrowing");
-        Check(water.Surface.CustomAabb.Size.X > 20 && water.Surface.CustomAabb.Size.Z > 20,
-              "dynamic culling bounds include main grid and appended geometry");
+        var actualBounds = water.Surface.CustomAabb;
+        float minX = positions.Min(p => p.X), maxX = positions.Max(p => p.X);
+        float minY = positions.Min(p => p.Y), maxY = positions.Max(p => p.Y);
+        float minZ = positions.Min(p => p.Z), maxZ = positions.Max(p => p.Z);
+        Check(Math.Abs(actualBounds.Position.X - minX) < .00001 && Math.Abs(actualBounds.End.X - maxX) < .00001
+            && Math.Abs(actualBounds.Position.Y - minY) < .00001 && Math.Abs(actualBounds.End.Y - maxY) < .00001
+            && Math.Abs(actualBounds.Position.Z - minZ) < .00001 && Math.Abs(actualBounds.End.Z - maxZ) < .00001
+            && Math.Abs(minX - (water.Bounds.MinX - 30)) < .00001
+            && Math.Abs(maxX - (water.Bounds.MaxX + 31)) < .00001
+            && Math.Abs(maxZ - (-water.Bounds.MinZ + 20)) < .00001,
+              "actual culling bounds contain the uploaded native skirts, not only the main grid");
     }
 
     async Task Retire()
@@ -226,6 +235,19 @@ public partial class ParkWaterSmoke : Node
             await KeyTap(Godot.Key.Tab); await Wait(.1);
             var panel = Read<LaptopShopScreen>(_viewer, "_shopPanel");
             Check(panel != null && panel.Open, "real Tab opens laptop");
+            int laptopClock = Water.AdvancedMilliseconds;
+            float laptopPhase = Water.State.Phase;
+            long laptopUv = Water.State.UvAccumulator;
+            await Wait(.16);
+            Check(Water.AdvancedMilliseconds == laptopClock && Water.State.Phase == laptopPhase
+                && Water.State.UvAccumulator == laptopUv, "real laptop panel stops native wall clock");
+            await KeyTap(Godot.Key.Tab); await Wait(.1);
+            Check(!panel.Open, "real Tab closes laptop panel");
+            await Wait(.12);
+            Check(Water.AdvancedMilliseconds > laptopClock && Water.State.Phase > laptopPhase,
+                "closing laptop resumes native water without replaying laptop time");
+            await KeyTap(Godot.Key.Tab); await Wait(.1);
+            Check(panel.Open, "real Tab reopens laptop for Close Park action");
             var rows = Read<List<string>>(panel, "_menu");
             int close = rows.FindIndex(r => r.Contains("Close Park", StringComparison.OrdinalIgnoreCase));
             Check(close >= 0, "real laptop offers Close Park");

@@ -269,11 +269,13 @@ REQUIRED_WITNESSES += (
 )
 
 # Native park-water profile/cubic/phase/UV/topology. Count alone cannot license an omitted helper.
-REQUIRED_CHECKS.update({'procedural_water': 76})
+REQUIRED_CHECKS.update({'procedural_water': 80})
 REQUIRED_WITNESSES += (
     'ok   procedural water: guarded constructor/draw constants',
-    'ok   procedural water: 149958 placement 0/1',
-    'ok   procedural water: 149958 placement 3/2',
+    'ok   procedural water: authored sea join 0/1: supplied-X minus A_SEA_02 left is 9.125',
+    'ok   procedural water: authored sea join 3/2: supplied-X minus A_SEA_02 left is 9.125',
+    'ok   procedural water: ref-seed full native128-point XYZ fingerprint',
+    'ok   procedural water: guarded renderer boot lens .75/500/60',
     'ok   procedural water: literal cubic half sample',
     'ok   procedural water: native row-strip diagonals',
     'ok   procedural water: changed conversion code fails interpretation guard',

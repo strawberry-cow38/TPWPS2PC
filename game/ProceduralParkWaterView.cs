@@ -100,15 +100,25 @@ public sealed partial class ProceduralParkWaterView : Node3D
     public static int SelectDimension(float closestClipZ)
     {
         if (!float.IsFinite(closestClipZ)) throw new ArgumentOutOfRangeException(nameof(closestClipZ));
-        // 22cc38..22cca4: truncate nonnegative minimum clip-Z BEFORE multiplying by .5.
-        int z = closestClipZ >= 0 ? checked((int)closestClipZ) : 0;
-        return (int)Math.Clamp(17f - z * .5f, 4f, 16f);
+        // 22cc44 max.s clamps DEPTH with zero; the sole cvt.w.s is AFTER .5/clamp at22cc98.
+        return (int)Math.Clamp(17f - Math.Max(0f, closestClipZ) * .5f, 4f, 16f);
+    }
+
+    /// <summary>21ef60's pre-divide clip Z, not normalized depth or plain view distance.
+    /// 2f0680 rescales only XY. Use decoded boot lens until native mode-specific lens
+    /// switches are integrated; Godot's unrelated near/far/reverse-Z cannot stand in for it.</summary>
+    public static float NativeClipZ(float forwardEyeDepth, float near, float far, float fovDegrees)
+    {
+        if (!float.IsFinite(forwardEyeDepth) || !float.IsFinite(near) || !float.IsFinite(far)
+            || !float.IsFinite(fovDegrees) || near <= 0 || far <= near || fovDegrees <= 0 || fovDegrees >= 180)
+            throw new ArgumentOutOfRangeException(nameof(forwardEyeDepth));
+        float scale = MathF.Sin(fovDegrees * .017453292f * .5f);
+        return scale * ((far + near) / (far - near) * forwardEyeDepth - 2f * far * near / (far - near));
     }
 
     float MinimumClipZ(Camera3D camera)
     {
         var inverse = camera.GlobalTransform.AffineInverse();
-        var projection = camera.GetCameraProjection();
         float minimum = float.PositiveInfinity;
         // 22c858's expanded culling bounds. The source Y extent is zero; do not substitute
         // the bounding box of the opaque sea or a hand-picked view distance.
@@ -118,8 +128,9 @@ public sealed partial class ProceduralParkWaterView : Node3D
                 var native = new Vector3(x == 0 ? Bounds.MinX - 30f : Bounds.MaxX + 26f,
                                          Bounds.BaseY, -(z == 0 ? Bounds.MinZ - 25f : Bounds.MaxZ));
                 var local = inverse * (GlobalTransform * native);
-                var clip = projection * new Vector4(local.X, local.Y, local.Z, 1f);
-                minimum = Math.Min(minimum, clip.Z);
+                var profile = State.Profile;
+                float clipZ = NativeClipZ(-local.Z, profile.DefaultNear, profile.DefaultFar, profile.DefaultFovDegrees);
+                minimum = Math.Min(minimum, clipZ);
             }
         return minimum;
     }
