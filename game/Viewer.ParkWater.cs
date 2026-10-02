@@ -63,7 +63,7 @@ public partial class Viewer
         if (_nativeWaterLodDepth > 0)
         {
             _nativeWaterLodBounds = _nativeWaterProfile.Bounds(world, variant);
-            GD.Print($"[water-lod-view] declared diagnostic eye depth={_nativeWaterLodDepth:R}; camera only, not native player view");
+            GD.Print(FormattableString.Invariant($"[water-lod-view] declared diagnostic eye depth={_nativeWaterLodDepth:R}; camera only, not native player view"));
         }
         if (omitted) return;
         var source = ProceduralParkWaterView.ReadTexture(_lib);

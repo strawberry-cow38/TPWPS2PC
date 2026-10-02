@@ -35,10 +35,11 @@ RECEIPTS = (
     'normal teardown retires actual water',
     'no performance Viewer remains',
 )
-RESULT = re.compile(r'^PARK WATER PERF RESULT enabled=([01]) samples=(\d+) median_ms=([\d.]+) '
-                    r'p95_ms=([\d.]+) draw_calls=([\d.]+) allocated_bytes_per_frame=([\d.]+) '
-                    r'wall_seconds=([\d.]+) camera=([A-F0-9]{64}) '
-                    r'grid_min=(\d+) grid_max=(\d+) clip_min=(-?[\d.]+) clip_max=(-?[\d.]+)$', re.M)
+NUMBER = r'(?:\d+(?:\.\d*)?|\.\d+)'
+RESULT = re.compile(r'^PARK WATER PERF RESULT enabled=([01]) samples=(\d+) median_ms=(' + NUMBER + r') '
+                    r'p95_ms=(' + NUMBER + r') draw_calls=(' + NUMBER + r') allocated_bytes_per_frame=(' + NUMBER + r') '
+                    r'wall_seconds=(' + NUMBER + r') camera=([A-F0-9]{64}) '
+                    r'grid_min=(\d+) grid_max=(\d+) clip_min=(-?' + NUMBER + r') clip_max=(-?' + NUMBER + r')$', re.M)
 
 
 def classify(enabled: bool, run: dict, *, lod_depth: float | None = None) -> dict:
@@ -87,7 +88,7 @@ def classify(enabled: bool, run: dict, *, lod_depth: float | None = None) -> dic
         # Independent native boot-lens arithmetic, not Godot's projection or the load-time grid.
         expected_clip = .5 * ((500.75 / 499.25) * lod_depth - 750 / 499.25)
         expected_grid = int(min(16, max(4, 17 - max(0, expected_clip) * .5)))
-        match = re.fullmatch(r'\[water-lod-view\] declared diagnostic eye depth=([\d.]+); camera only, not native player view',
+        match = re.fullmatch(r'\[water-lod-view\] declared diagnostic eye depth=(' + NUMBER + r'); camera only, not native player view',
                              diagnostic[0]) if len(diagnostic) == 1 else None
         if (match is None or abs(float(match[1]) - lod_depth) > 1e-5
                 or (enabled and (expected_grid == 16 or grid_min != expected_grid or grid_max != expected_grid

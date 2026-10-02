@@ -101,6 +101,15 @@ class PerformanceControls(unittest.TestCase):
         self.assertEqual(perf.classify(False, run(good(False).replace('grid_min=0', 'grid_min=12')))['status'], 'invalid_lod_measurement')
         self.assertEqual(perf.classify(True, run(good().replace(' grid_min=12 grid_max=12 clip_min=9.278918 clip_max=9.278918', '')))['status'], 'wrong_experiment')
 
+    def test_malformed_numeric_receipts_reject_without_raising(self):
+        far = good() + '\n[water-lod-view] declared diagnostic eye depth=20; camera only, not native player view'
+        for text in [far.replace('clip_min=9.278918', 'clip_min=..'),
+                     far.replace('median_ms=73.4', 'median_ms=..')]:
+            self.assertEqual(perf.classify(True, run(text), lod_depth=20)['status'], 'wrong_experiment')
+        self.assertEqual(perf.classify(True, run(far.replace('eye depth=20', 'eye depth=..')), lod_depth=20)['status'], 'wrong_lod_view')
+        fractional = far.replace('eye depth=20', 'eye depth=20.5').replace('9.278918', '9.529669')
+        self.assertEqual(perf.classify(True, run(fractional), lod_depth=20.5)['status'], 'pass')
+
 
 if __name__ == '__main__':
     unittest.main()
