@@ -1,11 +1,19 @@
 namespace TPW.PS2.Data;
 
-/// <summary>A park's three goals, the record `0x16C008(world, park)` returns (READ, MIPS `0x16C008..0x16C0E0`).
-/// Only the three fields the goal notices print are named here.</summary>
-/// <param name="Visitors">`+0xC`: goal 1, visitors (text row 376).</param>
-/// <param name="Profit">`+0x10`: goal 2, profit above the starting balance (row 894), printed as stored.</param>
-/// <param name="Years">`+0x14`: goal 3, years in business (row 515).</param>
-public readonly record struct ParkGoalRecord(int Visitors, int Profit, int Years);
+/// <summary>A park's goals and award thresholds, the record `0x16C008(world, park)` returns (READ, MIPS
+/// `0x16C008..0x16C0E0`), as the weekly pass `0x16BC70` reads it.</summary>
+/// <param name="Visitors">`+0xC`: goal 1, guests ever admitted reach this (`stats+0x20`; text row 376).</param>
+/// <param name="Profit">`+0x10`: goal 2, `0x100E40` above this x 10 (row 894), printed as stored.</param>
+/// <param name="Years">`+0x14`: goal 3, whole years since Open Park (row 515).</param>
+/// <param name="FeatureCost">`+0x18`: the Aesthetic award's bar -- the summed purchase cost of every placed
+/// feature (`0x16BBD0`). 2000 in every park.</param>
+/// <param name="PathCells">`+0x1C`: the Path Economy award's ceiling on path cells (`0x1531D8`). 100 everywhere.</param>
+/// <param name="StarterGoal">`+0x30`: the fourth goal (message 0xAA) is armed -- JUNGLE 1 only: a sideshow,
+/// a shop, a feature and two rides (`0x14CF88/58/28`, `0x14CE68/98/C8/F8`).</param>
+/// <param name="Tickets">`+0x31`: the tickets this park can pay out, its goals and its mini-games; the
+/// world map's "Tickets available in this park" (`0x218F78` mode 7).</param>
+public readonly record struct ParkGoalRecord(int Visitors, int Profit, int Years,
+    int FeatureCost = 2000, int PathCells = 100, bool StarterGoal = false, int Tickets = 0);
 
 /// <summary>⭐ The park's goals and the three notices that open every ordinary park's message stack.
 ///
@@ -27,11 +35,20 @@ public static class ParkGoals
     /// <summary>By world (`0x14E170`: 0 jungle, 1 hallow, 2 fantasy, 3 space) and park (`0x14E160`, 0 or 1).</summary>
     static readonly ParkGoalRecord[,] Records =
     {
-        { new(100, 2000, 1), new(200, 3000, 2) },   // 0x3622C8, 0x362300
-        { new(150, 2500, 1), new(250, 3000, 2) },   // 0x362258, 0x362290
-        { new(150, 2500, 1), new(500, 5000, 5) },   // 0x3621E8, 0x362220
-        { new(250, 3000, 2), new(500, 5000, 5) },   // 0x362338, 0x362370
+        { new(100, 2000, 1, StarterGoal: true, Tickets: 7), new(200, 3000, 2, Tickets: 6) },   // 0x3622C8, 0x362300
+        { new(150, 2500, 1, Tickets: 5), new(250, 3000, 2, Tickets: 7) },                     // 0x362258, 0x362290
+        { new(150, 2500, 1, Tickets: 5), new(500, 5000, 5, Tickets: 7) },                     // 0x3621E8, 0x362220
+        { new(250, 3000, 2, Tickets: 5), new(500, 5000, 5, Tickets: 6) },                     // 0x362338, 0x362370
     };
+
+    /// <summary>The record addresses, by world and park, so the audit can re-read every field from the ELF.</summary>
+    public static readonly uint[,] RecordAddresses =
+    {
+        { 0x3622C8, 0x362300 }, { 0x362258, 0x362290 }, { 0x3621E8, 0x362220 }, { 0x362338, 0x362370 },
+    };
+
+    /// <summary>The goal messages of `0x16BC70`, by goal bit 1..4 (index 0 unused).</summary>
+    public static readonly int[] GoalMessages = { 0, 0x9D, 0x9E, 0x9F, 0xAA };
 
     /// <summary>`0x16C008(world, park)`, or null where it returns 0.</summary>
     public static ParkGoalRecord? For(int world, int park) =>
@@ -55,9 +72,20 @@ public static class ParkGoals
     }
 
     /// <summary>`sprintf` with one integer, as these rows use it: the first `%d` becomes the value.</summary>
-    public static string FormatInt(string template, int value)
+    public static string FormatInt(string template, int value) => FormatInts(template, value);
+
+    /// <summary>`sprintf` with integers only: each `%d` in turn takes the next value; a `%d` past the last value is
+    /// left as written.</summary>
+    public static string FormatInts(string template, params int[] values)
     {
-        int at = template.IndexOf("%d", StringComparison.Ordinal);
-        return at < 0 ? template : string.Concat(template.AsSpan(0, at), value.ToString(), template.AsSpan(at + 2));
+        var sb = new System.Text.StringBuilder();
+        int next = 0, i = 0;
+        while (i < template.Length)
+        {
+            if (next < values.Length && i + 1 < template.Length && template[i] == '%' && template[i + 1] == 'd')
+            { sb.Append(values[next++]); i += 2; continue; }
+            sb.Append(template[i++]);
+        }
+        return sb.ToString();
     }
 }

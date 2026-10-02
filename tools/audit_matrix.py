@@ -258,6 +258,16 @@ REQUIRED_WITNESSES += (
 
 # Audit-only native-code-derived isolated emitter chronology, NOT renderer or hardware proof.
 REQUIRED_CHECKS.update({'particle_emission': 97})
+
+# Gold tickets (GoldTicketChecks.cs): 33 on every park, disc-wide. The witnesses are the ELF claims -- the goal records and
+# links re-read, the nine messages in order -- and the goal-1 boundary with its one-short control.
+REQUIRED_CHECKS.update({'gold_tickets': 33})
+REQUIRED_WITNESSES += (
+    "ok   gold tickets: all eight goal records' visitors/profit/years/feature-cost/path/starter/tickets match the ELF (0 differ)",
+    'ok   gold tickets: the eleven world-map links (records 8..18, +0x18..0x1A)',
+    'ok   gold tickets: 0x16BC70 pays nine messages in this order',
+    'ok   gold tickets: goal 1: 99 guests admitted win nothing, the 100th',
+)
 REQUIRED_WITNESSES += (
     'ok   particle emission: raw63: emitter20 / particle-base20 / burst1 / cap1 / countdown0',
     'ok   particle emission: signed RNG-high domain gives particle-life16..24, not fixed20 or one-sided20..24',

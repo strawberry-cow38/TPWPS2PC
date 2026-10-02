@@ -212,6 +212,41 @@ public partial class MainMenuStartupSmoke : Node
                 await Settled(()=>viewer.LobbyInputReady,"lobby prompt");
                 await KeyPress(Key.Right); await KeyPress(Key.Enter);   // Cancel, through real input
                 Check(!Field<bool>(viewer,"_lobbyPrompt") && Field<bool>(viewer,"_lobbyMode"),"prompt Cancel returns to the lobby");
+                // ⭐⭐ GOLD TICKETS BUY ISLANDS (2026-10-02, findings/awards.md "What tickets buy"). A new game holds
+                // only JUNGLE 1 open; FANTASY 1 is one ticket from it (link record 9).
+                var awards=Field<ParkAwards>(viewer,"_awards");
+                var box=Field<LobbyMessageBox>(viewer,"_lobbyBox");
+                string Line(int n)=>(string)typeof(LobbyMessageBox).GetField(n==1?"_line1":"_line2",Hidden).GetValue(box);
+                Check(awards.GoldTickets==0&&awards.SlotState(2,0)==ParkAwards.SlotLocked&&awards.SlotState(0,0)==ParkAwards.SlotOpen,
+                    "a new game: no tickets, JUNGLE 1 open, FANTASY 1 locked");
+                await KeyPress(Key.Right);
+                Check(Field<bool>(viewer,"_lobbyPrompt")&&Field<int>(viewer,"_lobbyPromptMode")==1&&Field<int>(viewer,"_lobbyRecord")==0
+                    &&Line(2).Contains('1'),
+                    $"stepping onto locked FANTASY 1 with no tickets: mode 1, the map stays on JUNGLE 1 ({Line(1)} / {Line(2)})");
+                await Settled(()=>viewer.LobbyInputReady,"not-enough prompt");
+                await KeyPress(Key.Enter);
+                Check(!Field<bool>(viewer,"_lobbyPrompt")&&Field<int>(viewer,"_lobbyRecord")==0&&awards.SlotState(2,0)==ParkAwards.SlotLocked,
+                    "its OK only closes it: still on JUNGLE 1, FANTASY 1 still locked");
+                awards.AwardGoldTickets(2);
+                await KeyPress(Key.Right);
+                Check(Field<int>(viewer,"_lobbyPromptMode")==2&&Field<int>(viewer,"_lobbyRecord")==0,"with two tickets the same step offers it: mode 2");
+                await Settled(()=>viewer.LobbyInputReady,"buy prompt");
+                await KeyPress(Key.Right); await KeyPress(Key.Enter);   // Cancel
+                Check(awards.GoldTickets==2&&awards.SlotState(2,0)==ParkAwards.SlotLocked&&Field<int>(viewer,"_lobbyRecord")==0,
+                    "Cancel spends nothing and opens nothing");
+                await KeyPress(Key.Right);
+                await Settled(()=>viewer.LobbyInputReady,"buy prompt");
+                await KeyPress(Key.Enter);                               // OK
+                Check(awards.GoldTickets==1&&awards.SlotState(2,0)==ParkAwards.SlotOpen&&Field<int>(viewer,"_lobbyRecord")==4
+                    &&!Field<bool>(viewer,"_lobbyPrompt"),
+                    "OK buys FANTASY 1 for one ticket and the map stands on it");
+                await KeyPress(Key.T);
+                Check(Field<int>(viewer,"_lobbyPromptMode")==7&&Line(2).Contains("53")&&Line(2).Contains('5'),
+                    $"T shows the ticket count, of 53 in the game ({Line(1)} / {Line(2)})");
+                await Settled(()=>viewer.LobbyInputReady,"ticket count");
+                await KeyPress(Key.Enter);
+                await KeyPress(Key.Down);                                // FANTASY 1 -> JUNGLE 1, open: a plain move
+                Check(Field<int>(viewer,"_lobbyRecord")==0&&!Field<bool>(viewer,"_lobbyPrompt"),"back to JUNGLE 1 without a prompt: it is open");
                 // Go through the actual prompt, then the world's movie, then LoadMap.
                 await KeyPress(Key.Enter);
                 Check(Field<bool>(viewer,"_lobbyPrompt"),"lobby confirm asks before entering");

@@ -45,6 +45,12 @@ public partial class Viewer
         _management.VisitorSample ??= VisitorSample;
         _management.Rating ??= ParkRatingNow;
         _management.ParkValue ??= ParkValueTenths;
+        // ⭐ The weekly pass's gold tickets (findings/awards.md "The weekly pass, whole"): the park on the map, Open
+        // Park's flag and month, and the census the four hidden awards and the fourth goal read.
+        _management.CurrentPark ??= () => (_staffWorld, _staffPark);
+        _management.ParkOpen = () => _laptopParkOpen;                       // [0x2B72A4]
+        _management.OpenedMonth = () => _parkOpenedMonth;                   // [0x2B7298]
+        _management.AwardInputs ??= ParkAwardInputs.FromCensus(AwardPlacements, AwardPathCells);
         int months = _management.MonthChanges;
         int before = _sim?.Finances.Balance ?? 0;
         _management.Advance(frameUnits);
@@ -52,6 +58,49 @@ public partial class Viewer
             GD.Print($"[calendar] month end {_calendar.Format()}: wages {Money.Format(_management.LastWages)} "
                    + $"(balance {Money.Format(before)} -> {Money.Format(_sim?.Finances.Balance ?? 0)}); strikes "
                    + string.Join(" ", StaffTables.TypeCodeOrder.Select(k => $"{k}={_staff?.StrikeStage(k) ?? 0}{(_staff?.IsStriking(k) == true ? "!" : "")}")));
+    }
+
+    /// <summary>⭐ The weekly pass's census (<see cref="AwardPlacement"/>): every scripted placement from the sim
+    /// with its tier and cells, and every scriptless one the bus placed (features such as bins) with the cells
+    /// the park recorded for its node -- the same two sources as <see cref="AdvisorPlacements"/>.</summary>
+    IReadOnlyList<AwardPlacement> AwardPlacements()
+    {
+        var list = new List<AwardPlacement>();
+        var inSim = new HashSet<int>();
+        if (_sim != null)
+            foreach (var r in _sim.Rides)
+            {
+                inSim.Add(r.Id);
+                var e = r.Definition?.CompiledEntry;
+                var kind = e?.Kind ?? (r.ProvidesRelief ? AssetResourceDatabase.AssetKind.Feature : (AssetResourceDatabase.AssetKind)0);
+                if (kind == 0) continue;
+                byte flags = e == null ? (byte)1
+                    : kind == AssetResourceDatabase.AssetKind.Feature ? e.RawFeatureFlags.GetValueOrDefault() : (byte)0;
+                list.Add(new AwardPlacement(kind, r.DestinationState, flags, r.CurrentTier,
+                    new AwardFootprint(r.Origin.X, r.Origin.Z, r.Width, r.Height), e?.SimpleEconomy?.PurchaseCost ?? 0));
+            }
+        if (_park == null) return list;
+        var cells = new Dictionary<Node3D, (int X, int Y, Park.Footprint Fp)>();
+        foreach (var p in _park.Placed) if (p.Node != null) cells[p.Node] = (p.X, p.Y, p.Fp);
+        foreach (var b in _busPlacements)
+        {
+            if (inSim.Contains(b.RuntimeId) || !IsInstanceValid(b.Node) || !cells.TryGetValue(b.Node, out var at)) continue;
+            if (b.Definition?.CompiledEntry is not { } e) continue;
+            byte flags = e.Kind == AssetResourceDatabase.AssetKind.Feature ? e.RawFeatureFlags.GetValueOrDefault() : (byte)0;
+            list.Add(new AwardPlacement(e.Kind, 1, flags, 0,
+                new AwardFootprint(at.X, at.Y, at.Fp.Width, at.Fp.Height), e.SimpleEconomy?.PurchaseCost ?? 0));
+        }
+        return list;
+    }
+
+    /// <summary>`0x1531D8`, the laid path cells (⚠ INFERRED: grid type 2 is <see cref="ParkPathKind.Path"/>).</summary>
+    int AwardPathCells()
+    {
+        var paths = _park?.Paths;
+        if (paths == null) return 0;
+        int n = 0;
+        foreach (var c in paths.Cells) if (paths.Kind(c) == ParkPathKind.Path) n++;
+        return n;
     }
 
     /// <summary>The management hooks every park's <see cref="ParkStaff"/> gets (called from EnsureStaff).</summary>

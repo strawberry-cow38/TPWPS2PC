@@ -147,6 +147,12 @@ if (args.Contains("--research-persistence-only"))
     Console.WriteLine(bad==0 ? "PASS research persistence: explicit core section fixtures (whole-save coordinator/viewer not exercised)" : $"FAIL: {bad}");
     return bad==0?0:1;
 }
+if (args.Contains("--gold-tickets-only"))
+{
+    GoldTicketChecks.Run(disc, Check);
+    Console.WriteLine(bad==0 ? "PASS gold tickets: goal records, world-map links, the weekly pass's words and every goal and award at its bar" : $"FAIL: {bad}");
+    return bad==0?0:1;
+}
 if (args.Contains("--research-only"))
 {
     ResearchChecks.Run(disc, Check);
@@ -790,6 +796,7 @@ ParkStatsChecks.Run(disc, Check);
 LoanChecks.Run(disc, Check);
 ResearchChecks.Run(disc, Check);
 ResearchPersistenceChecks.Run(disc, Check);
+GoldTicketChecks.Run(disc, Check);
 SideshowPresentationChecks.Run(disc, Check);
 ManagementChecks.Run(disc, terrain, Wad("DATA"), wad, world, Check);
 AdvisorChecks.Run(disc, terrain, Wad("DATA"), wad, world, Check);

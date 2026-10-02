@@ -236,6 +236,22 @@ _EMISSION_WITNESSES = [w for w in REQUIRED_WITNESSES if w.startswith('ok   parti
 COVERAGE += '\n' + '\n'.join(['  ok   particle emission: filler'] * (97 - len(_EMISSION_WITNESSES))
                               + ['  ' + w for w in _EMISSION_WITNESSES])
 
+# Synthetic classifier receipts for the gold-ticket family, not native counts.
+_TICKET_WITNESSES = [w for w in REQUIRED_WITNESSES if w.startswith('ok   gold tickets:')]
+COVERAGE += '\n' + '\n'.join(['  ok   gold tickets: filler'] * (33 - len(_TICKET_WITNESSES))
+                              + ['  ' + w for w in _TICKET_WITNESSES])
+
+
+class GoldTicketCoverageTests(unittest.TestCase):
+    def test_gold_ticket_count_and_witnesses_required(self):
+        self.assertEqual(REQUIRED_CHECKS['gold_tickets'], 33)
+        controls = ['\n'.join(x for x in COVERAGE.splitlines() if 'gold tickets:' not in x),
+                    COVERAGE.replace('  ok   gold tickets: filler\n', '', 1)]
+        controls += [COVERAGE.replace(w, 'ok   gold tickets: filler', 1) for w in _TICKET_WITNESSES]
+        for changed in controls:
+            result = classify('JUNGLE', 0, changed + '\nPASS')
+            self.assertEqual(result['status'], 'missing_coverage')
+
 
 class SideshowCoverageTests(unittest.TestCase):
     def test_family_floor_registered(self):

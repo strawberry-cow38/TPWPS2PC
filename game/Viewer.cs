@@ -79,7 +79,7 @@ public partial class Viewer : Node3D
     /// things: this one counts days, that one counts ticks.</summary>
     readonly ParkClock _calendar = new();
     /// <summary>⚠ Counters only -- nothing in this port earns a ticket or a medal yet.</summary>
-    readonly ParkAwards _awards = new();
+    readonly ParkAwards _awards = new() { DebugAllTickets = System.Environment.GetEnvironmentVariable("TPW_ALL_TICKETS") == "1" };
     TextureRect _ticketIcon, _starIcon, _ticketNum, _ticketNumShadow, _starNum, _starNumShadow;
     string _ticketShown, _starShown;
     TextureRect _costLine, _costShadow, _stockLine, _stockShadow;
@@ -448,6 +448,7 @@ public partial class Viewer : Node3D
             else if (a == "--graph-demo") _graphDemo = true;
             else if (a == "--stats-demo") _statsDemo = true;
             else if (a == "--all-researched") _allResearched = true;
+            else if (a == "--all-tickets") _awards.DebugAllTickets = true;   // [0x2E98C0]: 255 tickets in hand
             else if (a.StartsWith("--take-loan=")) _takeLoans.AddRange(a["--take-loan=".Length..].Split(',').Select(int.Parse));
             else if (a.StartsWith("--delete-test=")) _deleteTest = a["--delete-test=".Length..];
             // ⭐ `--benchmark=<seconds>`: measure frame time and what is accumulating, then quit.
@@ -1081,9 +1082,11 @@ public partial class Viewer : Node3D
             // ⭐ Nothing until the lobby, or its prompt, has been up for a moment (LobbyInputReady):
             // a key pressed while the lobby was loading is not a choice made in it.
             if (!LobbyInputReady && k.Keycode is Key.Up or Key.Down or Key.Left or Key.Right
-                                               or Key.Enter or Key.KpEnter or Key.Space) return;
+                                               or Key.Enter or Key.KpEnter or Key.Space or Key.T) return;
             switch (k.Keycode)
             {
+                // ⭐ Mode 7, the ticket count (the console's logical button 2).
+                case Key.T: if (!_lobbyPrompt) ShowLobbyTickets(); return;
                 case Key.Up:    if (!_lobbyPrompt) LobbyMove(0); return;
                 case Key.Down:  if (!_lobbyPrompt) LobbyMove(1); return;
                 case Key.Left:

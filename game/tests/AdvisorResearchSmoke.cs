@@ -202,8 +202,21 @@ public partial class AdvisorResearchSmoke : Node
                 await Wait(() => Read<bool>(viewer, "_lobbyMode") && !Read<bool>(viewer, "_lobbyPrompt"), 5, "ordinary Cancel clears the lobby prompt");
             }
             await Wait(() => viewer.LobbyInputReady, 5, "lobby settles after Close Park");
+            // ⭐ A new game holds only JUNGLE 1 open (0x1C3290), so FANTASY 1 is bought, not walked onto: one
+            // ticket from JUNGLE 1 (link record 9). Handed over here, then spent through the real prompt.
+            var awards = Read<ParkAwards>(viewer, "_awards");
+            awards.AwardGoldTickets(1);
+            int before = awards.GoldTickets;
             await KeyPress(Key.Right);
-            Check(Read<int>(viewer, "_lobbyRecord") == 4, "real navigation selects FANTASY first park");
+            Check(Read<bool>(viewer, "_lobbyPrompt") && Read<int>(viewer, "_lobbyPromptMode") == 2
+                  && Read<int>(viewer, "_lobbyRecord") == 0 && awards.SlotState(2, 0) == ParkAwards.SlotLocked,
+                  "FANTASY 1 is locked: stepping onto it offers it for tickets and stays on JUNGLE 1");
+            await Wait(() => viewer.LobbyInputReady, 5, "buy prompt settles");
+            await KeyPress(Key.Enter);
+            Check(Read<int>(viewer, "_lobbyRecord") == 4 && awards.GoldTickets == before - 1
+                  && awards.SlotState(2, 0) == ParkAwards.SlotOpen && !Read<bool>(viewer, "_lobbyPrompt"),
+                  "real navigation buys FANTASY first park for one ticket and stands on it");
+            await Wait(() => viewer.LobbyInputReady, 5, "lobby settles after the purchase");
             await KeyPress(Key.Enter);
             await Wait(() => viewer.LobbyInputReady, 5, "lobby prompt settles");
             await KeyPress(Key.Enter);

@@ -83,6 +83,11 @@ public partial class Viewer
     bool _lobbyBoxHasFont;
     UiPanel _lobbyPanel;
     bool _lobbyPrompt;
+    /// <summary>Which `0x36DF18` mode the open prompt is: 6 enter the island, 1 not enough tickets, 2 buy it,
+    /// 7 the ticket count. ⚠ The port's prompt used to be mode 6 only.</summary>
+    int _lobbyPromptMode = 6;
+    /// <summary>The island a mode-2 prompt is selling (`+0x7C`), and its price (`+0x7D`).</summary>
+    int _lobbyBuyTarget = -1, _lobbyBuyCost;
     float _lobbyModelTime;
     bool _lobbyAimed;
 
@@ -437,6 +442,7 @@ public partial class Viewer
     {
         if (_lobbySlots == null || record < 0 || record >= _lobbySlots.All.Count) return;
         if (!_lobbySlots.All[record].IsPark || record == _lobbyRecord) return;
+        if (LobbyLocked(record)) { ShowLobbyBuyPrompt(record); return; }   // the click's version of 0x2186B0
         _lobbyRecord = record;
         LobbyReport();
         LobbyAimCamera();
@@ -501,6 +507,8 @@ public partial class Viewer
         if (_lobbySlots == null) return;
         if (_lobbySlots.All[_lobbyRecord].Neighbour(dir) is not { } next)
         { Status($"{LobbyName(_lobbyRecord).Replace("\n", " / ")} -- nothing that way"); return; }
+        // ⭐ `0x2186B0`: a step onto a LOCKED island does not move -- it offers to buy it.
+        if (LobbyLocked(next)) { ShowLobbyBuyPrompt(next); return; }
         _lobbyRecord = next;
         LobbyReport();
         LobbyAimCamera();
@@ -780,6 +788,7 @@ public partial class Viewer
         string T(int id) => id >= 0 && id < _text.Keys.Length ? _text.Text(TextLanguage, id) ?? $"#{id}" : $"#{id}";
         string ok = T(0x1E9), cancel = T(0x130);
         _lobbyPrompt = true;
+        _lobbyPromptMode = 6;
         LobbySettle().Reset();      // a second click of the one that raised it must not answer it
         _lobbyBox.Show(T(1062).Replace("\n", " "), T(810).Replace("\n", " "), ok, cancel);
     }
@@ -790,8 +799,83 @@ public partial class Viewer
     void LobbyPromptAnswer()
     {
         _lobbyPrompt = false;
-        if (_lobbyBox is { Button: 0 }) { LobbyEnterPark(); return; }
-        ShowLobbyBox(_lobbyRecord);        // cancelled: back to the park's name
+        bool ok = _lobbyBox is { Button: 0 };
+        switch (_lobbyPromptMode)
+        {
+            case 6:
+                if (ok) { LobbyEnterPark(); return; }
+                break;
+            case 2:
+                // ⭐ `0x219338` case 2, OK: the island is bought -- its slot opens (`0x218E70(.., 0)` →
+                // `0x1C3528`), the tickets are spent (`0x1C3920`), and the map stands on it, sound 0x128.
+                if (ok && _lobbyBuyTarget >= 0)
+                {
+                    var slot = _lobbySlots.All[_lobbyBuyTarget];
+                    _awards.OpenSlot(slot.World, slot.ParkInWorld);
+                    _awards.SpendGoldTickets(_lobbyBuyCost);
+                    GD.Print($"[lobby] bought {LobbyName(_lobbyBuyTarget).Replace("\n", " ")} for {_lobbyBuyCost} ticket(s); "
+                           + $"{_awards.GoldTickets} left, {_awards.OpenParks} slots open");
+                    ManagementUiSound(0x128);
+                    _lobbyRecord = _lobbyBuyTarget;
+                    _lobbyBuyTarget = -1;
+                    LobbyReport();
+                    LobbyAimCamera();
+                }
+                break;
+        }
+        _lobbyPromptMode = 6;
+        ShowLobbyBox(_lobbyRecord);        // closed or cancelled: back to the park's name
+    }
+
+    /// <summary>An island the save has not opened: its slot reads `2` (<see cref="ParkAwards.SlotLocked"/>),
+    /// which `0x2184D0` copies into the island's `+0x06`.</summary>
+    bool LobbyLocked(int record)
+    {
+        if (_lobbySlots == null || record < 0 || record >= _lobbySlots.All.Count || !_lobbySlots.All[record].IsPark) return false;
+        var slot = _lobbySlots.All[record];
+        return _awards.SlotState(slot.World, slot.ParkInWorld) == ParkAwards.SlotLocked;
+    }
+
+    /// <summary>⭐⭐ `0x2186B0` on a locked island: its price from where the map stands
+    /// (<see cref="LobbySlots.OpenCost"/>), then mode 1 when the tickets in hand (`0x1C36D8`) fall short --
+    /// title 176 "Not Enough Gold...", body 666, OK -- else mode 2, title 962 "Open New Park", body 628 with
+    /// the price, OK and Cancel. Both `sprintf` the price into the body and play 0x12F (`0x218F78`).</summary>
+    void ShowLobbyBuyPrompt(int target)
+    {
+        if (_lobbyBox == null || !IsInstanceValid(_lobbyBox) || _text == null || _lobbySlots == null) return;
+        string T(int id) => id >= 0 && id < _text.Keys.Length ? _text.Text(TextLanguage, id) ?? $"#{id}" : $"#{id}";
+        int cost = _lobbySlots.OpenCost(_lobbyRecord, target);
+        bool afford = _awards.TicketsInHand() >= cost;                   // 0x1C36D8() < cost → mode 1
+        _lobbyPromptMode = afford ? 2 : 1;
+        _lobbyBuyTarget = afford ? target : -1;
+        _lobbyBuyCost = cost;
+        _lobbyPrompt = true;
+        LobbySettle().Reset();
+        string body = ParkGoals.FormatInts(T(afford ? 628 : 666), cost).Replace("\n", " ");
+        if (afford) _lobbyBox.Show(T(962).Replace("\n", " "), body, T(0x1E9), T(0x130));
+        else _lobbyBox.Show(T(176).Replace("\n", " "), body, T(0x1E9));
+        ManagementUiSound(0x12F);
+        GD.Print($"[lobby] {LobbyName(target).Replace("\n", " ")} is locked: costs {cost} from "
+               + $"{LobbyName(_lobbyRecord).Replace("\n", " ")}, {_awards.GoldTickets} in hand -> mode {_lobbyPromptMode}");
+    }
+
+    /// <summary>⭐ Mode 7 (`0x218F78`), title 198 "Gold ticket in...", body 406: tickets earnt / in the game
+    /// (`0x1C3810`, 5 + every park's `+0x31`), this island's tickets left / its `+0x31`, the floating (hidden-award)
+    /// tickets left / 5. ⚠ The console opens it on logical button 2 (`0x181250(2)`); the port uses T.</summary>
+    void ShowLobbyTickets()
+    {
+        if (_lobbyBox == null || !IsInstanceValid(_lobbyBox) || _text == null || _lobbySlots == null) return;
+        string T(int id) => id >= 0 && id < _text.Keys.Length ? _text.Text(TextLanguage, id) ?? $"#{id}" : $"#{id}";
+        var here = _lobbySlots.All[_lobbyRecord];
+        int parkTickets = ParkGoals.For(here.World, here.ParkInWorld)?.Tickets ?? 0;
+        string body = ParkGoals.FormatInts(T(406), _awards.TicketsEarntCount, ParkAwards.TicketsInGame,
+            _awards.ParkTicketsLeft(here.World, here.ParkInWorld), parkTickets, _awards.FloatingTicketsLeft, 5);
+        _lobbyPromptMode = 7;
+        _lobbyPrompt = true;
+        LobbySettle().Reset();
+        _lobbyBox.Show(T(198).Replace("\n", " "), body.Replace("\n", " "), T(0x1E9));
+        ManagementUiSound(0x12F);
+        GD.Print($"[lobby] tickets: {body.Replace("\n", " / ")}");
     }
 
     /// <summary>The middle of the seated parks, in world units.</summary>

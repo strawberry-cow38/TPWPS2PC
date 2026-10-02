@@ -17,8 +17,9 @@ namespace TPW.PS2.Data;
 /// ⭐ The in-the-red chain IS ported (advisor step A, READ decompile `0x16B0E8..0x16B194`): <see cref="RedMonths"/>.
 /// ⭐ `0x16B478` (the visitor statistics, <see cref="ParkStatistics"/>) and `0x100EF8` (the year roll,
 /// <see cref="ParkFinances.YearRoll"/>) are ported as of 2026-09-30, with the month end's park value.
-/// ⚠ NOT PORTED, said so: `0x100E88` (untraced here) and every weekly test
-/// but the Security Award's. ⚠ The loans `0x100A18` repays are not modelled (the port has none).
+/// ⭐ The weekly pass `0x16BC70` is ported WHOLE as of 2026-10-02 (<see cref="WeeklyPass"/>): the park's goals
+/// and all five hidden awards, each a Gold Ticket.
+/// ⚠ NOT PORTED, said so: `0x100E88` (untraced here).
 ///
 /// Core, so the audit drives it exactly as the viewer does: one <see cref="Advance"/> per frame.</summary>
 public sealed class ParkManagement
@@ -54,6 +55,18 @@ public sealed class ParkManagement
     public ParkStatistics Stats { get; set; }
     /// <summary>⚠ ADAPTER for `0x16B478`'s walk of the guest list: (n, Σ happiness `g+0x75`, Σ days in park).</summary>
     public Func<(int People, int HappinessSum, int TimeSum)> VisitorSample { get; set; }
+    /// <summary>⚠ ADAPTER for `0x14E170()` / `0x14E160()`, the world (0..3) and park (0, 1; 2 the test park) on the
+    /// map. Null: no goals record, so only the Security Award can be won (the shape every pre-2026-10-02 caller had).</summary>
+    public Func<(int World, int Park)> CurrentPark { get; set; }
+    /// <summary>⚠ ADAPTER for `0x14E538()` = `[0x2B72A4]`, Open Park's flag. Goal 3 waits for it.</summary>
+    public Func<bool> ParkOpen { get; set; } = () => true;
+    /// <summary>⚠ ADAPTER for `[0x2B7298]`, the absolute month (month + 12 x year) Open Park was pressed in
+    /// (`0x14E4C0`).</summary>
+    public Func<int> OpenedMonth { get; set; } = () => 0;
+    /// <summary>The weekly pass's questions about the park (<see cref="ParkAwardInputs"/>); null keeps those
+    /// awards shut.</summary>
+    public ParkAwardInputs AwardInputs { get; set; }
+
     /// <summary>⚠ ADAPTER for `0x153650`, the park rating (<see cref="AdvisorProducers.ParkRating"/>).</summary>
     public Func<int> Rating { get; set; }
     /// <summary>⚠ ADAPTER for `0x1011C8`, the park value in tenths (half the purchase price of everything placed).</summary>
@@ -116,28 +129,81 @@ public sealed class ParkManagement
         if (yearRolled) Finances?.YearRoll();                             // 0x100EF8 at 0x16B1BC
     }
 
-    /// <summary>⭐ `0x16BC70`, the weekly pass -- ONLY its Security Award test is ported (READ):
+    /// <summary>⭐⭐ `0x16BC70`, THE WEEKLY PASS, READ whole (findings/awards.md "The weekly pass, whole"). Every
+    /// win is `0x16BB38(cal, msg)`: a Gold Ticket (`0x1C38C0(1)`, UI sound 0xC5) and the advisor message.
     /// <code>
     ///   no goals record (0x16C0E8) or test park (0x153410): return
-    ///   ... the visitor/profit/business/placement tests (⚠ not ported)
-    ///   bit 0 of cal+0x28 clear and 0x104CE0(0x40) &gt; 0x50:
-    ///       0x16BB38(cal, 0xA0) = 0x1C38C0(1) (a gold ticket, UI sound 0xC5) then message 0xA0; set bit 0
-    ///   ... the other four hidden awards (⚠ not ported)
+    ///   goal 1  bit 1 clear, record+0xC &lt;= stats+0x20 (guests ever admitted)        → set bit 1, 0x9D
+    ///   goal 2  bit 2 clear, record+0x10 x 10 &lt; 0x100E40 (money goal)               → set bit 2, 0x9E
+    ///   goal 3  bit 3 clear, park open, (month + 12 x year − opened) / 12 &gt;= +0x14   → set bit 3, 0x9F
+    ///   goal 4  record+0x30, bit 4 clear, a sideshow, a shop and a feature, and
+    ///           ordinary + tour + track + coaster rides &gt; 1                       → 0xAA, set bit 4
+    ///   award 0 Security    clear, 0x104CE0(0x40) &gt; 0x50                          → 0xA0
+    ///   award 1 Upgrade     clear, rides &gt; 7 and every ride upgraded (0x16BB80)      → 0xA1
+    ///   award 2 Aesthetic   clear, rides &gt; 7 and Σ feature cost &gt;= record+0x18      → 0xA2
+    ///   award 3 Green       clear, 0x152FB0(5, 2)                                    → 0xA3
+    ///   award 4 Economy     clear, rides &gt; 9 and path cells &lt;= record+0x1C          → 0xA4
     /// </code>
-    /// ⭐ `0x104CE0` is 8× the covered fraction of 16×16-cell blocks (<see cref="ParkStaff.FeatureCoverage"/>),
-    /// so on a 64×76 park cameras in 5 distinct blocks win it.</summary>
+    /// The goal bits (`cal+0x24`) are the park's own (<see cref="ParkAwards.ParkGoalBits"/>, copied in at
+    /// construction and out at teardown, so held there directly); the award bits (`cal+0x28`) the game's.
+    /// ⚠ Goal 3's division is UNSIGNED, as the console's `divu`: a month before the opening would read as
+    /// thousands of years. ⭐ `0x104CE0` is 8× the covered fraction of 16×16-cell blocks
+    /// (<see cref="ParkStaff.FeatureCoverage"/>), so on a 64×76 park cameras in 5 distinct blocks win Security.</summary>
     public void WeeklyPass()
     {
         WeeklyPasses++;
         if (!GoalsRecordPresent() || TestPark()) return;
-        if (Staff == null) return;                                        // ⚠ no placed-object list to read
-        if (!Awards.HasHiddenAward(StaffTables.SecurityAwardBit)
-            && Staff.FeatureCoverage(0x40) > StaffTables.SecurityAwardCoverageAbove)
+        var at = CurrentPark?.Invoke();
+        ParkGoalRecord? record = at is { } p ? ParkGoals.For(p.World, p.Park) : null;
+        if (at != null && record == null) return;                          // 0x16C0E8 answered 0
+
+        if (record is { } goals && at is { } park)
         {
-            Awards.AwardGoldTickets(1);                                   // 0x1C38C0(1)
-            UiSound?.Invoke(StaffTables.UiSoundGoldTicket);
-            Advisor?.Invoke(StaffTables.SecurityAwardMessage);            // 0x107CA8(msg, 0xA0)
-            Awards.GrantHiddenAward(StaffTables.SecurityAwardBit);        // 0x16B918(cal, 0, 1)
+            int bits = Awards.ParkGoalBits(park.World, park.Park);
+            bool Has(int bit) => (bits & (1 << bit)) != 0;
+            void Goal(int bit)
+            {
+                bits |= 1 << bit;
+                Awards.SetParkGoalBits(park.World, park.Park, bits);        // 0x16B9A8(cal, bit, 1)
+                Win(ParkGoals.GoalMessages[bit]);                           // 0x16BB38(cal, msg)
+            }
+            if (!Has(1) && Stats != null && (uint)goals.Visitors <= (uint)Stats.PeopleVisited) Goal(1);
+            if (!Has(2) && Finances != null && goals.Profit * 10 < Finances.GoalMoney) Goal(2);
+            if (!Has(3) && ParkOpen())
+            {
+                uint years = (uint)(Clock.Month + Clock.Year * 12 - OpenedMonth()) / 12;
+                if (years >= (uint)goals.Years) Goal(3);
+            }
+            if (goals.StarterGoal && !Has(4) && AwardInputs?.StarterCounts?.Invoke() is { } c
+                && c.Sideshows != 0 && c.Shops != 0 && c.Features != 0 && (uint)c.Rides > 1)
+                Goal(4);
         }
+
+        if (!Awards.HasHiddenAward(StaffTables.SecurityAwardBit) && Staff != null
+            && Staff.FeatureCoverage(0x40) > StaffTables.SecurityAwardCoverageAbove)
+            Hidden(StaffTables.SecurityAwardBit);
+        if (record is not { } r || AwardInputs is not { } inputs) return;
+        int rides = inputs.Rides?.Invoke() ?? 0;
+        if (!Awards.HasHiddenAward(1) && (uint)rides > 7 && (inputs.AllRidesUpgraded?.Invoke() ?? false)) Hidden(1);
+        if (!Awards.HasHiddenAward(2) && (uint)rides > 7 && inputs.FeatureCost != null
+            && (uint)r.FeatureCost <= (uint)inputs.FeatureCost()) Hidden(2);
+        if (!Awards.HasHiddenAward(3) && (inputs.Green?.Invoke() ?? false)) Hidden(3);
+        if (!Awards.HasHiddenAward(4) && (uint)rides > 9 && inputs.PathCells != null
+            && (uint)inputs.PathCells() <= (uint)r.PathCells) Hidden(4);
+    }
+
+    /// <summary>`0x16BB38(cal, msg)`: a ticket, its sound, the message.</summary>
+    void Win(int message)
+    {
+        Awards.AwardGoldTickets(1);                                       // 0x1C38C0(1)
+        UiSound?.Invoke(StaffTables.UiSoundGoldTicket);
+        Advisor?.Invoke(message);                                         // 0x107CA8(msg, id)
+    }
+
+    /// <summary>A hidden award: the ticket and message 0xA0 + bit, then `0x16B918(cal, bit, 1)`.</summary>
+    void Hidden(int bit)
+    {
+        Win(0xA0 + bit);
+        Awards.GrantHiddenAward(bit);
     }
 }

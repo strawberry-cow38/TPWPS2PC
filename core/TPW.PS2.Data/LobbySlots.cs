@@ -24,8 +24,9 @@ public readonly record struct LobbySlot(
     /// <summary>The "no neighbour this way" sentinel: 20, past the last record.</summary>
     public const byte None = 20;
 
-    /// <summary>A park's entry. ⚠ Kind 1 records carry three bytes and nothing else; the eleven
-    /// that follow the parks are all zero, so they are spare rather than meaningful.</summary>
+    /// <summary>A park's entry. ⭐ Kind 1 records are the LINKS between islands, and they are not spare: their
+    /// three bytes sit at `+0x18..0x1A` (<see cref="LobbySlots.Links"/>), which this struct does not read -- an
+    /// earlier note here called the eleven "all zero" from looking only at the park fields.</summary>
     public bool IsPark => Kind == 0;
 
     /// <summary>Where direction <paramref name="dir"/> (0..3) leads, or null at a dead end.</summary>
@@ -60,7 +61,34 @@ public sealed class LobbySlots
     /// <summary>The `0x36DCC0` key table, indexed by record.</summary>
     public IReadOnlyList<int> Keys { get; }
 
-    LobbySlots(LobbySlot[] all, int[] keys) { All = all; Keys = keys; }
+    LobbySlots(LobbySlot[] all, int[] keys, (int A, int B, int Cost)[] links) { All = all; Keys = keys; Links = links; }
+
+    /// <summary>⭐⭐ THE ELEVEN LINKS, records 8..18 -- what tickets buy. `0x216F90` copies a kind-1 record's
+    /// `+0x18`/`+0x19`/`+0x1A` into the island's `+0x0A`/`+0x0B`/`+0x0C`: the two park RECORDS it joins and the
+    /// tickets it costs. On the disc: JUNGLE 1 to HALLOW 1 or FANTASY 1 for 1; either of those to JUNGLE 2 for
+    /// 4; JUNGLE 2 to SPACE 1 or HALLOW 2 for 6; and on for 8 to FANTASY 2 and SPACE 2.</summary>
+    public IReadOnlyList<(int A, int B, int Cost)> Links { get; }
+
+    /// <summary>⭐ `0x2186B0`'s price for opening <paramref name="target"/> from <paramref name="current"/> (park
+    /// RECORD indices): 1 when standing on JUNGLE 2 (record 1) and buying HALLOW 1 or FANTASY 1 (2, 4) -- an
+    /// explicit case ahead of the table -- otherwise the link joining the two, in EITHER direction (the table
+    /// search tests both byte orders), and 100 where none does.</summary>
+    public int OpenCost(int current, int target)
+    {
+        if (current == 1 && (target == 2 || target == 4)) return 1;
+        int cost = 100;
+        foreach (var (a, b, c) in Links)
+            if ((a == current && b == target) || (b == current && a == target)) cost = c;
+        return cost;
+    }
+
+    /// <summary>The record index of park <paramref name="park"/> (0, 1) in <paramref name="world"/>, or -1.</summary>
+    public int RecordOf(int world, int park)
+    {
+        for (int i = 0; i < All.Count; i++)
+            if (All[i].IsPark && All[i].World == world && All[i].ParkInWorld == park) return i;
+        return -1;
+    }
 
     /// <summary>⭐ Which loaded model a record wants: the key table minus one.
     ///
@@ -146,6 +174,13 @@ public sealed class LobbySlots
         int kat = At(KeyTable, 8 * 4);
         var keys = new int[8];
         for (int i = 0; i < 8; i++) keys[i] = (int)U32(kat + i * 4);
-        return new LobbySlots(all, keys);
+        var links = new List<(int, int, int)>();
+        for (int i = 0; i < count; i++)
+            if (all[i].Kind == 1)
+            {
+                int o = at + i * Stride;
+                links.Add((elf[o + 0x18], elf[o + 0x19], elf[o + 0x1A]));
+            }
+        return new LobbySlots(all, keys, links.ToArray());
     }
 }
