@@ -3,8 +3,19 @@
 Master, 2026-10-01: *"kill all the sea stuff we have rn and reimplement it properly, assume
 everything previous was wrong"*, then *"okay then research the sea from the ps2 version"*.
 
-**Answer: on the PS2 the sea is a static, opaque, un-animated textured sheet. It does not morph
-and it does not scroll. The only "waves" in the game are a sound event.**
+**Answer, for the layer this document measured: `A_SEA_01..06` is a static, opaque, un-animated
+textured sheet. It does not morph and it does not scroll.**
+
+⚠⚠ **BUT THAT IS NOT THE WHOLE SEA, AND THIS DOCUMENT'S FIRST HEADLINE WAS TOO BROAD.** On
+2026-10-02 master, who has the PS2 running under an emulator, reported: *"theres a stationary opaque
+layer (which we have rn) and a sine translucent layer above it"*, later softened to *"maybe not
+specifically sine. but some kind of wave"*.
+
+So there are **TWO** layers and this document only ever found one. The stationary opaque layer
+below IS `A_SEA` and master confirms it matches what the port ships — that half stands. **A second,
+translucent, moving layer exists and has not been found.** Everything below about `A_SEA` remains
+measured and true; it simply does not describe the upper layer. The hunt for it is astraclaw's as
+of 2026-10-02. What has been eliminated is in "The upper layer: what it is NOT" at the end.
 
 Everything below is measured off the disc. Where something is inferred it says so.
 
@@ -134,3 +145,37 @@ heard, not animated.
 executable's symbols, and they contain no mechanism by which the sea could move. The PSX is a
 different build and *does* roll its sea texture one row per frame (VRAM diff of a running park) — so
 if the PS2 sea ever does visibly move, that is a capture to bring back, not a number to guess.
+
+
+# The upper layer: what it is NOT (2026-10-02)
+
+Master observes a translucent moving layer above `A_SEA`. These are the places it is **not**, each
+with the control that makes the negative mean something. None of this finds it; it narrows it.
+
+- **Not shipped geometry.** Every `.mps` in JUNGLE.WAD *and* DATA.WAD was scanned for a mesh over
+  the sea footprint. The only things there are land, bushes, trees and hoardings. `Sky/` is three
+  textures and no mesh. So the layer is **built at runtime**.
+- **Not the VU1 renderer.** All 816 instructions disassemble. Its entire float immediate pool is
+  **{0.125, 128, 255}** (lighting scale and clamp), and **every load is a constant offset or a
+  sequential post-increment — there is not one computed-index load**. A table lookup is therefore
+  impossible in it, and position goes straight into the matrix multiply.
+- **Not a second copy in EE RAM.** A PCSX2 savestate holds exactly **one** copy of the `A_SEA`
+  vertices, byte-identical to the disc. Searching all 32 MB for a working copy with matching X/Z
+  and a free Y finds nothing. ⚠ Controls were static meshes, so this test cannot see a displacement
+  that is built straight into a DMA packet — and the river, which demonstrably animates, also reads
+  byte-identical, so the instrument is partly blind. It is not strong evidence on its own.
+- **Not any user of the engine's sine tables.** All **14** readers censused: cosine/sine pairs
+  0x40 apart (rotation matrices), one SLERP, object bob and drift (`0x1ba7f0`, `0x1bb888`), and a
+  2D sprite wave (`0x13ffa8`). **None builds a sheet.** The census found real wave users, so the
+  instrument works.
+
+⚠⚠ **THE TRAP THAT COST AN HOUR, WRITTEN DOWN SO NOBODY REPEATS IT: the sine tables are NOT IN THE
+ELF IMAGE.** `FUN_001a6630` builds them into `.bss` at startup — 4096/turn at `0x2e31b0` and
+256/turn at `0x33cc60`, with the radians->index scale at `0x2e31a8` and the mask at `0x2e31a4`.
+Grepping the file for a sine table returns **zero** and reads exactly like "this engine has no sine".
+Use the savestate RAM. See `feedback_image_is_not_authority_for_runtime_globals`.
+
+⭐ **Untested idea, the one worth trying next:** it need not be a sine at all. A precomputed or
+triangle wave, or the terrain path drawing `A_SEA` a **second time** with alpha and a UV offset,
+would be invisible to every check above — the drawn-twice case especially, because it adds no
+geometry, no new material and no table lookup.
