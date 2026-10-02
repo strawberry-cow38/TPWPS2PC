@@ -1,10 +1,59 @@
-# Procedural park water implementation — READY WITHDRAWN, correcting peer gate
+# Procedural park water implementation — corrected clean gate PASS; ready for peer re-gate
 
 2026-10-02, requested by strawberry at Discord message1555509148982968411.
 Based on `tinyclaw/particle-schedule`8363918 plus research trace0051c42; Cow guest atlas2acd035 was merged explicitly before the full gates.
 
 
-## 2026-10-02 peer gate correction — NOT READY
+## Current clean gate — corrected implementation, 2026-10-02
+
+**Ready for Tinyclaw's re-gate; not merged to main.** Every run below used clean/pushed
+revision1e8051dd49c4174e2c25355749e7d4dc14312b45. The handoff commit changes this Markdown only.
+Source fingerprint52e0f0a919c43de32b3bc8a95e8da194a7e1a06a469291afcb11385350d01e38 and the
+actual game assembly snapshot match every rendered manifest at completion. All recorded log
+hashes were rechecked. `/tmp/tpw-water-corrected-gates.exit` is0; the core's baseline exit2 is
+preserved, not mislabeled as all-pass. No source mutation or engine job remains live.
+
+| Gate | Corrected clean outcome |
+| --- | --- |
+| Python tool suite |165 PASS |
+| Full core8 |4 PASS /4 exact known retail failures, no new failure;80 water checks on each park |
+| Actual shipping water |16/16 PASS, all8 parks at640x360 and1152x648;40 checks each |
+| Zero-engine-delta live-clock control |18 PASS at both sizes |
+| Dynamic mesh/alpha/lens component |31 PASS at both sizes |
+| Declared ordinary-loader reset |63 PASS at both sizes; JUNGLE/1 then FANTASY/2 |
+| Existing Viewer regressions |12/12 PASS: pointer, mechanic, management, advisor, coaster, vehicles on JUNGLE/1 and HALLOW/2 |
+| Research persistence / particle child / particle schedule |24 /62 /18 PASS respectively, each at both sizes |
+| Headless NativeBus / audio lifecycle |1088 /38 PASS; Cow35099cc included |
+| Same-build near-camera A/B |4/4 PASS,14 receipts each; actual steady dimension16 on ON runs |
+| Same-build far-camera A/B |4/4 PASS,14 receipts each; actual steady dimension12 and clip Z9.278918 on ON runs |
+
+The core remains at its established JUNGLE/FANTASY green, HALLOW/SPACE known-retail-red
+baseline. The40 rendered functional cases,2 headless cases and8 bounded performance runs
+are separately scoped; this is NOT a claim of running every existing viewer scene across all
+parks. The final rendered/retirement/error gates all pass without weakening the error regex.
+The seven correction mutants and actual default-family omission controls described below
+remain rejected; the old mapping fails six independently decoded sea-placement joins.
+
+Local SOFTWARE-RENDERER near A/B medians OFF69.223/72.783ms vs ON79.360/80.018ms,
+with124/120 vs112/111 samples. Far OFF67.477/66.631ms vs ON76.258/77.074ms,
+with130/132 vs114/112 samples. Every four-run group has one matching camera fingerprint,
+normal bounded timing and clean teardown; near and far cameras are not compared with each other.
+These values are diagnostics of the local software renderer, not forecasts of player-GPU cost.
+Cow's corrected hardware follow-up remains attributed below; their requested fresh near/far
+repeat can be run on the handoff tip without assuming a load-time LOD line proves steady detail.
+
+Final evidence retained outside Git:
+- `/tmp/tpw-water-corrected-{core,park-water-clock,procedural-water-component,park-water-reset,viewer,highres,regression,research-persistence,particle-child,particle-schedule,runtime,near-perf,far-perf}/manifest.json`.
+- `/tmp/tpw-water-corrected-python.log`, `-gates-run.log`, `-verification.json`.
+- `/tmp/tpw-water-peer-mutants/manifest.json`, `/tmp/tpw-water-corrected-omission-release/manifest.json`.
+
+Still explicitly outside this slice: runtime native lens switches beyond the guarded boot
+lens, full native global RNG history, exact emulator VU/GS pixel parity, and deterministic
+offline film/still clock integration. The live decoded clock is not altered to fit the offline
+tool. The branch includes Cow's gait/atlas/visibility correction and the particle-schedule base,
+NOT Tinyclaw's later gold-ticket/coaster-stats branch. No new task is started by this handoff.
+
+## 2026-10-02 peer gate correction history — resolved by the clean gate below
 
 Tinyclaw's gate1555567532986077305 found that native park index0 is terrain_1 and1 is
 terrain_2. I had treated the comparison against1 as external terrain_1, reversing HALLOW,
@@ -38,8 +87,8 @@ both projects build. Corrected component31/reset63 pass at both sizes; shipping4
 SPACE/1 and SPACE/2. Seven new compiled controls all fail: reversed variants, seeded Y/Z
 order, shifted RNG draws, missing laptop gate, early LOD truncation, Godot-projection LOD,
 and main-grid-only AABB. Each source was restored byte-for-byte and both projects rebuilt.
-The corrected full clean matrix rerun is still pending. No new READY
-claim or merge is authorized. Both earlier software/hardware performance tables below apply
+The corrected full clean matrix rerun has now completed and is verified below.
+This is readiness for peer re-gating, not a merge authorization. Both earlier software/hardware performance tables below apply
 only to the older LOD and do not license the corrected detail level; Cow explicitly requests
 a fresh hardware A/B (1555570841952194651).
 
@@ -93,8 +142,8 @@ byte-for-byte; Release core and Debug game rebuilt. Evidence:
 /tmp/tpw-water-corrected-omission-release/manifest.json. The preceding attempt built Debug but
 executed the stale Release assembly and was INVALID as a mutation control; it was not counted.
 
-The corrected full clean gate queue is the remaining readiness condition. No merge is requested
-on the strength of the partial runs or the hardware timing alone.
+The corrected full clean gate queue subsequently completed successfully; its exact results
+are recorded below. No merge is performed or authorized by this document.
 
 ## What exists
 
