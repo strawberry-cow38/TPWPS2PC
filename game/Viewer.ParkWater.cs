@@ -10,6 +10,7 @@ public partial class Viewer
     ProceduralParkWaterView _nativeParkWater;
     NativeWater.Profile _nativeWaterProfile;
     NativeWater.NativeNoise _nativeWaterNoise;
+    ulong _nativeWaterLastUsec;
     // Explicit reproducible port RNG stream. Native RNG arithmetic is used, but the game's
     // realized global seed/other consumers are not restored: no frame-exact phase claim.
     uint _nativeWaterSeed = 1;
@@ -22,6 +23,7 @@ public partial class Viewer
             _nativeParkWater.QueueFree();
         }
         _nativeParkWater = null;
+        _nativeWaterLastUsec = 0;
     }
 
     void LoadNativeParkWater(string terrainPath)
@@ -60,17 +62,23 @@ public partial class Viewer
         try { view.Initialize(_nativeWaterNoise, state, world, variant, texture); }
         catch { view.QueueFree(); throw; }
         _nativeParkWater = view;
+        _nativeWaterLastUsec = Time.GetTicksUsec(); // load/initialization time is not replayed
         GD.Print($"[park-water] loaded world={worldName} terrain={variant} texture={source.SourceWad}{source.SourcePath} "
             + $"alpha={source.Translucent} grid={view.Dimension} phase={state.Phase:F4} "
             + $"native-bounds={view.Bounds} seed=explicit-port-stream");
     }
 
-    void StepNativeParkWater(double delta)
+    void StepNativeParkWater(double processDelta)
     {
         if (_nativeParkWater == null || !GodotObject.IsInstanceValid(_nativeParkWater)) return;
+        // The decoded consumer uses gated elapsed real milliseconds, not Godot's scaled/capped
+        // process delta. Sample a monotonic clock even when engine TimeScale is zero.
+        ulong now = Time.GetTicksUsec();
+        double elapsed = _nativeWaterLastUsec == 0 ? 0 : (now - _nativeWaterLastUsec) / 1000000.0;
+        _nativeWaterLastUsec = now;
         bool shown = _mode == Mode.Park && !_lobbyMode && _terrain != null && _terrain.Root.Visible;
         _nativeParkWater.Visible = shown;
         // No time from a lobby/load freeze is replayed into a parked drawable on reentry.
-        if (shown) _nativeParkWater.Step(delta, _playing, _cam);
+        if (shown) _nativeParkWater.Step(elapsed, _playing, _cam);
     }
 }

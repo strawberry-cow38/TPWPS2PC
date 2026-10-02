@@ -134,6 +134,25 @@ SCENE_WITNESSES = {
 # Kept OUT of the ordinary eight-park scene cross-product: two initialized owners and
 # explicit component data/quantum setup. A map-count exception is scoped to this named case.
 STANDALONE_CASES = {
+    'park-water-clock': {
+        'scene': 'ParkWaterClockAudit', 'label': 'PARK WATER CLOCK',
+        'minimum': 18, 'maps': (('JUNGLE', 'terrain_1'),),
+        'user_args': ('--map=JUNGLE  terrain_1.mps', '--mode=park'),
+        'resolutions': ('640x360', '1152x648'),
+        'scope': 'declared public-engine TimeScale=0 control with normal Viewer and real Pause; not ordinary player/emulator proof',
+        'numbered_checks': True,
+        'witnesses': (
+            'engine process delta actually becomes zero',
+            'native wall clock advances despite zero engine delta',
+            'native phase advances despite zero engine delta',
+            'actual uploaded height moves despite zero engine delta',
+            'actual uploaded V moves despite zero engine delta',
+            'real Pause key still gates native clock',
+            'wall time is discarded while input-paused',
+            'clock-control Viewer retired normally',
+            'clock-control actual water retired normally',
+        ),
+    },
     'procedural-water-component': {
         'scene': 'ProceduralParkWaterAudit', 'label': 'PROCEDURAL PARK WATER',
         'minimum': 28, 'maps': (), 'user_args': (),

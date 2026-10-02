@@ -428,6 +428,16 @@ class ParticleScheduleStandalone(unittest.TestCase):
 
 
 class ParkWaterCoverage(unittest.TestCase):
+    def test_independent_clock_control_contract_and_semantics(self):
+        spec = vm.STANDALONE_CASES['park-water-clock']
+        self.assertEqual((spec['scene'], spec['minimum'], spec['maps'], spec['user_args']),
+            ('ParkWaterClockAudit', 18, (('JUNGLE', 'terrain_1'),), ('--map=JUNGLE  terrain_1.mps', '--mode=park')))
+        text = self.standalone('park-water-clock')
+        self.assertEqual(vm.classify_standalone('park-water-clock', output(text))['status'], 'pass')
+        for changed in [text.replace('checks=18;', 'checks=17;'),
+                        text.replace('native wall clock advances despite zero engine delta', 'filler')]:
+            self.assertEqual(vm.classify_standalone('park-water-clock', output(changed))['status'], 'missing_coverage')
+
     def test_independent_literal_contracts(self):
         self.assertEqual(vm.SCENES['park-water'], ('ParkWaterSmoke', 'PARK WATER SMOKE', 35))
         component = vm.STANDALONE_CASES['procedural-water-component']

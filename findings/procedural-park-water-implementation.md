@@ -1,7 +1,7 @@
 # Procedural park water implementation — WIP, not ready to merge
 
 2026-10-02, requested by strawberry at Discord message1555509148982968411.
-Based on `tinyclaw/particle-schedule`8363918 plus the research trace0051c42.
+Based on `tinyclaw/particle-schedule`8363918 plus research trace0051c42; Cow guest atlas2acd035 was merged explicitly before the full gates.
 
 ## What exists
 
@@ -23,8 +23,10 @@ Based on `tinyclaw/particle-schedule`8363918 plus the research trace0051c42.
 ## Important translation limits / choices
 
 The native water consumer uses the gated real-time clock `0x2F07B0`, sampled in10ms steps
-(`0x220C78`), **not** fixed simulation D. The view retains sub-10ms time and discards elapsed
-paused time. Rendering/projection/clip-Z are translated through Godot; full native VU/GS
+(`0x220C78`), **not** fixed simulation D. The Viewer samples monotonic `Time.GetTicksUsec`, independently of engine process delta.
+The view retains sub-10ms time and discards elapsed paused/hidden time. Load initialization
+is not replayed. An earlier implementation mistakenly passed engine delta and was corrected
+with an actual zero-engine-delta compiled control. Rendering/projection/clip-Z are translated through Godot; full native VU/GS
 rasterization and camera parity are not claimed.
 
 The core receives an explicit RNG seed. The viewer currently uses a reproducible separate
@@ -62,19 +64,21 @@ terrain art or enable a guessed shader wave.
 - Current reset fixture: **57 PASS at both sizes**, exactly JUNGLE/1 then FANTASY/2. Reset uses a
   **declared direct ordinary LoadMap invocation**, not fabricated player input. Fresh state/phase,
   immediate hide, actual old-node retirement, and both maps' uploaded motion are required.
-- Current normal shipping Viewer: **35 PASS on JUNGLE/1** after strengthening. The final all-eight
-  rerun is pending. Natural-frame GPU height/V changes, actual water retirement, real input and
+- Shipping Viewer on production checkpoint d87a016: **35 PASS on all eight parks at both sizes**,
+  plus all current component/reset and selected regressions. The newly corrected monotonic-clock
+  build has35 PASS on JUNGLE/1; its final all-eight rerun is pending. Natural-frame GPU height/V changes, actual water retirement, real input and
   exact one-map/numbered/semantic receipts are enforced. A counters-moving-but-frozen-mesh mutant
   fails the new shipping-motion check.
-- **11 compiled mutations rejected**, byte-for-byte restoration and rebuild verified: missing
+- **12 compiled mutations rejected**, byte-for-byte restoration and rebuild verified: missing
   shipping load, missing shipping step, flat uploaded Y, frozen uploaded V, opaque shader, wrong
   placement, retained old water node, skipped zero-delta wrap, frozen CPU/GPU despite advancing
-  counters, per-step surface rebuild, and reversed cubic linear coefficient (five numerical fails).
+  counters, per-step surface rebuild, reversed cubic linear coefficient (five numerical fails), and feeding
+  engine delta rather than monotonic elapsed time. The latter fails the actual clock-control scene.
   The independently constructed component **still passed with the shipping load omitted**;
   the actual Viewer failed. They are not interchangeable proofs.
 - The **actual default audit helper was omitted and compiled**: full JUNGLE/1 still exited0/PASS,
   but the classifier rejected it as `missing_coverage`, procedural_water=0. Restored/rebuilt.
-- Tool classifier tests: **152 PASS**, including independently pinned76/35/28/57 floors,
+- Tool classifier tests: **162 PASS**, including independently pinned76/35/28/57/18/14 floors,
   one-below-floor controls, strict maps, ordinals, actual-motion/alpha/retirement semantics and
   two required receipts for each reset map. Counts alone are not a PASS.
 
@@ -97,13 +101,82 @@ Evidence lives outside Git:
   `/tmp/tpw-water-core-controls-rerun` (actual compiled controls).
 - `/tmp/tpw-water-strengthened-python.log`.
 
+## Full gates completed before the final clock correction
+
+On clean/pushed d87a016, the core8 matrix retained exactly4 PASS and4 known retail failures,
+with76 procedural_water assertions in every case. Component28 and reset57 passed both sizes;
+normal shipping water35 passed all8 parks at both sizes; pointer/mechanic/management/advisor/
+coaster/vehicles passed12 selected JUNGLE/1 + HALLOW/2 cases; research24, particle-child62 and
+particle-schedule18 passed both sizes. No exit error/leak warnings occurred in those gates.
+These are recorded as pre-correction evidence, not silently relabeled as the final new build.
+
+The first performance queue stopped on an **ObjectDB exit warning with water OFF** in the
+existing production benchmark's immediate Quit path. The warning was not waived and those
+results are not a clean A/B. A separate normal-Viewer performance fixture uses the smokes'
+ResetNativeBus/StopMusic/RideSounds.Clear, QueueFree, two frames and0.1s real retirement.
+This does not claim that the unrelated production benchmark teardown was repaired.
+
+## Corrected clock and bounded performance controls
+
+`park-water-clock` is a **declared public-engine control**, not ordinary player proof: after
+normal startup it temporarily sets Engine.TimeScale=0, observes actual zero process delta, then
+uses real Pause input. **18 PASS at both sizes**. Actual uploaded Y/V and native phase continue
+on wall time; real Pause still stops them. At640 the observation was705 real ms /660 native ms,
+and at1152 it was638 /630 (frame-boundary sampling plus10ms granularity). The compiled engine-
+delta version fails; sources restored byte-for-byte and rebuilt. This catches the actual earlier
+clock bug, not merely a classifier-string mutation.
+
+`tools/park_water_perf.py` records balanced off/on/on/off runs of the ordinary Viewer, the same
+A_SEA_02 aim, and the same build. Natural frame intervals and the nine-second sample window use
+monotonic ticks, not scaled/capped simulation delta or SceneTreeTimer duration. Sample arrays are
+fixed/bounded; the camera transform/projection must remain fixed and have the same fingerprint
+across all four runs. Exactly one successful aim, metric row, complete14-numbered receipt set,
+one JUNGLE/1 witness, and clean teardown are required. Malformed extra metric rows, wrong aims,
+missing retirement, short/unbounded windows, and old exit warnings are explicitly rejected.
+
+Current local experiment (new clock; clean final replay still pending):
+
+| water | median real frame ms | p95 ms | draw calls | samples |
+|---|---:|---:|---:|---:|
+| off |71.650|92.503|164|124|
+| on |80.138|105.773|165|111|
+| on |80.952|123.859|165|106|
+| off |70.817|95.592|164|122|
+
+All four pass14 with no error/leak warnings,9.0006..9.0881 seconds collected, and identical
+camera fingerprint. This machine reports **Mesa llvmpipe**, not the peer's4080; an unrelated
+headless server stayed untouched. The water adds one draw call and about9ms here. The base
+scene is already about71ms without water; neither these absolute fps nor this overhead is a
+claim about the player's GPU. Allocation figures include normal Viewer and instrumentation,
+not an isolated pure-water allocation cost.
+
+## Resolved footprint review and remaining capture limitation
+
+Actual JUNGLE/1 Viewer bounds for A_SEA_04 are X[-43.221455,-3.968615], Z[16.999979,52.234583].
+The moving main grid is X[17,42], Godot Z[-6.4,15], so it never covers that mesh. The exact eight
+native appended vertices form lower, fixed-height skirts at Y=-.9, partly overlapping its edge.
+No whole-ocean sheet or invented height adjustment was added. Cow independently reconciled the
+model-frame spans by uniform /10 and the known translation/Z reflection; the lead accepted the
+visible two-tier result. Logs contain `[water-footprint]` receipts.
+
+**Offline film/still clock mapping remains a known gap.** Existing film capture advances park
+simulation by fixed frame time, whereas the live water now correctly uses its own real clock.
+There is no separately tested capture-time override in this patch. Do not treat those clips as
+water timing or deterministic/repeatable pixel proof. The live clock is not bent to fit an offline
+tool; capture-clock integration is a separate future slice. No emulator phase/RNG/pixel parity
+claim is made. The rendered matrices enforce behavioral receipts, not golden-frame equality.
+
+Evidence additions outside Git:
+- `/tmp/tpw-water-final-{core,component,reset,viewer,highres,regression,research-persistence,particle-child,particle-schedule}`.
+- `/tmp/tpw-water-clock-registered`, `/tmp/tpw-water-clock-mutant`, `/tmp/tpw-water-clock-viewer-j1`.
+- `/tmp/tpw-water-wall-perf` (monotonic14-case A/B), `/tmp/tpw-water-clock-python.log`.
+- `/tmp/tpw-water-final-perf` (baseline immediate-Quit warning, retained as failed evidence).
+
 ## Must finish before READY handoff
 
-1. Sync the current guest-atlas staging change, then run the clean final all-eight core and
-   shipping-water sweep with current35 assertions; both sizes for component/reset and shipping.
-2. Existing pointer/mechanic/management/advisor/coaster/vehicles, research and particle regressions.
-3. Bounded same-build water-on/off performance check; no other agents' services/renderers touched.
-4. Resolve the A_SEA_04 review with actual Viewer-transformed bounds versus the bounded native
-   grid, **not** by widening or raising the draw to fit model-frame coordinates. The native grid
-   is not a promise of an overlay across the whole ocean. No invented wave/height replacement.
-5. Final docs/push/handoff. No emulator pixel/phase parity claim or asset commits.
+1. Run the clean final core8 and shipping-water8/both-size sweep on the corrected monotonic
+   build, including component28, reset57 and clock18 both sizes.
+2. Rerun the selected existing Viewer, research and particle regressions and the strict same-
+   build14-case balanced performance experiment.
+3. Append actual final results DOC-only, commit/push and coordinate handoff. Do not self-merge
+   to main or quietly incorporate unrelated gold-ticket/coaster work. No assets committed.
