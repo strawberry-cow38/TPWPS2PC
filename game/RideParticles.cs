@@ -28,6 +28,9 @@ public sealed class RideParticles
 {
     readonly Node3D _root;
     readonly ParticleLibrary _library;
+    /// <summary>Draws each one-shot's native plan: particle lives within the record's jitter, which decide
+    /// when a capped emitter has room again (<see cref="ParticleTemplate.Plan"/>).</summary>
+    readonly Random _rng = new();
     /// <summary>PARTICLE.WAD, open, so the sprites can be pulled out of it. ⚠ Null is allowed and
     /// means the placeholder: a park with no art must still run.</summary>
     readonly AssetLibrary _wad;
@@ -499,7 +502,23 @@ public sealed class RideParticles
         // continuous emitter Amount IS the steady-state population -- rate times how long one
         // particle lasts. Bubbles: one every 5 ticks over a 60-tick life = 12 alive at a time.
         bool loops = t.Immortal || persistent;
-        int count = loops ? t.SteadyPopulation() : Math.Clamp(t.ExpectedTotal(), 1, 200);
+        // ⭐⭐ A ONE-SHOT FOLLOWS THE NATIVE SCHEDULE, not a total. Master, 2026-10-02: "perform astra's
+        // fix on the actual game" -- astraclaw's reading (findings/particle-emission-scheduling.md) of
+        // what the console's emitter does tick by tick: the burst, then each tick's rate, gated by the
+        // live cap BEFORE the countdown runs, with every particle's own randomised life deciding when a
+        // slot opens again. ExpectedTotal summed the rates and ignored the cap: LaserRing drew 5 where
+        // the console allows 1 or 2, FirePuff 28 where it births 22, Flames 80 against 14..18.
+        // ⚠ Probes keep their single isolated particle, and continuous emitters their steady population.
+        List<int> planLives = null; IsolatedParticleSchedule.Trace plan = null;
+        List<ParticleBirthRuns.Run> runs = null; bool gated = false;
+        if (!loops && probe == 0)
+        {
+            planLives = new List<int>();
+            plan = t.Plan(_rng, planLives);
+            gated = t.CapGated(plan);
+            runs = ParticleBirthRuns.For(t, plan);
+        }
+        int count = loops ? t.SteadyPopulation() : plan != null ? plan.BirthTicks.Count : Math.Clamp(t.ExpectedTotal(), 1, 200);
         float life = Math.Clamp(t.Life * ParticleTemplate.TickMilliseconds / 1000f, 0.05f, 8f);
         // Drawn width is size/5120 CELLS and one cell is one unit here; start and end differ, so
         // the scale range is the record's own taper rather than an invented 0.5..1 spread.
@@ -515,7 +534,10 @@ public sealed class RideParticles
         // a puff that looks plausible and a puff that is right are different claims.
         GD.Print($"[fx] {e.Name}: {(loops ? $"CONTINUOUS {count} alive "
                      + $"({t.SteadyRatePerSecond():F1}/s x {life:F2}s life, cap {t.MaxLive})"
-                     : $"one-shot {count}")} | "
+                     : plan != null
+                        ? $"one-shot {count} by the native plan, births at ticks [{string.Join(",", plan.BirthTicks)}] "
+                          + $"in {runs.Count} run(s){(gated ? ", cap-gated" : "")} (old estimate {t.ExpectedTotal()})"
+                        : $"one-shot {count}")} | "
                + $"dir {motion.Direction.Snapped(Vector3.One * 0.01f)} "
                + $"spread {motion.SpreadDegrees:F0}deg speed {motion.SpeedMin:F2}..{motion.SpeedMax:F2} "
                + $"cells/s gravity {motion.Gravity:F2} cells/s2 "
@@ -561,7 +583,9 @@ public sealed class RideParticles
         var p = new CpuParticles3D
         {
             Name = $"Fx_{e.Id}_{e.Name}",
-            Amount = probe > 0 ? 1 : count,
+            // ⚠ At least 1: Godot logs an ERROR for 0, and a plan that births nothing builds this node only to
+            // drop it (see `drawn` below).
+            Amount = probe > 0 ? 1 : Math.Max(count, 1),
             // ⚠ A looping emitter must NOT be one-shot, and its Explosiveness must be 0 or Godot
             // dumps the whole population at the start of every cycle instead of trickling it.
             OneShot = !loops,
@@ -671,10 +695,27 @@ public sealed class RideParticles
         // ⚠ The already-born must NOT follow the emitter round; see _orbit. Godot's default is
         // already false, stated because the whole effect depends on it.
         p.LocalCoords = false;
-        _root.AddChild(p);
-        p.Emitting = true;
-        if (orbitRadius != 0f && orbitRate != 0f)
-            _orbit.Add((p, where, orbitRadius, orbitRate, orbitAngle));
+        float deadline = life;
+        // ⚠ A plan can birth NOTHING (a one-tick emitter whose last-quarter rate is 0). Nothing is drawn
+        // then, but the emit still happened: the child request below is made at spawn on the console
+        // (`0x18b5a8` reads `+0xb4` after the burst, whatever was born), so it must not be skipped.
+        bool drawn = runs == null || runs.Count > 0;
+        if (!drawn)
+        {
+            GD.Print($"[fx] {e.Name}: the native plan births nothing -- not drawn");
+            p.QueueFree();
+        }
+        else
+        {
+            if (runs != null)
+                deadline = DrawRuns(p, runs, planLives, life,
+                    runLife => (motion.Damping * EulerGain(motion, runLife), DecayCurve(motion.Lambda, runLife)));
+            _root.AddChild(p);
+            p.Emitting = true;
+            StartPendingRuns();
+            if (orbitRadius != 0f && orbitRate != 0f)
+                _orbit.Add((p, where, orbitRadius, orbitRate, orbitAngle));
+        }
         // ⚠ The cull deadline is WALL time while the particle ages on SCALED time, so slow motion
         // would free the probe mid-flight -- the one thing that would make the fix invisible.
         // ⚠⚠ AND THE CULL MUST NOT KILL IT. The deadline is one particle-lifetime, which is right
@@ -682,9 +723,9 @@ public sealed class RideParticles
         // bubbles back to a few seconds and then silence. So a continuous emitter is kept until its
         // holder goes or the script stops its object (<see cref="Stop"/>, `KILLOBJ tag`), and
         // `Emit` refuses to start a second one in the same place rather than stacking them.
-        if (loops) _continuous[ContinuousKey(id, where)] = p;
-        else _live.Add((p, Time.GetTicksMsec()
-                    + (ulong)(life * 1000 / Math.Max(0.01, Engine.TimeScale)) + 500));
+        if (drawn && loops) _continuous[ContinuousKey(id, where)] = p;
+        else if (drawn) _live.Add((p, Time.GetTicksMsec()
+                    + (ulong)(deadline * 1000 / Math.Max(0.01, Engine.TimeScale)) + 500));
         Spawned++;
         // Native spawn calls the non-directional spawn API for a particle child, even when the
         // parent was directional. Use the child's OWN offset words, not the parent's velocity.
@@ -700,6 +741,65 @@ public sealed class RideParticles
                    + $"initial offset ({offset.X:F4},{offset.Y:F4},{offset.Z:F4}); immediate spawn only");
         }
         return e;
+    }
+
+    /// <summary>⭐ The plan's runs (<see cref="ParticleBirthRuns"/>) onto CPU emitters. <paramref name="first"/> takes
+    /// the first run and starts now; each later run is a copy parented UNDER it, so the effect stays one
+    /// node to orbit, cull and count, started by a timer at its own tick. ⚠ Delays count from the plan's
+    /// FIRST birth, not from the spawn: an effect with no burst births on tick 1, and drawing that 31 ms
+    /// later than the request is not worth a frame of nothing. A run of one particle takes that particle's
+    /// own planned life, so a capped emitter's replacement appears as its predecessor goes; a longer run
+    /// keeps the record's base life. Returns the seconds until the last particle has died.</summary>
+    float DrawRuns(CpuParticles3D first, List<ParticleBirthRuns.Run> runs, List<int> lives, float life,
+                   Func<float, (float Damping, Curve Curve)> dampingFor)
+    {
+        float tick = ParticleTemplate.TickMilliseconds / 1000f;
+        float end = 0f;
+        // ⚠⚠ EVERY COPY BEFORE ANY CHILD. `Duplicate` copies a node's children too, so copying `first`
+        // after earlier runs had been parented under it doubled the tree per run: 16 runs for Flames
+        // were 2^15 nodes and froze the game. Caught by ParticleScheduleAudit hanging inside Emit(55).
+        var nodes = new List<CpuParticles3D> { first };
+        for (int k = 1; k < runs.Count; k++) nodes.Add((CpuParticles3D)first.Duplicate());
+        for (int k = 0; k < runs.Count; k++)
+        {
+            var run = runs[k];
+            var node = nodes[k];
+            float runLife = run.Count == 1 ? Math.Clamp(lives[run.FirstBirth] * tick, 0.05f, 8f) : life;
+            node.Amount = run.Count;
+            node.Lifetime = runLife;
+            // Godot births Amount evenly over Lifetime x (1 - explosiveness): a run of n ticks g apart.
+            node.Explosiveness = run.Ticks <= 1 ? 1f : Mathf.Clamp(1f - run.Ticks * run.Gap * tick / runLife, 0f, 1f);
+            if (runLife != life)
+            {
+                var (damping, curve) = dampingFor(runLife);
+                node.DampingMin = node.DampingMax = damping;
+                node.DampingCurve = curve;
+            }
+            float delay = (run.FirstTick - runs[0].FirstTick) * tick;
+            end = Math.Max(end, delay + run.Ticks * run.Gap * tick + runLife);
+            if (k == 0) continue;
+            node.Name = $"{first.Name}_run{k}";
+            node.Position = Vector3.Zero;
+            node.Emitting = false;
+            first.AddChild(node);
+            _pendingRuns.Add((node, delay));
+        }
+        return end;
+    }
+
+    /// <summary>Later runs waiting for their tick: started by <see cref="StartPendingRuns"/> once the first
+    /// node is in the tree, since a timer needs a tree.</summary>
+    readonly List<(CpuParticles3D Node, float Delay)> _pendingRuns = new();
+    void StartPendingRuns()
+    {
+        foreach (var (node, delay) in _pendingRuns)
+        {
+            if (!GodotObject.IsInstanceValid(node) || !node.IsInsideTree()) continue;
+            // ⚠ Scaled time, the clock the particles age on; the node may be gone by the time it fires.
+            var timer = node.GetTree().CreateTimer(delay);
+            timer.Timeout += () => { if (GodotObject.IsInstanceValid(node) && node.IsInsideTree()) node.Emitting = true; };
+        }
+        _pendingRuns.Clear();
     }
 
     /// <summary>⚠ INFERRED STOP PATH for a continuous emitter: the script's `KILLOBJ tag` on the object its

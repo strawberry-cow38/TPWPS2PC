@@ -233,7 +233,7 @@ COVERAGE += '\n' + '\n'.join(['  ok   particle child: filler'] * (236 - len(_CHI
 
 # Synthetic classifier controls, NOT native counts or renderer receipts.
 _EMISSION_WITNESSES = [w for w in REQUIRED_WITNESSES if w.startswith('ok   particle emission:')]
-COVERAGE += '\n' + '\n'.join(['  ok   particle emission: filler'] * (90 - len(_EMISSION_WITNESSES))
+COVERAGE += '\n' + '\n'.join(['  ok   particle emission: filler'] * (97 - len(_EMISSION_WITNESSES))
                               + ['  ' + w for w in _EMISSION_WITNESSES])
 
 

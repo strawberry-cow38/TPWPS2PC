@@ -94,7 +94,58 @@ static class ParticleEmissionChecks
         var wrapped = IsolatedParticleSchedule.Run(1,false,0,1,short.MinValue,-2,-2,-2,-2,false,_ => 10,3);
         Check(wrapped.BirthTicks.Count == 0 && wrapped.Countdown == short.MaxValue,
             "declared countdown wraps as signed16 before positivity check");
-        Console.WriteLine($"  particle emission comparison (not hardware): managed DensityScaled(-5,400)={ParticleTemplate.DensityScaled(-5,400,true)}, native-byte=-2; managed ExpectedTotal63={ring.ExpectedTotal()}, isolated admitted native-code-derived bounds=1..2; renderer unchanged");
+        // ⭐ THE GAME'S OWN PATH (2026-10-02, master: "perform astra's fix on the actual game"). The checks above
+        // pin the schedule; these pin that the renderer's inputs -- the managed scaler, the template's plan and
+        // its lifetimes -- agree with the independent native readings, so the game cannot drift from them.
+        int scalerMismatch = Enumerable.Range(-128, 256).Count(b => ParticleTemplate.DensityScaled(b, 400, true) != NativeRate((sbyte)b, 400));
+        Check(scalerMismatch == 0, $"managed DensityScaled agrees with the native signed-byte scaler on all 256 rate bytes at density400 ({scalerMismatch} differ)");
+        var bubbles = ParticleTemplate.Of(library[58]);
+        float tickSeconds = ParticleTemplate.TickMilliseconds / 1000f;
+        Check(Math.Abs(bubbles.SteadyRatePerSecond() - 1f / (-bubbles.Rate.Q1 * tickSeconds)) < 1e-4f && bubbles.Rate.Q1 < 0,
+            $"Bubbles58's continuous rate keeps its unscaled {bubbles.Rate.Q1} interval (NoDensityScaling honoured)");
+        Check(Math.Abs(ring.SteadyRatePerSecond() - 1f / (2 * tickSeconds)) < 1e-4f,
+            "LaserRing63's rate runs at the scaled -2 interval, not the authored -5");
+        var drawn = new System.Collections.Generic.HashSet<int>(); var rng = new Random(63);
+        for (int i = 0; i < 4000; i++) drawn.Add(ring.RandomLife(rng));
+        Check(drawn.Order().SequenceEqual(new[] {16,17,18,19,20,21,22,23,24}),
+            $"the game's particle life for base20 draws exactly 16..24 ({string.Join(',', drawn.Order())})");
+        var counts = new System.Collections.Generic.Dictionary<int,int>();
+        for (int seed = 0; seed < 400; seed++)
+        {
+            var plan = ring.Plan(new Random(seed));
+            counts[plan.BirthTicks.Count] = counts.GetValueOrDefault(plan.BirthTicks.Count) + 1;
+        }
+        Check(counts.Keys.Order().SequenceEqual(new[] {1,2}),
+            $"the game's plan for LaserRing63 births 1 or 2, both seen, never 5 (over 400 seeds: {string.Join(", ", counts.OrderBy(k => k.Key).Select(k => $"{k.Key} births x{k.Value}"))}; estimate {ring.ExpectedTotal()})");
+        // ⭐ AND THE RUNS THE RENDERER DRAWS (ParticleBirthRuns): every one-shot record, 40 plans each, cut into
+        // runs that must give back the plan's births exactly -- same ticks, same counts -- with no run longer
+        // than one particle life, and one run per tick wherever the cap gated the plan.
+        int oneShot = 0, plans = 0, lost = 0, tooLong = 0, gatedMerged = 0, gatedPlans = 0;
+        for (int id = 0; id < 105; id++)
+        {
+            if (library[id] == null) continue;
+            var t = ParticleTemplate.Of(library[id]);
+            if (t.Immortal || t.EmitterLife > 10000) continue;   // continuous, or Flies' 51-minute ADDOBJ
+            oneShot++;
+            for (int seed = 0; seed < 40; seed++)
+            {
+                var planned = new System.Collections.Generic.List<int>();
+                var plan = t.Plan(new Random(seed * 131 + id), planned);
+                bool gated = t.CapGated(plan);
+                var runs = ParticleBirthRuns.For(t, plan);   // the renderer's own call
+                plans++; if (gated) gatedPlans++;
+                var redrawn = runs.SelectMany(r => Enumerable.Range(0, r.Ticks)
+                    .SelectMany(k => Enumerable.Repeat(r.FirstTick + k * r.Gap, r.PerTick))).ToArray();
+                if (!redrawn.SequenceEqual(plan.BirthTicks) || planned.Count != plan.BirthTicks.Count) lost++;
+                tooLong += runs.Count(r => r.Ticks * r.Gap > Math.Max(t.Life, 1));
+                if (gated) gatedMerged += runs.Count(r => r.Ticks > 1);
+            }
+        }
+        Check(oneShot >= 60 && lost == 0 && tooLong == 0,
+            $"the renderer's runs give back every one-shot plan exactly ({oneShot} records x 40 plans = {plans}; {lost} differ, {tooLong} runs outlast a particle life)");
+        Check(gatedPlans > 0 && gatedMerged == 0,
+            $"a cap-gated plan is drawn one run per birth tick, each with its own life ({gatedPlans} gated plans, {gatedMerged} merged runs)");
+        Console.WriteLine($"  particle emission comparison (not hardware): managed DensityScaled(-5,400)={ParticleTemplate.DensityScaled(-5,400,true)}, native-byte=-2; managed ExpectedTotal63={ring.ExpectedTotal()} (estimate only), isolated admitted native-code-derived bounds=1..2; renderer plans one-shots with ParticleTemplate.Plan");
         NativeWords(disc,Check);
     }
     static void NativeWords(Disc disc,Action<bool,string> Check)

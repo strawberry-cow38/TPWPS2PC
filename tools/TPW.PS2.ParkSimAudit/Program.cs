@@ -98,7 +98,7 @@ if (args.Contains("--particle-child-only"))
 if (args.Contains("--particle-emission-only"))
 {
     ParticleEmissionChecks.Run(disc,Check);
-    Console.WriteLine(bad==0 ? "PASS particle emission: native-code-derived isolated schedule, not hardware observation or renderer change" : $"FAIL: {bad}");
+    Console.WriteLine(bad==0 ? "PASS particle emission: native-code-derived isolated schedule, not hardware observation; the renderer plans one-shots with it" : $"FAIL: {bad}");
     return bad==0?0:1;
 }
 var wad = Wad(world);

@@ -380,5 +380,46 @@ class ParticleChildStandalone(unittest.TestCase):
         self.assertEqual(len([c for c, env in calls if 'res://tests/ParticleChildSpawnAudit.tscn' in c]), 2)
 
 
+class ParticleScheduleStandalone(unittest.TestCase):
+    CASE = 'particle-schedule'
+
+    def good(self, checks=18):
+        spec = vm.STANDALONE_CASES[self.CASE]
+        receipts = list(spec['witnesses']) + ['synthetic fixture receipt'] * (checks - len(spec['witnesses']))
+        return '\n'.join([f'PARTICLE SCHEDULE ok: [{i}] {body}' for i, body in enumerate(receipts, 1)]
+                         + [f'PARTICLE SCHEDULE PASS checks={checks}; explicit component fixture'])
+
+    def classify(self, text=None, **extra):
+        return vm.classify_standalone(self.CASE, output(self.good() if text is None else text, **extra))
+
+    def test_contract_floor_and_witnesses(self):
+        spec = vm.STANDALONE_CASES[self.CASE]
+        self.assertNotIn(self.CASE, vm.SCENES)
+        self.assertEqual((spec['scene'], spec['minimum'], spec['maps'], spec['user_args']),
+                         ('ParticleScheduleAudit', 18, (), ()))
+        self.assertEqual(self.classify()['status'], 'pass')
+        text = self.good()
+        controls = [self.good(17), text.replace('ok: [18]', 'ok: [17]'),
+                    '\n'.join(x for x in text.splitlines() if 'ok: [18]' not in x),
+                    'PARTICLE SCHEDULE PASS checks=18;']
+        controls += [text.replace(w, 'synthetic fixture receipt', 1) for w in spec['witnesses']]
+        for changed in controls:
+            self.assertNotEqual(self.classify(changed)['status'], 'pass')
+        for line in ['PARTICLE SCHEDULE FAIL: [3] five births', 'PARTICLE SCHEDULE cleanup FAIL: leaked node']:
+            self.assertEqual(self.classify(text + '\n' + line)['status'], 'error_output')
+
+    def test_launch_has_disc_only(self):
+        disc = Path('/authorized/disc')
+        with patch.dict(os.environ, {'TPW_ALL_RESEARCHED': '1'}, clear=True):
+            env = vm.case_environment(disc, standalone=True)
+        for resolution in vm.standalone_runs(self.CASE):
+            command = vm.standalone_command(self.CASE, resolution, Path('/godot'), 'xvfb-run', disc)
+            vm.validate_standalone_launch(self.CASE, command, env, disc, resolution=resolution)
+            self.assertIn('res://tests/ParticleScheduleAudit.tscn', command)
+            self.assertEqual(command[command.index('--') + 1:], [f'--disc={disc}'])
+            with self.assertRaises(ValueError):
+                vm.validate_standalone_launch(self.CASE, command + ['--all-researched'], env, disc, resolution=resolution)
+
+
 if __name__ == '__main__':
     unittest.main()

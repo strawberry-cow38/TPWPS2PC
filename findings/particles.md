@@ -551,6 +551,7 @@ that native density scaling applies to nonzero SIGNED rate bytes, including nega
 LaserRing63's -5 becomes -2 at density400. Bubbles58 carries the density-skip flag and
 is not the same case. The existing managed negative-rate exemption is a port/helper
 assumption, not the native rule. No renderer or helper behavior is changed by this audit.
+⭐ 2026-10-02: the renderer and helpers now follow it -- see "In the game now" in that file.
 
 For admitted/unpaused isolated63 with available pools and no applicable destructive
 attractor, native-code-derived ordering and randomized16..24 particle lives allow

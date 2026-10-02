@@ -194,3 +194,64 @@ expected runner exit. This section is a documentation-only addition after that g
 This is ready as an **audit/read handoff**, not a rendered scheduling fix. The immediate
 LaserRing child rollout remains disabled; a production change still needs an explicit
 implementation and runtime verification of admission, allocation, RNG and attractor effects.
+
+## ⭐ In the game now (2026-10-02, tinyclaw)
+
+Master: "perform astra's fix on the actual game". The renderer now draws one-shot emitters from this
+schedule rather than from `ExpectedTotal`.
+
+- **The schedule moved into core.** `IsolatedParticleSchedule` is in `core/TPW.PS2.Data`, unchanged
+  apart from its namespace, so the checks above exercise the code the game runs.
+  `ParticleTemplate.Plan(rng)` feeds it the record's density-scaled burst, cap and rates, its own
+  `+0x66` countdown (`0x18b5a8` copies the record and never writes it), and a random life per
+  birth over the signed range (`RandomLife`: base ± (base>>2)−1, so 16..24 for base 20; uniform,
+  because the console's RNG history is not reproduced). Creation alignment is 0, the script/event case.
+- **Signed rate scaling.** `DensityScaled` scales a negative RATE byte (`-5 -> -2`); burst and max-live
+  stay positive-only. That is the same function's other guard, which cow tools read independently
+  in `0x18aff0`. `EffectiveDensity` honours `NoDensityScaling`, so Bubbles keeps its -5. The steady
+  (looping) helpers use both, so a continuous effect with a negative rate and no skip flag now
+  births 2 to 3x as often (-3 -> -1, -2 -> -1, -10 -> -4, -20 -> -8, -32 -> -13). Steady
+  populations now vs before: SmallSmoke 20 (14), Steam 60 (40), Button 15 (8), GoldSparkles 10 (4),
+  SmokeTrailR/B/W 100 (50), KeySparkle 8 (4), CongratSparkle 2 (1). LaserLaunch and
+  GocartFireballs stay at 1 (capped), Bubbles at 12. Native, not chosen; most visible on steam
+  and smoke trails.
+- **Drawing it.** A one-shot CPU emitter births its `Amount` evenly over one particle life and cannot
+  place a single birth, so `ParticleBirthRuns.For` cuts the plan into runs it can draw: the same
+  number of births on each of an evenly spaced series of ticks, spanning at most one life.
+  `RideParticles.DrawRuns` puts the first run on the effect's node and parents every later run
+  under it, started by a scaled-time timer, so one emit is still one node to orbit, cull and count.
+  A plan the cap gated is drawn birth by birth, each with ITS OWN planned life, so a replacement
+  appears as its predecessor dies. Delays count from the plan's first birth, not the spawn, which
+  draws a no-burst effect's tick-1 births 31 ms earlier than the console. Within a run, one
+  tick's births are spread over that tick's gap.
+- **What changed visibly** (census of all 67 non-continuous records, 50 plans each): LaserRing 1 or 2
+  (was 5), Flames 14..18 (was 80), FirePuff 22 (28), ExhaustPuff 19 (26), MumboPuff 22 (28),
+  PinkPop 22 (40), Explode3 7 (8). Uncapped records with positive rates mostly match the old total.
+
+**Checks.** Core audit: `particle_emission` is now **97** (90 + 7). The managed scaler matches the
+native byte scaler on all 256 rate bytes. Bubbles is unscaled and LaserRing scaled. Lives are
+exactly 16..24. LaserRing's plan gives 1 or 2 over 400 seeds, both seen. Runs rebuild every
+one-shot plan exactly (67 records x 40 plans, none longer than a life). Gated plans are one run
+per tick. Rendered: `ParticleScheduleAudit`, a standalone matrix case `particle-schedule`, **18**
+checks at 640x360 and 1152x648:
+- LaserRing x40: 1 or 2 single-particle runs each, both seen. Each life is 16..24 ticks. The
+  replacement is parked inside the first particle's life and starts after it.
+- FirePuff draws its plan's 22, Flames draws single-particle cap-gated runs, Bubbles is unchanged.
+- Clear frees parked runs before their timers fire, and a finished effect retires with its children.
+- A plan with NO births (cloned one-tick Destroy75, whose last-quarter rate is 0) draws no parent but
+  still spawns its Twinkle83 child, since `0x18b5a8` makes the child request after the burst whatever
+  was born. The first version returned early and skipped it; astraclaw's child fixture caught that.
+  It also needed one data change: its short-life clone of Destroy75 now has a last-quarter rate of 1.
+  Under the native schedule a one-tick Destroy75 births nothing, and the fixture's "creates parent
+  and child" relied on the old estimate drawing at least one. It passes 62 again at both sizes.
+
+Six compiled mutations each fail: negative rates unscaled (2 audit checks), skip flag ignored (1),
+cap gate off (audit 1 and rendered Flames), renderer back on the estimate (rendered LaserRing), and
+parked runs never started (rendered replacement). The rendered fixture also caught a real bug before
+commit: copying the first node after later runs had been parented under it duplicated them too,
+doubling the tree per run (Flames: about 2^15 nodes, a frozen game).
+
+**Limits.** Isolated schedule only: no destructive attractors, pool exhaustion or optional-effect
+suppression. Continuous emitters keep their steady population and do not randomise lives. No
+hardware capture. The LaserRing child link stays off as before.
+

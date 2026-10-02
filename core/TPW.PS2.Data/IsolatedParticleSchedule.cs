@@ -1,12 +1,18 @@
 using System;
 using System.Collections.Generic;
 
+namespace TPW.PS2.Data;
+
 /// <summary>
-/// AUDIT ONLY: parameterized, native-code-derived isolated normal-mode schedule.
-/// Not native execution, hardware observation, or a full particle simulation.
-/// No Root/CpuParticles dependency. Assumes admitted, unpaused, successful allocation,
-/// and no child/end/death emission or destructive attractor. Rates, burst and cap
-/// are already density-scaled; cap is signed and may be zero or negative.
+/// Parameterized, native-code-derived isolated normal-mode schedule (astraclaw,
+/// findings/particle-emission-scheduling.md). Not native execution, hardware observation, or a
+/// full particle simulation. No Root/CpuParticles dependency. Assumes admitted, unpaused,
+/// successful allocation, and no child/end/death emission or destructive attractor. Rates,
+/// burst and cap are already density-scaled; cap is signed and may be zero or negative.
+///
+/// ⭐ Moved from the audit project into core on 2026-10-02 so the renderer plans one-shot
+/// emitters with it (<see cref="ParticleTemplate.Plan"/>) -- master: "perform astra's fix on the
+/// actual game". The audit's ParticleEmissionChecks now exercise the same code the game runs.
 /// </summary>
 public static class IsolatedParticleSchedule
 {

@@ -138,6 +138,21 @@ STANDALONE_CASES = {
             'holders queued and retired normally',
         ),
     },
+    # The renderer's one-shot emission follows the native schedule (ParticleTemplate.Plan, ParticleBirthRuns).
+    'particle-schedule': {
+        'scene': 'ParticleScheduleAudit', 'label': 'PARTICLE SCHEDULE',
+        'minimum': 18, 'maps': (), 'user_args': (),
+        'resolutions': ('640x360', '1152x648'),
+        'scope': 'explicit rendered native one-shot schedule component fixture; no Viewer/map/player or retail pixel proof',
+        'numbered_checks': True,
+        'witnesses': (
+            'LaserRing63 every drawn particle lives 16..24 ticks, its own planned life',
+            'LaserRing63 replacement starts once the first has died (one alive at a time, cap 1)',
+            'CLONED DATA a plan with no births draws no parent but still spawns its Twinkle83 child',
+            'Clear plus two real frames retires every node, parked runs included',
+            'holders queued and retired normally',
+        ),
+    },
 }
 
 

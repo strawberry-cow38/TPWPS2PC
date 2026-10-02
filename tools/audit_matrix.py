@@ -257,7 +257,7 @@ REQUIRED_WITNESSES += (
 
 
 # Audit-only native-code-derived isolated emitter chronology, NOT renderer or hardware proof.
-REQUIRED_CHECKS.update({'particle_emission': 90})
+REQUIRED_CHECKS.update({'particle_emission': 97})
 REQUIRED_WITNESSES += (
     'ok   particle emission: raw63: emitter20 / particle-base20 / burst1 / cap1 / countdown0',
     'ok   particle emission: signed RNG-high domain gives particle-life16..24, not fixed20 or one-sided20..24',
@@ -265,6 +265,7 @@ REQUIRED_WITNESSES += (
     'ok   particle emission: declared life1 counterexample: seven lifetime births with a one-live gate, never blanket-clamp total',
     'ok   particle emission: native rate scaler skips ZERO only, uses signed-byte load and arithmetic shift, including negative rates',
     "ok   particle emission: Bubbles58 explicitly skips native density pass; do not apply63's -2 interval to it",
+    'ok   particle emission: managed DensityScaled agrees with the native signed-byte scaler on all 256 rate bytes at density400 (0 differ)',
 )
 
 

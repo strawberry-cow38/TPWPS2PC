@@ -151,6 +151,12 @@ public partial class ParticleChildSpawnAudit : Node3D
             var shortLife = new ParticleLibrary((byte[])plb.Clone());
             foreach (int id in new[] { 75, 83 })
             { Word(shortLife[id], 0x20, 1); Half(shortLife[id], 0x78, 1); Half(shortLife[id], 0x7a, 0); }
+            // ⚠ The renderer now follows the native schedule (tinyclaw, 2026-10-02): a one-tick emitter
+            // births on its only tick at the LAST quarter's rate, and Destroy75's is 0, so this clone's
+            // parent would birth nothing and draw no node. The old estimate drew at least one regardless.
+            // Give the clone a last-quarter rate of 1 so the parent really births and this control still
+            // retires a parent AND a child.
+            shortLife[75].Raw[0x6b] = 1;
             var timed = Fixture(shortLife); timed.Fx.Emit(75, Vector3.Zero);
             var timedNodes = Nodes(timed.Holder);
             Check(timedNodes.Length == 2, "CLONED DATA finite retirement control actually creates parent and child");

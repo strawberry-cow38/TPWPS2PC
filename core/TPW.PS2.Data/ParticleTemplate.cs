@@ -135,8 +135,18 @@ public sealed class ParticleTemplate
     /// MumboPuff is (20, 1, 1, 1): a puff then a dribble.</summary>
     public (sbyte Q1, sbyte Q2, sbyte Q3, sbyte Q4) Rate => (I8(0x68), I8(0x69), I8(0x6a), I8(0x6b));
 
-    /// <summary>READ `0x18b5a8`/`0x18b0f8`: skips the `0x18aff0` density pass.</summary>
+    /// <summary>READ `0x18b5a8`/`0x18b0f8`: skips the `0x18aff0` density pass. ⚠ Bubbles (58) is the
+    /// record that has it: its -5 interval is NOT scaled to -2 (findings/particle-emission-scheduling.md).</summary>
     public bool NoDensityScaling => _r[0xc0] != 0;
+
+    /// <summary>The density this record actually runs at: the retail one, or none at all when
+    /// <see cref="NoDensityScaling"/> (1024/1024 leaves every count as it is).</summary>
+    public int EffectiveDensity(int density = RetailDensity) => NoDensityScaling ? 1024 : density;
+
+    /// <summary>READ (astraclaw) `0x18b5a8` copies the record and never writes `+0x66`, so the rate
+    /// countdown starts at the record's own value; LaserRing's is 0, which attempts a birth on the
+    /// first tick that has room.</summary>
+    public short InitialCountdown => (short)I16(0x66);
 
     /// <summary>READ `0x18b5a8`/`0x18b0f8` via the TEMPLATE table (`0x2ce5c9`): when the global at
     /// `0x2c46a8` is set the effect is not spawned at all. 97 of 105 are marked; the eight that are
@@ -337,10 +347,19 @@ public sealed class ParticleTemplate
     // ---- helpers -------------------------------------------------------------------------------
 
     /// <summary>What `0x18aff0` leaves of a count at a given density (1024 = 100%): `n * d >> 10`,
-    /// clamped to 1 if it was positive and scaled to 0, and to 127 for the rate bytes.</summary>
+    /// clamped to 1 if it was positive and scaled to 0, and to 127 for the rate bytes.
+    ///
+    /// ⚠⚠ A NEGATIVE RATE BYTE IS SCALED TOO. `0x18b004..0x18b02c` loads the byte signed (`lb`),
+    /// skips only ZERO, multiplies and shifts arithmetically: at the retail density `-5` becomes
+    /// `(-5 * 400) >> 10 = -2`, one particle every 2 ticks instead of every 5 (astraclaw,
+    /// findings/particle-emission-scheduling.md). This returned negatives untouched, on the
+    /// reasoning that fewer particles should mean a LONGER interval -- reasoning, not the code.
+    /// Only the rate bytes are known to take this path; a negative non-byte count is left as it is.
+    /// Records with <see cref="NoDensityScaling"/> skip the pass: use <see cref="EffectiveDensity"/>.</summary>
     public static int DensityScaled(int n, int density, bool isByte = false)
     {
-        if (n <= 0) return n;
+        if (n == 0) return 0;
+        if (n < 0) return isByte ? n * density >> 10 : n;
         int v = n * density >> 10;
         if (isByte && v > 0x7f) v = 0x7f;
         return v == 0 ? 1 : v;
@@ -365,16 +384,15 @@ public sealed class ParticleTemplate
     /// `remaining * 4 / initial`, and on an immortal emitter `remaining` never counts down, so the
     /// phase is pinned at the top of the range -- which is Q1.
     ///
-    /// ⚠⚠ A NEGATIVE RATE IS NOT DENSITY-SCALED. It means "one particle every n ticks", and
-    /// <see cref="DensityScaled"/> returns anything &lt;= 0 untouched. Scaling it would be wrong in
-    /// the obvious direction anyway: fewer particles means a LONGER interval, not a shorter one.
+    /// ⚠⚠ A NEGATIVE RATE IS DENSITY-SCALED, signed: -5 runs as -2 at the retail density (see
+    /// <see cref="DensityScaled"/>). This used to say the opposite, from reasoning rather than the code.
     /// </summary>
     public float SteadyRatePerSecond(int density = RetailDensity)
     {
-        sbyte r = Rate.Q1;
+        int n = DensityScaled(Rate.Q1, EffectiveDensity(density), isByte: true);
         float tick = TickMilliseconds / 1000f;
-        if (r == 0) return 0f;
-        return r > 0 ? DensityScaled(r, density, isByte: true) / tick : 1f / (-r * tick);
+        if (n == 0) return 0f;
+        return n > 0 ? n / tick : 1f / (-n * tick);
     }
 
     /// <summary>How many of an immortal emitter's particles are alive at once: the rate times how
@@ -384,13 +402,18 @@ public sealed class ParticleTemplate
     public int SteadyPopulation(int density = RetailDensity)
     {
         float life = Math.Max(Life, 0) * (TickMilliseconds / 1000f);
-        int want = (int)Math.Ceiling(SteadyRatePerSecond(density) * life) + DensityScaled(Burst, density);
-        int cap = DensityScaled(MaxLive, density);
+        int d = EffectiveDensity(density);
+        int want = (int)Math.Ceiling(SteadyRatePerSecond(density) * life) + DensityScaled(Burst, d);
+        int cap = DensityScaled(MaxLive, d);
         return Math.Clamp(want, 1, cap > 0 ? cap : 200);
     }
 
+    /// <remarks>⚠ An ESTIMATE that ignores the live cap, kept for comparison and logging only. The
+    /// renderer plans one-shot emitters with <see cref="Plan"/>: LaserRing estimates 5 here and the
+    /// native schedule allows 1 or 2.</remarks>
     public int ExpectedTotal(int density = RetailDensity)
     {
+        density = EffectiveDensity(density);
         int burst = DensityScaled(Burst, density);
         var (q1, q2, q3, q4) = Rate;
         int life = Math.Max(EmitterLife, 0);
@@ -405,5 +428,58 @@ public sealed class ParticleTemplate
             total += n >= 0 ? n : (t % -n == 0 ? 1 : 0);
         }
         return total;
+    }
+
+    /// <summary>READ (astraclaw, `0x18893c..0x188998`): a particle's starting life is the record's
+    /// <see cref="Life"/> plus the SIGNED remainder of the shared RNG by `Life >> 2`, so a base of 20
+    /// lives 16..24. ⚠ The remainder's distribution and the RNG's history are not reproduced: this
+    /// draws uniformly over the same range. A base under 4 has a divisor of 0; it is taken unjittered
+    /// (assumed guarded, as the spawn's other remainders are).</summary>
+    public int RandomLife(Random rng)
+    {
+        int d = Life >> 2;
+        return d <= 0 ? Life : Life + rng.Next(-(d - 1), d);
+    }
+
+    /// <summary>⭐⭐ THE BIRTHS A ONE-SHOT EMITTER MAKES, tick by tick, by the native schedule
+    /// (<see cref="IsolatedParticleSchedule"/>): the burst at spawn, then per tick a rate gated by the
+    /// live cap BEFORE the countdown runs, with each particle's own randomised life deciding when a
+    /// slot frees. Master, 2026-10-02: "perform astra's fix on the actual game". It replaces
+    /// <see cref="ExpectedTotal"/>, which summed the rates and ignored the cap -- LaserRing planned 5
+    /// where the console allows 1 or 2.
+    ///
+    /// <paramref name="alignment"/> is astraclaw's creation phase: 0 when spawned outside the particle
+    /// update (a script or event), 1 when one particle pass has already aged the burst. The tick budget
+    /// runs past the emitter's life far enough for its last particle to die and the emitter to free.
+    /// ⚠ Isolated: no destructive attractor, no allocation failure, no optional-effect suppression.</summary>
+    /// <param name="lives">If given, receives each birth's planned starting life, in birth order.</param>
+    /// <summary>Whether the live cap ever held a birth back in <paramref name="plan"/>: an own tick inside
+    /// the emitter's life, with a rate due, where the emitter was already at its cap. Such a plan's
+    /// births are drawn one by one with their own planned lives, because the gaps between them ARE
+    /// those lives.</summary>
+    public bool CapGated(IsolatedParticleSchedule.Trace plan, int density = RetailDensity)
+    {
+        int d = EffectiveDensity(density);
+        int cap = DensityScaled(MaxLive, d);
+        var (q1, q2, q3, q4) = Rate;
+        foreach (var r in plan.Receipts)
+        {
+            if (r.Phase != IsolatedParticleSchedule.Phase.OwnEmitterTick || r.EmitterRemaining < 0) continue;
+            long phase = EmitterLife == 0 ? 3 : r.EmitterRemaining * 4 / EmitterLife;
+            sbyte rate = phase switch { 0 => q4, 1 => q3, 2 => q2, _ => q1 };
+            if (rate != 0 && r.LiveBeforeEmission >= cap) return true;
+        }
+        return false;
+    }
+
+    public IsolatedParticleSchedule.Trace Plan(Random rng, List<int> lives = null, int density = RetailDensity, int alignment = 0)
+    {
+        int d = EffectiveDensity(density);
+        var (q1, q2, q3, q4) = Rate;
+        sbyte S(sbyte r) => (sbyte)DensityScaled(r, d, isByte: true);
+        int budget = Math.Max(EmitterLife, 0) + Math.Max(Life, 0) + Math.Max(Life >> 2, 0) + 4;
+        return IsolatedParticleSchedule.Run(EmitterLife, Immortal, DensityScaled(Burst, d),
+            DensityScaled(MaxLive, d), InitialCountdown, S(q1), S(q2), S(q3), S(q4), DieWithEmitter,
+            _ => { int l = RandomLife(rng); lives?.Add(l); return l; }, budget, alignment);
     }
 }
