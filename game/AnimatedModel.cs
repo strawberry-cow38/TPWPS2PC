@@ -1142,9 +1142,20 @@ public sealed class AnimatedModel
 
     public void SetFrame(float now)
     {
-        // ⭐ Identical frame, same record: everything below is deterministic in `now`, so redoing
-        // it writes the same bytes it wrote last time. See `_appliedNow`.
-        if (now == _appliedNow) return;
+        // ⭐⭐ NOT A WHOLE-METHOD EARLY-OUT, AND THE FIRST VERSION WRONGLY WAS.
+        //
+        // I shipped `if (now == _appliedNow) return;` here with the note "everything below is
+        // deterministic in `now`". **That is false**: the two visibility passes and the per-part
+        // `Shown` test read the MODEL (`_hidden`, `model.D`), which can change between two calls
+        // carrying the same frame. tinyclaw caught it with NativeBusAudit -- flip the root hide
+        // bit, `SetFrame(3)`, restore it, `SetFrame(3)` again, and the second call returned without
+        // re-showing anything.
+        //
+        // ⭐ So the frame guard now skips only what IS deterministic in `now` -- the world
+        // transforms, the skeletal pose and `RebuildGeometry`, which is where the cost is -- while
+        // visibility is re-applied every call. The perf win is untouched because the expensive half
+        // is still skipped; see `_appliedNow`.
+        bool sameFrame = now == _appliedNow;
         _now = now;
         // The APS clock drives texture choices too. Shared materials update every surface using
         // the slot; image lookup still goes through the viewer's owner-scoped texture cache.
@@ -1179,13 +1190,14 @@ public sealed class AnimatedModel
         {
             if (SkeletalPose.MeshShown(times, now, !_hidden.Contains(mesh))) _hidden.Remove(mesh); else _hidden.Add(mesh);
         }
-        var world = WorldAt(now);
+        // ⚠ Only when the frame actually moved: these three are the deterministic-in-`now` half.
+        var world = sameFrame ? null : WorldAt(now);
         // ⭐ THE BIPED. A skeletal record's tracks are each bone's whole transform -- there is no
         // hierarchy to compose -- sampled the sampler's way into one matrix per helper and shared
         // by every part, exactly as FUN_001a8da8 fills one matrix array and then walks every mesh.
         // ⚠ PERF: reuses _poseScratch. The pose is read by Skin.Deform inside this same call and
         // kept by nobody, so recycling the array is safe -- see SkeletalPose.At's note.
-        var pose = Skeletal && _skel != null
+        var pose = !sameFrame && Skeletal && _skel != null
             ? _poseScratch = SkeletalPose.At(_skel, now, _model.HelperCount, _poseScratch) : null;
         if (pose != null) _posed = true;
         foreach (var p in _parts)
@@ -1201,6 +1213,9 @@ public sealed class AnimatedModel
                 // part per frame and `Model.Ancestry` builds a new List every call.
                 shown = AnimationNodeVisibility.Shown(_model, p.Mesh.Index, p.Ancestry, _hidden);
             foreach (var surface in p.Surfaces) surface.Visible = shown;
+            // ⭐ Visibility is applied; everything past here is the deterministic-in-`now` half and
+            // `world` is deliberately null when the frame has not moved.
+            if (sameFrame) continue;
             // Native hiding is a draw state, not a reason to freeze evaluated pose.
             if (!shown && !_ordinaryVisibility && !_nativeNodeVisibility) continue;
             // ⚠ `|| p.UvKeys != null` -- a part whose ONLY animation is its UVs has no morph and
