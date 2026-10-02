@@ -150,8 +150,9 @@ public sealed class AnimatedModel
 
     public AnimatedModel(Model model, Aps anim, Aps.Record rec,
                          Func<string, (ImageTexture Tex, bool Soft)> texture, bool nativeNodeVisibility = false,
-                         bool skeletalHideLists = false)
+                         bool skeletalHideLists = false, ModelAtlas atlas = null)
     {
+        _atlas = atlas;
         _model = model; _anim = anim; _texture = texture;
         _nativeNodeVisibility = nativeNodeVisibility;
         _skeletalHideLists = skeletalHideLists;
@@ -193,6 +194,7 @@ public sealed class AnimatedModel
                           + (p.AnimMap == null ? "nothing" : (p.AnimMap.Max() + 1).ToString()) + " -- not skinned");
                 p.Skin = null;
             }
+            if (_atlas != null) Atlasify(p);
             BindUvTrack(p, rec);
             BuildSurfaces(p);
             _parts.Add(p);
@@ -474,7 +476,7 @@ public sealed class AnimatedModel
     /// <summary>The shader's cull render_mode. ⚠⚠ IT USED TO BE HARDWIRED TO `cull_disabled`
     /// WHILE THE SWITCH ABOVE CLAIMED A DEFAULT OF `back`, so nothing ever culled and the ground
     /// under every park drew its own underside on top of itself.</summary>
-    static string CullRenderMode => CullMode is "off" or "disabled" or "none" or "two" or "twosided"
+    internal static string CullRenderMode => CullMode is "off" or "disabled" or "none" or "two" or "twosided"
         ? "cull_disabled" : "cull_back";
 
     // Lighting is evaluated in the vertex stage from the stored signed-byte normals.
@@ -743,6 +745,70 @@ public sealed class AnimatedModel
     /// clock that is not advancing.</summary>
     public int MovingSurfaces { get; private set; }
 
+    /// <summary>⭐⭐ Move this part into the atlas: rewrite its UVs into the sheet, then collapse
+    /// every triangle onto one material so the part draws as a SINGLE surface.
+    ///
+    /// ⚠ REFUSES rather than smears. A slot whose texture is not in the sheet, or whose UV falls
+    /// outside [0,1] (it tiles, and tiling in a sheet samples the neighbour), leaves the part
+    /// un-atlased entirely -- it keeps its own materials and its own draw calls. `girl4a`'s body
+    /// runs to U 1.493 and is exactly this case: one guest costing a few more calls is a trade,
+    /// one guest wearing a smear of somebody else's shirt is a bug.</summary>
+    /// <summary>⚠ Reported ONCE per mesh, not once per body. The first version printed from
+    /// Atlasify directly, so every guest built logged its own refusal -- 8 MB of identical lines in
+    /// one 200-frame render, and a per-actor cost in the thing being optimised.</summary>
+    static readonly HashSet<string> _atlasSaid = new();
+
+    void AtlasSay(string mesh, string why)
+    {
+        // Mesh names are unique per character model (girl1head, boy1head, ...), so the name alone keys it.
+        if (_atlasSaid.Add(mesh)) GD.Print($"[atlas] {mesh}: {why}");
+    }
+
+    void Atlasify(Part p)
+    {
+        // Which material each strip slot belongs to. A slot is emitted by one batch, which has one
+        // material, so this is a function -- but it is CHECKED, not assumed.
+        var slotMat = new int[p.Uv.Count];
+        System.Array.Fill(slotMat, -1);
+        foreach (var t in p.Tris)
+            foreach (int sl in stackalloc[] { t.A, t.B, t.C })
+            {
+                if (sl < 0 || sl >= slotMat.Length) return;
+                if (slotMat[sl] >= 0 && slotMat[sl] != t.Material)
+                {
+                    AtlasSay(p.Mesh.Name, $"slot {sl} is used by materials {slotMat[sl]} and {t.Material} -- not atlased");
+                    return;
+                }
+                slotMat[sl] = t.Material;
+            }
+        // Every slot must resolve to a texture that IS in the sheet, and must not tile.
+        var mapped = new Godot.Vector2[p.Uv.Count];
+        for (int i = 0; i < p.Uv.Count; i++)
+        {
+            int m = slotMat[i];
+            if (m < 0) { mapped[i] = p.Uv[i]; continue; }   // a slot no triangle draws
+            string name = m < _model.MaterialTextures.Count && _model.MaterialTextures[m].Length > 0
+                ? _model.MaterialTextures[m][0] : null;
+            if (!_atlas.Has(name)) { AtlasSay(p.Mesh.Name, $"{name ?? "(none)"} not in sheet -- not atlased"); return; }
+            var uv = p.Uv[i];
+            if (uv.X < -0.001f || uv.X > 1.001f || uv.Y < -0.001f || uv.Y > 1.001f)
+            {
+                AtlasSay(p.Mesh.Name, $"{name} tiles (uv {uv.X:F3},{uv.Y:F3}) -- not atlased");
+                return;
+            }
+            mapped[i] = _atlas.Map(name, uv);
+        }
+        for (int i = 0; i < p.Uv.Count; i++) p.Uv[i] = mapped[i];
+        p.Tris = p.Tris.Select(t => t with { Material = AtlasSlot }).ToList();
+        _materials[AtlasSlot] = _atlas.Material;
+        Atlased = true;
+    }
+
+    /// <summary>Whether any part of this model actually went into the sheet. ⭐ An instrument: a
+    /// model that reports false is drawing its ordinary materials, which is a different fault from
+    /// one whose sheet is wrong.</summary>
+    public bool Atlased { get; private set; }
+
     void BuildSurfaces(Part p)
     {
         var byMat = p.Tris.GroupBy(t => t.Material).ToList();
@@ -770,6 +836,16 @@ public sealed class AnimatedModel
         }
         RebuildGeometry(p, 0);
     }
+
+    /// <summary>⭐ One sheet for every material this model wears, so it draws in ONE surface --
+    /// see <see cref="ModelAtlas"/>. Null for everything that is not atlased, which is everything
+    /// but the guests.</summary>
+    readonly ModelAtlas _atlas;
+
+    /// <summary>The single material index every triangle is collapsed onto when atlased. Both
+    /// <see cref="BuildSurfaces"/> and the per-frame emission group by `t.Material`, so collapsing
+    /// it at load makes them each yield ONE group and neither hot path needed changing.</summary>
+    const int AtlasSlot = 0;
 
     float _now;
 
