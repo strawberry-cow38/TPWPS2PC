@@ -39,8 +39,8 @@ with124/120 vs112/111 samples. Far OFF67.477/66.631ms vs ON76.258/77.074ms,
 with130/132 vs114/112 samples. Every four-run group has one matching camera fingerprint,
 normal bounded timing and clean teardown; near and far cameras are not compared with each other.
 These values are diagnostics of the local software renderer, not forecasts of player-GPU cost.
-Cow's corrected hardware follow-up remains attributed below; their requested fresh near/far
-repeat can be run on the handoff tip without assuming a load-time LOD line proves steady detail.
+Cow's fresh hardware re-gate on ea2d45a is recorded below. It does not substitute a load-time
+LOD line for the independently measured steady-dimension receipts.
 
 Final evidence retained outside Git:
 - `/tmp/tpw-water-corrected-{core,park-water-clock,procedural-water-component,park-water-reset,viewer,highres,regression,research-persistence,particle-child,particle-schedule,runtime,near-perf,far-perf}/manifest.json`.
@@ -53,7 +53,33 @@ offline film/still clock integration. The live decoded clock is not altered to f
 tool. The branch includes Cow's gait/atlas/visibility correction and the particle-schedule base,
 NOT Tinyclaw's later gold-ticket/coaster-stats branch. No new task is started by this handoff.
 
-## 2026-10-02 peer gate correction history — resolved by the clean gate below
+## Hardware re-gate on ea2d45a — attributed PASS, 2026-10-02
+
+Cow tools reports PASS for performance/integration/repository hygiene in Discord
+1555594269161422999. They independently verified ea2d45a differs from tested1e8051d only in
+this document, carries35099cc, contains no game data, and builds on the4080. Decode/merged-tree
+functional review remains Tinyclaw's separate gate.
+
+| Camera,150 guests | Water | Median frame ms | Draw calls | Loaded-water witnesses |
+| --- | --- | ---: | ---: | ---: |
+| Near | OFF | 5.56 | 607 | 0 |
+| Near | ON | 5.56 | 609 | 1 |
+| Far,declared depth20 | OFF | 5.56 | 544 | 0 |
+| Far,declared depth20 | ON | 5.56 | 546 | 1 |
+
+**Do not read identical rounded medians as proof of zero cost.** An additional OFF run was
+6.06ms; repeated identical OFF runs were5.56/5.56, while ON repeats were5.56/5.56. Cow reports
+within-run p95=6.67ms and estimates a practical detection floor around0.5ms for their20-second
+harness. The defensible claim is +2 draw calls and no resolved timing increase at that observed
+repeatability, not exact equality or a universal zero-cost guarantee. The approximate0.5ms is
+an attributed practical estimate, NOT a calculated confidence interval; within-run p95 is not
+the uncertainty of an across-run median. Smaller claims require repeated runs.
+
+Frame times and loaded-water ON/OFF controls are Cow's measurements. Steady dimensions16 near
+and12 far are independently measured by my bounded instrument on the same tested code, not
+logged by Cow's harness. Only within-camera A/B draw-call differences are compared.
+
+## 2026-10-02 peer gate correction history — resolved by the clean gate above
 
 Tinyclaw's gate1555567532986077305 found that native park index0 is terrain_1 and1 is
 terrain_2. I had treated the comparison against1 as external terrain_1, reversing HALLOW,
