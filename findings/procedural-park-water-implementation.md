@@ -60,6 +60,42 @@ dirty development run, not clean landing evidence; a clean repeat is required in
 The runner rejects missing/invalid/unstable/wrong-depth LOD receipts; Python controls catch
 substituting the load-time grid or applying a different diagnostic view.
 
+## Corrected-build GPU follow-up and gate preparation — 2026-10-02
+
+Cow's own4080 far-view A/B on889d352 (Discord1555586863618588673), with
+TPW_WATER_LOD_DEPTH=20, reports:
+
+| Guests | Water | Median frame ms | Draw calls | Managed KB/frame |
+| --- | --- | ---: | ---: | ---: |
+| 0 | OFF | 1.23 | 145 | 17 |
+| 0 | ON | 1.27 | 147 | 17 |
+| 150 | OFF | 5.56 | 544 | 288 |
+| 150 | ON | 5.56 | 546 | 295 |
+
+This is ATTRIBUTED hardware evidence: Cow measured timings and checked one loaded-water line
+on each ON run, none on OFF. Their harness did NOT log steady dimensions; grid12 is corroborated
+by my measured diagnostic receipt, not independently observed by their harness. The near and
+far cameras cull different objects; only within-pair +2 calls is comparable. The earlier near
+b77e28b follow-up likewise reports1.24/1.27ms empty and5.56/5.56ms at150 guests. Neither table
+licenses emulator rasterization parity, and the far timing delta is below this experiment's
+observed noise rather than a proof of zero cost.
+
+Cow35099cc was explicitly merged before the corrected clean gates. It changes only
+AnimatedModel visibility handling, preserving gait/atlas optimization; the water branch does
+not reproduce or take ownership of that fix. A read-only review of the camera diagnostic found
+no A/B camera mismatch, but found malformed-number classification could throw and a decimal
+locale could alter its declaration. Both are fixed; negative/fractional Python receipts cover
+the parser and the game declaration now uses invariant formatting.
+
+Actual default-family omission repeated at floor80: the Release-built JUNGLE/1 audit exits0
+and prints PASS, but the gate rejects missing_coverage with procedural_water=0. Source restored
+byte-for-byte; Release core and Debug game rebuilt. Evidence:
+/tmp/tpw-water-corrected-omission-release/manifest.json. The preceding attempt built Debug but
+executed the stale Release assembly and was INVALID as a mutation control; it was not counted.
+
+The corrected full clean gate queue is the remaining readiness condition. No merge is requested
+on the strength of the partial runs or the hardware timing alone.
+
 ## What exists
 
 - `core/TPW.PS2.Data/ProceduralParkWater.cs`: guarded native profile/placement, explicit native
