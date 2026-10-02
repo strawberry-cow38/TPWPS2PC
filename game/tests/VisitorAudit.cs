@@ -98,12 +98,36 @@ public partial class VisitorAudit : Node3D
                     // animation can make a moving ride part look like a misplaced footprint.
                     var (bindLo, bindHi) = BindSurfaceBounds(scenario.RideModel);
                     var centre = (bindLo + bindHi) / 2;
-                    var holderPosition = new Vector3(view.Park.Origin.X + (evidence.Origin.X + evidence.Width / 2f) * Park.CellSize - centre.X,
-                        view.Park.BaseY,
-                        view.Park.Origin.Y + (view.Park.Height - evidence.Origin.Z - evidence.Height / 2f) * Park.CellSize + centre.Z);
+                    // ⭐ THE HOLDER IS ANCHORED BY THE MODEL'S OWN ORIGIN, then oversized for the seam
+                    // (Park.TryPlace, 00e5cd9 + a2c5100/66206bb). Built from the SAM footprint and the
+                    // MEASURED corner sequence (`TPW_PLACE_AUDIT=1`: the origin sat on the predicted corner
+                    // at every turn), not from Park's own arithmetic:
+                    //   turns 0 -> (minX, maxZ)  1 -> (maxX, maxZ)  2 -> (maxX, minZ)  3 -> (minX, minZ)
+                    // then scaled about the footprint centre by (W + 2·overlap) / W per axis.
+                    // ⚠ This audit expected the old rule -- the bind box CENTRED on the footprint -- and went
+                    // red on 09-26 by 0.045 / 0.0092 in FANTASY/1. Both residues close exactly: the bind
+                    // centre is (2.005, 2.0592) against a cell centre of 2, and the 0.05 seam overlap the
+                    // centring branch never applied.
+                    const int turns = 0;                                   // VisitorParkView places unturned
+                    float x0 = view.Park.Origin.X + evidence.Origin.X * Park.CellSize, x1 = x0 + evidence.Width * Park.CellSize;
+                    float z1 = view.Park.Origin.Y + (view.Park.Height - evidence.Origin.Z) * Park.CellSize, z0 = z1 - evidence.Height * Park.CellSize;
+                    var (cornerX, cornerZ) = turns switch { 0 => (x0, z1), 1 => (x1, z1), 2 => (x1, z0), _ => (x0, z0) };
+                    float fpW = evidence.Width * Park.CellSize, fpH = evidence.Height * Park.CellSize;
+                    float sx = (fpW + 2f * Park.RideSeamOverlap) / fpW, sz = (fpH + 2f * Park.RideSeamOverlap) / fpH;
+                    float fcx = (x0 + x1) / 2, fcz = (z0 + z1) / 2;
+                    var holderPosition = new Vector3(fcx + (cornerX - fcx) * sx, view.Park.CellY(evidence.Origin.X, evidence.Origin.Z),
+                                                     fcz + (cornerZ - fcz) * sz);
                     var holder = view.Ride.Drawn.Root.GetParent<Node3D>();
                     Check(holder.Position.DistanceTo(holderPosition) < 0.00001f,
-                        $"Ride holder is displaced from the SAM footprint: actual={holder.Position}, expected={holderPosition}, bind={bindLo}..{bindHi}");
+                        $"Ride holder is not at its origin corner, seam-oversized: actual={holder.Position}, expected={holderPosition}, bind={bindLo}..{bindHi}");
+                    Check(holder.Basis.Column0.IsEqualApprox(new Vector3(sx, 0, 0)) && holder.Basis.Column1.IsEqualApprox(Vector3.Up)
+                          && holder.Basis.Column2.IsEqualApprox(new Vector3(0, 0, sz)),
+                        $"Ride holder carries the seam scale ({sx}, 1, {sz}) and no turn: {holder.Basis}");
+                    // A control that this check SEES the rule: the old centring expectation must be
+                    // somewhere else, or a return to it would pass here unnoticed.
+                    var centred = new Vector3(fcx - centre.X, holderPosition.Y, fcz + centre.Z);
+                    Check(centred.DistanceTo(holderPosition) > 0.001f,
+                        $"the origin-corner and centring rules are told apart here ({centred.DistanceTo(holderPosition):F4} apart)");
                     // The bind centre through the actual holder/mirrored model transform must also
                     // land on the footprint's drawn cells. Construction APS debris is not its centre.
                     var drawnCentre = holder.GlobalTransform * (view.Ride.Drawn.Root.Transform * centre);
@@ -116,8 +140,12 @@ public partial class VisitorAudit : Node3D
                     var footprintBounds = new Aabb(footprint.First(), Vector3.Zero);
                     foreach (var vertex in footprint) footprintBounds = footprintBounds.Expand(vertex);
                     var footprintCentre = footprintBounds.GetCenter();
-                    Check(new Vector2(drawnCentre.X, drawnCentre.Z).DistanceTo(new Vector2(footprintCentre.X, footprintCentre.Z)) < TileTolerance,
-                        $"Ride drawn bind centre {drawnCentre} is displaced from drawn footprint {footprintCentre}");
+                    // ⚠ Not "the bind centre IS the footprint centre" any more: anchoring by the origin puts
+                    // a lopsided model's overhang on the side its author put it. What must still hold is that
+                    // the drawn bind centre, through the real holder and mirrored child, lies over the ride's
+                    // own cells.
+                    Check(drawnCentre.X >= x0 && drawnCentre.X <= x1 && drawnCentre.Z >= z0 && drawnCentre.Z <= z1,
+                        $"Ride drawn bind centre {drawnCentre} is not over its own footprint {x0}..{x1} x {z0}..{z1} (centre {footprintCentre})");
                     var firstTile = FloorTile(view.Park, evidence, evidence.Origin).Centre;
                     var lastTile = FloorTile(view.Park, evidence, evidence.Origin.Offset(evidence.Width - 1, evidence.Height - 1)).Centre;
                     Check(new Vector2(footprintCentre.X, footprintCentre.Z).DistanceTo(
