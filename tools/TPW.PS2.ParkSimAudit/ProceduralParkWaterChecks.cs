@@ -3,7 +3,7 @@ using System.Numerics;
 using TPW.PS2.Data;
 using Water = TPW.PS2.Data.ProceduralParkWater;
 
-/// <summary>Unwired, asset-free numeric oracles except the owner's guarded ELF profile.
+/// <summary>Default audit family: asset-free numeric oracles except the owner's guarded ELF profile.
 /// Literal branch/UV/cubic/phase expectations, not comparisons between two API paths.
 /// Does not claim native execution or a reconstructed runtime seed.</summary>
 static class ProceduralParkWaterChecks

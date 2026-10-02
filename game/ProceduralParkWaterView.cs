@@ -18,6 +18,7 @@ public sealed partial class ProceduralParkWaterView : Node3D
     public NativeWater.SurfaceBounds Bounds { get; private set; }
     public int Dimension { get; private set; }
     public int Uploads { get; private set; }
+    public int SurfaceBuilds { get; private set; }
     public int AdvancedMilliseconds { get; private set; }
     public float ClosestClipZ { get; private set; }
     public NVector3[] Positions => _positions;
@@ -78,9 +79,12 @@ public sealed partial class ProceduralParkWaterView : Node3D
         int measured = checked((int)Math.Floor(_millisecondCarry / 10.0) * 10);
         _millisecondCarry -= measured;
         int elapsed = running ? measured : 0;
+        long oldUv = State.UvAccumulator;
+        // Even a zero-delta native draw performs the single-wrap recovery. After a long
+        // hitch, paused frames can still reduce an accumulator above 0x2000 one step at a time.
+        State.AdvanceMilliseconds(elapsed);
         if (elapsed != 0)
         {
-            State.AdvanceMilliseconds(elapsed);
             AdvancedMilliseconds = unchecked(AdvancedMilliseconds + elapsed);
         }
         int dimension = 16;
@@ -90,7 +94,7 @@ public sealed partial class ProceduralParkWaterView : Node3D
             dimension = SelectDimension(ClosestClipZ);
         }
         if (dimension != Dimension) Build(dimension);
-        else if (elapsed != 0) Upload();
+        else if (elapsed != 0 || State.UvAccumulator != oldUv) Upload();
     }
 
     public static int SelectDimension(float closestClipZ)
@@ -122,6 +126,7 @@ public sealed partial class ProceduralParkWaterView : Node3D
 
     void Build(int dimension)
     {
+        SurfaceBuilds++;
         Dimension = dimension;
         int count = NativeWater.VertexCount(dimension);
         _positions = new NVector3[count];

@@ -16,7 +16,8 @@ public partial class ProceduralParkWaterAudit : Node3D
     {
         _checks++;
         if (!ok) _bad++;
-        GD.Print($"[park-water-test] {_checks} {(ok ? "PASS" : "FAIL")} {label}");
+        if (ok) GD.Print($"PROCEDURAL PARK WATER ok: [{_checks}] {label}");
+        else GD.PrintErr($"PROCEDURAL PARK WATER FAIL: [{_checks}] {label}");
     }
 
     public override void _Ready() => CallDeferred(nameof(Start));
@@ -25,6 +26,8 @@ public partial class ProceduralParkWaterAudit : Node3D
     {
         ProceduralParkWaterView view = null;
         ImageTexture texture = null;
+        Camera3D camera = null;
+        MeshInstance3D underlay = null;
         try
         {
             var args = OS.GetCmdlineArgs().Concat(OS.GetCmdlineUserArgs()).ToArray();
@@ -65,6 +68,7 @@ public partial class ProceduralParkWaterAudit : Node3D
             Check(Math.Abs(oldVertices[0].X - 17) < .0001 && Math.Abs(oldVertices[0].Z - 15) < .0001,
                   "actual mirrored native front corner");
             var rid = mesh.GetRid();
+            int builds = view.SurfaceBuilds;
             var positionsArray = view.Positions;
             var uvArray = view.Uvs;
             view.Step(.04, true, null);
@@ -74,7 +78,8 @@ public partial class ProceduralParkWaterAudit : Node3D
             var newUvs = updated[(int)Mesh.ArrayType.TexUV].AsVector2Array();
             Check(state.UvAccumulator == 4156 && Math.Abs(state.Phase - (10.25f + 40f / 317)) < .00001,
                   "gated 40ms reaches native state once");
-            Check(mesh.GetRid() == rid && ReferenceEquals(positionsArray, view.Positions) && ReferenceEquals(uvArray, view.Uvs),
+            Check(view.Surface.Mesh == mesh && mesh.GetRid() == rid && view.SurfaceBuilds == builds
+                && ReferenceEquals(positionsArray, view.Positions) && ReferenceEquals(uvArray, view.Uvs),
                   "mesh and geometry buffers reused without surface rebuild");
             Check(newVertices.Zip(oldVertices).Any(v => Math.Abs(v.First.Y - v.Second.Y) > .0001), "actual uploaded heights move");
             Check(newVertices.Select((v, i) => Math.Abs(v.X - oldVertices[i].X) < .00001 && Math.Abs(v.Z - oldVertices[i].Z) < .00001).All(v => v),
@@ -96,27 +101,37 @@ public partial class ProceduralParkWaterAudit : Node3D
                   "LOD truncates clip-Z before half-step");
             Check(ProceduralParkWaterView.SelectDimension(26) == 4 && ProceduralParkWaterView.SelectDimension(100) == 4,
                   "far detail clamps to four");
+            long preHitch = state.UvAccumulator;
+            view.Step(6, true, null);
+            long afterHitch = unchecked(preHitch + 9000 - 4096);
+            Check(state.UvAccumulator == afterHitch && afterHitch > 8192,
+                  "long hitch performs only one native wrap");
+            phase = state.Phase; uploads = view.Uploads;
+            view.Step(0, false, null);
+            Check(state.UvAccumulator == afterHitch - 4096 && state.Phase == phase && view.Uploads == uploads + 1,
+                  "paused zero-delta draw recovers oversized UV and updates actual mesh");
 
             var bounds = view.Bounds;
             var centre = new Vector3((bounds.MinX + bounds.MaxX) * .5f, 0, -(bounds.MinZ + bounds.MaxZ) * .5f);
-            var camera = new Camera3D { Projection = Camera3D.ProjectionType.Orthogonal, Size = 16, Current = true,
+            camera = new Camera3D { Projection = Camera3D.ProjectionType.Orthogonal, Size = 16, Current = true,
                                         Position = centre + new Vector3(0, 12, 0), Near = .1f, Far = 200 };
             AddChild(camera);
             camera.LookAt(centre, Vector3.Back);
             var underlayMaterial = new StandardMaterial3D { ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
                                                            AlbedoColor = new Color(1, 0, 0) };
-            var underlay = new MeshInstance3D { Mesh = new PlaneMesh { Size = new Vector2(100, 100) },
+            underlay = new MeshInstance3D { Mesh = new PlaneMesh { Size = new Vector2(100, 100) },
                                                MaterialOverride = underlayMaterial, Position = centre + new Vector3(0, -2, 0) };
             AddChild(underlay);
             await Frame(); await Frame();
             Color red = await Pixel();
-            Check(red.B > .04f, $"visible water over red underlay ({red})");
+            Check(red.B > .04f, "visible water over red underlay");
             underlayMaterial.AlbedoColor = new Color(0, 1, 0);
             await Frame(); await Frame();
             Color green = await Pixel();
-            Check(green.B > .04f, $"visible water over green underlay ({green})");
+            Check(green.B > .04f, "visible water over green underlay");
             Check(Math.Abs(green.R - red.R) + Math.Abs(green.G - red.G) > .2f,
-                  $"underlay survives through the actual alpha raster ({red} -> {green})");
+                  "underlay survives through the actual alpha raster");
+            GD.Print($"[water-raster] red={red} green={green}");
             string output = System.Environment.GetEnvironmentVariable("TPW_WATER_AUDIT_SHOT");
             if (!string.IsNullOrEmpty(output))
             {
@@ -124,16 +139,22 @@ public partial class ProceduralParkWaterAudit : Node3D
                 using var shot = GetViewport().GetTexture().GetImage();
                 shot.SavePng(output);
             }
-            underlay.QueueFree(); camera.QueueFree();
+
         }
         catch (Exception ex) { Check(false, ex.ToString()); }
         finally
         {
-            view?.QueueFree();
+            if (underlay != null && IsInstanceValid(underlay)) underlay.QueueFree();
+            if (camera != null && IsInstanceValid(camera)) camera.QueueFree();
+            if (view != null && IsInstanceValid(view)) view.QueueFree();
             await Frame(); await Frame();
+            Check(view != null && !IsInstanceValid(view)
+                && (camera == null || !IsInstanceValid(camera))
+                && (underlay == null || !IsInstanceValid(underlay)), "component water and fixture nodes retired");
             texture?.Dispose();
             await ToSignal(GetTree().CreateTimer(.1), SceneTreeTimer.SignalName.Timeout);
-            GD.Print($"[park-water-test] SUMMARY checks={_checks} failures={_bad} (declared component, not emulator parity)");
+            if (_bad == 0) GD.Print($"PROCEDURAL PARK WATER PASS checks={_checks}; declared component, not emulator parity");
+            else GD.PrintErr($"PROCEDURAL PARK WATER FAIL checks={_checks} failures={_bad}");
             GetTree().Quit(_bad == 0 ? 0 : 1);
         }
     }

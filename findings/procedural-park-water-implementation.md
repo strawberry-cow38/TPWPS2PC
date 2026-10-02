@@ -43,36 +43,67 @@ The global curve is reused between map loads; each drawable gets fresh phase/UV 
 current A/B switch `TPW_NATIVE_PARK_WATER=0` omits only this new drawable; it does not replace
 terrain art or enable a guessed shader wave.
 
-## Checks completed so far
+## Checks and controls completed at the current WIP checkpoint
 
-- Targeted pure-data audit: **76 assertions PASS**, exposed via `--procedural-water-only` and
-  called by the default audit. Independent literal oracles cover parameters, eight placements,
-  LCG values, cubic samples, phase threshold/overflow, signed UVs, skirts, topology, buffer
-  contracts and the actual ELF interpretation guard. Coverage-floor wiring is still pending.
-- Game build: clean, zero errors.
-- Rendered component at640x360: **25 numbered checks PASS**, exit0, no exit leak/error warnings
-  (only the usual unsupported-VSync notice). It verifies actual mesh-region updates through
-  `SurfaceGetArrays`, changed Y with fixed X/Z, signed V change, preserved CUSTOM0 normals,
-  reused mesh/buffers, pause/remainder behavior and LOD arithmetic.
-- Transparency is an **actual raster control**, not just a shader-string check: the same water
-  over an artificial red vs green underlay produces center pixels
-  `(0.5686,0.1412,0.2078)` vs `(0.0078,0.6980,0.2078)`. Blue establishes water is drawn; changing
-  the background through it establishes blending. This is a declared component fixture,
-  **not a player-path or emulator comparison**.
+- Targeted data audit: **76 assertions PASS**, integrated in the default audit and required
+  by `audit_matrix.py` with literal numerical and semantic witnesses. All eight native placements,
+  explicit LCG/cubic oracles, signed UV narrowing, skirts/topology, and actual ELF guard are covered.
+- Initial shipping Viewer sweep: **eight parks at both640x360 and1152x648, 32 each**, with
+  ordinary CLI startup and actual Pause/filter/Close Park input. The high-resolution driver's
+  shell was interrupted after six completed cases; **both SPACE cases were rerun** to completion
+  with identical source/assembly snapshots before combining the eight results. No interrupted
+  case is counted. These are pre-strengthening results, not a substitute for the final rerun.
+- Read-only review identified weak evidence: clock/CPU/GPU agreement alone did not establish
+  actual shipping motion; owner destruction alone did not establish water destruction; reset
+  receipts did not require both maps' motion. Those checks were strengthened rather than waived.
+- Current registered component: **28 PASS at both sizes**, zero map witnesses. Actual uploaded
+  Y/V move, X/Z stay fixed, mesh/buffers and surface-build count stay stable, CUSTOM0 is preserved,
+  clock remainder/pausing/long-hitch zero-delta recovery and final node retirement are checked.
+- Current reset fixture: **57 PASS at both sizes**, exactly JUNGLE/1 then FANTASY/2. Reset uses a
+  **declared direct ordinary LoadMap invocation**, not fabricated player input. Fresh state/phase,
+  immediate hide, actual old-node retirement, and both maps' uploaded motion are required.
+- Current normal shipping Viewer: **35 PASS on JUNGLE/1** after strengthening. The final all-eight
+  rerun is pending. Natural-frame GPU height/V changes, actual water retirement, real input and
+  exact one-map/numbered/semantic receipts are enforced. A counters-moving-but-frozen-mesh mutant
+  fails the new shipping-motion check.
+- **11 compiled mutations rejected**, byte-for-byte restoration and rebuild verified: missing
+  shipping load, missing shipping step, flat uploaded Y, frozen uploaded V, opaque shader, wrong
+  placement, retained old water node, skipped zero-delta wrap, frozen CPU/GPU despite advancing
+  counters, per-step surface rebuild, and reversed cubic linear coefficient (five numerical fails).
+  The independently constructed component **still passed with the shipping load omitted**;
+  the actual Viewer failed. They are not interchangeable proofs.
+- The **actual default audit helper was omitted and compiled**: full JUNGLE/1 still exited0/PASS,
+  but the classifier rejected it as `missing_coverage`, procedural_water=0. Restored/rebuilt.
+- Tool classifier tests: **152 PASS**, including independently pinned76/35/28/57 floors,
+  one-below-floor controls, strict maps, ordinals, actual-motion/alpha/retirement semantics and
+  two required receipts for each reset map. Counts alone are not a PASS.
 
-Logs: `/tmp/tpw-park-water-core-initial.log`,
-`/tmp/tpw-park-water-component-640.log`, `/tmp/tpw-park-water-component-640.png`,
-`/tmp/tpw-park-water-game-component-build.log`.
+The alpha control is actual raster output, not a shader-string assertion: visible blue water
+changes when the artificial underlay changes red to green. This remains a **declared component**,
+not player-path or emulator comparison. The shipping screenshot was separately reviewed by cow
+and the lead: visible dark base through brighter ripple bands and a clean quay edge. One shot
+cannot establish motion, all-tier coverage, or exact emulator rendering.
 
-## Must finish before handoff
+A concrete review bug was corrected: after a long hitch leaves UVacc>8192, a zero-delta draw
+still performs the native one-step wrap. The view now advances state even for delta0 and uploads
+if that changes UV; both the core's single-wrap oracle and actual component control cover it.
 
-1. Actual Viewer boot/load, both resolutions, all eight parks: prove the shipping call creates,
-   advances and renders the water, not just this independently constructed component.
-2. Map switch/lobby/pausing/cleanup assertions; old instance and state must not carry over.
-3. Register strict numerical/semantic coverage floors and rendered cases, with missing-call
-   controls. No green raw exit accepted when coverage is absent.
-4. Compiled motion/UV/alpha/placement/reset mutations, restoring every source afterward.
-5. Full baseline/regression gates and a bounded performance comparison. No other agents'
-   renders/services may be touched. Build only after own engines have exited.
-6. Read/update these limits and the research note after testing; no emulator pixel-parity claim
-   or assets committed. Coordinate current staging history before final handoff.
+Evidence lives outside Git:
+- `/tmp/tpw-water-component-registered`, `/tmp/tpw-water-reset-registered`,
+  `/tmp/tpw-water-viewer-registered-clean`, `/tmp/tpw-water-viewer-1152-combined.json` (initial).
+- `/tmp/tpw-water-strengthened-component`, `/tmp/tpw-water-strengthened-reset`,
+  `/tmp/tpw-water-strengthened-viewer-j1` (current28/57/35).
+- `/tmp/tpw-water-mutations`, `/tmp/tpw-water-strengthened-mutations`,
+  `/tmp/tpw-water-core-controls-rerun` (actual compiled controls).
+- `/tmp/tpw-water-strengthened-python.log`.
+
+## Must finish before READY handoff
+
+1. Sync the current guest-atlas staging change, then run the clean final all-eight core and
+   shipping-water sweep with current35 assertions; both sizes for component/reset and shipping.
+2. Existing pointer/mechanic/management/advisor/coaster/vehicles, research and particle regressions.
+3. Bounded same-build water-on/off performance check; no other agents' services/renderers touched.
+4. Resolve the A_SEA_04 review with actual Viewer-transformed bounds versus the bounded native
+   grid, **not** by widening or raising the draw to fit model-frame coordinates. The native grid
+   is not a promise of an overlay across the whole ocean. No invented wave/height replacement.
+5. Final docs/push/handoff. No emulator pixel/phase parity claim or asset commits.
