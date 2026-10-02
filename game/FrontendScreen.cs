@@ -36,10 +36,28 @@ public partial class FrontendScreen : Control
     double _phaseTime;
     int _eaFrames;
     bool _sawPlaying, _reportedSize;
+    /// <summary>⭐ The current stage's time on screen (InputSettle): input waits for it, and so does EA.</summary>
+    readonly InputSettle _settle = new() { Name = "Settle" };
+    /// <summary>⭐ True once the stage has been showing -- a movie, actually PLAYING -- for
+    /// <see cref="InputSettle.Seconds"/>. Until then a key or click does nothing, so one click cannot skip a
+    /// movie on the frame it starts or run through several screens. Master, 2026-10-01: "wait for the
+    /// thing you are skipping to actually start playing for a moment before skipping".</summary>
+    public bool InputReady => _settle.Ready;
+    /// <summary>⚠ How long EA GAMES stays up. On the console it is up for the whole of IOP module loading,
+    /// which has no traced length, and here loading is already over, so it is a chosen number. It used to
+    /// be two frames, which master saw as "the EA logo appears for a split second on launch".</summary>
+    public const double EaSeconds = 3.0;
     public string MovieStem { get; private set; }
     public string LastMovieResult { get; private set; } = "";
 
-    public FrontendScreen() { MouseFilter=MouseFilterEnum.Stop; Visible=false; }
+    public FrontendScreen()
+    {
+        MouseFilter=MouseFilterEnum.Stop; Visible=false;
+        // ⚠ A movie's moment counts only once it is PLAYING and its clock has moved, not from the
+        // frame PlayMovie was called: opening the decoder can take longer than the moment.
+        _settle.While=()=>CurrentStage!=Stage.Movie || (_video!=null && _video.IsPlaying() && _video.StreamPosition>0);
+        AddChild(_settle);
+    }
     public void Configure(AssetLibrary lib, FontText font, TextDatabase text, string directory)
     { _lib=lib; _font=font; _text=text; _directory=directory; }
     public override void _Ready()
@@ -53,8 +71,9 @@ public partial class FrontendScreen : Control
     public override void _ExitTree() { CancelMovie(); _bootDone=null; }
 
     // EA lasts for boot work on the console, not a traced fixed timeout. Here initialization
-    // has already finished synchronously: retain it for two process passes so it can render,
-    // then select a language. Do not present this adapter delay as a measured retail timer.
+    // has already finished synchronously: hold it for EaSeconds on screen (and at least two process
+    // passes so it renders), then select a language. Do not present this adapter delay as a
+    // measured retail timer.
     public void Boot(Action done)
     {
         CancelMovie(); _bootDone=done; LanguageIndex=0; _eaFrames=0;
@@ -62,7 +81,7 @@ public partial class FrontendScreen : Control
     }
     void ShowStage(Stage stage)
     {
-        CurrentStage=stage; _phaseTime=0; Visible=stage!=Stage.Idle; QueueRedraw();
+        CurrentStage=stage; _phaseTime=0; _settle.Reset(); Visible=stage!=Stage.Idle; QueueRedraw();
         // ⚠ Prime the hotspots when the screen opens. They used to be derived as a side effect of
         // drawing the (now removed) hint, so without this the first mouse MOVE would pay for a
         // 512x512x3 scan and the diagnostic line would appear at a surprising moment instead of
@@ -81,7 +100,9 @@ public partial class FrontendScreen : Control
     {
         if(!Active) return;
         _phaseTime+=delta;
-        if(CurrentStage==Stage.EaLogo && ++_eaFrames>=2) ShowStage(Stage.Language);
+        // ⭐ EA is held for EaSeconds of time ON SCREEN (clamped frame steps), so a slow first frame
+        // cannot count as having shown it.
+        if(CurrentStage==Stage.EaLogo && ++_eaFrames>=2 && _settle.Shown>=EaSeconds) ShowStage(Stage.Language);
         else if(CurrentStage==Stage.Legal) QueueRedraw();
         else if(CurrentStage==Stage.Movie)
         {
@@ -217,7 +238,12 @@ public partial class FrontendScreen : Control
         // ⚠ Taken BEFORE the switch, so a movie is not quietly waiting for the two keycodes that
         // happened to be wired -- a player mashing anything to get past a logo is the case this is
         // for, and Escape alone did not serve it.
+        // ⭐ Nothing until the screen has been up for a moment (InputReady) -- including the language
+        // arrows, so a key carried over from the EA image cannot move or pick a language.
+        if(!InputReady) return;
         if(CurrentStage==Stage.Movie){ Confirm(); return; }
+        // EA has no menu, but a key skips it once it has been seen, like a movie.
+        if(CurrentStage==Stage.EaLogo){ ShowStage(Stage.Language); return; }
         switch(key.Keycode)
         {
             case Key.Up: case Key.Left: MoveLanguage(-1); break;
@@ -241,7 +267,7 @@ public partial class FrontendScreen : Control
                 int over=LanguageAt(motion.Position);
                 if(over>=0 && over!=LanguageIndex){ LanguageIndex=over; QueueRedraw(); }
             }
-            else if(input is InputEventMouseButton {Pressed:true,ButtonIndex:MouseButton.Left} click)
+            else if(input is InputEventMouseButton {Pressed:true,ButtonIndex:MouseButton.Left} click && InputReady)
             {
                 int on=LanguageAt(click.Position);
                 // ⚠ A click OFF the rows does nothing. Confirming whatever happened to be
@@ -252,9 +278,13 @@ public partial class FrontendScreen : Control
         }
         // ⭐⭐ ANY MOUSE BUTTON SKIPS A CUTSCENE, not just the left one. Master: "any key /
         // mouse button to skip cutscenes". Legal keeps its click-to-advance as before.
-        if(input is InputEventMouseButton {Pressed:true} button
-            && (CurrentStage==Stage.Movie || (CurrentStage==Stage.Legal && button.ButtonIndex==MouseButton.Left)))
-            Confirm();
+        // ⭐ ...and only once the screen has been up for a moment (InputReady).
+        if(input is InputEventMouseButton {Pressed:true} button && InputReady)
+        {
+            if(CurrentStage==Stage.EaLogo) ShowStage(Stage.Language);
+            else if(CurrentStage==Stage.Movie || (CurrentStage==Stage.Legal && button.ButtonIndex==MouseButton.Left))
+                Confirm();
+        }
         AcceptEvent();
     }
     public void PlayMovie(string stem, Action continuation)

@@ -6,44 +6,58 @@ using TPW.PS2.Data;
 
 namespace TPWPS2Viewer;
 
-/// <summary>The terrain's water: the sea rolls on a sine, the river and the falls scroll.
+/// <summary>The terrain's water: the RIVER moves, the SEA does not.
 ///
-/// ⭐⭐ THE TERRAIN NAMES ITS OWN WATER. `A_SEA_01..06` are meshes in every world's terrain file
-/// and they all wear one material (`jri_lak2` in both jungle and space); the river and pond
-/// surfaces wear `wr_water3`, `jri_sur1`, `jri_sur4`, `jri_lak1`. So which surfaces move is READ
-/// off the model, not decided by me.
+/// ⭐⭐ THE TERRAIN NAMES ITS OWN WATER. `A_SEA_01..06` are meshes in every world's terrain file and
+/// they all wear one material, `jri_lak2`; the river and pond surfaces wear `wr_water3`,
+/// `dk_water3`, `jri_sur1`, `jri_sur4`, `jri_lak1`. So which surfaces are water is READ off the
+/// model, not decided by me.
 ///
-/// ⭐ The motion is the PSX's, measured there: a flagged sprite is rolled by ONE ROW PER FRAME and
-/// re-uploaded, which is a V scroll of one texel a frame -- not palette cycling and not mesh
-/// morphing, both ruled out by a VRAM diff of a running park. One texel of a 64-high texture per
-/// console frame at 25 a second is 25/64 of the texture a second.
+/// ⭐⭐⭐ THE SEA IS STATIC ON THE PS2, MEASURED 2026-10-01 -- see `findings/sea.md` for the whole
+/// workings. Master: "kill all the sea stuff we have rn and reimplement it properly, assume
+/// everything previous was wrong", then "research the sea from the ps2 version". It was wrong, and
+/// the console's answer is that there is nothing there to be right about:
 ///
-/// ⚠⚠ WHAT IS CHOSEN, NOT READ: the PS2's own flag for "this surface is water" has not been found
-/// -- the material descriptor's spare bytes do not single it out, since `wr_water3` shares its
-/// group with a roof and a flower, making that group alpha rather than water. The sea's wave
-/// amplitude, wavelength and speed are not stated anywhere I have found either. Every one of those
-/// numbers is on an environment switch so it can be corrected in seconds by someone who can see
-/// the game, rather than guessed at twice.</summary>
+///   * NO per-vertex UV track. The APS flag `0x10000` and the `mesh+0x9c` fan-out list are both
+///     absent on all 48 sea instances -- while ELEVEN meshes in the SAME file carry both
+///     (`surface13/15/22/23/25/27`, `Surface15b`, `falls02`, `Object12`, `RIVERBED_03B/04B`: the
+///     river and the falls). That control is what makes the absence mean anything.
+///   * NO morph track: `mesh+0x98` is zero.
+///   * NO terrain `.aps` AT ALL in HALLOW, FANTASY or SPACE -- only JUNGLE ships one, so in three
+///     worlds of four the sea could not animate even in principle.
+///   * NO scroll rate. `fScrollRate` is a field of `asTextureData`, which shares its schema table
+///     with `asCrossSectionPoints1..12` -- the COASTER class. All 13 scroll rates on the disc sit
+///     in a `coaster.sam` (lift chains, flume water, slime, rails); `jri_lak2` is in none of them.
+///
+/// ⭐ What the sea does contribute is SOUND: `EVT_WAVES` and `EVT_SEAGULL` are the only wave-shaped
+/// symbols in the executable, and we do not play them yet.
+///
+/// ⭐⭐ AND IT IS ONE SURFACE AT TWO HEIGHTS, NOT TWO PLANES. Master asked what both planes of the
+/// ocean were. The vertices sit at -2.2666 and -1.2666, exactly 1.0 apart, in equal numbers -- but
+/// over ground that does not overlap AT ALL (95 upper XZ sites, 90 lower, ZERO shared). 44% of its
+/// triangles are exactly level and none tilts past 4.2 degrees. The port's old "they tile at one
+/// height" came from the AABB CENTRES, which agree because each mesh carries a mix of both.
+///
+/// ⚠ The PSX is a different build and DOES roll its sea texture one row per frame (VRAM diff of a
+/// running park). If the PS2 sea ever turns out to move, that is a capture to bring back -- not a
+/// number to guess a third time. `TPW_SEA_SCROLL` turns it back on without a rebuild.</summary>
 public sealed class Water
 {
     /// <summary>One texel of a 64-high texture per console frame.</summary>
     public const float ScrollTexelsPerTick = 1f;
     public const float AssumedTextureHeight = 64f;
 
-    /// <summary>⚠ CHOSEN. Amplitude in world units, wavelength in world units, radians a second.</summary>
-    static readonly Vector3 SeaWave = new(0.06f, 9f, 1.1f);
-
-    /// <summary>Which way each scroll runs, in degrees, where 0 is straight down the V axis --
-    /// the direction a rolled sprite moves on the PSX.
-    ///
-    /// ⭐⭐ THE SEA AND THE RIVER DO NOT AGREE, and that is the point. One angle for both was the
-    /// mistake: turning the river turned the sea with it, and master had already said the sea was
-    /// right where it started. They are laid out differently, so they get an angle each.
-    ///
-    /// ⚠ Both are somebody's EYES, not a reading. The row roll settles the SPEED -- one texel a
-    /// console frame, measured on the PSX -- and nothing found so far states the direction.</summary>
-    const float SeaScrollDegrees = 0f;
+    /// <summary>Which way the RIVER's scroll runs, in degrees, where 0 is straight down the V axis.
+    /// ⚠ Somebody's EYES, not a reading. The row roll settles the SPEED -- one texel a console
+    /// frame, measured on the PSX -- and nothing found so far states the direction.
+    /// ⭐ The river's real motion is eleven authored UV tracks in `terrain_1.aps`; this constant
+    /// stands in for them until they are replayed, which is the next real improvement here.</summary>
     const float RiverScrollDegrees = 90f;
+
+    /// <summary>The sea's scroll, texels per console frame. ZERO: the PS2 sea does not move, and
+    /// `findings/sea.md` is why. Left as a switch rather than deleted so the PSX's one-row-per-frame
+    /// roll can be put back by someone who can see a console, without another guess in the source.</summary>
+    const float SeaScrollTexelsPerTick = 0f;
 
     readonly List<ShaderMaterial> _moving = new();
     public int Surfaces => _moving.Count;
@@ -64,11 +78,9 @@ public sealed class Water
         _soft = soft;
         if (terrain == null || model == null) return;
         int sea = 0, flow = 0;
-        // The highest sea surface, so "lower" is measured rather than assumed from a name.
-        float _seaTop = float.MinValue;
-        foreach (var mi in terrain.GetChildren().OfType<MeshInstance3D>())
-            if (mi.Name.ToString().Split('#')[0].StartsWith("A_SEA", StringComparison.OrdinalIgnoreCase))
-                _seaTop = Mathf.Max(_seaTop, mi.GetAabb().GetCenter().Y + mi.Position.Y);
+        // ⚠ The first pass over the surfaces is gone with the wave it served: it existed only to
+        // find the highest sea plane, and there is no highest -- the sea is ONE surface sitting at
+        // two heights over ground that does not overlap, so "the top plane" never named anything.
         foreach (var mi in terrain.GetChildren().OfType<MeshInstance3D>())
         {
             // The surfaces are named "<mesh>#<material>" by AnimatedModel.
@@ -85,24 +97,28 @@ public sealed class Water
             if (!isSea && !WaterTextures.Any(w => material.Contains(w, StringComparison.OrdinalIgnoreCase)))
                 continue;
 
-            float perSecond = Env("TPW_WATER_SCROLL",
+            float riverPerSecond = Env("TPW_WATER_SCROLL",
                 ScrollTexelsPerTick * ConsoleClock.TicksPerSecond / AssumedTextureHeight);
-            float radians = Mathf.DegToRad(isSea
-                ? Env("TPW_SEA_ANGLE", SeaScrollDegrees)
-                : Env("TPW_WATER_ANGLE", RiverScrollDegrees));
-            var scroll = new Vector2(Mathf.Sin(radians) * perSecond, Mathf.Cos(radians) * perSecond);
-            // ⭐⭐ ONLY THE TOP SEA ROLLS. Master: "remove the sine on the lower sea layer."
-            // The terrain stacks more than one A_SEA plane and waving the one underneath makes
-            // the two shear through each other at the shoreline.
-            // ⚠ MEASURED, not named: which plane is lower is a fact about its height, and
-            // guessing from "A_SEA_01 must be the bottom" is the kind of assumption this port
-            // keeps having to undo. `_seaTop` is the highest sea surface on this terrain.
-            bool lowerSea = isSea && mi.GetAabb().GetCenter().Y + mi.Position.Y < _seaTop - 0.01f;
-            var wave = isSea && !lowerSea
-                ? new Vector3(Env("TPW_SEA_AMP", SeaWave.X), Env("TPW_SEA_LEN", SeaWave.Y), Env("TPW_SEA_SPEED", SeaWave.Z))
-                : Vector3.Zero;
-            // ⚠ The material's OWN translucency, from the same resolver the model used. A river
-            // drawn opaque is not a river.
+            float seaPerSecond = Env("TPW_SEA_SCROLL",
+                SeaScrollTexelsPerTick * ConsoleClock.TicksPerSecond / AssumedTextureHeight);
+
+            Vector2 scroll;
+            if (isSea)
+            {
+                // ⭐⭐⭐ ZERO unless somebody switches it on. Not "a scroll at angle 0" -- an angle
+                // with no speed still reads as a decision about direction, and there is no
+                // direction to decide: the console gives this surface no motion channel at all.
+                float radians = Mathf.DegToRad(Env("TPW_SEA_ANGLE", 0f));
+                scroll = new Vector2(Mathf.Sin(radians), Mathf.Cos(radians)) * seaPerSecond;
+            }
+            else
+            {
+                float radians = Mathf.DegToRad(Env("TPW_WATER_ANGLE", RiverScrollDegrees));
+                scroll = new Vector2(Mathf.Sin(radians), Mathf.Cos(radians)) * riverPerSecond;
+            }
+            // ⭐ No vertex motion on anything. The sine this port shipped was invented, and the
+            // console has no morph channel on the terrain to have carried one.
+            var wave = Vector3.Zero;
             var made = Ps2Materials.Water(tex, _soft?.Invoke(material) ?? false, scroll, wave);
             mi.MaterialOverride = made;
             _moving.Add(made);
@@ -110,8 +126,8 @@ public sealed class Water
         }
         Report = _moving.Count == 0
             ? "no water surfaces in this terrain"
-            : $"{sea} sea surfaces on a sine scrolling at {SeaScrollDegrees:F0} degrees,"
-              + $" {flow} flowing at {RiverScrollDegrees:F0}";
+            : $"{sea} sea surfaces STATIC (no scroll, no vertex motion),"
+              + $" {flow} flowing at {RiverScrollDegrees:F0} degrees";
     }
 
     /// <summary>The material a surface wears, by the index AnimatedModel put in its node name.

@@ -134,19 +134,29 @@ public partial class AdvisorResearchSmoke : Node
             Check(System.Environment.GetEnvironmentVariable("TPW_ALL_RESEARCHED") != "1", "no environment research override");
             viewer = new Viewer { Name = "Viewer" }; AddChild(viewer);
             var frontend = Read<FrontendScreen>(viewer, "_frontend");
+            // ⚠ Every screen waits a moment before it takes input (InputSettle), so each real input
+            // below first waits for its screen to settle.
             await Wait(() => frontend?.CurrentStage == FrontendScreen.Stage.Language, 20, "cold boot reaches language");
+            await Wait(() => frontend.InputReady, 5, "language screen settles");
             await KeyPress(Key.Enter); // English, the actual first choice
             await Wait(() => frontend.CurrentStage is FrontendScreen.Stage.Movie or FrontendScreen.Stage.Legal, 10, "language accepted");
-            if (frontend.CurrentStage == FrontendScreen.Stage.Movie) await KeyPress(Key.Enter);
+            if (frontend.CurrentStage == FrontendScreen.Stage.Movie) { await Wait(() => frontend.InputReady, 10, "intro settles"); await KeyPress(Key.Enter); }
             await Wait(() => frontend.CurrentStage == FrontendScreen.Stage.Legal, 10, "intro skipped or unavailable, legal screen shown");
+            await Wait(() => frontend.InputReady, 5, "legal screen settles");
             await KeyPress(Key.Enter);
             await Wait(() => Read<MainMenu>(viewer, "_mainMenu")?.Open == true, 10, "main menu open");
             var menu = Read<MainMenu>(viewer, "_mainMenu");
-            await Click(menu.RowRect(0).GetCenter()); await Click(menu.RowRect(0).GetCenter());
+            await Wait(() => menu.InputReady, 5, "main menu settles");
+            await Click(menu.RowRect(0).GetCenter());
+            await Wait(() => menu.InputReady, 5, "New Game page settles");
+            await Click(menu.RowRect(0).GetCenter());
             await Wait(() => Read<bool>(viewer, "_lobbyMode"), 20, "main game enters lobby");
             Check(Read<int>(viewer, "_lobbyRecord") == 0, "default selection is JUNGLE first park");
-            await KeyPress(Key.Enter); await KeyPress(Key.Enter);
-            if (frontend.CurrentStage == FrontendScreen.Stage.Movie) await KeyPress(Key.Enter);
+            await Wait(() => viewer.LobbyInputReady, 5, "lobby settles");
+            await KeyPress(Key.Enter);
+            await Wait(() => viewer.LobbyInputReady, 5, "lobby prompt settles");
+            await KeyPress(Key.Enter);
+            if (frontend.CurrentStage == FrontendScreen.Stage.Movie) { await Wait(() => frontend.InputReady, 10, "world movie settles"); await KeyPress(Key.Enter); }
             await Wait(() => !Read<bool>(viewer, "_lobbyMode") && Read<ParkStaff>(viewer, "_staff") != null, 30, "normal confirmation enters a staffed park");
             await Frames(3);
             if (Read<Control>(viewer, "_panel").Visible) await KeyPress(Key.F3);
@@ -187,13 +197,17 @@ public partial class AdvisorResearchSmoke : Node
                 // click also confirms the selected island. Reported to its owner, NOT fixed here.
                 GD.Print("[advisor.research] scope: cancelling the unintended Close Park/lobby prompt through real input; separate lobby issue remains open");
                 await Shot("close-park-unintended-prompt");
+                await Wait(() => viewer.LobbyInputReady, 5, "lobby prompt settles");
                 await KeyPress(Key.Right); await KeyPress(Key.Enter); // choose the real Cancel button
                 await Wait(() => Read<bool>(viewer, "_lobbyMode") && !Read<bool>(viewer, "_lobbyPrompt"), 5, "ordinary Cancel clears the lobby prompt");
             }
+            await Wait(() => viewer.LobbyInputReady, 5, "lobby settles after Close Park");
             await KeyPress(Key.Right);
             Check(Read<int>(viewer, "_lobbyRecord") == 4, "real navigation selects FANTASY first park");
-            await KeyPress(Key.Enter); await KeyPress(Key.Enter);
-            if (frontend.CurrentStage == FrontendScreen.Stage.Movie) await KeyPress(Key.Enter);
+            await KeyPress(Key.Enter);
+            await Wait(() => viewer.LobbyInputReady, 5, "lobby prompt settles");
+            await KeyPress(Key.Enter);
+            if (frontend.CurrentStage == FrontendScreen.Stage.Movie) { await Wait(() => frontend.InputReady, 10, "world movie settles"); await KeyPress(Key.Enter); }
             await Wait(() => !Read<bool>(viewer, "_lobbyMode") && Read<ParkAdvisor>(viewer, "_parkAdvisor") != null
                 && !ReferenceEquals(Read<ParkAdvisor>(viewer, "_parkAdvisor"), first.Advisor), 30, "normal map switch builds a different advisor");
             await Frames(3);
