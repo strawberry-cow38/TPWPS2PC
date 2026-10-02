@@ -179,3 +179,46 @@ Use the savestate RAM. See `feedback_image_is_not_authority_for_runtime_globals`
 triangle wave, or the terrain path drawing `A_SEA` a **second time** with alpha and a UV offset,
 would be invisible to every check above — the drawn-twice case especially, because it adds no
 geometry, no new material and no table lookup.
+
+
+# ⭐⭐ THE UPPER LAYER'S ART: four translucent textures nothing wears (2026-10-02)
+
+Master steered this: *"i dont think u need savestates at all. just a harder search of the disc"*.
+The earlier search had been filtered two ways that hid everything -- by NAME (water/lak/sea) and by
+POSITION (only meshes already over the sea footprint). Both exclusions had to go.
+
+**Four 32bpp (alpha) water textures ship and are worn by NOTHING:**
+
+| texture | world | note |
+|---|---|---|
+| `jri_sur1`, `jri_sur4`, `jri_lak1` | JUNGLE | "sur" = surface |
+| `gby_sur1` | HALLOW, SPACE | |
+| — | FANTASY | **ships none** |
+
+They are not merely unused by meshes: they appear in **no `.mps` material table anywhere on the
+disc**. They ship as `.ssh`/`.tga` under `/terrain/textures/` and nothing references them.
+
+⭐ **The control that makes this mean something:** the same scan returns **48** mesh uses for
+`jri_lak2` (the opaque sea) and **15** for `wr_water3` (the river). It finds usage where usage
+exists. These four come back zero.
+
+Decoded and looked at, they are **wispy translucent swirls and foam** -- sparse highlight art that
+only reads correctly drawn *over* something -- against `jri_lak2`, which is dark opaque mottle at
+24bpp with no alpha. That is an overlay, unbound in the data, therefore bound by code: which is
+astraclaw's procedural water draw path at `0x22CB90`.
+
+⭐ **FALSIFIABLE PREDICTION:** if the second layer is driven by these textures then **FANTASY has no
+second water layer**, because it is the one world shipping no surface texture. Jungle, Hallow and
+Space should have one. If Fantasy visibly has waves, this is not the mechanism.
+
+⚠⚠ **A NEGATIVE THAT PROVES NOTHING, recorded so nobody quotes it:** grepping `SLES_500.32` for
+these texture names returns **zero refs** -- but it returns zero for `jri_lak2` too, which has 48
+mesh uses. Textures are **index-addressed**; the executable names none of them. "No string in the
+exe" is not evidence about any texture. See [[feedback_a_negative_search_proves_nothing]].
+
+⚠ **An instrument that failed its calibration, also recorded:** a "band score" (fraction of
+luminance variance explained by the best 1-D projection) was meant to find banded water tiles across
+the disc. Calibrated against the known answer it scored `jri_lak3x` at **0.098** where it had to be
+high, and the control `jri_lak2` at **0.500** where it had to be low -- inverted and useless. Its
+386 "hits" were ride signs. **The sweep was void and is not reported as a result.** The thing that
+actually worked was decoding the candidates to a contact sheet and looking at them.
