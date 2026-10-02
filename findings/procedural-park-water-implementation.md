@@ -207,10 +207,10 @@ Final same-build A/B on the **local Mesa llvmpipe** host:
 
 | water | median real frame ms | p95 ms | draw calls | samples |
 |---|---:|---:|---:|---:|
-| off |68.320|95.170|164|131|
-| on |76.701|102.458|165|117|
-| on |79.676|105.977|165|113|
-| off |69.719|93.828|164|128|
+| off |68.320|95.170|164|126|
+| on |76.701|102.458|165|112|
+| on |79.676|105.977|165|109|
+| off |69.719|93.828|164|126|
 
 The bounded windows were9.0076..9.0606 seconds, all four camera fingerprints matched, and
 all four error/leak classifications passed. The water adds one draw call and roughly9ms here;
