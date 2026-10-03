@@ -1140,6 +1140,16 @@ public sealed class AnimatedModel
             System.Numerics.Quaternion.Slerp(keys[i].Q, keys[i + 1].Q, f));
     }
 
+    /// <summary>⭐ Rebuild census, process-wide: how many per-frame geometry rebuilds happened and
+    /// WHAT DROVE each one. `Skin` is the share a GPU skeleton could remove; `Morph`/`Uv` is the
+    /// share it could not, and `Both` is the overlap that would still need a CPU pass.
+    /// Read and reset by the benchmark report. ⚠ Not thread-safe and does not need to be: every
+    /// SetFrame runs on the main thread.</summary>
+    public static long Rebuilds, RebuildsSkin, RebuildsMorph, RebuildsUv, RebuildsBoth, RebuildVerts;
+
+    public static void ResetRebuildCensus() =>
+        Rebuilds = RebuildsSkin = RebuildsMorph = RebuildsUv = RebuildsBoth = RebuildVerts = 0;
+
     public void SetFrame(float now)
     {
         // ⭐⭐ NOT A WHOLE-METHOD EARLY-OUT, AND THE FIRST VERSION WRONGLY WAS.
@@ -1220,8 +1230,30 @@ public sealed class AnimatedModel
             if (!shown && !_ordinaryVisibility && !_nativeNodeVisibility) continue;
             // ⚠ `|| p.UvKeys != null` -- a part whose ONLY animation is its UVs has no morph and
             // no skin, so the old gate skipped it and it would never have been rebuilt at all.
-            if (((p.Morph != null || p.Baked != null || (pose != null && p.Skin != null)) && p.AnimMap != null)
-                || p.UvKeys != null || p.LayerPos != null || p.LayerUv != null) RebuildGeometry(p, now, pose);
+            // ⭐⭐ WHY EACH REBUILD HAPPENED, COUNTED. The rebuild is the port's dominant per-frame
+            // cost (73% of the frame at 150 guests) and the proposed fix -- hand the rig to a
+            // godot `Skeleton3D` and let the GPU deform -- only removes the rebuilds that are
+            // SKINNING. Reading the guards says morph and UV keys are impossible on a skeletal
+            // record (`MorphFor`/`UvKeysFor` return null on one), but a guard I read is not a
+            // census: `Baked` is file-scoped, not record-scoped, so a guest COULD carry one and
+            // the code path would look identical. Count the reason instead of arguing about it.
+            bool wantMorph = (p.Morph != null || p.Baked != null) && p.AnimMap != null;
+            bool wantSkin = pose != null && p.Skin != null && p.AnimMap != null;
+            bool wantUv = p.UvKeys != null || p.LayerPos != null || p.LayerUv != null;
+            if (wantMorph || wantSkin || wantUv)
+            {
+                // ⚠ A rebuild driven by two reasons at once is counted in BOTH buckets and once in
+                // the total, so the buckets deliberately do not sum to it -- `Both` names the
+                // overlap. A set of buckets forced to sum would have had to pick a winner and
+                // would then under-state how much GPU skinning cannot remove.
+                Rebuilds++;
+                if (wantSkin) RebuildsSkin++;
+                if (wantMorph) RebuildsMorph++;
+                if (wantUv) RebuildsUv++;
+                if (wantSkin && (wantMorph || wantUv)) RebuildsBoth++;
+                RebuildVerts += p.BindPos?.Count ?? 0;
+                RebuildGeometry(p, now, pose);
+            }
             var w = world[p.NodeOffset];
             var t = new Transform3D(
                 new Godot.Basis(new Godot.Vector3(w.M11, w.M12, w.M13),

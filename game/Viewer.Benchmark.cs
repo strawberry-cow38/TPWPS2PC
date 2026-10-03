@@ -419,6 +419,31 @@ public partial class Viewer
         GD.Print("[time] ==========================================");
     }
 
+    /// <summary>⭐⭐ WHAT SHARE OF THE PER-FRAME GEOMETRY REBUILD A GPU SKELETON COULD ACTUALLY
+    /// REMOVE. Master: *"whys it on the cpu? cant we do it on the gpu?"* -- the answer is yes for
+    /// SKINNING, and the honest size of the prize is the skin share of the rebuilds, not all of
+    /// them. Morph tracks, UV keys and additive layers rebuild geometry too and a `Skeleton3D`
+    /// does nothing for those.
+    ///
+    /// ⚠ Reading the guards suggested morph and UV are impossible on a skeletal record, and that
+    /// is an argument, not a census -- `Baked` in particular is file-scoped, so a guest could
+    /// carry one through a code path that looks identical. This counts the reason at the call
+    /// site. [[feedback_a_comment_is_not_a_measurement]]</summary>
+    void ReportRebuilds()
+    {
+        long n = AnimatedModel.Rebuilds;
+        if (n == 0) { GD.Print("[rebuild] no geometry rebuilds in the sampled run"); return; }
+        long frames = Math.Max(1L, _benchFrames);
+        GD.Print($"[rebuild] ============ {n} rebuilds over {frames} frames ({n / (double)frames:F1}/frame, "
+               + $"{AnimatedModel.RebuildVerts / (double)frames:F0} verts/frame) ============");
+        GD.Print($"[rebuild]   SKIN  {AnimatedModel.RebuildsSkin,8} ({AnimatedModel.RebuildsSkin * 100.0 / n,5:F1}%)  <- a godot Skeleton3D could move these to the GPU");
+        GD.Print($"[rebuild]   morph {AnimatedModel.RebuildsMorph,8} ({AnimatedModel.RebuildsMorph * 100.0 / n,5:F1}%)  <- blend shapes or stay CPU");
+        GD.Print($"[rebuild]   uv    {AnimatedModel.RebuildsUv,8} ({AnimatedModel.RebuildsUv * 100.0 / n,5:F1}%)  <- a shader, not a skeleton");
+        GD.Print($"[rebuild]   both  {AnimatedModel.RebuildsBoth,8} ({AnimatedModel.RebuildsBoth * 100.0 / n,5:F1}%)  <- skin AND something else: still needs a CPU pass");
+        GD.Print("[rebuild]   (buckets overlap by design: a rebuild with two reasons is in both)");
+        GD.Print("[rebuild] ==========================================");
+    }
+
     void ReportAllocations()
     {
         if (!_allocProbe || _allocFrames == 0) return;
@@ -518,11 +543,17 @@ public partial class Viewer
                + $"sampling every {BenchInterval:F2}s");
     }
 
+    bool _benchCensusZeroed;
+
     void TickBenchmark(double delta)
     {
         if (!_benchRunning) return;
         _benchElapsed += delta;
         if (_benchElapsed < BenchWarmup) return;
+        // ⚠⚠ RESET WHERE THE WARM-UP ENDS, NOT AT LAUNCH. Loading the park rebuilds geometry for
+        // every mesh it builds, so a census zeroed in StartBenchmark counts the load and then
+        // reports it as steady state -- the same error the `_timeBy` accumulator nearly shipped.
+        if (!_benchCensusZeroed) { _benchCensusZeroed = true; AnimatedModel.ResetRebuildCensus(); }
         _benchFrames++;
         if (_benchElapsed >= _benchFor) { _benchRunning = false; ReportBenchmark(); return; }
         _benchNext -= delta;
@@ -760,6 +791,7 @@ public partial class Viewer
             GD.Print("[bench] ⭐ So any creep master is seeing is COST ACROSS THE PROJECT, not "
                    + "degradation within a session -- profile the frame, do not hunt a leak.");
         GD.Print("[bench] ========================================");
+        ReportRebuilds();
         ReportFrameTime(wallMs > 0 ? wallMs : allMed);
         ReportAllocations();
 

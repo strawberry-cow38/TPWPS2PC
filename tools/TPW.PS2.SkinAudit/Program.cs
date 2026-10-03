@@ -245,6 +245,30 @@ foreach (var entry in models)
              : Math.Max(firstMiss, laterMiss) <= Threshold ? " -- every scored influence lands alone"
              : $" -- influences do not land alone (offsets that cancel in the blend down to the bind residual {worst:F2})"
                + (firstN > 0 && firstMiss > Threshold ? ", first influences included: not a misread later bone byte" : ""));
+    // ⭐⭐ INFLUENCES PER VERTEX, BECAUSE GODOT'S SKINNING CAPS AT 4 (8 behind a flag). The port
+    // deforms every guest vertex on the CPU and re-uploads the mesh, which is 73% of the frame at
+    // 150 guests; moving it to a `Skeleton3D` makes it a bone-matrix upload instead. Two facts
+    // decide whether that is even expressible, and this audit already proves the hard one -- the
+    // bind check above closes, so the per-influence bone-space positions ARE one authored vertex
+    // through each bone's bind inverse, which is exactly godot's `Bind^-1 * v`. What was never
+    // counted is the WIDTH. A byte holds up to 255, so "it's linear-blend skinning" does not imply
+    // "godot can take it"; a part over the cap has to stay on the CPU.
+    // ⚠ Counted over vertices, not influences: 8 influences shared by 8 vertices is fine and 8 on
+    // one vertex is not, and a total would not tell those apart.
+    var perVertex = new int[9];   // 0..7 exact, 8 = "8 or more"
+    int widest = 0; string widestAt = "-";
+    foreach (var (mesh, sk) in skins)
+        for (int i = 0; i < sk.VertexCount; i++)
+        {
+            int n = sk.Count[i];
+            perVertex[Math.Min(n, 8)]++;
+            if (n > widest) { widest = n; widestAt = $"{model.Meshes[mesh].Name}#{i}"; }
+        }
+    int over4 = perVertex.Skip(5).Sum(), over8 = perVertex[8];
+    Console.WriteLine($"       {leaf}: influences/vertex widest {widest} at {widestAt}; "
+                    + $"[1]={perVertex[1]} [2]={perVertex[2]} [3]={perVertex[3]} [4]={perVertex[4]} [5+]={over4}"
+                    + $" -> GPU skin: {(widest <= 4 ? "FITS godot's 4" : widest <= 8 ? "needs the 8-weight flag" : "DOES NOT FIT (" + over8 + " vertices at 8+)")}");
+    Check(widest <= 8, $"{leaf}: no vertex needs more than godot's 8-weight maximum (widest {widest})");
     if (worst > worstAll) { worstAll = worst; worstWho = leaf; }
     Console.WriteLine($"{leaf,-12} meshes {model.Meshes.Count} ({skins.Count} skinned) helpers {model.HelperCount,2} bones {bonesUsed.Count,2} slots {verts,4}"
                     + $" | bind worst {worst,9:F3} (single-bone {worstSingle:F3}, blended {worstBlend:F3}) at {worstAt}");

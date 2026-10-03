@@ -561,6 +561,7 @@ public partial class Viewer : Node3D
             else if (a.StartsWith("--idle-scene=")) { _idleScene = true; int.TryParse(a["--idle-scene=".Length..], out _idleCount); }
             else if (a.StartsWith("--walk-film=")) int.TryParse(a["--walk-film=".Length..], out _walkFilm);
             else if (a == "--gait-census") _gaitCensus = true;
+            else if (a == "--lod-census") _lodCensus = true;
             else if (a == "--guests-nodraw") _guestsNoDraw = true;
             else if (a.StartsWith("--atlas-dump=")) _atlasDump = a["--atlas-dump=".Length..];
             // ⭐ The census borrows --guest-test's park (corridor, Crazy Ape, guests) and replaces
@@ -7112,6 +7113,87 @@ public partial class Viewer : Node3D
 
     bool _gaitCensus;
 
+    double _lodCensusDue;
+    bool _lodCensus;
+
+    /// <summary>⭐⭐ HOW MANY OF THE CROWD IS ACTUALLY ON SCREEN -- the number that decides whether a
+    /// guest LOD is worth writing at all. `PlaceActors` is 73% of the frame at 150 guests and
+    /// `--guests-nodraw` already showed the DRAWING of them is only 0.48 ms of it, so the cost is
+    /// the per-guest pose/skin/rebuild. Skipping that for guests outside the frustum can only win
+    /// whatever fraction is outside it, and that fraction is a measurement, not a guess: at a
+    /// camera that happens to hold the whole crowd the ceiling is ZERO and the lever has to be
+    /// distance-rate instead.
+    ///
+    /// ⚠ Also the control for the open question "1.5x the guests cost 2.5x the PlaceActors time".
+    /// If the visible count grows faster than the population, that is the whole explanation and
+    /// there is no super-linear per-guest cost to hunt. Printing total AND visible is what lets
+    /// those two be told apart -- a visible count alone would read as either.
+    ///
+    /// ⚠ `GetFrustum` allocates an array per call, so this runs once a second and NOTHING in the
+    /// per-frame path may use it. A census that costs what it measures is its own
+    /// [[feedback_calibrate_the_instrument]] failure.</summary>
+    /// <summary>⚠⚠ `Camera3D.GetFrustum()`'s plane normals point OUTWARD, so a point is INSIDE
+    /// when every signed distance is <= 0. Getting this backwards reported the entire crowd as
+    /// off-screen. One predicate, used by the census and by anything that ever acts on it, so the
+    /// instrument and the optimisation can never disagree about the sign.</summary>
+    static bool InFrustum(Godot.Collections.Array<Plane> planes, Vector3 at, float radius)
+    {
+        foreach (var pl in planes)
+            if (pl.DistanceTo(at) > radius) return false;
+        return true;
+    }
+
+    void TickLodCensus(double delta)
+    {
+        if (!_lodCensus || _cam == null || _guests == null) return;
+        _lodCensusDue -= delta;
+        if (_lodCensusDue > 0) return;
+        _lodCensusDue = 1.0;
+        var planes = _cam.GetFrustum();
+        Vector3 eye = _cam.GlobalPosition;
+        // ⭐⭐ KNOWN-ANSWER CHECK, PRINTED, BEFORE ANY COUNT IS BELIEVED. The first version of this
+        // census reported `IN FRUSTUM 0 (0.0%)` with `behind-cam 0`, which cannot both be true --
+        // a point outside the frustum but not behind the camera has to be out of a SIDE plane, and
+        // not for all 150 at once. Cause: `Camera3D.GetFrustum()`'s plane normals point OUTWARD,
+        // so inside is a NEGATIVE distance and my sign test rejected everything. A count alone
+        // could not show that; two points whose answers are known can.
+        Vector3 ahead = eye - _cam.GlobalTransform.Basis.Z * 10f;   // -Z is forward in godot
+        Vector3 back = eye + _cam.GlobalTransform.Basis.Z * 10f;
+        bool okAhead = InFrustum(planes, ahead, 0f), okBack = InFrustum(planes, back, 0f);
+        if (!okAhead || okBack)
+        {
+            GD.Print($"[lod] ⚠⚠ INSTRUMENT WRONG, counts below are meaningless: a point 10 ahead of "
+                   + $"the camera reads inFrustum={okAhead} (must be True) and one 10 BEHIND reads "
+                   + $"{okBack} (must be False)");
+        }
+        int total = 0, visible = 0, behind = 0;
+        float dMin = float.MaxValue, dMax = 0;
+        // Distance buckets in world units, which on this port is cells: near / mid / far / miles.
+        int[] band = new int[4];
+        int[] bandVis = new int[4];
+        foreach (var a in _actors.Values)
+        {
+            if (a == null || !IsInstanceValid(a)) continue;
+            total++;
+            Vector3 at = a.GlobalPosition;
+            float d = eye.DistanceTo(at);
+            int b = d < 20f ? 0 : d < 50f ? 1 : d < 120f ? 2 : 3;
+            band[b]++;
+            if (d < dMin) dMin = d;
+            if (d > dMax) dMax = d;
+            // ⚠ A POINT TEST UNDER-COUNTS: a guest whose origin is just outside a plane can still
+            // have its head on screen. The radius is generous for that reason -- an LOD that drops
+            // a guest the camera can see is a visible bug, and over-counting only costs perf.
+            if (InFrustum(planes, at, 1.5f)) { visible++; bandVis[b]++; }
+            else if (_cam.IsPositionBehind(at)) behind++;
+        }
+        GD.Print($"[lod] t={_parkTicks * ParkSim.TickMilliseconds / 1000.0:F1}s actors {total}  "
+               + $"IN FRUSTUM {visible} ({(total > 0 ? visible * 100.0 / total : 0),5:F1}%)  behind-cam {behind}"
+               + $"  | cam {eye.X:F0},{eye.Y:F0},{eye.Z:F0}  guest dist {dMin:F1}..{dMax:F1}");
+        GD.Print($"[lod]   by distance  <20: {band[0]} ({bandVis[0]} vis)  20-50: {band[1]} ({bandVis[1]} vis)  "
+               + $"50-120: {band[2]} ({bandVis[2]} vis)  >120: {band[3]} ({bandVis[3]} vis)");
+    }
+
     /// <summary>⭐⭐ SPLITS A GUEST'S COST INTO "DRAWN" AND "COMPUTED". `--guests-nodraw` keeps every
     /// guest simulated, posed and skinned exactly as normal and only stops them being DRAWN, so the
     /// difference against an ordinary run is the draw-call and GPU half and the remainder is ours.
@@ -12343,6 +12425,7 @@ public partial class Viewer : Node3D
         }
         AllocBegin(); StepLobby(delta); AllocEnd("StepLobby");
         AllocBegin(); TickDebugHud(delta); AllocEnd("TickDebugHud");
+        TickLodCensus(delta);
         // ⭐⭐ THE CLOUDS SHIFT AND THE SKY GREYS. Master: "clouds ARE meant to shift; sky gets
         // gray when raining." ⚠ The console drives the grey from a weather AMOUNT whose state
         // machine is not ported (it is pinned at 0), so the port drives it from the weather the
