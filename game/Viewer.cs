@@ -6047,14 +6047,24 @@ public partial class Viewer : Node3D
             EnsureNativeEntrance();
             // ⭐ STAFF ON EVERY PARK: attached before the step, so the step runs them (Viewer.Staff.cs).
             EnsureStaff();
-            Snapshot();
-            SnapshotStaff();
+            // ⭐⭐ THE SIM IS BRACKETED SEPARATELY FROM THE BOOKKEEPING AROUND IT. "How much does
+            // the AI cost" cannot be answered by `TickPark`'s own figure: Snapshot alone walks
+            // every guest to record last-tick cells FOR THE INTERPOLATION, which is presentation
+            // work that happens to live in the tick. Bracket the thing asked about, not the
+            // method it sits in -- the same mistake as attributing a parent's cost to a child.
+            AllocBegin(); Snapshot(); SnapshotStaff(); AllocEnd("    Snapshot(interp)");
             uint staffBefore = _staff?.Now ?? 0;
-            _visitors.Step(ConsoleClock.TickSeconds, Wander);
+            AllocBegin(); _visitors.Step(ConsoleClock.TickSeconds, Wander); AllocEnd("    visitors.Step(AI)");
+            AllocBegin();
             TickStaffAnimations(_staff == null ? 0 : unchecked(_staff.Now - staffBefore));
+            AllocEnd("    TickStaffAnimations");
+            AllocBegin();
             TickAdvisor(_staff == null ? 0 : unchecked(_staff.Now - staffBefore));   // the advisor, after guests and staff (Viewer.Advisor.cs)
-            Retry();
+            AllocEnd("    TickAdvisor");
+            AllocBegin(); Retry(); AllocEnd("    Retry");
+            AllocBegin();
             TickNativeBus(); // batch admission follows the guest update, not an independent timer
+            AllocEnd("    TickNativeBus");
             return;
         }
         if (OpenGate()) { Snapshot(); _guests.Step(); Dawdle(); }

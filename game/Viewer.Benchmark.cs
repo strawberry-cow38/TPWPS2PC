@@ -120,6 +120,10 @@ public partial class Viewer
             double ms = (System.Diagnostics.Stopwatch.GetTimestamp() - _timeMarks.Pop())
                       * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
             _frameTimes.Add((name, ms));
+            // ⚠ Depth only here; the SUM is taken in SlowFrameReport, which is the one place that
+            // already drops warm-up frames. Summing here would have folded the park load in.
+            int td = _timeMarks.Count;
+            if (!_timeDepth.TryGetValue(name, out int tseen) || td < tseen) _timeDepth[name] = td;
         }
         if (!_allocProbe || _allocMarks.Count == 0) return;
         long d = GC.GetAllocatedBytesForCurrentThread() - _allocMarks.Pop();
@@ -141,6 +145,13 @@ public partial class Viewer
     /// a frame that returned early contributes to neither side rather than dumping its whole cost
     /// into "outside". Both frame counts are printed: if they disagree, the instrument says so
     /// itself instead of quietly reporting a number for fewer frames than it claims.</summary>
+    /// <summary>Per-section CPU milliseconds summed over every sampled frame, with the shallowest
+    /// depth each name was closed at -- the same nesting rule `_allocDepth` uses, so a nested
+    /// section is not double-counted into the total.</summary>
+    readonly Dictionary<string, double> _timeBy = new();
+    readonly Dictionary<string, int> _timeDepth = new();
+    int _timeFrames;
+
     long _allocTop, _allocBottom, _allocInside, _allocOutside, _allocInFrames, _allocOutFrames;
     bool _allocReachedBottom;
 
@@ -184,6 +195,15 @@ public partial class Viewer
         // baseline to compare them against, and I published "draw calls spike 156 -> 249" off
         // exactly that gap. The regular sampler was the baseline and it was already there.
         if (!_benchRunning || _benchElapsed < BenchWarmup) { _frameTimes.Clear(); _timeMarks.Clear(); return; }
+        // ⭐⭐ WHERE THE FRAME GOES, averaged over every counted frame. Master: "how much is the ai
+        // itself costing of the frame?" -- which `[slow]` cannot answer, because it only ever
+        // samples the frames it selected for being slow. Same brackets, whole population.
+        foreach (var (n, ms) in _frameTimes)
+        {
+            _timeBy.TryGetValue(n, out double had);
+            _timeBy[n] = had + ms;
+        }
+        _timeFrames++;
         // ⭐⭐ EVERY frame past the warm-up, slow or not -- this is the BASELINE, and it has to be
         // taken over the same population the slow frames are drawn from or it says nothing. See
         // the field's own note: `head=1 on 12 of 12` was this mistake with a different field.
@@ -361,6 +381,42 @@ public partial class Viewer
         }
         _allocLastCounter = now;
         _allocFramesAtLastSample = framesNow;
+    }
+
+    /// <summary>⭐⭐ WHERE THE FRAME'S MILLISECONDS GO, over every counted frame -- not over the
+    /// slow ones. Master asked "how much is the AI itself costing of the frame?", and the `[slow]`
+    /// line cannot answer it: that line is only ever printed for frames selected FOR BEING SLOW,
+    /// so its split is the split of a hitch, not of a frame. Same brackets, whole population.
+    ///
+    /// ⚠ THE UNBRACKETED REMAINDER IS PRINTED, and on this engine it is usually the biggest row:
+    /// everything the C# side never sees (the render thread, the driver, vsync, `_Draw`). A table
+    /// that only lists what it timed reads as if the listed rows were the frame.
+    ///
+    /// ⚠ Only TOP-LEVEL brackets are summed into the attributed total; a nested section is
+    /// already inside its parent's figure, and `_timeDepth` is what tells them apart.</summary>
+    void ReportFrameTime(double wholeMs)
+    {
+        if (_timeFrames == 0 || _timeBy.Count == 0)
+        {
+            if (_slowFrameMs > 0) GD.Print("[time] ⚠ no sampled frames: nothing to attribute");
+            return;
+        }
+        GD.Print($"[time] ============ {_timeFrames} frames, mean frame {wholeMs:F2} ms ============");
+        double attributed = 0;
+        foreach (var kv in _timeBy.OrderByDescending(k => k.Value))
+        {
+            double per = kv.Value / _timeFrames;
+            bool nested = _timeDepth.GetValueOrDefault(kv.Key) > 0;
+            if (!nested) attributed += per;
+            // ⚠ The name already carries its own indentation from the AllocEnd call site, so the
+            // tree prints itself; the depth is used for the ARITHMETIC, not for the layout.
+            GD.Print($"[time]   {kv.Key,-26} {per,7:F3} ms  ({per / Math.Max(1e-9, wholeMs) * 100,5:F1}%)"
+                   + (nested ? "  (inside a parent above)" : ""));
+        }
+        double rest = wholeMs - attributed;
+        GD.Print($"[time]   {"(unbracketed)",-26} {rest,7:F3} ms  ({rest / Math.Max(1e-9, wholeMs) * 100,5:F1}%)"
+               + "  <- render thread, driver, vsync, _Draw");
+        GD.Print("[time] ==========================================");
     }
 
     void ReportAllocations()
@@ -704,6 +760,7 @@ public partial class Viewer
             GD.Print("[bench] ⭐ So any creep master is seeing is COST ACROSS THE PROJECT, not "
                    + "degradation within a session -- profile the frame, do not hunt a leak.");
         GD.Print("[bench] ========================================");
+        ReportFrameTime(wallMs > 0 ? wallMs : allMed);
         ReportAllocations();
 
         // The raw series, so a reader can see the shape rather than trust the summary.
